@@ -3,7 +3,7 @@
 
 mod common;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use common::{lines, tree};
@@ -336,7 +336,7 @@ fn shim_imports_rejected() {
         let per: Vec<_> = r
             .violations
             .iter()
-            .filter(|v| v.path == PathBuf::from(name))
+            .filter(|v| v.path == Path::new(name))
             .collect();
         assert_eq!(per.len(), 1, "{name}: {per:?}");
         assert_eq!(per[0].rule, Rule::ShimImport);

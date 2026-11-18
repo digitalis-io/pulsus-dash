@@ -45,7 +45,11 @@ fn design_check_broken_link() {
     let v = check(t.path()).unwrap();
     assert_eq!(v.len(), 1, "{v:?}");
     assert_eq!(v[0].rule, Rule::DesignCheckFailed);
-    assert!(v[0].message.contains("seeded-missing.md"), "{}", v[0].message);
+    assert!(
+        v[0].message.contains("seeded-missing.md"),
+        "{}",
+        v[0].message
+    );
 }
 
 #[test]

@@ -111,7 +111,10 @@ fn browser_crate_allowlist() {
     let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     edges.insert(
         "dash-core-mt".into(),
-        ["dash-marks", "okcrate"].iter().map(|s| s.to_string()).collect(),
+        ["dash-marks", "okcrate"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     );
     edges.insert(
         "dash-marks".into(),
@@ -250,7 +253,11 @@ fn third_party_host_rejected() {
         got,
         vec![
             (Rule::ThirdPartyHost, PathBuf::from("web/a.css"), Some(1)),
-            (Rule::ThirdPartyHost, PathBuf::from("web/index.html"), Some(1)),
+            (
+                Rule::ThirdPartyHost,
+                PathBuf::from("web/index.html"),
+                Some(1)
+            ),
         ]
     );
 }
@@ -260,7 +267,10 @@ fn js_outside_shim_rejected() {
     let t = tree(&[("web/app.js", b"x();\n"), ("web/shim/boot.js", b"x();\n")]);
     let v = check_web_assets(t.path(), &cfg()).unwrap();
     let got: Vec<(Rule, PathBuf)> = v.iter().map(|v| (v.rule, v.path.clone())).collect();
-    assert_eq!(got, vec![(Rule::JsOutsideShim, PathBuf::from("web/app.js"))]);
+    assert_eq!(
+        got,
+        vec![(Rule::JsOutsideShim, PathBuf::from("web/app.js"))]
+    );
 }
 
 fn pins(p: &[(&str, &[u8])]) -> ShimPins {
@@ -284,12 +294,7 @@ fn vendored_library_new_file_rejected() {
         ("web/shim/lib.js", &lib),
     ]);
     let files = shim_files(&["web/shim/boot.js", "web/shim/lib.js", "web/shim/x.wasm"]);
-    let v = check_shipped_js(
-        t.path(),
-        &files,
-        &pins(&[("web/shim/boot.js", b"x();\n")]),
-    )
-    .unwrap();
+    let v = check_shipped_js(t.path(), &files, &pins(&[("web/shim/boot.js", b"x();\n")])).unwrap();
     let mut got: Vec<(Rule, PathBuf)> = v.iter().map(|v| (v.rule, v.path.clone())).collect();
     got.sort_by(|a, b| a.1.cmp(&b.1));
     assert_eq!(
@@ -428,4 +433,3 @@ fn dep_audit_config_matches_t03() {
     assert!(c.browser_crates.is_empty());
     assert!(load_pins(&root).unwrap().files.is_empty());
 }
-

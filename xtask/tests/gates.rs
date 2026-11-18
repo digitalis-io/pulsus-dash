@@ -186,7 +186,10 @@ fn design_text_states_interim_gates() {
     assert!(bundle.ends_with("| PR | once enforced |"), "{bundle}");
     assert!(!bundle.contains("and per crate"), "{bundle}");
     let shim = t05_row("ci:shim-lint");
-    assert!(shim.contains("Interim") && shim.contains("T03-005"), "{shim}");
+    assert!(
+        shim.contains("Interim") && shim.contains("T03-005"),
+        "{shim}"
+    );
     let t03 = read("designs/technical/T03-browser-runtime.md");
     let s = t03.find("### 7.3").unwrap();
     let e = s + t03[s..].find("\n## 8.").unwrap();

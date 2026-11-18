@@ -53,7 +53,10 @@ fn seed_writes_exact_files() {
     let build = seed(Gate::Build, r).unwrap();
     let shim = seed(Gate::ShimLint, r).unwrap();
     let size = seed(Gate::BundleSize, r).unwrap();
-    assert_eq!(read(r, LIB), "//! x\n\ncompile_error!(\"seeded violation\");\n");
+    assert_eq!(
+        read(r, LIB),
+        "//! x\n\ncompile_error!(\"seeded violation\");\n"
+    );
     assert_eq!(read(r, "web/shim/seeded.js"), "eval(\"1\");\n");
     assert_eq!(read(r, BUDGETS), "mode = \"enforce\"\n");
     assert!(r.join("web/shim/seeded-size.js").is_file());
@@ -66,8 +69,7 @@ fn seed_writes_exact_files() {
             PathBuf::from("web/shim/seeded-size.js")
         ]
     );
-    let m: SeedManifest =
-        serde_json::from_str(&read(r, "target/xtask-seed/build.json")).unwrap();
+    let m: SeedManifest = serde_json::from_str(&read(r, "target/xtask-seed/build.json")).unwrap();
     assert_eq!(m.gate, "build");
     assert!(m.entries.iter().any(|e| matches!(
         e,
@@ -121,11 +123,20 @@ fn unseed_refuses_changed_or_missing() {
         .unwrap();
     f.write_all(b"//y\n").unwrap();
     drop(f);
-    assert!(matches!(unseed(Gate::Build, r), Err(XtaskError::Config { .. })));
+    assert!(matches!(
+        unseed(Gate::Build, r),
+        Err(XtaskError::Config { .. })
+    ));
     assert!(read(r, LIB).ends_with("//y\n"));
     assert!(r.join("target/xtask-seed/build.json").is_file());
-    assert!(matches!(unseed(Gate::Test, r), Err(XtaskError::Config { .. })));
-    assert!(matches!(seed(Gate::Build, r), Err(XtaskError::Config { .. })));
+    assert!(matches!(
+        unseed(Gate::Test, r),
+        Err(XtaskError::Config { .. })
+    ));
+    assert!(matches!(
+        seed(Gate::Build, r),
+        Err(XtaskError::Config { .. })
+    ));
 }
 
 #[test]

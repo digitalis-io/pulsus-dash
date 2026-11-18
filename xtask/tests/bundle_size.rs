@@ -71,10 +71,7 @@ fn bundle_report_mode_never_fails() {
     let t = tree(&[("a/a.bin", &noise(20_000))]);
     let mut absent = art("b", &["b/*"], 10_000, false);
     absent.required = true;
-    let mut c = config(
-        Mode::Report,
-        vec![art("a", &["a/*"], 10_000, true), absent],
-    );
+    let mut c = config(Mode::Report, vec![art("a", &["a/*"], 10_000, true), absent]);
     c.eager_total_bytes = 10_000;
     let r = measure(t.path(), &c).unwrap();
     assert!(r.violations.is_empty(), "{:?}", r.violations);
