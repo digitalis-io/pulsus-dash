@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-18 |
 | **Requirement area** | `INF` |
 | **Source draft** | none (written directly from the owner brief, 2026-11-18) |
 | **Depends on** | [02 Information architecture](02-information-architecture.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
 | **Technical designs** | [T12 Entity catalogue](../technical/T12-entity-catalogue.md) · [T02 Vis engine](../technical/T02-vis-engine.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) · [T18 Security](../technical/T18-security.md) |
-| **Mockups** | [28-multicloud-estate-3d](../mockups/28-multicloud-estate-3d.svg) · [29-k8s-workloads-3d](../mockups/29-k8s-workloads-3d.svg) · [30-network-layer-3d](../mockups/30-network-layer-3d.svg) · [31-datacentre-hall-3d](../mockups/31-datacentre-hall-3d.svg) |
+| **Mockups** | [28-multicloud-estate-3d](../mockups/28-multicloud-estate-3d.svg) · [29-k8s-workloads-3d](../mockups/29-k8s-workloads-3d.svg) · [30-network-layer-3d](../mockups/30-network-layer-3d.svg) · [31-datacentre-hall-3d](../mockups/31-datacentre-hall-3d.svg) · [33-aws-region-3d](../mockups/33-aws-region-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -120,9 +120,12 @@ The provider MUST be shown by grouping (the provider island, EST-006) and by a s
 badge. Dash MUST NOT colour, texture or shape an entity by provider, and MUST NOT draw provider logos.
 State colours MUST remain reserved for health ([08](08-visual-language.md) VL-003).
 
-*Acceptance:* Given two healthy managed relational databases in two clouds, when they render, then
-both have the same shape, the same neutral colour and differ only in their provider text badge and
-the island they stand on.
+This applies to the default **Neutral** style. The opt-in **Architecture** style (INF-034) is the
+only exception.
+
+*Acceptance:* Given two healthy managed relational databases in two clouds, when they render in the
+Neutral style, then both have the same shape, the same neutral colour and differ only in their
+provider text badge and the island they stand on.
 
 > **Rationale:** colour already means health. Vendor colours would make a healthy estate look like
 > a patchwork and compete with the one signal that matters.
@@ -160,6 +163,38 @@ that runs them. Managed equivalents MUST carry the managed badge.
 *Acceptance:* Given a self-hosted relational database on a VM and a managed one in a cloud, when both
 render, then both are cylinders; only the managed one has the badge; and selecting the self-hosted
 one highlights its runs-on thread to the VM's building.
+
+### 4.1 Architecture style
+
+Engineers think of a cloud estate in the shape of the provider's reference-architecture diagrams:
+nested group boxes (cloud, region, network, zone, subnet) and a recognisable icon per service. The
+Architecture style draws the estate that way, in isometric 3D, while keeping health legible.
+Mockup: [33-aws-region-3d](../mockups/33-aws-region-3d.svg).
+
+#### INF-034 — Architecture style
+**SHOULD** · M-UI5 · Platform, SRE, Engineer
+
+The City and Infra views SHOULD offer a **Style** switch, Neutral (default) or Architecture, per user
+and per view. In the Architecture style:
+- containment and network groups MUST be drawn as stacked isometric trays following the provider's
+  diagram conventions (cloud › region › virtual network › zone › subnet, plus scaling and cluster
+  groups), each with a corner tag;
+- each service MUST be drawn as an extruded icon tile with a service glyph and category colour from
+  the provider's mapping pack ([T12](../technical/T12-entity-catalogue.md)), with Dash-drawn glyphs
+  and never the provider's own artwork unless its licence allows redistribution;
+- the layout MUST read left to right along the request path (users and edge → load balancing →
+  compute → data), computed from dependency edges, with clean orthogonal arrows;
+- health MUST be shown only by a state badge (glyph + state colour) on the tile and a state-coloured
+  ring beneath it. Healthy tiles carry no badge. Category colours that are close to a state colour
+  MUST be shifted for the session so that no tile face can be mistaken for a state (checked by
+  `ci:palette-check`);
+- selection, the lit causal path, layers and the docked 2D panel MUST behave as in the Neutral style.
+
+*Acceptance:* Given eu-west-1 of the mixed-estate fixture, when the user switches the City view to
+Architecture, then the Cloud, Region, VPC, three AZ and subnet trays are drawn with their tags; the
+CDN, firewall, load balancer, cluster, nodes, key-value tables and relational database appear as
+icon tiles in request-path order; only the degraded load balancer, the degraded workload and the
+throttled table carry badges; and switching back to Neutral keeps focus and selection.
 
 ## 5. Clouds
 
@@ -666,9 +701,11 @@ two entities on the Landscape.
 | INF-031 | Self-hosted and managed share one shape | MUST | M-UI3 |
 | INF-032 | Mixed estate at scale | MUST | M-UI3 |
 | INF-033 | Coverage by provider and class | MUST | M-UI3 |
+| INF-034 | Architecture style | SHOULD | M-UI5 |
 
 ## 11. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Created from the owner brief: all major clouds, Kubernetes deployments and generic infrastructure in 3D |
+| 1.0-rc2 | 2026-11-18 | Architecture style (owner request: cloud estates should look like the provider's architecture diagrams, in 3D): §4.1, INF-034; INF-004 scoped to the Neutral style |
