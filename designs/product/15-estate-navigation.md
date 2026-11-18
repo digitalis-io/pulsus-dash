@@ -9,7 +9,7 @@
 | **Depends on** | [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [04 Surfaces](04-surfaces.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [09 Performance contract](09-performance-contract.md) · [11 Enterprise](11-enterprise.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) |
 | **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T06 BFF architecture](../technical/T06-bff-architecture.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) · [PulsusDB requirements](../technical/pulsusdb-requirements.md) · T12 entity catalogue (draft) · T13 local analytics engine (draft) · T14 layout engines (draft) |
 | **Decisions** | [ADR-0012](../adr/0012-derived-state-in-postgres.md) (D2) · assumption A1 · open decision O1, [ADR-0013](../adr/0013-metrics-data-scopes.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [18-noc-wall](../mockups/18-noc-wall.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 Section numbers §1–§12 are kept identical to the source draft because other documents cite them
 (e.g. "15 §3.3").
@@ -470,7 +470,7 @@ timeline shows the restarts and the HPA decision, and chips link to its service 
 | View | Key | Best for | Shows | Built on | Mockup |
 |---|---|---|---|---|---|
 | **Map** | `Alt+1` | "Where in the world?", NOC wall | 3D world placed by geography: islands, plateaus, DCs; 2D flat map under `T` | [05](05-visualisation-catalogue.md) §3, §7 | [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg); 2D [01-landscape-map](../mockups/01-landscape-map.svg) |
-| **Topology** | `Alt+2` | Dependencies, causal paths | App floor: 3D layered graph (depth by tier) for large graphs; flat 2D layered under `T` | [04](04-surfaces.md) §4.1, [05](05-visualisation-catalogue.md) VIZ-073 | [22-topology-3d](../mockups/22-topology-3d.svg); 2D [02-atlas-topology](../mockups/02-atlas-topology.svg) |
+| **Topology** | `Alt+2` | Dependencies, causal paths | App floor: 3D layered graph (depth by tier) for large graphs; flat 2D layered under `T` | [04](04-surfaces.md) §4.1, [05](05-visualisation-catalogue.md) VIZ-073 | [22-topology-3d](../mockups/22-topology-3d.svg); 2D [22-topology-3d](../mockups/22-topology-3d.svg) |
 | **City** | `Alt+3` | "Find the tall red tower"; size vs load at a glance | Containment as a 3D city of districts and buildings, laid out by size (no geography); treemap under `T` | [05](05-visualisation-catalogue.md) VIZ-074 | [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) |
 | **Infra** | `Alt+4` | Fleet state, capacity, cluster detail | Infra floor: 3D infra city, building cut-away, rack variant; hex grid / packing / elevation under `T` | §4.2–4.4 | [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg); 2D [03-infra-cluster](../mockups/03-infra-cluster.svg) |
 | **Segments** | `Alt+5` | Comparing slices (region × tier, team × env) | 2D matrix over any two dimensions (3D columns variant opt-in, [05](05-visualisation-catalogue.md) VIZ-080) | [07](07-alerting.md) §3.2 | [04-segments-matrix](../mockups/04-segments-matrix.svg) |
@@ -1037,6 +1037,73 @@ moving the time cursor in the chart changes building heights to that instant; `T
 scene while the docked chart stays; and "Show all nodes as lines" on a district opens the fleet line
 stack of its nodes, sharing the same time cursor.
 
+### 12a.1 The Earth globe
+
+> **Note:** The globe is the top altitude of the Map view and the first leg of the semantic-zoom flight. It answers "where in the world is it hurting?" for NOC, Platform and Business users. Mockup: [01-landscape-map.svg](../mockups/01-landscape-map.svg) (flat equivalent: [01-landscape-map-2d.svg](../mockups/01-landscape-map-2d.svg)).
+
+#### EST-065 — The Earth globe is the top of the Map view
+**MUST** · M-UI3 · Platform, NOC, SRE, Business
+
+The Map view (`Alt+1`) MUST open at its highest altitude as a 3D Earth globe, rendered on the GPU with the 3D visual language of [08](08-visual-language.md) §10 (calm, near-monochrome, colour only for health). As the camera descends, the globe MUST flatten continuously into the ground plane of the 3D estate world (region plateaus, then cluster districts), with no cut or reload.
+
+*Acceptance:* Given the Map view at default altitude, then a globe is shown with all placed sites. When the user zooms toward eu-west-1, the surface curvature flattens into the eu-west-1 plateau within one continuous flight (≤ 250 ms per leg, EST-060). No frame shows a blank or loading scene.
+
+#### EST-066 — What is placed on the globe
+**MUST** · M-UI3 · Platform, NOC, SRE
+
+The globe MUST place, at their geographic coordinates: cloud and on-prem regions, data centres, edge locations and external dependencies (e.g. the payment provider). Each site MUST be an extruded marker or district with height = load, footprint = capacity and colour = worst health ([Table 15-10](#34-the-estate-as-a-3d-world)). The origin MUST carry the ⊕ beacon. Entities with no known location MUST be listed in an "Unplaced" tray beside the globe, never silently dropped.
+
+*Acceptance:* Given 6 regions, 2 data centres and 1 external provider with locations, and 3 clusters without location, then 9 sites appear at the right coordinates (±50 km) and the tray reads "Unplaced: 3"; eu-west-1 shows Failing with the ⊕ beacon during INC-2041.
+
+#### EST-067 — Great-circle arcs
+**MUST** · M-UI3 · Platform, SRE, NOC
+
+Cross-site traffic, replication and calls to external dependencies MUST be drawn as great-circle arcs lifted above the surface (arc height proportional to distance). Width = volume, particles = flow direction and rate, colour = health of those calls (red only where calls fail). Hovering an arc MUST show volume, error rate and latency between the two ends, and a docked 2D chart of the selected arc over time.
+
+*Acceptance:* Given checkout in eu-west-1 calling the provider with 38% failures, then that arc is red with particles flowing out; hovering it shows rate, error % and p95, and selecting it docks a 2D error-rate chart for the arc.
+
+#### EST-068 — User geography layer
+**SHOULD** · M-UI5 · Business, Support, SRE
+
+A **Users** layer SHOULD show where requests and users originate, from client geo attributes in telemetry (e.g. country or city resource/span attributes), as surface heat or extruded country cells. Colour = experience (error rate or latency vs baseline), so "which customers are hurting, where" is visible on the globe.
+
+*Acceptance:* Given client spans with country attributes, when the Users layer is on during INC-2041, then countries with elevated checkout failures are tinted Degraded/Failing and selecting one shows its affected-request count and a 2D trend.
+
+#### EST-069 — Built-in offline basemap
+**MUST** · M-UI3 · Admin, Platform
+
+The globe MUST render from a basemap shipped with Dash (low-resolution vector landmasses and borders, drawn as dot-matrix or hairlines). It MUST work air-gapped and MUST NOT call external tile or map services by default. An operator MAY configure their own tile source.
+
+*Acceptance:* Given an air-gapped deployment with no outbound network, then the globe renders landmasses and borders, and the browser makes no request outside the Dash origin.
+
+#### EST-070 — Globe camera
+**MUST** · M-UI3 · All
+
+On the globe, drag MUST rotate the Earth (north-up locked by default, `Q`/`E` to unlock and rotate), wheel MUST change altitude, double-click on a site MUST fly to it, and `Home` MUST return to the whole-globe view. On walls and TV mode the globe SHOULD auto-rotate slowly when idle and MUST stop auto-rotating on any input or when an incident needs attention, turning to face it.
+
+*Acceptance:* Given the globe idle on a wall, then it rotates slowly; when INC-2041 starts, it turns to bring eu-west-1 to the front within 2 s and stops rotating; any key or pointer input stops rotation immediately.
+
+#### EST-071 — Time of day
+**MAY** · M-UI5 · NOC, Platform
+
+A day/night layer MAY shade the night side of the globe and label each site's local time, to support follow-the-sun operations and to explain diurnal load. It MUST be off by default and MUST NOT use colour reserved for health.
+
+*Acceptance:* Given the layer is on at 12:31 UTC, then the night side is dimmed and eu-west-1 is labelled with its local time.
+
+#### EST-072 — Flat map equivalent
+**MUST** · M-UI3 · All
+
+`T` MUST flatten the globe to a 2D equal-area world map with the same sites, arcs, layers and selection, and the flat map MUST be used under `prefers-reduced-motion` and on the reduced renderer tier.
+
+*Acceptance:* Given the globe with eu-west-1 selected, when the user presses `T`, then a flat world map shows the same sites, arcs and selection within 250 ms.
+
+#### EST-073 — Globe at scale
+**MUST** · M-UI3 · All
+
+The globe MUST render 500 sites and 5 000 arcs with particles at ≥ 60 fps on reference hardware (a) and ≥ 45 fps p99 on (b) ([09](09-performance-contract.md)).
+
+*Acceptance:* Gate `bench:globe-sites-arcs`: the seeded scene of 500 sites and 5 000 arcs, orbiting for 10 s, meets 60 fps median on (a) and 45 fps p99 on (b).
+
 ## 13. Requirements summary
 
 | ID | Title | Priority | Milestone |
@@ -1105,6 +1172,15 @@ stack of its nodes, sharing the same time cursor.
 | EST-062 | 3D estate at scale | MUST | M-UI3 |
 | EST-063 | 2D fallback | MUST | M-UI3 |
 | EST-064 | Space is 3D, signals are 2D, and both are linked | MUST | M-UI3 |
+| EST-065 | The Earth globe is the top of the Map view | MUST | M-UI3 |
+| EST-066 | What is placed on the globe | MUST | M-UI3 |
+| EST-067 | Great-circle arcs | MUST | M-UI3 |
+| EST-068 | User geography layer | SHOULD | M-UI5 |
+| EST-069 | Built-in offline basemap | MUST | M-UI3 |
+| EST-070 | Globe camera | MUST | M-UI3 |
+| EST-071 | Time of day | MAY | M-UI5 |
+| EST-072 | Flat map equivalent | MUST | M-UI3 |
+| EST-073 | Globe at scale | MUST | M-UI3 |
 
 ## 14. Change log
 
@@ -1112,6 +1188,7 @@ stack of its nodes, sharing the same time cursor.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII diagrams replaced by region tables and SVG mockups; open questions E1–E5 resolved (below) |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: R4 reversed; EST-005, EST-006, EST-007, EST-008, EST-010, EST-011, EST-012, EST-015, EST-016, EST-017, EST-018, EST-019, EST-021, EST-027, EST-033, EST-037 edited in place; §3.4, Tables 15-9 and 15-10 and §12a (EST-055 to EST-064) added; Tables 15-2 and 15-4 updated; mockups 19–24 referenced (R13–R16) |
+| 1.0-rc3 | 2026-11-18 | Earth globe specified (owner question): §12a.1, EST-065 to EST-073 |
 
 ## Resolved during formalisation
 

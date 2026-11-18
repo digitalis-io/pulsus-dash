@@ -8,7 +8,7 @@
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
 | **Technical designs** | [T01 Frontend architecture](../technical/T01-frontend-architecture.md) · [T08 DOM rooms & component kit](../technical/T08-dom-component-kit.md) · [T09 Query editors](../technical/T09-query-editors.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [09-alert-lens](../mockups/09-alert-lens.svg) · [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg) · [11-rule-editor-backtest](../mockups/11-rule-editor-backtest.svg) · [12-routing-simulator](../mockups/12-routing-simulator.svg) · [13-investigation](../mockups/13-investigation.svg) · [14-board](../mockups/14-board.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [18-noc-wall](../mockups/18-noc-wall.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [09-alert-lens](../mockups/09-alert-lens.svg) · [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg) · [11-rule-editor-backtest](../mockups/11-rule-editor-backtest.svg) · [12-routing-simulator](../mockups/12-routing-simulator.svg) · [13-investigation](../mockups/13-investigation.svg) · [14-board](../mockups/14-board.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -44,7 +44,7 @@ Atlas, Release Compare, Journeys) are in 01a; this document describes the shared
 
 | § | Surface | Kind | JTBD ([01](01-vision-and-principles.md) §5) | Milestone | Mockup |
 |---|---|---|---|---|---|
-| 4.1 | Atlas | Space (3D/2.5D) | Triage, ambient awareness | M-UI3 | [02-atlas-topology](../mockups/02-atlas-topology.svg) |
+| 4.1 | Atlas | Space (3D/2.5D) | Triage, ambient awareness | M-UI3 | [22-topology-3d](../mockups/22-topology-3d.svg) |
 | 4.2 | Lens | Space (auto scene) | Triage, root cause, validate change | M-UI2 | [05-service-lens](../mockups/05-service-lens.svg) |
 | 4.3 | Boards | Space (curated scene) + room (library/editor) | Build & share, ambient | M-UI5 | [14-board](../mockups/14-board.svg) |
 | 4.4 | Metrics workbench | Space | Root cause, build | M-UI1 | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) |
@@ -56,7 +56,7 @@ Atlas, Release Compare, Journeys) are in 01a; this document describes the shared
 | 4.10 | Alerts | Room + space | Define alerting, triage | M-UI4 | [09-alert-lens](../mockups/09-alert-lens.svg) · [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg) |
 | 4.11 | Home | Room | Orientation | M-UI4 | [15-command-palette](../mockups/15-command-palette.svg) |
 | 4.12 | Admin & settings | Room | Govern | M-UI1 (enterprise items M-UI6) | — |
-| 4.13 | NOC / Wall mode | Space | Ambient | M-UI5 (attention management M-UI6) | [18-noc-wall](../mockups/18-noc-wall.svg) |
+| 4.13 | NOC / Wall mode | Space | Ambient | M-UI5 (attention management M-UI6) | [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 | 4.14 | Journeys & customer lookup | Space + room | Business impact, support | M-UI5 | — |
 | 4.15 | Release & rollout compare | Space | Validate change | M-UI5 | — |
 
@@ -77,7 +77,7 @@ top bar is present, and for spaces the Time Ribbon is present; and in Wall mode 
 ### 4.1 Atlas — the estate as a living map
 
 **Purpose:** see the entire estate, where it hurts, and how the hurt propagates. Mockups:
-[01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg).
+[01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg).
 
 > **Note:** The full landscape → infrastructure → container design (two zoom ladders, the app/infra
 > floors, the six synced views including Explorer, layers for capacity/cost/coverage, the fetch plan)
@@ -849,7 +849,7 @@ and at each later milestone, every listed room whose feature has shipped is reac
 
 ### 4.13 NOC / Wall mode
 
-Mockup: [18-noc-wall](../mockups/18-noc-wall.svg).
+Mockup: [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg).
 
 #### SRF-064 — Wall playlist
 **MUST** · M-UI5 · NOC

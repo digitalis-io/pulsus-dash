@@ -7,7 +7,7 @@
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg), [05-service-lens](../mockups/05-service-lens.svg), [06-metrics-workbench](../mockups/06-metrics-workbench.svg), [15-command-palette](../mockups/15-command-palette.svg), [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [21-floors-3d](../mockups/21-floors-3d.svg), [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg), [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [05-service-lens](../mockups/05-service-lens.svg), [06-metrics-workbench](../mockups/06-metrics-workbench.svg), [15-command-palette](../mockups/15-command-palette.svg), [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [21-floors-3d](../mockups/21-floors-3d.svg), [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg), [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -49,7 +49,7 @@ EST-055): the Landscape, City, Infra and large-graph Topology views open as 3D s
 
 Mockups: [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg),
 [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg),
-[02-atlas-topology](../mockups/02-atlas-topology.svg).
+[22-topology-3d](../mockups/22-topology-3d.svg).
 
 #### INT-001 — Camera per scene and camera modes
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer

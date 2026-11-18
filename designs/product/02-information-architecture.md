@@ -7,7 +7,7 @@
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg), [13-investigation](../mockups/13-investigation.svg), [14-board](../mockups/14-board.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg), [13-investigation](../mockups/13-investigation.svg), [14-board](../mockups/14-board.svg) |
 
 ## 1. Purpose & scope
 

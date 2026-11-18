@@ -214,6 +214,7 @@ any 8×8 block inside a text region exceeds 0.25. Goldens MUST change only in a 
 | `bench:frame-line-1e8` | M1 polyline + GPU decimation | pan/zoom loop | 10⁸ points held, 1 000 series |
 | `bench:frame-series-1e4` | M2 band + M1 outliers | pan/zoom loop | 10⁴ series |
 | `bench:frame-scatter-1e7` | M4 point (T1) / M10 density; M4 sprites (T2 leg) | brush + zoom | 10⁷ held; T2 sprites at 2–3 × 10⁶ visible |
+| `bench:globe-sites-arcs` | M11 globe mesh + M5 extruded sites + M6 great-circle arcs with particles | 10 s orbit, then dive to a region | 500 sites, 5 000 arcs; 60 fps median on (a), 45 fps p99 on (b) ([EST-073](../product/15-estate-navigation.md#est-073--globe-at-scale)) |
 | `bench:frame-gallery` | every gallery page | scripted pan/zoom (orbit for 3D) | the page's target volume |
 | (in `bench:frame-gallery`) | M3 rect (heatmap) | scroll | 10k × 200 cells |
 | (in `bench:frame-gallery`, M-UI2) | M3 + M8 flame | zoom into frame | 10⁵ frames |

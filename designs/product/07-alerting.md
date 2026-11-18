@@ -9,7 +9,7 @@
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [03](03-interaction-model.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [09](09-performance-contract.md), [11](11-enterprise.md), [15](15-estate-navigation.md) |
 | **Decisions applied** | [ADR-0008](../adr/0008-dash-alert-evaluator.md) (Dash evaluator, Proposed), [ADR-0012](../adr/0012-derived-state-in-postgres.md) (alert history in Postgres, Accepted) |
 | **Technical designs** | [T16](../technical/T16-alert-evaluator.md), [T11](../technical/T11-postgres-schema.md), [T07](../technical/T07-scene-query-planner.md), [T18](../technical/T18-security.md) |
-| **Mockups** | [09 Alert Lens](../mockups/09-alert-lens.svg) · [10 Alerts list & timeline](../mockups/10-alerts-list-timeline.svg) · [11 Rule editor & backtest](../mockups/11-rule-editor-backtest.svg) · [12 Routing simulator](../mockups/12-routing-simulator.svg) · [01 Landscape map](../mockups/01-landscape-map.svg) · [02 Atlas topology](../mockups/02-atlas-topology.svg) · [03 Infra cluster](../mockups/03-infra-cluster.svg) · [04 Segments matrix](../mockups/04-segments-matrix.svg) · [17 Mobile alert card](../mockups/17-mobile-alert-card.svg) · [18 NOC wall](../mockups/18-noc-wall.svg) |
+| **Mockups** | [09 Alert Lens](../mockups/09-alert-lens.svg) · [10 Alerts list & timeline](../mockups/10-alerts-list-timeline.svg) · [11 Rule editor & backtest](../mockups/11-rule-editor-backtest.svg) · [12 Routing simulator](../mockups/12-routing-simulator.svg) · [01 Landscape map](../mockups/01-landscape-map.svg) · [02 Atlas topology](../mockups/22-topology-3d.svg) · [03 Infra cluster](../mockups/03-infra-cluster.svg) · [04 Segments matrix](../mockups/04-segments-matrix.svg) · [17 Mobile alert card](../mockups/17-mobile-alert-card.svg) · [18 NOC wall](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -609,7 +609,7 @@ meter.
 
 Topology is the Atlas ([04](04-surfaces.md), [15](15-estate-navigation.md)) with the alert layer
 emphasised; this is where 14 alerts visibly become one problem. See
-[mockup](../mockups/02-atlas-topology.svg). City is the estate's City layout from
+[mockup](../mockups/22-topology-3d.svg). City is the estate's City layout from
 [15](15-estate-navigation.md) with the same alert layer.
 
 #### ALR-034 — Alert layer on Topology
@@ -738,7 +738,7 @@ the ribbon to yesterday shows yesterday's incidents in the same view.
 | Breadcrumb / entity chip | Health dot already reflects alert severity |
 | Global chrome | `⚠ n` = incidents needing you (your teams, un-acked); click opens List filtered to you |
 | Home | "Firing for your teams" strip |
-| NOC wall | Global or Segments view + incident queue, with salience ([04](04-surfaces.md)); see [mockup](../mockups/18-noc-wall.svg) |
+| NOC wall | Global or Segments view + incident queue, with salience ([04](04-surfaces.md)); see [mockup](../mockups/24-noc-wall-3d.svg) |
 | Mobile PWA | Incident list → Alert Lens; ack/silence/escalate; push notifications; see [mockup](../mockups/17-mobile-alert-card.svg) |
 
 #### ALR-040 — Alerts in viewports

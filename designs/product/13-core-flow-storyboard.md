@@ -8,7 +8,7 @@
 | **Source draft** | plans/13-core-flow-storyboard.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
 | **Technical designs** | [T05](../technical/T05-testing-and-performance.md) (test gates), [T16](../technical/T16-alert-evaluator.md), T13 local analytics engine (draft), T15 AI/RCA/MCP (draft), T17 collaboration (draft) |
-| **Mockups** | [09 Alert Lens](../mockups/09-alert-lens.svg) · [02 Atlas topology](../mockups/02-atlas-topology.svg) · [05 Service Lens](../mockups/05-service-lens.svg) (Edge Lens) · [13 Investigation](../mockups/13-investigation.svg) · [17 Mobile alert card](../mockups/17-mobile-alert-card.svg) · [18 NOC wall](../mockups/18-noc-wall.svg) |
+| **Mockups** | [09 Alert Lens](../mockups/09-alert-lens.svg) · [02 Atlas topology](../mockups/22-topology-3d.svg) · [05 Service Lens](../mockups/05-service-lens.svg) (Edge Lens) · [13 Investigation](../mockups/13-investigation.svg) · [17 Mobile alert card](../mockups/17-mobile-alert-card.svg) · [18 NOC wall](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -201,7 +201,7 @@ full Atlas in 250 ms with every node continuous from its mini-Atlas position and
 └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-See [mockup](../mockups/02-atlas-topology.svg).
+See [mockup](../mockups/22-topology-3d.svg).
 
 #### SCN-013 — Atlas frames the causal path
 **MUST** · M-UI4 · SRE, IC

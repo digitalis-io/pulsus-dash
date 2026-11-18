@@ -9,7 +9,7 @@
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [06](06-ai-copilot.md), [07](07-alerting.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
 | **Decisions applied** | [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0009](../adr/0009-optional-object-storage.md) (Proposed), [ADR-0011](../adr/0011-terraform-provider-in-go.md) (Proposed), [ADR-0012](../adr/0012-derived-state-in-postgres.md) (Accepted), [ADR-0013](../adr/0013-metrics-data-scopes.md) (**pending**, open decision O1), D3 licence |
 | **Technical designs** | T10 auth & data scopes (draft), [T11](../technical/T11-postgres-schema.md), [T18](../technical/T18-security.md), [T19](../technical/T19-deployment.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) (R12, R16) |
-| **Mockups** | [02 Atlas topology](../mockups/02-atlas-topology.svg) (restricted nodes) · [18 NOC wall](../mockups/18-noc-wall.svg) (kiosk) |
+| **Mockups** | [02 Atlas topology](../mockups/22-topology-3d.svg) (restricted nodes) · [18 NOC wall](../mockups/24-noc-wall-3d.svg) (kiosk) |
 
 ## 1. Purpose & scope
 

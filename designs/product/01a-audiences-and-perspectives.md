@@ -7,7 +7,7 @@
 | **Requirement area** | `AUD` |
 | **Source draft** | plans/01a-audiences-and-perspectives.md (not tracked) |
 | **Depends on** | [01](01-vision-and-principles.md), [02](02-information-architecture.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [11](11-enterprise.md), [15](15-estate-navigation.md) |
-| **Mockups** | [02-atlas-topology](../mockups/02-atlas-topology.svg), [03-infra-cluster](../mockups/03-infra-cluster.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [13-investigation](../mockups/13-investigation.svg), [17-mobile-alert-card](../mockups/17-mobile-alert-card.svg), [18-noc-wall](../mockups/18-noc-wall.svg) |
+| **Mockups** | [22-topology-3d](../mockups/22-topology-3d.svg), [03-infra-cluster](../mockups/03-infra-cluster.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [13-investigation](../mockups/13-investigation.svg), [17-mobile-alert-card](../mockups/17-mobile-alert-card.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -131,7 +131,7 @@ one. Pulsus computes and shows causal direction.
      checkout errors     payments times out    psp-api              before anything else turned red
 ```
 
-[mockup](../mockups/02-atlas-topology.svg)
+[mockup](../mockups/22-topology-3d.svg)
 
 #### AUD-005 — Probable-origin heuristic
 **MUST** · M-UI3 · NOC, SRE, Engineer, Platform
@@ -286,7 +286,7 @@ one-click page/escalate → watch the recovery curve.
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-[mockup](../mockups/18-noc-wall.svg)
+[mockup](../mockups/24-noc-wall-3d.svg)
 
 #### AUD-013 — Alerts grouped into incidents by topology and time
 **MUST** · M-UI4 · NOC, SRE, IC

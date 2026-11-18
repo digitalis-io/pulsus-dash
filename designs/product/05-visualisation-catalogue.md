@@ -8,7 +8,7 @@
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
 | **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T01 Frontend architecture](../technical/T01-frontend-architecture.md) · [T05 Testing & performance](../technical/T05-testing-and-performance.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) |
-| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [14-board](../mockups/14-board.svg) · [16-gallery](../mockups/16-gallery.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
+| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [14-board](../mockups/14-board.svg) · [16-gallery](../mockups/16-gallery.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
 
 Section numbers §1–§14 are kept identical to the source draft because other documents cite them
 (e.g. "05 §11").
@@ -440,7 +440,7 @@ equivalent with `T`.
 | **Flame landscape** | Profile over time | 100k frames × time | 2D fallback is the default | M-UI3 |
 
 Mockups: [22-topology-3d](../mockups/22-topology-3d.svg) and
-[02-atlas-topology](../mockups/02-atlas-topology.svg) (2D), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg)
+[22-topology-3d](../mockups/22-topology-3d.svg) (2D), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg)
 and [03-infra-cluster](../mockups/03-infra-cluster.svg) (2D), [21-floors-3d](../mockups/21-floors-3d.svg).
 
 #### VIZ-029 — Graph layout is stable and incremental

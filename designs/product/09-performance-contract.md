@@ -7,7 +7,7 @@
 | **Requirement area** | `PRF` |
 | **Source draft** | plans/09-performance-contract.md (not tracked); mobile targets from T20 (draft) §6 |
 | **Depends on** | [01](01-vision-and-principles.md), [03](03-interaction-model.md), [08](08-visual-language.md), [T04](../technical/T04-wire-format-and-data-plane.md), [T05](../technical/T05-testing-and-performance.md), [T07](../technical/T07-scene-query-planner.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) |
-| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) (data-source badges), [02-atlas-topology](../mockups/02-atlas-topology.svg) (Atlas volume), [17-mobile-alert-card](../mockups/17-mobile-alert-card.svg) (mobile), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) (3D City/Infra volume), [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) (flight), [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) (fleet line stack) |
+| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) (data-source badges), [22-topology-3d](../mockups/22-topology-3d.svg) (Atlas volume), [17-mobile-alert-card](../mockups/17-mobile-alert-card.svg) (mobile), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) (3D City/Infra volume), [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) (flight), [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) (fleet line stack) |
 
 ## 1. Purpose & scope
 

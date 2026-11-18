@@ -9,7 +9,7 @@
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [03](03-interaction-model.md), [04](04-surfaces.md), [07](07-alerting.md), [09](09-performance-contract.md), [11](11-enterprise.md), [15](15-estate-navigation.md) |
 | **Decisions applied** | [ADR-0012](../adr/0012-derived-state-in-postgres.md) (baselines, anomaly scores and change events in Postgres) |
 | **Technical designs** | T15 AI/RCA/MCP (draft), [T07](../technical/T07-scene-query-planner.md) (query budgets), [T06](../technical/T06-bff-architecture.md), [T18](../technical/T18-security.md), T10 auth & data scopes (draft) |
-| **Mockups** | [09 Alert Lens](../mockups/09-alert-lens.svg) · [13 Investigation](../mockups/13-investigation.svg) · [02 Atlas topology](../mockups/02-atlas-topology.svg) · [15 Command palette](../mockups/15-command-palette.svg) |
+| **Mockups** | [09 Alert Lens](../mockups/09-alert-lens.svg) · [13 Investigation](../mockups/13-investigation.svg) · [02 Atlas topology](../mockups/22-topology-3d.svg) · [15 Command palette](../mockups/15-command-palette.svg) |
 
 ## 1. Purpose & scope
 
@@ -319,7 +319,7 @@ causal sentence names no out-of-scope entity.
 
 ## 6. Seeing RCA in the space
 
-What only a GPU-native spatial UI can do. See [mockup](../mockups/02-atlas-topology.svg).
+What only a GPU-native spatial UI can do. See [mockup](../mockups/22-topology-3d.svg).
 
 #### AI-019 — Causal path overlay
 **MUST** · M-UI4 · SRE, IC, NOC
