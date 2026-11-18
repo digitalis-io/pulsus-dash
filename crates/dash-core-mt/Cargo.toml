@@ -1,0 +1,22 @@
+[package]
+name = "dash-core-mt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dash-axes.workspace = true
+dash-gpu.workspace = true
+dash-marks.workspace = true
+dash-scales.workspace = true
+dash-scene.workspace = true
+dash-tokens.workspace = true
+dash-wire.workspace = true
+
+[lints]
+workspace = true

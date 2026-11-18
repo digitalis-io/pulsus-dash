@@ -1,0 +1,61 @@
+name: ci
+on:
+  pull_request: # no branch filter: also runs for the draft gate-proof PRs (T05-002)
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - { name: ci fmt, run: cargo xtask ci fmt }
+      - { name: ci build, run: cargo xtask ci build }
+      - { name: ci clippy, run: cargo xtask ci clippy }
+      - { name: ci test, run: cargo xtask ci test }
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - { name: ci wasm, run: cargo xtask ci wasm }
+      - { name: ci bundle-size, run: cargo xtask ci bundle-size }
+      - { name: ci dep-audit, run: cargo xtask ci dep-audit }
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - { name: ci design-check, run: cargo xtask ci design-check }
+      - { name: ci shim-lint, run: cargo xtask ci shim-lint }
+      - { name: design check.py, if: "!cancelled()", run: python3 -I designs/tools/check.py }

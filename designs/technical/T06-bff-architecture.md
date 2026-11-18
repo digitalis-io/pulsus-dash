@@ -90,40 +90,43 @@ needs, and the external API surface. Two components get their own documents: the
 
 ### 4.1 Crate layout and module boundaries
 
-Cargo workspace `server/`. Crates shared with the browser are marked ⇄ and must compile to
-`wasm32-unknown-unknown`.
+BFF crates live in the repository's root Cargo workspace (T01 §4.6): BFF-only crates under
+`server/`, crates shared with the browser (⇄) under the root `crates/`, so both sides use one
+lockfile. ⇄ crates must compile to `wasm32-unknown-unknown`.
 
 ```
-server/
-├─ bin/pulsus-dash            main(): config → role selection → module wiring → axum serve
-├─ crates/
-│  ├─ dash-core               TenantCtx, Principal, RequestCtx, Deadline, Priority, error types, ids
-│  ├─ dash-config             layered config (§4.9), hot-reload channel
-│  ├─ dash-telemetry          tracing + OTel SDK wiring, metrics registry, self-tenant exporter (§4.8)
-│  ├─ pulsusdb-client         THE PulsusDB client (§4.3): typed endpoints, JSON→Arrow, limits, retries
-│  ├─ dash-cache              L1 moka cache, L2 Redis adapter, singleflight, tile keys (§4.4)
-│  ├─ dash-gateway            axum routers: REST CRUD, data plane (Arrow streams), WS session, MCP mount
-│  ├─ dash-planner            scene planner service (T07), uses pulsus-plan
-│  ├─ dash-vsrc               Postgres-backed virtual sources: ALERTS, ALERTS_FOR_STATE,
-│  │                          pulsus_anomaly_score, {source="pulsus-dash"} (T07 §4.11)
-│  ├─ pulsus-plan ⇄           planner IR, normalisation, step/rollup maths (T07 §5.2; shared with browser)
-│  ├─ pulsus-colexec ⇄        local columnar engine (T13 (draft)); also used server-side for
-│  │                          compare/diff kernels, virtual-source PromQL and BFF joins
-│  ├─ pulsus-pyramid ⇄        pyramid tile format + sketch (T13 (draft))
-│  ├─ pulsus-wire ⇄           Arrow schemas + frame codec (owned by T04)
-│  ├─ dash-catalogue          entity catalogue + graph service ([T12](T12-entity-catalogue.md))
-│  ├─ dash-changefeed         version transitions (R8 fallback), config/deploy events, new patterns
-│  ├─ dash-health             baselines, anomaly sweep, health state ([T12](T12-entity-catalogue.md)) + fallback pyramid
-│  │                          builder (R4 absent; tiles stored in Postgres, T07 §4.12)
-│  ├─ dash-compare            Universal Compare server side (TraceQL compare(), R6/R9 fallbacks)
-│  ├─ dash-alerting           evaluator (T16)
-│  ├─ dash-notify             routing, delivery workers, endpoint plugins (T16)
-│  ├─ dash-ai                 AI orchestrator, RCA stages, tool API, MCP server (T15 (draft))
-│  ├─ dash-auth               OIDC sessions, tokens, authz (§4.11; SAML/SCIM in T10 (draft))
-│  ├─ pulsus-dash-scope ⇄     query rewrite + response filter, scope_fp (T10 (draft); also in the editor preview)
-│  ├─ dash-audit              append-only audit sink (Postgres + optional OTLP export)
-│  ├─ dash-store              Postgres access (sqlx), migrations runner, LISTEN/NOTIFY bus (T11)
-│  └─ dash-jobs               leases, leader election, shard assignment, job scheduler (§4.6)
+(repository root — one Cargo workspace, T01 §4.6)
+├─ server/
+│  ├─ bin/pulsus-dash            main(): config → role selection → module wiring → axum serve
+│  └─ crates/
+│     ├─ dash-core               TenantCtx, Principal, RequestCtx, Deadline, Priority, error types, ids
+│     ├─ dash-config             layered config (§4.9), hot-reload channel
+│     ├─ dash-telemetry          tracing + OTel SDK wiring, metrics registry, self-tenant exporter (§4.8)
+│     ├─ pulsusdb-client         THE PulsusDB client (§4.3): typed endpoints, JSON→Arrow, limits, retries
+│     ├─ dash-cache              L1 moka cache, L2 Redis adapter, singleflight, tile keys (§4.4)
+│     ├─ dash-gateway            axum routers: REST CRUD, data plane (Arrow streams), WS session, MCP mount
+│     ├─ dash-planner            scene planner service (T07), uses pulsus-plan
+│     ├─ dash-vsrc               Postgres-backed virtual sources: ALERTS, ALERTS_FOR_STATE,
+│     │                          pulsus_anomaly_score, {source="pulsus-dash"} (T07 §4.11)
+│     ├─ dash-catalogue          entity catalogue + graph service ([T12](T12-entity-catalogue.md))
+│     ├─ dash-changefeed         version transitions (R8 fallback), config/deploy events, new patterns
+│     ├─ dash-health             baselines, anomaly sweep, health state ([T12](T12-entity-catalogue.md)) + fallback pyramid
+│     │                          builder (R4 absent; tiles stored in Postgres, T07 §4.12)
+│     ├─ dash-compare            Universal Compare server side (TraceQL compare(), R6/R9 fallbacks)
+│     ├─ dash-alerting           evaluator (T16)
+│     ├─ dash-notify             routing, delivery workers, endpoint plugins (T16)
+│     ├─ dash-ai                 AI orchestrator, RCA stages, tool API, MCP server (T15 (draft))
+│     ├─ dash-auth               OIDC sessions, tokens, authz (§4.11; SAML/SCIM in T10 (draft))
+│     ├─ dash-audit              append-only audit sink (Postgres + optional OTLP export)
+│     ├─ dash-store              Postgres access (sqlx), migrations runner, LISTEN/NOTIFY bus (T11)
+│     └─ dash-jobs               leases, leader election, shard assignment, job scheduler (§4.6)
+└─ crates/                      browser, shared (⇄) and test crates (T01 §4.6)
+   ├─ pulsus-plan ⇄           planner IR, normalisation, step/rollup maths (T07 §5.2; shared with browser)
+   ├─ pulsus-colexec ⇄        local columnar engine (T13 (draft)); also used server-side for
+   │                          compare/diff kernels, virtual-source PromQL and BFF joins
+   ├─ pulsus-pyramid ⇄        pyramid tile format + sketch (T13 (draft))
+   ├─ dash-wire ⇄             Arrow schemas + frame codec (owned by T04)
+   └─ pulsus-dash-scope ⇄     query rewrite + response filter, scope_fp (T10 (draft); also in the editor preview)
 ```
 
 #### T06-001 — Dependency rule
@@ -696,7 +699,7 @@ clusters are supported for one minor version ([T19](T19-deployment.md)).
 | `ScopeRewriter` | Trait defined here, implemented by T10 (draft) (`pulsus-dash-scope`) | Pure function over the *physical* query text, returning `Rewritten{query, scope_fp, withheld}`. Runs in the planner after physicalisation and before cache keys or dispatch (T07 §4.7). `filter_response` covers native operations |
 | `VirtualSource` | Trait defined here, semantics in T07 §4.11, tables in T11 | Evaluated in the api role under RLS |
 | `job_leases`, `members`, `sessions` tables | Shape defined here, DDL owned by T11 | Fencing tokens on all job writes |
-| Arrow schemas, frame codec, WS resume | **Assumed from T04** | T04 provides `pulsus-wire` with `encode_batch(stream_id, batch)` and a resume token. Each frame carries `(plan_id, viewport_id, pass, generation)` |
+| Arrow schemas, frame codec, WS resume | **Assumed from T04** | T04 provides `dash-wire` with `encode_batch(stream_id, batch)` and a resume token. Each frame carries `(plan_id, viewport_id, pass, generation)` |
 | IndexedDB cache | Assumed from T04 | Browser tier above L1. Uses the same `ResultKey` tile boundaries so tiles are shared |
 | Secrets provider, mTLS, CSP | Assumed from T18 | — |
 | Helm, sizing (incl. Postgres growth from ADR-0012), self-telemetry tenant bootstrap | Assumed from T19 | — |
@@ -815,3 +818,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; binding constraints turned into rules T06-001…T06-027. **D2 / ADR-0012:** removed the OTLP write-back of alert transitions and deliveries into customer tenants; Dash writes to PulsusDB only self-telemetry and the optional audit export (T06-017); baselines, anomaly scores and fallback pyramids move to Postgres; draft open question 3 closed. Added `dash-vsrc` hosting (§4.12), the Prometheus-compatible read API (§4.13), the M-UI1 OIDC/RBAC plumbing (§4.11, because T10 is not promoted), the `/suggest`, `/prefs`, `/search`, `/actions`, `/export` routes the T08/T09 drafts assumed, `VirtualGuardLayer`, `Completeness.{source,data_age_ms,withheld,approximation}`, and datasource-binding validation |
+| 1.0-rc | 2026-11-18 | #22: §4.1 BFF crates live in the repository's root Cargo workspace (BFF-only crates under `server/`, shared ⇄ crates under `crates/`, one lockfile); the shared wire crate is named `dash-wire`, as in T01 §4.6 |

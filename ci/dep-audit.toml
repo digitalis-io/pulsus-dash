@@ -1,0 +1,12 @@
+# ci:dep-audit configuration (T01-002, T03-008). See docs/development/build-and-ci.md.
+browser_roots = ["dash-core-mt"]
+npm_dev_allow = ["@playwright/test", "playwright", "playwright-core", "@axe-core/playwright", "axe-core"]
+render_worker_crates = ["dash-scene", "dash-gpu", "dash-marks", "dash-state"] # T03-008
+web_dir = "web"
+allowed_url_prefixes = ["http://www.w3.org/"] # XML/SVG namespace URIs; never fetched
+
+[web_sys] # empty: no crate may depend on web-sys until it is listed here (#23 adds core)
+
+# [[lock_allow]]     # audited exceptions to T03-008; none
+# [[browser_crate]]  # non-member crates allowed in the browser graph (name, reason); none.
+#                    # Each entry is reviewed against ADR-0001/0004/0007 and T01-002.

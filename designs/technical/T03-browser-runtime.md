@@ -123,7 +123,8 @@ meshes) are copied in once, through a core-allocated slab.
 **MUST** — The hand-written shim (`web/shim/*.js`) MUST total ≤ 300 non-blank, non-comment lines,
 MUST NOT import anything outside `web/shim/` and the generated files, and MUST NOT use `eval`,
 `Function` or `innerHTML`. Generated wasm-bindgen glue, the audited `wasm-bindgen-rayon` helper and
-`layout.gen.js` are excluded from the count.
+`layout.gen.js` are excluded from the count. Each exclusion applies only once that file's
+regenerate-and-compare check exists ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)).
 
 #### T03-002 — Lazy units are separate modules
 **MUST** — Anything not needed for the shell and the first Space scene MUST be a separate WASM module
@@ -388,8 +389,14 @@ or the mouse buttons.
 | `web/shim/sw.js` | service worker (contents owned by T20 (draft)) | 35 |
 | **Total** | | **295 / 300** |
 
-A CI job (`xtask shim-lint`, gate `ci:shim-lint`) counts non-blank, non-comment lines and enforces
-T03-001.
+A CI job (`xtask shim-lint`, gate `ci:shim-lint`) counts non-blank, non-comment lines of every JS
+file under `web/shim/` that git tracks or does not ignore, and enforces T03-001. Shim code has no
+regex literals (use `new RegExp`), writes `/` for division only right after an identifier, number,
+`]` or non-keyword `)` on the same line, and is ASCII outside strings and comments; the lint rejects
+any other `/`. `ci:dep-audit` admits only the files in this table, each SHA-256-pinned in
+`ci/shim-pins.toml`. wasm-bindgen output (glue, `.wasm`, `snippets/`, the `wasm-bindgen-rayon`
+helper) goes to the git-ignored `web/shim/gen/<crate>/`, accepted only with a regenerate-and-compare
+check ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)).
 
 ### 5.2 Bootstrap and the network byte pump
 
@@ -624,7 +631,7 @@ engines' code caching is measured in M-UI0, and the ≤ 150 ms figure may not ho
 
 ### 7.3 WASM size budget
 
-Brotli sizes, enforced per PR (gate `ci:bundle-size`, [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading), [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates)).
+Brotli sizes, checked per PR by gate `ci:bundle-size` ([PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading), [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates)); report-only until enforcement is enabled ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)).
 
 | Artefact | Budget | Notes |
 |---|---|---|
@@ -638,6 +645,11 @@ Brotli sizes, enforced per PR (gate `ci:bundle-size`, [PRF-009](../product/09-pe
 | Each workbench satellite | ≤ 400 KB | lazy |
 | `dash-geo.wasm` | ≤ 800 KB | lazy, M-UI5 |
 | `chrono-tz` slice | ≤ 40 KB per region group | lazy |
+
+The artefact → path mapping is `ci/bundle-budgets.toml`: each WASM module is the whole
+`web/shim/gen/<crate>/` directory (glue and snippets count); workbench satellites are crates
+`dash-wb-<workbench>` and `chrono-tz` slices `web/assets/tz/*.bin`, each measured separately;
+atlases are `web/assets/msdf/latin/`.
 
 wgpu, cosmic-text/rustybuzz and arrow-ipc are the size risks. M-UI0 measures each with `twiggy` and
 records the result in this table. A text stack over budget falls back to `rustybuzz` plus our own
@@ -700,7 +712,7 @@ the chrome and at least the Alert Lens path.
 Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
 - **Shim contract** (`e2e:shim-fuzz`). A Playwright fuzz test dispatches random DOM events and
   asserts that the Rust decoder sees the same values. `layout.gen.js` is regenerated and diffed in CI
-  (`ci:shim-lint`).
+  (`ci:shim-lint`) once its generator exists (T05 §7.1).
 - **Mode matrix** (`e2e:mode-matrix`). Each §9.2 mode is forced by query flag
   (`?mode=st|mtr|static`) and gets a smoke suite in CI.
 - **Ring stress** (`unit:ring-stress`). Native loom/shuttle tests of the SPSC rings and the
@@ -777,3 +789,4 @@ which forces a reload.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T03-001 to T03-025; added the state reducer and propagation table (§4.4), the keymap engine (§4.5) and the URL/camera codec (§4.6); gamepad deferred to M-UI6; workbench satellites; Satisfies table |
+| 1.0-rc | 2026-11-18 | #22: §5.1 states what `ci:shim-lint` counts, the `/` rule for shim code and the SHA-256 pins checked by `ci:dep-audit`; generated output goes to the git-ignored `web/shim/gen/<crate>/`; T03-001 exclusions and the §10 `layout.gen.js` diff apply once their regenerate-and-compare checks exist; §7.3 is report-only until enforcement is enabled and names the artefact → path mapping |

@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+license-file = "LICENSE"
+publish = false
+
+[workspace.dependencies]
+dash-axes = { path = "crates/dash-axes" }
+dash-gpu = { path = "crates/dash-gpu" }
+dash-marks = { path = "crates/dash-marks" }
+dash-scales = { path = "crates/dash-scales" }
+dash-scene = { path = "crates/dash-scene" }
+dash-tokens = { path = "crates/dash-tokens" }
+dash-wire = { path = "crates/dash-wire" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.wasm-release] # T03 §5.6 build profile; wasm-opt is added by #23
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
