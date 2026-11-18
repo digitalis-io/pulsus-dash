@@ -502,8 +502,8 @@ the merge train), nightly (release blocker).
 | Gate | Checks | Stage | Blocking |
 |---|---|---|---|
 | `ci:design-check` | `designs/tools/check.py`: no broken links or anchors, unique requirement IDs, every requirement has priority, milestone and acceptance criteria, every Satisfies reference resolves, no M-UI0/1 MUST untraced; `traceability.md` regenerated and diffed | PR | yes |
-| `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; `layout.gen.js` regenerated and diffed | PR | yes |
-| `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)) and per crate (`twiggy`); core < 3 MB; over budget → fail; +2 % in one PR → needs `size-ok` label | PR | yes |
+| `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; every JS file under `web/shim/` that git tracks or does not ignore is counted. *Interim:* nothing is excluded by name; `layout.gen.js` fails `ci:dep-audit` (not a T03 §5.1 file). *Enabled with T03-005's generator:* `layout.gen.js` excluded from the count, regenerated and diffed | PR | yes |
+| `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); core < 3 MB. *Interim:* `mode = report` in `ci/bundle-budgets.toml`: sizes in the step summary, over budget is a warning, never fails. *Enabled by the first PR whose CI build writes `web/shim/gen/dash-core-mt/`:* that PR sets `mode = enforce` and `required = true` for each artefact the build produces (over budget or absent → fail) and adds per-crate (`twiggy`) sizes and the +2 %-per-PR growth check (`size-ok` label; baseline = base branch's measurement, skipped where the base has none) | PR | once enforced |
 | `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside `dash-tokens` outputs; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
@@ -737,3 +737,4 @@ Meta-testing:
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T05-001 to T05-015; gate catalogue (§7.1) defining every gate named in T01–T05 Satisfies tables; gallery = corpus manifest; thresholds, milestones and headless mode aligned with 09; replay specs; Satisfies table |
+| 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |

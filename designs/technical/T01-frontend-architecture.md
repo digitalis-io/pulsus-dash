@@ -227,13 +227,17 @@ fail CI.
 |---|---|---|---|
 | `dash-protocol` | shell + core | Core ↔ shell message records (postcard) | [T03](T03-browser-runtime.md) |
 | `dash-shell` | `dash-shell.wasm` | Leptos app, bridge, URL/history, browser integrations | [T03](T03-browser-runtime.md), [T08](T08-dom-component-kit.md) |
+| `dash-core-mt` | `dash-core-mt.wasm` | Core module crate: links the core crates; built for wasm32 (`cargo build-wasm`) | [T03](T03-browser-runtime.md) |
 | `dash-state` | core | Context store, commands, undo, keymap, URL codec | [T03](T03-browser-runtime.md) |
 | `dash-scene`, `dash-gpu`, `dash-marks` | core, native | Scene graph, wgpu runtime, mark pipelines | [T02](T02-vis-engine.md) |
 | `dash-scales`, `dash-axes`, `dash-units`, `dash-colour`, `dash-fieldcfg`, `dash-autovis` | core, BFF, native | L2–L4 shared layers | [T02](T02-vis-engine.md) |
 | `dash-wire` | core, BFF | DSF framing, Arrow schemas, coverage | [T04](T04-wire-format-and-data-plane.md) |
-| `dash-cache` | core | IndexedDB chunk cache | [T04](T04-wire-format-and-data-plane.md) |
+| `dash-chunk-cache` | core | IndexedDB chunk cache | [T04](T04-wire-format-and-data-plane.md) |
 | `dash-tokens` | all | Generated design tokens | §4.5 |
 | `dash-replay`, `dash-golden`, `pulsus-synth`, `pulsus-fake`, `dash-lab` | test, native | Replay, goldens, synthetic data, fake upstream, lab agent | [T05](T05-testing-and-performance.md) |
+
+All crates live in one root Cargo workspace: browser, shared (⇄) and test crates under `crates/`,
+BFF-only crates under `server/`, tooling in `xtask/`.
 
 ### 4.7 Backend shape implied by the UI
 
@@ -409,3 +413,4 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T01-001 to T01-011, the Space/rooms composition (§4.3), the token pipeline (§4.5), the crate map (§4.6) and the Satisfies table; applied D1 and D2 |
+| 1.0-rc | 2026-11-18 | #22: crate map adds `dash-core-mt` (the core module crate); the IndexedDB chunk cache is renamed `dash-chunk-cache` (T06's BFF `dash-cache` keeps the name in the one workspace); all crates live in one root Cargo workspace |
