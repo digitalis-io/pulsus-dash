@@ -3,13 +3,13 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-18 |
+| **Version** | 1.0-rc5 · 2026-11-18 |
 | **Requirement area** | `EST` |
 | **Source draft** | plans/15-estate-navigation.md (not tracked) |
 | **Depends on** | [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [04 Surfaces](04-surfaces.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [09 Performance contract](09-performance-contract.md) · [11 Enterprise](11-enterprise.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) |
 | **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T06 BFF architecture](../technical/T06-bff-architecture.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) · [PulsusDB requirements](../technical/pulsusdb-requirements.md) · [T12 Entity catalogue](../technical/T12-entity-catalogue.md) · T13 local analytics engine (draft) · T14 layout engines (draft) |
 | **Decisions** | [ADR-0012](../adr/0012-derived-state-in-postgres.md) (D2) · assumption A1 · open decision O1, [ADR-0013](../adr/0013-metrics-data-scopes.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) · [32-globe-dive-to-dc](../mockups/32-globe-dive-to-dc.svg) |
 
 Section numbers §1–§12 are kept identical to the source draft because other documents cite them
 (e.g. "15 §3.3").
@@ -1051,7 +1051,7 @@ stack of its nodes, sharing the same time cursor.
 #### EST-065 — The Earth globe is the top of the Map view
 **MUST** · M-UI3 · Platform, NOC, SRE, Business
 
-The Map view (`Alt+1`) MUST open at its highest altitude as a 3D Earth globe, rendered on the GPU with the 3D visual language of [08](08-visual-language.md) §10 (calm, near-monochrome, colour only for health). As the camera descends, the globe MUST flatten continuously into the ground plane of the 3D estate world (region plateaus, then cluster districts), with no cut or reload.
+The Map view (`Alt+1`) MUST open at its highest altitude as a 3D Earth globe, rendered on the GPU with the 3D visual language of [08](08-visual-language.md) §10 (calm, near-monochrome, colour only for health). The globe MUST read unmistakably as the real Earth: correct continents and coastlines, shaded landmasses with a muted natural relief tint, a darker ocean, an atmosphere rim and, when EST-071 is on, the night side. Its natural tones MUST stay desaturated enough that no surface hue can be mistaken for a health state. As the camera descends, the globe MUST flatten continuously into the ground plane of the 3D estate world (region plateaus, then cluster districts), with no cut or reload.
 
 *Acceptance:* Given the Map view at default altitude, then a globe is shown with all placed sites. When the user zooms toward eu-west-1, the surface curvature flattens into the eu-west-1 plateau within one continuous flight (≤ 250 ms per leg, EST-060). No frame shows a blank or loading scene.
 
@@ -1079,7 +1079,7 @@ A **Users** layer SHOULD show where requests and users originate, from client ge
 #### EST-069 — Built-in offline basemap
 **MUST** · M-UI3 · Admin, Platform
 
-The globe MUST render from a basemap shipped with Dash (low-resolution vector landmasses and borders, drawn as dot-matrix or hairlines). It MUST work air-gapped and MUST NOT call external tile or map services by default. An operator MAY configure their own tile source.
+The globe MUST render from a basemap shipped with Dash: vector landmasses, coastlines and borders, a coarse shaded-relief (elevation) layer, and, for the metro band of EST-074, major rivers, coastlines, roads and place names at city scale, drawn with the muted tones of EST-065. It MUST work air-gapped and MUST NOT call external tile or map services by default. An operator MAY configure their own tile source.
 
 *Acceptance:* Given an air-gapped deployment with no outbound network, then the globe renders landmasses and borders, and the browser makes no request outside the Dash origin.
 
@@ -1110,6 +1110,76 @@ A day/night layer MAY shade the night side of the globe and label each site's lo
 The globe MUST render 500 sites and 5 000 arcs with particles at ≥ 60 fps on reference hardware (a) and ≥ 45 fps p99 on (b) ([09](09-performance-contract.md)).
 
 *Acceptance:* Gate `bench:globe-sites-arcs`: the seeded scene of 500 sites and 5 000 arcs, orbiting for 10 s, meets 60 fps median on (a) and 45 fps p99 on (b).
+
+### 12a.2 Diving from the globe into one site
+
+The globe is not only an overview: the user can fly from orbit into one data centre, the way a
+virtual-globe application flies from space to a street, and arrive inside the hall. Mockup:
+[32-globe-dive-to-dc](../mockups/32-globe-dive-to-dc.svg).
+
+**Table 15-11 — Altitude bands of the Map view**
+
+| Band | Camera altitude | Surface | What is drawn |
+|---|---|---|---|
+| Orbit | > 2 000 km | Globe | Sites, arcs, Users layer (EST-065 to EST-068) |
+| Continent | 2 000–200 km | Globe flattening to the ground plane | Shaded relief, borders; region plateaus and DC sites (EST-006) |
+| Metro | 200–2 km | Ground plane with terrain | Coastlines, rivers, major roads, place names; sites at exact position; cloud zones as an approximate cluster |
+| Site | < 2 km | Campus ground | Buildings extruded from the site's footprint (halls, energy centre, cooling), perimeter, power and fibre entry links |
+| Hall and below | inside a building | Hall floor | Physical-layout variant: racks, hosts, devices ([16](16-infrastructure-model.md) §8, EST-021) |
+
+#### EST-074 — Dive from the globe to a site
+**MUST** · M-UI3 · NOC, Platform, SRE
+
+From the globe, the user MUST be able to fly continuously through the altitude bands of Table 15-11
+to any placed site and into its buildings, by wheel, by double-click or `Enter` on a site, or by
+choosing the site in the command palette, with no cut or reload (EST-060). The altitude ladder MUST
+show the current band and the distance in km. At the Site band an on-prem data centre MUST be drawn as
+a campus of buildings (one per hall, height = load, colour = worst health), with its power and fibre
+entry points as links; `Enter` on a hall MUST continue into the physical layout of that hall. A cloud
+region at the Metro band MUST be drawn as a cluster of its zones marked "approximate location", since
+providers do not publish facility positions.
+
+*Acceptance:* Given lon-dc1 placed in London with three halls, when the user picks "lon-dc1" in the
+command palette from the globe, then the camera flies through Orbit, Continent, Metro and Site in one
+continuous flight (each leg ≤ 250 ms, no blank frame), arriving at a campus of three buildings with
+Hall B in Watch; `Enter` on Hall B opens its rack rows; and diving on eu-west-1 instead ends at a zone
+cluster labelled "approximate location".
+
+#### EST-075 — Site geometry
+**MUST** · M-UI3 · Platform, Admin
+
+Each on-prem site MUST be placeable by coordinates and MAY carry a footprint: building outlines with
+the hall each contains, energy and cooling plant, and entry points for power and fibre. Geometry MUST
+come from the entity schema, a CMDB import or the Admin site editor ([16](16-infrastructure-model.md)
+`facility.site`, `facility.hall`). A site without a footprint MUST still be drawn at the Site band with
+a generated campus of one block per hall, marked "generated layout".
+
+*Acceptance:* Given lon-dc1 with coordinates and a footprint imported from the CMDB, then its halls are
+drawn on their outlines; and given FRA-DC1 with coordinates only and two halls, then two generated
+blocks are drawn with the "generated layout" mark.
+
+#### EST-076 — Imagery and terrain sources
+**MAY** · M-UI5 · Admin, Platform
+
+An operator MAY configure an imagery or terrain tile source to give the Continent, Metro and Site
+bands a photographic look. It MUST be off by default (EST-069), MUST be fetched through the Dash
+origin ([T18](../technical/T18-security.md) egress controls), and imagery MUST be dimmed and
+desaturated by default so that health colours keep their meaning (EST-065). Without it, the shipped
+basemap MUST be used.
+
+*Acceptance:* Given an imagery source configured by an admin, when the user dives to lon-dc1, then the
+Metro and Site bands show the imagery dimmed beneath the sites, all tile requests go to the Dash
+origin, and switching the source off returns to the built-in relief with no reload.
+
+#### EST-077 — Dive at scale
+**MUST** · M-UI3 · All
+
+The flight from Orbit to the Site band and into a hall MUST keep the frame-rate targets of EST-073,
+including basemap and campus streaming.
+
+*Acceptance:* Gate `bench:globe-dive-to-site`: on the seeded estate, a scripted dive from Orbit to a
+hall of lon-dc1 and back meets 60 fps median on (a) and 45 fps p99 on (b), with no frame waiting on
+basemap data.
 
 ## 13. Requirements summary
 
@@ -1188,6 +1258,10 @@ The globe MUST render 500 sites and 5 000 arcs with particles at ≥ 60 fps on r
 | EST-071 | Time of day | MAY | M-UI5 |
 | EST-072 | Flat map equivalent | MUST | M-UI3 |
 | EST-073 | Globe at scale | MUST | M-UI3 |
+| EST-074 | Dive from the globe to a site | MUST | M-UI3 |
+| EST-075 | Site geometry | MUST | M-UI3 |
+| EST-076 | Imagery and terrain sources | MAY | M-UI5 |
+| EST-077 | Dive at scale | MUST | M-UI3 |
 
 ## 14. Change log
 
@@ -1197,6 +1271,7 @@ The globe MUST render 500 sites and 5 000 arcs with particles at ≥ 60 fps on r
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: R4 reversed; EST-005, EST-006, EST-007, EST-008, EST-010, EST-011, EST-012, EST-015, EST-016, EST-017, EST-018, EST-019, EST-021, EST-027, EST-033, EST-037 edited in place; §3.4, Tables 15-9 and 15-10 and §12a (EST-055 to EST-064) added; Tables 15-2 and 15-4 updated; mockups 19–24 referenced (R13–R16) |
 | 1.0-rc3 | 2026-11-18 | Earth globe specified (owner question): §12a.1, EST-065 to EST-073 |
 | 1.0-rc4 | 2026-11-18 | Infrastructure model split out to [16](16-infrastructure-model.md) (owner brief: all major clouds, Kubernetes and generic infrastructure in 3D): EST-003 and EST-016 point to it; Network and Facilities layers added to Table 15-5 |
+| 1.0-rc5 | 2026-11-18 | Real-Earth globe and dive into a site (owner request): EST-065 and EST-069 edited; §12a.2, Table 15-11, EST-074 to EST-077 added |
 
 ## Resolved during formalisation
 
