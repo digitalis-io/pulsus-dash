@@ -16,9 +16,19 @@ use xtask::seed::{SeedEntry, SeedManifest, SeedWrite, seed, seed_for, unseed};
 
 const LIB: &str = "crates/dash-tokens/src/lib.rs";
 const BUDGETS: &str = "ci/bundle-budgets.toml";
+const CORE_TOML: &str = "crates/dash-core-mt/Cargo.toml";
+const INDEX: &str = "web/index.html";
 
 fn base_tree() -> tempfile::TempDir {
-    tree(&[(LIB, b"//! x\n"), (BUDGETS, b"mode = \"report\"\n")])
+    tree(&[
+        (LIB, b"//! x\n"),
+        (BUDGETS, b"mode = \"enforce\"\n"),
+        (CORE_TOML, b"[features]\ndefault = []\nprobe = []\n"),
+        (
+            INDEX,
+            b"<p role=\"alert\" data-status=\"3\">Interactive charts unavailable on this browser</p>\n",
+        ),
+    ])
 }
 
 fn read(root: &Path, rel: &str) -> String {
@@ -53,22 +63,35 @@ fn seed_writes_exact_files() {
     let build = seed(Gate::Build, r).unwrap();
     let shim = seed(Gate::ShimLint, r).unwrap();
     let size = seed(Gate::BundleSize, r).unwrap();
+    let probe = seed(Gate::ProbeAbsent, r).unwrap();
+    let e2e = seed(Gate::E2e, r).unwrap();
     assert_eq!(
         read(r, LIB),
         "//! x\n\ncompile_error!(\"seeded violation\");\n"
     );
     assert_eq!(read(r, "web/shim/seeded.js"), "eval(\"1\");\n");
-    assert_eq!(read(r, BUDGETS), "mode = \"enforce\"\n");
+    assert_eq!(
+        read(r, BUDGETS),
+        "mode = \"enforce\"\n",
+        "bundle-size seed leaves the config"
+    );
     assert!(r.join("web/shim/seeded-size.js").is_file());
     assert_eq!(build, vec![PathBuf::from(LIB)]);
     assert_eq!(shim, vec![PathBuf::from("web/shim/seeded.js")]);
+    assert_eq!(size, vec![PathBuf::from("web/shim/seeded-size.js")]);
+    assert_eq!(probe, vec![PathBuf::from(CORE_TOML)]);
     assert_eq!(
-        size,
-        vec![
-            PathBuf::from(BUDGETS),
-            PathBuf::from("web/shim/seeded-size.js")
-        ]
+        read(r, CORE_TOML),
+        "[features]\ndefault = [\"probe\"]\nprobe = []\n"
     );
+    assert_eq!(e2e, vec![PathBuf::from(INDEX)]);
+    assert_eq!(
+        read(r, INDEX),
+        "<p role=\"alert\" data-status=\"3\">seeded</p>\n"
+    );
+    assert_eq!(seed_for(Gate::ProbeAbsent).expect, "probe-present");
+    assert_eq!(seed_for(Gate::E2e).expect, "gpu_disabled_shows_fallback");
+    assert_eq!(seed_for(Gate::BundleSize).expect, "bundle-over-budget");
     let m: SeedManifest = serde_json::from_str(&read(r, "target/xtask-seed/build.json")).unwrap();
     assert_eq!(m.gate, "build");
     assert!(m.entries.iter().any(|e| matches!(
@@ -85,7 +108,14 @@ fn unseed_keeps_unrelated_files() {
     write(r, "web/shim/notes.txt", b"notes\n");
     write(r, "designs/draft.md", b"# draft\n");
     let before = snapshot(r);
-    for g in [Gate::Build, Gate::Clippy, Gate::BundleSize, Gate::ShimLint] {
+    for g in [
+        Gate::Build,
+        Gate::Clippy,
+        Gate::BundleSize,
+        Gate::ShimLint,
+        Gate::ProbeAbsent,
+        Gate::E2e,
+    ] {
         seed(g, r).unwrap();
         unseed(g, r).unwrap();
     }
@@ -141,18 +171,23 @@ fn unseed_refuses_changed_or_missing() {
 
 #[test]
 fn seed_replace_requires_single_match() {
-    let t = tree(&[(BUDGETS, b"# none\n")]);
+    let t = tree(&[(CORE_TOML, b"[features]\nprobe = []\n")]);
     assert!(matches!(
-        seed(Gate::BundleSize, t.path()),
+        seed(Gate::ProbeAbsent, t.path()),
         Err(XtaskError::Config { .. })
     ));
-    assert!(!t.path().join("web/shim/seeded-size.js").exists());
+    assert_eq!(read(t.path(), CORE_TOML), "[features]\nprobe = []\n");
+    assert!(
+        !t.path()
+            .join("target/xtask-seed/probe-absent.json")
+            .exists()
+    );
 }
 
 #[test]
 fn seed_noise_is_deterministic_and_oversized() {
-    let a = tree(&[(BUDGETS, b"mode = \"report\"\n")]);
-    let b = tree(&[(BUDGETS, b"mode = \"report\"\n")]);
+    let a = tree(&[(BUDGETS, b"mode = \"enforce\"\n")]);
+    let b = tree(&[(BUDGETS, b"mode = \"enforce\"\n")]);
     seed(Gate::BundleSize, a.path()).unwrap();
     seed(Gate::BundleSize, b.path()).unwrap();
     let x = fs::read(a.path().join("web/shim/seeded-size.js")).unwrap();

@@ -12,11 +12,22 @@ publish = false
 [workspace.dependencies]
 dash-axes = { path = "crates/dash-axes" }
 dash-gpu = { path = "crates/dash-gpu" }
+dash-lab = { path = "crates/dash-lab" }
 dash-marks = { path = "crates/dash-marks" }
+dash-protocol = { path = "crates/dash-protocol" }
 dash-scales = { path = "crates/dash-scales" }
 dash-scene = { path = "crates/dash-scene" }
 dash-tokens = { path = "crates/dash-tokens" }
 dash-wire = { path = "crates/dash-wire" }
+wgpu = { version = "30.0.2", default-features = false, features = ["std", "webgpu", "webgl", "wgsl"] }
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "0.4.80"
+js-sys = "0.3.107"
+web-sys = "0.3.107"
+arc-swap = "1.9.5"
+bytemuck = { version = "1.25.2", features = ["derive"] }
+naga = "30.0.2"
+serde_json = "1"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
@@ -28,7 +39,7 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 
-[profile.wasm-release] # T03 §5.6 build profile; wasm-opt is added by #23
+[profile.wasm-release] # T03 §5.6 build profile; `cargo xtask gen` runs wasm-opt -O3 after it
 inherits = "release"
 opt-level = 3
 lto = "fat"

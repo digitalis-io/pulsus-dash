@@ -615,6 +615,14 @@ pub fn check_shipped_js(root: &Path, files: &ShimFiles, pins: &ShimPins) -> R<Ve
     Ok(out)
 }
 
+/// Regenerate-and-compare of `web/shim/gen/` (plan §4.7) with an injectable generator. Stub.
+pub fn check_generated_with(
+    _root: &Path,
+    _generator: &dyn Fn(&Path, &crate::r#gen::GenOptions) -> R<()>,
+) -> R<Vec<Violation>> {
+    Ok(Vec::new())
+}
+
 /// All six checks of `ci:dep-audit`.
 pub fn audit(root: &Path) -> R<Vec<Violation>> {
     let cfg = load_config(root)?;

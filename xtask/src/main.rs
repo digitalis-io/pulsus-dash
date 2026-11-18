@@ -44,7 +44,7 @@ fn run(args: &[String]) -> Result<u8, XtaskError> {
     let root = repo_root()?;
     let cmd = args.first().map(String::as_str);
     let arg = args.get(1).map(String::as_str);
-    if args.len() > 2 {
+    if args.len() > 2 && cmd != Some("serve") {
         return Err(XtaskError::Usage(USAGE.into()));
     }
     match cmd {
@@ -69,6 +69,32 @@ fn run(args: &[String]) -> Result<u8, XtaskError> {
             for p in seed::seed(gate, &root)? {
                 println!("{}", xtask::rel_str(&p));
             }
+            Ok(0)
+        }
+        Some("serve") => {
+            let mut o = xtask::serve::ServeOptions {
+                root: root.join("web"),
+                port: 8080,
+                isolation: true,
+            };
+            let mut it = args[1..].iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--root" => {
+                        o.root =
+                            root.join(it.next().ok_or_else(|| XtaskError::Usage(USAGE.into()))?)
+                    }
+                    "--port" => {
+                        o.port = it
+                            .next()
+                            .and_then(|p| p.parse().ok())
+                            .ok_or_else(|| XtaskError::Usage(USAGE.into()))?
+                    }
+                    "--no-isolation" => o.isolation = false,
+                    _ => return Err(XtaskError::Usage(USAGE.into())),
+                }
+            }
+            xtask::serve::serve(&o, None)?;
             Ok(0)
         }
         Some("unseed") => {

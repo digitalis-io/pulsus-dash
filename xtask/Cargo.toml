@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Workspace tooling: CI gates (`cargo xtask ci <gate>`) and gate-proof seeds."
+description = "Workspace tooling: CI gates (`cargo xtask ci <gate>`), gate-proof seeds, build tools, artefact generation and the dev server."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,6 +25,13 @@ proc-macro2 = { version = "1", default-features = false, features = ["span-locat
 brotli = "9"
 glob = "0.3"
 tempfile = "3"
+dash-protocol.workspace = true
+dash-lab.workspace = true
+tiny_http = "0.12.0"
+wasmparser = "0.263.0"
+
+[dev-dependencies]
+wasm-encoder = "0.263.0"
 
 [lints]
 workspace = true

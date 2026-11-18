@@ -127,6 +127,7 @@ pub fn seed_for(gate: Gate) -> Seed {
             }],
             "npm-runtime-dependency",
         ),
+        Gate::ProbeAbsent | Gate::E2e => (Vec::new(), ""),
     };
     Seed {
         gate,

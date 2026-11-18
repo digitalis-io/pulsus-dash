@@ -1,0 +1,53 @@
+//! Per-frame timing exported in the control block counters (FS_*). Stub.
+
+use crate::control::Control;
+
+/// A view of the frame statistics of one control block.
+#[derive(Debug)]
+pub struct FrameStats<'a> {
+    cb: &'a Control,
+}
+
+impl<'a> FrameStats<'a> {
+    pub fn new(cb: &'a Control) -> Self {
+        FrameStats { cb }
+    }
+
+    /// Records one frame interval and its render CPU time (ms).
+    pub fn record(&self, _interval_ms: f32, _cpu_ms: f32) {
+        let _ = self.cb;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dash_protocol::layout::off;
+    use std::sync::atomic::Ordering::Relaxed;
+
+    #[test]
+    fn frame_stats_histogram() {
+        let cb = Control::alloc().expect("control block");
+        let fs = FrameStats::new(&cb);
+        for i in [0.2f32, 16.6, 40.0, 60.0] {
+            fs.record(i, 1.0);
+        }
+        let w = |at: u32| cb.word(at).load(Relaxed);
+        let hist: Vec<u32> = (0..64).map(|i| w(off::FS_HIST + 4 * i)).collect();
+        assert_eq!(hist[0], 1);
+        assert_eq!(hist[33], 1);
+        assert_eq!(hist[63], 2);
+        assert_eq!(hist.iter().sum::<u32>(), 4);
+        assert_eq!(w(off::FS_FRAMES), 4);
+        assert_eq!(w(off::FS_LONG_FRAMES), 1);
+        assert_eq!(w(off::FS_RECENT_IDX), 4);
+        let recent: Vec<f32> = (0..4)
+            .map(|i| f32::from_bits(w(off::FS_RECENT_INTERVAL + 4 * i)))
+            .collect();
+        assert_eq!(recent, vec![0.2, 16.6, 40.0, 60.0]);
+        let cpu: Vec<f32> = (0..4)
+            .map(|i| f32::from_bits(w(off::FS_RECENT_CPU + 4 * i)))
+            .collect();
+        assert_eq!(cpu, vec![1.0; 4]);
+    }
+}

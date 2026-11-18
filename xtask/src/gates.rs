@@ -20,6 +20,8 @@ pub enum Gate {
     DesignCheck,
     ShimLint,
     DepAudit,
+    ProbeAbsent,
+    E2e,
 }
 
 impl Gate {
@@ -46,6 +48,7 @@ impl Gate {
             Gate::DesignCheck => "design-check",
             Gate::ShimLint => "shim-lint",
             Gate::DepAudit => "dep-audit",
+            Gate::ProbeAbsent | Gate::E2e => "",
         }
     }
 
@@ -82,7 +85,12 @@ impl Gate {
             ],
             Gate::Test => &[&["test", "--workspace", "--locked"]],
             Gate::Wasm => &[&["build-wasm"]],
-            Gate::BundleSize | Gate::DesignCheck | Gate::ShimLint | Gate::DepAudit => &[],
+            Gate::BundleSize
+            | Gate::DesignCheck
+            | Gate::ShimLint
+            | Gate::DepAudit
+            | Gate::ProbeAbsent
+            | Gate::E2e => &[],
         }
     }
 }
@@ -181,6 +189,9 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
             Ok(verdict(report.violations, output))
         }
         Gate::DepAudit => Ok(verdict(dep_audit::audit(root)?, String::new())),
+        Gate::ProbeAbsent | Gate::E2e => Ok(GateResult::Pass {
+            output: String::new(),
+        }),
     }
 }
 

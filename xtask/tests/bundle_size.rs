@@ -268,11 +268,27 @@ fn bundle_config_matches_t03() {
         .collect();
     eager.sort_unstable();
     assert_eq!(eager, vec!["dash-core-mt", "dash-shell", "shim"]);
-    assert!(c.artefacts.iter().all(|a| !a.required));
+    let mut required: Vec<&str> = c
+        .artefacts
+        .iter()
+        .filter(|a| a.required)
+        .map(|a| a.name.as_str())
+        .collect();
+    required.sort_unstable();
+    assert_eq!(required, vec!["dash-core-mt", "dash-core-st", "shim"]);
 }
 
 #[test]
-fn bundle_repo_is_report_mode() {
+fn bundle_repo_is_enforced() {
     let c = load_config(&xtask::repo_root().unwrap()).unwrap();
-    assert_eq!(c.mode, Mode::Report);
+    assert_eq!(c.mode, Mode::Enforce);
+    let st = c
+        .artefacts
+        .iter()
+        .find(|a| a.name == "dash-core-st")
+        .unwrap();
+    assert_eq!(st.t03_row, "`dash-core-st.wasm` + glue");
+    assert_eq!(st.files, vec!["web/shim/gen/dash-core-st/**/*"]);
+    assert_eq!(st.budget_bytes, 1_900_000);
+    assert!(!st.eager);
 }

@@ -209,7 +209,37 @@ fn shim_gen_named_files_are_counted() {
         ("web/shim/sub/x.gen.js", &lines(141)),
     ]);
     assert_eq!(r.total, 301);
-    assert_eq!(rules(&r), vec![Rule::ShimLineBudget]);
+    assert_eq!(rules(&r), vec![Rule::LayoutGenStale, Rule::ShimLineBudget]);
+}
+
+#[test]
+fn shim_layout_gen_excluded_when_current() {
+    let js = dash_protocol::layout::render_js();
+    let r = lint_tree(&[
+        ("web/shim/boot.js", &lines(10)),
+        ("web/shim/layout.gen.js", js.as_bytes()),
+    ]);
+    assert_eq!(r.total, 10);
+    assert!(r.violations.is_empty(), "{:?}", r.violations);
+    assert!(
+        r.files
+            .iter()
+            .all(|f| f.path != Path::new("web/shim/layout.gen.js")),
+        "{:?}",
+        r.files
+    );
+}
+
+#[test]
+fn shim_layout_gen_stale() {
+    let js = format!("{}x();\n", dash_protocol::layout::render_js());
+    let r = lint_tree(&[("web/shim/layout.gen.js", js.as_bytes())]);
+    assert_eq!(rules(&r), vec![Rule::LayoutGenStale]);
+    assert!(r.total > 1, "a stale layout.gen.js is counted: {}", r.total);
+    assert_eq!(
+        r.violations[0].path,
+        PathBuf::from("web/shim/layout.gen.js")
+    );
 }
 
 #[test]
@@ -348,5 +378,31 @@ fn shim_imports_rejected() {
 fn shim_repo_passes() {
     let r = lint(&xtask::repo_root().unwrap()).unwrap();
     assert!(r.violations.is_empty(), "{:?}", r.violations);
-    assert_eq!(r.total, 0);
+    let sum: u32 = r.files.iter().map(|f| f.code_lines).sum();
+    assert_eq!(r.total, sum);
+    assert!(r.total <= 195, "{}", r.total);
+}
+
+#[test]
+fn shim_files_within_budgets() {
+    let r = lint(&xtask::repo_root().unwrap()).unwrap();
+    let lines = |p: &str| {
+        r.files
+            .iter()
+            .find(|f| f.path == Path::new(p))
+            .map(|f| f.code_lines)
+    };
+    for (path, budget) in [
+        ("web/shim/boot.js", 70),
+        ("web/shim/worker.js", 35),
+        ("web/shim/input.js", 90),
+    ] {
+        let n = lines(path).unwrap_or(u32::MAX);
+        assert!(n <= budget, "{path}: {n} > {budget}");
+    }
+    assert_eq!(
+        lines("web/shim/layout.gen.js"),
+        None,
+        "excluded when current"
+    );
 }
