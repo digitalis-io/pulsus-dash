@@ -155,6 +155,10 @@ comments, strings and templates, and an unmatched `)`.
 | `generated-js-present` | any file exists on disk under `web/shim/gen/` | Delete it. Generated output is not accepted until #23 adds its regenerate-and-compare check |
 
 All allow entries need a non-empty `reason`; unknown keys in `ci/*.toml` are errors (exit 2).
+A symlinked directory inside an audited tree (`web/`, `web/shim/gen/`, a render-worker crate's
+`src/`, or any non-skipped directory searched for `package.json`) is also an error (exit 2): the
+audit neither follows it nor skips it, because a server following the link would serve files no
+check inspected. Replace it with a real directory. Symlinked files are audited through the link.
 
 **Updating pins.** `ci/shim-pins.toml` has one `[[file]]` (`path`, `sha256`) per shim file present.
 After changing a shim file, run `cargo xtask ci dep-audit`, copy the hash from the

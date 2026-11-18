@@ -47,8 +47,10 @@ pub fn line_of(text: &str, at: usize) -> u32 {
 }
 
 /// Every regular file under `dir` (recursively, sorted), as absolute paths. Directories for which
-/// `skip_dir(name)` is true are not entered; symlinked directories are never followed. A missing
-/// `dir` yields no files.
+/// `skip_dir(name)` is true are not entered. Symlinked files are listed (reads follow the link).
+/// A symlinked directory that is not skipped fails closed with `XtaskError::Config`: it is neither
+/// followed (no cycle or out-of-tree traversal) nor silently ignored (a server following the link
+/// would serve files no gate inspected). A missing `dir` yields no files.
 pub fn walk_files(dir: &std::path::Path, skip_dir: &dyn Fn(&str) -> bool) -> R<Vec<PathBuf>> {
     let mut out = Vec::new();
     if dir.is_dir() {
@@ -68,9 +70,17 @@ fn walk_into(
         let entry = entry.map_err(XtaskError::io(dir))?;
         let path = entry.path();
         let ft = entry.file_type().map_err(XtaskError::io(&path))?;
+        let skipped = || skip_dir(&entry.file_name().to_string_lossy());
         if ft.is_dir() {
-            if !skip_dir(&entry.file_name().to_string_lossy()) {
+            if !skipped() {
                 walk_into(&path, skip_dir, out)?;
+            }
+        } else if ft.is_symlink() && path.is_dir() {
+            if !skipped() {
+                return Err(XtaskError::config(
+                    &path,
+                    "symlinked directory in an audited tree; replace it with a real directory",
+                ));
             }
         } else if ft.is_file() || (ft.is_symlink() && path.is_file()) {
             out.push(path);

@@ -433,3 +433,57 @@ fn dep_audit_config_matches_t03() {
     assert!(c.browser_crates.is_empty());
     assert!(load_pins(&root).unwrap().files.is_empty());
 }
+
+/// A directory symlinked into an audited tree is refused (fail closed), never silently skipped: a
+/// web server following the link would serve files the audit did not inspect (review r1 #1).
+#[cfg(unix)]
+#[test]
+fn symlinked_web_dir_fails_closed() {
+    let t = tree(&[
+        ("web/index.html", b"<html></html>\n"),
+        ("outside/app.js", b"x();\n"),
+    ]);
+    std::os::unix::fs::symlink(t.path().join("outside"), t.path().join("web/assets")).unwrap();
+    match check_web_assets(t.path(), &cfg()) {
+        Err(XtaskError::Config { path, .. }) => assert_eq!(path, t.path().join("web/assets")),
+        other => panic!("expected Config error for the symlinked directory, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_generated_dir_fails_closed() {
+    let t = tree(&[
+        ("pkg/dash_core_mt.js", b"fetch(\"x\");\n"),
+        ("web/shim/gen/.keep", b""),
+    ]);
+    std::os::unix::fs::symlink(
+        t.path().join("pkg"),
+        t.path().join("web/shim/gen/dash-core-mt"),
+    )
+    .unwrap();
+    match check_shipped_js(t.path(), &shim_files(&[]), &ShimPins { files: vec![] }) {
+        Err(XtaskError::Config { path, .. }) => {
+            assert_eq!(path, t.path().join("web/shim/gen/dash-core-mt"));
+        }
+        other => panic!("expected Config error for the symlinked directory, got {other:?}"),
+    }
+}
+
+/// A symlinked file is audited through the link (its target's content and its in-tree name).
+#[cfg(unix)]
+#[test]
+fn symlinked_web_file_is_audited() {
+    let t = tree(&[
+        ("outside/app.js", b"x();\n"),
+        ("web/index.html", b"<html></html>\n"),
+    ]);
+    std::os::unix::fs::symlink(t.path().join("outside/app.js"), t.path().join("web/app.js"))
+        .unwrap();
+    let v = check_web_assets(t.path(), &cfg()).unwrap();
+    let got: Vec<(Rule, PathBuf)> = v.iter().map(|v| (v.rule, v.path.clone())).collect();
+    assert_eq!(
+        got,
+        vec![(Rule::JsOutsideShim, PathBuf::from("web/app.js"))]
+    );
+}
