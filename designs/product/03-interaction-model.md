@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-18 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg), [05-service-lens](../mockups/05-service-lens.svg), [06-metrics-workbench](../mockups/06-metrics-workbench.svg), [15-command-palette](../mockups/15-command-palette.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg), [05-service-lens](../mockups/05-service-lens.svg), [06-metrics-workbench](../mockups/06-metrics-workbench.svg), [15-command-palette](../mockups/15-command-palette.svg), [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [21-floors-3d](../mockups/21-floors-3d.svg), [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg), [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -38,25 +38,28 @@ in [06](06-ai-copilot.md). This document owns the bindings themselves.
 ## 3. The camera
 
 Every scene has a camera. 2D scenes use an orthographic camera (pan + zoom per axis). 3D scenes use
-a perspective camera with three modes.
+a perspective camera with three modes. The estate is 3D-first ([15](15-estate-navigation.md)
+EST-055): the Landscape, City, Infra and large-graph Topology views open as 3D scenes in Orbit mode.
 
 | Mode | Used by | Behaviour |
 |---|---|---|
-| **Orbit** (default 3D) | Atlas, 3D surfaces, trace skyline | Rotate around a focus point; zoom moves toward the point under the cursor |
-| **Fly** (toggle with `` ` ``, or hold right mouse + `W`/`A`/`S`/`D`) | Large Atlas, NOC exploration | Free first-person flight, Unreal-editor style |
-| **Map** (2.5D, default for very large estates) | Atlas at fleet level | Top-down, tilt-locked, like a strategy game: pan with drag, zoom with wheel, `Q`/`E` rotate |
+| **Orbit** (default 3D) | Atlas estate views (Map, City, Infra, 3D Topology, floors), 3D signal views, trace skyline | Rotate around a focus point over the ground plane; zoom moves toward the point under the cursor; double-click dives |
+| **Fly** (toggle with `` ` ``, or hold right mouse + `W`/`A`/`S`/`D`) | Large Atlas, NOC exploration | Free first-person flight, game-editor style |
+| **Map** (2.5D, tilt-locked) | Any 3D estate view, on request | Top-down, tilt-locked, like a strategy game: pan with drag, zoom with wheel, `Q`/`E` rotate. Selected from the orbit gizmo's top face or the palette ("camera: map"); never the default |
 
-[mockup](../mockups/02-atlas-topology.svg)
+Mockups: [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg),
+[23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg),
+[02-atlas-topology](../mockups/02-atlas-topology.svg).
 
 #### INT-001 — Camera per scene and camera modes
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer
 
 Every 2D scene MUST have an orthographic camera with independent pan and zoom per axis. Every 3D
 scene MUST have a perspective camera offering the Orbit, Fly and Map modes in the table above, with
-Orbit the default and Map the default for the Atlas at fleet level on very large estates
-([15](15-estate-navigation.md)).
+Orbit the default in every 3D scene, including every estate view at every estate size
+([15](15-estate-navigation.md) EST-055). Map mode MUST be entered only on request.
 
-*Acceptance:* Each 3D scene opens in its default mode; `` ` `` toggles Fly and back; in Map mode
+*Acceptance:* Each 3D scene, including the Landscape of a 10k-node estate, opens in Orbit mode; `` ` `` toggles Fly and back; in Map mode
 the camera cannot tilt and `Q`/`E` rotate it; in a 2D chart, X and Y zoom independently.
 
 #### INT-002 — Cursor-anchored zoom
@@ -110,9 +113,10 @@ through each pose in reverse; `Alt+→` replays forward.
 
 | Input | 2D chart | 3D scene |
 |---|---|---|
-| Wheel / pinch | Zoom X (time) around cursor | Dolly toward cursor point |
-| `Shift` + wheel | Zoom Y | — |
-| `Ctrl`/`⌘` + wheel | Zoom both axes | Change height (FOV-free) in Map mode |
+| Wheel / pinch | Zoom X (time) around cursor | Dolly toward cursor point (3D signal views: zoom the time axis) |
+| `Shift` + wheel | Zoom Y | 3D signal views: zoom the value axis |
+| `Alt` + wheel | — | 3D signal views: zoom lane depth ([05](05-visualisation-catalogue.md) VIZ-085) |
+| `Ctrl`/`⌘` + wheel | Zoom both axes | Change height (FOV-free) in Map mode; dolly along depth in 3D signal views |
 | Left drag (empty space) | Pan (with inertia) | Orbit (Orbit mode) / pan (Map mode) |
 | Right drag | Box-zoom | Pan |
 | Right button held + `W`/`A`/`S`/`D` | — | Fly while held (enters Fly context) |
@@ -122,7 +126,7 @@ through each pose in reverse; `Alt+→` replays forward.
 | Click | Select point/series → Inspector | Select entity → Inspector |
 | `Shift`+click on a pivot chip | Replace the current view with the pivot target | Same |
 | `⌘`/`Ctrl`+click on a pivot chip | Open the pivot target in a new browser tab | Same |
-| Double-click | Zoom to fit the clicked series/region | **Dive**: fly into entity → its Lens (semantic zoom down) |
+| Double-click | Zoom to fit the clicked series/region | **Dive**: fly into entity, one level down the ladder (L0 → L5) and finally its Lens; on empty space in a 3D signal view, reset the camera |
 | Two-finger swipe (trackpad) | Pan | Pan |
 | Mouse back / forward button | Camera history back / forward | Same |
 | Drag on an axis | Pan **that axis only**. On a comparison time axis, slides B against A ([05](05-visualisation-catalogue.md) §1.1) | — |
@@ -183,7 +187,7 @@ Windows and Linux. † marks an inner-context override (§4.3).
 | `C` | **A/B Everything**: puts the whole scene into A-vs-B diff mode | S | M-UI6 |
 | `B` | **Universal Compare** on the current selection/brush (different · unchanged · coverage) | S | M-UI3 |
 | `X` | Show only the anomalous subgraph / anomalous series (+1 hop context) | S | M-UI3 |
-| `T` | Toggle between a 3D view and its 2D equivalent | S | M-UI3 |
+| `T` | Toggle between a 3D view and its 2D equivalent (estate views default to 3D; [15](15-estate-navigation.md) EST-055) | S | M-UI3 |
 | `Shift+T` | Toggle the table view of the focused viewport | S | M-UI1 |
 | `\` | Split screen: two linked views side by side | S | M-UI2 |
 | `1`–`9` / `Shift+1`–`Shift+9` | Jump to waypoint n / save current position as waypoint n | S | M-UI3 |
@@ -363,7 +367,10 @@ Atlas  ───► │ regions as │─►│ services as│─►│ service 
 
 This ladder is the application path. The infrastructure ladder (region → zone → cluster → node pool
 → node → pod → container; DC → rack → host → process) and crossing between the two with `V` are in
-[15](15-estate-navigation.md) §3.
+[15](15-estate-navigation.md) §3. In 3D the infrastructure ladder is one continuous camera flight,
+globe → region plateau → cluster district → node building → pod slab → container cell, each leg
+≤ 250 ms with approach pre-fetch ([15](15-estate-navigation.md) EST-060), tracked by the altitude
+ladder (INT-044).
 
 [mockup](../mockups/05-service-lens.svg)
 
@@ -414,6 +421,45 @@ mini-waterfalls.
 
 *Acceptance:* On seeded data, each of the three zooms crosses its threshold and the representation
 changes, with the source badge ([09](09-performance-contract.md) PRF-025) updated for the time series.
+
+### 5.1 Camera aids for 3D scenes
+
+#### INT-042 — Orbit constraints
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+In Orbit mode the camera MUST orbit the focus point (the selected entity, else the point under the
+cursor at drag start), MUST keep its pitch between 10° and 89° above the ground plane so that it
+never passes below the ground, and MUST keep `Q`/`E` as continuous heading rotation around the focus.
+Left drag MUST orbit and right or middle drag MUST pan along the ground plane (§4.1).
+
+*Acceptance:* After any sequence of orbit drags, the camera pitch stays within 10°–89° and the
+ground is never seen from below; holding `E` for 1 s rotates the heading about the focus with the
+focus fixed on screen to within 1 px.
+
+#### INT-043 — Orbit gizmo and compass
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+Every 3D scene MUST show an orbit gizmo in a corner of the viewport that doubles as a compass (north
+for geographic scenes, the layout's reference direction otherwise). Clicking the north mark MUST
+restore heading 0°; clicking the top face MUST enter Map mode; clicking a side face MUST select the
+front or side preset; dragging the gizmo MUST orbit. The gizmo MUST be keyboard reachable with `F6`
+(INT-015), with arrow keys choosing a preset and `Enter` applying it.
+
+*Acceptance:* After rotating with `Q`, clicking north restores heading 0° in ≤ 250 ms; clicking the
+top face enters Map mode and the camera can no longer tilt; with the keyboard only, `F6` to the gizmo,
+an arrow and `Enter` apply the side preset.
+
+#### INT-044 — Altitude ladder
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+Every 3D estate scene MUST show an altitude ladder with rungs L0–L5 ([15](15-estate-navigation.md)
+Table 15-2) marking the camera's current level, updated continuously during flights. Clicking a rung
+MUST fly to that level over the focused entity's ancestor or descendant on that rung, within the
+camera-transition budget (PRF-007).
+
+*Acceptance:* Given a node building framed at L3, then rung L3 is lit; clicking L1 flies to its
+region plateau in ≤ 250 ms and lights L1; during a semantic-zoom flight the lit rung changes at each
+level crossing.
 
 ## 6. Time as a dimension
 
@@ -667,6 +713,9 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 | INT-039 | Natural language goes to the AI | MUST | M-UI4 |
 | INT-040 | Palette ranking | MUST | M-UI1 |
 | INT-041 | Undo stack | MUST | M-UI1 |
+| INT-042 | Orbit constraints | MUST | M-UI3 |
+| INT-043 | Orbit gizmo and compass | MUST | M-UI3 |
+| INT-044 | Altitude ladder | MUST | M-UI3 |
 
 ## 11. Resolved during formalisation
 
@@ -697,9 +746,20 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 10. **Esc in Fly.** The `Esc` ladder now starts with "exit Fly".
 11. **Right mouse in 3D.** Right drag pans; right button held with `W`/`A`/`S`/`D` flies while held.
 12. **Shift+digit on non-US layouts.** Bindings match the physical key position (INT-013).
+13. **3D-first estate (1.0-rc2).** The owner's brief is 3D, game-like navigation on the GPU. Map
+    mode is no longer the default for very large estates; Orbit is the default in every 3D scene
+    (INT-001), and Map is entered from the gizmo or palette. No new keys were added: `Q`/`E`,
+    `Home`, `V`, `Alt+1`–`Alt+6` and `` ` `` keep their meanings; camera presets use the gizmo
+    (INT-043) and the altitude ladder is pointer- and `F6`-reachable (INT-044).
+14. **Wheel in 3D signal views (1.0-rc2).** Wheel, `Shift`+wheel and `Alt`+wheel zoom the time,
+    value and lane-depth axes, matching the 2D per-axis model; `Alt`+wheel was unbound in every
+    context, so no conflict arises.
+15. **Product names (1.0-rc2).** A third-party product name in the Fly row of the camera table was
+    replaced by "game-editor style".
 
 ## 12. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
+| 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 camera table and INT-001 edited (Orbit default everywhere, Map on request); §4.1 wheel and double-click rows for 3D scenes and 3D signal views; §5 continuous infrastructure flight; §5.1 INT-042 to INT-044 added; resolutions 13–15 |

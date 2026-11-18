@@ -3,13 +3,13 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-18 |
 | **Requirement area** | `EST` |
 | **Source draft** | plans/15-estate-navigation.md (not tracked) |
 | **Depends on** | [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [04 Surfaces](04-surfaces.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [09 Performance contract](09-performance-contract.md) · [11 Enterprise](11-enterprise.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) |
 | **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T06 BFF architecture](../technical/T06-bff-architecture.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) · [PulsusDB requirements](../technical/pulsusdb-requirements.md) · T12 entity catalogue (draft) · T13 local analytics engine (draft) · T14 layout engines (draft) |
 | **Decisions** | [ADR-0012](../adr/0012-derived-state-in-postgres.md) (D2) · assumption A1 · open decision O1, [ADR-0013](../adr/0013-metrics-data-scopes.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [18-noc-wall](../mockups/18-noc-wall.svg) |
+| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [18-noc-wall](../mockups/18-noc-wall.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 Section numbers §1–§12 are kept identical to the source draft because other documents cite them
 (e.g. "15 §3.3").
@@ -19,6 +19,13 @@ Section numbers §1–§12 are kept identical to the source draft because other 
 How a user sees **everything they run** in one place and zooms, without ever losing their place,
 down to one region, cluster, node, pod, host or process; and how they cross between **where things
 run** (infrastructure) and **what calls what** (applications).
+
+**Space is 3D, signals are 2D.** The estate is a GPU-rendered 3D world that the user navigates like
+a game: an orbiting camera over a ground plane on which regions are plateaus, clusters are districts,
+nodes are buildings and pods are the floors inside them, with the application topology floating as
+an upper floor above. Time series, distributions, tables, logs, trace waterfalls and flame graphs
+stay 2D and dock beside the scene, linked to it (EST-055, EST-064). Every 3D view has a 2D
+equivalent on `T`, which is also the accessibility and reduced-motion fallback (EST-063).
 
 This document is normative for the estate experience. It consolidates and extends the Atlas
 ([04](04-surfaces.md) §4.1), semantic zoom ([03](03-interaction-model.md) §5), the entity model
@@ -44,8 +51,13 @@ otherwise.
 |---|---|
 | **Landscape** | Level 0: the whole estate framed at once (§2) |
 | **Ladder** | An ordered sequence of zoom levels: the infrastructure ladder L0–L5 and the application ladder A0–A5 (§3) |
-| **Floor** | The app floor (dependency graph) or the infra floor (containment), stacked on the height axis (§3.3) |
-| **Runs-on thread** | A line joining an app-floor entity to the infra entities it runs on, drawn only for the selection |
+| **Floor** | The app floor (dependency graph) or the infra floor (the containment city), stacked on the height axis with the app floor above (§3.3) |
+| **3D world** | The perspective scene in which the estate is drawn by default: a ground plane carrying regions as plateaus, clusters as districts, nodes as buildings, pods as slabs and containers as cells (§3.4) |
+| **Building** | The 3D mark of a node or host: footprint ∝ capacity, height ∝ utilisation or load |
+| **Beacon** | A vertical light column rising from the probable origin ⊕ of an incident |
+| **Altitude ladder** | The on-screen indicator of the camera's current level L0–L5 ([03](03-interaction-model.md) INT-043) |
+| **2D equivalent** | The flat projection of a 3D view reached with `T` (e.g. hex grid for Infra, layered graph for Topology) |
+| **Runs-on thread** | A line dropping from an app-floor entity to the buildings or pod slabs it runs on, drawn only for the selection |
 | **Crossing chip** | An Inspector chip that moves the camera across the ladders (e.g. "runs on 14 pods / 6 nodes") |
 | **View** | One of the six synced projections of the landscape (§5) |
 | **Layer** | A preset of colour, size and badge bindings shared by all views (§7) |
@@ -124,7 +136,8 @@ the estate strip's "blind" total.
 
 ## 2. Level 0: the Landscape (the starting point)
 
-Mockup: [01-landscape-map](../mockups/01-landscape-map.svg).
+Mockups: [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) (default 3D),
+[01-landscape-map](../mockups/01-landscape-map.svg) (2D equivalent under `T`).
 
 **Landscape regions**
 
@@ -132,45 +145,55 @@ Mockup: [01-landscape-map](../mockups/01-landscape-map.svg).
 |---|---|
 | Top bar | "Atlas · Landscape", environment scope (e.g. "all environments ▾"), view switcher (Map · Topology · City · Infra · Segments · Explorer), ⌘K |
 | Layer bar | Layer selector (Health · Capacity · Cost · Change · Versions · Coverage · Traffic) and Floors toggle (App · Infra) |
-| Scene | Provider groups (e.g. AWS, GCP, On-prem) containing region/DC tiles; the outside-the-estate ring of external dependencies |
+| Scene | The 3D world in an Orbit camera: provider groups (e.g. cloud A, cloud B, on-prem) as islands on the ground plane, each carrying region/DC plateaus placed by geography; the outside-the-estate ring of external dependencies on the horizon |
+| Camera aids | Orbit gizmo / compass and altitude ladder L0–L5 ([03](03-interaction-model.md) INT-043, INT-044) |
 | Estate strip | Totals by kind (clusters, nodes, pods, hosts, services, DBs, incidents, blind); every number is a filter |
 | Minimap, Time Ribbon | As in every space |
 
 #### EST-005 — Home frames the whole estate
 **MUST** · M-UI3 · NOC, SRE, Platform
 
-Opening the Atlas with no Context, or pressing `Home`, MUST frame the whole estate at Level 0. When the
-estate has only one region, it MUST open directly at Level 1 for that region.
+Opening the Atlas with no Context, or pressing `Home`, MUST frame the whole estate at Level 0 in the
+default Orbit pose of the 3D world (EST-055). When the estate has only one region, it MUST open
+directly at Level 1 for that region.
 
 *Acceptance:* Given a multi-region estate, when the user presses `Home` from a pod Lens, then the
-camera frames every provider group; and given a single-region estate, the Atlas opens on that region's
+camera flies up the altitude ladder in one continuous flight (EST-060) and frames every provider
+group in the Orbit pose; and given a single-region estate, the Atlas opens on that region's
 L1 view.
 
 #### EST-006 — Grouped by provider, then geography
 **MUST** · M-UI3 · NOC, Platform
 
 The Landscape MUST group regions and data centres by provider (cloud or on-prem), then by geography.
-When the estate spans more than one region, the Map view ([05](05-visualisation-catalogue.md) §7)
-MUST be the default view unless the Perspective sets another (§10).
+When the estate spans more than one region, the Map view MUST be the default view unless the
+Perspective sets another (§10). The Map view MUST be the 3D world with each provider group drawn as
+an island and each region or DC as a plateau placed by geography on a low-relief ground plane
+([05](05-visualisation-catalogue.md) §3, §7), seen through the Orbit camera; its flat geographic
+map is the 2D equivalent under `T`.
 
-*Acceptance:* Given AWS (3 regions), GCP (1) and on-prem (2 DCs), when the Landscape opens with no
-Perspective default, then the Map view shows three provider groups placed geographically.
+*Acceptance:* Given cloud A (3 regions), cloud B (1) and on-prem (2 DCs), when the Landscape opens
+with no Perspective default, then the Map view shows three islands carrying six plateaus placed
+geographically, in perspective with the Orbit camera; and `T` shows the same groups on the flat map.
 
 #### EST-007 — Region and DC tiles
 **MUST** · M-UI3 · NOC, Platform, SRE
 
-Each region or DC tile MUST show its worst health state, incident count, entity counts by kind, and a
-sparkline of the active layer's headline metric (e.g. error rate, utilisation, $/h).
+Each region or DC plateau (tile in the 2D equivalent) MUST show its worst health state, incident
+count, entity counts by kind, and a sparkline of the active layer's headline metric (e.g. error rate,
+utilisation, $/h). In 3D these MUST be carried by a billboard label (EST-059); the plateau's top face
+MUST carry the health colour (EST-058).
 
-*Acceptance:* Given us-east-1 degraded with one incident, when the Landscape renders, then its tile
-shows the degraded glyph, "⚠1", its cluster and pod counts, and a sparkline that changes when the
+*Acceptance:* Given us-east-1 degraded with one incident, when the Landscape renders, then its
+plateau is tinted `degraded` and its label shows the degraded glyph, "⚠1", its cluster and pod counts, and a sparkline that changes when the
 layer changes.
 
 #### EST-008 — Outside-the-estate ring
 **MUST** · M-UI3 · NOC, SRE
 
-External dependencies the estate calls MUST be drawn outside the estate boundary, each with its health
-as seen from our client spans.
+External dependencies the estate calls MUST be drawn outside the estate boundary (in 3D, as a ring
+of markers at the edge of the ground plane joined to their callers by arcs), each with its health as
+seen from our client spans.
 
 *Acceptance:* Given client spans to `psp-a` failing at 20 %, when the Landscape renders, then psp-a
 outside the boundary shows a failing state derived from those spans.
@@ -190,12 +213,12 @@ highlighted on the Landscape and the rest are dimmed.
 
 **Table 15-2 — Infrastructure ladder**
 
-| Level | Kubernetes | Cloud managed | VM / on-prem | Default vis | Typical on screen |
+| Level | Container platform | Cloud managed | VM / on-prem | Default vis (3D; 2D equivalent under `T`) | Typical on screen |
 |---|---|---|---|---|---|
-| L0 Landscape | providers + regions | providers + regions | data centres | Map (§2) | 5–50 tiles |
-| L1 Region / DC | zones → clusters | zones → accounts | halls/rooms → racks | Map zoomed + territory tiles (§4.1) | 10–200 |
-| L2 Cluster / Account / Room | node pools / namespaces | service types (RDS, MSK, ElastiCache…) | rack row | **Infra grid** (hexbin wall, [05](05-visualisation-catalogue.md) §3; §4.2) | 100–100k cells |
-| L3 Node / Instance / Rack | pods on node (packing view) | DB instance, replicas, shards | **rack elevation** (U-slots) | Packing / elevation (§4.3–4.4) | 10–300 |
+| L0 Landscape | providers + regions | providers + regions | data centres | Map: 3D world of islands and plateaus (§2); 2D: flat map | 5–50 plateaus |
+| L1 Region / DC | zones → clusters | zones → accounts | halls/rooms → racks | Region plateau with zone terraces and cluster districts (§4.1); 2D: zone columns | 10–200 |
+| L2 Cluster / Account / Room | node pools / namespaces | service types (managed DB, stream, cache…) | rack row | **Infra city**: buildings grouped into blocks ([05](05-visualisation-catalogue.md) §3; §4.2); 2D: infra grid (hexbin wall) | 100–100k buildings |
+| L3 Node / Instance / Rack | pods on node | DB instance, replicas, shards | rack (U-slots) | **Building cut-away**: pods as floor slabs (§4.3); racks as cabinets (§4.4); 2D: packing bar / rack elevation | 10–300 |
 | L4 Pod / VM / Host | containers | — | processes | Lens (USE, logs, profiles) | 1 entity |
 | L5 Container / Process | — | — | — | Lens + profiles | 1 |
 
@@ -216,26 +239,29 @@ highlighted on the Landscape and the rest are dimmed.
 **MUST** · M-UI3 · Platform, SRE, Engineer, NOC
 
 Zooming MUST move through the levels of Tables 15-2 and 15-3, and each level MUST open in its listed
-default vis. Kubernetes, cloud-managed and VM/on-prem estates MUST each follow their column of Table
-15-2.
+default vis. Container-platform, cloud-managed and VM/on-prem estates MUST each follow their column
+of Table 15-2. L0–L3 MUST open in their 3D default vis unless the 2D fallback of EST-063 is in force.
 
-*Acceptance:* Given a k8s estate, when the user dives from L0 to L5 on one container, then the views
-are Map, zoomed Map with territory tiles, Infra grid, packing view, pod Lens and container Lens in
-order; and given a team territory at A1, diving reaches the service Lens at A2.
+*Acceptance:* Given a container-platform estate, when the user dives from L0 to L5 on one container,
+then the scenes are the 3D world of plateaus, the region plateau with cluster districts, the infra
+city, the node's building cut-away, pod Lens and container Lens in order, as one continuous flight
+(EST-060); and given a team territory at A1, diving reaches the service Lens at A2.
 
 ### 3.3 Crossing the ladders: the two floors
 
 The relationship between applications and infrastructure is the most important missing link in most
 tools, and the place where 3D earns its keep: the height axis encodes a real dimension, the layer of
-the stack. The **app floor** shows the dependency graph; the **infra floor** below shows nodes grouped
-by pool; **runs-on threads** join them for the current selection only.
+the stack. The **infra floor** is the 3D city on the ground plane; the **app floor** is the
+application topology floating as an upper floor above it; **runs-on threads** drop from services to
+the buildings and pod slabs they run on, for the current selection only. Mockup:
+[21-floors-3d](../mockups/21-floors-3d.svg).
 
 #### EST-011 — `V` flips between floors
 **MUST** · M-UI3 · Engineer, Platform, SRE
 
-Pressing `V` on a service MUST move the camera to the infra floor, framed on the nodes running it,
-with its pods highlighted. Pressing `V` on a node MUST move to the app floor with the services hosted
-there highlighted.
+Pressing `V` on a service MUST move the camera down to the infra floor, framed on the buildings of
+the nodes running it, with its pod slabs highlighted. Pressing `V` on a node MUST move the camera up
+to the app floor with the services hosted there highlighted.
 
 *Acceptance:* Given checkout focused, when the user presses `V`, then the infra floor shows the 6
 nodes running checkout framed with its 14 pods highlighted; pressing `V` on one of those nodes shows
@@ -245,13 +271,16 @@ the app floor with its hosted services highlighted.
 **MUST** · M-UI3 · Engineer, Platform, SRE
 
 Holding `V` MUST show both floors at once joined by runs-on threads for the current selection only,
-never for all entities. In 2D mode (the default) both floors MUST be shown as a split view, app
-topology above and infra grid below with linked highlighting. In 3D mode (`T` toggles) the camera
-MUST tilt to show the stacked floors.
+never for all entities. By default the camera MUST pull back and tilt to show the **3D floors**: the
+app floor floating above the infra city, with each thread dropping from the selected service to the
+buildings, nodes or pods it runs on. When the 2D equivalent is in force (`T`, or the fallback of
+EST-063), both floors MUST instead be shown as a split view, app topology above and infra grid below,
+with the same threads and linked highlighting. Releasing `V` MUST return to the prior floor and pose.
 
-*Acceptance:* Given checkout selected in 2D mode, when the user holds `V`, then the split view shows
-threads only from checkout to its nodes; after `T`, holding `V` tilts the camera to the stacked floors
-with the same threads; and releasing `V` returns to the prior floor.
+*Acceptance:* Given checkout selected, when the user holds `V`, then within 250 ms the camera shows
+the app floor above the infra city with threads only from checkout to its 6 buildings and 14 pod
+slabs; after `T`, holding `V` shows the split view with the same threads; and releasing `V` returns
+to the prior floor at its previous pose.
 
 #### EST-013 — Crossing chips
 **MUST** · M-UI3 · Platform, SRE, Engineer
@@ -276,45 +305,86 @@ stage 1 ([06](06-ai-copilot.md)).
 nodes, when payments is selected, then the chip reads "2 of 6 nodes CPU-saturated by batch-etl" and
 the RCA stage 1 evidence includes it.
 
+### 3.4 The estate as a 3D world
+
+Containment is drawn as one continuous 3D world ([05](05-visualisation-catalogue.md) VIZ-074).
+Mockups: [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg),
+[20-city-cluster-3d](../mockups/20-city-cluster-3d.svg),
+[23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg).
+
+**Table 15-9 — Containment as a 3D world**
+
+| Entity | 3D form | Encodings |
+|---|---|---|
+| Provider | Island on the ground plane | Outline only; label |
+| Region / DC | Raised plateau, placed by geography where coordinates are known | Top-face health colour; zone terraces |
+| Cluster / account | City district on the plateau | Block boundary hairline; control-plane health on its label |
+| Node / host | Building | Footprint ∝ capacity (allocatable CPU); height ∝ utilisation or the layer's load metric |
+| Pod / VM | Floor slab, or stacked block, inside its building; shown by cut-away on focus | Slab thickness ∝ CPU request; fill ∝ usage |
+| Container / process | Cell within a slab | Health colour |
+| Rack / data hall (physical-layout variant) | Rack cabinet in rows on the hall floor; hosts as U-slot blocks | As node / host |
+
+**Table 15-10 — 3D encodings**
+
+| Channel | Encodes |
+|---|---|
+| Height | Load or utilisation (the active layer's size metric, Table 15-5) |
+| Footprint | Capacity |
+| Colour | Health, using the state tokens of [08](08-visual-language.md); healthy entities are near-monochrome neutral grey |
+| Glow / bloom | ∝ anomaly score ([08](08-visual-language.md) VL-004) |
+| Vertical light beacon | Probable origin ⊕ ([08](08-visual-language.md) VL-005) |
+| Desaturation + dashed ground ring | Victim |
+| Arc with traffic particles | Edge (calls, replication, cross-zone traffic) |
+| Billboard label with leader line | Name and headline value, LOD-culled, never overlapping |
+
 ## 4. Per-level design
 
 ### 4.1 L1: Region / DC
 
-**Regions:** a header (region name, zone/cluster/account/pod counts); one column per zone; clusters
-and managed-service groups (e.g. "RDS ×12") as tiles within zones; a footer for cross-zone and
+**Regions:** a header (region name, zone/cluster/account/pod counts); one terrace per zone across the
+region plateau (one column per zone in the 2D equivalent); clusters as districts and managed-service
+groups (e.g. "managed DB ×12") as blocks within zones; a footer for cross-zone and
 cross-region traffic (e.g. "cross-zone 3.1 GB/s, $412/day"; "to us-east-1: replication lag 0.8 s").
 
 #### EST-015 — Zones as columns, clusters as bands
 **MUST** · M-UI3 · NOC, Platform, SRE
 
-At L1, zones MUST be drawn as columns, and a cluster that spans zones MUST be drawn as one band across
-those columns, so that a zonal failure appears as one vertical stripe. Cross-zone and cross-region
-traffic MUST be drawn as arcs carrying the cost and latency layers.
+At L1, zones MUST be drawn as parallel terraces across the region plateau (columns in the 2D
+equivalent), and a cluster that spans zones MUST be drawn as one district band across those terraces,
+so that a zonal failure appears as one stripe. Cross-zone and cross-region traffic MUST be drawn as
+arcs with traffic particles carrying the cost and latency layers.
 
 *Acceptance:* Given prod-eu-1 spanning three zones with zone 1b failing, when L1 renders, then the
-cluster is one band across three columns with only the 1b segment in failing state; and the Cost
+cluster is one district band across three terraces with only the 1b segment in failing state, and
+`T` shows the same as one band across three columns; and the Cost
 layer labels the cross-zone arc with $/day.
 
-### 4.2 L2: Cluster: the infra grid
+### 4.2 L2: Cluster: the infra city
 
-The hexbin wall specified for alerts ([07](07-alerting.md) §3.3), in all its modes. Mockup:
-[03-infra-cluster](../mockups/03-infra-cluster.svg).
+By default a 3D city: one building per node, grouped into blocks by the chosen dimension. Its 2D
+equivalent under `T` is the hexbin wall specified for alerts ([07](07-alerting.md) §3.3), in all its
+modes. Mockups: [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) (3D),
+[03-infra-cluster](../mockups/03-infra-cluster.svg) (2D equivalent).
 
 #### EST-016 — Infra grid grouping and cells
 **MUST** · M-UI3 · Platform, NOC, SRE
 
-The infra grid MUST group by node pool, zone, namespace, workload, instance type, or k8s/kernel
-version. A cell MUST be a node by default, and a pod when zoomed past the expansion threshold (§6) or
-after `Enter` on a node. Cell colour and size MUST follow the active layer (§7); the default is health
-colour with size = allocatable CPU.
+The infra city MUST group buildings into blocks by node pool, zone, namespace, workload, instance
+type, or platform/kernel version. A building MUST be a node by default; when zoomed past the
+expansion threshold (§6) or after `Enter` on a node, the building MUST cut away to show its pods as
+floor slabs. Building colour, footprint and height MUST follow the active layer (§7, Table 15-10); the
+default is health colour, footprint = allocatable CPU and height = CPU utilisation. In the 2D
+equivalent the same rules apply to grid cells (a node cell; pod cells when expanded; colour and size
+from the layer).
 
-*Acceptance:* Given prod-eu-1, when the user groups by instance type, then cells regroup with an
-animated tween; and `Enter` on a node replaces it with its pod cells.
+*Acceptance:* Given prod-eu-1, when the user groups by instance type, then buildings regroup into new
+blocks with an animated tween; `Enter` on a node cuts its building away to show its pod slabs; and
+after `T` the hex grid shows the same grouping with node cells.
 
 #### EST-017 — Cluster header strip
 **MUST** · M-UI3 · Platform, SRE
 
-The infra grid MUST show a cluster header strip with control-plane health (API server latency, etcd,
+The infra city (and its 2D grid) MUST show a cluster header strip with control-plane health (API server latency, etcd,
 scheduler queue), version, autoscaler activity and pending pods, so that an unhealthy cluster is
 visible even when every node is fine.
 
@@ -324,12 +394,17 @@ shows the control plane degraded.
 #### EST-018 — Lasso and Compare across cells
 **MUST** · M-UI3 · Platform, SRE
 
-Lassoing cells and pressing `B` MUST run Universal Compare across them against the rest of the grid.
+Lassoing buildings (cells in the 2D equivalent) and pressing `B` MUST run Universal Compare across
+them against the rest of the cluster. In 3D the lasso MUST select every building whose screen
+footprint lies inside it, including those partly occluded.
 
 *Acceptance:* Given failing nodes that are all `m6i.4xlarge` in eu-west-1b on kernel 6.8.0-1021, when
 the user lassoes them and presses `B`, then those three attribute values rank top in Different.
 
-### 4.3 L3: Node: the packing view
+### 4.3 L3: Node: the building cut-away and packing view
+
+By default the node's building is cut away to show one floor slab per pod; the packing bar below is
+the 2D equivalent and is also shown in the node's Inspector.
 
 **Regions:** a header (node name, instance type, zone, pool, kernel, health); CPU and memory bars
 showing requested and used; the packing bar of pods; a conditions line (disk, network, conntrack,
@@ -340,7 +415,9 @@ restarts with reasons such as OOMKilled); and actions.
 
 The node packing view MUST show one segment per pod with width ∝ CPU request and fill ∝ usage, with
 the limit marked, and MUST flag pods using more than their request. Node CPU and memory MUST be shown
-as requested vs used.
+as requested vs used. In the 3D cut-away the same rules MUST apply to the pod slabs (thickness ∝
+request, fill ∝ usage, an overflowing slab bulging past the building's wall with ▲), and the packing
+bar MUST be shown in the node's Inspector.
 
 *Acceptance:* Given ip-10-4-7-21 with batch-etl using 3.1× its request, when L3 renders, then
 batch-etl's segment overflows its request width with ▲ and the label "3.1× its request", and the CPU
@@ -363,9 +440,11 @@ and writes an audit entry.
 #### EST-021 — Rack elevation
 **MAY** · M-UI5 · Platform, NOC
 
-For data-centre estates, Dash MAY provide a front-of-rack elevation with U-slots, one block per host,
-coloured by the active layer, with PDU/power and top-of-rack switch health from SNMP/Redfish telemetry
-when present. At L2, rows of racks MUST then sit side by side so the room reads like the real floor.
+For data-centre estates, Dash MAY provide the physical-layout variant of the 3D world: each rack a
+cabinet standing in its row on the hall floor, each host a U-slot block at its position, coloured by
+the active layer, with PDU/power and top-of-rack switch health from SNMP/Redfish telemetry when
+present. At L2, rows of racks MUST then stand side by side so the hall reads like the real floor. The
+front-of-rack elevation is its 2D equivalent.
 
 *Acceptance:* Given a rack with hosts in U10–U30 and Redfish telemetry, when L3 renders, then each host
 sits at its U position, PDU health is shown, and the label "rack 14, U22" identifies a host.
@@ -390,12 +469,12 @@ timeline shows the restarts and the HPA decision, and chips link to its service 
 
 | View | Key | Best for | Shows | Built on | Mockup |
 |---|---|---|---|---|---|
-| **Map** | `Alt+1` | "Where in the world?", NOC wall | Geography, providers, DCs | [05](05-visualisation-catalogue.md) §7 | [01-landscape-map](../mockups/01-landscape-map.svg) |
-| **Topology** | `Alt+2` | Dependencies, causal paths | App floor | [04](04-surfaces.md) §4.1 | [02-atlas-topology](../mockups/02-atlas-topology.svg) |
-| **City** | `Alt+3` | "Find the tall red tower"; size vs load at a glance | Containment as districts/buildings | [05](05-visualisation-catalogue.md) §3 | — |
-| **Infra** | `Alt+4` | Fleet state, capacity, cluster detail | Infra floor (hex grid, packing, rack) | §4.2–4.4 | [03-infra-cluster](../mockups/03-infra-cluster.svg) |
-| **Segments** | `Alt+5` | Comparing slices (region × tier, team × env) | Matrix over any two dimensions | [07](07-alerting.md) §3.2 | [04-segments-matrix](../mockups/04-segments-matrix.svg) |
-| **Explorer** | `Alt+6` | Precise search, inventory, keyboard work, accessibility | Tree + table | §5.1 | — |
+| **Map** | `Alt+1` | "Where in the world?", NOC wall | 3D world placed by geography: islands, plateaus, DCs; 2D flat map under `T` | [05](05-visualisation-catalogue.md) §3, §7 | [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg); 2D [01-landscape-map](../mockups/01-landscape-map.svg) |
+| **Topology** | `Alt+2` | Dependencies, causal paths | App floor: 3D layered graph (depth by tier) for large graphs; flat 2D layered under `T` | [04](04-surfaces.md) §4.1, [05](05-visualisation-catalogue.md) VIZ-073 | [22-topology-3d](../mockups/22-topology-3d.svg); 2D [02-atlas-topology](../mockups/02-atlas-topology.svg) |
+| **City** | `Alt+3` | "Find the tall red tower"; size vs load at a glance | Containment as a 3D city of districts and buildings, laid out by size (no geography); treemap under `T` | [05](05-visualisation-catalogue.md) VIZ-074 | [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) |
+| **Infra** | `Alt+4` | Fleet state, capacity, cluster detail | Infra floor: 3D infra city, building cut-away, rack variant; hex grid / packing / elevation under `T` | §4.2–4.4 | [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg); 2D [03-infra-cluster](../mockups/03-infra-cluster.svg) |
+| **Segments** | `Alt+5` | Comparing slices (region × tier, team × env) | 2D matrix over any two dimensions (3D columns variant opt-in, [05](05-visualisation-catalogue.md) VIZ-080) | [07](07-alerting.md) §3.2 | [04-segments-matrix](../mockups/04-segments-matrix.svg) |
+| **Explorer** | `Alt+6` | Precise search, inventory, keyboard work, accessibility | 2D tree + table | §5.1 | — |
 
 #### EST-023 — Six views with fixed keys
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer
@@ -444,7 +523,8 @@ Switching view MUST tween the positions of every entity present in both views
 [09](09-performance-contract.md) (≤ 250 ms).
 
 *Acceptance:* Given a focused service, when the user switches from Topology to City, then its mark
-moves continuously to its building over ≤ 250 ms.
+moves continuously to its building over ≤ 250 ms; and switching from 3D Infra to 2D Segments
+flattens the buildings into their containing cells over ≤ 250 ms.
 
 #### EST-028 — Split screen of two views
 **MUST** · M-UI3 · NOC, Platform
@@ -506,7 +586,8 @@ same result.
 #### EST-033 — Screen-size semantic-zoom thresholds
 **MUST** · M-UI3 · SRE, Platform, NOC
 
-A spatial container MUST expand into its children when its on-screen footprint exceeds an expansion
+A spatial container MUST expand into its children when its on-screen footprint (in 3D, the projected
+screen area of its top face, as an equivalent square side) exceeds an expansion
 threshold (default 120 px) and collapse below a collapse threshold (default 60 px); the gap is
 hysteresis that prevents flicker. Both thresholds MUST be a per-user setting. Expansion MUST crossfade
 children in over 150 ms, with their data pre-fetched on approach ([03](03-interaction-model.md) §5).
@@ -547,11 +628,12 @@ visits each match once in order and `N` reverses; and `Tab` visits entities in d
 #### EST-037 — Minimap
 **MUST** · M-UI3 · SRE, Platform, NOC
 
-Every estate view MUST show a minimap of the whole Landscape with a viewport rectangle; clicking or
-dragging in it MUST move the camera.
+Every estate view MUST show a minimap of the whole Landscape with a viewport rectangle (in 3D, the
+camera's view footprint on the ground plane, with a heading tick); clicking or dragging in it MUST
+move the camera.
 
 *Acceptance:* Given a node at L3, when the user clicks another region on the minimap, then the camera
-flies there and the rectangle follows.
+flies there and the footprint follows; after `Q` rotates the camera, the heading tick rotates too.
 
 #### EST-038 — Depth gauge breadcrumb
 **MUST** · M-UI3 · SRE, Platform, Engineer
@@ -770,9 +852,9 @@ workload (restricted)" and no API response to that user contains `batch-etl`.
 
 ## 12. Storyboard: Lee's Monday capacity review (non-incident)
 
-1. **Lee opens Pulsus** (Platform Perspective). It lands on L2 for their clusters, in Infra view with
-   the Capacity layer. The cluster header strip shows `prod-eu-1`: 82 % CPU requested, 41 % used.
-2. **Group by pool, colour by waste.** The `memory` pool is mostly blue (idle). The Cost layer puts it
+1. **Lee opens Pulsus** (Platform Perspective). It lands on L2 for their clusters, in the 3D Infra
+   city with the Capacity layer. The cluster header strip shows `prod-eu-1`: 82 % CPU requested, 41 % used.
+2. **Group by pool, colour by waste.** The `memory` pool's block is mostly blue (idle) and low-rise. The Cost layer puts it
    at $9.2k/month of unused requests.
 3. **Lasso the idle nodes, then `B`.** Compare shows that 90 % of the waste is `search-indexer`
    requesting 16 GiB and using 3.
@@ -804,6 +886,156 @@ covered by EST-053.
 
 *Acceptance:* Given the storyboard fixture, when a tester performs steps 1–4 and 6 with pointer and
 shortcuts only, then every step succeeds without the query editor being opened, in under 2 minutes.
+
+## 12a. 3D-first estate
+
+This section consolidates the 3D-first rules that §2–§6 rely on. The rendering and mark rules are
+in [05](05-visualisation-catalogue.md) §3, the 3D visual language in [08](08-visual-language.md)
+§10, the camera in [03](03-interaction-model.md) §3, and the frame budgets in
+[09](09-performance-contract.md) PRF-043 to PRF-045.
+
+#### EST-055 — 3D-first estate views
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business
+
+The Landscape (L0–L2) in the Map view, the City view and the Infra view MUST default to GPU-rendered
+3D perspective scenes with the Orbit camera ([03](03-interaction-model.md) INT-001). The Topology
+view MUST default to the 3D layered graph when the graph exceeds the size threshold of
+[05](05-visualisation-catalogue.md) VIZ-073, and to the flat 2D layered graph otherwise. Segments and
+Explorer MUST be 2D. Every 3D view MUST have its 2D equivalent on `T` (Table 15-2), and `T` MUST
+keep focus, selection, layer and Context. A user's `T` choice MUST persist per view for that user;
+it MUST NOT change the default for others.
+
+*Acceptance:* Given a fresh user and a multi-region estate, when the user presses `Alt+1`, `Alt+3`
+and `Alt+4` in turn, then each opens as a perspective 3D scene in Orbit mode; `Alt+2` on a
+2 000-service graph opens the 3D layered graph and on a 40-service graph the 2D layered graph;
+`Alt+5` and `Alt+6` open 2D; pressing `T` in Infra shows the hex grid with the same focus and
+selection, and after reload Infra opens in 2D for that user only.
+
+#### EST-056 — Containment as a 3D world
+**MUST** · M-UI3 · Platform, NOC, SRE
+
+The 3D estate MUST draw containment as in Table 15-9: provider as an island, region or DC as a raised
+plateau on the ground plane placed by geography where coordinates are known, cluster as a district,
+node as a building (footprint ∝ capacity, height ∝ utilisation or the layer's load metric), pod as a
+floor slab or stacked block inside its building shown by cut-away on focus, and container as a cell
+within a slab. On-prem estates with rack attributes MUST be able to use the physical-layout variant
+(EST-021).
+
+*Acceptance:* Given the EST-001 fixture, when the user flies from L0 to one container, then the
+scene shows islands, plateaus, districts, buildings, pod slabs (after the cut-away) and container
+cells in that order; and a node with twice the allocatable CPU of its neighbour has twice its
+footprint area (±5 %).
+
+#### EST-057 — Causal paths cross floors
+**MUST** · M-UI3 · SRE, Engineer, Platform
+
+When an incident's causal path ([06](06-ai-copilot.md)) runs through both applications and
+infrastructure, the 3D floors MUST draw it as one continuous path that may cross floors: along
+dependency arcs on the app floor and down runs-on threads to the buildings or pod slabs involved. The
+2D split view MUST draw the same path across its two panes.
+
+*Acceptance:* Given payments degraded by a saturated co-tenant (EST-014), when the user holds `V`
+with the incident focused, then one highlighted path runs gateway → checkout → payments on the app
+floor and down a thread to the 2 saturated buildings, and the same path appears in the split view
+after `T`.
+
+#### EST-058 — 3D encodings
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+The 3D estate MUST use the encodings of Table 15-10: height = load or utilisation; footprint =
+capacity; colour = health using only the state tokens of [08](08-visual-language.md) VL-003, with
+healthy entities drawn in near-monochrome neutral grey so that a calm estate reads almost
+monochrome; glow ∝ anomaly score (VL-004); the probable origin ⊕ marked by a vertical light beacon;
+victims desaturated with a dashed ground ring (VL-005); edges as arcs with traffic particles
+([05](05-visualisation-catalogue.md) VIZ-075). Bindings for height, footprint and colour MUST follow
+the active layer (Table 15-5).
+
+*Acceptance:* Given a healthy estate, when the infra city renders, then no building face carries a
+state hue other than neutral grey; given the storyboard incident, then psp-api's building carries a
+beacon, the victims are desaturated with dashed ground rings, and the glow intensity ratio of two
+entities with anomaly scores 0.4 and 0.8 is 1 : 2 (±10 %).
+
+#### EST-059 — Billboard labels never overlap
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+Labels in 3D estate scenes MUST be screen-aligned billboards joined to their entity by a leader
+line, MUST be culled by level of detail and care score ([01a](01a-audiences-and-perspectives.md)
+§2.3) so that labels never overlap one another, and MUST always show the focused, selected and
+origin entities ([05](05-visualisation-catalogue.md) VIZ-076).
+
+*Acceptance:* Given the Large fixture of Table 15-7, when the user orbits the infra city for 30 s,
+then no frame contains two overlapping labels, and the focused building's label is present in every
+frame.
+
+#### EST-060 — Semantic zoom is one continuous flight
+**MUST** · M-UI3 · SRE, Platform, NOC, Engineer
+
+Semantic zoom through the infrastructure ladder MUST be one continuous camera flight: globe → region
+plateau → cluster district → node building → pod slab → container cell, with no cut between levels
+except under the reduced-motion fallback (EST-063). Each programmatic leg (dive, rise, `Home`, ⌘K
+jump) MUST complete within the ≤ 250 ms camera-transition budget ([09](09-performance-contract.md)
+PRF-007), and the next level's data MUST be pre-fetched on approach (PRF-029) so it is present on
+arrival. Double-clicking an entity MUST dive into it (EST-035). Mockup:
+[23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg).
+
+*Acceptance:* Given the Large fixture, when the user double-clicks a region, a cluster, a node and
+a pod in turn, then each leg completes in ≤ 250 ms, every frame of the capture shows the scene (no
+blank or loading frame), no leg waits on a request, and the altitude ladder ([03](03-interaction-model.md)
+INT-044) advances L1 → L2 → L3 → L4.
+
+#### EST-061 — Camera aids in every 3D estate view
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+Every 3D estate view MUST show the orbit gizmo / compass ([03](03-interaction-model.md) INT-043),
+the altitude ladder L0–L5 (INT-044), the minimap (EST-037) and the depth-gauge breadcrumb (EST-038).
+
+*Acceptance:* Given each of Map, City, Infra and 3D Topology, when it renders, then the gizmo,
+altitude ladder, minimap and breadcrumb are all visible and each responds to a click.
+
+#### EST-062 — 3D estate at scale
+**MUST** · M-UI3 · NOC, Platform, SRE
+
+The 3D City and Infra scenes MUST meet [09](09-performance-contract.md) PRF-043 (10 000 buildings and
+50 000 pod blocks) on WebGPU and PRF-044 on the WebGL2 tier.
+
+*Acceptance:* As PRF-043 and PRF-044.
+
+#### EST-063 — 2D fallback
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business, Support, Admin
+
+Every estate view MUST remain fully usable in its 2D equivalent. The estate MUST open in the 2D
+equivalent instead of 3D when `prefers-reduced-motion` is set, when the user sets the "2D estate"
+preference, or when the device cannot meet PRF-044 on its GPU tier. Explorer and Segments are 2D and
+MUST remain the keyboard- and screen-reader-accessible paths (EST-032).
+
+*Acceptance:* Given `prefers-reduced-motion: reduce`, when the Atlas opens, then Map, City and Infra
+open in their 2D equivalents and `T` still shows 3D on request with instant cuts; given the "2D
+estate" preference, the same holds without reduced motion; and every action in EST-032 succeeds in
+the 2D equivalents.
+
+#### EST-064 — Space is 3D, signals are 2D, and both are linked
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business
+
+Spatial views (the estate, global views, infrastructure, service maps and topology) MUST default to
+3D (EST-055). Signal views (time series, distributions, tables, logs, trace waterfalls and flame
+graphs) MUST default to 2D, because reading precise values matters there; 3D signal views are
+opt-in or auto-chosen only where a third dimension carries meaning
+([05](05-visualisation-catalogue.md) §3.1); the canonical example is the fleet line stack
+([05](05-visualisation-catalogue.md) VIZ-085), which lays the 2D series of every member of a group
+side by side along depth. The two MUST be linked:
+- a 2D chart MUST be dockable beside or inside every 3D scene;
+- selecting or hovering an entity in 3D MUST drive the docked 2D chart to that entity's slice;
+- brushing in a 2D chart MUST highlight the matching entities in 3D;
+- both MUST share the one global time cursor ([03](03-interaction-model.md) INT-026).
+
+`T` MUST still flatten any 3D scene to its 2D equivalent.
+
+*Acceptance:* Given the infra city with a CPU-utilisation chart docked, when the user hovers a
+building, then the chart shows that node's series within one frame; when the user brushes the
+chart's top decile of CPU at 12:20, then exactly the buildings above it at 12:20 are highlighted;
+moving the time cursor in the chart changes building heights to that instant; `T` flattens the
+scene while the docked chart stays; and "Show all nodes as lines" on a district opens the fleet line
+stack of its nodes, sharing the same time cursor.
 
 ## 13. Requirements summary
 
@@ -863,12 +1095,23 @@ shortcuts only, then every step succeeds without the query editor being opened, 
 | EST-052 | Runs-on never leaks hidden co-tenants | MUST | M-UI6 |
 | EST-053 | Propose right-size | SHOULD | M-UI6 |
 | EST-054 | Capacity review without typing a query | MUST | M-UI5 |
+| EST-055 | 3D-first estate views | MUST | M-UI3 |
+| EST-056 | Containment as a 3D world | MUST | M-UI3 |
+| EST-057 | Causal paths cross floors | MUST | M-UI3 |
+| EST-058 | 3D encodings | MUST | M-UI3 |
+| EST-059 | Billboard labels never overlap | MUST | M-UI3 |
+| EST-060 | Semantic zoom is one continuous flight | MUST | M-UI3 |
+| EST-061 | Camera aids in every 3D estate view | MUST | M-UI3 |
+| EST-062 | 3D estate at scale | MUST | M-UI3 |
+| EST-063 | 2D fallback | MUST | M-UI3 |
+| EST-064 | Space is 3D, signals are 2D, and both are linked | MUST | M-UI3 |
 
 ## 14. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII diagrams replaced by region tables and SVG mockups; open questions E1–E5 resolved (below) |
+| 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: R4 reversed; EST-005, EST-006, EST-007, EST-008, EST-010, EST-011, EST-012, EST-015, EST-016, EST-017, EST-018, EST-019, EST-021, EST-027, EST-033, EST-037 edited in place; §3.4, Tables 15-9 and 15-10 and §12a (EST-055 to EST-064) added; Tables 15-2 and 15-4 updated; mockups 19–24 referenced (R13–R16) |
 
 ## Resolved during formalisation
 
@@ -877,7 +1120,7 @@ shortcuts only, then every step succeeds without the query editor being opened, 
 | R1 | E1: expansion threshold and tunability open | Defaults 120 px expand / 60 px collapse, per-user setting (EST-033) |
 | R2 | E2: inventory connectors v1 or later | SHOULD at M-UI5; telemetry derivation is the default (EST-004) |
 | R3 | E3: rack elevation in v1 | MAY at M-UI5, to be raised if an on-prem design partner needs it (EST-021) |
-| R4 | E4: two-floor 3D vs split 2D as the default | Split 2D is the default for hold-`V`; `T` switches to the 3D floors (EST-012). The A/B test of the floors stays a research item |
+| R4 | E4: two-floor 3D vs split 2D as the default | *Revised in 1.0-rc2:* the **3D floors** are the default for hold-`V` (app floor above the infra city, runs-on threads dropping to buildings and pods); split 2D is the `T` and EST-063 fallback (EST-012). The A/B test of the floors stays a research item |
 | R5 | E5: ephemeral entity retention | 30 days of first/last seen in PostgreSQL per D2, older from PulsusDB (EST-046) |
 | R6 | The landscape wireframe listed an "Inventory" layer that is not in §7 | Inventory-only entities are part of the Coverage layer; no separate layer |
 | R7 | Perspectives "FinOps" and "Exec" are not audiences in 01a | Kept as presets of the Platform and Business Perspectives (Table 15-8) |
@@ -886,3 +1129,7 @@ shortcuts only, then every step succeeds without the query editor being opened, 
 | R10 | Draft did not say what happens to metrics whose scope cannot be evaluated | Fail closed, following O1's recommendation; final behaviour follows ADR-0013 |
 | R11 | Draft allowed the scale table and the topology cap (1 000 edges) to conflict | Targets stand per A1; truncation is shown by the coverage meter (EST-049) |
 | R12 | Lee's storyboard depends on Cost and Platform Perspective (M-UI5) and on an audited write action | The storyboard acceptance (EST-054, steps 1–4 and 6) is M-UI5; the right-size action (EST-053) is SHOULD at M-UI6 with the audit work |
+| R13 | 1.0-rc2: the spec had drifted to 2D defaults (split 2D floors, hex grid for Infra, flat Map), contrary to the owner's brief of 3D GPU-rendered infrastructure with game-like navigation | Landscape L0–L2, City and Infra default to 3D Orbit scenes; Topology 3D above the VIZ-073 threshold; 2D is the `T` equivalent and the EST-063 fallback (EST-055, EST-063) |
+| R14 | 1.0-rc2: no spatial metaphor was fixed for containment in 3D | Region plateau, cluster district, node building, pod slab, container cell; racks as a physical-layout variant (Table 15-9, EST-056) |
+| R15 | 1.0-rc2: the owner clarified that the product is a combination of 2D and 3D | Space is 3D, signals are 2D, both linked through docked charts, shared selection and one time cursor (EST-064) |
+| R16 | 1.0-rc2: vendor and orchestrator names in edited requirements | Replaced by generic terms in the edited rows and requirements (Table 15-2, EST-006, EST-010, EST-016) |

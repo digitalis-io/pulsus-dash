@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-18 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
 | **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T01 Frontend architecture](../technical/T01-frontend-architecture.md) · [T05 Testing & performance](../technical/T05-testing-and-performance.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) |
-| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [14-board](../mockups/14-board.svg) · [16-gallery](../mockups/16-gallery.svg) |
+| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [02-atlas-topology](../mockups/02-atlas-topology.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [14-board](../mockups/14-board.svg) · [16-gallery](../mockups/16-gallery.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
 
 Section numbers §1–§14 are kept identical to the source draft because other documents cite them
 (e.g. "05 §11").
@@ -420,20 +420,28 @@ enabled).
 
 ## 3. Topology & space (3D / 2.5D)
 
+**Space is 3D, signals are 2D, and both are linked** (VIZ-077, [15](15-estate-navigation.md)
+EST-064). The estate, global views, infrastructure, service maps and topology default to 3D; time
+series, distributions, tables, logs, trace waterfalls and flame graphs default to 2D; a 3D signal
+view (§3.1) is used only where a third dimension carries meaning. Every 3D vis flattens to its 2D
+equivalent with `T`.
+
 **Table 5-4 — Topology & space vis**
 
 | Vis | Use | Scale | Notes | Milestone |
 |---|---|---|---|---|
-| **Graph (force/layered)** | Atlas Topology, Lens dependency mini-map, node-graph panel equivalent (arc-segmented node rings for status split, edge thickness/colour bound to fields) | 10k nodes / 50k edges | Layout computed incrementally in a worker (stable positions; pinned seeds per org); clustering LOD; particle edges via instanced quads | M-UI2 (mini-map) · M-UI3 (Atlas scale) |
-| **City (3D treemap)** | Atlas City view | 50k buildings | Height/colour bound to chosen metrics; instanced boxes; SSAO-lite shading for depth cues | M-UI3 |
-| **Globe / map** | Multi-region, Atlas Map view | — | See §7 for the full geo layer set | M-UI3 |
-| **Heat grid / hexbin wall** (host-map and hexagon status-grid style) | Nodes/pods/hosts at fleet scale | 100k cells | One cell per instance, grouped by parent; semantic zoom into cells; hexagon or square tiling | M-UI3 |
-| **3D surface** ("latency landscape") | Histogram over time | 2k × 200 | Toggle from heatmap: same data, extruded; orbit to see bimodal ridges | M-UI3 |
+| **Graph (force/layered)** | Atlas Topology, Lens dependency mini-map, node-graph panel equivalent (arc-segmented node rings for status split, edge thickness/colour bound to fields) | 10k nodes / 50k edges | Layout computed incrementally in a worker (stable positions; pinned seeds per org); clustering LOD; particle edges via instanced quads. **3D layered** (depth = tier or layer) is the Atlas default for large graphs (VIZ-073); flat 2D layered is its `T` equivalent and the default for small graphs and the mini-map | M-UI2 (mini-map) · M-UI3 (Atlas scale, 3D layered) |
+| **City / containment world (3D)** | Atlas Map (L0–L2), City and Infra views; the infra floor | 10k buildings + 50k pod blocks at the frame targets ([09](09-performance-contract.md) PRF-043); 50k buildings with LOD | Plateaus, districts, buildings, pod slabs, container cells ([15](15-estate-navigation.md) Table 15-9); footprint = capacity, height = load, colour = health; instanced boxes; key + ambient lighting, depth fog and contact shadows per [08](08-visual-language.md) §10; cut-away on focus; 2D equivalent: treemap or heat grid (VIZ-074) | M-UI3 |
+| **Globe / map** | Multi-region, Atlas Map view | — | Globe at the highest altitude, flattening to the ground plane of the 3D world as the camera descends; regions as plateaus placed geographically; the flat geomap (§7) is the `T` equivalent | M-UI3 |
+| **Heat grid / hexbin wall** (host-map and hexagon status-grid style) | 2D equivalent of the Infra city (`T`); Alerts-room hexbin wall | 100k cells | One cell per instance, grouped by parent; semantic zoom into cells; hexagon or square tiling | M-UI3 |
+| **Floors (stacked)** | App floor above the infra city with runs-on threads ([15](15-estate-navigation.md) §3.3) | Selection threads only | Graph + City in one scene; threads as M6 curves; split 2D under `T` | M-UI3 |
+| **3D surface** ("latency landscape") | Histogram over time | 2k × 200 | Specified as the latency surface 3D signal view (§3.1, VIZ-079) | M-UI3 |
 | **Trace skyline** | 3D waterfall extruded by service | 50k spans | — | M-UI3 |
 | **Flame landscape** | Profile over time | 100k frames × time | 2D fallback is the default | M-UI3 |
 
-Mockups: [02-atlas-topology](../mockups/02-atlas-topology.svg),
-[03-infra-cluster](../mockups/03-infra-cluster.svg).
+Mockups: [22-topology-3d](../mockups/22-topology-3d.svg) and
+[02-atlas-topology](../mockups/02-atlas-topology.svg) (2D), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg)
+and [03-infra-cluster](../mockups/03-infra-cluster.svg) (2D), [21-floors-3d](../mockups/21-floors-3d.svg).
 
 #### VIZ-029 — Graph layout is stable and incremental
 **MUST** · M-UI3 · SRE, NOC, Platform
@@ -465,9 +473,11 @@ the count.
 #### VIZ-031 — 3D only when it encodes a dimension
 **MUST** · M-UI3 · SRE, Platform, NOC
 
-A 3D vis MUST encode an extra data dimension (height = metric, depth = service or time) or aid
-navigation at scale. Every 3D view MUST have a 2D equivalent reachable with `T`. There MUST NOT be
-3D pie charts or decorative perspective on 2D charts.
+A 3D vis MUST encode an extra data dimension (height = metric, depth = service, tier, lane or time,
+the vertical axis = layer of the stack) or aid navigation at scale. The estate's spatial vis are 3D
+by default under this rule ([15](15-estate-navigation.md) EST-055). Every 3D view MUST have a 2D
+equivalent reachable with `T`. There MUST NOT be 3D pie charts or decorative perspective on 2D
+charts.
 
 *Acceptance:* Given any 3D vis in Table 5-4, when the user presses `T`, then the 2D equivalent shows
 the same data and selection; and the vis spec schema rejects 3D or perspective on pie, bar and line
@@ -478,9 +488,206 @@ vis.
 
 The heat grid MUST draw one cell per instance, grouped by parent, with hexagon or square tiling, and
 MUST support semantic zoom into a cell (e.g. node → its pods) per [15](15-estate-navigation.md) §6.
+It is the 2D equivalent of the Infra city and the Alerts-room hexbin wall; it is not the default
+Infra view.
 
 *Acceptance:* Given 100k pod cells, when rendered, then the grid holds the frame targets; and when the
 user zooms on a node cell past the expansion threshold, then its pods appear as child cells.
+
+#### VIZ-073 — 3D layered topology for large graphs
+**MUST** · M-UI3 · SRE, NOC, Platform
+
+The Graph vis in the Atlas Topology view MUST default to a 3D layered layout, with depth assigned by
+tier or layer (edge → gateway → services → data → external), when the graph visible after clustering
+LOD exceeds 300 nodes (a per-user setting), and MUST default to the flat 2D layered layout otherwise.
+`T` MUST switch between the two, keeping each node's in-tier position so that the 2D layout is the 3D
+one seen front-on. Mockup: [22-topology-3d](../mockups/22-topology-3d.svg).
+
+*Acceptance:* Given a 2 000-service graph, when Topology opens, then it is 3D layered with each tier
+on its own depth plane; given 40 services, then it opens 2D layered; and `T` on the 3D graph morphs
+to 2D within 250 ms with each node's horizontal order preserved.
+
+#### VIZ-074 — Containment world vis
+**MUST** · M-UI3 · Platform, NOC, SRE
+
+The City / containment-world vis MUST draw containment as plateaus, districts, buildings, pod slabs
+and container cells ([15](15-estate-navigation.md) Table 15-9) using instanced extruded boxes (T02
+M11), with footprint, height and colour bound to the active layer, a cut-away of a building's walls
+on focus revealing its pod slabs, and the lighting, fog, ground grid and contact shadows of
+[08](08-visual-language.md) §10. It MUST have a 2D equivalent on `T` (treemap for City, heat grid for
+Infra, flat map for Map). Mockup: [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg).
+
+*Acceptance:* Given 10 000 buildings and 50 000 pod blocks, when rendered, then it meets
+[09](09-performance-contract.md) PRF-043; focusing a building removes its near walls and shows one
+slab per pod; and `T` shows the treemap with the same selection.
+
+#### VIZ-075 — 3D edges are arcs with traffic particles
+**MUST** · M-UI3 · SRE, NOC, Platform
+
+In 3D scenes, edges MUST be drawn as arcs lifted above the ground plane (height ∝ distance, so short
+edges stay low) carrying traffic particles whose rate ∝ request rate, with thickness bound to the
+edge field. Under `prefers-reduced-motion`, particles MUST become static dashes
+([08](08-visual-language.md) VL-016).
+
+*Acceptance:* Given two edges at 10 and 1 000 rps, then the second carries particles at 100× the
+rate (±10 %); and with reduced motion both are static dashes of different thickness.
+
+#### VIZ-076 — 3D labels are billboards with leader lines
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+Labels in every 3D vis MUST be screen-aligned MSDF billboards ([08](08-visual-language.md) VL-011)
+anchored by a leader line, placed each frame by a greedy pass in care-score order that culls any
+label that would overlap a placed one, and MUST always place the focused, selected and origin labels.
+
+*Acceptance:* Given 10 000 labelled buildings, when the camera orbits 360°, then no frame has
+overlapping labels, the focused label is in every frame, and the label pass stays within the frame
+budget of PRF-043.
+
+#### VIZ-077 — Space is 3D, signals are 2D, and both are linked
+**MUST** · M-UI3 · SRE, NOC, Platform, Engineer
+
+Spatial vis (Table 5-4 estate and topology rows) MUST default to 3D; signal vis (Tables 5-1 to 5-3,
+§4, §6) MUST default to 2D, and a 3D signal view (§3.1) MUST be used only when opted into or chosen
+by the auto-vis rules (§12) where a third dimension carries meaning. A 2D chart MUST be dockable
+beside or inside every 3D scene, with hover and selection in 3D driving the 2D slice, a brush in 2D
+highlighting in 3D, and one shared time cursor, as in [15](15-estate-navigation.md) EST-064.
+
+*Acceptance:* As EST-064; and given a new board, when a time-series query is added, then it renders
+as a 2D line chart, not a 3D view.
+
+### 3.1 3D signal views
+
+3D signal views show 2D signals with a third dimension that carries real meaning (many series side
+by side, distributions over time, a third attribute). They are opt-in, or offered by auto-vis where
+the rule in the table holds. Each has a 2D equivalent on `T` and a table view on `Shift+T`.
+
+**Table 5-4a — 3D signal views**
+
+| Vis | Use | Scale | Notes | Milestone |
+|---|---|---|---|---|
+| **Fleet line stack** (headline) | Line charts of every member of a group (all nodes in a cluster, all pods of a service, all instances in a pool) in one zoomable 3D chart | 2 000 lanes × full window | X = time, Y = value, Z = one lane per member; band + outlier LOD at distance; auto-offered at > 50 series of one metric (VIZ-085) | M-UI3 |
+| **Latency surface** | Histogram buckets × time × count | 2k × 200 | Surface mesh (T02 M11 height field), height colour map, contours, optional wireframe; drives two 2D slices (VIZ-079) | M-UI3 |
+| **Waterfall of distributions** | Per-interval latency or size distributions | 500 intervals × 200 bins | Line strips stacked along depth; orthographic toggle (VIZ-081) | M-UI3 |
+| **Span point cloud** | Spans by duration × time × chosen attribute | 10⁷ spans | Pixel or sphere markers; densifies to volume/heat when zoomed out (VIZ-082) | M-UI2 |
+| **3D columns** | Two categorical dimensions × a value (e.g. region × tier × error rate) | 100 × 100 | 3D variant of the Segments matrix; 2D stays the Segments default (VIZ-080) | M-UI5 |
+| **3D scatter** | Three numeric attributes per entity (e.g. CPU × memory × p99) | 10⁵ points | Size / colour as 4th and 5th channels; log axes (VIZ-083) | M-UI5 |
+| **Imported 3D models** | Data-centre and rack geometry for the physical-layout variant | — | glTF, geometry only (VIZ-084) | M-UI6 |
+
+Mockup: [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg).
+
+#### VIZ-078 — Shared 3D chart features
+**MUST** · M-UI3 · SRE, Engineer, Platform
+
+Every 3D signal view MUST provide:
+- an axis cube with per-plane visibility, by default hiding the planes nearest the camera, with
+  gridlines and axis bands;
+- linear and log axes;
+- a perspective / orthographic toggle;
+- orbit, zoom and reset (double-click on empty space);
+- camera presets front, top and side, reachable from the orbit gizmo ([03](03-interaction-model.md)
+  INT-043) and by keyboard through it;
+- per-point tooltips;
+- colours and type from the same tokens as 2D ([08](08-visual-language.md) VL-021);
+- its 2D equivalent on `T` and the table view on `Shift+T` (VIZ-066).
+
+*Acceptance:* Given each 3D signal view at its milestone, when the camera orbits, then the near axis
+planes hide and the far ones show; each preset is reachable with the keyboard only; double-click on
+empty space restores the initial pose; and `Shift+T` shows the data as a table.
+
+#### VIZ-079 — Latency surface
+**MUST** · M-UI3 · SRE, Engineer
+
+The latency surface MUST draw histogram buckets × time × count as a surface mesh with a height colour
+map (a sequential ramp, [08](08-visual-language.md) VL-006), contour lines, an optional wireframe and
+a linked colour legend, updating in place in LIVE mode. Selecting a time row or a bucket column MUST
+drive two linked 2D slice charts: the distribution at time t, and that bucket over time.
+
+*Acceptance:* Given a bimodal latency histogram over 1 h, when the user selects the row at 12:20,
+then the docked 2D chart shows the distribution at 12:20 with both modes; selecting the 2 s bucket
+shows that bucket's count over time; and in LIVE mode new rows appear at the front without a reload.
+
+#### VIZ-080 — 3D columns for segments
+**MAY** · M-UI5 · NOC, SRE, Business
+
+Dash MAY offer a 3D variant of the Segments matrix: two categorical dimensions × a value as cylinder
+or box columns, coloured by health. The 2D matrix MUST remain the Segments default.
+
+*Acceptance:* Given region × tier × error rate, when the user selects the 3D variant, then each
+column's height is its error rate and its colour its health; and Segments opens in 2D for a new user.
+
+#### VIZ-081 — Waterfall of distributions
+**MUST** · M-UI3 · SRE, Engineer
+
+The waterfall of distributions MUST stack per-interval latency or size distributions along depth as
+line strips with per-point gradient colour. Hover and selection MUST use a closest-to-camera hit
+test and drive linked 2D slices. An orthographic toggle MUST allow reading without perspective
+distortion.
+
+*Acceptance:* Given 60 one-minute distributions, when the user hovers where two strips overlap on
+screen, then the nearer strip is picked and its 2D distribution is shown; and with orthographic on,
+equal values on near and far strips have equal screen heights.
+
+#### VIZ-082 — Span point cloud
+**MUST** · M-UI2 · SRE, Engineer
+
+The span point cloud MUST draw up to 10⁷ spans as points with duration × time × a chosen attribute,
+as pixel or sphere markers coloured by status, and MUST densify to a volume or heat rendering when
+zoomed out so that no region becomes an unreadable blob. It is the 3D companion of the span-duration
+scatter (Table 5-1).
+
+*Acceptance:* Given 10⁷ spans, when rendered, then [09](09-performance-contract.md) PRF-017 is met;
+zooming out switches to the density rendering and the coverage meter states it; and clicking a point
+opens its trace.
+
+#### VIZ-083 — 3D scatter
+**SHOULD** · M-UI5 · Platform, SRE
+
+Dash SHOULD offer a 3D scatter of three numeric attributes per entity, with marker size or colour as
+a 4th or 5th channel, log axes and per-point tooltips.
+
+*Acceptance:* Given nodes with CPU, memory and p99, when the 3D scatter opens with log p99 and size =
+pod count, then each node is placed by its three values and the tooltip shows all five.
+
+#### VIZ-084 — Imported 3D models for physical layout
+**MAY** · M-UI6 · Platform, NOC
+
+Dash MAY import glTF models for data-centre and rack geometry, used as geometry only (no textures,
+[08](08-visual-language.md) VL-027) in the physical-layout variant ([15](15-estate-navigation.md)
+EST-021).
+
+*Acceptance:* Given a glTF model of a hall, when imported, then racks stand at their modelled positions
+with hosts coloured by the active layer and no texture is drawn.
+
+#### VIZ-085 — Fleet line stack
+**MUST** · M-UI3 · SRE, Platform, NOC, Engineer
+
+The fleet line stack MUST draw every member of a group (all nodes in a cluster, all pods of a
+service, all instances in a pool) as its own time-series line laid along depth: X = time, Y = value,
+Z = one lane per member.
+- **Lanes** MUST be orderable by care score (default), name, rack/zone, or similarity clustering, and
+  shown as line strips or filled ribbons.
+- **Colour** per point MUST encode either the value (gradient) or health; outlier lanes MUST be lifted
+  and lit while normal lanes recede into the depth fog ([08](08-visual-language.md) VL-024).
+- **Navigation:** the camera orbits, zooms and dollies along depth; zoom is per axis, with wheel = time,
+  `Shift`+wheel = value, `Alt`+wheel = lane depth ([03](03-interaction-model.md) §4.1); double-click
+  on a lane MUST fly to it and open the linked 2D chart of that member; a brush on time MUST apply to
+  all lanes.
+- **Presets:** an orthographic "flat front" preset MUST turn it into an overlay of all lines and a
+  "top" preset into a lane × time heatmap, each transition animated in ≤ 250 ms.
+- **Linked 2D:** hovering a lane MUST highlight it and show its 2D series and value; the shared time
+  cursor MUST be drawn as a plane through all lanes.
+- **Data:** it MUST use the planner's per-series fetch with LOD ([T07](../technical/T07-scene-query-planner.md));
+  lanes beyond the budget MUST be drawn as aggregated bands, and the coverage meter MUST say so.
+- **Auto-vis:** it MUST be offered when a query returns more than 50 series of the same metric, as a
+  3D alternative to band + outliers.
+
+Mockup: [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg).
+
+*Acceptance:* Given 2 000 node CPU series over 6 h, when the stack opens, then it holds 60 fps median
+on reference hardware (a) ([09](09-performance-contract.md) PRF-046) with band + outlier LOD on
+distant lanes; `Alt`+wheel changes only lane spacing; double-click on a lane flies to it and docks
+its 2D chart; "flat front" and "top" each complete in ≤ 250 ms; and with a 1 000-lane budget, the
+coverage meter reads "1 000 of 2 000 lanes, rest as bands".
 
 ## 4. Traces, logs, profiles
 
@@ -1148,12 +1355,26 @@ board.
 | VIZ-070 | Gallery runs on seeded synthetic data | MUST | M-UI1 |
 | VIZ-071 | Public gallery at /gallery | MUST | M-UI5 |
 | VIZ-072 | Gallery page controls | MUST | M-UI5 |
+| VIZ-073 | 3D layered topology for large graphs | MUST | M-UI3 |
+| VIZ-074 | Containment world vis | MUST | M-UI3 |
+| VIZ-075 | 3D edges are arcs with traffic particles | MUST | M-UI3 |
+| VIZ-076 | 3D labels are billboards with leader lines | MUST | M-UI3 |
+| VIZ-077 | Space is 3D, signals are 2D, and both are linked | MUST | M-UI3 |
+| VIZ-078 | Shared 3D chart features | MUST | M-UI3 |
+| VIZ-079 | Latency surface | MUST | M-UI3 |
+| VIZ-080 | 3D columns for segments | MAY | M-UI5 |
+| VIZ-081 | Waterfall of distributions | MUST | M-UI3 |
+| VIZ-082 | Span point cloud | MUST | M-UI2 |
+| VIZ-083 | 3D scatter | SHOULD | M-UI5 |
+| VIZ-084 | Imported 3D models for physical layout | MAY | M-UI6 |
+| VIZ-085 | Fleet line stack | MUST | M-UI3 |
 
 ## 16. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
+| 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 intro, Table 5-4 rows (Graph, City, Globe, Heat grid, 3D surface; Floors added), VIZ-031 and VIZ-032 edited in place; VIZ-073 to VIZ-077 added; §3.1 3D signal views (Table 5-4a, VIZ-078 to VIZ-085, incl. the fleet line stack) added (R11–R13) |
 
 ## Resolved during formalisation
 
@@ -1169,3 +1390,6 @@ board.
 | R8 | Sanitisation and no-iframe rules were scattered across §6, §9 | Consolidated into VIZ-054 and VIZ-056, applying to every vis and widget from M-UI1 |
 | R9 | The 10k/50k Graph target depended on a PulsusDB edge cap of 1 000 | Kept per assumption A1, with the coverage meter showing edge truncation as the degradation (VIZ-030) |
 | R10 | "Sandboxed WASM vis modules" had no timing beyond "later" | MAY at M-UI6; the declarative spec is SHOULD at M-UI5 |
+| R11 | 1.0-rc2: §3 made 3D a toggle from 2D for the estate, contrary to the owner's brief | Estate and topology vis are 3D by default with 2D on `T` (VIZ-073, VIZ-074, [15](15-estate-navigation.md) EST-055); "SSAO-lite" replaced by the restrained depth cues of [08](08-visual-language.md) §10 |
+| R12 | 1.0-rc2: the owner clarified "a combination of 2D and 3D" | Space is 3D, signals are 2D, linked (VIZ-077); 3D signal views are opt-in or auto-offered (§3.1) |
+| R13 | 1.0-rc2: milestones of the 3D signal views | Fleet line stack, latency surface and waterfall at M-UI3 (they reuse the M11 mesh and M1 polyline primitives); span point cloud at M-UI2 with the span scatter; 3D columns, 3D scatter at M-UI5; imported models at M-UI6 |

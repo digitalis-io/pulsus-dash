@@ -67,8 +67,19 @@ google-chrome --headless=new --disable-gpu --no-sandbox --window-size=1440,900 \
 | [16-gallery.svg](16-gallery.svg) | Showcase gallery, Line 10⁸: nav, live chart, fps/frame/points readout, tier + theme switches, editable spec, "Use in a board" | [05](../product/05-visualisation-catalogue.md) |
 | [17-mobile-alert-card.svg](17-mobile-alert-card.svg) | Phone PWA Alert Lens card (offline): as-of banner, impact, sparkline, ⊕ path, RCA, thumb-zone Ack/Escalate | [07](../product/07-alerting.md) |
 | [18-noc-wall.svg](18-noc-wall.svg) | 4K NOC wall: near-monochrome hexbin, one glowing failing block ⊕ psp-api, segment matrix, static-X charts, salience ticker | [01a](../product/01a-audiences-and-perspectives.md), [08](../product/08-visual-language.md) |
+| [19-estate-3d-landscape.svg](19-estate-3d-landscape.svg) | **3D** Landscape (L0): regions as plateaus on continents, cluster districts (footprint = capacity, height = load), prod-eu-1 glowing with ⊕ psp-api beacon, victim rings, traffic arcs, care queue | [15](../product/15-estate-navigation.md), [07](../product/07-alerting.md) |
+| [20-city-cluster-3d.svg](20-city-cluster-3d.svg) | **3D** City (L2→L3): prod-eu-1 as 40 node buildings in pool districts, pods as floor slabs, one node cut away to pods and containers, Capacity height legend, node Inspector | [15](../product/15-estate-navigation.md), [08](../product/08-visual-language.md) |
+| [21-floors-3d.svg](21-floors-3d.svg) | **3D** `V` floors: glass application floor over the infrastructure city; causal path crosses down a runs-on thread to the node and pods; A/L ladders | [15](../product/15-estate-navigation.md), [06](../product/06-ai-copilot.md) |
+| [22-topology-3d.svg](22-topology-3d.svg) | **3D** Topology: 45 services on tier planes, bundled arcs with particles, causal path as a lit tube, ⊕ beacon, victims in fog, First Light | [15](../product/15-estate-navigation.md), [05](../product/05-visualisation-catalogue.md) |
+| [23-semantic-zoom-flight.svg](23-semantic-zoom-flight.svg) | Storyboard: one continuous camera flight, world → region → cluster → node → pod → container flame, with pre-fetch per step | [15](../product/15-estate-navigation.md), [03](../product/03-interaction-model.md) |
+| [24-noc-wall-3d.svg](24-noc-wall-3d.svg) | **3D** 4K NOC wall: calm auto-orbiting estate world, one glowing district with ⊕ beacon, incident rail with salience ladder | [01a](../product/01a-audiences-and-perspectives.md), [08](../product/08-visual-language.md) |
+| [25-fleet-line-stack-3d.svg](25-fleet-line-stack-3d.svg) | **3D signal view:** 120 node CPU lines as lanes in depth, hot psp-api lanes lit, time-cursor plane, linked 2D chart, top-preset heatmap | [05](../product/05-visualisation-catalogue.md) |
+| [26-latency-surface-3d.svg](26-latency-surface-3d.svg) | **3D signal view:** latency histogram surface with contours, ridge moving to the 2 s bucket, linked 2D slices | [05](../product/05-visualisation-catalogue.md) |
+| [27-span-point-cloud-3d.svg](27-span-point-cloud-3d.svg) | **3D signal view:** 10⁷ spans as a point cloud, 2.000 s timeout sheet, 3D box selection driving 2D divergence | [05](../product/05-visualisation-catalogue.md), [04](../product/04-surfaces.md) |
 
 ## Known mockup defects (to fix)
+
+- **2D estate mockups 01–04 and 18** predate the 3D-first decision. They now illustrate the `T` (flattened 2D) mode; 19–24 are the defaults.
 
 - **Failing glyph:** mockups draw Failing as a ringed ● or ◉. The normative glyph is ■
   ([08](../product/08-visual-language.md)).

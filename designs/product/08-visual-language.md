@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-18 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
-| **Mockups** | [mockups/README](../mockups/README.md) (tokens as used in mockups), [01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg), [16-gallery](../mockups/16-gallery.svg), [18-noc-wall](../mockups/18-noc-wall.svg) |
+| **Mockups** | [mockups/README](../mockups/README.md) (tokens as used in mockups), [01-landscape-map](../mockups/01-landscape-map.svg), [02-atlas-topology](../mockups/02-atlas-topology.svg), [16-gallery](../mockups/16-gallery.svg), [18-noc-wall](../mockups/18-noc-wall.svg), [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg), [21-floors-3d](../mockups/21-floors-3d.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -21,6 +21,11 @@ well-designed strategy game: dark, quiet, precise; colour and motion reserved fo
 estate should look almost monochrome. When something goes wrong, it should be impossible to miss
 (see AUD-037 in [01a](01a-audiences-and-perspectives.md)).
 
+**Space is 3D, signals are 2D.** The estate is a lit 3D world of plateaus and buildings (§10); signal
+charts are flat and precise. Both use the same tokens, and the 3D world keeps the calm-instrument
+character: one light, fog, hairline grid, no decoration ([05](05-visualisation-catalogue.md) VIZ-077,
+[15](15-estate-navigation.md) EST-064).
+
 ## 2. Definitions
 
 | Term | Meaning |
@@ -30,7 +35,9 @@ estate should look almost monochrome. When something goes wrong, it should be im
 | **Series palette** | The categorical colours for ordinary data series |
 | **Deviation glow** | Additive bloom whose intensity is proportional to anomaly score |
 | **Density mode** | Comfortable, Compact or Wall type and spacing scale |
-| **Mark** | A GPU drawing primitive (line, area, point, cell, node, edge, glyph, text) |
+| **Mark** | A GPU drawing primitive (line, area, point, cell, node, edge, glyph, text, box) |
+| **Depth cue** | A 3D shading aid that carries no data and no hue: key + ambient lighting, depth fog, ground grid and contact shadows (§10) |
+| **Beacon** | A vertical column of light marking the probable origin ⊕ in a 3D scene |
 
 ## 3. Colour
 
@@ -83,19 +90,25 @@ health encodings; the series palette contains none of them.
 
 Deviation MUST be shown as an additive bloom whose intensity is proportional to the anomaly score.
 It is the only visual "effect" allowed, because it carries information; no decorative glow, shadow
-or bloom MAY be used.
+or bloom MAY be used. The depth cues of §10 (lighting, fog, ground grid, contact shadows) are shading
+in 3D scenes, not effects; they MUST NOT add hue or glow.
 
 *Acceptance:* Two entities with anomaly scores 0.4 and 0.8 render glows whose measured intensity
-ratio is 1 : 2 (±10%); an entity with score 0 has no glow; no other bloom appears in any frame
-capture.
+ratio is 1 : 2 (±10%), in 2D and in 3D scenes; an entity with score 0 has no glow; no other bloom
+appears in any frame capture.
 
 #### VL-005 — Victims and origin
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer
 
 Victims MUST be rendered desaturated with a dashed ring; the probable origin MUST be rendered at full
-saturation with the ⊕ glyph ([01a](01a-audiences-and-perspectives.md) AUD-006).
+saturation with the ⊕ glyph ([01a](01a-audiences-and-perspectives.md) AUD-006). In 3D scenes the
+victim's dashed ring MUST lie on the ground around its footprint, and the origin MUST additionally
+carry a vertical light beacon in its state colour rising from its top face to above the tallest
+building in view, visible from any heading.
 
-*Acceptance:* As AUD-006; the victim fill saturation is ≤ 50% of the origin's.
+*Acceptance:* As AUD-006; the victim fill saturation is ≤ 50% of the origin's; in the 3D infra city
+the origin's beacon is visible after a 360° orbit at every heading, and each victim shows a dashed
+ground ring.
 
 #### VL-006 — Ramps
 **MUST** · M-UI1 · Platform, Engineer, SRE
@@ -211,7 +224,8 @@ Perspective user starts in Compact; Wall mode renders 13 px body text at 20.8 px
 | Active-alert ring pulse | 1 Hz, low amplitude |
 | Traffic | Edge particles |
 | Loading | No spinners on data; thin progress shimmer on the viewport edge only after 300 ms |
-| `prefers-reduced-motion` | Instant cuts; particles replaced by static dashes with thickness |
+| Semantic-zoom flight (3D) | Continuous, each leg ≤ 250 ms, ease-out ([15](15-estate-navigation.md) EST-060) |
+| `prefers-reduced-motion` | Instant cuts; particles replaced by static dashes with thickness; estate opens in its 2D equivalent ([15](15-estate-navigation.md) EST-063) |
 
 #### VL-014 — Purposeful motion only
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -326,7 +340,89 @@ GPU renderer MUST use a mark library (line, area, point, cell, node, edge, glyph
 *Acceptance:* Every room is built from the component kit and every visualisation from the mark
 library, and neither defines a colour, size or duration outside the token outputs.
 
-## 10. Requirements summary
+## 10. 3D scenes
+
+The 3D world is drawn with a deliberately small set of depth cues, so that it reads as a precise
+instrument, not a game skin. Mockups: [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg),
+[20-city-cluster-3d](../mockups/20-city-cluster-3d.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg).
+
+| Token | Value (dark theme) |
+|---|---|
+| `ground` | `canvas` (`#0B0D10`) |
+| `ground-grid` | `hairline` (`#FFFFFF14`) |
+| `fog` | `canvas`, linear from 55 % to 100 % of the far plane, maximum 70 % |
+| `light-key` | One directional light, elevation 55°, azimuth 45° left of the camera heading |
+| `light-ambient` | 45 % of key intensity |
+| `face-top` / `face-side-lit` / `face-side-shade` | 100 % / 80 % / 62 % of the mark's colour luminance |
+| `entity-neutral` | `#3A4048` (healthy building or plateau face) |
+| `contact-shadow` | `#000000` at 35 %, radius 0.25 × footprint |
+
+#### VL-023 — One key light and ambient
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+3D scenes MUST be lit by one directional key light plus ambient, with the light direction fixed
+relative to the camera heading (`light-key`) so that the lit side is always on the same side of the
+screen. Top faces MUST be the lightest and side faces darker per the `face-*` tokens. Shading MUST
+change luminance only, never hue, so a state colour stays identifiable on every face.
+
+*Acceptance:* Given a building of each state, when rendered, then top, lit-side and shaded-side
+luminances are 100 % / 80 % / 62 % (±3 %) of the token, the hue angle of every face is within 2° of
+the token, and every face passes the VL-008 CVD simulation against its neighbours.
+
+#### VL-024 — Depth fog toward the horizon
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+3D scenes MUST blend distant geometry toward `canvas` with the `fog` token, so that depth reads and
+the horizon dissolves. Fog MUST NOT apply to the focused, selected or origin entity, to beacons, to
+labels, or to any entity in a non-OK state beyond the point where its state mark keeps ≥ 3:1 contrast
+against `canvas`.
+
+*Acceptance:* At the far plane a healthy building is blended 70 % toward `canvas`; a failing
+building at the same distance keeps ≥ 3:1 contrast; the origin beacon and all labels are unfogged.
+
+#### VL-025 — Ground plane and hairline grid
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+3D estate scenes MUST draw a ground plane in `ground` with a grid of `ground-grid` hairlines whose
+spacing follows the current level (coarser at L0, finer at L3) and which fades with distance under the
+fog.
+
+*Acceptance:* The grid lines are 1 px `hairline` at every level; their world spacing changes when the
+altitude ladder changes rung; no grid line is drawn beyond the fog's 70 % point.
+
+#### VL-026 — Contact shadows only
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+Each 3D mark standing on a surface MUST have a soft contact shadow (`contact-shadow`) directly
+beneath it. Cast shadows, ambient-occlusion halos and reflections MUST NOT be drawn.
+
+*Acceptance:* A frame capture shows a shadow of radius 0.25 × footprint under every building and none
+projected onto neighbouring buildings.
+
+#### VL-027 — 3D restraint
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business
+
+3D scenes MUST NOT use skyboxes, textures (including on imported models), reflections, lens flare,
+depth of field, film grain or decorative particles; traffic particles on edges are data and allowed.
+Healthy entities MUST be drawn in `entity-neutral` grey, so that a healthy estate is near-monochrome
+and state colour appears only where state is not OK. The deviation glow (VL-004), beacon (VL-005)
+and traffic particles are the only luminous elements.
+
+*Acceptance:* A lint of the scene spec rejects any texture, skybox or post-effect other than the
+deviation glow; a frame capture of a healthy estate contains no pixel whose hue matches a non-OK
+state token outside labels and glyphs.
+
+#### VL-028 — 3D shares the 2D tokens
+**MUST** · M-UI3 · Platform, Engineer
+
+3D scenes and 3D signal views MUST take every colour, type and motion value from the same generated
+tokens as 2D (VL-021), including the 3D tokens above, in both themes; the light theme MUST define its
+own 3D token values.
+
+*Acceptance:* Changing `failing` in the token file changes building faces, beacons and 2D state marks
+alike; the light theme renders the 3D world with its own `ground`, `fog` and `entity-neutral` values.
+
+## 11. Requirements summary
 
 | ID | Title | Priority | Milestone |
 |---|---|---|---|
@@ -352,8 +448,14 @@ library, and neither defines a colour, size or duration outside the token output
 | VL-020 | Fixed glyph language | MUST | M-UI1 |
 | VL-021 | One token source for canvas and DOM | MUST | M-UI0 |
 | VL-022 | Component and mark libraries share the tokens | MUST | M-UI1 |
+| VL-023 | One key light and ambient | MUST | M-UI3 |
+| VL-024 | Depth fog toward the horizon | MUST | M-UI3 |
+| VL-025 | Ground plane and hairline grid | MUST | M-UI3 |
+| VL-026 | Contact shadows only | MUST | M-UI3 |
+| VL-027 | 3D restraint | MUST | M-UI3 |
+| VL-028 | 3D shares the 2D tokens | MUST | M-UI3 |
 
-## 11. Resolved during formalisation
+## 12. Resolved during formalisation
 
 1. **Five states, four glyphs.** The draft listed four state glyphs (● ◐ ◉ ○) for five states, and
    [01a](01a-audiences-and-perspectives.md) showed both Degraded and Failing as ●, so the two were
@@ -372,9 +474,16 @@ library, and neither defines a colour, size or duration outside the token output
    ([11](11-enterprise.md)).
 7. **Light theme values.** The draft requires a designed light theme but gives no values; the
    light token set is to be delivered with the token file (VL-021) and is open design work.
+8. **3D-first estate (1.0-rc2).** The owner's brief is a GPU-rendered 3D estate. The 3D visual
+   language (§10, VL-023 to VL-028) adds lighting, fog, a ground grid and contact shadows as
+   hue-free depth cues; VL-004 now states that these are not "effects". VL-005 adds the origin
+   beacon and the victim ground ring. The draft's "SSAO-lite" is not adopted (VL-026).
+9. **Hybrid principle (1.0-rc2).** Space is 3D, signals are 2D, both from one token source (§1,
+   VL-028).
 
-## 12. Change log
+## 13. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
+| 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §1 hybrid principle; definitions; VL-004 and VL-005 edited in place; motion table rows; new §10 3D scenes (VL-023 to VL-028); later sections renumbered §11–§13 |

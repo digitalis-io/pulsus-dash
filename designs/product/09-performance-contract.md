@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-18 |
 | **Requirement area** | `PRF` |
 | **Source draft** | plans/09-performance-contract.md (not tracked); mobile targets from T20 (draft) §6 |
 | **Depends on** | [01](01-vision-and-principles.md), [03](03-interaction-model.md), [08](08-visual-language.md), [T04](../technical/T04-wire-format-and-data-plane.md), [T05](../technical/T05-testing-and-performance.md), [T07](../technical/T07-scene-query-planner.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) |
-| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) (data-source badges), [02-atlas-topology](../mockups/02-atlas-topology.svg) (Atlas volume), [17-mobile-alert-card](../mockups/17-mobile-alert-card.svg) (mobile) |
+| **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) (data-source badges), [02-atlas-topology](../mockups/02-atlas-topology.svg) (Atlas volume), [17-mobile-alert-card](../mockups/17-mobile-alert-card.svg) (mobile), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) (3D City/Infra volume), [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) (flight), [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) (fleet line stack) |
 
 ## 1. Purpose & scope
 
@@ -207,6 +207,10 @@ between the PulsusDB ingest acknowledgement and the line or sample being drawn i
 | Flame graph frames | 10⁵ | PRF-021 |
 | Viewports in a board | 200 (single canvas; off-screen viewports neither render nor query) | PRF-022 |
 | Tab memory, heaviest scene, on (a) | < 1.5 GB | PRF-023 |
+| 3D City / Infra scene | 10⁴ buildings + 5×10⁴ pod blocks | PRF-043 |
+| Same scene on the WebGL2 tier | Same geometry, reduced effects | PRF-044 |
+| 3D semantic-zoom flight and floors | Each leg ≤ 250 ms, no dropped floor | PRF-045 |
+| Fleet line stack | 2 000 lanes × full window | PRF-046 |
 
 Every volume requirement is met while also meeting PRF-001 to PRF-005.
 
@@ -245,7 +249,8 @@ service-graph cap raised to ≥ 50 000 edges); if A1 does not hold, the client-s
 fallback of [pulsusdb-requirements](../technical/pulsusdb-requirements.md) R5 applies and the
 edge-count coverage meter shows the truncation.
 
-*Acceptance:* An Atlas of 10⁴ entities and 5×10⁴ edges passes PRF-001 to PRF-005 on (a), (b) and (c);
+*Acceptance:* An Atlas of 10⁴ entities and 5×10⁴ edges passes PRF-001 to PRF-005 on (a), (b) and (c),
+in both the 3D layered Topology (its default at this size) and its 2D equivalent;
 with the service-graph source capped at 1 000 edges, the coverage meter shows "1 000 of N edges".
 
 #### PRF-020 — 10⁶ log lines scrollable
@@ -288,6 +293,60 @@ crash.
 
 *Acceptance:* With memory pressure induced past the 1.5 GB budget, the tab does not crash, the
 affected viewports switch to rollup data within 1 s, and their source badge reflects the change.
+
+### 5.1 3D scenes
+
+The estate is 3D-first ([15](15-estate-navigation.md) EST-055). These targets are measured on the
+Large fixture of [15](15-estate-navigation.md) Table 15-7 with the depth cues of
+[08](08-visual-language.md) §10 enabled, and are gated in CI by PRF-032.
+
+#### PRF-043 — 3D City and Infra scene volume
+**MUST** · M-UI3 · NOC, SRE, Platform
+
+The 3D City and Infra scenes MUST render 10 000 buildings and 50 000 pod blocks, with labels
+(VIZ-076), arcs with traffic particles, lighting, fog, ground grid, contact shadows and deviation
+glow, at 60 fps median on reference hardware (a) and ≥ 45 fps at p99 on (b) during scripted orbit,
+dolly and pan, on WebGPU.
+
+*Acceptance:* The CI benchmark "city-10k-50k" orbits 360°, dollies L1 → L3 and pans for 30 s on (a)
+and (b); median frame rate is ≥ 60 fps on (a), p99 frame time is ≤ 22.2 ms on (b), and PRF-005 holds.
+A regression on either number fails the build.
+
+#### PRF-044 — WebGL2 tier: same geometry, reduced effects
+**MUST** · M-UI3 · NOC, SRE, Platform
+
+Where WebGPU is unavailable, the 3D scenes MUST render on WebGL2 with the same geometry, layout,
+encodings and labels, and MAY reduce effects only: deviation glow at half resolution, contact
+shadows as pre-blurred quads, fog per vertex, and traffic particles capped at 25 % of the WebGPU
+count. Glow intensity MUST stay proportional to anomaly score (VL-004). The WebGL2 tier MUST meet the
+PRF-043 targets on (a) and (b); where a device cannot, the estate MUST open in its 2D equivalent
+([15](15-estate-navigation.md) EST-063).
+
+*Acceptance:* The "city-10k-50k" benchmark run with WebGPU disabled meets PRF-043 on (a) and (b); a
+frame-by-frame comparison with the WebGPU run shows identical building positions, sizes and colours
+(ΔE ≤ 2 on faces); and a failing run fails the build.
+
+#### PRF-045 — 3D flight and floors hold the frame floor
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer
+
+During a semantic-zoom flight ([15](15-estate-navigation.md) EST-060) and a hold-`V` transition to
+the 3D floors (EST-012), each camera leg MUST complete in ≤ 250 ms (PRF-007), frame time MUST stay
+≤ 22.2 ms at p99 on (b), and the arriving level's data MUST already be present (PRF-029).
+
+*Acceptance:* The CI benchmark "flight-l0-l5" double-clicks region → cluster → node → pod on the Large
+fixture and holds `V` on a service; on (a) and (b) every leg completes in ≤ 250 ms, p99 frame time is
+≤ 22.2 ms on (b), and no frame shows a level without its data. A failing run fails the build.
+
+#### PRF-046 — Fleet line stack volume
+**MUST** · M-UI3 · SRE, Platform, Engineer
+
+The fleet line stack ([05](05-visualisation-catalogue.md) VIZ-085) MUST render 2 000 lanes over the
+full time window at 60 fps median on reference hardware (a) and ≥ 45 fps at p99 on (b), using band +
+outlier LOD for distant lanes.
+
+*Acceptance:* The CI benchmark "fleet-stack-2000" orbits and dollies along depth for 30 s over 2 000
+series of 6 h at 15 s resolution; median frame rate is ≥ 60 fps on (a) and p99 frame time ≤ 22.2 ms
+on (b). A failing run fails the build.
 
 ## 6. Progressive data strategy
 
@@ -535,6 +594,10 @@ a requestAnimationFrame loop.
 | PRF-040 | Mobile memory | MUST | M-UI4 |
 | PRF-041 | Push handler wall time | MUST | M-UI4 |
 | PRF-042 | Mobile idle CPU | MUST | M-UI4 |
+| PRF-043 | 3D City and Infra scene volume | MUST | M-UI3 |
+| PRF-044 | WebGL2 tier: same geometry, reduced effects | MUST | M-UI3 |
+| PRF-045 | 3D flight and floors hold the frame floor | MUST | M-UI3 |
+| PRF-046 | Fleet line stack volume | MUST | M-UI3 |
 
 ## 11. Resolved during formalisation
 
@@ -554,9 +617,13 @@ a requestAnimationFrame loop.
    Dash-derived tiles in PostgreSQL (D2); PRF-025 forbids writing them to PulsusDB.
 7. **Wall hardware (c).** The draft listed (c) but set no wall-specific target. PRF-001 and
    PRF-019 apply on (c); wall-specific attention behaviour is in [08](08-visual-language.md).
+8. **3D-first estate (1.0-rc2).** The owner's brief makes the estate a 3D scene by default, so the
+   3D City/Infra volume (PRF-043), the WebGL2 tier (PRF-044), the flight and floors (PRF-045) and
+   the fleet line stack (PRF-046) became gated requirements; PRF-019 now covers the 3D Topology.
 
 ## 12. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; mobile budgets imported from T20 (draft) §6 |
+| 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §5 table rows and PRF-019 acceptance edited; §5.1 PRF-043 to PRF-046 added; resolution 8 |
