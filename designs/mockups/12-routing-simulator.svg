@@ -1,0 +1,546 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Routing and simulator</title>
+<desc id="d">Pulsus Dash notification routing: policy tree with match counts, a Sankey of the last 7 days of notifications from label sets through routes to endpoints (PagerDuty, Slack, email, ServiceNow webhook), a simulator where pasted labels highlight the matching path with per-matcher explanations, and per-endpoint delivery health including a degraded ServiceNow webhook retrying with a meta-alert to the fallback route.</desc>
+
+<style>
+text{font-family:Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB;font-size:12px}
+.m{font-family:'JetBrains Mono',ui-monospace,monospace}
+.mu{fill:#8A919C}.dm{fill:#5D646E}.ac{fill:#5B9BFF}.ok{fill:#2FB59A}.wa{fill:#D9C84A}.dg{fill:#E8923A}.fa{fill:#E0457B}.un{fill:#6B7280}
+.b{font-weight:600}.t11{font-size:11px}.t13{font-size:13px}.t16{font-size:16px}.t20{font-size:20px}
+.e{text-anchor:end}.c{text-anchor:middle}
+.hl{stroke:#FFFFFF14;stroke-width:1;fill:none}
+.co{fill:none;stroke:#5B9BFF;stroke-width:1.25;stroke-dasharray:4 3}
+.cot{font-size:11px;fill:#BFD6FF}
+</style>
+<defs>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#6B728022"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6B7280" stroke-width="1.6" stroke-opacity="0.7"/></pattern>
+<pattern id="hatchA" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#E0457B" stroke-width="1.4" stroke-opacity="0.55"/></pattern>
+<pattern id="hatchW" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#D9C84A1f"/><line x1="0" y1="0" x2="0" y2="5" stroke="#D9C84A" stroke-width="1.4" stroke-opacity="0.7"/></pattern>
+<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<rect id="canvas" width="1440" height="900" fill="#0B0D10"/>
+<g id="top-bar">
+<rect x="0" y="0" width="1440" height="32" fill="#12151A"/>
+<line x1="0" y1="31.5" x2="1440" y2="31.5" stroke="#FFFFFF14" stroke-width="1" />
+<circle cx="18" cy="16" r="6" fill="none" stroke="#5B9BFF" stroke-width="1.5"/><circle cx="18" cy="16" r="2.2" fill="#5B9BFF"/>
+<text x="30" y="20.5" class="b" style="font-size:13px;">Pulsus</text>
+<text x="88" y="20.5" class="mu" style="font-size:12px;">prod ▾</text>
+<text x="140.1" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="154.1" y="20.5" class="mu" style="font-size:12px;">Alerts</text>
+<text x="206.2" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="220.2" y="20.5" style="font-size:12px;" font-weight="600">Routing</text>
+<rect x="560" y="6" width="320" height="20" rx="4" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="570" y="20" class="mu t11">⌘K  Search entities, alerts, queries…</text>
+<circle cx="1418" cy="16" r="10" fill="#2A3240" stroke="#FFFFFF22"/>
+<text x="1418" y="20" class="b c t11">S</text>
+<text x="1398" y="20.5" class="ac e" style="font-size:12px;">✦ AI</text>
+<rect x="1322" y="7" width="38" height="18" rx="4" fill="#E0457B22" stroke="#E0457B66"/>
+<text x="1341" y="20" class="fa c t11 b">⚠ 1</text>
+</g>
+<g id="routing-header">
+<rect x="8.5" y="40.5" width="1423" height="35" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<rect x="16" y="46" width="69.1" height="24" rx="4" fill="#5B9BFF1F" stroke="#5B9BFF88"/>
+<text x="50.6" y="62" class="c t12 b" fill="#5B9BFF">Routing</text>
+<text x="148.3" y="62" class="c t12 mu">Contact points</text>
+<text x="249.5" y="62" class="c t12 mu">Silences</text>
+<text x="340.2" y="62" class="c t12 mu">Maintenance</text>
+<text x="444.9" y="62" class="c t12 mu">Mute timings</text>
+<text x="542.6" y="62" class="c t12 mu">Templates</text>
+<text x="604.2" y="62" class="mu t11">Policy tree v14 · edited 11-12 by @priya · Git-synced ✓</text>
+<rect x="1277.7" y="48" width="142.3" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/>
+<text x="1348.9" y="62" class="c t11">Import existing</text>
+<rect x="1191.8" y="48" width="77.9" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/>
+<text x="1230.8" y="62" class="c t11">Edit tree</text>
+<text x="1177.8" y="62" class="mu t11 e">last 7 d · 3 118 notifications · 11 failed</text>
+</g>
+<g id="routing-tree">
+<rect x="8.5" y="84.5" width="339" height="535" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="104" class="b">Policy tree</text>
+<line x1="9" y1="114.5" x2="347" y2="114.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="336" y="104" class="mu t11 e">7 d sent</text>
+<text x="22" y="138" class="b t11" fill="#5B9BFF">✓</text>
+<text x="35" y="138" class="m" style="font-size:11px;" fill="#E6E8EB">root</text>
+<text x="336" y="138" class="m e" style="font-size:11px;" fill="#8A919C"></text>
+<text x="35" y="154" class="t11" fill="#8A919C">→ default-email</text>
+<line x1="29" y1="156" x2="29" y2="174" stroke="#5B9BFF" stroke-width="1.2" />
+<line x1="29" y1="174" x2="35" y2="174" stroke="#5B9BFF" stroke-width="1.2" />
+<text x="38" y="178" class="b t11" fill="#5B9BFF">✓</text>
+<text x="51" y="178" class="m" style="font-size:11px;" fill="#E6E8EB">env="prod"</text>
+<text x="336" y="178" class="m e" style="font-size:11px;" fill="#8A919C"></text>
+<line x1="45" y1="180" x2="45" y2="198" stroke="#5B9BFF" stroke-width="1.2" />
+<line x1="45" y1="198" x2="51" y2="198" stroke="#5B9BFF" stroke-width="1.2" />
+<rect x="12" y="187" width="332" height="38" rx="4" fill="#5B9BFF14" stroke="#5B9BFF55"/>
+<text x="54" y="202" class="b t11" fill="#5B9BFF">✓</text>
+<text x="67" y="202" class="m" style="font-size:11px;" fill="#E6E8EB">severity=~"SEV1|SEV2"</text>
+<text x="336" y="202" class="m e" style="font-size:11px;" fill="#8A919C">214</text>
+<text x="67" y="218" class="t11" fill="#5B9BFF">→ servicenow-itsm</text>
+<rect x="184.4" y="207" width="56.8" height="14" rx="7" fill="none" stroke="#D9C84A"/>
+<text x="189.4" y="217" class="t11" style="font-size:10px;" fill="#D9C84A">continue</text>
+<line x1="45" y1="220" x2="45" y2="238" stroke="#5B9BFF" stroke-width="1.2" />
+<line x1="45" y1="238" x2="51" y2="238" stroke="#5B9BFF" stroke-width="1.2" />
+<rect x="12" y="227" width="332" height="38" rx="4" fill="#5B9BFF14" stroke="#5B9BFF55"/>
+<text x="54" y="242" class="b t11" fill="#5B9BFF">✓</text>
+<text x="67" y="242" class="m" style="font-size:11px;" fill="#E6E8EB">team="payments"</text>
+<text x="336" y="242" class="m e" style="font-size:11px;" fill="#8A919C">1 212</text>
+<text x="67" y="258" class="t11" fill="#5B9BFF">→ payments-oncall</text>
+<line x1="45" y1="260" x2="45" y2="278" stroke="#FFFFFF2a" stroke-width="1.2" />
+<line x1="45" y1="278" x2="51" y2="278" stroke="#FFFFFF2a" stroke-width="1.2" />
+<text x="54" y="282" class="b t11" fill="#5D646E">–</text>
+<text x="67" y="282" class="m" style="font-size:11px;" fill="#8A919C">team="search"</text>
+<text x="336" y="282" class="m e" style="font-size:11px;" fill="#8A919C">486</text>
+<text x="67" y="298" class="t11" fill="#8A919C">→ search-oncall</text>
+<line x1="45" y1="300" x2="45" y2="318" stroke="#FFFFFF2a" stroke-width="1.2" />
+<line x1="45" y1="318" x2="51" y2="318" stroke="#FFFFFF2a" stroke-width="1.2" />
+<text x="54" y="322" class="b t11" fill="#5D646E">–</text>
+<text x="67" y="322" class="m" style="font-size:11px;" fill="#8A919C">team="platform"</text>
+<text x="336" y="322" class="m e" style="font-size:11px;" fill="#8A919C">702</text>
+<text x="67" y="338" class="t11" fill="#8A919C">→ platform-alerts</text>
+<line x1="45" y1="340" x2="45" y2="358" stroke="#FFFFFF2a" stroke-width="1.2" />
+<line x1="45" y1="358" x2="51" y2="358" stroke="#FFFFFF2a" stroke-width="1.2" />
+<text x="54" y="362" class="b t11" fill="#5D646E">–</text>
+<text x="67" y="362" class="m" style="font-size:11px;" fill="#8A919C">owner = ⊕ origin entity</text>
+<text x="336" y="362" class="m e" style="font-size:11px;" fill="#8A919C">311</text>
+<text x="67" y="378" class="t11" fill="#8A919C">→ owner's on-call</text>
+<rect x="184.4" y="367" width="50.9" height="14" rx="7" fill="none" stroke="#6FB8B8"/>
+<text x="189.4" y="377" class="t11" style="font-size:10px;" fill="#6FB8B8">derived</text>
+<line x1="29" y1="380" x2="29" y2="398" stroke="#FFFFFF2a" stroke-width="1.2" />
+<line x1="29" y1="398" x2="35" y2="398" stroke="#FFFFFF2a" stroke-width="1.2" />
+<text x="38" y="402" class="b t11" fill="#5D646E">–</text>
+<text x="51" y="402" class="m" style="font-size:11px;" fill="#8A919C">env="staging"</text>
+<text x="336" y="402" class="m e" style="font-size:11px;" fill="#8A919C">160</text>
+<text x="51" y="418" class="t11" fill="#8A919C">→ staging-chat</text>
+<line x1="29" y1="420" x2="29" y2="438" stroke="#FFFFFF2a" stroke-width="1.2" />
+<line x1="29" y1="438" x2="35" y2="438" stroke="#FFFFFF2a" stroke-width="1.2" />
+<text x="38" y="442" class="b t11" fill="#5D646E">–</text>
+<text x="51" y="442" class="m" style="font-size:11px;" fill="#8A919C">(no match)</text>
+<text x="336" y="442" class="m e" style="font-size:11px;" fill="#8A919C">33</text>
+<text x="51" y="458" class="t11" fill="#8A919C">→ default-email</text>
+<line x1="9" y1="477.5" x2="347" y2="477.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="22" y="494" class="mu t11 b">Grouping (Alertmanager semantics)</text>
+<text x="22" y="512" class="t11"><tspan class="mu">group_by </tspan><tspan class="m">[alertname, incident]</tspan></text>
+<text x="22" y="530" class="t11"><tspan class="mu">wait </tspan><tspan class="m">30s</tspan><tspan class="mu">  interval </tspan><tspan class="m">5m</tspan><tspan class="mu">  repeat </tspan><tspan class="m">4h</tspan></text>
+<text x="22" y="548" class="t11"><tspan class="mu">+ incident grouping: </tspan><tspan>one page per incident</tspan></text>
+</g>
+<g id="sankey">
+<rect x="356.5" y="84.5" width="707" height="535" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="368" y="104" class="b">Traffic</text>
+<text x="418" y="104" class="mu t11">last 7 days · label sets → routes → endpoints · width ∝ notifications</text>
+<line x1="357" y1="114.5" x2="1063" y2="114.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="502" y="132" class="dm t11 b e" letter-spacing="0.5">LABEL SETS</text>
+<text x="702" y="132" class="dm t11 b c" letter-spacing="0.5">ROUTES</text>
+<text x="856" y="132" class="dm t11 b" letter-spacing="0.5">ENDPOINTS</text>
+<path d="M517.0,144.0 C606.5,144.0 606.5,144.0 696.0,144.0 L696.0,168.0 C606.5,168.0 606.5,168.0 517.0,168.0 Z" fill="#5B9BFF" fill-opacity="0.38" stroke="#5B9BFF" stroke-opacity="0.8" stroke-width="0.8"/>
+<path d="M517.0,168.0 C606.5,168.0 606.5,178.0 696.0,178.0 L696.0,202.0 C606.5,202.0 606.5,192.0 517.0,192.0 Z" fill="#5B9BFF" fill-opacity="0.38" stroke="#5B9BFF" stroke-opacity="0.8" stroke-width="0.8"/>
+<path d="M517.0,202.0 C606.5,202.0 606.5,202.0 696.0,202.0 L696.0,314.1 C606.5,314.1 606.5,314.1 517.0,314.1 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M517.0,324.1 C606.5,324.1 606.5,324.1 696.0,324.1 L696.0,378.6 C606.5,378.6 606.5,378.6 517.0,378.6 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M517.0,388.6 C606.5,388.6 606.5,388.6 696.0,388.6 L696.0,467.4 C606.5,467.4 606.5,467.4 517.0,467.4 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M517.0,477.4 C606.5,477.4 606.5,477.4 696.0,477.4 L696.0,512.3 C606.5,512.3 606.5,512.3 517.0,512.3 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M517.0,522.3 C606.5,522.3 606.5,522.3 696.0,522.3 L696.0,540.3 C606.5,540.3 606.5,540.3 517.0,540.3 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M517.0,550.3 C606.5,550.3 606.5,550.3 696.0,550.3 L696.0,554.0 C606.5,554.0 606.5,554.0 517.0,554.0 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,144.0 C780.5,144.0 780.5,147.0 856.0,147.0 L856.0,171.0 C780.5,171.0 780.5,168.0 705.0,168.0 Z" fill="#5B9BFF" fill-opacity="0.38" stroke="#5B9BFF" stroke-opacity="0.8" stroke-width="0.8"/>
+<path d="M705.0,178.0 C780.5,178.0 780.5,177.0 856.0,177.0 L856.0,201.0 C780.5,201.0 780.5,202.0 705.0,202.0 Z" fill="#5B9BFF" fill-opacity="0.38" stroke="#5B9BFF" stroke-opacity="0.8" stroke-width="0.8"/>
+<path d="M705.0,202.0 C780.5,202.0 780.5,207.0 856.0,207.0 L856.0,319.1 C780.5,319.1 780.5,314.1 705.0,314.1 Z" fill="#5B9BFF" fill-opacity="0.38" stroke="#5B9BFF" stroke-opacity="0.8" stroke-width="0.8"/>
+<path d="M705.0,324.1 C780.5,324.1 780.5,325.1 856.0,325.1 L856.0,379.6 C780.5,379.6 780.5,378.6 705.0,378.6 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,388.6 C780.5,388.6 780.5,385.6 856.0,385.6 L856.0,451.9 C780.5,451.9 780.5,454.9 705.0,454.9 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,454.9 C780.5,454.9 780.5,457.9 856.0,457.9 L856.0,470.4 C780.5,470.4 780.5,467.4 705.0,467.4 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,477.4 C780.5,477.4 780.5,476.4 856.0,476.4 L856.0,483.3 C780.5,483.3 780.5,484.3 705.0,484.3 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,484.3 C780.5,484.3 780.5,489.3 856.0,489.3 L856.0,517.3 C780.5,517.3 780.5,512.3 705.0,512.3 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,522.3 C780.5,522.3 780.5,523.3 856.0,523.3 L856.0,541.3 C780.5,541.3 780.5,540.3 705.0,540.3 Z" fill="#8A919C" fill-opacity="0.09"/>
+<path d="M705.0,550.3 C780.5,550.3 780.5,547.3 856.0,547.3 L856.0,551.0 C780.5,551.0 780.5,554.0 705.0,554.0 Z" fill="#8A919C" fill-opacity="0.09"/>
+<rect x="508" y="144" width="9" height="48" rx="2" fill="#5B9BFF"/>
+<text x="500" y="166" class="t11 e" fill="#E6E8EB">team=payments · SEV1–2</text>
+<text x="500" y="180" class="m t11 e" fill="#5B9BFF">428</text>
+<rect x="508" y="202" width="9" height="112" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="500" y="256.1" class="t11 e" fill="#8A919C">team=payments · SEV3–4</text>
+<text x="500" y="270.1" class="m t11 e" fill="#5D646E">998</text>
+<rect x="508" y="324.1" width="9" height="54.6" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="500" y="349.3" class="t11 e" fill="#8A919C">team=search</text>
+<text x="500" y="363.3" class="m t11 e" fill="#5D646E">486</text>
+<rect x="508" y="388.6" width="9" height="78.8" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="500" y="426" class="t11 e" fill="#8A919C">team=platform</text>
+<text x="500" y="440" class="m t11 e" fill="#5D646E">702</text>
+<rect x="508" y="477.4" width="9" height="34.9" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="500" y="492.9" class="t11 e" fill="#8A919C">no team · has ⊕ origin</text>
+<text x="500" y="506.9" class="m t11 e" fill="#5D646E">311</text>
+<rect x="508" y="522.3" width="9" height="18" rx="2" fill="#8A919C" opacity="0.6"/>
+<text text-anchor="end" x="500" y="535.3" class="t11"><tspan fill="#8A919C">env=staging  </tspan><tspan fill="#5D646E">160</tspan></text>
+<rect x="508" y="550.3" width="9" height="3.7" rx="2" fill="#8A919C" opacity="0.6"/>
+<text text-anchor="end" x="500" y="556.1" class="t11"><tspan fill="#8A919C">unmatched  </tspan><tspan fill="#5D646E">33</tspan></text>
+<rect x="696" y="144" width="9" height="24" rx="2" fill="#5B9BFF"/>
+<rect x="709" y="147" width="108.5" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="160" class="t11 b" fill="#E6E8EB">servicenow-itsm</text>
+<rect x="696" y="178" width="9" height="136" rx="2" fill="#5B9BFF"/>
+<rect x="709" y="237" width="108.5" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="250" class="t11 b" fill="#E6E8EB">payments-oncall</text>
+<rect x="696" y="324.1" width="9" height="54.6" rx="2" fill="#8A919C" opacity="0.6"/>
+<rect x="709" y="342.3" width="95.7" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="355.3" class="t11" fill="#8A919C">search-oncall</text>
+<rect x="696" y="388.6" width="9" height="78.8" rx="2" fill="#8A919C" opacity="0.6"/>
+<rect x="709" y="419" width="108.5" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="432" class="t11" fill="#8A919C">platform-alerts</text>
+<rect x="696" y="477.4" width="9" height="34.9" rx="2" fill="#8A919C" opacity="0.6"/>
+<rect x="709" y="485.9" width="108.5" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="498.9" class="t11" fill="#8A919C">owner's on-call</text>
+<rect x="696" y="522.3" width="9" height="18" rx="2" fill="#8A919C" opacity="0.6"/>
+<rect x="709" y="522.3" width="89.2" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="535.3" class="t11" fill="#8A919C">staging-chat</text>
+<rect x="696" y="550.3" width="9" height="3.7" rx="2" fill="#8A919C" opacity="0.6"/>
+<rect x="709" y="543.1" width="95.7" height="17" rx="3" fill="#12151AE6"/>
+<text x="715" y="556.1" class="t11" fill="#8A919C">default-email</text>
+<rect x="856" y="147" width="9" height="24" rx="2" fill="#E8923A"/>
+<text x="873" y="163" class="t11 b" fill="#E8923A">⇄</text>
+<text x="887" y="163" class="t11" fill="#E6E8EB">Webhook · ServiceNow</text>
+<text x="1052" y="163" class="m t11 e" fill="#5B9BFF">214</text>
+<text x="887" y="176" class="dg t11">degraded · 9 failed</text>
+<rect x="856" y="177" width="9" height="24" rx="2" fill="#5B9BFF"/>
+<text x="873" y="193" class="t11 b" fill="#5B9BFF">▲</text>
+<text x="887" y="193" class="t11" fill="#E6E8EB">PagerDuty · Payments</text>
+<text x="1052" y="193" class="m t11 e" fill="#5B9BFF">214</text>
+<rect x="856" y="207" width="9" height="112" rx="2" fill="#5B9BFF"/>
+<text x="873" y="267.1" class="t11 b" fill="#5B9BFF">#</text>
+<text x="887" y="267.1" class="t11" fill="#E6E8EB">Slack #payments-alerts</text>
+<text x="1052" y="267.1" class="m t11 e" fill="#5B9BFF">998</text>
+<rect x="856" y="325.1" width="9" height="54.6" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="356.3" class="t11 b" fill="#8A919C">#</text>
+<text x="887" y="356.3" class="t11" fill="#8A919C">Slack #search</text>
+<text x="1052" y="356.3" class="m t11 e" fill="#5D646E">486</text>
+<rect x="856" y="385.6" width="9" height="66.2" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="422.7" class="t11 b" fill="#8A919C">#</text>
+<text x="887" y="422.7" class="t11" fill="#8A919C">Slack #platform</text>
+<text x="1052" y="422.7" class="m t11 e" fill="#5D646E">590</text>
+<rect x="856" y="457.9" width="9" height="12.6" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="468.1" class="t11 b" fill="#8A919C">✉</text>
+<text x="887" y="468.1" class="t11" fill="#8A919C">Email platform@</text>
+<text x="1052" y="468.1" class="m t11 e" fill="#5D646E">112</text>
+<rect x="856" y="476.4" width="9" height="6.8" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="483.8" class="t11 b" fill="#8A919C">▲</text>
+<text x="887" y="483.8" class="t11" fill="#8A919C">PagerDuty · owners</text>
+<text x="1052" y="483.8" class="m t11 e" fill="#5D646E">61</text>
+<rect x="856" y="489.3" width="9" height="28.1" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="507.3" class="t11 b" fill="#8A919C">#</text>
+<text x="887" y="507.3" class="t11" fill="#8A919C">Slack · owner channels</text>
+<text x="1052" y="507.3" class="m t11 e" fill="#5D646E">250</text>
+<rect x="856" y="523.3" width="9" height="18" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="536.3" class="t11 b" fill="#8A919C">#</text>
+<text x="887" y="536.3" class="t11" fill="#8A919C">Slack #staging (digest)</text>
+<text x="1052" y="536.3" class="m t11 e" fill="#5D646E">160</text>
+<rect x="856" y="547.3" width="9" height="3.7" rx="2" fill="#8A919C" opacity="0.6"/>
+<text x="873" y="553.1" class="t11 b" fill="#8A919C">✉</text>
+<text x="887" y="553.1" class="t11" fill="#8A919C">Email default</text>
+<text x="1052" y="553.1" class="m t11 e" fill="#5D646E">33</text>
+</g>
+<g id="simulator">
+<rect x="1072.5" y="84.5" width="359" height="535" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="1084" y="104" class="b">Simulator</text>
+<line x1="1073" y1="114.5" x2="1431" y2="114.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1420" y="104" class="mu t11 e">test a label set</text>
+<rect x="1084" y="124" width="336" height="112" rx="4" fill="#0E1116" stroke="#5B9BFF99"/>
+<text x="1094" y="142" class="m t11"><tspan fill="#9CC2FF">alertname</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"EdgeFailures"</tspan></text>
+<text x="1094" y="158" class="m t11"><tspan fill="#9CC2FF">env</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"prod"</tspan></text>
+<text x="1094" y="174" class="m t11"><tspan fill="#9CC2FF">team</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"payments"</tspan></text>
+<text x="1094" y="190" class="m t11"><tspan fill="#9CC2FF">severity</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"SEV2"</tspan></text>
+<text x="1094" y="206" class="m t11"><tspan fill="#9CC2FF">service</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"payments"</tspan></text>
+<text x="1094" y="222" class="m t11"><tspan fill="#9CC2FF">peer_service</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"psp-api"</tspan></text>
+<rect x="1241.7" y="216" width="1.5" height="13" fill="#5B9BFF"/>
+<rect x="1084" y="244" width="131.8" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1092" y="258" style="font-size:11px;" fill="#E6E8EB">Paste from alert ▾</text>
+<rect x="1221.8" y="244" width="80.3" height="20" rx="4" fill="#5B9BFF" stroke="#5B9BFF"/><text x="1229.8" y="258" style="font-size:11px;" fill="#0B0D10">Simulate ⏎</text>
+<text x="1420" y="258" class="dm t11 e">live as you type</text>
+<line x1="1073" y1="275.5" x2="1431" y2="275.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1084" y="290" class="t12"><tspan class="ac b">2 routes</tspan><tspan class="mu"> match · </tspan><tspan class="ac b">3 receivers</tspan><tspan class="mu"> would be hit</tspan></text>
+<text x="1086" y="310" class="b t11" fill="#5B9BFF">✓</text>
+<text x="1100" y="310" class="m t11" fill="#E6E8EB">1.1  severity=~"SEV1|SEV2"</text>
+<text x="1100" y="325" class="t11" fill="#8A919C">matched "SEV2" → servicenow-itsm</text>
+<text x="1086" y="345" class="b t11" fill="#D9C84A">↓</text>
+<text x="1100" y="345" class="t11" fill="#D9C84A">continue=true, keep evaluating siblings</text>
+<text x="1086" y="365" class="b t11" fill="#5B9BFF">✓</text>
+<text x="1100" y="365" class="m t11" fill="#E6E8EB">1.2  team="payments"</text>
+<text x="1100" y="380" class="t11" fill="#8A919C">matched → payments-oncall · stop</text>
+<text x="1086" y="400" class="b t11" fill="#5D646E">–</text>
+<text x="1100" y="400" class="m t11" fill="#E6E8EB">1.3–1.5</text>
+<text x="1100" y="415" class="t11" fill="#8A919C">not evaluated (stopped at 1.2)</text>
+<line x1="1073" y1="428.5" x2="1431" y2="428.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1084" y="445" class="mu t11 b">Receivers</text>
+<text x="1086" y="463" class="b t11" fill="#5B9BFF">▲</text>
+<text x="1102" y="463" class="t11">PagerDuty · Payments</text>
+<text x="1420" y="463" class="t11 e" fill="#2FB59A">SEV2 → error</text>
+<circle cx="1334.78" cy="459" r="4.5" fill="#2FB59A"/>
+<text x="1086" y="483" class="b t11" fill="#5B9BFF">#</text>
+<text x="1102" y="483" class="t11">Slack #payments-alerts</text>
+<text x="1420" y="483" class="t11 e" fill="#2FB59A">thread INC-2041</text>
+<circle cx="1315.475" cy="479" r="4.5" fill="#2FB59A"/>
+<text x="1086" y="503" class="b t11" fill="#5B9BFF">⇄</text>
+<text x="1102" y="503" class="t11">Webhook · ServiceNow</text>
+<text x="1420" y="503" class="t11 e" fill="#E8923A">retrying 3/5</text>
+<circle cx="1334.78" cy="499" r="4.3" fill="none" stroke="#E8923A" stroke-width="1.3"/><path d="M1334.78,494.7 a4.3,4.3 0 0 0 0,8.6 z" fill="#E8923A"/>
+<line x1="1073" y1="520.5" x2="1431" y2="520.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1084" y="539" class="t11"><tspan class="mu">Group: </tspan><tspan>joins INC-2041 group</tspan></text>
+<text x="1084" y="557" class="t11"><tspan class="mu">Next send ≥ </tspan><tspan class="m">12:46</tspan><tspan class="mu"> (group_interval 5m) · no new page</tspan></text>
+</g>
+<g id="delivery-health">
+<rect x="8.5" y="628.5" width="1423" height="223" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="648" class="b">Delivery health</text>
+<text x="124" y="648" class="mu t11">every attempt recorded: response, latency, retries · last 7 d</text>
+<text x="1420" y="648" class="ok t11 e">♥ heartbeat → Better Stack every 60 s · last 12 s ago ●</text>
+<line x1="9" y1="658.5" x2="1431" y2="658.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="20" y="676" class="dm t11 b" letter-spacing="0.4">HEALTH</text>
+<text x="130" y="676" class="dm t11 b" letter-spacing="0.4">ENDPOINT</text>
+<text x="370" y="676" class="dm t11 b" letter-spacing="0.4">TYPE</text>
+<text x="520" y="676" class="dm t11 b" letter-spacing="0.4">SENT</text>
+<text x="590" y="676" class="dm t11 b" letter-spacing="0.4">FAILED</text>
+<text x="660" y="676" class="dm t11 b" letter-spacing="0.4">RETRIES</text>
+<text x="740" y="676" class="dm t11 b" letter-spacing="0.4">p95</text>
+<text x="810" y="676" class="dm t11 b" letter-spacing="0.4">LAST RESPONSE</text>
+<text x="1060" y="676" class="dm t11 b" letter-spacing="0.4">SUCCESS 7 d</text>
+<text x="1200" y="676" class="dm t11 b" letter-spacing="0.4"></text>
+<circle cx="25" cy="699" r="4.5" fill="#2FB59A"/>
+<text x="36" y="703" class="t11" fill="#2FB59A">OK</text>
+<text x="130" y="703" class="t12">PagerDuty · Payments</text>
+<text x="370" y="703" class="mu t11">Events v2</text>
+<text x="520" y="703" class="m t11">275</text>
+<text x="590" y="703" class="m t11" fill="#E6E8EB">0</text>
+<text x="660" y="703" class="m t11" fill="#E6E8EB">0</text>
+<text x="740" y="703" class="m t11" fill="#E6E8EB">380 ms</text>
+<text x="810" y="703" class="m t11" fill="#8A919C">202 Accepted</text>
+<rect x="1060" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1064.4" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1068.8" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1073.2" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1077.6" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1082" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1086.4" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1090.8" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1095.2" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1099.6" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1104" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1108.4" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1112.8" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1117.2" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1121.6" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1126" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1130.4" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1134.8" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1139.2" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1143.6" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1148" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1152.4" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1156.8" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1161.2" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1165.6" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1170" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1174.4" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1178.8" y="692" width="3.2" height="14" fill="#2FB59A99"/>
+<line x1="14" y1="712.5" x2="1426" y2="712.5" stroke="#FFFFFF08" stroke-width="1" />
+<circle cx="25" cy="727" r="4.5" fill="#2FB59A"/>
+<text x="36" y="731" class="t11" fill="#2FB59A">OK</text>
+<text x="130" y="731" class="t12">Slack #payments-alerts</text>
+<text x="370" y="731" class="mu t11">app · interactive</text>
+<text x="520" y="731" class="m t11">998</text>
+<text x="590" y="731" class="m t11" fill="#E6E8EB">1</text>
+<text x="660" y="731" class="m t11" fill="#E6E8EB">1</text>
+<text x="740" y="731" class="m t11" fill="#E6E8EB">210 ms</text>
+<text x="810" y="731" class="m t11" fill="#8A919C">200 OK  (1× 429 on 11-15 08:02)</text>
+<rect x="1060" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1064.4" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1068.8" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1073.2" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1077.6" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1082" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1086.4" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1090.8" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1095.2" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1099.6" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1104" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1108.4" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1112.8" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1117.2" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1121.6" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1126" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1130.4" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1134.8" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1139.2" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1143.6" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1148" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1152.4" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1156.8" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1161.2" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1165.6" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1170" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1174.4" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1178.8" y="720" width="3.2" height="14" fill="#2FB59A99"/>
+<line x1="14" y1="740.5" x2="1426" y2="740.5" stroke="#FFFFFF08" stroke-width="1" />
+<rect x="10" y="742" width="1420" height="26" fill="#E8923A12"/>
+<rect x="10" y="742" width="3" height="26" fill="#E8923A"/>
+<circle cx="25" cy="755" r="4.3" fill="none" stroke="#E8923A" stroke-width="1.3"/><path d="M25,750.7 a4.3,4.3 0 0 0 0,8.6 z" fill="#E8923A"/>
+<text x="36" y="759" class="t11 b" fill="#E8923A">Degraded</text>
+<text x="130" y="759" class="t12">Webhook · ServiceNow</text>
+<text x="370" y="759" class="mu t11">HMAC · mTLS</text>
+<text x="520" y="759" class="m t11">214</text>
+<text x="590" y="759" class="m t11" fill="#E0457B">9</text>
+<text x="660" y="759" class="m t11" fill="#E8923A">37</text>
+<text x="740" y="759" class="m t11" fill="#E8923A">4.8 s</text>
+<text x="810" y="759" class="m t11" fill="#E8923A">503 · retry 3/5 ⏳ next in 16 s</text>
+<rect x="1060" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1064.4" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1068.8" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1073.2" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1077.6" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1082" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1086.4" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1090.8" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1095.2" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1099.6" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1104" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1108.4" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1112.8" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1117.2" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1121.6" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1126" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1130.4" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1134.8" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1139.2" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1143.6" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1148" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1152.4" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1156.8" y="748" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1161.2" y="749.1" width="3.2" height="12.9" fill="#E8923A"/>
+<rect x="1165.6" y="752.2" width="3.2" height="9.8" fill="#E8923A"/>
+<rect x="1170" y="754.3" width="3.2" height="7.7" fill="#E8923A"/>
+<rect x="1174.4" y="753.6" width="3.2" height="8.4" fill="#E8923A"/>
+<rect x="1178.8" y="755.3" width="3.2" height="6.7" fill="#E8923A"/>
+<text x="1420" y="759" class="t11 e" fill="#E6E8EB">meta-alert → fallback route ✓</text>
+<line x1="14" y1="768.5" x2="1426" y2="768.5" stroke="#FFFFFF08" stroke-width="1" />
+<circle cx="25" cy="783" r="4.5" fill="#2FB59A"/>
+<text x="36" y="787" class="t11" fill="#2FB59A">OK</text>
+<text x="130" y="787" class="t12">Email · SES</text>
+<text x="370" y="787" class="mu t11">SMTP/TLS</text>
+<text x="520" y="787" class="m t11">145</text>
+<text x="590" y="787" class="m t11" fill="#E6E8EB">0</text>
+<text x="660" y="787" class="m t11" fill="#E6E8EB">0</text>
+<text x="740" y="787" class="m t11" fill="#E6E8EB">1.1 s</text>
+<text x="810" y="787" class="m t11" fill="#8A919C">250 Queued</text>
+<rect x="1060" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1064.4" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1068.8" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1073.2" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1077.6" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1082" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1086.4" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1090.8" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1095.2" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1099.6" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1104" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1108.4" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1112.8" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1117.2" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1121.6" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1126" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1130.4" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1134.8" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1139.2" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1143.6" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1148" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1152.4" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1156.8" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1161.2" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1165.6" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1170" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1174.4" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1178.8" y="776" width="3.2" height="14" fill="#2FB59A99"/>
+<line x1="14" y1="796.5" x2="1426" y2="796.5" stroke="#FFFFFF08" stroke-width="1" />
+<circle cx="25" cy="811" r="4.5" fill="#2FB59A"/>
+<text x="36" y="815" class="t11" fill="#2FB59A">OK</text>
+<text x="130" y="815" class="t12">Slack (6 other channels)</text>
+<text x="370" y="815" class="mu t11">app</text>
+<text x="520" y="815" class="m t11">1 486</text>
+<text x="590" y="815" class="m t11" fill="#E6E8EB">1</text>
+<text x="660" y="815" class="m t11" fill="#E6E8EB">1</text>
+<text x="740" y="815" class="m t11" fill="#E6E8EB">230 ms</text>
+<text x="810" y="815" class="m t11" fill="#8A919C">200 OK</text>
+<rect x="1060" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1064.4" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1068.8" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1073.2" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1077.6" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1082" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1086.4" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1090.8" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1095.2" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1099.6" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1104" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1108.4" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1112.8" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1117.2" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1121.6" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1126" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1130.4" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1134.8" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1139.2" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1143.6" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1148" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1152.4" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1156.8" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1161.2" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1165.6" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1170" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1174.4" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<rect x="1178.8" y="804" width="3.2" height="14" fill="#2FB59A99"/>
+<line x1="14" y1="824.5" x2="1426" y2="824.5" stroke="#FFFFFF08" stroke-width="1" />
+</g>
+<g id="time-ribbon">
+<rect x="0" y="860" width="1440" height="40" fill="#12151A"/>
+<line x1="0" y1="860.5" x2="1440" y2="860.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="16" y="885" class="mu t11">◀◀</text>
+<text x="42" y="885" class="mu t11">▶</text>
+<circle cx="64" cy="881" r="3.5" fill="#2FB59A"/>
+<text x="72" y="885" class="ok b t11">LIVE</text>
+<line x1="112.5" y1="868" x2="112.5" y2="892" stroke="#FFFFFF14" stroke-width="1" />
+<path d="M124,890 L124.0,887.1 L130.8,887.4 L137.7,886.6 L144.6,887.5 L151.4,886.7 L158.2,887.0 L165.1,887.5 L171.9,886.8 L178.8,887.5 L185.7,886.9 L192.5,887.5 L199.3,887.5 L206.2,886.9 L213.1,886.3 L219.9,887.4 L226.8,887.2 L233.6,886.6 L240.4,886.1 L247.3,886.7 L254.2,887.0 L261.0,886.0 L267.9,887.5 L274.7,886.2 L281.5,887.1 L288.4,887.4 L295.2,887.4 L302.1,887.1 L308.9,886.3 L315.8,887.3 L322.6,886.7 L329.5,886.6 L336.4,887.0 L343.2,886.7 L350.0,887.5 L356.9,887.5 L363.8,887.3 L370.6,886.5 L377.4,886.9 L384.3,887.1 L391.1,886.7 L398.0,886.9 L404.8,882.1 L411.7,881.3 L418.6,881.5 L425.4,887.2 L432.2,886.7 L439.1,886.8 L445.9,886.2 L452.8,886.4 L459.6,887.1 L466.5,886.0 L473.3,887.4 L480.2,886.9 L487.0,886.4 L493.9,887.4 L500.8,886.8 L507.6,887.5 L514.5,886.5 L521.3,886.4 L528.1,886.7 L535.0,886.2 L541.8,887.1 L548.7,886.5 L555.5,886.6 L562.4,886.7 L569.2,886.9 L576.1,886.3 L583.0,886.1 L589.8,886.8 L596.6,886.5 L603.5,887.5 L610.3,886.5 L617.2,886.6 L624.0,886.0 L630.9,886.3 L637.8,887.1 L644.6,887.0 L651.4,886.5 L658.3,887.6 L665.1,886.9 L672.0,887.3 L678.9,887.4 L685.7,887.5 L692.5,886.4 L699.4,887.4 L706.2,887.2 L713.1,887.0 L719.9,886.2 L726.8,887.5 L733.6,886.9 L740.5,886.7 L747.4,886.2 L754.2,886.3 L761.0,886.2 L767.9,887.2 L774.8,886.9 L781.6,887.0 L788.4,886.2 L795.3,886.1 L802.1,887.4 L809.0,887.3 L815.8,887.2 L822.7,887.2 L829.5,886.8 L836.4,886.7 L843.2,887.2 L850.1,887.6 L856.9,886.9 L863.8,887.0 L870.6,886.7 L877.5,886.1 L884.3,886.5 L891.2,886.8 L898.0,886.6 L904.9,886.5 L911.8,887.5 L918.6,886.2 L925.4,886.4 L932.3,886.2 L939.1,885.5 L946.0,884.8 L952.8,883.5 L959.7,882.6 L966.5,880.4 L973.4,879.9 L980.2,878.6 L987.1,877.0 L993.9,875.7 L1000.8,875.1 L1007.6,875.5 L1014.5,875.6 L1021.3,875.4 L1028.2,875.4 L1035.0,875.0 L1041.9,875.6 L1048.8,874.2 L1055.6,874.6 L1062.4,875.4 L1069.3,875.2 L1076.2,875.0 L1083.0,875.0 L1089.8,875.4 L1096.7,874.2 L1103.5,874.0 L1110.4,874.9 L1117.2,874.8 L1124.1,875.5 L1130.9,875.4 L1137.8,875.1 L1144.7,875.2 L1151.5,874.6 L1158.3,876.0 L1165.2,876.5 L1172.0,875.3 L1178.9,876.3 L1185.8,877.2 L1192.6,876.9 L1199.5,878.0 L1206.3,877.5 L1213.1,877.1 L1220,890 Z" fill="#8A919C" opacity="0.28"/>
+<rect x="178.8" y="866" width="1024.8" height="28" rx="3" fill="#5B9BFF14" stroke="#5B9BFF88"/>
+<rect x="177.3" y="872" width="3" height="16" rx="1" fill="#5B9BFF"/>
+<rect x="1202.1" y="872" width="3" height="16" rx="1" fill="#5B9BFF"/>
+<line x1="1176.2" y1="866" x2="1176.2" y2="894" stroke="#E0457B" stroke-width="1" stroke-opacity="0.6"/>
+<text x="1179.2" y="876" class="t11" fill="#E0457B">⚠</text>
+<line x1="1228.5" y1="868" x2="1228.5" y2="892" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1240" y="885" class="m t11 b">Nov 11 – Nov 18</text>
+<text x="1430" y="885" class="mu t11 e">7 d traffic</text>
+</g>
+<g id="callouts">
+<path d="M700,524 L716,587" class="co"/>
+<circle cx="700" cy="524" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="700" y="528" class="c b t11" fill="#5B9BFF">1</text>
+<rect x="716" y="568" width="265.7" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="724" y="585" class="b" style="font-size:12px;" fill="#5B9BFF">①</text>
+<text x="740" y="585" class="cot">Sankey of real traffic, last 7 days:</text>
+<text x="740" y="599" class="cot">width ∝ notifications actually sent.</text>
+<path d="M1080,180 L370,587" class="co"/>
+<circle cx="1080" cy="180" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="1080" y="184" class="c b t11" fill="#5B9BFF">2</text>
+<rect x="370" y="568" width="291.4" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="378" y="585" class="b" style="font-size:12px;" fill="#5B9BFF">②</text>
+<text x="394" y="585" class="cot">Pasted labels light the path in the tree</text>
+<text x="394" y="599" class="cot">and the Sankey; everything else dims.</text>
+<path d="M1080,334 L1084,587" class="co"/>
+<circle cx="1080" cy="334" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="1080" y="338" class="c b t11" fill="#5B9BFF">3</text>
+<rect x="1084" y="568" width="259.2" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="1092" y="585" class="b" style="font-size:12px;" fill="#5B9BFF">③</text>
+<text x="1108" y="585" class="cot">Why it matched, matcher by matcher,</text>
+<text x="1108" y="599" class="cot">with continue and where it stopped.</text>
+<path d="M112,760 L1180,697" class="co"/>
+<circle cx="112" cy="760" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="112" y="764" class="c b t11" fill="#5B9BFF">4</text>
+<rect x="1180" y="664" width="246.4" height="66" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="1188" y="681" class="b" style="font-size:12px;" fill="#5B9BFF">④</text>
+<text x="1204" y="681" class="cot">Degraded webhook retries with</text>
+<text x="1204" y="695" class="cot">backoff; a meta-alert goes to the</text>
+<text x="1204" y="709" class="cot">fallback route, so a broken</text>
+<text x="1204" y="723" class="cot">receiver can't silence prod.</text>
+<path d="M30,358 L20,587" class="co"/>
+<circle cx="30" cy="358" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="30" y="362" class="c b t11" fill="#5B9BFF">5</text>
+<rect x="20" y="568" width="252.8" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="28" y="585" class="b" style="font-size:12px;" fill="#5B9BFF">⑤</text>
+<text x="44" y="585" class="cot">Route to the owner of the ⊕ origin</text>
+<text x="44" y="599" class="cot">entity, from the entity catalogue.</text>
+</g>
+</svg>

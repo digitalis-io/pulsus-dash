@@ -1,0 +1,709 @@
+# T05 — Testing & performance engineering
+
+| | |
+|---|---|
+| **Status** | Review |
+| **Version** | 1.0-rc · 2026-11-18 |
+| **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
+| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
+
+## 1. Context & problem
+
+[09](../product/09-performance-contract.md) states its budgets as acceptance criteria measured in CI
+on reference hardware. That only works if every number has a measurement method, a place it runs,
+and a gate that fails. [ADR-0007](../adr/0007-in-house-vis-engine.md) adds a second obligation: we
+build ~40 visualisations from 12 mark primitives, and without pixel-level regression tests a change
+to one primitive silently breaks many vis specs. [05 §14](../product/05-visualisation-catalogue.md#14-showcase-gallery)
+makes the public gallery the vis test corpus ([VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus), [VIZ-070](../product/05-visualisation-catalogue.md#viz-070--gallery-runs-on-seeded-synthetic-data)).
+[13](../product/13-core-flow-storyboard.md) needs repeatable, seeded incidents, both to demo and to
+evaluate the RCA engine (T15 (draft)).
+
+The architecture helps. All logic is Rust, so most of the product tests natively and fast. wgpu
+runs headless, so visual tests need no browser. All input enters through one binary ring
+([T03 §5.4](T03-browser-runtime.md#54-input-ring-record-format)), so sessions can be recorded and
+replayed deterministically.
+
+This document is **authoritative** for:
+- the test layers;
+- the **gate catalogue** (§7.1): every gate named in a Satisfies table of any technical design;
+- the gallery = corpus rule and the golden-image procedure;
+- benchmark definitions and perf gates;
+- the replay recording format (`.pdrec`);
+- the synthetic generator and incident corpus contract;
+- the RUM telemetry schema for Dash itself.
+
+## 2. Goals / non-goals
+
+**Goals**
+- Every [09](../product/09-performance-contract.md) number is measured automatically, with an owner
+  and a gate.
+- Every vis and every axis or interaction pattern is a gallery page, a golden test and a frame-time
+  benchmark, generated from one manifest.
+- PR feedback in ≤ 15 min (p90); lab results on every merge to `main` within 60 min.
+- A bug report that carries a replay reproduces on a developer machine in one command.
+- One seeded generator serves unit fixtures, golden images, perf scenes, the gallery, demos and RCA
+  evaluation.
+- Field data (RUM) validates the lab budgets on real hardware.
+
+**Non-goals**
+- Backend load testing of PulsusDB itself (PulsusDB's own benchmarks).
+- The BFF's service-level tests beyond the data-plane contract ([T06](T06-bff-architecture.md)).
+- AI answer-quality metrics (T15 (draft)). This doc supplies their corpus.
+- Mobile real-device budgets (PRF-035 to PRF-042, M-UI4), measured nightly on a device lab owned by
+  T20 (draft); the gate shapes here apply.
+
+## 3. Satisfies
+
+| Requirement | Satisfied by (§) | Verification (T05 gate) |
+|---|---|---|
+| [PRN-011](../product/01-vision-and-principles.md#prn-011--every-surface-traces-to-a-job) | §7.1 | `ci:design-check` (spec review: every 04 surface lists its job ranks) |
+| [PRN-003](../product/01-vision-and-principles.md#prn-003--speed-is-the-feature) | §4.3, §7.1 | `bench:frame-gallery`, `bench:input-photon`, `bench:offline-interaction` |
+| [PRF-001](../product/09-performance-contract.md#prf-001--frame-rate-during-interaction) | §4.3 (measurement), §7.1 (co-satisfied with T02) | `bench:frame-gallery`; `bench:frame-high-hz` |
+| [PRF-002](../product/09-performance-contract.md#prf-002--frame-rate-floor) | §4.3, §7.1 (co-satisfied with T02) | `bench:frame-gallery` |
+| [PRF-003](../product/09-performance-contract.md#prf-003--input-to-photon) | §4.3 (input → photon method; co-satisfied with T03) | `bench:input-photon` |
+| [PRF-004](../product/09-performance-contract.md#prf-004--input-to-photon-hard-limit) | §4.3 (co-satisfied with T03) | `bench:input-photon` |
+| [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.3 (co-satisfied with T03) | `bench:long-tasks` |
+| [PRF-006](../product/09-performance-contract.md#prf-006--no-interaction-waits-on-the-network) | §4.3 (co-satisfied with T01, T04) | `bench:offline-interaction` |
+| [PRF-023](../product/09-performance-contract.md#prf-023--memory-budget) | §4.3 (memory method; co-satisfied with T03) | `bench:memory-heaviest` |
+| [PRF-032](../product/09-performance-contract.md#prf-032--per-visualisation-gpu-benchmarks-in-ci) | §4.3, §7.1 | `bench:frame-gallery` (Chrome WebGPU and WebGL2 legs on (a) and (b); fails on PRF-001/PRF-002) |
+| [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7.1 | `ci:bundle-size`; `bench:inp-rooms` |
+| [VIZ-004](../product/05-visualisation-catalogue.md#viz-004--scale-targets-per-vis) | §4.2, §4.3 | `bench:frame-gallery` |
+| [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) | §4.2 | `ci:gallery-manifest` |
+| [VIZ-070](../product/05-visualisation-catalogue.md#viz-070--gallery-runs-on-seeded-synthetic-data) | §4.2, §4.5 | `e2e:gallery-offline`; `golden:gallery` (two seeded runs identical) |
+
+## 4. Design
+
+### 4.1 Test pyramid
+
+```
+                         ┌───────────────────────┐  L6 RUM (field)        continuous, PulsusDB (self-telemetry)
+                       ┌─┴───────────────────────┴─┐ L5 lab perf            merge/nightly, (a)(b)(c)
+                     ┌─┴───────────────────────────┴─┐ L4 Playwright E2E + replay   PR (smoke) + nightly
+                   ┌─┴───────────────────────────────┴─┐ L3 wasm tests       PR
+                 ┌─┴───────────────────────────────────┴─┐ L2 native GPU goldens PR
+               ┌─┴───────────────────────────────────────┴─┐ L1 native unit/property/fuzz + static CI checks  PR
+               └───────────────────────────────────────────┘
+```
+
+| Layer | Runner | Scope | Volume / time budget |
+|---|---|---|---|
+| **L1** native unit, property, fuzz; static checks | `cargo nextest`, `proptest`, `loom`/`shuttle`, `cargo-fuzz` (nightly); `xtask` linters | scales, ticks, units, decimation, layout engines, state reducers, keymap, URL/camera codecs, planner, DSF/Arrow codecs, JSON→Arrow, cache keys, rings; lints over shim, tokens, specs, keymaps, bundles | ~10⁴ tests, ≤ 6 min on 16 cores |
+| **L2** native GPU goldens | `dash-golden` on headless wgpu (§4.2) | every gallery page × variants; every mark primitive; transitions at fixed t | ~3 000 images, ≤ 6 min |
+| **L3** wasm tests | `wasm-bindgen-test` in headless Chrome and Firefox | code that touches `web-sys`: IndexedDB, net glue, atomics/threads, shared-memory layout, WebGL2 context creation | ≤ 300 tests, ≤ 4 min |
+| **L4** Playwright via the shim, and `.pdrec` replays | Playwright (test tooling only; never shipped) against the real build + BFF + seeded PulsusDB or the fake upstream | user flows, mode matrix ([T03 §9](T03-browser-runtime.md#9-failure-modes--degradation)), shim contract, a11y, deep links, replay specs | PR smoke ≤ 40 specs / 8 min; nightly ~400 |
+| **L5** lab perf | `dash-lab` agents on reference hardware (§4.6) | frame time, latency, memory, startup, INP | merge: ≤ 45 min; nightly full |
+| **L6** RUM | Dash in production → PulsusDB self-telemetry | the same metrics as L5 | continuous |
+
+Property tests that are fixed requirements:
+- **decimation** never hides a spike: for every pixel column, the min and max of the raw data appear
+  in the output ([T02 §4.4](T02-vis-engine.md#44-lod-decimation-and-precision));
+- **ticks** never overlap at any width from 40 to 8 000 px and in any time zone, including DST days;
+- **axes**: no two bands overlap; tick labels never collide across stacked lanes; a pan on axis A
+  leaves every mark bound to axis B pixel-identical ([T02 §4.3](T02-vis-engine.md#43-axis-system));
+- **DSF and Arrow** round-trip for random batches;
+- **JSON → Arrow** equals PulsusDB JSON values bit for bit, NaN and ±Inf included
+  ([T04 §10](T04-wire-format-and-data-plane.md#10-testing));
+- **the state store**: `undo ∘ apply = id` for every command ([T03 §4.4](T03-browser-runtime.md#44-state-ownership));
+- **URL and camera codecs**: decode ∘ encode = id; `cam` ≤ 64 characters.
+
+**The fake upstream** (`pulsus-fake`, a Rust binary) serves recorded or generated PulsusDB responses
+by request fingerprint, with injectable latency, truncation, 422/429/504 and mid-stream drops. It
+also serves the Postgres virtual sources from fixtures. Most L4 specs use it, which keeps them
+hermetic. Nightly L4 runs against real PulsusDB and Postgres.
+
+**The test probe.** `test` builds expose `window.__dashProbe`: `state()` returns the Context as JSON,
+`frame()` waits for the next presented frame, `readback(viewport)` returns RGBA, and `inputLog()`
+returns decoded input records. The probe is a cfg-gated module of the generated glue, not
+hand-written shim code. CI asserts it is absent from release artefacts (`ci:probe-absent`).
+Playwright drives **real DOM events** by default, so the shim's capture path is under test. Replay
+specs inject recordings instead (§4.4).
+
+**Shim contract fuzz** (`e2e:shim-fuzz`). A Playwright spec dispatches 10⁴ random pointer, wheel,
+key, paste and resize events. It then asserts that the Rust decoder (probe `inputLog()`) saw
+identical fields, in order, with no loss beyond counted overflow.
+
+#### T05-001 — Every 09 number has a gate and an owner
+**MUST** — Every requirement in [09](../product/09-performance-contract.md) at the current milestone
+MUST map to at least one gate in §7.1, each with a named owning team, and every Satisfies table in
+`technical/` MUST name only gates defined in §7.1.
+
+#### T05-002 — Every gate is proven to fail
+**MUST** — A new gate MUST ship with a deliberately regressing change that demonstrates it fails.
+
+### 4.2 Gallery = corpus, and golden-image tests
+
+**Gallery = corpus.** Every page of the showcase gallery
+([05 §14](../product/05-visualisation-catalogue.md#14-showcase-gallery)), including each axis
+pattern of [05 §1.1](../product/05-visualisation-catalogue.md#11-axes-as-a-design-tool) Table 5-2
+and each interaction pattern, is one entry in the `fixtures/` manifest. From each entry the build
+generates:
+1. the gallery page;
+2. its golden-image fixtures (`golden:gallery`);
+3. its frame-time benchmark at the vis's target volume (`bench:frame-gallery`);
+4. the vis registry entry (T02-031), so a vis cannot exist without a page and a test.
+
+A manifest entry names the spec, the `pulsus-synth` seed and preset at the target volume, the
+variants, the milestone, and the [05](../product/05-visualisation-catalogue.md) table row it
+covers. `ci:gallery-manifest` checks that every vis listed for the build's milestone in Tables 5-1 to
+5-10 and every Table 5-2 row up to that milestone has an entry, a passing golden and a frame-time
+result.
+
+**Seeded, PulsusDB-free.** Gallery pages generate their data in the browser from `pulsus-synth`
+linked into the gallery build of core ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)).
+`e2e:gallery-offline` opens every page with no PulsusDB reachable and asserts it renders at its
+target volume; two runs with the same seed produce identical goldens.
+
+```
+ fixtures/manifest.toml ─► (seed, preset) ─► pulsus-synth ─► Arrow chunks ─┬─► gallery page (browser)
+                                                                          ├─► dash-render (native wgpu, headless) ─► PNG
+                                                                          └─► dash-lab frame-time scenario
+                       goldens/<spec>/<variant>.png (Git LFS) ◄── compare (ꟻLIP + region rules) ┘
+```
+
+- **Renderer.** The same `dash-scene`/`dash-marks` crates as the browser, on native wgpu. The
+  *canonical* backend is **lavapipe** (Mesa's software Vulkan) at a pinned Mesa version, for
+  bit-stable output on any CI machine. A second job renders on real GPUs (Metal on (a), D3D12 on (b))
+  with a looser threshold.
+- **Variants.** Per spec: dark theme (M-UI1), light theme (from M-UI5), wall high-contrast (from
+  M-UI6) × {320×200, 800×400, 1 920×1 080} × DPR {1, 2} × density {Compact, Comfortable}. Each vis
+  also has a "stress" variant at its target volume, downscaled. A greyscale variant
+  (`golden:greyscale`) checks that state glyphs and axis-ownership glyphs are pairwise distinguishable
+  without colour.
+- **Comparison.** **ꟻLIP** (perceptual error, via the `nv-flip` crate), with two rules:
+  - fail if mean ꟻLIP > 0.005 on lavapipe (0.02 on real GPUs);
+  - fail if any 8×8 block has ꟻLIP > 0.25 inside a *text region*. Text regions are the M8 instance
+    bounds the renderer emits next to the PNG. This catches glyph regressions that the mean hides.
+- **Decimation reference** (`golden:decimation-ref`). 1 000 series × 100k points rendered decimated
+  and with every raw point; the line-coverage diff must be zero at the pixel level.
+- **Determinism prerequisites:** fonts and MSDF atlases pinned; no wall-clock time (the `Clock` trait
+  is fixed at t = 0 or a stated transition t); layouts seeded (T14 (draft)); decimation and pool
+  reductions deterministic ([T03 §5.6](T03-browser-runtime.md#56-wasm-bindgen-web-sys-and-threads)).
+- **Updating goldens** needs the `golden-update` PR label. CI publishes a diff gallery (before, after,
+  ꟻLIP heatmap) as a build artefact. The visual-design review gate ([T02 §10](T02-vis-engine.md#10-testing))
+  approves new specs from the same gallery.
+- **Tier parity** (`golden:tier-parity`, nightly). Each spec is rendered in Chrome on WebGPU and on
+  WebGL2 using probe `readback`, and the two are compared at the real-GPU threshold.
+- **Native = browser** (`golden:native-browser`, nightly). A sample of 100 specs, always including
+  the field-configuration pages, compares Chrome T1 readback against the native Metal render on (a).
+
+#### T05-003 — Gallery = corpus
+**MUST** — Every vis and every Table 5-2 axis pattern and interaction pattern MUST have exactly one
+`fixtures/` manifest entry, added in the same milestone as the vis, from which its gallery page,
+golden-image test and frame-time benchmark are generated. CI MUST fail when a vis or pattern of the
+build's milestone lacks an entry, a passing golden or a frame-time result.
+
+#### T05-004 — The canonical golden backend is pinned
+**MUST** — Golden images MUST be compared on lavapipe at a pinned Mesa version, with pinned fonts and
+atlases. A Mesa or driver update MUST land as one PR with a regenerated diff gallery.
+
+#### T05-005 — Golden comparison rules
+**MUST** — A golden MUST fail when mean ꟻLIP exceeds 0.005 on lavapipe (0.02 on real GPUs) or when
+any 8×8 block inside a text region exceeds 0.25. Goldens MUST change only in a PR labelled
+`golden-update`.
+
+### 4.3 Frame-time and latency benchmarks
+
+**Per primitive** (L5, plus a native GPU-timestamp variant in L2). Thresholds are the
+[09](../product/09-performance-contract.md) numbers: median ≥ 60 fps (p50 ≤ 16.7 ms) on (a), (b) and
+(c) for [PRF-001](../product/09-performance-contract.md#prf-001--frame-rate-during-interaction), and p99 ≤ 22.2 ms on (b) for [PRF-002](../product/09-performance-contract.md#prf-002--frame-rate-floor). The draft's stricter p99 ≤ 16.7 ms on
+(a) is kept as a tracked target.
+
+| Gate | Primitive | Scene | Target count |
+|---|---|---|---|
+| `bench:frame-line-1e8` | M1 polyline + GPU decimation | pan/zoom loop | 10⁸ points held, 1 000 series |
+| `bench:frame-series-1e4` | M2 band + M1 outliers | pan/zoom loop | 10⁴ series |
+| `bench:frame-scatter-1e7` | M4 point (T1) / M10 density; M4 sprites (T2 leg) | brush + zoom | 10⁷ held; T2 sprites at 2–3 × 10⁶ visible |
+| `bench:frame-gallery` | every gallery page | scripted pan/zoom (orbit for 3D) | the page's target volume |
+| (in `bench:frame-gallery`) | M3 rect (heatmap) | scroll | 10k × 200 cells |
+| (in `bench:frame-gallery`, M-UI2) | M3 + M8 flame | zoom into frame | 10⁵ frames |
+| (in `bench:frame-gallery`, M-UI2) | M8 text (log stream) | fling scroll | 10⁶ lines in window |
+| (in `bench:frame-gallery`, M-UI3) | M4/M5 + M6 Atlas | orbit + particles | 10⁴ nodes / 5 × 10⁴ edges |
+| (in `bench:frame-gallery`, M-UI5) | Board | pan across | 200 viewports |
+| `bench:frame-high-hz` | `bench:frame-line-1e8` and the scatter page | as above, on a 120 Hz display | median ≥ 120 fps on (a) driving an external 120 Hz display |
+
+`bench:frame-gallery` runs every page in Chrome with WebGPU and again with WebGL2, on (a) and (b),
+and reports p50 and p99 per page. On (c), the 4K wall, every row must also hold at native
+resolution.
+
+**Per surface** (scripted `.pdrec` scenarios from [13](../product/13-core-flow-storyboard.md) and
+[09 §4](../product/09-performance-contract.md#4-load--data-latency), run against the M-size synthetic
+estate, §4.5):
+
+| Gate | Scenario | Metric | Budget | From |
+|---|---|---|---|---|
+| `bench:startup` | Cold load (cached CDN) → interactive | navigation start → shell accepts `⌘K` ([T03 §7.1](T03-browser-runtime.md#71-startup-sequence-warm-http-cache-reference-a)) | < 1.0 s p75 over 20 runs, (a) and (b) | M-UI1 |
+| `bench:input-photon` | pan and hover crosshair | event `t_ms` → present of the frame that consumed it | median ≤ 1 frame, p99 ≤ 2 frames, (a) and (b) | M-UI0 |
+| `bench:long-tasks` | every interaction benchmark | main-thread tasks > 16 ms between first and last input | 0, (a) and (b) | M-UI0 |
+| `bench:offline-interaction` | network throttled to 0 B/s after first paint; scripted pan/zoom/scrub; then restored | frames blocked on a request; refinement without interrupting the gesture | 0 blocked frames; PRF-001 and PRF-003 still met | M-UI0 |
+| `bench:camera-transition` | focus, back, dive, "show me" | trigger → final pose | 100 % ≤ 250 ms, (a) and (b); next frame under reduced motion | M-UI1 |
+| `bench:memory-heaviest` | heaviest gallery/surface scene | peak tab memory | < 1.5 GB on (a) | M-UI0 |
+| `bench:memory-pressure` | memory pressure induced past the budget | crash; time to rollup; badge | no crash; rollup within 1 s; badge changes | M-UI1 |
+| `bench:inp-rooms` | Lighthouse with scripted room interactions | INP | ≤ 200 ms (fail above); 100 ms tracked target | M-UI0 |
+| `bench:lens-load` | warm nav → Lens coarse; Lens fully refined (1 h) | dive input → first data frame in every visible viewport; → last `coverage.final` | < 300 ms p75; < 1.5 s p75 (PRF-010, PRF-011, PRF-034) | M-UI2 |
+| `bench:decode-r1` | R1 harness ([T04 §10](T04-wire-format-and-data-plane.md#10-testing)) | A1 decode on (a) | < 50 ms p95 | M-UI0 |
+| — | Atlas 2 000 entities first paint | → first frame with all nodes | < 800 ms (PRF-012) | M-UI3 |
+| — | F2 Space-scrub, 2 000 entities | frame time during scrub; network requests | PRF-001/PRF-002; 0 requests | M-UI3 |
+| — | Live tail | ingest timestamp → frame containing the line | < 2 s p95 (PRF-015) | M-UI2 |
+
+**Measurement methods**
+- **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
+  timestamps, cross-checked with GPU timestamp queries where the `timestamp-query` feature is exposed
+  (treated as optional, because browsers may quantise or gate it).
+- **Headless.** [PRF-032](../product/09-performance-contract.md#prf-032--per-visualisation-gpu-benchmarks-in-ci) calls for headless GPU benchmarks. `dash-lab` runs Chrome's headless
+  mode with the GPU enabled (`--headless=new --use-angle=…`, same compositor and GPU process as
+  headed), on the reference machines. A weekly headed run checks the two agree within 5 %.
+- **Long tasks and jank on main** come from the Long Animation Frames API where supported, otherwise
+  Long Tasks.
+- **Input → photon** is estimated in CI as event `t_ms` → `queue.submit` of the frame that consumed
+  it, plus one vsync. Each reference machine gets a quarterly **photodiode + high-speed camera**
+  calibration of the estimate.
+- **Memory** uses `performance.measureUserAgentSpecificMemory()` (available because we are
+  cross-origin isolated), else WASM memory + a GPU allocation tally.
+- **Runs.** Each benchmark runs 3 × 60 s after a 30 s warm-up and thermal soak. We report p50, p95,
+  p99, dropped frames and the frame-time histogram.
+
+#### T05-006 — Wall-clock gates run only on the reference lab
+**MUST** — Frame-time, latency, memory and INP gates MUST run on the dedicated reference machines
+(§4.6), never on shared CI runners. PR-level CPU regressions MUST be gated by instruction counts
+(`bench:cpu-instr`).
+
+#### T05-007 — Frame-time gates use the 09 numbers
+**MUST** — `bench:frame-gallery` and the per-primitive benches MUST fail when the median frame time on
+(a), (b) or (c) exceeds 16.7 ms, when p99 on (b) exceeds 22.2 ms, or when p99 regresses by more than
+5 % against the baseline (Mann–Whitney U, p < 0.01). They MUST be blocking from M-UI0 on (a) and (b),
+and report each page's p50/p99 on failure.
+
+### 4.4 Deterministic input replay (`.pdrec`)
+
+A recording captures **inputs, not pixels**: the exact [T03 §5.4](T03-browser-runtime.md#54-input-ring-record-format)
+input records, the ui → core command records ([T03 §5.3](T03-browser-runtime.md#53-core--shell-messages)),
+and the data-plane transcript, all keyed by frame number.
+
+| Section | Contents |
+|---|---|
+| Header | magic `PDREC1`, build id, wire version, tier, mode, viewport size + DPR, locale, time zone, keymap id, seed(s), dataset id or `live`, wall-clock origin |
+| Frame records | `frame u32`, `dt_ms f32`, input records verbatim, ui → core records verbatim |
+| Net transcript | per request: `request_id`, `QueryRequest` JSON, and either the DSF frames (full mode) or their `xxh3` digests + coverage (lean mode), each tagged with the frame on which it was delivered |
+| Checkpoints | every 60 frames: `xxh3_64` of the canonical state store + scene graph summary |
+| Footer | index offsets |
+
+The file is zstd-compressed and written by `dash-replay` in the render worker.
+
+**Replay specs.** Each `replay:*` gate in §7.1 is a set of `.pdrec` files authored against a seeded
+dataset, with assertions on checkpoints, probe `state()` and, where stated, frame timing. Replays
+assert state and checkpoint hashes, not images, because pixels across GPU vendors are not expected to
+match.
+
+**Uses**
+1. **Perf scenarios.** Every §4.3 surface scenario is a `.pdrec`, so the identical gesture sequence
+   runs on every machine.
+2. **Regression tests.** A replay that once diverged or crashed becomes an L4 test with its
+   checkpoints.
+3. **Bug reports.** The render worker keeps the last 5 minutes in a memory ring of about 2–4 MB,
+   always in lean mode. "Attach session replay" (and the automatic attach on a second crash,
+   [T03 §9](T03-browser-runtime.md#9-failure-modes--degradation)) uploads it via
+   `POST /api/dash/v1/replays` ([T06](T06-bff-architecture.md); refs and retention in
+   [T11](T11-postgres-schema.md)).
+   - Lean replays re-query PulsusDB at the recorded absolute times, flag divergence by checkpoint,
+     and need the replayer to hold the reporter's data scope.
+   - Full mode (DSF payloads included) requires explicit user consent and is scope-checked on
+     playback.
+   - Paste records are redacted to their length. Text typed into DOM fields is never in the ring,
+     only the resulting commands.
+4. **One command:** `cargo xtask replay <file> [--native|--browser] [--until-divergence]`.
+
+The investigation **flight recorder** (T17 (draft)) shares the container and checkpoint format. The
+flight recorder stores semantic Context and evidence for humans; `.pdrec` stores low-level input for
+machines.
+
+#### T05-008 — Determinism contract
+**MUST** — Core MUST read time only through `Clock` (driven by `dt_ms` in replay), MUST seed every RNG
+from the header, MUST use `BTreeMap` or fixed-seed hashers for anything that affects output, and MUST
+use order-deterministic pool reductions. The replay scheduler MUST deliver network frames at their
+recorded frame. Running any `.pdrec` twice natively MUST produce identical checkpoints.
+
+#### T05-009 — Replays are lean and private by default
+**MUST** — Bug-report replays MUST be lean by default (no telemetry values), MUST redact paste
+contents to their length, and MUST NOT contain text typed into DOM fields. Full mode MUST require
+explicit consent and scope-checked playback.
+
+### 4.5 Seeded synthetic telemetry and the incident replay corpus
+
+**`pulsus-synth`** (a Rust crate, CLI and WASM library) is deterministic from
+`(seed, preset, scenario, t0)`.
+
+- **Estate model.** Regions → clusters → nodes → pods → containers, plus services with a call graph
+  (power-law fan-out), versions, deploy history, feature flags and journeys. The model covers the
+  infrastructure and application ladders of [15](../product/15-estate-navigation.md).
+- **Signals.**
+  - Metrics: RED/USE, kube-state, histograms.
+  - Logs: templated lines with realistic pattern entropy, levels and structured metadata.
+  - Traces: spans following the call graph, with errors propagated or originated.
+  - Profiles: stack samples from synthetic call trees.
+- **Outputs.** OTLP to a *lab* PulsusDB's standard `/v1/{metrics,logs,traces}` and
+  `/v1development/profiles` paths (with `Idempotency-Key`, so reloads are safe) for L4 nightly and
+  L5; *or* direct Arrow chunks (gallery, L2 goldens) and fake-upstream transcripts (L1–L4 hermetic),
+  from the same model and seed. Synthetic OTLP is test data loaded by the test harness, never by the
+  Dash product.
+- **Presets** (sized from [15](../product/15-estate-navigation.md) and
+  [09 §5](../product/09-performance-contract.md#5-volume-targets-single-viewport-or-scene)):
+
+| Preset | Services / pods / nodes | Use |
+|---|---|---|
+| S | 50 / 500 / 30 | unit fixtures, PR L4 |
+| M | 2 000 / 20 000 / 1 500 | surface budgets, demos, F2 scrub, "typical service" for PRF-011 |
+| L | 10 000 / 200 000 / 10 000 | Atlas ceilings, nightly |
+| Wire-XL | 1 000 × 10 000 points etc. | R1 harness ([T04 §10](T04-wire-format-and-data-plane.md#10-testing)), primitive volumes |
+
+- **Time.** Data is generated relative to `t0`, which defaults to "now − window" at load, so
+  retention and "now" semantics hold. Fixtures and gallery pages use a fixed epoch.
+
+**Incident replay corpus** (`corpus/incidents/<id>/`). Each scenario is a `pulsus-synth` scenario
+script plus **ground truth** (`truth.yaml`):
+
+| Field | Example (INC-2041, [13](../product/13-core-flow-storyboard.md)) |
+|---|---|
+| `trigger` | config change `payments.psp.timeout 5000→2000` at t+0 |
+| `origin` | edge `payments → psp-api` |
+| `victims` | `payments`, `checkout`, `gateway`, journey `Checkout` |
+| `onset_order` | `psp-api edge` 12:19:40, `payments` +85 s, `checkout` +110 s |
+| `unchanged` | `psp-api` latency, `pg-orders`, deploy v2.31 |
+| `signatures` | failed spans at exactly 2.0 s; NEW pattern `timeout calling psp-api after <*>ms` |
+| `expected_ui` | First Light order, causal path, Compare keys |
+
+The initial set (M-UI4) has 12 scenarios: bad config timeout; bad deploy (canary); noisy neighbour
+on a node; DNS failure; certificate expiry; memory leak with OOM kills; DB lock contention; partial
+zone outage; cardinality explosion; sampling gap (coverage honesty); retry storm; and a no-incident
+control (false-positive check).
+
+Real incidents may be added from customer opt-in exports after redaction, with the same ground-truth
+file. Consumers are perf scenarios (§4.3), RCA evaluation (T15 (draft)), alert backtests
+([T16](T16-alert-evaluator.md)) and the [13](../product/13-core-flow-storyboard.md) usability tests.
+
+#### T05-010 — One generator, one seed
+**MUST** — Every fixture, golden, gallery page, perf scene and corpus scenario MUST be produced by
+`pulsus-synth` from a recorded `(seed, preset, scenario, t0)`, and `pulsus-synth` MUST carry golden
+statistics (series counts, pattern counts, error ratios per seed) so generator changes are visible.
+
+#### T05-011 — The corpus contains no customer data
+**MUST** — The corpus MUST contain only synthetic data or real incidents redacted under a two-person
+review with [T18](T18-security.md)'s checklist.
+
+### 4.6 Reference hardware lab
+
+| Id | Machine ([09 §2.1](../product/09-performance-contract.md#21-reference-hardware)) | Browsers | Role |
+|---|---|---|---|
+| (a) | MacBook Air M2 (2022), 16 GB, plus an external 120 Hz display | Chrome stable (gating), Safari, Firefox | primary gate; R1; memory; high-Hz |
+| (b) | Windows laptop, Intel Iris Xe iGPU | Chrome stable (gating), Edge, Firefox | iGPU floor (≥ 45 fps p99) |
+| (c) | 4K wall PC, mid-range discrete GPU | Chrome stable (gating) | wall mode, 4K fill rate |
+| (d)* | informational: 4-core/8 GB laptop, Linux | Chrome, Firefox | early warning, ST mode |
+
+\* Not to be confused with the mobile reference (d) of 09, which is owned by the T20 (draft) device
+lab.
+
+- **Hygiene.** Machines run on mains power, with fixed brightness, native refresh, and OS and driver
+  updates pinned and rolled monthly as one change. No other apps run. The thermal state is checked
+  before each run. Each machine has two units, so one can be taken out of service.
+- **`dash-lab` agent** (Rust). It pulls jobs from CI, launches Chrome with a clean profile and the
+  GPU enabled, loads the build, serves the fake upstream or the lab PulsusDB with preloaded M and L
+  presets, runs `.pdrec` scenarios, and uploads results to the lab's PulsusDB as OTLP metrics with
+  `run_id`, commit and machine attributes. Results are viewed in Dash itself.
+- **Baseline.** Per (benchmark, machine, browser): a rolling median of the last 10 `main` runs.
+
+#### T05-012 — Lab machines self-calibrate
+**MUST** — Before each job the agent MUST run a calibration benchmark; if it deviates by more than 5 %
+from the machine's own baseline, the job MUST move to the twin unit and the lab owner MUST be
+alerted.
+
+### 4.7 Real-user performance telemetry (Dash observing itself)
+
+The shell owns collection, reading the control-block counters ([T03 §4.3](T03-browser-runtime.md#43-shared-memory-layout-and-ownership)).
+It **aggregates locally**: frame times go into histograms, never per-frame events. It sends every
+30 s, and on `visibilitychange → hidden` via `navigator.sendBeacon`, as OTLP/protobuf from a minimal
+hand-rolled encoder (no `opentelemetry` crate, to save size). The BFF forwards the data to PulsusDB
+OTLP ingest under a dedicated database or tenant (`X-Pulsus-Database` / `X-Scope-OrgID`, configured
+by [T19](T19-deployment.md)). This is Dash's self-telemetry, the write to PulsusDB that
+[ADR-0012](../adr/0012-derived-state-in-postgres.md) permits; it never lands in a customer tenant.
+
+| Metric (OTLP) | Type | Key attributes |
+|---|---|---|
+| `dash.frame.duration` | exponential histogram, ms | `surface`, `tier` (T1/T2), `mode` (full/st/mtr), `hw_class`, `viewports` bucket |
+| `dash.input.latency` | exp. histogram, ms (event → submit) | `surface`, `kind` (pointer/wheel/key) |
+| `dash.load.phase` | histogram, ms | `phase` (`shim`, `shell_compile`, `fcp`, `core_compile`, `gpu_init`, `first_frame`, `interactive`), `cache` (warm/cold) |
+| `dash.query.latency` | histogram, ms | `kind`, `phase` (`ttfb`, `first_batch`, `final`), `rank`, `priority`, `outcome` |
+| `dash.decode.duration` | histogram, ms per MB | `schema` |
+| `dash.cache.lookups` | counter | `result` (hit/stale/miss) |
+| `dash.coverage.degraded` | counter | `reason` (truncated, sampled, rollup, memory, tier) |
+| `dash.main.long_tasks` | counter + histogram | `room` |
+| `dash.inp` | histogram, ms | `room` |
+| `dash.memory.bytes` | gauge | `pool` (core, shell, gpu_est, idb) |
+| `dash.gpu.device_lost`, `dash.worker.crash` | counter | `role` |
+
+- **Logs.** Panics, with stack traces symbolicated server-side from split DWARF
+  ([T03 §5.6](T03-browser-runtime.md#56-wasm-bindgen-web-sys-and-threads)), and mode/tier degradation
+  events.
+- **Traces.** A browser root span per interaction (navigation, dive, pivot). `traceparent` goes on
+  every data-plane request ([T04 §5.2](T04-wire-format-and-data-plane.md#52-http-endpoints-data-plane)),
+  so a slow Lens is one trace from browser to BFF to PulsusDB (via the `request_id ↔ X-Pulsus-Query-Id`
+  link). The browser tail-samples: keep 1 %, plus every span over its
+  [09](../product/09-performance-contract.md) budget, plus errors.
+- **`hw_class`.** Bucketed (e.g. `apple-m-series`, `intel-igpu`, `dgpu`, `low-core`) from core count,
+  `deviceMemory` and coarse adapter info, never a raw adapter string, to limit fingerprinting.
+- **Use.** "Dash on Dash" boards show field p75/p95 per `hw_class` against the 09 budgets; SLO alerts
+  fire on regressions ([T16](T16-alert-evaluator.md)); release compare on RUM gates canary rollouts
+  ([T19](T19-deployment.md)).
+
+#### T05-013 — RUM identifies no user and no query
+**MUST** — RUM MUST NOT contain query text (only a fingerprint), label values or user ids, MUST use a
+per-tab random session id, MUST be ingested into a Dash-only database or tenant, and MUST be
+disableable or sampled per org.
+
+#### T05-014 — RUM never affects the UI
+**MUST** — When RUM ingest is down, the browser MUST drop batches beyond a bounded queue of 3 and MUST
+NOT retry in a loop.
+
+## 5. Interfaces
+
+| Interface | Defined here | Consumers |
+|---|---|---|
+| `fixtures/manifest.toml` (spec, seed, preset, variants, milestone, 05 row) | yes | gallery build, `dash-golden`, `dash-lab`, vis registry |
+| `.pdrec` v1 (§4.4) | yes | `dash-replay`, bug-report upload ([T06](T06-bff-architecture.md)), T17 (draft) container reuse |
+| `pulsus-synth` CLI: `synth --seed --preset --scenario --t0 --out otlp://…\|arrow://…\|fake://…` | yes | L1–L5, gallery, demos, T15 (draft), [T16](T16-alert-evaluator.md) |
+| Corpus ground-truth schema (`truth.yaml`, fields as §4.5) | yes | T15 (draft) evaluation harness |
+| Test probe `window.__dashProbe` (test builds only) | yes | Playwright |
+| RUM OTLP schema (§4.7) | yes | [T19](T19-deployment.md) self-observability boards, [T16](T16-alert-evaluator.md) SLO alerts |
+| `POST /api/dash/v1/telemetry` (OTLP/protobuf, ≤ 256 KiB per post) | assumed in [T06](T06-bff-architecture.md) | browser shell |
+
+## 6. Data & storage
+
+| Data | Where |
+|---|---|
+| Goldens | Git LFS (`goldens/`), ~3 000 PNGs, about 300 MB |
+| Fixture manifest, corpus scripts + ground truth | Git (`fixtures/`, `corpus/`); generated OTLP is never committed |
+| Lab results, RUM | PulsusDB, Dash self-telemetry database (lab and production respectively) |
+| Bug-report replays | Optional object storage via the BFF ([ADR-0009](../adr/0009-optional-object-storage.md)), else Postgres; refs and retention in Postgres ([T11](T11-postgres-schema.md)); default 30-day retention |
+| Fake-upstream transcripts | Git LFS (small set) or generated at test time |
+
+## 7. Performance budget
+
+This doc *enforces* budgets rather than consuming them.
+
+### 7.1 Gate catalogue
+
+Every gate named in a Satisfies table is defined here. **Stage:** PR (blocks merge), merge (blocks
+the merge train), nightly (release blocker).
+
+**Static and CI checks (L1)**
+
+| Gate | Checks | Stage | Blocking |
+|---|---|---|---|
+| `ci:design-check` | `designs/tools/check.py`: no broken links or anchors, unique requirement IDs, every requirement has priority, milestone and acceptance criteria, every Satisfies reference resolves, no M-UI0/1 MUST untraced; `traceability.md` regenerated and diffed | PR | yes |
+| `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; `layout.gen.js` regenerated and diffed | PR | yes |
+| `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)) and per crate (`twiggy`); core < 3 MB; over budget → fail; +2 % in one PR → needs `size-ok` label | PR | yes |
+| `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build | PR | yes |
+| `ci:token-lint` | T01-010: no colour, size or duration literal outside `dash-tokens` outputs; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
+| `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
+| `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
+| `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis | PR | yes |
+| `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
+| `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts | release build | yes |
+
+**Unit, property and fuzz (L1)**
+
+| Gate | Checks |
+|---|---|
+| `unit:decimation-prop` | Raw min and max appear in every pixel column; identical output across thread counts |
+| `unit:ticks-prop` | Ticks never overlap, 40–8 000 px, all time zones including DST days |
+| `unit:axis-layout-prop` | No band overlap; no label collision across lanes; pan on A leaves B's marks pixel-identical; hysteresis (500 ms shrink) |
+| `unit:axis-patterns` | Table 5-2 triggers apply per milestone; `origin = User` disables auto; ≤ 2 axes per side auto; "consider stacking" hint |
+| `unit:camera-controller` | Cursor-anchored zoom drift < 1 px over 100 random steps (2D and 3D); inertia settles 300 ± 50 ms, no overshoot, stops on the next input frame |
+| `unit:scene-model` | Scene = tree of viewports with binding, vis, camera/axes, overlays; preserved when moved |
+| `unit:autovis-table` | One fixture per Table 5-13 row → listed vis; milestone restriction; Perspective does not change the rule; Bullet for value + threshold |
+| `unit:number-format` | `2.84 s`, `1.2k rps`, `€38k/h`, `since 12:22 (40 min)`; byte-identical output browser vs native |
+| `unit:colour-hash` | Series colour = f(`key_hash`) stable across charts, sessions and sources |
+| `unit:text-flow-sanitise` | Markdown with `<script>`, `onerror=`, iframes renders as text runs; removal counted |
+| `unit:context-reducer` | Every [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) row; `[` `]` `-` `=` window arithmetic |
+| `unit:undo-prop` | `undo ∘ apply = id` for every command |
+| `unit:keymap-fsm` | 250 ms tap/hold; 1 s chord timeout and cancel; remap conflict refusal names the existing action |
+| `unit:url-codec` | URL round-trip for every pattern; copy link pins absolute time unless "keep relative" |
+| `unit:cam-codec` | `cam` ≤ 64 chars for every mode; restore within 1 px; CRC rejects corruption |
+| `unit:codec-roundtrip` | Golden Arrow fixture per schema, BFF writer → WASM reader |
+| `unit:json-arrow-prop` | JSON → Arrow equals PulsusDB JSON bit for bit, NaN/±Inf and gaps |
+| `unit:fuzz-dsf` | `cargo-fuzz` on the DSF parser and IPC decode (nightly; crashes block release) |
+| `unit:ring-stress` | loom/shuttle on SPSC rings and chunk pinning; 10⁶ records through each ring with random stalls |
+
+**Goldens (L2)**
+
+| Gate | Checks |
+|---|---|
+| `golden:gallery` | Every gallery page × variants (§4.2), ꟻLIP rules; two seeded runs identical |
+| `golden:decimation-ref` | Decimated vs every-raw-point render, zero line-coverage diff |
+| `golden:greyscale` | State glyphs and axis-ownership glyphs distinguishable in greyscale |
+| `golden:tier-parity` | WebGPU vs WebGL2 readback per spec (nightly) |
+| `golden:native-browser` | Chrome T1 readback vs native render, 100 specs incl. field configuration (nightly) |
+
+**Browser end-to-end (L4)**
+
+| Gate | Checks |
+|---|---|
+| `e2e:shim-fuzz` | 10⁴ random DOM events decoded identically, in order, loss only as counted overflow |
+| `e2e:mode-matrix` | Smoke suite per mode (Full, T2, ST, MT-R, Static) via `?mode=` |
+| `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench module |
+| `e2e:no-dom-vis` | Every non-DOM vis is drawn by the wgpu canvas: no chart SVG or 2D-canvas elements in the DOM |
+| `e2e:a11y-rooms` | axe-core WCAG 2.2 AA checks on every room; keyboard-only traversal reaches and operates every control |
+| `e2e:focus-regions` | `F6`/`Shift+F6` cycle top bar → canvas → Time Ribbon → panels; focus never trapped |
+| `e2e:chrome-layout` | At 1440×900: top bar 32 px, Ribbon 40 px, translucent (canvas visible beneath), no other persistent chrome, no left sidebar |
+| `e2e:deep-link` | Every URL pattern opened in a fresh session reproduces Context, scene, focus and camera; browser back steps camera history; saved Context and vis overrides restored |
+| `e2e:table-csv` | `Shift+T` shows the viewport's data as a table; "Export CSV" downloads the same rows |
+| `e2e:text-dom-match` | Same string, same size: canvas vs DOM advance width and baseline differ by ≤ 1 px |
+| `e2e:font-origin` | Every font request is same-origin; UI strings in Inter, data in JetBrains Mono |
+| `e2e:gallery-offline` | Every gallery page renders at target volume with no PulsusDB reachable |
+| `e2e:no-pulsusdb-write` | Nightly storyboard run behind a recording proxy: no write to PulsusDB except self-telemetry and audit export |
+
+**Replay specs (L4, `.pdrec`)**
+
+| Gate | Asserts |
+|---|---|
+| `replay:mouse-bindings` | One recording per [03 §4.1](../product/03-interaction-model.md#41-mouse-and-trackpad-primary) row: resulting camera, selection or Context (2D from M-UI1, 3D from M-UI3) |
+| `replay:key-bindings` | One recording per [03 §4.2](../product/03-interaction-model.md#42-keyboard-expert-speed) row at its milestone, incl. `g` chords and the `?` overlay after a remap |
+| `replay:camera-history` | Three committed moves; `Alt+←` ×3, mouse-back ×3 and browser back ×3 each return through the poses; `Alt+→` replays forward |
+| `replay:per-axis` | Drag/wheel/double-click on an axis change only that axis; pin shown and cleared; `⌘Z` restores; overlays stay placed |
+| `replay:compare-axis` | `Shift+C` shows a real-time-labelled top axis; drag by 20 min moves the ghost by 20 min; `⌘Z` restores |
+| `replay:crosshair-sync` | Hover at 12:22 puts the cursor at 12:22 in every time viewport in the same frame; tooltip lists one value per series with its axis unit and the comparison time |
+| `replay:time-ribbon` | Edge drag resizes, body drag moves, wheel zooms the overview; Context time updates on release |
+| `replay:time-scrub` | `Space` hold + 200 px moves the cursor proportionally in every time viewport at frame rate; release commits |
+| `replay:live-scroll` | LIVE x offset advances sub-pixel every frame, no jump > 1 px |
+| `replay:events-markers` | Deploy ◆ on the Ribbon and a marker on every time chart; click sets before/after baseline |
+| `replay:universal-interactions` | Every vis accepts crosshair, click → Inspector, brush, ghost, anomaly overlay, pivot chips; reason tooltip where not applicable; value, labels and Δ within one frame |
+| `replay:selection-sources` | Clicking a table row highlights the matching mark everywhere and opens it in the Inspector |
+| `replay:context-propagation` | Every [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) row end to end; pivots keep entity, time, translated filters and baseline |
+| `replay:undo` | Brush, filter add, narrow; `⌘Z` ×3 restores; `⌘⇧Z` re-applies |
+| `replay:space-transitions` | Atlas → Lens → `Esc` with no document navigation; each ≤ 250 ms; returning scene shows data in the first frame with no query |
+| `replay:progressive` | Cached data hatched in the first frame; first query step ≈ width/4; coarse painted before refine; pan by one window issues no query; no spinner, shimmer only after 300 ms; rollup → raw switch on zoom |
+| `replay:cancel-storm` | 10 window changes in 1 s → 9 cancelled requests, only the last painted |
+| `replay:truncation` | `truncated=true` → partial badge and "truncated" with narrow; `422` → error with narrow that re-issues a narrower query; complete → "100 %"; data age shown |
+| `replay:reduced-motion` | With reduced motion: next frame shows the final pose; static dashes; static double ring |
+| `replay:motion-audit` | Frame capture: transitions ≤ 250 ms ease-out, crossfade 150 ms ± 1 frame, ring 1 Hz, no other animation |
+
+**Lab benchmarks (L5)** — defined in §4.3: `bench:frame-gallery`, `bench:frame-line-1e8`,
+`bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
+`bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
+`bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:lens-load`,
+`bench:decode-r1`; plus `bench:cpu-instr` (PR: decode, decimation, tick generation and layouts,
+instruction counts via `iai-callgrind`, +3 % → fail).
+
+| Lab gate class | Stage | Threshold | Blocking |
+|---|---|---|---|
+| `bench:frame-*` on (a)(b) | merge | T05-007 | yes, from M-UI0 |
+| `bench:frame-*` on (c) | nightly | T05-007 | release blocker |
+| `bench:input-photon`, `bench:long-tasks`, `bench:offline-interaction` | merge | §4.3 | yes, from M-UI0 |
+| `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
+| `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
+| `bench:inp-rooms` | merge | INP ≤ 200 ms | yes, from M-UI0 |
+| `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
+| `bench:decode-r1` | merge | < 50 ms p95 | yes |
+| RUM field p95 per `hw_class` | weekly review | within 20 % of the lab | tracked, not blocking |
+
+Instruction counts are used on PRs because wall-clock benchmarks on shared CI runners are too noisy
+to gate at 3 %.
+
+## 8. Security, tenancy & RBAC
+
+- Lean bug-report replays contain no telemetry values. Full replays are scope-checked on playback,
+  and uploads and views are audit-logged ([11](../product/11-enterprise.md)).
+- The corpus contains only synthetic or redacted data (T05-011).
+- RUM ships nothing that identifies users or queries (T05-013), into a database or tenant only Dash
+  operators can read.
+- Release builds are checked for the absence of the test probe and of recording-upload endpoints not
+  gated by user action (`ci:probe-absent`).
+
+## 9. Failure modes & degradation
+
+| Failure | Handling |
+|---|---|
+| Lab machine unhealthy (thermal, driver drift) | T05-012: the job moves to the twin unit and the lab owner is alerted |
+| Flaky L4 spec | auto-retry once; a spec flaky twice in 7 days is quarantined (non-blocking) and filed; quarantine > 14 days escalates |
+| Golden drift from a Mesa or driver update | pinned versions; updates land as a single PR with a regenerated diff gallery (T05-004) |
+| Replay divergence | `--until-divergence` reports the first checkpoint mismatch and the state diff |
+| RUM ingest down | T05-014 |
+| Gallery page missing for a new vis | `ci:gallery-manifest` fails the PR |
+
+#### T05-015 — Quarantine is bounded
+**MUST** — A quarantined spec MUST be non-blocking for at most 14 days before escalation, and a
+quarantined spec MUST NOT be the only verification of any Satisfies row.
+
+## 10. Testing
+
+Meta-testing:
+- each new gate ships with a deliberately regressing PR to prove it fails (T05-002);
+- the replay determinism suite runs every `.pdrec` twice natively and asserts identical checkpoints
+  (T05-008);
+- `pulsus-synth` has its own golden statistics (T05-010);
+- a weekly job checks that every gate named in `technical/` Satisfies tables exists in §7.1 and runs
+  (T05-001).
+
+## 11. Rollout
+
+| Milestone | Ships |
+|---|---|
+| M-UI0 | L1, L2 goldens for M1/M3/M4/M8 pages, L3 basics, L4 smoke; static gates; `pulsus-synth` S + Wire-XL; R1 harness; lab (a) and (b); frame-time, input, long-task, offline, memory and INP gates blocking |
+| M-UI1 | Gallery corpus from the manifest; lab (c); fake upstream; `.pdrec` v1 with the M-UI1 replay specs; startup, transition and memory-pressure gates; RUM metrics + load phases |
+| M-UI2 | Preset M with all four signals; log/trace/profile pages; Lens load bench; RUM traces |
+| M-UI3 | Preset L; Atlas and F2 scrub scenarios; tier-parity nightly at full breadth |
+| M-UI4 | Incident corpus (12); bug-report replays; photodiode calibration |
+| M-UI5+ | Light-theme variants; geomap/schematic pages; dashboard-import parity goldens ([05 §11](../product/05-visualisation-catalogue.md#11-panel-parity-map)) |
+
+## 12. Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Browser-only screenshot tests | Slow, GPU-dependent and flaky. Native headless wgpu gives the same code path deterministically; the browser keeps parity spot checks |
+| SSIM / pixel-count diffs | Poor at text and thin lines. ꟻLIP plus text-region rules targets what users notice |
+| Wall-clock benchmarks on CI runners | Noise > 10 %. Instruction counts on PRs, a dedicated lab for time |
+| Video/DOM session recorders (rrweb-style) | JS-heavy; capture pixels or DOM rather than our input ring; capture data by default, a privacy risk |
+| An external RUM vendor | Ships Dash telemetry outside the customer's estate and adds JS. Dogfooding PulsusDB is also a product test |
+| A gallery maintained separately from tests | Drifts from what ships; [05 §14](../product/05-visualisation-catalogue.md#14-showcase-gallery) requires one corpus |
+
+## 13. Open questions
+
+1. Is `timestamp-query` usable unquantised in Chrome without flags? If not, GPU time in the browser is
+   only estimated, and native timings carry GPU attribution.
+2. Is `measureUserAgentSpecificMemory` available enough for the memory gate in Firefox and Safari, or
+   do they need the fallback tally?
+3. Should lean replays capture coverage blocks only, or also cheap per-batch row counts, to localise
+   divergence faster?
+4. The lab budget for twin units of (c) (4K wall PCs) and for the external 120 Hz display on (a).
+5. Can the corpus be shared publicly as a benchmark for observability RCA? That would help
+   [06](../product/06-ai-copilot.md) credibility.
+
+**Resolved during formalisation**
+
+1. **Frame-time thresholds follow 09.** The draft gated p99 ≤ 16.7 ms on (a) and ≤ 22 ms on (b). The
+   gates now use [PRF-001](../product/09-performance-contract.md#prf-001--frame-rate-during-interaction) (median ≥ 60 fps on (a), (b), (c)) and [PRF-002](../product/09-performance-contract.md#prf-002--frame-rate-floor) (p99 ≤ 22.2 ms on
+   (b)); p99 ≤ 16.7 ms on (a) is a tracked target.
+2. **Blocking from M-UI0.** The draft made frame-time gates blocking from M-UI1 and brought lab (b)
+   up in M-UI1. [PRF-032](../product/09-performance-contract.md#prf-032--per-visualisation-gpu-benchmarks-in-ci) is an M-UI0 MUST on (a) and (b), so both are M-UI0.
+3. **120 Hz.** The draft reported high-Hz without gating until M-UI3. [PRF-001](../product/09-performance-contract.md#prf-001--frame-rate-during-interaction) requires ≥ 120 fps
+   on (a) driving a 120 Hz display at M-UI0, so `bench:frame-high-hz` is gated, and (a) gets an
+   external 120 Hz display (the M2 Air's panel is 60 Hz).
+4. **Headless vs headed.** The draft ran headed Chrome because headless GPU paths differed.
+   [PRF-032](../product/09-performance-contract.md#prf-032--per-visualisation-gpu-benchmarks-in-ci) says headless; the lab uses Chrome's new headless mode with the GPU, cross-checked
+   weekly against headed (§4.3).
+5. **INP threshold.** The draft's lab bar was 100 ms. [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) fails at 200 ms; 100 ms stays as a
+   tracked target.
+6. **Golden variants.** Light theme is M-UI5 and wall high-contrast M-UI6
+   ([08](../product/08-visual-language.md)), so M-UI1 goldens are dark only, plus density variants.
+7. **Gallery = corpus** is now a design rule (T05-003) generated from one manifest, with the gallery
+   running in-browser on `pulsus-synth` ([VIZ-070](../product/05-visualisation-catalogue.md#viz-070--gallery-runs-on-seeded-synthetic-data)).
+8. **Section numbering.** [05 §14](../product/05-visualisation-catalogue.md#14-showcase-gallery) cites
+   "T05 §3.2–3.3"; these are §4.2–4.3 here, because §3 is the Satisfies table.
+9. **D2.** Lab results and RUM are Dash self-telemetry, the only product write to PulsusDB that
+   [ADR-0012](../adr/0012-derived-state-in-postgres.md) allows; synthetic OTLP goes only to lab
+   PulsusDB instances, from the test harness.
+
+## 14. Change log
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T05-001 to T05-015; gate catalogue (§7.1) defining every gate named in T01–T05 Satisfies tables; gallery = corpus manifest; thresholds, milestones and headless mode aligned with 09; replay specs; Satisfies table |

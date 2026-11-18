@@ -1,0 +1,349 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Rule editor and backtest</title>
+<desc id="d">Pulsus Dash alert rule authoring: PromQL query for payments to psp-api failed ratio, condition above 5 % for 5m with keep-firing and NoData/Error policies, a 7-day backtest with would-have-fired periods shaded, state and notification lanes, 6 firings and 14 notifications, matched incidents, a flapping warning with suggested fixes, labels, a live routing preview and a Slack notification preview.</desc>
+
+<style>
+text{font-family:Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB;font-size:12px}
+.m{font-family:'JetBrains Mono',ui-monospace,monospace}
+.mu{fill:#8A919C}.dm{fill:#5D646E}.ac{fill:#5B9BFF}.ok{fill:#2FB59A}.wa{fill:#D9C84A}.dg{fill:#E8923A}.fa{fill:#E0457B}.un{fill:#6B7280}
+.b{font-weight:600}.t11{font-size:11px}.t13{font-size:13px}.t16{font-size:16px}.t20{font-size:20px}
+.e{text-anchor:end}.c{text-anchor:middle}
+.hl{stroke:#FFFFFF14;stroke-width:1;fill:none}
+.co{fill:none;stroke:#5B9BFF;stroke-width:1.25;stroke-dasharray:4 3}
+.cot{font-size:11px;fill:#BFD6FF}
+</style>
+<defs>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#6B728022"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6B7280" stroke-width="1.6" stroke-opacity="0.7"/></pattern>
+<pattern id="hatchA" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#E0457B" stroke-width="1.4" stroke-opacity="0.55"/></pattern>
+<pattern id="hatchW" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#D9C84A1f"/><line x1="0" y1="0" x2="0" y2="5" stroke="#D9C84A" stroke-width="1.4" stroke-opacity="0.7"/></pattern>
+<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<rect id="canvas" width="1440" height="900" fill="#0B0D10"/>
+<g id="top-bar">
+<rect x="0" y="0" width="1440" height="32" fill="#12151A"/>
+<line x1="0" y1="31.5" x2="1440" y2="31.5" stroke="#FFFFFF14" stroke-width="1" />
+<circle cx="18" cy="16" r="6" fill="none" stroke="#5B9BFF" stroke-width="1.5"/><circle cx="18" cy="16" r="2.2" fill="#5B9BFF"/>
+<text x="30" y="20.5" class="b" style="font-size:13px;">Pulsus</text>
+<text x="88" y="20.5" class="mu" style="font-size:12px;">prod ▾</text>
+<text x="140.1" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="154.1" y="20.5" class="mu" style="font-size:12px;">Alerts</text>
+<text x="206.2" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="220.2" y="20.5" class="mu" style="font-size:12px;">Rules</text>
+<text x="265.3" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="279.3" y="20.5" style="font-size:12px;" font-weight="600">New rule</text>
+<rect x="560" y="6" width="320" height="20" rx="4" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="570" y="20" class="mu t11">⌘K  Search entities, alerts, queries…</text>
+<circle cx="1418" cy="16" r="10" fill="#2A3240" stroke="#FFFFFF22"/>
+<text x="1418" y="20" class="b c t11">S</text>
+<text x="1398" y="20.5" class="ac e" style="font-size:12px;">✦ AI</text>
+<rect x="1322" y="7" width="38" height="18" rx="4" fill="#E0457B22" stroke="#E0457B66"/>
+<text x="1341" y="20" class="fa c t11 b">⚠ 1</text>
+</g>
+<g id="rule-header">
+<rect x="8.5" y="40.5" width="1423" height="39" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="65" class="b t13">New alert rule</text>
+<rect x="124" y="49" width="250" height="22" rx="4" fill="#191D24" stroke="#5B9BFF88"/>
+<text x="132" y="64" class="m t12">PaymentsPspClientTimeouts</text>
+<text x="386" y="64" class="mu t11">from viewport “payments → psp-api failed %” · Inspector › Create alert</text>
+<text x="880" y="64" class="mu t11">Kind</text>
+<rect x="912" y="49" width="86.8" height="22" rx="4" fill="#5B9BFF1A" stroke="#5B9BFF66"/><text x="920" y="64" style="font-size:11px;" fill="#5B9BFF">◉ Threshold</text>
+<rect x="1002.8" y="49" width="80.3" height="22" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1010.8" y="64" style="font-size:11px;" fill="#8A919C">○ SLO burn</text>
+<rect x="1087.1" y="49" width="73.9" height="22" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1095.1" y="64" style="font-size:11px;" fill="#8A919C">○ Anomaly</text>
+<rect x="1165" y="49" width="86.8" height="22" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1173" y="64" style="font-size:11px;" fill="#8A919C">○ Composite</text>
+<text x="1420" y="64" class="dm t11 e">draft · autosaved 12:41</text>
+</g>
+<g id="query">
+<rect x="8.5" y="88.5" width="939" height="91" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<rect x="18" y="98" width="20.4" height="20" rx="4" fill="#20252E" stroke="#FFFFFF22"/><text x="25" y="112" style="font-size:11px;" fill="#E6E8EB">A</text>
+<rect x="44" y="98" width="67.5" height="20" rx="4" fill="#5B9BFF1A" stroke="#5B9BFF55"/><text x="52" y="112" style="font-size:11px;" fill="#5B9BFF">PromQL ▾</text>
+<text x="936" y="112" class="mu t11 e">✦ Suggest   ·   eval every 30 s   ·   1 series</text>
+<text x="20" y="140" class="m t12"><tspan fill="#B48FC9">sum</tspan><tspan class="mu">(</tspan><tspan fill="#B48FC9">rate</tspan><tspan class="mu">(traces_spanmetrics_calls_total{</tspan><tspan fill="#9CC2FF">service</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"payments"</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">peer_service</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"psp-api"</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">status_code</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"STATUS_CODE_ERROR"</tspan><tspan class="mu">}[</tspan><tspan fill="#8FBF8F">5m</tspan><tspan class="mu">]))</tspan></text>
+<text x="20" y="160" class="m t12"><tspan class="mu">  / </tspan><tspan fill="#B48FC9">sum</tspan><tspan class="mu">(</tspan><tspan fill="#B48FC9">rate</tspan><tspan class="mu">(traces_spanmetrics_calls_total{</tspan><tspan fill="#9CC2FF">service</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"payments"</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">peer_service</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"psp-api"</tspan><tspan class="mu">}[</tspan><tspan fill="#8FBF8F">5m</tspan><tspan class="mu">]))</tspan></text>
+</g>
+<g id="condition">
+<rect x="8.5" y="188.5" width="939" height="51" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="219" class="mu t11 b" letter-spacing="0.4">WHEN</text>
+<rect x="57.7" y="203" width="39.1" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="66.7" y="219.3" style="font-size:12px;" fill="#E6E8EB">A ▾</text>
+<rect x="106.8" y="203" width="88.2" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="115.8" y="219.3" style="font-size:12px;" fill="#E6E8EB">IS ABOVE ▾</text>
+<rect x="205" y="203" width="39.7" height="24" rx="4" fill="#191D24" stroke="#5B9BFF99"/><text x="214" y="219.3" class="m " style="font-size:12px;" fill="#E6E8EB">5 %</text>
+<text x="254.7" y="219" class="mu t11 b" letter-spacing="0.4">FOR</text>
+<rect x="286" y="203" width="32.4" height="24" rx="4" fill="#191D24" stroke="#5B9BFF99"/><text x="295" y="219.3" class="m " style="font-size:12px;" fill="#E6E8EB">5m</text>
+<text x="328.4" y="219" class="mu t11 b" letter-spacing="0.4">KEEP FIRING</text>
+<rect x="411.2" y="203" width="32.4" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="420.2" y="219.3" class="m " style="font-size:12px;" fill="#E6E8EB">2m</text>
+<text x="453.7" y="219" class="mu t11 b" letter-spacing="0.4">CLEAR BELOW</text>
+<rect x="536.4" y="203" width="53.1" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="545.4" y="219.3" style="font-size:12px;" fill="#E6E8EB">— off</text>
+<line x1="597.5" y1="204" x2="597.5" y2="228" stroke="#FFFFFF14" stroke-width="1" />
+<text x="605.5" y="219" class="mu t11 b" letter-spacing="0.4">NO DATA</text>
+<rect x="662.6" y="203" width="81.2" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="671.6" y="219.3" style="font-size:12px;" fill="#E6E8EB">⊘ alert ▾</text>
+<text x="753.8" y="219" class="mu t11 b" letter-spacing="0.4">ERROR</text>
+<rect x="797.9" y="203" width="81.2" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="806.9" y="219.3" style="font-size:12px;" fill="#E6E8EB">✖ alert ▾</text>
+</g>
+<g id="backtest">
+<rect x="8.5" y="248.5" width="939" height="551" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="268" class="b">Backtest</text>
+<text x="84" y="268" class="mu t11">last 7 days · Nov 11 – Nov 18 · 20 160 evaluations replayed with this exact rule</text>
+<text x="936" y="268" class="mu t11 e">◉ 7 d  ○ 30 d   ·   updates live as you drag</text>
+<line x1="9" y1="278.5" x2="947" y2="278.5" stroke="#FFFFFF14" stroke-width="1" />
+<line x1="58" y1="532.5" x2="924" y2="532.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="52" y="536" class="dm t11 e m">0%</text>
+<line x1="58" y1="457.5" x2="924" y2="457.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="52" y="461" class="dm t11 e m">5%</text>
+<line x1="58" y1="382.5" x2="924" y2="382.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="52" y="386" class="dm t11 e m">10%</text>
+<line x1="58" y1="307.5" x2="924" y2="307.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="52" y="311" class="dm t11 e m">15%</text>
+<text x="58" y="546" class="dm t11 c">Nov 11</text>
+<text x="181.7" y="546" class="dm t11 c">Nov 12</text>
+<line x1="181.7" y1="292" x2="181.7" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<text x="305.4" y="546" class="dm t11 c">Nov 13</text>
+<line x1="305.4" y1="292" x2="305.4" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<text x="429.1" y="546" class="dm t11 c">Nov 14</text>
+<line x1="429.1" y1="292" x2="429.1" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<text x="552.9" y="546" class="dm t11 c">Nov 15</text>
+<line x1="552.9" y1="292" x2="552.9" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<text x="676.6" y="546" class="dm t11 c">Nov 16</text>
+<line x1="676.6" y1="292" x2="676.6" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<text x="800.3" y="546" class="dm t11 c">Nov 17</text>
+<line x1="800.3" y1="292" x2="800.3" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<text x="924" y="546" class="dm t11 c">Nov 18</text>
+<line x1="924" y1="292" x2="924" y2="532" stroke="#FFFFFF08" stroke-width="1" />
+<rect x="254.1" y="292" width="6" height="240" fill="#E0457B30"/>
+<rect x="254.1" y="292" width="6" height="3" fill="#E0457B"/>
+<rect x="478.4" y="292" width="6" height="240" fill="#E0457B30"/>
+<rect x="478.4" y="292" width="6" height="3" fill="#E0457B"/>
+<rect x="481.5" y="292" width="6" height="240" fill="#E0457B30"/>
+<rect x="481.5" y="292" width="6" height="3" fill="#E0457B"/>
+<rect x="484.6" y="292" width="6" height="240" fill="#E0457B30"/>
+<rect x="484.6" y="292" width="6" height="3" fill="#E0457B"/>
+<rect x="692" y="292" width="6" height="240" fill="#E0457B30"/>
+<rect x="692" y="292" width="6" height="3" fill="#E0457B"/>
+<rect x="854" y="292" width="11.9" height="240" fill="#E0457B30"/>
+<rect x="854" y="292" width="11.9" height="3" fill="#E0457B"/>
+<path d="M58.0,528.0 L59.0,527.0 L59.9,527.9 L60.9,527.1 L61.8,527.8 L62.8,527.5 L63.8,526.5 L64.7,527.4 L65.7,526.8 L66.7,526.9 L67.6,526.9 L68.6,526.7 L69.5,527.0 L70.5,526.2 L71.5,527.0 L72.4,526.8 L73.4,527.0 L74.4,526.6 L75.3,526.4 L76.3,525.7 L77.2,526.3 L78.2,526.6 L79.2,526.4 L80.1,525.4 L81.1,526.5 L82.1,525.8 L83.0,526.1 L84.0,525.7 L84.9,526.1 L85.9,525.6 L86.9,525.9 L87.8,525.7 L88.8,525.4 L89.8,525.8 L90.7,526.3 L91.7,526.4 L92.6,525.3 L93.6,525.9 L94.6,526.3 L95.5,525.4 L96.5,525.9 L97.5,525.7 L98.4,525.6 L99.4,526.4 L100.3,526.3 L101.3,525.7 L102.3,526.7 L103.2,526.0 L104.2,526.8 L105.1,526.2 L106.1,526.3 L107.1,526.0 L108.0,526.2 L109.0,526.7 L110.0,527.1 L110.9,527.3 L111.9,526.9 L112.8,527.0 L113.8,527.6 L114.8,526.7 L115.7,527.3 L116.7,527.1 L117.7,527.8 L118.6,527.8 L119.6,528.2 L120.5,527.9 L121.5,528.1 L122.5,528.0 L123.4,528.1 L124.4,527.7 L125.4,527.7 L126.3,528.6 L127.3,528.4 L128.2,528.8 L129.2,528.3 L130.2,528.0 L131.1,529.0 L132.1,528.4 L133.1,529.0 L134.0,529.4 L135.0,528.6 L135.9,529.2 L136.9,529.4 L137.9,529.2 L138.8,529.5 L139.8,529.3 L140.8,529.3 L141.7,529.4 L142.7,529.2 L143.6,529.6 L144.6,529.8 L145.6,529.9 L146.5,529.9 L147.5,529.4 L148.4,529.6 L149.4,529.1 L150.4,529.4 L151.3,529.2 L152.3,528.9 L153.3,530.0 L154.2,530.0 L155.2,529.8 L156.1,529.5 L157.1,529.3 L158.1,529.0 L159.0,529.5 L160.0,528.7 L161.0,529.8 L161.9,528.8 L162.9,529.5 L163.8,528.6 L164.8,529.6 L165.8,528.4 L166.7,528.6 L167.7,528.2 L168.7,528.7 L169.6,529.1 L170.6,528.1 L171.5,528.6 L172.5,529.0 L173.5,528.3 L174.4,528.3 L175.4,528.3 L176.4,528.5 L177.3,528.5 L178.3,527.9 L179.2,527.9 L180.2,528.2 L181.2,527.8 L182.1,527.3 L183.1,527.3 L184.1,527.5 L185.0,527.5 L186.0,527.4 L186.9,527.5 L187.9,527.5 L188.9,527.1 L189.8,527.4 L190.8,526.6 L191.7,526.5 L192.7,526.6 L193.7,527.2 L194.6,526.7 L195.6,526.6 L196.6,526.9 L197.5,525.8 L198.5,526.0 L199.4,526.2 L200.4,525.9 L201.4,526.5 L202.3,526.4 L203.3,526.0 L204.3,525.7 L205.2,525.8 L206.2,526.5 L207.1,525.8 L208.1,525.4 L209.1,525.6 L210.0,525.4 L211.0,525.3 L212.0,526.2 L212.9,526.1 L213.9,525.8 L214.8,525.3 L215.8,526.0 L216.8,525.4 L217.7,525.5 L218.7,525.9 L219.7,525.8 L220.6,525.4 L221.6,525.7 L222.5,526.3 L223.5,525.7 L224.5,526.5 L225.4,526.4 L226.4,525.7 L227.4,525.9 L228.3,526.6 L229.3,526.7 L230.2,526.4 L231.2,526.2 L232.2,526.4 L233.1,526.2 L234.1,526.5 L235.0,526.5 L236.0,526.8 L237.0,527.2 L237.9,527.2 L238.9,527.2 L239.9,527.3 L240.8,527.0 L241.8,527.8 L242.7,528.1 L243.7,527.4 L244.7,528.0 L245.6,527.9 L246.6,528.4 L247.6,527.6 L248.5,528.4 L249.5,528.4 L250.4,527.9 L251.4,528.3 L252.4,501.6 L253.3,447.6 L254.3,421.7 L255.3,408.7 L256.2,406.4 L257.2,414.7 L258.1,434.6 L259.1,471.5 L260.1,528.6 L261.0,528.9 L262.0,528.7 L263.0,529.3 L263.9,528.9 L264.9,528.9 L265.8,529.4 L266.8,529.1 L267.8,529.0 L268.7,528.8 L269.7,528.9 L270.7,529.1 L271.6,529.9 L272.6,529.3 L273.5,529.2 L274.5,529.9 L275.5,529.5 L276.4,529.0 L277.4,528.9 L278.3,528.9 L279.3,529.9 L280.3,529.2 L281.2,528.9 L282.2,529.1 L283.2,529.5 L284.1,529.8 L285.1,528.7 L286.0,528.7 L287.0,528.9 L288.0,529.2 L288.9,528.6 L289.9,528.5 L290.9,528.6 L291.8,528.7 L292.8,528.9 L293.7,528.9 L294.7,528.8 L295.7,528.7 L296.6,528.4 L297.6,528.8 L298.6,528.0 L299.5,528.4 L300.5,528.5 L301.4,528.3 L302.4,528.1 L303.4,527.9 L304.3,527.4 L305.3,528.1 L306.3,527.9 L307.2,527.7 L308.2,527.8 L309.1,527.0 L310.1,527.7 L311.1,527.7 L312.0,527.0 L313.0,526.7 L314.0,526.5 L314.9,526.7 L315.9,526.9 L316.8,526.2 L317.8,526.3 L318.8,526.5 L319.7,526.4 L320.7,525.9 L321.6,525.7 L322.6,525.8 L323.6,526.7 L324.5,526.4 L325.5,526.2 L326.5,526.5 L327.4,525.7 L328.4,526.5 L329.3,525.5 L330.3,525.8 L331.3,525.8 L332.2,526.0 L333.2,525.3 L334.2,525.8 L335.1,525.4 L336.1,525.3 L337.0,525.6 L338.0,525.3 L339.0,525.9 L339.9,526.0 L340.9,525.5 L341.9,525.9 L342.8,526.2 L343.8,525.8 L344.7,526.0 L345.7,526.5 L346.7,525.7 L347.6,526.1 L348.6,525.6 L349.6,526.2 L350.5,525.8 L351.5,526.6 L352.4,526.8 L353.4,526.5 L354.4,526.2 L355.3,526.2 L356.3,526.5 L357.3,527.2 L358.2,527.0 L359.2,527.5 L360.1,527.2 L361.1,526.6 L362.1,527.4 L363.0,527.0 L364.0,527.2 L364.9,527.9 L365.9,527.3 L366.9,528.1 L367.8,528.1 L368.8,527.7 L369.8,528.3 L370.7,527.4 L371.7,528.1 L372.6,528.0 L373.6,527.7 L374.6,528.8 L375.5,527.8 L376.5,529.0 L377.5,528.4 L378.4,528.4 L379.4,528.1 L380.3,485.3 L381.3,469.5 L382.3,475.6 L383.2,510.5 L384.2,529.4 L385.2,529.4 L386.1,529.3 L387.1,529.4 L388.0,529.4 L389.0,528.9 L390.0,529.4 L390.9,529.2 L391.9,529.9 L392.9,529.8 L393.8,529.2 L394.8,529.0 L395.7,529.7 L396.7,530.0 L397.7,529.8 L398.6,529.6 L399.6,529.6 L400.6,529.4 L401.5,529.7 L402.5,529.2 L403.4,529.0 L404.4,529.0 L405.4,529.0 L406.3,529.2 L407.3,529.5 L408.2,528.8 L409.2,529.4 L410.2,528.7 L411.1,529.1 L412.1,528.9 L413.1,529.0 L414.0,528.7 L415.0,529.0 L415.9,528.7 L416.9,528.4 L417.9,528.8 L418.8,528.4 L419.8,528.5 L420.8,528.4 L421.7,528.5 L422.7,528.2 L423.6,527.9 L424.6,528.5 L425.6,528.4 L426.5,527.5 L427.5,528.3 L428.5,527.4 L429.4,527.3 L430.4,527.9 L431.3,527.3 L432.3,527.7 L433.3,526.8 L434.2,527.6 L435.2,527.6 L436.2,527.6 L437.1,526.7 L438.1,527.2 L439.0,527.0 L440.0,526.1 L441.0,526.3 L441.9,526.3 L442.9,526.4 L443.9,526.3 L444.8,527.0 L445.8,525.9 L446.7,526.5 L447.7,525.8 L448.7,526.2 L449.6,525.6 L450.6,526.7 L451.5,525.4 L452.5,526.5 L453.5,525.9 L454.4,525.9 L455.4,525.3 L456.4,525.6 L457.3,525.3 L458.3,525.4 L459.2,525.9 L460.2,526.3 L461.2,526.3 L462.1,525.6 L463.1,525.3 L464.1,525.7 L465.0,526.1 L466.0,525.8 L466.9,525.8 L467.9,526.3 L468.9,525.8 L469.8,526.4 L470.8,526.7 L471.8,526.7 L472.7,526.2 L473.7,526.0 L474.6,526.7 L475.6,526.5 L476.6,526.2 L477.5,455.4 L478.5,447.3 L479.5,473.7 L480.4,463.2 L481.4,443.5 L482.3,468.9 L483.3,468.1 L484.3,443.3 L485.2,463.9 L486.2,472.5 L487.2,527.1 L488.1,526.9 L489.1,527.0 L490.0,527.0 L491.0,527.5 L492.0,527.6 L492.9,527.9 L493.9,528.2 L494.8,527.6 L495.8,528.0 L496.8,528.6 L497.7,528.6 L498.7,528.7 L499.7,528.1 L500.6,528.4 L501.6,528.9 L502.5,528.4 L503.5,528.6 L504.5,529.1 L505.4,528.9 L506.4,528.3 L507.4,529.4 L508.3,529.4 L509.3,529.0 L510.2,528.7 L511.2,528.7 L512.2,529.4 L513.1,529.0 L514.1,529.8 L515.1,529.5 L516.0,528.9 L517.0,529.2 L517.9,529.5 L518.9,529.3 L519.9,529.5 L520.8,529.4 L521.8,529.0 L522.8,528.9 L523.7,529.8 L524.7,529.1 L525.6,528.9 L526.6,529.3 L527.6,529.4 L528.5,529.5 L529.5,529.3 L530.5,529.2 L531.4,529.1 L532.4,529.7 L533.3,528.6 L534.3,529.4 L535.3,529.0 L536.2,529.4 L537.2,528.8 L538.1,529.4 L539.1,529.0 L540.1,528.9 L541.0,528.9 L542.0,528.6 L543.0,528.9 L543.9,528.5 L544.9,528.0 L545.8,528.1 L546.8,527.6 L547.8,527.6 L548.7,528.1 L549.7,528.0 L550.7,527.5 L551.6,527.3 L552.6,527.6 L553.5,527.4 L554.5,527.3 L555.5,527.4 L556.4,527.3 L557.4,527.4 L558.4,527.2 L559.3,527.1 L560.3,526.6 L561.2,527.3 L562.2,527.3 L563.2,526.2 L564.1,526.7 L565.1,526.4 L566.1,526.0 L567.0,526.2 L568.0,526.3 L568.9,525.8 L569.9,526.1 L570.9,526.3 L571.8,526.6 L572.8,526.5 L573.8,525.7 L574.7,525.6 L575.7,526.2 L576.6,525.9 L577.6,525.7 L578.6,525.8 L579.5,526.2 L580.5,525.4 L581.4,525.8 L582.4,525.6 L583.4,525.6 L584.3,525.9 L585.3,525.6 L586.3,526.2 L587.2,525.8 L588.2,525.7 L589.1,525.8 L590.1,526.2 L591.1,526.4 L592.0,526.5 L593.0,526.5 L594.0,526.5 L594.9,526.1 L595.9,526.1 L596.8,526.0 L597.8,526.4 L598.8,526.0 L599.7,527.0 L600.7,526.7 L601.7,527.0 L602.6,526.6 L603.6,526.6 L604.5,526.7 L605.5,526.9 L606.5,527.1 L607.4,527.2 L608.4,527.6 L609.4,527.5 L610.3,527.3 L611.3,527.3 L612.2,527.9 L613.2,527.1 L614.2,528.2 L615.1,528.1 L616.1,527.8 L617.1,528.1 L618.0,527.9 L619.0,527.8 L619.9,528.0 L620.9,527.9 L621.9,528.3 L622.8,528.2 L623.8,528.5 L624.7,529.0 L625.7,529.1 L626.7,529.1 L627.6,528.8 L628.6,529.1 L629.6,528.8 L630.5,528.7 L631.5,528.5 L632.4,529.5 L633.4,528.6 L634.4,529.8 L635.3,528.7 L636.3,528.7 L637.3,529.5 L638.2,529.0 L639.2,529.3 L640.1,529.3 L641.1,529.0 L642.1,528.9 L643.0,529.7 L644.0,529.8 L645.0,528.9 L645.9,529.3 L646.9,529.0 L647.8,529.8 L648.8,529.0 L649.8,529.8 L650.7,529.8 L651.7,529.6 L652.7,528.8 L653.6,529.4 L654.6,529.3 L655.5,529.5 L656.5,529.7 L657.5,529.2 L658.4,529.1 L659.4,529.2 L660.4,528.7 L661.3,529.1 L662.3,528.3 L663.2,528.3 L664.2,528.6 L665.2,529.1 L666.1,528.5 L667.1,528.3 L668.0,528.2 L669.0,528.4 L670.0,528.0 L670.9,527.6 L671.9,527.8 L672.9,528.5 L673.8,527.7 L674.8,527.7 L675.7,527.7 L676.7,527.1 L677.7,528.1 L678.6,528.0 L679.6,527.1 L680.6,527.8 L681.5,527.6 L682.5,526.7 L683.4,527.2 L684.4,526.5 L685.4,526.5 L686.3,526.6 L687.3,526.9 L688.3,527.1 L689.2,526.0 L690.2,526.1 L691.1,425.9 L692.1,386.5 L693.1,363.1 L694.0,351.9 L695.0,351.9 L696.0,363.1 L696.9,386.5 L697.9,425.9 L698.8,526.4 L699.8,526.3 L700.8,525.4 L701.7,525.4 L702.7,525.4 L703.7,525.9 L704.6,525.6 L705.6,526.3 L706.5,525.7 L707.5,525.3 L708.5,525.5 L709.4,525.3 L710.4,525.7 L711.3,526.1 L712.3,526.5 L713.3,526.2 L714.2,525.6 L715.2,526.0 L716.2,525.9 L717.1,525.7 L718.1,526.3 L719.0,526.6 L720.0,525.7 L721.0,526.1 L721.9,526.9 L722.9,526.1 L723.9,526.2 L724.8,526.2 L725.8,527.0 L726.7,526.9 L727.7,526.4 L728.7,526.6 L729.6,527.1 L730.6,526.4 L731.6,527.3 L732.5,526.6 L733.5,527.6 L734.4,527.3 L735.4,526.8 L736.4,527.2 L737.3,527.2 L738.3,527.2 L739.3,527.6 L740.2,527.8 L741.2,527.5 L742.1,527.9 L743.1,527.5 L744.1,527.8 L745.0,528.8 L746.0,528.6 L747.0,527.9 L747.9,528.9 L748.9,529.1 L749.8,528.5 L750.8,528.5 L751.8,528.2 L752.7,528.3 L753.7,528.8 L754.6,528.7 L755.6,529.0 L756.6,528.7 L757.5,528.9 L758.5,529.6 L759.5,529.1 L760.4,529.8 L761.4,529.5 L762.3,529.5 L763.3,528.9 L764.3,529.7 L765.2,529.6 L766.2,529.3 L767.2,529.8 L768.1,529.5 L769.1,529.7 L770.0,529.2 L771.0,529.1 L772.0,529.3 L772.9,529.0 L773.9,529.4 L774.9,529.1 L775.8,529.8 L776.8,529.5 L777.7,529.5 L778.7,528.8 L779.7,529.2 L780.6,529.3 L781.6,528.9 L782.6,528.5 L783.5,528.6 L784.5,528.6 L785.4,528.7 L786.4,528.5 L787.4,528.7 L788.3,528.8 L789.3,528.8 L790.3,528.8 L791.2,528.6 L792.2,528.4 L793.1,527.9 L794.1,528.5 L795.1,528.3 L796.0,528.3 L797.0,528.0 L797.9,528.4 L798.9,527.6 L799.9,527.3 L800.8,527.1 L801.8,527.7 L802.8,527.8 L803.7,527.1 L804.7,526.9 L805.6,527.5 L806.6,527.6 L807.6,526.8 L808.5,527.1 L809.5,526.8 L810.5,526.7 L811.4,526.2 L812.4,527.1 L813.3,526.8 L814.3,527.0 L815.3,526.2 L816.2,526.9 L817.2,525.9 L818.2,526.1 L819.1,526.2 L820.1,526.4 L821.0,525.6 L822.0,526.5 L823.0,525.9 L823.9,525.6 L824.9,525.8 L825.9,526.5 L826.8,526.4 L827.8,526.1 L828.7,525.6 L829.7,526.3 L830.7,525.3 L831.6,525.4 L832.6,525.8 L833.6,525.4 L834.5,525.7 L835.5,526.3 L836.4,526.0 L837.4,526.5 L838.4,526.0 L839.3,525.4 L840.3,526.2 L841.2,525.9 L842.2,526.3 L843.2,526.0 L844.1,526.4 L845.1,525.8 L846.1,526.4 L847.0,526.7 L848.0,526.5 L848.9,527.0 L849.9,526.8 L850.9,526.4 L851.8,526.9 L852.8,526.9 L853.8,320.9 L854.7,292.0 L855.7,292.0 L856.6,527.3 L857.6,527.8 L858.6,527.4 L859.5,527.0 L860.5,527.3 L861.5,527.9 L862.4,528.1 L863.4,527.3 L864.3,528.4 L865.3,527.8" fill="none" stroke="#7AA2D6" stroke-width="1.3"/>
+<line x1="58" y1="457.5" x2="924" y2="457.5" stroke="#E0457B" stroke-width="1.25" stroke-dasharray="6 3"/>
+<rect x="858" y="447" width="64" height="20" rx="10" fill="#E0457B"/>
+<text x="890" y="461" class="c b t11" fill="#0B0D10">5 % ⇕</text>
+<text x="64" y="452" class="fa t11">threshold · drag</text>
+<text x="255.9" y="398" class="t11 c mu">Nov 12 14:10 · 22 m</text>
+<text x="847.5" y="304" class="fa t11 e b">38 % ↑</text>
+<text x="693.9" y="342.5" class="t11 c">Nov 16 03:12 · INC-1988</text>
+<text x="847.5" y="320" class="t11 e">now · INC-2041</text>
+<text x="379.7" y="461" class="dm t11 c">4.2% (under)</text>
+<text x="482.3" y="428" class="wa t11 c b">⇅ Nov 14 09:52</text>
+</g>
+<g id="backtest-lanes">
+<text x="20" y="569" class="mu t11">state</text>
+<rect x="58" y="560" width="866" height="12" rx="2" fill="#FFFFFF06"/>
+<rect x="251.6" y="560" width="2.5" height="12" fill="url(#hatchW)"/>
+<rect x="254.1" y="560" width="6" height="12" rx="1" fill="#E0457B"/>
+<rect x="475.9" y="560" width="2.5" height="12" fill="url(#hatchW)"/>
+<rect x="478.4" y="560" width="6" height="12" rx="1" fill="#E0457B"/>
+<rect x="479" y="560" width="2.5" height="12" fill="url(#hatchW)"/>
+<rect x="481.5" y="560" width="6" height="12" rx="1" fill="#E0457B"/>
+<rect x="482.1" y="560" width="2.5" height="12" fill="url(#hatchW)"/>
+<rect x="484.6" y="560" width="6" height="12" rx="1" fill="#E0457B"/>
+<rect x="689.5" y="560" width="2.5" height="12" fill="url(#hatchW)"/>
+<rect x="692" y="560" width="6" height="12" rx="1" fill="#E0457B"/>
+<rect x="851.5" y="560" width="2.5" height="12" fill="url(#hatchW)"/>
+<rect x="854" y="560" width="11.9" height="12" rx="1" fill="#E0457B"/>
+<text x="20" y="591" class="mu t11">sent</text>
+<path d="M257.1,583 l4,8 h-8 z" fill="#C9A36B"/>
+<circle cx="267.1" cy="587" r="3.6" fill="#5B9BFF"/>
+<circle cx="261.7" cy="587" r="3.6" fill="#5B9BFF"/>
+<circle cx="481.4" cy="587" r="3.6" fill="#5B9BFF"/>
+<circle cx="484.5" cy="587" r="3.6" fill="#5B9BFF"/>
+<circle cx="487.6" cy="587" r="3.6" fill="#5B9BFF"/>
+<path d="M491.4,583 l4,8 h-8 z" fill="#C9A36B"/>
+<path d="M695.0,583 l4,8 h-8 z" fill="#C9A36B"/>
+<circle cx="705.0" cy="587" r="3.6" fill="#5B9BFF"/>
+<circle cx="700.9" cy="587" r="3.6" fill="#5B9BFF"/>
+<rect x="693.4" y="583.5" width="7" height="7" fill="#8A919C"/>
+<path d="M857.0,583 l4,8 h-8 z" fill="#C9A36B"/>
+<circle cx="867.0" cy="587" r="3.6" fill="#5B9BFF"/>
+<rect x="857.9" y="583.5" width="7" height="7" fill="#8A919C"/>
+<path d="M64,583 l4,8 h-8 z" fill="#C9A36B"/>
+<text x="72" y="591" class="mu t11">PagerDuty</text>
+<circle cx="138" cy="587" r="3.6" fill="#5B9BFF"/>
+<text x="146" y="591" class="mu t11">Slack</text>
+<rect x="184" y="583.5" width="7" height="7" fill="#8A919C"/>
+<text x="195" y="591" class="mu t11">email</text>
+<text x="20" y="613" class="mu t11">incidents</text>
+<text x="688" y="613" class="ok t11 e">INC-1988 ✓ matched ▲</text>
+<text x="860" y="613" class="ok t11">▲ INC-2041 ✓</text>
+</g>
+<g id="backtest-summary">
+<rect x="20" y="628" width="176.8" height="58" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="30" y="645" class="mu t11">Would have fired</text>
+<text x="30" y="670" class="t20 b" fill="#E6E8EB">6×</text>
+<rect x="204.8" y="628" width="176.8" height="58" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="214.8" y="645" class="mu t11">Notifications</text>
+<text x="214.8" y="670" class="t20 b" fill="#E6E8EB">14</text>
+<text x="248.5" y="670" class="mu t11">PD 5 · Slack 7 · email 2</text>
+<rect x="389.6" y="628" width="176.8" height="58" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="399.6" y="645" class="mu t11">Matched incidents</text>
+<text x="399.6" y="670" class="t20 b" fill="#2FB59A">2 / 2</text>
+<text x="472" y="670" class="mu t11">recall 100%</text>
+<rect x="574.4" y="628" width="176.8" height="58" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="584.4" y="645" class="mu t11">Est. pages / month</text>
+<text x="584.4" y="670" class="t20 b" fill="#E8923A">21</text>
+<text x="618.1" y="670" class="mu t11">team budget 8</text>
+<rect x="759.2" y="628" width="176.8" height="58" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="769.2" y="645" class="mu t11">Median lead time</text>
+<text x="769.2" y="670" class="t20 b" fill="#E6E8EB">4 m</text>
+<text x="815.8" y="670" class="mu t11">before first page</text>
+</g>
+<g id="flapping-warning">
+<rect x="20" y="696" width="916" height="56" rx="6" fill="#D9C84A12" stroke="#D9C84A77"/>
+<text x="34" y="718" class="wa b t16">⇅</text>
+<text x="56" y="718" class="t12"><tspan class="wa b">Flapping: </tspan><tspan>6 transitions on Nov 14, 09:52–10:31 while the value oscillated around 5 % (3 of the 6 firings).</tspan></text>
+<text x="56" y="738" class="mu t11">Try  for 10m → 4× · 9 notifications   or   clear below 3 % (hysteresis) → 4× · 8 notifications</text>
+<rect x="704" y="725" width="99.7" height="20" rx="4" fill="#D9C84A14" stroke="#D9C84A77"/><text x="712" y="739" style="font-size:11px;" fill="#D9C84A">Apply for 10m</text>
+<rect x="809.7" y="725" width="119" height="20" rx="4" fill="#D9C84A14" stroke="#D9C84A77"/><text x="817.7" y="739" style="font-size:11px;" fill="#D9C84A">Apply hysteresis</text>
+</g>
+<g id="labels">
+<rect x="956.5" y="88.5" width="475" height="235" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="968" y="108" class="b">Labels &amp; annotations</text>
+<line x1="957" y1="118.5" x2="1431" y2="118.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="970" y="136" class="m mu t11">severity</text>
+<rect x="1066" y="122" width="55.7" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1074" y="136" class="m " style="font-size:11px;" fill="#E6E8EB">SEV2 ▾</text>
+<text x="1129.7" y="136" class="dm t11">maps to Degraded → Failing colour</text>
+<text x="970" y="161" class="m mu t11">team</text>
+<rect x="1066" y="147" width="69" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1074" y="161" class="m " style="font-size:11px;" fill="#E6E8EB">payments</text>
+<text x="1143" y="161" class="dm t11">from entity owner ⓘ</text>
+<text x="970" y="186" class="m mu t11">service</text>
+<rect x="1066" y="172" width="69" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1074" y="186" class="m " style="font-size:11px;" fill="#E6E8EB">payments</text>
+<text x="970" y="211" class="m mu t11">peer_service</text>
+<rect x="1066" y="197" width="62.4" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1074" y="211" class="m " style="font-size:11px;" fill="#E6E8EB">psp-api</text>
+<text x="970" y="236" class="m mu t11">tier</text>
+<rect x="1066" y="222" width="22.6" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="1074" y="236" class="m " style="font-size:11px;" fill="#E6E8EB">1</text>
+<text x="1096.6" y="236" class="dm t11">inherited from entity</text>
+<text x="970" y="261" class="ac t11">+ label</text>
+<line x1="957" y1="269.5" x2="1431" y2="269.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="970" y="289" class="m mu t11">summary</text>
+<text x="1066" y="289" class="m t11">{{ $labels.service }} → psp-api failing {{ $value }}</text>
+<text x="970" y="309" class="m mu t11">runbook</text>
+<text x="1066" y="309" class="m ac t11">runbooks/payments/psp-timeouts.md</text>
+</g>
+<g id="routing-preview">
+<rect x="956.5" y="332.5" width="475" height="235" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="968" y="352" class="b">Routing preview</text>
+<line x1="957" y1="362.5" x2="1431" y2="362.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1420" y="352" class="mu t11 e">from these labels · live</text>
+<text x="972" y="384" class="b t11" fill="#5B9BFF">✓</text>
+<text x="986" y="384" class="m" style="font-size:11px;" fill="#E6E8EB">root  → default-email</text>
+<text x="1418" y="384" class="t11 e" fill="#8A919C">fallback only</text>
+<line x1="980" y1="388" x2="980" y2="402" stroke="#FFFFFF33" stroke-width="1" />
+<line x1="980" y1="402" x2="987" y2="402" stroke="#FFFFFF33" stroke-width="1" />
+<text x="990" y="406" class="b t11" fill="#5B9BFF">✓</text>
+<text x="1004" y="406" class="m" style="font-size:11px;" fill="#E6E8EB">env="prod"</text>
+<line x1="998" y1="410" x2="998" y2="424" stroke="#FFFFFF33" stroke-width="1" />
+<line x1="998" y1="424" x2="1005" y2="424" stroke="#FFFFFF33" stroke-width="1" />
+<text x="1008" y="428" class="b t11" fill="#5B9BFF">✓</text>
+<text x="1022" y="428" class="m" style="font-size:11px;" fill="#E6E8EB">team="payments"  → payments-oncall</text>
+<text x="1418" y="428" class="t11 e" fill="#E6E8EB">PagerDuty · Slack</text>
+<line x1="1016" y1="432" x2="1016" y2="446" stroke="#FFFFFF33" stroke-width="1" />
+<line x1="1016" y1="446" x2="1023" y2="446" stroke="#FFFFFF33" stroke-width="1" />
+<text x="1026" y="450" class="b t11" fill="#5B9BFF">✓</text>
+<text x="1040" y="450" class="m" style="font-size:11px;" fill="#E6E8EB">severity=~"SEV1|SEV2" → servicenow</text>
+<text x="1418" y="450" class="t11 e" fill="#E6E8EB">continue</text>
+<line x1="998" y1="454" x2="998" y2="468" stroke="#FFFFFF33" stroke-width="1" />
+<line x1="998" y1="468" x2="1005" y2="468" stroke="#FFFFFF33" stroke-width="1" />
+<text x="1008" y="472" class="b t11" fill="#5D646E">✗</text>
+<text x="1022" y="472" class="m" style="font-size:11px;" fill="#5D646E">team="search"  → search-oncall</text>
+<line x1="998" y1="476" x2="998" y2="490" stroke="#FFFFFF33" stroke-width="1" />
+<line x1="998" y1="490" x2="1005" y2="490" stroke="#FFFFFF33" stroke-width="1" />
+<text x="1008" y="494" class="b t11" fill="#5D646E">✗</text>
+<text x="1022" y="494" class="m" style="font-size:11px;" fill="#5D646E">tier="1" &amp; weekend  → mute timing</text>
+<text x="1418" y="494" class="t11 e" fill="#8A919C">not active</text>
+<line x1="957" y1="509.5" x2="1431" y2="509.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="970" y="526" class="t11"><tspan class="mu">group_by </tspan><tspan class="m">[alertname, incident]</tspan><tspan class="mu">  wait </tspan><tspan class="m">30s</tspan><tspan class="mu">  repeat </tspan><tspan class="m">4h</tspan></text>
+<text x="970" y="546" class="t11"><tspan class="mu">Right now: </tspan><tspan class="ac">would merge into INC-2041</tspan><tspan class="mu"> — no new page</tspan></text>
+</g>
+<g id="notification-preview">
+<rect x="956.5" y="576.5" width="475" height="223" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="970" y="596" class="b">Notification preview</text>
+<rect x="1126" y="583" width="46.2" height="18" rx="4" fill="#5B9BFF1A" stroke="#5B9BFF66"/><text x="1133" y="596" style="font-size:11px;" fill="#5B9BFF">Slack</text>
+<rect x="1176.2" y="583" width="71.9" height="18" rx="4" fill="none" stroke="#FFFFFF22"/><text x="1183.2" y="596" style="font-size:11px;" fill="#8A919C">PagerDuty</text>
+<rect x="1252.1" y="583" width="46.2" height="18" rx="4" fill="none" stroke="#FFFFFF22"/><text x="1259.1" y="596" style="font-size:11px;" fill="#8A919C">Email</text>
+<rect x="1302.3" y="583" width="78.3" height="18" rx="4" fill="none" stroke="#FFFFFF22"/><text x="1309.3" y="596" style="font-size:11px;" fill="#8A919C">ServiceNow</text>
+<line x1="957" y1="606.5" x2="1431" y2="606.5" stroke="#FFFFFF14" stroke-width="1" />
+<rect x="970" y="618" width="448" height="168" rx="6" fill="#1A1D21" stroke="#FFFFFF14"/>
+<rect x="970" y="618" width="4" height="168" rx="2" fill="#E0457B"/>
+<rect x="984" y="630" width="28" height="28" rx="6" fill="#2A3240"/>
+<text x="998" y="649" class="c b t13" fill="#5B9BFF">P</text>
+<text x="1020" y="642" class="t12"><tspan class="b">Pulsus</tspan><tspan class="dm t11">  APP  12:22</tspan></text>
+<text x="1020" y="662" class="t12"><tspan class="fa b">● FIRING · SEV2 · </tspan><tspan class="b">PaymentsPspClientTimeouts</tspan></text>
+<text x="1020" y="681" class="t12">payments → psp-api failing 38.1 % (&gt; 5 % for 5m)</text>
+<text x="1020" y="700" class="t11"><tspan class="mu">Probable origin </tspan><tspan class="fa">⊕ psp-api</tspan><tspan class="mu"> · </tspan><tspan>⚙ 12:19 timeout 5000→2000</tspan></text>
+<text x="1020" y="718" class="mu t11">INC-2041 · ~€38k/h at risk · backtested firing #6</text>
+<rect x="1020" y="730" width="39.3" height="22" rx="4" fill="#2B2F36" stroke="#FFFFFF22"/><text x="1030" y="745" style="font-size:11px;" fill="#E6E8EB">Ack</text>
+<rect x="1065.3" y="730" width="97.2" height="22" rx="4" fill="#2B2F36" stroke="#FFFFFF22"/><text x="1075.3" y="745" style="font-size:11px;" fill="#E6E8EB">Silence 1h ▾</text>
+<rect x="1168.5" y="730" width="84.3" height="22" rx="4" fill="#2B2F36" stroke="#FFFFFF22"/><text x="1178.5" y="745" style="font-size:11px;" fill="#E6E8EB">Open RCA ⟶</text>
+<text x="1020" y="774" class="dm t11">thread per incident · edits in place on update</text>
+</g>
+<g id="footer">
+<rect x="8.5" y="808.5" width="1423" height="43" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="835" class="mu t11">Rule versions are stored; before/after backtest is one click from Rule history.</text>
+<rect x="1332.8" y="818" width="87.2" height="24" rx="4" fill="#5B9BFF" stroke="#5B9BFF"/>
+<text x="1376.4" y="834" class="c t12 b" fill="#0B0D10">Save rule</text>
+<rect x="1230.6" y="818" width="94.2" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/>
+<text x="1277.7" y="834" class="c t12">Save draft</text>
+<rect x="1156.5" y="818" width="66.1" height="24" rx="4" fill="#191D24" stroke="#FFFFFF22"/>
+<text x="1189.6" y="834" class="c t12">Cancel</text>
+</g>
+<g id="time-ribbon">
+<rect x="0" y="860" width="1440" height="40" fill="#12151A"/>
+<line x1="0" y1="860.5" x2="1440" y2="860.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="16" y="885" class="mu t11">◀◀</text>
+<text x="42" y="885" class="mu t11">▶</text>
+<circle cx="64" cy="881" r="3.5" fill="none" stroke="#8A919C"/>
+<text x="72" y="885" class="mu t11">LIVE</text>
+<line x1="112.5" y1="868" x2="112.5" y2="892" stroke="#FFFFFF14" stroke-width="1" />
+<path d="M124,890 L124.0,887.1 L130.8,887.4 L137.7,886.6 L144.6,887.5 L151.4,886.7 L158.2,887.0 L165.1,887.5 L171.9,886.8 L178.8,887.5 L185.7,886.9 L192.5,887.5 L199.3,887.5 L206.2,886.9 L213.1,886.3 L219.9,887.4 L226.8,887.2 L233.6,886.6 L240.4,886.1 L247.3,886.7 L254.2,887.0 L261.0,886.0 L267.9,887.5 L274.7,886.2 L281.5,887.1 L288.4,887.4 L295.2,887.4 L302.1,887.1 L308.9,886.3 L315.8,887.3 L322.6,886.7 L329.5,886.6 L336.4,887.0 L343.2,886.7 L350.0,887.5 L356.9,887.5 L363.8,887.3 L370.6,886.5 L377.4,886.9 L384.3,887.1 L391.1,886.7 L398.0,886.9 L404.8,882.1 L411.7,881.3 L418.6,881.5 L425.4,887.2 L432.2,886.7 L439.1,886.8 L445.9,886.2 L452.8,886.4 L459.6,887.1 L466.5,886.0 L473.3,887.4 L480.2,886.9 L487.0,886.4 L493.9,887.4 L500.8,886.8 L507.6,887.5 L514.5,886.5 L521.3,886.4 L528.1,886.7 L535.0,886.2 L541.8,887.1 L548.7,886.5 L555.5,886.6 L562.4,886.7 L569.2,886.9 L576.1,886.3 L583.0,886.1 L589.8,886.8 L596.6,886.5 L603.5,887.5 L610.3,886.5 L617.2,886.6 L624.0,886.0 L630.9,886.3 L637.8,887.1 L644.6,887.0 L651.4,886.5 L658.3,887.6 L665.1,886.9 L672.0,887.3 L678.9,887.4 L685.7,887.5 L692.5,886.4 L699.4,887.4 L706.2,887.2 L713.1,887.0 L719.9,886.2 L726.8,887.5 L733.6,886.9 L740.5,886.7 L747.4,886.2 L754.2,886.3 L761.0,886.2 L767.9,887.2 L774.8,886.9 L781.6,887.0 L788.4,886.2 L795.3,886.1 L802.1,887.4 L809.0,887.3 L815.8,887.2 L822.7,887.2 L829.5,886.8 L836.4,886.7 L843.2,887.2 L850.1,887.6 L856.9,886.9 L863.8,887.0 L870.6,886.7 L877.5,886.1 L884.3,886.5 L891.2,886.8 L898.0,886.6 L904.9,886.5 L911.8,887.5 L918.6,886.2 L925.4,886.4 L932.3,886.2 L939.1,885.5 L946.0,884.8 L952.8,883.5 L959.7,882.6 L966.5,880.4 L973.4,879.9 L980.2,878.6 L987.1,877.0 L993.9,875.7 L1000.8,875.1 L1007.6,875.5 L1014.5,875.6 L1021.3,875.4 L1028.2,875.4 L1035.0,875.0 L1041.9,875.6 L1048.8,874.2 L1055.6,874.6 L1062.4,875.4 L1069.3,875.2 L1076.2,875.0 L1083.0,875.0 L1089.8,875.4 L1096.7,874.2 L1103.5,874.0 L1110.4,874.9 L1117.2,874.8 L1124.1,875.5 L1130.9,875.4 L1137.8,875.1 L1144.7,875.2 L1151.5,874.6 L1158.3,876.0 L1165.2,876.5 L1172.0,875.3 L1178.9,876.3 L1185.8,877.2 L1192.6,876.9 L1199.5,878.0 L1206.3,877.5 L1213.1,877.1 L1220,890 Z" fill="#8A919C" opacity="0.28"/>
+<rect x="178.8" y="866" width="1024.8" height="28" rx="3" fill="#5B9BFF14" stroke="#5B9BFF88"/>
+<rect x="177.3" y="872" width="3" height="16" rx="1" fill="#5B9BFF"/>
+<rect x="1202.1" y="872" width="3" height="16" rx="1" fill="#5B9BFF"/>
+<line x1="1176.2" y1="866" x2="1176.2" y2="894" stroke="#E0457B" stroke-width="1" stroke-opacity="0.6"/>
+<text x="1179.2" y="876" class="t11" fill="#E0457B">⚠</text>
+<line x1="1228.5" y1="868" x2="1228.5" y2="892" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1240" y="885" class="m t11 b">Nov 11 – Nov 18</text>
+<text x="1430" y="885" class="mu t11 e">backtest window</text>
+</g>
+<g id="callouts">
+<path d="M848,457 L418,311" class="co"/>
+<circle cx="848" cy="457" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="848" y="461" class="c b t11" fill="#5B9BFF">1</text>
+<rect x="418" y="292" width="304.3" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="426" y="309" class="b" style="font-size:12px;" fill="#5B9BFF">①</text>
+<text x="442" y="309" class="cot">Drag the threshold: fired count, sends and</text>
+<text x="442" y="323" class="cot">pages/month recompute live (local replay).</text>
+<path d="M255.9,294 L110,311" class="co"/>
+<circle cx="255.9" cy="294" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="255.9" y="298" class="c b t11" fill="#5B9BFF">2</text>
+<rect x="110" y="292" width="265.7" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="118" y="309" class="b" style="font-size:12px;" fill="#5B9BFF">②</text>
+<text x="134" y="309" class="cot">Shaded = would have fired. Sends are</text>
+<text x="134" y="323" class="cot">counted per endpoint from routing.</text>
+<path d="M30,704 L20,779" class="co"/>
+<circle cx="30" cy="704" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="30" y="708" class="c b t11" fill="#5B9BFF">3</text>
+<rect x="20" y="760" width="265.7" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="28" y="777" class="b" style="font-size:12px;" fill="#5B9BFF">③</text>
+<text x="44" y="777" class="cot">Flapping found in backtest, with two</text>
+<text x="44" y="791" class="cot">fixes previewed before you save.</text>
+<path d="M964,428 L330,779" class="co"/>
+<circle cx="964" cy="428" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="964" y="432" class="c b t11" fill="#5B9BFF">4</text>
+<rect x="330" y="760" width="304.3" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="338" y="777" class="b" style="font-size:12px;" fill="#5B9BFF">④</text>
+<text x="354" y="777" class="cot">Routing resolves from labels; team comes</text>
+<text x="354" y="791" class="cot">from the entity owner, not label folklore.</text>
+<path d="M964,636 L650,779" class="co"/>
+<circle cx="964" cy="636" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="964" y="640" class="c b t11" fill="#5B9BFF">5</text>
+<rect x="650" y="760" width="285" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="658" y="777" class="b" style="font-size:12px;" fill="#5B9BFF">⑤</text>
+<text x="674" y="777" class="cot">The real Slack payload for a backtested</text>
+<text x="674" y="791" class="cot">firing, with RCA origin and change.</text>
+</g>
+</svg>

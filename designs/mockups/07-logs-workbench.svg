@@ -1,0 +1,861 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Logs workbench</title>
+<desc id="d">Pulsus Dash Logs workbench during INC-2041: LogQL editor, volume histogram stacked by level with the 12:19 config change marker, auto-detected patterns with NEW-since-12:19 templates such as PaymentTimeoutException, detected-field facets, and a paused live stream with one expanded line showing trace-id pivots.</desc>
+
+<style>
+text{font-family:Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB;font-size:12px}
+.m{font-family:'JetBrains Mono',ui-monospace,monospace}
+.mu{fill:#8A919C}.dm{fill:#5D646E}.ac{fill:#5B9BFF}.ok{fill:#2FB59A}.wa{fill:#D9C84A}.dg{fill:#E8923A}.fa{fill:#E0457B}.un{fill:#6B7280}
+.b{font-weight:600}.t11{font-size:11px}.t13{font-size:13px}.t16{font-size:16px}.t20{font-size:20px}
+.e{text-anchor:end}.c{text-anchor:middle}
+.hl{stroke:#FFFFFF14;stroke-width:1;fill:none}
+.co{fill:none;stroke:#5B9BFF;stroke-width:1.25;stroke-dasharray:4 3}
+.cot{font-size:11px;fill:#BFD6FF}
+</style>
+<defs>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#6B728022"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6B7280" stroke-width="1.6" stroke-opacity="0.7"/></pattern>
+<pattern id="hatchA" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#E0457B" stroke-width="1.4" stroke-opacity="0.55"/></pattern>
+<pattern id="hatchW" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#D9C84A1f"/><line x1="0" y1="0" x2="0" y2="5" stroke="#D9C84A" stroke-width="1.4" stroke-opacity="0.7"/></pattern>
+<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<rect id="canvas" width="1440" height="900" fill="#0B0D10"/>
+<g id="top-bar">
+<rect x="0" y="0" width="1440" height="32" fill="#12151A"/>
+<line x1="0" y1="31.5" x2="1440" y2="31.5" stroke="#FFFFFF14" stroke-width="1" />
+<circle cx="18" cy="16" r="6" fill="none" stroke="#5B9BFF" stroke-width="1.5"/><circle cx="18" cy="16" r="2.2" fill="#5B9BFF"/>
+<text x="30" y="20.5" class="b" style="font-size:13px;">Pulsus</text>
+<text x="88" y="20.5" class="mu" style="font-size:12px;">prod ▾</text>
+<text x="140.1" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="154.1" y="20.5" class="mu" style="font-size:12px;">Logs</text>
+<text x="192.2" y="20.5" class="dm" style="font-size:13px;">›</text>
+<text x="206.2" y="20.5" style="font-size:12px;" font-weight="600">checkout + payments</text>
+<rect x="560" y="6" width="320" height="20" rx="4" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="570" y="20" class="mu t11">⌘K  Search entities, alerts, queries…</text>
+<circle cx="1418" cy="16" r="10" fill="#2A3240" stroke="#FFFFFF22"/>
+<text x="1418" y="20" class="b c t11">S</text>
+<text x="1398" y="20.5" class="ac e" style="font-size:12px;">✦ AI</text>
+<rect x="1322" y="7" width="38" height="18" rx="4" fill="#E0457B22" stroke="#E0457B66"/>
+<text x="1341" y="20" class="fa c t11 b">⚠ 1</text>
+</g>
+<g id="query-editor">
+<rect x="8.5" y="40.5" width="1423" height="43" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<rect x="18" y="52" width="48.2" height="20" rx="4" fill="#5B9BFF1A" stroke="#5B9BFF55"/><text x="26" y="66" style="font-size:11px;" fill="#5B9BFF">LogQL</text>
+<text x="84" y="66" class="m t13"><tspan class="mu">{</tspan><tspan fill="#9CC2FF">service_name</tspan><tspan class="mu">=~</tspan><tspan fill="#C9A36B">"checkout|payments"</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">env</tspan><tspan class="mu">=</tspan><tspan fill="#C9A36B">"prod"</tspan><tspan class="mu">}</tspan><tspan class="mu"> | </tspan><tspan fill="#B48FC9">json</tspan></text>
+<rect x="518" y="55" width="1.5" height="16" fill="#5B9BFF"/>
+<text x="560" y="66" class="mu t11">Fields:</text>
+<rect x="604" y="52" width="144.7" height="20" rx="4" fill="#5B9BFF1A" stroke="#5B9BFF55"/><text x="612" y="66" style="font-size:11px;" fill="#E6E8EB">level: error, warn ✕</text>
+<rect x="754.7" y="52" width="48.2" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="762.7" y="66" style="font-size:11px;" fill="#8A919C">pod ▾</text>
+<rect x="808.9" y="52" width="80.3" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="816.9" y="66" style="font-size:11px;" fill="#8A919C">upstream ▾</text>
+<rect x="895.2" y="52" width="22.4" height="20" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="903.2" y="66" style="font-size:11px;" fill="#8A919C">+</text>
+<text x="1214" y="60" class="mu t11 e m">312 ms · 48.2k lines</text>
+<text x="1214" y="74" class="dm t11 e m">41.6 MB scanned ⚡ cache</text>
+<rect x="1226" y="51" width="80" height="22" rx="4" fill="#5B9BFF"/>
+<text x="1266" y="66" class="b c t11" fill="#0B0D10">▶ Run</text>
+<text x="1316" y="66" class="mu t11 m">⌘↵</text>
+<rect x="1346" y="51" width="76" height="22" rx="4" fill="#191D24" stroke="#FFFFFF22"/>
+<text x="1384" y="66" class="c t11">⏸ tail</text>
+</g>
+<g id="volume">
+<rect x="8.5" y="92.5" width="1423" height="167" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="112" class="b">Volume</text>
+<text x="72" y="112" class="mu t11">count_over_time · 30 s buckets · stacked by level · Alt+drag to brush</text>
+<text x="1080" y="112" class="t11" fill="#E0457B">✖</text>
+<text x="1092" y="112" class="mu t11">error</text>
+<text x="1140" y="112" class="t11" fill="#E8923A">▲</text>
+<text x="1152" y="112" class="mu t11">warn</text>
+<text x="1200" y="112" class="t11" fill="#7AA2D6">●</text>
+<text x="1212" y="112" class="mu t11">info</text>
+<text x="1260" y="112" class="t11" fill="#6B7280">·</text>
+<text x="1272" y="112" class="mu t11">debug</text>
+<text x="1420" y="112" class="dm t11 e">lines/s</text>
+<line x1="52" y1="238.5" x2="1416" y2="238.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="46" y="242" class="dm t11 e m">0</text>
+<line x1="52" y1="203.5" x2="1416" y2="203.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="46" y="207" class="dm t11 e m">50</text>
+<line x1="52" y1="168.5" x2="1416" y2="168.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="46" y="172" class="dm t11 e m">100</text>
+<line x1="52" y1="133.5" x2="1416" y2="133.5" stroke="#FFFFFF0d" stroke-width="1" />
+<text x="46" y="137" class="dm t11 e m">150</text>
+<rect x="53" y="233" width="15.1" height="5" fill="#6B7280" opacity="0.55"/>
+<rect x="53" y="211.8" width="15.1" height="21.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="53" y="209.5" width="15.1" height="2.4" fill="#E8923A" opacity="0.9"/>
+<rect x="53" y="209" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="70" y="233" width="15.1" height="5" fill="#6B7280" opacity="0.55"/>
+<rect x="70" y="210.8" width="15.1" height="22.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="70" y="209.2" width="15.1" height="1.6" fill="#E8923A" opacity="0.9"/>
+<rect x="70" y="208.7" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="87.1" y="232.7" width="15.1" height="5.3" fill="#6B7280" opacity="0.55"/>
+<rect x="87.1" y="209.2" width="15.1" height="23.4" fill="#7AA2D6" opacity="0.55"/>
+<rect x="87.1" y="207.8" width="15.1" height="1.5" fill="#E8923A" opacity="0.9"/>
+<rect x="87.1" y="207.3" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="104.2" y="232.7" width="15.1" height="5.3" fill="#6B7280" opacity="0.55"/>
+<rect x="104.2" y="210.4" width="15.1" height="22.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="104.2" y="208.2" width="15.1" height="2.1" fill="#E8923A" opacity="0.9"/>
+<rect x="104.2" y="208" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="121.2" y="232.4" width="15.1" height="5.6" fill="#6B7280" opacity="0.55"/>
+<rect x="121.2" y="206.4" width="15.1" height="26.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="121.2" y="204.3" width="15.1" height="2.1" fill="#E8923A" opacity="0.9"/>
+<rect x="121.2" y="203.8" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="138.2" y="233.8" width="15.1" height="4.2" fill="#6B7280" opacity="0.55"/>
+<rect x="138.2" y="210.1" width="15.1" height="23.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="138.2" y="208.1" width="15.1" height="2" fill="#E8923A" opacity="0.9"/>
+<rect x="138.2" y="207.8" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="155.3" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="155.3" y="209.3" width="15.1" height="24.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="155.3" y="207.8" width="15.1" height="1.4" fill="#E8923A" opacity="0.9"/>
+<rect x="155.3" y="207.4" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="172.4" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="172.4" y="207.3" width="15.1" height="25.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="172.4" y="205.4" width="15.1" height="1.9" fill="#E8923A" opacity="0.9"/>
+<rect x="172.4" y="204.8" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="189.4" y="232.9" width="15.1" height="5.1" fill="#6B7280" opacity="0.55"/>
+<rect x="189.4" y="207.3" width="15.1" height="25.5" fill="#7AA2D6" opacity="0.55"/>
+<rect x="189.4" y="205.4" width="15.1" height="1.9" fill="#E8923A" opacity="0.9"/>
+<rect x="189.4" y="205" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="206.5" y="232.4" width="15.1" height="5.6" fill="#6B7280" opacity="0.55"/>
+<rect x="206.5" y="205.2" width="15.1" height="27.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="206.5" y="202.9" width="15.1" height="2.3" fill="#E8923A" opacity="0.9"/>
+<rect x="206.5" y="202.4" width="15.1" height="0.6" fill="#E0457B" opacity="0.9"/>
+<rect x="223.5" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="223.5" y="209" width="15.1" height="24.5" fill="#7AA2D6" opacity="0.55"/>
+<rect x="223.5" y="207.3" width="15.1" height="1.7" fill="#E8923A" opacity="0.9"/>
+<rect x="223.5" y="206.9" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="240.6" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="240.6" y="207.6" width="15.1" height="25.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="240.6" y="205.3" width="15.1" height="2.3" fill="#E8923A" opacity="0.9"/>
+<rect x="240.6" y="204.8" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="257.6" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="257.6" y="206.8" width="15.1" height="25.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="257.6" y="205.4" width="15.1" height="1.4" fill="#E8923A" opacity="0.9"/>
+<rect x="257.6" y="205.1" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="274.6" y="233.1" width="15.1" height="4.9" fill="#6B7280" opacity="0.55"/>
+<rect x="274.6" y="208.2" width="15.1" height="25" fill="#7AA2D6" opacity="0.55"/>
+<rect x="274.6" y="205.8" width="15.1" height="2.4" fill="#E8923A" opacity="0.9"/>
+<rect x="274.6" y="205.3" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="291.7" y="232.9" width="15.1" height="5.1" fill="#6B7280" opacity="0.55"/>
+<rect x="291.7" y="211.7" width="15.1" height="21.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="291.7" y="209.4" width="15.1" height="2.2" fill="#E8923A" opacity="0.9"/>
+<rect x="291.7" y="209" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="308.8" y="233.3" width="15.1" height="4.7" fill="#6B7280" opacity="0.55"/>
+<rect x="308.8" y="212.8" width="15.1" height="20.5" fill="#7AA2D6" opacity="0.55"/>
+<rect x="308.8" y="210.4" width="15.1" height="2.4" fill="#E8923A" opacity="0.9"/>
+<rect x="308.8" y="209.8" width="15.1" height="0.6" fill="#E0457B" opacity="0.9"/>
+<rect x="325.8" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="325.8" y="213.7" width="15.1" height="19.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="325.8" y="212.2" width="15.1" height="1.5" fill="#E8923A" opacity="0.9"/>
+<rect x="325.8" y="211.9" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="342.9" y="233.6" width="15.1" height="4.4" fill="#6B7280" opacity="0.55"/>
+<rect x="342.9" y="212.2" width="15.1" height="21.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="342.9" y="210.2" width="15.1" height="2" fill="#E8923A" opacity="0.9"/>
+<rect x="342.9" y="209.8" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="359.9" y="232.8" width="15.1" height="5.2" fill="#6B7280" opacity="0.55"/>
+<rect x="359.9" y="214.4" width="15.1" height="18.4" fill="#7AA2D6" opacity="0.55"/>
+<rect x="359.9" y="212.8" width="15.1" height="1.5" fill="#E8923A" opacity="0.9"/>
+<rect x="359.9" y="212.3" width="15.1" height="0.6" fill="#E0457B" opacity="0.9"/>
+<rect x="376.9" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="376.9" y="215.8" width="15.1" height="17.4" fill="#7AA2D6" opacity="0.55"/>
+<rect x="376.9" y="214.1" width="15.1" height="1.6" fill="#E8923A" opacity="0.9"/>
+<rect x="376.9" y="213.8" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="394" y="232.7" width="15.1" height="5.3" fill="#6B7280" opacity="0.55"/>
+<rect x="394" y="212.9" width="15.1" height="19.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="394" y="211.1" width="15.1" height="1.7" fill="#E8923A" opacity="0.9"/>
+<rect x="394" y="210.5" width="15.1" height="0.7" fill="#E0457B" opacity="0.9"/>
+<rect x="411.1" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="411.1" y="216.6" width="15.1" height="16.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="411.1" y="214.3" width="15.1" height="2.3" fill="#E8923A" opacity="0.9"/>
+<rect x="411.1" y="213.7" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="428.1" y="232.4" width="15.1" height="5.6" fill="#6B7280" opacity="0.55"/>
+<rect x="428.1" y="216.5" width="15.1" height="16" fill="#7AA2D6" opacity="0.55"/>
+<rect x="428.1" y="214.8" width="15.1" height="1.6" fill="#E8923A" opacity="0.9"/>
+<rect x="428.1" y="214.4" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="445.2" y="233.3" width="15.1" height="4.7" fill="#6B7280" opacity="0.55"/>
+<rect x="445.2" y="215.2" width="15.1" height="18.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="445.2" y="213.5" width="15.1" height="1.7" fill="#E8923A" opacity="0.9"/>
+<rect x="445.2" y="213.2" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="462.2" y="233" width="15.1" height="5" fill="#6B7280" opacity="0.55"/>
+<rect x="462.2" y="217.3" width="15.1" height="15.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="462.2" y="215.6" width="15.1" height="1.7" fill="#E8923A" opacity="0.9"/>
+<rect x="462.2" y="215.1" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="479.2" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="479.2" y="216.3" width="15.1" height="16.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="479.2" y="213.9" width="15.1" height="2.4" fill="#E8923A" opacity="0.9"/>
+<rect x="479.2" y="213.4" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="496.3" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="496.3" y="214.7" width="15.1" height="17.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="496.3" y="213.1" width="15.1" height="1.6" fill="#E8923A" opacity="0.9"/>
+<rect x="496.3" y="212.7" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="513.4" y="232.7" width="15.1" height="5.3" fill="#6B7280" opacity="0.55"/>
+<rect x="513.4" y="213.1" width="15.1" height="19.5" fill="#7AA2D6" opacity="0.55"/>
+<rect x="513.4" y="211.5" width="15.1" height="1.7" fill="#E8923A" opacity="0.9"/>
+<rect x="513.4" y="211.1" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="530.4" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="530.4" y="212.9" width="15.1" height="19.5" fill="#7AA2D6" opacity="0.55"/>
+<rect x="530.4" y="211.3" width="15.1" height="1.6" fill="#E8923A" opacity="0.9"/>
+<rect x="530.4" y="210.7" width="15.1" height="0.7" fill="#E0457B" opacity="0.9"/>
+<rect x="547.5" y="233" width="15.1" height="5" fill="#6B7280" opacity="0.55"/>
+<rect x="547.5" y="212.2" width="15.1" height="20.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="547.5" y="210.4" width="15.1" height="1.8" fill="#E8923A" opacity="0.9"/>
+<rect x="547.5" y="210.1" width="15.1" height="0.3" fill="#E0457B" opacity="0.9"/>
+<rect x="564.5" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="564.5" y="213.9" width="15.1" height="18.6" fill="#7AA2D6" opacity="0.55"/>
+<rect x="564.5" y="212.2" width="15.1" height="1.7" fill="#E8923A" opacity="0.9"/>
+<rect x="564.5" y="211.7" width="15.1" height="0.6" fill="#E0457B" opacity="0.9"/>
+<rect x="581.6" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="581.6" y="212.5" width="15.1" height="20.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="581.6" y="210.5" width="15.1" height="2" fill="#E8923A" opacity="0.9"/>
+<rect x="581.6" y="210.1" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="598.6" y="232.8" width="15.1" height="5.2" fill="#6B7280" opacity="0.55"/>
+<rect x="598.6" y="212.1" width="15.1" height="20.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="598.6" y="210.6" width="15.1" height="1.5" fill="#E8923A" opacity="0.9"/>
+<rect x="598.6" y="210.2" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="615.6" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="615.6" y="209.7" width="15.1" height="22.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="615.6" y="207.7" width="15.1" height="2" fill="#E8923A" opacity="0.9"/>
+<rect x="615.6" y="207.3" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="632.7" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="632.7" y="208.6" width="15.1" height="24.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="632.7" y="207.2" width="15.1" height="1.4" fill="#E8923A" opacity="0.9"/>
+<rect x="632.7" y="206.8" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="649.8" y="233.7" width="15.1" height="4.3" fill="#6B7280" opacity="0.55"/>
+<rect x="649.8" y="209.8" width="15.1" height="23.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="649.8" y="208.2" width="15.1" height="1.6" fill="#E8923A" opacity="0.9"/>
+<rect x="649.8" y="207.8" width="15.1" height="0.4" fill="#E0457B" opacity="0.9"/>
+<rect x="666.8" y="233.6" width="15.1" height="4.4" fill="#6B7280" opacity="0.55"/>
+<rect x="666.8" y="208.7" width="15.1" height="24.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="666.8" y="206.9" width="15.1" height="1.8" fill="#E8923A" opacity="0.9"/>
+<rect x="666.8" y="206.2" width="15.1" height="0.7" fill="#E0457B" opacity="0.9"/>
+<rect x="683.9" y="232.9" width="15.1" height="5.1" fill="#6B7280" opacity="0.55"/>
+<rect x="683.9" y="206.1" width="15.1" height="26.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="683.9" y="203.9" width="15.1" height="2.1" fill="#E8923A" opacity="0.9"/>
+<rect x="683.9" y="203.4" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="700.9" y="233.8" width="15.1" height="4.2" fill="#6B7280" opacity="0.55"/>
+<rect x="700.9" y="209.6" width="15.1" height="24.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="700.9" y="208.2" width="15.1" height="1.4" fill="#E8923A" opacity="0.9"/>
+<rect x="700.9" y="207.5" width="15.1" height="0.7" fill="#E0457B" opacity="0.9"/>
+<rect x="718" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="718" y="206.2" width="15.1" height="26.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="718" y="204.8" width="15.1" height="1.4" fill="#E8923A" opacity="0.9"/>
+<rect x="718" y="204.2" width="15.1" height="0.5" fill="#E0457B" opacity="0.9"/>
+<rect x="735" y="232.4" width="15.1" height="5.6" fill="#6B7280" opacity="0.55"/>
+<rect x="735" y="208.2" width="15.1" height="24.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="735" y="202.3" width="15.1" height="5.9" fill="#E8923A" opacity="0.9"/>
+<rect x="735" y="191.4" width="15.1" height="10.9" fill="#E0457B" opacity="0.9"/>
+<rect x="752.1" y="232.8" width="15.1" height="5.2" fill="#6B7280" opacity="0.55"/>
+<rect x="752.1" y="208.1" width="15.1" height="24.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="752.1" y="197.4" width="15.1" height="10.7" fill="#E8923A" opacity="0.9"/>
+<rect x="752.1" y="177.3" width="15.1" height="20.1" fill="#E0457B" opacity="0.9"/>
+<rect x="769.1" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="769.1" y="208.3" width="15.1" height="24.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="769.1" y="194.2" width="15.1" height="14.1" fill="#E8923A" opacity="0.9"/>
+<rect x="769.1" y="161.8" width="15.1" height="32.4" fill="#E0457B" opacity="0.9"/>
+<rect x="786.1" y="233.3" width="15.1" height="4.7" fill="#6B7280" opacity="0.55"/>
+<rect x="786.1" y="211.2" width="15.1" height="22.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="786.1" y="192.5" width="15.1" height="18.7" fill="#E8923A" opacity="0.9"/>
+<rect x="786.1" y="155" width="15.1" height="37.5" fill="#E0457B" opacity="0.9"/>
+<rect x="803.2" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="803.2" y="209.8" width="15.1" height="22.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="803.2" y="191.2" width="15.1" height="18.6" fill="#E8923A" opacity="0.9"/>
+<rect x="803.2" y="149.2" width="15.1" height="42" fill="#E0457B" opacity="0.9"/>
+<rect x="820.2" y="232.6" width="15.1" height="5.4" fill="#6B7280" opacity="0.55"/>
+<rect x="820.2" y="212.6" width="15.1" height="20.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="820.2" y="194.5" width="15.1" height="18" fill="#E8923A" opacity="0.9"/>
+<rect x="820.2" y="157.3" width="15.1" height="37.2" fill="#E0457B" opacity="0.9"/>
+<rect x="837.3" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="837.3" y="214.1" width="15.1" height="19.4" fill="#7AA2D6" opacity="0.55"/>
+<rect x="837.3" y="194.1" width="15.1" height="20" fill="#E8923A" opacity="0.9"/>
+<rect x="837.3" y="152.9" width="15.1" height="41.2" fill="#E0457B" opacity="0.9"/>
+<rect x="854.4" y="233.8" width="15.1" height="4.2" fill="#6B7280" opacity="0.55"/>
+<rect x="854.4" y="216" width="15.1" height="17.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="854.4" y="199.6" width="15.1" height="16.4" fill="#E8923A" opacity="0.9"/>
+<rect x="854.4" y="161.2" width="15.1" height="38.4" fill="#E0457B" opacity="0.9"/>
+<rect x="871.4" y="232.9" width="15.1" height="5.1" fill="#6B7280" opacity="0.55"/>
+<rect x="871.4" y="213.6" width="15.1" height="19.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="871.4" y="195" width="15.1" height="18.7" fill="#E8923A" opacity="0.9"/>
+<rect x="871.4" y="155.6" width="15.1" height="39.3" fill="#E0457B" opacity="0.9"/>
+<rect x="888.5" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="888.5" y="217.2" width="15.1" height="16" fill="#7AA2D6" opacity="0.55"/>
+<rect x="888.5" y="199.4" width="15.1" height="17.9" fill="#E8923A" opacity="0.9"/>
+<rect x="888.5" y="156.2" width="15.1" height="43.2" fill="#E0457B" opacity="0.9"/>
+<rect x="905.5" y="233.4" width="15.1" height="4.6" fill="#6B7280" opacity="0.55"/>
+<rect x="905.5" y="216.8" width="15.1" height="16.6" fill="#7AA2D6" opacity="0.55"/>
+<rect x="905.5" y="197.7" width="15.1" height="19.1" fill="#E8923A" opacity="0.9"/>
+<rect x="905.5" y="154.9" width="15.1" height="42.7" fill="#E0457B" opacity="0.9"/>
+<rect x="922.6" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="922.6" y="216.1" width="15.1" height="16.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="922.6" y="199.3" width="15.1" height="16.8" fill="#E8923A" opacity="0.9"/>
+<rect x="922.6" y="159.4" width="15.1" height="39.9" fill="#E0457B" opacity="0.9"/>
+<rect x="939.6" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="939.6" y="219.1" width="15.1" height="14.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="939.6" y="199.6" width="15.1" height="19.6" fill="#E8923A" opacity="0.9"/>
+<rect x="939.6" y="160.5" width="15.1" height="39.1" fill="#E0457B" opacity="0.9"/>
+<rect x="956.7" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="956.7" y="216.8" width="15.1" height="16.4" fill="#7AA2D6" opacity="0.55"/>
+<rect x="956.7" y="201.2" width="15.1" height="15.7" fill="#E8923A" opacity="0.9"/>
+<rect x="956.7" y="158.3" width="15.1" height="42.8" fill="#E0457B" opacity="0.9"/>
+<rect x="973.7" y="233" width="15.1" height="5" fill="#6B7280" opacity="0.55"/>
+<rect x="973.7" y="217.8" width="15.1" height="15.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="973.7" y="201.5" width="15.1" height="16.3" fill="#E8923A" opacity="0.9"/>
+<rect x="973.7" y="164.4" width="15.1" height="37.1" fill="#E0457B" opacity="0.9"/>
+<rect x="990.8" y="233.8" width="15.1" height="4.2" fill="#6B7280" opacity="0.55"/>
+<rect x="990.8" y="219.6" width="15.1" height="14.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="990.8" y="203.1" width="15.1" height="16.5" fill="#E8923A" opacity="0.9"/>
+<rect x="990.8" y="165.3" width="15.1" height="37.8" fill="#E0457B" opacity="0.9"/>
+<rect x="1007.8" y="233.2" width="15.1" height="4.8" fill="#6B7280" opacity="0.55"/>
+<rect x="1007.8" y="218.3" width="15.1" height="14.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1007.8" y="198.2" width="15.1" height="20.1" fill="#E8923A" opacity="0.9"/>
+<rect x="1007.8" y="155.6" width="15.1" height="42.6" fill="#E0457B" opacity="0.9"/>
+<rect x="1024.8" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1024.8" y="218.2" width="15.1" height="15.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1024.8" y="200.3" width="15.1" height="17.9" fill="#E8923A" opacity="0.9"/>
+<rect x="1024.8" y="163.5" width="15.1" height="36.8" fill="#E0457B" opacity="0.9"/>
+<rect x="1041.9" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1041.9" y="217.7" width="15.1" height="15.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1041.9" y="199.8" width="15.1" height="17.9" fill="#E8923A" opacity="0.9"/>
+<rect x="1041.9" y="158.1" width="15.1" height="41.7" fill="#E0457B" opacity="0.9"/>
+<rect x="1059" y="232.7" width="15.1" height="5.3" fill="#6B7280" opacity="0.55"/>
+<rect x="1059" y="216.7" width="15.1" height="16" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1059" y="200.5" width="15.1" height="16.2" fill="#E8923A" opacity="0.9"/>
+<rect x="1059" y="157.2" width="15.1" height="43.4" fill="#E0457B" opacity="0.9"/>
+<rect x="1076" y="232.8" width="15.1" height="5.2" fill="#6B7280" opacity="0.55"/>
+<rect x="1076" y="215" width="15.1" height="17.8" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1076" y="195.6" width="15.1" height="19.4" fill="#E8923A" opacity="0.9"/>
+<rect x="1076" y="154.4" width="15.1" height="41.2" fill="#E0457B" opacity="0.9"/>
+<rect x="1093" y="233" width="15.1" height="5" fill="#6B7280" opacity="0.55"/>
+<rect x="1093" y="216.4" width="15.1" height="16.6" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1093" y="198.1" width="15.1" height="18.3" fill="#E8923A" opacity="0.9"/>
+<rect x="1093" y="154.5" width="15.1" height="43.6" fill="#E0457B" opacity="0.9"/>
+<rect x="1110.1" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1110.1" y="215.1" width="15.1" height="18.4" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1110.1" y="196" width="15.1" height="19.2" fill="#E8923A" opacity="0.9"/>
+<rect x="1110.1" y="154.4" width="15.1" height="41.5" fill="#E0457B" opacity="0.9"/>
+<rect x="1127.2" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1127.2" y="214.9" width="15.1" height="17.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1127.2" y="195.1" width="15.1" height="19.8" fill="#E8923A" opacity="0.9"/>
+<rect x="1127.2" y="154.3" width="15.1" height="40.8" fill="#E0457B" opacity="0.9"/>
+<rect x="1144.2" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1144.2" y="213.6" width="15.1" height="18.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1144.2" y="195.5" width="15.1" height="18.2" fill="#E8923A" opacity="0.9"/>
+<rect x="1144.2" y="158.1" width="15.1" height="37.4" fill="#E0457B" opacity="0.9"/>
+<rect x="1161.2" y="232.7" width="15.1" height="5.3" fill="#6B7280" opacity="0.55"/>
+<rect x="1161.2" y="212.2" width="15.1" height="20.5" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1161.2" y="196.1" width="15.1" height="16.2" fill="#E8923A" opacity="0.9"/>
+<rect x="1161.2" y="153.7" width="15.1" height="42.4" fill="#E0457B" opacity="0.9"/>
+<rect x="1178.3" y="233.6" width="15.1" height="4.4" fill="#6B7280" opacity="0.55"/>
+<rect x="1178.3" y="211.5" width="15.1" height="22.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1178.3" y="195.1" width="15.1" height="16.4" fill="#E8923A" opacity="0.9"/>
+<rect x="1178.3" y="157.1" width="15.1" height="38" fill="#E0457B" opacity="0.9"/>
+<rect x="1195.4" y="232.8" width="15.1" height="5.2" fill="#6B7280" opacity="0.55"/>
+<rect x="1195.4" y="211.1" width="15.1" height="21.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1195.4" y="192.7" width="15.1" height="18.4" fill="#E8923A" opacity="0.9"/>
+<rect x="1195.4" y="149.1" width="15.1" height="43.6" fill="#E0457B" opacity="0.9"/>
+<rect x="1212.4" y="233.7" width="15.1" height="4.3" fill="#6B7280" opacity="0.55"/>
+<rect x="1212.4" y="209.9" width="15.1" height="23.7" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1212.4" y="191.3" width="15.1" height="18.7" fill="#E8923A" opacity="0.9"/>
+<rect x="1212.4" y="152.3" width="15.1" height="38.9" fill="#E0457B" opacity="0.9"/>
+<rect x="1229.5" y="233.1" width="15.1" height="4.9" fill="#6B7280" opacity="0.55"/>
+<rect x="1229.5" y="210.1" width="15.1" height="23" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1229.5" y="192.2" width="15.1" height="17.9" fill="#E8923A" opacity="0.9"/>
+<rect x="1229.5" y="153.1" width="15.1" height="39.1" fill="#E0457B" opacity="0.9"/>
+<rect x="1246.5" y="232.5" width="15.1" height="5.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1246.5" y="208.6" width="15.1" height="23.9" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1246.5" y="190.8" width="15.1" height="17.8" fill="#E8923A" opacity="0.9"/>
+<rect x="1246.5" y="147" width="15.1" height="43.8" fill="#E0457B" opacity="0.9"/>
+<rect x="1263.5" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1263.5" y="210.5" width="15.1" height="23" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1263.5" y="194.4" width="15.1" height="16.1" fill="#E8923A" opacity="0.9"/>
+<rect x="1263.5" y="153.3" width="15.1" height="41.1" fill="#E0457B" opacity="0.9"/>
+<rect x="1280.6" y="233.1" width="15.1" height="4.9" fill="#6B7280" opacity="0.55"/>
+<rect x="1280.6" y="208.8" width="15.1" height="24.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1280.6" y="190.9" width="15.1" height="17.9" fill="#E8923A" opacity="0.9"/>
+<rect x="1280.6" y="150" width="15.1" height="41" fill="#E0457B" opacity="0.9"/>
+<rect x="1297.7" y="233.7" width="15.1" height="4.3" fill="#6B7280" opacity="0.55"/>
+<rect x="1297.7" y="210.7" width="15.1" height="23" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1297.7" y="190.9" width="15.1" height="19.8" fill="#E8923A" opacity="0.9"/>
+<rect x="1297.7" y="147.3" width="15.1" height="43.6" fill="#E0457B" opacity="0.9"/>
+<rect x="1314.7" y="233.1" width="15.1" height="4.9" fill="#6B7280" opacity="0.55"/>
+<rect x="1314.7" y="212.1" width="15.1" height="21.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1314.7" y="192.8" width="15.1" height="19.3" fill="#E8923A" opacity="0.9"/>
+<rect x="1314.7" y="150.2" width="15.1" height="42.6" fill="#E0457B" opacity="0.9"/>
+<rect x="1331.8" y="233.4" width="15.1" height="4.6" fill="#6B7280" opacity="0.55"/>
+<rect x="1331.8" y="212.2" width="15.1" height="21.2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1331.8" y="196" width="15.1" height="16.1" fill="#E8923A" opacity="0.9"/>
+<rect x="1331.8" y="152.6" width="15.1" height="43.4" fill="#E0457B" opacity="0.9"/>
+<rect x="1348.8" y="233.8" width="15.1" height="4.2" fill="#6B7280" opacity="0.55"/>
+<rect x="1348.8" y="212.2" width="15.1" height="21.6" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1348.8" y="195.2" width="15.1" height="17" fill="#E8923A" opacity="0.9"/>
+<rect x="1348.8" y="153.7" width="15.1" height="41.6" fill="#E0457B" opacity="0.9"/>
+<rect x="1365.9" y="232.9" width="15.1" height="5.1" fill="#6B7280" opacity="0.55"/>
+<rect x="1365.9" y="213.6" width="15.1" height="19.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1365.9" y="196" width="15.1" height="17.7" fill="#E8923A" opacity="0.9"/>
+<rect x="1365.9" y="158.1" width="15.1" height="37.8" fill="#E0457B" opacity="0.9"/>
+<rect x="1382.9" y="233.5" width="15.1" height="4.5" fill="#6B7280" opacity="0.55"/>
+<rect x="1382.9" y="215.4" width="15.1" height="18.1" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1382.9" y="197.7" width="15.1" height="17.7" fill="#E8923A" opacity="0.9"/>
+<rect x="1382.9" y="158.2" width="15.1" height="39.5" fill="#E0457B" opacity="0.9"/>
+<rect x="1400" y="233.6" width="15.1" height="4.4" fill="#6B7280" opacity="0.55"/>
+<rect x="1400" y="215.3" width="15.1" height="18.3" fill="#7AA2D6" opacity="0.55"/>
+<rect x="1400" y="197.5" width="15.1" height="17.8" fill="#E8923A" opacity="0.9"/>
+<rect x="1400" y="156.1" width="15.1" height="41.4" fill="#E0457B" opacity="0.9"/>
+<rect x="768.1" y="120" width="647.9" height="118" fill="#5B9BFF10" stroke="#5B9BFF66" stroke-dasharray="2 2"/>
+<text x="774.1" y="132" class="ac t11">brush 12:21:00–12:40:00 · 41 806 lines</text>
+<line x1="700.9" y1="118" x2="700.9" y2="238" stroke="#E6E8EB" stroke-width="1" stroke-dasharray="3 2" stroke-opacity="0.7"/>
+<line x1="734" y1="118" x2="734" y2="238" stroke="#8A919C" stroke-width="1" stroke-dasharray="3 2" stroke-opacity="0.7"/>
+<line x1="830.5" y1="118" x2="830.5" y2="238" stroke="#E0457B" stroke-width="1" stroke-dasharray="3 2" stroke-opacity="0.7"/>
+<text x="696.9" y="116" class="t11 e">⚙ 12:19 payments.psp.timeout 5000→2000</text>
+<text x="737" y="148" class="mu t11">◆ v2.31</text>
+<text x="833.5" y="148" class="fa t11">⚠ 12:22</text>
+<text x="52" y="252" class="dm t11 c m">12:00</text>
+<text x="222.5" y="252" class="dm t11 c m">12:05</text>
+<text x="393" y="252" class="dm t11 c m">12:10</text>
+<text x="563.5" y="252" class="dm t11 c m">12:15</text>
+<text x="734" y="252" class="dm t11 c m">12:20</text>
+<text x="904.5" y="252" class="dm t11 c m">12:25</text>
+<text x="1075" y="252" class="dm t11 c m">12:30</text>
+<text x="1245.5" y="252" class="dm t11 c m">12:35</text>
+<text x="1416" y="252" class="dm t11 c m">12:40</text>
+</g>
+<g id="patterns">
+<rect x="8.5" y="268.5" width="467" height="583" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="20" y="288" class="b">Patterns</text>
+<text x="80" y="288" class="mu t11">7 templates · 48.2k lines</text>
+<text x="464" y="288" class="mu t11 e">baseline −7d ▾</text>
+<line x1="9" y1="298.5" x2="475" y2="298.5" stroke="#FFFFFF14" stroke-width="1" />
+<rect x="16" y="306" width="452" height="20" rx="4" fill="#E0457B14"/>
+<text x="24" y="320" class="t11"><tspan class="fa b">NEW since 12:19</tspan><tspan class="mu">  ·  absent from −7d baseline  ·  3 templates</tspan></text>
+<rect x="14" y="330" width="456" height="44" rx="4" fill="#5B9BFF12" stroke="#5B9BFF55"/>
+<rect x="14" y="330" width="3" height="44" rx="1" fill="#5B9BFF"/>
+<path d="M24.0,364.0 L25.9,364.0 L27.9,364.0 L29.8,364.0 L31.7,364.0 L33.7,364.0 L35.6,364.0 L37.5,364.0 L39.4,364.0 L41.4,364.0 L43.3,364.0 L45.2,364.0 L47.2,364.0 L49.1,364.0 L51.0,364.0 L53.0,352.5 L54.9,338.9 L56.8,339.2 L58.8,341.9 L60.7,344.5 L62.6,340.0 L64.6,338.0 L66.5,341.2 L68.4,341.2 L70.3,343.3 L72.3,343.9 L74.2,340.8 L76.1,340.7 L78.1,343.4 L80.0,338.9 L80,364 L24,364 Z" fill="#E0457B" opacity="0.18"/><path d="M24.0,364.0 L25.9,364.0 L27.9,364.0 L29.8,364.0 L31.7,364.0 L33.7,364.0 L35.6,364.0 L37.5,364.0 L39.4,364.0 L41.4,364.0 L43.3,364.0 L45.2,364.0 L47.2,364.0 L49.1,364.0 L51.0,364.0 L53.0,352.5 L54.9,338.9 L56.8,339.2 L58.8,341.9 L60.7,344.5 L62.6,340.0 L64.6,338.0 L66.5,341.2 L68.4,341.2 L70.3,343.3 L72.3,343.9 L74.2,340.8 L76.1,340.7 L78.1,343.4 L80.0,338.9" fill="none" stroke="#E0457B" stroke-width="1.25"/>
+<text x="136" y="348" class="b e m">1 832</text>
+<text x="148" y="348" class="m" style="font-size:11px;">timeout calling psp-api after &lt;*&gt;ms</text>
+<text x="148" y="364" class="mu t11">payments · first 12:19:41 · &lt;*&gt; = 2000 in 100%</text>
+<rect x="94" y="354" width="27.5" height="15" rx="4" fill="#E0457B1f" stroke="#E0457B66"/><text x="99" y="365.1" style="font-size:10px;" fill="#E0457B">NEW</text>
+<path d="M24.0,412.0 L25.9,412.0 L27.9,412.0 L29.8,412.0 L31.7,412.0 L33.7,412.0 L35.6,412.0 L37.5,412.0 L39.4,412.0 L41.4,412.0 L43.3,412.0 L45.2,412.0 L47.2,412.0 L49.1,412.0 L51.0,412.0 L53.0,400.7 L54.9,389.5 L56.8,391.2 L58.8,392.2 L60.7,386.8 L62.6,386.4 L64.6,389.5 L66.5,388.8 L68.4,386.7 L70.3,386.0 L72.3,386.9 L74.2,389.5 L76.1,386.2 L78.1,387.0 L80.0,389.5 L80,412 L24,412 Z" fill="#E0457B" opacity="0.18"/><path d="M24.0,412.0 L25.9,412.0 L27.9,412.0 L29.8,412.0 L31.7,412.0 L33.7,412.0 L35.6,412.0 L37.5,412.0 L39.4,412.0 L41.4,412.0 L43.3,412.0 L45.2,412.0 L47.2,412.0 L49.1,412.0 L51.0,412.0 L53.0,400.7 L54.9,389.5 L56.8,391.2 L58.8,392.2 L60.7,386.8 L62.6,386.4 L64.6,389.5 L66.5,388.8 L68.4,386.7 L70.3,386.0 L72.3,386.9 L74.2,389.5 L76.1,386.2 L78.1,387.0 L80.0,389.5" fill="none" stroke="#E0457B" stroke-width="1.25"/>
+<text x="136" y="396" class="b e m">1 204</text>
+<text x="148" y="396" class="m" style="font-size:11px;">PaymentTimeoutException: no reply in &lt;*&gt;ms</text>
+<text x="148" y="412" class="mu t11">payments · first 12:19:43 · ERROR</text>
+<rect x="94" y="402" width="27.5" height="15" rx="4" fill="#E0457B1f" stroke="#E0457B66"/><text x="99" y="413.1" style="font-size:10px;" fill="#E0457B">NEW</text>
+<path d="M24.0,460.0 L25.9,460.0 L27.9,460.0 L29.8,460.0 L31.7,460.0 L33.7,460.0 L35.6,460.0 L37.5,460.0 L39.4,460.0 L41.4,460.0 L43.3,460.0 L45.2,460.0 L47.2,460.0 L49.1,460.0 L51.0,460.0 L53.0,460.0 L54.9,448.4 L56.8,435.2 L58.8,440.3 L60.7,435.3 L62.6,437.7 L64.6,439.1 L66.5,439.7 L68.4,434.2 L70.3,436.9 L72.3,436.5 L74.2,436.0 L76.1,439.9 L78.1,435.2 L80.0,434.0 L80,460 L24,460 Z" fill="#E0457B" opacity="0.18"/><path d="M24.0,460.0 L25.9,460.0 L27.9,460.0 L29.8,460.0 L31.7,460.0 L33.7,460.0 L35.6,460.0 L37.5,460.0 L39.4,460.0 L41.4,460.0 L43.3,460.0 L45.2,460.0 L47.2,460.0 L49.1,460.0 L51.0,460.0 L53.0,460.0 L54.9,448.4 L56.8,435.2 L58.8,440.3 L60.7,435.3 L62.6,437.7 L64.6,439.1 L66.5,439.7 L68.4,434.2 L70.3,436.9 L72.3,436.5 L74.2,436.0 L76.1,439.9 L78.1,435.2 L80.0,434.0" fill="none" stroke="#E0457B" stroke-width="1.25"/>
+<text x="136" y="444" class="b e m">611</text>
+<text x="148" y="444" class="m" style="font-size:11px;">order &lt;*&gt; payment failed: code=504</text>
+<text x="148" y="460" class="mu t11">checkout · first 12:21:06 · ERROR</text>
+<rect x="94" y="450" width="27.5" height="15" rx="4" fill="#E0457B1f" stroke="#E0457B66"/><text x="99" y="461.1" style="font-size:10px;" fill="#E0457B">NEW</text>
+<line x1="16" y1="480.5" x2="468" y2="480.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="24" y="496" class="mu t11">Existing  ·  change vs −7d</text>
+<path d="M24.0,530.7 L25.9,530.5 L27.9,530.7 L29.8,530.5 L31.7,530.4 L33.7,530.8 L35.6,530.2 L37.5,530.6 L39.4,530.5 L41.4,530.5 L43.3,530.6 L45.2,530.6 L47.2,530.4 L49.1,530.5 L51.0,530.6 L53.0,530.4 L54.9,522.5 L56.8,515.3 L58.8,511.5 L60.7,510.6 L62.6,514.9 L64.6,510.0 L66.5,510.8 L68.4,512.8 L70.3,513.8 L72.3,510.3 L74.2,512.7 L76.1,510.7 L78.1,514.7 L80.0,512.8 L80,532 L24,532 Z" fill="#E8923A" opacity="0.18"/><path d="M24.0,530.7 L25.9,530.5 L27.9,530.7 L29.8,530.5 L31.7,530.4 L33.7,530.8 L35.6,530.2 L37.5,530.6 L39.4,530.5 L41.4,530.5 L43.3,530.6 L45.2,530.6 L47.2,530.4 L49.1,530.5 L51.0,530.6 L53.0,530.4 L54.9,522.5 L56.8,515.3 L58.8,511.5 L60.7,510.6 L62.6,514.9 L64.6,510.0 L66.5,510.8 L68.4,512.8 L70.3,513.8 L72.3,510.3 L74.2,512.7 L76.1,510.7 L78.1,514.7 L80.0,512.8" fill="none" stroke="#E8923A" stroke-width="1.25"/>
+<text x="136" y="520" class="b e m">211</text>
+<text x="148" y="520" class="m" style="font-size:11px;">retrying order &lt;*&gt; attempt &lt;*&gt;/3</text>
+<text x="148" y="535" class="t11"><tspan class="mu">checkout · WARN  </tspan><tspan fill="#E8923A">▲ 14×</tspan></text>
+<path d="M24.0,555.8 L25.9,556.9 L27.9,553.4 L29.8,556.4 L31.7,554.1 L33.7,552.4 L35.6,554.0 L37.5,555.4 L39.4,553.0 L41.4,554.2 L43.3,551.6 L45.2,553.4 L47.2,550.0 L49.1,550.3 L51.0,551.9 L53.0,555.6 L54.9,556.5 L56.8,550.8 L58.8,551.6 L60.7,552.7 L62.6,554.7 L64.6,555.3 L66.5,552.3 L68.4,553.2 L70.3,553.0 L72.3,552.7 L74.2,551.8 L76.1,555.9 L78.1,555.5 L80.0,550.1 L80,572 L24,572 Z" fill="#7AA2D6" opacity="0.18"/><path d="M24.0,555.8 L25.9,556.9 L27.9,553.4 L29.8,556.4 L31.7,554.1 L33.7,552.4 L35.6,554.0 L37.5,555.4 L39.4,553.0 L41.4,554.2 L43.3,551.6 L45.2,553.4 L47.2,550.0 L49.1,550.3 L51.0,551.9 L53.0,555.6 L54.9,556.5 L56.8,550.8 L58.8,551.6 L60.7,552.7 L62.6,554.7 L64.6,555.3 L66.5,552.3 L68.4,553.2 L70.3,553.0 L72.3,552.7 L74.2,551.8 L76.1,555.9 L78.1,555.5 L80.0,550.1" fill="none" stroke="#7AA2D6" stroke-width="1.25"/>
+<text x="136" y="560" class="b e m">38.4k</text>
+<text x="148" y="560" class="m" style="font-size:11px;">POST /pay completed in &lt;*&gt;ms status=&lt;*&gt;</text>
+<text x="148" y="575" class="t11"><tspan class="mu">checkout · INFO  </tspan><tspan fill="#8A919C">≈ 0.97×</tspan></text>
+<path d="M24.0,590.0 L25.9,590.3 L27.9,596.6 L29.8,596.5 L31.7,594.9 L33.7,593.7 L35.6,592.2 L37.5,596.1 L39.4,592.8 L41.4,596.4 L43.3,596.3 L45.2,591.8 L47.2,592.8 L49.1,592.1 L51.0,594.1 L53.0,593.3 L54.9,595.3 L56.8,594.3 L58.8,591.3 L60.7,590.6 L62.6,596.3 L64.6,596.0 L66.5,590.8 L68.4,592.2 L70.3,591.1 L72.3,595.3 L74.2,593.7 L76.1,595.0 L78.1,590.8 L80.0,594.1 L80,612 L24,612 Z" fill="#7AA2D6" opacity="0.18"/><path d="M24.0,590.0 L25.9,590.3 L27.9,596.6 L29.8,596.5 L31.7,594.9 L33.7,593.7 L35.6,592.2 L37.5,596.1 L39.4,592.8 L41.4,596.4 L43.3,596.3 L45.2,591.8 L47.2,592.8 L49.1,592.1 L51.0,594.1 L53.0,593.3 L54.9,595.3 L56.8,594.3 L58.8,591.3 L60.7,590.6 L62.6,596.3 L64.6,596.0 L66.5,590.8 L68.4,592.2 L70.3,591.1 L72.3,595.3 L74.2,593.7 L76.1,595.0 L78.1,590.8 L80.0,594.1" fill="none" stroke="#7AA2D6" stroke-width="1.25"/>
+<text x="136" y="600" class="b e m">2 410</text>
+<text x="148" y="600" class="m" style="font-size:11px;">psp client pool: &lt;*&gt; active, &lt;*&gt; idle</text>
+<text x="148" y="615" class="t11"><tspan class="mu">payments · INFO  </tspan><tspan fill="#8A919C">≈ 1.02×</tspan></text>
+<line x1="9" y1="632.5" x2="475" y2="632.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="20" y="652" class="b">Detected fields</text>
+<text x="464" y="652" class="mu t11 e">click to filter · ⇧ click to exclude</text>
+<text x="24" y="676" class="m t11">level</text>
+<text x="136" y="676" class="dm t11 e">(4)</text>
+<rect x="148" y="666" width="190" height="14" rx="2" fill="#E0457B" opacity="0.55"/>
+<text x="152" y="676.5" class="t11" style="font-size:10px;" fill="#0B0D10">error 62%</text>
+<rect x="339" y="666" width="94.5" height="14" rx="2" fill="#E8923A" opacity="0.55"/>
+<text x="343" y="676.5" class="t11" style="font-size:10px;" fill="#0B0D10">warn 31%</text>
+<rect x="434.4" y="666" width="20.6" height="14" rx="2" fill="#7AA2D6" opacity="0.55"/>
+<text x="24" y="700" class="m t11">service_name</text>
+<text x="136" y="700" class="dm t11 e">(2)</text>
+<rect x="148" y="690" width="217.7" height="14" rx="2" fill="#B48FC9" opacity="0.55"/>
+<text x="152" y="700.5" class="t11" style="font-size:10px;" fill="#0B0D10">payments 71%</text>
+<rect x="366.7" y="690" width="88.3" height="14" rx="2" fill="#C9A36B" opacity="0.55"/>
+<text x="370.7" y="700.5" class="t11" style="font-size:10px;" fill="#0B0D10">checkout 29%</text>
+<text x="24" y="724" class="m t11">k8s_pod_name</text>
+<text x="136" y="724" class="dm t11 e">(24)</text>
+<rect x="148" y="714" width="14.4" height="14" rx="2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="163.4" y="714" width="14.4" height="14" rx="2" fill="#C9A36B" opacity="0.55"/>
+<rect x="178.8" y="714" width="14.4" height="14" rx="2" fill="#8FBF8F" opacity="0.55"/>
+<rect x="194.2" y="714" width="14.4" height="14" rx="2" fill="#B48FC9" opacity="0.55"/>
+<rect x="209.6" y="714" width="14.4" height="14" rx="2" fill="#6FB8B8" opacity="0.55"/>
+<rect x="225" y="714" width="14.4" height="14" rx="2" fill="#C98F8F" opacity="0.55"/>
+<rect x="240.4" y="714" width="14.4" height="14" rx="2" fill="#A8A8D9" opacity="0.55"/>
+<rect x="255.8" y="714" width="14.4" height="14" rx="2" fill="#BFB07A" opacity="0.55"/>
+<rect x="271.2" y="714" width="14.4" height="14" rx="2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="286.6" y="714" width="14.4" height="14" rx="2" fill="#C9A36B" opacity="0.55"/>
+<rect x="302" y="714" width="14.4" height="14" rx="2" fill="#8FBF8F" opacity="0.55"/>
+<rect x="317.4" y="714" width="14.4" height="14" rx="2" fill="#B48FC9" opacity="0.55"/>
+<rect x="332.8" y="714" width="14.4" height="14" rx="2" fill="#6FB8B8" opacity="0.55"/>
+<rect x="348.2" y="714" width="14.4" height="14" rx="2" fill="#C98F8F" opacity="0.55"/>
+<rect x="363.6" y="714" width="14.4" height="14" rx="2" fill="#A8A8D9" opacity="0.55"/>
+<rect x="379" y="714" width="14.4" height="14" rx="2" fill="#BFB07A" opacity="0.55"/>
+<rect x="394.4" y="714" width="14.4" height="14" rx="2" fill="#7AA2D6" opacity="0.55"/>
+<rect x="409.8" y="714" width="14.4" height="14" rx="2" fill="#C9A36B" opacity="0.55"/>
+<rect x="425.2" y="714" width="14.4" height="14" rx="2" fill="#8FBF8F" opacity="0.55"/>
+<rect x="440.6" y="714" width="14.4" height="14" rx="2" fill="#B48FC9" opacity="0.55"/>
+<text x="24" y="748" class="m t11">upstream</text>
+<text x="136" y="748" class="dm t11 e">(3)</text>
+<rect x="148" y="738" width="285.4" height="14" rx="2" fill="#6FB8B8" opacity="0.55"/>
+<text x="152" y="748.5" class="t11" style="font-size:10px;" fill="#0B0D10">psp-api 93%</text>
+<rect x="434.4" y="738" width="14.4" height="14" rx="2" fill="#A8A8D9" opacity="0.55"/>
+<rect x="449.8" y="738" width="5.2" height="14" rx="2" fill="#BFB07A" opacity="0.55"/>
+<text x="24" y="772" class="m t11">status</text>
+<text x="136" y="772" class="dm t11 e">(6)</text>
+<rect x="148" y="762" width="177.6" height="14" rx="2" fill="#C98F8F" opacity="0.55"/>
+<text x="152" y="772.5" class="t11" style="font-size:10px;" fill="#0B0D10">504 58%</text>
+<rect x="326.6" y="762" width="100.6" height="14" rx="2" fill="#8FBF8F" opacity="0.55"/>
+<text x="330.6" y="772.5" class="t11" style="font-size:10px;" fill="#0B0D10">502 33%</text>
+<rect x="428.3" y="762" width="26.7" height="14" rx="2" fill="#BFB07A" opacity="0.55"/>
+<line x1="9" y1="816.5" x2="475" y2="816.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="20" y="838" class="t11"><tspan>click</tspan><tspan class="mu"> filter  ·  </tspan><tspan>⇧ click</tspan><tspan class="mu"> exclude  ·  </tspan><tspan class="ac">⟶ Chart this</tspan><tspan class="mu"> as count_over_time</tspan></text>
+</g>
+<g id="stream">
+<rect x="484.5" y="268.5" width="947" height="583" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="496" y="288" class="b">Stream</text>
+<text x="548" y="288" class="mu t11">level: error, warn · newest first · 41 806 lines in brush</text>
+<rect x="1044" y="275" width="168" height="18" rx="9" fill="#5B9BFF22" stroke="#5B9BFF88"/>
+<text x="1128" y="288" class="ac c t11 b">⏸ paused · 3 214 new  ↑</text>
+<text x="1420" y="288" class="mu t11 e">Wrap ☐   Fields: ts · level · pod · msg ▾</text>
+<line x1="485" y1="298.5" x2="1431" y2="298.5" stroke="#FFFFFF14" stroke-width="1" />
+<rect x="490" y="305" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="318" class="dm t11">▸ </text>
+<text x="512" y="318" class="m mu" style="font-size:12px;">12:40:59.851</text>
+<text x="610" y="318" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="318" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-m4r</text>
+<text x="818" y="318" class="m" style="font-size:12px;">retrying order 88129 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="306" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="318" class="m ac" style="font-size:10.5px;">⟶ trace 534cc</text>
+<text x="498" y="337" class="dm t11">▸ </text>
+<text x="512" y="337" class="m mu" style="font-size:12px;">12:40:59.714</text>
+<text x="610" y="337" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="337" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-2xq</text>
+<text x="818" y="337" class="m" style="font-size:12px;">retrying order 88128 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="325" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="337" class="m ac" style="font-size:10.5px;">⟶ trace 6d7aa</text>
+<rect x="490" y="343" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="356" class="dm t11">▸ </text>
+<text x="512" y="356" class="m mu" style="font-size:12px;">12:40:59.530</text>
+<text x="610" y="356" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="356" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-2xq</text>
+<text x="818" y="356" class="m" style="font-size:12px;">order 88129 payment failed: upstream=payments code=504</text>
+<rect x="1280" y="344" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="356" class="m ac" style="font-size:10.5px;">⟶ trace 7646b</text>
+<rect x="490" y="362" width="904" height="104" rx="4" fill="#5B9BFF0f" stroke="#5B9BFF44"/>
+<text x="498" y="375" class="dm t11">▾ </text>
+<text x="512" y="375" class="m mu" style="font-size:12px;">12:40:59.439</text>
+<text x="610" y="375" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="375" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-k2l</text>
+<text x="818" y="375" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="363" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="375" class="m ac" style="font-size:10.5px;">⟶ trace 4bf92</text>
+<text x="528" y="395" class="m t11"><tspan class="mu">trace_id </tspan><tspan class="ac">4bf92f3577b34da6a3ce929d0e0e4736</tspan><tspan class="mu">   span_id </tspan><tspan class="ac">00f067aa0ba902b7</tspan></text>
+<rect x="1044" y="382" width="93.2" height="18" rx="4" fill="#5B9BFF" stroke="#5B9BFF"/><text x="1052" y="395" style="font-size:11px;" fill="#0B0D10">Open trace ⟶</text>
+<rect x="1145.2" y="382" width="54.6" height="18" rx="4" fill="#5B9BFF14" stroke="#5B9BFF55"/><text x="1153.2" y="395" style="font-size:11px;" fill="#5B9BFF">Span ⟶</text>
+<text x="528" y="415" class="m t11"><tspan class="mu">service.name </tspan><tspan>payments</tspan><tspan class="mu">   k8s.pod.name </tspan><tspan>payments-5d8b-k2l</tspan><tspan class="mu">   payment.provider </tspan><tspan>psp-a</tspan><tspan class="mu">   region </tspan><tspan>eu-west-1</tspan></text>
+<text x="528" y="435" class="m t11"><tspan class="mu">{</tspan><tspan fill="#9CC2FF">"order"</tspan><tspan class="mu">:</tspan><tspan fill="#8FBF8F">88121</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">"attempt"</tspan><tspan class="mu">:</tspan><tspan fill="#8FBF8F">2</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">"timeout_ms"</tspan><tspan class="mu">:</tspan><tspan fill="#E0457B">2000</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">"elapsed_ms"</tspan><tspan class="mu">:</tspan><tspan fill="#8FBF8F">2001</tspan><tspan class="mu">, </tspan><tspan fill="#9CC2FF">"upstream"</tspan><tspan class="mu">:</tspan><tspan fill="#C9A36B">"psp-api"</tspan><tspan class="mu">}</tspan></text>
+<text x="528" y="455" class="mu t11">Pivot ▸</text>
+<rect x="576" y="443" width="141" height="16" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="582" y="454.8" style="font-size:10.5px;" fill="#E6E8EB">Logs for this trace ⟶</text>
+<rect x="723" y="443" width="104.1" height="16" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="729" y="454.8" style="font-size:10.5px;" fill="#E6E8EB">payments Lens ⟶</text>
+<rect x="833.1" y="443" width="134.8" height="16" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="839.1" y="454.8" style="font-size:10.5px;" fill="#E6E8EB">Chart this pattern ⟶</text>
+<rect x="974" y="443" width="104.1" height="16" rx="4" fill="#191D24" stroke="#FFFFFF22"/><text x="980" y="454.8" style="font-size:10.5px;" fill="#E6E8EB">Pin to INV-2041</text>
+<rect x="490" y="466" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="479" class="dm t11">▸ </text>
+<text x="512" y="479" class="m mu" style="font-size:12px;">12:40:59.295</text>
+<text x="610" y="479" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="479" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-9kd</text>
+<text x="818" y="479" class="m" style="font-size:12px;">order 88127 payment failed: upstream=payments code=504</text>
+<rect x="1280" y="467" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="479" class="m ac" style="font-size:10.5px;">⟶ trace d0b78</text>
+<text x="498" y="498" class="dm t11">▸ </text>
+<text x="512" y="498" class="m mu" style="font-size:12px;">12:40:59.230</text>
+<text x="610" y="498" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="498" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-k2l</text>
+<text x="818" y="498" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="486" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="498" class="m ac" style="font-size:10.5px;">⟶ trace 1379e</text>
+<rect x="490" y="504" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="517" class="dm t11">▸ </text>
+<text x="512" y="517" class="m mu" style="font-size:12px;">12:40:59.084</text>
+<text x="610" y="517" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="517" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-m4r</text>
+<text x="818" y="517" class="m" style="font-size:12px;">retrying order 88123 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="505" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="517" class="m ac" style="font-size:10.5px;">⟶ trace 14eae</text>
+<text x="498" y="536" class="dm t11">▸ </text>
+<text x="512" y="536" class="m mu" style="font-size:12px;">12:40:58.938</text>
+<text x="610" y="536" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="536" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-7tz</text>
+<text x="818" y="536" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="524" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="536" class="m ac" style="font-size:10.5px;">⟶ trace c39f4</text>
+<rect x="490" y="542" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="555" class="dm t11">▸ </text>
+<text x="512" y="555" class="m mu" style="font-size:12px;">12:40:58.863</text>
+<text x="610" y="555" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="555" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-k2l</text>
+<text x="818" y="555" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="543" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="555" class="m ac" style="font-size:10.5px;">⟶ trace 38002</text>
+<text x="498" y="574" class="dm t11">▸ </text>
+<text x="512" y="574" class="m mu" style="font-size:12px;">12:40:58.673</text>
+<text x="610" y="574" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="574" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-9kd</text>
+<text x="818" y="574" class="m" style="font-size:12px;">retrying order 88120 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="562" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="574" class="m ac" style="font-size:10.5px;">⟶ trace 5dcc0</text>
+<rect x="490" y="580" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="593" class="dm t11">▸ </text>
+<text x="512" y="593" class="m mu" style="font-size:12px;">12:40:58.553</text>
+<text x="610" y="593" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="593" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-7tz</text>
+<text x="818" y="593" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="581" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="593" class="m ac" style="font-size:10.5px;">⟶ trace 70e41</text>
+<text x="498" y="612" class="dm t11">▸ </text>
+<text x="512" y="612" class="m mu" style="font-size:12px;">12:40:58.442</text>
+<text x="610" y="612" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="612" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-9kd</text>
+<text x="818" y="612" class="m" style="font-size:12px;">retrying order 88118 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="600" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="612" class="m ac" style="font-size:10.5px;">⟶ trace 70204</text>
+<rect x="490" y="618" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="631" class="dm t11">▸ </text>
+<text x="512" y="631" class="m mu" style="font-size:12px;">12:40:58.396</text>
+<text x="610" y="631" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="631" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-q8w</text>
+<text x="818" y="631" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="619" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="631" class="m ac" style="font-size:10.5px;">⟶ trace 514f7</text>
+<text x="498" y="650" class="dm t11">▸ </text>
+<text x="512" y="650" class="m mu" style="font-size:12px;">12:40:58.378</text>
+<text x="610" y="650" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="650" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-m4r</text>
+<text x="818" y="650" class="m" style="font-size:12px;">retrying order 88116 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="638" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="650" class="m ac" style="font-size:10.5px;">⟶ trace 3f90e</text>
+<rect x="490" y="656" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="669" class="dm t11">▸ </text>
+<text x="512" y="669" class="m mu" style="font-size:12px;">12:40:58.236</text>
+<text x="610" y="669" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="669" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-k2l</text>
+<text x="818" y="669" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="657" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="669" class="m ac" style="font-size:10.5px;">⟶ trace 5d020</text>
+<text x="498" y="688" class="dm t11">▸ </text>
+<text x="512" y="688" class="m mu" style="font-size:12px;">12:40:58.195</text>
+<text x="610" y="688" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="688" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-9kd</text>
+<text x="818" y="688" class="m" style="font-size:12px;">order 88116 payment failed: upstream=payments code=504</text>
+<rect x="1280" y="676" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="688" class="m ac" style="font-size:10.5px;">⟶ trace cbcf3</text>
+<rect x="490" y="694" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="707" class="dm t11">▸ </text>
+<text x="512" y="707" class="m mu" style="font-size:12px;">12:40:58.113</text>
+<text x="610" y="707" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="707" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-9kd</text>
+<text x="818" y="707" class="m" style="font-size:12px;">order 88115 payment failed: upstream=payments code=504</text>
+<rect x="1280" y="695" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="707" class="m ac" style="font-size:10.5px;">⟶ trace cc0d9</text>
+<text x="498" y="726" class="dm t11">▸ </text>
+<text x="512" y="726" class="m mu" style="font-size:12px;">12:40:58.076</text>
+<text x="610" y="726" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="726" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-7tz</text>
+<text x="818" y="726" class="m" style="font-size:12px;">timeout calling psp-api after 2000ms POST /v2/authorize</text>
+<rect x="1280" y="714" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="726" class="m ac" style="font-size:10.5px;">⟶ trace 90124</text>
+<rect x="490" y="732" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="745" class="dm t11">▸ </text>
+<text x="512" y="745" class="m mu" style="font-size:12px;">12:40:57.896</text>
+<text x="610" y="745" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="745" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-q8w</text>
+<text x="818" y="745" class="m" style="font-size:12px;">timeout calling psp-api after 2000ms POST /v2/authorize</text>
+<rect x="1280" y="733" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="745" class="m ac" style="font-size:10.5px;">⟶ trace e1828</text>
+<text x="498" y="764" class="dm t11">▸ </text>
+<text x="512" y="764" class="m mu" style="font-size:12px;">12:40:57.884</text>
+<text x="610" y="764" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="764" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-k2l</text>
+<text x="818" y="764" class="m" style="font-size:12px;">timeout calling psp-api after 2000ms POST /v2/authorize</text>
+<rect x="1280" y="752" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="764" class="m ac" style="font-size:10.5px;">⟶ trace 84011</text>
+<rect x="490" y="770" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="783" class="dm t11">▸ </text>
+<text x="512" y="783" class="m mu" style="font-size:12px;">12:40:57.681</text>
+<text x="610" y="783" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="783" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-7tz</text>
+<text x="818" y="783" class="m" style="font-size:12px;">timeout calling psp-api after 2000ms POST /v2/authorize</text>
+<rect x="1280" y="771" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="783" class="m ac" style="font-size:10.5px;">⟶ trace 4bbeb</text>
+<text x="498" y="802" class="dm t11">▸ </text>
+<text x="512" y="802" class="m mu" style="font-size:12px;">12:40:57.559</text>
+<text x="610" y="802" class="m b" style="font-size:11px;" fill="#E8923A">▲ WARN</text>
+<text x="680" y="802" class="m" style="font-size:12px;" fill="#C9A36B">checkout-7f9c-9kd</text>
+<text x="818" y="802" class="m" style="font-size:12px;">retrying order 88108 attempt 2/3 after 504 from payments</text>
+<rect x="1280" y="790" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="802" class="m ac" style="font-size:10.5px;">⟶ trace 10660</text>
+<rect x="490" y="808" width="904" height="19" fill="#FFFFFF05"/>
+<text x="498" y="821" class="dm t11">▸ </text>
+<text x="512" y="821" class="m mu" style="font-size:12px;">12:40:57.489</text>
+<text x="610" y="821" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="821" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-7tz</text>
+<text x="818" y="821" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="809" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="821" class="m ac" style="font-size:10.5px;">⟶ trace 15840</text>
+<text x="498" y="840" class="dm t11">▸ </text>
+<text x="512" y="840" class="m mu" style="font-size:12px;">12:40:57.300</text>
+<text x="610" y="840" class="m b" style="font-size:11px;" fill="#E0457B">✖ ERROR</text>
+<text x="680" y="840" class="m" style="font-size:12px;" fill="#B48FC9">payments-5d8b-7tz</text>
+<text x="818" y="840" class="m" style="font-size:12px;">PaymentTimeoutException: psp-a no reply in 2000ms</text>
+<rect x="1280" y="828" width="112" height="16" rx="3" fill="#5B9BFF14" stroke="#5B9BFF44"/>
+<text x="1286" y="840" class="m ac" style="font-size:10.5px;">⟶ trace 1afbd</text>
+<rect x="1404" y="306" width="16" height="538" rx="3" fill="#191D24" stroke="#FFFFFF14"/>
+<rect x="1406" y="308" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="313.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="319.8" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="325.7" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="331.6" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="337.5" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="343.4" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="349.3" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="355.2" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="361.1" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="367" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="372.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="378.8" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="384.7" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="390.6" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="396.5" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="402.4" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="408.3" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="414.2" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="420.1" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="426" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="431.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="437.8" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="443.7" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="449.6" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="455.5" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="461.4" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="467.3" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="473.2" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="479.1" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="485" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="490.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="496.8" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="502.7" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="508.6" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="514.5" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="520.4" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="526.3" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="532.2" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="538.1" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="544" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="549.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="555.8" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="561.7" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="567.6" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="573.5" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="579.4" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="585.3" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="591.2" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="597.1" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="603" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="608.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="614.8" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="620.7" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="626.6" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="632.5" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="638.4" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="644.3" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="650.2" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="656.1" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="662" width="12" height="3.5" fill="#6B7280" opacity="0.6"/>
+<rect x="1406" y="667.9" width="12" height="3.5" fill="#E0457B" opacity="0.6"/>
+<rect x="1406" y="673.8" width="5.7" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="679.7" width="8" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="685.6" width="6.2" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="691.5" width="7.2" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="697.4" width="8.3" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="703.3" width="6.9" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="709.2" width="6" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="715.1" width="8.5" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="721" width="8.7" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="726.9" width="6.4" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="732.8" width="7.2" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="738.7" width="8.8" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="744.6" width="6.9" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="750.5" width="5.9" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="756.4" width="5.2" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="762.3" width="8.8" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="768.2" width="8.2" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="774.1" width="6.5" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="780" width="7.1" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="785.9" width="7.1" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="791.8" width="6.1" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="797.7" width="9" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1406" y="803.6" width="7.6" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="809.5" width="6" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="815.4" width="5" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="821.3" width="6.9" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="827.2" width="6.5" height="3.5" fill="#6B7280" opacity="0.35"/>
+<rect x="1406" y="833.1" width="8.2" height="3.5" fill="#E8923A" opacity="0.35"/>
+<rect x="1403" y="306" width="18" height="30" rx="2" fill="#FFFFFF10" stroke="#FFFFFF66"/>
+</g>
+<g id="time-ribbon">
+<rect x="0" y="860" width="1440" height="40" fill="#12151A"/>
+<line x1="0" y1="860.5" x2="1440" y2="860.5" stroke="#FFFFFF14" stroke-width="1" />
+<text x="16" y="885" class="mu t11">◀◀</text>
+<text x="42" y="885" class="mu t11">▶</text>
+<circle cx="64" cy="881" r="3.5" fill="#2FB59A"/>
+<text x="72" y="885" class="ok b t11">LIVE</text>
+<line x1="112.5" y1="868" x2="112.5" y2="892" stroke="#FFFFFF14" stroke-width="1" />
+<path d="M124,890 L124.0,887.1 L130.8,887.4 L137.7,886.6 L144.6,887.5 L151.4,886.7 L158.2,887.0 L165.1,887.5 L171.9,886.8 L178.8,887.5 L185.7,886.9 L192.5,887.5 L199.3,887.5 L206.2,886.9 L213.1,886.3 L219.9,887.4 L226.8,887.2 L233.6,886.6 L240.4,886.1 L247.3,886.7 L254.2,887.0 L261.0,886.0 L267.9,887.5 L274.7,886.2 L281.5,887.1 L288.4,887.4 L295.2,887.4 L302.1,887.1 L308.9,886.3 L315.8,887.3 L322.6,886.7 L329.5,886.6 L336.4,887.0 L343.2,886.7 L350.0,887.5 L356.9,887.5 L363.8,887.3 L370.6,886.5 L377.4,886.9 L384.3,887.1 L391.1,886.7 L398.0,886.9 L404.8,882.1 L411.7,881.3 L418.6,881.5 L425.4,887.2 L432.2,886.7 L439.1,886.8 L445.9,886.2 L452.8,886.4 L459.6,887.1 L466.5,886.0 L473.3,887.4 L480.2,886.9 L487.0,886.4 L493.9,887.4 L500.8,886.8 L507.6,887.5 L514.5,886.5 L521.3,886.4 L528.1,886.7 L535.0,886.2 L541.8,887.1 L548.7,886.5 L555.5,886.6 L562.4,886.7 L569.2,886.9 L576.1,886.3 L583.0,886.1 L589.8,886.8 L596.6,886.5 L603.5,887.5 L610.3,886.5 L617.2,886.6 L624.0,886.0 L630.9,886.3 L637.8,887.1 L644.6,887.0 L651.4,886.5 L658.3,887.6 L665.1,886.9 L672.0,887.3 L678.9,887.4 L685.7,887.5 L692.5,886.4 L699.4,887.4 L706.2,887.2 L713.1,887.0 L719.9,886.2 L726.8,887.5 L733.6,886.9 L740.5,886.7 L747.4,886.2 L754.2,886.3 L761.0,886.2 L767.9,887.2 L774.8,886.9 L781.6,887.0 L788.4,886.2 L795.3,886.1 L802.1,887.4 L809.0,887.3 L815.8,887.2 L822.7,887.2 L829.5,886.8 L836.4,886.7 L843.2,887.2 L850.1,887.6 L856.9,886.9 L863.8,887.0 L870.6,886.7 L877.5,886.1 L884.3,886.5 L891.2,886.8 L898.0,886.6 L904.9,886.5 L911.8,887.5 L918.6,886.2 L925.4,886.4 L932.3,886.2 L939.1,885.5 L946.0,884.8 L952.8,883.5 L959.7,882.6 L966.5,880.4 L973.4,879.9 L980.2,878.6 L987.1,877.0 L993.9,875.7 L1000.8,875.1 L1007.6,875.5 L1014.5,875.6 L1021.3,875.4 L1028.2,875.4 L1035.0,875.0 L1041.9,875.6 L1048.8,874.2 L1055.6,874.6 L1062.4,875.4 L1069.3,875.2 L1076.2,875.0 L1083.0,875.0 L1089.8,875.4 L1096.7,874.2 L1103.5,874.0 L1110.4,874.9 L1117.2,874.8 L1124.1,875.5 L1130.9,875.4 L1137.8,875.1 L1144.7,875.2 L1151.5,874.6 L1158.3,876.0 L1165.2,876.5 L1172.0,875.3 L1178.9,876.3 L1185.8,877.2 L1192.6,876.9 L1199.5,878.0 L1206.3,877.5 L1213.1,877.1 L1220,890 Z" fill="#8A919C" opacity="0.28"/>
+<rect x="891.2" y="866" width="312.4" height="28" rx="3" fill="#5B9BFF14" stroke="#5B9BFF88"/>
+<rect x="889.7" y="872" width="3" height="16" rx="1" fill="#5B9BFF"/>
+<rect x="1202.1" y="872" width="3" height="16" rx="1" fill="#5B9BFF"/>
+<line x1="995.3" y1="866" x2="995.3" y2="894" stroke="#E6E8EB" stroke-width="1" stroke-opacity="0.6"/>
+<text x="998.3" y="876" class="t11" fill="#E6E8EB">⚙ 12:19</text>
+<line x1="1000.8" y1="866" x2="1000.8" y2="894" stroke="#8A919C" stroke-width="1" stroke-opacity="0.6"/>
+<text x="1003.8" y="876" class="t11" fill="#8A919C"></text>
+<line x1="1014" y1="866" x2="1014" y2="894" stroke="#E0457B" stroke-width="1" stroke-opacity="0.6"/>
+<text x="1017" y="876" class="t11" fill="#E0457B">⚠</text>
+<line x1="1228.5" y1="868" x2="1228.5" y2="892" stroke="#FFFFFF14" stroke-width="1" />
+<text x="1240" y="885" class="m t11 b">12:00–12:40</text>
+<text x="1430" y="885" class="mu t11 e">vs ⟲ −7d ▾</text>
+</g>
+<g id="callouts">
+<path d="M640,186 L76,151" class="co"/>
+<circle cx="640" cy="186" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="640" y="190" class="c b t11" fill="#5B9BFF">1</text>
+<rect x="76" y="132" width="291.4" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="84" y="149" class="b" style="font-size:12px;" fill="#5B9BFF">①</text>
+<text x="100" y="149" class="cot">Volume stacks by level (colour + glyph).</text>
+<text x="100" y="163" class="cot">Alt+drag brushes time; all panes narrow.</text>
+<path d="M452,316 L330,151" class="co"/>
+<circle cx="452" cy="316" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="452" y="320" class="c b t11" fill="#5B9BFF">2</text>
+<rect x="330" y="132" width="297.8" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="338" y="149" class="b" style="font-size:12px;" fill="#5B9BFF">②</text>
+<text x="354" y="149" class="cot">Templates absent from the −7d baseline</text>
+<text x="354" y="163" class="cot">group under NEW since 12:19, worst first.</text>
+<path d="M1030,391 L1132,659" class="co"/>
+<circle cx="1030" cy="391" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="1030" y="395" class="c b t11" fill="#5B9BFF">3</text>
+<rect x="1132" y="640" width="297.8" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="1140" y="657" class="b" style="font-size:12px;" fill="#5B9BFF">③</text>
+<text x="1156" y="657" class="cot">Each line with a trace_id gets a ⟶ pivot;</text>
+<text x="1156" y="671" class="cot">opens the trace as a split, same cursor.</text>
+<path d="M1032,284 L1132,719" class="co"/>
+<circle cx="1032" cy="284" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="1032" y="288" class="c b t11" fill="#5B9BFF">4</text>
+<rect x="1132" y="700" width="291.4" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="1140" y="717" class="b" style="font-size:12px;" fill="#5B9BFF">④</text>
+<text x="1156" y="717" class="cot">Live tail is paused while you read; new</text>
+<text x="1156" y="731" class="cot">lines queue in the pill, nothing shifts.</text>
+<path d="M1412,470 L1132,779" class="co"/>
+<circle cx="1412" cy="470" r="9" fill="#0B0D10" stroke="#5B9BFF" stroke-width="1.25" stroke-dasharray="3 2"/>
+<text x="1412" y="474" class="c b t11" fill="#5B9BFF">5</text>
+<rect x="1132" y="760" width="291.4" height="38" rx="6" fill="#0E1626" stroke="#5B9BFF" stroke-dasharray="4 3"/>
+<text x="1140" y="777" class="b" style="font-size:12px;" fill="#5B9BFF">⑤</text>
+<text x="1156" y="777" class="cot">Minimap = error density across the full</text>
+<text x="1156" y="791" class="cot">41 806-line result; GPU text scrolls it.</text>
+</g>
+</svg>

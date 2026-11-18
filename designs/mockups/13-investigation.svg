@@ -1,0 +1,553 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Investigation INV-2041</title>
+<desc id="d">Investigation workspace for incident INC-2041 (checkout degraded, origin psp-api). Left: investigation timeline from the 12:19 timeout config change to recovery. Centre: evidence ledger with two pinned live viewports and seven evidence rows, and the hypothesis tree with H1 timeout config change validated and H2-H4 invalidated. Right: AI dock streaming an answer to 'why exactly 2s?' with evidence citations. Header shows collaborator presence and the flight recorder.</desc>
+<defs>
+<style>
+text{font-family:Inter, system-ui, sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB}
+.m{font-family:JetBrains Mono, ui-monospace, monospace}
+.mu{fill:#8A919C} .di{fill:#5C636E} .ac{fill:#5B9BFF}
+.ok{fill:#2FB59A} .wa{fill:#D9C84A} .dg{fill:#E8923A} .fa{fill:#E0457B} .un{fill:#6B7280}
+.b{font-weight:600} .sb{font-weight:500}
+.s11{font-size:11.0px} .s12{font-size:12.0px} .s13{font-size:13.0px} .s16{font-size:16.0px} .s20{font-size:20.0px}
+.hl{stroke:#FFFFFF14;stroke-width:1;fill:none}
+.co{stroke:#5B9BFF;stroke-width:1.5;stroke-dasharray:4 3;fill:none}
+</style>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#6B7280" fill-opacity="0.12"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6B7280" stroke-width="2" stroke-opacity="0.55"/></pattern>
+<pattern id="hatchs" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.16"/></pattern>
+
+</defs>
+<rect width="1440" height="900" fill="#0B0D10"/>
+
+<g id="top-bar">
+<rect x="0" y="0" width="1440" height="32" rx="0" fill="#12151A"/>
+<line x1="0" y1="32" x2="1440" y2="32" stroke="#FFFFFF14" stroke-width="1"/>
+<path d="M14,9 L22,16 L14,23 L6,16 Z" fill="none" stroke="#5B9BFF" stroke-width="1.6"/><circle cx="14" cy="16" r="2.2" fill="#5B9BFF"/>
+<text x="30" y="20.5" class="s13 b">Pulsus</text>
+<text x="86" y="20.5" class="s12 mu">prod</text>
+<text x="119.6" y="20.5" class="s12 di">/</text>
+<text x="133.6" y="20.5" class="s12 mu">Investigations</text>
+<text x="231.2" y="20.5" class="s12 di">/</text>
+<text x="245.2" y="20.5" class="s12 sb">INV-2041</text>
+<rect x="630" y="6" width="300" height="20" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="640" y="20" class="s12 mu">⌕</text><text x="656" y="20" class="s12 di">Search or jump to…</text><text x="920" y="20" class="s11 m mu" text-anchor="end">⌘K</text>
+<circle cx="1418" cy="16" r="10" fill="#7AA2D6" stroke="#0B0D10" stroke-width="2"/><text x="1418" y="20" class="s11 b" text-anchor="middle" fill="#0B0D10">S</text><text x="1400" y="20.5" class="s12 mu" text-anchor="end">?</text><rect x="1278" y="7" width="106" height="18" rx="9" fill="#E0457B1F" stroke="#E0457B66"/><circle cx="1289" cy="16" r="3.5" fill="#E0457B"/><text x="1298" y="20" class="s11 b m fa">REC 18:42</text>
+</g>
+<g id="incident-header">
+<rect x="8" y="40" width="1424" height="48" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="22" y="70" class="s16 ac">✚</text><text x="42" y="71" class="s20 b">INV-2041</text>
+<text x="142" y="70" class="s16 sb">Checkout degraded</text>
+<text x="142" y="70"></text>
+<rect x="296" y="55" width="38.4" height="20" rx="6" fill="#E0457B" fill-opacity="0.16" stroke="#E0457B" stroke-opacity="0.5"/><text x="315.2" y="69" class="s11 b" text-anchor="middle" fill="#E0457B">SEV2</text>
+<rect x="342.4" y="55" width="172" height="20" rx="6" fill="#E8923A" fill-opacity="0.16" stroke="#E8923A" stroke-opacity="0.5"/><text x="428.4" y="69" class="s11 b" text-anchor="middle" fill="#E8923A">◉ DEGRADED · ↘ RECOVERING</text>
+<text x="526.4" y="69" class="s12 mu">incident INC-2041 · since 12:22 (16 min) · mitigated 12:24:40 · IC</text>
+<text x="924.4" y="69" class="s12 sb ac">@ana</text>
+<text x="1002" y="69" class="s12 mu" text-anchor="end">6 here</text>
+<circle cx="1024" cy="64" r="11" fill="#7AA2D6" stroke="#12151A" stroke-width="2"/><text x="1024" y="68" class="s11 b" text-anchor="middle" fill="#0B0D10">S</text>
+<circle cx="1044" cy="64" r="11" fill="#B48FC9" stroke="#12151A" stroke-width="2"/><text x="1044" y="68" class="s11 b" text-anchor="middle" fill="#0B0D10">P</text>
+<circle cx="1064" cy="64" r="11" fill="#C9A36B" stroke="#12151A" stroke-width="2"/><text x="1064" y="68" class="s11 b" text-anchor="middle" fill="#0B0D10">A</text>
+<circle cx="1084" cy="64" r="11" fill="#8FBF8F" stroke="#12151A" stroke-width="2"/><text x="1084" y="68" class="s11 b" text-anchor="middle" fill="#0B0D10">L</text>
+<circle cx="1104" cy="64" r="11" fill="#20252E" stroke="#12151A" stroke-width="2"/><text x="1104" y="68" class="s11 mu" text-anchor="middle">+2</text>
+<circle cx="1024" cy="64" r="13.5" fill="none" stroke="#2FB59A" stroke-width="1.5"/>
+<rect x="1130" y="52" width="132" height="24" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="1140" y="68" class="s11">◎ Follow @sam's camera</text>
+<rect x="1270" y="52" width="146" height="24" rx="4" fill="#5B9BFF22" stroke="#5B9BFF88"/><text x="1280" y="68" class="s12 sb ac">⇩ Draft post-mortem</text>
+</g>
+<g id="timeline">
+<rect x="8" y="96" width="316" height="756" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="22" y="118" class="s13 b">Timeline</text><text x="84" y="118" class="s11 mu">15 events · all actors ▾</text>
+<text x="310" y="118" class="s11 mu" text-anchor="end">⚙ ◆ ⚠ ✦ ✎</text>
+<line x1="8" y1="128" x2="324" y2="128" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="22" y="150" class="s11 m mu">12:19:02</text>
+<text x="90" y="150" class="s12" text-anchor="middle" fill="#E6E8EB">⚙</text>
+<text x="104" y="150" class="s12">payments.psp.timeout 5000→2000 ms</text>
+<text x="104" y="165" class="s11 mu">deploy-bot · PR #4411</text>
+<rect x="254.6" y="153" width="55.4" height="16" rx="8.0" fill="#E0457B" fill-opacity="0.16" stroke="#E0457B" stroke-opacity="0.5"/><text x="282.3" y="165" class="s11 sb" text-anchor="middle" fill="#E0457B">⊕ cause</text>
+<line x1="90" y1="156" x2="90" y2="180" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="194" class="s11 m mu">12:19:40</text>
+<text x="90" y="194" class="s12" text-anchor="middle" fill="#D9C84A">◐</text>
+<text x="104" y="194" class="s12">psp-api edge latency deviates</text>
+<text x="104" y="209" class="s11 mu">anomaly sweep → Watch</text>
+<line x1="90" y1="200" x2="90" y2="224" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="238" class="s11 m mu">12:20:11</text>
+<text x="90" y="238" class="s12" text-anchor="middle" fill="#8A919C">◆</text>
+<text x="104" y="238" class="s12">checkout v2.31 rollout 100%</text>
+<text x="104" y="253" class="s11 mu">canary clean before 12:19</text>
+<line x1="90" y1="244" x2="90" y2="268" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="282" class="s11 m mu">12:21:05</text>
+<text x="90" y="282" class="s12" text-anchor="middle" fill="#E0457B">●</text>
+<text x="104" y="282" class="s12">payments→psp-api failed 0.2→38%</text>
+<text x="104" y="297" class="s11 mu">edge Failing · First Light lane 1</text>
+<line x1="90" y1="288" x2="90" y2="312" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="326" class="s11 m mu">12:22:50</text>
+<text x="90" y="326" class="s12" text-anchor="middle" fill="#E0457B">⚠</text>
+<text x="104" y="326" class="s12">HighErrorRate checkout firing</text>
+<text x="104" y="341" class="s11 mu">RCA stage 1 done in 4.6 s</text>
+<line x1="90" y1="332" x2="90" y2="356" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="370" class="s11 m mu">12:23:00</text>
+<text x="90" y="370" class="s12" text-anchor="middle" fill="#5B9BFF">✚</text>
+<text x="104" y="370" class="s12">INC-2041 opened · 14 alerts merged</text>
+<text x="104" y="385" class="s11 mu">paged payments-oncall (Sam)</text>
+<line x1="90" y1="376" x2="90" y2="400" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="414" class="s11 m mu">12:23:40</text>
+<text x="90" y="414" class="s12" text-anchor="middle" fill="#2FB59A">✓</text>
+<text x="104" y="414" class="s12">ACK @sam</text>
+<text x="104" y="429" class="s11 mu">salience dropped on NOC wall</text>
+<line x1="90" y1="420" x2="90" y2="444" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="458" class="s11 m mu">12:23:52</text>
+<text x="90" y="458" class="s12" text-anchor="middle" fill="#5B9BFF">✦</text>
+<text x="104" y="458" class="s12">RCA ⊕ psp-api edge · HIGH 0.86</text>
+<text x="104" y="473" class="s11 mu">47 s · 23 queries · view ⟶</text>
+<line x1="90" y1="464" x2="90" y2="488" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="502" class="s11 m mu">12:24:10</text>
+<text x="90" y="502" class="s12" text-anchor="middle" fill="#8A919C">▣</text>
+<text x="104" y="502" class="s12">@sam pinned span scatter as E3</text>
+<text x="104" y="517" class="s11 mu">draw-to-ask: “why exactly 2s?”</text>
+<line x1="90" y1="508" x2="90" y2="532" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="546" class="s11 m mu">12:24:40</text>
+<text x="90" y="546" class="s12" text-anchor="middle" fill="#E6E8EB">⚙</text>
+<text x="104" y="546" class="s12">@sam reverted timeout → 5000 ms</text>
+<text x="104" y="561" class="s11 mu">audit A-88213</text>
+<rect x="267" y="549" width="43" height="16" rx="8.0" fill="#2FB59A" fill-opacity="0.16" stroke="#2FB59A" stroke-opacity="0.5"/><text x="288.5" y="561" class="s11 sb" text-anchor="middle" fill="#2FB59A">↺ fix</text>
+<line x1="90" y1="552" x2="90" y2="576" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="590" class="s11 m mu">12:26:02</text>
+<text x="90" y="590" class="s12" text-anchor="middle" fill="#8A919C">✖</text>
+<text x="104" y="590" class="s12">@priya invalidated H2 (v2.31)</text>
+<text x="104" y="605" class="s11 mu">evidence E6 · release compare</text>
+<line x1="90" y1="596" x2="90" y2="620" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="634" class="s11 m mu">12:28:15</text>
+<text x="90" y="634" class="s12" text-anchor="middle" fill="#8A919C">✎</text>
+<text x="104" y="634" class="s12">@lee: infra ruled out, pg fine</text>
+<text x="104" y="649" class="s11 mu">note · linked E7</text>
+<line x1="90" y1="640" x2="90" y2="664" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="678" class="s11 m mu">12:31:30</text>
+<text x="90" y="678" class="s12" text-anchor="middle" fill="#5B9BFF">✦</text>
+<text x="104" y="678" class="s12">@ana posted stakeholder update</text>
+<text x="104" y="693" class="s11 mu">drafted by ✦ · #exec-incidents</text>
+<line x1="90" y1="684" x2="90" y2="708" stroke="#FFFFFF24" stroke-width="1"/>
+<text x="22" y="722" class="s11 m mu">12:34:00</text>
+<text x="90" y="722" class="s12" text-anchor="middle" fill="#2FB59A">↘</text>
+<text x="104" y="722" class="s12">checkout success 99.1%, recovering</text>
+<text x="104" y="737" class="s11 mu">failed calls 0.4% (B 0.2%)</text>
+<path d="M12,580 L18,586 L12,592 Z" fill="#B48FC9"/>
+<line x1="22" y1="760" x2="310" y2="760" stroke="#5B9BFF" stroke-width="1" stroke-dasharray="2 3"/>
+<text x="22" y="774" class="s11 m ac">12:38:20</text><text x="90" y="774" class="s11 ac">now · LIVE</text>
+<line x1="8" y1="804" x2="324" y2="804" stroke="#FFFFFF14" stroke-width="1"/>
+<rect x="22" y="816" width="86" height="24" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="30" y="832" class="s12">+ note   N</text>
+<rect x="116" y="816" width="100" height="24" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="124" y="832" class="s12" fill="#5B9BFF">✦ ask AI   .</text>
+<rect x="224" y="816" width="51" height="24" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="232" y="832" class="s12">P pin</text>
+</g>
+<g id="evidence-ledger">
+<rect x="332" y="96" width="712" height="404" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="346" y="118" class="s13 b">Evidence ledger</text><text x="456" y="118" class="s11 mu">7 items · 5 support H1 · 3 refute</text>
+<rect x="912" y="104" width="116.8" height="20" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="920" y="118" class="s11">as of then ⇄ now</text>
+<line x1="332" y1="128" x2="1044" y2="128" stroke="#FFFFFF14" stroke-width="1"/>
+<g id="pinned-E3-span-scatter">
+<rect x="340" y="136" width="350" height="150" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="350" y="153" class="s11 b m ac">E3</text><text x="372" y="153" class="s11 sb">spans POST /pay → psp-api · duration</text>
+<text x="680" y="153" class="s11 ok" text-anchor="end">● live</text>
+<line x1="374" y1="262" x2="678" y2="262" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="370" y="266" class="s11 m mu" text-anchor="end">0</text>
+<line x1="374" y1="229.3" x2="678" y2="229.3" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="370" y="233.3" class="s11 m mu" text-anchor="end">1 s</text>
+<line x1="374" y1="196.7" x2="678" y2="196.7" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="370" y="200.7" class="s11 m mu" text-anchor="end">2 s</text>
+<line x1="374" y1="164" x2="678" y2="164" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="370" y="168" class="s11 m mu" text-anchor="end">3 s</text>
+<text x="374" y="276" class="s11 m mu" text-anchor="middle">12:15</text>
+<text x="475.3" y="276" class="s11 m mu" text-anchor="middle">12:20</text>
+<text x="576.7" y="276" class="s11 m mu" text-anchor="middle">12:25</text>
+<text x="678" y="276" class="s11 m mu" text-anchor="middle">12:30</text>
+<g fill="#8A919C" fill-opacity="0.55"><circle cx="472.4" cy="223.9" r="1.4"/><circle cx="396" cy="220.1" r="1.4"/><circle cx="536.9" cy="236.2" r="1.4"/><circle cx="528.3" cy="230.6" r="1.4"/><circle cx="385.4" cy="237.6" r="1.4"/><circle cx="401.6" cy="231.8" r="1.4"/><circle cx="503.1" cy="230.9" r="1.4"/><circle cx="441.9" cy="238.8" r="1.4"/><circle cx="564.7" cy="219.4" r="1.4"/><circle cx="494.6" cy="238.4" r="1.4"/><circle cx="670.8" cy="211.9" r="1.4"/><circle cx="462" cy="227.1" r="1.4"/><circle cx="417.9" cy="226.3" r="1.4"/><circle cx="622.1" cy="227" r="1.4"/><circle cx="428.9" cy="247.8" r="1.4"/><circle cx="487.2" cy="241.6" r="1.4"/><circle cx="540.5" cy="229.9" r="1.4"/><circle cx="436.6" cy="232" r="1.4"/><circle cx="580.8" cy="242.5" r="1.4"/><circle cx="552" cy="229.2" r="1.4"/><circle cx="511.8" cy="239.8" r="1.4"/><circle cx="586.5" cy="214.2" r="1.4"/><circle cx="448.2" cy="246" r="1.4"/><circle cx="640" cy="239.9" r="1.4"/><circle cx="595.8" cy="241.1" r="1.4"/><circle cx="409.9" cy="202.5" r="1.4"/><circle cx="501.1" cy="233.3" r="1.4"/><circle cx="522.6" cy="240.1" r="1.4"/><circle cx="385.9" cy="243.1" r="1.4"/><circle cx="548.2" cy="250.5" r="1.4"/><circle cx="640.1" cy="240.5" r="1.4"/><circle cx="554.7" cy="217.3" r="1.4"/><circle cx="550.3" cy="254.6" r="1.4"/><circle cx="661.2" cy="227.6" r="1.4"/><circle cx="518.1" cy="235.7" r="1.4"/><circle cx="587.3" cy="237.1" r="1.4"/><circle cx="570.7" cy="212.4" r="1.4"/><circle cx="460.5" cy="234.5" r="1.4"/><circle cx="491.3" cy="234.8" r="1.4"/><circle cx="514.4" cy="235.7" r="1.4"/><circle cx="425.1" cy="230.6" r="1.4"/><circle cx="607.5" cy="230.9" r="1.4"/><circle cx="413.3" cy="233.4" r="1.4"/><circle cx="638.9" cy="222.2" r="1.4"/><circle cx="398.5" cy="247.3" r="1.4"/><circle cx="642.5" cy="229" r="1.4"/><circle cx="623.1" cy="227.5" r="1.4"/><circle cx="500.3" cy="240.5" r="1.4"/><circle cx="483.1" cy="212.1" r="1.4"/><circle cx="419.9" cy="252.7" r="1.4"/><circle cx="427.6" cy="232.6" r="1.4"/><circle cx="521.4" cy="225.3" r="1.4"/><circle cx="553.1" cy="233.7" r="1.4"/><circle cx="501.4" cy="232.5" r="1.4"/><circle cx="486.3" cy="256.7" r="1.4"/><circle cx="583.9" cy="245" r="1.4"/><circle cx="530.7" cy="246.3" r="1.4"/><circle cx="390.4" cy="245.1" r="1.4"/><circle cx="647.5" cy="229.2" r="1.4"/><circle cx="616.6" cy="256.5" r="1.4"/><circle cx="493.3" cy="237.9" r="1.4"/><circle cx="566.8" cy="230.4" r="1.4"/><circle cx="392.9" cy="226.4" r="1.4"/><circle cx="423.3" cy="230.4" r="1.4"/><circle cx="477.4" cy="233.3" r="1.4"/><circle cx="420" cy="233.5" r="1.4"/><circle cx="404.8" cy="235.3" r="1.4"/><circle cx="639.8" cy="231.6" r="1.4"/><circle cx="560.7" cy="228.4" r="1.4"/><circle cx="479.6" cy="226.6" r="1.4"/><circle cx="484.7" cy="217.6" r="1.4"/><circle cx="675.9" cy="218.1" r="1.4"/><circle cx="515.7" cy="238.4" r="1.4"/><circle cx="405.1" cy="233.1" r="1.4"/><circle cx="478.2" cy="235.6" r="1.4"/><circle cx="423.1" cy="212.2" r="1.4"/><circle cx="381" cy="220.2" r="1.4"/><circle cx="418.6" cy="237.8" r="1.4"/><circle cx="539.1" cy="219.8" r="1.4"/><circle cx="671.5" cy="231.2" r="1.4"/><circle cx="636.5" cy="236.5" r="1.4"/><circle cx="485.5" cy="242" r="1.4"/><circle cx="424.8" cy="231.6" r="1.4"/><circle cx="610.8" cy="247.5" r="1.4"/><circle cx="474.2" cy="230.1" r="1.4"/><circle cx="673.4" cy="213" r="1.4"/><circle cx="633.2" cy="226.3" r="1.4"/><circle cx="598.9" cy="253.4" r="1.4"/><circle cx="442.9" cy="244.2" r="1.4"/><circle cx="382.8" cy="234.8" r="1.4"/><circle cx="382.5" cy="235.2" r="1.4"/><circle cx="584.5" cy="224.9" r="1.4"/><circle cx="664.8" cy="257.2" r="1.4"/><circle cx="674.4" cy="224.8" r="1.4"/><circle cx="664.3" cy="238.9" r="1.4"/><circle cx="443" cy="227.5" r="1.4"/><circle cx="433.8" cy="229.1" r="1.4"/><circle cx="647.7" cy="218.2" r="1.4"/><circle cx="629.5" cy="250.1" r="1.4"/><circle cx="617.1" cy="231.4" r="1.4"/><circle cx="399.8" cy="246.9" r="1.4"/><circle cx="611.8" cy="254.8" r="1.4"/><circle cx="602" cy="240.7" r="1.4"/><circle cx="613.9" cy="232.6" r="1.4"/><circle cx="475.1" cy="224" r="1.4"/><circle cx="494.3" cy="253.6" r="1.4"/><circle cx="496" cy="216.2" r="1.4"/><circle cx="425.7" cy="239.6" r="1.4"/><circle cx="412.6" cy="219.1" r="1.4"/><circle cx="619.2" cy="213.4" r="1.4"/><circle cx="418.4" cy="218.8" r="1.4"/><circle cx="573.8" cy="254.2" r="1.4"/><circle cx="480.5" cy="239.4" r="1.4"/><circle cx="378.3" cy="235.4" r="1.4"/><circle cx="669.2" cy="241.8" r="1.4"/><circle cx="657.8" cy="244.9" r="1.4"/><circle cx="505.9" cy="218.8" r="1.4"/><circle cx="438.2" cy="249" r="1.4"/><circle cx="450.6" cy="235.8" r="1.4"/><circle cx="552.3" cy="225.4" r="1.4"/><circle cx="452.8" cy="238.9" r="1.4"/><circle cx="650.6" cy="230.6" r="1.4"/><circle cx="481.6" cy="248.2" r="1.4"/><circle cx="648.9" cy="229.6" r="1.4"/><circle cx="501.9" cy="221.8" r="1.4"/><circle cx="535.7" cy="240.2" r="1.4"/><circle cx="533.1" cy="221.4" r="1.4"/><circle cx="429.7" cy="232.1" r="1.4"/><circle cx="375.2" cy="231.4" r="1.4"/><circle cx="517.9" cy="240.3" r="1.4"/><circle cx="594.5" cy="243.1" r="1.4"/><circle cx="531.6" cy="237.1" r="1.4"/><circle cx="542.9" cy="232.4" r="1.4"/><circle cx="544.3" cy="238.9" r="1.4"/><circle cx="449.5" cy="236.9" r="1.4"/><circle cx="528.3" cy="214.2" r="1.4"/><circle cx="544.8" cy="232" r="1.4"/><circle cx="508.7" cy="257.4" r="1.4"/><circle cx="560.2" cy="247.3" r="1.4"/><circle cx="584.6" cy="234.1" r="1.4"/><circle cx="511.5" cy="246.3" r="1.4"/><circle cx="660.2" cy="236.3" r="1.4"/><circle cx="586.6" cy="214.1" r="1.4"/><circle cx="452.9" cy="252.7" r="1.4"/><circle cx="544.1" cy="213.1" r="1.4"/><circle cx="415.7" cy="241.2" r="1.4"/><circle cx="411" cy="237.7" r="1.4"/><circle cx="447.2" cy="232" r="1.4"/><circle cx="396.2" cy="243.3" r="1.4"/><circle cx="646.7" cy="251.1" r="1.4"/><circle cx="421" cy="237.1" r="1.4"/><circle cx="417.5" cy="250" r="1.4"/><circle cx="642.4" cy="225.7" r="1.4"/><circle cx="663.6" cy="235.2" r="1.4"/><circle cx="495.1" cy="248" r="1.4"/><circle cx="627.1" cy="230.8" r="1.4"/><circle cx="423.1" cy="246.1" r="1.4"/><circle cx="477.1" cy="227.8" r="1.4"/><circle cx="433.5" cy="241.2" r="1.4"/><circle cx="379.9" cy="217" r="1.4"/><circle cx="542.4" cy="235.6" r="1.4"/><circle cx="474.8" cy="232.8" r="1.4"/><circle cx="563.7" cy="237.7" r="1.4"/><circle cx="673.5" cy="233.9" r="1.4"/><circle cx="613.7" cy="228.3" r="1.4"/><circle cx="454.7" cy="234.5" r="1.4"/><circle cx="386" cy="231.9" r="1.4"/><circle cx="413.4" cy="242.5" r="1.4"/><circle cx="502.4" cy="215.6" r="1.4"/><circle cx="452.6" cy="244.7" r="1.4"/><circle cx="419.4" cy="220.6" r="1.4"/><circle cx="586.9" cy="240.8" r="1.4"/><circle cx="401.2" cy="217.3" r="1.4"/><circle cx="503.3" cy="227.4" r="1.4"/><circle cx="396" cy="218.6" r="1.4"/><circle cx="617.7" cy="239.7" r="1.4"/><circle cx="399.5" cy="231" r="1.4"/><circle cx="636.3" cy="236.9" r="1.4"/><circle cx="511.9" cy="241.3" r="1.4"/><circle cx="655.7" cy="221.3" r="1.4"/><circle cx="455.4" cy="224" r="1.4"/><circle cx="446.5" cy="223.4" r="1.4"/><circle cx="407.3" cy="231.6" r="1.4"/><circle cx="435.3" cy="230.5" r="1.4"/><circle cx="468.8" cy="240.1" r="1.4"/><circle cx="462.1" cy="215.4" r="1.4"/><circle cx="526" cy="229" r="1.4"/><circle cx="379.5" cy="224.1" r="1.4"/><circle cx="450.1" cy="215.1" r="1.4"/><circle cx="541.5" cy="231.8" r="1.4"/><circle cx="431.6" cy="256.2" r="1.4"/><circle cx="406.3" cy="229.4" r="1.4"/><circle cx="623" cy="245.7" r="1.4"/><circle cx="627.7" cy="228.1" r="1.4"/><circle cx="493.5" cy="251" r="1.4"/><circle cx="672.7" cy="234.3" r="1.4"/><circle cx="478.2" cy="224.7" r="1.4"/><circle cx="567.3" cy="249.1" r="1.4"/><circle cx="497" cy="235.8" r="1.4"/><circle cx="413.5" cy="230.5" r="1.4"/><circle cx="395.5" cy="234.1" r="1.4"/><circle cx="423.6" cy="242.4" r="1.4"/><circle cx="399.7" cy="221" r="1.4"/><circle cx="577.8" cy="253" r="1.4"/><circle cx="459.7" cy="233.1" r="1.4"/><circle cx="513.7" cy="224.1" r="1.4"/><circle cx="421.9" cy="242" r="1.4"/><circle cx="666.4" cy="230.6" r="1.4"/><circle cx="669.7" cy="241.8" r="1.4"/><circle cx="667.6" cy="236.1" r="1.4"/><circle cx="468.1" cy="233.9" r="1.4"/><circle cx="490" cy="233.2" r="1.4"/><circle cx="518.3" cy="241.2" r="1.4"/><circle cx="527.4" cy="233.7" r="1.4"/><circle cx="375.5" cy="234" r="1.4"/><circle cx="495.5" cy="228.6" r="1.4"/><circle cx="386.7" cy="223.9" r="1.4"/><circle cx="444.8" cy="232.2" r="1.4"/><circle cx="552" cy="252.3" r="1.4"/><circle cx="573.9" cy="237.1" r="1.4"/><circle cx="591.7" cy="225.3" r="1.4"/><circle cx="473.1" cy="241.4" r="1.4"/><circle cx="673.4" cy="222.7" r="1.4"/><circle cx="569.5" cy="218.8" r="1.4"/><circle cx="387.3" cy="221.3" r="1.4"/><circle cx="564.7" cy="254.3" r="1.4"/><circle cx="597.1" cy="231.2" r="1.4"/><circle cx="533.2" cy="239.4" r="1.4"/><circle cx="527.3" cy="223.1" r="1.4"/><circle cx="625.2" cy="251.4" r="1.4"/></g>
+<g fill="#E0457B"><circle cx="527.2" cy="196.2" r="1.6"/><circle cx="538.5" cy="197" r="1.6"/><circle cx="490.9" cy="196.5" r="1.6"/><circle cx="504.3" cy="196.6" r="1.6"/><circle cx="478" cy="196.4" r="1.6"/><circle cx="531.7" cy="197.1" r="1.6"/><circle cx="531.6" cy="196.9" r="1.6"/><circle cx="467.6" cy="197.1" r="1.6"/><circle cx="549.2" cy="196.7" r="1.6"/><circle cx="522.2" cy="197.1" r="1.6"/><circle cx="535" cy="196.1" r="1.6"/><circle cx="493.1" cy="196.4" r="1.6"/><circle cx="474.9" cy="196.7" r="1.6"/><circle cx="488.3" cy="196" r="1.6"/><circle cx="543.2" cy="196.2" r="1.6"/><circle cx="506.5" cy="196.7" r="1.6"/><circle cx="516.4" cy="196.9" r="1.6"/><circle cx="530.6" cy="197.3" r="1.6"/><circle cx="533.3" cy="196.5" r="1.6"/><circle cx="493.3" cy="196.6" r="1.6"/><circle cx="543.6" cy="196.8" r="1.6"/><circle cx="468.5" cy="196.2" r="1.6"/><circle cx="473.5" cy="196.7" r="1.6"/><circle cx="538.4" cy="196.1" r="1.6"/><circle cx="536.7" cy="196.8" r="1.6"/><circle cx="515" cy="196.2" r="1.6"/><circle cx="515.1" cy="196.1" r="1.6"/><circle cx="487.7" cy="196.1" r="1.6"/><circle cx="567.7" cy="196.6" r="1.6"/><circle cx="514.4" cy="196.7" r="1.6"/><circle cx="551.5" cy="196.2" r="1.6"/><circle cx="494.8" cy="196.8" r="1.6"/><circle cx="488.8" cy="196.4" r="1.6"/><circle cx="527" cy="196.8" r="1.6"/><circle cx="481.8" cy="197.6" r="1.6"/><circle cx="480.9" cy="196.8" r="1.6"/><circle cx="551.5" cy="197.5" r="1.6"/><circle cx="539.5" cy="196.7" r="1.6"/><circle cx="491" cy="196.3" r="1.6"/><circle cx="469.8" cy="196.9" r="1.6"/><circle cx="467.6" cy="197.1" r="1.6"/><circle cx="498.3" cy="196.6" r="1.6"/><circle cx="481.7" cy="196.9" r="1.6"/><circle cx="553.6" cy="196.4" r="1.6"/><circle cx="467.4" cy="196.7" r="1.6"/><circle cx="479.6" cy="197.4" r="1.6"/><circle cx="562.4" cy="196.9" r="1.6"/><circle cx="497" cy="197.5" r="1.6"/><circle cx="505.5" cy="197.8" r="1.6"/><circle cx="527.8" cy="195.8" r="1.6"/><circle cx="504.3" cy="196.9" r="1.6"/><circle cx="472.2" cy="196.5" r="1.6"/><circle cx="477.7" cy="196.5" r="1.6"/><circle cx="563.4" cy="196.9" r="1.6"/><circle cx="492.8" cy="196.7" r="1.6"/><circle cx="486.7" cy="196.2" r="1.6"/><circle cx="505.6" cy="195.9" r="1.6"/><circle cx="550.7" cy="196.9" r="1.6"/><circle cx="532.1" cy="195.9" r="1.6"/><circle cx="523.7" cy="197.1" r="1.6"/><circle cx="541.2" cy="196.1" r="1.6"/><circle cx="513.6" cy="196.5" r="1.6"/><circle cx="544.6" cy="196.9" r="1.6"/><circle cx="472.3" cy="196.9" r="1.6"/><circle cx="562.5" cy="196.4" r="1.6"/><circle cx="502.5" cy="196.3" r="1.6"/><circle cx="497.8" cy="196.7" r="1.6"/><circle cx="494" cy="197.7" r="1.6"/><circle cx="534.6" cy="196.8" r="1.6"/><circle cx="507.7" cy="196.2" r="1.6"/><circle cx="484.4" cy="196.5" r="1.6"/><circle cx="560.3" cy="196.4" r="1.6"/><circle cx="518.3" cy="196.5" r="1.6"/><circle cx="569.6" cy="195.8" r="1.6"/><circle cx="513.5" cy="196.5" r="1.6"/><circle cx="476.5" cy="196.5" r="1.6"/><circle cx="502.4" cy="196.4" r="1.6"/><circle cx="493.8" cy="196.5" r="1.6"/><circle cx="525.8" cy="196.2" r="1.6"/><circle cx="509.6" cy="197.1" r="1.6"/><circle cx="509.8" cy="197" r="1.6"/><circle cx="502" cy="196.7" r="1.6"/><circle cx="473.6" cy="196.8" r="1.6"/><circle cx="480.2" cy="195.7" r="1.6"/><circle cx="519" cy="197.2" r="1.6"/><circle cx="489.4" cy="197.2" r="1.6"/><circle cx="495.1" cy="196.7" r="1.6"/><circle cx="513" cy="196.3" r="1.6"/><circle cx="565.2" cy="196.2" r="1.6"/><circle cx="469.5" cy="197.3" r="1.6"/><circle cx="470.5" cy="196.9" r="1.6"/><circle cx="515.9" cy="197.5" r="1.6"/><circle cx="527.6" cy="196.3" r="1.6"/><circle cx="562.5" cy="196.7" r="1.6"/><circle cx="552.1" cy="196" r="1.6"/><circle cx="492.8" cy="197.5" r="1.6"/><circle cx="478.4" cy="196.4" r="1.6"/><circle cx="537.3" cy="196.3" r="1.6"/><circle cx="564" cy="196.8" r="1.6"/><circle cx="545.8" cy="197.2" r="1.6"/><circle cx="514.2" cy="196.8" r="1.6"/><circle cx="547.6" cy="196.7" r="1.6"/><circle cx="491.1" cy="196.2" r="1.6"/><circle cx="498.4" cy="196.9" r="1.6"/><circle cx="480.4" cy="196.7" r="1.6"/><circle cx="539" cy="196.1" r="1.6"/><circle cx="478.7" cy="196.2" r="1.6"/><circle cx="527.1" cy="196.5" r="1.6"/><circle cx="507.1" cy="196.6" r="1.6"/><circle cx="468.3" cy="196.1" r="1.6"/><circle cx="498.2" cy="197.6" r="1.6"/><circle cx="533.5" cy="196.4" r="1.6"/><circle cx="558" cy="196.9" r="1.6"/><circle cx="492.6" cy="196.6" r="1.6"/><circle cx="565.9" cy="196.8" r="1.6"/><circle cx="469.5" cy="197" r="1.6"/><circle cx="518.4" cy="196.9" r="1.6"/><circle cx="493.7" cy="197" r="1.6"/><circle cx="535.8" cy="196.4" r="1.6"/><circle cx="470.7" cy="196.8" r="1.6"/></g>
+<ellipse cx="518.5" cy="196.7" rx="71.5" ry="11" fill="none" stroke="#F2F2F2" stroke-opacity="0.75" stroke-width="1.5" transform="rotate(-2 512.5 196.7)"/>
+<text x="594" y="200.7" class="s11 m fa">2.000 s</text>
+<line x1="455.1" y1="164" x2="455.1" y2="262" stroke="#E6E8EB" stroke-width="1" stroke-dasharray="2 2" stroke-opacity="0.5"/>
+<text x="458.1" y="174" class="s11">⚙</text>
+<line x1="570" y1="164" x2="570" y2="262" stroke="#2FB59A" stroke-width="1" stroke-dasharray="2 2" stroke-opacity="0.7"/>
+<text x="573" y="174" class="s11 ok">↺</text>
+</g>
+<g id="pinned-E2-edge-failed">
+<rect x="698" y="136" width="338" height="150" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="708" y="153" class="s11 b m ac">E2</text><text x="730" y="153" class="s11 sb">payments → psp-api · failed calls %</text>
+<text x="1026" y="153" class="s11 mu" text-anchor="end">A/B −7d</text>
+<line x1="732" y1="262" x2="1024" y2="262" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="728" y="266" class="s11 m mu" text-anchor="end">0</text>
+<line x1="732" y1="218.4" x2="1024" y2="218.4" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="728" y="222.4" class="s11 m mu" text-anchor="end">20%</text>
+<line x1="732" y1="174.9" x2="1024" y2="174.9" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="728" y="178.9" class="s11 m mu" text-anchor="end">40%</text>
+<text x="732" y="276" class="s11 m mu" text-anchor="middle">12:15</text>
+<text x="829.3" y="276" class="s11 m mu" text-anchor="middle">12:20</text>
+<text x="926.7" y="276" class="s11 m mu" text-anchor="middle">12:25</text>
+<text x="1024" y="276" class="s11 m mu" text-anchor="middle">12:30</text>
+<path d="M732,258.4 L735.3,258.4 L738.6,258.7 L741.8,258.7 L745.1,258.7 L748.4,258.6 L751.7,258.4 L755,258.8 L758.2,258.5 L761.5,258.5 L764.8,258.5 L768.1,258.5 L771.4,258.6 L774.7,258.7 L777.9,258.7 L781.2,258.7 L784.5,258.5 L787.8,258.8 L791.1,258.8 L794.3,258.5 L797.6,258.7 L800.9,258.8 L804.2,258.8 L807.5,258.6 L810.7,258.7 L814,258.4 L817.3,258.5 L820.6,258.4 L823.9,258.7 L827.1,258.8 L830.4,258.8 L833.7,258.6 L837,258.5 L840.3,258.6 L843.6,258.7 L846.8,258.7 L850.1,258.6 L853.4,258.5 L856.7,258.5 L860,258.5 L863.2,258.6 L866.5,258.8 L869.8,258.5 L873.1,258.7 L876.4,258.6 L879.6,258.7 L882.9,258.5 L886.2,258.8 L889.5,258.7 L892.8,258.7 L896,258.8 L899.3,258.5 L902.6,258.6 L905.9,258.7 L909.2,258.7 L912.4,258.4 L915.7,258.6 L919,258.7 L922.3,258.5 L925.6,258.6 L928.9,258.4 L932.1,258.8 L935.4,258.6 L938.7,258.5 L942,258.5 L945.3,258.4 L948.5,258.8 L951.8,258.7 L955.1,258.8 L958.4,258.8 L961.7,258.4 L964.9,258.6 L968.2,258.4 L971.5,258.7 L974.8,258.5 L978.1,258.6 L981.3,258.7 L984.6,258.5 L987.9,258.4 L991.2,258.8 L994.5,258.6 L997.8,258.6 L1001,258.7 L1004.3,258.7 L1007.6,258.8 L1010.9,258.8 L1014.2,258.7 L1017.4,258.6 L1020.7,258.6 L1024,258.8 L1024,262 L732,262 Z" fill="#8A919C" fill-opacity="0.12"/><path d="M732,258.4 L735.3,258.4 L738.6,258.7 L741.8,258.7 L745.1,258.7 L748.4,258.6 L751.7,258.4 L755,258.8 L758.2,258.5 L761.5,258.5 L764.8,258.5 L768.1,258.5 L771.4,258.6 L774.7,258.7 L777.9,258.7 L781.2,258.7 L784.5,258.5 L787.8,258.8 L791.1,258.8 L794.3,258.5 L797.6,258.7 L800.9,258.8 L804.2,258.8 L807.5,258.6 L810.7,258.7 L814,258.4 L817.3,258.5 L820.6,258.4 L823.9,258.7 L827.1,258.8 L830.4,258.8 L833.7,258.6 L837,258.5 L840.3,258.6 L843.6,258.7 L846.8,258.7 L850.1,258.6 L853.4,258.5 L856.7,258.5 L860,258.5 L863.2,258.6 L866.5,258.8 L869.8,258.5 L873.1,258.7 L876.4,258.6 L879.6,258.7 L882.9,258.5 L886.2,258.8 L889.5,258.7 L892.8,258.7 L896,258.8 L899.3,258.5 L902.6,258.6 L905.9,258.7 L909.2,258.7 L912.4,258.4 L915.7,258.6 L919,258.7 L922.3,258.5 L925.6,258.6 L928.9,258.4 L932.1,258.8 L935.4,258.6 L938.7,258.5 L942,258.5 L945.3,258.4 L948.5,258.8 L951.8,258.7 L955.1,258.8 L958.4,258.8 L961.7,258.4 L964.9,258.6 L968.2,258.4 L971.5,258.7 L974.8,258.5 L978.1,258.6 L981.3,258.7 L984.6,258.5 L987.9,258.4 L991.2,258.8 L994.5,258.6 L997.8,258.6 L1001,258.7 L1004.3,258.7 L1007.6,258.8 L1010.9,258.8 L1014.2,258.7 L1017.4,258.6 L1020.7,258.6 L1024,258.8" fill="none" stroke="#8A919C" stroke-width="0" stroke-linejoin="round" stroke-opacity="0"/>
+<path d="M732,261 L735.3,261 L738.6,261.3 L741.8,261.3 L745.1,261.3 L748.4,261.2 L751.7,261.1 L755,261.4 L758.2,261.1 L761.5,261.1 L764.8,261.1 L768.1,261.1 L771.4,261.2 L774.7,261.3 L777.9,261.3 L781.2,261.3 L784.5,261.1 L787.8,261.4 L791.1,261.4 L794.3,261.1 L797.6,261.3 L800.9,261.4 L804.2,261.4 L807.5,261.2 L810.7,261.3 L814,261 L817.3,261.1 L820.6,261 L823.9,261.3 L827.1,261.4 L830.4,261.4 L833.7,261.2 L837,261.1 L840.3,261.3 L843.6,261.4 L846.8,261.3 L850.1,261.2 L853.4,261.2 L856.7,261.1 L860,261.1 L863.2,261.2 L866.5,261.4 L869.8,261.1 L873.1,261.3 L876.4,261.2 L879.6,261.3 L882.9,261.1 L886.2,261.4 L889.5,261.3 L892.8,261.3 L896,261.4 L899.3,261.1 L902.6,261.2 L905.9,261.3 L909.2,261.3 L912.4,261 L915.7,261.2 L919,261.4 L922.3,261.1 L925.6,261.2 L928.9,261 L932.1,261.4 L935.4,261.2 L938.7,261.1 L942,261.1 L945.3,261.1 L948.5,261.4 L951.8,261.3 L955.1,261.4 L958.4,261.4 L961.7,261 L964.9,261.2 L968.2,261.1 L971.5,261.3 L974.8,261.1 L978.1,261.3 L981.3,261.3 L984.6,261.1 L987.9,261 L991.2,261.4 L994.5,261.2 L997.8,261.2 L1001,261.4 L1004.3,261.3 L1007.6,261.4 L1010.9,261.4 L1014.2,261.3 L1017.4,261.2 L1020.7,261.2 L1024,261.4" fill="none" stroke="#8A919C" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3 2"/>
+<path d="M732,261.5 L735.3,261.4 L738.6,261.3 L741.8,261.5 L745.1,261.3 L748.4,261.3 L751.7,261.4 L755,261.5 L758.2,261.2 L761.5,261.5 L764.8,261.3 L768.1,261.5 L771.4,261.5 L774.7,261.3 L777.9,261.5 L781.2,261.3 L784.5,261.4 L787.8,261.5 L791.1,261.5 L794.3,261.4 L797.6,261.3 L800.9,261.3 L804.2,261.5 L807.5,261.4 L810.7,261.5 L814,261.2 L817.3,261.5 L820.6,261.5 L823.9,261.5 L827.1,261.4 L830.4,261.3 L833.7,261.3 L837,255.2 L840.3,244.1 L843.6,233.1 L846.8,222.3 L850.1,187 L853.4,178.9 L856.7,180.9 L860,188.7 L863.2,181.8 L866.5,184.9 L869.8,185 L873.1,185.4 L876.4,187.2 L879.6,189 L882.9,186 L886.2,185.2 L889.5,178.6 L892.8,187.7 L896,178.5 L899.3,186.8 L902.6,185.2 L905.9,180.1 L909.2,180.1 L912.4,184.3 L915.7,188.5 L919,183.9 L922.3,194.8 L925.6,211.6 L928.9,224.8 L932.1,234.2 L935.4,240.9 L938.7,246.7 L942,250.4 L945.3,253 L948.5,255.2 L951.8,257.3 L955.1,258.5 L958.4,259.4 L961.7,259.5 L964.9,260.4 L968.2,260.5 L971.5,260.5 L974.8,260.9 L978.1,261 L981.3,260.5 L984.6,260.7 L987.9,261 L991.2,260.7 L994.5,260.9 L997.8,260.9 L1001,261.1 L1004.3,260.6 L1007.6,260.5 L1010.9,260.7 L1014.2,260.5 L1017.4,261.1 L1020.7,261 L1024,260.8 L1024,262 L732,262 Z" fill="#E0457B" fill-opacity="0.12"/><path d="M732,261.5 L735.3,261.4 L738.6,261.3 L741.8,261.5 L745.1,261.3 L748.4,261.3 L751.7,261.4 L755,261.5 L758.2,261.2 L761.5,261.5 L764.8,261.3 L768.1,261.5 L771.4,261.5 L774.7,261.3 L777.9,261.5 L781.2,261.3 L784.5,261.4 L787.8,261.5 L791.1,261.5 L794.3,261.4 L797.6,261.3 L800.9,261.3 L804.2,261.5 L807.5,261.4 L810.7,261.5 L814,261.2 L817.3,261.5 L820.6,261.5 L823.9,261.5 L827.1,261.4 L830.4,261.3 L833.7,261.3 L837,255.2 L840.3,244.1 L843.6,233.1 L846.8,222.3 L850.1,187 L853.4,178.9 L856.7,180.9 L860,188.7 L863.2,181.8 L866.5,184.9 L869.8,185 L873.1,185.4 L876.4,187.2 L879.6,189 L882.9,186 L886.2,185.2 L889.5,178.6 L892.8,187.7 L896,178.5 L899.3,186.8 L902.6,185.2 L905.9,180.1 L909.2,180.1 L912.4,184.3 L915.7,188.5 L919,183.9 L922.3,194.8 L925.6,211.6 L928.9,224.8 L932.1,234.2 L935.4,240.9 L938.7,246.7 L942,250.4 L945.3,253 L948.5,255.2 L951.8,257.3 L955.1,258.5 L958.4,259.4 L961.7,259.5 L964.9,260.4 L968.2,260.5 L971.5,260.5 L974.8,260.9 L978.1,261 L981.3,260.5 L984.6,260.7 L987.9,261 L991.2,260.7 L994.5,260.9 L997.8,260.9 L1001,261.1 L1004.3,260.6 L1007.6,260.5 L1010.9,260.7 L1014.2,260.5 L1017.4,261.1 L1020.7,261 L1024,260.8" fill="none" stroke="#E0457B" stroke-width="1.5" stroke-linejoin="round"/>
+<line x1="810.5" y1="164" x2="810.5" y2="262" stroke="#E6E8EB" stroke-width="1" stroke-dasharray="2 2" stroke-opacity="0.6"/>
+<text x="813.5" y="174" class="s11" fill="#E6E8EB">⚙</text>
+<line x1="920.2" y1="164" x2="920.2" y2="262" stroke="#2FB59A" stroke-width="1" stroke-dasharray="2 2" stroke-opacity="0.6"/>
+<text x="923.2" y="174" class="s11" fill="#2FB59A">↺</text>
+<text x="866.3" y="194" class="s12 b m fa">38%</text>
+<text x="1022" y="254" class="s11 m mu" text-anchor="end">0.4% now · B 0.2%</text>
+</g>
+<text x="346" y="302" class="s11 sb mu">ID</text>
+<text x="378" y="302" class="s11 sb mu">Claim</text>
+<text x="724" y="302" class="s11 sb mu">Producer</text>
+<text x="836" y="302" class="s11 sb mu">Bears on</text>
+<text x="922" y="302" class="s11 sb mu">Coverage</text>
+<text x="992" y="302" class="s11 sb mu">Re-run</text>
+<line x1="340" y1="310" x2="1036" y2="310" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="346" y="330" class="s11 b m ac">E1</text>
+<text x="378" y="330" class="s12">⚙ payments.psp.timeout 5000→2000 at 12:19:02</text>
+<text x="724" y="330" class="s11" fill="#8A919C">change feed</text>
+<text x="836" y="330" class="s11 sb m" fill="#2FB59A">▲ H1</text>
+<rect x="922" y="323" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="323" width="40" height="6" rx="3" fill="#2FB59A"/>
+<text x="968" y="330" class="s11 m mu"></text>
+<text x="992" y="330" class="s11 m" fill="#2FB59A">✓ same</text>
+<text x="346" y="355" class="s11 b m ac">E2</text>
+<text x="378" y="355" class="s12">edge payments→psp-api failed 0.2% → 38%</text>
+<text x="724" y="355" class="s11" fill="#8A919C">⊕ engine</text>
+<text x="836" y="355" class="s11 sb m" fill="#2FB59A">▲ H1</text>
+<rect x="922" y="348" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="348" width="40" height="6" rx="3" fill="#2FB59A"/>
+<text x="968" y="355" class="s11 m mu"></text>
+<text x="992" y="355" class="s11 m" fill="#2FB59A">✓ same</text>
+<rect x="340" y="363" width="696" height="24" rx="4" fill="#5B9BFF14"/>
+<text x="346" y="380" class="s11 b m ac">E3</text>
+<text x="378" y="380" class="s12">failed spans pinned at 2.000 s (n = 4 812)</text>
+<text x="724" y="380" class="s11" fill="#E6E8EB">@sam · TraceQL</text>
+<text x="836" y="380" class="s11 sb m" fill="#2FB59A">▲ H1</text>
+<rect x="922" y="373" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="373" width="4" height="6" rx="3" fill="#D9C84A"/>
+<text x="968" y="380" class="s11 m mu">10%</text>
+<text x="992" y="380" class="s11 m" fill="#2FB59A">✓ same</text>
+<text x="346" y="405" class="s11 b m ac">E4</text>
+<text x="378" y="405" class="s12">NEW pattern “timeout calling psp-api…” ×1 832</text>
+<text x="724" y="405" class="s11" fill="#5B9BFF">✦ agent</text>
+<text x="836" y="405" class="s11 sb m" fill="#2FB59A">▲ H1</text>
+<rect x="922" y="398" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="398" width="40" height="6" rx="3" fill="#2FB59A"/>
+<text x="968" y="405" class="s11 m mu"></text>
+<text x="992" y="405" class="s11 m" fill="#2FB59A">✓ same</text>
+<text x="346" y="430" class="s11 b m ac">E5</text>
+<text x="378" y="430" class="s12">psp-api p95 2.3 s, unchanged vs −7d</text>
+<text x="724" y="430" class="s11" fill="#5B9BFF">✦ agent</text>
+<text x="836" y="430" class="s11 sb m" fill="#2FB59A">▲ H1</text>
+<text x="878" y="430" class="s11 sb m" fill="#8A919C">▼ H1.2</text>
+<rect x="922" y="423" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="423" width="39.2" height="6" rx="3" fill="#2FB59A"/>
+<text x="968" y="430" class="s11 m mu">98%</text>
+<text x="992" y="430" class="s11 m" fill="#2FB59A">✓ same</text>
+<text x="346" y="455" class="s11 b m ac">E6</text>
+<text x="378" y="455" class="s12">canary v2.31 vs stable: no diff before 12:19</text>
+<text x="724" y="455" class="s11" fill="#E6E8EB">@priya · compare</text>
+<text x="836" y="455" class="s11 sb m" fill="#8A919C">▼ H2</text>
+<rect x="922" y="448" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="448" width="40" height="6" rx="3" fill="#2FB59A"/>
+<text x="968" y="455" class="s11 m mu"></text>
+<text x="992" y="455" class="s11 m" fill="#2FB59A">✓ same</text>
+<text x="346" y="480" class="s11 b m ac">E7</text>
+<text x="378" y="480" class="s12">pg-orders CPU 22%, conns 41/200</text>
+<text x="724" y="480" class="s11" fill="#5B9BFF">✦ agent</text>
+<text x="836" y="480" class="s11 sb m" fill="#8A919C">▼ H3</text>
+<rect x="922" y="473" width="40" height="6" rx="3" fill="#20252E"/>
+<rect x="922" y="473" width="40" height="6" rx="3" fill="#2FB59A"/>
+<text x="968" y="480" class="s11 m mu"></text>
+<text x="992" y="480" class="s11 m" fill="#D9C84A">≈ drift</text>
+<text x="346" y="492" class="s11 di">▲ supports  ▼ refutes  ·  click a row to open its live viewport</text>
+</g>
+<g id="hypothesis-tree">
+<rect x="332" y="508" width="712" height="296" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="346" y="530" class="s13 b">Hypotheses</text><text x="430" y="530" class="s11 mu">1 validated · 4 invalidated · 0 inconclusive · rejected branches kept</text>
+<rect x="934" y="516" width="91.6" height="20" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="942" y="530" class="s11">+ hypothesis</text>
+<line x1="332" y1="540" x2="1044" y2="540" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="346" y="562" class="s13 b mu">?</text><text x="362" y="562" class="s12 sb">Why is checkout POST /pay failing since 12:22?</text>
+<line x1="352" y1="568" x2="352" y2="742" stroke="#FFFFFF24" stroke-width="1"/>
+<line x1="352" y1="586" x2="364" y2="586" stroke="#FFFFFF24" stroke-width="1"/>
+<rect x="364" y="572" width="666" height="28" rx="6" fill="#2FB59A14" stroke="#2FB59A88"/>
+<text x="374" y="591" class="s13 b ok">✔</text>
+<text x="392" y="591" class="s12 b m ok">H1</text>
+<text x="415.2" y="591" class="s12">payments client timeout lowered 5 s → 2 s (⚙ 12:19, PR #4411)</text>
+<text x="1020" y="591" class="s11 b m ok" text-anchor="end">HIGH 0.86</text>
+<text x="950" y="591" class="s11 m ac" text-anchor="end">E1 E2 E3 E4 E5</text>
+<line x1="378" y1="599" x2="378" y2="619" stroke="#FFFFFF24" stroke-width="1"/><line x1="378" y1="619" x2="392" y2="619" stroke="#FFFFFF24" stroke-width="1"/>
+<rect x="392" y="605" width="638" height="28" rx="6" fill="#2FB59A14" stroke="#2FB59A88"/>
+<text x="402" y="624" class="s13 b ok">✔</text>
+<text x="420" y="624" class="s12 b m ok">H1.1</text>
+<text x="458.4" y="624" class="s12">psp-api p95 2.3 s &gt; new 2.0 s limit → 38% of calls cut off</text>
+<text x="1020" y="624" class="s11 m ac" text-anchor="end">E2 E5</text>
+<line x1="378" y1="632" x2="378" y2="652" stroke="#FFFFFF24" stroke-width="1"/><line x1="378" y1="652" x2="392" y2="652" stroke="#FFFFFF24" stroke-width="1"/>
+<rect x="392" y="638" width="638" height="28" rx="6" fill="#191D24" stroke="#FFFFFF24" stroke-dasharray="4 3"/>
+<text x="402" y="657" class="s12 mu">✖</text>
+<text x="420" y="657" class="s12 b m mu">H1.2</text>
+<text x="458.4" y="657" class="s12 mu">psp-api itself got slower</text>
+<text x="1020" y="657" class="s11 m ac" text-anchor="end">E5</text>
+<line x1="352" y1="685" x2="364" y2="685" stroke="#FFFFFF24" stroke-width="1"/>
+<rect x="364" y="671" width="666" height="28" rx="6" fill="#191D24" stroke="#FFFFFF24" stroke-dasharray="4 3"/>
+<text x="374" y="690" class="s12 mu">✖</text>
+<text x="392" y="690" class="s12 b m mu">H2</text>
+<text x="415.2" y="690" class="s12 mu">checkout v2.31 deploy regression</text>
+<text x="1020" y="690" class="s11 m ac" text-anchor="end">E6</text>
+<line x1="352" y1="718" x2="364" y2="718" stroke="#FFFFFF24" stroke-width="1"/>
+<rect x="364" y="704" width="666" height="28" rx="6" fill="#191D24" stroke="#FFFFFF24" stroke-dasharray="4 3"/>
+<text x="374" y="723" class="s12 mu">✖</text>
+<text x="392" y="723" class="s12 b m mu">H3</text>
+<text x="415.2" y="723" class="s12 mu">pg-orders saturation</text>
+<text x="1020" y="723" class="s11 m ac" text-anchor="end">E7</text>
+<line x1="352" y1="751" x2="364" y2="751" stroke="#FFFFFF24" stroke-width="1"/>
+<rect x="364" y="737" width="666" height="28" rx="6" fill="#191D24" stroke="#FFFFFF24" stroke-dasharray="4 3"/>
+<text x="374" y="756" class="s12 mu">✖</text>
+<text x="392" y="756" class="s12 b m mu">H4</text>
+<text x="415.2" y="756" class="s12 mu">infra: node / network pressure in prod-eu-1</text>
+<text x="1020" y="756" class="s11 m ac" text-anchor="end">note</text>
+<rect x="364" y="772" width="666" height="26" rx="6" fill="#D9C84A10" stroke="#D9C84A55" stroke-dasharray="2 2"/>
+<text x="374" y="789" class="s12 wa">⚖</text><text x="392" y="789" class="s11 mu">resolved conflict · onset: engine 12:19:40 (edge) vs agent 12:21:05 (service) → edge onset adopted</text>
+</g>
+<g id="status-bar">
+<rect x="332" y="812" width="712" height="40" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="346" y="836" class="s11 mu">Status</text>
+<rect x="388" y="821" width="111.2" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="396" y="836" class="s12" fill="#D9C84A">◐ monitoring ▾</text>
+<text x="515.2" y="836" class="s11 mu">Root cause</text><text x="581.2" y="836" class="s12 sb">H1 · client timeout config (proposed)</text>
+<rect x="965.2" y="821" width="68.8" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="973.2" y="836" class="s12">Export ⇩</text>
+<rect x="881.8" y="821" width="75.4" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="889.8" y="836" class="s12">Runbook ⟶</text>
+<rect x="798.4" y="821" width="75.4" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="806.4" y="836" class="s12">Silence ▾</text>
+</g>
+<g id="ai-dock">
+<rect x="1052" y="96" width="380" height="756" rx="6" fill="#12151A" stroke="#FFFFFF14"/>
+<text x="1066" y="118" class="s16 ac">✦</text><text x="1086" y="118" class="s13 b">Copilot</text><text x="1144" y="118" class="s11 mu">INV-2041 · runs as @sam · read-only</text>
+<text x="1418" y="118" class="s12 mu" text-anchor="end">⤢  ×</text>
+<line x1="1052" y1="128" x2="1432" y2="128" stroke="#FFFFFF14" stroke-width="1"/>
+<rect x="1062" y="138" width="360" height="52" rx="6" fill="#191D24" stroke="#FFFFFF24"/>
+<text x="1074" y="157" class="s12 sb ac">✦ RCA complete · HIGH 0.86</text><text x="1410" y="157" class="s11 m mu" text-anchor="end">47 s · 23 queries · €0.31</text>
+<text x="1074" y="178" class="s12">⊕ psp-api edge · timeout 5 s → 2 s</text>
+<text x="1410" y="178" class="s11 ac" text-anchor="end">How I got here ▸</text>
+<circle cx="1076" cy="216" r="10" fill="#7AA2D6" stroke="#12151A" stroke-width="2"/><text x="1076" y="220" class="s11 b" text-anchor="middle" fill="#0B0D10">S</text>
+<text x="1094" y="220" class="s12 sb">@sam</text><text x="1132" y="220" class="s11 m mu">12:24:16</text>
+<rect x="1094" y="230" width="251.6" height="20" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="1102" y="244" class="s11">◌ ink on E3 · 12:19–12:24 · 2.0 s band</text>
+<text x="1094" y="268" class="s13">why exactly 2s?</text>
+<text x="1070" y="290" class="s13 ac">✦</text><text x="1088" y="290" class="s12 sb">Copilot</text><text x="1140" y="290" class="s11 mu">streaming · 3 / 5 checks</text>
+<rect x="1284" y="282" width="60" height="4" rx="2" fill="#20252E"/><rect x="1284" y="282" width="36" height="4" rx="2" fill="#5B9BFF"/>
+<text x="1070" y="316" class="s12">Failed /pay spans stop at </text>
+<text x="1224.7" y="316" class="s12 b">2.000 s ± 4 ms</text>
+<text x="1317.1" y="316" class="s12"> </text>
+<rect x="1323.1" y="305" width="20.8" height="15" rx="3" fill="#5B9BFF" fill-opacity="0.16" stroke="#5B9BFF" stroke-opacity="0.5"/><text x="1327.1" y="316" class="s11 b m ac">E3</text>
+<text x="1070" y="335" class="s12">— a client-side timeout, not a slow server.</text>
+<text x="1070" y="354" class="s12">At 12:19:02 deploy-bot set </text>
+<text x="1230.7" y="354" class="s12 m">payments.psp.timeout</text>
+<text x="1070" y="373" class="s12">from 5000 to 2000 ms (PR #4411) </text>
+<rect x="1260.4" y="362" width="20.8" height="15" rx="3" fill="#5B9BFF" fill-opacity="0.16" stroke="#5B9BFF" stroke-opacity="0.5"/><text x="1264.4" y="373" class="s11 b m ac">E1</text>
+<text x="1070" y="392" class="s12">psp-api p95 is 2.3 s and unchanged vs −7d </text>
+<rect x="1319.9" y="381" width="20.8" height="15" rx="3" fill="#5B9BFF" fill-opacity="0.16" stroke="#5B9BFF" stroke-opacity="0.5"/><text x="1323.9" y="392" class="s11 b m ac">E5</text>
+<text x="1070" y="411" class="s12">so every call slower than 2.0 s is cut off:</text>
+<text x="1070" y="430" class="s12">38% of calls </text>
+<rect x="1147.3" y="419" width="20.8" height="15" rx="3" fill="#5B9BFF" fill-opacity="0.16" stroke="#5B9BFF" stroke-opacity="0.5"/><text x="1151.3" y="430" class="s11 b m ac">E2</text>
+<text x="1170.1" y="430" class="s12"> and 1 832 “timeout after</text>
+<text x="1070" y="449" class="s12">2000ms” log lines </text>
+<rect x="1177.1" y="438" width="20.8" height="15" rx="3" fill="#5B9BFF" fill-opacity="0.16" stroke="#5B9BFF" stroke-opacity="0.5"/><text x="1181.1" y="449" class="s11 b m ac">E4</text>
+<text x="1199.9" y="449" class="s12">. H1 holds.</text>
+<text x="1070" y="468" class="s12">Since your revert at 12:24:40, failed calls fell</text>
+<text x="1070" y="487" class="s12">to 0.4% (B 0.2%). Checking retry backlog</text>
+<text x="1310" y="487" class="s13 ac">▍</text>
+<line x1="1070" y1="504" x2="1414" y2="504" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="1070" y="518" class="s11 sb mu">Tool calls</text>
+<text x="1070" y="536" class="s12" fill="#2FB59A">✓</text><text x="1086" y="536" class="s11 m mu">change_feed.get(payments, 12:10–12:25)</text><text x="1414" y="536" class="s11 m mu" text-anchor="end">84 ms</text>
+<text x="1070" y="554" class="s12" fill="#2FB59A">✓</text><text x="1086" y="554" class="s11 m mu">traceql {span.status=error} | quantile</text><text x="1414" y="554" class="s11 m mu" text-anchor="end">0.6 s</text>
+<text x="1070" y="572" class="s12" fill="#2FB59A">✓</text><text x="1086" y="572" class="s11 m mu">logs.patterns(payments, NEW)</text><text x="1414" y="572" class="s11 m mu" text-anchor="end">0.4 s</text>
+<text x="1070" y="590" class="s12" fill="#5B9BFF">⟳</text><text x="1086" y="590" class="s11 m mu">compare(E3, −7d) · retry backlog</text><text x="1414" y="590" class="s11 m mu" text-anchor="end">…</text>
+<rect x="1070" y="618" width="72.7" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="1078" y="633" class="s11" fill="#5B9BFF">Show me ⟶</text>
+<rect x="1148.7" y="618" width="148.3" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="1156.7" y="633" class="s11">Draft guardrail alert</text>
+<rect x="1303" y="618" width="110.5" height="22" rx="4" fill="#191D24" stroke="#FFFFFF24"/><text x="1311" y="633" class="s11">Challenge this…</text>
+<circle cx="1076" cy="664" r="8" fill="#C9A36B" stroke="#12151A" stroke-width="2"/><text x="1076" y="668" class="s11 b" text-anchor="middle" fill="#0B0D10">A</text>
+<text x="1090" y="668" class="s11 mu">@ana is asking ✦ for an exec update…</text>
+<rect x="1062" y="796" width="360" height="46" rx="6" fill="#191D24" stroke="#5B9BFF66"/>
+<text x="1074" y="823" class="s13 ac">✦</text><text x="1092" y="823" class="s12 di">Ask about INV-2041, or press . on a selection</text>
+<text x="1410" y="823" class="s12 m mu" text-anchor="end">↵</text>
+</g>
+<g id="time-ribbon">
+<rect x="0" y="860" width="1440" height="40" rx="0" fill="#12151A"/>
+<line x1="0" y1="860" x2="1440" y2="860" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="14" y="885" class="s11 mu">◀◀</text><text x="40" y="885" class="s12 mu">▶</text>
+<rect x="58" y="870" width="52" height="20" rx="10" fill="#2FB59A22" stroke="#2FB59A66"/><circle cx="69" cy="880" r="3.5" fill="#2FB59A"/><text x="78" y="884" class="s11 b ok">LIVE</text>
+<line x1="118" y1="868" x2="118" y2="892" stroke="#FFFFFF14" stroke-width="1"/>
+<rect x="124" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="131" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="137.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="144.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="151.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="158.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="165.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="172.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="179.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="186.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="193.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="200.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="207.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="214.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="221.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="228.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="235.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="242.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="249.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="256.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="263.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="270.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="277.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="284.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="291.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="298.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="305.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="312.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="319.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="326.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="333.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="340.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="347.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="354.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="361.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="368.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="375.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="382.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="389.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="396" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="403" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="410" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="416.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="423.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="430.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="437.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="444.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="451.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="458.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="465.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="472.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="479.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="486.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="493.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="500.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="507.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="514.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="521.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="528.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="535.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="542.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="549.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="556.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="563.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="570.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="577.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="584.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="591.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="598.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="605.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="612.2" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="619.2" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="626.2" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="633.2" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="640.1" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="647.1" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="654.1" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="661.1" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="668" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="675" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="682" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="689" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="695.9" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="702.9" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="709.9" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="716.9" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="723.9" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="730.8" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="737.8" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="744.8" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="751.8" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="758.7" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="765.7" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="772.7" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="779.6" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="786.6" y="873.4" width="6" height="16.6" fill="#E0457B" fill-opacity="0.8"/>
+<rect x="793.6" y="874.4" width="6" height="15.6" fill="#E0457B" fill-opacity="0.7"/>
+<rect x="800.6" y="875.3" width="6" height="14.7" fill="#E0457B" fill-opacity="0.7"/>
+<rect x="807.5" y="876.3" width="6" height="13.7" fill="#E0457B" fill-opacity="0.6"/>
+<rect x="814.5" y="877.2" width="6" height="12.8" fill="#E0457B" fill-opacity="0.6"/>
+<rect x="821.5" y="878.2" width="6" height="11.8" fill="#E8923A" fill-opacity="0.6"/>
+<rect x="828.5" y="879.2" width="6" height="10.8" fill="#E8923A" fill-opacity="0.6"/>
+<rect x="835.4" y="880.1" width="6" height="9.9" fill="#E8923A" fill-opacity="0.6"/>
+<rect x="842.4" y="881.1" width="6" height="8.9" fill="#8A919C" fill-opacity="0.4"/>
+<rect x="849.4" y="882" width="6" height="8" fill="#8A919C" fill-opacity="0.4"/>
+<rect x="856.4" y="883" width="6" height="7" fill="#8A919C" fill-opacity="0.4"/>
+<rect x="863.3" y="884" width="6" height="6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="870.3" y="884.9" width="6" height="5.1" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="877.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="884.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="891.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="898.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="905.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="912.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="919.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="926.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="933.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="940.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="947" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="954" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="961" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="968" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="974.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="981.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="988.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="995.9" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1002.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1009.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1016.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1023.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1030.8" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1037.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1044.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1051.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1058.7" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1065.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1072.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1079.6" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1086.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1093.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1100.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1107.5" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1114.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1121.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1128.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1135.4" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1142.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1149.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1156.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1163.3" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1170.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1177.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1184.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1191.2" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1198.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1205.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1212.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1219.1" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1226" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="1233" y="885.4" width="6" height="4.6" fill="#8A919C" fill-opacity="0.3"/>
+<rect x="548.1" y="865" width="680.8" height="30" rx="3" fill="#5B9BFF" fill-opacity="0.08" stroke="#5B9BFF" stroke-opacity="0.55"/>
+<line x1="548.1" y1="865" x2="548.1" y2="895" stroke="#5B9BFF" stroke-width="2"/><line x1="1228.8" y1="865" x2="1228.8" y2="895" stroke="#5B9BFF" stroke-width="2"/>
+<line x1="615" y1="866" x2="615" y2="891" stroke="#E6E8EB" stroke-width="1" stroke-opacity="0.6"/>
+<text x="618" y="874" class="s11" fill="#E6E8EB">⚙</text>
+<line x1="631.8" y1="866" x2="631.8" y2="891" stroke="#8A919C" stroke-width="1" stroke-opacity="0.6"/>
+<text x="634.8" y="874" class="s11" fill="#8A919C">◆</text>
+<line x1="715.5" y1="866" x2="715.5" y2="891" stroke="#E0457B" stroke-width="1" stroke-opacity="0.6"/>
+<text x="718.5" y="874" class="s11" fill="#E0457B">⚠ 12:22</text>
+<line x1="782.4" y1="866" x2="782.4" y2="891" stroke="#2FB59A" stroke-width="1" stroke-opacity="0.6"/>
+<text x="785.4" y="874" class="s11" fill="#2FB59A">↺ 12:24</text>
+<line x1="1223.3" y1="863" x2="1223.3" y2="897" stroke="#E6E8EB" stroke-width="1"/>
+<line x1="1248" y1="868" x2="1248" y2="892" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="1260" y="885" class="s12 m">12:03–12:38</text>
+<text x="1428" y="885" class="s11 mu" text-anchor="end">vs ⟲ −7d ▾</text>
+</g>
+<g id="callouts">
+<path d="M480,170 L500,186" class="co"/><circle cx="500" cy="186" r="3" fill="#5B9BFF"/><circle cx="480" cy="170" r="11" fill="#5B9BFF" stroke="#0B0D10" stroke-width="2.0"/><text x="480" y="174.2" class="b" text-anchor="middle" fill="#0B0D10" font-size="12">1</text><rect x="495" y="160" width="245.7" height="20" rx="4" fill="#0E1A2E" stroke="#5B9BFF" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="503" y="174" class="sb" fill="#BFD6FF" font-size="11">Draw-to-ask ink, anchored to live E3</text>
+<path d="M1030,494 L1008,452" class="co"/><circle cx="1008" cy="452" r="3" fill="#5B9BFF"/><circle cx="1030" cy="494" r="11" fill="#5B9BFF" stroke="#0B0D10" stroke-width="2.0"/><text x="1030" y="498.2" class="b" text-anchor="middle" fill="#0B0D10" font-size="12">2</text><rect x="814" y="484" width="201" height="20" rx="4" fill="#0E1A2E" stroke="#5B9BFF" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="822" y="498" class="sb" fill="#BFD6FF" font-size="11">Every row re-runs: then ⇄ now</text>
+<path d="M800,530 L760,652" class="co"/><circle cx="760" cy="652" r="3" fill="#5B9BFF"/><circle cx="800" cy="530" r="11" fill="#5B9BFF" stroke="#0B0D10" stroke-width="2.0"/><text x="800" y="534.2" class="b" text-anchor="middle" fill="#0B0D10" font-size="12">3</text><rect x="815" y="520" width="220.2" height="20" rx="4" fill="#0E1A2E" stroke="#5B9BFF" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="823" y="534" class="sb" fill="#BFD6FF" font-size="11">Rejected branches kept, dashed ✖</text>
+<path d="M1080,720 L1192,444" class="co"/><circle cx="1192" cy="444" r="3" fill="#5B9BFF"/><circle cx="1080" cy="720" r="11" fill="#5B9BFF" stroke="#0B0D10" stroke-width="2.0"/><text x="1080" y="724.2" class="b" text-anchor="middle" fill="#0B0D10" font-size="12">4</text><rect x="1095" y="710" width="284" height="20" rx="4" fill="#0E1A2E" stroke="#5B9BFF" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="1103" y="724" class="sb" fill="#BFD6FF" font-size="11">Streamed answer: every claim cites E-items</text>
+<path d="M898,114 L1032,76" class="co"/><circle cx="1032" cy="76" r="3" fill="#5B9BFF"/><circle cx="898" cy="114" r="11" fill="#5B9BFF" stroke="#0B0D10" stroke-width="2.0"/><text x="898" y="118.2" class="b" text-anchor="middle" fill="#0B0D10" font-size="12">5</text><rect x="630.9" y="104" width="252.1" height="20" rx="4" fill="#0E1A2E" stroke="#5B9BFF" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="638.9" y="118" class="sb" fill="#BFD6FF" font-size="11">Presence, live cursors, follow camera</text>
+</g>
+</svg>
