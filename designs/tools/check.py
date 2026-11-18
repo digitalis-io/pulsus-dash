@@ -13,12 +13,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AREAS = {
     "01-": "PRN", "01a-": "AUD", "02-": "IA", "03-": "INT", "04-": "SRF", "05-": "VIZ",
     "06-": "AI", "07-": "ALR", "08-": "VL", "09-": "PRF", "11-": "ENT", "13-": "SCN", "15-": "EST",
+    "16-": "INF",
 }
 REQ_HEAD = re.compile(r"^#### ((?:[A-Z]{2,3})-\d{3}) — (.+)$")
 META = re.compile(r"^\*\*(MUST|SHOULD|MAY)\*\* · (M-UI\d) · (.+)$")
 TECH_RULE = re.compile(r"^#### (T\d\d-\d{3}) — (.+)$")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
-REQ_REF = re.compile(r"\b((?:PRN|AUD|IA|INT|SRF|VIZ|AI|ALR|VL|PRF|ENT|SCN|EST)-\d{3})\b")
+REQ_REF = re.compile(r"\b((?:PRN|AUD|IA|INT|SRF|VIZ|AI|ALR|VL|PRF|ENT|SCN|EST|INF)-\d{3})\b")
 WITHDRAWN = "Withdrawn"
 
 

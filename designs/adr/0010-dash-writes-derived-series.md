@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Rejected (2026-11-18, product owner) — superseded by [ADR-0012](0012-derived-state-in-postgres.md) |
 | **Source** | T12, T13, T16 (2026-11-18) |
-| **See** | T13 (draft), T12 (draft), [T16](../technical/T16-alert-evaluator.md) |
+| **See** | T13 (draft), [T12](../technical/T12-entity-catalogue.md), [T16](../technical/T16-alert-evaluator.md) |
 
 ## Context
 

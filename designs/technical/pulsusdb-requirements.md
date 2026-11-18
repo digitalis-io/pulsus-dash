@@ -37,7 +37,7 @@
 | Limit (verified on `origin/main`) | Dash handling |
 |---|---|
 | `service_graph`: no `q`/filter, no `step`, capped at **1 000 edges** (`SERVICE_GRAPH_MAX_EDGES`) | Atlas at 10k services / 50k edges needs partitioning; see **R5** (amended) |
-| Metrics: **resource attributes are not promoted onto series** (`service.*` → `job`/`instance`, the rest → `target_info`) | Entity derivation joins via `target_info` (T12 (draft)); data scopes on resource attributes can't be enforced on metrics by rewriting, so they fail closed (T10 (draft)); see **R16** |
+| Metrics: **resource attributes are not promoted onto series** (`service.*` → `job`/`instance`, the rest → `target_info`) | Entity derivation joins via `target_info` ([T12](T12-entity-catalogue.md)); data scopes on resource attributes can't be enforced on metrics by rewriting, so they fail closed (T10 (draft)); see **R16** |
 | TraceQL structural operators work in search but **not in metrics queries** | Error-origination fallback is sampled search only; see **R7** |
 | TraceQL metrics `by()` capped at 1 000 series; trace tag values 1 000 per request | Planner partitions by service set ([T07](T07-scene-query-planner.md)) |
 | `query_range` ≤ 11 000 intervals (TraceQL metrics 10 000); LogQL metric results > 500 series are an error | Planner splits ranges and groups ([T07](T07-scene-query-planner.md)) |
@@ -98,7 +98,7 @@ It should come from the series/stream/resource indexes, never from raw rows. **C
 independent value lists:** the co-occurrence of `service.name` with `k8s.pod.name` / `k8s.node.name` /
 `host.name` is how Dash derives the service ⇄ pod ⇄ node "runs-on" links ([15 §1](../product/15-estate-navigation.md)).
 
-**Dash fallback:** label-values calls can't give combinations, so the BFF uses the **series** endpoints instead: logs `/series` per cluster, metrics `/series` on `target_info`, scoped trace tag-values, `service_graph`, and profiles series. That is about 205 calls per 60 s cycle at 1M containers, with quiet clusters refreshed every 10 min (T12 (draft)).
+**Dash fallback:** label-values calls can't give combinations, so the BFF uses the **series** endpoints instead: logs `/series` per cluster, metrics `/series` on `target_info`, scoped trace tag-values, `service_graph`, and profiles series. That is about 205 calls per 60 s cycle at 1M containers, with quiet clusters refreshed every 10 min ([T12](T12-entity-catalogue.md)).
 
 ### R4 (P1) — Entity health rollups ("summary pyramids")
 
@@ -243,7 +243,7 @@ Dash can move evaluation into PulsusDB.
 **Why:** metric series carry `job`/`instance` only, with other resource attributes on `target_info`.
 Data scopes such as `deployment.environment=prod` or `k8s.namespace.name=payments` therefore cannot be
 enforced on metrics by query rewriting, and entity derivation needs a join
-(T10 (draft), T12 (draft)).
+(T10 (draft), [T12](T12-entity-catalogue.md)).
 
 **Ask:** either (a) a configurable list of resource attributes promoted onto metric series at ingest,
 or (b) server-side matching of selectors against `target_info` attributes (an implicit join), usable

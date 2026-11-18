@@ -26,7 +26,7 @@ On top of that, the product needs:
 - **per-org retention** of high-volume derived state, enforced by dropping partitions, with no
   Postgres extension required.
 
-This doc is the **authoritative schema**. [T16](T16-alert-evaluator.md), T12 (draft), T13 (draft),
+This doc is the **authoritative schema**. [T16](T16-alert-evaluator.md), [T12](T12-entity-catalogue.md), T13 (draft),
 T15 (draft) and T17 (draft) store into tables defined here, and may refine columns within the
 conventions of §4.0.
 
@@ -364,7 +364,7 @@ deleted except by the org's version-retention policy; restore MUST create a new 
 - Retention: all versions kept by default, or an org policy such as "keep 100 or 1 year, whichever
   is more", pruned by the maintenance job (head and tagged versions are never pruned).
 
-### 4.4 Entities, views, layout (store for T12 (draft), T14 (draft))
+### 4.4 Entities, views, layout (store for [T12](T12-entity-catalogue.md), T14 (draft))
 
 ```sql
 CREATE TABLE entity_schema (org_id uuid, version int, spec jsonb, PRIMARY KEY (org_id, version));  -- entity types, identity keys, hierarchy
@@ -374,11 +374,15 @@ CREATE TABLE entity_overrides (org_id uuid, entity_key text,          -- canonic
   display_name text, owner_team_id uuid, tier smallint, runbook_url text, attrs jsonb,
   PRIMARY KEY (org_id, entity_key));
 CREATE TABLE entities (org_id uuid, tenant_binding_id uuid, id uuid, kind text, ident text,
+  class text, provider text, native_type text, managed bool,          -- 16 Table 16-1 (T12)
   attrs_digest bytea, first_seen timestamptz, last_seen_day date NOT NULL, source text,
   PRIMARY KEY (org_id, last_seen_day, id)) PARTITION BY RANGE (last_seen_day);   -- daily, 30 d (EST-046)
 CREATE TABLE entity_edges (org_id uuid, from_id uuid, to_id uuid, rel text, first_seen timestamptz,
   last_seen_day date NOT NULL, PRIMARY KEY (org_id, last_seen_day, from_id, to_id, rel))
   PARTITION BY RANGE (last_seen_day);
+CREATE TABLE class_mappings (org_id uuid NOT NULL, provider text NOT NULL, native_type text NOT NULL,
+  class text NOT NULL, updated_by uuid NOT NULL, updated_at timestamptz NOT NULL,
+  PRIMARY KEY (org_id, provider, native_type));                        -- INF-003 overrides (T12)
 CREATE TABLE catalogue_snapshots (org_id uuid, tenant_binding_id uuid, seq bigint, fencing bigint,
   blob bytea, created_at timestamptz, PRIMARY KEY (org_id, tenant_binding_id, seq));   -- zstd, last 3 kept
 CREATE TABLE waypoints (org_id uuid, id uuid, owner_user_id uuid,
@@ -399,7 +403,7 @@ CREATE INDEX ON annotations (org_id, at);
   kept in the in-memory catalogue and the `catalogue_snapshots` blob, and `last_seen_day` is
   advanced at most once per day per row, so a row moves between daily partitions at most once a
   day. Partitions older than 30 days are dropped (EST-046; older history is reconstructed from
-  PulsusDB by T12 (draft)).
+  PulsusDB by [T12](T12-entity-catalogue.md)).
 - `layout_positions` holds per-org spatial memory for force layouts ([T02](T02-vis-engine.md)).
   Positions are **server-canonical**: the BFF layout job computes and writes them, and browsers
   write only explicit user pins (`layout:write`). T14 (draft) owns and may refine this table,
@@ -954,7 +958,7 @@ CREATE INDEX ON anomaly_baselines (org_id, entity_id, signal, valid_from);
 Changes that **Dash derives**: version transitions (R8 fallback), executed actions
 ([T18](T18-security.md) §4.7), detected new log patterns and error types, scaling and failover
 inferred from inventory. Changes that arrive as customer telemetry stay in PulsusDB and are only
-read. Both are merged by the change feed (T12 (draft)).
+read. Both are merged by the change feed ([T12](T12-entity-catalogue.md)).
 
 ```sql
 CREATE TABLE entity_change_events (
@@ -1051,7 +1055,7 @@ A CI check (`cargo deny` ban + grep for `sqlx::query` outside `dash-store`) enfo
 ### 5.2 Cross-doc ownership
 
 - **T10 (draft)** owns the semantics of the identity tables (§4.2).
-- **T12 (draft)** owns `entity_schema`, `entity_overrides`, `entities`, `entity_edges`,
+- **[T12](T12-entity-catalogue.md)** owns `entity_schema`, `entity_overrides`, `entities`, `entity_edges`,
   `catalogue_snapshots`, `entity_change_events` and `label_mappings`.
 - **T13 (draft)** owns `pyramid_tiles` content and the anomaly model inside `anomaly_baselines`.
 - **T14 (draft)** owns `layout_positions`.

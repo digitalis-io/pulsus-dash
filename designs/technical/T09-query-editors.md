@@ -40,7 +40,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
   error text.
 - Keystroke → highlighted repaint within one frame. Diagnostics ≤ 50 ms after typing pauses.
 - Context-aware completion on incomplete input, from static grammar knowledge, the entity catalogue
-  (T12 (draft)) and live label and attribute values via the BFF.
+  ([T12](T12-entity-catalogue.md)) and live label and attribute values via the BFF.
 - Native-quality IME, selection, screen-reader and mobile-keyboard behaviour.
 - One editor core for the workbenches, alert rules, Board viewport editing, ⌘K and read-only
   snippets.
@@ -237,7 +237,7 @@ value lookups, so `{service="checkout", pod=~"|` only suggests checkout's pods.
 | Source | Contexts | Latency path |
 |---|---|---|
 | Static grammar tables (functions with signatures, aggregations, LogQL stages and parsers, TraceQL intrinsics and enum values, duration units, reserved virtual selectors `ALERTS`, `ALERTS_FOR_STATE`, `pulsus_anomaly_score`, `{source="pulsus-dash"}` with their labels) | all of the above | local, same frame |
-| Entity catalogue (T12 (draft) local index) | label values for entity-identity labels (`service`, `namespace`, `k8s.*`), mapped through the label ⇄ attribute table ([02 §5](../product/02-information-architecture.md), IA-027) | local |
+| Entity catalogue ([T12](T12-entity-catalogue.md) local index) | label values for entity-identity labels (`service`, `namespace`, `k8s.*`), mapped through the label ⇄ attribute table ([02 §5](../product/02-information-architecture.md), IA-027) | local |
 | Metric names + metadata (type, help, unit) + series count | `MetricName`, hover, metric browser (SRF-031) | BFF `/suggest` `metric_names` → PulsusDB `/api/v1/label/__name__/values`, `/api/v1/metadata`, `/api/v1/status/tsdb` |
 | Metric label names/values (with value counts) | `LabelName`, `LabelValue`, `GroupingLabel`, metric browser | `/api/v1/labels?match[]=`, `/api/v1/label/{name}/values?match[]=` |
 | Cardinality by label (SRF-032) | cardinality explorer | `/suggest` `cardinality` → `/api/v1/status/tsdb` and per-label `count by` over `/api/v1/series` (capped) |
@@ -473,7 +473,7 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 | [T03](T03-browser-runtime.md) | The `dash-editor.wasm` satellite in its own `editor` worker with its own memory, loaded on first focus of a query bar, and a message channel to the shell. `dash-lang` is the crate compiled into it. The highlight lexer `dash-qlex` is linked into `dash-shell.wasm` |
 | [T06](T06-bff-architecture.md) | Implements `/suggest`, with its metadata cache, cancellation and scope rewriting. `X-Pulsus-Explain` passthrough on run |
 | [T07](T07-scene-query-planner.md) | Virtual-source subset and join limits (§4.11) for the *virtual unsupported* diagnostics; plan explain view |
-| T12 (draft) | A local catalogue index exposing entity identity values per label/attribute name, and the label ⇄ attribute map |
+| [T12](T12-entity-catalogue.md) | A local catalogue index exposing entity identity values per label/attribute name, and the label ⇄ attribute map |
 | T15 (draft) | `POST /api/dash/v1/ai/query/{explain,generate}`, which returns spans or text and records an audit entry |
 | [T08](T08-dom-component-kit.md) | Textarea styling tokens, the dock host, the undo key routing, the keymap context `TextInput(QueryEditor)`, and kit form controls for the builder |
 

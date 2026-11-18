@@ -62,7 +62,7 @@ This document fixes:
 | [SRF-001](../product/04-surfaces.md#srf-001--every-surface-carries-the-shared-chrome) | §4.3 (shell always mounted; Wall exception) | `e2e:chrome-every-surface`: each surface of Table 4-1 available at the build shows the top bar (and Ribbon for spaces); Wall mode shows neither |
 | [IA-021](../product/02-information-architecture.md#ia-021--no-left-navigation-sidebar) | §4.3 (logo menu), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: no left sidebar; each room opens by ⌘K, logo menu and its `g` chord |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §4.2 (`AppState.context`) | `unit:reducer-context`: every Context member change emits `ContextChanged` to all subscribed slices |
-| [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.2, §4.3 (Context in `Route` and pivots) | `e2e:pivot-keeps-context` (T07/T12 (draft) co-own the translation) |
+| [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.2, §4.3 (Context in `Route` and pivots) | `e2e:pivot-keeps-context` (T07/[T12](T12-entity-catalogue.md) co-own the translation) |
 | [IA-022](../product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view) | §4.3 (`Route` codec), T08-005 | `prop:route-roundtrip` (`parse(print(r)) == r`, fuzzed) and `e2e:deep-link-fresh-session` for each URL pattern |
 | [IA-023](../product/02-information-architecture.md#ia-023--shared-links-pin-absolute-time) | §4.4 (date-time picker "copy link"), T08-015 | `e2e:copy-link-absolute`: "last 1 h" at 13:03 yields absolute 12:03–13:03; "keep relative" yields `now-1h` |
 | [IA-024](../product/02-information-architecture.md#ia-024--compact-camera-encoding) | §4.3 (`CamCode`), T08-006 | `prop:camcode`: every camera mode encodes to ≤ 64 chars and decodes to a pose within 1 px |
@@ -113,7 +113,7 @@ This document fixes:
 | [VL-018](../product/08-visual-language.md#vl-018--floating-dockable-panels) | §4.4 (dock host) | `e2e:dock-persist`: docking the Inspector left and floating the query editor persists after reload |
 | [VIZ-040](../product/05-visualisation-catalogue.md#viz-040--table-cell-types) | §4.4.1 (`CellKind`) | `golden:table-cells`: one fixture per cell type of Table 5-7 |
 | [VIZ-041](../product/05-visualisation-catalogue.md#viz-041--table-interactions) | §4.4.1 (sort, filter, group, footer, copy, export) | `e2e:table-interactions-5k` |
-| [EST-032](../product/15-estate-navigation.md#est-032--explorer-is-the-accessible-equivalent) | §4.5 (Explorer is the mirror target) | `e2e:explorer-keyboard-actions` (T12 (draft) co-owns Explorer content) |
+| [EST-032](../product/15-estate-navigation.md#est-032--explorer-is-the-accessible-equivalent) | §4.5 (Explorer is the mirror target) | `e2e:explorer-keyboard-actions` ([T12](T12-entity-catalogue.md) co-owns Explorer content) |
 | [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) | §4.5 (`A11ySummary`) | `a11y:sr-summary`: the checkout p99 viewport exposes the metric, entity, change, onset, current value and baseline ratio |
 | [VL-009](../product/08-visual-language.md#vl-009--accessible-contrast-in-both-themes) | §4.7, §10 | `a11y:contrast-both-themes` and the M-UI6 external audit |
 
@@ -289,7 +289,7 @@ pixel at the same viewport size.
 | Component | Design | ARIA pattern |
 |---|---|---|
 | **Table** (≤ 10k rows) | §4.4.1 | `grid` (interactive) or `table` (read-only) |
-| **Tree** (virtualised) | Flattened visible-node index over a lazy `TreeModel`. Expand or collapse is O(k) for k revealed rows; children load asynchronously from the catalogue (T12 (draft)) with a skeleton row. Re-rootable by ownership dimension ([15](../product/15-estate-navigation.md)). Target: 100k nodes, 1M via lazy load | `treegrid` |
+| **Tree** (virtualised) | Flattened visible-node index over a lazy `TreeModel`. Expand or collapse is O(k) for k revealed rows; children load asynchronously from the catalogue ([T12](T12-entity-catalogue.md)) with a skeleton row. Re-rootable by ownership dimension ([15](../product/15-estate-navigation.md)). Target: 100k nodes, 1M via lazy load | `treegrid` |
 | **Forms & validation** | `FormModel<T>` with `FieldSpec { id, label_key, kind, validators, async_validator }`. Sync validators run on input; async ones (uniqueness, query validity via T09, datasource connectivity via T06) are debounced 250 ms and cancellable. Server errors map to fields by JSON pointer from the T06 error envelope. An error summary appears on submit | native form controls |
 | **Date-time / range picker** | Absolute, relative (`now-1h`, `-7d`, `now/d`) and "before deploy ◆" anchors. The expression grammar is in `dash-state` so the Time Ribbon and URL share it. A tz-aware calendar grid uses `chrono-tz` (lazy, shared with [T02](T02-vis-engine.md)). Quick ranges, keyboard date entry, and "Copy link" with "keep relative" (§4.4.4) | `dialog` + `grid` |
 | **Select / combobox** | ARIA 1.2 combobox with async options, a virtualised listbox (10k options), multi-select pills and creatable values. Fuzzy matching uses `nucleo-matcher`, shared with ⌘K (MPL-2.0: cargo-deny allow-list, see [T18](T18-security.md)) | `combobox` + `listbox` |

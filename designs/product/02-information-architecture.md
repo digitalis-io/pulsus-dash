@@ -443,7 +443,7 @@ changes the translation on the next pivot.
    store. Under D2, derived change events, alert history and state, baselines and anomaly scores are
    in PostgreSQL and never written to PulsusDB (IA-001).
 2. **Entity catalogue cache.** The draft said "derived (cached catalogue)" without a location. It is
-   cached in PostgreSQL (detailed in T12 (draft)).
+   cached in PostgreSQL (detailed in [T12](../technical/T12-entity-catalogue.md)).
 3. **Investigation snapshot payloads.** The draft put them in "object store". Object storage is
    optional ([ADR-0009](../adr/0009-optional-object-storage.md), Proposed); without it, payloads are
    stored in PostgreSQL.

@@ -668,7 +668,7 @@ action is listed.
 
 | Primitive | Description | Where it comes from |
 |---|---|---|
-| Entity graph | Entities, hierarchy, dependency edges, host placement | PulsusDB service graph (`/api/traces/v1/service_graph`); entity catalogue to build (T12 (draft), R3, R5) |
+| Entity graph | Entities, hierarchy, dependency edges, host placement | PulsusDB service graph (`/api/traces/v1/service_graph`); entity catalogue to build ([T12](../technical/T12-entity-catalogue.md), R3, R5) |
 | Change feed | Version transitions, config / flag / deploy events, new patterns | PulsusDB patterns (`/api/logs/v1/patterns`); version-transition detection (R8); change events stored in Postgres and served as `{source="pulsus-dash"}` events ([ADR-0012](../adr/0012-derived-state-in-postgres.md)) |
 | Compare (selection vs baseline) | Attribute distribution diff ranked by significance, for spans / logs / metric labels | TraceQL `compare()` for traces; logs and metric labels per R6 |
 | Baselines | Seasonality-aware expected ranges per entity health signal | Dash background job; baselines and anomaly scores stored in Postgres (5-minute resolution, 30-day retention), served as `pulsus_anomaly_score` ([ADR-0012](../adr/0012-derived-state-in-postgres.md)) |

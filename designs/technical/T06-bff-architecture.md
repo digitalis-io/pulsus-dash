@@ -84,7 +84,7 @@ needs, and the external API surface. Two components get their own documents: the
 | [ENT-006](../product/11-enterprise.md#ent-006--scoped-users-see-no-out-of-scope-data) | §4.1 (`RequestCtx.scope`), §8, T06-002 | `prop:scope-proof`: every outbound PulsusDB request in the fuzz corpus carries a `ScopeProof`; `itest:scope-paths` (T10 (draft) co-owns) |
 | [AI-048](../product/06-ai-copilot.md#ai-048--mcp-server) | §5.1 (`/mcp` mount), §4.10 (ExternalAgent class), §8 | `itest:mcp-scoped-budgeted`: an MCP call with a team-scoped token returns only in-scope entities, is charged to the ExternalAgent budget and is audited |
 | [PRF-013](../product/09-performance-contract.md#prf-013--rca-stage-1-ready) | §4.6 (stage-1 job scheduling), §7 | `load:rca-stage1-lag`: `dash_job_lag_seconds{job="rca1"}` p99 ≤ 1 s on the replay corpus (T15 (draft) co-owns the 10 s target) |
-| [EST-046](../product/15-estate-navigation.md#est-046--entity-graph-cache-and-ephemeral-history) | §4.6 (catalogue refresh job, 60 s) | `itest:catalogue-refresh-60s`: a new seeded pod appears in the snapshot within 60 s (T12 (draft) co-owns) |
+| [EST-046](../product/15-estate-navigation.md#est-046--entity-graph-cache-and-ephemeral-history) | §4.6 (catalogue refresh job, 60 s) | `itest:catalogue-refresh-60s`: a new seeded pod appears in the snapshot within 60 s ([T12](T12-entity-catalogue.md) co-owns) |
 
 ## 4. Design
 
@@ -111,9 +111,9 @@ server/
 │  │                          compare/diff kernels, virtual-source PromQL and BFF joins
 │  ├─ pulsus-pyramid ⇄        pyramid tile format + sketch (T13 (draft))
 │  ├─ pulsus-wire ⇄           Arrow schemas + frame codec (owned by T04)
-│  ├─ dash-catalogue          entity catalogue + graph service (T12 (draft))
+│  ├─ dash-catalogue          entity catalogue + graph service ([T12](T12-entity-catalogue.md))
 │  ├─ dash-changefeed         version transitions (R8 fallback), config/deploy events, new patterns
-│  ├─ dash-health             baselines, anomaly sweep, health state (T12 (draft)) + fallback pyramid
+│  ├─ dash-health             baselines, anomaly sweep, health state ([T12](T12-entity-catalogue.md)) + fallback pyramid
 │  │                          builder (R4 absent; tiles stored in Postgres, T07 §4.12)
 │  ├─ dash-compare            Universal Compare server side (TraceQL compare(), R6/R9 fallbacks)
 │  ├─ dash-alerting           evaluator (T16)
@@ -649,8 +649,8 @@ token's data scope applies.
 | `POST /api/dash/v1/suggest` | JSON | Editor completion and metadata: metric names, labels, values, detected fields, trace tags, cardinality ([T09](T09-query-editors.md)); scope-rewritten | T09 |
 | `POST /api/dash/v1/actions/{action}` | JSON | Audited action API (table action buttons, ack, silence) | T16, T08 |
 | `POST /api/dash/v1/export` | JSON request → CSV/Parquet stream | Table and viewport export | T08 |
-| `GET /api/dash/v1/entities`, `/entities/{ref}`, `/graph?scope=…` | JSON for small, Arrow for bulk (`Accept`) | Catalogue | T12 (draft) |
-| `GET /api/dash/v1/changes?from&to&entity=` | JSON or Arrow | Change feed | T12 (draft) |
+| `GET /api/dash/v1/entities`, `/entities/{ref}`, `/graph?scope=…` | JSON for small, Arrow for bulk (`Accept`) | Catalogue | [T12](T12-entity-catalogue.md) |
+| `GET /api/dash/v1/changes?from&to&entity=` | JSON or Arrow | Change feed | [T12](T12-entity-catalogue.md) |
 | `POST /api/dash/v1/plan` | Request JSON → **response Arrow IPC stream** (`application/vnd.apache.arrow.stream`) over HTTP/2 | One-shot scene plan (no WS: exports, server-rendered images, MCP) | Request: [T07](T07-scene-query-planner.md) §5.1; frames: T04 |
 | `GET /api/dash/v1/session` (upgrade) | **WebSocket**, binary frames | Long-lived scene session: plan/replan/cancel/approach hints, live updates, tail relay, presence (T17 (draft)) | Messages: T07 §5.1; framing: T04 |
 | `GET /api/dash/v1/pyramids/{id}/tiles/{level}/{tile}` | Arrow IPC, `ETag`, immutable `Cache-Control` | Pyramid tiles (from PulsusDB rollups, or from Postgres fallback tiles) | T13 (draft) |
@@ -678,7 +678,7 @@ MUST NOT make replicas unready, so alert state, silences and investigations stay
 Every endpoint in §4.3 is documented in the PulsusDB API reference (`docs/api.md` §2–§6, checked
 2026-11-18). Fallbacks for [R1](pulsusdb-requirements.md) (JSON→Arrow), R10 (Completeness), R11
 (coalescing + tight `timeout`) and R12 (`ScopeRewriter`) live here. R2/R4/R5/R6/R9/R13/R14 are in
-[T07](T07-scene-query-planner.md) §4.12, and R3/R8 in T12 (draft).
+[T07](T07-scene-query-planner.md) §4.12, and R3/R8 in [T12](T12-entity-catalogue.md).
 
 ### 5.4 Internal API (api ⇄ worker/ai/evaluator)
 

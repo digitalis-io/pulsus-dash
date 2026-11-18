@@ -7,7 +7,7 @@
 | **Requirement area** | `EST` |
 | **Source draft** | plans/15-estate-navigation.md (not tracked) |
 | **Depends on** | [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [04 Surfaces](04-surfaces.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [09 Performance contract](09-performance-contract.md) · [11 Enterprise](11-enterprise.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) |
-| **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T06 BFF architecture](../technical/T06-bff-architecture.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) · [PulsusDB requirements](../technical/pulsusdb-requirements.md) · T12 entity catalogue (draft) · T13 local analytics engine (draft) · T14 layout engines (draft) |
+| **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T06 BFF architecture](../technical/T06-bff-architecture.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) · [PulsusDB requirements](../technical/pulsusdb-requirements.md) · [T12 Entity catalogue](../technical/T12-entity-catalogue.md) · T13 local analytics engine (draft) · T14 layout engines (draft) |
 | **Decisions** | [ADR-0012](../adr/0012-derived-state-in-postgres.md) (D2) · assumption A1 · open decision O1, [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [04-segments-matrix](../mockups/04-segments-matrix.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [23-semantic-zoom-flight](../mockups/23-semantic-zoom-flight.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
@@ -110,7 +110,8 @@ crossing chip reads "runs on 14 pods / 6 nodes" and the pod set matches the inve
 #### EST-003 — Entity kinds on the landscape
 **MUST** · M-UI3 · Platform, SRE, NOC
 
-The landscape MUST show these entity kinds:
+The landscape MUST show these entity kinds, each classed per the canonical taxonomy of
+[16](16-infrastructure-model.md) Table 16-1 and drawn with its shape family (INF-002):
 - compute: cluster, node, pod, container, VM/host, process, serverless function;
 - data: managed databases, caches, queues/streams, object storage;
 - network: load balancers / ingress / API gateways, CDN, DNS, NAT/egress;
@@ -376,6 +377,10 @@ floor slabs. Building colour, footprint and height MUST follow the active layer 
 default is health colour, footprint = allocatable CPU and height = CPU utilisation. In the 2D
 equivalent the same rules apply to grid cells (a node cell; pod cells when expanded; colour and size
 from the layer).
+
+Grouping by workload MUST switch the city to the Workload arrangement of
+[16](16-infrastructure-model.md) INF-015 (namespace sub-districts and workload towers over the
+ghosted node buildings).
 
 *Acceptance:* Given prod-eu-1, when the user groups by instance type, then buildings regroup into new
 blocks with an animated tween; `Enter` on a node cuts its building away to show its pod slabs; and
@@ -670,6 +675,8 @@ is for incidents; the others make the landscape a daily tool.
 | **Versions** | Categorical by chosen attribute (app version, k8s, kernel, runtime, OS image) | — | EOL / CVE-flagged versions (if a vulnerability feed is connected) | Platform, Security | M-UI5 |
 | **Coverage** | Signals present: metrics / logs / traces / profiles (4-part glyph) | — | "blind" marker, inventory-only entities | Platform, SRE leads | M-UI3 |
 | **Traffic** | Request rate | Request rate | Hot edges | SRE | M-UI3 |
+| **Network** | Network health (gateways, tunnels, boundaries); other entities dimmed | Throughput | ⨯ denied flows, tunnels down; enclosures, subnet tiles and boundary walls drawn ([16](16-infrastructure-model.md) §7) | Platform, Security | M-UI5 |
+| **Facilities** | Power and thermal state | Power draw | PDU load, inlet temperature haze ([16](16-infrastructure-model.md) INF-030) | Platform, NOC | M-UI6 |
 
 #### EST-040 — Layers shared across views
 **MUST** · M-UI3 · Platform, SRE, NOC
@@ -1189,6 +1196,7 @@ The globe MUST render 500 sites and 5 000 arcs with particles at ≥ 60 fps on r
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII diagrams replaced by region tables and SVG mockups; open questions E1–E5 resolved (below) |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: R4 reversed; EST-005, EST-006, EST-007, EST-008, EST-010, EST-011, EST-012, EST-015, EST-016, EST-017, EST-018, EST-019, EST-021, EST-027, EST-033, EST-037 edited in place; §3.4, Tables 15-9 and 15-10 and §12a (EST-055 to EST-064) added; Tables 15-2 and 15-4 updated; mockups 19–24 referenced (R13–R16) |
 | 1.0-rc3 | 2026-11-18 | Earth globe specified (owner question): §12a.1, EST-065 to EST-073 |
+| 1.0-rc4 | 2026-11-18 | Infrastructure model split out to [16](16-infrastructure-model.md) (owner brief: all major clouds, Kubernetes and generic infrastructure in 3D): EST-003 and EST-016 point to it; Network and Facilities layers added to Table 15-5 |
 
 ## Resolved during formalisation
 

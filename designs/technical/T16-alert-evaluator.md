@@ -86,7 +86,7 @@ SCN-007).
 | [ALR-028](../product/07-alerting.md#alr-028--ranked-list-and-treemap-modes) | §4.15 care-score per incident in the feed | `e2e:ranked-list-care-order` |
 | [ALR-029](../product/07-alerting.md#alr-029--silence-or-maintain-from-a-cell) | §5.1 silence/maintenance drafts from matchers | `e2e:silence-from-cell` |
 | [ALR-030](../product/07-alerting.md#alr-030--infra-heat-grid) | §4.15 Arrow snapshot of instance states per entity | `e2e:infra-heat-grid` |
-| [ALR-031](../product/07-alerting.md#alr-031--workload-targeted-alerts-outline-their-pods) | §4.15 `target_entity` with workload → pod expansion (T12 (draft)) | `e2e:workload-alert-outline` |
+| [ALR-031](../product/07-alerting.md#alr-031--workload-targeted-alerts-outline-their-pods) | §4.15 `target_entity` with workload → pod expansion ([T12](T12-entity-catalogue.md)) | `e2e:workload-alert-outline` |
 | [ALR-032](../product/07-alerting.md#alr-032--infra-scale) | §4.15 100k-instance snapshot ≤ 8 MB Arrow, deltas after | `bench:alert-feed-100k` (with the T02 frame gate) |
 | [ALR-034](../product/07-alerting.md#alr-034--alert-layer-on-topology) | §4.6 incident membership and origin for hulls | `e2e:topology-incident-hull` |
 | [ALR-035](../product/07-alerting.md#alr-035--alert-layer-on-city) | §4.15 same aggregation feed for City | `e2e:city-alert-layer` |
@@ -188,14 +188,14 @@ pub enum RuleKind {
     (T16-008). Off by default.
 - **Entity-relative templates** compile, where possible, into **one vectorised query** grouped by
   the entity's identifying label (`sum by (job) (rate(http_server_errors[5m])) / sum by (job)(…) >
-  0.02` with `job=~` restricted to the selector's entities from T12 (draft) `selector_for`). Each
+  0.02` with `job=~` restricted to the selector's entities from [T12](T12-entity-catalogue.md) `selector_for`). Each
   resulting series maps back to an `EntityId`, which becomes the `entity_id` label. Per-entity
   overrides become a join against a threshold vector. New entities matching the selector are
   covered on the next `catalogue.diff`, with no rule change (ALR-002).
 - **Anomaly** rules are thresholds over the `pulsus_anomaly_score` virtual series (Postgres
   `anomaly_scores`, [T11](T11-postgres-schema.md) §4.13.3), resolved by the planner and never sent
   to PulsusDB, optionally weighted by impact. Severity by deviation × impact maps to SEV levels.
-- **Absence**: `absent_over_time` per entity selector, or T12 (draft) freshness (`last_seen`) for
+- **Absence**: `absent_over_time` per entity selector, or [T12](T12-entity-catalogue.md) freshness (`last_seen`) for
   entities without a natural metric; pipeline lag from collector metrics.
 - **Journey**: generated from the journey definition as a TraceQL-metrics ratio over the entry spans
   (`… | rate()` success over total) on the TraceQL metrics instant route.
@@ -475,7 +475,7 @@ pub struct Route {
 - **Inhibition rules** (source/target matchers + `equal`) as in Alertmanager; plus automatic
   inhibition of victims' pages within an incident when the route says "page origin only".
 - **Owner of origin** (ALR-073): `owner_of_origin: true` resolves the receiver at dispatch time from
-  the T12 (draft) owner team of the incident's origin entity (falling back to the alert's entity
+  the [T12](T12-entity-catalogue.md) owner team of the incident's origin entity (falling back to the alert's entity
   owner, then to the route's `receiver`), so an ownership change re-routes without editing the
   route.
 - **Silences** (ALR-077): matcher sets (or an entity selector, from a Segments cell or Infra
@@ -710,7 +710,7 @@ counter, the NOC wall and the mobile PWA render **one feed**: the live alert set
 - **Derived fields:** `health` per T16-005 and T16-003 (NoData/Error → Unknown); `stale_for` is the
   age of the last sample for NoData and keep-last instances (ALR-024 "stale 6 min");
   `target_entity` is the workload for workload-targeted rules, which the view expands to pods via
-  T12 (draft) (ALR-031); `notify_status` is the latest status per integration from
+  [T12](T12-entity-catalogue.md) (ALR-031); `notify_status` is the latest status per integration from
   `notification_deliveries`; `care_score` follows [01a](../product/01a-audiences-and-perspectives.md)
   ordering and drives ranked lists and the NOC queue.
 - **Containers** (region, cluster, segment cell, super-node, district) are aggregated in the
@@ -766,7 +766,7 @@ computations are testable.
   root-cause category, origin, duration, impact, post-mortem and flight-recorder links.
 - **Noise report** (ALR-082, M-UI5): a monthly singleton job per team writes `noise_reports` with
   the eight sections of [07](../product/07-alerting.md) §9 (no-action rules, flapping rules, rules
-  that never fire, alerts without runbooks, uncovered tier-1 services from T12 (draft), failing
+  that never fire, alerts without runbooks, uncovered tier-1 services from [T12](T12-entity-catalogue.md), failing
   contact points, silences re-created ≥ 3 times with the same matchers, alerts-per-incident trend).
   **One-click fixes** (ALR-083) open the rule editor with the change prefilled and its
   before/after backtest (§4.5).
@@ -801,7 +801,7 @@ computations are testable.
 |---|---|---|
 | [T06](T06-bff-architecture.md) | Modules `dash-alerting` (evaluator, grouper), `dash-notify` (dispatcher, workers); lease primitive | T06 maps modules to roles; leases are Postgres-based either way |
 | [T07](T07-scene-query-planner.md) | Budget classes `alerting` (top priority) and `backtest` (interactive); virtual sources for `ALERTS`, `ALERTS_FOR_STATE`, `pulsus_anomaly_score`, `{source="pulsus-dash"}` | T07 implements the resolver over `HistoryRepo` with the §4.7 label contract |
-| T12 (draft) | `view`, `selector_for`, ownership, freshness, workload → pods | |
+| [T12](T12-entity-catalogue.md) | `view`, `selector_for`, ownership, freshness, workload → pods | |
 | T15 (draft) | `rca.stage1.ready`; stage-1 explained set used in grouping | Stage 1 < 5 s (AI-002) |
 | T17 (draft) | Incident timeline events (transitions, notifications, acks); Slack/Teams thread ids per incident | T17 owns channel mirroring |
 | [T02](T02-vis-engine.md) | Native headless renderer `render(spec, arrow) -> Png` | |

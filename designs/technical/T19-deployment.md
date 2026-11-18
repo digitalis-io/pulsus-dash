@@ -96,7 +96,7 @@ take a `dash-jobs` lease ([T06](T06-bff-architecture.md)).
 | `evaluator` | Rule evaluation shards ([T16](T16-alert-evaluator.md)) | Shard leases; N replicas, each holding ≥ 0 shards |
 | `notifier` | Routing, dispatch, delivery workers, heartbeat delivery | Horizontal (work queue in Postgres `FOR UPDATE SKIP LOCKED`) |
 | `ai` | Stage-1 causal engine, agent runs (T15 (draft)) | Horizontal; isolated so long agent runs don't share CPU with the API |
-| `worker` | Entity derivation (T12 (draft)); **derived-state jobs**: anomaly sweep and baselines, change-event derivation, fallback pyramid builder (T13 (draft), only when R4 is absent); partition maintenance, retention purges and class moves ([T11](T11-postgres-schema.md) §4.11); Git sync, audit export, import jobs | Singleton and per-tenant tasks via `dash-jobs` leases; may run on any replica |
+| `worker` | Entity derivation ([T12](T12-entity-catalogue.md)); **derived-state jobs**: anomaly sweep and baselines, change-event derivation, fallback pyramid builder (T13 (draft), only when R4 is absent); partition maintenance, retention purges and class moves ([T11](T11-postgres-schema.md) §4.11); Git sync, audit export, import jobs | Singleton and per-tenant tasks via `dash-jobs` leases; may run on any replica |
 
 **Static assets:**
 

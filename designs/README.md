@@ -36,7 +36,8 @@ never reused or renumbered. A removed requirement keeps its ID and is marked *Wi
 | `INT` | 03 Interaction model | | `PRF` | 09 Performance contract |
 | `SRF` | 04 Surfaces | | `ENT` | 11 Enterprise |
 | `VIZ` | 05 Visualisation catalogue | | `SCN` | 13 Core flow storyboard (acceptance scenarios) |
-| `EST` | 15 Estate navigation | | — | 12 Roadmap (milestones; no requirements) |
+| `EST` | 15 Estate navigation | | `INF` | 16 Infrastructure model |
+| — | 12 Roadmap (milestones; no requirements) | | | |
 
 Technical designs use `Tnn-NNN` for their own design rules (e.g. `T06-014`).
 
@@ -134,6 +135,7 @@ See the sections below. They are completed as documents are promoted.
 | 12 | [Roadmap](product/12-roadmap.md) | Review |
 | 13 | [Core flow storyboard](product/13-core-flow-storyboard.md) | Review |
 | 15 | [Estate navigation](product/15-estate-navigation.md) | Review |
+| 16 | [Infrastructure model: clouds, Kubernetes and generic components](product/16-infrastructure-model.md) | Review |
 
 ### Technical
 
@@ -149,6 +151,7 @@ See the sections below. They are completed as documents are promoted.
 | T08 | [DOM rooms & component kit](technical/T08-dom-component-kit.md) | Review |
 | T09 | [Query editors](technical/T09-query-editors.md) | Review |
 | T11 | [Postgres schema & config lifecycle](technical/T11-postgres-schema.md) | Review |
+| T12 | [Entity catalogue & graph service](technical/T12-entity-catalogue.md) | Review |
 | T16 | [Alert evaluator & notification service](technical/T16-alert-evaluator.md) | Review |
 | T18 | [Security](technical/T18-security.md) | Review |
 | T19 | [Deployment & operations](technical/T19-deployment.md) | Review |
@@ -156,7 +159,6 @@ See the sections below. They are completed as documents are promoted.
 
 **Not yet promoted:** these remain drafts in `plans/tech/`.
 - T10 auth & data scopes (blocked on O1);
-- T12 entity catalogue (depends on A1);
 - T13 local analytics engine;
 - T14 layout engines;
 - T15 AI/RCA/MCP;

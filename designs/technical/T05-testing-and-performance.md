@@ -215,6 +215,7 @@ any 8×8 block inside a text region exceeds 0.25. Goldens MUST change only in a 
 | `bench:frame-series-1e4` | M2 band + M1 outliers | pan/zoom loop | 10⁴ series |
 | `bench:frame-scatter-1e7` | M4 point (T1) / M10 density; M4 sprites (T2 leg) | brush + zoom | 10⁷ held; T2 sprites at 2–3 × 10⁶ visible |
 | `bench:globe-sites-arcs` | M11 globe mesh + M5 extruded sites + M6 great-circle arcs with particles | 10 s orbit, then dive to a region | 500 sites, 5 000 arcs; 60 fps median on (a), 45 fps p99 on (b) ([EST-073](../product/15-estate-navigation.md#est-073--globe-at-scale)) |
+| `bench:inf-mixed-estate` | M5 instanced shape families (building, cylinder, ribbon, vault, swarm, gate, enclosure, box) + labels | Fly from the globe to a workload tower and back on the mixed-estate fixture | 10k nodes, 200k pods, 20k VMs, 2 000 managed resources, 500 devices; EST-062 frame rates; ≤ 1 draw per shape family per viewport plus labels ([INF-032](../product/16-infrastructure-model.md#inf-032--mixed-estate-at-scale)) |
 | `bench:frame-gallery` | every gallery page | scripted pan/zoom (orbit for 3D) | the page's target volume |
 | (in `bench:frame-gallery`) | M3 rect (heatmap) | scroll | 10k × 200 cells |
 | (in `bench:frame-gallery`, M-UI2) | M3 + M8 flame | zoom into frame | 10⁵ frames |
@@ -541,6 +542,7 @@ the merge train), nightly (release blocker).
 | `golden:gallery` | Every gallery page × variants (§4.2), ꟻLIP rules; two seeded runs identical |
 | `golden:decimation-ref` | Decimated vs every-raw-point render, zero line-coverage diff |
 | `golden:greyscale` | State glyphs and axis-ownership glyphs distinguishable in greyscale |
+| `golden:inf-shape-grammar-greyscale` | Every class family's 3D shape and 2D glyph distinguishable by silhouette in greyscale ([INF-002](../product/16-infrastructure-model.md#inf-002--one-shape-grammar-per-class-family)) |
 | `golden:tier-parity` | WebGPU vs WebGL2 readback per spec (nightly) |
 | `golden:native-browser` | Chrome T1 readback vs native render, 100 specs incl. field configuration (nightly) |
 
@@ -608,6 +610,32 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 
 Instruction counts are used on PRs because wall-clock benchmarks on shared CI runners are too noisy
 to gate at 3 %.
+
+**Entity catalogue and infrastructure model ([T12](T12-entity-catalogue.md))**
+
+| Gate | Checks | Stage | Blocking |
+|---|---|---|---|
+| `golden:catalogue-graph-estates` | Derived entities, classes, shapes and relationships equal the committed graph per golden estate (IA-010, EST-001, EST-003) | merge | yes |
+| `itest:entity-schema-custom` | A custom non-Kubernetes schema drives catalogue and breadcrumb; new tenants get the default (IA-011) | merge | yes |
+| `itest:signal-row-entity-map` | An entity's logs, spans and profiles are found with zero configuration (IA-012) | merge | yes |
+| `itest:runs-on-cooccurrence` | Runs-on with first/last seen; crossing-chip counts; self-hosted software on its host (EST-002, EST-013, INF-031) | merge | yes |
+| `itest:connector-contract` | Inventory-only entities; read-only verification refuses write-capable credentials; no mutating call; failure marks stale (EST-004, INF-010) | merge | yes |
+| `itest:coverage-model` | Signal mask and blind marker; unmapped rows and cloud series; provider × family matrix equals graph counts (EST-041, INF-009, INF-033) | merge | yes |
+| `unit:mapping-pack-lint` | T12-009 over every embedded pack | merge | yes |
+| `unit:inf-class-shape-table` | `Class::shape()` equals [16](../product/16-infrastructure-model.md) Table 16-3; ≤ 24 families; shape independent of provider (INF-002, INF-004) | merge | yes |
+| `itest:inf-class-resolution` | One class per entity; class and family filters; unknown type → override → redrawn within one refresh; provider without a pack (INF-001, INF-003, INF-006) | merge | yes |
+| `itest:inf-cloud-placement` | aws / azure / gcp: hierarchy and terms, metric joins, headline metrics, managed services with segments, service locations (INF-005, INF-007, INF-008, INF-011) | merge | yes |
+| `itest:inf-k8s-object-model` | Table 12-3 from each source and both; pod status; ready endpoints; PVC chain; fleets (INF-013, INF-015, INF-017, INF-019, INF-020, INF-023) | merge | yes |
+| `itest:inf-k8s-distributions` | Five distributions modelled alike; distribution, version, control-plane health, "managed by provider" (INF-014, INF-021) | merge | yes |
+| `itest:inf-k8s-changes` | Rollout bands and phases, envelope and scaling limit, node events, Kubernetes events read in place (INF-016, INF-018, INF-022) | merge | yes |
+| `itest:inf-network-model` | Network tree, boundaries, gateways, links, flow aggregates, denied-flow events, reachability (INF-012, INF-024–INF-026) | merge | yes |
+| `itest:inf-onprem-model` | Hypervisors and VMs, SNMP devices and LLDP/CDP links, arrays and mounts, facilities (INF-027–INF-030) | merge | yes |
+| `prop:catalogue-diff` | `diff(apply(g, d))` is identity; ids stable under attribute order and re-harvest | merge | yes |
+| `prop:scoped-view-no-leak` | No response for a fuzzed scope contains a hidden id, name or attribute (T12-018) | merge | yes |
+| `itest:anomaly-sweep-quality` | Precision / recall on labelled seasonal series with injected shifts; scores only in Postgres | nightly | yes |
+| `bench:catalogue-cycle-1m` | 1M-container cycle within §7 | nightly | yes |
+| `bench:catalogue-mixed-estate-cycle` | Mixed-estate cycle within §7 (INF-032) | nightly | yes |
+| `bench:change-rank` | Onset ranking ≤ 20 ms | nightly | yes |
 
 ## 8. Security, tenancy & RBAC
 

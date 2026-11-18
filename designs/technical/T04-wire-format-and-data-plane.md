@@ -282,7 +282,7 @@ offsets, so each row is a ready M3 rect.
 Metadata: `dash.profile.type`, `dash.unit`, `total`, `max_self`, and for diffs `left_ticks` and
 `right_ticks`. Profile time series use `metric_matrix.grid/1` with `dash.result=profile_series`.
 
-**`entities/1`** (R3 / T12 (draft)), with **`entity_edges/1`**.
+**`entities/1`** (R3 / [T12](T12-entity-catalogue.md)), with **`entity_edges/1`**.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -294,6 +294,11 @@ Metadata: `dash.profile.type`, `dash.unit`, `total`, `max_self`, and for diffs `
 | `first_seen`, `last_seen` | `Timestamp(ms)` | |
 | `state` | `UInt8` | 0 OK, 1 Watch, 2 Degraded, 3 Failing, 4 Unknown ([08 §4](../product/08-visual-language.md#4-shape-and-redundancy-accessibility)) |
 | `score` | `Float32` | anomaly score |
+| `class` | `Dictionary(UInt8, Utf8)` nullable | canonical class ([16](../product/16-infrastructure-model.md) Table 16-1); null for hierarchy levels and services |
+| `shape_family` | `UInt8` nullable | one instanced draw per value per viewport ([T12](T12-entity-catalogue.md)) |
+| `shape_form` | `UInt8` nullable | sub-form within the family (instance parameter) |
+| `provider` | `Dictionary(UInt8, Utf8)` nullable | e.g. `aws`, `azure`, `gcp`, `on-prem` |
+| `flags` | `UInt8` | bitmask: managed, inventory-only, unknown type, restricted, gone, pending |
 
 Attributes for each entity go in a long-form `entity_attrs/1` part (`entity_id`, `key`, `value`).
 `entity_edges/1` holds `src UInt64`, `dst UInt64`, `rel UInt8` (calls, runs_on, contains),
@@ -468,7 +473,7 @@ violation MUST fail only that part, with an `internal` error and a RUM event.
 | `service_graph` | `/api/traces/v1/service_graph` | `entity_edges` | R5 → N windowed calls; edge cap per assumption A1 |
 | `profile_merge` / `profile_diff` | Connect `SelectMergeStacktraces` / `Diff` (`application/proto`) | `profile_flame(_diff)` | — |
 | `profile_series` | Connect `SelectSeries` | `metric_matrix.grid` | R1 |
-| `entities` | — | `entities`, `entity_edges` | R3 → label-values fan-out (T12 (draft)) |
+| `entities` | — | `entities`, `entity_edges` | R3 → label-values fan-out ([T12](T12-entity-catalogue.md)) |
 | `health_pyramid` | R4 rollups when available; otherwise Postgres fallback tiles (D2) | `health_pyramid` | R4 (T13 (draft)) |
 | `compare` | TraceQL `compare()`; paired counts for logs and metrics | `compare` | R6 |
 | `events` | Postgres (annotations, alert transitions, `{source="pulsus-dash"}`); PulsusDB change feed when R8 lands | `events` | R8 |

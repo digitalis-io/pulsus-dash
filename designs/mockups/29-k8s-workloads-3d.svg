@@ -1,0 +1,463 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Pulsus Dash — Infra view, Group by: workload — Kubernetes workloads of prod-eu-1 in 3D (INC-2041)</title>
+<desc id="d">Perspective 3D Workload arrangement of the Kubernetes cluster prod-eu-1 (Infra view, ⌥4, Group by: workload). Namespaces are districts on a glass cluster plateau: payments, checkout, catalog, data and kube-system. Each Deployment is a tower of stacked replica blocks, one block per pod. The checkout Deployment is mid-rollout from ReplicaSet revision 41 to 42 and is banded by revision: six Degraded rev 42 blocks with an accent outline on top of four muted rev 41 blocks, labelled rollout 6/10 with maxSurge 25 %, and above it a wireframe HPA envelope of ghost blocks up to 16 replicas at CPU 82 % against a 70 % target. The StatefulSet pg-orders shows ordinal blocks 0, 1 and 2 with dotted PVC anchor lines to volume discs under the plateau. The DaemonSets node-exporter and otel-agent are thin ribbons of tiny blocks along every node row. The CronJob nightly-reindex is a run of fading translucent blocks. Three Pending pods hover above payments in an Unscheduled cloud (0/42 nodes: Insufficient memory), one payments-api pod is Failing in CrashLoopBackOff after 14 OOMKilled restarts, and the Service payments-api is an arch gate with zero ready endpoints. An Ingress and a Gateway arc into ready checkout and catalog replicas. The managed control plane stands as a city hall at the plateau edge: apiserver, etcd and controller-manager OK, scheduler Watch on latency. Below the plateau the node floor is ghosted with runs-on threads from checkout blocks to their nodes. Docked 2D panels on the right follow the selected checkout Deployment: rollout ready versus desired per revision with the 12:19 config-change marker, restarts and OOM kills, and the Kubernetes event list from 12:19 to 12:31. Six numbered callouts explain the encoding.</desc>
+<style>
+text{font-family:Inter,system-ui,"DejaVu Sans",sans-serif;font-size:11px;fill:#E6E8EB;font-variant-numeric:tabular-nums}
+.m{font-family:"JetBrains Mono",ui-monospace,"DejaVu Sans Mono",monospace}
+.mu{fill:#8A919C}.dim{fill:#8A919C;opacity:.62}
+.s12{font-size:12px}.s13{font-size:13px}.s16{font-size:16px}.s20{font-size:20px}.s9{font-size:9px}.s10{font-size:10px}
+.b{font-weight:600}.e{text-anchor:end}.c{text-anchor:middle}
+.acc{fill:#5B9BFF}.fail{fill:#E0457B}.deg{fill:#E8923A}.watch{fill:#D9C84A}.ok{fill:#2FB59A}
+.hud{fill:#12151A;fill-opacity:.86;stroke:#FFFFFF14}
+.hud2{fill:#191D24;stroke:#FFFFFF14}
+.gl{letter-spacing:.5px}
+</style>
+<defs>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#6B7280" fill-opacity=".14"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6B7280" stroke-width="1.6" stroke-opacity=".6"/></pattern>
+<filter id="bl2" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="2"/></filter>
+<filter id="bl6" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="6"/></filter>
+<filter id="bl14" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="14"/></filter>
+<linearGradient id="haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A2230" stop-opacity=".35"/><stop offset=".38" stop-color="#121821" stop-opacity=".15"/><stop offset="1" stop-color="#0B0D10" stop-opacity="0"/></linearGradient>
+<radialGradient id="vig" cx=".42" cy=".55" r=".75"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".4"/></radialGradient>
+<linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7AA2D6" stop-opacity=".10"/><stop offset="1" stop-color="#5B9BFF" stop-opacity=".04"/></linearGradient>
+<radialGradient id="cloud" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#8A919C" stop-opacity=".30"/><stop offset="1" stop-color="#8A919C" stop-opacity="0"/></radialGradient>
+<clipPath id="scene"><rect x="0" y="32" width="1080" height="828"/></clipPath>
+<symbol id="g-ok" viewBox="-6 -6 12 12" overflow="visible"><circle r="4.5" fill="#2FB59A"/></symbol>
+<symbol id="g-watch" viewBox="-6 -6 12 12" overflow="visible"><circle r="4.5" fill="none" stroke="#D9C84A" stroke-width="1.4"/><path d="M0-4.5A4.5 4.5 0 0 1 0 4.5Z" fill="#D9C84A"/></symbol>
+<symbol id="g-deg" viewBox="-6 -6 12 12" overflow="visible"><circle r="4.6" fill="none" stroke="#E8923A" stroke-width="1.5"/><circle r="2.2" fill="#E8923A"/></symbol>
+<symbol id="g-fail" viewBox="-6 -6 12 12" overflow="visible"><rect x="-4.4" y="-4.4" width="8.8" height="8.8" rx="1" fill="#E0457B"/></symbol>
+<symbol id="g-unk" viewBox="-6 -6 12 12" overflow="visible"><circle r="4.5" fill="url(#hatch)" stroke="#6B7280" stroke-width="1.4"/></symbol>
+</defs>
+<rect width="1440" height="900" fill="#0B0D10"/>
+<g id="scene-3d" clip-path="url(#scene)">
+<g id="node-floor" opacity=".42">
+<polygon points="78,785 994,611 738,345 153,412" fill="#10141A" stroke="#FFFFFF14"/>
+<path d="M199.4 762.2L225.7 404.1M315.1 740.2L296 395.9M425.4 719.2L364.3 388M530.5 699.2L430.6 380.3M630.9 680L495 372.8M726.8 661.8L557.7 365.5M818.6 644.3L618.6 358.5M906.5 627.5L677.8 351.6M96.6 692.1L933.8 548M112.1 615.8L882.6 494.9M124.9 552.2L838.7 449.3M135.8 498.5L800.7 409.8M145.1 452.4L767.3 375.2" stroke="#FFFFFF" stroke-opacity=".05"/>
+<path d="M156 465L161 440L153 413L148 437ZM235 455L236 431L228 393L226 416ZM311 446L309 422L306 401L307 424ZM384 436L380 414L376 382L381 404ZM456 427L448 405L446 363L453 384ZM525 418L515 397L515 371L525 392ZM592 410L580 389L581 358L593 378ZM657 402L642 381L644 361L659 381ZM720 394L703 374L708 338L725 357ZM137 570L143 536L133 500L126 534ZM229 556L231 523L220 476L218 508ZM318 543L316 511L311 483L313 513ZM403 530L397 500L394 465L400 495ZM486 518L476 489L475 466L485 495ZM565 506L552 478L553 438L567 466ZM642 495L626 468L628 440L644 466ZM716 484L697 458L701 424L721 450ZM787 473L766 448L771 420L793 445ZM111 717L120 668L106 630L96 679ZM222 698L225 651L218 626L215 672ZM328 679L325 634L317 590L320 634ZM430 661L421 618L419 587L427 629ZM527 643L514 602L513 565L527 606ZM620 627L602 587L604 557L623 596ZM710 611L687 573L693 530L717 568ZM795 596L769 559L774 536L801 571ZM878 581L848 546L858 510L889 545Z" fill="#1C2028"/><path d="M156 465L205 459L198 431L148 437ZM235 455L282 449L275 411L226 416ZM311 446L356 440L353 418L307 424ZM384 436L428 431L426 398L381 404ZM456 427L498 422L498 379L453 384ZM525 418L566 413L567 387L525 392ZM592 410L632 405L634 373L593 378ZM657 402L696 397L698 376L659 381ZM720 394L758 389L764 353L725 357ZM137 570L194 561L184 525L126 534ZM229 556L284 548L275 500L218 508ZM318 543L371 535L367 506L313 513ZM403 530L454 523L452 488L400 495ZM486 518L535 511L535 488L485 495ZM565 506L612 499L615 459L567 466ZM642 495L687 488L691 460L644 466ZM716 484L760 478L766 444L721 450ZM787 473L830 467L837 439L793 445ZM111 717L180 705L167 667L96 679ZM222 698L288 686L282 661L215 672ZM328 679L391 668L386 623L320 634ZM430 661L490 650L489 619L427 629ZM527 643L585 633L587 596L527 606ZM620 627L676 617L680 586L623 596ZM710 611L763 602L772 558L717 568ZM795 596L846 587L853 563L801 571ZM878 581L927 572L939 536L889 545Z" fill="#212730"/><path d="M148 437L198 431L201 408L153 413ZM226 416L275 411L274 388L228 393ZM307 424L353 418L350 396L306 401ZM381 404L426 398L420 377L376 382ZM453 384L498 379L488 358L446 363ZM525 392L567 387L555 366L515 371ZM593 378L634 373L621 354L581 358ZM659 381L698 376L682 357L644 361ZM725 357L764 353L746 334L708 338ZM126 534L184 525L188 493L133 500ZM218 508L275 500L274 469L220 476ZM313 513L367 506L363 476L311 483ZM400 495L452 488L444 459L394 465ZM485 495L535 488L523 460L475 466ZM567 466L615 459L600 432L553 438ZM644 466L691 460L673 434L628 440ZM721 450L766 444L745 418L701 424ZM793 445L837 439L813 415L771 420ZM96 679L167 667L173 620L106 630ZM215 672L282 661L281 616L218 626ZM320 634L386 623L379 580L317 590ZM427 629L489 619L477 578L419 587ZM527 606L587 596L570 556L513 565ZM623 596L680 586L658 548L604 557ZM717 568L772 558L746 522L693 530ZM801 571L853 563L824 527L774 536ZM889 545L939 536L906 503L858 510Z" fill="#2A313C"/>
+<g opacity="0.8">
+<polygon points="152,472 152,468 151,464 150,467" fill="#1E695B"/>
+<polygon points="152,472 777,391 778,387 150,467" fill="#258976"/>
+<polygon points="150,467 778,387 775,385 151,464" fill="#2FB59A"/>
+</g>
+<g opacity="0.8">
+<polygon points="132,579 133,573 131,569 130,574" fill="#1E695B"/>
+<polygon points="132,579 852,471 854,466 130,574" fill="#258976"/>
+<polygon points="130,574 854,466 850,462 131,569" fill="#2FB59A"/>
+</g>
+<g opacity="0.8">
+<polygon points="104,730 105,723 103,718 102,725" fill="#1E695B"/>
+<polygon points="104,730 954,577 956,572 102,725" fill="#258976"/>
+<polygon points="102,725 956,572 951,567 103,718" fill="#2FB59A"/>
+</g>
+<text transform="matrix(5.10 -0.94 0.53 3.97 379.7 703.6)" x="0" y="0" class="b gl" style="font-size:4px" fill="#E6E8EB" fill-opacity="0.8">NODE FLOOR · 42 nodes · where pods run</text>
+</g>
+<g id="pvc-volumes">
+<polygon points="236,466 236,464 234,462 231,461 227,460 222,461 218,461 214,463 210,465 208,468 207,470 208,473 209,474 213,476 217,476 221,476 226,475 230,474 233,471 235,469" fill="#7AA2D6" fill-opacity=".22" stroke="#7AA2D6" stroke-opacity=".8"/>
+<polygon points="237,471 237,469 235,467 232,466 228,465 223,465 219,466 215,468 211,470 209,472 208,475 209,477 211,479 214,481 218,481 222,481 227,480 231,478 234,476 236,474" fill="#7AA2D6" fill-opacity=".10"/>
+<line x1="209.7" y1="400.2" x2="221.7" y2="468.3" stroke="#7AA2D6" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+<polygon points="268,462 267,460 265,458 262,457 258,456 254,456 249,457 245,459 242,461 240,464 239,466 240,468 242,470 245,472 249,472 253,472 258,471 262,469 265,467 267,465" fill="#7AA2D6" fill-opacity=".22" stroke="#7AA2D6" stroke-opacity=".8"/>
+<polygon points="269,467 268,465 266,463 263,462 259,461 255,461 250,462 246,464 243,466 241,468 240,471 241,473 243,475 246,476 250,477 254,477 259,476 263,474 266,472 268,470" fill="#7AA2D6" fill-opacity=".10"/>
+<line x1="242.4" y1="396.5" x2="253.6" y2="464.1" stroke="#7AA2D6" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+<polygon points="299,458 298,456 296,454 293,453 289,452 285,453 280,453 277,455 274,457 272,459 271,462 272,464 274,466 277,467 281,468 285,468 290,467 294,465 297,463 299,461" fill="#7AA2D6" fill-opacity=".22" stroke="#7AA2D6" stroke-opacity=".8"/>
+<polygon points="300,463 299,461 297,459 294,458 290,457 286,457 281,458 277,460 274,462 272,464 272,467 272,469 275,471 278,472 282,473 286,473 291,472 294,470 298,468 299,465" fill="#7AA2D6" fill-opacity=".10"/>
+<line x1="274.6" y1="392.8" x2="285" y2="460.1" stroke="#7AA2D6" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+</g>
+<g id="runs-on-below">
+<line x1="518" y1="518.7" x2="549.4" y2="580.2" stroke="#5B9BFF" stroke-opacity=".55" stroke-dasharray="2 3"/>
+<circle cx="549.4" cy="580.2" r="2.2" fill="#5B9BFF"/>
+<line x1="518" y1="518.7" x2="453.2" y2="602.5" stroke="#5B9BFF" stroke-opacity=".55" stroke-dasharray="2 3"/>
+<circle cx="453.2" cy="602.5" r="2.2" fill="#5B9BFF"/>
+<line x1="518" y1="518.7" x2="504.6" y2="476.8" stroke="#5B9BFF" stroke-opacity=".55" stroke-dasharray="2 3"/>
+<circle cx="504.6" cy="476.8" r="2.2" fill="#5B9BFF"/>
+</g>
+<g id="plateau">
+<polygon points="32,686 131,333 129,324 27,674" fill="#5B9BFF" fill-opacity=".06"/>
+<polygon points="32,686 1033,518 1038,506 27,674" fill="#5B9BFF" fill-opacity=".10"/>
+<polygon points="27,674 1038,506 750,264 129,324" fill="#0E131B" fill-opacity=".62"/>
+<polygon points="27,674 1038,506 750,264 129,324" fill="url(#glass)" stroke="#7AA2D6" stroke-opacity=".45"/>
+<path d="M122.7 658.2L183.2 318.8M214.9 642.9L236.2 313.7M303.7 628.2L288.1 308.6M389.2 614L338.9 303.7M471.7 600.3L388.5 298.9M551.2 587.1L437.1 294.2M628 574.3L484.7 289.5M702.1 562L531.3 285M773.7 550.1L576.9 280.6M843 538.6L621.6 276.3M910 527.5L665.4 272M974.9 516.7L708.4 267.8M45.1 611.5L990 466M60.8 557.7L947.9 430.4M74.4 511L910.4 398.8M86.3 470.2L876.8 370.4M96.8 434.1L846.5 344.8M106.2 402L819.1 321.7M114.6 373.3L794.1 300.6M122.1 347.5L771.4 281.4" stroke="#FFFFFF" stroke-opacity=".035"/>
+</g>
+<line x1="209.7" y1="400.2" x2="214.4" y2="427.2" stroke="#7AA2D6" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+<line x1="242.4" y1="396.5" x2="246.8" y2="423.3" stroke="#7AA2D6" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+<line x1="274.6" y1="392.8" x2="278.7" y2="419.4" stroke="#7AA2D6" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+<g id="districts">
+<polygon points="71,636 395,584 368,434 113,466" fill="#FFFFFF" fill-opacity=".035" stroke="#FFFFFF" stroke-opacity=".16"/>
+<text transform="matrix(6.89 -1.07 -1.06 4.50 88.2 609.9)" x="0" y="0" class="b gl" style="font-size:4px" fill="#C8D3E3" fill-opacity="0.55">NS PAYMENTS</text>
+<polygon points="435,578 696,536 612,403 400,430" fill="#FFFFFF" fill-opacity=".035" stroke="#FFFFFF" stroke-opacity=".16"/>
+<text transform="matrix(5.94 -0.92 0.96 3.87 439.5 555.5)" x="0" y="0" class="b gl" style="font-size:4px" fill="#C8D3E3" fill-opacity="0.55">NS CHECKOUT</text>
+<polygon points="731,530 991,489 858,373 641,400" fill="#FFFFFF" fill-opacity=".035" stroke="#FFFFFF" stroke-opacity=".16"/>
+<text transform="matrix(5.21 -0.81 2.38 3.40 726.8 511)" x="0" y="0" class="b gl" style="font-size:4px" fill="#C8D3E3" fill-opacity="0.55">NS CATALOG</text>
+<polygon points="120,439 425,402 398,308 147,333" fill="#FFFFFF" fill-opacity=".035" stroke="#FFFFFF" stroke-opacity=".16"/>
+<text transform="matrix(5.16 -0.61 -0.60 2.56 131.8 424.8)" x="0" y="0" class="b gl" style="font-size:4px" fill="#C8D3E3" fill-opacity="0.55">NS DATA</text>
+<polygon points="455,399 680,372 612,287 422,306" fill="#FFFFFF" fill-opacity=".035" stroke="#FFFFFF" stroke-opacity=".16" stroke-dasharray="4 3"/>
+<text transform="matrix(4.49 -0.53 0.80 2.23 458 386.3)" x="0" y="0" class="b gl" style="font-size:4px" fill="#C8D3E3" fill-opacity="0.55">NS KUBE-SYSTEM</text>
+<polygon points="435,577 696,536 612,403 400,430" fill="none" stroke="#5B9BFF" stroke-opacity=".7" stroke-width="1.2"/>
+</g>
+<g>
+<polygon points="697,349 653,299 654,292 698,341" fill="#1C2028"/>
+<polygon points="697,349 802,336 804,329 698,341" fill="#212730"/>
+<polygon points="698,341 804,329 750,282 654,292" fill="#2A313C"/>
+</g>
+<g>
+<polygon points="701,338 662,294 662,288 702,331" fill="#20252E"/>
+<polygon points="701,338 795,327 796,321 702,331" fill="#272E38"/>
+<polygon points="702,331 796,321 748,279 662,288" fill="#323A47"/>
+</g>
+<g>
+<polygon points="700,325 667,289 671,249 705,282" fill="#191E25"/>
+<polygon points="700,325 786,316 794,273 705,282" fill="#1E242C"/>
+<polygon points="705,282 794,273 753,241 671,249" fill="#262D37"/>
+</g>
+<g>
+<polygon points="707,330 705,327 710,284 713,286" fill="#363C47"/>
+<polygon points="707,330 714,329 720,286 713,286" fill="#454D5A"/>
+<polygon points="713,286 720,286 717,283 710,284" fill="#5A6474"/>
+</g>
+<g>
+<polygon points="724,328 721,325 727,282 730,285" fill="#363C47"/>
+<polygon points="724,328 730,327 736,284 730,285" fill="#454D5A"/>
+<polygon points="730,285 736,284 733,281 727,282" fill="#5A6474"/>
+</g>
+<g>
+<polygon points="740,326 737,323 744,280 747,283" fill="#363C47"/>
+<polygon points="740,326 746,325 753,282 747,283" fill="#454D5A"/>
+<polygon points="747,283 753,282 750,280 744,280" fill="#5A6474"/>
+</g>
+<g>
+<polygon points="756,324 753,321 760,279 763,281" fill="#363C47"/>
+<polygon points="756,324 763,323 770,281 763,281" fill="#454D5A"/>
+<polygon points="763,281 770,281 767,278 760,279" fill="#5A6474"/>
+</g>
+<g>
+<polygon points="772,322 769,319 777,277 780,280" fill="#363C47"/>
+<polygon points="772,322 778,322 786,279 780,280" fill="#454D5A"/>
+<polygon points="780,280 786,279 783,276 777,277" fill="#5A6474"/>
+</g>
+<g>
+<polygon points="788,321 785,318 793,275 796,278" fill="#363C47"/>
+<polygon points="788,321 794,320 803,277 796,278" fill="#454D5A"/>
+<polygon points="796,278 803,277 799,275 793,275" fill="#5A6474"/>
+</g>
+<g>
+<polygon points="706,289 664,247 664,239 707,280" fill="#242A34"/>
+<polygon points="706,289 807,279 809,270 707,280" fill="#2D3440"/>
+<polygon points="707,280 809,270 758,230 664,239" fill="#3A4352"/>
+</g>
+<polygon points="707,280 809,270 762,250" fill="#46505F" stroke="#0B0D10" stroke-opacity=".5"/>
+<circle cx="753.3" cy="302.5" r="16" fill="#D9C84A" opacity=".18" filter="url(#bl6)"/>
+<g>
+<polygon points="176,360 178,350 171,323 169,333" fill="#242E37"/>
+<polygon points="176,360 201,358 194,331 169,333" fill="#2D3A44"/>
+<polygon points="169,333 194,331 196,320 171,323" fill="#3A4A57"/>
+</g>
+<path d="M174 336L172 346L197 344" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="528,361 526,357 526,352 528,356" fill="#1E695B"/>
+<polygon points="528,361 653,347 654,341 528,356" fill="#258976"/>
+<polygon points="528,356 654,341 651,338 526,352" fill="#2FB59A"/>
+</g>
+<path d="M540 359L540 354L538 350M553 358L553 352L551 348M566 356L566 351L564 347M578 355L579 349L576 345M591 354L591 348L589 344M604 352L604 347L601 343M616 351L616 345L614 341M628 349L629 344L626 340M641 348L641 342L638 338" stroke="#0B0D10" stroke-width="1.2" fill="none"/>
+<g>
+<polygon points="517,340 515,336 515,330 517,334" fill="#1E695B"/>
+<polygon points="517,340 637,326 638,321 517,334" fill="#258976"/>
+<polygon points="517,334 638,321 635,317 515,330" fill="#2FB59A"/>
+</g>
+<path d="M529 338L529 332L527 328M541 336L541 331L539 327M553 335L553 330L551 326M565 334L565 328L563 325M577 332L578 327L575 323M589 331L590 326L587 322M601 330L602 324L599 321M613 328L613 323L611 319M625 327L625 322L623 318" stroke="#0B0D10" stroke-width="1.2" fill="none"/>
+<g>
+<polygon points="506,320 505,316 505,311 506,314" fill="#1E695B"/>
+<polygon points="506,320 622,308 623,302 506,314" fill="#258976"/>
+<polygon points="506,314 623,302 620,299 505,311" fill="#2FB59A"/>
+</g>
+<path d="M518 318L518 313L516 309M530 317L530 311L528 308M541 315L541 310L539 307M553 314L553 309L551 306M565 313L565 308L563 304M576 312L576 307L574 303M588 311L588 305L586 302M599 309L599 304L597 301M610 308L611 303L608 300" stroke="#0B0D10" stroke-width="1.2" fill="none"/>
+<g>
+<polygon points="525,355 523,351 523,345 525,349" fill="#426B6C"/>
+<polygon points="525,355 649,341 649,335 525,349" fill="#558B8C"/>
+<polygon points="525,349 649,335 646,332 523,345" fill="#6FB8B8"/>
+</g>
+<path d="M537 353L537 347L535 343M550 352L550 346L547 342M562 350L562 345L560 341M575 349L575 343L572 339M587 347L587 342L585 338M599 346L600 340L597 337M612 345L612 339L609 335M624 343L624 338L621 334M636 342L636 336L634 332" stroke="#0B0D10" stroke-width="1.2" fill="none"/>
+<g>
+<polygon points="514,334 512,330 512,325 514,328" fill="#426B6C"/>
+<polygon points="514,334 633,321 633,316 514,328" fill="#558B8C"/>
+<polygon points="514,328 633,316 630,312 512,325" fill="#6FB8B8"/>
+</g>
+<path d="M525 332L525 326L523 323M538 331L538 325L535 322M550 329L550 324L548 320M562 328L562 323L559 319M574 327L574 321L571 318M585 325L586 320L583 316M597 324L598 319L595 315M609 323L609 318L607 314M621 322L621 316L618 313" stroke="#0B0D10" stroke-width="1.2" fill="none"/>
+<g>
+<polygon points="504,314 502,311 502,306 504,309" fill="#426B6C"/>
+<polygon points="504,314 618,302 619,297 504,309" fill="#558B8C"/>
+<polygon points="504,309 619,297 616,294 502,306" fill="#6FB8B8"/>
+</g>
+<path d="M515 312L515 307L513 304M527 311L527 306L525 303M538 310L538 305L536 302M550 309L550 304L548 300M561 308L561 303L559 299M573 307L573 301L571 298M584 305L584 300L582 297M595 304L596 299L593 296M607 303L607 298L604 295" stroke="#0B0D10" stroke-width="1.2" fill="none"/>
+<g>
+<polygon points="320,371 319,360 313,318 314,328" fill="#242E37"/>
+<polygon points="320,371 345,368 340,326 314,328" fill="#2D3A44"/>
+<polygon points="314,328 340,326 338,315 313,318" fill="#3A4A57"/>
+</g>
+<path d="M317 346L318 357L343 354M315 331L316 342L341 339" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="471,382 467,370 466,343 470,354" fill="#242E37"/>
+<polygon points="471,382 496,379 495,351 470,354" fill="#2D3A44"/>
+<polygon points="470,354 495,351 490,340 466,343" fill="#3A4A57"/>
+</g>
+<path d="M466 356L470 368L495 365" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g stroke="#7AA2D6" stroke-width="0.8" stroke-linejoin="round">
+<polygon points="199,406 200,394 196,373 194,385" fill="#2D3744"/>
+<polygon points="199,406 226,403 221,382 194,385" fill="#394557"/>
+<polygon points="194,385 221,382 222,370 196,373" fill="#4A5A70"/>
+</g>
+<text x="208" y="397.8" class="c b m s10">0</text>
+<g stroke="#7AA2D6" stroke-width="0.8" stroke-linejoin="round">
+<polygon points="232,403 233,390 228,369 228,381" fill="#2D3744"/>
+<polygon points="232,403 259,399 254,378 228,381" fill="#394557"/>
+<polygon points="228,381 254,378 255,366 228,369" fill="#4A5A70"/>
+</g>
+<text x="241.2" y="394" class="c b m s10">1</text>
+<g stroke="#7AA2D6" stroke-width="0.8" stroke-linejoin="round">
+<polygon points="265,399 265,386 261,366 261,378" fill="#2D3744"/>
+<polygon points="265,399 291,396 287,375 261,378" fill="#394557"/>
+<polygon points="261,378 287,375 287,363 261,366" fill="#4A5A70"/>
+</g>
+<text x="273.9" y="390.3" class="c b m s10">2</text>
+<g>
+<polygon points="765,447 753,432 764,369 777,383" fill="#242E37"/>
+<polygon points="765,447 791,443 804,380 777,383" fill="#2D3A44"/>
+<polygon points="777,383 804,380 790,366 764,369" fill="#3A4A57"/>
+</g>
+<path d="M755 417L768 431L793 428M758 401L771 415L797 412M761 385L774 399L800 395" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="568,454 560,439 561,393 569,408" fill="#242E37"/>
+<polygon points="568,454 595,451 597,404 569,408" fill="#2D3A44"/>
+<polygon points="569,408 597,404 589,390 561,393" fill="#3A4A57"/>
+</g>
+<path d="M560 424L568 439L595 435M560 408L568 423L596 419" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="436,472 432,456 429,409 433,425" fill="#242E37"/>
+<polygon points="436,472 465,468 463,421 433,425" fill="#2D3A44"/>
+<polygon points="433,425 463,421 458,406 429,409" fill="#3A4A57"/>
+</g>
+<path d="M430 441L435 457L464 453M429 425L434 440L463 436" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="745,486 732,470 746,387 760,403" fill="#242E37"/>
+<polygon points="745,486 772,482 789,399 760,403" fill="#2D3A44"/>
+<polygon points="760,403 789,399 774,384 746,387" fill="#3A4A57"/>
+</g>
+<path d="M734 454L747 471L775 467M737 438L750 454L778 450M740 421L753 437L782 433M743 403L757 419L785 415" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g opacity="0.55" stroke="#7AA2D6" stroke-width="0.6" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="858,492 845,478 849,464 862,478" fill="#485E7C"/>
+<polygon points="858,492 880,489 884,475 862,478" fill="#5D7BA2"/>
+<polygon points="862,478 884,475 870,461 849,464" fill="#7AA2D6"/>
+</g>
+<g opacity="0.38" stroke="#7AA2D6" stroke-width="0.6" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="884,488 870,474 874,460 888,474" fill="#485E7C"/>
+<polygon points="884,488 906,485 910,471 888,474" fill="#5D7BA2"/>
+<polygon points="888,474 910,471 896,457 874,460" fill="#7AA2D6"/>
+</g>
+<g opacity="0.24" stroke="#7AA2D6" stroke-width="0.6" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="910,484 896,470 900,456 914,470" fill="#485E7C"/>
+<polygon points="910,484 931,481 936,467 914,470" fill="#5D7BA2"/>
+<polygon points="914,470 936,467 921,453 900,456" fill="#7AA2D6"/>
+</g>
+<g opacity="0.12" stroke="#7AA2D6" stroke-width="0.6" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="935,480 920,467 925,453 940,466" fill="#485E7C"/>
+<polygon points="935,480 956,477 961,463 940,466" fill="#5D7BA2"/>
+<polygon points="940,466 961,463 946,450 925,453" fill="#7AA2D6"/>
+</g>
+<g>
+<polygon points="298,502 297,484 285,419 286,435" fill="#242E37"/>
+<polygon points="298,502 328,497 318,431 286,435" fill="#2D3A44"/>
+<polygon points="286,435 318,431 317,415 285,419" fill="#3A4A57"/>
+</g>
+<path d="M293 468L294 486L325 481M291 452L291 469L323 465M288 435L288 451L320 447" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="130,514 133,496 124,465 120,482" fill="#242E37"/>
+<polygon points="130,514 162,510 153,478 120,482" fill="#2D3A44"/>
+<polygon points="120,482 153,478 156,461 124,465" fill="#3A4A57"/>
+</g>
+<path d="M128 480L124 498L157 494" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g>
+<polygon points="902,519 897,514 912,466 917,470" fill="#485E7C"/>
+<polygon points="902,519 909,518 925,469 917,470" fill="#5D7BA2"/>
+<polygon points="917,470 925,469 919,465 912,466" fill="#7AA2D6"/>
+</g>
+<g>
+<polygon points="935,514 930,509 946,461 951,465" fill="#485E7C"/>
+<polygon points="935,514 942,512 959,464 951,465" fill="#5D7BA2"/>
+<polygon points="951,465 959,464 953,459 946,461" fill="#7AA2D6"/>
+</g>
+<path d="M914.5 468 L916.7 463.1 L920.2 458.2 L924.8 453.8 L930.1 450.1 L935.8 447.5 L941.5 446 L946.7 445.9 L951.1 447 L954.5 449.4 L956.5 452.8 L957 457 L956.1 461.7" fill="none" stroke="#7AA2D6" stroke-width="3" stroke-linecap="round"/>
+<g stroke="#8A919C" stroke-width="1.1" stroke-linejoin="round">
+<polygon points="516,521 509,502 508,436 516,453" fill="#383D45"/>
+<polygon points="516,521 546,516 548,449 516,453" fill="#484E58"/>
+<polygon points="516,453 548,449 539,432 508,436" fill="#5E6672"/>
+</g>
+<path d="M508 486L515 505L546 500M508 469L515 487L546 483M508 452L515 470L547 465" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g stroke="#5B9BFF" stroke-width="1.1" stroke-linejoin="round">
+<polygon points="516,451 508,433 507,317 515,332" fill="#704823"/>
+<polygon points="516,451 548,446 550,328 515,332" fill="#935D2A"/>
+<polygon points="515,332 550,328 541,313 507,317" fill="#C47A34"/>
+</g>
+<path d="M508 415L515 433L547 428M508 397L515 413L548 409M507 377L515 394L548 390M507 357L515 373L549 369M507 336L515 352L549 348" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g fill="none" stroke="#7FB2FF" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3 2" stroke-opacity=".95"><polygon points="515,329 507,314 506,175 515,186"/><polygon points="515,329 550,326 553,184 515,186"/><polygon points="515,186 553,184 543,172 506,175"/></g>
+<path d="M507 293L515 308L550 304M506 271L515 285L551 281M506 247L515 261L551 257M506 223L514 236L552 233M506 198L514 211L552 208" fill="none" stroke="#7FB2FF" stroke-opacity=".7" stroke-dasharray="3 2"/>
+<polygon points="515,329 550,326 553,184 515,186" fill="#5B9BFF" fill-opacity=".07"/>
+<g>
+<polygon points="632,563 629,557 634,508 637,513" fill="#485E7C"/>
+<polygon points="632,563 641,562 646,512 637,513" fill="#5D7BA2"/>
+<polygon points="637,513 646,512 643,506 634,508" fill="#7AA2D6"/>
+</g>
+<g>
+<polygon points="670,557 667,551 673,502 676,507" fill="#485E7C"/>
+<polygon points="670,557 678,556 685,506 676,507" fill="#5D7BA2"/>
+<polygon points="676,507 685,506 681,500 673,502" fill="#7AA2D6"/>
+</g>
+<path d="M635.6 510.3 L636.9 505.2 L639.7 500.1 L644 495.5 L649.3 491.6 L655.3 488.8 L661.7 487.2 L667.8 486.9 L673.4 488 L677.9 490.4 L681.2 493.9 L683 498.2 L683.1 503.1" fill="none" stroke="#7AA2D6" stroke-width="3" stroke-linecap="round"/>
+<g>
+<polygon points="189,570 191,548 183,516 180,537" fill="#5B4024"/>
+<polygon points="189,570 224,564 216,532 180,537" fill="#77512B"/>
+<polygon points="180,537 216,532 217,511 183,516" fill="#9E6A35"/>
+</g>
+<path d="M187 532L184 553L220 548" fill="none" stroke="#0B0D10" stroke-width="1.6"/>
+<g stroke="#E0457B" stroke-width="1.1" stroke-linejoin="round">
+<polygon points="179,535 182,514 178,498 175,519" fill="#6F2642"/>
+<polygon points="179,535 215,529 211,514 175,519" fill="#922F53"/>
+<polygon points="175,519 211,514 213,493 178,498" fill="#C23C6B"/>
+</g>
+<g>
+<polygon points="303,617 303,610 293,559 293,565" fill="#802B4A"/>
+<polygon points="303,617 313,615 303,564 293,565" fill="#A8365F"/>
+<polygon points="293,565 303,564 303,557 293,559" fill="#E0457B"/>
+</g>
+<g>
+<polygon points="347,610 346,603 338,552 339,558" fill="#802B4A"/>
+<polygon points="347,610 356,608 349,557 339,558" fill="#A8365F"/>
+<polygon points="339,558 349,557 348,551 338,552" fill="#E0457B"/>
+</g>
+<path d="M293.2 562.2 L293.1 556.9 L295 551.6 L298.7 546.7 L304 542.6 L310.4 539.5 L317.6 537.8 L325 537.4 L332.1 538.4 L338.3 540.8 L343.4 544.4 L346.8 548.8 L348.5 553.8" fill="none" stroke="#E0457B" stroke-width="3" stroke-linecap="round"/>
+<g id="pending-cloud">
+<ellipse cx="286.2" cy="312.4" rx="70" ry="30" fill="url(#cloud)"/>
+<ellipse cx="286.2" cy="312.4" rx="54" ry="20" fill="none" stroke="#8A919C" stroke-opacity=".5" stroke-dasharray="3 3"/>
+<g opacity="0.9" stroke="#8A919C" stroke-width="0.8" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="241,322 242,308 238,290 237,304" fill="#3F444D"/>
+<polygon points="241,322 276,319 273,301 237,304" fill="#525762"/>
+<polygon points="237,304 273,301 273,287 238,290" fill="#6B7280"/>
+</g>
+<line x1="258.6" y1="313.6" x2="279.5" y2="428.8" stroke="#8A919C" stroke-opacity=".35" stroke-dasharray="1 3"/>
+<g opacity="0.9" stroke="#8A919C" stroke-width="0.8" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="289,326 289,312 286,294 287,308" fill="#3F444D"/>
+<polygon points="289,326 324,322 321,304 287,308" fill="#525762"/>
+<polygon points="287,308 321,304 319,291 286,294" fill="#6B7280"/>
+</g>
+<line x1="306" y1="317.1" x2="321.9" y2="423.6" stroke="#8A919C" stroke-opacity=".35" stroke-dasharray="1 3"/>
+<g opacity="0.9" stroke="#8A919C" stroke-width="0.8" stroke-linejoin="round" stroke-dasharray="2 2">
+<polygon points="334,309 332,295 330,277 332,290" fill="#3F444D"/>
+<polygon points="334,309 368,305 366,287 332,290" fill="#525762"/>
+<polygon points="332,290 366,287 363,274 330,277" fill="#6B7280"/>
+</g>
+<line x1="349.5" y1="300.2" x2="363.4" y2="418.5" stroke="#8A919C" stroke-opacity=".35" stroke-dasharray="1 3"/>
+</g>
+<g id="service-paths">
+<path d="M661.5 486.9Q601.5 382.4 542.3 499.8" fill="none" stroke="#7AA2D6" stroke-opacity=".75" stroke-width="1.1"/>
+<path d="M661.5 486.9Q601.4 390.8 542.6 483" fill="none" stroke="#7AA2D6" stroke-opacity=".75" stroke-width="1.1"/>
+<path d="M661.5 486.9Q601.2 399.4 543 465.7" fill="none" stroke="#7AA2D6" stroke-opacity=".75" stroke-width="1.1"/>
+<path d="M661.5 486.9Q601.1 408.3 543.3 447.9" fill="none" stroke="#7AA2D6" stroke-opacity=".75" stroke-width="1.1"/>
+<path d="M661.5 486.9Q602.3 395.4 543.6 429.7" fill="none" stroke="#E8923A" stroke-opacity=".6" stroke-width="1" stroke-dasharray="3 2"/>
+<path d="M661.5 486.9Q604.6 364.9 543.9 410.9" fill="none" stroke="#E8923A" stroke-opacity=".6" stroke-width="1" stroke-dasharray="3 2"/>
+<path d="M661.5 486.9Q607 333.5 544.3 391.6" fill="none" stroke="#E8923A" stroke-opacity=".6" stroke-width="1" stroke-dasharray="3 2"/>
+<path d="M661.5 486.9Q626.5 351 591.1 429.5" fill="none" stroke="#7AA2D6" stroke-opacity=".5"/>
+<path d="M941.2 445.8Q871.5 353 768.3 459.9" fill="none" stroke="#7AA2D6" stroke-opacity=".6"/>
+<path d="M941.2 445.8Q869.4 363.8 772.5 438.3" fill="none" stroke="#7AA2D6" stroke-opacity=".6"/>
+<path d="M941.2 445.8Q879.8 320.8 788.3 415.2" fill="none" stroke="#7AA2D6" stroke-opacity=".5"/>
+<path d="M317.6 537.4Q243.9 444.7 218.2 527.5" fill="none" stroke="#E0457B" stroke-width="1.2" stroke-dasharray="2 4" stroke-opacity=".8"/>
+<circle cx="317.2" cy="534.9" r="20" fill="#E0457B" opacity=".25" filter="url(#bl6)"/>
+</g>
+<circle cx="195.3" cy="524" r="12" fill="#E0457B" opacity=".45" filter="url(#bl6)" style="mix-blend-mode:screen"/>
+<line x1="517.9" y1="494.5" x2="518" y2="518.7" stroke="#5B9BFF" stroke-opacity=".5" stroke-dasharray="2 3"/>
+<line x1="517.8" y1="421.7" x2="518" y2="518.7" stroke="#5B9BFF" stroke-opacity=".5" stroke-dasharray="2 3"/>
+<line x1="517.7" y1="361.3" x2="518" y2="518.7" stroke="#5B9BFF" stroke-opacity=".5" stroke-dasharray="2 3"/>
+<rect x="0" y="32" width="1440" height="828" fill="url(#haze)"/>
+<rect x="0" y="32" width="1440" height="828" fill="url(#vig)"/>
+<g id="billboards">
+<line x1="550.1" y1="328.5" x2="604" y2="406.8" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="550.1" cy="328.5" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="604" y="384" width="238" height="45.5" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#5B9BFF"/>
+<use href="#g-deg" x="610" y="388.5" width="9" height="9"/>
+<text x="623" y="396.5" class="b">checkout · Deployment · rev 41 → 42</text>
+<text x="611" y="409" class="m" fill="#5B9BFF" style="font-size:10px">rollout 6/10 · maxSurge 25 %</text>
+<text x="611" y="421.5" class="m mu" style="font-size:10px">rev 42 ◉ Degraded since 12:22 · ⚙ 12:19</text>
+<line x1="553.3" y1="180.1" x2="600" y2="286.5" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="553.3" cy="180.1" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="600" y="270" width="180" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#5B9BFF66"/>
+<use href="#g-watch" x="606" y="274.5" width="9" height="9"/>
+<text x="619" y="282.5" class="b">HPA 10 → max 16</text>
+<text x="607" y="295" class="m" fill="#D9C84A" style="font-size:10px">CPU 82 % / target 70 %</text>
+<line x1="213.3" y1="521.5" x2="372" y2="620.8" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="213.3" cy="521.5" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="372" y="598" width="214" height="45.5" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#E0457B88"/>
+<use href="#g-fail" x="378" y="602.5" width="9" height="9"/>
+<text x="391" y="610.5" class="b m" fill="#E0457B" style="font-size:10px">payments-api-6c9-x2f</text>
+<text x="379" y="623" class="m" style="font-size:10px">CrashLoopBackOff · 14 restarts</text>
+<text x="379" y="635.5" class="m mu" style="font-size:10px">last state OOMKilled · 512 Mi</text>
+<line x1="326" y1="589.4" x2="326" y2="662" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="326" cy="589.4" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="250" y="662" width="168" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#E0457B88"/>
+<use href="#g-fail" x="256" y="666.5" width="9" height="9"/>
+<text x="269" y="674.5" class="b">Service payments-api</text>
+<text x="257" y="687" class="m" fill="#E0457B" style="font-size:10px">0 ready endpoints · 0/3</text>
+<line x1="658" y1="536.8" x2="690" y2="616.5" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="658" cy="536.8" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="690" y="600" width="182" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#FFFFFF24"/>
+<use href="#g-deg" x="696" y="604.5" width="9" height="9"/>
+<text x="709" y="612.5" class="b">Ingress shop · /checkout</text>
+<text x="697" y="625" class="m mu" style="font-size:10px">→ svc checkout · 7 ready</text>
+<line x1="929.3" y1="493.8" x2="929.3" y2="560" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="929.3" cy="493.8" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="884" y="560" width="176" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#FFFFFF24"/>
+<use href="#g-ok" x="890" y="564.5" width="9" height="9"/>
+<text x="903" y="572.5" class="b">Gateway api-gw · HTTPRoute</text>
+<text x="891" y="585" class="m mu" style="font-size:10px">→ catalog, search · 9 ready</text>
+<line x1="294.3" y1="297.6" x2="300" y2="254.8" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="294.3" cy="297.6" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="300" y="232" width="214" height="45.5" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#8A919C88"/>
+<use href="#g-unk" x="306" y="236.5" width="9" height="9"/>
+<text x="319" y="244.5" class="b">Unscheduled · 3 pods Pending</text>
+<text x="307" y="257" class="m" fill="#D9C84A" style="font-size:10px">0/42 nodes: Insufficient memory</text>
+<text x="307" y="269.5" class="m mu" style="font-size:10px">payments-worker · FailedScheduling</text>
+<line x1="225.9" y1="381.6" x2="225.9" y2="255" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="225.9" cy="381.6" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="14" y="222" width="250" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#FFFFFF24"/>
+<use href="#g-ok" x="20" y="226.5" width="9" height="9"/>
+<text x="33" y="234.5" class="b">pg-orders · StatefulSet 3/3 · ordinals 0–2</text>
+<text x="21" y="247" class="m mu" style="font-size:10px">pvc data-pg-orders-0 · 200 GiB · gp3-class</text>
+<line x1="893.6" y1="473.1" x2="893.6" y2="433" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="893.6" cy="473.1" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="870" y="400" width="182" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#FFFFFF24"/>
+<use href="#g-ok" x="876" y="404.5" width="9" height="9"/>
+<text x="889" y="412.5" class="b">nightly-reindex · CronJob</text>
+<text x="877" y="425" class="m mu" style="font-size:10px">Job 3/4 complete · fading</text>
+<line x1="628" y1="343.8" x2="830" y2="316.5" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="628" cy="343.8" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="830" y="300" width="222" height="33" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#FFFFFF24"/>
+<use href="#g-ok" x="836" y="304.5" width="9" height="9"/>
+<text x="849" y="312.5" class="b">DaemonSets · one block per node</text>
+<text x="837" y="325" class="m mu" style="font-size:10px">node-exporter 42/42 · otel-agent 42/42</text>
+<line x1="762.4" y1="250.5" x2="820" y2="222.8" stroke="#E6E8EB" stroke-opacity=".35"/>
+<circle cx="762.4" cy="250.5" r="1.8" fill="#E6E8EB" fill-opacity=".7"/>
+<rect x="820" y="200" width="222" height="45.5" rx="6" fill="#0B0D10" fill-opacity=".88" stroke="#D9C84A88"/>
+<use href="#g-watch" x="826" y="204.5" width="9" height="9"/>
+<text x="839" y="212.5" class="b">control plane · managed (EKS)</text>
+<text x="827" y="225" class="m" style="font-size:10px"><tspan fill="#2FB59A">●</tspan> apiserver  <tspan fill="#2FB59A">●</tspan> etcd  <tspan fill="#2FB59A">●</tspan> ctrl-mgr</text>
+<text x="827" y="237.5" class="m" style="font-size:10px"><tspan fill="#D9C84A">◐</tspan> scheduler · p99 bind 1.8 s</text>
+</g>
+</g>
+<g id="top-bar"><rect width="1440" height="32" fill="#12151A"/><line x1="0" y1="31.5" x2="1440" y2="31.5" stroke="#FFFFFF14"/><path d="M12 16h4l2-5 3 10 3-8 2 3h4" fill="none" stroke="#5B9BFF" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><text x="38" y="20.5" class="s13 b">Pulsus</text><rect x="92" y="6" width="66" height="20" fill="#191D24" stroke="#FFFFFF14" rx="4"/><use href="#g-ok" x="99" y="12" width="8" height="8"/><text x="112" y="20">prod ▾</text><text x="170" y="20.5" class="s12 mu">aws</text><text x="196" y="20.5" class="dim s12">›</text><text x="208" y="20.5" class="s12 mu">eu-west-1</text><text x="272" y="20.5" class="dim s12">›</text><text x="284" y="20.5" class="s12 b">prod-eu-1</text><text x="344" y="20.5" class="dim s12">›</text><text x="356" y="20.5" class="s12 acc">Group by: workload</text><rect x="942" y="6" width="200" height="20" fill="#0B0D10" stroke="#FFFFFF14" rx="4"/><text x="952" y="20.5" class="dim">Go to anything…</text><text x="1132" y="20.5" class="mu e m">⌘K</text><rect x="1150" y="6" width="214" height="20" fill="#E0457B1F" stroke="#E0457B66" rx="4"/><use href="#g-fail" x="1156.5" y="11.5" width="9" height="9"/><text x="1171" y="20.5">INC-2041 · SEV2 · since 12:22 (9m)</text><rect x="1372" y="6" width="28" height="20" fill="#191D24" stroke="#FFFFFF14" rx="4"/><text x="1386" y="20.5" class="s13 c acc">✦</text><circle cx="1420" cy="16" r="11" fill="#191D24" stroke="#FFFFFF24"/><text x="1420" y="20" class="c b">S</text></g>
+<g id="hud-toolbar"><text x="14" y="59" class="s13 b">Atlas</text><text x="56.4" y="59" class="mu s12">· Infra</text><rect x="119.4" y="42" width="456.6" height="24" rx="5" class="hud"/><text x="149.9" y="58" class="c mu">⌥1 Map</text><text x="222.3" y="58" class="c mu">⌥2 Topology</text><line x1="178.4" y1="48" x2="178.4" y2="60" stroke="#FFFFFF14"/><text x="297.7" y="58" class="c mu">⌥3 City</text><line x1="266.2" y1="48" x2="266.2" y2="60" stroke="#FFFFFF14"/><rect x="329.3" y="44" width="69.3" height="20" rx="4" fill="#5B9BFF26" stroke="#5B9BFF"/><text x="363.9" y="58" class="c b">⌥4 Infra</text><text x="442.4" y="58" class="c mu">⌥5 Segments</text><text x="530.2" y="58" class="c mu">⌥6 Explorer</text><line x1="486.3" y1="48" x2="486.3" y2="60" stroke="#FFFFFF14"/>
+<text x="588" y="58" class="mu">Group by</text><rect x="642" y="42" width="268" height="24" rx="5" class="hud"/><text x="672" y="58" class="c mu">node</text><text x="728" y="58" class="c mu">node pool</text><line x1="700" y1="48" x2="700" y2="60" stroke="#FFFFFF14"/><line x1="758" y1="48" x2="758" y2="60" stroke="#FFFFFF14"/><rect x="762" y="44" width="72" height="20" rx="4" fill="#5B9BFF26" stroke="#5B9BFF"/><text x="798" y="58" class="c b">workload</text><text x="872" y="58" class="c mu">namespace</text>
+<rect x="920" y="42" width="152" height="24" rx="5" class="hud"/><rect x="922" y="44" width="48.8" height="20" rx="4" fill="#5B9BFF26" stroke="#5B9BFF"/><text x="946.4" y="58" class="c b">Orbit</text><text x="992" y="58" class="c mu">Map</text><text x="1034" y="58" class="c mu">Fly</text><line x1="1012" y1="48" x2="1012" y2="60" stroke="#FFFFFF14"/>
+</g>
+<g id="cluster-strip"><rect x="14" y="76" width="660" height="30" rx="6" class="hud"/><use href="#g-deg" x="24" y="86" width="10" height="10"/><text x="40" y="95.5" class="b s12">prod-eu-1</text><text x="104" y="95.5" class="mu">Workload arrangement · 5 namespaces · 38 workloads · 412 pods</text><use href="#g-watch" x="476" y="86.5" width="9" height="9"/><text x="490" y="95.5" class="m s10 mu">3 pending · 1 crashloop · 1 rollout</text></g>
+<g id="t-hint"><rect x="14" y="114" width="156" height="22" rx="5" class="hud"/><rect x="20" y="118" width="16" height="14" rx="3" fill="#191D24" stroke="#FFFFFF24"/><text x="28" y="129" class="c m b s10">T</text><text x="42" y="129" class="mu s10">→ 2D workload grid</text></g>
+<g id="legend"><rect x="14" y="700" width="232" height="148" rx="6" class="hud"/><text x="26" y="719" class="mu b gl s10">WORKLOAD ENCODING</text><rect x="28" y="730" width="11" height="10" rx="1.5" fill="#3A4A57" stroke="none"/><text x="48" y="739" class="s10 mu">Deployment · tower, block = pod</text><rect x="28" y="746" width="11" height="10" rx="1.5" fill="#C47A34" stroke="#5B9BFF"/><text x="48" y="755" class="s10 mu">new ReplicaSet rev (accent outline)</text><rect x="28" y="762" width="11" height="10" rx="1.5" fill="#3B414B" stroke="none"/><text x="48" y="771" class="s10 mu">old ReplicaSet rev (muted)</text><rect x="28" y="778" width="11" height="10" rx="1.5" fill="none" stroke="#5B9BFF" stroke-dasharray="2 2"/><text x="48" y="787" class="s10 mu">HPA envelope · ghost to max</text><rect x="28" y="794" width="11" height="10" rx="1.5" fill="#4A5A70" stroke="#7AA2D6"/><text x="48" y="803" class="s10 mu">StatefulSet · ordinal + PVC anchor</text><rect x="28" y="810" width="11" height="10" rx="1.5" fill="#6B7280" stroke="#8A919C" stroke-dasharray="2 2"/><text x="48" y="819" class="s10 mu">Pending · Unscheduled cloud</text><rect x="28" y="826" width="11" height="10" rx="1.5" fill="#7AA2D6" fill-opacity=".35" stroke="#7AA2D6"/><text x="48" y="835" class="s10 mu">Job / CronJob · fading</text></g>
+<g id="docked-panels"><rect x="1092" y="76" width="336" height="772" rx="6" class="hud"/><text x="1104" y="96" class="mu b gl s10">DOCKED 2D · LINKED TO SELECTION</text><text x="1416" y="96" class="dim e s10">✕</text><use href="#g-deg" x="1104" y="107" width="13" height="13"/><text x="1123" y="118" class="s16 b">checkout</text><text x="1212" y="118" class="mu">Deployment · ns checkout</text><rect x="1104" y="128" width="312" height="24" rx="4" fill="#E8923A1A" stroke="#E8923A66"/><use href="#g-deg" x="1112" y="135" width="10" height="10"/><text x="1128" y="144" class="b">Degraded · rev 42 rolling · 6/10 updated</text><text x="1104" y="174" class="mu b gl s10">ROLLOUT · READY VS DESIRED</text><line x1="1104" y1="186" x2="1118" y2="186" stroke="#5B9BFF" stroke-width="1.6"/><text x="1122" y="190" class="mu s10">rev 42 desired</text><line x1="1204" y1="186" x2="1218" y2="186" stroke="#E8923A" stroke-dasharray="4 2"/><text x="1222" y="190" class="mu s10">rev 42 ready</text><line x1="1294" y1="186" x2="1308" y2="186" stroke="#8A919C" stroke-width="1.6"/><text x="1312" y="190" class="mu s10">rev 41</text><line x1="1350" y1="186" x2="1364" y2="186" stroke="#C8D3E3" stroke-dasharray="3 2"/><text x="1368" y="190" class="mu s10">total</text><line x1="1124" y1="306" x2="1414" y2="306" stroke="#FFFFFF" stroke-opacity=".05"/><text x="1120" y="309" class="e dim s9 m">0</text><line x1="1124" y1="272.7" x2="1414" y2="272.7" stroke="#FFFFFF" stroke-opacity=".05"/><text x="1120" y="275.7" class="e dim s9 m">4</text><line x1="1124" y1="239.3" x2="1414" y2="239.3" stroke="#FFFFFF" stroke-opacity=".05"/><text x="1120" y="242.3" class="e dim s9 m">8</text><line x1="1124" y1="206" x2="1414" y2="206" stroke="#FFFFFF" stroke-opacity=".05"/><text x="1120" y="209" class="e dim s9 m">12</text><text x="1156.2" y="319" class="c dim s9 m">12:16</text><text x="1220.7" y="319" class="c dim s9 m">12:20</text><text x="1285.1" y="319" class="c dim s9 m">12:24</text><text x="1349.6" y="319" class="c dim s9 m">12:28</text><text x="1414" y="319" class="c dim s9 m">12:32</text><polyline points="1124,222.7 1414,222.7" fill="none" stroke="#C8D3E3" stroke-opacity=".7" stroke-dasharray="3 2"/><polyline points="1124,222.7 1204.6,222.7 1220.7,222.7 1236.8,231 1269,239.3 1301.2,247.7 1333.4,256 1365.7,264.3 1381.8,272.7 1414,272.7" fill="none" stroke="#8A919C" stroke-width="1.6"/><polyline points="1204.6,306 1220.7,306 1228.7,297.7 1236.8,289.3 1260.9,281 1285.1,272.7 1317.3,264.3 1349.6,264.3 1373.7,256 1414,256" fill="none" stroke="#5B9BFF" stroke-width="1.6"/><polyline points="1204.6,306 1228.7,306 1244.8,297.7 1269,289.3 1301.2,289.3 1333.4,281 1365.7,281 1414,281" fill="none" stroke="#E8923A" stroke-width="1.4" stroke-dasharray="4 2"/><text x="1414" y="293" class="e s9 m" fill="#E8923A">rev 42 ready 3/6</text><line x1="1204.6" y1="202" x2="1204.6" y2="306" stroke="#E6E8EB" stroke-opacity=".5" stroke-dasharray="2 2"/><text x="1207.6" y="210" class="s9">⚙ 12:19</text><line x1="1252.9" y1="202" x2="1252.9" y2="306" stroke="#E0457B" stroke-opacity=".55" stroke-dasharray="2 2"/><text x="1255.9" y="222" class="s9" fill="#E0457B">⚠ 12:22</text><line x1="1397.9" y1="200" x2="1397.9" y2="306" stroke="#5B9BFF"/><line x1="1104" y1="330" x2="1416" y2="330" stroke="#FFFFFF14"/><text x="1104" y="350" class="mu b gl s10">RESTARTS / OOM · PER MINUTE</text><rect x="1300" y="342" width="8" height="8" fill="#8A919C"/><text x="1312" y="350" class="mu s10">restart</text><rect x="1358" y="342" width="8" height="8" fill="#E0457B"/><text x="1370" y="350" class="mu s10">OOM</text><rect x="1216.7" y="404" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1232.8" y="404" width="8" height="0" fill="#8A919C" fill-opacity=".8"/><rect x="1232.8" y="404" width="8" height="16" fill="#E0457B"/><rect x="1248.9" y="388" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1248.9" y="404" width="8" height="16" fill="#E0457B"/><rect x="1265" y="388" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1265" y="404" width="8" height="16" fill="#E0457B"/><rect x="1281.1" y="372" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1281.1" y="388" width="8" height="32" fill="#E0457B"/><rect x="1297.2" y="388" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1297.2" y="404" width="8" height="16" fill="#E0457B"/><rect x="1313.3" y="372" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1313.3" y="388" width="8" height="32" fill="#E0457B"/><rect x="1329.4" y="388" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1329.4" y="404" width="8" height="16" fill="#E0457B"/><rect x="1345.6" y="372" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1345.6" y="388" width="8" height="32" fill="#E0457B"/><rect x="1361.7" y="388" width="8" height="0" fill="#8A919C" fill-opacity=".8"/><rect x="1361.7" y="388" width="8" height="32" fill="#E0457B"/><rect x="1377.8" y="372" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1377.8" y="388" width="8" height="32" fill="#E0457B"/><rect x="1393.9" y="388" width="8" height="16" fill="#8A919C" fill-opacity=".8"/><rect x="1393.9" y="404" width="8" height="16" fill="#E0457B"/><line x1="1124" y1="420" x2="1414" y2="420" stroke="#FFFFFF24"/><line x1="1204.6" y1="360" x2="1204.6" y2="420" stroke="#E6E8EB" stroke-opacity=".5" stroke-dasharray="2 2"/><text x="1104" y="438" class="mu s9 m">rev 42 pods · 14 restarts · 9 OOMKilled · limit 512 Mi</text><line x1="1104" y1="452" x2="1416" y2="452" stroke="#FFFFFF14"/><text x="1104" y="472" class="mu b gl s10">KUBERNETES EVENTS</text><text x="1416" y="472" class="dim e s10">ns checkout · payments</text><use href="#g-ok" x="1104" y="484" width="8" height="8"/><text x="1118" y="492" class="m s10 mu">12:19:02</text><text x="1176" y="492" class="s10 b" fill="#E6E8EB">ScalingReplicaSet</text><text x="1176" y="504" class="m s9 mu">scaled up checkout-7d4 (rev 42) to 3</text><use href="#g-ok" x="1104" y="514" width="8" height="8"/><text x="1118" y="522" class="m s10 mu">12:19:04</text><text x="1176" y="522" class="s10 b" fill="#E6E8EB">Scheduled</text><text x="1176" y="534" class="m s9 mu">checkout-7d4-k2v → ip-10-4-2-31</text><use href="#g-ok" x="1104" y="544" width="8" height="8"/><text x="1118" y="552" class="m s10 mu">12:19:11</text><text x="1176" y="552" class="s10 b" fill="#E6E8EB">Pulled</text><text x="1176" y="564" class="m s9 mu">image checkout:2.42.0 in 3.1 s</text><use href="#g-ok" x="1104" y="574" width="8" height="8"/><text x="1118" y="582" class="m s10 mu">12:19:12</text><text x="1176" y="582" class="s10 b" fill="#E6E8EB">Started</text><text x="1176" y="594" class="m s9 mu">container checkout</text><use href="#g-ok" x="1104" y="604" width="8" height="8"/><text x="1118" y="612" class="m s10 mu">12:21:40</text><text x="1176" y="612" class="s10 b" fill="#E6E8EB">ScalingReplicaSet</text><text x="1176" y="624" class="m s9 mu">scaled down checkout-5b8 (rev 41) to 8</text><use href="#g-deg" x="1104" y="634" width="8" height="8"/><text x="1118" y="642" class="m s10 mu">12:22:15</text><text x="1176" y="642" class="s10 b" fill="#E8923A">BackOff</text><text x="1176" y="654" class="m s9 mu">back-off restarting checkout-7d4-q8m</text><use href="#g-fail" x="1104" y="664" width="8" height="8"/><text x="1118" y="672" class="m s10 mu">12:24:03</text><text x="1176" y="672" class="s10 b" fill="#E8923A">BackOff</text><text x="1176" y="684" class="m s9 mu">payments-api-6c9-x2f · OOMKilled</text><use href="#g-ok" x="1104" y="694" width="8" height="8"/><text x="1118" y="702" class="m s10 mu">12:26:30</text><text x="1176" y="702" class="s10 b" fill="#E6E8EB">ScalingReplicaSet</text><text x="1176" y="714" class="m s9 mu">scaled up checkout-7d4 (rev 42) to 6</text><use href="#g-ok" x="1104" y="724" width="8" height="8"/><text x="1118" y="732" class="m s10 mu">12:28:09</text><text x="1176" y="732" class="s10 b" fill="#E6E8EB">SuccessfulRescale</text><text x="1176" y="744" class="m s9 mu">HPA checkout 8 → 10 · cpu 82 %</text><use href="#g-watch" x="1104" y="754" width="8" height="8"/><text x="1118" y="762" class="m s10 mu">12:29:47</text><text x="1176" y="762" class="s10 b" fill="#E8923A">FailedScheduling</text><text x="1176" y="774" class="m s9 mu">0/42 nodes: Insufficient memory</text><use href="#g-deg" x="1104" y="784" width="8" height="8"/><text x="1118" y="792" class="m s10 mu">12:31:02</text><text x="1176" y="792" class="s10 b" fill="#E8923A">BackOff</text><text x="1176" y="804" class="m s9 mu">checkout-7d4-q8m · restart 6</text></g>
+<g id="orbit-gizmo"><circle cx="1036" cy="136" r="30" class="hud"/><circle cx="1036" cy="136" r="22" fill="none" stroke="#FFFFFF24"/><circle cx="1036" cy="136" r="3" fill="#E6E8EB"/><circle cx="1046" cy="114" r="6" fill="#0B0D10" stroke="#FFFFFF24"/><text x="1046" y="117" class="c b s9">N</text><text x="1036" y="180" class="c m dim s9">yaw −17° · pitch 38°</text></g>
+<g id="callouts"><g class="co"><line x1="515.6" y1="412.6" x2="640" y2="152" stroke="#5B9BFF" stroke-dasharray="3 3"/><circle cx="515.6" cy="412.6" r="2.5" fill="#5B9BFF"/><rect x="640" y="140" width="228" height="50" fill="#0B0D10" fill-opacity=".93" stroke="#5B9BFF" rx="4" stroke-dasharray="3 2"/><text x="656" y="157" class="b">Tower = Deployment, banded by rev</text><text x="656" y="171" class="mu">one block per pod; rev 42 (accent) on</text><text x="656" y="185" class="mu">top of muted rev 41 during the rollout.</text><circle cx="640" cy="152" r="10" fill="#5B9BFF"/><text x="640" y="156.5" class="s13 c b" fill="#0B0D10">1</text></g><g class="co"><line x1="529" y1="226.8" x2="380" y2="152" stroke="#5B9BFF" stroke-dasharray="3 3"/><circle cx="529" cy="226.8" r="2.5" fill="#5B9BFF"/><rect x="380" y="140" width="224" height="50" fill="#0B0D10" fill-opacity=".93" stroke="#5B9BFF" rx="4" stroke-dasharray="3 2"/><text x="396" y="157" class="b">HPA envelope as ghost blocks</text><text x="396" y="171" class="mu">wireframe up to maxReplicas 16;</text><text x="396" y="185" class="mu">the gap is the room left to scale.</text><circle cx="380" cy="152" r="10" fill="#5B9BFF"/><text x="380" y="156.5" class="s13 c b" fill="#0B0D10">2</text></g><g class="co"><line x1="253.6" y1="464.1" x2="300" y2="802" stroke="#5B9BFF" stroke-dasharray="3 3"/><circle cx="253.6" cy="464.1" r="2.5" fill="#5B9BFF"/><rect x="300" y="790" width="226" height="50" fill="#0B0D10" fill-opacity=".93" stroke="#5B9BFF" rx="4" stroke-dasharray="3 2"/><text x="316" y="807" class="b">StatefulSet PVC anchors</text><text x="316" y="821" class="mu">ordinals 0·1·2 tie down by dotted</text><text x="316" y="835" class="mu">claims to volume discs below.</text><circle cx="300" cy="802" r="10" fill="#5B9BFF"/><text x="300" y="806.5" class="s13 c b" fill="#0B0D10">3</text></g><g class="co"><line x1="251.1" y1="320.5" x2="14" y2="162" stroke="#5B9BFF" stroke-dasharray="3 3"/><circle cx="251.1" cy="320.5" r="2.5" fill="#5B9BFF"/><rect x="14" y="150" width="216" height="50" fill="#0B0D10" fill-opacity=".93" stroke="#5B9BFF" rx="4" stroke-dasharray="3 2"/><text x="30" y="167" class="b">Pending pods hover</text><text x="30" y="181" class="mu">unschedulable pods float in a cloud</text><text x="30" y="195" class="mu">with the scheduler's reason.</text><circle cx="14" cy="162" r="10" fill="#5B9BFF"/><text x="14" y="166.5" class="s13 c b" fill="#0B0D10">4</text></g><g class="co"><line x1="302.7" y1="584.9" x2="14" y2="616" stroke="#5B9BFF" stroke-dasharray="3 3"/><circle cx="302.7" cy="584.9" r="2.5" fill="#5B9BFF"/><rect x="14" y="604" width="216" height="50" fill="#0B0D10" fill-opacity=".93" stroke="#5B9BFF" rx="4" stroke-dasharray="3 2"/><text x="30" y="621" class="b">Service gate, zero endpoints</text><text x="30" y="635" class="mu">arcs go only to Ready replicas;</text><text x="30" y="649" class="mu">payments-api has none: Failing ■.</text><circle cx="14" cy="616" r="10" fill="#5B9BFF"/><text x="14" y="620.5" class="s13 c b" fill="#0B0D10">5</text></g><g class="co"><line x1="453.2" y1="602.5" x2="560" y2="802" stroke="#5B9BFF" stroke-dasharray="3 3"/><circle cx="453.2" cy="602.5" r="2.5" fill="#5B9BFF"/><rect x="560" y="790" width="228" height="50" fill="#0B0D10" fill-opacity=".93" stroke="#5B9BFF" rx="4" stroke-dasharray="3 2"/><text x="576" y="807" class="b">Ghosted node floor, runs-on</text><text x="576" y="821" class="mu">threads drop from checkout pods to</text><text x="576" y="835" class="mu">the nodes they run on.</text><circle cx="560" cy="802" r="10" fill="#5B9BFF"/><text x="560" y="806.5" class="s13 c b" fill="#0B0D10">6</text></g></g>
+<g id="time-ribbon"><rect x="0" y="860" width="1440" height="40" fill="#12151A"/><line x1="0" y1="860.5" x2="1440" y2="860.5" stroke="#FFFFFF14"/><text x="12" y="884" class="mu">◀◀</text><text x="36" y="884" class="mu">▶</text><rect x="54" y="870" width="56" height="20" fill="#2FB59A1A" stroke="#2FB59A55" rx="4"/><circle cx="65" cy="880" r="3.5" fill="#2FB59A"/><text x="74" y="884" class="b" fill="#2FB59A">LIVE</text><rect x="124" y="866" width="1036" height="28" fill="#0B0D10" stroke="#FFFFFF14" rx="4"/><path d="M125 886v-1.5M131 886v-1.9M137 886v-1.8M143 886v-1.1M149 886v-1.1M155 886v-1.1M161 886v-1.6M167 886v-1.2M173 886v-1.9M179 886v-1.8M185 886v-2.4M191 886v-2.2M197 886v-1.2M203 886v-1.4M209 886v-1.3M215 886v-1.9M221 886v-1.8M227 886v-1.1M233 886v-2M239 886v-1.4M245 886v-1.6M251 886v-2.1M257 886v-1.3M263 886v-1.7M269 886v-2M275 886v-2.4M281 886v-1.6M287 886v-1.2M293 886v-1.1M299 886v-2.1M305 886v-2.2M311 886v-2M317 886v-1.8M323 886v-2.2M329 886v-1.7M335 886v-1.1M341 886v-1.9M347 886v-2.2M353 886v-1.5M359 886v-1M365 886v-1.2M371 886v-1.1M377 886v-1.2M383 886v-1.5M389 886v-1.1M395 886v-1.8M401 886v-2.1M407 886v-1.4M413 886v-1.5M419 886v-2.3M425 886v-1.2M431 886v-1.3M437 886v-1.8M443 886v-1M449 886v-1.5M455 886v-2.3M461 886v-1.7M467 886v-1.9M473 886v-2.3M479 886v-2.2M485 886v-1.5M491 886v-1.1M497 886v-1.1M503 886v-1.3M509 886v-1.5M515 886v-1M521 886v-1.1M527 886v-1M533 886v-1.9M539 886v-1.4M545 886v-1.5M551 886v-2.2M557 886v-1.7M563 886v-1.1M569 886v-1.5M575 886v-2.2M581 886v-1M587 886v-1.7M593 886v-1.8M599 886v-1.7M605 886v-2.2M611 886v-1.4M617 886v-1.2M623 886v-1.7M629 886v-1.5M635 886v-2.1M641 886v-2.2M647 886v-2.1M653 886v-1.3M659 886v-1.5M665 886v-1M671 886v-1.4M677 886v-2.3M683 886v-2.3M689 886v-2.3M695 886v-1.3M701 886v-1.3M707 886v-1.9M713 886v-2.2M719 886v-1.9M725 886v-1.1M731 886v-2.3M737 886v-2.1M743 886v-1.2M749 886v-1.5M755 886v-2.4M761 886v-1.6M767 886v-2M773 886v-1.2M779 886v-2.3M785 886v-1.2M791 886v-2.4M797 886v-1.5M803 886v-1.2M809 886v-2.4M815 886v-1.7M821 886v-1.6M827 886v-2.2M833 886v-1.4M839 886v-1.3M845 886v-1.4M851 886v-1.2M857 886v-1.5M863 886v-1.8M869 886v-1.6M875 886v-1.7M881 886v-1.7M887 886v-1.6M893 886v-1M899 886v-1.2M905 886v-2M911 886v-1.5M917 886v-1.8M923 886v-1.1M929 886v-1.3M935 886v-2.1M941 886v-1.8M947 886v-2.3" stroke="#8A919C" stroke-opacity=".35" stroke-width="2"/><path d="M953 886v-7.4" stroke="#E8923A" stroke-opacity=".9" stroke-width="2"/><path d="M956 886v-11.8M962 886v-11.7M968 886v-11.7M974 886v-11.7M980 886v-11.8M986 886v-12M992 886v-11.7M998 886v-11.9M1004 886v-11.5M1010 886v-11.4M1016 886v-11.4M1022 886v-11.9M1028 886v-11.5M1034 886v-11.8M1040 886v-11.9M1046 886v-11.5M1052 886v-11.6M1058 886v-12M1064 886v-11.5M1070 886v-11.7M1076 886v-11.5M1082 886v-11.8M1088 886v-11.7M1094 886v-11.4M1100 886v-11.8M1106 886v-11.4M1112 886v-11.9M1118 886v-11.5M1124 886v-11.4M1130 886v-11.6M1136 886v-11.7M1142 886v-11.9M1148 886v-11.5M1154 886v-11.7" stroke="#E0457B" stroke-opacity=".9" stroke-width="2"/><line x1="372.6" y1="887" x2="372.6" y2="894" stroke="#FFFFFF24"/><text x="375.6" y="893" class="dim s9">10:00</text><line x1="621.3" y1="887" x2="621.3" y2="894" stroke="#FFFFFF24"/><text x="624.3" y="893" class="dim s9">11:00</text><line x1="869.9" y1="887" x2="869.9" y2="894" stroke="#FFFFFF24"/><text x="872.9" y="893" class="dim s9">12:00</text><line x1="1118.6" y1="887" x2="1118.6" y2="894" stroke="#FFFFFF24"/><text x="1121.6" y="893" class="dim s9">13:00</text><rect x="878.2" y="864" width="248.6" height="32" fill="#5B9BFF14" stroke="#5B9BFF" rx="3" stroke-opacity=".8"/><rect x="876.2" y="872" width="4" height="16" fill="#5B9BFF" rx="1"/><rect x="1124.8" y="872" width="4" height="16" fill="#5B9BFF" rx="1"/><line x1="948.7" y1="874" x2="948.7" y2="894" stroke="#E6E8EB" stroke-opacity=".6" stroke-dasharray="2 2"/><line x1="961.1" y1="874" x2="961.1" y2="894" stroke="#E0457B" stroke-opacity=".6" stroke-dasharray="2 2"/><rect x="904.7" y="863" width="42" height="13" fill="#12151A" rx="2"/><rect x="962.1" y="863" width="44" height="13" fill="#12151A" rx="2"/><text x="946.7" y="873" class="e s10">⚙ 12:19</text><text x="963.1" y="873" class="s10" fill="#E0457B">⚠ 12:22</text><line x1="998.4" y1="862" x2="998.4" y2="898" stroke="#E6E8EB"/><text x="1174" y="884" class="s13 m b">cursor 12:31</text><rect x="1272" y="870" width="84" height="20" fill="#191D24" stroke="#FFFFFF14" rx="4"/><text x="1314" y="884" class="c mu">vs ⟲ −7d ▾</text><rect x="1364" y="870" width="68" height="20" fill="#191D24" stroke="#FFFFFF14" rx="4"/><text x="1398" y="884" class="c" fill="#D9C84A">⚡ local</text></g>
+</svg>

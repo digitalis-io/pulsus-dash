@@ -86,7 +86,7 @@ the shared crate `pulsus-plan`, which also compiles to WASM, so the browser's lo
 | [SRF-016](../product/04-surfaces.md#srf-016--lazy-collapsed-sections) | §4.6, T07-012 | `itest:planner-collapsed`: a collapsed section of 10 viewports issues no physical query |
 | [SRF-017](../product/04-surfaces.md#srf-017--variables) | §4.1 (variable dependency index), T07-013 | `itest:planner-variables`: changing `$region` on a 30-viewport board where 5 use it re-plans exactly 5 |
 | [PRF-025](../product/09-performance-contract.md#prf-025--local-first-analytics) | §4.5 (local placement), §4.12 (Postgres fallback pyramids) | `itest:planner-local-first` (Exact answerability issues no remote query; server refinement uses the same `LogicalQuery`); `itest:no-pulsusdb-writes` |
-| [EST-043](../product/15-estate-navigation.md#est-043--fetch-plan-budgets-and-timing) | §4.1, §4.8 (Background and Prefetch budgets per level) | `itest:fetch-plan-levels` (T12 (draft) co-owns Table 15-6) |
+| [EST-043](../product/15-estate-navigation.md#est-043--fetch-plan-budgets-and-timing) | §4.1, §4.8 (Background and Prefetch budgets per level) | `itest:fetch-plan-levels` ([T12](T12-entity-catalogue.md) co-owns Table 15-6) |
 | [SRF-044](../product/04-surfaces.md#srf-044--traceql-metrics-and-service-graph-slice) | §4.12 (R5, service-graph slice) | `itest:service-graph-slice`: a TraceQL metrics query and its service-graph slice plan to one `traceql_metrics_range` and one `service_graph` call |
 | [SRF-041](../product/04-surfaces.md#srf-041--selection-vs-baseline-compare) | §4.12 (R6; TraceQL `compare()` native) | `itest:compare-native-and-r6` |
 | [SRF-034](../product/04-surfaces.md#srf-034--patterns-as-the-default-for-large-results) | §4.12 (R9 pattern diff, NEW verification) | `itest:pattern-diff-verify` |
@@ -376,7 +376,7 @@ owner's decision on [ADR-0013](../adr/0013-metrics-data-scopes.md), the planner 
    missing labels and the collector-side fix (OTel `resource_to_telemetry_conversion`, or a PulsusDB
    promotion list per R16), which the coverage meter shows (ENT-007).
 4. A `target_info` join is never used for enforcement. It MAY be used for display only (e.g. entity
-   derivation, T12 (draft)).
+   derivation, [T12](T12-entity-catalogue.md)).
 
 #### T07-015 — Metrics scopes fail closed per family (O1 pending)
 **MUST** — Until O1 is decided, the planner MUST enforce metrics data scopes on metric labels per
@@ -415,7 +415,7 @@ replaces the estimate column for PromQL.
 | External agent (MCP token, T15 (draft) class `external_agent`) | Per token: 60 cost-s per minute, ≤ 2 concurrent | `budget_exhausted` + `429` on the MCP route |
 | Alert evaluation ([T16](T16-alert-evaluator.md) class `alerting`) | Not budget-limited. Highest priority class after Interactive; capacity is sized by T16 sharding | The evaluator reports lag and never silently skips |
 | Alert backtest ([T16](T16-alert-evaluator.md) class `backtest`) | Charged to the author's human budget at Refine priority | Coarser backtest step |
-| Background jobs (`Budget::background(tenant)`: catalogue harvest T12 (draft), sweeps, fallback pyramid builder) | Per-tenant share of the Background class ([T06](T06-bff-architecture.md) §4.10) | Sweep cadence stretches, and stale age shows in the Atlas header |
+| Background jobs (`Budget::background(tenant)`: catalogue harvest [T12](T12-entity-catalogue.md), sweeps, fallback pyramid builder) | Per-tenant share of the Background class ([T06](T06-bff-architecture.md) §4.10) | Sweep cadence stretches, and stale age shows in the Atlas header |
 | Tenant | Σ of the above ≤ the tenant quota | Fair-share across users (DRR) |
 
 The agent caps are in physical queries and cost. T15 (draft) separately caps *tool calls* (40 per
@@ -496,7 +496,7 @@ through the same query interface as telemetry. The planner owns the semantics; `
 | `ALERTS` | PromQL | `alert_transitions` (time-partitioned, 13 months) + `alert_instances` (current) | Labels `alertname`, `alertstate`, `severity`, `rule_uid`, flags `acked`/`silenced`/`in_maintenance` (`"true"`/`"false"`), plus the rule's labels. Value 1 at each step where the instance is in that state. `alertstate` ∈ `pending`, `firing`, `nodata`, `error`; Normal, Resolved and Paused produce no series (Prometheus semantics, extended with the Table 3.2 states of [07](../product/07-alerting.md)) |
 | `ALERTS_FOR_STATE` | PromQL | same | Labels as `ALERTS` without `alertstate`; value = Unix seconds the instance became active (Pending entry), while Pending or Firing |
 | `pulsus_anomaly_score` | PromQL | `anomaly_scores` (5-minute resolution, 30 days) | Labels `entity_ref`, `entity_type`, `signal`, plus entity identity labels from the catalogue; value = score |
-| `{source="pulsus-dash"}` | LogQL | `alert_transitions`, `notification_attempts`, `change_events` | Stream labels `source`, `kind` (`alert_transition`, `notification_attempt`; `change_event` from M-UI3 with T12 (draft)), `alertname`, `severity`, `entity_ref`; line = the row as JSON; structured fields for every column |
+| `{source="pulsus-dash"}` | LogQL | `alert_transitions`, `notification_attempts`, `entity_change_events` | Stream labels `source`, `kind` (`alert_transition`, `notification_attempt`; `change_event` from M-UI3 with [T12](T12-entity-catalogue.md)), `alertname`, `severity`, `entity_ref`; line = the row as JSON; structured fields for every column |
 
 #### T07-020 — Reserved selectors resolve to Postgres, never to PulsusDB
 **MUST** — At step 2 the planner MUST classify every selector whose metric name equals `ALERTS`,
@@ -699,7 +699,7 @@ unchanged.
 
 **R14: estimates.** §4.8.
 
-R3/R7/R8 fallbacks belong to the catalogue and change feed (T12 (draft)).
+R3/R7/R8 fallbacks belong to the catalogue and change feed ([T12](T12-entity-catalogue.md)).
 
 ### 4.13 Degradation, LIVE mode and memory pressure
 
@@ -812,10 +812,10 @@ pub struct Plan { pub id: PlanId, pub gen: u64, pub logical: Vec<LogicalQuery>, 
 | `pulsus-plan` IR (§5.2) | **Defined here** | T13 executes `LogicalQuery` locally. T15 agent tools submit `LogicalQuery` with `Purpose::Agent`. T16 uses `Purpose::Alert` (no passes, no budgets beyond the evaluator's) |
 | `ClientMsg`/`ServerMsg` (§5.1) | Defined here, framed by T04 | T04 adds stream ids, resume, compression |
 | `ScopeRewriter` (wraps T10 `scope::rewrite` / `filter_response`) | Defined in T06, implemented by T10 (draft) | Runs at step 7 on every physical and virtual query; keys use `scope_fp`; returns `withheld` families (T07-015) |
-| `VirtualSource` / `dash-vsrc` | Trait in T06; semantics here (§4.11) | Tables `alert_transitions`, `alert_instances`, `notification_attempts`, `anomaly_scores`, `change_events`, `pyramid_tiles` defined by T11/T16 |
+| `VirtualSource` / `dash-vsrc` | Trait in T06; semantics here (§4.11) | Tables `alert_transitions`, `alert_instances`, `notification_attempts`, `anomaly_scores`, `entity_change_events`, `pyramid_tiles` defined by T11/T16 |
 | `LocalEngine::answerability` | Defined by T13 (draft) | Pure, ≤ 0.1 ms |
 | Templates with `foreach(label)` fusion | **Assumed from T11/T12** | The Lens template schema carries `fusable_by` |
-| Catalogue snapshot (scrape interval, cardinalities, Lens resolution, label ⇄ attribute map) | Assumed from T12 (draft) | Read-only snapshot, ≤ 5 ms resolve |
+| Catalogue snapshot (scrape interval, cardinalities, Lens resolution, label ⇄ attribute map) | Assumed from [T12](T12-entity-catalogue.md) | Read-only snapshot, ≤ 5 ms resolve |
 | Camera approach hints, memory pressure | Assumed from [T02](T02-vis-engine.md)/[T03](T03-browser-runtime.md) camera controller and T01 memory monitor | `ApproachHint` at most every 100 ms per entity |
 | `VisHint` | From [T09](T09-query-editors.md) | Planner confirms or overrides on result shape (series count > 50 → band) |
 
@@ -827,7 +827,7 @@ holds the WS session). It reads:
 | Data | Where |
 |---|---|
 | Rollup table, interval caps | `runtimeinfo` + `rollup_ranges_s` config (T06 §4.9) |
-| Catalogue snapshot, label ⇄ attribute map | T12 (draft) snapshot (Redis/Postgres) |
+| Catalogue snapshot, label ⇄ attribute map | [T12](T12-entity-catalogue.md) snapshot (Redis/Postgres) |
 | Cost EWMA calibration | In memory per replica; persisted hourly to runtime settings for warm start |
 | Virtual sources | Postgres (§4.11.1), via `dash-vsrc` |
 | Fallback pyramid tiles | Postgres `pyramid_tiles` (§4.12) |
