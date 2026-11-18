@@ -414,3 +414,5 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T01-001 to T01-011, the Space/rooms composition (§4.3), the token pipeline (§4.5), the crate map (§4.6) and the Satisfies table; applied D1 and D2 |
 | 1.0-rc | 2026-11-18 | #22: crate map adds `dash-core-mt` (the core module crate); the IndexedDB chunk cache is renamed `dash-chunk-cache` (T06's BFF `dash-cache` keeps the name in the one workspace); all crates live in one root Cargo workspace |
+
+Seeded violation: [missing](seeded-missing.md).
