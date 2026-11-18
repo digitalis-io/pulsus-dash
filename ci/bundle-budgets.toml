@@ -1,6 +1,6 @@
 # ci/bundle-budgets.toml — T03 §7.3, brotli bytes, 1 KB = 1000 bytes.
 # Generated output layout: web/shim/gen/<crate>/ holds <crate_>.js glue, <crate_>_bg.wasm and snippets/.
-mode = "report" # "enforce" with the first real bundle (T05 §7.1)
+mode = "enforce" # "enforce" with the first real bundle (T05 §7.1)
 eager_total_bytes = 2_600_000
 
 artefact = [ # same as [[artefact]] tables; keys as ArtefactBudget
