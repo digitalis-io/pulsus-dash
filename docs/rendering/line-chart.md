@@ -181,7 +181,9 @@ GPU starts; Full mode loads every series on data-0.
 
 **`bench:frame-line-1e8`.** The `@webgpu line_1e8_pan_zoom` test loads 10⁸ points, warms up 5 s,
 then loops for `DASH_BENCH_MS` (20 s) over: drag −400 px in 20 steps over 500 ms; 10 wheel steps
-in; a 300 px flick; 10 wheel steps out. It writes `traces/frame-line-1e8.json`
+in; a 300 px flick; 10 wheel steps out. The deadline is checked before every input step, and the
+loop also runs until 12 frames were presented (on SwiftShader a 10⁸-point frame takes seconds). It
+writes `traces/frame-line-1e8.json`
 (`{scene, series, points, tier, decimation, warmupMs, loopMs, loadMs, intervalsMs[]}`) and the
 Chrome trace `traces/long-tasks-line-1e8.json`. In CI the frame times are **reported** (p50, p95,
 p99, the machine-B verdict); a missing report or fewer than 10 intervals fails; the trace is a
