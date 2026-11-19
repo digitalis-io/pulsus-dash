@@ -118,7 +118,7 @@ contract tests may also run against a configured shared PulsusDB deployment, rea
 | D7 | The web client is a standard **TypeScript + React + Vite** application, built first; the GPU chart engine (Rust/WASM in a worker, one canvas per panel) comes later behind a typed TS API, with an in-house Canvas 2D renderer until then | [ADR-0014](../adr/0014-typescript-react-web-client.md) | Accepted 2026-11-19 |
 | D8 | The BFF is written in **Go** | [ADR-0015](../adr/0015-go-bff.md) | Accepted 2026-11-19 |
 | D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards; the earlier no-sidebar prototype is rejected | [ADR-0014](../adr/0014-typescript-react-web-client.md) §10 | Accepted 2026-11-19 |
-| D10 | Asset integrity is verified by the BFF against the signed manifest before serving; all JS, CSS and workers are same-origin; no per-module SRI in the browser | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) | Accepted 2026-11-19 |
+| D10 | Asset integrity is verified by the BFF against the signed manifest before serving; every JS module, CSS file and worker is same-origin, and the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity`; no per-module SRI in the browser | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) | Accepted 2026-11-19 |
 | D11 | SRF-027 in M-UI1 shows PulsusDB's parse errors on run (positioned where PulsusDB returns a position); pre-run byte-offset diagnostics are SRF-078 at M-UI2 with the browser parser (was Q14, option A) | [04](04-surfaces.md) SRF-027, SRF-078 | Accepted 2026-11-19 |
 
 ### 3.1 Settled by the specification

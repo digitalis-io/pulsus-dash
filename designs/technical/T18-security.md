@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-19 |
+| **Version** | 1.5-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (headers, CSP, sessions, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
@@ -134,7 +134,7 @@ sessions and tokens, action capability, audit integrity.
 |---|---|---|---|
 | **S**poofing | Session theft or fixation; forged SAML; stolen API token; forged webhook callbacks (Slack/Teams interactive ack, PagerDuty/ServiceNow sync) | ①, IdP, ③ | `__Host-` HttpOnly cookies, session rotation at login, SAML hardening (signed assertions required, XML signature wrapping defence, `InResponseTo` + one-time assertion IDs against replay; T10 (draft)), token prefixes + scanning, inbound callback signature verification (T18-029) |
 | | BFF impersonating users to PulsusDB | ② | Single service credential per tenant binding (Basic today), mTLS recommended, R12 scoped credential later |
-| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | Executable code same-origin only; per-file BFF verification against the signed manifest before serving; SRI-checked engine WASM from the CDN (§4.3, ADR-0016); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
+| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | Every JS module, CSS file and worker same-origin, engine WASM from the CDN only through an `integrity` fetch; per-file BFF verification against the signed manifest before serving; SRI-checked engine WASM from the CDN (§4.3, ADR-0016); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
 | **R**epudiation | "I didn't silence that"; AI did something | all | Audit with actor + `on_behalf_of` + request id; actions record proposer, confirmer and approvers |
 | **I**nformation disclosure | Cross-tenant/scope reads, including of derived state; XSS reading data; secrets in logs reaching the LLM or notifications; IndexedDB cache on shared machines; `X-Pulsus-Explain` SQL leak; SSRF to cloud metadata | ①②③④⑥ | Scope rewrite + response filter (T10 (draft)); RLS on every Postgres table ([T11](T11-postgres-schema.md) §4.1); CSP + Trusted Types; redaction pipeline (§4.10); cache wipe on logout + optional no-persist policy (§4.9); header stripping; egress guard (§4.9) |
 | **D**enial of service | Expensive queries (agent loops, broad regexes); WASM module infinite loop; webhook floods; notification storms | ②⑤③ | Per-principal query budgets ([T07](T07-scene-query-planner.md)); PulsusDB 422/429 bounds; module watchdog (§4.4); rate limits per contact point ([T16](T16-alert-evaluator.md) T16-015); request body caps |
@@ -231,19 +231,24 @@ and from #68 `dash-engine.<hash>.wasm`). Its bytes MUST be verified against the 
 
 | Asset | Served from | Check |
 |---|---|---|
-| `index.html`, `asset-manifest.json`, every JS module (entry, lazy route chunks, the editor chunk and every module they import), wasm-bindgen glue, workers, CSS | **Same origin only** (the BFF, over TLS), in every asset mode | BFF start-up verification below; CSP `script-src 'self'`, `style-src 'self'` and `worker-src 'self'` (ADR-0014 §9, unchanged) stop any other origin. No per-module `integrity` in the browser |
+| `index.html`, `asset-manifest.json`, `asset-manifest.sig`, every JS module (entry, lazy route chunks, the editor chunk and every module they import), wasm-bindgen glue, workers, CSS | **Same origin only** (the BFF, over TLS), in every asset mode | BFF start-up verification below; CSP `script-src 'self'`, `style-src 'self'` and `worker-src 'self'` (ADR-0014 §9, unchanged) stop any other origin. No per-module `integrity` in the browser |
 | `dash-engine.<hash>.wasm` | Same origin, or the CDN in CDN mode | BFF start-up verification, and in the browser `fetch(url, {integrity: "sha384-…"})` with the hash from the manifest, then `WebAssembly.instantiateStreaming` on that response only |
 | Fonts, map tiles | Same origin, or the CDN in CDN mode | BFF start-up verification for the embedded copies; not executable, and `font-src`/`img-src` limit their origins |
 
-**Manifest and BFF start-up (fail closed).** Each release's `asset-manifest.json` lists
-`{path, sha384, size}` for every file of the set, including `index.html` and every pre-compressed
-variant (`.br`, `.gz`), and is signed (ed25519, a release key held in KMS). At start-up, before it
+**Manifest and BFF start-up (fail closed).** The verification metadata sits **outside** the set it
+lists: `asset-manifest.json` lists `{path, sha384, size}` for every asset file, including
+`index.html` and every pre-compressed variant (`.br`, `.gz`), and does not list itself; the detached
+`asset-manifest.sig` is an **Ed25519** signature over the exact bytes of `asset-manifest.json`, made
+with the release signing key held in KMS. The BFF verifies it with the release **public key compiled
+into the BFF binary** at build time (the signing key never reaches a BFF host; a key rotation ships
+in a new binary, which also carries the previous public key for one release). At start-up, before it
 opens a listener, the BFF MUST:
-1. verify the manifest signature;
-2. read **every** file of the embedded asset set (and of the embedded previous release, T19-004),
-   hash it and compare it with its manifest entry;
-3. treat a hash or size mismatch, a listed file that is missing, or a file not in the manifest as
+1. verify `asset-manifest.sig` over `asset-manifest.json` with the compiled-in public key;
+2. read **every** file of the embedded asset set (and of the embedded previous release, T19-004,
+   against that release's own manifest and signature), hash it and compare it with its entry;
+3. treat a hash or size mismatch, a listed file that is missing, or any file that is not listed as
    fatal: log `asset_integrity_failed{path, expected, actual}` and exit non-zero without serving.
+   `asset-manifest.json` and `asset-manifest.sig` are the only files exempt from listing.
 
 The BFF serves assets only from that verified, read-only in-memory set, so the bytes served are the
 bytes verified. In CDN mode it also fetches and hashes every manifest-listed CDN file at start-up; on
@@ -255,16 +260,16 @@ once from the same-origin `/assets/` path, and if that fails too, the engine is 
 and charts stay on the interim renderer ([T03](T03-browser-runtime.md) §9), with a RUM counter
 `engine_integrity_failed`.
 
-> **Rationale (ADR-0016):** every executable asset is same-origin over TLS. Whoever can alter a
-> same-origin asset can also alter `index.html` and the CSP, so per-module SRI in the browser would
-> add nothing there; the BFF verifies the bytes against the signed release before serving them. The
-> CDN, the one third party in the asset path, serves no code that runs without a hash check.
+> **Rationale (ADR-0016):** every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, which is fetched with `integrity` and compiled only from that verified response, with a same-origin retry. Whoever can alter a same-origin asset can also alter
+> `index.html` and the CSP, so per-module SRI in the browser would add nothing there; the BFF
+> verifies the bytes against the signed release before serving them. The CDN, the one third party in
+> the asset path, serves no code that runs without a hash check.
 
 Tests:
 - `itest:bff-refuses-altered-asset`: a binary whose embedded lazy chunk differs by one byte from the
   signed manifest (test signing key) exits non-zero with `asset_integrity_failed` naming the path and
   opens no port; the same for a missing listed file and an unlisted extra file.
-- `itest:asset-manifest-signature`: a set with a bad signature is refused at start-up.
+- `itest:asset-manifest-signature`: a set whose `asset-manifest.sig` does not verify with the compiled-in public key, or whose `asset-manifest.json` differs by one byte from the signed bytes, is refused at start-up; a set with an extra unlisted file other than the manifest and its signature is refused.
 - `itest:cdn-set-mismatch-falls-back`: in CDN mode, one altered CDN file makes the BFF serve the
   embedded set and log the path.
 - `e2e:no-cross-origin-script`: in CDN mode every script, module, worker and stylesheet request goes
@@ -463,8 +468,7 @@ ALR-061).
 - **Rotation:**
   - DEK rotation re-encrypts lazily on write, with a background re-wrap job.
   - KEK rotation re-wraps DEKs only.
-  - The service's own secrets (session pepper, token pepper, CSRF key, manifest signing key, image
-    proxy HMAC key) rotate with a two-key overlap window.
+  - The service's own secrets (session pepper, token pepper, CSRF key, image proxy HMAC key) rotate with a two-key overlap window.
 
 #### T18-030 — Secrets never reach logs
 **MUST** — `tracing` fields of type `Secret<T>` MUST be redacted by construction; panic messages and
@@ -727,6 +731,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.2-rc | 2026-11-19 | Code review r3 of #56: T18-006 rewritten: all JavaScript, CSS and workers are same-origin in every asset mode, the CDN serves only the engine WASM (SRI-checked fetch, one same-origin retry, interim-renderer fallback), fonts and tiles; per-module SRI through `modulepreload` withdrawn with its rationale; tests `e2e:no-cross-origin-script`, `e2e:wasm-integrity-mismatch`, `itest:asset-manifest-signature`; CDN CSP adds the asset origin to `font-src` and `connect-src` only; T18-007 and the STRIDE row aligned |
 | 1.3-rc | 2026-11-19 | Code review r4 of #56: T18-006 restores SRI for every JS module through a build-time import map with an `integrity` section ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Proposed): integrity-bearing entry, modulepreloads and stylesheet, a probe that refuses browsers which do not enforce it, single-file workers, and the BFF hashing every asset file against the signed manifest at start-up and exiting on any mismatch; failure UI table; tests for altered lazy, transitive and entry chunks, the probe and the BFF refusal; T18-007, STRIDE, PRF-008 and M-UI1 rows aligned |
 | 1.4-rc | 2026-11-19 | Owner decision ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted): T18-006 drops browser per-module integrity; the import map, probe, browser-floor change, `ci:importmap-coverage`, the altered-chunk browser tests and the "cannot verify" page are removed; the BFF per-file start-up verification (fail closed), same-origin JS, CSS and workers, the unchanged `script-src 'self'`, and the SRI-checked engine WASM with one same-origin retry stay; `itest:cdn-set-mismatch-falls-back` added; T18-007 restored to same-origin workers without the single-file constraint |
+| 1.5-rc | 2026-11-19 | Review r6 of #56: the asset rule reads "every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity` and compiled only from that verified response, with a same-origin retry" (owner decision: "The CDN still serves only the chart engine (hash-checked), fonts and map tiles"); the manifest is verification metadata outside the listed set (`asset-manifest.json` plus detached Ed25519 `asset-manifest.sig`, public key compiled into the BFF, signing key in release KMS only, both files the only unlisted exemptions); the manifest signing key removed from the BFF's own secrets |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
@@ -106,20 +106,22 @@ take a `dash-jobs` lease ([T06](T06-bff-architecture.md)).
 2026-11-19, ADR-0015; was `rust-embed`)*,
 pre-compressed at build time (brotli q11 + gzip) and served with `Content-Encoding` negotiation,
 `Content-Type: application/wasm` for WASM, `Cache-Control: public, max-age=31536000, immutable` for
-hashed names, and `no-cache` for `index.html` and `asset-manifest.json`.
+hashed names, and `no-cache` for `index.html`, `asset-manifest.json` and `asset-manifest.sig`.
 
 #### T19-004 — Old clients keep working across one upgrade
 **MUST** — Lazy modules of the previous release MUST stay fetchable after an upgrade: the binary
 embeds the **previous release's** hashed assets (roughly 1 × the core bundle; `--no-previous-assets`
 turns it off), and in CDN mode versioned paths are kept for 30 days.
 
-- **CDN mode:** `assets.base_url = https://cdn…/pulsus-dash/<version>/`. The CDN serves only the
-  engine WASM, fonts and tiles. The BFF still serves `index.html`, the manifest, every JS module and
-  CSS file, and **workers** (same-origin, [T18](T18-security.md) T18-006, T18-007).
+- **CDN mode:** `assets.base_url = https://cdn…/pulsus-dash/<version>/`. Every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, which is fetched with `integrity` and compiled only from that verified response, with a same-origin retry
+  ([T18](T18-security.md) T18-006, T18-007). Besides the engine WASM, the CDN serves only fonts and
+  tiles. The BFF serves `index.html`, `asset-manifest.json` and `asset-manifest.sig`.
 
 #### T19-005 — CDN asset sets are verified
-**MUST** — At start-up the BFF MUST verify the manifest signature and the hash of every embedded
-asset file, and MUST exit without serving on any mismatch ([T18](T18-security.md) T18-006). In CDN
+**MUST** — At start-up the BFF MUST verify the detached Ed25519 `asset-manifest.sig` over
+`asset-manifest.json` with the public key compiled into the binary, and the hash of every embedded
+asset file, and MUST exit without serving on any mismatch or unlisted file (the manifest and its
+signature are the only exemptions; [T18](T18-security.md) T18-006). In CDN
 mode it MUST also fetch and hash every manifest-listed CDN file and fall back to the embedded assets
 on any mismatch.
 
@@ -672,3 +674,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): Go static build (`CGO_ENABLED=0`), `embed.FS` assets (T19-003), the chart renderer is a separate Rust binary (T19-001 exception, §4.2), no SAML glibc variant |
 | 1.2-rc | 2026-11-19 | #56 code review: CDN mode serves only the engine WASM, fonts and tiles; all JS, CSS and workers stay same-origin ([T18](T18-security.md) T18-006); T19-005 adds per-file start-up verification of every embedded asset, fail closed, and hashing of every CDN file |
 | 1.3-rc | 2026-11-19 | ADR-0016 (Accepted): asset integrity is verified by the BFF at start-up, per file, fail closed; no per-module integrity in the browser |
+| 1.4-rc | 2026-11-19 | Review r6 of #56: CDN-mode wording aligned with ADR-0016 (engine WASM is the one executable asset the CDN may serve); detached `asset-manifest.sig` verified with the compiled-in Ed25519 public key; only the manifest and its signature are exempt from listing |

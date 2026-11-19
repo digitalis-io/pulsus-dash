@@ -18,14 +18,19 @@ code in transit or at rest; for Dash the only third party in the asset path is t
 
 ## Decision
 
-1. **Executable code and styles are same-origin only.** Every JS module (entry, lazy route chunks
-   and everything they import), the wasm-bindgen glue, workers and CSS are served by the BFF over
-   TLS in every asset mode. The CSP stays as in ADR-0014 §9 (`script-src 'self'`, `style-src 'self'`,
+1. **Same origin, with one hash-checked exception.** Every JS module (entry, lazy route chunks and
+   everything they import, the wasm-bindgen glue), CSS file and worker is served by the BFF over TLS
+   in every asset mode. The one executable asset that may come from the CDN is the engine WASM, which
+   is fetched with `integrity` and compiled only from that verified response, with a same-origin
+   retry (point 4). The CSP stays as in ADR-0014 §9 (`script-src 'self'`, `style-src 'self'`,
    `worker-src 'self'`).
-2. **The BFF verifies bytes before serving.** At start-up, before it opens a listener, the BFF
-   verifies the signed asset manifest and hashes **every** file of the asset set against it. Any
-   mismatch, missing file or unlisted file stops start-up (fail closed). It serves only from that
-   verified, read-only set.
+2. **The BFF verifies bytes before serving.** The verification metadata is outside the set it
+   lists: `asset-manifest.json` (`{path, sha384, size}` for every asset file, not itself) and a
+   detached `asset-manifest.sig`, an Ed25519 signature over the manifest's exact bytes made with the
+   release key in KMS. The BFF verifies the signature with the release public key compiled into its
+   binary, then, before it opens a listener, hashes **every** asset file against the manifest. Any
+   mismatch, missing file, or unlisted file other than the manifest and its signature stops start-up
+   (fail closed). It serves only from that verified, read-only set.
 3. **No per-module integrity in the browser.** JS and CSS carry no `integrity` attributes and there
    is no import map. Vite's defaults for module preload and CSS code splitting stay.
 4. **The CDN serves no code that runs unchecked.** In CDN mode the CDN serves only the engine WASM,
@@ -34,7 +39,9 @@ code in transit or at rest; for Dash the only third party in the asset path is t
 
 ## Consequences
 
-- Every executable asset is same-origin over TLS. Whoever can alter a same-origin asset can also
+- Every JS module, CSS file and worker is same-origin over TLS; the one executable asset that may
+  come from the CDN is the engine WASM, which is fetched with `integrity` and compiled only from that
+  verified response, with a same-origin retry. Whoever can alter a same-origin asset can also
   alter `index.html` and the CSP, so browser SRI would add nothing there; the BFF's start-up check is
   what proves the served bytes match the signed release.
 - The supported-browser matrix of [T03](../technical/T03-browser-runtime.md) §9 is unchanged.
@@ -49,3 +56,10 @@ code in transit or at rest; for Dash the only third party in the asset path is t
 | Import map with an `integrity` section, a probe, and refusal of browsers that ignore it | Needs a CSP hash source and a narrower browser matrix, and protects only against an attacker who could equally rewrite `index.html` |
 | `modulepreload` with `integrity` before each `import()` | Does not bind the import; does not cover transitive imports |
 | Verified fetch, then `import()` of a `blob:` URL | Needs `blob:` in `script-src` and breaks relative imports |
+
+## Review responses
+
+| Round | # | Finding | Response | Change made |
+|---|---|---|---|---|
+| r6 | 16 | The ADR lets the engine WASM come from the CDN while saying every executable asset is same-origin | The CDN allowance is the owner's decision. The option the owner approved on 2026-11-19 reads: "The CDN still serves only the chart engine (hash-checked), fonts and map tiles." The contradiction was in the wording, not the design | "Every executable asset is same-origin" replaced, here and in T18 and T19, by "every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity` and compiled only from that verified response, with a same-origin retry" |
+| r6 | 17 | The manifest could not list its own hash | Verification metadata is now outside the listed set | Detached Ed25519 `asset-manifest.sig`, public key compiled into the BFF, only the manifest and its signature exempt from listing (decision point 2) |
