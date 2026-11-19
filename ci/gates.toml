@@ -26,6 +26,12 @@ owner = "area:platform"
 job = "rust"
 
 [[gate]]
+id = "golden"
+t05 = "golden:decimation-ref"
+owner = "area:rendering"
+job = "golden"
+
+[[gate]]
 id = "wasm"
 t05 = ""
 owner = "area:platform"

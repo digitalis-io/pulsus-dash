@@ -29,6 +29,21 @@ jobs:
       - { name: ci build, run: cargo xtask ci build }
       - { name: ci clippy, run: cargo xtask ci clippy }
       - { name: ci test, run: cargo xtask ci test }
+  golden:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'ci/tools.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - name: lavapipe
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers=$(sed -n 's/^mesa = "\(.*\)".*/\1/p' ci/tools.toml)
+      - { name: ci golden, run: cargo xtask ci golden }
   wasm:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

@@ -26,11 +26,12 @@ pub enum Gate {
 }
 
 impl Gate {
-    pub const ALL: [Gate; 11] = [
+    pub const ALL: [Gate; 12] = [
         Gate::Fmt,
         Gate::Build,
         Gate::Clippy,
         Gate::Test,
+        Gate::Golden,
         Gate::Wasm,
         Gate::ProbeAbsent,
         Gate::BundleSize,
@@ -61,7 +62,7 @@ impl Gate {
         Gate::ALL.into_iter().find(|g| g.id() == s)
     }
 
-    /// The cargo invocations of the five cargo gates (run in order; the first failure stops).
+    /// The cargo invocations of the six cargo gates (run in order; the first failure stops).
     /// `wasm` then generates both core artefacts into `web/shim/gen/` (plan §3.7).
     fn cargo_commands(self) -> &'static [&'static [&'static str]] {
         match self {
@@ -90,7 +91,17 @@ impl Gate {
                 ],
             ],
             Gate::Test => &[&["test", "--workspace", "--locked"]],
-            Gate::Golden => &[],
+            // golden:decimation-ref (T05 §4.2): the ignored lavapipe tests, release, one at a time.
+            Gate::Golden => &[&[
+                "test",
+                "--locked",
+                "--release",
+                "-p",
+                "dash-golden",
+                "--",
+                "--ignored",
+                "--test-threads=1",
+            ]],
             Gate::Wasm => &[&["build-wasm"]],
             Gate::BundleSize
             | Gate::DesignCheck
@@ -217,7 +228,7 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
     }
 }
 
-/// Runs all eleven gates in [`Gate::ALL`] order; never stops early.
+/// Runs all twelve gates in [`Gate::ALL`] order; never stops early.
 pub fn run_all(root: &Path) -> Vec<(Gate, R<GateResult>)> {
     Gate::ALL
         .into_iter()

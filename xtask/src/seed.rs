@@ -54,7 +54,8 @@ pub struct Seed {
     pub expect: &'static str,
 }
 
-/// The seed table (#22 plan §4.6; `probe-absent`, `e2e` and the enforced `bundle-size`: #23).
+/// The seed table (#22 plan §4.6; `probe-absent`, `e2e` and the enforced `bundle-size`: #23;
+/// `golden`: #24).
 pub fn seed_for(gate: Gate) -> Seed {
     let (writes, expect) = match gate {
         Gate::Fmt => (
@@ -85,7 +86,14 @@ pub fn seed_for(gate: Gate) -> Seed {
             }],
             "seeded violation",
         ),
-        Gate::Golden => (Vec::new(), ""),
+        Gate::Golden => (
+            vec![SeedWrite::Replace {
+                path: "crates/dash-marks/src/line_common.wgsl",
+                from: "const PYRAMID_B: u32 = 16u;",
+                to: "const PYRAMID_B: u32 = 8u;",
+            }],
+            "gpu_records_match_cpu",
+        ),
         Gate::Wasm => (
             vec![SeedWrite::Append {
                 path: "crates/dash-core-mt/src/lib.rs",

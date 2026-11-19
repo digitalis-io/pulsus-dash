@@ -19,12 +19,44 @@ dash-core-mt = ["OffscreenCanvas", "Performance"] # timeOrigin
 # charting, mapping or diagram library (T01-002)".
 
 [[browser_crate]]
+name = "ahash"
+reason = "arrow-array: hash function for its hash maps; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
 name = "arc-swap"
 reason = "dash-core-mt: atomic Arc swap for the published chunk table (T03-007); not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "arrayvec"
 reason = "wgpu: fixed-capacity vector; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-array"
+reason = "dash-wire: Arrow arrays (metric_matrix.grid/1 decode, T04-002); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-buffer"
+reason = "dash-wire: Arrow buffers over the 64-byte aligned slab (zero-copy, T04-015); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-cmp"
+reason = "arrow-select: Arrow comparison kernels; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-data"
+reason = "arrow-array: Arrow array data and validation; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-ipc"
+reason = "dash-wire: Arrow IPC message encode and decode (T04-002); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-schema"
+reason = "dash-wire: Arrow schema and field types; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrow-select"
+reason = "arrow-ipc: Arrow selection kernels; not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "bit-set"
@@ -51,12 +83,32 @@ name = "bytemuck_derive"
 reason = "bytemuck: derive macros for bytemuck (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
+name = "bytes"
+reason = "arrow-buffer: byte buffer type; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
 name = "cfg-if"
 reason = "js-sys: conditional-compilation macro; not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
+name = "chrono"
+reason = "arrow-array: date and time types of Arrow temporal arrays; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
 name = "codespan-reporting"
 reason = "naga: shader diagnostic formatting; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "const-random"
+reason = "ahash: compile-time random seed (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "const-random-macro"
+reason = "const-random: compile-time random seed macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "crunchy"
+reason = "tiny-keccak: loop unrolling macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "document-features"
@@ -65,6 +117,10 @@ reason = "wgpu: feature documentation macro (build time); not a UI, component, c
 [[browser_crate]]
 name = "equivalent"
 reason = "indexmap: key-equivalence trait; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "flatbuffers"
+reason = "arrow-ipc and dash-wire: FlatBuffers for the IPC message header (T04-010 checks); not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "foldhash"
@@ -81,6 +137,10 @@ reason = "futures-util: async task utilities; not a UI, component, charting, map
 [[browser_crate]]
 name = "futures-util"
 reason = "js-sys: async combinators; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "getrandom"
+reason = "ahash, const-random-macro: OS randomness for hash seeds; not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "glow"
@@ -127,12 +187,28 @@ name = "naga-types"
 reason = "naga: shader IR type definitions; not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
+name = "num-bigint"
+reason = "arrow-buffer: big integers for Arrow decimal types; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "num-complex"
+reason = "arrow-array: complex number type; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "num-integer"
+reason = "arrow-array: integer numeric traits; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
 name = "num-traits"
 reason = "naga: numeric traits; not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "once_cell"
 reason = "naga: lazy initialisation cells; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "ordered-float"
+reason = "wgpu-hal: totally ordered floats (Vulkan backend of the native golden harness, reported through the unified graph); not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "parking_lot"
@@ -199,6 +275,10 @@ name = "smallvec"
 reason = "wgpu: small-vector optimisation; not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
+name = "spirv"
+reason = "naga: SPIR-V definitions (Vulkan backend of the native golden harness, reported through the unified graph); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
 name = "static_assertions"
 reason = "wgpu: compile-time assertions; not a UI, component, charting, mapping or diagram library (T01-002)"
 
@@ -217,6 +297,10 @@ reason = "naga: error derive; not a UI, component, charting, mapping or diagram 
 [[browser_crate]]
 name = "thiserror-impl"
 reason = "thiserror: error derive macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "tiny-keccak"
+reason = "const-random-macro: Keccak hash for the compile-time seed (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
 
 [[browser_crate]]
 name = "unicode-ident"

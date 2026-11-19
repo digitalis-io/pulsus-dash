@@ -24,11 +24,9 @@ pub struct Tools {
     pub nightly: String,
     pub wasm_bindgen: String,
     pub binaryen: String,
-    /// `mesa-vulkan-drivers` apt version of the `golden` job's runner (lavapipe, T05-004).
-    #[serde(default)]
+    /// The `mesa-vulkan-drivers` apt version installed by the `golden` job (lavapipe, T05-004).
     pub mesa: String,
-    /// The upstream Mesa `x.y.z` of [`Tools::mesa`].
-    #[serde(default)]
+    /// The upstream Mesa `x.y.z` of [`Tools::mesa`] (checked against the adapter's driver info).
     pub mesa_upstream: String,
     /// `<platform>` → SHA-256 of `binaryen-<v>-<platform>.tar.gz`.
     pub binaryen_sha256: BTreeMap<String, String>,
