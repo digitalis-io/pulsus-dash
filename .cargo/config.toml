@@ -1,3 +1,6 @@
 [alias]
 xtask = "run --locked --quiet --package xtask --"
 build-wasm = "build --locked --profile wasm-release --target wasm32-unknown-unknown --package dash-core-mt"
+
+[env]
+SQLX_OFFLINE = "true" # T11 §4.8: compile-time-checked queries use the committed .sqlx cache

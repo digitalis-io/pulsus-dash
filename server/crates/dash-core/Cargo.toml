@@ -1,0 +1,21 @@
+[package]
+name = "dash-core"
+description = "Server core types: request and tenant context, ids, the JSON error envelope, health probe and secrets (T06 §4.1)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tokio-util.workspace = true
+async-trait.workspace = true
+
+[lints]
+workspace = true

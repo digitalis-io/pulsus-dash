@@ -131,3 +131,27 @@ export function countWorkers(page: Page): { names: string[] } {
   page.on("worker", (w) => seen.names.push(w.url()));
   return seen;
 }
+
+/**
+ * Records CSP and Trusted Types violations (attach before navigating): `securitypolicyviolation`
+ * events in the page and console messages naming the Content Security Policy or TrustedScriptURL
+ * (workers included).
+ */
+export async function recordViolations(page: Page): Promise<{ console: string[]; events: () => Promise<string[]> }> {
+  const console: string[] = [];
+  page.on("console", (m) => {
+    const t = m.text();
+    if (t.includes("Content Security Policy") || t.includes("TrustedScriptURL")) console.push(t);
+  });
+  await page.addInitScript(() => {
+    (self as any).__dashViolations = [];
+    self.addEventListener("securitypolicyviolation", (e: any) =>
+      (self as any).__dashViolations.push(`${e.effectiveDirective} ${e.blockedURI}`),
+    );
+  });
+  return { console, events: () => page.evaluate(() => (self as any).__dashViolations as string[]) };
+}
+
+/** The Content-Security-Policy the binary sends on plain http (dash_gateway::csp, plan §3.7). */
+export const PRODUCTION_CSP =
+  "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types pulsus-sanitised; report-to csp";

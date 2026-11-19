@@ -1,0 +1,13 @@
+# pulsus-dash configuration for the local dev stack (`cargo xtask dev up`, docs/development/dev-stack.md).
+# The PulsusDB base URL is never committed: set PULSUS_DASH_DATASOURCES_BOOTSTRAP__0__URL in the
+# untracked dev/local.env or the environment.
+roles: [all]
+listen: "localhost:8080"
+allow_inline_secrets: true          # dev only (T19-010); dev Postgres uses trust auth on loopback
+postgres:
+  url_ref: "postgres://pulsus_app@localhost:55432/pulsus"
+  owner_url_ref: "postgres://pulsus_owner@localhost:55432/pulsus"
+datasources_bootstrap:
+  - org_slug: default
+    slug: default
+    # url: from PULSUS_DASH_DATASOURCES_BOOTSTRAP__0__URL (dev/local.env); never committed

@@ -136,6 +136,7 @@ pub fn seed_for(gate: Gate) -> Seed {
             }],
             "gpu_disabled_shows_fallback",
         ),
+        Gate::Migrations | Gate::NoPulsusdbHost | Gate::Itest => (vec![], ""),
     };
     Seed {
         gate,

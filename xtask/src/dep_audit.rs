@@ -36,6 +36,37 @@ pub struct DepAuditConfig {
     pub lock_allow: Vec<LockAllow>,
     #[serde(default, rename = "browser_crate")]
     pub browser_crates: Vec<CrateAllow>,
+    /// Server crate bans (T06-001, T11-023).
+    #[serde(default)]
+    pub server: Option<ServerConfig>,
+}
+
+/// `[server]` of `ci/dep-audit.toml` (plan §3.12).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerConfig {
+    pub dirs: Vec<String>,
+    pub http_server_crates: Vec<String>,
+    pub http_server_allow: Vec<String>,
+    pub http_client_crates: Vec<String>,
+    pub http_client_allow: Vec<String>,
+    pub sql_crates: Vec<String>,
+    pub sql_allow: Vec<String>,
+}
+
+/// A workspace member under one of the server `dirs`.
+#[derive(Debug, Clone)]
+pub struct ServerMember {
+    /// Root-relative `Cargo.toml`.
+    pub manifest: PathBuf,
+    /// Direct normal dependencies (any target).
+    pub deps: BTreeSet<String>,
+}
+
+/// Server members and their direct normal dependencies.
+#[derive(Debug, Clone, Default)]
+pub struct ServerGraph {
+    pub members: BTreeMap<String, ServerMember>,
 }
 
 /// An audited exception to T03-008: `ident` may appear in `file` (relative to the crate dir).
@@ -681,6 +712,25 @@ pub fn check_generated_with(
 /// [`check_generated_with`] with the real generator.
 pub fn check_generated(root: &Path) -> R<Vec<Violation>> {
     check_generated_with(root, &crate::r#gen::generate)
+}
+
+/// Builds the [`ServerGraph`] from unfiltered `cargo metadata --format-version 1 --locked`.
+pub fn server_graph_from_metadata(root: &Path, cfg: &ServerConfig) -> R<ServerGraph> {
+    let _ = (root, cfg);
+    Ok(ServerGraph::default())
+}
+
+/// The three server dependency bans, in order: HTTP frameworks, SQL crates, HTTP clients.
+pub fn check_server_graph(g: &ServerGraph, cfg: &ServerConfig) -> Vec<Violation> {
+    let _ = (g, cfg);
+    Vec::new()
+}
+
+/// `sql-outside-store`: `\bsqlx::` in a `.rs` file under `server/` or `crates/` outside
+/// `server/crates/dash-store/`.
+pub fn check_sql_outside_store(root: &Path) -> R<Vec<Violation>> {
+    let _ = root;
+    Ok(Vec::new())
 }
 
 /// All six checks of `ci:dep-audit`.

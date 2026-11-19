@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "xtask"]
+members = ["crates/*", "server/bin/*", "server/crates/*", "xtask"]
 
 [workspace.package]
 version = "0.0.0"
@@ -28,6 +28,33 @@ arc-swap = "1.9.5"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 naga = "30.0.2"
 serde_json = "1"
+# Server (T06 §4.1)
+dash-core = { path = "server/crates/dash-core" }
+dash-config = { path = "server/crates/dash-config" }
+dash-store = { path = "server/crates/dash-store" }
+dash-gateway = { path = "server/crates/dash-gateway" }
+uuid = { version = "1.29", features = ["v7", "serde"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+url = { version = "2.5", features = ["serde"] }
+tokio = "1.54"
+tokio-util = "0.7"
+async-trait = "0.1"
+serde_norway = "0.9"
+serde_path_to_error = "0.1"
+sqlx = { version = "0.9.1", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "macros", "migrate", "uuid", "json", "time"] }
+time = "0.3"
+tracing = "0.1"
+axum = "0.8.9"
+tower-http = { version = "0.7.1", features = ["fs", "set-header"] }
+tower = { version = "0.5", features = ["util"] }
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+hyper = { version = "1.12", features = ["client", "http1"] }
+hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "tokio"] }
+hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "tls12", "ring", "webpki-tokio"] }
+http-body-util = "0.1.5"
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

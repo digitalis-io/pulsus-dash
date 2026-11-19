@@ -35,6 +35,15 @@ pub enum Rule {
     BundleArtefactAbsent,
     DesignCheckFailed,
     TraceabilityStale,
+    PulsusdbHost,
+    PulsusdbHostSecretMissing,
+    MigrationLint,
+    MigrationExtension,
+    SqlxCacheStale,
+    ServerFrameworkOutsideGateway,
+    HttpClientOutsideAllowed,
+    SqlCrateOutsideStore,
+    SqlOutsideStore,
 }
 
 impl Rule {
@@ -70,6 +79,15 @@ impl Rule {
             Rule::BundleArtefactAbsent => "bundle-artefact-absent",
             Rule::DesignCheckFailed => "design-check-failed",
             Rule::TraceabilityStale => "traceability-stale",
+            Rule::PulsusdbHost => "pulsusdb-host",
+            Rule::PulsusdbHostSecretMissing => "pulsusdb-host-secret-missing",
+            Rule::MigrationLint => "migration-lint",
+            Rule::MigrationExtension => "migration-extension",
+            Rule::SqlxCacheStale => "sqlx-cache-stale",
+            Rule::ServerFrameworkOutsideGateway => "server-framework-outside-gateway",
+            Rule::HttpClientOutsideAllowed => "http-client-outside-allowed",
+            Rule::SqlCrateOutsideStore => "sql-crate-outside-store",
+            Rule::SqlOutsideStore => "sql-outside-store",
         }
     }
 }

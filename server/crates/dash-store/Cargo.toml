@@ -1,0 +1,29 @@
+[package]
+name = "dash-store"
+description = "The only Postgres path: Db::tx(org) under forced row-level security, migrations, repositories and seeding (T11, T06-016)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[features]
+test-support = []
+
+[dependencies]
+dash-core.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+time.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+dash-store = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

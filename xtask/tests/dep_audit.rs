@@ -27,6 +27,7 @@ fn cfg() -> DepAuditConfig {
         web_sys: BTreeMap::new(),
         lock_allow: vec![],
         browser_crates: vec![],
+        server: None,
     }
 }
 
@@ -576,4 +577,142 @@ fn symlinked_web_file_is_audited() {
         got,
         vec![(Rule::JsOutsideShim, PathBuf::from("web/app.js"))]
     );
+}
+
+fn server_cfg() -> xtask::dep_audit::ServerConfig {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    xtask::dep_audit::ServerConfig {
+        dirs: s(&["server"]),
+        http_server_crates: s(&[
+            "axum",
+            "axum-core",
+            "axum-extra",
+            "tower-http",
+            "actix-web",
+            "warp",
+            "poem",
+            "rocket",
+            "salvo",
+            "tide",
+        ]),
+        http_server_allow: s(&["dash-gateway"]),
+        http_client_crates: s(&[
+            "hyper",
+            "hyper-util",
+            "hyper-rustls",
+            "reqwest",
+            "ureq",
+            "isahc",
+        ]),
+        http_client_allow: s(&[
+            "pulsusdb-client",
+            "dash-notify",
+            "dash-ai",
+            "dash-telemetry",
+            "pulsus-dash",
+        ]),
+        sql_crates: s(&[
+            "sqlx",
+            "sqlx-core",
+            "sqlx-postgres",
+            "sqlx-macros",
+            "tokio-postgres",
+            "postgres",
+            "diesel",
+            "sea-orm",
+        ]),
+        sql_allow: s(&["dash-store"]),
+    }
+}
+
+#[test]
+fn dep_audit_server_bans() {
+    use xtask::dep_audit::{ServerGraph, ServerMember, check_server_graph};
+    let member = |dir: &str, deps: &[&str]| ServerMember {
+        manifest: PathBuf::from(format!("server/{dir}/Cargo.toml")),
+        deps: deps.iter().map(|d| d.to_string()).collect(),
+    };
+    let mut g = ServerGraph::default();
+    g.members.insert(
+        "dash-store".into(),
+        member("crates/dash-store", &["axum", "sqlx"]),
+    );
+    g.members.insert(
+        "dash-gateway".into(),
+        member("crates/dash-gateway", &["axum", "tower-http", "sqlx"]),
+    );
+    g.members.insert(
+        "dash-config".into(),
+        member("crates/dash-config", &["reqwest"]),
+    );
+    g.members.insert(
+        "pulsus-dash".into(),
+        member("bin/pulsus-dash", &["hyper-util", "hyper"]),
+    );
+    let v = check_server_graph(&g, &server_cfg());
+    let got: Vec<(Rule, String)> = v.iter().map(|v| (v.rule, rel_str_of(&v.path))).collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                Rule::ServerFrameworkOutsideGateway,
+                "server/crates/dash-store/Cargo.toml".to_string()
+            ),
+            (
+                Rule::SqlCrateOutsideStore,
+                "server/crates/dash-gateway/Cargo.toml".to_string()
+            ),
+            (
+                Rule::HttpClientOutsideAllowed,
+                "server/crates/dash-config/Cargo.toml".to_string()
+            ),
+        ]
+    );
+    assert!(v[0].message.contains("dash-store") && v[0].message.contains("axum"));
+    assert!(v[2].message.contains("reqwest"));
+}
+
+fn rel_str_of(p: &Path) -> String {
+    xtask::rel_str(p)
+}
+
+#[test]
+fn sql_outside_store_grep() {
+    use xtask::dep_audit::check_sql_outside_store;
+    let t = tree(&[
+        (
+            "server/crates/dash-gateway/src/x.rs",
+            b"let q = sqlx::query(\"SELECT 1\");\n",
+        ),
+        (
+            "server/crates/dash-store/src/y.rs",
+            b"let q = sqlx::query(\"SELECT 1\");\n",
+        ),
+        (
+            "server/crates/dash-gateway/src/ok.rs",
+            b"use dash_store::Db;\n",
+        ),
+    ]);
+    let v = check_sql_outside_store(t.path()).unwrap();
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert_eq!(v[0].rule, Rule::SqlOutsideStore);
+    assert_eq!(
+        rel_str_of(&v[0].path),
+        "server/crates/dash-gateway/src/x.rs"
+    );
+    assert_eq!(v[0].line, Some(1));
+}
+
+#[test]
+fn server_bans_configured() {
+    let cfg = load_config(&xtask::repo_root().unwrap()).unwrap();
+    let s = cfg.server.expect("[server] in ci/dep-audit.toml");
+    let want = server_cfg();
+    assert_eq!(s.dirs, want.dirs);
+    assert_eq!(s.http_server_allow, want.http_server_allow);
+    assert_eq!(s.http_client_allow, want.http_client_allow);
+    assert_eq!(s.sql_allow, want.sql_allow);
+    assert_eq!(s.http_server_crates, want.http_server_crates);
+    assert_eq!(s.http_client_crates, want.http_client_crates);
+    assert_eq!(s.sql_crates, want.sql_crates);
 }

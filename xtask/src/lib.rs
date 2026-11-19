@@ -4,11 +4,15 @@
 pub mod bundle;
 pub mod dep_audit;
 pub mod design;
+pub mod dev;
 pub mod e2e;
 pub mod gates;
 pub mod r#gen;
+pub mod itest;
 pub mod jslex;
+pub mod migrations;
 pub mod probe;
+pub mod pulsusdb_host;
 pub mod report;
 pub mod seed;
 pub mod serve;

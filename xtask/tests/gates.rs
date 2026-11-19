@@ -41,7 +41,10 @@ fn gate_ids_round_trip() {
             "design-check",
             "shim-lint",
             "dep-audit",
-            "e2e"
+            "e2e",
+            "migrations",
+            "no-pulsusdb-host",
+            "itest"
         ]
     );
     for g in Gate::ALL {
@@ -67,11 +70,26 @@ fn gates_registry_complete() {
         ("design-check", "static"),
         ("shim-lint", "static"),
         ("e2e", "e2e"),
+        ("migrations", "static"),
+        ("no-pulsusdb-host", "static"),
+        ("itest", "itest"),
     ];
     let t05 = read("designs/technical/T05-testing-and-performance.md");
     let start = t05.find("### 7.1").unwrap();
     let end = start + t05[start..].find("\n## 8.").unwrap();
     let section = &t05[start..end];
+    assert_eq!(reg.len(), 14);
+    for (id, t05, owner) in [
+        ("migrations", "ci:squawk-migrations", "area:platform"),
+        ("no-pulsusdb-host", "ci:no-pulsusdb-host", "area:platform"),
+        ("itest", "itest:rls-isolation", "area:platform"),
+    ] {
+        let row = reg.iter().find(|r| r.0 == id).unwrap();
+        assert_eq!((row.1.as_str(), row.2.as_str()), (t05, owner), "{id}");
+    }
+    for want in ["itest:no-extensions", "e2e:csp-violations"] {
+        assert!(section.contains(want), "T05 §7.1 lacks {want}");
+    }
     for (id, gate_t05, owner, job) in &reg {
         assert!(owner.starts_with("area:"), "{id}: {owner}");
         let want_job = jobs.iter().find(|(g, _)| g == id).unwrap().1;
@@ -218,5 +236,63 @@ fn docs_name_the_build_commands() {
         "cargo xtask ci probe-absent",
     ] {
         assert!(doc.contains(want), "missing {want:?}");
+    }
+}
+
+#[test]
+fn seed_table_covers_new_gates() {
+    use xtask::seed::{SeedWrite, seed_for};
+    let cases = [
+        (
+            Gate::Migrations,
+            "adding-not-nullable-field",
+            "server/crates/dash-store/migrations/29991231000000_seeded.sql",
+        ),
+        (
+            Gate::NoPulsusdbHost,
+            "pulsusdb-host",
+            "dev/seeded-host.yaml",
+        ),
+        (
+            Gate::Itest,
+            "rls_catalog_every_tenant_table",
+            "server/crates/dash-store/migrations/20261119000001_foundation.sql",
+        ),
+    ];
+    for (gate, marker, path) in cases {
+        let s = seed_for(gate);
+        assert_eq!(s.expect, marker, "{gate:?}");
+        assert_eq!(s.writes.len(), 1, "{gate:?}");
+        match s.writes[0] {
+            SeedWrite::Create { path: p, contents } => {
+                assert_eq!(p, path);
+                assert!(!contents.is_empty());
+            }
+            SeedWrite::Replace { path: p, from, to } => {
+                assert_eq!(p, path);
+                assert_eq!(
+                    from,
+                    "EXECUTE format('ALTER TABLE %s FORCE ROW LEVEL SECURITY', tbl);"
+                );
+                assert_eq!(to, "NULL;");
+                let text = read(p);
+                assert_eq!(text.matches(from).count(), 1);
+            }
+            other => panic!("{gate:?}: {other:?}"),
+        }
+    }
+    match seed_for(Gate::Migrations).writes[0] {
+        SeedWrite::Create { contents, .. } => assert_eq!(
+            contents,
+            "ALTER TABLE users ALTER COLUMN display_name SET NOT NULL;\n"
+        ),
+        other => panic!("{other:?}"),
+    }
+    match seed_for(Gate::NoPulsusdbHost).writes[0] {
+        SeedWrite::Create { contents, .. } => assert_eq!(
+            contents,
+            "datasources_bootstrap:\n  - url: http://pulsusdb.seeded.net:8080\n"
+        ),
+        other => panic!("{other:?}"),
     }
 }

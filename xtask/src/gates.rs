@@ -22,6 +22,9 @@ pub enum Gate {
     ShimLint,
     DepAudit,
     E2e,
+    Migrations,
+    NoPulsusdbHost,
+    Itest,
 }
 
 impl Gate {
@@ -52,6 +55,9 @@ impl Gate {
             Gate::DepAudit => "dep-audit",
             Gate::ProbeAbsent => "probe-absent",
             Gate::E2e => "e2e",
+            Gate::Migrations => "migrations",
+            Gate::NoPulsusdbHost => "no-pulsusdb-host",
+            Gate::Itest => "itest",
         }
     }
 
@@ -94,7 +100,10 @@ impl Gate {
             | Gate::ShimLint
             | Gate::DepAudit
             | Gate::ProbeAbsent
-            | Gate::E2e => &[],
+            | Gate::E2e
+            | Gate::Migrations
+            | Gate::NoPulsusdbHost
+            | Gate::Itest => &[],
         }
     }
 }
@@ -197,6 +206,10 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
         }
         Gate::DepAudit => Ok(verdict(dep_audit::audit(root)?, String::new())),
         Gate::ProbeAbsent => Ok(verdict(crate::probe::probe_absent(root)?, String::new())),
+        Gate::Migrations | Gate::NoPulsusdbHost | Gate::Itest => Err(XtaskError::Usage(format!(
+            "gate {} is not implemented",
+            gate.id()
+        ))),
         Gate::E2e => {
             let (violations, playwright_passed) = crate::e2e::run(root)?;
             emit(&violations);
