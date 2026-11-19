@@ -88,5 +88,8 @@ pub fn run(root: &Path) -> R<(Vec<Violation>, bool)> {
             detail: e.to_string(),
         })?;
     v.extend(check_traces(&results.join("traces"))?);
+    for x in &mut v {
+        x.path = crate::relative(root, &x.path);
+    }
     Ok((v, status.success()))
 }

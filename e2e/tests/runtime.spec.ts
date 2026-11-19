@@ -265,6 +265,10 @@ test("@webgpu ring_overflow_end_to_end", async ({ page }) => {
 test("@webgpu @webgl2 @noiso main_thread_trace_during_interaction", async ({ page, browser }, info) => {
     await page.goto("/");
     await page.waitForFunction(() => ["1", "2"].includes(document.documentElement.dataset.dashStatus!));
+    // Let the renderer finish its own startup work before the window opens: without COOP the
+    // initial about:blank widget shares the process and is shut down by a task delayed 1 s after
+    // navigation, which blocks on the (software) compositor.
+    await page.waitForTimeout(1_500);
     const before: number = (await call(page, "frameStats")).frames;
     await browser.startTracing(page, {
       categories: ["toplevel", "devtools.timeline", "disabled-by-default-devtools.timeline"],
