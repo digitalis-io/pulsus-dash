@@ -13,12 +13,27 @@ pub struct DecimateState {
 
 impl DecimateState {
     /// Records this frame's inputs; returns whether a decimation is pending.
-    pub fn note(&mut self, _uniforms: &[u8], _bounds: &[u32], _uploaded: bool) -> bool {
-        false
+    pub fn note(&mut self, uniforms: &[u8], bounds: &[u32], uploaded: bool) -> bool {
+        if uniforms != self.uniforms.as_slice() || bounds != self.bounds.as_slice() {
+            self.uniforms.clear();
+            self.uniforms.extend_from_slice(uniforms);
+            self.bounds.clear();
+            self.bounds.extend_from_slice(bounds);
+            self.pending = true;
+        }
+        self.pending |= uploaded;
+        self.pending
+    }
+
+    /// A series was uploaded on a frame with nothing to draw (no usable plot yet).
+    pub fn uploaded(&mut self) {
+        self.pending = true;
     }
 
     /// A decimation pass was submitted.
-    pub fn submitted(&mut self) {}
+    pub fn submitted(&mut self) {
+        self.pending = false;
+    }
 }
 
 #[cfg(test)]
@@ -41,5 +56,8 @@ mod tests {
         d.submitted();
         assert!(!d.note(&[1, 2], &[0, 5], false));
         assert!(d.note(&[1, 2], &[0, 6], false), "bounds changed");
+        d.submitted();
+        d.uploaded();
+        assert!(d.note(&[1, 2], &[0, 6], false), "upload without a frame");
     }
 }

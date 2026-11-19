@@ -18,6 +18,7 @@ use dash_tokens::spike::{AXIS, CANVAS_BG, LINE_WIDTH_CSS};
 use wasm_bindgen::JsCast;
 
 use crate::flags::LineFault;
+use crate::line_dirty::DecimateState;
 use crate::line_load::uploads_this_frame;
 use crate::line_table::TABLE;
 
@@ -49,8 +50,7 @@ pub(crate) struct LineActive {
     pyramid: Pyramid,
     uploaded: u32,
     load_failed_seen: bool,
-    prev_uniforms: Vec<u8>,
-    prev_bounds: Vec<u32>,
+    decimate: DecimateState,
     coverage_sent: Option<String>,
     /// Set by the out-of-memory error scope of the mark's allocation.
     oom: Rc<Cell<bool>>,
@@ -106,8 +106,7 @@ impl LineActive {
             pyramid: Pyramid::default(),
             uploaded: 0,
             load_failed_seen: false,
-            prev_uniforms: Vec::new(),
-            prev_bounds: Vec::new(),
+            decimate: DecimateState::default(),
             coverage_sent: None,
             oom: Rc::new(Cell::new(false)),
             dpr: 1.0,
@@ -226,7 +225,7 @@ impl LineActive {
             return FrameEnd::Failed;
         }
         self.ensure_mark(gpu);
-        let mut dirty = self.upload(gpu);
+        let uploaded = self.upload(gpu);
         if TABLE.load_failed() && !self.load_failed_seen {
             self.scene.set_load_failed();
             self.load_failed_seen = true;
@@ -237,18 +236,16 @@ impl LineActive {
             .marked
             .as_ref()
             .and_then(|m| self.scene.frame(&m.layout.info()));
+        let mut dirty = false;
         if let (Some(f), Some(m)) = (&frame, &mut self.marked) {
             m.mark.set_frame(&gpu.device, &gpu.queue, f);
+            // Pending until a decimation pass is submitted (a skipped frame keeps it).
             let u = bytemuck::bytes_of(f.uniforms.as_ref());
-            if u != self.prev_uniforms.as_slice() || f.columns.bounds != self.prev_bounds {
-                dirty = true;
-                self.prev_uniforms.clear();
-                self.prev_uniforms.extend_from_slice(u);
-                self.prev_bounds.clear();
-                self.prev_bounds.extend_from_slice(&f.columns.bounds);
-            }
+            dirty = self.decimate.note(u, &f.columns.bounds, uploaded);
             self.slots = f.columns.slots();
             self.plot = f.plot;
+        } else if uploaded {
+            self.decimate.uploaded();
         }
 
         let surface = match gpu.surface.get_current_texture() {
@@ -269,9 +266,13 @@ impl LineActive {
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        if let (true, Some(m)) = (dirty, &self.marked) {
-            m.mark.decimate(&mut encoder);
-        }
+        let decimated = match (dirty, &self.marked) {
+            (true, Some(m)) => {
+                m.mark.decimate(&mut encoder);
+                true
+            }
+            _ => false,
+        };
         {
             let [r, g, b, a] = CANVAS_BG;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -302,6 +303,9 @@ impl LineActive {
             }
         }
         gpu.queue.submit([encoder.finish()]);
+        if decimated {
+            self.decimate.submitted();
+        }
         gpu.queue.present(surface);
         self.draws = (
             self.marked.as_ref().map_or(0, |m| m.mark.take_draw_count()),

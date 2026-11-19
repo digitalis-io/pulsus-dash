@@ -150,6 +150,13 @@ pub fn plot_rect(css_w: f32, css_h: f32, dpr: f32) -> Plot {
     }
 }
 
+/// Whether the canvas is larger than the plot insets, so the plot rectangle lies inside it.
+pub fn plot_fits(css_w: f32, css_h: f32, dpr: f32) -> bool {
+    let [l, r, t, b] = PLOT_INSET_CSS.map(|v| dev(v, dpr));
+    let [w, h] = canvas_px(css_w, css_h, dpr);
+    w > l + r && h > t + b
+}
+
 /// The line chart scene.
 #[derive(Debug)]
 pub struct LineScene {
@@ -288,15 +295,19 @@ impl LineScene {
         (self.series.len() as u32).min(self.ceiling.unwrap_or(u32::MAX))
     }
 
-    /// The frame's uniforms, columns and gridlines; `None` until a layer, a canvas and a series.
+    /// The frame's uniforms, columns and gridlines; `None` until a layer, a canvas and a series,
+    /// and while the canvas is not larger than the plot insets (no usable plot area).
     pub fn frame(&self, layout: &LayoutInfo) -> Option<LineFrame> {
         let layer = self.layer?;
-        let (plot, dpr) = self.plot()?;
+        let (css_w, css_h, dpr) = self.canvas?;
+        if !plot_fits(css_w, css_h, dpr) {
+            return None;
+        }
+        let (plot, dpr) = (plot_rect(css_w, css_h, dpr), dpr);
         let drawn = self.drawn();
         if drawn == 0 {
             return None;
         }
-        let (css_w, css_h, _) = self.canvas?;
         let cam = self.controller.camera();
         let step = layer.step_ms as f64;
         let xmap = XMap::new(step, cam.t_left_rel_ms, cam.ms_per_px);

@@ -26,6 +26,7 @@ const KEY_SCHEMA: &str = "dash.schema";
 const KEY_START: &str = "dash.grid.start_ms";
 const KEY_STEP: &str = "dash.grid.step_ms";
 const KEY_LEN: &str = "dash.grid.len";
+const KEY_TIME_UNIT: &str = "dash.time_unit";
 const TRUNCATED: &str = "truncated message";
 const MISMATCH: &str = "message length mismatch";
 
@@ -89,7 +90,7 @@ fn list_len(len: u32) -> i32 {
 pub fn grid_schema(m: &GridMeta) -> Schema {
     let md: HashMap<String, String> = [
         (KEY_SCHEMA, GRID_SCHEMA.to_string()),
-        ("dash.time_unit", "ms".to_string()),
+        (KEY_TIME_UNIT, "ms".to_string()),
         (KEY_START, m.start_ms.to_string()),
         (KEY_STEP, m.step_ms.to_string()),
         (KEY_LEN, m.len.to_string()),
@@ -257,14 +258,24 @@ fn validate(s: &Schema) -> Result<GridMeta, WireError> {
         return Err(WireError::Metadata(KEY_STEP));
     }
     let len: u32 = meta_num(s, KEY_LEN)?;
+    if meta_str(s, KEY_TIME_UNIT)? != "ms" {
+        return Err(WireError::Metadata(KEY_TIME_UNIT));
+    }
     let text = |key| s.metadata().get(key).cloned().unwrap_or_default();
     let fields = s.fields();
-    match fields.first().map(|f| (f.name().as_str(), f.data_type())) {
-        Some(("series_id", DataType::UInt32)) => {}
+    // Both parent fields are non-nullable: a nullable one is a malformed grid.
+    match fields
+        .first()
+        .map(|f| (f.name().as_str(), f.data_type(), f.is_nullable()))
+    {
+        Some(("series_id", DataType::UInt32, false)) => {}
         _ => return Err(WireError::Schema("series_id")),
     }
-    match fields.get(1).map(|f| (f.name().as_str(), f.data_type())) {
-        Some(("values", DataType::FixedSizeList(item, n)))
+    match fields
+        .get(1)
+        .map(|f| (f.name().as_str(), f.data_type(), f.is_nullable()))
+    {
+        Some(("values", DataType::FixedSizeList(item, n), false))
             if *item.data_type() == DataType::Float64 && *n == list_len(len) => {}
         _ => return Err(WireError::Schema("values")),
     }
@@ -334,6 +345,14 @@ impl GridDecoder {
             .as_any()
             .downcast_ref::<Float64Array>()
             .ok_or(WireError::Schema("values"))?;
+        // The decoder's schema is non-nullable, so Arrow already rejects null parents; checked
+        // again before any row is extracted.
+        if ids.null_count() > 0 {
+            return Err(WireError::Schema("series_id"));
+        }
+        if lists.null_count() > 0 {
+            return Err(WireError::Schema("values"));
+        }
         let len = self.meta.len as usize;
         (0..batch.num_rows())
             .map(|r| {
