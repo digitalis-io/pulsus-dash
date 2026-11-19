@@ -11,8 +11,8 @@ use common::tree;
 use xtask::XtaskError;
 use xtask::dep_audit::{
     CrateAllow, DepAuditConfig, LockAllow, Package, ShimPin, ShimPins, Workspace, audit,
-    check_crate_graph, check_npm, check_render_worker_locks, check_shipped_js, check_web_assets,
-    check_web_sys, load_config, load_pins, sha256_hex,
+    check_crate_graph, check_generated_with, check_npm, check_render_worker_locks,
+    check_shipped_js, check_web_assets, check_web_sys, load_config, load_pins, sha256_hex,
 };
 use xtask::report::{Rule, Violation};
 use xtask::shim::{SHIM_PATHS, ShimFiles};
@@ -362,19 +362,78 @@ fn shim_pins_config_rejected() {
 }
 
 #[test]
-fn generated_glue_rejected() {
+fn gen_unknown_dir_rejected() {
     let t = tree(&[
-        (
-            "web/shim/gen/dash-core-mt/dash_core_mt.js",
-            b"fetch(\"x\");eval(\"1\");\n",
-        ),
-        ("web/shim/gen/dash-core-mt/dash_core_mt_bg.wasm", b"\0asm"),
+        ("web/shim/gen/evil/x.js", b"fetch(\"x\");\n"),
+        ("web/shim/gen/dash-core-st/dash_core_st.js", b"x();\n"),
     ]);
-    let v = check_shipped_js(t.path(), &shim_files(&[]), &ShimPins { files: vec![] }).unwrap();
+    let calls = std::cell::Cell::new(0);
+    let fake = |_: &Path, _: &xtask::r#gen::GenOptions| -> xtask::R<()> {
+        calls.set(calls.get() + 1);
+        Ok(())
+    };
+    let v = check_generated_with(t.path(), &fake).unwrap();
+    let got: Vec<(Rule, PathBuf)> = v.iter().map(|v| (v.rule, v.path.clone())).collect();
     assert_eq!(
-        rules(&v),
-        vec![Rule::GeneratedJsPresent, Rule::GeneratedJsPresent]
+        got,
+        vec![(Rule::GeneratedUnknown, PathBuf::from("web/shim/gen/evil"))]
     );
+    assert_eq!(
+        calls.get(),
+        0,
+        "no regenerate when gen/ holds an unknown entry"
+    );
+}
+
+#[test]
+fn gen_regenerated_and_compared() {
+    let t = tree(&[
+        ("web/shim/gen/dash-core-mt/dash_core_mt.js", b"glue\n"),
+        (
+            "web/shim/gen/dash-core-mt/dash_core_mt_bg.wasm",
+            b"\0asm-old",
+        ),
+    ]);
+    let calls = std::cell::Cell::new(0);
+    let fake = |root: &Path, o: &xtask::r#gen::GenOptions| -> xtask::R<()> {
+        calls.set(calls.get() + 1);
+        assert_eq!(*o, xtask::r#gen::GenOptions::check(root));
+        let d = o.web_root.join("shim/gen/dash-core-mt");
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("dash_core_mt.js"), b"glue\n").unwrap();
+        fs::write(d.join("dash_core_mt_bg.wasm"), b"\0asm-new").unwrap();
+        Ok(())
+    };
+    let v = check_generated_with(t.path(), &fake).unwrap();
+    assert_eq!(calls.get(), 1);
+    let got: Vec<(Rule, PathBuf)> = v.iter().map(|v| (v.rule, v.path.clone())).collect();
+    assert_eq!(
+        got,
+        vec![(
+            Rule::GeneratedMismatch,
+            PathBuf::from("web/shim/gen/dash-core-mt/dash_core_mt_bg.wasm")
+        )]
+    );
+    let empty = tree(&[("web/index.html", b"<html></html>\n")]);
+    assert!(
+        check_generated_with(empty.path(), &fake)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(calls.get(), 1, "no gen/ means nothing to accept");
+}
+
+#[test]
+fn dep_audit_layout_gen_admitted() {
+    let current = dash_protocol::layout::render_js();
+    let files = shim_files(&["web/shim/layout.gen.js"]);
+    let t = tree(&[("web/shim/layout.gen.js", current.as_bytes())]);
+    let v = check_shipped_js(t.path(), &files, &ShimPins { files: vec![] }).unwrap();
+    assert!(v.is_empty(), "{v:?}");
+    let stale = format!("{current}x();\n");
+    let t = tree(&[("web/shim/layout.gen.js", stale.as_bytes())]);
+    let v = check_shipped_js(t.path(), &files, &ShimPins { files: vec![] }).unwrap();
+    assert_eq!(rules(&v), vec![Rule::LayoutGenStale]);
 }
 
 #[test]
@@ -430,8 +489,39 @@ fn dep_audit_config_matches_t03() {
         vec!["dash-scene", "dash-gpu", "dash-marks", "dash-state"]
     );
     assert_eq!(c.browser_roots, vec!["dash-core-mt"]);
-    assert!(c.browser_crates.is_empty());
-    assert!(load_pins(&root).unwrap().files.is_empty());
+    for b in &c.browser_crates {
+        assert!(b.reason.contains("T01-002"), "{}: {}", b.name, b.reason);
+        assert!(
+            b.reason
+                .contains("not a UI, component, charting, mapping or diagram library"),
+            "{}: {}",
+            b.name,
+            b.reason
+        );
+    }
+    assert!(!c.browser_crates.is_empty());
+    let pinned: Vec<String> = load_pins(&root)
+        .unwrap()
+        .files
+        .into_iter()
+        .map(|p| p.path)
+        .collect();
+    assert_eq!(
+        pinned,
+        vec![
+            "web/shim/boot.js",
+            "web/shim/worker.js",
+            "web/shim/input.js"
+        ]
+    );
+    let want: BTreeMap<String, Vec<String>> = [
+        ("dash-gpu", vec!["OffscreenCanvas"]),
+        ("dash-core-mt", vec!["OffscreenCanvas", "Performance"]),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.into_iter().map(String::from).collect()))
+    .collect();
+    assert_eq!(c.web_sys, want);
 }
 
 /// A directory symlinked into an audited tree is refused (fail closed), never silently skipped: a

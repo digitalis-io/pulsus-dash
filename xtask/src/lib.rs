@@ -4,11 +4,16 @@
 pub mod bundle;
 pub mod dep_audit;
 pub mod design;
+pub mod e2e;
 pub mod gates;
+pub mod r#gen;
 pub mod jslex;
+pub mod probe;
 pub mod report;
 pub mod seed;
+pub mod serve;
 pub mod shim;
+pub mod tools;
 
 use std::path::PathBuf;
 

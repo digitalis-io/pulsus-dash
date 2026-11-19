@@ -95,6 +95,10 @@ The browser main thread MUST NOT run any task longer than 16 ms while an interac
 *Acceptance:* A performance trace of every scripted interaction benchmark on (a) and (b) contains
 0 main-thread tasks > 16 ms between the first and last input event.
 
+*Verification note:* until the reference lab exists, CI's browser trace is the merge gate (no
+main-thread task > 16 ms thread or > 50 ms wall time in interaction); then `bench:long-tasks` on
+(a), (b) blocks merges. M-UI0 is not complete until it passes.
+
 #### PRF-006 — No interaction waits on the network
 **MUST** · M-UI0 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
@@ -627,3 +631,4 @@ a requestAnimationFrame loop.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; mobile budgets imported from T20 (draft) §6 |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §5 table rows and PRF-019 acceptance edited; §5.1 PRF-043 to PRF-046 added; resolution 8 |
+| 1.0-rc2 | 2026-11-18 | #23: PRF-005 verification note (CI browser trace as the merge gate until the reference lab exists) |

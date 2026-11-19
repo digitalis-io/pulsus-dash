@@ -1,21 +1,31 @@
-//! `cargo xtask`: CI gates and gate-proof seeds. See `docs/development/build-and-ci.md`.
+//! `cargo xtask`: CI gates, gate-proof seeds, build tools, artefact generation and the dev
+//! server. See `docs/development/build-and-ci.md`.
 //!
 //! | Invocation | 0 | 1 | 2 |
 //! |---|---|---|---|
 //! | `ci <gate-id>` | passed | failed | error or unknown gate |
 //! | `ci all` | all passed | any failed | any error (takes precedence) |
 //! | `seed <gate-id>` / `unseed <gate-id>` | done | — | error or unknown gate |
+//! | `tools` / `gen [--test]` | done | — | error |
+//! | `serve [--root DIR] [--port N] [--no-isolation]` | (runs until stopped) | — | error |
 
 use std::process::ExitCode;
 
 use xtask::gates::{Gate, GateResult, run_all, run_gate};
-use xtask::{XtaskError, repo_root, seed};
+use xtask::r#gen::{GenOptions, generate};
+use xtask::serve::{ServeOptions, serve};
+use xtask::{XtaskError, repo_root, seed, tools};
 
-const USAGE: &str = "usage: cargo xtask ci <gate-id|all> | seed <gate-id> | unseed <gate-id>\n\
-gates: fmt build clippy test wasm bundle-size design-check shim-lint dep-audit";
+const USAGE: &str = "usage: cargo xtask ci <gate-id|all> | seed <gate-id> | unseed <gate-id> | tools | gen [--test]\n\
+       | serve [--root DIR] [--port N] [--no-isolation]\n\
+gates: fmt build clippy test wasm probe-absent bundle-size design-check shim-lint dep-audit e2e";
+
+fn usage() -> XtaskError {
+    XtaskError::Usage(USAGE.into())
+}
 
 fn gate_arg(arg: Option<&str>) -> Result<Gate, XtaskError> {
-    let a = arg.ok_or_else(|| XtaskError::Usage(USAGE.into()))?;
+    let a = arg.ok_or_else(usage)?;
     Gate::parse(a).ok_or_else(|| XtaskError::Usage(format!("unknown gate `{a}`\n{USAGE}")))
 }
 
@@ -40,12 +50,33 @@ fn report(gate: Gate, r: &Result<GateResult, XtaskError>) -> u8 {
     }
 }
 
+/// `serve [--root DIR] [--port N] [--no-isolation]`; a relative root is from the repository root.
+fn serve_options(root: &std::path::Path, args: &[String]) -> Result<ServeOptions, XtaskError> {
+    let mut o = ServeOptions {
+        root: root.join("web"),
+        port: 8080,
+        isolation: true,
+    };
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--root" => o.root = root.join(it.next().ok_or_else(usage)?),
+            "--port" => {
+                o.port = it.next().and_then(|p| p.parse().ok()).ok_or_else(usage)?;
+            }
+            "--no-isolation" => o.isolation = false,
+            _ => return Err(usage()),
+        }
+    }
+    Ok(o)
+}
+
 fn run(args: &[String]) -> Result<u8, XtaskError> {
     let root = repo_root()?;
     let cmd = args.first().map(String::as_str);
     let arg = args.get(1).map(String::as_str);
-    if args.len() > 2 {
-        return Err(XtaskError::Usage(USAGE.into()));
+    if args.len() > 2 && cmd != Some("serve") {
+        return Err(usage());
     }
     match cmd {
         Some("ci") if arg == Some("all") => {
@@ -78,7 +109,31 @@ fn run(args: &[String]) -> Result<u8, XtaskError> {
             }
             Ok(0)
         }
-        _ => Err(XtaskError::Usage(USAGE.into())),
+        Some("tools") if arg.is_none() => {
+            tools::install(&root, &tools::load(&root)?)?;
+            Ok(0)
+        }
+        Some("gen") => {
+            let o = match arg {
+                None => GenOptions::dev(&root),
+                Some("--test") => GenOptions::test(&root),
+                Some(_) => return Err(usage()),
+            };
+            generate(&root, &o)?;
+            Ok(0)
+        }
+        Some("serve") => {
+            let o = serve_options(&root, &args[1..])?;
+            println!(
+                "serving {} on http://localhost:{} (isolation {})",
+                o.root.display(),
+                o.port,
+                if o.isolation { "on" } else { "off" }
+            );
+            serve(&o, None)?;
+            Ok(0)
+        }
+        _ => Err(usage()),
     }
 }
 

@@ -1,0 +1,11 @@
+[package]
+name = "dash-protocol"
+description = "Main ↔ worker protocol: control block v1 layout, runtime status codes, input records and the SPSC input ring (T03 §4.3, §5.4)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

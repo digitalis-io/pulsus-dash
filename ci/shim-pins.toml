@@ -1,4 +1,13 @@
-# ci/shim-pins.toml — one [[file]] per T03 §5.1 shim file present in the tree; none in #22.
-# [[file]]
-# path = "web/shim/boot.js"
-# sha256 = "<64 lowercase hex of the file bytes>"
+# ci/shim-pins.toml: one [[file]] per T03 §5.1 shim file present in the tree (SHA-256 of its bytes).
+
+[[file]]
+path = "web/shim/boot.js"
+sha256 = "c3e682a96390beea1c225c93b4f2eddb7777779a75a1ac69046c81cc49105355"
+
+[[file]]
+path = "web/shim/worker.js"
+sha256 = "b79e3232c2ce7de007ffa3ae3aefe62fcca5c64ccb327be818fa6d3b593f17f1"
+
+[[file]]
+path = "web/shim/input.js"
+sha256 = "43def8c8feec244d6448c6b700f4a8e3b1b3af3ebb56178527517e940d86c290"

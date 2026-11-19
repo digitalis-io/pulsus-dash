@@ -12,8 +12,9 @@ use regex::Regex;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::r#gen::{Artefact, GenOptions, compare};
 use crate::report::{Rule, Violation};
-use crate::shim::{GEN_DIR, SHIM_DIR, SHIM_PATHS, ShimFiles, re};
+use crate::shim::{GEN_DIR, LAYOUT_GEN, SHIM_DIR, SHIM_PATHS, ShimFiles, re};
 use crate::{R, XtaskError, line_of, rel_str, relative, walk_files};
 
 pub const CONFIG_PATH: &str = "ci/dep-audit.toml";
@@ -558,7 +559,9 @@ pub fn check_web_assets(root: &Path, cfg: &DepAuditConfig) -> R<Vec<Violation>> 
     Ok(out)
 }
 
-/// Plan §4.3.1: only the pinned T03 §5.1 files are shipped; no generated JS before #23.
+/// Only the pinned T03 §5.1 files are shipped (plan §4.3.1 of #22); `layout.gen.js` is admitted
+/// unpinned iff byte-identical to its generator, else `layout-gen-stale`; `web/shim/gen/` is
+/// accepted only by regenerate-and-compare ([`check_generated`], plan §4.7).
 pub fn check_shipped_js(root: &Path, files: &ShimFiles, pins: &ShimPins) -> R<Vec<Violation>> {
     let mut out = Vec::new();
     let readme = Path::new(SHIM_DIR).join("README.md");
@@ -567,6 +570,19 @@ pub fn check_shipped_js(root: &Path, files: &ShimFiles, pins: &ShimPins) -> R<Ve
             continue;
         }
         let rel = rel_str(path);
+        if rel == LAYOUT_GEN {
+            let abs = root.join(path);
+            let bytes = std::fs::read(&abs).map_err(XtaskError::io(&abs))?;
+            if bytes != dash_protocol::layout::render_js().as_bytes() {
+                out.push(v(
+                    Rule::LayoutGenStale,
+                    path,
+                    None,
+                    "differs from its generator; run `cargo xtask gen` (T03-005)".into(),
+                ));
+            }
+            continue;
+        }
         if !SHIM_PATHS.contains(&rel.as_str()) {
             out.push(v(
                 Rule::ShimFileNotAllowed,
@@ -604,15 +620,67 @@ pub fn check_shipped_js(root: &Path, files: &ShimFiles, pins: &ShimPins) -> R<Ve
             ));
         }
     }
-    for path in walk_files(&root.join(GEN_DIR), &|_| false)? {
-        out.push(v(
-            Rule::GeneratedJsPresent,
-            relative(root, &path),
-            None,
-            "generated JS is not accepted before #23".into(),
-        ));
+    out.extend(check_generated(root)?);
+    Ok(out)
+}
+
+/// Regenerate-and-compare of `web/shim/gen/` (plan §4.7) with an injectable generator. No
+/// `gen/` → nothing to accept. Every entry other than the directories `dash-core-mt` and
+/// `dash-core-st` → `generated-unknown` (and no regeneration); otherwise a fresh
+/// `GenOptions::check` build is compared with each present directory (`generated-mismatch`).
+pub fn check_generated_with(
+    root: &Path,
+    generator: &dyn Fn(&Path, &GenOptions) -> R<()>,
+) -> R<Vec<Violation>> {
+    let gen_dir = root.join(GEN_DIR);
+    if !gen_dir.exists() {
+        return Ok(Vec::new());
+    }
+    // Fails closed on a symlinked directory anywhere under gen/.
+    walk_files(&gen_dir, &|_| false)?;
+    let known: Vec<&str> = Artefact::ALL.iter().map(|a| a.name()).collect();
+    let mut unknown = Vec::new();
+    let mut present = Vec::new();
+    let entries = std::fs::read_dir(&gen_dir).map_err(XtaskError::io(&gen_dir))?;
+    for e in entries {
+        let e = e.map_err(XtaskError::io(&gen_dir))?;
+        let name = e.file_name().to_string_lossy().into_owned();
+        let is_dir = e.file_type().map_err(XtaskError::io(e.path()))?.is_dir();
+        if is_dir && known.contains(&name.as_str()) {
+            present.push(name);
+        } else {
+            unknown.push(v(
+                Rule::GeneratedUnknown,
+                Path::new(GEN_DIR).join(&name),
+                None,
+                "not a generated artefact directory (dash-core-mt, dash-core-st)".into(),
+            ));
+        }
+    }
+    if !unknown.is_empty() {
+        unknown.sort_by(|a, b| a.path.cmp(&b.path));
+        return Ok(unknown);
+    }
+    if present.is_empty() {
+        return Ok(Vec::new());
+    }
+    present.sort();
+    let check = GenOptions::check(root);
+    generator(root, &check)?;
+    let mut out = Vec::new();
+    for d in present {
+        out.extend(compare(
+            &check.web_root.join("shim/gen").join(&d),
+            &gen_dir.join(&d),
+            &format!("{GEN_DIR}/{d}"),
+        )?);
     }
     Ok(out)
+}
+
+/// [`check_generated_with`] with the real generator.
+pub fn check_generated(root: &Path) -> R<Vec<Violation>> {
+    check_generated_with(root, &crate::r#gen::generate)
 }
 
 /// All six checks of `ci:dep-audit`.

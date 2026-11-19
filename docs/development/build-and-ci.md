@@ -4,7 +4,8 @@ How the Cargo workspace is laid out, how to build it for native and the browser,
 gate works, locally and in GitHub Actions.
 
 Implements [T01-001 and T01-002](../../designs/technical/T01-frontend-architecture.md),
-[T03-001 and T03-008](../../designs/technical/T03-browser-runtime.md) (the CI lint) and
+[T03-001, T03-005, T03-008 and T03-024](../../designs/technical/T03-browser-runtime.md) (the CI
+lints, the generated layout and the probe check) and
 [T05-001 and T05-002](../../designs/technical/T05-testing-and-performance.md), following
 [ADR-0001](../../designs/adr/0001-rust-wasm-everywhere.md) and
 [ADR-0002](../../designs/adr/0002-no-js-ui-framework.md). The gate catalogue is
@@ -17,15 +18,23 @@ Implements [T01-001 and T01-002](../../designs/technical/T01-frontend-architectu
   root installs it, and every `cargo` command picks it up.
 - `git`: `ci:shim-lint` and `ci:dep-audit` ask git which files under `web/shim/` exist.
 - `python3`: `ci:design-check` runs `designs/tools/check.py`.
+- `curl` and `tar`: `cargo xtask tools` downloads binaryen's `wasm-opt`.
+- Node.js 22 (`npm`, `npx`): only for the `e2e` gate (Playwright, test tooling; nothing from npm is
+  shipped). Run `npm ci` and `npx playwright install --with-deps chromium` in `e2e/` once.
 
-No Node.js toolchain is needed. Network access is needed only for crates.io.
+Network access is needed for crates.io, the pinned nightly and binaryen (`cargo xtask tools`) and
+npm (`e2e/` only).
 
 ## Commands
 
 | What | Command |
 |---|---|
 | Native build of every crate | `cargo build --workspace --locked` |
-| Browser build | `cargo build-wasm` → `target/wasm32-unknown-unknown/wasm-release/dash_core_mt.wasm` |
+| Browser build (stable, no bindgen) | `cargo build-wasm` → `target/wasm32-unknown-unknown/wasm-release/dash_core_mt.wasm` |
+| Install the pinned build tools | `cargo xtask tools` |
+| Both core artefacts into `web/shim/gen/` | `cargo xtask gen` (also rewrites `web/shim/layout.gen.js` when stale) |
+| Probe-enabled test build into `target/web-test/` | `cargo xtask gen --test` |
+| Dev server with the runtime's headers | `cargo xtask serve [--root DIR] [--port N] [--no-isolation]` |
 | One gate | `cargo xtask ci <gate-id>` |
 | All gates, in CI order | `cargo xtask ci all` |
 | Write a gate's deliberate regression | `cargo xtask seed <gate-id>` |
@@ -44,6 +53,8 @@ Exit codes of `cargo xtask`:
 | `ci all` | all passed | any gate failed | any error (takes precedence) |
 | `seed <gate-id>` | seed and manifest written; paths printed | — | error or unknown gate |
 | `unseed <gate-id>` | seed undone, manifest deleted; paths printed | — | no manifest, a seeded file changed since seeding, or unknown gate |
+| `tools`, `gen [--test]` | done | — | error (a tool exited non-zero, a checksum mismatch, a memory check failed) |
+| `serve …` | runs until stopped | — | cannot bind, bad arguments |
 
 Every finding prints as `error[<rule-id>] <path>[:<line>]: <message>`. Under GitHub Actions it is
 also emitted as an `::error` annotation, so it shows on the PR diff.
@@ -57,8 +68,11 @@ also emitted as an `::error` annotation, so it shows on the PR diff.
 | `server/` | BFF-only crates (M-UI1, T06 §4.1); not created yet |
 | `xtask/` | The gate runner and seeds (this page) |
 | `ci/` | Gate registry and gate configuration |
-| `web/shim/` | The JS shim: only the five T03 §5.1 files may live here |
-| `web/shim/gen/` | Git-ignored wasm-bindgen output. None is accepted yet (see `ci:dep-audit`) |
+| `web/index.html` | The runtime demo page ([Browser runtime](../runtime/browser-runtime.md)) |
+| `web/shim/` | The JS shim: only the T03 §5.1 files (today `boot.js`, `worker.js`, `input.js`) and the generated `layout.gen.js` |
+| `web/shim/gen/` | Git-ignored wasm-bindgen output of `dash-core-mt` and `dash-core-st`, accepted only by regenerate-and-compare (`ci:dep-audit`) |
+| `e2e/` | Playwright specs of the runtime mode matrix (test tooling only) |
+| `ci/tools.toml` | The pinned nightly, wasm-bindgen and binaryen versions and binaryen checksums |
 
 The crate map is [T01 §4.6](../../designs/technical/T01-frontend-architecture.md#46-crate-map).
 
@@ -74,7 +88,7 @@ Workspace lints deny `unwrap`, `expect`, `dbg!`, `todo!` and `unimplemented!` ou
 ## Gates
 
 The registry is `ci/gates.toml`: one entry per gate with its T05 id, owner and CI job
-(T05-001). `.github/workflows/ci.yml` runs three jobs on every pull request and on pushes to `main`.
+(T05-001). `.github/workflows/ci.yml` runs four jobs on every pull request and on pushes to `main`.
 Each gate is one step named `ci <gate-id>` that runs `cargo xtask ci <gate-id>`, exactly what you
 run locally.
 
@@ -84,13 +98,15 @@ run locally.
 | `build` | — | `area:platform` | `rust` | `cargo build --workspace --locked` |
 | `clippy` | — | `area:platform` | `rust` | `cargo clippy --workspace --all-targets --locked -- -D warnings`, then the same for `dash-core-mt` on `wasm32-unknown-unknown` |
 | `test` | — | `area:platform` | `rust` | `cargo test --workspace --locked` |
-| `wasm` | — | `area:platform` | `wasm` | `cargo build-wasm` |
+| `wasm` | — | `area:platform` | `wasm` | `cargo build-wasm`, then `cargo xtask gen`'s release build of both artefacts into `web/shim/gen/` |
+| `probe-absent` | `ci:probe-absent` | `area:platform` | `wasm` | no test probe in a fresh release build (T03-024) |
 | `bundle-size` | `ci:bundle-size` | `area:rendering` | `wasm` | Brotli size per artefact against T03 §7.3 |
 | `dep-audit` | `ci:dep-audit` | `area:platform` | `wasm` | npm, browser crate graph, `web-sys` features, render-worker locks, web assets, shipped JS |
 | `design-check` | `ci:design-check` | `area:platform` | `static` | `designs/tools/check.py` and the traceability diff |
 | `shim-lint` | `ci:shim-lint` | `area:shell` | `static` | T03-001 on the shim |
+| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix, the PRF-005 trace check, and the T03-003 shim queue checks (times reported only) |
 
-The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
+The `wasm` and `e2e` jobs run `cargo xtask tools` first. The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
 even when an earlier gate failed.
 
 Which checks are *required* to merge is a repository setting made by the owner; this repository
@@ -106,8 +122,10 @@ does not build for it.
 ### `ci:shim-lint`
 
 Counts the non-blank, non-comment lines of every `.js`, `.mjs` and `.cjs` file under `web/shim/`
-that git tracks or does not ignore (`git ls-files --cached --others --exclude-standard`). Nothing is
-excluded by name or location: a file force-added under `gen/` is counted too. It then checks:
+that git tracks or does not ignore (`git ls-files --cached --others --exclude-standard`). The one
+exclusion is `web/shim/layout.gen.js` while it is byte-identical to
+`dash_protocol::layout::render_js()`; otherwise it is counted and fails `layout-gen-stale`. A file
+force-added under `gen/` is counted. It then checks:
 
 | Rule id | Fails when |
 |---|---|
@@ -116,6 +134,7 @@ excluded by name or location: a file force-added under `gen/` is counted too. It
 | `shim-forbidden-token` | `eval`, `Function` or `innerHTML` appears as a word in code or strings |
 | `shim-import` | an import, re-export, dynamic import, `new Worker`/`SharedWorker`, `serviceWorker.register` or `importScripts` names anything other than a relative path that stays inside `web/shim/` and is a shim file or generated glue (`web/shim/gen/<crate>/<crate_>.js`). Non-literal forms and `importScripts` always fail |
 | `shim-lex-error` | the file cannot be read exactly (below) |
+| `layout-gen-stale` | `web/shim/layout.gen.js` differs from its generator: run `cargo xtask gen` and commit it |
 
 It prints each file's count and `shim: <total> / 300 lines`.
 
@@ -152,7 +171,9 @@ comments, strings and templates, and an unmatched `)`.
 | `shim-unpinned` | a T03 §5.1 file has no pin; the message prints its SHA-256 | Add the pin (below) |
 | `shim-pin-mismatch` | a shim file's SHA-256 differs from its pin | Update the pin in the same PR (below) |
 | `shim-pin-stale` | a pin names a file that is not in the tree | Remove the pin |
-| `generated-js-present` | any file exists on disk under `web/shim/gen/` | Delete it. Generated output is not accepted until #23 adds its regenerate-and-compare check |
+| `layout-gen-stale` | `web/shim/layout.gen.js` (admitted unpinned) differs from its generator | Run `cargo xtask gen` and commit it |
+| `generated-unknown` | an entry under `web/shim/gen/` other than the directories `dash-core-mt` and `dash-core-st` (nothing is regenerated then) | Delete it |
+| `generated-mismatch` | a file in `web/shim/gen/dash-core-{mt,st}/` is missing from, extra to, or different from a fresh `GenOptions::check` build in `target/gen-check/` | Regenerate with `cargo xtask gen` (or delete `web/shim/gen/`) |
 
 All allow entries need a non-empty `reason`; unknown keys in `ci/*.toml` are errors (exit 2).
 A symlinked directory inside an audited tree (`web/`, `web/shim/gen/`, a render-worker crate's
@@ -174,9 +195,10 @@ every artefact in `ci/bundle-budgets.toml`, and the eager total:
 
 | Artefact | Files | T03 §7.3 row | Budget | Eager |
 |---|---|---|---|---|
-| `shim` | `web/shim/**/*.{js,mjs,cjs}` except `web/shim/gen/**` | shim (all files) | 8 000 | yes |
+| `shim` | `web/shim/**/*.{js,mjs,cjs}` except `web/shim/gen/**` | shim (all files) | 8 000 | yes (required) |
 | `dash-shell` | `web/shim/gen/dash-shell/**` | `dash-shell.wasm` + glue | 700 000 | yes |
-| `dash-core-mt` | `web/shim/gen/dash-core-mt/**` | `dash-core-mt.wasm` + glue | 1 900 000 | yes |
+| `dash-core-mt` | `web/shim/gen/dash-core-mt/**` | `dash-core-mt.wasm` + glue | 1 900 000 | yes (required) |
+| `dash-core-st` | `web/shim/gen/dash-core-st/**` | `dash-core-st.wasm` + glue | 1 900 000 | no (required) |
 | `msdf-atlases-latin` | `web/assets/msdf/latin/**` | MSDF atlases (Inter + JetBrains Mono, Latin) | 250 000 | no |
 | `dash-editor` | `web/shim/gen/dash-editor/**` | `dash-editor.wasm` | 600 000 | no |
 | `dash-rooms-admin` | `web/shim/gen/dash-rooms-admin/**` | `dash-rooms-admin.wasm` | 500 000 | no |
@@ -188,11 +210,11 @@ every artefact in `ci/bundle-budgets.toml`, and the eager total:
 Sizes are bytes (1 KB = 1000 bytes). A module's row covers its whole `gen/<crate>/` directory:
 `.wasm`, glue and `snippets/`. A table is printed and added to the job's step summary.
 
-**Modes.** `mode = "report"` (committed today): over budget is a `warning[bundle-over-budget]`
-and the gate never fails; absent artefacts are listed as `absent`. `mode = "enforce"`: over budget
-fails (`error[bundle-over-budget]`), and an absent artefact marked `required = true` fails
-(`bundle-artefact-absent`). The first PR whose CI build writes `web/shim/gen/dash-core-mt/` switches
-to `enforce` and marks what it builds `required` (T05 §7.1).
+**Modes.** `mode = "enforce"` (committed since #23): over budget fails
+(`error[bundle-over-budget]`), and an absent artefact marked `required = true` fails
+(`bundle-artefact-absent`); `shim`, `dash-core-mt` and `dash-core-st` are required, so run
+`cargo xtask gen` (or `ci wasm`) before the gate locally. `mode = "report"` would only warn. Per-crate
+(`twiggy`) sizes and the +2 %-per-PR growth check come once `main` has a size baseline (T05 §7.1).
 
 ### `ci:design-check`
 
@@ -205,18 +227,67 @@ never modified.
 | `design-check-failed` | `check.py` reports errors (broken links or anchors, ID problems); the message lists its `error:` lines | Fix the design text |
 | `traceability-stale` | the committed `designs/traceability.md` is not what `--write` generates | Run `python3 -I designs/tools/check.py --write` and commit |
 
-## Interim gates and when they change
+### Build tools and generation
 
-From T05 §7.1:
+`cargo xtask tools` installs, idempotently, what `ci/tools.toml` pins: the nightly toolchain for
+`dash-core-mt` (with `rust-src` and the wasm32 target), `wasm-bindgen-cli` at the `Cargo.lock`
+version into `target/tools/bin/`, and binaryen's `wasm-opt` into `target/tools/binaryen-<v>/`. The
+binaryen tarball is checked against its pinned SHA-256; a mismatch deletes it and fails (exit 2).
 
-- `ci:shim-lint`: nothing is excluded by name. `layout.gen.js` would fail `ci:dep-audit` (it is not
-  a T03 §5.1 file). Once T03-005's generator exists, `layout.gen.js` is excluded from the count and
-  is regenerated and diffed instead.
-- `ci:dep-audit`: generated JS under `web/shim/gen/` is rejected until #23 adds the
-  regenerate-and-compare check that accepts wasm-bindgen output.
-- `ci:bundle-size`: report mode until the first PR whose CI build writes
-  `web/shim/gen/dash-core-mt/`. That PR enables `enforce`, marks the artefacts it builds `required`,
-  and adds per-crate (`twiggy`) sizes and the +2 %-per-PR growth check.
+`cargo xtask gen` builds both artefacts of the one `dash-core-mt` crate:
+
+| Artefact | Toolchain | Flags | Memory (checked) |
+|---|---|---|---|
+| `dash-core-mt` | pinned nightly, `-Z build-std=panic_abort,std` | `+atomics,+bulk-memory,+mutable-globals,+simd128`; linker: `--shared-memory --import-memory --max-memory=2147483648` and the TLS exports wasm-bindgen's threads need | imports one shared memory, max 32 768 pages |
+| `dash-core-st` | the repository's stable toolchain | none | defines and exports its own, unshared memory |
+
+Each is then bound (`wasm-bindgen --target web --no-typescript`), optimised (`wasm-opt -O3`) and
+checked, and `web/shim/gen/<artefact>/` is replaced. A memory that does not match fails `gen`. The
+build environment is cleaned (`RUSTFLAGS`, `RUSTUP_TOOLCHAIN`, `CARGO_TARGET_DIR` …) so the output
+is reproducible: `ci:dep-audit` and `ci:probe-absent` rebuild into `target/gen-check/` and compare.
+
+| Options | Web root | Cargo target dirs | Probe | Writes `layout.gen.js` |
+|---|---|---|---|---|
+| `gen` | `web/` | `target/mt`, `target/st` | no | when stale |
+| `ci wasm` | `web/` | `target/mt`, `target/st` | no | no |
+| `gen --test`, `ci e2e` | `target/web-test/` (copy of `web/`) | `target/mt-probe`, `target/st-probe` | yes | no |
+| `ci probe-absent`, `ci dep-audit` | `target/gen-check/` (copy of `web/`) | `target/mt`, `target/st` | no | no |
+
+`cargo xtask serve` serves a directory (default `web/`; a relative `--root` is from the repository
+root) on `localhost` (default port 8080), one request at a time, with COOP `same-origin` and COEP
+`require-corp` (dropped by `--no-isolation`), CORP `same-origin`, the T03 §5.7 CSP,
+`Cache-Control: no-cache` and `X-Content-Type-Options: nosniff`. Only `GET` and `HEAD` (else 405);
+`/` is `index.html`; a path with `%`, `\` or a `..` segment, a directory or a missing file is 404.
+
+### `ci:probe-absent`
+
+`cargo xtask ci probe-absent` deletes `target/gen-check/`, builds a fresh release of both artefacts with default features (so a
+`default = ["probe"]` would be caught), and never reads `web/shim/gen/`.
+
+| Rule id | Fails when |
+|---|---|
+| `probe-artefact-missing` | one of the four artefact files (`dash_core_{mt,st}.js`, `dash_core_{mt,st}_bg.wasm`) is absent or empty |
+| `probe-present` | a file under `target/gen-check/shim/` contains the probe marker `__dashProbe` (T03-024) |
+
+### `e2e`
+
+`cargo xtask ci e2e` runs: (1) `cargo xtask gen --test`; (2) both `_bg.wasm` of the test build must contain the probe marker,
+else `probe-marker-undetected` (the scanner of `probe-absent` would miss a probe); (3) deletes
+`e2e/test-results/` and runs `npx playwright test` in `e2e/` (a failing spec fails the gate; no
+`npx` is an error); (4) always checks the interaction traces the specs wrote:
+
+| Rule id | Fails when |
+|---|---|
+| `long-task-trace-missing` | `e2e/test-results/traces/long-tasks-<p>.json` is missing for `webgpu`, `webgl2` or `noiso` |
+| `main-thread-long-task` | a main-thread task in the interaction window took > 16 ms of thread time or > 50 ms of wall time (PRF-005, until the reference lab exists); the message gives the project, `ts`, `dur` and `tdur` |
+
+A trace the detector cannot judge (no renderer main thread, no input, no task in the window, no
+thread time) is an error, not a pass. Playwright (`e2e/playwright.config.ts`) starts two dev servers
+on `target/web-test/` (port 8787 isolated, 8788 `--no-isolation`) and runs four Chromium projects,
+selected by tag: `webgpu` (SwiftShader WebGPU), `webgl2` (no WebGPU adapter), `nogpu` (no GPU at
+all) and `noiso` (not isolated). The specs and what each mode must show are described in
+[Browser runtime](../runtime/browser-runtime.md). The report and traces are uploaded as the
+`e2e-report` artefact of the CI run.
 
 ## Proving a gate fails (T05-002)
 
@@ -229,10 +300,12 @@ Every gate has a seeded, committable violation, and the marker its failing log m
 | `clippy` | creates a test file with a needless `return` | `needless_return` |
 | `test` | creates a failing test | `seeded violation` |
 | `wasm` | makes `dash-core-mt` use `std::os::unix` | `unix` |
-| `bundle-size` | switches `ci/bundle-budgets.toml` to `enforce` and adds an incompressible `web/shim/seeded-size.js` | `bundle-over-budget` |
+| `probe-absent` | sets `default = ["probe"]` in `crates/dash-core-mt/Cargo.toml` | `probe-present` |
+| `bundle-size` | adds an incompressible `web/shim/seeded-size.js` (the config is already `enforce`) | `bundle-over-budget` |
 | `design-check` | appends a broken link to T01 | `seeded-missing.md` |
 | `shim-lint` | creates `web/shim/seeded.js` with `eval` | `shim-forbidden-token` |
 | `dep-audit` | creates `web/package.json` with a runtime dependency | `npm-runtime-dependency` |
+| `e2e` | replaces the Static message in `web/index.html` | `gpu_disabled_shows_fallback` |
 
 `cargo xtask seed <gate-id>` refuses to overwrite an existing file or a second seed for the same
 gate, and records exactly what it wrote in `target/xtask-seed/<gate-id>.json`.

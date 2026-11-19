@@ -36,10 +36,12 @@ fn gate_ids_round_trip() {
             "clippy",
             "test",
             "wasm",
+            "probe-absent",
             "bundle-size",
             "design-check",
             "shim-lint",
-            "dep-audit"
+            "dep-audit",
+            "e2e"
         ]
     );
     for g in Gate::ALL {
@@ -59,10 +61,12 @@ fn gates_registry_complete() {
         ("clippy", "rust"),
         ("test", "rust"),
         ("wasm", "wasm"),
+        ("probe-absent", "wasm"),
         ("bundle-size", "wasm"),
         ("dep-audit", "wasm"),
         ("design-check", "static"),
         ("shim-lint", "static"),
+        ("e2e", "e2e"),
     ];
     let t05 = read("designs/technical/T05-testing-and-performance.md");
     let start = t05.find("### 7.1").unwrap();
@@ -96,7 +100,7 @@ fn job_blocks(wf: &str) -> Vec<(String, Vec<String>)> {
             && line.ends_with(':')
             && line[2..line.len() - 1]
                 .chars()
-                .all(|c| c.is_ascii_lowercase() || c == '-');
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
         if is_job {
             blocks.push((line[2..line.len() - 1].to_string(), Vec::new()));
         } else if let Some(b) = blocks.last_mut() {
@@ -176,20 +180,22 @@ fn t05_row(gate: &str) -> String {
 fn design_text_states_interim_gates() {
     let bundle = t05_row("ci:bundle-size");
     for want in [
-        "mode = report",
         "mode = enforce",
-        "dash-core-mt/",
-        "adds per-crate (`twiggy`)",
+        "`twiggy`",
+        "size baseline",
+        "dash-core-st",
     ] {
         assert!(bundle.contains(want), "missing {want:?}: {bundle}");
     }
-    assert!(bundle.ends_with("| PR | once enforced |"), "{bundle}");
+    assert!(!bundle.contains("mode = report"), "{bundle}");
+    assert!(bundle.ends_with("| PR | yes |"), "{bundle}");
     assert!(!bundle.contains("and per crate"), "{bundle}");
     let shim = t05_row("ci:shim-lint");
-    assert!(
-        shim.contains("Interim") && shim.contains("T03-005"),
-        "{shim}"
-    );
+    assert!(shim.contains("layout.gen.js"), "{shim}");
+    assert!(!shim.contains("Interim"), "{shim}");
+    let probe = t05_row("ci:probe-absent");
+    assert!(probe.contains("fresh release build"), "{probe}");
+    assert!(probe.ends_with("| PR | yes |"), "{probe}");
     let t03 = read("designs/technical/T03-browser-runtime.md");
     let s = t03.find("### 7.3").unwrap();
     let e = s + t03[s..].find("\n## 8.").unwrap();
@@ -205,6 +211,11 @@ fn docs_name_the_build_commands() {
         "cargo xtask ci all",
         "cargo xtask seed",
         "cargo xtask unseed",
+        "cargo xtask tools",
+        "cargo xtask gen",
+        "cargo xtask serve",
+        "cargo xtask ci e2e",
+        "cargo xtask ci probe-absent",
     ] {
         assert!(doc.contains(want), "missing {want:?}");
     }

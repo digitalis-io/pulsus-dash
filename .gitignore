@@ -24,3 +24,6 @@ rustc-ice-*.txt
 #.idea/
 
 web/shim/gen/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/

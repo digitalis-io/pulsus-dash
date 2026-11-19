@@ -39,9 +39,11 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: target
-          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'ci/tools.toml') }}
           restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - { name: tools, run: cargo xtask tools }
       - { name: ci wasm, run: cargo xtask ci wasm }
+      - { name: ci probe-absent, run: cargo xtask ci probe-absent }
       - { name: ci bundle-size, run: cargo xtask ci bundle-size }
       - { name: ci dep-audit, run: cargo xtask ci dep-audit }
   static:
@@ -59,3 +61,31 @@ jobs:
       - { name: ci design-check, run: cargo xtask ci design-check }
       - { name: ci shim-lint, run: cargo xtask ci shim-lint }
       - { name: design check.py, if: "!cancelled()", run: python3 -I designs/tools/check.py }
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'ci/tools.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - { name: tools, run: cargo xtask tools }
+      - { name: npm ci, working-directory: e2e, run: npm ci }
+      - { name: playwright browsers, working-directory: e2e, run: npx playwright install --with-deps chromium }
+      - { name: ci e2e, run: cargo xtask ci e2e }
+      - name: e2e report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/traces/
+          if-no-files-found: ignore

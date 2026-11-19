@@ -6,5 +6,10 @@ rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
 
+[dependencies]
+bytemuck.workspace = true
+dash-protocol.workspace = true
+dash-tokens.workspace = true
+
 [lints]
 workspace = true
