@@ -66,3 +66,21 @@ id = "e2e"
 t05 = "e2e:mode-matrix"
 owner = "area:rendering"
 job = "e2e"
+
+[[gate]]
+id = "migrations"
+t05 = "ci:squawk-migrations"
+owner = "area:platform"
+job = "static"
+
+[[gate]]
+id = "no-pulsusdb-host"
+t05 = "ci:no-pulsusdb-host"
+owner = "area:platform"
+job = "static"
+
+[[gate]]
+id = "itest"
+t05 = "itest:rls-isolation"
+owner = "area:platform"
+job = "itest"

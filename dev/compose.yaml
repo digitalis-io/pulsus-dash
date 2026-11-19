@@ -1,0 +1,47 @@
+# Local dev and itest stack (docs/development/dev-stack.md). Run through `cargo xtask dev` or
+# `cargo xtask ci itest`, which pass the project name (-p) and the stack environment. There is no
+# local PulsusDB (T06-017): the PulsusDB base URL comes from dev/local.env or the environment.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust # loopback-published dev database only
+    ports:
+      - target: 5432
+        published: "${DASH_PG_PORT:-55432}"
+        host_ip: 127.0.0.1
+    volumes:
+      - pg16:/var/lib/postgresql/data
+      - ../server/crates/dash-store/sql/roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+      - ./postgres-init/20-database.sql:/docker-entrypoint-initdb.d/20-database.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "pulsus"]
+      interval: 1s
+      retries: 60
+  idp:
+    image: ghcr.io/dexidp/dex:v2.46.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    ports:
+      - target: 5556
+        published: "${DASH_IDP_PORT:-5556}"
+        host_ip: 127.0.0.1
+    volumes:
+      - ${DASH_DEX_CONFIG:?run through cargo xtask}:/etc/dex/config.yaml:ro
+  postgres15-vanilla:
+    profiles: [itest]
+    build: ./postgres15-vanilla
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - target: 5432
+        published: "${DASH_PG15_PORT:-55433}"
+        host_ip: 127.0.0.1
+    volumes:
+      - ../server/crates/dash-store/sql/roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+      - ./postgres-init/20-database.sql:/docker-entrypoint-initdb.d/20-database.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "pulsus"]
+      interval: 1s
+      retries: 60
+volumes:
+  pg16:

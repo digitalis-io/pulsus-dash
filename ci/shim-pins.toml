@@ -2,7 +2,7 @@
 
 [[file]]
 path = "web/shim/boot.js"
-sha256 = "c3e682a96390beea1c225c93b4f2eddb7777779a75a1ac69046c81cc49105355"
+sha256 = "cacca4083f8e165c6e5620fb014e6ff3b78f924be1256400d91ba850091b6f7e"
 
 [[file]]
 path = "web/shim/worker.js"

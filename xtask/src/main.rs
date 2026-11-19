@@ -6,8 +6,10 @@
 //! | `ci <gate-id>` | passed | failed | error or unknown gate |
 //! | `ci all` | all passed | any failed | any error (takes precedence) |
 //! | `seed <gate-id>` / `unseed <gate-id>` | done | — | error or unknown gate |
-//! | `tools` / `gen [--test]` | done | — | error |
+//! | `tools [squawk\|sqlx-cli]` / `gen [--test]` | done | — | error |
 //! | `serve [--root DIR] [--port N] [--no-isolation]` | (runs until stopped) | — | error |
+//! | `dev up [--port N] [--assets DIR]` / `reset` | (execs the server) | — | error |
+//! | `dev down` / `dev sqlx-prepare` | done | — | error |
 
 use std::process::ExitCode;
 
@@ -16,9 +18,11 @@ use xtask::r#gen::{GenOptions, generate};
 use xtask::serve::{ServeOptions, serve};
 use xtask::{XtaskError, repo_root, seed, tools};
 
-const USAGE: &str = "usage: cargo xtask ci <gate-id|all> | seed <gate-id> | unseed <gate-id> | tools | gen [--test]\n\
-       | serve [--root DIR] [--port N] [--no-isolation]\n\
-gates: fmt build clippy test wasm probe-absent bundle-size design-check shim-lint dep-audit e2e";
+const USAGE: &str = "usage: cargo xtask ci <gate-id|all> | seed <gate-id> | unseed <gate-id> | tools [squawk|sqlx-cli]\n\
+       | gen [--test] | serve [--root DIR] [--port N] [--no-isolation]\n\
+       | dev up [--port N] [--assets DIR] | dev down | dev reset [--port N] [--assets DIR] | dev sqlx-prepare\n\
+gates: fmt build clippy test wasm probe-absent bundle-size design-check shim-lint dep-audit e2e\n\
+       migrations no-pulsusdb-host itest";
 
 fn usage() -> XtaskError {
     XtaskError::Usage(USAGE.into())
@@ -75,7 +79,7 @@ fn run(args: &[String]) -> Result<u8, XtaskError> {
     let root = repo_root()?;
     let cmd = args.first().map(String::as_str);
     let arg = args.get(1).map(String::as_str);
-    if args.len() > 2 && cmd != Some("serve") {
+    if args.len() > 2 && cmd != Some("serve") && cmd != Some("dev") {
         return Err(usage());
     }
     match cmd {
@@ -109,10 +113,12 @@ fn run(args: &[String]) -> Result<u8, XtaskError> {
             }
             Ok(0)
         }
-        Some("tools") if arg.is_none() => {
-            tools::install(&root, &tools::load(&root)?)?;
+        Some("tools") => {
+            let which = tools::Selection::parse(arg).ok_or_else(usage)?;
+            tools::install_selected(&root, &tools::load(&root)?, which)?;
             Ok(0)
         }
+        Some("dev") => xtask::dev::dev(&root, &args[1..]),
         Some("gen") => {
             let o = match arg {
                 None => GenOptions::dev(&root),

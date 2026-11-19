@@ -60,10 +60,29 @@ jobs:
           restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
       - { name: ci design-check, run: cargo xtask ci design-check }
       - { name: ci shim-lint, run: cargo xtask ci shim-lint }
+      - { name: tools squawk, run: cargo xtask tools squawk }
+      - { name: ci migrations, run: cargo xtask ci migrations }
+      - { name: ci no-pulsusdb-host, env: { DASH_FORBIDDEN_HOSTS: "${{ secrets.DASH_FORBIDDEN_HOSTS }}" }, run: cargo xtask ci no-pulsusdb-host }
       - { name: design check.py, if: "!cancelled()", run: python3 -I designs/tools/check.py }
+  itest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'ci/tools.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - { name: tools sqlx-cli, run: cargo xtask tools sqlx-cli }
+      - { name: ci itest, run: cargo xtask ci itest }
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      PULSUS_DASH_DATASOURCES_BOOTSTRAP__0__URL: http://pulsusdb.invalid:9 # placeholder: /readyz never needs PulsusDB (T06-026)
     steps:
       - uses: actions/checkout@v5
       - name: toolchain

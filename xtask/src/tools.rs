@@ -2,7 +2,9 @@
 //!
 //! Installs, idempotently: the pinned nightly (with `rust-src` and the wasm32 target) for
 //! `dash-core-mt`; `wasm-bindgen-cli` at the `Cargo.lock` version into `target/tools/`; binaryen's
-//! `wasm-opt` from its release tarball, verified against the pinned SHA-256.
+//! `wasm-opt` from its release tarball, verified against the pinned SHA-256; `squawk` (the
+//! migration lint, T11-013) from its release binary, verified the same way; `sqlx-cli` (the
+//! `.sqlx` offline cache, T11 §4.8). `cargo xtask tools squawk|sqlx-cli` installs only that one.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,6 +28,36 @@ pub struct Tools {
     pub binaryen: String,
     /// `<platform>` → SHA-256 of `binaryen-<v>-<platform>.tar.gz`.
     pub binaryen_sha256: BTreeMap<String, String>,
+    /// squawk release (migration lint).
+    pub squawk: String,
+    /// `<platform>` → SHA-256 of the `squawk-<platform>` release binary.
+    pub squawk_sha256: BTreeMap<String, String>,
+    /// sqlx-cli version (== the `sqlx` dependency).
+    pub sqlx_cli: String,
+}
+
+/// What `cargo xtask tools [<one>]` installs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Selection {
+    All,
+    Squawk,
+    SqlxCli,
+}
+
+impl Selection {
+    pub fn parse(arg: Option<&str>) -> Option<Selection> {
+        match arg {
+            None => Some(Selection::All),
+            Some("squawk") => Some(Selection::Squawk),
+            Some("sqlx-cli") => Some(Selection::SqlxCli),
+            Some(_) => None,
+        }
+    }
+}
+
+/// `target/tools/bin/cargo-sqlx` (run as `cargo sqlx` with `target/tools/bin` on `PATH`).
+pub fn cargo_sqlx_bin(root: &Path) -> PathBuf {
+    root.join(TOOLS_DIR).join("bin/cargo-sqlx")
 }
 
 /// Loads `ci/tools.toml`.
@@ -87,7 +119,107 @@ fn version_of(bin: &Path) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Installs the pinned tools (plan §4.8); a tool already at its pinned version is kept.
+/// Installs the selected pinned tools; a tool already at its pinned version is kept.
+pub fn install_selected(root: &Path, t: &Tools, which: Selection) -> R<()> {
+    match which {
+        Selection::All => {
+            install(root, t)?;
+            install_squawk(root, t)?;
+            install_sqlx_cli(root, t)
+        }
+        Selection::Squawk => install_squawk(root, t),
+        Selection::SqlxCli => install_sqlx_cli(root, t),
+    }
+}
+
+/// The squawk release platform of this machine.
+fn squawk_platform() -> R<&'static str> {
+    match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "linux") => Ok("linux-x64"),
+        ("aarch64", "linux") => Ok("linux-arm64"),
+        ("aarch64", "macos") => Ok("darwin-arm64"),
+        ("x86_64", "macos") => Ok("darwin-x64"),
+        (arch, os) => Err(XtaskError::config(
+            CONFIG_PATH,
+            format!("no squawk release for {arch}-{os}"),
+        )),
+    }
+}
+
+/// `squawk-<platform>` → `target/tools/bin/squawk` (0755), verified against the pin.
+pub fn install_squawk(root: &Path, t: &Tools) -> R<()> {
+    let bin = crate::migrations::squawk_bin(root);
+    let want = format!("squawk {}", t.squawk);
+    if version_of(&bin).is_some_and(|v| v.contains(&want)) {
+        return Ok(());
+    }
+    let platform = squawk_platform()?;
+    let expected = t.squawk_sha256.get(platform).ok_or_else(|| {
+        XtaskError::config(CONFIG_PATH, format!("no squawk_sha256 for {platform}"))
+    })?;
+    let file = format!("squawk-{platform}");
+    let dl = root.join(TOOLS_DIR).join("dl");
+    std::fs::create_dir_all(&dl).map_err(XtaskError::io(&dl))?;
+    let download = dl.join(&file);
+    let url = format!(
+        "https://github.com/sbdchd/squawk/releases/download/v{}/{file}",
+        t.squawk
+    );
+    run(Command::new("curl")
+        .args(["-sSfL", "-o"])
+        .arg(&download)
+        .arg(&url))?;
+    let bytes = std::fs::read(&download).map_err(XtaskError::io(&download))?;
+    let found = sha256_hex(&bytes);
+    if &found != expected {
+        std::fs::remove_file(&download).map_err(XtaskError::io(&download))?;
+        return Err(XtaskError::config(
+            CONFIG_PATH,
+            format!("{file}: sha256 {found}, pinned {expected}; download deleted"),
+        ));
+    }
+    if let Some(parent) = bin.parent() {
+        std::fs::create_dir_all(parent).map_err(XtaskError::io(parent))?;
+    }
+    std::fs::rename(&download, &bin).map_err(XtaskError::io(&bin))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755))
+            .map_err(XtaskError::io(&bin))?;
+    }
+    Ok(())
+}
+
+/// `cargo install sqlx-cli --version <v> --no-default-features --features rustls,postgres`.
+pub fn install_sqlx_cli(root: &Path, t: &Tools) -> R<()> {
+    let want = format!("sqlx-cli {}", t.sqlx_cli);
+    let current = Command::new(cargo_sqlx_bin(root))
+        .args(["sqlx", "--version"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    if current.as_deref() == Some(want.as_str()) {
+        return Ok(());
+    }
+    run(Command::new("cargo")
+        .args([
+            "install",
+            "sqlx-cli",
+            "--version",
+            &t.sqlx_cli,
+            "--no-default-features",
+            "--features",
+            "rustls,postgres",
+            "--locked",
+        ])
+        .arg("--root")
+        .arg(root.join(TOOLS_DIR)))
+}
+
+/// Installs the pinned build tools of #22 (plan §4.8); a tool already at its pinned version is
+/// kept.
 pub fn install(root: &Path, t: &Tools) -> R<()> {
     run(Command::new("rustup").args([
         "toolchain",

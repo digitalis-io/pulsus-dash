@@ -3,6 +3,11 @@
 import * as L from "./layout.gen.js";
 import { installInput, ringSink, postSink } from "./input.js";
 
+// Trusted Types (T18-005, T18-007): the one policy. createHTML passes input through because the
+// Rust-side SanitisedHtml guards it; script URLs must be same-origin.
+const sameOrigin = (u) => { const x = new URL(u, location.href); if (x.origin !== location.origin) throw new TypeError("cross-origin script URL"); return x.href; };
+const tt = self.trustedTypes?.createPolicy("pulsus-sanitised", { createHTML: (s) => s, createScriptURL: sameOrigin });
+const scriptURL = (u) => (tt ? tt.createScriptURL(u) : u.href ?? u);
 const html = document.documentElement;
 const q = new URLSearchParams(location.search);
 const has = (ok, bit) => (ok ? bit : 0);
@@ -23,7 +28,7 @@ let retried = false;
 let module;
 
 function spawn(name, msg, transfer = []) {
-  const w = new Worker(new URL("./worker.js", import.meta.url), { type: "module", name });
+  const w = new Worker(scriptURL(new URL("./worker.js", import.meta.url)), { type: "module", name });
   w.addEventListener("error", () => setStatus(L.STATUS_FAILED));
   w.addEventListener("messageerror", () => setStatus(L.STATUS_FAILED));
   w.postMessage({ mode, index: 0, module, main_time_origin: performance.timeOrigin, caps, query: location.search, ...msg }, transfer);

@@ -330,7 +330,7 @@ fn shim_imports_allowed() {
     let r = lint_tree(&[
         (
             "web/shim/boot.js",
-            b"import { p } from \"./net.js\";\nimport init from \"./gen/dash-core-mt/dash_core_mt.js\";\nconst w = new Worker(new URL(\"./worker.js\", import.meta.url), { type: \"module\" });\n",
+            b"import { p } from \"./net.js\";\nimport init from \"./gen/dash-core-mt/dash_core_mt.js\";\nconst w = new Worker(new URL(\"./worker.js\", import.meta.url), { type: \"module\" });\nconst v = new Worker(scriptURL(new URL(\"./worker.js\", import.meta.url)), { type: \"module\" });\n",
         ),
         ("web/shim/net.js", b"x();\n"),
         ("web/shim/worker.js", b"x();\n"),
@@ -340,7 +340,7 @@ fn shim_imports_allowed() {
 
 #[test]
 fn shim_imports_rejected() {
-    let cases: [&[u8]; 10] = [
+    let cases: [&[u8]; 11] = [
         b"import \"lib\";",
         b"import x from \"https://cdn.example.com/x.js\";",
         b"import x from \"/abs.js\";",
@@ -350,6 +350,7 @@ fn shim_imports_rejected() {
         b"import(name);",
         b"importScripts(\"./a.js\");",
         b"new Worker(u);",
+        b"new Worker(scriptURL(u));",
         b"navigator.serviceWorker.register(u);",
     ];
     let names: Vec<String> = (0..cases.len())
@@ -361,7 +362,7 @@ fn shim_imports_rejected() {
         .zip(cases.iter().copied())
         .collect();
     let r = lint_tree(&fx);
-    assert_eq!(r.violations.len(), 10, "{:?}", r.violations);
+    assert_eq!(r.violations.len(), 11, "{:?}", r.violations);
     for name in &names {
         let per: Vec<_> = r
             .violations

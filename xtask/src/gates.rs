@@ -28,7 +28,7 @@ pub enum Gate {
 }
 
 impl Gate {
-    pub const ALL: [Gate; 11] = [
+    pub const ALL: [Gate; 14] = [
         Gate::Fmt,
         Gate::Build,
         Gate::Clippy,
@@ -40,6 +40,9 @@ impl Gate {
         Gate::ShimLint,
         Gate::DepAudit,
         Gate::E2e,
+        Gate::Migrations,
+        Gate::NoPulsusdbHost,
+        Gate::Itest,
     ];
 
     pub fn id(self) -> &'static str {
@@ -206,10 +209,22 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
         }
         Gate::DepAudit => Ok(verdict(dep_audit::audit(root)?, String::new())),
         Gate::ProbeAbsent => Ok(verdict(crate::probe::probe_absent(root)?, String::new())),
-        Gate::Migrations | Gate::NoPulsusdbHost | Gate::Itest => Err(XtaskError::Usage(format!(
-            "gate {} is not implemented",
-            gate.id()
-        ))),
+        Gate::Migrations => Ok(verdict(crate::migrations::check(root)?, String::new())),
+        Gate::NoPulsusdbHost => Ok(verdict(crate::pulsusdb_host::run(root)?, String::new())),
+        Gate::Itest => {
+            let (violations, passed) = crate::itest::run(root)?;
+            emit(&violations);
+            if passed && violations.is_empty() {
+                Ok(GateResult::Pass {
+                    output: String::new(),
+                })
+            } else {
+                Ok(GateResult::Fail {
+                    violations,
+                    output: "an itest step failed".into(),
+                })
+            }
+        }
         Gate::E2e => {
             let (violations, playwright_passed) = crate::e2e::run(root)?;
             emit(&violations);
@@ -220,14 +235,14 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
             } else {
                 Ok(GateResult::Fail {
                     violations,
-                    output: "playwright or the trace check failed".into(),
+                    output: "playwright, the trace check or the dev up flow failed".into(),
                 })
             }
         }
     }
 }
 
-/// Runs all eleven gates in [`Gate::ALL`] order; never stops early.
+/// Runs all fourteen gates in [`Gate::ALL`] order; never stops early.
 pub fn run_all(root: &Path) -> Vec<(Gate, R<GateResult>)> {
     Gate::ALL
         .into_iter()

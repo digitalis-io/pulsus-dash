@@ -281,3 +281,33 @@ reason = "half: safe byte-level conversions; not a UI, component, charting, mapp
 [[browser_crate]]
 name = "zerocopy-derive"
 reason = "zerocopy: derive macros for zerocopy (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+# Reachable from dash-core-mt only in the workspace-wide `cargo metadata` resolve: the server
+# crates (sqlx, hyper) enable these features on shared crates. A dash-core-mt wasm build does not
+# compile them (`cargo tree -p dash-core-mt --target wasm32-unknown-unknown -e normal`).
+[[browser_crate]]
+name = "allocator-api2"
+reason = "hashbrown: allocator API shim, feature-unified by the server crates; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "futures-io"
+reason = "futures-util: async I/O traits, feature-unified by the server crates; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "futures-sink"
+reason = "futures-util: sink trait, feature-unified by the server crates; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "memchr"
+reason = "futures-util: byte search, feature-unified by the server crates; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+# Server crate bans (T06-001, T11-023; plan §3.12): direct normal dependencies of the members
+# under `dirs`, from an unfiltered `cargo metadata`.
+[server]
+dirs = ["server"]
+http_server_crates = ["axum", "axum-core", "axum-extra", "tower-http", "actix-web", "warp", "poem", "rocket", "salvo", "tide"]
+http_server_allow = ["dash-gateway"]
+http_client_crates = ["hyper", "hyper-util", "hyper-rustls", "reqwest", "ureq", "isahc"] # T06-005/T06-017
+http_client_allow = ["pulsusdb-client", "dash-notify", "dash-ai", "dash-telemetry", "pulsus-dash"] # pulsus-dash: T19-002 self-check of its own public URL; not a feature crate
+sql_crates = ["sqlx", "sqlx-core", "sqlx-postgres", "sqlx-macros", "tokio-postgres", "postgres", "diesel", "sea-orm"]
+sql_allow = ["dash-store"]

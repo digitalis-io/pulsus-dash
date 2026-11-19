@@ -54,7 +54,8 @@ pub struct Seed {
     pub expect: &'static str,
 }
 
-/// The seed table (#22 plan §4.6; `probe-absent`, `e2e` and the enforced `bundle-size`: #23).
+/// The seed table (#22 plan §4.6; `probe-absent`, `e2e` and the enforced `bundle-size`: #23;
+/// `migrations`, `no-pulsusdb-host`, `itest`: #39 plan §3.13).
 pub fn seed_for(gate: Gate) -> Seed {
     let (writes, expect) = match gate {
         Gate::Fmt => (
@@ -136,7 +137,28 @@ pub fn seed_for(gate: Gate) -> Seed {
             }],
             "gpu_disabled_shows_fallback",
         ),
-        Gate::Migrations | Gate::NoPulsusdbHost | Gate::Itest => (vec![], ""),
+        Gate::Migrations => (
+            vec![SeedWrite::Create {
+                path: "server/crates/dash-store/migrations/29991231000000_seeded.sql",
+                contents: "ALTER TABLE users ALTER COLUMN display_name SET NOT NULL;\n",
+            }],
+            "adding-not-nullable-field",
+        ),
+        Gate::NoPulsusdbHost => (
+            vec![SeedWrite::Create {
+                path: "dev/seeded-host.yaml",
+                contents: "datasources_bootstrap:\n  - url: http://pulsusdb.seeded.net:8080\n",
+            }],
+            "pulsusdb-host",
+        ),
+        Gate::Itest => (
+            vec![SeedWrite::Replace {
+                path: "server/crates/dash-store/migrations/20261119000001_foundation.sql",
+                from: "EXECUTE format('ALTER TABLE %s FORCE ROW LEVEL SECURITY', tbl);",
+                to: "NULL;",
+            }],
+            "rls_catalog_every_tenant_table",
+        ),
     };
     Seed {
         gate,

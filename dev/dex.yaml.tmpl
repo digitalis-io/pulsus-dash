@@ -1,0 +1,23 @@
+# Dex for the local dev stack (docs/development/dev-stack.md). `cargo xtask dev up` renders this
+# into target/dev/<project>/dex.yaml with a fresh random dev-user password (kept beside it in
+# dev-user.txt); only its bcrypt hash is written here.
+issuer: http://localhost:@@IDP_PORT@@/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  skipApprovalScreen: true
+enablePasswordDB: true
+staticClients:
+  - id: pulsus-dash-dev
+    name: Pulsus Dash (dev)
+    public: true
+    redirectURIs:
+      - http://localhost:8080/auth/callback
+      - http://localhost:8787/auth/callback
+staticPasswords:
+  - email: dev@example.com
+    username: dev
+    userID: 00000000-0000-7000-8000-000000000001
+    hash: "@@DEV_USER_BCRYPT@@"

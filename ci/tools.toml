@@ -2,8 +2,15 @@
 nightly = "nightly-2026-11-15" # dash-core-mt build
 wasm_bindgen = "0.2.130" # == Cargo.lock
 binaryen = "version_133" # wasm-opt
+squawk = "2.73.0" # migration lint (T11-013), `cargo xtask tools squawk`
+sqlx_cli = "0.9.1" # .sqlx offline cache (T11 §4.8) == the sqlx dependency, `cargo xtask tools sqlx-cli`
 [binaryen_sha256] # binaryen-<v>-<platform>.tar.gz
 x86_64-linux = "2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489"
 aarch64-linux = "89c07ea56faf38d0fbecf36ca8ec0721756716185f265b568e133d427f299bf8"
 arm64-macos = "ad66da82ac13f163e424b1643f16c6dfcccc98b5966296b43e52d3cab04f84a8"
 x86_64-macos = "13a9b90be775c6389ce3d1f879cb8627bea56708ba8c122983941d53a8199b95"
+[squawk_sha256] # squawk-<platform> release binary
+linux-x64 = "9ae3747ca5eafa48b4d5c535fc64b61e0735a763164193644aa6436cc97c4274"
+linux-arm64 = "84c925d19fba29c845b58cd12e1003cbfe9c70dc014bbf7174a84e1b433518d5"
+darwin-arm64 = "1806b8d16204606c35e6496b3727f76cf13a4d0665439ea5df1dcca579954551"
+darwin-x64 = "e3c99b11a221d714241f3a9edfc844743ab2e098d833e2145b20d06d083c9954"

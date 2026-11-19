@@ -4,7 +4,7 @@
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 const PROJECT: &str = "pulsus-dash-devup";
@@ -54,18 +54,28 @@ fn env_cmd(program: &str) -> Command {
     c
 }
 
+/// The `dev up` process; killed and reaped on every exit path (a failed assertion included).
+struct Up(Child);
+
+impl Drop for Up {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 #[test]
 #[ignore = "e2e: run by cargo xtask ci e2e"]
 fn dev_up_default_flow() {
     let root = xtask::repo_root().unwrap();
     let _ = std::fs::remove_dir_all(root.join("web/shim/gen"));
     let _ = std::fs::remove_dir_all(root.join("target/dev").join(PROJECT));
-    let mut up = env_cmd("cargo")
+    let mut up = Up(env_cmd("cargo")
         .args(["xtask", "dev", "up", "--port", &PORT.to_string()])
         .current_dir(&root)
         .stdin(Stdio::null())
         .spawn()
-        .unwrap();
+        .unwrap());
     let end = Instant::now() + Duration::from_secs(900);
     let mut started = false;
     while Instant::now() < end {
@@ -73,7 +83,7 @@ fn dev_up_default_flow() {
             started = true;
             break;
         }
-        if let Some(st) = up.try_wait().unwrap() {
+        if let Some(st) = up.0.try_wait().unwrap() {
             panic!("dev up exited early: {st}");
         }
         std::thread::sleep(Duration::from_secs(1));
@@ -108,12 +118,12 @@ fn dev_up_default_flow() {
         .unwrap();
     assert!(pw.success(), "playwright devup project failed");
     let _ = Command::new("kill")
-        .args(["-TERM", &up.id().to_string()])
+        .args(["-TERM", &up.0.id().to_string()])
         .status();
     let end = Instant::now() + Duration::from_secs(35);
     let mut code = None;
     while Instant::now() < end {
-        if let Some(st) = up.try_wait().unwrap() {
+        if let Some(st) = up.0.try_wait().unwrap() {
             code = st.code();
             break;
         }

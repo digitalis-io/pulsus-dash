@@ -5,20 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pulsus Dash — runtime</title>
 <link rel="icon" href="data:,">
-<style>
-  html, body { margin: 0; height: 100%; background: Canvas; color: CanvasText; font: 14px system-ui, sans-serif; }
-  #dash-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; border: 0; padding: 0; }
-  .dash-chrome, .dash-banner { position: fixed; left: 12px; margin: 0; padding: 2px 8px; background: Canvas; color: CanvasText; pointer-events: none; }
-  .dash-chrome { top: 8px; }
-  .dash-banner { bottom: 8px; }
-  html:not([data-dash-status="1"]) [data-status="1"] { display: none }
-  html:not([data-dash-status="2"]) [data-status="2"] { display: none }
-  html:not([data-dash-status="3"]) [data-status="3"] { display: none }
-  html:not([data-dash-status="4"]) [data-status="4"] { display: none }
-  html:not([data-dash-status="5"]) [data-status="5"] { display: none }
-  html:not([data-dash-mode="st"]) [data-mode="st"] { display: none }
-  html[data-dash-status="3"] #dash-canvas, html[data-dash-status="4"] #dash-canvas, html[data-dash-status="5"] #dash-canvas { visibility: hidden }
-</style>
+<link rel="stylesheet" href="shell.css">
 </head>
 <body>
 <canvas id="dash-canvas" tabindex="0"></canvas>

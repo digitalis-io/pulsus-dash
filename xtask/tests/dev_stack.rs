@@ -51,7 +51,7 @@ fn dechunk(mut body: &str) -> String {
             break;
         }
         out.push_str(&rest[..n]);
-        body = &rest[n..].trim_start_matches("\r\n");
+        body = rest[n..].trim_start_matches("\r\n");
     }
     out
 }

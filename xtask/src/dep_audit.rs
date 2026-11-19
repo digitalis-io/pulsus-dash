@@ -716,24 +716,122 @@ pub fn check_generated(root: &Path) -> R<Vec<Violation>> {
 
 /// Builds the [`ServerGraph`] from unfiltered `cargo metadata --format-version 1 --locked`.
 pub fn server_graph_from_metadata(root: &Path, cfg: &ServerConfig) -> R<ServerGraph> {
-    let _ = (root, cfg);
-    Ok(ServerGraph::default())
+    let args = ["metadata", "--format-version", "1", "--locked"];
+    let command = format!("cargo {}", args.join(" "));
+    let out = Command::new("cargo")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|e| XtaskError::Tool {
+            command: command.clone(),
+            detail: e.to_string(),
+        })?;
+    if !out.status.success() {
+        return Err(XtaskError::Tool {
+            command,
+            detail: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        });
+    }
+    let meta: cargo_metadata::Metadata =
+        serde_json::from_slice(&out.stdout).map_err(|e| XtaskError::Tool {
+            command: command.clone(),
+            detail: format!("unparseable output: {e}"),
+        })?;
+    let members: BTreeSet<_> = meta.workspace_members.iter().collect();
+    let mut g = ServerGraph::default();
+    for p in meta.packages.iter().filter(|p| members.contains(&p.id)) {
+        let manifest = relative(root, p.manifest_path.as_std_path());
+        if !cfg.dirs.iter().any(|d| manifest.starts_with(d)) {
+            continue;
+        }
+        let deps = p
+            .dependencies
+            .iter()
+            .filter(|d| d.kind == DependencyKind::Normal)
+            .map(|d| d.name.clone())
+            .collect();
+        g.members
+            .insert(p.name.to_string(), ServerMember { manifest, deps });
+    }
+    Ok(g)
 }
 
 /// The three server dependency bans, in order: HTTP frameworks, SQL crates, HTTP clients.
 pub fn check_server_graph(g: &ServerGraph, cfg: &ServerConfig) -> Vec<Violation> {
-    let _ = (g, cfg);
-    Vec::new()
+    let bans: [(Rule, &[String], &[String], &str); 3] = [
+        (
+            Rule::ServerFrameworkOutsideGateway,
+            &cfg.http_server_crates,
+            &cfg.http_server_allow,
+            "HTTP server crates are allowed only in dash-gateway (T06-001)",
+        ),
+        (
+            Rule::SqlCrateOutsideStore,
+            &cfg.sql_crates,
+            &cfg.sql_allow,
+            "SQL crates are allowed only in dash-store (T11-023)",
+        ),
+        (
+            Rule::HttpClientOutsideAllowed,
+            &cfg.http_client_crates,
+            &cfg.http_client_allow,
+            "HTTP clients are allowed only in the [server] http_client_allow crates (T06-005, T06-017)",
+        ),
+    ];
+    let mut out = Vec::new();
+    for (rule, banned, allow, why) in bans {
+        for (name, m) in &g.members {
+            if allow.contains(name) {
+                continue;
+            }
+            for dep in m.deps.iter().filter(|d| banned.contains(d)) {
+                out.push(v(
+                    rule,
+                    &m.manifest,
+                    None,
+                    format!("{name} depends on {dep}; {why}"),
+                ));
+            }
+        }
+    }
+    out
 }
+
+/// The only directory whose Rust code may name `sqlx` (T11-023).
+pub const STORE_DIR: &str = "server/crates/dash-store";
+
+static SQLX_RE: LazyLock<Regex> = LazyLock::new(|| re(r"\bsqlx::"));
 
 /// `sql-outside-store`: `\bsqlx::` in a `.rs` file under `server/` or `crates/` outside
 /// `server/crates/dash-store/`.
 pub fn check_sql_outside_store(root: &Path) -> R<Vec<Violation>> {
-    let _ = root;
-    Ok(Vec::new())
+    let skip = |name: &str| name == "target" || name.starts_with('.');
+    let mut out = Vec::new();
+    for top in ["server", "crates"] {
+        for path in walk_files(&root.join(top), &skip)? {
+            let rel = relative(root, &path);
+            if path.extension().is_none_or(|e| e != "rs") || rel.starts_with(STORE_DIR) {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).map_err(XtaskError::io(&path))?;
+            let mut lines = BTreeSet::new();
+            for m in SQLX_RE.find_iter(&text) {
+                lines.insert(line_of(&text, m.start()));
+            }
+            for line in lines {
+                out.push(v(
+                    Rule::SqlOutsideStore,
+                    &rel,
+                    Some(line),
+                    "sqlx outside dash-store; use a dash-store repository (T11-023)".into(),
+                ));
+            }
+        }
+    }
+    Ok(out)
 }
 
-/// All six checks of `ci:dep-audit`.
+/// All checks of `ci:dep-audit` (the six browser checks, then the server bans).
 pub fn audit(root: &Path) -> R<Vec<Violation>> {
     let cfg = load_config(root)?;
     let pins = load_pins(root)?;
@@ -745,5 +843,10 @@ pub fn audit(root: &Path) -> R<Vec<Violation>> {
     out.extend(check_render_worker_locks(root, &ws, &cfg)?);
     out.extend(check_web_assets(root, &cfg)?);
     out.extend(check_shipped_js(root, &files, &pins)?);
+    if let Some(server) = &cfg.server {
+        let g = server_graph_from_metadata(root, server)?;
+        out.extend(check_server_graph(&g, server));
+    }
+    out.extend(check_sql_outside_store(root)?);
     Ok(out)
 }

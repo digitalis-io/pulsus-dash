@@ -273,7 +273,8 @@ static IMPORT_RULES: LazyLock<Vec<ImportRule>> = LazyLock::new(|| {
         ImportRule {
             what: "worker",
             literal: Some(re(
-                r#"\bnew\s+(?:Shared)?Worker\s*\(\s*(?:new\s+URL\s*\(\s*)?(["'])([^"']*)["']"#,
+                // `scriptURL(...)`: the boot.js Trusted Types wrapper (T18-005).
+                r#"\bnew\s+(?:Shared)?Worker\s*\(\s*(?:scriptURL\s*\(\s*)?(?:new\s+URL\s*\(\s*)?(["'])([^"']*)["']"#,
             )),
             trigger: Some(re(r"\bnew\s+(?:Shared)?Worker\s*\(")),
         },

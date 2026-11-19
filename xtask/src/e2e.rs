@@ -1,5 +1,6 @@
 //! `ci e2e`: the Playwright mode matrix (e2e:mode-matrix) and the PRF-005 trace check
-//! (plan §3.7, §3.12; T05 §4.3).
+//! (plan §3.7, §3.12; T05 §4.3), the PRF-008 startup report and the `dev up` flow (#39 plan
+//! §4.6).
 
 use std::path::Path;
 use std::process::Command;
@@ -61,8 +62,61 @@ pub fn check_traces(dir: &Path) -> R<Vec<Violation>> {
     Ok(out)
 }
 
+/// PRF-008 budget the startup report is printed against (report only, T05-006).
+pub const STARTUP_BUDGET_MS: u64 = 1000;
+
+/// The startup report (`startup-<project>.json`: `{"runs_ms":[…],"p75_ms":n}`) as Markdown.
+/// Never a violation: the blocking gate is `bench:startup` on the reference lab.
+pub fn startup_report(dir: &Path) -> String {
+    let mut rows = Vec::new();
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .map(|d| d.filter_map(Result::ok).map(|e| e.path()).collect())
+        .unwrap_or_default();
+    files.sort();
+    for f in files {
+        let name = f
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(project) = name
+            .strip_prefix("startup-")
+            .and_then(|n| n.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        let parsed = std::fs::read_to_string(&f)
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+        let row = match parsed {
+            Some(v) => {
+                let p75 = v["p75_ms"].as_u64().unwrap_or(0);
+                let runs: Vec<String> = v["runs_ms"]
+                    .as_array()
+                    .map(|a| a.iter().map(|x| x.to_string()).collect())
+                    .unwrap_or_default();
+                let note = if p75 <= STARTUP_BUDGET_MS {
+                    "within"
+                } else {
+                    "over (report only)"
+                };
+                format!("| {project} | {p75} | {} | {note} |", runs.join(", "))
+            }
+            None => format!("| {project} | — | unreadable | — |"),
+        };
+        rows.push(row);
+    }
+    if rows.is_empty() {
+        return "PRF-008 startup: no startup-<project>.json report\n".into();
+    }
+    format!(
+        "### PRF-008 startup to T1/T2 (report only; budget {STARTUP_BUDGET_MS} ms p75, blocking on bench:startup)\n\n| project | p75 ms | runs ms | budget |\n|---|---|---|---|\n{}\n",
+        rows.join("\n")
+    )
+}
+
 /// Runs the gate: (1) the probe-enabled test build; (2) the probe marker check; (3) Playwright
-/// in `e2e/`; (4) always the trace check. Returns (violations, Playwright passed).
+/// in `e2e/`; (4) always the trace check; (5) the startup report; (6) the `dev up` flow test.
+/// Returns (violations, Playwright and the flow test passed).
 pub fn run(root: &Path) -> R<(Vec<Violation>, bool)> {
     let o = GenOptions::test(root);
     generate(root, &o)?;
@@ -91,5 +145,34 @@ pub fn run(root: &Path) -> R<(Vec<Violation>, bool)> {
     for x in &mut v {
         x.path = crate::relative(root, &x.path);
     }
-    Ok((v, status.success()))
+    let report = startup_report(&results.join("traces"));
+    print!("{report}");
+    if let Ok(summary) = std::env::var("GITHUB_STEP_SUMMARY") {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&summary)
+            .map_err(XtaskError::io(&summary))?;
+        writeln!(f, "{report}").map_err(XtaskError::io(&summary))?;
+    }
+    println!("$ cargo test --locked -p xtask --test dev_up_flow -- --ignored");
+    let flow = Command::new("cargo")
+        .args([
+            "test",
+            "--locked",
+            "-p",
+            "xtask",
+            "--test",
+            "dev_up_flow",
+            "--",
+            "--ignored",
+        ])
+        .current_dir(root)
+        .status()
+        .map_err(|e| XtaskError::Tool {
+            command: "cargo test -p xtask --test dev_up_flow".into(),
+            detail: e.to_string(),
+        })?;
+    Ok((v, status.success() && flow.success()))
 }

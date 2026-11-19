@@ -67,6 +67,9 @@ fn build_commands_exact() {
         wasm_bindgen: "0.2.130".into(),
         binaryen: "version_133".into(),
         binaryen_sha256: Default::default(),
+        squawk: "2.73.0".into(),
+        squawk_sha256: Default::default(),
+        sqlx_cli: "0.9.1".into(),
     };
     let common_remove = [
         "RUSTUP_TOOLCHAIN",
