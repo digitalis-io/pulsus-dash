@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -896,8 +896,8 @@ their own budget, and every physical query appears in the investigation's tool-c
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | Metrics; steps 1–4 and 6–11; identity/union/derivation; P0/P2/P3/P4; cancellation; human budgets; plan explain; multi-query expressions (§4.14); LIVE head refresh; memory-pressure replan |
-| M-UI2 | Logs/traces/profiles; R2/R9; fusion; approach prefetch (PRF-029) |
+| M-UI1 | **First:** a per-viewport subset (T07-003 step, T07-010 cancel, T07-012 off-screen) over HTTP `/query` ([T04](T04-wire-format-and-data-plane.md) §5.2), for metrics and the LogQL stream and volume plan kinds (`logql_streams`, `log_volume`). **Then:** the WS scene session (§5.1), merge, passes and budgets. Metrics; steps 1–4 and 6–11; identity/union/derivation; P0/P2/P3/P4; cancellation; human budgets; plan explain; multi-query expressions (§4.14); LIVE head refresh; memory-pressure replan |
+| M-UI2 | Traces/profiles; remaining logs plan kinds (patterns, detected fields, tail); R2/R9; fusion; approach prefetch (PRF-029) |
 | M-UI3 | Local placement (T13); R5 windowed + partitioned fallback; R6; level-split; R4 Postgres fallback pyramids |
 | M-UI4 | Virtual sources and BFF joins (ALR-085); agent budgets; explain in "How I got here" |
 | M-UI5 | Board variables dependency index (SRF-017); 200-viewport boards (PRF-022) |
@@ -934,3 +934,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T07-001…T07-030. **D2 / ADR-0012:** added Postgres-backed virtual sources (§4.11: `ALERTS`, `ALERTS_FOR_STATE`, `pulsus_anomaly_score`, `{source="pulsus-dash"}`), BFF evaluation subset, mixed-spine binary-op joins with limits, `VirtualQuery` IR and `SourceClass`; R4 fallback pyramids stored as Postgres Arrow tiles (§4.12). **A1:** service graph planned as one call; partitioned TraceQL-metrics fallback kept as the degradation path on `truncated`. **O1:** metrics scopes follow ADR-0013 option B pending decision (T07-015). Added flank pass P4 wording for PRF-028, LIVE head refresh, memory-pressure replan, Board variable dependency index, multi-query expressions (SRF-030), `Pressure`/`Live`/`Visibility` client messages |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 starts with a per-viewport subset over HTTP `/query`; the WS scene session, merge, passes and budgets follow later in M-UI1; LogQL stream and volume plan kinds move to M-UI1 |

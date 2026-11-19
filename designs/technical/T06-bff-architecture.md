@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, OIDC auth, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -783,8 +783,8 @@ clusters are supported for one minor version ([T19](T19-deployment.md)).
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | `--role all`; gateway, OIDC auth with built-in roles, datasource bindings, planner v1, PulsusDB client (metrics), L1 cache, self-telemetry, `/suggest`, `/prefs`, `/search` |
-| M-UI2 | Logs, traces and profiles client methods; catalogue refresh as a leased job; Arrow tiles in IndexedDB |
+| M-UI1 | `--role all`; gateway, OIDC auth with built-in roles, datasource bindings, planner v1, PulsusDB client (metrics; logs on the native log routes: `logs_query_range`, `logs_volume`, labels and series), L1 cache, self-telemetry, `/suggest`, `/prefs`, `/search` |
+| M-UI2 | Remaining logs methods (`logs_patterns`, `logs_detected_{labels,fields}`, `logs_tail`), traces and profiles client methods; catalogue refresh as a leased job; Arrow tiles in IndexedDB |
 | M-UI3 | Split roles; Redis L2; change feed, anomaly sweep and fallback pyramid builder workers (Postgres tiles); compare service; MCP mount |
 | M-UI4 | Evaluator and notifier roles (T16); ai role (T15 (draft)); virtual sources and the Prometheus-compatible read API; HA gates |
 | M-UI6 | Per-tenant quotas UI, data-access audit, audit export, SAML/SCIM (T10 (draft)), multi-cluster fairness tuning |
@@ -819,3 +819,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; binding constraints turned into rules T06-001…T06-027. **D2 / ADR-0012:** removed the OTLP write-back of alert transitions and deliveries into customer tenants; Dash writes to PulsusDB only self-telemetry and the optional audit export (T06-017); baselines, anomaly scores and fallback pyramids move to Postgres; draft open question 3 closed. Added `dash-vsrc` hosting (§4.12), the Prometheus-compatible read API (§4.13), the M-UI1 OIDC/RBAC plumbing (§4.11, because T10 is not promoted), the `/suggest`, `/prefs`, `/search`, `/actions`, `/export` routes the T08/T09 drafts assumed, `VirtualGuardLayer`, `Completeness.{source,data_age_ms,withheld,approximation}`, and datasource-binding validation |
 | 1.0-rc | 2026-11-18 | #22: §4.1 BFF crates live in the repository's root Cargo workspace (BFF-only crates under `server/`, shared ⇄ crates under `crates/`, one lockfile); the shared wire crate is named `dash-wire`, as in T01 §4.6 |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 logs client methods on the native log routes move M-UI2 → M-UI1; patterns, detected fields, tail, traces and profiles stay M-UI2 |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (Leptos risk check, store, router, tokens, keymap, kit core, shell chrome) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0004](../adr/0004-leptos-dom-rooms.md) (Accepted) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -793,11 +793,11 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | Leptos risk check (§4.10). Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Admin rooms for datasource binding and OIDC. Metrics workbench chrome |
+| M-UI1 | Leptos risk check (§4.10). Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Admin rooms for datasource binding and OIDC. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48) |
 | M-UI2 | JSON, Markdown, image, link and pill cells. Tree. Logs/traces inspector content. Viewport a11y mirror for time-series. Dock host. ⌘K entities |
 | M-UI3 | Explorer (tree + table). Atlas mirror. Pivot-chip and entity-chip cells |
 | M-UI4 | Alert, Investigation and contact-point rooms. Action buttons. ⌘K alerts and investigations |
-| M-UI5 | Boards editor forms, field-config UI, `Shift+E`. Light theme. Translations. Keymap room with presets |
+| M-UI5 | Full Boards editor forms, field-config UI, `Shift+E`. Light theme. Translations. Keymap room with presets |
 | M-UI6 | Wall density and high-contrast theme. External AA audit and fixes. Forced-colours polish. Screen-reader summaries everywhere (VIZ-068) |
 
 ## 12. Alternatives considered
@@ -829,3 +829,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T08-001…T08-028. ADR-0004 Accepted: the Leptos vs Dioxus spike became a Leptos build **risk check** (§4.10) whose blocker failure reopens the ADR. Keyboard model aligned with formal 03: contexts and precedence, chords 1 s (draft 1.2 s), tap/hold 250 ms, physical-key bindings (INT-013), reserved keys, `Shift+C`/`C`/`Shift+A`/`Shift+E` (03 and 04 agree on `Shift+E`), `Tab` by care score; draft Q1 and Q3 closed by 03 and 02 (`/incident/` and `/alerts/` routes added to `Route`). Dropped the `Alt+←/→` brush alternative (conflicts with camera history). Tooltip budget tightened to median ≤ 1 frame (INT-033) with a GPU-text fallback. Markdown removals are logged (VIZ-054). Added the shell chrome contents, logo menu, read-only banner, restricted placeholder, shimmer, copy-link, `CamCode` ≤ 64 chars, palette rooms provider and context-affinity ranking, palette validator and Admin M-UI1 rooms |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds the board panel editor (query, language picker, vis) and a minimal board list room; full Boards editor forms stay M-UI5 |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (identity, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (Git sync, Terraform) |
 | **Related ADRs** | [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
@@ -1215,10 +1215,10 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 
 | Milestone | Scope |
 |---|---|
-| M-UI1 | Identity tables, `tenant_bindings`, `user_preferences`, `saved_views`, `audit_events` (config only), migration runner, RLS template, partition maintenance framework |
+| M-UI1 | Identity tables, `tenant_bindings`, `user_preferences`, `saved_views`, `folders`, `boards` and `board_versions` (minimal Boards, #48), `audit_events` (config only), migration runner, RLS template, partition maintenance framework |
 | M-UI2–3 | Entities tables, `layout_positions`, `waypoints`, lens templates (versioned), `entity_change_events`, `anomaly_*`, `pyramid_tiles` |
 | M-UI4 | Alerting domain incl. `alert_transitions` and `notification_deliveries`, investigations/evidence, incidents, AI tables, `actions`, `secrets`, `artefacts` |
-| M-UI5 | Boards with versions UI and diff, legacy dashboard import, playlists, schematics, `noise_reports` |
+| M-UI5 | Boards versions UI, diff and restore, legacy dashboard import, playlists, schematics, `noise_reports` |
 | M-UI6 | Git sync, Terraform provider, data scopes, kiosks, audit hash chain and data-access audit, per-org retention classes in the admin UI |
 
 ## 12. Alternatives considered
@@ -1259,6 +1259,7 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; ADR-0012 derived-state tables added; formal design rules; Satisfies table |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 `folders`, `boards` and `board_versions` move M-UI5 → M-UI1; versions UI, diff and restore stay M-UI5 |
 
 **Changes versus the draft:**
 1. **Derived state in Postgres (ADR-0012).** The draft's non-goal "alert transitions and long-term

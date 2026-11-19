@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -222,7 +222,7 @@ any 8×8 block inside a text region exceeds 0.25. Goldens MUST change only in a 
 | `bench:frame-gallery` | every gallery page | scripted pan/zoom (orbit for 3D) | the page's target volume |
 | (in `bench:frame-gallery`) | M3 rect (heatmap) | scroll | 10k × 200 cells |
 | (in `bench:frame-gallery`, M-UI2) | M3 + M8 flame | zoom into frame | 10⁵ frames |
-| (in `bench:frame-gallery`, M-UI2) | M8 text (log stream) | fling scroll | 10⁶ lines in window |
+| (in `bench:frame-gallery`, M-UI1) | M8 text (log stream) | fling scroll; page past the window end | 10⁶ lines in window ([PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable)) |
 | (in `bench:frame-gallery`, M-UI3) | M4/M5 + M6 Atlas | orbit + particles | 10⁴ nodes / 5 × 10⁴ edges |
 | (in `bench:frame-gallery`, M-UI5) | Board | pan across | 200 viewports |
 | `bench:frame-high-hz` | `bench:frame-line-1e8` and the scatter page | as above, on a 120 Hz display | median ≥ 120 fps on (a) driving an external 120 Hz display |
@@ -748,3 +748,4 @@ Meta-testing:
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T05-001 to T05-015; gate catalogue (§7.1) defining every gate named in T01–T05 Satisfies tables; gallery = corpus manifest; thresholds, milestones and headless mode aligned with 09; replay specs; Satisfies table |
 | 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |
 | 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time (CI reports, `bench:shim-input-cost` gates); §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §4.3 log stream gallery page moves M-UI2 → M-UI1 with PRF-020 |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-18 |
+| **Version** | 1.0-rc3 · 2026-11-19 |
 | **Requirement area** | `PRF` |
 | **Source draft** | plans/09-performance-contract.md (not tracked); mobile targets from T20 (draft) §6 |
 | **Depends on** | [01](01-vision-and-principles.md), [03](03-interaction-model.md), [08](08-visual-language.md), [T04](../technical/T04-wire-format-and-data-plane.md), [T05](../technical/T05-testing-and-performance.md), [T07](../technical/T07-scene-query-planner.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) |
@@ -258,7 +258,7 @@ in both the 3D layered Topology (its default at this size) and its 2D equivalent
 with the service-graph source capped at 1 000 edges, the coverage meter shows "1 000 of N edges".
 
 #### PRF-020 — 10⁶ log lines scrollable
-**MUST** · M-UI2 · SRE, Engineer, Support
+**MUST** · M-UI1 · SRE, Engineer, Support
 
 The log stream MUST hold a window of 10⁶ lines in memory for smooth scrolling and MUST page beyond it
 without an upper bound.
@@ -575,7 +575,7 @@ a requestAnimationFrame loop.
 | PRF-017 | 10⁷ scatter points | MUST | M-UI0 |
 | PRF-018 | 10⁴ series per scene | MUST | M-UI1 |
 | PRF-019 | Atlas 10⁴ entities and 5×10⁴ edges | MUST | M-UI3 |
-| PRF-020 | 10⁶ log lines scrollable | MUST | M-UI2 |
+| PRF-020 | 10⁶ log lines scrollable | MUST | M-UI1 |
 | PRF-021 | 10⁵ flame-graph frames | MUST | M-UI2 |
 | PRF-022 | 200 viewports per board | MUST | M-UI5 |
 | PRF-023 | Memory budget | MUST | M-UI0 |
@@ -632,3 +632,4 @@ a requestAnimationFrame loop.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; mobile budgets imported from T20 (draft) §6 |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §5 table rows and PRF-019 acceptance edited; §5.1 PRF-043 to PRF-046 added; resolution 8 |
 | 1.0-rc2 | 2026-11-18 | #23: PRF-005 verification note (CI browser trace as the merge gate until the reference lab exists) |
+| 1.0-rc3 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): PRF-020 moves M-UI2 → M-UI1 (delivered by #49) |

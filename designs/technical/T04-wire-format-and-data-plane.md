@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -68,6 +68,7 @@ Query *semantics* (what to ask, at which step, and the virtual-source resolution
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [PRF-006](../product/09-performance-contract.md#prf-006--no-interaction-waits-on-the-network) | §4.1, §4.4, §6.1 (co-satisfied with T01, T03) | `bench:offline-interaction` |
+| [SRF-033](../product/04-surfaces.md#srf-033--log-volume-histogram) | §5.2 (`log_volume` → `metric_matrix.grid`, §4.3); brush → Context time co-satisfied with T02 | `itest:pulsusdb-contract` (volume conversion); `replay:context-propagation` (brush on the volume sets Context time) |
 | [PRF-016](../product/09-performance-contract.md#prf-016--10⁸-line-chart-points) | §4.2, §5.7 | `bench:frame-line-1e8`; `bench:decode-r1` |
 | [PRF-017](../product/09-performance-contract.md#prf-017--10⁷-scatter-points) | §4.3 (`span_points/1`), §5.7 | `bench:frame-scatter-1e7` |
 | [PRF-023](../product/09-performance-contract.md#prf-023--memory-budget) | §5.7 | `bench:memory-heaviest` |
@@ -785,9 +786,9 @@ the nightly storyboard run on any non-self-telemetry write (`e2e:no-pulsusdb-wri
 
 | Milestone | Ships |
 |---|---|
-| M-UI0 | DSF v1, `labels`, `metric_matrix.grid/sparse`, `coverage`, `error`; `/query` + cancel; R1 harness and decision |
-| M-UI1 | `heatmap`; IDB `chunks` and `scenes` (show cached first); ranks and priorities; generations; time-split conversion; `events` from Postgres (annotations, alert transitions); Postgres virtual series in `metric_matrix.grid`; WS `live_metric` for LIVE charts |
-| M-UI2 | `log_lines`, `log_patterns`, `trace_tree` + parts, `span_points` (fallback), `profile_flame(_diff)`; WS `tail` |
+| M-UI0 | DSF v1, `labels`, `metric_matrix.grid/sparse`, `coverage`, `error`; `/query` + cancel; R1 harness and decision. DSF v1 and `/query` + cancel land with #41 and #42 |
+| M-UI1 | `log_lines` (LogQL stream panels, #49); `heatmap`; IDB `chunks` and `scenes` (show cached first); ranks and priorities; generations; time-split conversion; `events` from Postgres (annotations, alert transitions); Postgres virtual series in `metric_matrix.grid`; WS `live_metric` for LIVE charts |
+| M-UI2 | `log_patterns`, `trace_tree` + parts, `span_points` (fallback), `profile_flame(_diff)`; WS `tail` |
 | M-UI3 | `entities`, `entity_edges`, `health_pyramid` (R4 or Postgres fallback), `compare`, PulsusDB change feed in `events`; WS `changes`; IDB `pyramids` |
 | M-UI4 | WS `alerts`, `collab` |
 
@@ -840,3 +841,4 @@ support in the BFF for one release.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T04-001 to T04-019; D2 applied (no write path, Postgres virtual sources and fallback pyramids); `events/1` at M-UI1; coverage `data_end` and ✓ exact; ranks, generations and eviction order; Satisfies table |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |

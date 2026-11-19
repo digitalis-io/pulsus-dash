@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, Time Ribbon, gallery) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -54,6 +54,7 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-in-one-shared-scene) | §4.1, §4.6 | `e2e:no-dom-vis` |
+| [PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable) | §4.5 (text flow), §4.8 (log stream); paging co-satisfied with T04 (`log_lines/1`, §4.4) | `bench:frame-gallery` (log stream page: 10⁶ lines in window, fling scroll, page past the window end) |
 | [VIZ-002](../product/05-visualisation-catalogue.md#viz-002--every-vis-is-a-composition-of-shared-mark-primitives) | §4.1, §4.8 | `ci:spec-lint` |
 | [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | §4.6 | `replay:universal-interactions` |
 | [VIZ-004](../product/05-visualisation-catalogue.md#viz-004--scale-targets-per-vis) | §4.2, §4.9, §7 | `bench:frame-gallery` (every page at its scale target, (b)) |
@@ -695,8 +696,8 @@ Milestones follow the vis tables of [05](../product/05-visualisation-catalogue.m
 | Milestone | Engine work | Vis unlocked |
 |---|---|---|
 | **M-UI0** | L0 runtime, picking, tiers; M1, M3, M4, M8, M10 (density for scatter); time/linear scales, basic axes, pan/zoom with inertia and cursor anchor; GPU decimation; Arrow → buffers; token pipeline | Line, scatter (proves [09](../product/09-performance-contract.md)) |
-| **M-UI1** | M2, M9 (glyph language); axis system (§4.3): multiple axes per side, secondary Y, log/symlog, per-axis interaction, **time-shifted comparison axis with the baseline ghost**; overlays; legends, crosshair sync, thresholds, units; band + outliers; squarified treemap layout; Time Ribbon; auto-vis; table view model; gallery skeleton from the manifest | Line, area/stacked, bars over time, band, heatmap, stat, bullet, treemap (cardinality explorer), Time Ribbon |
-| **M-UI2** | Stacked lanes; text flow; waterfall and flame layouts; GPU table grid; exemplars; sparkline and small multiples; diff flame ghost | Logs, traces, profiles, span scatter at 10⁷, sparkline, small multiples, bar chart |
+| **M-UI1** | M2, M9 (glyph language); axis system (§4.3): multiple axes per side, secondary Y, log/symlog, per-axis interaction, **time-shifted comparison axis with the baseline ghost**; overlays; legends, crosshair sync, thresholds, units; band + outliers; squarified treemap layout; Time Ribbon; auto-vis; table view model; gallery skeleton from the manifest; **text flow for the log stream (subset: GPU text, wrap, severity gutter, 10⁶ virtualised lines; #49)** | Line, area/stacked, bars over time, band, heatmap, stat, bullet, treemap (cardinality explorer), Time Ribbon, log volume (stacked bars by level), log stream (subset) |
+| **M-UI2** | Stacked lanes; rest of text flow (JSON expand and pretty-print, dedupe, context lines, minimap); waterfall and flame layouts; GPU table grid; exemplars; sparkline and small multiples; diff flame ghost | Logs, traces, profiles, span scatter at 10⁷, sparkline, small multiples, bar chart |
 | **M-UI3** | M5, M6 (+ particles), M7, M11; force, layered, bundling, hex layouts; GPU morph transitions; central axis; align on onset; Atlas deviation glow | Atlas (topology/city), hexbin wall, cluster detail, node graph, compare bars, state timeline |
 | **M-UI4** | Alert layers on all of the above; native headless renderer for notification images; rotated time axis | Alert views ([07](../product/07-alerting.md)), segments matrix, SLO burn chart |
 | **M-UI5** | M12; map projections; Sankey; schematic editor; static and discontinuous time axes; draw behind axes; value mappings and overrides; light theme; remaining L5 specs | Geomap, schematic, Sankey, pie/gauge/radar, XY/trend, parallel coordinates, calendar, status history, box/violin: full panel parity ([05 §11](../product/05-visualisation-catalogue.md#11-panel-parity-map)) |
@@ -749,3 +750,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T02-001 to T02-031; axis system expanded (auto-configuration, manual pin, ownership glyphs, comparison axis at M-UI1); LOD and precision rules; camera controller constants; auto-vis; glyph and state encodings per 08 (Failing ■); build order aligned with 05 milestones; Satisfies table |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-19 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -500,7 +500,7 @@ Mockup: [07-logs-workbench](../mockups/07-logs-workbench.svg).
 | Stream (right) | GPU-rendered virtualised lines; expanded lines show parsed fields and trace links |
 
 #### SRF-033 — Log volume histogram
-**MUST** · M-UI2 · SRE, Engineer, Support
+**MUST** · M-UI1 · SRE, Engineer, Support
 
 The workbench MUST show a volume histogram stacked by level (PulsusDB `/volume` and
 `count_over_time`) above the stream; brushing it MUST narrow the time window.
@@ -620,6 +620,10 @@ and the workbench MUST show the service-graph slice for the current selection.
 
 *Acceptance:* Given `{ resource.service.name = "checkout" } | quantile_over_time(duration, .99)`, when
 run, then a p99 line is shown; and a mini graph of services in the selection is available.
+
+> **Note:** The slice reads PulsusDB's native traces API: TraceQL metrics at
+> `/api/traces/v1/metrics/query_range` and the service graph at
+> `/api/traces/v1/service_graph?start=<t>&end=<t>` (confirmed 2026-11-19).
 
 #### SRF-045 — Trace diff
 **MUST** · M-UI2 · Engineer, SRE
@@ -1028,7 +1032,7 @@ release and in the team channel.
 | SRF-030 | Metrics auto-vis and multiple queries | MUST | M-UI1 |
 | SRF-031 | Metric browser and series table | MUST | M-UI1 |
 | SRF-032 | Cardinality explorer | MUST | M-UI1 |
-| SRF-033 | Log volume histogram | MUST | M-UI2 |
+| SRF-033 | Log volume histogram | MUST | M-UI1 |
 | SRF-034 | Patterns as the default for large results | MUST | M-UI2 |
 | SRF-035 | Detected fields | MUST | M-UI2 |
 | SRF-036 | Log stream | MUST | M-UI2 |
@@ -1079,6 +1083,7 @@ release and in the team channel.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII wireframes replaced by region tables and SVG mockups |
+| 1.0-rc2 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): SRF-033 moves M-UI2 → M-UI1 (delivered by #49); SRF-044 note names the native service-graph route |
 
 ## Resolved during formalisation
 

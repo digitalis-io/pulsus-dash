@@ -11,6 +11,10 @@
 > - The R5 edge-cap raise is now a **planning assumption** (A1).
 > - R17 is downgraded to P3, because Dash is AGPL-3.0 too.
 >
+> **Revision 4 (2026-11-19):** the PulsusDB owner confirmed the native routes Dash uses, including the
+> service graph at `/api/traces/v1/service_graph?start=<t>&end=<t>` on the native traces API. The
+> route exists; the R5 edge-cap raise remains assumption A1.
+>
 > **None of these block Pulsus Dash.** Every requirement has an interim fallback that the Dash
 > backend-for-frontend (BFF) implements first; PulsusDB support replaces the fallback when it lands,
 > usually with a large performance or fidelity gain. Priorities follow the Dash UI milestones
@@ -25,7 +29,7 @@
 | TraceQL `compare()` | §4.4 | Universal Compare for spans |
 | Log `volume`, `detected_labels`, `detected_fields`, `patterns` | §2.6 | Logs workbench, patterns, facets |
 | Live tail (WebSocket) | §2.4 | Live logs |
-| Service graph (`/api/traces/v1/service_graph`) | §4.5 | Atlas edges |
+| Service graph (`/api/traces/v1/service_graph?start=<t>&end=<t>`; confirmed on the native traces API, 2026-11-19) | §4.5 | Atlas edges, SRF-044 service-graph slice |
 | Profiles: merge (incl. span selector), select_series, diff | §5 | Flame, diff flame, span → profile |
 | Metric rollup levels + `exactness` in explain | §3.6, `X-Pulsus-Explain` | Coverage meter, explain view |
 | Tenancy `X-Scope-OrgID`, `X-Pulsus-Database` | headers | Multi-tenant Dash |

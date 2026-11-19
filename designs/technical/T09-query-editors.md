@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (PromQL editor, completion, explain, visual builder, auto-vis hint) → M-UI2 (LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0004](../adr/0004-leptos-dom-rooms.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -554,8 +554,8 @@ same job pins the PulsusDB git revision Dash builds against.
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | PromQL: textarea bridge, `dash-qlex`, `dash-qctx`, PulsusDB validation in the editor worker, metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, prettify, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL |
-| M-UI2 | LogQL and TraceQL (incl. detected fields and tags), profile selectors, ⌘K detection for all four, history |
+| M-UI1 | PromQL: textarea bridge, `dash-qlex`, `dash-qctx`, PulsusDB validation in the editor worker, metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, prettify, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL; **LogQL validation (PulsusDB parser) and label/value completion** for LogQL panels (#49) |
+| M-UI2 | TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
 | M-UI4 | Alert-rule editor integration (quick-fixes, variables), AI explain/generate, virtual-source completion and diagnostics |
 | M-UI5 | LogQL/TraceQL builders, Board variables UI |
 
@@ -591,3 +591,4 @@ planned (D3, R17).
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T09-001…T09-017. **D3:** the AGPL PulsusDB parser crates are linked by default; the licence analysis and Q8/Q1 are closed; `QueryLanguage` kept (T09-001); the permissive fallback build is optional and leaves CI; R17 is a P3 nice-to-have. **SRF-029:** the PromQL visual builder moves from M-UI5 to M-UI1 (§4.9). Added `cardinality`/metric-browser `/suggest` kinds (SRF-031, SRF-032), virtual-source completion and *virtual unsupported* diagnostics (ADR-0012), Table 5-13 row numbers on `VisHint` (VIZ-065), scope-keyed suggest cache. AI explain moved off the `.` key (a Space-context binding in 03) to the ✦ button and a ⌘K action. Draft Q4 (04 wording on positioned errors) closed: SRF-027's note now matches |
+| 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 LogQL validation and label completion move M-UI2 → M-UI1; TraceQL, profile selectors, detected fields, ⌘K detection and history stay M-UI2 |
