@@ -268,7 +268,8 @@ All crates live in one root Cargo workspace: engine and test crates under `crate
 ```
  Browser (TS app; Rust/WASM engine) ─HTTP/2 + WS──►  pulsus-dash server (Go) — the BFF
                                                    ├─ Scene query planner: dedupe/merge viewport queries,
-                                                   │  choose step from pixel width, fan out, stream Arrow (T07)
+                                                   │  choose step from pixel width, fan out, stream frames (T07;
+                                                   │  JSON until the engine, then Arrow)
                                                    ├─ Entity catalogue + graph service (T12, draft)
                                                    ├─ Change feed, baselines / anomaly sweep, compare
                                                    ├─ Alert evaluator, routing, notifications (T16)
@@ -281,18 +282,24 @@ All crates live in one root Cargo workspace: engine and test crates under `crate
                                                    PulsusDB (PromQL / LogQL / TraceQL / profiles, service graph)
 ```
 
-The BFF ([T06](T06-bff-architecture.md)) is essential. It converts PulsusDB's
-JSON responses (PromQL-compatible JSON, the standard query-API response shape, for metrics; native JSON for logs and traces) into Arrow once, server-side. It enforces RBAC on every query by
-injecting tenant and label matchers, and it plans queries per *scene* rather than per panel. Longer
-term, PulsusDB may emit Arrow natively (ClickHouse already speaks Arrow): requirement R1 in
+The BFF ([T06](T06-bff-architecture.md)) is essential. It decodes PulsusDB's JSON responses
+(PromQL-compatible JSON, the standard query-API response shape, for metrics; native JSON for logs and
+traces) once, server-side. In M-UI1 it passes them to the client as **JSON frames**; Arrow
+conversion arrives with the chart engine (#68, [T04](T04-wire-format-and-data-plane.md) §0). It
+enforces RBAC on every query: in v1 it sends query text unchanged, passes unrestricted principals
+and refuses restricted principals, whose scope it cannot prove, with `scope_denied`; injecting
+tenant and label matchers into queries comes later, with the parser design
+([T07](T07-scene-query-planner.md) §0, T07-002). It plans queries per *scene* rather than per
+panel. Longer term, PulsusDB may emit Arrow natively (ClickHouse already speaks Arrow): requirement R1 in
 [pulsusdb-requirements](pulsusdb-requirements.md).
 
 Dash-derived state (alert history and state, baselines, anomaly scores, derived change events and
 fallback pyramids) lives in PostgreSQL (decision D2, [ADR-0012](../adr/0012-derived-state-in-postgres.md)).
 The planner resolves the reserved selectors `ALERTS`, `ALERTS_FOR_STATE`, `pulsus_anomaly_score` and
 the `{source="pulsus-dash"}` event stream against Postgres-backed virtual sources
-([T07](T07-scene-query-planner.md)), and their results reach the browser in the same Arrow
-schemas as telemetry ([T04](T04-wire-format-and-data-plane.md)).
+([T07](T07-scene-query-planner.md); from the parser design, M-UI4), and their results reach the
+browser in the same frame schemas as telemetry: JSON frames until the engine, then Arrow
+([T04](T04-wire-format-and-data-plane.md) §0).
 
 #### T01-011 — Dash never writes product state into PulsusDB
 **MUST** — No Dash component MUST write to PulsusDB other than Dash's own self-telemetry (RUM, lab
@@ -371,7 +378,7 @@ to the design that meets it:
 - **Supply chain.** npm runtime dependencies are an allowlist with lockfile, exact versions, audit
   and signature gates ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7).
 - **RBAC is server-side.** The browser never chooses a tenant or scope beyond what `/bootstrap`
-  granted; the BFF injects tenant and data-scope matchers on every upstream call (T10 (draft),
+  granted; the BFF sets the tenant on every upstream call and, in v1 it sends query text unchanged and refuses restricted principals with `scope_denied` ([T07](T07-scene-query-planner.md) §0, T07-002); data-scope matchers are injected from the parser design (T10 (draft),
   [T04 §8](T04-wire-format-and-data-plane.md#8-security-tenancy--rbac)).
 - **Derived state** is isolated in one place, Postgres RLS ([ADR-0012](../adr/0012-derived-state-in-postgres.md)).
 
@@ -442,4 +449,4 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 | 1.0-rc | 2026-11-18 | #22: crate map adds `dash-core-mt` (the core module crate); the IndexedDB chunk cache is renamed `dash-chunk-cache` (T06's BFF `dash-cache` keeps the name in the one workspace); all crates live in one root Cargo workspace |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): TS/React client and Go BFF. §4.1 rewritten (T01-001, T01-002 revised); T01-007, T01-008 revised to the application layout; interim notes on T01-003 and T01-009; §4.4 rows, §4.5 generator, §4.6 note, §4.7 diagram, §5, §8, §10, §11, §12 updated; §13 Q1 closed |
 | 1.2-rc | 2026-11-19 | Product text revised to D7–D9 (roadmap Q13 closed): §4.3 Space is the Atlas and Lenses, Boards and workbenches are pages of chart frames, the Time Ribbon only in Space scenes; Satisfies rows for IA-014, IA-016 and VL-017 use `e2e:client-routing`, `e2e:app-layout` and `e2e:chrome-layout` |
-| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 note and VIZ-001 sentence; §4.2 rewritten (React owns semantic state on the main thread; the engine in workers holds render-local state behind `ChartFrame`; no Leptos shell, no Rust on main); T01-003 and T01-004 aligned; §4.6 crate map rewritten (`dash-shell`, `dash-state` withdrawn; no BFF crates); §5, §6, §10, §12 and §13 resolved items 1 and 3 aligned; review r3: third-party product names replaced by generic wording |
+| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 note and VIZ-001 sentence; §4.2 rewritten (React owns semantic state on the main thread; the engine in workers holds render-local state behind `ChartFrame`; no Leptos shell, no Rust on main); T01-003 and T01-004 aligned; §4.6 crate map rewritten (`dash-shell`, `dash-state` withdrawn; no BFF crates); §5, §6, §10, §12 and §13 resolved items 1 and 3 aligned; review r3: third-party product names replaced by generic wording; review r8: §4.7 and §8 separate M-UI1 JSON frames from the later Arrow path and state v1 scope handling (text unchanged, restricted scopes refused, matcher injection from the parser design) |

@@ -28,7 +28,9 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 
 [ADR-0005](../adr/0005-arrow-wire-format.md) chose Arrow IPC from the BFF to the browser. Until
 PulsusDB emits a columnar format natively (R1 in [pulsusdb-requirements](pulsusdb-requirements.md)),
-the BFF converts JSON → Arrow. PulsusDB today answers range queries in PromQL-compatible JSON (the standard query-API response shape) for metrics and its native logs JSON,
+the BFF converts PulsusDB's JSON: in M-UI1 into **JSON frames** for the TS client, and from the
+chart engine on (#68) into Arrow (§0). PulsusDB today answers range queries in PromQL-compatible JSON
+(the standard query-API response shape) for metrics and its native logs JSON,
 with sample values as **strings** and log timestamps as nanosecond **strings** (PulsusDB API §2.1,
 §3.2). Trace fetch is OTLP JSON or protobuf by `Accept` (§4.1). Profiles are Connect JSON or proto
 (§5). The current upstream API reference documents no Arrow output.
@@ -107,14 +109,17 @@ Query *semantics* (what to ask, at which step, and the virtual-source resolution
 
 ### 4.1 Data path overview
 
+*The browser half below is the engine path (from #68, §0); until then JSON frames go to `fetch` and
+the TS decoder.*
+
 ```
  PulsusDB ──JSON / OTLP-proto / Connect-proto──► BFF (T06) ◄── Postgres virtual sources (D2):
                                                   │              ALERTS, ALERTS_FOR_STATE,
                                                   │              pulsus_anomaly_score,
                                                   │              {source="pulsus-dash"} events,
                                                   │              fallback pyramid tiles
-                                                  ├─ scope rewrite (T10, draft) → PulsusDB request (+X-Pulsus-Query-Id)
-                                                  ├─ streaming parse → Arrow Go builders → RecordBatch
+                                                  ├─ scope check (v1: text unchanged, restricted scopes refused; T07 §0) → PulsusDB request (+X-Pulsus-Query-Id)
+                                                  ├─ streaming parse → JSON frames (M-UI1); Arrow Go builders → RecordBatch (from the engine, §0)
                                                   ├─ coverage assembly (§5.3)
                                                   └─ DSF framing (§5.1) ──HTTP/2 body or WS binary──┐
  browser                                                                                          ▼
@@ -721,11 +726,11 @@ and the synthetic Lens load in CI.
 
 ## 8. Security, tenancy & RBAC
 
-- The BFF injects the tenant (`X-Scope-OrgID`, `X-Pulsus-Database`) and data-scope matchers before
-  every upstream call (T10 (draft); R12 fallback). The browser never chooses a tenant beyond what
+- The BFF sets the tenant (`X-Scope-OrgID`, `X-Pulsus-Database`) on every upstream call. For data
+  scopes, in v1 it sends query text unchanged and refuses restricted principals with `scope_denied` ([T07](T07-scene-query-planner.md) §0, T07-002); data-scope matchers are injected from the parser design (T10 (draft); R12 fallback). The browser never chooses a tenant beyond what
   `/bootstrap` granted.
 - Field-level masking ([11](../product/11-enterprise.md)) is applied by the BFF *while building
-  batches*. Masked values are replaced, not just hidden: a masked `line` or attribute shows as
+  frames*. Masked values are replaced, not just hidden: a masked `line` or attribute shows as
   `"‹masked›"` and is listed in `coverage.excluded_dims`.
 - Postgres virtual sources are read under row-level security with the session's tenant
   ([ADR-0012](../adr/0012-derived-state-in-postgres.md)).
@@ -734,7 +739,8 @@ and the synthetic Lens load in CI.
 - IndexedDB keys include `tenant_hash` and `scope_epoch`, and no raw query text (T04-017).
 
 #### T04-019 — Masking happens while building batches
-**MUST** — Masked fields MUST be replaced in the Arrow batch by the BFF before framing, and MUST be
+**MUST** — Masked fields MUST be replaced in the frame (the JSON frame until the engine, the Arrow
+batch from then on) by the BFF before framing, and MUST be
 listed in `coverage.excluded_dims`. Unmasked values MUST NOT reach the browser.
 
 ## 9. Failure modes & degradation
@@ -781,7 +787,7 @@ promised in R1; gate `bench:decode-r1`):
   ≤ J + gzip.
 
 **Decision procedure: Arrow vs columnar protobuf for the PulsusDB → BFF leg**
-([ADR-0005](../adr/0005-arrow-wire-format.md)). BFF → browser stays Arrow regardless.
+([ADR-0005](../adr/0005-arrow-wire-format.md)). BFF → browser is Arrow from the engine on regardless (JSON frames before, §0).
 
 1. Run the harness and record each metric for A1 and P.
 2. Compute the BFF cost per response for each: P needs transcoding to Arrow, while A1 passes through
@@ -861,4 +867,4 @@ support in the BFF for one release.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T04-001 to T04-019; D2 applied (no write path, Postgres virtual sources and fallback pyramids); `events/1` at M-UI1; coverage `data_end` and ✓ exact; ranks, generations and eviction order; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
-| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |

@@ -158,10 +158,10 @@ JSON form and is held to the same semantics by shared fixtures (§0).
  Pressure{level}                                           4 Merge      session-local dedupe, range-union, derivation, fusion (§4.4)
                                                            5 Place⚡     local answerability per logical query (§4.5)
                                                            6 Physicalise→ PhysicalQuery[] + VirtualQuery[] + Combine DAG (§4.11, §4.12)
-                                                           7 Scope      T10 scope::rewrite on EVERY physical/virtual query (§4.7)
+                                                           7 Scope      v1: identity / refuse restricted (§0); later T10 scope::rewrite (§4.7)
                                                            8 Place▣     cache tiles by scoped key; singleflight (§4.5)
                                                            9 Admit      budget check, priority, deadline (§4.8)
-                                                          10 Execute    pulsusdb-client | dash-vsrc, streams → Combine → Arrow frames
+                                                          10 Execute    pulsusdb-client | dash-vsrc, streams → Combine → frames (JSON, Arrow from the engine)
  ◄── frames{plan, viewport, pass, gen, exactness} ─────────11 Stream     per pass; Completeness trailer per viewport
 ```
 
@@ -1032,4 +1032,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; the planner is Go (`internal/planner`); the shared `pulsus-plan` IR is dropped in favour of Go types plus a JSON form and fixtures for T13; §4.2 parses PromQL with a Go PromQL parser and treats LogQL and TraceQL as opaque in v1 (T07-002) |
 | 1.2-rc | 2026-11-19 | ADR-0015 "Query validation": the BFF parses no query language in v1. §0 gains the v1 opaque-planning table and the later parser design (decided before fusion in M-UI2; a server-side parser needs a new ADR); §4.2 no longer uses a Go PromQL parser; §4.14 v1 expression form (client-expanded text) with T07-030 deferred to the parser design; SRF-030 test and §11 updated |
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
-| 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated |
+| 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
