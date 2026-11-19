@@ -1,5 +1,5 @@
 //! The published instance chunk (T03-007): written once by its producer, then immutable; the
-//! render worker pins it per frame. Stub.
+//! render worker pins it per frame (refcount increment) and drops the pin after `submit`.
 
 use std::sync::Arc;
 
@@ -18,11 +18,13 @@ pub struct InstanceChunk {
 pub static INSTANCES: ArcSwapOption<InstanceChunk> = ArcSwapOption::const_empty();
 
 /// Publishes `c`, replacing the previous chunk (freed when its last pin drops).
-pub fn publish(_c: InstanceChunk) {}
+pub fn publish(c: InstanceChunk) {
+    INSTANCES.store(Some(Arc::new(c)));
+}
 
-/// Pins the current chunk (refcount increment), if any.
+/// Pins the current chunk (refcount increment), if any. Never waits on a lock (T03-008).
 pub fn pin() -> Option<Arc<InstanceChunk>> {
-    None
+    INSTANCES.load_full()
 }
 
 #[cfg(test)]

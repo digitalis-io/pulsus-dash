@@ -1,6 +1,10 @@
-//! Backend tier selection (PRF-044) and the fallback ladder (T03 §9.2, T03-025). Stub.
+//! Backend tier selection (PRF-044) and the fallback ladder (T03 §9.2, T03-025).
+//!
+//! WebGPU is tried first when `navigator.gpu` exists, then WebGL2; with neither the page is
+//! Static. A failure before the canvas holds a context falls through to the next tier in place;
+//! after it, the canvas is committed, so the render worker restarts on a fresh canvas.
 
-use dash_protocol::status::RuntimeStatus;
+use dash_protocol::status::{RETRY_T2, RuntimeStatus};
 
 /// A GPU backend tier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10,8 +14,12 @@ pub enum Tier {
 }
 
 impl Tier {
+    /// The status the page shows for this tier.
     pub fn status(self) -> RuntimeStatus {
-        RuntimeStatus::Booting
+        match self {
+            Tier::WebGpu => RuntimeStatus::TierT1,
+            Tier::WebGl2 => RuntimeStatus::TierT2,
+        }
     }
 }
 
@@ -24,13 +32,22 @@ pub enum ForcedMode {
 }
 
 /// Tiers to try, in order.
-pub fn tier_plan(_forced: ForcedMode, _has_navigator_gpu: bool) -> Vec<Tier> {
-    Vec::new()
+pub fn tier_plan(forced: ForcedMode, has_navigator_gpu: bool) -> Vec<Tier> {
+    match (forced, has_navigator_gpu) {
+        (ForcedMode::Static, _) => Vec::new(),
+        (ForcedMode::T2, _) | (ForcedMode::None, false) => vec![Tier::WebGl2],
+        (ForcedMode::None, true) => vec![Tier::WebGpu, Tier::WebGl2],
+    }
 }
 
-/// First non-sRGB format, else `formats[0]`; `None` if empty.
-pub fn choose_format(_formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
-    None
+/// First non-sRGB format, else `formats[0]`; `None` if empty. A linear format keeps the
+/// token colours exact (they are written as-is).
+pub fn choose_format(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
+    formats
+        .iter()
+        .find(|f| !f.is_srgb())
+        .or(formats.first())
+        .copied()
 }
 
 /// Where a tier's initialisation failed.
@@ -54,14 +71,25 @@ pub enum Fallback {
     End(InitEnd),
 }
 
-/// `rest` = plan entries after the failed one.
-pub fn after_failure(_stage: InitStage, _rest: &[Tier]) -> Fallback {
-    Fallback::End(InitEnd::Static)
+/// `rest` = plan entries after the failed one. Before the surface → try the next tier on the
+/// same canvas; after it → restart on a fresh canvas with the next tier; none left → Static.
+pub fn after_failure(stage: InitStage, rest: &[Tier]) -> Fallback {
+    match (stage, rest.first()) {
+        (InitStage::BeforeSurface, Some(t)) => Fallback::TryNext(*t),
+        (InitStage::AfterSurface, Some(t)) => Fallback::End(InitEnd::Restart(*t)),
+        (_, None) => Fallback::End(InitEnd::Static),
+    }
 }
 
-/// The `render_start` result code of an initialisation outcome.
-pub fn start_code(_r: Result<Tier, InitEnd>) -> u32 {
-    0
+/// The `render_start` result code: the [`RuntimeStatus`] code, or `RETRY_T2` for a restart with
+/// T2. A restart with WebGPU cannot happen (WebGPU is never after another tier) and is Failed.
+pub fn start_code(r: Result<Tier, InitEnd>) -> u32 {
+    match r {
+        Ok(t) => t.status() as u32,
+        Err(InitEnd::Restart(Tier::WebGl2)) => RETRY_T2,
+        Err(InitEnd::Static) => RuntimeStatus::Static as u32,
+        Err(InitEnd::Restart(Tier::WebGpu)) => RuntimeStatus::Failed as u32,
+    }
 }
 
 /// Test fault injection; honoured only with feature `probe` of the core.
@@ -74,7 +102,6 @@ pub enum Fault {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dash_protocol::status::RETRY_T2;
     use wgpu::TextureFormat as F;
 
     #[test]

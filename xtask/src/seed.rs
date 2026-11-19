@@ -54,7 +54,7 @@ pub struct Seed {
     pub expect: &'static str,
 }
 
-/// The plan §4.6 seed table.
+/// The seed table (#22 plan §4.6; `probe-absent`, `e2e` and the enforced `bundle-size`: #23).
 pub fn seed_for(gate: Gate) -> Seed {
     let (writes, expect) = match gate {
         Gate::Fmt => (
@@ -93,18 +93,19 @@ pub fn seed_for(gate: Gate) -> Seed {
             "unix",
         ),
         Gate::BundleSize => (
-            vec![
-                SeedWrite::Replace {
-                    path: "ci/bundle-budgets.toml",
-                    from: "mode = \"report\"",
-                    to: "mode = \"enforce\"",
-                },
-                SeedWrite::CreateNoise {
-                    path: "web/shim/seeded-size.js",
-                    random_bytes: 16_000,
-                },
-            ],
+            vec![SeedWrite::CreateNoise {
+                path: "web/shim/seeded-size.js",
+                random_bytes: 16_000,
+            }],
             "bundle-over-budget",
+        ),
+        Gate::ProbeAbsent => (
+            vec![SeedWrite::Replace {
+                path: "crates/dash-core-mt/Cargo.toml",
+                from: "default = []",
+                to: "default = [\"probe\"]",
+            }],
+            "probe-present",
         ),
         Gate::DesignCheck => (
             vec![SeedWrite::Append {
@@ -127,7 +128,14 @@ pub fn seed_for(gate: Gate) -> Seed {
             }],
             "npm-runtime-dependency",
         ),
-        Gate::ProbeAbsent | Gate::E2e => (Vec::new(), ""),
+        Gate::E2e => (
+            vec![SeedWrite::Replace {
+                path: "web/index.html",
+                from: "Interactive charts unavailable on this browser</p>",
+                to: "seeded</p>",
+            }],
+            "gpu_disabled_shows_fallback",
+        ),
     };
     Seed {
         gate,

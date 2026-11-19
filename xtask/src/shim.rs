@@ -1,4 +1,4 @@
-//! The shim file set and `ci:shim-lint` (T03-001, plan §4.2).
+//! The shim file set and `ci:shim-lint` (T03-001, plan §4.2; `layout.gen.js` exclusion: #23).
 
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -12,6 +12,9 @@ use crate::{R, XtaskError, line_of, rel_str};
 
 pub const SHIM_DIR: &str = "web/shim";
 pub const GEN_DIR: &str = "web/shim/gen";
+/// The generated control-block layout (T03-005): excluded from every check when byte-identical
+/// to `dash_protocol::layout::render_js()`, else counted and `layout-gen-stale`.
+pub const LAYOUT_GEN: &str = "web/shim/layout.gen.js";
 pub const LINE_BUDGET: u32 = 300;
 pub const JS_EXT: [&str; 3] = ["js", "mjs", "cjs"];
 /// The T03 §5.1 file column, in table order.
@@ -125,9 +128,21 @@ pub fn lint_files(root: &Path, files: &ShimFiles) -> R<ShimReport> {
         return Ok(report);
     }
     let mut checks = Vec::new();
+    let layout = dash_protocol::layout::render_js();
     for path in js_files(files) {
         let abs = root.join(&path);
         let bytes = std::fs::read(&abs).map_err(XtaskError::io(&abs))?;
+        if path == Path::new(LAYOUT_GEN) {
+            if bytes == layout.as_bytes() {
+                continue;
+            }
+            report.violations.push(violation(
+                Rule::LayoutGenStale,
+                &path,
+                None,
+                "differs from its generator; run `cargo xtask gen` (T03-005)",
+            ));
+        }
         let lexed = match String::from_utf8(bytes) {
             Ok(src) => {
                 strip_comments(&src).map_err(|e| (Some(lex_error_line(&e)), format!("{e:?}")))

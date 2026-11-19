@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-dash-status="0">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulsus Dash — runtime</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: Canvas; color: CanvasText; font: 14px system-ui, sans-serif; }
+  #dash-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; border: 0; padding: 0; }
+  .dash-chrome, .dash-banner { position: fixed; left: 12px; margin: 0; padding: 2px 8px; background: Canvas; color: CanvasText; pointer-events: none; }
+  .dash-chrome { top: 8px; }
+  .dash-banner { bottom: 8px; }
+  html:not([data-dash-status="1"]) [data-status="1"] { display: none }
+  html:not([data-dash-status="2"]) [data-status="2"] { display: none }
+  html:not([data-dash-status="3"]) [data-status="3"] { display: none }
+  html:not([data-dash-status="4"]) [data-status="4"] { display: none }
+  html:not([data-dash-status="5"]) [data-status="5"] { display: none }
+  html:not([data-dash-mode="st"]) [data-mode="st"] { display: none }
+  html[data-dash-status="3"] #dash-canvas, html[data-dash-status="4"] #dash-canvas, html[data-dash-status="5"] #dash-canvas { visibility: hidden }
+</style>
+</head>
+<body>
+<canvas id="dash-canvas" tabindex="0"></canvas>
+<p id="dash-tier" class="dash-chrome" role="status"><span data-status="1">Tier: WebGPU (T1)</span><span data-status="2">Tier: WebGL2 (T2)</span></p>
+<p class="dash-chrome" role="alert" data-status="3">Interactive charts unavailable on this browser</p>
+<p class="dash-chrome" role="alert" data-status="4">Interactive charts failed. Reload the page.</p>
+<p class="dash-chrome" role="alert" data-status="5">Pulsus was updated — reload</p>
+<p class="dash-banner" role="status" data-mode="st">Reduced performance: cross-origin isolation is off (ask your admin)</p>
+<script type="module" src="shim/boot.js"></script>
+</body>
+</html>

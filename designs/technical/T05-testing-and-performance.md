@@ -116,6 +116,8 @@ hermetic. Nightly L4 runs against real PulsusDB and Postgres.
 `frame()` waits for the next presented frame, `readback(viewport)` returns RGBA, and `inputLog()`
 returns decoded input records. The probe is a cfg-gated module of the generated glue, not
 hand-written shim code. CI asserts it is absent from release artefacts (`ci:probe-absent`).
+Until the shell (M-UI1), the probe is the render worker's `self.__dashProbe`
+(`docs/runtime/browser-runtime.md`).
 Playwright drives **real DOM events** by default, so the shim's capture path is under test. Replay
 specs inject recordings instead (§4.4).
 
@@ -256,8 +258,12 @@ estate, §4.5):
 - **Headless.** [PRF-032](../product/09-performance-contract.md#prf-032--per-visualisation-gpu-benchmarks-in-ci) calls for headless GPU benchmarks. `dash-lab` runs Chrome's headless
   mode with the GPU enabled (`--headless=new --use-angle=…`, same compositor and GPU process as
   headed), on the reference machines. A weekly headed run checks the two agree within 5 %.
-- **Long tasks and jank on main** come from the Long Animation Frames API where supported, otherwise
-  Long Tasks.
+- **Long tasks on main**: top-level `RunTask` on the page's `CrRendererMain` between first and last
+  input `EventDispatch` in a Chrome trace, judged on wall `dur` (`dash-lab::trace`); LoAF serves
+  RUM. CI's `e2e` runs it (thread > 16 ms, wall > 50 ms) as PRF-005's merge gate until the
+  reference lab exists (§7.1).
+- **Shim per-event time** (T03-003): CI's `e2e` times the installed input listeners; p99 ≤ 0.05 ms,
+  blocking.
 - **Input → photon** is estimated in CI as event `t_ms` → `queue.submit` of the frame that consumed
   it, plus one vsync. Each reference machine gets a quarterly **photodiode + high-speed camera**
   calibration of the estimate.
@@ -502,15 +508,15 @@ the merge train), nightly (release blocker).
 | Gate | Checks | Stage | Blocking |
 |---|---|---|---|
 | `ci:design-check` | `designs/tools/check.py`: no broken links or anchors, unique requirement IDs, every requirement has priority, milestone and acceptance criteria, every Satisfies reference resolves, no M-UI0/1 MUST untraced; `traceability.md` regenerated and diffed | PR | yes |
-| `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; every JS file under `web/shim/` that git tracks or does not ignore is counted. *Interim:* nothing is excluded by name; `layout.gen.js` fails `ci:dep-audit` (not a T03 §5.1 file). *Enabled with T03-005's generator:* `layout.gen.js` excluded from the count, regenerated and diffed | PR | yes |
-| `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); core < 3 MB. *Interim:* `mode = report` in `ci/bundle-budgets.toml`: sizes in the step summary, over budget is a warning, never fails. *Enabled by the first PR whose CI build writes `web/shim/gen/dash-core-mt/`:* that PR sets `mode = enforce` and `required = true` for each artefact the build produces (over budget or absent → fail) and adds per-crate (`twiggy`) sizes and the +2 %-per-PR growth check (`size-ok` label; baseline = base branch's measurement, skipped where the base has none) | PR | once enforced |
-| `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build | PR | yes |
+| `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; every JS file under `web/shim/` that git tracks or does not ignore is counted. `layout.gen.js` is excluded from the count when byte-identical to its generator's output, else counted and fails | PR | yes |
+| `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); core < 3 MB. `mode = enforce`; `shim`, `dash-core-mt`, `dash-core-st` `required` (over budget or absent → fail). *Later:* `twiggy` sizes and the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
+| `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build; `web/shim/gen/` accepted only by regenerate-and-compare ([T03 §5.1](T03-browser-runtime.md#51-shim-files-and-line-budget)) | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside `dash-tokens` outputs; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
 | `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis | PR | yes |
 | `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
-| `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts | release build | yes |
+| `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh release build of both artefacts (default features), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
 
 **Unit, property and fuzz (L1)**
 
@@ -601,7 +607,8 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 |---|---|---|---|
 | `bench:frame-*` on (a)(b) | merge | T05-007 | yes, from M-UI0 |
 | `bench:frame-*` on (c) | nightly | T05-007 | release blocker |
-| `bench:input-photon`, `bench:long-tasks`, `bench:offline-interaction` | merge | §4.3 | yes, from M-UI0 |
+| `bench:input-photon`, `bench:offline-interaction` | merge | §4.3 | yes, from M-UI0 |
+| `bench:long-tasks` | merge once the reference lab ((a), (b)) exists; until then `e2e`'s trace check (§4.3) is the merge gate | §4.3 | yes, once the lab exists; M-UI0 is not complete until it passes |
 | `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
 | `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
 | `bench:inp-rooms` | merge | INP ≤ 200 ms | yes, from M-UI0 |
@@ -738,3 +745,4 @@ Meta-testing:
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T05-001 to T05-015; gate catalogue (§7.1) defining every gate named in T01–T05 Satisfies tables; gallery = corpus manifest; thresholds, milestones and headless mode aligned with 09; replay specs; Satisfies table |
 | 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |
+| 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time check; §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |

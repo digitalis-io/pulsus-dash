@@ -32,6 +32,12 @@ owner = "area:platform"
 job = "wasm"
 
 [[gate]]
+id = "probe-absent"
+t05 = "ci:probe-absent"
+owner = "area:platform"
+job = "wasm"
+
+[[gate]]
 id = "bundle-size"
 t05 = "ci:bundle-size"
 owner = "area:rendering"
@@ -54,3 +60,9 @@ id = "dep-audit"
 t05 = "ci:dep-audit"
 owner = "area:platform"
 job = "wasm"
+
+[[gate]]
+id = "e2e"
+t05 = "e2e:mode-matrix"
+owner = "area:rendering"
+job = "e2e"

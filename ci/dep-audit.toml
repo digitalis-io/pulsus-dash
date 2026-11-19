@@ -3,10 +3,281 @@ browser_roots = ["dash-core-mt"]
 npm_dev_allow = ["@playwright/test", "playwright", "playwright-core", "@axe-core/playwright", "axe-core"]
 render_worker_crates = ["dash-scene", "dash-gpu", "dash-marks", "dash-state"] # T03-008
 web_dir = "web"
-allowed_url_prefixes = ["http://www.w3.org/"] # XML/SVG namespace URIs; never fetched
+allowed_url_prefixes = [
+  "http://www.w3.org/", # XML/SVG namespace URIs; never fetched
+  # A documentation link in a comment of the wasm-bindgen glue (web/shim/gen/); never fetched.
+  "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/typeof#description",
+]
 
-[web_sys] # empty: no crate may depend on web-sys until it is listed here (#23 adds core)
+[web_sys] # per-crate web-sys feature allowlist (T03 §5.6)
+dash-gpu = ["OffscreenCanvas"]
+dash-core-mt = ["OffscreenCanvas", "Performance"] # timeOrigin
 
 # [[lock_allow]]     # audited exceptions to T03-008; none
-# [[browser_crate]]  # non-member crates allowed in the browser graph (name, reason); none.
-#                    # Each entry is reviewed against ADR-0001/0004/0007 and T01-002.
+# [[browser_crate]]: non-member crates allowed in the browser graph (name, reason), each reviewed
+# against ADR-0001/0004/0007 and T01-002. Reason: "<dependent>: <what it is>; not a UI, component,
+# charting, mapping or diagram library (T01-002)".
+
+[[browser_crate]]
+name = "arc-swap"
+reason = "dash-core-mt: atomic Arc swap for the published chunk table (T03-007); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "arrayvec"
+reason = "wgpu: fixed-capacity vector; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "bit-set"
+reason = "naga: bit set; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "bit-vec"
+reason = "wgpu-core: bit vector; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "bitflags"
+reason = "wgpu: bit-flag type macro; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "bumpalo"
+reason = "wasm-bindgen-macro-support: bump allocator used by the bindings macro at build time; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "bytemuck"
+reason = "dash-core-mt: safe casts of plain-old-data to bytes (GPU uploads); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "bytemuck_derive"
+reason = "bytemuck: derive macros for bytemuck (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "cfg-if"
+reason = "js-sys: conditional-compilation macro; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "codespan-reporting"
+reason = "naga: shader diagnostic formatting; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "document-features"
+reason = "wgpu: feature documentation macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "equivalent"
+reason = "indexmap: key-equivalence trait; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "foldhash"
+reason = "hashbrown: hash function; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "futures-core"
+reason = "futures-util: async trait definitions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "futures-task"
+reason = "futures-util: async task utilities; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "futures-util"
+reason = "js-sys: async combinators; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "glow"
+reason = "wgpu-hal: OpenGL/WebGL2 bindings for the T2 backend; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "half"
+reason = "naga: 16-bit float type; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "hashbrown"
+reason = "wgpu: hash map implementation; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "indexmap"
+reason = "naga: insertion-ordered hash map; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "js-sys"
+reason = "dash-core-mt: bindings to JavaScript built-ins; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "libm"
+reason = "naga: portable math functions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "litrs"
+reason = "document-features: literal parsing for a build-time macro; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "lock_api"
+reason = "parking_lot: lock trait definitions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "log"
+reason = "wgpu: logging facade; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "naga"
+reason = "wgpu: shader translator (WGSL to GLSL ES for T2); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "naga-types"
+reason = "naga: shader IR type definitions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "num-traits"
+reason = "naga: numeric traits; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "once_cell"
+reason = "naga: lazy initialisation cells; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "parking_lot"
+reason = "wgpu-core: locks used inside wgpu; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "parking_lot_core"
+reason = "parking_lot: lock internals; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "pin-project-lite"
+reason = "futures-util: pin projection macro; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "proc-macro2"
+reason = "bytemuck_derive: token streams for derive macros (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "profiling"
+reason = "wgpu: profiling scope macros (no-op here); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "quote"
+reason = "bytemuck_derive: code generation for derive macros (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "raw-window-handle"
+reason = "wgpu: window handle interface types; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "rustc-hash"
+reason = "naga: fast non-cryptographic hash; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "rustversion"
+reason = "arc-swap: compiler-version conditional macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "scopeguard"
+reason = "lock_api: scope-exit guard; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "serde"
+reason = "codespan-reporting: serialization framework; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "serde_core"
+reason = "hashbrown: serialization traits; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "serde_derive"
+reason = "serde: serialization derive macros (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "slab"
+reason = "futures-util: slab allocator; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "slotmap"
+reason = "glow: slot map container; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "smallvec"
+reason = "wgpu: small-vector optimisation; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "static_assertions"
+reason = "wgpu: compile-time assertions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "syn"
+reason = "bytemuck_derive: Rust parser for derive macros (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "termcolor"
+reason = "codespan-reporting: terminal colour output for diagnostics; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "thiserror"
+reason = "naga: error derive; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "thiserror-impl"
+reason = "thiserror: error derive macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "unicode-ident"
+reason = "wasm-bindgen-shared: Unicode identifier tables; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "unicode-width"
+reason = "codespan-reporting: Unicode display width; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wasm-bindgen"
+reason = "dash-core-mt: Rust/JavaScript bindings generator (ADR-0002); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wasm-bindgen-futures"
+reason = "dash-core-mt: Rust futures on JavaScript promises; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wasm-bindgen-macro"
+reason = "wasm-bindgen: bindings macro (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wasm-bindgen-macro-support"
+reason = "wasm-bindgen-macro: bindings macro internals (build time); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wasm-bindgen-shared"
+reason = "wasm-bindgen: bindings shared definitions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "web-sys"
+reason = "dash-core-mt: Web API bindings, features allow-listed in [web_sys]; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wgpu"
+reason = "dash-gpu: the GPU API of the in-house renderer (ADR-0007); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wgpu-core"
+reason = "wgpu: GPU API core used by the WebGL2 backend; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wgpu-core-deps-wasm"
+reason = "wgpu-core: wasm-target dependency selector of wgpu-core; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wgpu-hal"
+reason = "wgpu: GPU hardware abstraction (WebGL2 backend); not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wgpu-naga-bridge"
+reason = "wgpu-core: wgpu to naga type bridge; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "wgpu-types"
+reason = "wgpu: GPU API type definitions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "zerocopy"
+reason = "half: safe byte-level conversions; not a UI, component, charting, mapping or diagram library (T01-002)"
+
+[[browser_crate]]
+name = "zerocopy-derive"
+reason = "zerocopy: derive macros for zerocopy (build time); not a UI, component, charting, mapping or diagram library (T01-002)"

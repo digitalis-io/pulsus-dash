@@ -269,10 +269,17 @@ test("@webgpu @webgl2 @noiso main_thread_trace_during_interaction", async ({ pag
     await browser.startTracing(page, {
       categories: ["toplevel", "devtools.timeline", "disabled-by-default-devtools.timeline"],
     });
-    const end = Date.now() + 5_000;
-    for (let i = 0; Date.now() < end; i++) {
+    // At least 5 s of interaction, and until the scene presented 100 frames (software GPUs in
+    // CI render the 10 000-instance scene at ~10 fps; the frame count is not a frame-rate gate,
+    // T05-006).
+    const start = Date.now();
+    for (let i = 0; ; i++) {
       await page.mouse.move(50 + (i % 300), 50 + ((i * 7) % 200));
       await page.waitForTimeout(16);
+      if (i % 30 === 29 && Date.now() - start >= 5_000) {
+        const now: number = (await call(page, "frameStats")).frames;
+        if (now - before >= 100 || Date.now() - start > 40_000) break;
+      }
     }
     const trace = await browser.stopTracing();
     fs.mkdirSync(TRACES, { recursive: true });
@@ -287,6 +294,8 @@ test("@webgpu frame_timing_exported", async ({ page }) => {
   await page.goto("/");
   await waitStatus(page, STATUS.T1);
   await page.waitForTimeout(2_000);
+  // ≥ 30 frames: waited for, as software GPUs in CI present the scene at ~10 fps (T05-006).
+  await expect.poll(async () => (await call(page, "frameStats")).frames, { timeout: 15_000 }).toBeGreaterThanOrEqual(30);
   const s = await call(page, "frameStats");
   expect(s.frames).toBeGreaterThanOrEqual(30);
   expect(s.hist.length).toBe(64);

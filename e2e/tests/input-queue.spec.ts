@@ -383,7 +383,10 @@ test("@webgpu shim_input_cost_p99", async ({ page }) => {
       expect(Math.max(...r.adv), `${kind}: records per call`).toBeLessThanOrEqual(48);
       if (kind === "B") {
         expect(r.overflow, "B overflows the ring").toBeGreaterThan(0);
-        expect(Math.max(...r.adv), "B flushes 32 queued entries").toBeGreaterThanOrEqual(33);
+        // When the ring frees, the backlog (1 024 + 2 slots) drains 32 per event, so the event
+        // that empties it starts with (1 026 + new discrete) mod 32 entries: B's calls advance
+        // the head by exactly 32 (a full FLUSH_PER_EVENT flush), never 33..48.
+        expect(Math.max(...r.adv), "B flushes 32 queued entries").toBe(32);
       }
       runs.push(stats(r.costs));
     }

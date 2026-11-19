@@ -1,6 +1,20 @@
-//! Per-frame timing exported in the control block counters (FS_*). Stub.
+//! Per-frame timing exported in the control block counters (`FS_*`, T03 §4.3 counters region):
+//! frame count, a 64-bucket interval histogram (0.5 ms buckets), intervals over 50 ms, and the
+//! last 256 intervals and render CPU times. All stores are relaxed (readers tolerate tearing
+//! across words).
+
+use std::sync::atomic::Ordering::Relaxed;
+
+use dash_protocol::layout::off;
 
 use crate::control::Control;
+
+/// Histogram buckets; the last one holds every interval ≥ 31.5 ms.
+pub const HIST_BUCKETS: usize = 64;
+/// Entries in each recent array.
+pub const RECENT: u32 = 256;
+/// An interval over this is a long frame.
+pub const LONG_FRAME_MS: f32 = 50.0;
 
 /// A view of the frame statistics of one control block.
 #[derive(Debug)]
@@ -14,16 +28,27 @@ impl<'a> FrameStats<'a> {
     }
 
     /// Records one frame interval and its render CPU time (ms).
-    pub fn record(&self, _interval_ms: f32, _cpu_ms: f32) {
-        let _ = self.cb;
+    pub fn record(&self, interval_ms: f32, cpu_ms: f32) {
+        let cb = self.cb;
+        let bucket = ((interval_ms / 0.5) as usize).min(HIST_BUCKETS - 1) as u32;
+        cb.word(off::FS_HIST + 4 * bucket).fetch_add(1, Relaxed);
+        if interval_ms > LONG_FRAME_MS {
+            cb.word(off::FS_LONG_FRAMES).fetch_add(1, Relaxed);
+        }
+        let idx = cb.word(off::FS_RECENT_IDX).load(Relaxed) % RECENT;
+        cb.word(off::FS_RECENT_INTERVAL + 4 * idx)
+            .store(interval_ms.to_bits(), Relaxed);
+        cb.word(off::FS_RECENT_CPU + 4 * idx)
+            .store(cpu_ms.to_bits(), Relaxed);
+        cb.word(off::FS_RECENT_IDX)
+            .store((idx + 1) % RECENT, Relaxed);
+        cb.word(off::FS_FRAMES).fetch_add(1, Relaxed);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dash_protocol::layout::off;
-    use std::sync::atomic::Ordering::Relaxed;
 
     #[test]
     fn frame_stats_histogram() {

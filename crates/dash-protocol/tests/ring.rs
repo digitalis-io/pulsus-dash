@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! The SPSC input ring (T03-006).
 
 use std::alloc::{Layout, alloc_zeroed};

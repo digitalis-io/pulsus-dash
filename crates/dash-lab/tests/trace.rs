@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! PRF-005 long-task detector (`dash-lab::trace`, plan §3.12).
 
 use dash_lab::trace::{Task, TraceError, long_tasks};

@@ -27,12 +27,21 @@ impl RuntimeStatus {
         RuntimeStatus::Stale,
     ];
 
-    pub fn from_u32(_v: u32) -> Option<Self> {
-        None
+    /// The status with code `v`, if any (`RETRY_T2` is not a status).
+    pub fn from_u32(v: u32) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| *s as u32 == v)
     }
 
+    /// The `STATUS_<name>` suffix in `layout.gen.js`.
     pub fn js_name(self) -> &'static str {
-        ""
+        match self {
+            RuntimeStatus::Booting => "BOOTING",
+            RuntimeStatus::TierT1 => "TIER_T1",
+            RuntimeStatus::TierT2 => "TIER_T2",
+            RuntimeStatus::Static => "STATIC",
+            RuntimeStatus::Failed => "FAILED",
+            RuntimeStatus::Stale => "STALE",
+        }
     }
 }
 

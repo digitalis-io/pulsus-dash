@@ -195,7 +195,7 @@ so the low-address control block stays valid.
 
 | Offset | Size | Region | Producer → consumer | Sync |
 |---|---|---|---|---|
-| `0x00000` | 64 | header: magic `PDCB`, layout version `u16`, capability bits `u32`, boot epoch `u32`, build id `[u8;16]` | render (once) → all | written before the handshake |
+| `0x00000` | 64 | header: magic `PDCB` at `0x00`, layout version `u16` at `0x04`, capability bits `u32` at `0x08`, boot epoch `u32` at `0x0C`, build id `[u8;16]` at `0x10`, runtime status `u32` at `0x20` (§9.3) | render → all | written before the handshake; status `Atomics.store` |
 | `0x00040` | 64 | frame clock: `frame_no u64`, `last_present_ms f64`, `vsync_ms f32`, `visible u8` | render → all | `Atomics.store` |
 | `0x00080` | 64 | input ring **head** `u32` (own cache line) | shim → render | `Atomics.store` (release) |
 | `0x000C0` | 64 | input ring **tail** `u32`, `overflow_count u32` | render → shim | `Atomics.store` |
@@ -203,7 +203,7 @@ so the low-address control block stays valid.
 | `0x00300` | 64 | ui→core ring head/tail | shell → render | as input ring |
 | `0x00340` | 64 | core→ui ring head/tail | render → shell | as input ring + doorbell |
 | `0x00400` | 16 KiB | copy buffer: `len u32`, `mime u8`, UTF-8 text of the current canvas selection | render → shim | seqlock |
-| `0x04400` | 4 KiB | runtime counters (RUM, [T05 §4.7](T05-testing-and-performance.md#47-real-user-performance-telemetry-dash-observing-itself)) | all → shell | relaxed atomics |
+| `0x04400` | 4 KiB | runtime counters (RUM, [T05 §4.7](T05-testing-and-performance.md#47-real-user-performance-telemetry-dash-observing-itself)); frame statistics at 0x04400–0x04D0F (`dash-protocol::layout`) | all → shell | relaxed atomics |
 | `0x10000` | 64 KiB | input ring data | shim → render | SPSC |
 | `0x20000` | 64 KiB | ui→core ring data | shell → render | SPSC |
 | `0x30000` | 64 KiB | core→ui ring data | render → shell | SPSC |
@@ -213,8 +213,9 @@ slabs** are ordinary Rust allocations in the shared heap (`talc` or `dlmalloc` w
 
 #### T03-005 — Control block layout is versioned and generated
 **MUST** — The control block MUST follow the table above for layout version 1. The JS offsets MUST be
-generated (`layout.gen.js`, by `build.rs` from the Rust record definitions) and diffed in CI. A shim
-whose layout version differs from the core's MUST force a reload.
+generated from `dash-protocol` by `cargo xtask gen` (with capability bits and status codes),
+committed as `web/shim/layout.gen.js`, diffed by `ci:shim-lint`. A shim whose layout version differs
+from the core's MUST force a reload.
 
 #### T03-006 — Rings are SPSC with release/acquire ordering
 **MUST** — Every ring MUST have exactly one producer and one consumer, 8-byte-aligned
@@ -396,7 +397,9 @@ regex literals (use `new RegExp`), writes `/` for division only right after an i
 any other `/`. `ci:dep-audit` admits only the files in this table, each SHA-256-pinned in
 `ci/shim-pins.toml`. wasm-bindgen output (glue, `.wasm`, `snippets/`, the `wasm-bindgen-rayon`
 helper) goes to the git-ignored `web/shim/gen/<crate>/`, accepted only with a regenerate-and-compare
-check ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)).
+check ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)). `layout.gen.js` (unpinned) and
+`gen/dash-core-{mt,st}/` are admitted only when byte-identical to a fresh `cargo xtask gen`; other
+`gen/` entries fail.
 
 ### 5.2 Bootstrap and the network byte pump
 
@@ -405,14 +408,27 @@ check ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)).
 | Field | Type | Notes |
 |---|---|---|
 | `role` | `"render" \| "data" \| "layout" \| "pool" \| "editor" \| "geo"` | |
+| `mode` | `"mt" \| "st"` | which core artefact the worker loads (§9.2) |
 | `index` | `u32` | data worker index; 0 = coordinator |
 | `module` | `WebAssembly.Module` | compiled once on main and structured-cloned to workers |
-| `memory` | `WebAssembly.Memory` | shared; absent for satellites and `-st` |
+| `memory` | `WebAssembly.Memory` | created by the render worker's instantiation, returned in its first `status`; absent for satellites and `-st` |
 | `canvas` | `OffscreenCanvas` | render only (transferred) |
 | `ports` | `MessagePort[]` | doorbells (§4.2) |
 | `main_time_origin` | `f64` | `performance.timeOrigin` of main, to rebase `event.timeStamp` |
 | `caps` | `u32` | capability bits (§9.1) |
+| `query` | `string` | `location.search` (`?mode=`, test-only `?fault=`); a T2 restart passes `"?mode=t2"`. Until `/bootstrap` carries the flags (M-UI1) |
 | `boot` | `ArrayBuffer` | bytes of `GET /api/dash/v1/bootstrap` (session, tenant, scope epoch, wire versions, flags; JSON, parsed in Rust) |
+
+**Worker ↔ boot messages** (besides the handshakes: at most render, a T2 restart and data-0 per page):
+
+| Direction | Message | Fields |
+|---|---|---|
+| render → boot | `{t: "status", status, layout, cb, memory}` | after `render_start`: status code or `RETRY_T2` (§9.3), layout version, control-block address, the shared memory (`mt`; `null` in `st`) |
+| render → boot | `{t: "status", status}` | the frame loop stopped; the control block's status |
+| boot → render (`st`) | `{t: "input", buf, len, dropped}` | once per main rAF while no batch is in flight; `buf` (10 240 bytes) transferred |
+| render → boot (`st`) | `{t: "ack", buf}` | after the batch is in the ring; `buf` transferred back |
+
+Full mode sends input through the input ring, never by message.
 
 **Rust → shim imports** (`#[wasm_bindgen(module = "/web/shim/net.js")]`, data workers only):
 
@@ -486,12 +502,16 @@ multiplies by `dpr`.
 | `0x40` | Paste | 24 + n | 16 `u32` len · 20 `u8` mime (0 text) · 24 UTF-8 (≤ 16 KiB inline; longer is truncated with flag bit3) |
 | `0x7F` | Marker | 24 | 16 `u64` tag (replay sync, [T05 §4.4](T05-testing-and-performance.md#44-deterministic-input-replay-pdrec)) |
 
+`0x00` Wrap: one byte; continue at offset 0. Head and tail are free-running `u32` byte counters; no
+record straddles the end.
+
 Capture rules (`input.js`):
 - Pointer, wheel, contextmenu and dblclick listeners attach to the canvas element. Wheel is
   `{passive:false}` and always `preventDefault()`s. Double-click is *derived in Rust* from pointer
   records, so `dblclick` is only suppressed. `setPointerCapture` runs synchronously on pointerdown.
 - While any button is down, `pointermove` writes `getCoalescedEvents()`, because brush, lasso and
-  draw-to-ask (M-UI4) need the full path.
+  draw-to-ask (M-UI4) need the full path. ≤ 16 per event (T03-003): longer lists subsampled, first
+  and last kept, bit0 set.
 - Key events attach to `window`. They are **not forwarded** when `event.target` is editable
   (`input`, `textarea`, `[contenteditable]`). Otherwise the shim applies T03-013.
 - `copy` on the canvas reads the copy buffer synchronously (seqlock) and calls
@@ -502,7 +522,8 @@ Capture rules (`input.js`):
   pending record (latest position, summed deltas). Discrete records go into a bounded JS backlog of
   1 024 entries that is flushed first on the next event or rAF. Past 1 024 they are dropped and
   `overflow_count` is incremented. At 64 KiB the ring holds about 1 600 pointer records, about 25×
-  the input of a 120 Hz frame with coalesced pen input.
+  the input of a 120 Hz frame with coalesced pen input. A handler writes ≤ 32 queued entries before
+  its own, a main rAF callback ≤ 256 (T03-003, PRF-005); the rest leave later, in order.
 
 #### T03-019 — Input is read at frame start
 **MUST** — The render worker MUST drain the input ring at the start of every frame, before camera
@@ -638,6 +659,7 @@ Brotli sizes, checked per PR by gate `ci:bundle-size` ([PRF-009](../product/09-p
 | shim (all files) | ≤ 8 KB | |
 | `dash-shell.wasm` + glue | ≤ 700 KB | Leptos core, kit core, bridge |
 | `dash-core-mt.wasm` + glue | ≤ 1 900 KB | wgpu (WebGPU + GL), arrow-ipc, marks, scales, text shaping, planner, local engine |
+| `dash-core-st.wasm` + glue | ≤ 1 900 KB | ST fallback (§9.2); loaded instead of core-mt when not isolated (not eager) |
 | **Eager total** | **≤ 2 600 KB** | 400 KB headroom below the 3 MB ceiling of [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) |
 | MSDF atlases (Inter + JetBrains Mono, Latin) | ≤ 250 KB | not WASM; other scripts lazy |
 | `dash-editor.wasm` | ≤ 600 KB | lazy |
@@ -689,9 +711,9 @@ line layout without `cosmic-text`.
 | Condition | Mode | What runs | What the user sees |
 |---|---|---|---|
 | All present | **Full** | §4.2 | — |
-| No WebGPU adapter / device | **Tier T2** ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)) | wgpu GL backend in the render worker; compute on the pool | coverage meter shows "WebGL2 tier" where a ceiling binds |
-| Not cross-origin isolated (headers stripped by a proxy, non-isolated embed) | **Single-thread (ST)** | `dash-core-st` in **one** worker (render + data + layout), no pool; input via `postMessage` with transfer, batched per frame | banner "Reduced performance: cross-origin isolation is off (ask your admin)"; ceilings: 10⁷ line points, 10⁶ scatter, 2k Atlas entities; RUM flags it |
-| No OffscreenCanvas | **Main-thread render (MT-R)** | `dash-core-st` on main, time-sliced (≤ 8 ms per slice), data decoded in a worker and transferred | banner; only Lens, Alert Lens and workbenches supported; Atlas falls back to the Explorer list ([15](../product/15-estate-navigation.md)) |
+| No WebGPU adapter / device | **Tier T2** ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)) | wgpu GL backend in the render worker; compute on the pool. A WebGPU failure after the canvas holds its context restarts the render worker once on a fresh canvas with T2. | coverage meter shows "WebGL2 tier" where a ceiling binds |
+| Not cross-origin isolated (headers stripped by a proxy, non-isolated embed) | **Single-thread (ST)** | `dash-core-st` in **one** worker (render + data + layout), no pool; input via `postMessage` with transfer, batched per frame, ≤ 1 batch unacknowledged (the worker returns the buffer) | banner "Reduced performance: cross-origin isolation is off (ask your admin)"; ceilings: 10⁷ line points, 10⁶ scatter, 2k Atlas entities; RUM flags it |
+| No OffscreenCanvas | **Main-thread render (MT-R)** | `dash-core-st` on main, time-sliced (≤ 8 ms per slice), data decoded in a worker and transferred. Static until MT-R ships (§11). | banner; only Lens, Alert Lens and workbenches supported; Atlas falls back to the Explorer list ([15](../product/15-estate-navigation.md)) |
 | No WebGL2 either | **Static** | shell only; viewports show server-rendered PNGs from the BFF's native renderer ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)), refreshed on Context change | "Interactive charts unavailable on this browser"; Alert Lens, ack and silence still work |
 | GPU device lost | recover | render recreates the device and re-uploads from arena chunks (CPU-resident) | ≤ 500 ms with no blank frame: the last frame stays on screen; logged |
 | Worker crash / WASM trap | recover | panic hook records the trace (RUM); `boot.js` respawns the worker; data workers are restartable; a render restart re-reads the Context from the shell mirror and the URL | toast "Recovered from an error"; a second crash in 60 s → reload prompt with the replay attached ([T05](T05-testing-and-performance.md)) |
@@ -703,9 +725,33 @@ Supported browsers: current and previous Chrome/Edge (T1), Firefox stable and ES
 WebGPU availability in Firefox and Safari differs by OS and version, so the matrix is re-verified at
 each milestone and the probe never hard-codes version numbers.
 
+*Milestone note (#23):* before M-UI4 each mode shows the runtime page's status line and mode banner;
+Alert Lens entries bind from M-UI4.
+
 #### T03-025 — Never a blank page
 **MUST** — Every capability combination MUST map to one of the modes above, and every mode MUST show
-the chrome and at least the Alert Lens path.
+the chrome and at least the Alert Lens path. *Milestone note:* before M-UI4, 'the chrome' is the
+runtime page with its status line and mode banner; the Alert Lens clause applies from M-UI4 (#23).
+
+### 9.3 Runtime status codes
+
+The render worker writes the status to the control block (`0x20`); `boot.js` mirrors it to
+`<html data-dash-status>` and sets `<html data-dash-mode>` (`mt` | `st`) before spawning workers.
+All text is in `index.html`.
+
+| Status | Page shows | Canvas |
+|---|---|---|
+| 0 Booting (initial) | — | visible |
+| 1 TierT1 | badge "Tier: WebGPU (T1)" | visible |
+| 2 TierT2 | badge "Tier: WebGL2 (T2)" | visible |
+| 3 Static (no adapter; no OffscreenCanvas) | "Interactive charts unavailable on this browser" | hidden |
+| 4 Failed | "Interactive charts failed. Reload the page." | hidden |
+| 5 Stale | "Pulsus was updated — reload" | hidden |
+| mode `st` (any status) | banner "Reduced performance: cross-origin isolation is off (ask your admin)" | — |
+
+`RETRY_T2` (`0x100`) is a `render_start` result, never written to the page: the canvas is committed
+to a failed WebGPU context, so `boot.js` restarts the render worker once on a fresh canvas with
+`?mode=t2`; a second `RETRY_T2` is Failed. Booting longer than 10 s is Failed.
 
 ## 10. Testing
 
@@ -714,7 +760,7 @@ Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
   asserts that the Rust decoder sees the same values. `layout.gen.js` is regenerated and diffed in CI
   (`ci:shim-lint`) once its generator exists (T05 §7.1).
 - **Mode matrix** (`e2e:mode-matrix`). Each §9.2 mode is forced by query flag
-  (`?mode=st|mtr|static`) and gets a smoke suite in CI.
+  (`?mode=t2|st|mtr|static`) and gets a smoke suite in CI.
 - **Ring stress** (`unit:ring-stress`). Native loom/shuttle tests of the SPSC rings and the
   chunk-table pinning. A wasm test pushes 10⁶ records through each ring, stalling the consumer at
   random to exercise the overflow path.
@@ -729,8 +775,8 @@ Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
 
 | Milestone | Ships |
 |---|---|
-| M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode, size gate |
-| M-UI1 | shell/core split (Leptos on main), ui↔core rings, keymap in core with captured chords, URL/history and `cam` codec, undo stack, `dash-editor` satellite, workbench satellites, `-st` artefact, MT-R mode |
+| M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode with the `-st` artefact, size gate; no OffscreenCanvas → Static |
+| M-UI1 | shell/core split (Leptos on main), ui↔core rings, keymap in core with captured chords, URL/history and `cam` codec, undo stack, `dash-editor` satellite, workbench satellites, MT-R mode |
 | M-UI2–M-UI3 | layout worker under load (T14 (draft)), local engine in core (T13 (draft)), memory degradation at scale |
 | M-UI5 | `dash-geo`, admin rooms satellite, `sw.js` (T20 (draft)) |
 | M-UI6 | gamepad and SpaceMouse capture; third-party vis satellites ([T18](T18-security.md)) |
@@ -790,3 +836,4 @@ which forces a reload.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T03-001 to T03-025; added the state reducer and propagation table (§4.4), the keymap engine (§4.5) and the URL/camera codec (§4.6); gamepad deferred to M-UI6; workbench satellites; Satisfies table |
 | 1.0-rc | 2026-11-18 | #22: §5.1 states what `ci:shim-lint` counts, the `/` rule for shim code and the SHA-256 pins checked by `ci:dep-audit`; generated output goes to the git-ignored `web/shim/gen/<crate>/`; T03-001 exclusions and the §10 `layout.gen.js` diff apply once their regenerate-and-compare checks exist; §7.3 is report-only until enforcement is enabled and names the artefact → path mapping |
+| 1.0-rc | 2026-11-18 | #23: §4.3 header and counters rows name the fields and offsets; T03-005 names its generator (`cargo xtask gen`, `layout.gen.js`); §5.1 admits `layout.gen.js` and `gen/dash-core-{mt,st}/` by regenerate-and-compare; §5.2 handshake `mode`, `query`, `memory` and the worker messages; §5.4 coalescing and flush bounds, the wrap marker; §7.3 `dash-core-st` row; §9.2 ST batch bound, T2 restart, Static without OffscreenCanvas, milestone note; T03-025 milestone note; new §9.3 status codes; §10 `?mode=t2`; §11 ST with the `-st` artefact in M-UI0 |

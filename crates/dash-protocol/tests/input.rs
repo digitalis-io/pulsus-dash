@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Input record decode/encode (T03 §5.4).
 
 use dash_protocol::input::{DecodeError, InputRecord, PointerPhase, RecordHeader, decode, encode};

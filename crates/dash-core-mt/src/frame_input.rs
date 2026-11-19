@@ -1,22 +1,56 @@
-//! Frame-start input (T03-019) and ST input batches (T03-020, T03-022). Stub.
+//! Frame-start input (T03-019) and ST input batches (T03-020, T03-022).
 
-use dash_protocol::input::{InputRecord, RecordHeader};
+use dash_protocol::input::{InputRecord, RecordHeader, decode};
+use dash_protocol::layout::off;
 use dash_protocol::ring::RingView;
 use dash_scene::spike::SpikeScene;
 
-/// Step 2 of the frame: drains the ring into the scene; returns records drained.
+/// Step 2 of the frame (plan §4.5): drains every record present at frame start into the scene,
+/// before any update; `log` (if any) receives each record with `frame_no`. Returns the records
+/// drained.
 pub fn begin_frame(
-    _ring: &mut RingView,
-    _scene: &mut SpikeScene,
-    _frame_no: u64,
-    _log: Option<&mut Vec<(RecordHeader, InputRecord, u64)>>,
+    ring: &mut RingView,
+    scene: &mut SpikeScene,
+    frame_no: u64,
+    mut log: Option<&mut Vec<(RecordHeader, InputRecord, u64)>>,
 ) -> u32 {
-    0
+    ring.drain(&mut |h, r| {
+        scene.apply(&r);
+        if let Some(l) = log.as_deref_mut() {
+            l.push((h, r, frame_no));
+        }
+    })
 }
 
-/// ST: pushes a batch's records in order; returns records pushed.
-pub fn push_batch(_ring: &mut RingView, _bytes: &[u8], _dropped: u32) -> u32 {
-    0
+/// ST: pushes a batch's records in order. An undecodable record: it and the rest are dropped,
+/// `FS_RING_CORRUPT += 1`. `RingFull`: it and the rest are dropped, each counted in
+/// `INPUT_OVERFLOW`, plus `dropped` (records the main thread dropped). Returns records pushed.
+pub fn push_batch(ring: &mut RingView, bytes: &[u8], dropped: u32) -> u32 {
+    let mut rest = bytes;
+    let mut pushed = 0;
+    let mut overflow = dropped;
+    let mut full = false;
+    while !rest.is_empty() {
+        let size = match decode(rest) {
+            Ok((h, _)) => usize::from(h.size),
+            Err(_) => {
+                ring.add_counter(off::FS_RING_CORRUPT, 1);
+                break;
+            }
+        };
+        let (rec, tail) = rest.split_at(size.min(rest.len()));
+        if !full && ring.push(rec).is_ok() {
+            pushed += 1;
+        } else {
+            full = true;
+            overflow += 1;
+        }
+        rest = tail;
+    }
+    if overflow > 0 {
+        ring.add_counter(off::INPUT_OVERFLOW, overflow);
+    }
+    pushed
 }
 
 #[cfg(test)]
@@ -24,7 +58,6 @@ mod tests {
     use super::*;
     use crate::control::Control;
     use dash_protocol::input::{PointerPhase, encode};
-    use dash_protocol::layout::off;
     use std::sync::atomic::Ordering::Relaxed;
 
     fn mv(seq: u32, x: f32, y: f32) -> Vec<u8> {

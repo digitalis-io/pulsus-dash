@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Control block layout v1 against T03 §4.3 and its generated JS mirror (T03-005).
 
 use std::path::Path;
@@ -120,7 +121,7 @@ fn layout_fields_aligned_and_inside() {
             );
         }
     }
-    assert!(off::FS_RECENT_CPU + 1024 <= 0x5400);
+    const { assert!(off::FS_RECENT_CPU + 1024 <= 0x5400) };
     let js = render_js();
     let offs = js
         .lines()

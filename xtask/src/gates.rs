@@ -16,25 +16,27 @@ pub enum Gate {
     Clippy,
     Test,
     Wasm,
+    ProbeAbsent,
     BundleSize,
     DesignCheck,
     ShimLint,
     DepAudit,
-    ProbeAbsent,
     E2e,
 }
 
 impl Gate {
-    pub const ALL: [Gate; 9] = [
+    pub const ALL: [Gate; 11] = [
         Gate::Fmt,
         Gate::Build,
         Gate::Clippy,
         Gate::Test,
         Gate::Wasm,
+        Gate::ProbeAbsent,
         Gate::BundleSize,
         Gate::DesignCheck,
         Gate::ShimLint,
         Gate::DepAudit,
+        Gate::E2e,
     ];
 
     pub fn id(self) -> &'static str {
@@ -48,7 +50,8 @@ impl Gate {
             Gate::DesignCheck => "design-check",
             Gate::ShimLint => "shim-lint",
             Gate::DepAudit => "dep-audit",
-            Gate::ProbeAbsent | Gate::E2e => "",
+            Gate::ProbeAbsent => "probe-absent",
+            Gate::E2e => "e2e",
         }
     }
 
@@ -57,6 +60,7 @@ impl Gate {
     }
 
     /// The cargo invocations of the five cargo gates (run in order; the first failure stops).
+    /// `wasm` then generates both core artefacts into `web/shim/gen/` (plan §3.7).
     fn cargo_commands(self) -> &'static [&'static [&'static str]] {
         match self {
             Gate::Fmt => &[&["fmt", "--all", "--check"]],
@@ -151,6 +155,9 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
                     });
                 }
             }
+            if gate == Gate::Wasm {
+                crate::r#gen::generate(root, &crate::r#gen::GenOptions::release(root))?;
+            }
             Ok(GateResult::Pass { output })
         }
         Gate::BundleSize => {
@@ -189,13 +196,25 @@ pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
             Ok(verdict(report.violations, output))
         }
         Gate::DepAudit => Ok(verdict(dep_audit::audit(root)?, String::new())),
-        Gate::ProbeAbsent | Gate::E2e => Ok(GateResult::Pass {
-            output: String::new(),
-        }),
+        Gate::ProbeAbsent => Ok(verdict(crate::probe::probe_absent(root)?, String::new())),
+        Gate::E2e => {
+            let (violations, playwright_passed) = crate::e2e::run(root)?;
+            emit(&violations);
+            if playwright_passed && violations.is_empty() {
+                Ok(GateResult::Pass {
+                    output: String::new(),
+                })
+            } else {
+                Ok(GateResult::Fail {
+                    violations,
+                    output: "playwright or the trace check failed".into(),
+                })
+            }
+        }
     }
 }
 
-/// Runs all nine gates in [`Gate::ALL`] order; never stops early.
+/// Runs all eleven gates in [`Gate::ALL`] order; never stops early.
 pub fn run_all(root: &Path) -> Vec<(Gate, R<GateResult>)> {
     Gate::ALL
         .into_iter()

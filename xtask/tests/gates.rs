@@ -100,7 +100,7 @@ fn job_blocks(wf: &str) -> Vec<(String, Vec<String>)> {
             && line.ends_with(':')
             && line[2..line.len() - 1]
                 .chars()
-                .all(|c| c.is_ascii_lowercase() || c == '-');
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
         if is_job {
             blocks.push((line[2..line.len() - 1].to_string(), Vec::new()));
         } else if let Some(b) = blocks.last_mut() {
