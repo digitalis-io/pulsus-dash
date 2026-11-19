@@ -1,0 +1,2 @@
+datasources_bootstrap:
+  - url: http://pulsusdb.seeded.net:8080
