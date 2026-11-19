@@ -344,3 +344,16 @@ async fn health_routes() {
     );
     assert_eq!(h(&r, "cache-control"), Some("no-store"));
 }
+
+#[test]
+fn gateway_config_debug_redacts_url() {
+    let cfg = GatewayConfig {
+        assets_dir: "web".into(),
+        public_url: Some(url::Url::parse("https://pub.sentinel.invalid/pp-path-s/").unwrap()),
+    };
+    let text = format!("{cfg:?}");
+    assert!(
+        !text.contains("sentinel") && !text.contains("pp-path-s"),
+        "{text}"
+    );
+}

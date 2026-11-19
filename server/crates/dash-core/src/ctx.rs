@@ -186,6 +186,23 @@ mod tests {
     }
 
     #[test]
+    fn tenant_debug_redacts_url() {
+        let mut b = binding("tenant-a");
+        b.datasource_url = Url::parse("http://pulsusdb.sentinel.invalid:9/p-tok-s/").unwrap();
+        let ctx = TenantCtx {
+            org: OrgId::new_v7(),
+            binding: b.clone(),
+        };
+        for text in [format!("{b:?}"), format!("{ctx:?}")] {
+            assert!(
+                !text.contains("sentinel") && !text.contains("p-tok-s"),
+                "{text}"
+            );
+            assert!(text.contains("<redacted>"), "{text}");
+        }
+    }
+
+    #[test]
     fn deadline_remaining_saturates() {
         let d = Deadline::after(Duration::ZERO);
         assert_eq!(d.remaining(), Duration::ZERO);
