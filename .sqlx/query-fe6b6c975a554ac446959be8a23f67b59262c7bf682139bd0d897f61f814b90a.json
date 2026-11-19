@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, slug, datasource_url, database, scope_org_id FROM tenant_bindings\n          WHERE org_id = $1 ORDER BY slug",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenant_bindings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tenant_bindings",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "datasource_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tenant_bindings",
+            "name": "datasource_url"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "database",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tenant_bindings",
+            "name": "database"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "scope_org_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tenant_bindings",
+            "name": "scope_org_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "fe6b6c975a554ac446959be8a23f67b59262c7bf682139bd0d897f61f814b90a"
+}

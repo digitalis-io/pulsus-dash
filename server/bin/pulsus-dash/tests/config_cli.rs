@@ -13,6 +13,7 @@ const URL: Option<&str> = Some("http://pulsusdb.invalid:9");
 
 struct Case {
     dir: tempfile::TempDir,
+    written: std::cell::Cell<usize>,
 }
 
 impl Case {
@@ -20,12 +21,17 @@ impl Case {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("assets")).unwrap();
         std::fs::write(dir.path().join("assets/index.html"), "<p>x</p>").unwrap();
-        Case { dir }
+        Case {
+            dir,
+            written: std::cell::Cell::new(0),
+        }
     }
 
     fn config(&self, pg: &str, url: Option<&str>, extra: &str, seed: &str) -> String {
         let text = valid_yaml(&self.dir.path().join("assets"), pg, url, extra, seed);
-        write(self.dir.path(), "cfg.yaml", &text)
+        let n = self.written.get() + 1;
+        self.written.set(n);
+        write(self.dir.path(), &format!("cfg-{n}.yaml"), &text)
             .display()
             .to_string()
     }
@@ -60,7 +66,9 @@ fn cli_secrets_never_logged() {
 #[test]
 fn cli_config_errors_exit_2() {
     let c = Case::new();
-    let cases: Vec<(String, Vec<&str>, Vec<(&str, &str)>, Vec<&str>)> = vec![
+    /// (config path, extra args, env, wanted output fragments)
+    type ErrorCase<'a> = (String, Vec<&'a str>, Vec<(&'a str, &'a str)>, Vec<&'a str>);
+    let cases: Vec<ErrorCase> = vec![
         (
             c.config(PG_UNREACHABLE, URL, "listen_port: 1\n", ""),
             vec![],

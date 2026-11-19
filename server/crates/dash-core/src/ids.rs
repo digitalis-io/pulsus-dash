@@ -62,8 +62,17 @@ pub struct InvalidScopeOrgId;
 impl ScopeOrgId {
     /// Parses a header value; empty → `Ok(None)` (the header is omitted).
     pub fn parse(s: &str) -> Result<Option<Self>, InvalidScopeOrgId> {
-        let _ = s;
-        Ok(None)
+        if s.is_empty() {
+            return Ok(None);
+        }
+        let ok = s.len() <= SCOPE_ORG_ID_MAX
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'));
+        if ok {
+            Ok(Some(Self(s.to_string())))
+        } else {
+            Err(InvalidScopeOrgId)
+        }
     }
 
     pub fn as_str(&self) -> &str {

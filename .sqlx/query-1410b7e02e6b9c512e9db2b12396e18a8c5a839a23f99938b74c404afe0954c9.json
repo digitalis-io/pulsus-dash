@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT level FROM pulsus_schema_level",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "level",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pulsus_schema_level",
+            "name": "level"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1410b7e02e6b9c512e9db2b12396e18a8c5a839a23f99938b74c404afe0954c9"
+}

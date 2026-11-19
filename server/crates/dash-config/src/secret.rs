@@ -22,8 +22,30 @@ pub enum SecretRef {
 impl SecretRef {
     /// Classifies `raw` (plan §3.3); `key` names the setting in errors.
     pub fn parse(raw: &str, key: &str, allow_inline: bool) -> Result<SecretRef, ConfigError> {
-        let _ = (raw, allow_inline);
-        Err(invalid(key, "not implemented"))
+        if let Some(name) = raw.strip_prefix("env:") {
+            return Ok(SecretRef::Env(name.to_string()));
+        }
+        if let Some(path) = raw.strip_prefix("file:") {
+            return Ok(SecretRef::File(PathBuf::from(path)));
+        }
+        if let Some((scheme, _)) = raw.split_once(':')
+            && UNSUPPORTED_STORES.contains(&scheme)
+        {
+            return Err(invalid(
+                key,
+                &format!(
+                    "reference scheme `{scheme}` is not supported in this release; use env: or file:"
+                ),
+            ));
+        }
+        if allow_inline {
+            Ok(SecretRef::Inline(Secret::new(raw.to_string())))
+        } else {
+            Err(invalid(
+                key,
+                "literal secrets are refused; use env: or file:, or set allow_inline_secrets: true (dev only)",
+            ))
+        }
     }
 
     /// Resolves against the process environment and file system.
@@ -37,8 +59,22 @@ impl SecretRef {
     /// Resolves `env:` against `env` (a snapshot of the process environment); a `file:` path
     /// has one trailing `\n` trimmed.
     pub fn resolve_in(&self, key: &str, env: &[(String, String)]) -> Result<Secret, ConfigError> {
-        let _ = env;
-        Err(invalid(key, "not implemented"))
+        match self {
+            SecretRef::Env(name) => env
+                .iter()
+                .find(|(k, v)| k == name && !v.is_empty())
+                .map(|(_, v)| Secret::new(v.clone()))
+                .ok_or_else(|| invalid(key, &format!("environment variable {name} is not set"))),
+            SecretRef::File(path) => {
+                let mut text = std::fs::read_to_string(path)
+                    .map_err(|_| invalid(key, "cannot read the referenced file"))?;
+                if text.ends_with('\n') {
+                    text.pop();
+                }
+                Ok(Secret::new(text))
+            }
+            SecretRef::Inline(s) => Ok(s.clone()),
+        }
     }
 }
 
@@ -48,9 +84,15 @@ pub fn resolve_postgres_url(
     key: &str,
     env: &[(String, String)],
 ) -> Result<Secret, ConfigError> {
-    let _ = (r, env);
-    Err(invalid(key, "not implemented"))
+    let secret = r.resolve_in(key, env)?;
+    match url::Url::parse(secret.expose()) {
+        Ok(u) if matches!(u.scheme(), "postgres" | "postgresql") => Ok(secret),
+        _ => Err(invalid(key, "must be a postgres:// URL")),
+    }
 }
+
+/// T18 §4.8 secret stores, not supported until the secrets store exists.
+const UNSUPPORTED_STORES: [&str; 4] = ["vault", "aws-sm", "gcp-sm", "azure-kv"];
 
 fn invalid(key: &str, reason: &str) -> ConfigError {
     ConfigError::Invalid {

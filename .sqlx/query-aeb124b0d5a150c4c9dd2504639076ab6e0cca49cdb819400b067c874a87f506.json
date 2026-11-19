@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT (SELECT level FROM pulsus_schema_level) AS \"level?\",\n                      EXISTS (SELECT 1 FROM _sqlx_migrations WHERE version = $1 AND success) AS \"applied!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "level?",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "applied!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "aeb124b0d5a150c4c9dd2504639076ab6e0cca49cdb819400b067c874a87f506"
+}

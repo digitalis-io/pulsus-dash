@@ -15,6 +15,20 @@ pub struct RoleRow {
 
 /// The org's roles, by name.
 pub async fn list(tx: &mut OrgTx) -> Result<Vec<RoleRow>, StoreError> {
-    let _ = tx;
-    Err(StoreError::NotMigrated)
+    let org = tx.org();
+    let rows = sqlx::query!(
+        r#"SELECT id, name AS "name!", builtin FROM roles WHERE org_id = $1 ORDER BY name"#,
+        org.0
+    )
+    .fetch_all(tx.conn())
+    .await
+    .map_err(StoreError::from_sqlx)?;
+    Ok(rows
+        .into_iter()
+        .map(|r| RoleRow {
+            id: RoleId(r.id),
+            name: r.name,
+            builtin: r.builtin,
+        })
+        .collect())
 }

@@ -25,7 +25,9 @@ pub struct TenantBinding {
 impl TenantBinding {
     /// `("X-Scope-OrgID", value)` when the binding has a scope; `None` omits the header.
     pub fn scope_header(&self) -> Option<(&'static str, &str)> {
-        None
+        self.scope_org_id
+            .as_ref()
+            .map(|s| (SCOPE_HEADER, s.as_str()))
     }
 }
 
@@ -118,11 +120,12 @@ impl Deadline {
 
     /// Time left; zero once expired.
     pub fn remaining(&self) -> Duration {
-        Duration::from_secs(1)
+        self.0
+            .saturating_duration_since(tokio::time::Instant::now())
     }
 
     pub fn is_expired(&self) -> bool {
-        false
+        self.remaining().is_zero()
     }
 }
 

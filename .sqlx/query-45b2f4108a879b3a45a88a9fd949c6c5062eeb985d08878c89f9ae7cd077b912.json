@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT bootstrap_find_org($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "bootstrap_find_org",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "45b2f4108a879b3a45a88a9fd949c6c5062eeb985d08878c89f9ae7cd077b912"
+}

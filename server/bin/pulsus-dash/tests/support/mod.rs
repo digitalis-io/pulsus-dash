@@ -12,9 +12,11 @@ use std::time::{Duration, Instant};
 
 pub const BIN: &str = env!("CARGO_BIN_EXE_pulsus-dash");
 
-/// `GET path` on `localhost:port`: (status, lower-cased headers, body), or `None` if the
-/// connection fails.
-pub fn http_get(port: u16, path: &str) -> Option<(u16, Vec<(String, String)>, String)> {
+/// Status, lower-cased headers and body of a response.
+pub type HttpResponse = (u16, Vec<(String, String)>, String);
+
+/// `GET path` on `localhost:port`, or `None` if the connection fails.
+pub fn http_get(port: u16, path: &str) -> Option<HttpResponse> {
     let mut s =
         TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2)).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;

@@ -48,12 +48,17 @@ impl TestDb {
             .map_err(StoreError::from_sqlx)?;
         roles.map_err(StoreError::from_sqlx)?;
         let name = format!("itest_{}", Uuid::now_v7().simple());
-        sqlx::raw_sql(AssertSqlSafe(format!(
-            "CREATE DATABASE {name} OWNER pulsus_owner; GRANT CONNECT ON DATABASE {name} TO pulsus_app, pulsus_maint;"
-        )))
-        .execute(&mut conn)
-        .await
-        .map_err(StoreError::from_sqlx)?;
+        // Separate statements: CREATE DATABASE cannot run in the implicit multi-statement
+        // transaction.
+        for sql in [
+            format!("CREATE DATABASE {name} OWNER pulsus_owner"),
+            format!("GRANT CONNECT ON DATABASE {name} TO pulsus_app, pulsus_maint"),
+        ] {
+            sqlx::raw_sql(AssertSqlSafe(sql))
+                .execute(&mut conn)
+                .await
+                .map_err(StoreError::from_sqlx)?;
+        }
         Ok(TestDb { name, admin })
     }
 

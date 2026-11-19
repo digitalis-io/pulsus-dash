@@ -1,0 +1,5 @@
+# squawk (T11-013) for `cargo xtask ci migrations`. Every migration runs in a transaction (sqlx);
+# the runner sets lock_timeout (plan §3.8).
+pg_version = "15.0"
+assume_in_transaction = true
+excluded_rules = ["prefer-robust-stmts", "require-timeout-settings"]

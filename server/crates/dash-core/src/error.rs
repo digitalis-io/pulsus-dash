@@ -18,7 +18,13 @@ pub enum ErrorCode {
 impl ErrorCode {
     /// The HTTP status the code is sent with.
     pub fn http_status(self) -> u16 {
-        500
+        match self {
+            ErrorCode::ScopeDenied | ErrorCode::Forbidden => 403,
+            ErrorCode::BudgetExhausted => 429,
+            ErrorCode::TooBroad => 422,
+            ErrorCode::Unavailable => 503,
+            ErrorCode::Invalid | ErrorCode::VirtualUnsupported => 400,
+        }
     }
 }
 
@@ -55,11 +61,10 @@ impl DashError {
         message: impl Into<String>,
         hint: Option<serde_json::Value>,
     ) -> Self {
-        let _ = hint;
         Self {
             code,
             message: message.into(),
-            hint: None,
+            hint,
             query_id: None,
             fields: Vec::new(),
         }

@@ -2,12 +2,24 @@
 //! Health routes, the CSP report endpoint and static assets with the T18-002 headers. See
 //! `docs/server/architecture.md`.
 
+mod assets;
+mod csp_report;
+mod headers;
+mod health;
+
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use dash_core::HealthProbe;
+use axum::Router;
+use axum::body::Body;
+use axum::http::StatusCode;
+use axum::response::Response;
+use axum::routing::{get, post};
+use dash_core::{DashError, ErrorEnvelope, HealthProbe};
 use url::Url;
+
+pub use headers::{REPORT_PATH, csp};
 
 /// What the router serves.
 #[derive(Clone, Debug)]
@@ -17,25 +29,50 @@ pub struct GatewayConfig {
     pub public_url: Option<Url>,
 }
 
-/// The full router.
-pub fn router(cfg: &GatewayConfig, health: Arc<dyn HealthProbe>) -> axum::Router {
-    let _ = (cfg, health);
-    axum::Router::new()
-}
-
-/// The Content-Security-Policy (T18-002).
-pub fn csp(public_url: Option<&Url>) -> String {
-    let _ = public_url;
-    String::new()
+/// The full router (plan §3.7).
+pub fn router(cfg: &GatewayConfig, health: Arc<dyn HealthProbe>) -> Router {
+    let headers = headers::Headers::new(cfg.public_url.as_ref());
+    let statics = Router::new()
+        .fallback_service(assets::service(&cfg.assets_dir))
+        .layer(axum::middleware::from_fn_with_state(
+            headers,
+            assets::headers,
+        ));
+    let reports = Router::new()
+        .route(REPORT_PATH, post(csp_report::handle))
+        .with_state(csp_report::Bucket::new());
+    Router::new()
+        .route("/healthz", get(health::healthz))
+        .route("/startupz", get(health::startupz))
+        .route("/readyz", get(health::readyz))
+        .with_state(health)
+        .merge(reports)
+        .fallback_service(statics)
 }
 
 /// Serves `router` on `listener` until `shutdown` resolves, then drains in-flight requests.
 pub async fn serve(
     listener: tokio::net::TcpListener,
-    router: axum::Router,
+    router: Router,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown)
         .await
+}
+
+/// A JSON body with the JSON header set.
+pub(crate) fn json_response(status: StatusCode, body: &serde_json::Value) -> Response {
+    let mut r = Response::new(Body::from(body.to_string()));
+    *r.status_mut() = status;
+    headers::json(r.headers_mut());
+    r
+}
+
+/// The T06 §5.2 envelope with the code's status.
+pub(crate) fn error_response(e: &DashError) -> Response {
+    let status =
+        StatusCode::from_u16(e.code.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let body = serde_json::to_value(ErrorEnvelope { error: e }).unwrap_or_default();
+    json_response(status, &body)
 }

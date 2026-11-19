@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT set_config('pulsus.org_id', $1, true) AS \"org!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "org!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "5d4643c0f9d28d63f76c37e5ef9cdc1352a63eb3602f491ccad6cb9d0417f182"
+}

@@ -25,16 +25,43 @@ pub enum StoreError {
 impl StoreError {
     /// Maps a `sqlx` error by SQLSTATE and kind.
     pub fn from_sqlx(e: sqlx::Error) -> Self {
-        StoreError::Other(e)
+        match &e {
+            sqlx::Error::Database(db) => match db.code().as_deref() {
+                Some("42P01") => StoreError::NotMigrated,
+                Some("23505") => StoreError::Conflict(db.message().to_string()),
+                Some("42501") => StoreError::Rls(db.message().to_string()),
+                Some(c) if c == "57P01" || c.starts_with("08") => StoreError::Unavailable(e),
+                _ => StoreError::Other(e),
+            },
+            sqlx::Error::Io(_)
+            | sqlx::Error::Tls(_)
+            | sqlx::Error::PoolTimedOut
+            | sqlx::Error::PoolClosed => StoreError::Unavailable(e),
+            _ => StoreError::Other(e),
+        }
     }
 
     /// A fixed, loggable name of the variant.
     pub fn kind(&self) -> &'static str {
-        "other"
+        match self {
+            StoreError::Unavailable(_) => "unavailable",
+            StoreError::NotMigrated => "not_migrated",
+            StoreError::SchemaTooNew { .. } => "schema_too_new",
+            StoreError::Conflict(_) => "conflict",
+            StoreError::Rls(_) => "rls",
+            StoreError::Other(_) => "other",
+        }
     }
 
     /// The SQLSTATE of a database error, if any.
     pub fn sqlstate(&self) -> Option<String> {
-        None
+        match self {
+            StoreError::Unavailable(sqlx::Error::Database(db))
+            | StoreError::Other(sqlx::Error::Database(db)) => db.code().map(|c| c.to_string()),
+            StoreError::NotMigrated => Some("42P01".into()),
+            StoreError::Conflict(_) => Some("23505".into()),
+            StoreError::Rls(_) => Some("42501".into()),
+            _ => None,
+        }
     }
 }

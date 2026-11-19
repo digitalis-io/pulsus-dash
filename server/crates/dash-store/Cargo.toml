@@ -13,7 +13,7 @@ test-support = []
 [dependencies]
 dash-core.workspace = true
 sqlx.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["time"] }
 uuid.workspace = true
 time.workspace = true
 thiserror.workspace = true

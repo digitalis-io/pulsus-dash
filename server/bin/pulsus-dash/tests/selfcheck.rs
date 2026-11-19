@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! The public-URL self-check outcomes (T19-002, plan §3.9).
 
+#[allow(dead_code)] // run_and_log and origin are used by the binary only
 #[path = "../src/selfcheck.rs"]
 mod selfcheck;
 mod support;
