@@ -20,6 +20,8 @@ flatbuffers = { version = "25.12.19", default-features = false, optional = true 
 
 [dev-dependencies]
 dash-wire = { path = ".", features = ["test-cases"] }
+arrow-array.workspace = true
+arrow-buffer.workspace = true
 arrow-ipc.workspace = true
 arrow-schema.workspace = true
 

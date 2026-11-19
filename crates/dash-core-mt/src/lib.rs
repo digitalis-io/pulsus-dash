@@ -11,6 +11,7 @@ pub mod control;
 pub mod flags;
 pub mod frame_input;
 pub mod frame_stats;
+pub mod line_dirty;
 pub mod line_load;
 pub mod line_table;
 

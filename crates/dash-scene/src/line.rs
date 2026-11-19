@@ -488,6 +488,34 @@ mod tests {
     }
 
     #[test]
+    fn tiny_canvas_draws_nothing_until_restored() {
+        let mut s = LineScene::new();
+        s.set_layer(layer(1_000, 1, 1));
+        s.add_series(prepared(0.0, -1.0, 1.0));
+        s.set_canvas(856.0, 432.0, 1.0);
+        assert!(s.frame(&LAYOUT).is_some());
+        // Smaller than the insets (48 + 8 by 8 + 24 CSS px): no usable plot, nothing to draw.
+        for (w, h) in [(20.0, 300.0), (300.0, 20.0), (56.0, 432.0), (1.0, 1.0)] {
+            s.set_canvas(w, h, 1.0);
+            assert!(s.frame(&LAYOUT).is_none(), "{w} × {h}");
+        }
+        s.set_canvas(856.0, 432.0, 2.0);
+        let f = s.frame(&LAYOUT).unwrap();
+        assert_eq!(
+            f.plot,
+            Plot {
+                x0: 96.0,
+                y0: 48.0,
+                w: 1_600,
+                h: 800
+            }
+        );
+        // The plot lies inside the canvas.
+        assert!(f.plot.x0 + f.plot.w as f32 <= f.uniforms.canvas_px[0]);
+        assert!(f.plot.y0 + f.plot.h as f32 <= f.uniforms.canvas_px[1]);
+    }
+
+    #[test]
     fn coverage_reasons() {
         let mut s = LineScene::new();
         s.set_layer(layer(100, 1_000, 100));

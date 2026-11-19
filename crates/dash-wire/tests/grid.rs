@@ -149,6 +149,80 @@ fn grid_rejects_bad_input() {
 }
 
 #[test]
+fn grid_rejects_bad_time_unit_and_nullable_parents() {
+    let m = meta(100);
+    let bad_unit = with_metadata(&m, |md| {
+        md.insert("dash.time_unit", "s");
+    });
+    assert_eq!(new_err(&bad_unit), WireError::Metadata("dash.time_unit"));
+    let no_unit = with_metadata(&m, |md| {
+        md.remove("dash.time_unit");
+    });
+    assert_eq!(new_err(&no_unit), WireError::Metadata("dash.time_unit"));
+    let s = grid_schema(&m);
+    let nullable = |i: usize| {
+        let fields: Vec<Field> = (0..2)
+            .map(|j| {
+                let f = s.field(j).clone();
+                if i == j { f.with_nullable(true) } else { f }
+            })
+            .collect();
+        schema_message(Schema::new(fields).with_metadata(s.metadata().clone()))
+    };
+    assert_eq!(new_err(&nullable(0)), WireError::Schema("series_id"));
+    assert_eq!(new_err(&nullable(1)), WireError::Schema("values"));
+}
+
+/// A batch message of `m`'s grid whose row 1 has a null `series_id` (`id_null`) or a null
+/// `values` list, written with nullable parent fields.
+fn null_parent_batch(m: &GridMeta, id_null: bool) -> Vec<u8> {
+    use arrow_array::{FixedSizeListArray, Float64Array, RecordBatch, UInt32Array};
+    let s = grid_schema(m);
+    let fields: Vec<Field> = (0..2)
+        .map(|j| s.field(j).clone().with_nullable(true))
+        .collect();
+    let schema = Arc::new(Schema::new(fields).with_metadata(s.metadata().clone()));
+    let ids = if id_null {
+        UInt32Array::from(vec![Some(0), None])
+    } else {
+        UInt32Array::from(vec![Some(0), Some(1)])
+    };
+    let item = Arc::new(Field::new("item", DataType::Float64, true));
+    let child = Float64Array::from(vec![1.0; 2 * m.len as usize]);
+    let lists = FixedSizeListArray::try_new(
+        item,
+        m.len as i32,
+        Arc::new(child),
+        (!id_null).then(|| arrow_buffer::NullBuffer::from(vec![true, false])),
+    )
+    .unwrap();
+    let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(ids), Arc::new(lists)]).unwrap();
+    let opts = IpcWriteOptions::try_new(64, false, arrow_ipc::MetadataVersion::V5).unwrap();
+    let mut w = StreamWriter::try_new_with_options(Vec::new(), &schema, opts).unwrap();
+    std::mem::take(w.get_mut());
+    w.write(&batch).unwrap();
+    std::mem::take(w.get_mut())
+}
+
+#[test]
+fn grid_rejects_null_parents() {
+    let m = meta(100);
+    let (schema, _) = encode(&m, &[row(0, 100)]);
+    let dec = GridDecoder::new(&Slab::copy_from(&schema).unwrap()).unwrap();
+    for (id_null, field) in [(true, "series_id"), (false, "values")] {
+        let err = dec
+            .decode(&Slab::copy_from(&null_parent_batch(&m, id_null)).unwrap())
+            .unwrap_err();
+        // The decoder's schema is always non-nullable (nullable parents fail `GridDecoder::new`),
+        // so Arrow's validation rejects the batch before any row is extracted.
+        assert!(
+            matches!(&err, WireError::Ipc(e) if e.contains(&format!("'{field}' is declared as non-nullable"))),
+            "{field}: {err:?}"
+        );
+    }
+}
+
+#[test]
 fn check_message_hostile() {
     let cases = hostile_cases();
     let names: Vec<&str> = cases.iter().map(|c| c.0).collect();
