@@ -38,6 +38,10 @@ pub const LINE_DRAW_WGSL: &str = concat!(
     include_str!("line_draw.wgsl")
 );
 
+/// Per array texture on T2: the GL backend does not report allocation failure (6 × 64 MiB of
+/// values drew flat lines on ANGLE/SwiftShader). T1 passes `u64::MAX`.
+pub const T2_MAX_TEXTURE_BYTES: u64 = 256 << 20;
+
 /// Bytes per sample of the Fragment targets (`Rgba32Uint` × 2), checked against the limit.
 pub const FRAGMENT_TARGET_BYTES: u32 = 32;
 
@@ -89,6 +93,7 @@ impl LineLayout {
         n: u32,
         max_dim: u32,
         max_layers: u32,
+        _max_bytes: u64,
     ) -> Result<LineLayout, LayoutError> {
         let tex_w = MAX_TEX_W.min(max_dim).max(1);
         let per_layer = u64::from(tex_w) * u64::from(tex_w);
@@ -1086,7 +1091,7 @@ mod tests {
 
     #[test]
     fn line_layout_sizes() {
-        let l = LineLayout::new(1_000, 100_000, 8_192, 256).unwrap();
+        let l = LineLayout::new(1_000, 100_000, 8_192, 256, u64::MAX).unwrap();
         assert_eq!(
             (l.tex_w, l.value_layers, l.pyr_layers, l.levels),
             (4_096, 6, 1, 4)
@@ -1096,14 +1101,21 @@ mod tests {
         assert_eq!(l.series, 1_000);
         assert_eq!(l.info().pyr_base, l.pyr_base);
         assert_eq!(
-            LineLayout::new(1_000, 100_000, 2_048, 16),
+            LineLayout::new(1_000, 100_000, 2_048, 16, u64::MAX),
             Err(LayoutError::TooLarge { max_series: 671 })
         );
         assert_eq!(
-            LineLayout::new(1_000, 100_000, 512, 256),
+            LineLayout::new(1_000, 100_000, 512, 256, u64::MAX),
             Err(LayoutError::TooLarge { max_series: 512 })
         );
-        let small = LineLayout::new(8, 16, 8_192, 256).unwrap();
+        // The T2 byte budget: 4 value layers of 64 MiB.
+        assert_eq!(
+            LineLayout::new(1_000, 100_000, 8_192, 256, T2_MAX_TEXTURE_BYTES),
+            Err(LayoutError::TooLarge { max_series: 671 })
+        );
+        let t2 = LineLayout::new(671, 100_000, 8_192, 256, T2_MAX_TEXTURE_BYTES).unwrap();
+        assert_eq!((t2.series, t2.value_layers, t2.tex_w), (671, 4, 4_096));
+        let small = LineLayout::new(8, 16, 8_192, 256, u64::MAX).unwrap();
         assert_eq!((small.levels, small.pyr_len), (0, [0; 4]));
     }
 }

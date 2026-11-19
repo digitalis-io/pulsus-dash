@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { STATUS, call, canvasShot, decodePng, htmlData, lineStatus, plotLit, waitLine, waitStatus } from "./helpers";
+import { STATUS, call, canvasShot, decodePng, htmlData, lineStatus, plotLit, waitLine, waitStatus, type Image } from "./helpers";
 
 const TRACES = path.join(__dirname, "..", "test-results", "traces");
 const SMALL = "/?scene=line&series=20&points=20000";
@@ -68,6 +68,45 @@ test("@webgpu line_texture_ceiling_shown", async ({ page }) => {
   expect(s.coverage.drawn).toBe(16);
   expect(s.coverage.reasons).toContain("texture-ceiling");
   await visibleText(page, TEXT["texture-ceiling"]);
+});
+
+/** Whether the CSS-px screenshot has line colour (G ≥ 100) within ±1 px of value `v` in column `x`. */
+function lineAt(img: Image, s: any, x: number, v: number): boolean {
+  const k = 1 / s.dpr;
+  const yDev = (v - s.camera.vBottom) / s.camera.vPerPx;
+  const row = Math.round(img.height - (s.plot.y0 + yDev) * k - 0.5);
+  for (let y = row - 1; y <= row + 1; y++) {
+    if (y < 0 || y >= img.height) continue;
+    if (img.data[(y * img.width + x) * img.channels + 1] >= 100) return true;
+  }
+  return false;
+}
+
+test("@webgl2 line_t2_texture_budget", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/?scene=line&series=672&points=100000&fault=line-ramps");
+  await waitStatus(page, STATUS.T2, 20_000);
+  // The T2 budget (256 MiB per texture) holds 4 value layers: 671 series of 100 000.
+  const s = await waitLine(page, (s) => s.uploaded === 671 && s.draws.line === 1, 150_000);
+  expect(s.valueLayers).toBe(4);
+  expect(s.coverage.drawn).toBe(671);
+  expect(s.coverage.reasons).toContain("texture-ceiling");
+  await visibleText(page, TEXT["texture-ceiling"]);
+  await page.waitForTimeout(1_000);
+  const st = await lineStatus(page);
+  const img = decodePng(await canvasShot(page));
+  const k = 1 / st.dpr;
+  const first = Math.ceil(st.plot.x0 * k);
+  const last = Math.floor((st.plot.x0 + st.plot.w) * k) - 1;
+  // Series 0 ramps 0 → 100 and series 670 ramps 300 → 400; series 671 (200 → 250) is not drawn.
+  // Values read as zero would draw them flat at 50 and 350 instead.
+  expect(lineAt(img, st, first, 0), "y(0), first column").toBe(true);
+  expect(lineAt(img, st, first, 300), "y(300), first column").toBe(true);
+  expect(lineAt(img, st, last, 100), "y(100), last column").toBe(true);
+  expect(lineAt(img, st, last, 400), "y(400), last column").toBe(true);
+  expect(lineAt(img, st, first, 200), "y(200), first column").toBe(false);
+  expect(lineAt(img, st, last, 250), "y(250), last column").toBe(false);
 });
 
 test("@webgpu line_load_failure_shown", async ({ page }) => {

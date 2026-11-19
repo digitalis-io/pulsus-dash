@@ -155,7 +155,13 @@ fn scene(d: &LineData, v: &View) -> LineScene {
 fn layout(h: &Headless, d: &LineData, max_dim: Option<u32>) -> (LineLayout, u32) {
     let lim = h.device.limits();
     let md = max_dim.unwrap_or(lim.max_texture_dimension_2d);
-    match LineLayout::new(d.series(), d.layer.n, md, lim.max_texture_array_layers) {
+    match LineLayout::new(
+        d.series(),
+        d.layer.n,
+        md,
+        lim.max_texture_array_layers,
+        u64::MAX,
+    ) {
         Ok(l) => (l, md),
         Err(e) => panic!("layout of {} series × {}: {e:?}", d.series(), d.layer.n),
     }
@@ -163,7 +169,7 @@ fn layout(h: &Headless, d: &LineData, max_dim: Option<u32>) -> (LineLayout, u32)
 
 /// The scene's frame for `d` at `v` (texture layout of an 8 192 / 256-layer device).
 pub fn frame(d: &LineData, v: &View) -> Option<LineFrame> {
-    let info = LineLayout::new(d.series(), d.layer.n, 8_192, 256)
+    let info = LineLayout::new(d.series(), d.layer.n, 8_192, 256, u64::MAX)
         .map(|l| l.info())
         .ok()?;
     scene(d, v).frame(&info)

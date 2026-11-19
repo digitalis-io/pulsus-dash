@@ -156,6 +156,29 @@ mod tests {
     }
 
     #[test]
+    fn line_load_ramps() {
+        let p = LineParams {
+            series: 672,
+            points: 11,
+        };
+        let t = LineTable::new();
+        assert_eq!(run(&t, p, 672, "test", Some(LineFault::Ramps)), Ok(672));
+        let ramp = |id: u32| -> Vec<f64> {
+            let c = t.pin(id).unwrap();
+            assert!((0..11).all(|k| c.series.is_valid(k)), "series {id}");
+            c.series.values.iter().copied().collect()
+        };
+        let lin = |a: f64, b: f64| -> Vec<f64> {
+            (0..11).map(|k| a + (b - a) * f64::from(k) / 10.0).collect()
+        };
+        assert_eq!(ramp(0), lin(0.0, 100.0));
+        assert_eq!(ramp(670), lin(300.0, 400.0));
+        assert_eq!(ramp(671), lin(200.0, 250.0));
+        assert_eq!(ramp(5), lin(150.0, 150.0));
+        assert_eq!(t.pin(0).unwrap().prepared.v_ref, 50.0);
+    }
+
+    #[test]
     fn uploads_budget() {
         assert_eq!(uploads_this_frame(10, 3, 100_000), 7);
         assert_eq!(uploads_this_frame(10, 3, 1_000_000), 2);

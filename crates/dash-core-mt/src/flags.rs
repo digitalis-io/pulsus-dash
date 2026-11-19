@@ -88,6 +88,8 @@ pub enum LineFault {
     Layers1,
     /// `fault=line-wire`: data-0 truncates the second batch message.
     Wire,
+    /// `fault=line-ramps`: known linear ramps replace the synthetic values.
+    Ramps,
 }
 
 /// `fault=line-layers-1|line-wire`, else `None`. Release builds never call this.
@@ -156,6 +158,10 @@ mod tests {
             Some(LineFault::Layers1)
         );
         assert_eq!(parse_line_fault("?fault=line-wire"), Some(LineFault::Wire));
+        assert_eq!(
+            parse_line_fault("?fault=line-ramps"),
+            Some(LineFault::Ramps)
+        );
         assert_eq!(parse_line_fault("?fault=webgpu-device"), None);
         let big = LineParams {
             series: 200,

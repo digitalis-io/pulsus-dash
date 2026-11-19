@@ -148,11 +148,11 @@ impl LineActive {
             limits.max_texture_array_layers
         };
         let n = layer.grid.len;
-        let layout = match LineLayout::new(layer.held, n, max_dim, max_layers) {
+        let layout = match LineLayout::new(layer.held, n, max_dim, max_layers, u64::MAX) {
             Ok(l) => l,
             Err(LayoutError::TooLarge { max_series }) => {
                 self.scene.set_texture_ceiling(max_series);
-                match LineLayout::new(max_series, n, max_dim, max_layers) {
+                match LineLayout::new(max_series, n, max_dim, max_layers, u64::MAX) {
                     Ok(l) => l,
                     Err(_) => return,
                 }
