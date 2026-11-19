@@ -156,6 +156,9 @@ test("@webgpu line_1e8_pan_zoom", async ({ page, browser }) => {
   expect(after.camera).not.toEqual(cam0);
   expect(fs.statSync(path.join(TRACES, "frame-line-1e8.json")).size).toBeGreaterThan(0);
   expect(fs.statSync(path.join(TRACES, "long-tasks-line-1e8.json")).size).toBeGreaterThan(0);
+  // Let the software GPU finish this page's frames before the next test starts.
+  await page.goto("about:blank");
+  await page.waitForTimeout(3_000);
 });
 
 test("@webgpu line_wheel_zoom_anchored", async ({ page }) => {
@@ -178,29 +181,60 @@ test("@webgpu line_flick_and_interrupt", async ({ page }) => {
   await page.goto(SMALL);
   await waitStatus(page, STATUS.T1);
   await waitLine(page, (s) => s.uploaded === 20 && s.draws.line === 1);
+  // 300 px in 5 steps over 50 ms, released while moving. The events carry explicit timestamps
+  // (CDP), 300 ms ahead of dispatch, so the release velocity (measured over the last 50 ms, plan
+  // §4.5) and the inertia clock do not depend on how fast the software GPU lets the browser
+  // deliver input.
+  const cdp = await page.context().newCDPSession(page);
+  const mouse = (type: string, x: number, t: number, buttons: number) =>
+    cdp.send("Input.dispatchMouseEvent", {
+      type,
+      x,
+      y: 300,
+      button: "left",
+      buttons,
+      clickCount: type === "mouseMoved" ? 0 : 1,
+      timestamp: t,
+    });
   const flick = async () => {
-    await page.mouse.move(300, 300);
-    await page.mouse.down();
-    for (let i = 1; i <= 5; i++) {
-      await page.mouse.move(300 + 60 * i, 300);
-      await page.waitForTimeout(10);
-    }
-    await page.mouse.up();
+    const t0 = Date.now() / 1000 + 0.3;
+    await mouse("mouseMoved", 300, t0, 0);
+    await mouse("mousePressed", 300, t0 + 0.001, 1);
+    for (let i = 1; i <= 5; i++) await mouse("mouseMoved", 300 + 60 * i, t0 + 0.001 + 0.01 * i, 1);
+    await mouse("mouseReleased", 600, t0 + 0.052, 0);
   };
-  await flick();
-  const atUp = await tLeft(page);
-  const f0 = await frames(page);
-  await expect.poll(() => frames(page)).toBeGreaterThanOrEqual(f0 + 3);
-  await expect.poll(() => tLeft(page), { timeout: 2_000 }).not.toBe(atUp);
-  await page.waitForTimeout(500);
-  const settled = await tLeft(page);
-  await page.waitForTimeout(200);
-  expect(await tLeft(page)).toBe(settled);
+  const sample = async (ms: number) => {
+    const out: { frame: number; t: number; moving: boolean }[] = [];
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      const s = await lineStatus(page);
+      out.push({ frame: await frames(page), t: s.camera.tLeftRelMs, moving: s.camera.moving });
+      await page.waitForTimeout(15);
+    }
+    return out;
+  };
 
   await flick();
+  const samples = await sample(1_500);
+  const log: any[] = await call(page, "inputLog");
+  const up = log.filter((r) => r.kind === 3).at(-1);
+  const starts: { frame: number; tMainMs: number }[] = await call(page, "frameStarts");
+  const moved = samples.filter((s, i) => i > 0 && s.frame >= up.frame + 3 && s.t !== samples[i - 1].t);
+  expect(moved.length, `camera moves 3+ frames after the Up (frame ${up.frame})`).toBeGreaterThan(0);
+  // Settled (no further motion, no overshoot back) by 500 ms after the release.
+  const by500 = starts.find((f) => f.tMainMs >= up.tMs + 500)!.frame;
+  const late = samples.filter((s) => s.frame >= by500).map((s) => s.t);
+  expect(late.length).toBeGreaterThan(0);
+  expect(new Set(late).size, JSON.stringify(samples)).toBe(1);
+  const ts = samples.map((s) => s.t);
+  expect(ts.every((t, i) => i === 0 || t <= ts[i - 1]), "monotone").toBe(true);
+
+  // A second flick, interrupted by a press while it moves: the camera stops at once.
+  await flick();
+  await expect.poll(async () => (await lineStatus(page)).camera.moving, { timeout: 5_000 }).toBe(true);
   await page.waitForTimeout(100);
   await page.mouse.down();
-  await page.waitForTimeout(100);
+  await expect.poll(async () => (await lineStatus(page)).camera.moving).toBe(false);
   const a = await tLeft(page);
   await page.waitForTimeout(200);
   expect(await tLeft(page)).toBe(a);

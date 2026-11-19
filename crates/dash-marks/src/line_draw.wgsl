@@ -1,6 +1,7 @@
 
-// The M1 line draw (plan #24 §4.4): instance j = part (j & 1) of slot (j >> 1) % slots of series
-// (j >> 1) / slots. Part 0 covers the slot's column by its run extents; part 1 is the connector
+// The M1 line draw (plan #24 §4.4): one non-instanced draw of 6 vertices per quad; quad
+// j = vertex / 6 is part (j & 1) of slot (j >> 1) % slots of series (j >> 1) / slots, and its
+// corner is [0, 1, 2, 2, 1, 3][vertex % 6]. Part 0 covers the slot's column by its run extents; part 1 is the connector
 // from the slot's last sample to the next. `fs_line` writes coverage (Max blended); `fs_mask`
 // writes the binary line coverage of the raw polyline, exactly, in 1/64 px integers. Both use
 // the positions snapped to the 1/64 px grid of line coverage, so every covered pixel is within
@@ -68,7 +69,11 @@ fn ndc(p: vec2<f32>) -> vec4<f32> {
 }
 
 @vertex
-fn vs_line(@builtin(vertex_index) vid: u32, @builtin(instance_index) j: u32) -> LineOut {
+fn vs_line(@builtin(vertex_index) v: u32) -> LineOut {
+    let j = v / 6u;
+    let q = v % 6u;
+    // The corners of [0, 1, 2, 2, 1, 3].
+    let vid = select(select(q, 5u - q, q >= 3u), 3u, q == 5u);
     var o: LineOut;
     o.pos = vec4<f32>(-2.0, -2.0, 0.0, 1.0);
     o.info = vec4<u32>(0u);

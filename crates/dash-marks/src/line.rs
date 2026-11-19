@@ -430,7 +430,6 @@ pub struct LineMark {
     values_view: wgpu::TextureView,
     pyramid_view: wgpu::TextureView,
     uniforms: wgpu::Buffer,
-    index: wgpu::Buffer,
     records: Records,
     decimate_layout: wgpu::BindGroupLayout,
     draw_layout: wgpu::BindGroupLayout,
@@ -536,14 +535,6 @@ impl LineMark {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let index = wgpu::util::DeviceExt::create_buffer_init(
-            device,
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("line index"),
-                contents: bytemuck::cast_slice(&[0u16, 1, 2, 2, 1, 3]),
-                usage: wgpu::BufferUsages::INDEX,
-            },
-        );
         let records = Records::new(device, slots, layout.series, max_dim, path);
 
         let vf = wgpu::ShaderStages::VERTEX_FRAGMENT;
@@ -663,7 +654,6 @@ impl LineMark {
             values_view,
             pyramid_view,
             uniforms,
-            index,
             records,
             decimate_layout,
             draw_layout,
@@ -903,12 +893,14 @@ impl LineMark {
         pass.set_scissor_rect(f.plot.x0 as u32, top, f.plot.w, f.plot.h);
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &self.draw_group, &[]);
-        pass.set_index_buffer(self.index.slice(..), wgpu::IndexFormat::Uint16);
-        pass.draw_indexed(0..6, 0, 0..2 * f.slots * f.series);
+        // Six vertices per quad, two quads per slot and series, one non-instanced draw:
+        // software rasterisers pay a fixed cost per instance, so the quads are pulled by
+        // vertex index instead (corners [0, 1, 2, 2, 1, 3]).
+        pass.draw(0..12 * f.slots * f.series, 0..1);
         self.draws.set(self.draws.get() + 1);
     }
 
-    /// One instanced draw of every slot's run and connector quads; scissor = the plot.
+    /// One draw of every slot's run and connector quads; scissor = the plot.
     pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
         self.draw_with(pass, &self.draw_pipeline);
     }

@@ -85,8 +85,12 @@ at least two layers (GL makes a one-layer texture a plain 2D texture). If the se
 
 ## Drawing: column coverage
 
-One instanced draw (`draw_indexed(0..6, 0, 0..2·slots·S)`, scissored to the plot) draws two quads
-per record: the runs of the slot's column (part 0) and the connector to the next sample (part 1).
+One draw (`draw(0..12·slots·S)`, scissored to the plot) draws two quads per record: the runs of the
+slot's column (part 0) and the connector to the next sample (part 1). The quads are pulled by vertex
+index (quad `v / 6`, corner `[0, 1, 2, 2, 1, 3][v % 6]`) rather than instanced: software
+rasterisers (SwiftShader in CI, lavapipe in the golden gate) pay a fixed cost per instance, which
+made the instanced form about 8× slower there. Positions are snapped to the 1/64 px grid of line
+coverage before the coverage is computed.
 A fragment's coverage is `clamp(h + 0.5 − √(dx² + dy²), 0, 1)` with `h` = half the line width,
 `dx` = the column distance and `dy` the vertical distance from the row centre to the run extents
 (part 0) or to the connector's y-range inside the column (part 1). Colour and alpha blend with
@@ -183,8 +187,9 @@ merges once the lab exists.
 - One layer, synthetic data, ≤ 1 024 series, ≤ 10⁶ points per series, ≤ 10⁸ points.
 - An overflow slot (more than three runs) recomputes its runs per fragment: exact, but slow for
   dense random NULLs.
-- Every frame draws `2·slots·S` instances (≈ 2.6 M at 1 280 CSS px and 1 000 series); empty ones
-  are degenerate.
+- Every frame draws `2·slots·S` quads (≈ 2.6 M at 1 280 CSS px and 1 000 series); empty ones are
+  degenerate. On SwiftShader (CI) a 10⁸-point frame takes about 2 s; frame rates are measured on
+  the reference lab.
 - A GPU out-of-memory error while creating the textures shows Failed; device-loss recovery is
   M-UI1.
 - Gridlines use the axis colour; colours are provisional tokens (`dash-tokens::spike`) until the
