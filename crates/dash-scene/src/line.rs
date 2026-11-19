@@ -1,9 +1,10 @@
 //! The line chart scene (plan #24 §3.4): layer, series ranges, fit, camera and the per-frame
 //! uniforms of the M1 line mark.
 
-use dash_axes::minimal::Plot;
+use dash_axes::minimal::{Plot, segments};
 use dash_protocol::input::{InputRecord, RecordHeader};
-use dash_scales::lod::{Columns, Prepared, XMap};
+use dash_scales::lod::{Columns, MARGIN, Prepared, XMap};
+use dash_tokens::spike::{LINE, LINE_WIDTH_CSS, PLOT_INSET_CSS};
 
 use crate::InputSink;
 use crate::camera::{Camera2d, Controller, Limits};
@@ -50,11 +51,15 @@ pub struct LineCoverage {
 impl LineCoverage {
     /// Space-separated reason ids in enum order; `""` when every series is drawn.
     pub fn ids(&self) -> String {
-        String::new()
+        self.reasons
+            .iter()
+            .map(|r| r.id())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
-/// The line mark's uniform block (4 240 bytes).
+/// The line mark's uniform block (4 240 bytes; offsets mirrored by `line_common.wgsl`).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LineUniforms {
@@ -85,11 +90,22 @@ pub struct LineUniforms {
 }
 
 impl LineUniforms {
-    /// Sets series `i`'s y offset (`series_d[i >> 2][i & 3]`).
-    pub fn set_d(&mut self, _i: u32, _d: f32) {}
+    /// Sets series `i`'s y offset (`series_d[i >> 2][i & 3]`); ignored for `i ≥ 1 024`.
+    pub fn set_d(&mut self, i: u32, d: f32) {
+        if let Some(v) = self
+            .series_d
+            .get_mut((i >> 2) as usize)
+            .map(|q| &mut q[(i & 3) as usize])
+        {
+            *v = d;
+        }
+    }
 
-    pub fn d(&self, _i: u32) -> f32 {
-        0.0
+    /// Series `i`'s y offset (0 for `i ≥ 1 024`).
+    pub fn d(&self, i: u32) -> f32 {
+        self.series_d
+            .get((i >> 2) as usize)
+            .map_or(0.0, |q| q[(i & 3) as usize])
     }
 }
 
@@ -108,16 +124,29 @@ pub struct LineFrame {
     pub uniforms: Box<LineUniforms>,
     pub columns: Columns,
     pub plot: Plot,
+    /// Gridlines, axis lines and ticks (device px, y up).
     pub grid: Vec<[f32; 4]>,
 }
 
-/// The plot rectangle of a canvas (`PLOT_INSET_CSS`).
-pub fn plot_rect(_css_w: f32, _css_h: f32, _dpr: f32) -> Plot {
+/// Rounded device px of a CSS length.
+fn dev(css: f32, dpr: f32) -> f32 {
+    (css * dpr).round()
+}
+
+/// The canvas size in device px.
+fn canvas_px(css_w: f32, css_h: f32, dpr: f32) -> [f32; 2] {
+    [dev(css_w, dpr), dev(css_h, dpr)]
+}
+
+/// The plot rectangle of a canvas: `PLOT_INSET_CSS` `[l, r, t, b]` in rounded device px.
+pub fn plot_rect(css_w: f32, css_h: f32, dpr: f32) -> Plot {
+    let [l, r, t, b] = PLOT_INSET_CSS.map(|v| dev(v, dpr));
+    let [w, h] = canvas_px(css_w, css_h, dpr);
     Plot {
-        x0: 0.0,
-        y0: 0.0,
-        w: 0,
-        h: 0,
+        x0: l,
+        y0: b,
+        w: (w - l - r).max(1.0) as u32,
+        h: (h - t - b).max(1.0) as u32,
     }
 }
 
@@ -125,6 +154,12 @@ pub fn plot_rect(_css_w: f32, _css_h: f32, _dpr: f32) -> Plot {
 #[derive(Debug)]
 pub struct LineScene {
     controller: Controller,
+    layer: Option<LayerInfo>,
+    series: Vec<Prepared>,
+    /// CSS width, height and DPR.
+    canvas: Option<(f32, f32, f32)>,
+    ceiling: Option<u32>,
+    load_failed: bool,
 }
 
 impl Default for LineScene {
@@ -138,7 +173,7 @@ impl LineScene {
         let c = Camera2d {
             t_left_rel_ms: 0.0,
             ms_per_px: 1.0,
-            v_bottom: 0.0,
+            v_bottom: -1.0,
             v_per_px: 1.0,
         };
         let l = Limits {
@@ -147,50 +182,211 @@ impl LineScene {
             min_v_per_px: 1.0,
             max_v_per_px: 1.0,
             t_range: (0.0, 0.0),
-            v_range: (0.0, 0.0),
+            v_range: (-1.0, 1.0),
         };
         LineScene {
             controller: Controller::new(c, l),
+            layer: None,
+            series: Vec::new(),
+            canvas: None,
+            ceiling: None,
+            load_failed: false,
         }
     }
 
-    pub fn set_canvas(&mut self, _css_w: f32, _css_h: f32, _dpr: f32) {}
+    fn plot(&self) -> Option<(Plot, f32)> {
+        self.canvas.map(|(w, h, dpr)| (plot_rect(w, h, dpr), dpr))
+    }
 
-    pub fn set_layer(&mut self, _l: LayerInfo) {}
+    /// The finite value range of the series added so far.
+    fn range(&self) -> Option<(f64, f64)> {
+        self.series
+            .iter()
+            .filter(|p| p.min.is_finite() && p.max.is_finite())
+            .fold(None, |acc, p| match acc {
+                None => Some((p.min, p.max)),
+                Some((lo, hi)) => Some((lo.min(p.min), hi.max(p.max))),
+            })
+    }
+
+    /// Recomputes the limits and, until the user moved, the fit (§3.4).
+    fn refit(&mut self) {
+        let (Some(layer), Some((plot, _))) = (self.layer, self.plot()) else {
+            return;
+        };
+        let (w, h) = (f64::from(plot.w), f64::from(plot.h));
+        let step = layer.step_ms as f64;
+        let e = f64::from(layer.n) * step;
+        let (min, max) = self.range().unwrap_or((-1.0, 1.0));
+        let r = (max - min).max(1e-12);
+        let limits = Limits {
+            min_ms_per_px: step / 16.0,
+            max_ms_per_px: 4.0 * e / w,
+            min_v_per_px: r * 1e-3 / h,
+            max_v_per_px: r * 100.0 / h,
+            t_range: (0.0, e),
+            v_range: (min, max),
+        };
+        let camera = if self.controller.user_moved() {
+            *self.controller.camera()
+        } else {
+            let (lo, hi) = if max - min > 0.0 {
+                (min - 0.05 * (max - min), max + 0.05 * (max - min))
+            } else {
+                (min - 1.0, max + 1.0)
+            };
+            Camera2d {
+                t_left_rel_ms: 0.0,
+                ms_per_px: e / w,
+                v_bottom: lo,
+                v_per_px: (hi - lo) / h,
+            }
+        };
+        self.controller.set_camera(camera, limits);
+    }
+
+    pub fn set_canvas(&mut self, css_w: f32, css_h: f32, dpr: f32) {
+        if css_w > 0.0 && css_h > 0.0 && dpr > 0.0 {
+            self.canvas = Some((css_w, css_h, dpr));
+            self.refit();
+        }
+    }
+
+    /// A new layer: the series start again.
+    pub fn set_layer(&mut self, l: LayerInfo) {
+        self.layer = Some(l);
+        self.series.clear();
+        self.refit();
+    }
 
     /// Adds the next series (in id order).
-    pub fn add_series(&mut self, _p: Prepared) {}
+    pub fn add_series(&mut self, p: Prepared) {
+        self.series.push(p);
+        self.refit();
+    }
 
-    pub fn set_texture_ceiling(&mut self, _max_series: u32) {}
+    /// Only `max_series` series fit the GPU textures.
+    pub fn set_texture_ceiling(&mut self, max_series: u32) {
+        self.ceiling = Some(max_series);
+    }
 
-    pub fn set_load_failed(&mut self) {}
+    pub fn set_load_failed(&mut self) {
+        self.load_failed = true;
+    }
 
     pub fn controller_mut(&mut self) -> &mut Controller {
         &mut self.controller
     }
 
+    /// Advances inertia to main-thread time `t_main_ms`.
     pub fn step(&mut self, t_main_ms: f64) {
         self.controller.step(t_main_ms);
     }
 
-    /// `None` until a layer, a canvas and a series exist.
-    pub fn frame(&self, _layout: &LayoutInfo) -> Option<LineFrame> {
-        let _ = XMap::new(1.0, 0.0, 1.0);
-        None
+    /// Series drawn: added, capped by the texture ceiling.
+    fn drawn(&self) -> u32 {
+        (self.series.len() as u32).min(self.ceiling.unwrap_or(u32::MAX))
     }
 
+    /// The frame's uniforms, columns and gridlines; `None` until a layer, a canvas and a series.
+    pub fn frame(&self, layout: &LayoutInfo) -> Option<LineFrame> {
+        let layer = self.layer?;
+        let (plot, dpr) = self.plot()?;
+        let drawn = self.drawn();
+        if drawn == 0 {
+            return None;
+        }
+        let (css_w, css_h, _) = self.canvas?;
+        let cam = self.controller.camera();
+        let step = layer.step_ms as f64;
+        let xmap = XMap::new(step, cam.t_left_rel_ms, cam.ms_per_px);
+        let columns = Columns::new(xmap, layer.n, plot.w);
+        let width = (LINE_WIDTH_CSS * dpr).clamp(1.0, 6.0);
+        let half_w = width / 2.0;
+        let mut u: LineUniforms = bytemuck::Zeroable::zeroed();
+        u.canvas_px = canvas_px(css_w, css_h, dpr);
+        u.plot_origin_px = [plot.x0, plot.y0];
+        u.plot_size_px = [plot.w as f32, plot.h as f32];
+        u.c0 = xmap.c0;
+        u.s = xmap.s;
+        u.a_y = (1.0 / cam.v_per_px) as f32;
+        u.half_w = half_w;
+        u.slots = columns.slots();
+        u.margin = MARGIN;
+        u.radius = (half_w - 0.5).ceil().max(0.0) as u32;
+        u.series = drawn;
+        u.n = layer.n;
+        u.tex_w = layout.tex_w;
+        u.levels = layout.levels;
+        u.k0 = xmap.k0;
+        u.k_l = columns.k_l.unwrap_or(u32::MAX);
+        u.k_r = columns.k_r.unwrap_or(u32::MAX);
+        u.colour = LINE;
+        u.pyr_base = layout.pyr_base;
+        u.pyr_len = layout.pyr_len;
+        for (i, p) in self.series.iter().take(drawn as usize).enumerate() {
+            u.set_d(i as u32, (p.v_ref - cam.v_bottom) as f32);
+        }
+        let t0 = layer.start_ms as f64 + cam.t_left_rel_ms;
+        let grid = segments(
+            (t0, t0 + f64::from(plot.w) * cam.ms_per_px),
+            (
+                cam.v_bottom,
+                cam.v_bottom + f64::from(plot.h) * cam.v_per_px,
+            ),
+            true,
+            &plot,
+            dpr,
+        );
+        Some(LineFrame {
+            uniforms: Box::new(u),
+            columns,
+            plot,
+            grid,
+        })
+    }
+
+    /// Requested, held and drawn series, and why they differ (§4.6).
     pub fn coverage(&self) -> LineCoverage {
+        let (requested, held) = self.layer.map_or((0, 0), |l| (l.requested, l.held));
+        let drawn = self.drawn();
+        let cap = held.min(self.ceiling.unwrap_or(u32::MAX));
+        let mut reasons = Vec::new();
+        if drawn < cap && !self.load_failed {
+            reasons.push(CoverageReason::Loading);
+        }
+        if held < requested {
+            reasons.push(CoverageReason::StCeiling);
+        }
+        if self.ceiling.is_some() {
+            reasons.push(CoverageReason::TextureCeiling);
+        }
+        if self.load_failed {
+            reasons.push(CoverageReason::LoadFailed);
+        }
         LineCoverage {
-            requested: 0,
-            held: 0,
-            drawn: 0,
-            reasons: Vec::new(),
+            requested,
+            held,
+            drawn,
+            reasons,
         }
     }
 }
 
 impl InputSink for LineScene {
-    fn apply(&mut self, _h: &RecordHeader, _r: &InputRecord) {}
+    /// Resize sets the canvas; every other record goes to the camera controller.
+    fn apply(&mut self, h: &RecordHeader, r: &InputRecord) {
+        if let InputRecord::Resize {
+            css_w, css_h, dpr, ..
+        } = *r
+        {
+            self.set_canvas(css_w, css_h, dpr);
+            return;
+        }
+        if let Some((plot, dpr)) = self.plot() {
+            self.controller.apply(h, r, &plot, dpr);
+        }
+    }
 }
 
 #[cfg(test)]

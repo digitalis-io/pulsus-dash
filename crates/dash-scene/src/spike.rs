@@ -1,7 +1,10 @@
 //! The #23 runtime spike scene: 10 000 instanced rects in one draw call, pulsing, brightened
-//! around the pointer (VIZ-001 pre-requisite; replaced by the real scene graph in #24).
+//! around the pointer (VIZ-001 pre-requisite). The default page; `?scene=line` shows the #24
+//! line chart instead.
 
-use dash_protocol::input::InputRecord;
+use dash_protocol::input::{InputRecord, RecordHeader};
+
+use crate::InputSink;
 
 /// Grid side: `GRID × GRID` instances.
 const GRID: usize = 100;
@@ -108,6 +111,12 @@ impl SpikeScene {
             _pad: [0.0; 3],
             colour: dash_tokens::spike::MARK,
         }
+    }
+}
+
+impl InputSink for SpikeScene {
+    fn apply(&mut self, _h: &RecordHeader, r: &InputRecord) {
+        SpikeScene::apply(self, r);
     }
 }
 

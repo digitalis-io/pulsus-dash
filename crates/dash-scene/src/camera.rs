@@ -1,8 +1,17 @@
 //! The 2D camera controller (T02-021, T02-022; plan #24 §4.5): wheel zoom anchored at the
 //! pointer, drag pan, flick inertia. Device px, plot-relative, y up.
+//!
+//! The window always overlaps the data on both axes: pans, inertia and zooms clamp
+//! `t_left_rel_ms` to `[t_range.0 − span, t_range.1]` and `v_bottom` to
+//! `[v_range.0 − plot.h·v_per_px, v_range.1]`. Inertia is critically damped,
+//! `D(τ) = v0·(2 − (2 + ωτ)e^(−ωτ))/ω`: monotone, no overshoot; it ends when
+//! `(1 + ωτ)e^(−ωτ) < 0.02` (τ ≈ 300 ms), at a bound, or on the next input record.
 
-use dash_protocol::input::{InputRecord, RecordHeader};
+use std::collections::VecDeque;
+
+use dash_protocol::input::{InputRecord, PointerPhase, RecordHeader};
 use dash_scales::Plot;
+use dash_tokens::spike::PLOT_INSET_CSS;
 
 /// Release speed above which a drag becomes a flick (CSS px/ms).
 pub const FLICK_MIN_PX_PER_MS: f64 = 0.3;
@@ -14,6 +23,16 @@ pub const SETTLE_FRACTION: f64 = 0.02;
 pub const VELOCITY_WINDOW_MS: f64 = 50.0;
 /// Wheel pixels per doubling of the scale.
 pub const WHEEL_PX_PER_DOUBLING: f64 = 400.0;
+
+/// Input modifier bits (T03 §5.4).
+const MOD_SHIFT: u16 = 1;
+const MOD_CTRL: u16 = 2;
+const MOD_META: u16 = 8;
+
+/// `max(lo).min(hi)`: never panics, `hi` wins if the range is empty.
+fn clampf(v: f64, lo: f64, hi: f64) -> f64 {
+    v.max(lo).min(hi)
+}
 
 /// Scale limits and data extents (relative time, values).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -37,25 +56,80 @@ pub struct Camera2d {
 
 impl Camera2d {
     /// The data point at plot-relative device px `(x, y)`.
-    pub fn data_at(&self, _x: f64, _y: f64) -> (f64, f64) {
-        (0.0, 0.0)
+    pub fn data_at(&self, x: f64, y: f64) -> (f64, f64) {
+        (
+            self.t_left_rel_ms + x * self.ms_per_px,
+            self.v_bottom + y * self.v_per_px,
+        )
     }
 
     /// The plot-relative device px of a data point.
-    pub fn screen_of(&self, _t: f64, _v: f64) -> (f64, f64) {
-        (0.0, 0.0)
+    pub fn screen_of(&self, t: f64, v: f64) -> (f64, f64) {
+        (
+            (t - self.t_left_rel_ms) / self.ms_per_px,
+            (v - self.v_bottom) / self.v_per_px,
+        )
     }
 
-    /// Scales by `fx`, `fy` (clamped) keeping the clamped anchor under `(x, y)` in place.
-    pub fn zoom_at(&mut self, _x: f64, _y: f64, _fx: f64, _fy: f64, _l: &Limits) {}
+    /// Scales by `fx`, `fy` (clamped to the limits), keeping the anchor at its screen position.
+    /// The anchor is the data point under `(x, y)`, clamped into the data: over empty space it
+    /// is the nearest data end.
+    pub fn zoom_at(&mut self, x: f64, y: f64, fx: f64, fy: f64, l: &Limits) {
+        let (t, v) = self.data_at(x, y);
+        let t_a = clampf(t, l.t_range.0, l.t_range.1);
+        let v_a = clampf(v, l.v_range.0, l.v_range.1);
+        let (x_a, y_a) = self.screen_of(t_a, v_a);
+        let mpp = clampf(self.ms_per_px * fx, l.min_ms_per_px, l.max_ms_per_px);
+        let vpp = clampf(self.v_per_px * fy, l.min_v_per_px, l.max_v_per_px);
+        if mpp != self.ms_per_px {
+            self.ms_per_px = mpp;
+            self.t_left_rel_ms = t_a - x_a * mpp;
+        }
+        if vpp != self.v_per_px {
+            self.v_per_px = vpp;
+            self.v_bottom = v_a - y_a * vpp;
+        }
+    }
 
-    /// Pans by device px (`dy` down-positive, as the pointer moves).
-    pub fn pan_px(&mut self, _dx: f64, _dy: f64) {}
+    /// Pans by a pointer displacement in device px (`dy` down-positive): the data follows it.
+    pub fn pan_px(&mut self, dx: f64, dy: f64) {
+        self.t_left_rel_ms -= dx * self.ms_per_px;
+        self.v_bottom += dy * self.v_per_px;
+    }
 }
 
-/// A CSS px pointer position (canvas top-left origin) in plot-relative device px, y up.
-pub fn plot_xy(_plot: &Plot, _dpr: f32, _x_css: f32, _y_css: f32) -> (f64, f64) {
-    (0.0, 0.0)
+/// A CSS px pointer position (canvas top-left origin) in plot-relative device px, y up. The
+/// plot's top edge is `PLOT_INSET_CSS[2]` (rounded device px) below the canvas top.
+pub fn plot_xy(plot: &Plot, dpr: f32, x_css: f32, y_css: f32) -> (f64, f64) {
+    let dpr = f64::from(dpr);
+    let top = (f64::from(PLOT_INSET_CSS[2]) * dpr).round();
+    (
+        f64::from(x_css) * dpr - f64::from(plot.x0),
+        f64::from(plot.h) + top - f64::from(y_css) * dpr,
+    )
+}
+
+/// An active drag.
+#[derive(Clone, Debug, PartialEq)]
+struct Drag {
+    pointer_id: u32,
+    last: (f32, f32),
+    /// `(t_ms, x, y)` CSS px within the velocity window.
+    samples: VecDeque<(f64, f32, f32)>,
+}
+
+/// Running inertia: release velocity (device px/ms), release time, displacement applied.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Inertia {
+    v0: (f64, f64),
+    t0: f64,
+    applied: f64,
+}
+
+/// `D(τ)/v0`.
+fn travel(tau: f64) -> f64 {
+    let wt = OMEGA_PER_MS * tau;
+    (2.0 - (2.0 + wt) * (-wt).exp()) / OMEGA_PER_MS
 }
 
 /// Drives a [`Camera2d`] from input records.
@@ -63,6 +137,11 @@ pub fn plot_xy(_plot: &Plot, _dpr: f32, _x_css: f32, _y_css: f32) -> (f64, f64) 
 pub struct Controller {
     camera: Camera2d,
     limits: Limits,
+    drag: Option<Drag>,
+    inertia: Option<Inertia>,
+    user_moved: bool,
+    /// The plot size of the last applied record (device px), for the bounds.
+    plot: Option<(u32, u32)>,
 }
 
 impl Controller {
@@ -70,6 +149,10 @@ impl Controller {
         Controller {
             camera: c,
             limits: l,
+            drag: None,
+            inertia: None,
+            user_moved: false,
+            plot: None,
         }
     }
 
@@ -81,6 +164,7 @@ impl Controller {
         &self.limits
     }
 
+    /// Replaces the camera and limits (a fit); does not count as a user move.
     pub fn set_camera(&mut self, c: Camera2d, l: Limits) {
         self.camera = c;
         self.limits = l;
@@ -88,18 +172,175 @@ impl Controller {
 
     /// Inertia is running.
     pub fn moving(&self) -> bool {
-        false
+        self.inertia.is_some()
     }
 
-    /// A pan, zoom or inertia step was applied since construction.
+    /// A pan, zoom or inertia step moved the camera since construction.
     pub fn user_moved(&self) -> bool {
-        false
+        self.user_moved
     }
 
-    pub fn apply(&mut self, _h: &RecordHeader, _r: &InputRecord, _plot: &Plot, _dpr: f32) {}
+    /// Clamps the window to overlap the data; returns whether x, y were clamped.
+    fn clamp_bounds(&mut self) -> (bool, bool) {
+        let Some((w, h)) = self.plot else {
+            return (false, false);
+        };
+        let (c, l) = (&mut self.camera, &self.limits);
+        let span = f64::from(w) * c.ms_per_px;
+        let vspan = f64::from(h) * c.v_per_px;
+        let t = clampf(c.t_left_rel_ms, l.t_range.0 - span, l.t_range.1);
+        let v = clampf(c.v_bottom, l.v_range.0 - vspan, l.v_range.1);
+        let clamped = (t != c.t_left_rel_ms, v != c.v_bottom);
+        c.t_left_rel_ms = t;
+        c.v_bottom = v;
+        clamped
+    }
+
+    /// Pans by device px within the bounds; returns whether a bound was hit.
+    fn pan(&mut self, dx: f64, dy: f64) -> bool {
+        let before = self.camera;
+        self.camera.pan_px(dx, dy);
+        let (cx, cy) = self.clamp_bounds();
+        if self.camera != before {
+            self.user_moved = true;
+        }
+        (cx && dx != 0.0) || (cy && dy != 0.0)
+    }
+
+    /// Applies one input record (plan §4.5). Every record first stops inertia (T02-022).
+    pub fn apply(&mut self, h: &RecordHeader, r: &InputRecord, plot: &Plot, dpr: f32) {
+        self.inertia = None;
+        self.plot = Some((plot.w, plot.h));
+        let d = f64::from(dpr);
+        match *r {
+            InputRecord::Wheel {
+                x,
+                y,
+                dx,
+                dy,
+                mods,
+                mode,
+            } => {
+                let delta = f64::from(if dy != 0.0 { dy } else { dx });
+                let unit = match mode {
+                    0 => 1.0,
+                    1 => 16.0,
+                    _ => f64::from(plot.h) / d,
+                };
+                let f = (delta * unit / WHEEL_PX_PER_DOUBLING).exp2();
+                let (fx, fy) = if mods & (MOD_CTRL | MOD_META) != 0 {
+                    (f, f)
+                } else if mods & MOD_SHIFT != 0 {
+                    (1.0, f)
+                } else {
+                    (f, 1.0)
+                };
+                let (ax, ay) = plot_xy(plot, dpr, x, y);
+                let before = self.camera;
+                let l = self.limits;
+                self.camera.zoom_at(ax, ay, fx, fy, &l);
+                self.clamp_bounds();
+                if self.camera != before {
+                    self.user_moved = true;
+                }
+            }
+            InputRecord::Pointer {
+                phase,
+                x,
+                y,
+                pointer_id,
+                buttons,
+                button,
+                ..
+            } => match phase {
+                PointerPhase::Down => {
+                    let (px, py) = plot_xy(plot, dpr, x, y);
+                    let inside = (0.0..f64::from(plot.w)).contains(&px)
+                        && (0.0..f64::from(plot.h)).contains(&py);
+                    if button == 0 && inside {
+                        self.drag = Some(Drag {
+                            pointer_id,
+                            last: (x, y),
+                            samples: VecDeque::from([(h.t_ms, x, y)]),
+                        });
+                    }
+                }
+                PointerPhase::Move => {
+                    if buttons & 1 == 1 {
+                        self.drag_to(h.t_ms, pointer_id, x, y, d);
+                    }
+                }
+                PointerPhase::Up => {
+                    self.drag_to(h.t_ms, pointer_id, x, y, d);
+                    if let Some(drag) = self.drag.take().filter(|g| g.pointer_id == pointer_id) {
+                        self.release(&drag, h.t_ms, d);
+                    }
+                }
+                PointerPhase::Cancel => self.drag = None,
+            },
+            _ => {}
+        }
+    }
+
+    /// Pans the drag of `pointer_id` to `(x, y)` CSS px and records the sample.
+    fn drag_to(&mut self, t: f64, pointer_id: u32, x: f32, y: f32, dpr: f64) {
+        let Some(drag) = self.drag.as_mut().filter(|g| g.pointer_id == pointer_id) else {
+            return;
+        };
+        let dx = f64::from(x - drag.last.0) * dpr;
+        let dy = f64::from(y - drag.last.1) * dpr;
+        drag.last = (x, y);
+        drag.samples.push_back((t, x, y));
+        while drag
+            .samples
+            .front()
+            .is_some_and(|s| s.0 < t - VELOCITY_WINDOW_MS)
+        {
+            drag.samples.pop_front();
+        }
+        self.pan(dx, dy);
+    }
+
+    /// Starts inertia if the release velocity over the last 50 ms exceeds the flick threshold.
+    fn release(&mut self, drag: &Drag, t_up: f64, dpr: f64) {
+        let first = drag
+            .samples
+            .iter()
+            .find(|s| s.0 >= t_up - VELOCITY_WINDOW_MS);
+        let (Some(a), Some(b)) = (first, drag.samples.back()) else {
+            return;
+        };
+        let dt = b.0 - a.0;
+        if dt <= 0.0 {
+            return;
+        }
+        let v = (f64::from(b.1 - a.1) / dt, f64::from(b.2 - a.2) / dt);
+        if v.0.hypot(v.1) > FLICK_MIN_PX_PER_MS {
+            self.inertia = Some(Inertia {
+                v0: (v.0 * dpr, v.1 * dpr),
+                t0: t_up,
+                applied: 0.0,
+            });
+        }
+    }
 
     /// Advances inertia to main-thread time `t_main_ms`.
-    pub fn step(&mut self, _t_main_ms: f64) {}
+    pub fn step(&mut self, t_main_ms: f64) {
+        let Some(mut i) = self.inertia else {
+            return;
+        };
+        let tau = t_main_ms - i.t0;
+        if tau <= 0.0 {
+            return;
+        }
+        let d = travel(tau);
+        let delta = d - i.applied;
+        i.applied = d;
+        let hit = self.pan(i.v0.0 * delta, i.v0.1 * delta);
+        let wt = OMEGA_PER_MS * tau;
+        let settled = (1.0 + wt) * (-wt).exp() < SETTLE_FRACTION;
+        self.inertia = (!hit && !settled).then_some(i);
+    }
 }
 
 #[cfg(test)]

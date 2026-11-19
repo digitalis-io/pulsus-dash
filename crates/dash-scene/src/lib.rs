@@ -12,9 +12,3 @@ use dash_protocol::input::{InputRecord, RecordHeader};
 pub trait InputSink {
     fn apply(&mut self, h: &RecordHeader, r: &InputRecord);
 }
-
-impl InputSink for spike::SpikeScene {
-    fn apply(&mut self, _h: &RecordHeader, r: &InputRecord) {
-        spike::SpikeScene::apply(self, r);
-    }
-}
