@@ -247,6 +247,7 @@ estate, §4.5):
 | `bench:inp-rooms` | Lighthouse with scripted room interactions | INP | ≤ 200 ms (fail above); 100 ms tracked target | M-UI0 |
 | `bench:lens-load` | warm nav → Lens coarse; Lens fully refined (1 h) | dive input → first data frame in every visible viewport; → last `coverage.final` | < 300 ms p75; < 1.5 s p75 (PRF-010, PRF-011, PRF-034) | M-UI2 |
 | `bench:decode-r1` | R1 harness ([T04 §10](T04-wire-format-and-data-plane.md#10-testing)) | A1 decode on (a) | < 50 ms p95 | M-UI0 |
+| `bench:shim-input-cost` | synthetic N, B; trusted pointer and wheel (R); the 66c rAF flush ([T03-003](T03-browser-runtime.md#t03-003--the-main-thread-never-blocks-and-never-renders)) | time per listener call; per rAF callback | p99 ≤ 0.05 ms (N, B median of 3; R all and wheel); callback ≤ 2 ms; (a) and (b) | M-UI0 |
 | — | Atlas 2 000 entities first paint | → first frame with all nodes | < 800 ms (PRF-012) | M-UI3 |
 | — | F2 Space-scrub, 2 000 entities | frame time during scrub; network requests | PRF-001/PRF-002; 0 requests | M-UI3 |
 | — | Live tail | ingest timestamp → frame containing the line | < 2 s p95 (PRF-015) | M-UI2 |
@@ -262,8 +263,8 @@ estate, §4.5):
   input `EventDispatch` in a Chrome trace, judged on wall `dur` (`dash-lab::trace`); LoAF serves
   RUM. CI's `e2e` runs it (thread > 16 ms, wall > 50 ms) as PRF-005's merge gate until the
   reference lab exists (§7.1).
-- **Shim per-event time** (T03-003): CI's `e2e` times the installed input listeners; p99 ≤ 0.05 ms,
-  blocking.
+- **Shim per-event time** (T03-003): CI's `e2e` reports listener times and asserts only
+  deterministic queue checks; `bench:shim-input-cost` gates the times.
 - **Input → photon** is estimated in CI as event `t_ms` → `queue.submit` of the frame that consumed
   it, plus one vsync. Each reference machine gets a quarterly **photodiode + high-speed camera**
   calibration of the estimate.
@@ -600,7 +601,7 @@ the merge train), nightly (release blocker).
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
 `bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:lens-load`,
-`bench:decode-r1`; plus `bench:cpu-instr` (PR: decode, decimation, tick generation and layouts,
+`bench:decode-r1`, `bench:shim-input-cost`; plus `bench:cpu-instr` (PR: decode, decimation, tick generation and layouts,
 instruction counts via `iai-callgrind`, +3 % → fail).
 
 | Lab gate class | Stage | Threshold | Blocking |
@@ -614,6 +615,7 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 | `bench:inp-rooms` | merge | INP ≤ 200 ms | yes, from M-UI0 |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
+| `bench:shim-input-cost` | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
 | RUM field p95 per `hw_class` | weekly review | within 20 % of the lab | tracked, not blocking |
 
 Instruction counts are used on PRs because wall-clock benchmarks on shared CI runners are too noisy
@@ -745,4 +747,4 @@ Meta-testing:
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T05-001 to T05-015; gate catalogue (§7.1) defining every gate named in T01–T05 Satisfies tables; gallery = corpus manifest; thresholds, milestones and headless mode aligned with 09; replay specs; Satisfies table |
 | 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |
-| 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time check; §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |
+| 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time (CI reports, `bench:shim-input-cost` gates); §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |

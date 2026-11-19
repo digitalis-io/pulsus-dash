@@ -104,7 +104,7 @@ run locally.
 | `dep-audit` | `ci:dep-audit` | `area:platform` | `wasm` | npm, browser crate graph, `web-sys` features, render-worker locks, web assets, shipped JS |
 | `design-check` | `ci:design-check` | `area:platform` | `static` | `designs/tools/check.py` and the traceability diff |
 | `shim-lint` | `ci:shim-lint` | `area:shell` | `static` | T03-001 on the shim |
-| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix, the PRF-005 trace check and the T03-003 shim cost |
+| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix, the PRF-005 trace check, and the T03-003 shim queue checks (times reported only) |
 
 The `wasm` and `e2e` jobs run `cargo xtask tools` first. The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
 even when an earlier gate failed.

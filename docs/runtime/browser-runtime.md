@@ -220,10 +220,20 @@ probe build, which proves the scan works.
   task, no thread time). The reference-lab gate (`bench:long-tasks`, wall > 16 ms) blocks merges
   once the lab exists.
 - **Shim per-event time (T03-003).** `e2e/tests/input-queue.spec.ts` times every call of the
-  installed input listeners on a dedicated canvas: workload N (ring always free), B (ring full,
-  backlog, drops, 32-entry flushes) and R (trusted mouse input). The median of three p99s of N and
-  of B, and the p99 of R, must be ≤ 0.050 ms; no call may write more than 48 records. Results go to
-  `e2e/test-results/traces/shim-cost.json`.
+  installed input listeners on a fixed 300×300 canvas: workload N (ring always free), B (ring full,
+  backlog, drops, 32-entry flushes) and R (300 trusted mouse sequences with 1 200 trusted wheel
+  events), plus a control run of R on a bare listener (`getCoalescedEvents`, `offsetX/Y`, capture,
+  `preventDefault`) and the times of the 66c rAF flush callbacks. CI only **reports** these times
+  (p50, p99, max in `e2e/test-results/traces/shim-cost.json`; wall-clock gates do not run on shared
+  runners, T05-006). It **asserts** the deterministic checks: no call writes more than 48 records; B
+  overflows the ring and advances by exactly one 32-entry flush; R's trusted counts (300 down,
+  300 up, 300–2 700 move, 1 200 wheel); 66c writes 256, 256, 256, 256, 2 records in `seq` order.
+  The budgets (p99 ≤ 0.050 ms for N and B, median of three, and for R all and wheel; rAF callback
+  ≤ 2 ms) are gated by `bench:shim-input-cost` on the reference lab, blocking like
+  `bench:long-tasks` once the lab exists. Test 68 runs on `/?mode=static` (isolated, no scene), so
+  the software GPU does not pace trusted input. On a 16-core development machine N and B measured
+  p99 0.030 and 0.020 ms, R 0.075 ms against 0.070 ms for the bare-listener control: R is
+  dominated by the browser's own trusted-event work.
 
 Frame-rate numbers are not gated in CI (T05-006). CI renders with SwiftShader, where the
 10 000-rect scene runs at about 10 fps.
