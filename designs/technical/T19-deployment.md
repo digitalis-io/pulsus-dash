@@ -364,9 +364,11 @@ Rules of thumb (assumptions to verify):
   validated by `pulsus-dash config check`, which also probes connectivity.
 
 #### T19-010 — Secrets in config are references
-**MUST** — Secret values in static config MUST be references: `*_file = "/var/run/secrets/…"`,
-`env:VAR`, or `vault://…`. Literal secrets MUST be refused unless `allow_inline_secrets = true` is
-set (dev only).
+**MUST** — Secret values in static config MUST be references in `*_ref` values: `file:<path>`
+(e.g. `file:/var/run/secrets/…`), `env:VAR`, or `vault://…`. Literal secrets MUST be refused unless
+`allow_inline_secrets = true` is set (dev only). Until the T18 §4.8 secrets store exists, only
+`env:` and `file:` resolve; `vault`, `aws-sm`, `gcp-sm` and `azure-kv` references are refused with
+an error naming the scheme.
 
 - **Static versus dynamic.** Static config covers listeners, Postgres, KEK, roles, public URL, asset
   mode, self-telemetry, audit export and air-gapped mode. Everything per org (IdPs, bindings, AI
@@ -647,6 +649,7 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; Postgres sizing includes derived state per ADR-0012; formal design rules; Satisfies table |
+| 1.0-rc | 2026-11-19 | #39: T19-010 file references are written `file:<path>` in `*_ref` values; secret-store schemes are refused until the T18 §4.8 store exists |
 
 **Changes versus the draft:**
 1. **Postgres sizing (ADR-0012).** The draft sized Postgres for configuration only (20 / 100 /

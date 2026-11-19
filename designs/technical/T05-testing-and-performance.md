@@ -511,7 +511,9 @@ the merge train), nightly (release blocker).
 | `ci:design-check` | `designs/tools/check.py`: no broken links or anchors, unique requirement IDs, every requirement has priority, milestone and acceptance criteria, every Satisfies reference resolves, no M-UI0/1 MUST untraced; `traceability.md` regenerated and diffed | PR | yes |
 | `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; every JS file under `web/shim/` that git tracks or does not ignore is counted. `layout.gen.js` is excluded from the count when byte-identical to its generator's output, else counted and fails | PR | yes |
 | `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); core < 3 MB. `mode = enforce`; `shim`, `dash-core-mt`, `dash-core-st` `required` (over budget or absent → fail). *Later:* `twiggy` sizes and the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
-| `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build; `web/shim/gen/` accepted only by regenerate-and-compare ([T03 §5.1](T03-browser-runtime.md#51-shim-files-and-line-budget)) | PR | yes |
+| `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build; `web/shim/gen/` accepted only by regenerate-and-compare ([T03 §5.1](T03-browser-runtime.md#51-shim-files-and-line-budget)); server bans ([T06-001](T06-bff-architecture.md#t06-001--dependency-rule), [T11-023](T11-postgres-schema.md#t11-023--the-repository-is-the-only-sql-path)): HTTP server crates only in `dash-gateway`, SQL crates and `sqlx::` only in `dash-store`, HTTP clients only in the allowed crates | PR | yes |
+| `ci:squawk-migrations` | [T11-013](T11-postgres-schema.md#t11-013--no-locking-ddl): squawk over every `dash-store` migration (`.squawk.toml`); no `CREATE EXTENSION` outside comments ([T11-001](T11-postgres-schema.md#t11-001--vanilla-postgres-no-required-extension)); no `ATTACH PARTITION` without `VALIDATE CONSTRAINT` in the same file | PR | yes |
+| `ci:no-pulsusdb-host` | The private PulsusDB host appears in no listed file's path or text (literal, from the `DASH_FORBIDDEN_HOSTS` secret; fails closed in CI when unset); PulsusDB URL settings name only reserved example hosts; output never contains the host | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside `dash-tokens` outputs; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
@@ -559,7 +561,8 @@ the merge train), nightly (release blocker).
 | Gate | Checks |
 |---|---|
 | `e2e:shim-fuzz` | 10⁴ random DOM events decoded identically, in order, loss only as counted overflow |
-| `e2e:mode-matrix` | Smoke suite per mode (Full, T2, ST, MT-R, Static) via `?mode=` |
+| `e2e:mode-matrix` | Smoke suite per mode (Full, T2, ST, MT-R, Static) via `?mode=`, served by the `pulsus-dash` binary under the production headers |
+| `e2e:csp-violations` | [T18-001](T18-security.md#t18-001--strict-csp-verified-in-ci): boot under the production CSP, COOP/COEP and Trusted Types raises no `securitypolicyviolation` and no CSP or `TrustedScriptURL` console error; `crossOriginIsolated`; Trusted Types enforced (T18-005) |
 | `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench module |
 | `e2e:no-dom-vis` | Every non-DOM vis is drawn by the wgpu canvas: no chart SVG or 2D-canvas elements in the DOM |
 | `e2e:a11y-rooms` | axe-core WCAG 2.2 AA checks on every room; keyboard-only traversal reaches and operates every control |
@@ -620,6 +623,13 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 
 Instruction counts are used on PRs because wall-clock benchmarks on shared CI runners are too noisy
 to gate at 3 %.
+
+**Postgres integration (L3, compose stack; [T11](T11-postgres-schema.md))**
+
+| Gate | Checks | Stage | Blocking |
+|---|---|---|---|
+| `itest:rls-isolation` | Every repository function and every tenant table under the wrong org returns zero rows; `WITH CHECK` refuses a foreign-org insert; an unset org sees nothing; the catalogue has RLS enabled and forced with `org_isolation` on every tenant table; `org_id` leads every key; no app privilege on partitions or `sessions`; migration window and seeding (ENT-020, T11-003, T11-026, T11-027) | PR | yes |
+| `itest:no-extensions` | The full itest suite on Postgres 15 with only `plpgsql` available; nothing but `plpgsql` installed after migrating (T11-001) | PR | yes |
 
 **Entity catalogue and infrastructure model ([T12](T12-entity-catalogue.md))**
 
@@ -749,3 +759,4 @@ Meta-testing:
 | 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |
 | 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time (CI reports, `bench:shim-input-cost` gates); §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §4.3 log stream gallery page moves M-UI2 → M-UI1 with PRF-020 |
+| 1.0-rc | 2026-11-19 | #39: §7.1 rows `ci:squawk-migrations`, `ci:no-pulsusdb-host`, `itest:rls-isolation`, `itest:no-extensions`, `e2e:csp-violations`; `ci:dep-audit` gains the server crate bans; `e2e:mode-matrix` runs through the binary |

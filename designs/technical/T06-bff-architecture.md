@@ -72,7 +72,7 @@ needs, and the external API surface. Two components get their own documents: the
 | [ENT-001](../product/11-enterprise.md#ent-001--organisations-teams-and-users) | §4.11 (Principal: org, teams) | `itest:auth-principal`: a user in two teams resolves to a Principal carrying both team ids; "My teams" listing returns resources of either |
 | [ENT-003](../product/11-enterprise.md#ent-003--built-in-roles) | §4.11, T06-023 | `itest:rbac-builtin-roles`: route-permission matrix test, one request per (built-in role × mutating route); Viewer ack refused with `forbidden` + `request_access` link |
 | [ENT-011](../product/11-enterprise.md#ent-011--oidc-sso-with-idp-enforced-mfa) | §4.11, T06-022 | `itest:oidc-login`: against a test IdP (Dex/Keycloak) requiring MFA, login succeeds only through the IdP flow; `acr`/`amr` are recorded on the session; Dash exposes no second-factor endpoint |
-| [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.8, §6, T06-016 | `itest:rls-tenant-isolation` (T11 co-owns): a tenant-A session through `dash-store` returns no tenant-B row from any table |
+| [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.8, §6, T06-016 | `itest:rls-isolation` (T11 co-owns): a tenant-A session through `dash-store` returns no tenant-B row from any table |
 | [ENT-027](../product/11-enterprise.md#ent-027--one-deployment-many-pulsusdb-tenants) | §4.7, T06-006 | `itest:multi-tenant-headers`: fuzzed queries for an org bound to two databases; every outbound request carries the bound `X-Pulsus-Database` / `X-Scope-OrgID`; switching tenant switches the header |
 | [ENT-028](../product/11-enterprise.md#ent-028--single-binary-static-assets-helm) | §4.2, T06-003 | `ci:single-binary`: the release build produces one `pulsus-dash` binary plus static assets; `e2e:helm-default-login` (T19 co-owns) |
 | [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.11, §5.1 (datasource bindings, OIDC), T06-025 | `itest:datasource-binding`: binding a seeded PulsusDB runs the `runtimeinfo` check and stores the binding; a wrong URL is refused with a positioned field error |
@@ -445,7 +445,7 @@ been seen. A lost lease MUST be taken over by another member within 15 s.
   `pulsusdb-client` methods take `&RequestCtx`, not a URL.
 - **Isolation:** every cache key, singleflight key, budget, lease key and metric label includes the
   tenant. Postgres access sets the tenant binding for row-level security on every transaction
-  (`SET LOCAL app.org_id`, T11).
+  (`Db::tx(org)` runs `set_config('pulsus.org_id', <org>, true)`, T11-003).
 - **Fairness:** the concurrency limiter (§4.10) is a weighted deficit-round-robin across tenants
   inside each priority class. Per-tenant quotas (queries/s, concurrent physical queries, AI
   tokens/month) are stored in Postgres and hot-reloaded.
@@ -526,6 +526,22 @@ pub struct DashConfig {
     pub auth: AuthConfig,                         // §4.11; T10 (draft)
 }
 ```
+
+The first implemented subset (#39) is strict about every key it knows and rejects the rest:
+
+| Key | Default | Notes |
+|---|---|---|
+| `roles` | `[all]` | only `all` is implemented (T06-003) |
+| `listen` / `public_url` | `0.0.0.0:8080` / none | `public_url` enables the T19-002 self-check |
+| `allow_inline_secrets` | `false` | dev only (T19-010) |
+| `postgres.url_ref` / `.owner_url_ref` / `.pool_max` / `.connect_timeout_ms` | — / — / 32 / 2000 | the owner reference is used only by `migrate` |
+| `assets.dir`, `log.filter`, `log.format` | `web`, `info`, `text` | |
+| `datasources_bootstrap[0].{url, org_slug, slug, database, scope_org_id, credentials_ref}` | url required; slugs `default` | exactly one entry; `credentials_ref` is optional (no auth header when absent), resolved at start-up into memory only, never stored or logged |
+
+Environment variables map by splitting on `__` and lower-casing (`PULSUS_DASH_POSTGRES__URL_REF`
+→ `postgres.url_ref`); a digits segment is a list index (`…__0__URL`). Secrets, Postgres URLs, the
+PulsusDB URL and configured URL paths never appear in an error or log. The full key table is in
+`docs/server/configuration.md`.
 
 `rollup_ranges_s` exists because `runtimeinfo` reports the levels (`rollupLevels`) but not the switch
 points (`PULSUS_ROLLUP_RANGES`). The planner needs the switch points to predict the level (T07 §4.3).
@@ -820,3 +836,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; binding constraints turned into rules T06-001…T06-027. **D2 / ADR-0012:** removed the OTLP write-back of alert transitions and deliveries into customer tenants; Dash writes to PulsusDB only self-telemetry and the optional audit export (T06-017); baselines, anomaly scores and fallback pyramids move to Postgres; draft open question 3 closed. Added `dash-vsrc` hosting (§4.12), the Prometheus-compatible read API (§4.13), the M-UI1 OIDC/RBAC plumbing (§4.11, because T10 is not promoted), the `/suggest`, `/prefs`, `/search`, `/actions`, `/export` routes the T08/T09 drafts assumed, `VirtualGuardLayer`, `Completeness.{source,data_age_ms,withheld,approximation}`, and datasource-binding validation |
 | 1.0-rc | 2026-11-18 | #22: §4.1 BFF crates live in the repository's root Cargo workspace (BFF-only crates under `server/`, shared ⇄ crates under `crates/`, one lockfile); the shared wire crate is named `dash-wire`, as in T01 §4.6 |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 logs client methods on the native log routes move M-UI2 → M-UI1; patterns, detected fields, tail, traces and profiles stay M-UI2 |
+| 1.0-rc | 2026-11-19 | #39: §4.7 the RLS binding is `set_config('pulsus.org_id', …, true)` in `Db::tx(org)` (T11-003); §3 the ENT-020 gate is `itest:rls-isolation`; §4.9 the implemented `DashConfig` subset (env mapping, `public_url`, one `datasources_bootstrap` entry, optional `credentials_ref` held in memory only) |

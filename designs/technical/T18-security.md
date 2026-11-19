@@ -125,9 +125,12 @@ sessions and tokens, action capability, audit integrity.
 ### 4.2 HTTP security headers: CSP, COOP/COEP, embedding
 
 #### T18-002 — The binary owns its headers
-**MUST** — The BFF MUST set the headers below on every HTML document it serves; static assets get
-only CORP/CORS/`nosniff`. Ingress configuration MUST NOT be relied on for them
-([T19](T19-deployment.md) §4.1).
+**MUST** — The BFF MUST set the headers below on every HTML document it serves. Static assets get
+CORP/CORS/`nosniff` and also the CSP, `Reporting-Endpoints` and COOP/COEP: a worker takes its CSP
+and COEP from its own script's response ([T03](T03-browser-runtime.md) T03-022), so without them a
+worker is neither isolated nor policy-bound. Ingress configuration MUST NOT be relied on for them
+([T19](T19-deployment.md) §4.1). `upgrade-insecure-requests` is sent only when the public URL is
+`https`; on a plain-http dev or e2e origin it would break same-origin loads.
 
 ```
 Content-Security-Policy:
@@ -179,7 +182,9 @@ T08 spike.
 **MUST** — The only HTML sink allowed is `innerHTML` for sanitised output (§4.6), via a single
 policy `pulsus-sanitised` created in the shim (about 5 lines of JS). Sanitisation happens in Rust
 before the string reaches the policy, so the policy is an identity function guarded by a Rust-side
-type (`SanitisedHtml`). The default policy MUST be absent, so any other sink throws.
+type (`SanitisedHtml`). The same policy also has `createScriptURL`, which accepts same-origin URLs
+only (T18-007) and throws otherwise; the shim creates its workers through it. The default policy
+MUST be absent, so any other sink throws.
 
 #### T18-003 — Cross-origin isolation and its consequences
 **MUST** — Documents MUST be served with COOP `same-origin` and COEP `require-corp` for
@@ -650,6 +655,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; formal design rules; Satisfies table; aligned with 06, 07, 11 and ADR-0012 |
+| 1.0-rc | 2026-11-19 | #39: T18-002 static assets also carry CSP, `Reporting-Endpoints` and COOP/COEP (workers take them from their own response, T03-022); `upgrade-insecure-requests` only for an https public URL. T18-005 the `pulsus-sanitised` policy also has a same-origin-only `createScriptURL` (T18-007) for worker construction |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

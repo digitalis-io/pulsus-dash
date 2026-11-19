@@ -151,7 +151,9 @@ accelerate a feature; every feature MUST work without them. Dash MUST NOT depend
 
 #### T11-002 — `org_id` leads every key
 **MUST** — Every tenant-owned table MUST have `org_id uuid NOT NULL` as the first column of its
-primary key and of every index, so every access path is org-local.
+primary key and of every index, so every access path is org-local. The only exceptions are the
+global lookup keys used before the org is known (T11-027): the `sessions` primary key
+(`sid_hash`), `orgs.slug` and the `api_tokens.id` index.
 
 #### T11-005 — Optimistic concurrency
 **MUST** — Every mutable content row MUST carry `etag bigint`, incremented on update; the API MUST
@@ -178,10 +180,13 @@ defence in depth. Schema-per-tenant is rejected.**
 
 | Role | Attributes | Used by |
 |---|---|---|
-| `pulsus_owner` | Owns schema objects, no login from replicas | Migration runner only |
+| `pulsus_owner` | Owns schema objects; `BYPASSRLS` (forced RLS also binds the table owner, and the T11-027 definer functions run as the owner), no login from replicas | Migration runner only |
 | `pulsus_app` | No `BYPASSRLS`; `SELECT/INSERT/UPDATE/DELETE` on parent tables only; no `UPDATE/DELETE` on `audit_events` | Every request path |
 | `pulsus_maint` | `BYPASSRLS`; partition create/detach/drop, retention moves and purges | `worker` role maintenance jobs, separate pool |
 | `pulsus_ro` (optional) | No `BYPASSRLS`, read-only | Audit viewer and import dry-runs on a read replica |
+
+Operators create the roles once per cluster (`server/crates/dash-store/sql/roles.sql`, idempotent,
+no passwords) and the database owned by `pulsus_owner`; migrations never create roles.
 
 #### T11-003 — Every tenant table under RLS, one transaction path
 **MUST** — Every tenant-owned table, including partitioned parents, MUST have `ENABLE` and `FORCE
@@ -215,7 +220,9 @@ partitions MUST be created by `pulsus_maint` with privileges revoked from `PUBLI
 kiosk pairing code) MUST go through `SECURITY DEFINER` functions (`auth_lookup_session(sid_hash)`,
 `auth_lookup_token(token_id)`, `auth_lookup_pairing(code_hash)`) that return only the row's
 `org_id` and principal. `pulsus_app` MUST have no direct `SELECT` on `sessions`, `api_tokens` or
-`kiosk_pairings`, so these tables stay under the same RLS as the rest.
+`kiosk_pairings`, so these tables stay under the same RLS as the rest. First-run seeding finds the
+default org by slug through `bootstrap_find_org(slug)` (returns the org id only; executable by
+`pulsus_app`).
 
 - Cross-org jobs (retention, the migration runner, the audit exporter's cursor scan) use
   `pulsus_maint` from a separate pool.
@@ -247,8 +254,7 @@ CREATE TABLE tenant_bindings (org_id uuid REFERENCES orgs, id uuid, slug text NO
 
 CREATE TABLE users (org_id uuid, id uuid, email text NOT NULL, display_name text,
   idp_id uuid, external_id text, active bool NOT NULL DEFAULT true,
-  password_hash text,                           -- local login (bootstrap / no IdP); no Dash MFA (ENT-011)
-  last_login_at timestamptz,
+  last_login_at timestamptz,                    -- no password column: login is OIDC only (T06-022, ENT-011)
   PRIMARY KEY (org_id, id), UNIQUE (org_id, idp_id, external_id));
 CREATE UNIQUE INDEX ON users (org_id, lower(email));
 
@@ -639,6 +645,12 @@ migrations, so a 10⁷-row backfill never holds a migration lock.
 ([T19](T19-deployment.md) §4.5). It MUST take `pg_advisory_lock(<constant>)`, and MUST refuse to
 start if the database is *ahead* of the binary by more than the N+1 compatibility window. Replicas at
 start-up MUST check `_sqlx_migrations` and refuse to serve if the schema is older than they require.
+
+The window is tracked by the singleton `pulsus_schema_level(level)`, which each schema-changing
+release's last migration sets, plus `_sqlx_migrations`: a binary built for level N serves when its
+newest embedded migration is applied and the level is N or N+1 (an N+1 binary migrated first;
+expand-only, T11-012), and refuses otherwise. `migrate` reads the level before applying (none on a
+fresh database), refuses a level above N+1, and ignores applied versions it does not know.
 
 #### T11-016 — Document upcasters are golden-tested
 **MUST** — Every historical `schema_version` fixture MUST upcast to the current version in CI.
@@ -1260,6 +1272,7 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; ADR-0012 derived-state tables added; formal design rules; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 `folders`, `boards` and `board_versions` move M-UI5 → M-UI1; versions UI, diff and restore stay M-UI5 |
+| 1.0-rc | 2026-11-19 | #39: §4.1 `pulsus_owner` has `BYPASSRLS` (forced RLS binds the owner; definers and seeding need it) and operators create the roles; T11-002 exception for the T11-027 global lookup keys; T11-027 adds `bootstrap_find_org(slug)`; §4.2 `users.password_hash` removed (contradicted T06-022, ENT-011); T11-015 the N+1 window is tracked by the `pulsus_schema_level` singleton plus `_sqlx_migrations` |
 
 **Changes versus the draft:**
 1. **Derived state in Postgres (ADR-0012).** The draft's non-goal "alert transitions and long-term

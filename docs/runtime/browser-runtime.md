@@ -48,7 +48,7 @@ wasm-bindgen output in `web/shim/gen/dash-core-{mt,st}/`:
 
 | File | Budget (code lines) | Does |
 |---|---|---|
-| `boot.js` | ≤ 70 | capability probe, mode, compile, spawn workers and handshakes, status → `<html>`, T2 restart, stale-layout stop, 10 s boot timeout |
+| `boot.js` | ≤ 70 | the Trusted Types policy, capability probe, mode, compile, spawn workers and handshakes, status → `<html>`, T2 restart, stale-layout stop, 10 s boot timeout |
 | `worker.js` | ≤ 35 | imports the glue of its mode, instantiates the module, dispatches by `role` (`render`, `data`), runs the frame loop on the worker's `requestAnimationFrame` (`setTimeout(16)` where it is absent), answers ST input batches |
 | `input.js` | ≤ 90 | canvas listeners, record encoding, the bounded queue, the ring and batch sinks |
 | `layout.gen.js` | excluded | control-block offsets, capability bits and status codes, generated from `dash-protocol` |
@@ -57,6 +57,14 @@ The three files total ≤ 195 lines of the 300 of T03-001, and each is SHA-256-p
 `ci/shim-pins.toml` (see [Build, test and CI](../development/build-and-ci.md)). `layout.gen.js` is
 written by `cargo xtask gen` from `dash_protocol::layout::render_js()` and committed; `ci:shim-lint`
 and `ci:dep-audit` accept it only while it is byte-identical to its generator.
+
+**Trusted Types (T18-005).** `boot.js` creates the one policy the CSP allows, `pulsus-sanitised`,
+once at the top level: `createHTML` passes input through (the Rust-side `SanitisedHtml` type guards
+it) and `createScriptURL` accepts only same-origin URLs (T18-007), throwing `TypeError` otherwise.
+Workers are created with `new Worker(scriptURL(new URL("./worker.js", import.meta.url)), …)`; where
+the browser has no Trusted Types, `scriptURL` returns the URL unchanged. The shim has no other DOM
+sink; `worker.js` uses only `import()` and `postMessage`. `ci:shim-lint` accepts the `scriptURL(…)`
+wrapper around a literal worker URL.
 
 **Messages.** Each worker gets one handshake (`role`, `mode`, `index`, `module`, `main_time_origin`,
 `caps`, `query`; plus the transferred `canvas` for render, the shared `memory` for data-0). The
@@ -188,7 +196,15 @@ WebGL2-level limits, no features, FIFO presentation and the first non-sRGB surfa
 The runtime needs the T03 §5.7 headers (T03-022): COOP `same-origin` and COEP `require-corp` for
 isolation, CORP `same-origin`, and at least the CSP `script-src 'self' 'wasm-unsafe-eval';
 worker-src 'self'; connect-src 'self'; font-src 'self'`. Without COOP/COEP the page still works, in
-ST mode with the banner. `cargo xtask serve` sends these headers (below).
+ST mode with the banner.
+
+The `pulsus-dash` binary serves the page with the full production set (T18-002): the strict CSP
+with `require-trusted-types-for 'script'` and `trusted-types pulsus-sanitised`, on every static
+response (workers take CSP and COEP from their own response), plus HSTS, `Referrer-Policy` and
+`Permissions-Policy` on the document; see
+[Server architecture](../server/architecture.md#static-assets-and-security-headers). `style-src
+'self'` forbids inline styles, so the page's styles live in `web/shell.css`. `cargo xtask serve`
+sends the T03 §5.7 minimum only (below); it stays for header-stripping tests (`--no-isolation`).
 
 ## Test probe
 
@@ -244,17 +260,21 @@ Frame-rate numbers are not gated in CI (T05-006). CI renders with SwiftShader, w
 ## Running locally
 
 ```bash
+cargo xtask dev up           # tools, both artefacts into web/, the stack and the binary on :8080
+# or, without Postgres and the binary:
 cargo xtask tools            # once: pinned nightly, wasm-bindgen, wasm-opt
 cargo xtask gen              # build both artefacts into web/shim/gen/ (and refresh layout.gen.js)
-cargo xtask serve            # http://localhost:8080 with the required headers
+cargo xtask serve            # http://localhost:8080 with the T03 §5.7 headers
 cargo xtask serve --no-isolation --port 8081   # ST mode
 ```
+
+`cargo xtask dev up` needs Docker and the PulsusDB URL in `dev/local.env` ([Dev stack](../development/dev-stack.md)).
 
 Open `http://localhost:8080/`. Add `?mode=t2`, `?mode=st` or `?mode=static` to force a mode. For
 the probe build, `cargo xtask gen --test` writes `target/web-test/`; serve it with
 `cargo xtask serve --root target/web-test`. The end-to-end suite runs with
-`cargo xtask ci e2e` (it builds `target/web-test/` and starts its own servers on ports 8787 and
-8788).
+`cargo xtask ci e2e` (it builds `target/web-test/`, serves it with the binary on port 8787 and with
+the header-stripping dev server on 8788, then runs the `dev up` flow on 8789).
 
 ## Limits
 
@@ -264,8 +284,8 @@ the probe build, `cargo xtask gen --test` writes `target/web-test/`; serve it wi
 - `navigator.gpu` present but no adapter counts as "no WebGPU": the WebGPU attempt fails before the
   surface and WebGL2 runs on the same canvas.
 - The threaded glue carries wasm-bindgen's `Atomics.waitAsync` fallback, which spawns a blob-URL
-  worker on browsers without `Atomics.waitAsync`; CSP `worker-src 'self'` blocks it there. Current
-  Chromium has `Atomics.waitAsync`.
+  worker on browsers without `Atomics.waitAsync`; CSP `worker-src 'self'` and Trusted Types block
+  it there. Current Chromium has `Atomics.waitAsync`.
 - `dash-tokens::spike` holds provisional colours until the token set (epic #3) replaces them.
 
 ## Design mapping
@@ -276,5 +296,5 @@ the probe build, `cargo xtask gen --test` writes `target/web-test/`; serve it wi
 | `crates/dash-gpu` (`tier`, `web`) | T03 §9.2, PRF-044, T03-025 |
 | `crates/dash-scene::spike`, `crates/dash-marks::rect` | VIZ-001 (one instanced mark, one draw call) |
 | `crates/dash-core-mt` (`render`, `data`, `chunk`, `frame_input`, `frame_stats`, `probe`) | T01-003, T01-004, T03-007, T03-019, T03-024 |
-| `web/shim/{boot,worker,input}.js`, `web/index.html` | T03-001, T03-003, T03-020, T03-022, T03-025 |
+| `web/shim/{boot,worker,input}.js`, `web/index.html`, `web/shell.css` | T03-001, T03-003, T03-020, T03-022, T03-025, T18-005 |
 | `crates/dash-lab::trace`, `xtask e2e` | PRF-005, T05 §4.3 |

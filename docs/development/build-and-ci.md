@@ -6,7 +6,9 @@ gate works, locally and in GitHub Actions.
 Implements [T01-001 and T01-002](../../designs/technical/T01-frontend-architecture.md),
 [T03-001, T03-005, T03-008 and T03-024](../../designs/technical/T03-browser-runtime.md) (the CI
 lints, the generated layout and the probe check) and
-[T05-001 and T05-002](../../designs/technical/T05-testing-and-performance.md), following
+[T05-001 and T05-002](../../designs/technical/T05-testing-and-performance.md), the server gates of
+[T06-001](../../designs/technical/T06-bff-architecture.md) and
+[T11-001, T11-013 and T11-023](../../designs/technical/T11-postgres-schema.md), following
 [ADR-0001](../../designs/adr/0001-rust-wasm-everywhere.md) and
 [ADR-0002](../../designs/adr/0002-no-js-ui-framework.md). The gate catalogue is
 [T05 §7.1](../../designs/technical/T05-testing-and-performance.md#71-gate-catalogue).
@@ -21,6 +23,8 @@ lints, the generated layout and the probe check) and
 - `curl` and `tar`: `cargo xtask tools` downloads binaryen's `wasm-opt`.
 - Node.js 22 (`npm`, `npx`): only for the `e2e` gate (Playwright, test tooling; nothing from npm is
   shipped). Run `npm ci` and `npx playwright install --with-deps chromium` in `e2e/` once.
+- Docker with the compose plugin: the `itest` and `e2e` gates and `cargo xtask dev` (see
+  [Dev stack](dev-stack.md)).
 
 Network access is needed for crates.io, the pinned nightly and binaryen (`cargo xtask tools`) and
 npm (`e2e/` only).
@@ -31,10 +35,11 @@ npm (`e2e/` only).
 |---|---|
 | Native build of every crate | `cargo build --workspace --locked` |
 | Browser build (stable, no bindgen) | `cargo build-wasm` → `target/wasm32-unknown-unknown/wasm-release/dash_core_mt.wasm` |
-| Install the pinned build tools | `cargo xtask tools` |
+| Install the pinned build tools | `cargo xtask tools` (all), `cargo xtask tools squawk`, `cargo xtask tools sqlx-cli` |
 | Both core artefacts into `web/shim/gen/` | `cargo xtask gen` (also rewrites `web/shim/layout.gen.js` when stale) |
 | Probe-enabled test build into `target/web-test/` | `cargo xtask gen --test` |
 | Dev server with the runtime's headers | `cargo xtask serve [--root DIR] [--port N] [--no-isolation]` |
+| The binary on the local stack | `cargo xtask dev up [--port N] [--assets DIR]`, `dev down`, `dev reset`, `dev sqlx-prepare` ([Dev stack](dev-stack.md)) |
 | One gate | `cargo xtask ci <gate-id>` |
 | All gates, in CI order | `cargo xtask ci all` |
 | Write a gate's deliberate regression | `cargo xtask seed <gate-id>` |
@@ -55,6 +60,8 @@ Exit codes of `cargo xtask`:
 | `unseed <gate-id>` | seed undone, manifest deleted; paths printed | — | no manifest, a seeded file changed since seeding, or unknown gate |
 | `tools`, `gen [--test]` | done | — | error (a tool exited non-zero, a checksum mismatch, a memory check failed) |
 | `serve …` | runs until stopped | — | cannot bind, bad arguments |
+| `dev up`, `dev reset` | (replaced by the server; its exit code) | — | the stack, a build or `migrate` failed |
+| `dev down`, `dev sqlx-prepare` | done | — | error |
 
 Every finding prints as `error[<rule-id>] <path>[:<line>]: <message>`. Under GitHub Actions it is
 also emitted as an `::error` annotation, so it shows on the PR diff.
@@ -63,16 +70,18 @@ also emitted as an `::error` annotation, so it shows on the PR diff.
 
 | Path | Contents |
 |---|---|
-| `Cargo.toml` | The one root workspace (`crates/*`, `xtask`), shared package keys and lints |
+| `Cargo.toml` | The one root workspace (`crates/*`, `server/bin/*`, `server/crates/*`, `xtask`), shared package keys and lints |
 | `crates/` | Browser, shared (⇄) and test crates: `dash-core-mt` (the core WASM module), `dash-gpu`, `dash-scene`, `dash-marks`, `dash-scales`, `dash-axes`, `dash-tokens`, `dash-wire`; test crates `pulsus-synth`, `dash-golden`, `dash-lab`. Today they are stubs that name their design and implementing issue |
-| `server/` | BFF-only crates (M-UI1, T06 §4.1); not created yet |
+| `server/` | The BFF ([Server architecture](../server/architecture.md)): `server/bin/pulsus-dash` and `server/crates/{dash-core,dash-config,dash-store,dash-gateway}` |
+| `.sqlx/` | The committed compile-time query cache of `dash-store` (`SQLX_OFFLINE=true` in `.cargo/config.toml`; refreshed by `cargo xtask dev sqlx-prepare`) |
+| `dev/` | The compose stack, the Dex template, the dev configuration; `dev/local.env` is git-ignored ([Dev stack](dev-stack.md)) |
 | `xtask/` | The gate runner and seeds (this page) |
 | `ci/` | Gate registry and gate configuration |
-| `web/index.html` | The runtime demo page ([Browser runtime](../runtime/browser-runtime.md)) |
+| `web/index.html`, `web/shell.css` | The runtime demo page and its styles ([Browser runtime](../runtime/browser-runtime.md)) |
 | `web/shim/` | The JS shim: only the T03 §5.1 files (today `boot.js`, `worker.js`, `input.js`) and the generated `layout.gen.js` |
 | `web/shim/gen/` | Git-ignored wasm-bindgen output of `dash-core-mt` and `dash-core-st`, accepted only by regenerate-and-compare (`ci:dep-audit`) |
 | `e2e/` | Playwright specs of the runtime mode matrix (test tooling only) |
-| `ci/tools.toml` | The pinned nightly, wasm-bindgen and binaryen versions and binaryen checksums |
+| `ci/tools.toml` | The pinned nightly, wasm-bindgen, binaryen, squawk and sqlx-cli versions, and the binaryen and squawk checksums |
 
 The crate map is [T01 §4.6](../../designs/technical/T01-frontend-architecture.md#46-crate-map).
 
@@ -88,7 +97,7 @@ Workspace lints deny `unwrap`, `expect`, `dbg!`, `todo!` and `unimplemented!` ou
 ## Gates
 
 The registry is `ci/gates.toml`: one entry per gate with its T05 id, owner and CI job
-(T05-001). `.github/workflows/ci.yml` runs four jobs on every pull request and on pushes to `main`.
+(T05-001). `.github/workflows/ci.yml` runs five jobs on every pull request and on pushes to `main`.
 Each gate is one step named `ci <gate-id>` that runs `cargo xtask ci <gate-id>`, exactly what you
 run locally.
 
@@ -101,13 +110,19 @@ run locally.
 | `wasm` | — | `area:platform` | `wasm` | `cargo build-wasm`, then `cargo xtask gen`'s release build of both artefacts into `web/shim/gen/` |
 | `probe-absent` | `ci:probe-absent` | `area:platform` | `wasm` | no test probe in a fresh release build (T03-024) |
 | `bundle-size` | `ci:bundle-size` | `area:rendering` | `wasm` | Brotli size per artefact against T03 §7.3 |
-| `dep-audit` | `ci:dep-audit` | `area:platform` | `wasm` | npm, browser crate graph, `web-sys` features, render-worker locks, web assets, shipped JS |
+| `dep-audit` | `ci:dep-audit` | `area:platform` | `wasm` | npm, browser crate graph, `web-sys` features, render-worker locks, web assets, shipped JS, server crate bans |
 | `design-check` | `ci:design-check` | `area:platform` | `static` | `designs/tools/check.py` and the traceability diff |
 | `shim-lint` | `ci:shim-lint` | `area:shell` | `static` | T03-001 on the shim |
-| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix, the PRF-005 trace check, and the T03-003 shim queue checks (times reported only) |
+| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix through the binary under the production CSP (`e2e:csp-violations`), the PRF-005 trace check, the T03-003 shim queue checks (times reported only), the PRF-008 startup report and the `dev up` flow |
+| `migrations` | `ci:squawk-migrations` | `area:platform` | `static` | squawk and two file rules over `server/crates/dash-store/migrations/` |
+| `no-pulsusdb-host` | `ci:no-pulsusdb-host` | `area:platform` | `static` | the private PulsusDB host is nowhere in the repository |
+| `itest` | `itest:rls-isolation` | `area:platform` | `itest` | RLS and migration itests on Postgres 16 and vanilla Postgres 15 (`itest:no-extensions`), the IdP, the `.sqlx` cache |
 
-The `wasm` and `e2e` jobs run `cargo xtask tools` first. The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
-even when an earlier gate failed.
+The `wasm` and `e2e` jobs run `cargo xtask tools` first, the `static` job `cargo xtask tools squawk`
+and the `itest` job `cargo xtask tools sqlx-cli`. The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
+even when an earlier gate failed. The `e2e` job sets `PULSUS_DASH_DATASOURCES_BOOTSTRAP__0__URL` to
+the placeholder `http://pulsusdb.invalid:9`; the `static` job passes the repository secret
+`DASH_FORBIDDEN_HOSTS` to `ci no-pulsusdb-host`.
 
 Which checks are *required* to merge is a repository setting made by the owner; this repository
 only defines the checks.
@@ -188,6 +203,22 @@ with the change. The pin makes every byte of shipped JS a reviewed change: a lib
 shim file changes its hash. `.gitattributes` marks `web/shim/**` as `-text` so checkouts never alter
 the pinned bytes.
 
+**Server crate bans (T06-001, T11-023).** `[server]` in `ci/dep-audit.toml` lists the server
+directories, the banned HTTP-server, HTTP-client and SQL crates and the crates allowed to use each.
+The direct normal dependencies (any target) of every workspace member under `server/` come from an
+unfiltered `cargo metadata --format-version 1 --locked`:
+
+| Rule id | Fails when |
+|---|---|
+| `server-framework-outside-gateway` | a member other than `dash-gateway` depends on an HTTP server crate (`axum`, `tower-http`, …) |
+| `sql-crate-outside-store` | a member other than `dash-store` depends on a SQL crate (`sqlx`, `tokio-postgres`, `diesel`, …) |
+| `http-client-outside-allowed` | a member outside `http_client_allow` depends on an HTTP client (`hyper`, `reqwest`, …) |
+| `sql-outside-store` | a `.rs` file under `server/` or `crates/` outside `server/crates/dash-store/` contains `sqlx::` |
+
+`allocator-api2`, `futures-io`, `futures-sink` and `memchr` are allowed browser crates: the
+workspace-wide metadata shows them under `dash-core-mt` because the server crates enable features
+on shared crates, but a `dash-core-mt` wasm build does not compile them.
+
 ### `ci:bundle-size`
 
 Measures the brotli size (quality 11, window 24; each file compressed separately, as served) of
@@ -259,6 +290,72 @@ root) on `localhost` (default port 8080), one request at a time, with COOP `same
 `Cache-Control: no-cache` and `X-Content-Type-Options: nosniff`. Only `GET` and `HEAD` (else 405);
 `/` is `index.html`; a path with `%`, `\` or a `..` segment, a directory or a missing file is 404.
 
+`cargo xtask tools squawk` downloads `squawk-<platform>` of the pinned release into
+`target/tools/bin/squawk` (0755) after checking its pinned SHA-256. `cargo xtask tools sqlx-cli`
+runs `cargo install sqlx-cli --version <pin> --no-default-features --features rustls,postgres
+--locked --root target/tools`; it runs as `cargo sqlx` with `target/tools/bin` first on `PATH`.
+
+### `ci:squawk-migrations`
+
+`cargo xtask ci migrations` runs `target/tools/bin/squawk --config .squawk.toml` on every
+`server/crates/dash-store/migrations/*.sql` (T11-013; `.squawk.toml`: `pg_version = "15.0"`,
+`assume_in_transaction = true`, `prefer-robust-stmts` and `require-timeout-settings` excluded
+because every migration runs in a transaction and the runner sets `lock_timeout`), then checks
+each file:
+
+| Rule id | Fails when |
+|---|---|
+| `migration-lint` | squawk exits non-zero (its output is printed above the finding), or `ATTACH PARTITION` appears without `VALIDATE CONSTRAINT` in the same file |
+| `migration-extension` | `CREATE EXTENSION` outside a `--` comment (T11-001: no required extension) |
+
+Migrations are expand-only (T11-012); see [Server architecture](../server/architecture.md#migrations-t11-012-t11-013-t11-015).
+
+### `ci:no-pulsusdb-host`
+
+The private PulsusDB host must never enter the repository. `cargo xtask ci no-pulsusdb-host` scans
+the relative path and the text (no NUL byte in the first 8 KiB) of every file
+`git ls-files --cached --others --exclude-standard` lists, so a new, uncommitted file is checked
+too:
+
+1. **Literal.** Each host in `DASH_FORBIDDEN_HOSTS` (comma list; a repository secret in CI),
+   case-insensitively, anywhere in a path or a line → `pulsusdb-host` "a forbidden PulsusDB host".
+   When the variable is unset or empty: with `CI=true` the gate fails with
+   `pulsusdb-host-secret-missing` (fail closed); locally it prints
+   `warning: literal host check skipped: DASH_FORBIDDEN_HOSTS unset` and continues.
+2. **Structural.** URLs in `PULSUS_DASH_DATASOURCES_BOOTSTRAP__<n>__URL` assignments, in
+   `url:`/`datasource_url:` lines, and every `datasources_bootstrap[*].url` of a YAML file must have
+   a reserved host: `localhost`, `example.com`, `example.org`, `example.net`, or a name ending in
+   `.invalid`, `.example` or `.test` → otherwise `pulsusdb-host` "PulsusDB URL host is not a
+   reserved example host" (the host is not printed).
+
+No output ever contains a forbidden host. In every finding (console and annotation) a path segment
+that contains one is replaced by `<redacted:h8>`, where `h8` is the first 8 hex digits of the
+SHA-256 of the full relative path. Map it back locally:
+
+```bash
+git ls-files --cached --others --exclude-standard | while IFS= read -r p; do
+  printf '%s %s\n' "$(printf '%s' "$p" | sha256sum | cut -c1-8)" "$p"; done | grep '^<h8> '
+```
+
+### `itest`
+
+`cargo xtask ci itest` (job `itest`; T05 `itest:rls-isolation` and `itest:no-extensions`) runs on
+the compose project `pulsus-dash-itest` (ports 56432, 56433, 6556; [Dev stack](dev-stack.md)):
+
+| Step | What |
+|---|---|
+| 1 | render Dex; `docker compose --profile itest up -d --wait --build`; wait for the IdP (60 s) |
+| 2 | `cargo test --locked -p dash-store -p pulsus-dash -- --ignored` on Postgres 16 |
+| 3 | the same on vanilla Postgres 15 (`DASH_ITEST_EXPECT_VANILLA=1`: only `plpgsql` available) |
+| 4 | `cargo test --locked -p xtask --test dev_stack -- --ignored` (OIDC discovery) |
+| 5 | create `sqlx_check`, `pulsus-dash migrate` it, then `cargo sqlx prepare --workspace --check` |
+| 6 | always `docker compose … down -v` |
+
+Steps 2–5 all run; the gate passes only if every step passes. A failing step 5 check adds
+`sqlx-cache-stale` "the .sqlx offline cache does not match the queries; run `cargo xtask dev
+sqlx-prepare` and commit .sqlx/". Only itests carry `#[ignore = "itest: run by cargo xtask ci
+itest"]`, so `ci test` runs everything else without Postgres.
+
 ### `ci:probe-absent`
 
 `cargo xtask ci probe-absent` deletes `target/gen-check/`, builds a fresh release of both artefacts with default features (so a
@@ -282,10 +379,24 @@ else `probe-marker-undetected` (the scanner of `probe-absent` would miss a probe
 | `main-thread-long-task` | a main-thread task in the interaction window took > 16 ms of thread time or > 50 ms of wall time (PRF-005, until the reference lab exists); the message gives the project, `ts`, `dur` and `tdur` |
 
 A trace the detector cannot judge (no renderer main thread, no input, no task in the window, no
-thread time) is an error, not a pass. Playwright (`e2e/playwright.config.ts`) starts two dev servers
-on `target/web-test/` (port 8787 isolated, 8788 `--no-isolation`) and runs four Chromium projects,
-selected by tag: `webgpu` (SwiftShader WebGPU), `webgl2` (no WebGPU adapter), `nogpu` (no GPU at
-all) and `noiso` (not isolated). The specs and what each mode must show are described in
+thread time) is an error, not a pass. Playwright (`e2e/playwright.config.ts`) starts two servers on
+`target/web-test/`: port 8787 is the `pulsus-dash` binary (`cargo xtask dev up --assets
+target/web-test --port 8787`) with the production headers, CSP and Trusted Types; port 8788 is
+`cargo xtask serve --no-isolation`, a deployment that strips COOP/COEP (T03-022). It runs four
+Chromium projects, selected by tag: `webgpu` (SwiftShader WebGPU), `webgl2` (no WebGPU adapter),
+`nogpu` (no GPU at all) and `noiso` (not isolated). `e2e/tests/served.spec.ts` checks the served
+headers, that boot raises no CSP or Trusted Types violation (`e2e:csp-violations`), that Trusted
+Types are enforced, and `/readyz` without PulsusDB.
+
+(5) The **startup report** (PRF-008): `startup_time_reported` measures navigation start → T1/T2
+five times per project into `e2e/test-results/traces/startup-<project>.json`
+(`{"runs_ms":[…],"p75_ms":n}`); the gate prints each against the 1.0 s budget, on stdout and in
+the job summary. It is never a violation (T05-006); `bench:startup` blocks once the reference lab
+exists. (6) `cargo test --locked -p xtask --test dev_up_flow -- --ignored`: from a deleted
+`web/shim/gen/`, `cargo xtask dev up --port 8789` (project `pulsus-dash-devup`) must reach
+`/startupz` 200, build both cores, serve the isolated page under the CSP, pass
+`DASH_E2E_DEVUP=1 npx playwright test` (the `devup` project), stop with exit 0 on SIGTERM, and
+`dev down` must leave no container. The specs and what each mode must show are described in
 [Browser runtime](../runtime/browser-runtime.md). The report and traces are uploaded as the
 `e2e-report` artefact of the CI run.
 
@@ -306,6 +417,9 @@ Every gate has a seeded, committable violation, and the marker its failing log m
 | `shim-lint` | creates `web/shim/seeded.js` with `eval` | `shim-forbidden-token` |
 | `dep-audit` | creates `web/package.json` with a runtime dependency | `npm-runtime-dependency` |
 | `e2e` | replaces the Static message in `web/index.html` | `gpu_disabled_shows_fallback` |
+| `migrations` | creates `server/crates/dash-store/migrations/29991231000000_seeded.sql` with `ALTER TABLE users ALTER COLUMN display_name SET NOT NULL;` | `adding-not-nullable-field` |
+| `no-pulsusdb-host` | creates `dev/seeded-host.yaml` with a non-reserved `datasources_bootstrap` URL (scanned even uncommitted) | `pulsusdb-host` |
+| `itest` | replaces the `FORCE ROW LEVEL SECURITY` line of `20261119000001_foundation.sql` with `NULL;` | `rls_catalog_every_tenant_table` |
 
 `cargo xtask seed <gate-id>` refuses to overwrite an existing file or a second seed for the same
 gate, and records exactly what it wrote in `target/xtask-seed/<gate-id>.json`.
