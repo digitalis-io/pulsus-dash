@@ -125,9 +125,9 @@ the ignored tests of `crates/dash-golden/tests/decimation_ref.rs` in a release b
 (`golden:decimation-ref`, T05 §4.2). They render the line chart on lavapipe with the limits of each
 browser tier and compare GPU records with the CPU specification, the mask pass with the exact line
 coverage (zero missing and zero extra pixels) and the decimated image with the reference that draws
-every raw segment; see [Line chart](../rendering/line-chart.md#tests-and-gates). The heaviest test
-(`draw_parity`, 10⁸ reference segments per view) runs its views on up to four lavapipe devices in
-parallel. To update the Mesa pin when the runner's Candidate changes, set `mesa` to the new apt
+every raw segment; see [Line chart](../rendering/line-chart.md#tests-and-gates). The two heaviest tests
+(`decimation_ref_zero_diff` and `draw_parity`, 10⁸ raw segments per view) run their views on up
+to four lavapipe devices in parallel; the job takes about 25 minutes on a standard runner. To update the Mesa pin when the runner's Candidate changes, set `mesa` to the new apt
 version and `mesa_upstream` to its `x.y.z` (`tools_config_matches_lock` checks the shape).
 
 ### Fixing a cargo gate

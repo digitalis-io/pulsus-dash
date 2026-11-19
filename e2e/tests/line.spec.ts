@@ -178,9 +178,11 @@ const tLeft = async (page: Page) => (await lineStatus(page)).camera.tLeftRelMs a
 const frames = async (page: Page) => (await call(page, "frameStats")).frames as number;
 
 test("@webgpu line_flick_and_interrupt", async ({ page }) => {
-  await page.goto(SMALL);
+  // One series: the software GPU of CI then draws well above 10 fps, so the ~300 ms of inertia
+  // spans several frames.
+  await page.goto("/?scene=line&series=1&points=20000");
   await waitStatus(page, STATUS.T1);
-  await waitLine(page, (s) => s.uploaded === 20 && s.draws.line === 1);
+  await waitLine(page, (s) => s.uploaded === 1 && s.draws.line === 1);
   // 300 px in 5 steps over 50 ms, released while moving. The events carry explicit timestamps
   // (CDP), 300 ms ahead of dispatch, so the release velocity (measured over the last 50 ms, plan
   // §4.5) and the inertia clock do not depend on how fast the software GPU lets the browser
