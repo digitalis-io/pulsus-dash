@@ -196,13 +196,13 @@ fn decimation_ref_zero_diff() {
                 let at = format!("{} V{v} DPR {dpr}", p.name);
                 let mut merged = Mask::new(f.plot.w, f.plot.h);
                 let mut raws = Vec::with_capacity(s);
-                for i in 0..s {
+                for (i, py) in pyr.iter().enumerate() {
                     let raw = raw_of(d, &f, i);
                     let ym = dash_scales::lod::YMap {
                         d: f.uniforms.d(i as u32),
                         a: f.uniforms.a_y,
                     };
-                    let recs = decimate_series(&d.bits[i], &pyr[i], &f.columns);
+                    let recs = decimate_series(&d.bits[i], py, &f.columns);
                     assert!(
                         record_mask(&recs, &f.columns, &d.bits[i], &ym, f.plot.h) == raw,
                         "{at}: record_mask of series {i}"
@@ -308,29 +308,55 @@ fn mask_pass_exact_segments() {
     }
 }
 
+/// Draw parity of one configuration.
+fn parity(h: &Headless, p: &LinePreset, v: u8, dpr: f32) {
+    let d = synth(p);
+    let vw = view(d, v, dpr);
+    let at = format!("{} V{v} DPR {dpr}", p.name);
+    let compute = render(h, d, &vw, Render::Decimated(Compute), None);
+    assert!(lit(&compute) > 0.01, "{at}: lit {}", lit(&compute));
+    assert!(
+        render(h, d, &vw, Render::Reference, None) == compute,
+        "{at}: reference"
+    );
+    assert!(
+        render(h, d, &vw, Render::Decimated(Fragment), None) == compute,
+        "{at}: fragment"
+    );
+}
+
 #[test]
 #[ignore = "golden gate (lavapipe)"]
 fn draw_parity() {
-    let h = webgpu();
-    for p in [LINE_1E8, LINE_GAPPY] {
-        let d = synth(&p);
-        for v in 1..=5 {
+    // The reference draws every raw segment (10⁸ at V1 and V5): lavapipe's vertex stage runs on
+    // the submitting thread, so the configurations run on up to four devices in parallel, the
+    // costliest first.
+    let mut configs: Vec<(LinePreset, u8, f32)> = Vec::new();
+    for v in [1, 5, 2, 4, 3] {
+        for p in [LINE_1E8, LINE_GAPPY] {
             for dpr in [1.0, 2.0] {
-                let vw = view(d, v, dpr);
-                let at = format!("{} V{v} DPR {dpr}", p.name);
-                let compute = render(h, d, &vw, Render::Decimated(Compute), None);
-                assert!(lit(&compute) > 0.01, "{at}: lit {}", lit(&compute));
-                assert!(
-                    render(h, d, &vw, Render::Reference, None) == compute,
-                    "{at}: reference"
-                );
-                assert!(
-                    render(h, d, &vw, Render::Decimated(Fragment), None) == compute,
-                    "{at}: fragment"
-                );
+                configs.push((p, v, dpr));
             }
         }
     }
+    let workers = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .clamp(1, 4);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                let h = Headless::lavapipe(Tier::WebGpu).expect("lavapipe");
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some((p, v, dpr)) = configs.get(i) else {
+                        break;
+                    };
+                    parity(&h, p, *v, *dpr);
+                }
+            });
+        }
+    });
 }
 
 #[test]
