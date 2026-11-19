@@ -76,13 +76,11 @@ fn grid_roundtrip_zero_copy() {
     }
 }
 
-/// The schema message of an arbitrary Arrow schema.
+/// The schema message of an arbitrary Arrow schema (without the end-of-stream marker).
 fn schema_message(s: Schema) -> Vec<u8> {
     let opts = IpcWriteOptions::try_new(64, false, arrow_ipc::MetadataVersion::V5).unwrap();
-    StreamWriter::try_new_with_options(Vec::new(), &s, opts)
-        .unwrap()
-        .into_inner()
-        .unwrap()
+    let mut w = StreamWriter::try_new_with_options(Vec::new(), &s, opts).unwrap();
+    std::mem::take(w.get_mut())
 }
 
 fn with_metadata(m: &GridMeta, edit: impl FnOnce(&mut Metadata)) -> Vec<u8> {
