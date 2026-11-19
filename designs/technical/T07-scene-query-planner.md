@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -118,7 +118,7 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 | [AUD-041](../product/01a-audiences-and-perspectives.md#aud-041--show-data-trust) | §4.6 (Completeness per viewport, `data_age_ms`) | `itest:completeness-trailer` (T06 co-owns) |
 | [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) | §4.6, §4.11, §4.12, T07-024 | `itest:coverage-labels`: each fallback (R2, R5, R6, R9, Postgres pyramids, virtual sources, withheld families) produces a non-empty coverage label; a complete result reports 100 % |
 | [SRF-028](../product/04-surfaces.md#srf-028--query-explain) | §4.10 (plan explain, on-demand PulsusDB explain) | `itest:explain-matches-headers`: for a seeded 7-day query, the explain view's rollup, rows read and server time equal the PulsusDB explain response |
-| [SRF-030](../product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries) | §4.14 (multi-query expressions), T07-030 | `itest:planner-expressions`: queries A and B plus `A / B` return three result sets; in v1 (§0) from three physical queries with the expression sent as `(A) / (B)` text, and from two once T07-030 applies; the expression equals PulsusDB's own `A / B` within float tolerance |
+| [SRF-030](../product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries) | §4.14 (multi-query expressions), T07-030 | `itest:planner-expressions`: queries A and B plus `A / B` return three result sets; in v1 (§0) from three physical queries with the expression sent as expanded text (§4.14), including `unit:expr-expand-line-comment`, and from two once T07-030 applies; the expression equals PulsusDB's own `A / B` within float tolerance |
 | [INT-028](../product/03-interaction-model.md#int-028--live-mode) | §4.13 (LIVE head refresh), T07-028 | `itest:planner-live-refresh`: in LIVE, only the head tile is re-fetched each step, by delta; a hidden tab suspends refresh |
 | [INT-030](../product/03-interaction-model.md#int-030--comparison-baseline-ghost) | §4.1 (Context baseline), §4.4 | `itest:planner-baseline`: toggling the baseline ghost plans one extra physical query per series query (shifted range), served from cache when already held |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §5.1 (`Context` in every plan) | `itest:planner-context`: changing any Context member re-plans every viewport that reads it and no other |
@@ -796,10 +796,16 @@ query are not rewritten into one: keeping A and B separate lets their viewports 
 share fetches.
 
 **v1 form (no BFF parse, §0).** The client expands the expression into one PromQL query by replacing
-each reference token (`A`, `B`, …, the only tokens it recognises) with the referenced query's text in
-parentheses, and binds the viewport as an ordinary `Binding::Query`. The BFF plans it as an opaque
+each reference token (`A`, `B`, …, the only tokens it recognises) with `"(" + text + "\n)"`: the
+referenced query's exact text, then a newline, then the closing parenthesis. The newline ends any
+`#` line comment at the end of the operand, so the generated `)` and the rest of the expression are
+never commented out. The viewport is bound as an ordinary `Binding::Query`. The BFF plans it as an opaque
 query, so `A / B` beside A and B costs three physical queries; PulsusDB evaluates the expression and
 reports its errors. The `Combine::Kernel` form above and T07-030 apply from the parser design.
+
+Test: `unit:expr-expand-line-comment` (client, Vitest): with A = `up # note` and B = `up`, `A / B`
+expands to `(up # note` + newline + `) / (up` + newline + `)`; against `pulsus-fake` it returns
+the same series as `up / up`, and an operand without a comment expands with the same newline.
 
 #### T07-030 — Expressions reuse operand fetches
 **MUST** (from the parser design, §0; v1 uses the expanded form above) — An expression over workbench queries MUST be evaluated from its operands' results on a
@@ -1026,3 +1032,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; the planner is Go (`internal/planner`); the shared `pulsus-plan` IR is dropped in favour of Go types plus a JSON form and fixtures for T13; §4.2 parses PromQL with the Prometheus Go parser and treats LogQL and TraceQL as opaque in v1 (T07-002) |
 | 1.2-rc | 2026-11-19 | ADR-0015 "Query validation": the BFF parses no query language in v1. §0 gains the v1 opaque-planning table and the later parser design (decided before fusion in M-UI2; a server-side parser needs a new ADR); §4.2 no longer uses a Go PromQL parser; §4.14 v1 expression form (client-expanded text) with T07-030 deferred to the parser design; SRF-030 test and §11 updated |
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
+| 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated |

@@ -28,7 +28,7 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 
 [ADR-0005](../adr/0005-arrow-wire-format.md) chose Arrow IPC from the BFF to the browser. Until
 PulsusDB emits a columnar format natively (R1 in [pulsusdb-requirements](pulsusdb-requirements.md)),
-the BFF converts JSON → Arrow. PulsusDB today answers range queries in Prometheus/Loki-style JSON,
+the BFF converts JSON → Arrow. PulsusDB today answers range queries in Prometheus-compatible JSON (metrics) and its native logs JSON,
 with sample values as **strings** and log timestamps as nanosecond **strings** (PulsusDB API §2.1,
 §3.2). Trace fetch is OTLP JSON or protobuf by `Accept` (§4.1). Profiles are Connect JSON or proto
 (§5). The current upstream API reference documents no Arrow output.
@@ -488,7 +488,7 @@ BFF parses it.
 | `log_fields` | `/api/logs/v1/detected_fields` | `compare/1` (single side) | R6 |
 | `trace_fetch` | `/api/traces/v1/trace/{id}` (protobuf) | `trace_tree` + parts | — |
 | `traceql_search` | `/api/traces/v1/search` | `span_points` (root spans) | — |
-| `traceql_metrics` | `/api/traces/v1/metrics/query_range` (Tempo-native body) | `metric_matrix.grid` / `heatmap` | R1 |
+| `traceql_metrics` | `/api/traces/v1/metrics/query_range` (native trace-metrics body) | `metric_matrix.grid` / `heatmap` | R1 |
 | `span_points` | — (R2 not available) | `span_points` | R2 → `heatmap` + brushed `trace_fetch` |
 | `service_graph` | `/api/traces/v1/service_graph` | `entity_edges` | R5 → N windowed calls; edge cap per assumption A1 |
 | `profile_merge` / `profile_diff` | Connect `SelectMergeStacktraces` / `Diff` (`application/proto`) | `profile_flame(_diff)` | — |
@@ -861,4 +861,4 @@ support in the BFF for one release.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T04-001 to T04-019; D2 applied (no write path, Postgres virtual sources and fallback pyramids); `events/1` at M-UI1; coverage `data_end` and ✓ exact; ranks, generations and eviction order; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
-| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording |

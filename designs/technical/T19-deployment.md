@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
@@ -113,9 +113,9 @@ hashed names, and `no-cache` for `index.html` and `asset-manifest.json`.
 embeds the **previous release's** hashed assets (roughly 1 × the core bundle; `--no-previous-assets`
 turns it off), and in CDN mode versioned paths are kept for 30 days.
 
-- **CDN mode:** `assets.base_url = https://cdn…/pulsus-dash/<version>/`. The BFF still serves
-  `index.html`, the manifest, the shim and **workers** (same-origin, [T18](T18-security.md)
-  T18-007).
+- **CDN mode:** `assets.base_url = https://cdn…/pulsus-dash/<version>/`. The CDN serves only the
+  engine WASM, fonts and tiles. The BFF still serves `index.html`, the manifest, every JS module and
+  CSS file, and **workers** (same-origin, [T18](T18-security.md) T18-006, T18-007).
 
 #### T19-005 — CDN asset sets are verified
 **MUST** — In CDN mode the BFF MUST verify the CDN manifest signature at start-up
@@ -668,3 +668,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 7. The `worker` role gains the derived-state jobs (anomaly sweep, baselines, change events, pyramid
    builder, retention classes).
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): Go static build (`CGO_ENABLED=0`), `embed.FS` assets (T19-003), the chart renderer is a separate Rust binary (T19-001 exception, §4.2), no SAML glibc variant |
+| 1.2-rc | 2026-11-19 | #56 code review: CDN mode serves only the engine WASM, fonts and tiles; all JS, CSS and workers stay same-origin ([T18](T18-security.md) T18-006) |

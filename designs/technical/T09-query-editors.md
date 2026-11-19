@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078, proposed), LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -27,7 +27,7 @@ revised below.
 | `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
 | `nucleo-matcher` fuzzy ranking | CodeMirror autocompletion's matcher plus the ranking boosts of §4.4 |
 | `pulsus-re2` regex screen (T09-016) | T09-016 revised |
-| Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree; the loss check and T09-013 stand, with parity against PulsusDB by T09-017 |
+| Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree with a TS printer and a token-sequence loss check (§4.9 and T09-013 rewritten); no PulsusDB AST or printer is needed |
 | Leptos `QueryEditor`, `QueryBuilder` | React components (§5.1) |
 | Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014) |
 
@@ -66,7 +66,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 - Native-quality IME, selection, screen-reader and mobile-keyboard behaviour.
 - One editor core for the workbenches, alert rules, Board viewport editing, ⌘K and read-only
   snippets.
-- A PromQL visual builder at M-UI1 that round-trips with the text on the same AST.
+- A PromQL visual builder at M-UI1 that round-trips with the text, built on the Lezer PromQL tree (§4.9).
 
 **Non-goals**
 - A general code editor (multi-cursor, minimap, folding, Vim mode). Vim mode is a candidate later.
@@ -81,7 +81,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 | [SRF-027](../product/04-surfaces.md#srf-027--promql-editor) | §4.2, §4.3, §4.4, §4.5, T09-002, T09-009 | `e2e:editor-error-on-run`: running `rate(http_server_duration_bucket{service="checkout"[5m])` against `pulsus-fake` shows PulsusDB's parse error inline, underlined at the returned position or across the whole query when none is returned, and keeps the previous result; `itest:editor-completion-metadata` (metric, label and value completion from seeded PulsusDB metadata); `unit:hover-docs-functions` |
 | [SRF-078](../product/04-surfaces.md#srf-078--positioned-query-diagnostics-before-run) | §4.2 (WASM validator), §4.5, T09-009 | `e2e:editor-missing-brace`: typing `rate(http_server_duration_bucket{service="checkout"[5m])` underlines the missing `}` at its byte offset before run, with no request sent |
 | [SRF-028](../product/04-surfaces.md#srf-028--query-explain) | §4.5 (explain: structure + `X-Pulsus-Explain`) | `itest:explain-matches-headers` (T07 co-owns): rollup, rows read and server time match the PulsusDB response for a seeded 7-day query |
-| [SRF-029](../product/04-surfaces.md#srf-029--visual-query-builder) | §4.9, T09-013 | `prop:builder-roundtrip`: for every query in the PromQL corpus the builder can represent, text → builder → text is AST-equal and builder → text → builder is identical; every unrepresentable query yields a reason |
+| [SRF-029](../product/04-surfaces.md#srf-029--visual-query-builder) | §4.9, T09-013 | `prop:builder-roundtrip`: for every query in the PromQL corpus the builder can represent, text → builder → text has the same non-whitespace Lezer token sequence and builder → text → builder is identical; every other corpus query (including reject cases and queries with `#` comments) yields a named refusal and leaves the text unchanged; `e2e:builder-toggle-invalid`: toggling `rate(http_server_duration_bucket{service="checkout"[5m])` names the syntax error and stays on text |
 | [SRF-030](../product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries) | §4.6 (`VisHint`), §5.1 (multiple editors, A/B refs) | `e2e:metrics-autovis`: a histogram metric shows a heatmap; queries A, B and `A / B` show overlaid or as small multiples (T07 co-owns expression evaluation) |
 | [SRF-031](../product/04-surfaces.md#srf-031--metric-browser-and-series-table) | §4.4 (metric browser source: names, type, cardinality, label value counts) | `itest:suggest-metric-browser`: `http_` lists matching metrics with type and series count; labels for the selection list value counts |
 | [SRF-032](../product/04-surfaces.md#srf-032--cardinality-explorer) | §4.4 (`kind: cardinality`) | `itest:suggest-cardinality`: a seeded metric with 3.2k series, 2.9k from `pod`, returns `pod` as the largest entry with its count |
@@ -330,8 +330,8 @@ does before execution ([T07](T07-scene-query-planner.md) §4.1).
 
 - **Hover docs.**
   - **Functions and keywords:** from `dash-qdocs`, written by us. Prometheus docs (Apache-2.0) are
-    adapted with attribution. Loki and Tempo docs are AGPL-licensed; under D3 they MAY be adapted
-    with attribution and licence notice, but our own text is preferred so the three languages read
+    adapted with attribution. Third-party LogQL and TraceQL documentation is AGPL-licensed; under D3 it MAY be
+    adapted with attribution and licence notice, but our own text is preferred so the three languages read
     consistently.
   - **Metrics:** type, unit, help and series count (from `/api/v1/metadata` and BFF cardinality).
   - **Label values:** series or stream count.
@@ -424,31 +424,43 @@ without the query (AI-031).
 ### 4.9 Visual query builder (PromQL at M-UI1)
 
 SRF-029 requires a builder (metric → filters → operations) as a toggle that round-trips with the text
-without loss for any query it can represent.
+without loss for any query it can represent. *(Rewritten 1.4-rc for M-UI1: the builder runs in the
+browser on the Lezer PromQL tree; it needs neither PulsusDB's AST nor its printer.)*
 
-- **Model.** `BuilderModel` is a projection of the PulsusDB PromQL AST, not a separate grammar:
-  `metric` (with type and unit from metadata), `filters: Vec<Matcher>` (label pickers backed by
-  `/suggest`), and an ordered `ops: Vec<Op>` pipeline, where `Op` ∈ range function (`rate`,
-  `increase`, `*_over_time` with a duration), aggregation (`sum`/`avg`/`min`/`max`/`count`/`topk`/
-  `bottomk` with `by`/`without`), `histogram_quantile(φ)`, scalar arithmetic and comparison with a
-  constant, and binary operation with another builder query (`A / B`, with `on`/`ignoring`).
-- **Text → builder.** `project(&Expr) -> Result<BuilderModel, Unrepresentable>` walks the AST from the
-  outermost node inwards. `Unrepresentable` names the reason (e.g. "subquery", "nested binary
-  operation with vector matching on both sides", "`label_replace`", "offset/@ modifiers inside an
-  aggregation"), and the toggle shows it instead of switching.
-- **Builder → text.** `print(&BuilderModel) -> Expr` builds the AST and prints it with the canonical
-  printer; the editor is updated with one CodeMirror transaction, so it is one undoable edit.
-- **Loss check.** Every toggle checks `parse(print(project(q))) ≡ parse(q)` before switching; if it
-  fails, the toggle reports the construct and stays on text. Formatting differences (whitespace,
-  matcher order) are not loss; comments are, so a query with `#` comments is unrepresentable.
+- **Model.** `BuilderModel` is a projection of the Lezer PromQL tree: `metric` (with type and unit
+  from metadata), `filters: Matcher[]` in written order (label pickers backed by `/suggest`), and an
+  ordered `ops: Op[]` pipeline, where `Op` ∈ range function (`rate`, `increase`, `*_over_time` with
+  a duration), aggregation (`sum`/`avg`/`min`/`max`/`count`/`topk`/`bottomk` with `by`/`without`),
+  `histogram_quantile(φ)`, scalar arithmetic and comparison with a constant, and binary operation
+  with another builder query (`A / B`, with `on`/`ignoring`). The model also keeps each written
+  form the printer needs to reproduce the text: duration and number literals as written, the quote
+  character of each string, and whether a grouping clause precedes or follows the aggregation body.
+- **Text → builder.** `project(tree, text) → BuilderModel | Refusal` walks the Lezer tree from the
+  outermost node inwards. It refuses, with a named reason shown by the toggle, when:
+  - the tree contains an error node: "fix the syntax error at offset n first" (the text stays in the
+    editor; the builder never repairs text);
+  - the text contains a `#` comment: "comments cannot be shown in the builder";
+  - a construct is outside the model, e.g. "subquery", "nested binary operation with vector
+    matching on both sides", "`label_replace`", "offset/@ modifiers inside an aggregation".
+- **Builder → text.** `print(model) → string` is a TS printer over the model, emitting the written
+  forms kept above with single spaces between tokens. The editor is updated with one CodeMirror
+  transaction, so it is one undoable edit. A model without a metric prints an empty query.
+- **Loss check.** Before switching to the builder, the toggle checks that `print(project(q))` has
+  the **same sequence of non-whitespace Lezer tokens** as `q`. Equal tokens mean the texts differ only
+  in whitespace between tokens, which PromQL ignores (comments, the one whitespace-sensitive case,
+  are refused above). On a mismatch the toggle stays on text and names the first differing token.
+- **Validity.** The builder never decides validity (T09-002). Text it prints is validated like any
+  other text: by PulsusDB on run in M-UI1 (SRF-027), and by the WASM crates before run from M-UI2
+  (SRF-078). Lezer accepting a query PulsusDB rejects is caught by T09-017.
 - **Accessibility.** The builder is kit form controls (comboboxes, lists with reorder buttons), fully
   keyboard-operable ([T08](T08-dom-component-kit.md)).
 - LogQL and TraceQL builders follow at M-UI5 on the same pattern.
 
 #### T09-013 — Builder round-trips or explains
-**MUST** — Toggling from text to the builder MUST either produce a model whose printed AST equals the
-original AST, or refuse with a named reason. Toggling from the builder to text and back MUST restore
-an identical builder state.
+**MUST** — *(Revised 1.4-rc.)* Toggling from text to the builder MUST either produce a model whose
+printed text has the same sequence of non-whitespace Lezer tokens as the original, or refuse with a
+named reason (syntax error, comment, unrepresentable construct, or token mismatch) and leave the text
+unchanged. Toggling from the builder to text and back MUST restore an identical builder state.
 
 ## 5. Interfaces
 
@@ -602,11 +614,11 @@ revived if a non-AGPL edition is planned (D3, R17).
 | A hand-built `contenteditable` bridge | Cross-browser composition reconciliation is the hardest part of a code editor; CodeMirror already does it |
 | Canvas-text editor | Would re-implement IME, selection, a11y and mobile input |
 | Use PulsusDB parsers for highlighting too | Lexers are private or doc-hidden and not resumable; PromQL costs 115 µs or more per parse. Fine for validation, wrong for per-keystroke colour |
-| Tree-sitter grammars (compiled to wasm) | Excellent incremental parsing, but it is a second grammar to keep at parity, a C toolchain in the build, and the Prometheus/Loki/Tempo community grammars lag. `dash-qctx` is smaller and tested against PulsusDB corpora |
+| Tree-sitter grammars (compiled to wasm) | Excellent incremental parsing, but it is a second grammar to keep at parity, a C toolchain in the build, and the community grammars for these languages lag. `dash-qctx` is smaller and tested against PulsusDB corpora |
 | Server-side language server over WS | Every keystroke would wait on the network (PRF-006) |
 | `ropey` rope | Unnecessary below the 128 KB cap |
 | Clean-room LogQL/TraceQL parsers plus upstream `promql-parser` (draft licence option 2) | No longer needed under D3; about 3–4 engineer-months plus a permanent parity burden |
-| Builder with its own grammar | Two sources of truth; projecting the PulsusDB AST makes round-trip loss checkable |
+| Builder with its own grammar | A third grammar to keep at parity; projecting the Lezer tree the editor already has (held to PulsusDB by T09-017) makes round-trip loss checkable by token comparison |
 
 ## 13. Open questions
 
@@ -627,3 +639,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0; the editor is CodeMirror 6 in TS (§4.3 and T09-004 rewritten); PulsusDB validation through the BFF on run until the WASM crates land; T09-001 (one TS interface), T09-003 (CodeMirror highlighting), T09-006 (CodeMirror history), T09-016 (regex screen) and T09-017 (parity incl. the Lezer PromQL grammar) revised; SRF-027 and PRF-009 rows; Q5 parse-only route |
 | 1.2-rc | 2026-11-19 | Code review of #56: SRF-027 is errors on run from PulsusDB (`e2e:editor-error-on-run`); new SRF-078 row for pre-run byte-offset diagnostics (`e2e:editor-missing-brace`) with the WASM validator in M-UI2 (proposed); T09-009, §11 and Q5 aligned |
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: T09-009 has one fallback for every error without a position (whole-query underline, "position unknown"; no recovery-point placement), aligned in T09-002 and the §9 failure table; formatting moves out of M-UI1 to the WASM crates in M-UI2, optionally earlier through a confirmed PulsusDB format route (§0, §4.5, §11, Q5) |
+| 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |

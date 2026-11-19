@@ -443,7 +443,7 @@ resulting value; brushing then `⌘Z` restores the previous window.
 
 Filters MUST be translated between signal vocabularies on pivot using a per-tenant mapping table
 (e.g. OTel `service.name` ⇄ PulsusDB metrics `job` in `namespace/name` form, with other resource
-attributes only on `target_info` ⇄ Loki label `service_name`). The table MUST be pre-seeded from the
+attributes only on `target_info` ⇄ PulsusDB log stream label `service_name`). The table MUST be pre-seeded from the
 OTLP translation rules PulsusDB implements, and MUST be editable per tenant.
 
 *Acceptance:* A filter `service.name=checkout` on traces pivots to metrics as `job=~".*/checkout"`
@@ -515,4 +515,4 @@ changes the translation on the next pivot.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
-| 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §4 adds the Explore and Boards-list routes; §3.1 becomes the application layout with mockup 34; IA-016 (application layout), IA-020 (time range in the page header) and IA-021 (left navigation sidebar) revised in place; IA-028 Time Ribbon in Space scenes added (M-UI3); IA-003, IA-014 and the Scene definition no longer make Boards and workbenches GPU scenes; IA-018 Context badge sits in the page header |
+| 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §4 adds the Explore and Boards-list routes; §3.1 becomes the application layout with mockup 34; IA-016 (application layout), IA-020 (time range in the page header) and IA-021 (left navigation sidebar) revised in place; IA-028 Time Ribbon in Space scenes added (M-UI3); IA-003, IA-014 and the Scene definition no longer make Boards and workbenches GPU scenes; IA-018 Context badge sits in the page header; review r3: third-party product names replaced by generic wording |

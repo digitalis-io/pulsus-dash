@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (headers, CSP, sessions, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
@@ -109,7 +109,7 @@ The architecture gives us some advantages to build on:
 | [ENT-017](../product/11-enterprise.md#ent-017--append-only-audit-log) | §4.1 append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017) | `itest:audit-hash-chain` |
 | [ENT-019](../product/11-enterprise.md#ent-019--siem-export) | §4.9 SIEM/OTLP export through `dash-egress`; the only product data written to PulsusDB, opt-in | `itest:audit-export-only-when-configured` |
 | [ENT-030](../product/11-enterprise.md#ent-030--air-gapped-installs) | §4.9 air-gapped egress profile; §4.11 offline-verifiable signatures | `itest:airgap-no-egress` |
-| [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.2 no inline script or nonce, so HTML is cacheable; §4.3 SRI hashed while streaming (< 10 ms) | `bench:cold-load` (with [T03](T03-browser-runtime.md), [T19](T19-deployment.md)) |
+| [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.2 no inline script or nonce, so HTML is cacheable; §4.3 engine WASM hashed as it downloads (< 10 ms; only the engine is SRI-checked, JS is same-origin) | `bench:cold-load` (with [T03](T03-browser-runtime.md), [T19](T19-deployment.md)) |
 | [PRF-026](../product/09-performance-contract.md#prf-026--show-cached-marked-stale) | §4.9 T18-022 IndexedDB cache keyed by user and scope, wiped on logout | `e2e:cache-wipe-logout` |
 | [IA-001](../product/02-information-architecture.md#ia-001--object-vocabulary-and-persistence) | §4.1 trust boundary ②: no Dash write path into PulsusDB except self-telemetry and audit export | `itest:no-pulsusdb-writes` |
 
@@ -134,7 +134,7 @@ sessions and tokens, action capability, audit integrity.
 |---|---|---|---|
 | **S**poofing | Session theft or fixation; forged SAML; stolen API token; forged webhook callbacks (Slack/Teams interactive ack, PagerDuty/ServiceNow sync) | ①, IdP, ③ | `__Host-` HttpOnly cookies, session rotation at login, SAML hardening (signed assertions required, XML signature wrapping defence, `InResponseTo` + one-time assertion IDs against replay; T10 (draft)), token prefixes + scanning, inbound callback signature verification (T18-029) |
 | | BFF impersonating users to PulsusDB | ② | Single service credential per tenant binding (Basic today), mTLS recommended, R12 scoped credential later |
-| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | SRI + content-hashed assets (§4.3); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
+| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | Executable code same-origin only, signed asset manifest, SRI-checked WASM from the CDN (§4.3); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
 | **R**epudiation | "I didn't silence that"; AI did something | all | Audit with actor + `on_behalf_of` + request id; actions record proposer, confirmer and approvers |
 | **I**nformation disclosure | Cross-tenant/scope reads, including of derived state; XSS reading data; secrets in logs reaching the LLM or notifications; IndexedDB cache on shared machines; `X-Pulsus-Explain` SQL leak; SSRF to cloud metadata | ①②③④⑥ | Scope rewrite + response filter (T10 (draft)); RLS on every Postgres table ([T11](T11-postgres-schema.md) §4.1); CSP + Trusted Types; redaction pipeline (§4.10); cache wipe on logout + optional no-persist policy (§4.9); header stripping; egress guard (§4.9) |
 | **D**enial of service | Expensive queries (agent loops, broad regexes); WASM module infinite loop; webhook floods; notification storms | ②⑤③ | Per-principal query budgets ([T07](T07-scene-query-planner.md)); PulsusDB 422/429 bounds; module watchdog (§4.4); rate limits per contact point ([T16](T16-alert-evaluator.md) T16-015); request body caps |
@@ -161,8 +161,8 @@ Content-Security-Policy:                      # ADR-0014 §9
   frame-ancestors 'none';                     # <embed allowlist> in embed mode (M-UI5)
   require-trusted-types-for 'script'; trusted-types pulsus-sanitised;
   report-to csp
-                                              # CDN mode (T19) adds [ASSET_ORIGIN] to script-, style-,
-                                              # font- and connect-src
+                                              # CDN mode (T19) adds [ASSET_ORIGIN] to font- and
+                                              # connect-src only; script-, style- and worker-src stay 'self'
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp      # (credentialless considered, §12)
 Cross-Origin-Resource-Policy: same-origin       # same-site for CDN assets
@@ -224,22 +224,46 @@ The default policy MUST be absent, so any other sink throws.
 ### 4.3 Subresource integrity & asset integrity
 
 #### T18-006 — Content-hashed, integrity-checked, signed assets
-**MUST** — Every asset MUST have a content-hashed name (Vite's hashed `/assets/*` JS and CSS chunks,
-workers, fonts, and from #68 `dash-engine.<hash>.wasm`) and be integrity-checked before use:
-`<script type="module" integrity>` and `<link rel="stylesheet" integrity>` in `index.html` for the
-initial chunks, generated at build; **lazy route chunks** (workbenches, the editor chunk) are
-preloaded by the application with `<link rel="modulepreload" integrity>` built through the DOM API
-from the signed manifest before the dynamic `import()`, so the module is verified before it runs; and
-`fetch(url, {integrity: "sha384-…"})` followed by `WebAssembly.instantiateStreaming` for WASM, so
-integrity is checked before compilation. Each release's `asset-manifest.json` (`{path, sha384, size}`, same-origin, uncached) MUST
-be signed (ed25519, a release key held in KMS), and the BFF MUST verify the signature at start-up for
-embedded and CDN asset sets and refuse to serve a mismatched CDN set ([T19](T19-deployment.md)
-§4.1).
+**MUST** — *(Revised 1.2-rc.)* Every asset MUST have a content-hashed name (Vite's hashed `/assets/*`
+JS and CSS chunks, workers, fonts, and from #68 `dash-engine.<hash>.wasm`), and code MUST be loaded
+as follows:
+
+| Asset | Served from | Check before it runs |
+|---|---|---|
+| `index.html`, `asset-manifest.json`, every JS module (entry, lazy route chunks, the editor chunk and every chunk they import), wasm-bindgen glue, workers, CSS | **Same origin only** (the BFF), in every asset mode | The BFF serves only files of an asset set whose signed manifest it verified at start-up; CSP `script-src 'self'`, `style-src 'self'` and `worker-src 'self'` stop any other origin |
+| `dash-engine.<hash>.wasm` | Same origin, or the CDN in CDN mode | `fetch(url, {integrity: "sha384-…"})` with the hash from the manifest, then `WebAssembly.instantiateStreaming` on that response only |
+| Fonts, map tiles | Same origin, or the CDN in CDN mode | None: not executable; `font-src` and `img-src` limit their origins |
+
+Each release's `asset-manifest.json` (`{path, sha384, size}`, same-origin, uncached) MUST be signed
+(ed25519, a release key held in KMS), and the BFF MUST verify the signature at start-up for embedded
+and CDN asset sets and refuse to serve a mismatched set ([T19](T19-deployment.md) §4.1).
+
+**WASM failure handling.** A fetch with `integrity` resolves only after the whole body has been read
+and its hash matched; on a mismatch it rejects and nothing is compiled. The adapter then retries once
+from the same-origin `/assets/` path (the embedded set), and if that fails too, the engine is reported
+unavailable and charts stay on the interim renderer ([T03](T03-browser-runtime.md) §9), with a RUM
+counter `engine_integrity_failed`. A WASM module has no imports of its own beyond what the glue
+passes in, so there is nothing transitive to check.
+
+> **Rationale:** no per-module SRI for JavaScript. A `modulepreload` with `integrity` does not bind
+> the later `import()`, a failed preload does not stop it, and the chunks a module imports would each
+> need their own integrity entry; import-map `integrity` would cover that but is missing from part of
+> the [T03](T03-browser-runtime.md) browser matrix. Keeping all JS same-origin removes the need: the
+> only party that could change a same-origin module also serves `index.html` and the CSP, so SRI
+> would add no protection there, while the one third party in the path (the CDN) is never allowed to
+> serve code that executes without a hash check.
+
+Tests: `e2e:no-cross-origin-script` (production build in CDN mode: every script, module, worker and
+stylesheet request goes to the Dash origin, including every lazy route chunk and its imports, and
+the CSP `script-src` lists no CDN origin; an injected `import()` of a CDN URL produces a CSP
+violation report and does not run); `e2e:wasm-integrity-mismatch` (the CDN serves a tampered engine:
+no instantiation from it, one same-origin retry, and with both tampered the interim renderer stays
+with the RUM counter incremented); `itest:asset-manifest-signature` (a set with a bad signature is
+refused at start-up).
 
 #### T18-007 — Workers are same-origin
-**MUST** — Workers cannot take `integrity` (`new Worker(url)`). Worker scripts MUST therefore always
-be served **same-origin by the BFF**, even in CDN mode. Only bulk WASM, fonts and tiles come from the
-CDN.
+**MUST** — Workers, like every JS module (T18-006), MUST always be served **same-origin by the BFF**,
+even in CDN mode. Only the engine WASM, fonts and tiles may come from the CDN.
 
 ### 4.4 Sandboxed third-party WASM vis modules (M-UI6+)
 
@@ -602,7 +626,7 @@ only as the mapped Dash principal ([T16](T16-alert-evaluator.md) T16-021).
 
 | Control | Cost |
 |---|---|
-| SRI check on core WASM (3 MB) | < 10 ms, hashed while streaming; counts against [09](../product/09-performance-contract.md) PRF-008 cold load |
+| SRI check on the engine WASM (≤ 1.9 MB) | < 10 ms of hashing as it downloads; compilation starts once the verified body is complete, so it does not overlap the download; counts against [09](../product/09-performance-contract.md) PRF-008 cold load |
 | Module call watchdog overhead | ≤ 0.1 ms per call (postMessage round trip dominates); module budget 4 ms per frame |
 | AES-GCM decrypt per secret use | < 5 µs |
 | Egress DNS check | < 1 ms beyond resolution |
@@ -646,7 +670,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | Headers/CSP/COOP/COEP, SRI + manifest (initial and lazy chunks), Markdown sanitiser and no-iframe policy, npm and Go supply-chain gates, SBOM, signed images |
+| M-UI1 | Headers/CSP/COOP/COEP, same-origin JS and signed manifest (T18-006), Markdown sanitiser and no-iframe policy, npm and Go supply-chain gates, SBOM, signed images |
 | M-UI4 | Secrets (envelope + Vault refs), egress guard, action framework v1 (webhook, silence, revert config), redaction and AI guardrails, callback verification |
 | M-UI5 | Image proxy, schematic actions, release pause/rollback actions, embed mode, feed fetching |
 | M-UI6 | WASM vis module sandbox, FIPS build, reproducible-build gate, pen-test, SOC 2 Type I, air-gapped egress profile |
@@ -688,6 +712,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; formal design rules; Satisfies table; aligned with 06, 07, 11 and ADR-0012 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0; T18-002 uses the ADR-0014 §9 CSP (`'wasm-unsafe-eval'` from #68); T18-001, T18-004 (React CSSOM) and T18-005 (policy in one TS module, no HTML string sinks) revised; T18-006 adds SRI for lazy route chunks through `modulepreload`; T18-010 Go and TS schema validators; T18-013 Markdown to React elements; T18-026 npm, Go and engine supply-chain gates; T18-027 reproducible client and Go builds |
+| 1.2-rc | 2026-11-19 | Code review r3 of #56: T18-006 rewritten: all JavaScript, CSS and workers are same-origin in every asset mode, the CDN serves only the engine WASM (SRI-checked fetch, one same-origin retry, interim-renderer fallback), fonts and tiles; per-module SRI through `modulepreload` withdrawn with its rationale; tests `e2e:no-cross-origin-script`, `e2e:wasm-integrity-mismatch`, `itest:asset-manifest-signature`; CDN CSP adds the asset origin to `font-src` and `connect-src` only; T18-007 and the STRIDE row aligned |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

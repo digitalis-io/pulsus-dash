@@ -282,7 +282,7 @@ All crates live in one root Cargo workspace: engine and test crates under `crate
 ```
 
 The BFF ([T06](T06-bff-architecture.md)) is essential. It converts PulsusDB's
-Prometheus/Loki/Tempo-style JSON into Arrow once, server-side. It enforces RBAC on every query by
+JSON responses (Prometheus-compatible for metrics, native JSON for logs and traces) into Arrow once, server-side. It enforces RBAC on every query by
 injecting tenant and label matchers, and it plans queries per *scene* rather than per panel. Longer
 term, PulsusDB may emit Arrow natively (ClickHouse already speaks Arrow): requirement R1 in
 [pulsusdb-requirements](pulsusdb-requirements.md).
@@ -442,4 +442,4 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 | 1.0-rc | 2026-11-18 | #22: crate map adds `dash-core-mt` (the core module crate); the IndexedDB chunk cache is renamed `dash-chunk-cache` (T06's BFF `dash-cache` keeps the name in the one workspace); all crates live in one root Cargo workspace |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): TS/React client and Go BFF. §4.1 rewritten (T01-001, T01-002 revised); T01-007, T01-008 revised to the application layout; interim notes on T01-003 and T01-009; §4.4 rows, §4.5 generator, §4.6 note, §4.7 diagram, §5, §8, §10, §11, §12 updated; §13 Q1 closed |
 | 1.2-rc | 2026-11-19 | Product text revised to D7–D9 (roadmap Q13 closed): §4.3 Space is the Atlas and Lenses, Boards and workbenches are pages of chart frames, the Time Ribbon only in Space scenes; Satisfies rows for IA-014, IA-016 and VL-017 use `e2e:client-routing`, `e2e:app-layout` and `e2e:chrome-layout` |
-| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 note and VIZ-001 sentence; §4.2 rewritten (React owns semantic state on the main thread; the engine in workers holds render-local state behind `ChartFrame`; no Leptos shell, no Rust on main); T01-003 and T01-004 aligned; §4.6 crate map rewritten (`dash-shell`, `dash-state` withdrawn; no BFF crates); §5, §6, §10, §12 and §13 resolved items 1 and 3 aligned |
+| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 note and VIZ-001 sentence; §4.2 rewritten (React owns semantic state on the main thread; the engine in workers holds render-local state behind `ChartFrame`; no Leptos shell, no Rust on main); T01-003 and T01-004 aligned; §4.6 crate map rewritten (`dash-shell`, `dash-state` withdrawn; no BFF crates); §5, §6, §10, §12 and §13 resolved items 1 and 3 aligned; review r3: third-party product names replaced by generic wording |
