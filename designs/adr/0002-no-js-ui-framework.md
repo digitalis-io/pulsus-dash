@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted |
+| **Status** | **Superseded** (2026-11-19) by [ADR-0014](0014-typescript-react-web-client.md) |
 | **Source** | Follows from ADR-0001 (2026-11-18) |
 | **See** | [T01 §1](../technical/T01-frontend-architecture.md) |
 

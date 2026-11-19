@@ -3,14 +3,32 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, OIDC auth, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (multi-tenant quotas UI, audit export) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
+
+## 0. Applicability under ADR-0015 (2026-11-19)
+
+The BFF is Go ([ADR-0015](../adr/0015-go-bff.md)). Module responsibilities, rules, routes, the
+error envelope and the budgets of this document stand. Rust specifics map as follows:
+
+| Was (Rust) | Now (Go, under `server/`) |
+|---|---|
+| Cargo workspace, `server/crates/*`, shared ⇄ crates | One Go module; `internal/<module>` per crate below (`dash-` prefix dropped: `internal/core`, `internal/store`, `internal/gateway`, `internal/pulsusdb`, …); shared logic is per language, tied by fixtures (ADR-0015) |
+| Service traits (`#[async_trait] trait Catalogue`) held as `Arc<dyn Trait>` | Go interfaces in `internal/core/services.go`, implemented in-process or by an internal-API stub |
+| `RequestCtx` with `CancellationToken` and `Deadline` | `core.RequestCtx` passed explicitly as `*core.RequestCtx` beside a `context.Context` that carries cancellation and the deadline |
+| `axum`, `tower` layers | `net/http` + `chi` middleware; server stubs from `oapi-codegen` |
+| `sqlx`, migrations | `pgx/v5` + `sqlc`; `goose` ([T11](T11-postgres-schema.md) §4.8) |
+| `moka` L1 cache | `ristretto` (cost-weighted TinyLFU) |
+| JSON → Arrow converter (`simd-json` tape, Arrow builders) | Streaming `encoding/json` decoder into Arrow Go builders; until the engine lands, JSON frames to the browser ([ADR-0014](../adr/0014-typescript-react-web-client.md) §5) |
+| `cargo-deny` bans | `depguard` rules in golangci-lint |
+| `bincode` internal API | JSON over HTTP/2 with mTLS (T06-027 revised) |
+| `utoipa` OpenAPI | spec-first `api/openapi.yaml` |
 
 ## 1. Context & problem
 
-[T01](T01-frontend-architecture.md) sketches one Rust/axum process between the browser and PulsusDB.
+[T01](T01-frontend-architecture.md) sketches one Go process ([ADR-0015](../adr/0015-go-bff.md)) between the browser and PulsusDB.
 It converts JSON to Arrow, enforces RBAC, plans per scene, and hosts the entity, change, alert and AI
 services. The product specification pushes several hard requirements onto that process:
 
@@ -41,7 +59,7 @@ needs, and the external API surface. Two components get their own documents: the
   concurrency limits and telemetry. No module builds its own HTTP request to PulsusDB.
 - Every Postgres access goes through **one store crate** (`dash-store`) that applies the tenant
   binding for row-level security.
-- Module boundaries are explicit Rust traits, so in-process and remote (worker) placement are
+- Module boundaries are explicit Go interfaces, so in-process and remote (worker) placement are
   interchangeable without callers changing.
 - The p50 BFF overhead (excluding PulsusDB time) is ≤ 5 ms per physical query, and the JSON→Arrow
   conversion (until R1) is ≤ 30 ms per 10⁶ points per core (§7).
@@ -88,55 +106,44 @@ needs, and the external API surface. Two components get their own documents: the
 
 ## 4. Design
 
-### 4.1 Crate layout and module boundaries
+### 4.1 Package layout and module boundaries
 
-BFF crates live in the repository's root Cargo workspace (T01 §4.6): BFF-only crates under
-`server/`, crates shared with the browser (⇄) under the root `crates/`, so both sides use one
-lockfile. ⇄ crates must compile to `wasm32-unknown-unknown`.
+*(Revised 2026-11-19, [ADR-0015](../adr/0015-go-bff.md).)*
 
 ```
-(repository root — one Cargo workspace, T01 §4.6)
-├─ server/
-│  ├─ bin/pulsus-dash            main(): config → role selection → module wiring → axum serve
-│  └─ crates/
-│     ├─ dash-core               TenantCtx, Principal, RequestCtx, Deadline, Priority, error types, ids
-│     ├─ dash-config             layered config (§4.9), hot-reload channel
-│     ├─ dash-telemetry          tracing + OTel SDK wiring, metrics registry, self-tenant exporter (§4.8)
-│     ├─ pulsusdb-client         THE PulsusDB client (§4.3): typed endpoints, JSON→Arrow, limits, retries
-│     ├─ dash-cache              L1 moka cache, L2 Redis adapter, singleflight, tile keys (§4.4)
-│     ├─ dash-gateway            axum routers: REST CRUD, data plane (Arrow streams), WS session, MCP mount
-│     ├─ dash-planner            scene planner service (T07), uses pulsus-plan
-│     ├─ dash-vsrc               Postgres-backed virtual sources: ALERTS, ALERTS_FOR_STATE,
-│     │                          pulsus_anomaly_score, {source="pulsus-dash"} (T07 §4.11)
-│     ├─ dash-catalogue          entity catalogue + graph service ([T12](T12-entity-catalogue.md))
-│     ├─ dash-changefeed         version transitions (R8 fallback), config/deploy events, new patterns
-│     ├─ dash-health             baselines, anomaly sweep, health state ([T12](T12-entity-catalogue.md)) + fallback pyramid
-│     │                          builder (R4 absent; tiles stored in Postgres, T07 §4.12)
-│     ├─ dash-compare            Universal Compare server side (TraceQL compare(), R6/R9 fallbacks)
-│     ├─ dash-alerting           evaluator (T16)
-│     ├─ dash-notify             routing, delivery workers, endpoint plugins (T16)
-│     ├─ dash-ai                 AI orchestrator, RCA stages, tool API, MCP server (T15 (draft))
-│     ├─ dash-auth               OIDC sessions, tokens, authz (§4.11; SAML/SCIM in T10 (draft))
-│     ├─ dash-audit              append-only audit sink (Postgres + optional OTLP export)
-│     ├─ dash-store              Postgres access (sqlx), migrations runner, LISTEN/NOTIFY bus (T11)
-│     └─ dash-jobs               leases, leader election, shard assignment, job scheduler (§4.6)
-└─ crates/                      browser, shared (⇄) and test crates (T01 §4.6)
-   ├─ pulsus-plan ⇄           planner IR, normalisation, step/rollup maths (T07 §5.2; shared with browser)
-   ├─ pulsus-colexec ⇄        local columnar engine (T13 (draft)); also used server-side for
-   │                          compare/diff kernels, virtual-source PromQL and BFF joins
-   ├─ pulsus-pyramid ⇄        pyramid tile format + sketch (T13 (draft))
-   ├─ dash-wire ⇄             Arrow schemas + frame codec (owned by T04)
-   └─ pulsus-dash-scope ⇄     query rewrite + response filter, scope_fp (T10 (draft); also in the editor preview)
+api/openapi.yaml                 the HTTP contract (spec first); Go and TS code generated from it
+wire/schemas/, wire/fixtures/    language-neutral Arrow schemas and golden IPC fixtures (T04)
+server/                          one Go module
+├─ cmd/pulsus-dash               main(): config → role selection → module wiring → http.Server
+├─ migrations/                   goose SQL migrations, embedded (T11 §4.8)
+├─ queries/                      sqlc query files; sqlc.yaml
+└─ internal/
+   ├─ core                       TenantCtx, Principal, RequestCtx, Priority, error types, ids, service interfaces
+   ├─ config                     layered config (§4.9), reload channel
+   ├─ telemetry                  slog + OTel SDK wiring, metrics, self-tenant exporter (§4.8)
+   ├─ pulsusdb                   THE PulsusDB client (§4.3): typed endpoints, JSON frames / Arrow, limits, retries
+   ├─ pulsusfake                 recorded-transcript fake of PulsusDB for tests and the dev stack (T05)
+   ├─ cache                      L1 ristretto, L2 Redis adapter, singleflight (§4.4)
+   ├─ gateway                    chi router, generated server, REST CRUD, data plane, WS session, static assets
+   ├─ planner, vsrc              scene planner (T07); Postgres-backed virtual sources (T07 §4.11)
+   ├─ catalogue, changefeed, health, compare     T12, change feed, baselines and pyramids, Compare
+   ├─ alerting, notify, ai       T16 evaluator, routing and delivery; T15 (draft)
+   ├─ auth                       OIDC sessions, authz (§4.11)
+   ├─ audit                      append-only audit sink
+   ├─ store                      pgx + sqlc repositories, migration runner, LISTEN/NOTIFY bus (T11)
+   └─ jobs                       leases, leader election, scheduler (§4.6)
 ```
+
+Packages are created by the issue that first needs them.
 
 #### T06-001 — Dependency rule
-**MUST** — Feature crates depend only on `dash-core`, `pulsusdb-client`, `dash-cache`, `dash-store`
-and the trait crates of their peers, never on a peer's implementation crate. `dash-gateway` is the
-only crate that depends on an HTTP server framework. The rule is enforced by `cargo-deny` bans plus a
-workspace lint.
+**MUST** — *(Revised 2026-11-19, ADR-0015.)* Feature packages depend only on `internal/core`,
+`internal/pulsusdb`, `internal/cache`, `internal/store` and the interfaces of their peers, never on
+a peer's implementation package. `internal/gateway` is the only package that imports an HTTP router
+or the generated server. The rule is enforced by `depguard` in golangci-lint.
 
-Every module exposes a service trait. The gateway and the other modules hold `Arc<dyn Trait>`. A trait
-can be backed by the in-process implementation or by a remote stub that calls a worker over the
+Every module exposes a service interface (the Rust sketch below is kept for its field list; the
+Go form is in §0). A service can be backed by the in-process implementation or by a remote stub that calls a worker over the
 internal API (§5.4).
 
 ```rust
@@ -228,9 +235,9 @@ never JSON.
 
 #### T06-005 — One PulsusDB client
 **MUST** — Every request from Dash to PulsusDB MUST be made through `pulsusdb-client`. No other crate
-MAY construct an HTTP request to a PulsusDB endpoint; `cargo-deny` bans `hyper`/`reqwest` in feature
-crates other than `pulsusdb-client`, `dash-notify` (external endpoints), `dash-ai` (model providers)
-and `dash-telemetry` (self-export, §4.8).
+MAY construct an HTTP request to a PulsusDB endpoint; `depguard` bans `net/http` client use in feature
+packages other than `internal/pulsusdb`, `internal/notify` (external endpoints), `internal/ai` (model
+providers), `internal/auth` (IdP calls through the egress guard) and `internal/telemetry` (self-export, §4.8).
 
 **Request decoration (applied in one `tower` layer stack, in this order):**
 
@@ -310,8 +317,9 @@ R1 is negotiated (`Accept`), the converter is bypassed and batches pass through,
 necessary.
 
 #### T06-011 — Results are Arrow streams
-**MUST** — Client methods MUST return `ResultStream` (Arrow record batches plus a `Completeness`
-trailer), never parsed JSON values. Until R1, the converter MUST stream: the first batch MUST leave
+**MUST** — Client methods MUST return `ResultStream` (record batches plus a `Completeness` trailer),
+never untyped JSON values. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
+serialises the batches as JSON frames for the TS client; the batch type is Arrow Go throughout.)* Until R1, the converter MUST stream: the first batch MUST leave
 the BFF ≤ 10 ms after PulsusDB's first byte, and batches MUST be flushed at ≤ 64k rows.
 
 **Completeness (R10 fallback).** Each typed method extracts what its endpoint offers into one struct:
@@ -687,7 +695,7 @@ Every endpoint in §4.3 is documented in the PulsusDB API reference (`docs/api.m
 
 #### T06-027 — Internal API is mTLS and never exposed
 **MUST** — Replica-to-replica calls MUST use HTTP/2 with mutual TLS ([T18](T18-security.md)), bodies
-`bincode`-encoded versions of the trait calls in §4.1, under `/internal/v1/{service}/{method}`. The
+JSON-encoded versions of the interface calls in §4.1 *(revised 2026-11-19, ADR-0015; was `bincode`)*, under `/internal/v1/{service}/{method}`. The
 internal listener MUST NOT be routed by the ingress. It is versioned per release, and mixed-version
 clusters are supported for one minor version ([T19](T19-deployment.md)).
 
@@ -798,7 +806,8 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 |---|---|
 | Microservices from day one | Operational cost for small installs, plus a latency hop on the critical path. Role flags in one binary give the same scaling seams |
 | etcd/Consul for leader election | Adds a dependency. Postgres leases with fencing are sufficient at our cadence (≥ 5 s) |
-| gRPC (tonic) for the internal API | Workable. bincode over HTTP/2 avoids a proto toolchain for Rust-only peers. Revisit if non-Rust peers appear |
+| Rust/axum BFF (ADR-0001) | Superseded by [ADR-0015](../adr/0015-go-bff.md): the browser no longer shares server crates, and Go's web, OIDC, Postgres and cloud SDK ecosystem fits the BFF's work |
+| gRPC for the internal API | Workable. JSON over HTTP/2 reuses the OpenAPI tooling; revisit if call volume makes encoding cost visible |
 | Caching per user | Forfeits the NOC-wall sharing. Keying by the scope-rewritten query is both safe and shareable |
 | Relying only on PulsusDB's read cache | It is per PulsusDB process, PromQL `query_range` only, and bypassed by explain. Dash still needs logs, traces and cross-replica caching |
 | Writing alert transitions and derived series back to PulsusDB over OTLP (draft; ADR-0010) | Rejected by D2 / [ADR-0012](../adr/0012-derived-state-in-postgres.md): consumes customer ingest, makes alerting depend on ingest, and splits product state across two stores |
@@ -820,3 +829,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; binding constraints turned into rules T06-001…T06-027. **D2 / ADR-0012:** removed the OTLP write-back of alert transitions and deliveries into customer tenants; Dash writes to PulsusDB only self-telemetry and the optional audit export (T06-017); baselines, anomaly scores and fallback pyramids move to Postgres; draft open question 3 closed. Added `dash-vsrc` hosting (§4.12), the Prometheus-compatible read API (§4.13), the M-UI1 OIDC/RBAC plumbing (§4.11, because T10 is not promoted), the `/suggest`, `/prefs`, `/search`, `/actions`, `/export` routes the T08/T09 drafts assumed, `VirtualGuardLayer`, `Completeness.{source,data_age_ms,withheld,approximation}`, and datasource-binding validation |
 | 1.0-rc | 2026-11-18 | #22: §4.1 BFF crates live in the repository's root Cargo workspace (BFF-only crates under `server/`, shared ⇄ crates under `crates/`, one lockfile); the shared wire crate is named `dash-wire`, as in T01 §4.6 |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 logs client methods on the native log routes move M-UI2 → M-UI1; patterns, detected fields, tail, traces and profiles stay M-UI2 |
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): BFF in Go. New §0 mapping; §4.1 rewritten as the Go package layout; T06-001, T06-005 (enforcement) and T06-027 (JSON internal API) revised; T06-011 notes JSON frames to the browser until the engine (ADR-0014 §5); §12 updated |

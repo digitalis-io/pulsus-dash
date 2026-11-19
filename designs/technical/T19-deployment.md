@@ -3,15 +3,15 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
 
 ## 1. Context & problem
 
 [11](../product/11-enterprise.md) §8 commits to:
-- a single Rust binary with static WASM assets and a Helm chart (ENT-028);
+- a single binary (Go since [ADR-0015](../adr/0015-go-bff.md)) with embedded static client assets and a Helm chart (ENT-028);
 - HA through stateless replicas, Postgres HA and a leader-elected alert evaluator (ENT-029);
 - one deployment fronting several PulsusDB clusters and tenants (ENT-027);
 - air-gapped installs with self-hosted AI models (ENT-030).
@@ -80,13 +80,14 @@ with its own tools, without becoming its own single point of failure. The reposi
 ```
 pulsus-dash serve   --role all | api,evaluator,notifier,ai,worker   (default: all)
 pulsus-dash migrate [--dry-run]             pulsus-dash config check
-pulsus-dash export|import --org <slug>      pulsus-dash render-worker  (headless wgpu, separate image §4.2)
+pulsus-dash export|import --org <slug>      pulsus-dash-render         (Rust, headless wgpu, separate image §4.2)
 pulsus-dash admin bootstrap --email …       pulsus-dash version --json
 pulsus-dash assets publish --to s3://…
 ```
 
 #### T19-001 — One artefact, roles by flag
-**MUST** — Every server process MUST be the same `pulsus-dash` binary; behaviour MUST be selected
+**MUST** — Every server process MUST be the same `pulsus-dash` binary (the Rust `pulsus-dash-render`
+chart renderer of §4.2 is the one exception, ADR-0015); behaviour MUST be selected
 by `--role` and configuration. A module MUST declare its role and be safe to run on N replicas, or
 take a `dash-jobs` lease ([T06](T06-bff-architecture.md)).
 
@@ -101,7 +102,8 @@ take a `dash-jobs` lease ([T06](T06-bff-architecture.md)).
 **Static assets:**
 
 #### T19-003 — Assets served pre-compressed and immutable
-**MUST** — In **embedded mode** (default), assets MUST be compiled in with `rust-embed`,
+**MUST** — In **embedded mode** (default), assets MUST be compiled in with Go `embed.FS` *(revised
+2026-11-19, ADR-0015; was `rust-embed`)*,
 pre-compressed at build time (brotli q11 + gzip) and served with `Content-Encoding` negotiation,
 `Content-Type: application/wasm` for WASM, `Cache-Control: public, max-age=31536000, immutable` for
 hashed names, and `no-cache` for `index.html` and `asset-manifest.json`.
@@ -134,21 +136,20 @@ turns it off), and in CDN mode versioned paths are kept for 30 days.
 start-up self-check fetches `/` through the configured public URL, if it is reachable, and warns
 when an ingress strips COOP/COEP.
 
-**Build:**
-- `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, statically linked, with `mimalloc`
-  as the global allocator (musl's malloc is slow under contention).
-- TLS via `rustls`.
-- **Caveat:** SAML via `samael` needs libxmlsec1 (T10 (draft)). If the M-UI6 spike keeps `samael`,
-  SAML ships as a cargo feature in a glibc `-saml` build variant, and the musl static build excludes
-  it. A pure-Rust verifier would remove this split.
+**Build** *(revised 2026-11-19, [ADR-0015](../adr/0015-go-bff.md))*:
+- `CGO_ENABLED=0 GOOS=linux GOARCH=amd64|arm64 go build -trimpath -buildvcs=true`, statically linked,
+  with the Go toolchain pinned in `server/go.mod`; the client is built first (`npm ci && npm run build`)
+  and embedded.
+- TLS via the Go standard library.
+- SAML (T10 (draft), M-UI6) is chosen in a Go library that needs no cgo, so there is no separate
+  glibc build.
 
 ### 4.2 Docker images
 
 | Image | Base | Contents | Size target |
 |---|---|---|---|
 | `pulsus-dash` | `gcr.io/distroless/static-debian12:nonroot` | static binary + embedded assets, CA bundle, tzdata | < 80 MB |
-| `pulsus-dash-render` | `debian:12-slim` + Mesa (`llvmpipe`/lavapipe) | binary, used with `render-worker` for server-side chart images ([T02](T02-vis-engine.md), [07](../product/07-alerting.md) ALR-066); can use a GPU node with Vulkan drivers | < 350 MB |
-| `pulsus-dash-saml` (if needed) | `distroless/cc` | glibc build with xmlsec | < 120 MB |
+| `pulsus-dash-render` | `debian:12-slim` + Mesa (`llvmpipe`/lavapipe) | the Rust `pulsus-dash-render` binary built from the chart engine crates, for server-side chart images ([T02](T02-vis-engine.md), [07](../product/07-alerting.md) ALR-066); can use a GPU node with Vulkan drivers | < 350 MB |
 
 #### T19-009 — Hardened, signed images
 **MUST** — All images MUST run as UID 65532 with a read-only root filesystem and no shell, be
@@ -156,7 +157,7 @@ multi-arch (amd64/arm64), and be cosign-signed with an SBOM attestation ([T18](T
 §4.11).
 
 - The render worker is a separate deployment because Mesa is large and has a dynamic-library attack
-  surface. The `notifier` calls it over gRPC (`tonic`) with a per-request time limit of 2 s.
+  surface. The `notifier` calls it over HTTP/2 with mTLS (JSON request, PNG response) with a per-request time limit of 2 s.
 
 ### 4.3 Required and optional dependencies
 
@@ -666,3 +667,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
    storage is optional, not "required for > 1 replica".
 7. The `worker` role gains the derived-state jobs (anomaly sweep, baselines, change events, pyramid
    builder, retention classes).
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): Go static build (`CGO_ENABLED=0`), `embed.FS` assets (T19-003), the chart renderer is a separate Rust binary (T19-001 exception, §4.2), no SAML glibc variant |

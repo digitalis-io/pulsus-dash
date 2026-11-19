@@ -1,6 +1,7 @@
 # Pulsus Dash — Formal design
 
-> **Status:** Review baseline v1.0-rc (2026-11-18).
+> **Status:** Review baseline v1.0-rc (2026-11-18); client and BFF technology changed on 2026-11-19
+> (D7, D8).
 > This folder holds the **formal, version-controlled design**. Working drafts and research live in
 > `plans/`, which is local and not tracked. A design is promoted from `plans/` into here once its
 > blocking decisions are made.
@@ -90,14 +91,17 @@ tracked in git.
 
 Changes to an Accepted doc go through review and are recorded in that doc's change log.
 
-## 2. Decisions taken (2026-11-18)
+## 2. Decisions taken (2026-11-18, 2026-11-19)
 
 | # | Decision | Record |
 |---|---|---|
-| D1 | DOM rooms use **Leptos** | [ADR-0004](adr/0004-leptos-dom-rooms.md) Accepted |
+| D1 | DOM rooms use **Leptos** | [ADR-0004](adr/0004-leptos-dom-rooms.md) **Superseded** by D7 |
 | D2 | Dash-derived state (alert history, baselines, anomaly scores, change events, fallback pyramids) lives in **PostgreSQL**; Dash never writes product state into PulsusDB | [ADR-0012](adr/0012-derived-state-in-postgres.md) Accepted; ADR-0010 Rejected |
 | D3 | Licence: the repository is **AGPL-3.0**, the same as PulsusDB, so reusing PulsusDB's AGPL parser crates is licence-compatible. R17 (permissive syntax crates) drops to *nice-to-have* unless a non-AGPL edition is planned | `LICENSE`; [R17](technical/pulsusdb-requirements.md) |
 | D4 | Mockups are SVG | [mockups/](mockups/README.md) |
+| D7 | The web client is a standard **TypeScript + React + Vite** application, built first; GPU/3D chart frames come later from one Rust/WASM engine in a worker behind a typed TS API, with an in-house Canvas 2D renderer in the meantime | [ADR-0014](adr/0014-typescript-react-web-client.md) Accepted 2026-11-19; supersedes ADR-0001 (browser), ADR-0002, ADR-0004 |
+| D8 | The BFF is written in **Go** (spec-first OpenAPI, pgx + sqlc, goose, go-oidc) | [ADR-0015](adr/0015-go-bff.md) Accepted 2026-11-19; supersedes ADR-0001 (server) |
+| D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards | [ADR-0014](adr/0014-typescript-react-web-client.md) §10; product text revision is Q13 in [12](product/12-roadmap.md#5-open-questions) |
 
 ## 3. Assumptions
 
@@ -112,6 +116,7 @@ Changes to an Accepted doc go through review and are recorded in that doc's chan
 |---|---|---|---|
 | O1 | Data scopes on metrics when resource attributes are not labels | Option B: enforce on labels, fail closed per metric family, and pursue R16 with PulsusDB | [ADR-0013](adr/0013-metrics-data-scopes.md) |
 | O2 | Proposed ADRs 0003 (wgpu), 0005 (Arrow), 0008 (Dash evaluator), 0009 (object storage), 0011 (Terraform in Go) | Accept. Each matches the drafts and none has a live alternative | [adr/](adr/README.md) |
+| O3 | Product requirements that assume the previous shell and the Rust-only stack (IA-016, IA-020, IA-021, VL-017, VIZ-001, SRF-014, PRF-008, PRF-009) | Revise to the D9 layout and the D7 engine model; until then D7–D9 win where they conflict | [12](product/12-roadmap.md#5-open-questions) Q13 |
 
 ## 5. Index
 
@@ -143,12 +148,12 @@ See the sections below. They are completed as documents are promoted.
 |---|---|---|
 | T01 | [Frontend architecture](technical/T01-frontend-architecture.md) | Review |
 | T02 | [Vis engine](technical/T02-vis-engine.md) | Review |
-| T03 | [Browser runtime & JS shim](technical/T03-browser-runtime.md) | Review |
+| T03 | [Browser runtime & JS shim](technical/T03-browser-runtime.md) (applies to the later chart engine, ADR-0014) | Review |
 | T04 | [Wire format & data plane](technical/T04-wire-format-and-data-plane.md) | Review |
 | T05 | [Testing & performance engineering](technical/T05-testing-and-performance.md) | Review |
-| T06 | [BFF service architecture](technical/T06-bff-architecture.md) | Review |
+| T06 | [BFF service architecture](technical/T06-bff-architecture.md) (Go since ADR-0015) | Review |
 | T07 | [Scene query planner](technical/T07-scene-query-planner.md) | Review |
-| T08 | [DOM rooms & component kit](technical/T08-dom-component-kit.md) | Review |
+| T08 | [DOM rooms & component kit](technical/T08-dom-component-kit.md) (TS/React since ADR-0014) | Review |
 | T09 | [Query editors](technical/T09-query-editors.md) | Review |
 | T11 | [Postgres schema & config lifecycle](technical/T11-postgres-schema.md) | Review |
 | T12 | [Entity catalogue & graph service](technical/T12-entity-catalogue.md) | Review |

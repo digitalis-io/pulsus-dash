@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted (2026-11-18, product owner) |
+| **Status** | **Superseded** (2026-11-19) by [ADR-0014](0014-typescript-react-web-client.md); was Accepted 2026-11-18 |
 | **Source** | Open question Q1 |
 | **See** | [T01 §3](../technical/T01-frontend-architecture.md), [12 Q1](../product/12-roadmap.md) |
 

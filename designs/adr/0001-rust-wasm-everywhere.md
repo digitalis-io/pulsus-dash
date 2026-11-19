@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted |
+| **Status** | **Superseded** (2026-11-19): browser part by [ADR-0014](0014-typescript-react-web-client.md), server part by [ADR-0015](0015-go-bff.md) |
 | **Source** | Product owner mandate (2026-11-17) |
 | **See** | [T01 §1](../technical/T01-frontend-architecture.md) |
 

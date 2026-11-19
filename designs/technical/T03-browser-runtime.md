@@ -3,10 +3,32 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (shim, topology, single core module) → M-UI1 (shell/core split, keymap, URL/history, lazy satellites) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0004](../adr/0004-leptos-dom-rooms.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
+
+## 0. Applicability under ADR-0014 (2026-11-19)
+
+[ADR-0014](../adr/0014-typescript-react-web-client.md) makes the application TypeScript + React and
+adds the Rust/WASM chart engine later, behind a typed TS API. This document now describes the
+**engine runtime**; the "shim" is the engine adapter in `client/src/engine/wasm/`, and the "shell"
+is the React application.
+
+| Section | Status |
+|---|---|
+| §4.1 artefacts | `dash-core-mt`/`-st` become the engine, loaded on the first chart frame. `dash-shell.wasm`, `dash-editor.wasm` and `dash-rooms-admin.wasm` are withdrawn (React app, CodeMirror, lazy route chunks). T03-001 revised; T03-002 applies to the engine's satellites |
+| §4.2, §4.3 worker topology and shared memory | Stand, for the engine, from the engine issue on |
+| §4.4 state ownership | Revised: semantic state is owned by the TS application (ADR-0014 §2); the engine owns render-local state. T03-009 revised; T03-010 applies to the TS Context store |
+| §4.5 keymap | The keymap is implemented in TS. T03-011 and T03-012 stand (timing from event timestamps); T03-013 revised |
+| §4.6 URL codec | Implemented in TS; T03-014 to T03-017 stand |
+| §5.1 shim line budget, `ci:shim-lint` | Withdrawn. The adapter is bound by T01-001 instead |
+| §5.2, §5.4 byte pump and input ring | Stand for engine canvases; JSON results for the interim renderer are parsed in TS (ADR-0014 §5) |
+| §5.3 core ↔ shell messages | Replaced by the typed `ChartEngine` API (ADR-0014 §3); the records listed become engine events |
+| §5.7 headers | Stand; the CSP is ADR-0014 §9 |
+| §7.1 startup, §7.3 sizes | The shell is measured as JS (ADR-0014 §8); the `dash-shell.wasm` row is withdrawn; engine rows stand |
+| §9 degradation | Stands for the engine; without an engine mode the interim `Canvas2DEngine` remains the fallback |
+| §11 rollout | Replaced by [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19) |
 
 ## 1. Context & problem
 
@@ -119,12 +141,11 @@ fine-grained ones, so everything on the M-UI0–M-UI3 hot path (M1–M10, T13 (d
 lives in core. Satellites never touch core memory directly. Their outputs (token streams, tessellated
 meshes) are copied in once, through a core-allocated slab.
 
-#### T03-001 — Shim size and imports
-**MUST** — The hand-written shim (`web/shim/*.js`) MUST total ≤ 300 non-blank, non-comment lines,
-MUST NOT import anything outside `web/shim/` and the generated files, and MUST NOT use `eval`,
-`Function` or `innerHTML`. Generated wasm-bindgen glue, the audited `wasm-bindgen-rayon` helper and
-`layout.gen.js` are excluded from the count. Each exclusion applies only once that file's
-regenerate-and-compare check exists ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)).
+#### T03-001 — Engine adapter imports
+**MUST** — *(Revised 2026-11-19, ADR-0014; the ≤ 300-line shim budget is withdrawn.)* The engine
+adapter (`client/src/engine/wasm/`) MUST NOT import application modules other than
+`client/src/engine/api.ts` and the generated wasm-bindgen glue, and MUST NOT use `eval`, `Function`
+or `innerHTML`. ESLint import rules enforce it.
 
 #### T03-002 — Lazy units are separate modules
 **MUST** — Anything not needed for the shell and the first Space scene MUST be a separate WASM module
@@ -270,9 +291,10 @@ stack. `⌘Z` and `⌘⇧Z` are reserved global keys. Camera moves are **not** o
 on camera history (§4.6), so undo and back stay distinct.
 
 #### T03-009 — One authoritative state store
-**MUST** — The Context, camera, camera history and undo stack MUST be owned by the render worker. The
-shell MUST NOT change state except by sending a `Command`, and MUST render only from
-`ContextChanged`. Every view MUST read entity set, time, filters and baseline from this Context.
+**MUST** — *(Revised 2026-11-19, ADR-0014 §2.)* The Context, selection, camera history and undo
+stack MUST be owned by the TS application's Context store. The engine MUST NOT change them except by
+emitting events that the store reduces, and every view MUST read entity set, time, filters and
+baseline from this Context.
 
 #### T03-010 — Every Context command has an inverse
 **MUST** — Every `Command` that changes the Context or a Board MUST return an inverse, and
@@ -325,9 +347,10 @@ table and at runtime on remap, where a refusal names the existing action.
 **MUST** — Tap/hold MUST use a 250 ms threshold and chords a 1 000 ms timeout, both measured on input
 record `t_ms`, so replays reproduce them exactly.
 
-#### T03-013 — preventDefault is decided synchronously from the captured-chord table
-**MUST** — The shim MUST decide `preventDefault()` inside the DOM handler from the captured-chord
-table alone, without a call into WASM, and MUST NOT forward key events whose target is editable.
+#### T03-013 — preventDefault is decided synchronously
+**MUST** — *(Revised 2026-11-19.)* The TS keymap MUST decide `preventDefault()` inside the DOM
+handler, synchronously, and MUST NOT act on key events whose target is editable, except for the
+reserved keys of T03-011.
 
 ### 4.6 URL, history and camera encoding
 
@@ -837,3 +860,4 @@ which forces a reload.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T03-001 to T03-025; added the state reducer and propagation table (§4.4), the keymap engine (§4.5) and the URL/camera codec (§4.6); gamepad deferred to M-UI6; workbench satellites; Satisfies table |
 | 1.0-rc | 2026-11-18 | #22: §5.1 states what `ci:shim-lint` counts, the `/` rule for shim code and the SHA-256 pins checked by `ci:dep-audit`; generated output goes to the git-ignored `web/shim/gen/<crate>/`; T03-001 exclusions and the §10 `layout.gen.js` diff apply once their regenerate-and-compare checks exist; §7.3 is report-only until enforcement is enabled and names the artefact → path mapping |
 | 1.0-rc | 2026-11-18 | #23: §4.3 header and counters rows name the fields and offsets; T03-005 names its generator (`cargo xtask gen`, `layout.gen.js`); §5.1 admits `layout.gen.js` and `gen/dash-core-{mt,st}/` by regenerate-and-compare; §5.2 handshake `mode`, `query`, `memory` and the worker messages; §5.4 coalescing and flush bounds, the wrap marker; §7.3 `dash-core-st` row; §9.2 ST batch bound, T2 restart, Static without OffscreenCanvas, milestone note; T03-025 milestone note; new §9.3 status codes; §10 `?mode=t2`; §11 ST with the `-st` artefact in M-UI0 |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 applicability table; the document now describes the chart engine runtime; T03-001, T03-009 and T03-013 revised; shim line budget withdrawn |

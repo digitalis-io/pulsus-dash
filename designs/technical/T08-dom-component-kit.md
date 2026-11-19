@@ -3,10 +3,29 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (Leptos risk check, store, router, tokens, keymap, kit core, shell chrome) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0004](../adr/0004-leptos-dom-rooms.md) (Accepted) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
+
+## 0. Applicability under ADR-0014 (2026-11-19)
+
+The DOM layer is now TypeScript + React ([ADR-0014](../adr/0014-typescript-react-web-client.md)).
+Where this document names a Rust crate or Leptos construct, read the TS module below. Component
+designs, ARIA patterns, budgets and rules that are language-neutral stand.
+
+| Was (Rust/Leptos) | Now (TS, under `client/src/`) | Notes |
+|---|---|---|
+| `dash-state` (store, reducer, undo) | `state/` (Context store, reducer, undo) | Pure reducer, unit-tested in Vitest; T08-004 stands |
+| `dash-route` | `routes/` on TanStack Router with typed search params | T08-005 stands; T08-006 applies when cameras arrive |
+| `dash-keymap` | `keys/` | T03-011, T03-012 stand |
+| `dash-tokens` | `design/tokens.toml` → `styles/tokens.css`, `styles/tokens.ts` | T08-022 stands (DOM font vs MSDF check applies from the engine) |
+| `dash-i18n` (Fluent, ICU4X) | `i18n/` (typed message catalogue; `Intl` formatters) | T08-027 revised |
+| `dash-kit` (Leptos components) | `kit/` on React Aria Components | T08-007 to T08-010 stand; T08-012 hands over to the engine grid when it exists |
+| `dash-a11y` | `a11y/` | T08-016 to T08-019 stand for engine canvases |
+| `dash-shell` + bridge to core rings | the React application + the `ChartEngine` API | T08-001, T08-002 revised |
+| Leptos build risk check (§4.10) | Withdrawn | — |
+| Shell chrome (§4.3: 32 px top bar, Time Ribbon frame, logo menu, no sidebar) | Application layout ([ADR-0014](../adr/0014-typescript-react-web-client.md) §10) | Satisfies rows for IA-016, IA-021 and VL-017 are suspended until the product text is revised (roadmap Q13) |
 
 ## 1. Context & problem
 
@@ -217,15 +236,14 @@ pub struct StateDelta(u64 /* bitset of changed slices */);
   sends `Command::Navigate(Route)`, and core flies the camera
   ([02 §4](../product/02-information-architecture.md)).
 
-#### T08-001 — One store, read-only mirror
-**MUST** — Semantic state MUST have exactly one owner, the core `AppStore` in the render worker. The
-shell mirror MUST be read-only and MUST NOT be updated optimistically: a DOM intent is applied only
-when core replies. One frame of round trip (≤ 16 ms) is below perception for these intents, and it
-rules out divergence.
+#### T08-001 — One store
+**MUST** — *(Revised 2026-11-19, ADR-0014 §2.)* Semantic state MUST have exactly one owner, the TS
+Context store. Components MUST read it through selectors, and the chart engine MUST receive it as
+commands and report changes as events, never holding its own copy of the Context.
 
-#### T08-002 — No state in JavaScript
-**MUST** — No application state MAY be held in JavaScript. The shim forwards bytes and events only
-([ADR-0001](../adr/0001-rust-wasm-everywhere.md)).
+#### T08-002 — No state in the engine adapter
+**MUST** — *(Revised 2026-11-19, ADR-0014.)* The engine adapter MUST hold no application state; it
+forwards bytes, events and commands only (T01-001).
 
 #### T08-003 — No bulk data on the main thread
 **MUST** — Viewport data MUST NOT be copied to the main thread except as `A11ySummary` records and
@@ -654,11 +672,16 @@ display the user's layout label for that code.
   Japanese is the first non-Latin target because it exercises IME and CJK font fallback.
 
 #### T08-027 — Messages and formats are checked and shared
-**MUST** — Every user-visible string MUST come from a compile-checked Fluent message id, and every
-number, unit and date MUST be formatted through `dash-i18n`, so the browser and the native renderer
-produce identical output.
+**MUST** — *(Revised 2026-11-19, ADR-0014.)* Every user-visible string MUST come from a typed message
+id (a missing id is a type error), and every number, unit and date MUST be formatted through one
+`i18n/format.ts` module. When the engine lands, its formatter MUST match it on a shared fixture set
+(`unit:number-format`).
 
 ### 4.10 Leptos build risk check (M-UI1, 3 weeks)
+
+*Withdrawn 2026-11-19: ADR-0004 is superseded by [ADR-0014](../adr/0014-typescript-react-web-client.md).
+The criteria below are kept for the record; criteria 1–6 become acceptance criteria of the TS kit
+issues that build the table, tree, forms and tooltips.*
 
 ADR-0004 is Accepted. The M-UI1 slice is built once, on Leptos, as a **risk check**: it proves the
 kit can meet the contract before the rooms are built on it. The slice is:
@@ -793,7 +816,7 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | Leptos risk check (§4.10). Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Admin rooms for datasource binding and OIDC. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48) |
+| M-UI1 | *(2026-11-19: delivered by the TS application in the order of [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19); the Leptos risk check is withdrawn.)* Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Admin rooms for datasource binding and OIDC. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48) |
 | M-UI2 | JSON, Markdown, image, link and pill cells. Tree. Logs/traces inspector content. Viewport a11y mirror for time-series. Dock host. ⌘K entities |
 | M-UI3 | Explorer (tree + table). Atlas mirror. Pivot-chip and entity-chip cells |
 | M-UI4 | Alert, Investigation and contact-point rooms. Action buttons. ⌘K alerts and investigations |
@@ -804,6 +827,7 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 
 | Option | Why not |
 |---|---|
+| **Leptos** (ADR-0004) | Superseded by [ADR-0014](../adr/0014-typescript-react-web-client.md): a conventional web application first, on React and React Aria Components |
 | **Dioxus** | Not pursued since ADR-0004 was accepted. VDOM diffing costs more than fine-grained signals for large tables, and its generated JS edit interpreter would need checking against ADR-0001 |
 | **Yew / Sycamore** | Yew is VDOM and its momentum has slowed. Sycamore is fine-grained but has a smaller ecosystem than Leptos |
 | **All-canvas (egui)** | Rejected in [T01](T01-frontend-architecture.md): we would have to reinvent IME, a11y, autofill and selection |
@@ -830,3 +854,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T08-001…T08-028. ADR-0004 Accepted: the Leptos vs Dioxus spike became a Leptos build **risk check** (§4.10) whose blocker failure reopens the ADR. Keyboard model aligned with formal 03: contexts and precedence, chords 1 s (draft 1.2 s), tap/hold 250 ms, physical-key bindings (INT-013), reserved keys, `Shift+C`/`C`/`Shift+A`/`Shift+E` (03 and 04 agree on `Shift+E`), `Tab` by care score; draft Q1 and Q3 closed by 03 and 02 (`/incident/` and `/alerts/` routes added to `Route`). Dropped the `Alt+←/→` brush alternative (conflicts with camera history). Tooltip budget tightened to median ≤ 1 frame (INT-033) with a GPU-text fallback. Markdown removals are logged (VIZ-054). Added the shell chrome contents, logo menu, read-only banner, restricted placeholder, shimmer, copy-link, `CamCode` ≤ 64 chars, palette rooms provider and context-affinity ranking, palette validator and Admin M-UI1 rooms |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds the board panel editor (query, language picker, vis) and a minimal board list room; full Boards editor forms stay M-UI5 |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 maps the Rust/Leptos modules to the TS application; T08-001, T08-002 and T08-027 revised; §4.10 Leptos risk check withdrawn; chrome rows suspended pending roadmap Q13; §11 M-UI1 and §12 updated |

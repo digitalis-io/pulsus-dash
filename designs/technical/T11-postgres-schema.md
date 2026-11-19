@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (identity, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (Git sync, Terraform) |
-| **Related ADRs** | [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
 
 ## 1. Context & problem
@@ -132,7 +132,7 @@ installed**. Optional extensions (`pgvector`, `pg_trgm`) MAY be detected at star
 accelerate a feature; every feature MUST work without them. Dash MUST NOT depend on TimescaleDB,
 `pg_partman` or `pg_cron`.
 
-- **Keys:** `id uuid` holds a UUIDv7, generated in Rust by `uuid` with feature `v7`, so the IDs
+- **Keys:** `id uuid` holds a UUIDv7, generated in the BFF (`github.com/google/uuid`, `NewV7`), so the IDs
   are time-ordered and index-friendly. No `pgcrypto` is needed (`gen_random_uuid()` is core since
   PG 13 and is used only in maintenance scripts). Content also has a human `uid text`
   (`[a-z0-9-]{1,40}`), unique per org and kept from the source tool on import.
@@ -144,7 +144,7 @@ accelerate a feature; every feature MUST work without them. Dash MUST NOT depend
 - **Text search** (library, incident archive) uses the built-in `tsvector`/GIN. If `pg_trgm` is
   present, a trigram index is added for fuzzy title matches.
 - **Documents:** complex specs (board scene, Lens template, vis spec, rule definition) are stored as
-  `jsonb` with a `schema_version int`. Old documents are upgraded by Rust upcasters in `dash-spec`,
+  `jsonb` with a `schema_version int`. Old documents are upgraded by Go upcasters in `internal/spec`,
   applied on read and persisted on the next write. This is separate from SQL migrations.
 - **Timestamps** are `timestamptz`. **Soft delete** uses `deleted_at` on content (trash kept 30
   days). Hard delete is used for identity and secrets.
@@ -352,11 +352,11 @@ are small, unversioned tables.
 
 #### T11-006 — Versions are immutable
 **MUST** — A save MUST insert version `n+1` and move `head_version` in one transaction, with an
-audit event carrying the RFC 6902 JSON Patch (`json-patch` crate). No version row is ever updated or
+audit event carrying the RFC 6902 JSON Patch. No version row is ever updated or
 deleted except by the org's version-retention policy; restore MUST create a new head with
 `source='restore'`, so history is never rewritten.
 
-- Diffs are computed on demand in Rust, never stored:
+- Diffs are computed on demand in the BFF, never stored:
   - a structural diff for the JSON view;
   - a "scene diff" (added, removed or moved viewports; changed queries) for the visual
     side-by-side ([04](../product/04-surfaces.md) §4.3).
@@ -612,10 +612,11 @@ point.
 
 ### 4.8 Migrations
 
-**Decision: `sqlx` migrations** (`sqlx::migrate!()` embedded in the binary), with repository code
-written against `sqlx` and its compile-time-checked queries (`.sqlx` offline cache committed for CI).
-`refinery` was the alternative. It allows Rust-code migrations, but it would add a second database
-library beside `sqlx`, and we do data backfills as application jobs anyway.
+**Decision (revised 2026-11-19, [ADR-0015](../adr/0015-go-bff.md)): `goose` migrations** — plain SQL
+files in `server/migrations/`, embedded with `embed.FS` and run by `pulsus-dash migrate`. Repository
+code uses `pgx/v5` with `sqlc`-generated queries from `server/queries/`; the generated code is
+committed and regenerated in CI (`ci:api-gen`). Data backfills are application jobs (T11-014), so
+Go-code migrations are not used. (Was: `sqlx` migrations, with `refinery` as the alternative.)
 
 #### T11-012 — Expand/contract only
 **MUST** — A release MAY add tables, columns (nullable or with a default), indexes and constraints,
@@ -626,7 +627,7 @@ and MAY delete only what release N−1 no longer reads. Renames MUST be done as 
 **MUST** — A CI lint (`squawk`) MUST reject locking DDL: `ALTER … SET NOT NULL` without a `CHECK …
 NOT VALID` → `VALIDATE` sequence, `CREATE INDEX` without `CONCURRENTLY` on a non-empty table, and
 `ATTACH PARTITION` without a pre-validated matching `CHECK`. `CREATE INDEX CONCURRENTLY` cannot run
-in a transaction, so such migrations are marked `-- no-transaction` (sqlx supports this per file).
+in a transaction, so such migrations are marked `-- +goose NO TRANSACTION` (goose supports this per file).
 Indexes on partitioned parents are created `ON ONLY` the parent, then `CONCURRENTLY` on each
 partition and attached.
 
@@ -638,7 +639,7 @@ migrations, so a 10⁷-row backfill never holds a migration lock.
 **MUST** — The runner is `pulsus-dash migrate`, run by a Helm pre-upgrade Job
 ([T19](T19-deployment.md) §4.5). It MUST take `pg_advisory_lock(<constant>)`, and MUST refuse to
 start if the database is *ahead* of the binary by more than the N+1 compatibility window. Replicas at
-start-up MUST check `_sqlx_migrations` and refuse to serve if the schema is older than they require.
+start-up MUST check `goose_db_version` and refuse to serve if the schema is older than they require.
 
 #### T11-016 — Document upcasters are golden-tested
 **MUST** — Every historical `schema_version` fixture MUST upcast to the current version in CI.
@@ -654,7 +655,7 @@ metadata: { uid: payments-overview, folder: payments, labels: {team: payments} }
 spec: { … }                       # same JSON Schema as board_versions.spec
 ```
 
-JSON Schemas are generated from the Rust types (`schemars`) and published, so editors and CI can
+JSON Schemas are taken from the components of `api/openapi.yaml` and published, so editors and CI can
 validate. Secrets in YAML are always references (`secretRef: vault://kv/pulsus/slack#token`), never
 values. Export → import → export MUST yield byte-identical canonical YAML (ENT-023).
 
@@ -691,7 +692,7 @@ and data sources for users, teams and entities.
 
 ### 4.10 Importers
 
-`dash-import` crate, exposed as `POST /api/dash/v1/import/{dashboard|alerting}` and
+`internal/importer` package, exposed as `POST /api/dash/v1/import/{dashboard|alerting}` and
 as `pulsus-dash import` CLI.
 
 #### T11-020 — Imports are dry-run first
@@ -1039,18 +1040,18 @@ days.
 
 ### 5.1 Crates and APIs
 
-- `dash-store` crate: per-domain repository traits (`BoardRepo`, `RuleRepo`, `HistoryRepo`,
-  `DerivedRepo`, …) over `sqlx::PgPool`. All take `&OrgTx`, a transaction with `pulsus.org_id` and
-  the retention floors set.
+- `internal/store` package *(revised 2026-11-19, ADR-0015)*: per-domain repositories (`BoardRepo`,
+  `RuleRepo`, `HistoryRepo`, `DerivedRepo`, …) over `pgxpool.Pool` and the sqlc queries. All take
+  an `OrgTx`, a transaction with `pulsus.org_id` and the retention floors set.
 
 #### T11-023 — The repository is the only SQL path
-**MUST** — `dash-store` MUST be the only crate that issues SQL; other crates depend on its traits.
-A CI check (`cargo deny` ban + grep for `sqlx::query` outside `dash-store`) enforces it.
+**MUST** — `internal/store` MUST be the only package that issues SQL; other packages depend on its
+repository interfaces. `depguard` bans `pgx` and the sqlc output outside `internal/store`.
 
 - REST: `/api/dash/v1/{kind}` CRUD with `If-Match`; `/api/dash/v1/{kind}/{uid}/versions`,
   `/versions/{a}/diff/{b}`, `/versions/{n}/restore`; `/api/dash/v1/import/*`;
-  `/api/dash/v1/export`; `/api/dash/v1/admin/retention` (per-domain class). OpenAPI is generated
-  with `utoipa`.
+  `/api/dash/v1/export`; `/api/dash/v1/admin/retention` (per-domain class). The OpenAPI document
+  `api/openapi.yaml` is written first and the server is generated from it (ADR-0015).
 
 ### 5.2 Cross-doc ownership
 
@@ -1160,7 +1161,7 @@ TOAST-compressed with `lz4`. [T19](T19-deployment.md) §4.7 turns these figures 
 | Pyramid tile fetch, 100 tiles | 40 ms | One index range per entity × signal × level |
 | Audit filter (actor + action) over 10⁴ events | 50 ms | Composite indexes |
 | Partition drop | < 1 s | Metadata only; `DETACH … CONCURRENTLY` first |
-| Version diff (two 1 MB specs) | 40 ms | In Rust, not SQL |
+| Version diff (two 1 MB specs) | 40 ms | In the BFF, not SQL |
 
 Write load at L: transitions ≈ 3/s average; anomaly open-hour upserts ≈ 670/s (200k series every
 5 min), hour blocks ≈ 55/s; alert instance upserts ≤ 1.7k/s at 50k instances per 30 s, changes only.
@@ -1180,7 +1181,7 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 | Failure | Effect |
 |---|---|
 | Primary failover (≈ 30 s) | API writes return 503 with retry-after. The UI shows "saving paused" and retries with the same `If-Match`. Reads are served from cache where possible. The evaluator keeps evaluating from in-memory state, cannot notify (no outbox), and flushes on recovery. |
-| Migration fails mid-way | sqlx records per-migration success, and the runner is re-entrant. Old replicas keep serving because the changes are expand-only. |
+| Migration fails mid-way | goose records per-migration success, and the runner is re-entrant. Old replicas keep serving because the changes are expand-only. |
 | Partition horizon exhausted | Inserts into that table fail loudly; self-telemetry alert at < 1 grain (T11-021). The evaluator keeps state in memory and retries the history write. |
 | Retention purge or class move interrupted | Both are cursor-driven and idempotent; the floor already hides expired rows. |
 | Disk pressure from derived state | Pyramid tiles are dropped first (regenerable); the admin sees which domain is largest per org. |
@@ -1288,3 +1289,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
    PulsusDB copy, which no longer exists.
 7. The Terraform-in-Go question is closed as Proposed ADR-0011 (tracked under O2), so it is no
    longer an open question here.
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): migrations by `goose` and repositories on `pgx` + `sqlc` (§4.8, T11-013, T11-015); `internal/store` replaces `dash-store` (§5.1, T11-023); Rust-specific mentions made language-neutral; OpenAPI spec first |

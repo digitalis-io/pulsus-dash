@@ -3,12 +3,18 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (constraint, thread layout, technology choices) → M-UI1 (shell/core split, rooms, tokens) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0004](../adr/0004-leptos-dom-rooms.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T01-frontend-architecture.md (not tracked) |
 
 ## 1. Context & problem
+
+> **Note (2026-11-19):** [ADR-0014](../adr/0014-typescript-react-web-client.md) makes the client a
+> TypeScript + React + Vite application, built first, with a Rust/WASM chart engine in a worker
+> added later behind a typed TS API; [ADR-0015](../adr/0015-go-bff.md) makes the BFF Go. §4.1,
+> §4.3, §4.4, §4.5, §4.6, §11 and §12 are revised for this. §4.2 (worker topology) now describes the
+> engine, and applies from the engine issue on.
 
 The product specification ([01](../product/01-vision-and-principles.md) to
 [09](../product/09-performance-contract.md)) forces a particular stack on the browser. Speed is the
@@ -33,10 +39,10 @@ decisions the UI depends on, and it delegates the detail:
 ## 2. Goals / non-goals
 
 **Goals**
-- Fix the hard constraint: all application logic is Rust compiled to WASM, and browser JavaScript
-  only moves bytes and events.
+- Fix the technology boundary: the application is TypeScript, and the chart engine is Rust compiled
+  to WASM in a worker behind a typed API (ADR-0014).
 - Fix the process layout, so that canvas rendering can never be blocked by DOM work.
-- Fix the technology per layer: wgpu, Leptos, Arrow IPC, an in-house mark engine.
+- Fix the technology per layer: React, wgpu, Arrow IPC (from the engine on), an in-house mark engine.
 - Fix the boundary between the Space (GPU) and rooms (DOM), and the single token source both use.
 - Record the backend shape the UI implies, and the PulsusDB gaps it surfaced.
 
@@ -66,37 +72,37 @@ decisions the UI depends on, and it delegates the detail:
 
 ## 4. Design
 
-### 4.1 Hard constraint: Rust everywhere, JS only as a shim
+### 4.1 Technology boundary: TypeScript application, Rust engine
 
-JavaScript in the browser is limited to proxying bytes and events into the Rust/WASM application.
-No application logic, state, data transformation, layout or rendering lives in JS.
+The split is fixed in [ADR-0014](../adr/0014-typescript-react-web-client.md) §2:
 
-| JS shim responsibility | Why it cannot sensibly be Rust |
-|---|---|
-| Bootstrap: fetch and instantiate WASM modules, set up workers, check COOP/COEP | Must run before WASM exists |
-| Network byte pump: `fetch()` streaming and `WebSocket` → `ArrayBuffer` chunks handed to WASM (copied once, never parsed) | Platform APIs. Rust could call them via `web-sys`, but a dedicated pump in each data worker keeps the hot path simple and zero-parse in JS |
-| Input forwarding: pointer, wheel, keyboard, IME and clipboard events → compact binary records in a WASM ring buffer | Events originate in the DOM, and some decisions (`preventDefault`, `copy`) must be synchronous inside the handler |
-| Browser integrations that `web-sys` cannot reach sensibly | History/URL, downloads, clipboard writes and media queries are done in Rust via `web-sys` ([T03](T03-browser-runtime.md)) |
+| Part | Language | Notes |
+|---|---|---|
+| Application: shell, routing, Context, rooms, forms, boards, query editors, keyboard, API client | TypeScript (React) | Main thread. One owner of semantic state |
+| Interim charts | TypeScript (`Canvas2DEngine`) | Main thread, behind the engine seam (ADR-0014 §3, §4) |
+| Chart engine: decode, decimation, scales, marks, picking, wgpu | Rust → WASM | Worker; one `OffscreenCanvas` per panel; later the Space scenes |
+| Engine adapter | TypeScript (`client/src/engine/wasm/`) | Successor of the shim: moves bytes and events to the engine |
 
-Everything else is Rust: the state store, query planning, decoding, decimation, layout (graph, grid,
-text), the scene graph, GPU command encoding, DOM rooms and the AI dock.
+#### T01-001 — No application logic in the engine adapter
+**MUST** — *(Revised 2026-11-19, ADR-0014; previously "No application logic in JavaScript".)* The
+engine adapter MUST only create frames, forward input and data, and relay engine events. It MUST NOT
+parse or inspect payload bytes destined for the engine, and it MUST NOT use `eval`, `Function` or
+`innerHTML`. Application logic lives in the TS application, never in the adapter.
 
-#### T01-001 — No application logic in JavaScript
-**MUST** — Hand-written browser JavaScript MUST be limited to the four shim responsibilities in the
-table above. It MUST NOT hold application state, transform data or make product decisions, and it
-MUST NOT parse JSON or inspect payload bytes. Its size and import rules are fixed by T03-001.
+#### T01-002 — No JavaScript charting, mapping, 3D or diagram library
+**MUST** — *(Revised 2026-11-19, ADR-0014; previously also banned UI frameworks and component
+libraries.)* The shipped bundle MUST NOT contain a charting, mapping, 3D or graph-diagram library or
+a CSS-in-JS runtime. Runtime npm dependencies MUST be on the allowlist of ADR-0014 §7.
 
-#### T01-002 — No JavaScript UI, charting or component framework
-**MUST** — The shipped bundle MUST NOT contain a JavaScript UI framework (React, Vue, Svelte,
-Angular), component library (MUI, AG Grid, …) or charting, mapping, 3D or graph-diagram
-library. The only npm packages
-allowed are test tooling that is never shipped (Playwright).
-
-> **Rationale:** [ADR-0001](../adr/0001-rust-wasm-everywhere.md) and
-> [ADR-0002](../adr/0002-no-js-ui-framework.md). One language end to end gives one debugger, one
-> test harness ([T05](T05-testing-and-performance.md)) and deterministic replay of every input.
+> **Rationale:** every chart is drawn by our own renderer (interim Canvas 2D, then the engine), so
+> picking, LOD and replay stay ours ([ADR-0007](../adr/0007-in-house-vis-engine.md)). Standard UI
+> concerns use the React ecosystem.
 
 ### 4.2 Process layout in the browser
+
+*Applies once the chart engine lands. The main thread then runs the React application and the
+engine adapter in place of `dash-shell.wasm`; everything to the right of the diagram's divide is the
+engine.*
 
 The main thread runs a separate `dash-shell.wasm` (Leptos) with its own non-shared memory, because
 Rust `std` locks on `wasm32+atomics` compile to `memory.atomic.wait`, which the main thread cannot
@@ -135,6 +141,7 @@ exact topology is [T03 §4.2](T03-browser-runtime.md#42-worker-topology); the co
 **MUST** — In the Full and Tier-T2 modes ([T03 §9](T03-browser-runtime.md#9-failure-modes--degradation)),
 the GPU scene MUST be rendered in the render worker through an OffscreenCanvas. The main thread MUST
 run only the shim and the shell. Main-thread rendering is permitted only in the MT-R fallback mode.
+*Interim (ADR-0014 §4):* until the engine lands, the `Canvas2DEngine` draws on the main thread.
 
 #### T01-004 — Hot-path threads share one memory
 **MUST** — Every thread on the data → render path (render, data, layout, pool) MUST run the same
@@ -155,33 +162,31 @@ Investigations, Alerts, Admin), which are DOM.
 |---|---|---|
 | Space scenes and every non-DOM vis | wgpu canvas in the render worker ([T02](T02-vis-engine.md)) | One shared scene per Space view; moves between scenes are camera transitions, not page loads |
 | Time Ribbon chart | wgpu, as a reserved viewport at the bottom of the canvas ([T02 §4.6](T02-vis-engine.md#46-interaction-controllers-and-the-scene)) | Its DOM controls (LIVE pill, window text, baseline picker) are overlaid by the shell |
-| Top bar, Time Ribbon controls, Inspector, AI dock, tooltips, coverage meter, table view | Leptos in the shell ([T08](T08-dom-component-kit.md)) | Floating over the canvas |
-| Rooms | Leptos in the shell; admin rooms as a lazy satellite ([T03 §4.1](T03-browser-runtime.md#41-artefacts-and-module-split)) | Standard DOM keyboard behaviour |
-| DOM vis (marked **DOM** in [05](../product/05-visualisation-catalogue.md)) | Leptos | e.g. tables of ≤ 10k rows |
+| Sidebar, page header, Inspector, AI dock, tooltips, coverage meter, table view | React ([T08](T08-dom-component-kit.md)) | Application layout (ADR-0014 §10) |
+| Rooms | React; heavy rooms as lazy route chunks | Standard DOM keyboard behaviour |
+| DOM vis (marked **DOM** in [05](../product/05-visualisation-catalogue.md)) | React | e.g. tables of ≤ 10k rows, the interim log list |
 
-**Composition.** The canvas is full-bleed: it covers the whole window under the chrome. The 32 px
-top bar and the 40 px Time Ribbon strip are DOM elements positioned over it with a translucent
-`surface-1` background, so canvas content shows through ([VL-017](../product/08-visual-language.md#vl-017--thin-translucent-chrome)). The shell reports every DOM
-element that occludes the canvas to core as `RoomGeometry` ([T03 §5.3](T03-browser-runtime.md#53-core--shell-messages)),
-which core uses for picking and for safe-area framing (frame-all never puts content under the
-chrome). In Space scenes with a camera extent, the minimap is a GPU viewport in the bottom-right of
-the canvas.
+**Composition.** *(Revised 2026-11-19, ADR-0014 §10.)* The application uses a conventional
+layout: a left navigation sidebar, a page header (title left; time range, refresh and user menu
+right) and the page body. Board panels are grid cells, each with its own canvas. Space scenes (from
+M-UI3) fill the page body with one canvas; the shell reports occluding elements to the engine as
+`RoomGeometry` so picking and frame-all respect them.
 
 #### T01-006 — The Space is one GPU scene
 **MUST** — Every Space view MUST be rendered as one scene in the shared wgpu canvas. Moving between
 Space scenes MUST NOT cause a document navigation; it is a camera transition ([T02](T02-vis-engine.md)
 T02-026), and the previous scene stays resident.
 
-#### T01-007 — Rooms are Leptos DOM
-**MUST** — Rooms, chrome, tooltips, the Inspector and DOM vis MUST be Leptos components from the
-component kit ([T08](T08-dom-component-kit.md)). They MUST be operable by keyboard alone and MUST
-pass the WCAG 2.2 AA automated checks.
+#### T01-007 — Rooms are accessible React DOM
+**MUST** — *(Revised 2026-11-19, ADR-0014.)* Rooms, chrome, tooltips, the Inspector and DOM vis MUST
+be React components built from the kit ([T08](T08-dom-component-kit.md)). They MUST be operable by
+keyboard alone and MUST pass the WCAG 2.2 AA automated checks.
 
-#### T01-008 — Global chrome is thin, translucent and the only persistent chrome
-**MUST** — The Space MUST show only the 32 px top bar (logo menu, breadcrumb, command palette entry,
-alert count, AI dock toggle, avatar menu), the canvas (with a minimap where the scene has a camera
-extent) and the 40 px Time Ribbon. The bar and ribbon MUST be translucent over the canvas, and the
-canvas MUST be informed of their geometry.
+#### T01-008 — Global chrome is the application layout
+**MUST** — *(Revised 2026-11-19, ADR-0014 §10; previously "thin, translucent and the only persistent
+chrome".)* Every page MUST show the left navigation sidebar (collapsible) and the page header with
+the time range picker, refresh control and user menu on the right. Any canvas MUST be informed of
+the geometry of elements that occlude it.
 
 ### 4.4 Rendering and UI technology choices
 
@@ -190,25 +195,30 @@ canvas MUST be informed of their geometry.
 | GPU API | **wgpu** → WebGPU, falling back to WebGL2 ([ADR-0003](../adr/0003-wgpu-rendering.md)) | One Rust codebase. Compute shaders for decimation and KDE on WebGPU; CPU fallback paths on WebGL2. The same renderer runs natively, headless, for server-side PNGs (notifications, reports) and golden tests |
 | Scene and marks | Own retained-mode scene graph plus instanced mark pipelines (polyline, area, rect, point, arc, edge, path, text, image, density, mesh, tile); full design in [T02](T02-vis-engine.md) ([ADR-0007](../adr/0007-in-house-vis-engine.md)) | The performance of high-performance charting libraries needs bespoke batching. Generic engines (Bevy) bring too much |
 | Text on canvas | MSDF glyph atlases of the self-hosted UI fonts; shaping with `rustybuzz`/`cosmic-text` in the layout worker | Crisp at any zoom; logs as GPU text; matches DOM text ([T02](T02-vis-engine.md) T02-012) |
-| DOM rooms and panels | **Leptos** (fine-grained reactive, Rust → WASM, DOM through generated bindings), [ADR-0004](../adr/0004-leptos-dom-rooms.md) **Accepted** | Forms, tables, settings, accessibility, IME and autofill need real DOM. Dioxus is not pursued; all-canvas (egui) was rejected for accessibility, IME and enterprise forms |
-| Query editors | Rust editor core (PromQL/LogQL/TraceQL tokenisers and parsers reused from the PulsusDB crates where possible), rendered in DOM as a transparent `<textarea>` over a highlighted layer ([T09](T09-query-editors.md)) | Parser parity with the backend gives exact error positions and autocomplete |
-| Wire format | **Arrow IPC** in the DSF envelope from the BFF; JSON only for config/CRUD ([ADR-0005](../adr/0005-arrow-wire-format.md), [T04](T04-wire-format-and-data-plane.md)) | Zero-parse decode into GPU-ready columns |
+| Application and DOM rooms | **TypeScript + React + Vite**, React Aria Components, TanStack Router and Query ([ADR-0014](../adr/0014-typescript-react-web-client.md)) | Mature accessible components, pickers, editor and hiring pool. Supersedes Leptos ([ADR-0004](../adr/0004-leptos-dom-rooms.md)) |
+| Query editors | CodeMirror 6 in TS; diagnostics from PulsusDB via the BFF, later from PulsusDB's parser crates compiled to WASM ([T09](T09-query-editors.md) to be revised) | Parser parity with PulsusDB for error positions |
+| Wire format | JSON frames to the TS app until the engine lands; then **Arrow IPC** in the DSF envelope to the engine worker; JSON for config/CRUD ([ADR-0014](../adr/0014-typescript-react-web-client.md) §5, [ADR-0005](../adr/0005-arrow-wire-format.md), [T04](T04-wire-format-and-data-plane.md)) | One decoder seam in the client; zero-parse decode once Arrow arrives |
 | Local analytics engine | Rust columnar engine in WASM (a DataFusion-class subset: filter, group, aggregate, histogram merge) over summary pyramids and fetched chunks, with the same query interface as the server (the pattern used by in-browser trace viewers); T13 (draft) | Interaction never waits on a round trip |
 | Local cache | IndexedDB via `web-sys`, storing DSF/Arrow chunks ([T04 §6.1](T04-wire-format-and-data-plane.md#61-indexeddb-chunk-cache)) | "Show cached first" ([PRF-026](../product/09-performance-contract.md#prf-026--show-cached-marked-stale)) |
 
 #### T01-009 — Every vis is a spec over the shared mark engine
 **MUST** — Every vis MUST be an L5 spec over the T02 mark primitives (T02-001). No feature team MAY
-add a draw pipeline outside [T02](T02-vis-engine.md)'s L1.
+add a draw pipeline outside [T02](T02-vis-engine.md)'s L1. *Interim (ADR-0014 §4):* the
+`Canvas2DEngine` is the one permitted exception until the engine lands, and it lives only behind the
+`ChartFrame` seam.
 
 ### 4.5 One token source for canvas and DOM
 
 Colour, space, type and motion tokens ([08](../product/08-visual-language.md)) are defined once in
-`design/tokens.toml`. The `dash-tokens` crate's `build.rs` generates:
+`design/tokens.toml`. *(Revised 2026-11-19.)* `client/scripts/gen-tokens.ts` generates `tokens.css`
+and `tokens.ts`; the `dash-tokens` crate's `build.rs` adds `tokens.rs` for the engine when it lands.
+The outputs are:
 
 | Output | Consumer | Form |
 |---|---|---|
-| `tokens.rs` | core (`dash-marks`, `dash-scene`), shell | `pub const` linear-space RGBA (`[f32; 4]`), px sizes, durations in ms, per theme and density |
-| `tokens.css` | shell, rooms, component kit | CSS custom properties under `:root[data-theme][data-density]` |
+| `tokens.rs` | engine (`dash-marks`, `dash-scene`) | `pub const` linear-space RGBA (`[f32; 4]`), px sizes, durations in ms, per theme and density |
+| `tokens.ts` | TS application, `Canvas2DEngine` | typed constants per theme and density |
+| `tokens.css` | application, rooms, component kit | CSS custom properties under `:root[data-theme][data-density]` |
 | `tokens.json` | palette validator, gallery, docs | Flat map, for tooling only |
 
 Theme (dark default, light from M-UI5, wall high-contrast from M-UI6) and density (Comfortable,
@@ -218,10 +228,17 @@ component kit defines a colour, size or duration of its own.
 
 #### T01-010 — Tokens are defined once and generated
 **MUST** — Every colour, space, type and motion value used by the renderer or the DOM MUST come from
-the generated `dash-tokens` outputs. A hard-coded colour literal outside the generated files MUST
+the generated token outputs. A hard-coded colour literal outside the generated files MUST
 fail CI.
 
 ### 4.6 Crate map
+
+*(Revised 2026-11-19.)* Under [ADR-0014](../adr/0014-typescript-react-web-client.md) and
+[ADR-0015](../adr/0015-go-bff.md), the Rust workspace holds only the chart engine and its test
+tooling; `dash-shell` and `dash-protocol`'s shell side are withdrawn, and BFF crates are replaced by
+the Go module of [T06](T06-bff-architecture.md) §4.1. Crates shared with the BFF (`dash-wire`, …)
+are now per-language implementations held together by shared fixtures (ADR-0015). The table below
+is the engine's crate map.
 
 | Crate | Module | Role | Detailed in |
 |---|---|---|---|
@@ -242,7 +259,7 @@ BFF-only crates under `server/`, tooling in `xtask/`.
 ### 4.7 Backend shape implied by the UI
 
 ```
- Browser (Rust/WASM) ──HTTP/2 + WS, DSF/Arrow──►  pulsus-dash server (Rust, axum) — the BFF
+ Browser (TS app; Rust/WASM engine) ─HTTP/2 + WS──►  pulsus-dash server (Go) — the BFF
                                                    ├─ Scene query planner: dedupe/merge viewport queries,
                                                    │  choose step from pixel width, fan out, stream Arrow (T07)
                                                    ├─ Entity catalogue + graph service (T12, draft)
@@ -280,8 +297,8 @@ and the configured audit export. All derived state MUST be written to PostgreSQL
 
 | Boundary | Format | Defined in |
 |---|---|---|
-| Shim ↔ Rust (bootstrap, byte pump, input ring) | wasm-bindgen imports/exports; binary records in shared memory | [T03 §5](T03-browser-runtime.md#5-interfaces) |
-| Core ↔ shell | postcard records on two SPSC rings | [T03 §5.3](T03-browser-runtime.md#53-core--shell-messages) |
+| TS application ↔ engine | `ChartEngine` / `ChartFrame` typed API | [ADR-0014](../adr/0014-typescript-react-web-client.md) §3 |
+| Engine adapter ↔ engine worker (bootstrap, byte pump, input ring) | wasm-bindgen imports/exports; binary records in shared memory | [T03 §5](T03-browser-runtime.md#5-interfaces) |
 | Browser ↔ BFF data plane | DSF frames carrying Arrow IPC over HTTP/2 and WebSocket | [T04 §5](T04-wire-format-and-data-plane.md#5-interfaces) |
 | Browser ↔ BFF config/CRUD | JSON over HTTP | [T06](T06-bff-architecture.md), [T11](T11-postgres-schema.md) |
 | BFF ↔ PulsusDB | PulsusDB HTTP APIs (JSON, OTLP protobuf, Connect); read-only for telemetry | [pulsusdb-requirements](pulsusdb-requirements.md), [T06](T06-bff-architecture.md) |
@@ -343,8 +360,8 @@ to the design that meets it:
   and is also a security posture: it is what makes `SharedArrayBuffer` and high-resolution timers
   acceptable after Spectre. The exact headers are in [T03 §5.7](T03-browser-runtime.md#57-http-headers-the-runtime-requires);
   the full CSP is in [T18](T18-security.md).
-- **Smaller supply chain.** With no npm runtime dependencies (T01-002), the browser attack surface is
-  the shim, the wasm-bindgen glue and our own crates.
+- **Supply chain.** npm runtime dependencies are an allowlist with lockfile, exact versions, audit
+  and signature gates ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7).
 - **RBAC is server-side.** The browser never chooses a tenant or scope beyond what `/bootstrap`
   granted; the BFF injects tenant and data-scope matchers on every upstream call (T10 (draft),
   [T04 §8](T04-wire-format-and-data-plane.md#8-security-tenancy--rbac)).
@@ -362,8 +379,8 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 [T05](T05-testing-and-performance.md) is authoritative. In summary:
 - Rust unit and property tests natively for state, planning, decimation, codecs and layouts.
 - Native headless wgpu golden images for every gallery page.
-- Playwright drives the real build through the shim for integration, the mode matrix and
-  accessibility.
+- Vitest unit and component tests for the TS application; Playwright drives the production build
+  for integration, accessibility and CSP, and later the engine's mode matrix.
 - Deterministic replay of recorded input against seeded data, which also powers bug reports.
 - Frame-time, latency and memory benchmarks on the reference lab gate merges.
 
@@ -371,8 +388,8 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 
 | Milestone | Frontend architecture ships |
 |---|---|
-| M-UI0 | Shim; one `dash-core-mt` with shell features stubbed in core; render, data and pool workers; wgpu T1/T2; Arrow decode; line + scatter at volume ([12](../product/12-roadmap.md)) |
-| M-UI1 | Shell/core split with Leptos on main; chrome and Time Ribbon; token pipeline; query editor satellite; metrics workbench; IndexedDB cache |
+| M-UI1 (first, [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)) | React application: layout, routing, Context, token pipeline (CSS + TS), boards, PromQL and LogQL explore and panels, CodeMirror editors, interim `Canvas2DEngine` |
+| M-UI0 (after the first M-UI1 slice) | Chart engine: adapter, render, data and pool workers; wgpu T1/T2; Arrow decode; one canvas per panel; line + scatter at volume, replacing the interim renderer behind the seam |
 | M-UI2+ | Entities, Lens, logs/traces/profiles vis; local engine (M-UI3); rooms per feature milestone |
 
 ## 12. Alternatives considered
@@ -381,15 +398,15 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 |---|---|
 | All-canvas UI (egui) including forms | Reinvents accessibility, IME, autofill and enterprise forms. Rejected in [ADR-0004](../adr/0004-leptos-dom-rooms.md) |
 | Dioxus for DOM rooms | Viable; Leptos chosen ([ADR-0004](../adr/0004-leptos-dom-rooms.md)). The M-UI1 forms + table + tree work is the build-risk check |
-| React (or any JS UI framework) for rooms | Violates [ADR-0002](../adr/0002-no-js-ui-framework.md); splits state across two languages |
+| Leptos for the whole application (ADR-0004) | Superseded by [ADR-0014](../adr/0014-typescript-react-web-client.md): a conventional web application first, on the mature React ecosystem |
+| A JS charting library for the interim charts | Breaches VIZ-001's library clause and would be removed later; the in-house Canvas 2D renderer uses the engine's canvas-per-panel structure ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) |
 | Existing JS charting, mapping and graph libraries | JS; cannot share the Rust scene, picking, LOD or replay ([ADR-0007](../adr/0007-in-house-vis-engine.md)) |
 | Bevy or another game engine as the scene | Too much engine for retained, instanced 10⁷-mark scenes; size |
 | One WASM module on main + workers | Rust on main would hit `memory.atomic.wait`; see [T03 §12](T03-browser-runtime.md#12-alternatives-considered) |
 
 ## 13. Open questions
 
-1. Whether the M-UI1 forms + table + tree work exposes a Leptos blocker (the condition for reopening
-   [ADR-0004](../adr/0004-leptos-dom-rooms.md)).
+1. *(Closed 2026-11-19: ADR-0004 superseded by ADR-0014.)*
 2. When PulsusDB ships R1, whether the BFF moves to pass-through for all numeric results
    ([T04 §5.6](T04-wire-format-and-data-plane.md#56-json--arrow-conversion-in-the-bff-r1-fallback)).
 
@@ -414,3 +431,4 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T01-001 to T01-011, the Space/rooms composition (§4.3), the token pipeline (§4.5), the crate map (§4.6) and the Satisfies table; applied D1 and D2 |
 | 1.0-rc | 2026-11-18 | #22: crate map adds `dash-core-mt` (the core module crate); the IndexedDB chunk cache is renamed `dash-chunk-cache` (T06's BFF `dash-cache` keeps the name in the one workspace); all crates live in one root Cargo workspace |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): TS/React client and Go BFF. §4.1 rewritten (T01-001, T01-002 revised); T01-007, T01-008 revised to the application layout; interim notes on T01-003 and T01-009; §4.4 rows, §4.5 generator, §4.6 note, §4.7 diagram, §5, §8, §10, §11, §12 updated; §13 Q1 closed |
