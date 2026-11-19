@@ -1,0 +1,26 @@
+# Seed-24 statistics of the pulsus-synth line presets (T05-010).
+# Written by `cargo test -p pulsus-synth --release -- --ignored write_line_stats`.
+
+[line-1e8]
+seed = 24
+series = 1000
+points = 100000000
+nulls = 4530549
+spikes = 8745
+fnv = ["0x205b8fce375f2c2e", "0xd14eb1588763a8b1", "0x5eedcaed9d4c54e2"]
+
+[line-small]
+seed = 24
+series = 8
+points = 400000
+nulls = 43671
+spikes = 44
+fnv = ["0xb738fc6774cc15e9", "0x4359dfafcfd5f5be", "0x2d3ca82d83fa4782"]
+
+[line-gappy]
+seed = 24
+series = 64
+points = 12800000
+nulls = 540762
+spikes = 1109
+fnv = ["0x2187828c6e1fcbd3", "0x1ec1fadcc27fab5a", "0x8141000a68f8b77b"]
