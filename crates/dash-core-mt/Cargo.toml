@@ -11,7 +11,7 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = []
+default = ["probe"]
 probe = [] # test probe `self.__dashProbe` and `?fault=` injection (T03-024: never in release builds)
 
 [dependencies]
