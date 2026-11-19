@@ -2,7 +2,9 @@
 // The M1 line draw (plan #24 §4.4): instance j = part (j & 1) of slot (j >> 1) % slots of series
 // (j >> 1) / slots. Part 0 covers the slot's column by its run extents; part 1 is the connector
 // from the slot's last sample to the next. `fs_line` writes coverage (Max blended); `fs_mask`
-// writes the binary line coverage of the raw polyline, exactly, in 1/64 px integers.
+// writes the binary line coverage of the raw polyline, exactly, in 1/64 px integers. Both use
+// the positions snapped to the 1/64 px grid of line coverage, so every covered pixel is within
+// 0.5 px (vertically, in its column) of the drawn geometry and is lit.
 
 @group(0) @binding(1) var rec_a: texture_2d_array<u32>;
 @group(0) @binding(2) var rec_b: texture_2d_array<u32>;
@@ -46,6 +48,20 @@ fn yq(y: f32) -> i32 {
     return i32(floor(clamp(y * 64.0, -Q_MAX, Q_MAX)));
 }
 
+// floor(v · 64) / 64: the 1/64 px grid of line coverage (exact; y clamped like yq).
+fn snap_x(x: f32) -> f32 {
+    return floor(x * 64.0) / 64.0;
+}
+
+fn snap_y(y: f32) -> f32 {
+    return floor(clamp(y * 64.0, -Q_MAX, Q_MAX)) / 64.0;
+}
+
+// y of value bits b of series i, on the 1/64 px grid.
+fn ys_of(i: u32, b: u32) -> f32 {
+    return snap_y(y_of(i, b));
+}
+
 fn ndc(p: vec2<f32>) -> vec4<f32> {
     let c = (u.plot_origin_px + p) / u.canvas_px * 2.0 - 1.0;
     return vec4<f32>(c, 0.0, 1.0);
@@ -70,6 +86,11 @@ fn vs_line(@builtin(vertex_index) vid: u32, @builtin(instance_index) j: u32) -> 
     let tl = slot / u.tile_w;
     let a = textureLoad(rec_a, tx, tl, 0);
     let b = textureLoad(rec_b, tx, tl, 0);
+    // Nothing to draw: no run (part 0) or no connector (part 1).
+    if ((part == 0u && a.x == NULL_BITS && a.z == NULL_BITS && b.x == NULL_BITS)
+        || (part == 1u && (b.z == NULL_BITS || b.w == NULL_BITS))) {
+        return o;
+    }
     let range = slot_range(slot);
     var k_last = range.y - 1u;
     if (u.k_from_c == 1u) {
@@ -85,27 +106,27 @@ fn vs_line(@builtin(vertex_index) vid: u32, @builtin(instance_index) j: u32) -> 
         var hi = -3.0e38;
         if (a.z == OVERFLOW_BITS) {
             flags = F_OVER;
-            o.ya = vec4<f32>(y_of(i, a.x), y_of(i, a.y), 0.0, 0.0);
+            o.ya = vec4<f32>(ys_of(i, a.x), ys_of(i, a.y), 0.0, 0.0);
             lo = o.ya.x;
             hi = o.ya.y;
         } else {
             if (a.x != NULL_BITS) {
                 flags = flags | F_IV0;
-                o.ya.x = y_of(i, a.x);
-                o.ya.y = y_of(i, a.y);
+                o.ya.x = ys_of(i, a.x);
+                o.ya.y = ys_of(i, a.y);
                 lo = min(lo, o.ya.x);
                 hi = max(hi, o.ya.y);
             }
             if (a.z != NULL_BITS) {
                 flags = flags | F_IV1;
-                o.ya.z = y_of(i, a.z);
-                o.ya.w = y_of(i, a.w);
+                o.ya.z = ys_of(i, a.z);
+                o.ya.w = ys_of(i, a.w);
                 lo = min(lo, o.ya.z);
                 hi = max(hi, o.ya.w);
             }
             if (b.x != NULL_BITS) {
                 flags = flags | F_IV2;
-                o.yb = vec2<f32>(y_of(i, b.x), y_of(i, b.y));
+                o.yb = vec2<f32>(ys_of(i, b.x), ys_of(i, b.y));
                 lo = min(lo, o.yb.x);
                 hi = max(hi, o.yb.y);
             }
@@ -121,13 +142,10 @@ fn vs_line(@builtin(vertex_index) vid: u32, @builtin(instance_index) j: u32) -> 
         o.span = vec2<i32>(i32(range.y), cp);
         return o;
     }
-    if (b.z == NULL_BITS || b.w == NULL_BITS) {
-        return o;
-    }
-    let xa = x_of(k_last);
-    let xb = x_of(k_last + 1u);
-    let y_a = y_of(i, b.z);
-    let y_b = y_of(i, b.w);
+    let xa = snap_x(x_of(k_last));
+    let xb = snap_x(x_of(k_last + 1u));
+    let y_a = ys_of(i, b.z);
+    let y_b = ys_of(i, b.w);
     let px = select(floor(xa) - rr, floor(xb) + rr + 1.0, cx);
     let py = select(min(y_a, y_b) - h - 1.0, max(y_a, y_b) + h + 1.0, cy);
     o.pos = ndc(vec2<f32>(px, py));
@@ -162,7 +180,7 @@ fn run_dist(o: LineOut, ry: f32) -> f32 {
                 }
                 continue;
             }
-            let y = y_of(i, b);
+            let y = ys_of(i, b);
             if (open) {
                 mn = min(mn, y);
                 mx = max(mx, y);
@@ -340,7 +358,7 @@ fn runs_touch(o: LineOut, r: i32) -> bool {
                 open = false;
                 continue;
             }
-            let y = y_of(i, b);
+            let y = ys_of(i, b);
             if (open) {
                 mn = min(mn, y);
                 mx = max(mx, y);
