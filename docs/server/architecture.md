@@ -157,7 +157,8 @@ followed, the whole exchange bounded by 5 s, the body discarded) and logs once; 
   `org_id` leads every key (T11-002) except the global lookup keys `orgs.slug` and the `sessions`
   primary key. `pulsus_app` has no privilege on `sessions` (T11-027; #40 adds its definer lookup).
 - **Roles (T11 §4.1)**, created by an operator with `server/crates/dash-store/sql/roles.sql`
-  (idempotent, superuser, no passwords):
+  (idempotent, superuser, no passwords; it enforces the attributes below on existing roles and
+  refuses a `pulsus_app` that is a member of a superuser or `BYPASSRLS` role):
 
   | Role | Attributes | Used by |
   |---|---|---|

@@ -290,6 +290,9 @@ root) on `localhost` (default port 8080), one request at a time, with COOP `same
 `Cache-Control: no-cache` and `X-Content-Type-Options: nosniff`. Only `GET` and `HEAD` (else 405);
 `/` is `index.html`; a path with `%`, `\` or a `..` segment, a directory or a missing file is 404.
 
+Commands are logged and reported as program and arguments only: environment values (the PulsusDB
+URL, `DATABASE_URL`, credentials) never appear in `cargo xtask` output.
+
 `cargo xtask tools squawk` downloads `squawk-<platform>` of the pinned release into
 `target/tools/bin/squawk` (0755) after checking its pinned SHA-256. `cargo xtask tools sqlx-cli`
 runs `cargo install sqlx-cli --version <pin> --no-default-features --features rustls,postgres

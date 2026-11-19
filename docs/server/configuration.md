@@ -143,4 +143,7 @@ pulsus-dash migrate --config /etc/pulsus/dash.yaml
 pulsus-dash --role all --config /etc/pulsus/dash.yaml
 ```
 
-The script sets no passwords; set them (or use certificate authentication) out of band.
+The script sets no passwords; set them (or use certificate authentication) out of band. It also brings
+existing roles to these attributes (for example it strips `SUPERUSER` and `BYPASSRLS` from a
+pre-existing `pulsus_app`) and fails with "pulsus_app is a member of a role that bypasses row-level
+security" when `pulsus_app` can assume such a role; revoke the membership and run it again.

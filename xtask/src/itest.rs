@@ -14,7 +14,7 @@ const PROFILE: [&str; 2] = ["--profile", "itest"];
 /// Runs `cmd` with inherited output; `false` (and a printed note) on failure to start or a
 /// non-zero exit.
 fn step(name: &str, cmd: &mut Command) -> bool {
-    println!("==> itest {name}\n$ {cmd:?}");
+    println!("==> itest {name}\n$ {}", crate::tools::display(cmd));
     match cmd.status() {
         Ok(s) if s.success() => true,
         Ok(s) => {

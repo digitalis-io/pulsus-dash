@@ -96,12 +96,16 @@ fn platform() -> R<&'static str> {
 /// A command for logs and errors: program and arguments only. Environment values (credentials,
 /// the PulsusDB URL) are never printed.
 pub fn display(cmd: &Command) -> String {
-    format!("{cmd:?}")
+    std::iter::once(cmd.get_program())
+        .chain(cmd.get_args())
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Runs a tool to completion (output inherited); non-zero exit → `XtaskError::Tool`.
 pub fn run(cmd: &mut Command) -> R<()> {
-    let command = format!("{cmd:?}");
+    let command = display(cmd);
     println!("$ {command}");
     let status = cmd.status().map_err(|e| XtaskError::Tool {
         command: command.clone(),

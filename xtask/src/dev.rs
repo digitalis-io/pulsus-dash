@@ -338,7 +338,7 @@ fn exec(mut cmd: Command) -> R<u8> {
     use std::os::unix::process::CommandExt;
     let e = cmd.exec();
     Err(XtaskError::Tool {
-        command: format!("{cmd:?}"),
+        command: crate::tools::display(&cmd),
         detail: e.to_string(),
     })
 }
