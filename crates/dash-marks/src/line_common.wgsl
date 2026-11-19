@@ -36,7 +36,7 @@ struct LineUniforms {
 const NULL_BITS: u32 = 0x7FC00000u;
 const OVERFLOW_BITS: u32 = 0x7FC00001u;
 const NONE_U32: u32 = 0xFFFFFFFFu;
-const PYRAMID_B: u32 = 16u;
+const PYRAMID_B: u32 = 8u;
 const ANY_NULL: u32 = 1u;
 const ALL_NULL: u32 = 2u;
 
