@@ -527,7 +527,7 @@ render worker to the high-contrast token set.
 - **The keymap respects composition.** The T03 shim does not forward key events whose target is
   editable ([T03](T03-browser-runtime.md)). Inside editable elements (the 03 **Text input**
   context), the TS keymap applies a small *editable subset*: `⌘K`, `⌘⏎`, `Esc` (leaves the field),
-  `⌘Z`/`⌘⇧Z` (undo typing) and `⌘⇧F` (format, T09). It reads the same keymap table and skips any
+  `⌘Z`/`⌘⇧Z` (undo typing) and `⌘⇧F` (format, once T09 ships formatting). It reads the same keymap table and skips any
   `keydown` with `isComposing == true` or `keyCode == 229`.
 - **Event plumbing.** React handles DOM-room events (including `compositionstart/update/end`,
   `beforeinput`, `paste`) directly. The engine adapter's input ring carries only canvas pointer,
@@ -845,4 +845,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds the board panel editor (query, language picker, vis) and a minimal board list room; full Boards editor forms stay M-UI5 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 maps the Rust/Leptos modules to the TS application; T08-001, T08-002 and T08-027 revised; §4.10 Leptos risk check withdrawn; chrome rows suspended pending roadmap Q13; §11 M-UI1 and §12 updated |
 | 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): §4.3 describes the application layout (sidebar, page header, user menu, layout sizes); T08-017 regions; `Route` adds `Explore` and `Boards` (02 §4); Satisfies rows for IA-016, IA-021, SRF-001, VL-017 and INT-015 restored against `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface`, `e2e:chrome-layout` and `e2e:focus-regions`; IA-020 row added (`e2e:time-range-header`); PRF-009 row uses chunk-class budgets |
-| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 and §2 rewritten for the React application; §4.1 Rust crate tree marked superseded; §4.2 rewritten (the TS store on the main thread owns semantic state; the engine holds render-local state and reports events through `ChartFrame`); T08-004, §4.6, §4.8 "Where it runs", §5.1, §5.2 T03 row, §7, §8 tenant switch, §9 engine restart and Q1 aligned; Leptos and the ui↔core rings removed |
+| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 and §2 rewritten for the React application; §4.1 Rust crate tree marked superseded; §4.2 rewritten (the TS store on the main thread owns semantic state; the engine holds render-local state and reports events through `ChartFrame`); T08-004, §4.6, §4.8 "Where it runs", §5.1, §5.2 T03 row, §7, §8 tenant switch, §9 engine restart and Q1 aligned; Leptos and the ui↔core rings removed; §4.6 `⌘⇧F` waits for T09 formatting |

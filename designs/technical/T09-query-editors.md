@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint) → M-UI2 (pre-run positioned diagnostics from the WASM parser crates (SRF-078, proposed), LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
+| **Version** | 1.3-rc · 2026-11-19 |
+| **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078, proposed), LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
 
@@ -24,7 +24,7 @@ revised below.
 | `dash-qlex` highlight lexers | PromQL: the Prometheus project's Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail) |
 | `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005) |
 | Validation in the `editor` worker | v1: on run (and on Explore's auto-run), the BFF forwards the query to PulsusDB and maps its error and position, if any, to a diagnostic. Later: `dash-editor.wasm` (PulsusDB crates) in an editor worker on every edit (§4.2 diagram), with no change to the editor |
-| `promql-parser` `prettify()` for formatting | PulsusDB's formatting route through the BFF if it exists (Q5); otherwise formatting arrives with the WASM crates. T09-011 stands |
+| `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
 | `nucleo-matcher` fuzzy ranking | CodeMirror autocompletion's matcher plus the ranking boosts of §4.4 |
 | `pulsus-re2` regex screen (T09-016) | T09-016 revised |
 | Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree; the loss check and T09-013 stand, with parity against PulsusDB by T09-017 |
@@ -184,7 +184,7 @@ the first token. Highlighting never waits for it.
 
 #### T09-002 — The PulsusDB parser is the only authority on validity
 **MUST** — Whether a query is valid MUST be decided only by the PulsusDB parser for its language.
-`dash-qlex` and `dash-qctx` MAY drive colour, completion, spans and recovery points, but MUST NOT mark
+`dash-qlex` and `dash-qctx` MAY drive colour, completion and spans, but MUST NOT place errors or mark
 a query valid or invalid.
 
 #### T09-003 — Highlighting never waits
@@ -312,11 +312,12 @@ above the highlighted item (the same rule as T08-014).
   "wrap in `rate(…[$__rate_interval])`". Squiggles use the wavy `text-decoration` in the underlay. A
   gutter glyph and an `aria-describedby` list give the non-visual channel.
 
-#### T09-009 — Error positions are byte offsets
-**MUST** — *(Applies with the WASM validator, SRF-078. In v1, an error from PulsusDB through the BFF
-is placed at the position PulsusDB returns, or across the whole query, SRF-027.)* Each parser error MUST be shown at a byte offset: the structured span for LogQL and
-TraceQL; for PromQL, the position parsed out of the message. When PromQL gives no position, the
-squiggle MUST be placed at the `dash-qctx` recovery point and labelled "approximate position".
+#### T09-009 — Error positions are byte offsets, or the whole query
+**MUST** — *(Revised 1.3-rc.)* Each PulsusDB parser error MUST be underlined at the byte offset the
+parser gives: the structured span for LogQL and TraceQL; for PromQL, the position in the message. An
+error that comes with no position MUST be underlined across the whole query and labelled "position
+unknown"; no other placement (such as a guessed recovery point) is allowed. The same rule applies to
+errors from PulsusDB through the BFF on run (SRF-027) and to the WASM validator before run (SRF-078).
 
 **Board variables and macros** (`$var`, `${var}`, `$__rate_interval`, `$__interval`) are not PulsusDB
 syntax.
@@ -338,7 +339,9 @@ does before execution ([T07](T07-scene-query-planner.md) §4.1).
   - **`$__rate_interval`:** its resolved value.
   - **Reserved virtual selectors:** "served by Dash from alert history (Postgres)", with the
     supported subset.
-- **Format / prettify** (`⌘⇧F`, and on save in alert rules):
+- **Format / prettify** (`⌘⇧F`, and on save in alert rules). *Ships with the WASM crates (M-UI2,
+  §11), or earlier only through a PulsusDB format route once confirmed (Q5). Until then no format
+  command is offered and `⌘⇧F` does nothing in the editor.*
   - **PromQL:** `promql-parser`'s `prettify()`. If the text contains `#` comments, formatting is
     refused with "format would drop comments" (§13 Q2).
   - **LogQL and TraceQL:** the crates' canonical `Display`, plus our line-breaking pass (pipeline
@@ -550,9 +553,9 @@ budget in the editor worker, the same bound PulsusDB applies.
 
 | Failure | What the user sees |
 |---|---|
-| Editor worker fails to load | Highlighting still works (main thread). The status pip says "validation offline"; run still works and the server error is shown positioned by parsing its message |
+| Editor worker fails to load | Highlighting still works (main thread). The status pip says "validation offline"; run still works and the server error is underlined per T09-009 |
 | `/suggest` slow or down | Static and catalogue completions only, with the hint "live values unavailable" |
-| PulsusDB parser gives no position (PromQL) | Squiggle at the `dash-qctx` recovery point, marked "approximate" |
+| PulsusDB parser gives no position (on run or before run) | The whole query is underlined, labelled "position unknown" (T09-009) |
 | Client accepts but server rejects (version skew) | The server error is shown inline with "Dash and PulsusDB disagree: report" (telemetry counter). This is caught early by the parity CI below |
 | Query over 128 KB | Editing is allowed. Validation and completion pause, with an explanation (T09-015) |
 | Builder cannot represent the query | The toggle stays on text and names the construct (T09-013) |
@@ -581,8 +584,8 @@ same job pins the PulsusDB git revision Dash builds against.
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | PromQL: CodeMirror 6 editor, Lezer PromQL highlighting and context, PulsusDB validation through the BFF on run (SRF-027), metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, prettify, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL; **LogQL validation (PulsusDB parser) and label/value completion** for LogQL panels (#49) |
-| M-UI2 | WASM validator (`dash-editor.wasm`, PulsusDB crates) for pre-run positioned diagnostics (SRF-078, milestone proposed, [12](../product/12-roadmap.md) Q14); TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
+| M-UI1 | PromQL: CodeMirror 6 editor, Lezer PromQL highlighting and context, PulsusDB validation through the BFF on run (SRF-027), metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL; **LogQL validation (PulsusDB parser) and label/value completion** for LogQL panels (#49) |
+| M-UI2 | WASM validator (`dash-editor.wasm`, PulsusDB crates) for pre-run positioned diagnostics (SRF-078, milestone proposed, [12](../product/12-roadmap.md) Q14) and formatting (`⌘⇧F`, T09-011); TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
 | M-UI4 | Alert-rule editor integration (quick-fixes, variables), AI explain/generate, virtual-source completion and diagnostics |
 | M-UI5 | LogQL/TraceQL builders, Board variables UI |
 
@@ -613,7 +616,7 @@ revived if a non-AGPL edition is planned (D3, R17).
 | Q2 | Comment-preserving PromQL formatting | Re-attach `#` comments by token position in our own printer (M-UI4), or refuse as now |
 | Q3 | Should `/suggest` responses be Arrow for very large value sets? | No: ≤ 200 items as JSON is fine (config-like, [ADR-0005](../adr/0005-arrow-wire-format.md)) |
 | Q4 | Builder coverage for binary operations with vector matching on both sides | Unrepresentable in v1; revisit with usage data |
-| Q5 | Does PulsusDB offer a parse-only route (as Prometheus-compatible `parse_query` or `format_query`), so the BFF can validate on idle before run? | If yes, the BFF validate route can give pre-run positions before the WASM crates (SRF-078 earlier); if no, validation is on run (SRF-027) until they land |
+| Q5 | Does PulsusDB offer a parse-only route (as Prometheus-compatible `parse_query` or `format_query`), so the BFF can validate on idle before run? | If yes, the BFF validate route can give pre-run positions before the WASM crates (SRF-078 earlier) and a format route can bring formatting forward; if no, validation is on run (SRF-027) and formatting waits for the crates (M-UI2) |
 
 ## 14. Change log
 
@@ -623,3 +626,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 LogQL validation and label completion move M-UI2 → M-UI1; TraceQL, profile selectors, detected fields, ⌘K detection and history stay M-UI2 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0; the editor is CodeMirror 6 in TS (§4.3 and T09-004 rewritten); PulsusDB validation through the BFF on run until the WASM crates land; T09-001 (one TS interface), T09-003 (CodeMirror highlighting), T09-006 (CodeMirror history), T09-016 (regex screen) and T09-017 (parity incl. the Lezer PromQL grammar) revised; SRF-027 and PRF-009 rows; Q5 parse-only route |
 | 1.2-rc | 2026-11-19 | Code review of #56: SRF-027 is errors on run from PulsusDB (`e2e:editor-error-on-run`); new SRF-078 row for pre-run byte-offset diagnostics (`e2e:editor-missing-brace`) with the WASM validator in M-UI2 (proposed); T09-009, §11 and Q5 aligned |
+| 1.3-rc | 2026-11-19 | Code review r2 of #56: T09-009 has one fallback for every error without a position (whole-query underline, "position unknown"; no recovery-point placement), aligned in T09-002 and the §9 failure table; formatting moves out of M-UI1 to the WASM crates in M-UI2, optionally earlier through a confirmed PulsusDB format route (§0, §4.5, §11, Q5) |
