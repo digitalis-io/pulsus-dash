@@ -28,7 +28,7 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 
 [ADR-0005](../adr/0005-arrow-wire-format.md) chose Arrow IPC from the BFF to the browser. Until
 PulsusDB emits a columnar format natively (R1 in [pulsusdb-requirements](pulsusdb-requirements.md)),
-the BFF converts JSON → Arrow. PulsusDB today answers range queries in Prometheus-compatible JSON (metrics) and its native logs JSON,
+the BFF converts JSON → Arrow. PulsusDB today answers range queries in PromQL-compatible JSON (the standard query-API response shape) for metrics and its native logs JSON,
 with sample values as **strings** and log timestamps as nanosecond **strings** (PulsusDB API §2.1,
 §3.2). Trace fetch is OTLP JSON or protobuf by `Accept` (§4.1). Profiles are Connect JSON or proto
 (§5). The current upstream API reference documents no Arrow output.

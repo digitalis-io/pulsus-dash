@@ -57,7 +57,7 @@
 | Metric rollup levels 60 / 720 / 7200 / 86400 s, chosen by time range (not step) | Dash pyramids use the same lattice; the planner predicts the level ([T07](T07-scene-query-planner.md), T13 (draft)) |
 | `X-Pulsus-Explain` bypasses the read cache | Dash predicts exactness and samples explain at ~1 % ([T06](T06-bff-architecture.md)); see **R10** |
 | Ruler is off by default (`PULSUS_RULER_ENABLED=false`) and runs in mode `all` only | R4 fallback must handle a disabled ruler; see **R4** |
-| TraceQL metrics returns its native trace-metrics body, not a Prometheus matrix | BFF converter handles both ([T04](T04-wire-format-and-data-plane.md)) |
+| TraceQL metrics returns its native trace-metrics body, not a PromQL matrix | BFF converter handles both ([T04](T04-wire-format-and-data-plane.md)) |
 | API auth is Basic only (default admin `admin`/`admin`) | Dash uses per-tenant service credentials; see **R12** |
 
 ## 1. Requirements

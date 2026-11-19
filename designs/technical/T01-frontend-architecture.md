@@ -282,7 +282,7 @@ All crates live in one root Cargo workspace: engine and test crates under `crate
 ```
 
 The BFF ([T06](T06-bff-architecture.md)) is essential. It converts PulsusDB's
-JSON responses (Prometheus-compatible for metrics, native JSON for logs and traces) into Arrow once, server-side. It enforces RBAC on every query by
+JSON responses (PromQL-compatible JSON, the standard query-API response shape, for metrics; native JSON for logs and traces) into Arrow once, server-side. It enforces RBAC on every query by
 injecting tenant and label matchers, and it plans queries per *scene* rather than per panel. Longer
 term, PulsusDB may emit Arrow natively (ClickHouse already speaks Arrow): requirement R1 in
 [pulsusdb-requirements](pulsusdb-requirements.md).

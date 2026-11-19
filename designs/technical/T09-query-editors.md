@@ -21,7 +21,7 @@ revised below.
 |---|---|
 | `dash-lang` crate and `QueryLanguage` trait (T09-001) | `lang/` with a TS `QueryLanguage` interface (§5.1); implementations `RemoteValidator` (BFF → PulsusDB) now and `WasmValidator` (PulsusDB crates in an editor worker) later |
 | Textarea overlay (§4.3, T09-004) | CodeMirror 6 (§4.3, T09-004 revised) |
-| `dash-qlex` highlight lexers | PromQL: the Prometheus project's Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail) |
+| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail) |
 | `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005) |
 | Validation in the `editor` worker | v1: on run (and on Explore's auto-run), the BFF forwards the query to PulsusDB and maps its error and position, if any, to a diagnostic. Later: `dash-editor.wasm` (PulsusDB crates) in an editor worker on every edit (§4.2 diagram), with no change to the editor |
 | `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
@@ -634,7 +634,7 @@ revived if a non-AGPL edition is planned (D3, R17).
 | Q2 | Comment-preserving PromQL formatting | Re-attach `#` comments by token position in our own printer (M-UI4), or refuse as now |
 | Q3 | Should `/suggest` responses be Arrow for very large value sets? | No: ≤ 200 items as JSON is fine (config-like, [ADR-0005](../adr/0005-arrow-wire-format.md)) |
 | Q4 | Builder coverage for binary operations with vector matching on both sides | Unrepresentable in v1; revisit with usage data |
-| Q5 | Does PulsusDB offer a parse-only route (as Prometheus-compatible `parse_query` or `format_query`), so the BFF can validate on idle before run? | If yes, the BFF validate route can give pre-run positions before the WASM crates (SRF-078 earlier) and a format route can bring formatting forward; if no, validation is on run (SRF-027) and formatting waits for the crates (M-UI2) |
+| Q5 | Does PulsusDB offer a parse-only route (PromQL-compatible `parse_query`/`format_query`), so the BFF can validate on idle before run? | If yes, the BFF validate route can give pre-run positions before the WASM crates (SRF-078 earlier) and a format route can bring formatting forward; if no, validation is on run (SRF-027) and formatting waits for the crates (M-UI2) |
 
 ## 14. Change log
 
