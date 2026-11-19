@@ -32,7 +32,7 @@ render, per frame:         drain input → LineScene; layer → LineLayout, Line
 | Generate | `pulsus-synth::line` | `series(seed, preset, id)`: a daily triangle wave plus a random walk, up to 3 gaps of 1 000–5 000 samples, rare spikes of 20× the amplitude, random NULLs (`null_ratio`), isolated samples (`isolate_every`). Seed 24. Only `+ − × ÷ abs` on `f64`, so wasm32 and native agree bit for bit; `tests/golden/line-stats.toml` pins the statistics of the three presets. |
 | Encode | `dash-wire::grid` | One Arrow IPC stream message per batch of `series_per_batch(len)` = `clamp(1 MiB / (8·len), 1, 64)` series: `series_id` UInt32, `values` FixedSizeList(Float64 nullable, len), `dash.*` metadata (`dash.source = "synth"`). |
 | Copy 1 | `dash-wire::slab` | `Slab::copy_from` copies the message into a 64-byte aligned allocation. |
-| Check, decode | `dash-wire::grid` | `check_message` verifies the whole message (marker, metadata length, declared body length = the bytes present) before Arrow sees it; `GridDecoder::decode` then reads it with `FileDecoder` (`require_alignment`) into one `GridSeries` per row, whose values and validity are views into the slab. |
+| Check, decode | `dash-wire::grid` | `check_message` verifies the whole message (marker, metadata length, declared body length = the bytes present) before Arrow sees it. `GridDecoder::new` requires `dash.schema` major 1, `dash.time_unit = "ms"`, the `dash.grid.*` keys and non-nullable `series_id` and `values` fields; `GridDecoder::decode` then reads it with `FileDecoder` (`require_alignment`) into one `GridSeries` per row, whose values and validity are views into the slab. |
 | Publish | `dash-core-mt::line_table` | One immutable `LineChunk` per series (values, validity, `Prepared {v_ref, min, max}`), in id order, in a lock-free table of 1 024 `ArcSwapOption` slots (T03-007). |
 | Copy 2 | `dash-core-mt::line_render` | Per frame at most `max(1, 2²¹ / n)` series: `rel_bits` converts to `f32(v − v_ref)` bits (NULL for invalid or non-finite), `build_pyramid` builds the min/max pyramid, `LineMark::upload_series` writes both textures. |
 
@@ -73,7 +73,10 @@ function `dash_scales::lod::decimate_series` is the specification; T1 (compute) 
 | Output | two `Rgba32Uint` storage textures | two `Rgba32Uint` targets (32 B per sample, the WebGL2 limit) |
 | Device limits | `downlevel_defaults` (compute, 4 storage textures) | `downlevel_webgl2_defaults` |
 
-The pass runs only when the frame changed (camera, canvas or an upload).
+The pass runs only when the frame changed (camera, canvas or an upload). The change stays pending
+until a decimation pass is submitted, so a frame that cannot present (surface outdated, lost,
+timed out or occluded) does not lose it. A canvas no larger than the plot insets (56 × 32 CSS px)
+has no plot area: nothing is drawn until it grows again.
 
 **Textures.** Values (`R32Uint`) and the pyramid (`Rgba32Uint`) are 2D arrays `tex_w × tex_w ×
 layers`, `tex_w = min(4096, max_texture_dimension_2d)`; a single layer is only as tall as its data.
