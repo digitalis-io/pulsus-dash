@@ -180,3 +180,58 @@ async fn no_extensions_needed() {
     drop(c);
     t.drop().await.unwrap();
 }
+
+/// `roles.sql` with its three role names suffixed, so the test never alters the shared roles.
+fn roles_script(suffix: &str) -> String {
+    include_str!("../sql/roles.sql")
+        .replace("pulsus_owner", &format!("pulsus_owner_{suffix}"))
+        .replace("pulsus_app", &format!("pulsus_app_{suffix}"))
+        .replace("pulsus_maint", &format!("pulsus_maint_{suffix}"))
+}
+
+/// Review r1 #2: a pre-existing, privileged application role is demoted, and membership in an
+/// RLS-bypassing role makes the script fail loudly.
+#[tokio::test]
+#[ignore = "itest: run by cargo xtask ci itest"]
+async fn roles_script_demotes_privileged_app() {
+    let admin = std::env::var(dash_store::testing::ADMIN_URL_ENV).unwrap();
+    let mut c = PgConnection::connect(&admin).await.unwrap();
+    let sfx = uuid::Uuid::now_v7().simple().to_string();
+    let app = format!("pulsus_app_{sfx}");
+    let bypass = format!("itest_bypass_{sfx}");
+    let exec = |sql: String| sqlx::raw_sql(sqlx::AssertSqlSafe(sql));
+    exec(format!("CREATE ROLE {app} LOGIN SUPERUSER BYPASSRLS"))
+        .execute(&mut c)
+        .await
+        .unwrap();
+    exec(roles_script(&sfx)).execute(&mut c).await.unwrap();
+    let (sup, byp): (bool, bool) =
+        sqlx::query_as("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = $1")
+            .bind(&app)
+            .fetch_one(&mut c)
+            .await
+            .unwrap();
+    assert!(!sup && !byp, "{app}: superuser {sup}, bypassrls {byp}");
+    exec(format!(
+        "CREATE ROLE {bypass} NOLOGIN BYPASSRLS; GRANT {bypass} TO {app}"
+    ))
+    .execute(&mut c)
+    .await
+    .unwrap();
+    let refused = exec(roles_script(&sfx)).execute(&mut c).await;
+    let msg = refused
+        .as_ref()
+        .err()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    exec(format!(
+        "DROP ROLE {bypass}; DROP ROLE {app}; DROP ROLE pulsus_owner_{sfx}; DROP ROLE pulsus_maint_{sfx}"
+    ))
+    .execute(&mut c)
+    .await
+    .unwrap();
+    assert!(
+        msg.contains("bypasses row-level security"),
+        "the script accepted an app role that can assume an RLS-bypassing role: {refused:?}"
+    );
+}

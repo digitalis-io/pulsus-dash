@@ -93,8 +93,14 @@ fn platform() -> R<&'static str> {
     }
 }
 
+/// A command for logs and errors: program and arguments only. Environment values (credentials,
+/// the PulsusDB URL) are never printed.
+pub fn display(cmd: &Command) -> String {
+    format!("{cmd:?}")
+}
+
 /// Runs a tool to completion (output inherited); non-zero exit → `XtaskError::Tool`.
-pub(crate) fn run(cmd: &mut Command) -> R<()> {
+pub fn run(cmd: &mut Command) -> R<()> {
     let command = format!("{cmd:?}");
     println!("$ {command}");
     let status = cmd.status().map_err(|e| XtaskError::Tool {
