@@ -3,10 +3,25 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
-| **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, Time Ribbon, gallery) → M-UI5 (panel parity breadth) |
+| **Version** | 1.1-rc · 2026-11-19 |
+| **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
+
+## 0. Applicability under ADR-0014 (2026-11-19)
+
+The engine described here is the Rust/WASM chart engine behind the `ChartFrame` seam of
+[ADR-0014](../adr/0014-typescript-react-web-client.md) §3. It arrives with issues #68 (foundation,
+line) and #69 (text and axes, heatmap, bars, stat, GPU log stream); until then the in-house Canvas 2D
+renderer draws line, stacked bars, heatmap and stat (ADR-0014 §4). Design rules, primitives and
+budgets stand, with these readings:
+
+| Topic | Reading |
+|---|---|
+| Canvases | One canvas per chart frame (panel), all driven by one engine instance and one GPU device per page; the Atlas and a Lens are one scene on one canvas ([05](../product/05-visualisation-catalogue.md) VIZ-001, [04](../product/04-surfaces.md) SRF-014) |
+| "Browser JavaScript only proxies bytes and events" (§1) | Now: semantic state, layout and DOM are TS (ADR-0014 §2); the engine adapter moves bytes and events and is bound by T01-001. The library ban stands (VIZ-001) |
+| §11 M-UI1 row | Delivered on the interim renderer in M-UI1; the GPU versions land with #68 and #69 (M-UI0 milestone, delivered after the first M-UI1 slice). The Time Ribbon moves to M-UI3 with the Space scenes ([02](../product/02-information-architecture.md) IA-028) |
+| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`; ADR-0014 §3) |
 
 ## 1. Context & problem
 
@@ -53,7 +68,7 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
-| [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-in-one-shared-scene) | §4.1, §4.6 | `e2e:no-dom-vis` |
+| [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-by-one-shared-engine) | §4.1, §4.6 | `e2e:no-dom-vis` |
 | [PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable) | §4.5 (text flow), §4.8 (log stream); paging co-satisfied with T04 (`log_lines/1`, §4.4) | `bench:frame-gallery` (log stream page: 10⁶ lines in window, fling scroll, page past the window end) |
 | [VIZ-002](../product/05-visualisation-catalogue.md#viz-002--every-vis-is-a-composition-of-shared-mark-primitives) | §4.1, §4.8 | `ci:spec-lint` |
 | [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | §4.6 | `replay:universal-interactions` |
@@ -84,14 +99,14 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 | [VIZ-070](../product/05-visualisation-catalogue.md#viz-070--gallery-runs-on-seeded-synthetic-data) | §4.9 (co-satisfied with T05) | `e2e:gallery-offline`; `golden:gallery` (two seeded runs identical) |
 | [IA-003](../product/02-information-architecture.md#ia-003--scenes-are-trees-of-viewports) | §4.6 | `unit:scene-model` |
 | [IA-014](../product/02-information-architecture.md#ia-014--the-space-camera-transitions-never-page-loads) | §4.6 | `replay:space-transitions` |
-| [IA-020](../product/02-information-architecture.md#ia-020--time-ribbon-is-always-visible) | §4.6 | `replay:time-ribbon` |
+| [IA-028](../product/02-information-architecture.md#ia-028--time-ribbon-in-space-scenes) | §4.6 (Time Ribbon) | `replay:time-ribbon`; `e2e:chrome-layout` |
 | [INT-002](../product/03-interaction-model.md#int-002--cursor-anchored-zoom) | §4.6 | `unit:camera-controller` (100 random wheel steps, < 1 px drift) |
 | [INT-003](../product/03-interaction-model.md#int-003--inertia) | §4.6 | `unit:camera-controller` (settle 300 ± 50 ms, no overshoot, interrupt next frame) |
 | [INT-004](../product/03-interaction-model.md#int-004--smooth-programmatic-transitions) | §4.6 | `bench:camera-transition`; `replay:reduced-motion` |
 | [INT-007](../product/03-interaction-model.md#int-007--mouse-and-trackpad-bindings) | §4.6 (co-satisfied with T03) | `replay:mouse-bindings` |
 | [INT-008](../product/03-interaction-model.md#int-008--per-axis-pan-zoom-and-fit) | §4.3 | `replay:per-axis` |
 | [INT-017](../product/03-interaction-model.md#int-017--time-scrub) | §4.6 | `replay:time-scrub` |
-| [INT-025](../product/03-interaction-model.md#int-025--window-brush) | §4.6 | `replay:time-ribbon` |
+| [INT-025](../product/03-interaction-model.md#int-025--window-brush) | §4.6 (brush on any time chart; Ribbon gestures) | `e2e:time-range-header` (brush sets the window); `replay:time-ribbon` (Ribbon, from M-UI3) |
 | [INT-026](../product/03-interaction-model.md#int-026--global-time-cursor-and-replay) | §4.3, §4.6 | `replay:crosshair-sync` |
 | [INT-028](../product/03-interaction-model.md#int-028--live-mode) | §4.6 (co-satisfied with T04) | `replay:live-scroll` |
 | [INT-030](../product/03-interaction-model.md#int-030--comparison-baseline-ghost) | §4.3, §4.5 | `golden:gallery` (ghost page); `replay:compare-axis` |
@@ -453,7 +468,7 @@ selection, and every viewport highlights the selected keys.
 arena, formats value, labels and Δ vs the Context baseline, and emits a `TooltipAnchor` on the
 core → ui ring in the same frame. The shell renders it on its next animation frame.
 
-**Time Ribbon.** A reserved GPU viewport at the bottom of the canvas: an M3 anomaly-density strip and
+**Time Ribbon.** In Space scenes only (IA-028), a reserved GPU viewport at the bottom of the canvas: an M3 anomaly-density strip and
 M9 event glyphs across a zoomable long range, with the active window as a brush. Dragging an edge
 resizes the window, dragging the body moves it, and the wheel zooms the overview strip; the Context
 time updates on release. Events are clickable and set a before/after comparison around them.
@@ -751,3 +766,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T02-001 to T02-031; axis system expanded (auto-configuration, manual pin, ownership glyphs, comparison axis at M-UI1); LOD and precision rules; camera controller constants; auto-vis; glyph and state encodings per 08 (Failing ■); build order aligned with 05 milestones; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md) and the revised product text (roadmap Q13): new §0 (one canvas per chart frame with one engine and GPU device, interim renderer until #68/#69, Time Ribbon in Space scenes at M-UI3); Satisfies: IA-020 row replaced by IA-028, INT-025 adds `e2e:time-range-header` |

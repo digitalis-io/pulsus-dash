@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (Leptos risk check, store, router, tokens, keymap, kit core, shell chrome) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
+| **Version** | 1.3-rc · 2026-11-19 |
+| **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
 
@@ -25,32 +25,32 @@ designs, ARIA patterns, budgets and rules that are language-neutral stand.
 | `dash-a11y` | `a11y/` | T08-016 to T08-019 stand for engine canvases |
 | `dash-shell` + bridge to core rings | the React application + the `ChartEngine` API | T08-001, T08-002 revised |
 | Leptos build risk check (§4.10) | Withdrawn | — |
-| Shell chrome (§4.3: 32 px top bar, Time Ribbon frame, logo menu, no sidebar) | Application layout ([ADR-0014](../adr/0014-typescript-react-web-client.md) §10) | Satisfies rows for IA-016, IA-021 and VL-017 are suspended until the product text is revised (roadmap Q13) |
+| Shell chrome (§4.3: 32 px top bar, Time Ribbon frame, logo menu, no sidebar) | Application layout ([ADR-0014](../adr/0014-typescript-react-web-client.md) §10; [02](../product/02-information-architecture.md) §3.1), rewritten in §4.3 | Satisfies rows for IA-016, IA-020, IA-021, SRF-001 and VL-017 follow the revised product text |
 
 ## 1. Context & problem
 
-The product is "a space plus a few rooms" ([02 §3](../product/02-information-architecture.md)). The
-space is GPU-rendered in a worker ([T01](T01-frontend-architecture.md)). The rooms are conventional,
-accessible DOM UIs (IA-015), and DOM chrome floats over the space: the top bar, the Inspector, the AI
-dock, tooltips, ⌘K and query editors. [ADR-0002](../adr/0002-no-js-ui-framework.md) bans React and
-every JS component library, so there is no AG Grid, no date picker and no headless-UI package.
-Everything is Rust on Leptos, which is decided ([ADR-0004](../adr/0004-leptos-dom-rooms.md),
-Accepted 2026-11-18). Dioxus is not pursued.
+The product is "a space plus a few rooms" ([02 §3](../product/02-information-architecture.md)).
+Charts and, later, the Space are drawn by the shared engine in a worker, one canvas per chart frame
+([T01](T01-frontend-architecture.md)). The rooms are conventional, accessible DOM UIs (IA-015), and
+DOM chrome surrounds or floats over the content: the sidebar and page header (§4.3), the Inspector,
+the AI dock, tooltips, ⌘K and query editors. The DOM is a TypeScript + React application on React
+Aria Components ([ADR-0014](../adr/0014-typescript-react-web-client.md), which supersedes the
+Leptos decision of ADR-0004 and the framework ban of ADR-0002).
 
 This document fixes:
-- how the Leptos app is structured;
-- **who owns application state**, and how one Rust state reaches both the DOM and the render worker;
-- the component kit that replaces the JS ecosystem;
+- how the React application is structured (§0, §4.1);
+- **who owns application state**: the TS Context store on the main thread, which the engine reads
+  through the `ChartFrame` API and updates only through events (§4.2);
+- the component kit;
 - the cross-cutting DOM concerns: the a11y mirror for canvas views, IME, clipboard, tokens, keymap
-  and i18n;
-- the M-UI1 **build risk check** for Leptos (§4.10). It is no longer a selection spike: if it exposes
-  a blocker, ADR-0004 is reopened.
+  and i18n.
 
 ## 2. Goals / non-goals
 
 **Goals**
-- One authoritative state store in Rust, with typed projections to the DOM (Leptos signals) and to
-  the render worker (binary commands). No state lives in JS.
+- One authoritative state store in the TS application, read by components through selectors and
+  passed to the engine as `ChartFrame` calls. No application state lives in the engine or its
+  adapter.
 - A component kit covering every DOM need in [02](../product/02-information-architecture.md)–[15](../product/15-estate-navigation.md),
   at enterprise quality: keyboard-complete, WCAG 2.2 AA, IME-correct and themeable from the shared
   tokens.
@@ -76,10 +76,11 @@ This document fixes:
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [IA-015](../product/02-information-architecture.md#ia-015--rooms-are-conventional-accessible-dom) | §4.3, §4.4, §4.5, T08-007 | `a11y:axe-rooms` (Playwright + axe-core: 0 serious/critical in every room) and `e2e:keyboard-only-rooms` (every control reachable and operable by keyboard) |
-| [IA-016](../product/02-information-architecture.md#ia-016--minimal-global-chrome) | §4.3 (shell chrome) | `e2e:chrome-layout`: at 1440×900 the top bar is 32 px with exactly the listed elements and the Time Ribbon frame is 40 px |
-| [VL-017](../product/08-visual-language.md#vl-017--thin-translucent-chrome) | §4.3, §4.7 | `golden:chrome-translucent`: canvas content visible through top bar and Ribbon (DOM screenshot diff per theme) |
-| [SRF-001](../product/04-surfaces.md#srf-001--every-surface-carries-the-shared-chrome) | §4.3 (shell always mounted; Wall exception) | `e2e:chrome-every-surface`: each surface of Table 4-1 available at the build shows the top bar (and Ribbon for spaces); Wall mode shows neither |
-| [IA-021](../product/02-information-architecture.md#ia-021--no-left-navigation-sidebar) | §4.3 (logo menu), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: no left sidebar; each room opens by ⌘K, logo menu and its `g` chord |
+| [IA-016](../product/02-information-architecture.md#ia-016--application-layout) | §4.3 (application layout) | `e2e:app-layout`: at 1440×900 the sidebar, the page header with the title left and the time range picker, refresh control and user menu right, and no other persistent chrome |
+| [IA-020](../product/02-information-architecture.md#ia-020--time-range-in-the-page-header) | §4.3 (time range picker and refresh control) | `e2e:time-range-header` |
+| [VL-017](../product/08-visual-language.md#vl-017--application-layout-dimensions) | §4.3, §4.7 (layout tokens) | `e2e:app-layout` (sidebar 240/56 px, header 56 px, padding 24 px, panel gap 16 px); `e2e:chrome-layout` (Ribbon 40 px and translucent in Space scenes, from M-UI3) |
+| [SRF-001](../product/04-surfaces.md#srf-001--every-surface-uses-the-application-layout) | §4.3 (layout always mounted; Wall exception) | `e2e:chrome-every-surface`: each surface of Table 4-1 available at the build shows the sidebar and page header (time range picker on time-dependent surfaces; Ribbon on Atlas and Lens); Wall mode shows none |
+| [IA-021](../product/02-information-architecture.md#ia-021--left-navigation-sidebar) | §4.3 (sidebar), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: the sidebar lists the build's destinations for the role and marks the current page; collapse persists; each destination opens from the sidebar, ⌘K and its `g` chord |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §4.2 (`AppState.context`) | `unit:reducer-context`: every Context member change emits `ContextChanged` to all subscribed slices |
 | [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.2, §4.3 (Context in `Route` and pivots) | `e2e:pivot-keeps-context` (T07/[T12](T12-entity-catalogue.md) co-own the translation) |
 | [IA-022](../product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view) | §4.3 (`Route` codec), T08-005 | `prop:route-roundtrip` (`parse(print(r)) == r`, fuzzed) and `e2e:deep-link-fresh-session` for each URL pattern |
@@ -93,7 +94,7 @@ This document fixes:
 | [INT-011](../product/03-interaction-model.md#int-011--tap-and-hold) | §4.8, T08-025 | `unit:tap-hold-250` and `e2e:floors-tap-hold` (`V` 100 ms flips, 400 ms shows both) |
 | [INT-012](../product/03-interaction-model.md#int-012--chords) | §4.8, T08-025 | `unit:chord-timeout`: `g a` within 1 s opens Alerts; `g`, 1.2 s, `a` does nothing; `g` alone is unbound |
 | [INT-014](../product/03-interaction-model.md#int-014--shortcut-overlay) | §4.8 (`?` overlay generated from active contexts) | `e2e:shortcut-overlay`: in the Atlas lists S, Est and 3D bindings and no Board binding; after a remap shows the new key |
-| [INT-015](../product/03-interaction-model.md#int-015--keyboard-focus-is-never-trapped) | §4.5, T08-017 | `e2e:f6-regions`: from the canvas, `F6` moves to the Time Ribbon then the top bar; no region retains focus |
+| [INT-015](../product/03-interaction-model.md#int-015--keyboard-focus-is-never-trapped) | §4.5, T08-017 | `e2e:focus-regions`: `F6`/`Shift+F6` cycle sidebar → page header → page content → open panels (→ Time Ribbon in Space scenes); no region retains focus |
 | [INT-017](../product/03-interaction-model.md#int-017--time-scrub) | §4.8 (holds: `Space` scrub) | `e2e:space-scrub` (render loop co-owned by T02/T03) |
 | [INT-032](../product/03-interaction-model.md#int-032--window-step-and-zoom-keys) | §4.8 | `e2e:keymap-table` rows `[`, `]`, `-`, `=` (data served by T07 P4 flank) |
 | [INT-033](../product/03-interaction-model.md#int-033--hover-tooltip) | §4.4.2, T08-013 | `bench:tooltip-latency`: median ≤ 1 frame and p99 ≤ 2 frames from hover input to tooltip paint, measured with frame ids, on (a) and (b) |
@@ -121,7 +122,7 @@ This document fixes:
 | [VL-022](../product/08-visual-language.md#vl-022--component-and-mark-libraries-share-the-tokens) | §4.4, §4.7, T08-007 | `ci:token-usage`: kit components reference only generated token outputs |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2, §4.4.1, §7 | `bench:rooms-long-tasks`: 0 main-thread tasks > 16 ms during scripted room interactions |
 | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.3 (shell first), §7 | `e2e:cold-load-shell` p75 < 1.0 s to `⌘K` accepted (T03 co-owns) |
-| [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.1, §4.3 (lazy room satellites) | `ci:bundle-size` per crate; cold load fetches no room or workbench satellite |
+| [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.1, §4.3 (lazy route chunks) | `ci:bundle-size` per chunk class ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8); `e2e:lazy-load` (cold load fetches no room or workbench chunk) |
 | [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7 | `ci:bundle-size` and `ci:lighthouse-inp-rooms` (INP > 200 ms fails; target 100 ms) |
 | [ENT-003](../product/11-enterprise.md#ent-003--built-in-roles) | §4.4 (permission-aware controls), §8 | `e2e:viewer-ack-disabled`: Viewer sees Ack disabled with "request access" |
 | [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.3 (Admin room satellite), §4.4 (forms) | `e2e:admin-oidc-bind-datasource`: at M-UI1 an Admin logs in via OIDC and binds a PulsusDB instance through the Admin room |
@@ -140,8 +141,9 @@ This document fixes:
 
 ### 4.1 Crates and modules
 
-The module split and thread topology are [T03](T03-browser-runtime.md)'s. This document puts its
-crates into them:
+*Superseded (ADR-0014): the modules are the TS modules of §0 under `client/src/`, all on the main
+thread; heavy rooms are lazy route chunks. The Rust crate tree below is kept for the record of what
+each module does; `dash-kit`, `dash-a11y` and `dash-shell` (Leptos) are withdrawn.*
 
 ```
 crates/ui/
@@ -156,85 +158,67 @@ crates/ui/
 └─ dash-shell      main-thread entry: mounts Leptos, bridge to the T03 core⇄ui rings, history, clipboard
 ```
 
-`dash-state`, `dash-route` and `dash-keymap` have no web dependencies. They compile natively and
-carry most of the unit tests. Only `dash-kit`, `dash-a11y` and `dash-shell` depend on `leptos` and
-`web-sys`. Heavy rooms (Admin, alert authoring, the Boards editor) are the `dash-rooms-admin.wasm`
-satellite ([T03](T03-browser-runtime.md)), loaded on first use and absent from the core download
-(PRF-009).
+Under ADR-0014, `state/`, `routes/` and `keys/` have no DOM dependencies and carry most of the
+Vitest unit tests. Heavy rooms (Admin, alert authoring, the Boards editor) are lazy route chunks,
+absent from the initial download (PRF-009).
 
-### 4.2 State ownership: one store in core, a mirror in the shell
+### 4.2 State ownership: one store in the TS application
 
-The hard question is who owns what when the same selection is visible in a DOM table, as a GPU
-highlight and in the URL. [T03](T03-browser-runtime.md) settles it: **the authoritative store lives
-in the render worker** (`dash-core-mt`), so input → state → frame stays on one thread. The shell
-holds a **read-only mirror** as Leptos signals. This document defines what the store *contains*, how
-it reduces, and how the mirror is projected:
-- **Semantic state** (Context, selection, committed camera, undo) lives in the core store.
-- **Hot state** (live camera, hover, scrub cursor) is the render loop's own, and is not "stored"
-  until committed.
-- **Shell-local UI state** (open dialogs, palette text, form drafts, dock geometry while dragging)
-  never leaves the shell.
-- **Bulk data never enters either side.**
+*(Rewritten 2026-11-19, ADR-0014 §2; previously the store lived in the render worker and a Leptos
+shell held a mirror.)* The hard question is who owns what when the same selection is visible in a
+DOM table, as a chart highlight and in the URL. **The authoritative store is the TS application's
+Context store on the main thread.** The engine draws from what the store gives each `ChartFrame` and
+reports gestures back as events:
+- **Semantic state** (route, Context, selection, committed camera, undo, prefs) lives in the store.
+- **Hot state** (live camera during a gesture, hover, scrub cursor) is the engine's render-local
+  state, and is not "stored" until a `commit` event.
+- **Component-local UI state** (open dialogs, palette text, form drafts, dock geometry while
+  dragging) stays in its React component.
+- **Bulk data never enters the store.**
 
 ```
-   main thread: dash-shell.wasm (own memory)                 render worker: dash-core-mt (shared memory)
+   main thread: React application (TS)                       engine worker (from the engine issue)
  ┌──────────────────────────────────────────────┐          ┌───────────────────────────────────────────┐
- │ Leptos kit ── DOM intents ──► bridge ────────┼─ui→core─►│ AppStore: reduce(Action) → StateDelta     │
- │    ▲                                          │  ring    │   undo stack · keymap · committed camera  │
- │    │ RwSignal slices ◄── mirror ◄── bridge ◄──┼◄core→ui──│   ↓ scene, LOD, picking, frame loop        │
- │    │                                          │  ring    │ ContextChanged · TooltipAnchor ·          │
- │ shell-local: dialogs, palette, drafts, dock   │          │ SelectionChanged · A11ySummary · Command   │
+ │ kit components ── intents ──► store.dispatch │          │ render-local: gesture camera, hover,      │
+ │    ▲          reduce(action) → delta, undo    │ChartFrame│   scrub cursor · scene, LOD, picking,     │
+ │    │ selectors ◄── store ── setSpec/setData/ ─┼─────────►│   frame loop · one canvas per ChartFrame  │
+ │    │                      setTimeWindow       │          │                                           │
+ │    │ events ◄── adapter ◄─────────────────────┼◄─events──│ commit · brush · select · hover · a11y    │
  │ history.push/replaceState ◄── on commit       │          └───────────────▲───────────────────────────┘
- └──────────────────────────────────────────────┘    input ring (shim) ────┘   data/layout workers → SAB
+ └──────────────────────────────────────────────┘   input ring (adapter) ───┘   data workers → SAB
 ```
 
-| State | Owner | Mirrors | Update rate |
+Until the engine lands, the `Canvas2DEngine` implements the same `ChartFrame` API on the main thread
+(ADR-0014 §4), so the store and its rules do not change when the engine arrives.
+
+| State | Owner | Projections | Update rate |
 |---|---|---|---|
-| Context (entity set, window, filters, baseline, A/B) | core `AppStore` | shell signals, URL, BFF session ([T07](T07-scene-query-planner.md)) | `ContextChanged` on change; URL on `commit = true` |
-| Route / room / focused viewport | core `AppStore` | shell, URL | on navigation |
-| Camera | render loop during a gesture; `AppStore` holds the committed camera and history | URL (`cam=`), minimap | committed at gesture end; mirror ≤ 10 Hz while flying |
-| Selection (entities, series, spans, rows) | core `AppStore` | shell (tables, Inspector) | `SelectionChanged` |
-| Hover | render loop (it does the picking) | tooltip only; never in history | `TooltipAnchor`, at most one per frame |
-| Time cursor during `Space` scrub | render loop | Time Ribbon readout | ≤ 60 Hz, committed on release |
-| Viewport data (columns) | data workers (SAB) | nothing in the shell except `A11ySummary` and table pages | — |
+| Context (entity set, window, filters, baseline, A/B) | TS store | components, `ChartFrame.setTimeWindow`/spec, URL, BFF session ([T07](T07-scene-query-planner.md)) | on change; URL on commit |
+| Route / room / focused viewport | TS store (router) | components, URL | on navigation |
+| Camera | engine during a gesture; the store holds the committed camera and history | URL (`cam=`), minimap | committed at gesture end (`commit` event); minimap ≤ 10 Hz while flying |
+| Selection (entities, series, spans, rows) | TS store | tables, Inspector, frame highlight via spec | `select` event or DOM intent |
+| Hover | engine (it does the picking) | tooltip only; never in history | `hover` event, at most one per frame |
+| Time cursor during `Space` scrub | engine | Time Ribbon readout | ≤ 60 Hz, committed on release |
+| Viewport data (columns) | engine data workers (SAB); JSON frames for the interim renderer | nothing in components except `A11ySummary` and table pages | — |
 | Layout positions | layout worker (T14 (draft)) | render worker (shared memory) | — |
-| Prefs, keymap, theme | core `AppStore` | shell, Postgres via BFF (`/api/dash/v1/prefs`) | on change |
-| Dialogs, palette input, form drafts, toasts | **shell only** | IndexedDB (drafts) | — |
-| Remote collaborator actions | core `AppStore` (`Action::Remote`) | — | T17 (draft) |
+| Prefs, keymap, theme | TS store | components, engine (`setTheme`), Postgres via BFF (`/api/dash/v1/prefs`) | on change |
+| Dialogs, palette input, form drafts, toasts | **component-local** | IndexedDB (drafts) | — |
+| Remote collaborator actions | TS store (`Remote` action) | — | T17 (draft) |
 
-Sketch (in `dash-state`):
-
-```rust
-pub struct AppState {
-    pub route: Route,
-    pub context: Context,               // 02 §2: entity set, window, filters, baseline, ab
-    pub selection: Selection,           // SmallVec<SelectionItem>, ordered, with source viewport
-    pub camera: CommittedCamera,        // last committed; history lives in `undo`/camera history
-    pub panels: PanelLayout,            // dock layout, collapsed flags (VL-018)
-    pub prefs: Prefs,                   // theme, density, tz, locale, keymap preset + overrides
-}
-pub enum Action {
-    SetWindow(TimeWindow), Brush(TimeWindow), StepWindow(i8), ZoomWindow(f32),
-    AddFilter(Filter), RemoveFilter(FilterId), NarrowTo(EntityRef), SetBaseline(Option<Baseline>),
-    Select(Selection), Navigate(Route), CameraCommitted(CommittedCamera), CameraBack, CameraForward,
-    BoardEdit(BoardEdit), Undo, Redo, Prefs(PrefsChange), Remote(RemoteAction), /* … */
-}
-pub struct StateDelta(u64 /* bitset of changed slices */);
-```
-
-- **Reducer.** `fn reduce(&mut AppState, Action) -> StateDelta` is pure and synchronous, and runs in
-  core.
-- **DOM → core.** A DOM intent (remove a filter chip, pick a date range, click a table row) becomes a
-  T03 `Command` record on the ui→core ring (`postcard` encoded, `dash-protocol` crate). Core reduces
-  it and replies with `ContextChanged`/`SelectionChanged`.
-- **Core → shell mirror.** The bridge applies each record to per-slice `RwSignal`s, writing only the
-  slices that changed, so fine-grained reactivity re-renders only dependent nodes. Components read
-  slices through selectors (`use_slice::<Selection>()`), never the whole state.
-- **URL.** The shell derives the URL from the mirror: `history.replaceState` for
-  `ContextChanged.commit = true` camera commits (debounced 250 ms), and `pushState` for semantic
-  moves (dive, `Esc`, ⌘K jump) and committed camera moves that enter camera history. `popstate`
-  sends `Command::Navigate(Route)`, and core flies the camera
-  ([02 §4](../product/02-information-architecture.md)).
+- **Reducer.** `reduce(state, action) → { state, delta, inverse }` is pure and synchronous, and runs
+  on the main thread. Actions are the set sketched in §0's `state/` row: window set, brush, step and
+  zoom; filter add/remove; narrow; baseline; select; navigate; camera committed, back and forward;
+  Board edit; undo/redo; prefs; remote.
+- **DOM → store.** A DOM intent (remove a filter chip, pick a date range, click a table row) is a
+  dispatched action.
+- **Engine → store.** Engine events (`commit`, `brush`, `select`) are dispatched as actions; the
+  engine never changes the Context itself (T08-001).
+- **Store → engine.** Each `ChartFrame` receives its slice of the new state (`setTimeWindow`,
+  `setSpec`, `setTheme`) after a delta that touches it.
+- **URL.** The store derives the URL: `history.replaceState` for camera commits (debounced 250 ms),
+  and `pushState` for semantic moves (dive, `Esc`, ⌘K jump) and committed camera moves that enter
+  camera history. `popstate` dispatches `Navigate(route)`, and the engine flies the camera to the
+  restored committed camera ([02 §4](../product/02-information-architecture.md)).
 
 #### T08-001 — One store
 **MUST** — *(Revised 2026-11-19, ADR-0014 §2.)* Semantic state MUST have exactly one owner, the TS
@@ -252,7 +236,7 @@ the visible page of a kit table (≤ 10k rows).
 #### T08-004 — Undo has one owner and covers Context and Board edits
 **MUST** — Undoable actions (every Context change: brush, window step and zoom, filter add/remove,
 entity narrow, baseline; and every Board edit) MUST push an inverse onto one bounded stack of 256
-entries in core. `⌘Z`/`⌘⇧Z` MUST undo and redo them in order (INT-041). Text inputs keep their own
+entries in the TS store. `⌘Z`/`⌘⇧Z` MUST undo and redo them in order (INT-041). Text inputs keep their own
 typing history (INT-010 override).
 
 ### 4.3 App structure, rooms, chrome and routing
@@ -264,6 +248,8 @@ rather than pages. The router is about 600 lines: parse, serialise, and the `pop
 ```rust
 pub enum Route {
     Space   { tenant: TenantId, scene: SceneRef, ctx: ContextQuery, cam: Option<CamCode>, persp: Option<PerspectiveId>, view: Option<EstateView>, layer: Option<Layer> },
+    Explore { tenant: TenantId, signal: Signal, queries: QueryList, ctx: ContextQuery },   // /t/{tenant}/explore/{signal} (02 §4)
+    Boards  { tenant: TenantId },                                               // /t/{tenant}/boards
     Board   { tenant: TenantId, uid: BoardUid, vars: VarMap, ctx: ContextQuery, vp: Option<ViewportId> },
     Investigation { tenant: TenantId, id: InvId, evidence: Option<EvidenceIdx> },
     Incident { tenant: TenantId, incident: IncidentId },                       // /t/{tenant}/incident/{id}: the Alert Lens
@@ -272,16 +258,22 @@ pub enum Route {
 }
 ```
 
-- The **shell** is always mounted (SRF-001): the top bar (32 px: logo menu, breadcrumb or surface
-  title, ⌘K entry point, alert count, AI dock toggle, avatar menu; IA-016), the Time Ribbon frame (40
-  px, whose content is a GPU viewport), the dock host and the overlay host (tooltips, palette,
-  dialogs, toasts). Both bars are translucent over the canvas (`background` from the `chrome-glass`
-  token with `backdrop-filter`, VL-017). Wall mode hides both.
-- The **logo menu** lists every room available at the build (Boards, Alerts, Investigations, Admin,
-  Preferences), so rooms are reachable without a left sidebar (IA-021).
-- **Space routes** mount no room DOM. The canvas fills the frame and chrome floats over it.
-- **Rooms** mount over or beside the canvas. The previous scene stays resident in the render worker,
-  so "back" is instant (IA-014).
+- The **application layout** is always mounted (SRF-001; [02](../product/02-information-architecture.md)
+  §3.1, [ADR-0014](../adr/0014-typescript-react-web-client.md) §10): the left navigation sidebar
+  (240 px, collapsible to a 56 px icon rail; IA-021), the page header (56 px: page title or
+  breadcrumb on the left; ⌘K entry, alert count and AI dock toggle once they exist, the time range
+  picker, the refresh control and the user menu on the right; IA-016, IA-020), the page content
+  (24 px padding), the dock host and the overlay host (tooltips, palette, dialogs, toasts). Sidebar
+  and header are opaque `surface-1` with a `hairline` edge (VL-017). Wall mode hides them.
+- The **sidebar** lists the destinations that exist at the build and that the user's role may open
+  (Boards; Explore → Metrics, Logs; Alerts and Investigations when they exist; Admin for
+  administrators) and marks the current route. Its collapsed state is a user preference (`Prefs`).
+- The **user menu** holds preferences (theme, density, time zone), the Perspective switcher once
+  Perspectives exist, and sign-out.
+- **Space routes** (Atlas, Lens) render the scene in the page content, with the minimap and the
+  40 px Time Ribbon translucent over the canvas (IA-028).
+- **Navigation** is client-side; the view left stays cached (TanStack Query cache and, for Space
+  scenes, the engine), so "back" is instant (IA-014).
 - **Admin rooms** (SRF-063) are kit forms in the admin satellite. At M-UI1 they cover the PulsusDB
   datasource binding (with the T06 connectivity check as an async validator) and the OIDC IdP
   settings; later rooms land with their features. Login itself is the IdP's page (T06 §4.11); Dash
@@ -309,7 +301,7 @@ pixel at the same viewport size.
 | **Table** (≤ 10k rows) | §4.4.1 | `grid` (interactive) or `table` (read-only) |
 | **Tree** (virtualised) | Flattened visible-node index over a lazy `TreeModel`. Expand or collapse is O(k) for k revealed rows; children load asynchronously from the catalogue ([T12](T12-entity-catalogue.md)) with a skeleton row. Re-rootable by ownership dimension ([15](../product/15-estate-navigation.md)). Target: 100k nodes, 1M via lazy load | `treegrid` |
 | **Forms & validation** | `FormModel<T>` with `FieldSpec { id, label_key, kind, validators, async_validator }`. Sync validators run on input; async ones (uniqueness, query validity via T09, datasource connectivity via T06) are debounced 250 ms and cancellable. Server errors map to fields by JSON pointer from the T06 error envelope. An error summary appears on submit | native form controls |
-| **Date-time / range picker** | Absolute, relative (`now-1h`, `-7d`, `now/d`) and "before deploy ◆" anchors. The expression grammar is in `dash-state` so the Time Ribbon and URL share it. A tz-aware calendar grid uses `chrono-tz` (lazy, shared with [T02](T02-vis-engine.md)). Quick ranges, keyboard date entry, and "Copy link" with "keep relative" (§4.4.4) | `dialog` + `grid` |
+| **Date-time / range picker** | Absolute, relative (`now-1h`, `-7d`, `now/d`) and "before deploy ◆" anchors. The expression grammar is in `state/` so the header time range picker, the Time Ribbon (Space scenes) and the URL share it. A tz-aware calendar grid uses `chrono-tz` (lazy, shared with [T02](T02-vis-engine.md)). Quick ranges, keyboard date entry, and "Copy link" with "keep relative" (§4.4.4) | `dialog` + `grid` |
 | **Select / combobox** | ARIA 1.2 combobox with async options, a virtualised listbox (10k options), multi-select pills and creatable values. Fuzzy matching uses `nucleo-matcher`, shared with ⌘K (MPL-2.0: cargo-deny allow-list, see [T18](T18-security.md)) | `combobox` + `listbox` |
 | **Dialogs & sheets** | Native `<dialog>` with `showModal()` gives the focus trap, `inert` background and `Esc` for free. Sheets are non-modal side panels (the Inspector and AI dock use the dock host) | `dialog` / `complementary` |
 | **Toasts** | Queue of at most 3 visible, 6 s default, paused on hover or focus, and never the only carrier of an error that needs action (those stay inline). Announced through the live-region scheduler (§4.5) | `status` / `alert` |
@@ -362,13 +354,13 @@ pub enum CellKind {
   Fenwick tree over measured row heights gives O(log n) offset ↔ index lookups. The window is the
   visible rows plus 10 overscan rows (about 60 rows mounted), and row DOM nodes are recycled by key.
   Frozen columns use `position: sticky`.
-- **Cell rendering.** Each kind is a small Leptos component:
-  - **Sparkline and mini-heatmap:** inline SVG built in Rust from points pre-decimated to the cell
+- **Cell rendering.** Each kind is a small React component:
+  - **Sparkline and mini-heatmap:** inline SVG built in TS from points pre-decimated to the cell
     width (≤ 120 points), so 60 visible rows × 2 columns is about 15k SVG path bytes. No canvas per
     cell.
   - **Gauge:** CSS width percentage plus a token colour. LCD mode uses `repeating-linear-gradient`.
-  - **JSON:** a lazily parsed `serde_json::Value` (Rust) with an expandable tree.
-  - **Markdown:** `pulldown-cmark` events rendered straight into Leptos nodes (T08-011).
+  - **JSON:** lazily parsed JSON with an expandable tree.
+  - **Markdown:** a Markdown parser's events rendered straight into React nodes, never through HTML (T08-011).
   - **Image:** `<img>` constrained by CSP `img-src` ([T18](T18-security.md)).
   - **Data link:** template expansion with URL-component escaping, `rel="noopener noreferrer"`,
     `target="_blank"`.
@@ -455,7 +447,7 @@ keyboard cursor; they append below, or replace only below the highlighted row.
 
 #### 4.4.4 Shared links
 
-"Copy link" (top bar, Inspector, date picker) serialises the current `Route`. By default it converts
+"Copy link" (page header, Inspector, date picker) serialises the current `Route`. By default it converts
 a relative window (`now-1h`) to absolute `from`/`to`; a "keep relative" checkbox keeps it relative
 (IA-023).
 
@@ -513,8 +505,8 @@ focusable list of its top marks. The mirror MUST be visually hidden by clipping,
 `display: none` or `visibility: hidden`.
 
 #### T08-017 — Focus is never trapped
-**MUST** — `F6`/`Shift+F6` MUST move keyboard focus to the next/previous region (top bar, canvas,
-Time Ribbon, open panels) from every context, including the canvas, where `Tab` cycles selection
+**MUST** — `F6`/`Shift+F6` MUST move keyboard focus to the next/previous region (sidebar, page
+header, page content, open panels, and the Time Ribbon in Space scenes) from every context, including the canvas, where `Tab` cycles selection
 (INT-015). After the last mark, `Tab` MUST leave the canvas. Only modal dialogs MAY contain focus,
 and `Esc` MUST close them.
 
@@ -534,13 +526,12 @@ render worker to the high-contrast token set.
   open a DOM input overlay. Nothing types into the canvas.
 - **The keymap respects composition.** The T03 shim does not forward key events whose target is
   editable ([T03](T03-browser-runtime.md)). Inside editable elements (the 03 **Text input**
-  context), the shell's own Leptos handler applies a small *editable subset* of the keymap: `⌘K`,
-  `⌘⏎`, `Esc` (leaves the field), `⌘Z`/`⌘⇧Z` (undo typing) and `⌘⇧F` (format, T09). It reads the
-  same `dash-keymap` table, pushed to the shell with `Prefs`, and skips any `keydown` with
-  `isComposing == true` or `keyCode == 229`.
-- **Event plumbing.** Leptos attaches listeners through `web-sys`/`wasm-bindgen`, so DOM-room events
-  (including `compositionstart/update/end`, `beforeinput`, `paste`) need **no shim code**. The shim's
-  input ring is for canvas pointer, wheel, key (non-editable) and gamepad input bound for core.
+  context), the TS keymap applies a small *editable subset*: `⌘K`, `⌘⏎`, `Esc` (leaves the field),
+  `⌘Z`/`⌘⇧Z` (undo typing) and `⌘⇧F` (format, once T09 ships formatting). It reads the same keymap table and skips any
+  `keydown` with `isComposing == true` or `keyCode == 229`.
+- **Event plumbing.** React handles DOM-room events (including `compositionstart/update/end`,
+  `beforeinput`, `paste`) directly. The engine adapter's input ring carries only canvas pointer,
+  wheel and gamepad input bound for the engine.
 - **Clipboard.** DOM copies use `navigator.clipboard.write` with a `ClipboardItem` carrying
   `text/plain` plus `text/html` for tables, called from the click or keydown handler so user
   activation holds. Canvas copies use T03's synchronous copy buffer.
@@ -569,7 +560,7 @@ design/tokens.toml ──► dash-tokens/build.rs ──┬──► tokens.css 
 - **Themes:** `dark` (default, M-UI1), `light` (M-UI5, its own token values, never an inversion) and
   `wall-high-contrast` (M-UI6), × density `compact | comfortable | wall (×1.6, M-UI6)`. Compact is
   the Engineer Perspective default (VL-013). A switch sets `data-theme`/`data-density` on `<html>`
-  and sends `Prefs` (theme) on the ui→core ring. Every theme is compiled into the render worker, so a
+  and calls `ChartFrame.setTheme` on every frame. Every theme is compiled into the render worker, so a
   switch only swaps a uniform buffer and takes one frame.
 - **Semantic state colours** (OK / Watch / Degraded / Failing / Unknown) and glyph shapes come from
   the same table, and are reserved for health (VL-003). `series_colour(key: u64) -> PaletteIdx` lives
@@ -611,9 +602,9 @@ pub enum KeyContext { TextInput(WidgetKind), Fly, ThreeD, Est, Board, Space, Roo
 - **Precedence**, innermost first: Text input → Fly → 3D → Est / Board → S / Room → G. The first
   match wins. An inner context rebinds an outer key only where the table marks the override (†), for
   example `W A S D` in Fly overriding `Shift+A` (acknowledge) and `D` (draw-to-ask).
-- **Where it runs.** The authoritative keymap lives in core ([T03](T03-browser-runtime.md)). Core
-  publishes captured-chord hashes so the shim can `preventDefault()` synchronously. The shell sends
-  the current `KeyContext` (focused room or widget) to core as part of `RoomGeometry`.
+- **Where it runs.** *(Revised, ADR-0014.)* The authoritative keymap lives in the TS application
+  ([T03](T03-browser-runtime.md) T03-013), which decides `preventDefault()` synchronously in the DOM
+  handler and knows the current `KeyContext` (focused room or widget) itself.
 - **Notable bindings** (all from 03 §4.2): `⌘K` palette; `?` overlay; `g` + letter chords; `⌘Z`/`⌘⇧Z`;
   `Alt+←/→` camera history; `F6`/`Shift+F6` regions; `Esc` ladder; `/` find; `F`/`Shift+F` frame;
   arrows pan; `Space` (hold) scrub; `[` `]` `-` `=` window; `L` LIVE; `Shift+C` baseline ghost; `C`
@@ -683,7 +674,7 @@ id (a missing id is a type error), and every number, unit and date MUST be forma
 The criteria below are kept for the record; criteria 1–6 become acceptance criteria of the TS kit
 issues that build the table, tree, forms and tooltips.*
 
-ADR-0004 is Accepted. The M-UI1 slice is built once, on Leptos, as a **risk check**: it proves the
+*(Historical.)* ADR-0004 was Accepted. The M-UI1 slice was to be built once, on Leptos, as a **risk check**: it proves the
 kit can meet the contract before the rooms are built on it. The slice is:
 - the 10k-row table with 8 cell kinds;
 - the 100k-node tree;
@@ -718,10 +709,10 @@ with an owner and a fix milestone and do not block.
 
 | Interface | Consumers | Shape |
 |---|---|---|
-| `AppState` / `Action` / `reduce` (`dash-state`, runs in core) | T03 (hosts it in the render worker), T09, T15 (AI dock actions), T17 (remote actions) | §4.2 |
-| Shell mirror API (`use_slice::<T>()`, `send(Command)`) | every Leptos component | §4.2 |
-| `Command` variants added to T03's ui→core set | T03 `dash-protocol` | `Navigate(Route)`, `Select`, `FocusMark`, `TrackMark`, `SetViewportTable(bool)`, `Restore(Snapshot)`, plus T03's filter and time intents |
-| Payloads of T03's core→ui records | T03 `dash-protocol` | `TooltipAnchor` (§4.4.2), `A11ySummary` (§4.5), `SelectionChanged` → `Selection`, `InspectorModel` (§4.4) |
+| `AppState` / `Action` / `reduce` (`client/src/state/`, main thread) | every component, T09, T15 (AI dock actions), T17 (remote actions) | §4.2 |
+| Store selectors and `dispatch` | every React component | §4.2 |
+| `ChartFrame` calls added by the kit | the engine ([ADR-0014](../adr/0014-typescript-react-web-client.md) §3) | `FocusMark`, `TrackMark`, `SetViewportTable(bool)` as spec fields; selection highlight in the spec |
+| Engine event payloads | the TS store and kit | `TooltipAnchor` (§4.4.2), `A11ySummary` (§4.5), `select` → `Selection`, `InspectorModel` (§4.4) |
 | `Route` ⇄ URL codec | T17 (shared links), T16 (notification deep links), T20 | §4.3. `CamCode` = base64url of a versioned packed struct ≤ 48 bytes |
 | `TableModel` | GPU table-grid spec (T02), T13 | §4.4.1 |
 | `Prefs` JSON schema (theme, density, locale, tz, keymap, panel layout) | T11 (`user_preferences.prefs jsonb`), T06 (`/api/dash/v1/prefs`) | versioned `prefs_v` |
@@ -732,7 +723,7 @@ with an owner and a fix milestone and do not block.
 
 | From | Assumption |
 |---|---|
-| [T03](T03-browser-runtime.md) | The store in the render worker, the shell mirror, SPSC core⇄ui rings with `postcard` records from `dash-protocol`, the keymap in core with captured-chord hashes, no key forwarding from editable targets, `matchMedia`/visibility via `web-sys` in the shell, and the `dash-rooms-admin.wasm` satellite for heavy rooms |
+| [T03](T03-browser-runtime.md) | *(Revised, ADR-0014.)* The engine runtime behind `ChartFrame`: render-local state only, events for commits, hover and selection, and the input ring for canvas input. The store, keymap and URL are in the TS application |
 | [T02](T02-vis-engine.md) | Vis specs implement `Describe → A11ySummary`. The render worker honours `FocusMark`/`TrackMark` and reports anchors in CSS px; it can draw hover tooltips as GPU text if T08-013's fallback is triggered |
 | [T06](T06-bff-architecture.md) | `/api/dash/v1/prefs` (GET/PUT, ETag), `/api/dash/v1/search` for ⌘K, the action API, the export endpoint, the error envelope with JSON-pointer field errors and `request_access` hints, and the read-only signal when Postgres is down |
 | [T09](T09-query-editors.md) | Editor component `QueryEditor { lang, value: RwSignal<String>, on_run }`, a read-only highlighter, and a language detector for ⌘K |
@@ -757,10 +748,10 @@ with an owner and a fix milestone and do not block.
 | Hover tooltip | median ≤ 1 frame, p99 ≤ 2 frames (crosshair ≤ 1, GPU) | PRF-003, PRF-004, INT-033 |
 | INP in rooms | ≤ 100 ms p75 (CI fails above 200 ms) | PRF-033 |
 | Table: mount the visible window | ≤ 8 ms; scroll at 60 fps with ≤ 4 ms main per frame | §4.10 |
-| `reduce` in core + mirror update in the shell, per action | ≤ 1 ms each; DOM intent → mirror ≤ 1 frame | — |
+| `reduce` + selector re-render, per action | ≤ 1 ms each; DOM intent → visible ≤ 1 frame | — |
 | ⌘K local results | same frame (≤ 4 ms); remote merged ≤ 150 ms p50 | — |
-| Shell interactive (top bar, Ribbon frame, ⌘K) from navigation start, cold | contributes to < 1.0 s p75 | PRF-008 |
-| wasm: Leptos + kit + store + router + tokens | ≤ 700 KB brotli, of the 3 MB core | PRF-009 |
+| Shell interactive (sidebar, page header, ⌘K) from navigation start, cold | contributes to < 1.0 s p75 | PRF-008 |
+| Application JS (initial) | ADR-0014 §8 budgets (≤ 200 KB initial JS, ≤ 30 KB CSS) | PRF-009 |
 | ICU4X + Fluent, `en` only | ≤ 150 KB brotli; extra locales lazy | §4.10 |
 | Main-thread heap | ≤ 64 MB (no bulk data on main) | PRF-023 |
 
@@ -782,14 +773,14 @@ mutating control MUST call a BFF endpoint that enforces the permission; an unrea
 shown as the restricted placeholder or omitted, never as a dead "Access denied" page.
 
 - **Clipboard** writes happen only on user gestures (T08-021).
-- **Tenant** comes from the route. Switching tenant resets the core store (except prefs) and the
-  shell mirror, and clears tenant-keyed IndexedDB caches.
+- **Tenant** comes from the route. Switching tenant resets the TS store (except prefs), disposes
+  every `ChartFrame`, and clears tenant-keyed IndexedDB caches.
 
 ## 9. Failure modes & degradation
 
 | Failure | What the user sees |
 |---|---|
-| Render worker (and so the store) crashed or restarting | DOM chrome stays usable from the shell mirror. The viewport shows "Renderer restarting" with the last `A11ySummary`. On restart, the shell re-seeds core from the URL plus the mirror snapshot (`Command::Restore`); the undo stack is lost, and a toast says so |
+| Engine worker crashed or restarting | The store is on the main thread, so DOM chrome, Context and undo are unaffected. The viewport shows "Renderer restarting" with the last `A11ySummary`; on restart the store resends each frame's spec, data and time window |
 | BFF unreachable | Rooms show cached lists marked stale. Forms keep drafts (IndexedDB) and disable submit with a reason |
 | Postgres unavailable (BFF read-only) | Read-only banner; forms disable submit with the reason; drafts kept |
 | Async validator timeout | The field shows "couldn't check, will validate on save"; submit is not blocked |
@@ -828,10 +819,8 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | Option | Why not |
 |---|---|
 | **Leptos** (ADR-0004) | Superseded by [ADR-0014](../adr/0014-typescript-react-web-client.md): a conventional web application first, on React and React Aria Components |
-| **Dioxus** | Not pursued since ADR-0004 was accepted. VDOM diffing costs more than fine-grained signals for large tables, and its generated JS edit interpreter would need checking against ADR-0001 |
-| **Yew / Sycamore** | Yew is VDOM and its momentum has slowed. Sycamore is fine-grained but has a smaller ecosystem than Leptos |
+| **Other Rust DOM frameworks (Dioxus, Yew, Sycamore)** | Same reason as Leptos (ADR-0014) |
 | **All-canvas (egui)** | Rejected in [T01](T01-frontend-architecture.md): we would have to reinvent IME, a11y, autofill and selection |
-| **`leptos_router`** | It is a page router. Our URL is a state projection with camera history, and a thin typed codec is simpler to make exact |
 | **ARIA directly on a single `<canvas>`** (fallback content only) | Too coarse for focusable marks and table views. The mirror gives real elements |
 | **Browser `Intl` only** | Small, but the native renderer has no `Intl`, so notification images and golden tests would format differently. It stays as the fallback |
 | **A separate `sanitize-html` step for Markdown** | Dropping HTML events at the source is simpler and safer |
@@ -841,7 +830,7 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 
 | # | Question | Leaning |
 |---|---|---|
-| Q1 | [T01](T01-frontend-architecture.md) lists IME/clipboard forwarding as shim work and draws the store on the main thread, while T03 leaves editable targets to Leptos and puts the store in the render worker | This document follows T03; T01 wording to be aligned |
+| Q1 | *(Closed 2026-11-19 by ADR-0014: the store is on the main thread in the TS application in T01, T03 and this document.)* | — |
 | Q2 | VIZ-066 (`Shift+T` table view) is M-UI1, but the 03 §4.2 key table lists `Shift+T` at M-UI2 | Ship at M-UI1; ask the product owner to align the 03 milestone |
 | Q3 | `Ctrl+K` may be reserved by some browsers on Windows/Linux (focusing the search bar); behaviour under `preventDefault` needs verifying per browser | Verify in the risk check; fallback is the top-bar ⌘K entry point (no extra binding, to keep 03 intact) |
 | Q4 | ICU4X baked data size for 6 locales | Measure in the risk check; `Intl` fallback for the browser only |
@@ -855,3 +844,5 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T08-001…T08-028. ADR-0004 Accepted: the Leptos vs Dioxus spike became a Leptos build **risk check** (§4.10) whose blocker failure reopens the ADR. Keyboard model aligned with formal 03: contexts and precedence, chords 1 s (draft 1.2 s), tap/hold 250 ms, physical-key bindings (INT-013), reserved keys, `Shift+C`/`C`/`Shift+A`/`Shift+E` (03 and 04 agree on `Shift+E`), `Tab` by care score; draft Q1 and Q3 closed by 03 and 02 (`/incident/` and `/alerts/` routes added to `Route`). Dropped the `Alt+←/→` brush alternative (conflicts with camera history). Tooltip budget tightened to median ≤ 1 frame (INT-033) with a GPU-text fallback. Markdown removals are logged (VIZ-054). Added the shell chrome contents, logo menu, read-only banner, restricted placeholder, shimmer, copy-link, `CamCode` ≤ 64 chars, palette rooms provider and context-affinity ranking, palette validator and Admin M-UI1 rooms |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds the board panel editor (query, language picker, vis) and a minimal board list room; full Boards editor forms stay M-UI5 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 maps the Rust/Leptos modules to the TS application; T08-001, T08-002 and T08-027 revised; §4.10 Leptos risk check withdrawn; chrome rows suspended pending roadmap Q13; §11 M-UI1 and §12 updated |
+| 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): §4.3 describes the application layout (sidebar, page header, user menu, layout sizes); T08-017 regions; `Route` adds `Explore` and `Boards` (02 §4); Satisfies rows for IA-016, IA-021, SRF-001, VL-017 and INT-015 restored against `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface`, `e2e:chrome-layout` and `e2e:focus-regions`; IA-020 row added (`e2e:time-range-header`); PRF-009 row uses chunk-class budgets |
+| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 and §2 rewritten for the React application; §4.1 Rust crate tree marked superseded; §4.2 rewritten (the TS store on the main thread owns semantic state; the engine holds render-local state and reports events through `ChartFrame`); T08-004, §4.6, §4.8 "Where it runs", §5.1, §5.2 T03 row, §7, §8 tenant switch, §9 engine restart and Q1 aligned; Leptos and the ui↔core rings removed; §4.6 `⌘⇧F` waits for T09 formatting |

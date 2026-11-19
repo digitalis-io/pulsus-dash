@@ -3,10 +3,27 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.5-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (headers, CSP, sessions, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sandboxed WASM modules, compliance) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
+
+## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
+
+The web client is TypeScript + React built by Vite, with a Rust/WASM chart engine later; the BFF is
+Go ([ADR-0014](../adr/0014-typescript-react-web-client.md),
+[ADR-0015](../adr/0015-go-bff.md)). The threat model and the rules stand; the rules revised in place
+are T18-002 (CSP of ADR-0014 §9), T18-001, T18-004, T18-005, T18-006, T18-010, T18-013, T18-026 and
+T18-027. Other mappings:
+
+| Was | Now |
+|---|---|
+| "No JS framework and no npm runtime dependencies" (§1) | React and an allowlist of npm runtime dependencies (ADR-0014 §7). The JS supply chain is a real attack surface, controlled by T18-026 |
+| JS shim, Trusted Types policy in the shim | No shim. The engine adapter (from #68) is bound by T01-001; the policy lives in one TS module (T18-005) |
+| Crates `dash-egress`, `dash-secrets`, `dash-actions`, `dash-redact` (§5) | Go packages `internal/egress`, `internal/secrets`, `internal/actions`, `internal/redact` |
+| `dash-sanitise` (`SanitisedHtml`, `markdown_to_nodes`) | TS module `client/src/security/sanitise/`: Markdown to React elements; the `SanitisedHtml` brand (T18-005, T18-013) |
+| `dash-visbox` (M-UI6, `wasmparser`, `wasmtime`) | Unchanged in Rust, inside the chart engine and the `pulsus-dash-render` binary |
+| `cargo-deny`, `cargo-vet`, `cargo-auditable` for every artefact | Client: `ci:lockfile`, `ci:dep-audit`, `ci:npm-audit`, `npm sbom`. Server: `ci:govulncheck`, `ci:go-mod`, `go version -m` build info, CycloneDX SBOM. Engine crates (from #68): the Rust gates as before (T18-026) |
 
 ## 1. Context & problem
 
@@ -28,8 +45,9 @@ The UX also introduces content surfaces that need controls:
 - arbitrary webhook endpoints ([07](../product/07-alerting.md) §7).
 
 The architecture gives us some advantages to build on:
-- no JS framework and no npm runtime dependencies ([ADR-0002](../adr/0002-no-js-ui-framework.md));
-- JSON is never parsed in JS;
+- a small, allowlisted set of npm runtime dependencies, installed from a verified lockfile
+  ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7);
+- a TS application that renders text only through React elements (no HTML string sinks);
 - a strict BFF with no tokens in the browser (T10 (draft));
 - Dash writes nothing into customer PulsusDB tenants except its self-telemetry and an optional
   audit export ([ADR-0012](../adr/0012-derived-state-in-postgres.md)), so derived state has one
@@ -58,7 +76,7 @@ The architecture gives us some advantages to build on:
 
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
-| [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.6 T18-013 Markdown → Leptos nodes; `ammonia` allowlist; Trusted Types | `fuzz:markdown-nodes`; `e2e:csp-violations` (script and `onerror` never execute, removal logged) |
+| [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.6 T18-013 Markdown → React elements; tag and attribute allowlist; Trusted Types | `fuzz:markdown-nodes`; `e2e:csp-violations` (script and `onerror` never execute, removal logged) |
 | [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.2 `frame-src` absent (`default-src 'none'`); §4.5 iframe → link on import | `e2e:csp-violations`; `itest:dashboard-import-corpus` (iframe panel → link, reported) |
 | [VIZ-055](../product/05-visualisation-catalogue.md#viz-055--feeds-are-fetched-server-side) | §4.9 feeds fetched by `dash-egress`; CSP `connect-src 'self'` | `e2e:feed-server-side` (no browser request to the feed origin) |
 | [VIZ-052](../product/05-visualisation-catalogue.md#viz-052--schematic-actions-are-audited) | §4.7 schematic buttons reference action definitions only | `itest:schematic-action-rbac` |
@@ -91,7 +109,7 @@ The architecture gives us some advantages to build on:
 | [ENT-017](../product/11-enterprise.md#ent-017--append-only-audit-log) | §4.1 append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017) | `itest:audit-hash-chain` |
 | [ENT-019](../product/11-enterprise.md#ent-019--siem-export) | §4.9 SIEM/OTLP export through `dash-egress`; the only product data written to PulsusDB, opt-in | `itest:audit-export-only-when-configured` |
 | [ENT-030](../product/11-enterprise.md#ent-030--air-gapped-installs) | §4.9 air-gapped egress profile; §4.11 offline-verifiable signatures | `itest:airgap-no-egress` |
-| [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.2 no inline script or nonce, so HTML is cacheable; §4.3 SRI hashed while streaming (< 10 ms) | `bench:cold-load` (with [T03](T03-browser-runtime.md), [T19](T19-deployment.md)) |
+| [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.2 no inline script or nonce, so HTML is cacheable; §4.3 engine WASM hashed as it downloads (< 10 ms); no per-module checks on JS | `bench:cold-load` (with [T03](T03-browser-runtime.md), [T19](T19-deployment.md)) |
 | [PRF-026](../product/09-performance-contract.md#prf-026--show-cached-marked-stale) | §4.9 T18-022 IndexedDB cache keyed by user and scope, wiped on logout | `e2e:cache-wipe-logout` |
 | [IA-001](../product/02-information-architecture.md#ia-001--object-vocabulary-and-persistence) | §4.1 trust boundary ②: no Dash write path into PulsusDB except self-telemetry and audit export | `itest:no-pulsusdb-writes` |
 
@@ -104,7 +122,7 @@ scores, change events), config and rules, credentials (PulsusDB, contact points,
 sessions and tokens, action capability, audit integrity.
 
 ```
- [Browser: shim + WASM + workers] ──TLS──► [Ingress/LB] ──► [pulsus-dash BFF replicas] ──► [PulsusDB] (read; self-telemetry + opt-in audit export write)
+ [Browser: TS app (+ WASM engine, workers)] ──TLS──► [Ingress/LB] ──► [pulsus-dash BFF replicas] ──► [PulsusDB] (read; self-telemetry + opt-in audit export write)
         ▲   third-party vis modules              │               │   │   │
         │   Markdown/SVG/images                  │               │   │   └──► [Model provider / self-hosted LLM]
  [IdP] ◄┘                                        │               │   └──────► [Webhooks, ITSM, chat, CD, Git] (egress guard)
@@ -116,7 +134,7 @@ sessions and tokens, action capability, audit integrity.
 |---|---|---|---|
 | **S**poofing | Session theft or fixation; forged SAML; stolen API token; forged webhook callbacks (Slack/Teams interactive ack, PagerDuty/ServiceNow sync) | ①, IdP, ③ | `__Host-` HttpOnly cookies, session rotation at login, SAML hardening (signed assertions required, XML signature wrapping defence, `InResponseTo` + one-time assertion IDs against replay; T10 (draft)), token prefixes + scanning, inbound callback signature verification (T18-029) |
 | | BFF impersonating users to PulsusDB | ② | Single service credential per tenant binding (Basic today), mTLS recommended, R12 scoped credential later |
-| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | SRI + content-hashed assets (§4.3); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
+| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | Every JS module, CSS file and worker same-origin, engine WASM from the CDN only through an `integrity` fetch; per-file BFF verification against the signed manifest before serving; SRI-checked engine WASM from the CDN (§4.3, ADR-0016); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
 | **R**epudiation | "I didn't silence that"; AI did something | all | Audit with actor + `on_behalf_of` + request id; actions record proposer, confirmer and approvers |
 | **I**nformation disclosure | Cross-tenant/scope reads, including of derived state; XSS reading data; secrets in logs reaching the LLM or notifications; IndexedDB cache on shared machines; `X-Pulsus-Explain` SQL leak; SSRF to cloud metadata | ①②③④⑥ | Scope rewrite + response filter (T10 (draft)); RLS on every Postgres table ([T11](T11-postgres-schema.md) §4.1); CSP + Trusted Types; redaction pipeline (§4.10); cache wipe on logout + optional no-persist policy (§4.9); header stripping; egress guard (§4.9) |
 | **D**enial of service | Expensive queries (agent loops, broad regexes); WASM module infinite loop; webhook floods; notification storms | ②⑤③ | Per-principal query budgets ([T07](T07-scene-query-planner.md)); PulsusDB 422/429 bounds; module watchdog (§4.4); rate limits per contact point ([T16](T16-alert-evaluator.md) T16-015); request body caps |
@@ -130,19 +148,21 @@ only CORP/CORS/`nosniff`. Ingress configuration MUST NOT be relied on for them
 ([T19](T19-deployment.md) §4.1).
 
 ```
-Content-Security-Policy:
+Content-Security-Policy:                      # ADR-0014 §9
   default-src 'none';
-  script-src 'self' 'wasm-unsafe-eval' [ASSET_ORIGIN];
-  worker-src 'self';
-  connect-src 'self' [ASSET_ORIGIN];          # same-origin API + WSS; CDN only for wasm/fonts fetch
+  script-src 'self';                          # + 'wasm-unsafe-eval' from the engine issue (#68), not before
+  style-src 'self';
   img-src 'self' data: blob:;                 # external images only via BFF proxy (§4.6)
-  style-src 'self' [ASSET_ORIGIN];
-  font-src 'self' [ASSET_ORIGIN];
+  font-src 'self';
+  connect-src 'self';                         # same-origin API + WSS
+  worker-src 'self';
   manifest-src 'self';
   base-uri 'none'; form-action 'self'; object-src 'none';
-  frame-ancestors 'none' | <embed allowlist>;
+  frame-ancestors 'none';                     # <embed allowlist> in embed mode (M-UI5)
   require-trusted-types-for 'script'; trusted-types pulsus-sanitised;
-  upgrade-insecure-requests; report-to csp
+  report-to csp
+                                              # CDN mode (T19) adds [ASSET_ORIGIN] to font- and
+                                              # connect-src only; script-, style- and worker-src stay 'self'
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp      # (credentialless considered, §12)
 Cross-Origin-Resource-Policy: same-origin       # same-site for CDN assets
@@ -158,28 +178,29 @@ under the production CSP and COOP/COEP in Playwright and fail on any violation r
 `crossOriginIsolated`.
 
 - **`'wasm-unsafe-eval'`** (CSP Level 3) is the narrow keyword that permits
-  `WebAssembly.compile/instantiate(Streaming)` without `'unsafe-eval'`. It is supported in current
-  Chromium, Firefox and Safari. The exact minimum versions are to be confirmed in
-  [T03](T03-browser-runtime.md)'s browser matrix. `wasm-bindgen` glue does not use `eval`/`new
-  Function` in `--target web` mode, and T18-001 keeps it that way.
-- **No inline script.** `index.html` loads `shim.<hash>.js`. The asset manifest and bootstrap config
-  are fetched as JSON and parsed in WASM, never inlined, so no nonce is needed and the HTML stays
-  cacheable (PRF-008).
+  `WebAssembly.compile/instantiate(Streaming)` without `'unsafe-eval'`. It is added by the engine
+  issue (#68) and not before. It is supported in current Chromium, Firefox and Safari; minimum
+  versions are in [T03](T03-browser-runtime.md)'s browser matrix. `wasm-bindgen` glue does not use
+  `eval`/`new Function` in `--target web` mode, and T18-001 keeps it that way.
+- **No inline script.** `index.html` loads the hashed Vite entry module from `/assets/`. Bootstrap
+  config is fetched as JSON, never inlined, so no nonce is needed and the HTML stays cacheable
+  (PRF-008). `eval`, `Function`, `innerHTML` and `dangerouslySetInnerHTML` are banned by `ci:lint-ts`.
 - **No frames.** With `default-src 'none'` and no `frame-src`, no vis or widget can embed another
   site (VIZ-056); this was already decided in [05](../product/05-visualisation-catalogue.md) §9.
 
 #### T18-004 — No style attributes
-**MUST** — Leptos sets styles through `element.style` (CSSOM), which CSP does not block. Writing a
-`style="…"` attribute via `setAttribute` *is* blocked under `style-src` without `'unsafe-inline'`
-(style-src-attr). Therefore DOM code ([T08](T08-dom-component-kit.md)) MUST set dynamic styles
-through CSSOM or class toggles, never style attributes. Browser behaviour here is confirmed in the
-T08 spike.
+**MUST** — React sets the `style` prop through `element.style` (CSSOM), which CSP does not block.
+Writing a `style="…"` attribute via `setAttribute` or in an HTML string *is* blocked under `style-src`
+without `'unsafe-inline'` (style-src-attr). Therefore DOM code ([T08](T08-dom-component-kit.md)) MUST
+set dynamic styles through the `style` prop, CSSOM or CSS Module classes, never style attributes;
+`e2e:csp-violations` confirms it.
 
 #### T18-005 — One Trusted Types sink
-**MUST** — The only HTML sink allowed is `innerHTML` for sanitised output (§4.6), via a single
-policy `pulsus-sanitised` created in the shim (about 5 lines of JS). Sanitisation happens in Rust
-before the string reaches the policy, so the policy is an identity function guarded by a Rust-side
-type (`SanitisedHtml`). The default policy MUST be absent, so any other sink throws.
+**MUST** — The application MUST NOT write HTML strings into the DOM: Markdown and rich text render
+as React elements (§4.6). The CSP's single Trusted Types policy `pulsus-sanitised` MUST be created in
+one TS module, `client/src/security/trusted-types.ts`, and MUST accept only a value of the branded
+type `SanitisedHtml` produced by the sanitiser, so it is an identity function behind a type check.
+The default policy MUST be absent, so any other sink throws.
 
 #### T18-003 — Cross-origin isolation and its consequences
 **MUST** — Documents MUST be served with COOP `same-origin` and COEP `require-corp` for
@@ -203,19 +224,63 @@ type (`SanitisedHtml`). The default policy MUST be absent, so any other sink thr
 ### 4.3 Subresource integrity & asset integrity
 
 #### T18-006 — Content-hashed, integrity-checked, signed assets
-**MUST** — Every asset MUST have a content-hashed name (`core.<sha256-12>.wasm`, `shim.<…>.js`,
-workers, fonts) and be integrity-checked before use: `<script integrity>` for shim-adjacent
-scripts, and `fetch(url, {integrity: "sha384-…"})` followed by `WebAssembly.instantiateStreaming`
-for WASM, so integrity is checked before compilation. Lazy-loaded workbench modules are loaded the
-same way. Each release's `asset-manifest.json` (`{path, sha384, size}`, same-origin, uncached) MUST
-be signed (ed25519, a release key held in KMS), and the BFF MUST verify the signature at start-up for
-embedded and CDN asset sets and refuse to serve a mismatched CDN set ([T19](T19-deployment.md)
-§4.1).
+**MUST** — *(Revised 1.4-rc; [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted.)*
+Every asset MUST have a content-hashed name (Vite's hashed `/assets/*` JS and CSS, workers, fonts,
+and from #68 `dash-engine.<hash>.wasm`). Its bytes MUST be verified against the signed manifest
+**by the BFF before it is served**, and code MUST be loaded as follows:
+
+| Asset | Served from | Check |
+|---|---|---|
+| `index.html`, `asset-manifest.json`, `asset-manifest.sig`, every JS module (entry, lazy route chunks, the editor chunk and every module they import), wasm-bindgen glue, workers, CSS | **Same origin only** (the BFF, over TLS), in every asset mode | BFF start-up verification below; CSP `script-src 'self'`, `style-src 'self'` and `worker-src 'self'` (ADR-0014 §9, unchanged) stop any other origin. No per-module `integrity` in the browser |
+| `dash-engine.<hash>.wasm` | Same origin, or the CDN in CDN mode | BFF start-up verification, and in the browser `fetch(url, {integrity: "sha384-…"})` with the hash from the manifest, then `WebAssembly.instantiateStreaming` on that response only |
+| Fonts, map tiles | Same origin, or the CDN in CDN mode | BFF start-up verification for the embedded copies; not executable, and `font-src`/`img-src` limit their origins |
+
+**Manifest and BFF start-up (fail closed).** The verification metadata sits **outside** the set it
+lists: `asset-manifest.json` lists `{path, sha384, size}` for every asset file, including
+`index.html` and every pre-compressed variant (`.br`, `.gz`), and does not list itself; the detached
+`asset-manifest.sig` is an **Ed25519** signature over the exact bytes of `asset-manifest.json`, made
+with the release signing key held in KMS. The BFF verifies it with the release **public key compiled
+into the BFF binary** at build time (the signing key never reaches a BFF host; a key rotation ships
+in a new binary, which also carries the previous public key for one release). At start-up, before it
+opens a listener, the BFF MUST:
+1. verify `asset-manifest.sig` over `asset-manifest.json` with the compiled-in public key;
+2. read **every** file of the embedded asset set (and of the embedded previous release, T19-004,
+   against that release's own manifest and signature), hash it and compare it with its entry;
+3. treat a hash or size mismatch, a listed file that is missing, or any file that is not listed as
+   fatal: log `asset_integrity_failed{path, expected, actual}` and exit non-zero without serving.
+   `asset-manifest.json` and `asset-manifest.sig` are the only files exempt from listing.
+
+The BFF serves assets only from that verified, read-only in-memory set, so the bytes served are the
+bytes verified. In CDN mode it also fetches and hashes every manifest-listed CDN file at start-up; on
+any mismatch it serves the embedded set instead (T19-005) and logs the path.
+
+**Engine WASM failure handling.** A fetch with `integrity` resolves only after the whole body has
+been read and its hash matched; on a mismatch it rejects and nothing is compiled. The adapter retries
+once from the same-origin `/assets/` path, and if that fails too, the engine is reported unavailable
+and charts stay on the interim renderer ([T03](T03-browser-runtime.md) §9), with a RUM counter
+`engine_integrity_failed`.
+
+> **Rationale (ADR-0016):** every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, which is fetched with `integrity` and compiled only from that verified response, with a same-origin retry. Whoever can alter a same-origin asset can also alter
+> `index.html` and the CSP, so per-module SRI in the browser would add nothing there; the BFF
+> verifies the bytes against the signed release before serving them. The CDN, the one third party in
+> the asset path, serves no code that runs without a hash check.
+
+Tests:
+- `itest:bff-refuses-altered-asset`: a binary whose embedded lazy chunk differs by one byte from the
+  signed manifest (test signing key) exits non-zero with `asset_integrity_failed` naming the path and
+  opens no port; the same for a missing listed file and an unlisted extra file.
+- `itest:asset-manifest-signature`: a set whose `asset-manifest.sig` does not verify with the compiled-in public key, or whose `asset-manifest.json` differs by one byte from the signed bytes, is refused at start-up; a set with an extra unlisted file other than the manifest and its signature is refused.
+- `itest:cdn-set-mismatch-falls-back`: in CDN mode, one altered CDN file makes the BFF serve the
+  embedded set and log the path.
+- `e2e:no-cross-origin-script`: in CDN mode every script, module, worker and stylesheet request goes
+  to the Dash origin and `script-src` lists no CDN origin.
+- `e2e:wasm-integrity-mismatch`: a tampered CDN engine is not instantiated; one same-origin retry;
+  with both tampered the interim renderer stays and the RUM counter increments.
 
 #### T18-007 — Workers are same-origin
-**MUST** — Workers cannot take `integrity` (`new Worker(url)`). Worker scripts MUST therefore always
-be served **same-origin by the BFF**, even in CDN mode. Only bulk WASM, fonts and tiles come from the
-CDN.
+**MUST** — Workers cannot take `integrity` (`new Worker(url)`). Worker scripts, like every JS module
+(T18-006), MUST therefore always be served **same-origin by the BFF**, even in CDN mode. Only the
+engine WASM, fonts and tiles may come from the CDN.
 
 ### 4.4 Sandboxed third-party WASM vis modules (M-UI6+)
 
@@ -265,8 +330,8 @@ in its own worker is what makes termination possible without losing the app.
 
 #### T18-010 — Specs are validated data
 **MUST** — Vis specs, board specs, Lens templates and schematics MUST be treated as **data** and
-validated against JSON Schema (`schemars`-generated, checked with the `jsonschema` crate on the BFF
-and by the same Rust types in WASM) within the limits: spec ≤ 1 MiB, nesting ≤ 32, strings ≤ 8 KiB,
+validated against JSON Schema (published in `api/openapi.yaml`; checked by a Go JSON Schema validator
+on the BFF and by validators generated from the same schema in the TS client) within the limits: spec ≤ 1 MiB, nesting ≤ 32, strings ≤ 8 KiB,
 arrays ≤ 10⁴ elements, viewports ≤ 200 ([09](../product/09-performance-contract.md) PRF-022).
 
 - **Expressions** (calculated fields, bindings in schematics, [05](../product/05-visualisation-catalogue.md)
@@ -289,11 +354,12 @@ references, because we pass a resource resolver that denies everything.
 
 #### T18-013 — Markdown renders to nodes, never to HTML strings
 **MUST** — Markdown widgets, table Markdown cells, Feed items, tooltips, notes, post-mortems and AI
-output MUST be parsed with `pulldown-cmark` and rendered by **our own renderer into Leptos nodes**;
-raw HTML blocks MUST be dropped by default, and each removal logged at debug level with the widget
-id (VIZ-054). If an org enables "allow basic HTML", it MUST go through `ammonia` with a strict
+output MUST be parsed by a CommonMark parser that yields a syntax tree (an allowlisted dependency,
+ADR-0014 §7) and rendered by **our own renderer into React elements**; raw HTML blocks MUST be
+dropped by default, and each removal logged at debug level with the widget id (VIZ-054). If an org
+enables "allow basic HTML", the HTML MUST be parsed into the same tree and filtered with a strict
 allowlist (no `style`, no `on*`, no `iframe`, `form` or `svg`; links get `rel="noopener noreferrer
-nofollow" target="_blank"`), wrapped as `SanitisedHtml` → Trusted Types policy.
+nofollow" target="_blank"`) before it is rendered as React elements; no HTML string reaches the DOM.
 
 #### T18-014 — External images only through a signed proxy
 **MUST** — An external `![](https://…)` MUST be rewritten to `/api/dash/v1/proxy/image?u=…&sig=…`.
@@ -402,8 +468,7 @@ ALR-061).
 - **Rotation:**
   - DEK rotation re-encrypts lazily on write, with a background re-wrap job.
   - KEK rotation re-wraps DEKs only.
-  - The service's own secrets (session pepper, token pepper, CSRF key, manifest signing key, image
-    proxy HMAC key) rotate with a two-key overlap window.
+  - The service's own secrets (session pepper, token pepper, CSRF key, image proxy HMAC key) rotate with a two-key overlap window.
 
 #### T18-030 — Secrets never reach logs
 **MUST** — `tracing` fields of type `Secret<T>` MUST be redacted by construction; panic messages and
@@ -478,32 +543,43 @@ Redactions are reversible only in the UI, and only for users who could see the o
 
 #### T18-026 — Supply-chain gates
 **MUST** — A release MUST pass:
-- `cargo-deny` (licences allowlist compatible with AGPL-3.0 (D3); RustSec advisories; bans on
-  duplicate major versions and on `openssl-sys` outside the SAML feature; sources limited to
-  crates.io + our vendored path deps);
-- `cargo-vet`, with audits imported from Mozilla, Google, the Bytecode Alliance and ISRG, plus our
-  own audits for unaudited crates in the WASM bundle and auth paths;
+- **client (npm):** `ci:lockfile` (exact versions, registry and `integrity` on every entry, `npm ci`
+  only, `ignore-scripts`), `ci:dep-audit` (runtime allowlist in `client/dependency-policy.json`,
+  forbidden categories, AGPL-3.0-compatible licences), `ci:npm-audit` (`npm audit` at high for
+  runtime and critical for all, `npm audit signatures`); updates in one reviewed batch, versions
+  younger than 7 days not adopted except for security fixes
+  ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7);
+- **server (Go):** `ci:govulncheck` (any reachable vulnerability fails), `ci:go-mod` (`go mod verify`,
+  tidy, read-only module mode), `depguard` and `gosec` in `ci:go-lint`
+  ([ADR-0015](../adr/0015-go-bff.md));
+- **engine crates (from #68):** `cargo-deny` (AGPL-3.0-compatible licences (D3); RustSec advisories;
+  duplicate-major bans; sources limited to crates.io and the vendored PulsusDB crates) and
+  `cargo-vet` (imported audits plus our own for unaudited crates in the WASM bundle);
 - an image vulnerability scan (`grype`/Trivy) that blocks on Critical issues with a fix available.
 
-Binaries embed their dependency list (`cargo-auditable`); SBOMs come from `cargo-cyclonedx` and, for
-images, `syft`.
+SBOMs are attached to every release: `npm sbom --sbom-format cyclonedx` for the client, a CycloneDX
+SBOM and `go version -m` build info for the Go binary, `cargo-cyclonedx` and `cargo-auditable` for the
+engine and the render binary, and `syft` for images.
 
-- **WASM/JS:** zero npm runtime dependencies ([ADR-0001](../adr/0001-rust-wasm-everywhere.md)).
-  Dev tooling (Playwright) is pinned with lockfile integrity and never shipped. The `wasm-bindgen`
-  CLI version is pinned to the crate version, and `wasm-opt` (binaryen) is pinned by checksum.
+- **Dev tooling** (Vite, Vitest, Playwright, linters) is pinned by the lockfile and never shipped. Go
+  tools are pinned with `tool` directives in `server/go.mod`. The `wasm-bindgen` CLI version is pinned
+  to the crate version, and `wasm-opt` (binaryen) is pinned by checksum.
 - **Containers:** distroless base ([T19](T19-deployment.md) §4.2).
 - **Provenance:** images and binaries are signed with **cosign** (Sigstore keyless in CI, plus a KMS
   key for air-gapped verification). SLSA v1.0 Build L3 provenance comes from an isolated builder
   (GitHub Actions reusable workflow). The Helm chart is signed as well.
 
 #### T18-027 — Reproducible builds
-**MUST** — Release builds MUST be reproducible: `rust-toolchain.toml` pinned, `--locked`,
-`SOURCE_DATE_EPOCH`, `-C remap-path-prefix`, `codegen-units=1`, deterministic `wasm-opt` flags,
-sorted embedded asset order. CI builds twice on different runners and compares SHA-256 of the binary
+**MUST** — Release builds MUST be reproducible: for the client, `npm ci` from the lockfile, pinned
+Node.js and a deterministic Vite build; for the server, the pinned Go toolchain, `CGO_ENABLED=0`,
+`-trimpath` and sorted embedded asset order; for the engine crates, `rust-toolchain.toml` pinned,
+`--locked`, `SOURCE_DATE_EPOCH`, `-C remap-path-prefix`, `codegen-units=1` and deterministic
+`wasm-opt` flags. CI builds twice on different runners and compares SHA-256 of the binary
 and every asset; a mismatch fails the release.
 
-- **Vendored PulsusDB parser crates:** we depend on PulsusDB's crates (including its vendored
-  `promql-parser` patch), pinned by git revision. They are AGPL-3.0, like Dash (D3), so linking is
+- **Vendored PulsusDB parser crates:** the browser's editor WASM, when it lands
+  ([T09](T09-query-editors.md) §0), depends on PulsusDB's crates (including its vendored
+  `promql-parser` patch), pinned by git revision; the Go BFF does not use them. They are AGPL-3.0, like Dash (D3), so linking is
   licence-compatible. Bumps go through the T10 (draft) parser gate.
 
 ### 4.12 Pen-testing & compliance
@@ -538,10 +614,10 @@ only as the mapped Dash principal ([T16](T16-alert-evaluator.md) T16-021).
 - HTTP: `/api/dash/v1/csp-report`, `/api/dash/v1/proxy/image`,
   `/api/dash/v1/actions/{propose,confirm,approve,execute}`, `/api/dash/v1/vis-modules`.
 - **Cross-doc interfaces:**
-  - **[T03](T03-browser-runtime.md)**: the non-SAB fallback for embedded mode; the Trusted Types
-    policy in the shim; integrity-checked WASM fetch; same-origin workers.
-  - **[T08](T08-dom-component-kit.md)**: no style attributes; no `inner_html` except
-    `SanitisedHtml`.
+  - **[T03](T03-browser-runtime.md)**: the non-SAB fallback for embedded mode; integrity-checked
+    WASM fetch; same-origin workers.
+  - **[T08](T08-dom-component-kit.md)**: no style attributes; no HTML string sinks; the Trusted Types
+    policy module (T18-005).
   - **T15 (draft)**: tool results passed as untrusted data blocks; `redact()`; no egress tools; no
     action tools on MCP.
   - **[T16](T16-alert-evaluator.md)**: all deliveries via `dash-egress`; secrets via
@@ -566,7 +642,7 @@ only as the mapped Dash principal ([T16](T16-alert-evaluator.md) T16-021).
 
 | Control | Cost |
 |---|---|
-| SRI check on core WASM (3 MB) | < 10 ms, hashed while streaming; counts against [09](../product/09-performance-contract.md) PRF-008 cold load |
+| SRI check on the engine WASM (≤ 1.9 MB) | < 10 ms of hashing as it downloads; compilation starts once the verified body is complete, so it does not overlap the download; counts against [09](../product/09-performance-contract.md) PRF-008 cold load |
 | Module call watchdog overhead | ≤ 0.1 ms per call (postMessage round trip dominates); module budget 4 ms per frame |
 | AES-GCM decrypt per secret use | < 5 µs |
 | Egress DNS check | < 1 ms beyond resolution |
@@ -603,13 +679,14 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 - `sec:scope-bypass-suite`: scoped principals attempt to read out-of-scope telemetry and derived
   state through every API, export, virtual source and the copilot.
 - `eval:prompt-injection-corpus` in the AI evaluation harness (T15 (draft)).
-- Release gates: `ci:cargo-deny`, `ci:cargo-vet`, `ci:image-scan`, `ci:repro-double-build`.
+- Release gates: `ci:lockfile`, `ci:dep-audit`, `ci:npm-audit`, `ci:govulncheck`, `ci:go-mod`,
+  `ci:image-scan`, `ci:repro-double-build`; from #68 also `ci:cargo-deny` and `ci:cargo-vet`.
 
 ## 11. Rollout
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | Headers/CSP/COOP/COEP, SRI + manifest, Markdown sanitiser and no-iframe policy, cargo-deny/vet, SBOM, signed images |
+| M-UI1 | Headers/CSP/COOP/COEP, signed manifest with per-file start-up verification (T18-006, ADR-0016), Markdown sanitiser and no-iframe policy, npm and Go supply-chain gates, SBOM, signed images |
 | M-UI4 | Secrets (envelope + Vault refs), egress guard, action framework v1 (webhook, silence, revert config), redaction and AI guardrails, callback verification |
 | M-UI5 | Image proxy, schematic actions, release pause/rollback actions, embed mode, feed fetching |
 | M-UI6 | WASM vis module sandbox, FIPS build, reproducible-build gate, pen-test, SOC 2 Type I, air-gapped egress profile |
@@ -632,8 +709,8 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 ## 13. Open questions
 
 1. Minimum browser versions for `'wasm-unsafe-eval'`, Trusted Types (Firefox support) and COEP: a
-   [T03](T03-browser-runtime.md) matrix decision. Without Trusted Types, we rely on the Rust-side
-   `SanitisedHtml` type alone.
+   [T03](T03-browser-runtime.md) matrix decision. Without Trusted Types, we rely on the TS
+   `SanitisedHtml` brand and the lint bans alone.
 2. PulsusDB hardening defaults (admin `admin`/`admin`, no TLS by default). Should Dash refuse to
    connect to a PulsusDB with default admin credentials reachable? That would be a
    [T19](T19-deployment.md) preflight check.
@@ -650,6 +727,11 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; formal design rules; Satisfies table; aligned with 06, 07, 11 and ADR-0012 |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0; T18-002 uses the ADR-0014 §9 CSP (`'wasm-unsafe-eval'` from #68); T18-001, T18-004 (React CSSOM) and T18-005 (policy in one TS module, no HTML string sinks) revised; T18-006 adds SRI for lazy route chunks through `modulepreload`; T18-010 Go and TS schema validators; T18-013 Markdown to React elements; T18-026 npm, Go and engine supply-chain gates; T18-027 reproducible client and Go builds |
+| 1.2-rc | 2026-11-19 | Code review r3 of #56: T18-006 rewritten: all JavaScript, CSS and workers are same-origin in every asset mode, the CDN serves only the engine WASM (SRI-checked fetch, one same-origin retry, interim-renderer fallback), fonts and tiles; per-module SRI through `modulepreload` withdrawn with its rationale; tests `e2e:no-cross-origin-script`, `e2e:wasm-integrity-mismatch`, `itest:asset-manifest-signature`; CDN CSP adds the asset origin to `font-src` and `connect-src` only; T18-007 and the STRIDE row aligned |
+| 1.3-rc | 2026-11-19 | Code review r4 of #56: T18-006 restores SRI for every JS module through a build-time import map with an `integrity` section ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Proposed): integrity-bearing entry, modulepreloads and stylesheet, a probe that refuses browsers which do not enforce it, single-file workers, and the BFF hashing every asset file against the signed manifest at start-up and exiting on any mismatch; failure UI table; tests for altered lazy, transitive and entry chunks, the probe and the BFF refusal; T18-007, STRIDE, PRF-008 and M-UI1 rows aligned |
+| 1.4-rc | 2026-11-19 | Owner decision ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted): T18-006 drops browser per-module integrity; the import map, probe, browser-floor change, `ci:importmap-coverage`, the altered-chunk browser tests and the "cannot verify" page are removed; the BFF per-file start-up verification (fail closed), same-origin JS, CSS and workers, the unchanged `script-src 'self'`, and the SRI-checked engine WASM with one same-origin retry stay; `itest:cdn-set-mismatch-falls-back` added; T18-007 restored to same-origin workers without the single-file constraint |
+| 1.5-rc | 2026-11-19 | Review r6 of #56: the asset rule reads "every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity` and compiled only from that verified response, with a same-origin retry" (owner decision: "The CDN still serves only the chart engine (hash-checked), fonts and map tiles"); the manifest is verification metadata outside the listed set (`asset-manifest.json` plus detached Ed25519 `asset-manifest.sig`, public key compiled into the BFF, signing key in release KMS only, both files the only unlisted exemptions); the manifest signing key removed from the BFF's own secrets |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

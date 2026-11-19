@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -29,8 +29,8 @@ interaction grammar (see [03](03-interaction-model.md)) or colour and type token
 | Term | Meaning |
 |---|---|
 | **Vis** | A declarative composition of the shared GPU mark primitives (about 12) defined in [T02](../technical/T02-vis-engine.md) |
-| **GPU vis** | Rendered in the shared wgpu scene. This is the default for every vis |
-| **DOM vis** | Rendered in a Leptos room ([ADR-0004](../adr/0004-leptos-dom-rooms.md)) because it is mostly text or form controls. Marked **DOM** in the tables |
+| **GPU vis** | Rendered by the shared chart engine (Rust/WASM, wgpu, one GPU device per page) into the viewport's own canvas, or into the Space scene. This is the default for every vis |
+| **DOM vis** | Rendered as React components of the web application ([ADR-0014](../adr/0014-typescript-react-web-client.md)) because it is mostly text or form controls. Marked **DOM** in the tables |
 | **Viewport** | One vis instance in a scene, with its own camera and axes |
 | **Scale target** | The data volume a vis MUST render at the frame-rate targets of [09](09-performance-contract.md) §1 on its reference hardware |
 | **LOD strategy** | How a vis reduces what it draws when data exceeds pixels, without hiding signal |
@@ -40,16 +40,26 @@ interaction grammar (see [03](03-interaction-model.md)) or colour and type token
 
 ### 0.1 General requirements
 
-#### VIZ-001 — GPU rendering in one shared scene
+#### VIZ-001 — GPU rendering by one shared engine
 **MUST** · M-UI0 · SRE, Engineer, Platform, NOC
 
-Every vis in this catalogue MUST render in the shared GPU scene, except a vis marked **DOM**, which
-MUST render in a Leptos room. No vis MAY use a JavaScript charting, mapping or diagram library
-([ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md)).
+Every vis in this catalogue not marked **DOM** MUST be drawn by the Dash chart engine
+([T02](../technical/T02-vis-engine.md)): one Rust/WASM engine in one worker with one GPU device per
+page, drawing each viewport into its own canvas through the `ChartFrame` seam
+([ADR-0014](../adr/0014-typescript-react-web-client.md) §3). The Atlas and a Lens are each one scene
+on one canvas. A vis marked **DOM** MUST render as React components of the web application. No vis
+MAY use a third-party JavaScript charting, mapping, 3D or diagram library.
 
-*Acceptance:* Given the shipped bundle, when its dependency manifest and JS shim are inspected, then
-no JS charting/mapping/diagram library is present; and given any non-DOM vis on screen, when the
-frame is captured, then it is drawn by the wgpu scene, not by DOM or 2D canvas elements.
+*Acceptance:* Given the shipped bundle, when its dependency allowlist and lockfile are inspected, then
+no JS charting, mapping, 3D or diagram library is present; and given any non-DOM vis on screen with
+the engine active, when the frame is captured, then it is drawn by the engine into its viewport's
+canvas, one GPU device serves every canvas on the page, and nothing is drawn by DOM, SVG or the
+interim renderer.
+
+> **Note:** until the engine lands, line, stacked bars, heatmap and stat are drawn by the in-house
+> Canvas 2D renderer behind the same seam ([ADR-0014](../adr/0014-typescript-react-web-client.md)
+> §4). That renderer meets the library clause but not the engine clause, so VIZ-001 stays M-UI0 and
+> is met when the engine draws every non-DOM vis of that milestone (decision D6).
 
 #### VIZ-002 — Every vis is a composition of shared mark primitives
 **MUST** · M-UI0 · Engineer
@@ -1036,8 +1046,9 @@ These are needed for 1:1 dashboard import and expected by every power user.
 #### VIZ-057 — Field configuration parity
 **MUST** · M-UI1 · Engineer, SRE, Admin
 
-Every feature in Table 5-10 MUST be available from its listed milestone and MUST be evaluated by one
-Rust implementation shared by the browser's local engine and the BFF.
+Every feature in Table 5-10 MUST be available from its listed milestone and MUST give identical
+formatted output in the browser and in the headless server-side renderer; both implementations MUST
+pass one shared fixture corpus of inputs and expected outputs.
 
 *Acceptance:* Given an imported panel using units, thresholds, value mappings and overrides,
 when rendered in the browser and when rendered headless by the BFF, then both outputs are identical
@@ -1143,8 +1154,10 @@ panel's query and the import report lists the panel under "could not map" with i
 #### VIZ-063 — Declarative vis spec for third parties
 **SHOULD** · M-UI5 · Engineer, Admin
 
-Because the JS-shim constraint ([T01](../technical/T01-frontend-architecture.md) §1) rules out
-React-based panel plugins of the kind incumbent tools use, third-party vis SHOULD be authored as a declarative vis spec
+Because third-party JavaScript in the page would bypass the CSP and dependency controls
+([ADR-0014](../adr/0014-typescript-react-web-client.md) §7, §9; [T18](../technical/T18-security.md)),
+which rules out React-based panel plugins of the kind incumbent tools use, third-party vis SHOULD be
+authored as a declarative vis spec
 (marks + encodings, in the grammar-of-graphics style) compiled to the mark pipelines. There MUST NOT be an
 arbitrary-JS vis extension point.
 
@@ -1283,7 +1296,7 @@ board.
 
 | ID | Title | Priority | Milestone |
 |---|---|---|---|
-| VIZ-001 | GPU rendering in one shared scene | MUST | M-UI0 |
+| VIZ-001 | GPU rendering by one shared engine | MUST | M-UI0 |
 | VIZ-002 | Every vis is a composition of shared mark primitives | MUST | M-UI0 |
 | VIZ-003 | Universal interactions on every vis | MUST | M-UI1 |
 | VIZ-004 | Scale targets per vis | MUST | M-UI0 |
@@ -1375,6 +1388,7 @@ board.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 intro, Table 5-4 rows (Graph, City, Globe, Heat grid, 3D surface; Floors added), VIZ-031 and VIZ-032 edited in place; VIZ-073 to VIZ-077 added; §3.1 3D signal views (Table 5-4a, VIZ-078 to VIZ-085, incl. the fleet line stack) added (R11–R13) |
+| 1.1-rc | 2026-11-19 | Decisions D7 and D8 (roadmap Q13): GPU vis and DOM vis definitions; VIZ-001 revised in place (one shared engine and GPU device, one canvas per viewport, DOM vis in React, interim-renderer note); VIZ-057 parity by shared fixtures instead of one shared Rust implementation (the BFF is Go); VIZ-063 rationale no longer cites the JS shim (R14) |
 
 ## Resolved during formalisation
 
@@ -1393,3 +1407,4 @@ board.
 | R11 | 1.0-rc2: §3 made 3D a toggle from 2D for the estate, contrary to the owner's brief | Estate and topology vis are 3D by default with 2D on `T` (VIZ-073, VIZ-074, [15](15-estate-navigation.md) EST-055); "SSAO-lite" replaced by the restrained depth cues of [08](08-visual-language.md) §10 |
 | R12 | 1.0-rc2: the owner clarified "a combination of 2D and 3D" | Space is 3D, signals are 2D, linked (VIZ-077); 3D signal views are opt-in or auto-offered (§3.1) |
 | R13 | 1.0-rc2: milestones of the 3D signal views | Fleet line stack, latency surface and waterfall at M-UI3 (they reuse the M11 mesh and M1 polyline primitives); span point cloud at M-UI2 with the span scatter; 3D columns, 3D scatter at M-UI5; imported models at M-UI6 |
+| R14 | 1.1-rc: VIZ-001, VIZ-057 and VIZ-063 assumed a Leptos DOM, a JS shim and a Rust BFF | Revised to ADR-0014 and ADR-0015; the library ban and the no-arbitrary-JS rule are unchanged |

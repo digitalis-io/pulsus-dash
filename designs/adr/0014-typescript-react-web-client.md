@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted (2026-11-19, product owner) |
+| **Status** | Accepted (2026-11-19, product owner); amended by [ADR-0016](0016-asset-integrity-verified-by-bff.md) (2026-11-19, lazy-chunk SRI) |
 | **Supersedes** | [ADR-0004](0004-leptos-dom-rooms.md) (Leptos DOM rooms), [ADR-0002](0002-no-js-ui-framework.md) (no JS UI framework), and the browser half of [ADR-0001](0001-rust-wasm-everywhere.md) (the server half is superseded by [ADR-0015](0015-go-bff.md)) |
 | **Source** | Owner decision of 2026-11-19: all code removed from `main` to start again (commit "Remove the existing code to start again") |
 | **See** | [T01](../technical/T01-frontend-architecture.md), [T03](../technical/T03-browser-runtime.md), [T08](../technical/T08-dom-component-kit.md), [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19), [ADR-0015](0015-go-bff.md) |
@@ -87,7 +87,7 @@ level), heatmap and stat, with time and value axes, a crosshair tooltip and brus
 
 > **Rationale:** placeholders would hide whether PromQL and LogQL dashboards are useful, which is
 > the point of the first milestone. A charting library would breach the library clause of
-> [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-in-one-shared-scene),
+> [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-by-one-shared-engine),
 > add a dependency to remove later, and impose a different DOM structure. The in-house renderer uses
 > the same canvas-per-panel structure the engine will take over, so the swap changes no component.
 
@@ -201,6 +201,8 @@ the bottom Time Ribbon and "no left sidebar" of [02](../product/02-information-a
   (PRF-008, PRF-009 wording); technical [T05](../technical/T05-testing-and-performance.md) (gates
   `ci:shim-lint`, `ci:dep-audit`, `e2e:chrome-layout`), [T09](../technical/T09-query-editors.md)
   (editor in TS on CodeMirror), [T18](../technical/T18-security.md) (T18-005 policy location, npm
-  supply chain, SRI for lazy chunks).
+  supply chain, SRI for lazy chunks — *amended by [ADR-0016](0016-asset-integrity-verified-by-bff.md)
+  (2026-11-19): no per-module SRI in the browser; asset integrity is verified by the BFF before
+  serving, [T18](../technical/T18-security.md) T18-006*).
 - The JS supply chain becomes a real attack surface; §7 is the control. The hiring and ecosystem
   benefits are the reason for accepting it.

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
-| **Milestone** | M-UI0 (shim, topology, single core module) → M-UI1 (shell/core split, keymap, URL/history, lazy satellites) |
+| **Version** | 1.3-rc · 2026-11-19 |
+| **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
 
@@ -17,7 +17,7 @@ is the React application.
 
 | Section | Status |
 |---|---|
-| §4.1 artefacts | `dash-core-mt`/`-st` become the engine, loaded on the first chart frame. `dash-shell.wasm`, `dash-editor.wasm` and `dash-rooms-admin.wasm` are withdrawn (React app, CodeMirror, lazy route chunks). T03-001 revised; T03-002 applies to the engine's satellites |
+| §4.1 artefacts | `dash-core-mt`/`-st` become the engine, loaded on the first chart frame. `dash-shell.wasm` and `dash-rooms-admin.wasm` are withdrawn (React app, lazy route chunks); `dash-editor.wasm` now only carries PulsusDB's parser crates for later editor diagnostics ([T09](T09-query-editors.md) §0). T03-001 revised; T03-002 applies to the engine's satellites |
 | §4.2, §4.3 worker topology and shared memory | Stand, for the engine, from the engine issue on |
 | §4.4 state ownership | Revised: semantic state is owned by the TS application (ADR-0014 §2); the engine owns render-local state. T03-009 revised; T03-010 applies to the TS Context store |
 | §4.5 keymap | The keymap is implemented in TS. T03-011 and T03-012 stand (timing from event timestamps); T03-013 revised |
@@ -29,6 +29,14 @@ is the React application.
 | §7.1 startup, §7.3 sizes | The shell is measured as JS (ADR-0014 §8); the `dash-shell.wasm` row is withdrawn; engine rows stand |
 | §9 degradation | Stands for the engine; without an engine mode the interim `Canvas2DEngine` remains the fallback |
 | §11 rollout | Replaced by [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19) |
+
+**Topology under ADR-0014.** The main thread runs the React application (semantic state: route,
+Context, selection, undo, keymap, URL) and the engine adapter. The engine is one shared-memory
+module in workers that draws every `ChartFrame` into its own `OffscreenCanvas` with one GPU device,
+and holds only render-local state (gesture camera, hover, decoded columns). There is no
+`dash-shell.wasm`, no Leptos and no ui↔core ring: the application talks to the engine only through
+the `ChartEngine`/`ChartFrame` API. §2, §4.1, §4.2, §4.4, §6, §7.3 and §11 below are rewritten to
+this; any remaining mention of the "shell" means the React application.
 
 ## 1. Context & problem
 
@@ -61,9 +69,9 @@ artefact split. [T04](T04-wire-format-and-data-plane.md) owns what flows through
 ## 2. Goals / non-goals
 
 **Goals**
-- A hand-written shim of **≤ 300 lines** in total, with no npm runtime dependencies, enforced in CI.
-- Rendering, state and decoding all happen off the main thread. The main thread runs only DOM rooms
-  (Leptos) and input capture.
+- *(Withdrawn, ADR-0014: the ≤ 300-line shim budget; the adapter is bound by T01-001 and T03-001.)*
+- Rendering and decoding happen off the main thread. The main thread runs the React application
+  (which owns semantic state) and the engine adapter, including input capture for engine canvases.
 - One shared linear memory for every hot-path thread (render, data, layout, pool), so Arrow buffers
   are never copied between threads.
 - First canvas frame < 600 ms and interactive < 1.0 s on reference (a) with a warm HTTP cache.
@@ -72,7 +80,7 @@ artefact split. [T04](T04-wire-format-and-data-plane.md) owns what flows through
 - Defined, tested degradation for each missing capability. The app never shows a blank page.
 
 **Non-goals**
-- The DOM component kit and the Leptos app structure ([T08](T08-dom-component-kit.md)).
+- The DOM component kit and the React application structure ([T08](T08-dom-component-kit.md)).
 - Arrow schemas and the BFF protocol ([T04](T04-wire-format-and-data-plane.md)).
 - CSP and the wider security posture ([T18](T18-security.md)). This doc only states the headers that
   the runtime *requires*.
@@ -96,7 +104,7 @@ artefact split. [T04](T04-wire-format-and-data-plane.md) owns what flows through
 | [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7.3 (bundle part; co-satisfied with T05) | `ci:bundle-size` |
 | [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.4 | `replay:context-propagation` |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §4.4 | `replay:context-propagation`; `e2e:deep-link` (saved Context restored) |
-| [IA-021](../product/02-information-architecture.md#ia-021--no-left-navigation-sidebar) | §4.5 | `replay:key-bindings` (`g` chords); `e2e:chrome-layout` (no sidebar) |
+| [IA-021](../product/02-information-architecture.md#ia-021--left-navigation-sidebar) | §4.5 (`g` chords) | `replay:key-bindings` (`g` chords); `e2e:rooms-reachable` |
 | [IA-022](../product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view) | §4.6 | `e2e:deep-link` |
 | [IA-023](../product/02-information-architecture.md#ia-023--shared-links-pin-absolute-time) | §4.6 | `unit:url-codec` |
 | [IA-024](../product/02-information-architecture.md#ia-024--compact-camera-encoding) | §4.6 | `unit:cam-codec` (≤ 64 chars, ≤ 1 px restore) |
@@ -119,17 +127,17 @@ artefact split. [T04](T04-wire-format-and-data-plane.md) owns what flows through
 ### 4.1 Artefacts and module split
 
 Rust on the main thread cannot block: `Atomics.wait` throws there, and Rust's `std` mutexes on
-`wasm32+atomics` compile to `memory.atomic.wait32`. So the main thread runs a **separate module with
-its own non-shared memory**, and every thread that needs to share data runs one shared-memory module.
+`wasm32+atomics` compile to `memory.atomic.wait32`. So no Rust runs on the main thread (it runs the
+TS application, ADR-0014), and every engine thread that shares data runs one shared-memory module.
 
 | Artefact | Runs on | Memory | Contents | Loaded |
 |---|---|---|---|---|
 | `shim/*.js` | main + every worker | — | §5.1 | eagerly, inline module preload |
-| `dash-shell.wasm` | main | own, non-shared | Leptos DOM rooms core, chrome, Context mirror, URL/history, a11y mirror, browser integrations via `web-sys` | eagerly |
-| `dash-core-mt.wasm` | render, data × n, layout, pool × m | **one shared `WebAssembly.Memory`** (max 2 GiB) | state store, keymap, scene graph, wgpu renderer, marks M1–M10, scales, decimation, Arrow decode, client query planner, IndexedDB cache, local engine | eagerly (one of mt/st) |
+| ~~`dash-shell.wasm`~~ | — | — | *Withdrawn (ADR-0014): the React application on the main thread* | — |
+| `dash-core-mt.wasm` (the engine, `dash-engine.wasm` in ADR-0014 §8) | render, data × n, layout, pool × m | **one shared `WebAssembly.Memory`** (max 2 GiB) | render-local state (gesture camera, hover), scene graph, wgpu renderer, marks M1–M10, scales, decimation, Arrow decode, IndexedDB chunk cache, local engine | lazily, on the first chart frame (one of mt/st) |
 | `dash-core-st.wasm` | one worker (or main in MT-R) | own, non-shared | same code built without `+atomics`; §9 fallback | only when not cross-origin isolated, or without OffscreenCanvas |
-| `dash-editor.wasm` | `editor` worker | own | PromQL/LogQL/TraceQL tokenisers and parsers, autocomplete ([T09](T09-query-editors.md)) | on first focus of a query bar |
-| `dash-rooms-admin.wasm` | main | own | Admin/settings rooms and alert authoring forms, mounted into their own DOM subtree | on route |
+| `dash-editor.wasm` | `editor` worker | own | Later: PulsusDB's parser crates for editor diagnostics ([T09](T09-query-editors.md) §0); tokenising and completion are TS | on first focus of a query bar, once it exists |
+| ~~`dash-rooms-admin.wasm`~~ | — | — | *Withdrawn (ADR-0014): admin rooms are lazy React route chunks* | — |
 | `dash-geo.wasm` | `geo` worker | own | MVT decode and tile tessellation (M12, M-UI5) | on first geomap |
 | Workbench satellites | per workbench | own | Workbench-only code that is not on the shared hot path (e.g. pattern tooling, trace-specific panels) | on first use of that workbench |
 | Data files | — | — | MSDF font atlases, `chrono-tz` slices, locale data, self-hosted fonts | on demand, cached immutably |
@@ -148,23 +156,24 @@ adapter (`client/src/engine/wasm/`) MUST NOT import application modules other th
 or `innerHTML`. ESLint import rules enforce it.
 
 #### T03-002 — Lazy units are separate modules
-**MUST** — Anything not needed for the shell and the first Space scene MUST be a separate WASM module
+**MUST** — Anything not needed for the first chart frame and the first Space scene MUST be a separate WASM module
 with its own memory, loaded on first use. Signal workbenches MUST NOT be part of the eager download.
 A satellite MUST NOT read or write core memory except through a core-allocated copy-in slab.
 
 ### 4.2 Worker topology
 
 ```
- MAIN THREAD                                   WORKERS (all dash-core-mt, one shared Memory)
+ MAIN THREAD (TS)                              WORKERS (all dash-core-mt, one shared Memory)
  ┌───────────────────────────────┐            ┌───────────────────────────────────────────────┐
- │ shim/boot.js  (bootstrap)     │  spawn     │ render   OffscreenCanvas + wgpu device         │
- │ shim/input.js (event capture) ├──────────► │          state store (authoritative Context)   │
- │   └► input ring ──────────────┼─ SAB ────► │          keymap, camera, interaction, scene,   │
- │ dash-shell.wasm               │            │          LOD, frame loop on worker rAF         │
- │   Leptos rooms, a11y mirror   │◄─ SAB ring │──── core→ui ring (anchors, selection, a11y)    │
- │   URL/history, downloads      ├─ SAB ring ►│◄─── ui→core ring (DOM commands, Context edits) │
+ │ React application             │            │ render   one OffscreenCanvas per ChartFrame,   │
+ │   route, Context, selection,  │            │          one wgpu device; render-local state   │
+ │   undo, keymap, URL (owner)   │            │          (gesture camera, hover), scene, LOD,  │
+ │ engine adapter (engine/wasm/) │  spawn     │          frame loop on worker rAF              │
+ │   boot, ChartFrame calls ─────┼──────────► │◄─── setSpec / setData / setTimeWindow / resize │
+ │   input capture → input ring ─┼─ SAB ────► │          input ring consumer                   │
+ │   engine events ◄─────────────┼────────────│──── hover, brush, select, commit, a11y events  │
  └───────────────────────────────┘            ├───────────────────────────────────────────────┤
-                                              │ data-0   coordinator: client planner (T07),    │
+                                              │ data-0   coordinator: stream subscriptions,    │
             BFF (HTTP/2, WS)  ◄────────────── │          IndexedDB cache, request ids, cancel  │
                  ▲                            │ data-1…  byte pump (shim/net.js) → DSF/Arrow   │
                  └─────────────────────────── │          decode → chunk arena                  │
@@ -174,14 +183,14 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
                                               │ pool×m   rayon threads (decimation, CPU tier-2 │
                                               │          compute, pyramid merges, T13 kernels) │
                                               └───────────────────────────────────────────────┘
-   satellites (own memory): editor worker · geo worker · workbench satellites · admin rooms (main)
+   satellites (own memory): editor worker · geo worker · workbench satellites
 ```
 
 | Thread | Count | Blocks? | Owns | Wakes on |
 |---|---|---|---|---|
-| main | 1 | never | DOM, shim listeners, shell | DOM events; doorbell `message` from render |
-| render | 1 | never on locks held by others for > 50 µs | Context/state store, keymap, scene, GPU device, input ring consumer | worker `requestAnimationFrame` |
-| data-0 | 1 | never (event loop) | planner, request table, cache, cancellation | doorbell `MessagePort`, fetch promises |
+| main | 1 | never | DOM, React application and its semantic state (Context, undo, keymap, URL), engine adapter | DOM events; engine event `message` from render |
+| render | 1 | never on locks held by others for > 50 µs | render-local state, scene, GPU device, frame canvases, input ring consumer | worker `requestAnimationFrame` |
+| data-0 | 1 | never (event loop) | stream subscriptions, request table, cache, cancellation (the planner is in the BFF, [T07](T07-scene-query-planner.md)) | doorbell `MessagePort`, fetch promises |
 | data-k | `clamp(hwc/4, 1, 3)` in total, data-0 included | never (event loop) | assigned network streams, decode | fetch/WS promises, doorbell |
 | layout | 1 | may block in rayon joins | layout jobs, glyph runs, tessellation | Rust channel + doorbell |
 | pool | `clamp(hwc − 3 − n_data, 1, 6)` | yes (rayon idle wait) | nothing long-lived | rayon |
@@ -198,9 +207,10 @@ never the message payload. `Atomics.waitAsync` replaces doorbells where it is av
 availability in Firefox and Safari is verified in M-UI0.
 
 #### T03-003 — The main thread never blocks and never renders
-**MUST** — The main thread MUST run only the shim and `dash-shell.wasm` (non-shared memory). It MUST
-NOT wait on an atomic, take a lock shared with a worker, decode data or render the canvas (except in
-MT-R mode, §9). Shim work per input event MUST stay ≤ 0.05 ms at p99.
+**MUST** — *(Revised, ADR-0014.)* With the engine active, the main thread MUST run only the React
+application and the engine adapter, and no WASM module. It MUST NOT wait on an atomic, take a lock
+shared with a worker, decode Arrow data or render an engine canvas (except in MT-R mode, §9). Adapter
+work per input event MUST stay ≤ 0.05 ms at p99.
 
 #### T03-004 — At most one doorbell per queue per frame
 **MUST** — A producer MUST ring a doorbell only on the empty → non-empty transition of its queue, so
@@ -221,13 +231,12 @@ so the low-address control block stays valid.
 | `0x00080` | 64 | input ring **head** `u32` (own cache line) | shim → render | `Atomics.store` (release) |
 | `0x000C0` | 64 | input ring **tail** `u32`, `overflow_count u32` | render → shim | `Atomics.store` |
 | `0x00100` | 512 | captured-chord table: `generation u32`, `count u32`, 126 × `u32` chord hashes | render → shim | seqlock on `generation` |
-| `0x00300` | 64 | ui→core ring head/tail | shell → render | as input ring |
-| `0x00340` | 64 | core→ui ring head/tail | render → shell | as input ring + doorbell |
+| `0x00300` | 64 | *reserved* (was the ui↔core ring heads; withdrawn, ADR-0014) | — | — |
+| `0x00340` | 64 | *reserved* | — | — |
 | `0x00400` | 16 KiB | copy buffer: `len u32`, `mime u8`, UTF-8 text of the current canvas selection | render → shim | seqlock |
 | `0x04400` | 4 KiB | runtime counters (RUM, [T05 §4.7](T05-testing-and-performance.md#47-real-user-performance-telemetry-dash-observing-itself)); frame statistics at 0x04400–0x04D0F (`dash-protocol::layout`) | all → shell | relaxed atomics |
 | `0x10000` | 64 KiB | input ring data | shim → render | SPSC |
-| `0x20000` | 64 KiB | ui→core ring data | shell → render | SPSC |
-| `0x30000` | 64 KiB | core→ui ring data | render → shell | SPSC |
+| `0x20000` | 128 KiB | *reserved* (was the ui↔core ring data; withdrawn, ADR-0014) | — | — |
 
 Outside the control block, the **chunk arena** (owned by data workers) and the **render staging
 slabs** are ordinary Rust allocations in the shared heap (`talc` or `dlmalloc` with atomics).
@@ -259,16 +268,18 @@ audited allowlist.
 
 ### 4.4 State ownership
 
-The **render worker owns the authoritative state store** (`dash-state`): the Context (entity set,
-time window and time cursor, A/B windows and baseline, filters, selection, focus), the camera per
-scene, camera history and the undo stack. This keeps the input → state → frame path on one thread.
+*(Rewritten 2026-11-19, ADR-0014 §2; previously the render worker owned the state store and a
+Leptos shell held a mirror.)* The **TS application owns the authoritative state store** on the main
+thread: the Context (entity set, time window and time cursor, A/B windows and baseline, filters,
+selection, focus), the committed camera per scene, camera history and the undo stack. The engine
+holds only **render-local state**: the camera *during* a gesture, hover, and decoded columns. A
+gesture ends with an engine event (`commit`, `brush`, `select`); the store reduces it into a
+Context change and pushes the result back through `ChartFrame.setTimeWindow` and the spec. DOM edits
+(a filter chip removed, a time typed in the picker, a table row clicked) are commands to the same
+store. Undo/redo therefore has one owner, and the input → frame path for a gesture still stays in
+the render worker.
 
-The shell holds a **read-only mirror**: Leptos signals updated from `ContextChanged` records on the
-core → ui ring. DOM edits (a filter chip removed, a time typed in the Ribbon, a table row clicked)
-go to the render worker as `Command` records on the ui → core ring and come back as
-`ContextChanged`. Undo/redo therefore has one owner.
-
-**Reducer.** `dash-state` is a pure reducer `(State, Command) → (State, Inverse, Effects)`. Effects
+**Reducer.** The TS Context store is a pure reducer `(State, Command) → (State, Inverse, Effects)`. Effects
 are query invalidations for the planner, URL commits and DOM commands. Context propagation follows
 [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) exactly, as a table in
 code:
@@ -302,7 +313,7 @@ baseline from this Context.
 
 ### 4.5 Keymap and input contexts
 
-The **keymap lives in core**, so one table serves canvas and global shortcuts. Bindings are data
+*(Revised, ADR-0014.)* The **keymap lives in the TS application**, so one table serves canvas and global shortcuts. Bindings are data
 (`keymaps/default.toml`, plus the shipped presets), keyed by **physical key** (`KeyboardEvent.code`)
 and modifiers, so `Shift+1` and `?` work on non-US layouts. The binding table is
 [03 §4.2](../product/03-interaction-model.md#42-keyboard-expert-speed) verbatim, including its
@@ -310,9 +321,9 @@ context column and milestones.
 
 **Contexts and precedence.** Text input → Fly → 3D → Est / Board → S / Room → G, innermost first.
 Text input is decided in the shim: key events whose target is editable are not forwarded (§5.4), so
-Leptos handles typing, IME, autofill, `Esc` (leave the field) and `⌘Z` (undo typing).
+the React components handle typing, IME, autofill, `Esc` (leave the field) and `⌘Z` (undo typing).
 
-**Key state machine** (`dash-state::keys`), driven only by record timestamps `t_ms`, never by wall
+**Key state machine** (the TS keymap module), driven only by record timestamps `t_ms`, never by wall
 clock:
 - **Tap vs hold.** For keys with tap and hold actions (`.`, `V`) and hold-only actions (`Space`,
   `D`): released < 250 ms after KeyDown → tap; held ≥ 250 ms → hold, which starts at the 250 ms mark
@@ -323,7 +334,8 @@ clock:
   `g m` Metrics, `g p` Profiles); any other key or the deadline cancels it with no side effect. `g`
   alone is never bound.
 - **Region focus.** `F6` / `Shift+F6` emit `Command::FocusRegion(next | prev)` to the shell, which
-  moves DOM focus through top bar → canvas → Time Ribbon → open panels. The canvas element is
+  moves DOM focus through sidebar → page header → page content (canvas) → open panels, plus the
+  Time Ribbon in Space scenes (INT-015). The canvas element is
   focusable (`tabindex=0`), so keyboard users can always leave and re-enter it.
 
 **Captured chords.** Each time the active keymap or context changes, core writes the hashes of the
@@ -354,7 +366,7 @@ reserved keys of T03-011.
 
 ### 4.6 URL, history and camera encoding
 
-The URL is **derived from state**. `dash-state::url` encodes the Context, scene and camera into the
+The URL is **derived from state**. The TS URL codec encodes the Context, scene and camera into the
 [02 §4](../product/02-information-architecture.md#4-url--state-model) patterns
 (`/t/{tenant}/space/{scene}?e=…&from=…&to=…&cmp=…&f=…&cam=…&persp=…`, `/t/{tenant}/board/{uid}?var-x=…&vp=…`,
 `/t/{tenant}/inv/{id}#evidence-{n}`, `/t/{tenant}/incident/{id}`, `/t/{tenant}/alerts/{view}?…`).
@@ -478,6 +490,10 @@ control to the BFF.
 
 ### 5.3 Core ↔ shell messages
 
+*Superseded (ADR-0014 §3, §0 above): the rings and `dash-shell::bridge` are withdrawn. The records
+below survive only as the payloads of `ChartFrame` calls (ui → core) and engine events (core → ui);
+`ContextChanged` is replaced by the `commit` event.*
+
 Both rings carry `[kind u16][len u16][seq u32][postcard payload]` records, defined once in the
 `dash-protocol` crate that both modules link. The shell side is `dash-shell::bridge`, which copies
 records with `Uint8Array::copy_from`/`copy_to`.
@@ -558,7 +574,7 @@ and scene updates, so every record present at frame start is reflected in that f
 
 ### 5.5 Browser integrations
 
-These are implemented in **Rust via `web-sys`** in the shell and cost no hand-written JS:
+*(Revised, ADR-0014.)* These are implemented in the TS application:
 `history` push/replace and `popstate`, downloads (Blob + `<a download>`, used by CSV export),
 `navigator.clipboard.writeText`, `document.title`, `navigator.keyboard.getLayoutMap()`,
 `visibilitychange`, and `PerformanceObserver` for long tasks and long animation frames
@@ -579,8 +595,7 @@ decisions, `copy`) or a dedicated thread for latency (input) stay in JS.
   third-party glue. `worker.js` already supports `role = "pool"`, so a later milestone can replace
   the helper with `rayon::ThreadPoolBuilder::spawn_handler` driven by the shim (§13, Q2).
 - **Build profile.** `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`. Core is optimised with
-  `wasm-opt -O3`, shell and satellites with `-Oz`. Leptos and the component kit get per-package
-  `opt-level = "z"`. DWARF is split off and kept server-side to symbolicate RUM panics.
+  `wasm-opt -O3`, satellites with `-Oz`. DWARF is split off and kept server-side to symbolicate RUM panics.
 - **Arrow.** Depend on `arrow-ipc`, `arrow-array`, `arrow-buffer`, `arrow-schema` and `arrow-data`
   with default features off, not the `arrow` umbrella crate, to keep the compute kernels out of core.
 
@@ -615,8 +630,8 @@ CSP values above. A deployment that strips them MUST still work, in ST mode (§9
 | Control block, rings | core shared memory, 256 KiB | render |
 | Arrow chunks, staging slabs | core shared memory (chunk arena) | data workers; layout in [T04 §5.7](T04-wire-format-and-data-plane.md#57-zero-copy-path-from-network-to-gpu) |
 | GPU buffers and textures | GPU (counted in the tab on unified-memory machines) | render |
-| Context, camera, undo stack, keymap | core (render worker) | render |
-| Context mirror, DOM state | shell memory | shell |
+| Context, committed camera, undo stack, keymap | TS application (main thread) | TS application |
+| Gesture camera, hover, render-local state | core (render worker) | render |
 | Chunk and scene cache | IndexedDB, from data-0 via `web-sys` | [T04 §6.1](T04-wire-format-and-data-plane.md#61-indexeddb-chunk-cache) |
 | User keymap remaps, Prefs | Postgres user preferences ([T11](T11-postgres-schema.md)), cached in shell | shell |
 | Compiled WASM | browser HTTP and code cache | browser |
@@ -634,10 +649,14 @@ MUST switch affected viewports to rollups within 1 s, and MUST NOT let `memory.g
 
 ### 7.1 Startup sequence (warm HTTP cache, reference (a))
 
+*(Revised, ADR-0014.)* "shell" below is the React application's JS entry (ADR-0014 §8), not a WASM
+module; the engine (core-mt) loads with the first chart frame, and the timeline shows a route that
+opens with one.
+
 ```
  t(ms) 0        50        150       300       450       600        800      1000
        │ HTML+shim│          │         │         │         │          │         │
- main  ├─probe──┤ compileStreaming(shell) ─┤ shell start → chrome DOM painted (FCP) ┊
+ main  ├─probe──┤ load app JS ────────────┤ React start → chrome DOM painted (FCP) ┊
        │        ├ fetch /bootstrap ──┤     │                                      ┊
        │        ├ compileStreaming(core-mt) ───────┤ post Module to workers         ┊
  render│                                           ├inst┤ adapter+device ┤ pipelines ┤ first frame (cached scene)
@@ -648,18 +667,18 @@ MUST switch affected viewports to rollups within 1 s, and MUST NOT let `memory.g
 | Phase | Budget | Notes / ties to 09 |
 |---|---|---|
 | HTML parse + shim execute + capability probe | ≤ 30 ms | shim is ~6 KB brotli, `modulepreload` |
-| Shell compile + instantiate (code-cached) | ≤ 120 ms | from `compileStreaming` started at t ≈ 30 ms |
-| **First contentful paint** (top bar, Time Ribbon skeleton) | **≤ 300 ms** | no data spinners ([VL-015](../product/08-visual-language.md#vl-015--no-spinners-on-data)) |
+| Application JS parse + first render (code-cached) | ≤ 120 ms | from module load started at t ≈ 30 ms |
+| **First contentful paint** (sidebar and page header) | **≤ 300 ms** | no data spinners ([VL-015](../product/08-visual-language.md#vl-015--no-spinners-on-data)) |
 | Core compile (code-cached) | ≤ 150 ms | in parallel with the shell |
 | Worker instantiate (each, shared memory) | ≤ 30 ms | all workers in parallel |
 | WebGPU adapter + device | ≤ 120 ms | WebGL2 context ≤ 40 ms |
 | Pipeline creation for the first scene's marks | ≤ 100 ms | M1/M3/M4/M8 first; others compiled in idle frames |
 | **First canvas frame** (from the IndexedDB scene snapshot, hatched as stale) | **≤ 600 ms** | [PRF-026](../product/09-performance-contract.md#prf-026--show-cached-marked-stale) |
-| **Interactive shell** (top bar, Time Ribbon and palette responsive; `⌘K` accepted) | **< 1.0 s** p75 of 20 runs on (a) and (b) | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) |
+| **Interactive shell** (sidebar, page header and palette responsive; `⌘K` accepted) | **< 1.0 s** p75 of 20 runs on (a) and (b) | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) |
 | Cold (no HTTP cache): network-bound | ≤ 2.5 s on 50 Mbit/s | informational; core ~1.9 MB br |
 
 Preload: `index.html` carries `<link rel="modulepreload">` for the shim and
-`<link rel="preload" as="fetch" crossorigin>` for the shell and **core-mt**. The server sets
+`<link rel="preload" as="fetch" crossorigin>` for **core-mt** on routes that open with a chart frame; the application JS is `modulepreload`ed. The server sets
 COOP/COEP, so isolation is the expected case. Chrome caches compiled code for streamed WASM; other
 engines' code caching is measured in M-UI0, and the ≤ 150 ms figure may not hold there.
 
@@ -669,7 +688,7 @@ engines' code caching is measured in M-UI0, and the ≤ 150 ms figure may not ho
 |---|---|---|
 | Main-thread time per input event (shim) | ≤ 0.05 ms p99 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) |
 | Input record → visible in render frame | read at frame start; ≤ 1 frame median, ≤ 2 frames p99 | [PRF-003](../product/09-performance-contract.md#prf-003--input-to-photon), [PRF-004](../product/09-performance-contract.md#prf-004--input-to-photon-hard-limit) |
-| Main-thread shell work per frame during canvas interaction | ≤ 2 ms p99 (mirror updates only) | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) |
+| Main-thread application work per frame during canvas interaction | ≤ 2 ms p99 (engine event handling only) | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) |
 | Doorbells per queue per frame | ≤ 1 | — |
 | Render worker frame CPU (excluding GPU) | ≤ 8 ms p99 on (b) | [PRF-002](../product/09-performance-contract.md#prf-002--frame-rate-floor) |
 
@@ -680,13 +699,13 @@ Brotli sizes, checked per PR by gate `ci:bundle-size` ([PRF-009](../product/09-p
 | Artefact | Budget | Notes |
 |---|---|---|
 | shim (all files) | ≤ 8 KB | |
-| `dash-shell.wasm` + glue | ≤ 700 KB | Leptos core, kit core, bridge |
+| ~~`dash-shell.wasm` + glue~~ | — | Withdrawn; the application is budgeted as JS in ADR-0014 §8 |
 | `dash-core-mt.wasm` + glue | ≤ 1 900 KB | wgpu (WebGPU + GL), arrow-ipc, marks, scales, text shaping, planner, local engine |
 | `dash-core-st.wasm` + glue | ≤ 1 900 KB | ST fallback (§9.2); loaded instead of core-mt when not isolated (not eager) |
 | **Eager total** | **≤ 2 600 KB** | 400 KB headroom below the 3 MB ceiling of [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) |
 | MSDF atlases (Inter + JetBrains Mono, Latin) | ≤ 250 KB | not WASM; other scripts lazy |
 | `dash-editor.wasm` | ≤ 600 KB | lazy |
-| `dash-rooms-admin.wasm` | ≤ 500 KB | lazy |
+| ~~`dash-rooms-admin.wasm`~~ | — | Withdrawn (React route chunks) |
 | Each workbench satellite | ≤ 400 KB | lazy |
 | `dash-geo.wasm` | ≤ 800 KB | lazy, M-UI5 |
 | `chrono-tz` slice | ≤ 40 KB per region group | lazy |
@@ -739,7 +758,7 @@ line layout without `cosmic-text`.
 | No OffscreenCanvas | **Main-thread render (MT-R)** | `dash-core-st` on main, time-sliced (≤ 8 ms per slice), data decoded in a worker and transferred. Static until MT-R ships (§11). | banner; only Lens, Alert Lens and workbenches supported; Atlas falls back to the Explorer list ([15](../product/15-estate-navigation.md)) |
 | No WebGL2 either | **Static** | shell only; viewports show server-rendered PNGs from the BFF's native renderer ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)), refreshed on Context change | "Interactive charts unavailable on this browser"; Alert Lens, ack and silence still work |
 | GPU device lost | recover | render recreates the device and re-uploads from arena chunks (CPU-resident) | ≤ 500 ms with no blank frame: the last frame stays on screen; logged |
-| Worker crash / WASM trap | recover | panic hook records the trace (RUM); `boot.js` respawns the worker; data workers are restartable; a render restart re-reads the Context from the shell mirror and the URL | toast "Recovered from an error"; a second crash in 60 s → reload prompt with the replay attached ([T05](T05-testing-and-performance.md)) |
+| Worker crash / WASM trap | recover | panic hook records the trace (RUM); `boot.js` respawns the worker; data workers are restartable; a render restart re-reads the Context from the TS application's store, which resends each frame's spec, data and time window | toast "Recovered from an error"; a second crash in 60 s → reload prompt with the replay attached ([T05](T05-testing-and-performance.md)) |
 | Memory near cap | degrade | T03-023, T04 eviction: raw → rollup; LOD bias raised | coverage meter "reduced resolution (memory)" |
 | HTTP/1.1 to the BFF (proxy downgrade) | degrade | works, 6-connection limit | RUM flags `nextHopProtocol`; admin diagnostic |
 | Stale shim after deploy (layout version mismatch) | reload | T03-005 | "Pulsus was updated — reload" |
@@ -799,9 +818,9 @@ Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
 | Milestone | Ships |
 |---|---|
 | M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode with the `-st` artefact, size gate; no OffscreenCanvas → Static |
-| M-UI1 | shell/core split (Leptos on main), ui↔core rings, keymap in core with captured chords, URL/history and `cam` codec, undo stack, `dash-editor` satellite, workbench satellites, MT-R mode |
+| M-UI1 | *Superseded (ADR-0014):* the TS keymap, URL/history and `cam` codec and undo stack ship with the React application; workbench satellites and MT-R mode follow the engine |
 | M-UI2–M-UI3 | layout worker under load (T14 (draft)), local engine in core (T13 (draft)), memory degradation at scale |
-| M-UI5 | `dash-geo`, admin rooms satellite, `sw.js` (T20 (draft)) |
+| M-UI5 | `dash-geo`, `sw.js` (T20 (draft)) |
 | M-UI6 | gamepad and SpaceMouse capture; third-party vis satellites ([T18](T18-security.md)) |
 
 Feature flags in `/bootstrap`: `force_tier`, `force_mode`, `n_data`, `pool_size`. The layout version
@@ -812,13 +831,13 @@ which forces a reload.
 
 | Alternative | Why not |
 |---|---|
-| Single module on main + workers sharing memory | Rust on main would hit `memory.atomic.wait` through std locks and allocator contention; it would trap or jank. Splitting shell and core costs one message hop for DOM updates, which is cheap |
+| Single module on main + workers sharing memory | Rust on main would hit `memory.atomic.wait` through std locks and allocator contention; it would trap or jank. Under ADR-0014 the main thread runs no WASM at all |
 | Rust does fetch via `web-sys` directly (no `net.js`) | Workable, and kept as a fallback. The JS pump is ~65 lines, keeps the promise/stream plumbing out of WASM and shrinks core. Revisit if the line budget is tight |
 | `postMessage` for input | One task hop per event, structured-clone cost, and a main → worker latency of a few ms under load. That breaks ≤ 1 frame |
 | Function-level code splitting of threaded WASM (`wasm-split`-style tooling) | Not mature for shared-memory modules today. Re-evaluate in M-UI3 for workbench-specific code |
 | Render on main thread | Any DOM room work would drop canvas frames. Kept only as the MT-R fallback |
 | Data workers as rayon threads | Idle rayon threads block in `Atomics.wait` and would starve their fetch event loop |
-| Keymap in the shell (DOM) | Canvas shortcuts would need a hop to the render worker per key; two owners of focus context |
+| Keymap in the render worker | *(Reversed by ADR-0014.)* The keymap is in the TS application, which owns focus context; canvas gestures still read the input ring in the worker |
 | Camera moves on the undo stack | Mixes navigation with edits; `⌘Z` would fly the camera. Camera history is browser history instead |
 
 ## 13. Open questions
@@ -861,3 +880,5 @@ which forces a reload.
 | 1.0-rc | 2026-11-18 | #22: §5.1 states what `ci:shim-lint` counts, the `/` rule for shim code and the SHA-256 pins checked by `ci:dep-audit`; generated output goes to the git-ignored `web/shim/gen/<crate>/`; T03-001 exclusions and the §10 `layout.gen.js` diff apply once their regenerate-and-compare checks exist; §7.3 is report-only until enforcement is enabled and names the artefact → path mapping |
 | 1.0-rc | 2026-11-18 | #23: §4.3 header and counters rows name the fields and offsets; T03-005 names its generator (`cargo xtask gen`, `layout.gen.js`); §5.1 admits `layout.gen.js` and `gen/dash-core-{mt,st}/` by regenerate-and-compare; §5.2 handshake `mode`, `query`, `memory` and the worker messages; §5.4 coalescing and flush bounds, the wrap marker; §7.3 `dash-core-st` row; §9.2 ST batch bound, T2 restart, Static without OffscreenCanvas, milestone note; T03-025 milestone note; new §9.3 status codes; §10 `?mode=t2`; §11 ST with the `-st` artefact in M-UI0 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 applicability table; the document now describes the chart engine runtime; T03-001, T03-009 and T03-013 revised; shim line budget withdrawn |
+| 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): IA-021 row verified by `e2e:rooms-reachable`; §4.5 region focus order; §7.1 first paint and interactive shell are the sidebar, page header and palette |
+| 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §0 topology note; §2 goals, §4.1 artefacts (`dash-shell.wasm`, `dash-rooms-admin.wasm` withdrawn), §4.2 diagram and thread table, T03-003, §4.4 (the TS application owns the state store; the engine holds render-local state), §4.5–§4.6 TS keymap and URL codec, §5.3 marked superseded, §5.5, §6, §7.3, §11 and §12 rewritten; Leptos and the ui↔core rings removed |

@@ -3,16 +3,34 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
-| **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
+
+## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
+
+The browser application is TypeScript and the BFF is Go; the Rust/WASM chart engine arrives with
+#68 ([ADR-0014](../adr/0014-typescript-react-web-client.md) §5, [ADR-0015](../adr/0015-go-bff.md)).
+
+| Topic | Until the engine (#68) | From the engine on |
+|---|---|---|
+| Results to the browser | **JSON frames** (`application/json`), one schema per result type in `api/openapi.yaml`, carrying the same fields, `key_hash` and coverage block as the §4.3 schemas; decoded in TS at one seam, `client/src/data/decode.ts` | Arrow IPC in DSF frames (§4.3–§5.4) for engine-rendered frames, streamed to the engine worker without main-thread parsing; JSON for config, CRUD and DOM-only results |
+| Schemas | §4.3 is authoritative; the machine-readable copy is `wire/schemas/*.yaml` (field names, Arrow types, metadata keys) with golden IPC fixtures in `wire/fixtures/` | The Go writer reproduces the fixtures and the Rust engine decodes them (`unit:codec-roundtrip`, both sides) |
+| BFF conversion (§5.6) | Go: streaming `encoding/json` token decoder; `strconv` for value strings; protobuf via `google.golang.org/protobuf` | Plus Arrow Go (`arrow-go`) builders and IPC writer with 64-byte alignment |
+| `dash-keyhash` | Go in the BFF, writing `key_hash` into JSON frames | Also Rust in the engine and `pulsus-synth`; one fixture corpus fixes the hash of sorted canonical label sets |
+| `QueryRequest` (§5.2) | Built by the TS client from the OpenAPI types, parsed by the Go BFF | Same |
+| Browser byte path (§4.1, §5.7), T04-015 | Not applicable: `fetch` + JSON decode in TS | Stand, through the engine adapter (the successor of `shim/net.js`, [T03](T03-browser-runtime.md) §0) |
+| IndexedDB chunk cache (§6.1) | Implemented in TS; caches JSON frames; T04-017 and T04-018 stand | Caches Arrow chunks |
+| R1 harness (§10) | — | `crates/dash-bench-wire` in the engine workspace, driven by Playwright through the engine adapter |
 
 ## 1. Context & problem
 
 [ADR-0005](../adr/0005-arrow-wire-format.md) chose Arrow IPC from the BFF to the browser. Until
 PulsusDB emits a columnar format natively (R1 in [pulsusdb-requirements](pulsusdb-requirements.md)),
-the BFF converts JSON → Arrow. PulsusDB today answers range queries in Prometheus/Loki-style JSON,
+the BFF converts PulsusDB's JSON: in M-UI1 into **JSON frames** for the TS client, and from the
+chart engine on (#68) into Arrow (§0). PulsusDB today answers range queries in PromQL-compatible JSON
+(the standard query-API response shape) for metrics and its native logs JSON,
 with sample values as **strings** and log timestamps as nanosecond **strings** (PulsusDB API §2.1,
 §3.2). Trace fetch is OTLP JSON or protobuf by `Accept` (§4.1). Profiles are Connect JSON or proto
 (§5). The current upstream API reference documents no Arrow output.
@@ -91,14 +109,17 @@ Query *semantics* (what to ask, at which step, and the virtual-source resolution
 
 ### 4.1 Data path overview
 
+*The browser half below is the engine path (from #68, §0); until then JSON frames go to `fetch` and
+the TS decoder.*
+
 ```
  PulsusDB ──JSON / OTLP-proto / Connect-proto──► BFF (T06) ◄── Postgres virtual sources (D2):
                                                   │              ALERTS, ALERTS_FOR_STATE,
                                                   │              pulsus_anomaly_score,
                                                   │              {source="pulsus-dash"} events,
                                                   │              fallback pyramid tiles
-                                                  ├─ scope rewrite (T10, draft) → PulsusDB request (+X-Pulsus-Query-Id)
-                                                  ├─ streaming parse → arrow-rs builders → RecordBatch
+                                                  ├─ scope check (v1: text unchanged, restricted scopes refused; T07 §0) → PulsusDB request (+X-Pulsus-Query-Id)
+                                                  ├─ streaming parse → JSON frames (M-UI1); Arrow Go builders → RecordBatch (from the engine, §0)
                                                   ├─ coverage assembly (§5.3)
                                                   └─ DSF framing (§5.1) ──HTTP/2 body or WS binary──┐
  browser                                                                                          ▼
@@ -111,9 +132,11 @@ Interaction reads only published chunks. A network response changes what the nex
 never gates a frame (T01-005).
 
 #### T04-001 — One columnar format on the data plane
-**MUST** — Every data-plane result from the BFF to the browser, whether its source is PulsusDB or a
-Postgres virtual source, MUST be one or more Arrow IPC messages in DSF frames, using the schemas of
-§4.3. JSON MUST be used only for requests and for config/CRUD.
+**MUST** — Every data-plane result from the BFF to the chart engine, whether its source is PulsusDB
+or a Postgres virtual source, MUST be one or more Arrow IPC messages in DSF frames, using the schemas
+of §4.3. Until the engine lands, and afterwards for DOM-only results, results MUST be JSON frames whose
+schema is the OpenAPI image of the §4.3 schema of the same name (§0). JSON MUST otherwise be used
+only for requests and for config/CRUD.
 
 ### 4.2 Conventions for every schema
 
@@ -124,9 +147,9 @@ Postgres virtual source, MUST be one or more Arrow IPC messages in DSF frames, u
   There are **no delta or replacement dictionaries in v1**: arrow-rs's handling of IPC delta
   dictionaries must be verified first.
 - **Identity.** Series, streams and entities carry a `key_hash: UInt64`, the `xxh3_64` of the sorted
-  canonical label set, computed by the shared `dash-keyhash` crate in the BFF (and, for synthetic
-  data, in `pulsus-synth`). It drives stable series colours (T02-005) and cache keys.
-- **Alignment.** The BFF writes IPC with 64-byte buffer alignment (`IpcWriteOptions::try_new(64, …)`),
+  canonical label set, computed by `dash-keyhash` in the BFF (Go) and, for synthetic data, in `pulsus-synth`; both match
+  one fixture corpus (§0). It drives stable series colours (T02-005) and cache keys.
+- **Alignment.** The BFF writes IPC with 64-byte buffer alignment (an Arrow Go writer option, §0),
   so float columns are naturally aligned inside the 64-byte-aligned arena slab.
 - **Compression.** No Arrow body compression. The browser's native HTTP decompression
   (`Content-Encoding: zstd` where the client advertises it, otherwise `br` or `gzip`) and WS
@@ -338,7 +361,7 @@ the synthetic estate ([T05 §4.5](T05-testing-and-performance.md#45-seeded-synth
 Metadata: `sel_total`, `base_total`. Keys excluded by cardinality caps are listed in the coverage
 block, so "unchanged" and "not measured" stay distinguishable.
 
-**`events/1`**. Used by the Time Ribbon and event markers: annotations and alert transitions (from
+**`events/1`**. Used by event markers on time charts and by the Time Ribbon in Space scenes: annotations and alert transitions (from
 Postgres, M-UI1), Dash-derived change events (the `{source="pulsus-dash"}` stream, Postgres), and the
 PulsusDB change feed (R8, M-UI3). Columns: `seq UInt64`, `ts`, `end` nullable,
 `kind Dictionary(UInt8,Utf8)` (deploy, config, flag, alert, annotation, invalidate), `entity_id`,
@@ -446,7 +469,8 @@ violation MUST fail only that part, with an `internal` error and a RUM event.
 | `GET /api/dash/v1/live` | WebSocket, subprotocol `pulsus-dash.v1` | §5.5 |
 | `GET /api/dash/v1/bootstrap` | — | JSON: session, tenant, `scope_epoch`, wire versions, flags ([T03 §5.2](T03-browser-runtime.md#52-bootstrap-and-the-network-byte-pump)) |
 
-`QueryRequest` is JSON because it is small and is generated and parsed only in Rust.
+`QueryRequest` is JSON because it is small; the TS client builds it from the OpenAPI types and the Go
+BFF parses it.
 [T07](T07-scene-query-planner.md) owns the field semantics.
 
 ```json
@@ -469,7 +493,7 @@ violation MUST fail only that part, with an `internal` error and a RUM event.
 | `log_fields` | `/api/logs/v1/detected_fields` | `compare/1` (single side) | R6 |
 | `trace_fetch` | `/api/traces/v1/trace/{id}` (protobuf) | `trace_tree` + parts | — |
 | `traceql_search` | `/api/traces/v1/search` | `span_points` (root spans) | — |
-| `traceql_metrics` | `/api/traces/v1/metrics/query_range` (Tempo-native body) | `metric_matrix.grid` / `heatmap` | R1 |
+| `traceql_metrics` | `/api/traces/v1/metrics/query_range` (native trace-metrics body) | `metric_matrix.grid` / `heatmap` | R1 |
 | `span_points` | — (R2 not available) | `span_points` | R2 → `heatmap` + brushed `trace_fetch` |
 | `service_graph` | `/api/traces/v1/service_graph` | `entity_edges` | R5 → N windowed calls; edge cap per assumption A1 |
 | `profile_merge` / `profile_diff` | Connect `SelectMergeStacktraces` / `Diff` (`application/proto`) | `profile_flame(_diff)` | — |
@@ -577,15 +601,15 @@ MUST coalesce metric updates or drop the oldest tail lines and report `dropped_c
 
 ### 5.6 JSON → Arrow conversion in the BFF (R1 fallback)
 
-- **Parsing.** A streaming `serde_json` `Deserializer` with hand-written visitors, so no `Value` tree
-  is built. Value strings are parsed with `lexical-core`. Builders flush a batch every 64 series. The
+- **Parsing.** A streaming `encoding/json` token decoder with hand-written state machines, so no
+  generic tree is built. Value strings are parsed with `strconv.ParseFloat`. Builders flush a batch every 64 series. The
   matrix `result` array is consumed series by series, so the first batch is emitted before the
   upstream body ends.
 - **Parallelism.** Long ranges are time-split (§4.4) into k ≤ cores sub-requests. Each is parsed on
   its own task, and the results are re-ordered by sub-range.
 - **Upstream compression.** On the LAN the BFF sends `Accept-Encoding: identity`, which spares
   PulsusDB's level-7 gzip. This is configurable for WAN deployments.
-- **Traces and profiles** come as protobuf (`prost`) into Arrow. That is cheaper than JSON because
+- **Traces and profiles** come as protobuf (`google.golang.org/protobuf`) into Arrow. That is cheaper than JSON because
   values are already binary.
 - **Budget** (native, per BFF core): ≥ 150 MB/s of Prometheus JSON, about 6 M points/s. 1 000 × 10 000
   points with k = 4 → ≤ 450 ms added server time. This is the cost R1 removes, and the harness (§10)
@@ -702,11 +726,11 @@ and the synthetic Lens load in CI.
 
 ## 8. Security, tenancy & RBAC
 
-- The BFF injects the tenant (`X-Scope-OrgID`, `X-Pulsus-Database`) and data-scope matchers before
-  every upstream call (T10 (draft); R12 fallback). The browser never chooses a tenant beyond what
+- The BFF sets the tenant (`X-Scope-OrgID`, `X-Pulsus-Database`) on every upstream call. For data
+  scopes, in v1 it sends query text unchanged and refuses restricted principals with `scope_denied` ([T07](T07-scene-query-planner.md) §0, T07-002); data-scope matchers are injected from the parser design (T10 (draft); R12 fallback). The browser never chooses a tenant beyond what
   `/bootstrap` granted.
 - Field-level masking ([11](../product/11-enterprise.md)) is applied by the BFF *while building
-  batches*. Masked values are replaced, not just hidden: a masked `line` or attribute shows as
+  frames*. Masked values are replaced, not just hidden: a masked `line` or attribute shows as
   `"‹masked›"` and is listed in `coverage.excluded_dims`.
 - Postgres virtual sources are read under row-level security with the session's tenant
   ([ADR-0012](../adr/0012-derived-state-in-postgres.md)).
@@ -715,7 +739,8 @@ and the synthetic Lens load in CI.
 - IndexedDB keys include `tenant_hash` and `scope_epoch`, and no raw query text (T04-017).
 
 #### T04-019 — Masking happens while building batches
-**MUST** — Masked fields MUST be replaced in the Arrow batch by the BFF before framing, and MUST be
+**MUST** — Masked fields MUST be replaced in the frame (the JSON frame until the engine, the Arrow
+batch from then on) by the BFF before framing, and MUST be
 listed in `coverage.excluded_dims`. Unmasked values MUST NOT reach the browser.
 
 ## 9. Failure modes & degradation
@@ -762,7 +787,7 @@ promised in R1; gate `bench:decode-r1`):
   ≤ J + gzip.
 
 **Decision procedure: Arrow vs columnar protobuf for the PulsusDB → BFF leg**
-([ADR-0005](../adr/0005-arrow-wire-format.md)). BFF → browser stays Arrow regardless.
+([ADR-0005](../adr/0005-arrow-wire-format.md)). BFF → browser is Arrow from the engine on regardless (JSON frames before, §0).
 
 1. Run the harness and record each metric for A1 and P.
 2. Compute the BFF cost per response for each: P needs transcoding to Arrow, while A1 passes through
@@ -842,3 +867,4 @@ support in the BFF for one release.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T04-001 to T04-019; D2 applied (no write path, Postgres virtual sources and fallback pyramids); `events/1` at M-UI1; coverage `data_end` and ✓ exact; ranks, generations and eviction order; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |

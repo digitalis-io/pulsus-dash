@@ -3,10 +3,56 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
+
+## 0. Applicability under ADR-0015 and ADR-0014 (2026-11-19)
+
+The planner runs in the Go BFF ([ADR-0015](../adr/0015-go-bff.md)); the browser is a TS application
+with the chart engine later ([ADR-0014](../adr/0014-typescript-react-web-client.md)). The pipeline,
+the rules T07-001 to T07-030 and the budgets stand, except that every rule or structure that needs a
+parsed query applies only from the later parser design (table below). Rust specifics map as follows:
+
+| Was | Now |
+|---|---|
+| `dash-planner` crate | Go package `internal/planner` |
+| `pulsus-plan` IR shared with the browser (WASM) | **Not shared.** §5.2 is authoritative as a data shape (the **v1 IR** of §5.2 now; the parsed IR of §5.2 from the parser design), implemented as Go types in `internal/planner/ir` and used in-process by T15 and T16. T13 (draft), the browser's local engine, receives `LogicalQuery` in the JSON form published in `api/openapi.yaml` and is held to the same semantics by fixtures in `wire/fixtures/plan/`; T13 is revised before M-UI3 |
+| Parser crates in §4.2 | **No query parsing in the BFF in v1** ([ADR-0015](../adr/0015-go-bff.md), "Query validation"). PromQL, LogQL and TraceQL text is opaque to the planner (T07-002 and the v1 rules below); PulsusDB's answer is the validity check. Parsing in the planner waits for the later parser design (below) |
+| `dash-vsrc`, `pulsus-colexec` (virtual sources, M-UI4) | Go packages `internal/vsrc` and `internal/colexec`; T07-021 stands |
+| Rust code blocks (§5) | Normative as data shapes; the wire form is the OpenAPI schema |
+| Frames to the browser | JSON frames until the engine (#68), then Arrow ([T04](T04-wire-format-and-data-plane.md) §0) |
+| Hidden tab via the shim | `document.visibilityState` in the TS application |
+
+**v1: queries are opaque in the BFF.** Until a later parser design is accepted, no part of the
+planner parses, lexes or rewrites query text. A query is the **v1 IR** of §5.2: an
+`OpaqueQuery{lang, kind, text}` whose `text` is sent to PulsusDB byte-for-byte as received (after
+Board-variable substitution, which replaces `$name` and `${name}` tokens textually, M-UI5).
+
+| Planner feature | v1 behaviour (no parse) | From the parser design |
+|---|---|---|
+| Identity (§4.2) | `LogicalKey = xxh3_128(signal, lang, kind, text bytes, shape)` on the **exact** text: no trimming, no whitespace or comment normalisation | Canonical printing (§4.2) |
+| Step, level, alignment (§4.3, T07-003, T07-004) | Unchanged: they depend on the viewport range and width, not on the text | — |
+| Exactness prediction (§4.3, T07-005) | `Predicted{level}` from the range→level rule alone (`predict_exactness(level)`); `RawExact` only when the level is `None` | Per-function rollup eligibility |
+| Dedupe (§4.4, T07-007) | Identity, range union and display derivation on the exact-text key | — |
+| Classification (§4.11.2) | Always `SourceClass::PulsusDb` | `Virtual`, `Mixed` |
+| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so | Virtual resolution |
+| Fusion (§4.4, T07-006), virtual sources and joins (§4.11, T07-021 to T07-023), selector-based estimates (§4.8), metrics-family scopes (T07-015) | Not available | All of these |
+| Expressions (§4.14, T07-030) | v1 form in §4.14: the client sends the expanded expression as one query text | Operand reuse (T07-030) |
+| Scope rewrite (§4.7, T07-014) | The v1 `ScopeRewriter` returns the text unchanged with a full-tenant `ScopeProof` for an unrestricted principal and refuses every restricted principal with `scope_denied` (T07-002) | T10 (draft), M-UI6 |
+| Native operations (§4.12: R2, R4, R5, R6, R9; from M-UI2) | Built by text composition from structured inputs Dash holds (catalogue, Context, templates), never from parsing user text. An operation that would need a selector *extracted from* a user query is unavailable | Selector extraction |
+| Validation | PulsusDB's parse error, at the position PulsusDB returns or on the whole query, mapped to the error envelope ([T09](T09-query-editors.md) §0) | — |
+
+Test: `unit:planner-opaque-key`: the texts ``up # note`` + newline + ``+ up`` and ``up # note + up``
+get different `LogicalKey`s; byte-identical texts share one physical query; the `query` parameter
+sent to `pulsus-fake` equals the received text byte-for-byte; a restricted principal gets
+`scope_denied` and no request.
+
+The **later parser design** is decided before the first milestone that needs one of the features
+above (fusion, M-UI2). The candidates are the browser's WASM build of PulsusDB's parser crates
+([ADR-0014](../adr/0014-typescript-react-web-client.md) §2) supplying a parsed form with the query,
+or a server-side parser; a server-side parser needs a new ADR that amends ADR-0015.
 
 ## 1. Context & problem
 
@@ -29,9 +75,9 @@ Postgres-backed **virtual sources**, evaluated in the BFF and joinable with Puls
 documented limits (§4.11). Fallback pyramids for a PulsusDB without R4 are Postgres Arrow tiles
 (§4.12).
 
-The planner runs in `dash-planner` on the BFF ([T06](T06-bff-architecture.md) §4.1). Its IR lives in
-the shared crate `pulsus-plan`, which also compiles to WASM, so the browser's local engine (T13
-(draft)) can answer the same logical plan.
+The planner runs in the Go BFF ([T06](T06-bff-architecture.md) §4.1, `internal/planner`). Its IR
+(§5.2) is Go types; the browser's local engine (T13 (draft)) receives the same logical plan in its
+JSON form and is held to the same semantics by shared fixtures (§0).
 
 ## 2. Goals / non-goals
 
@@ -51,7 +97,7 @@ the shared crate `pulsus-plan`, which also compiles to WASM, so the browser's lo
 
 **Non-goals**
 - PulsusDB query-language semantics. PulsusDB evaluates PromQL, LogQL and TraceQL; the planner only
-  rewrites selectors (scope, grouping fusion) and parameters. The exception is the documented PromQL
+  sets parameters and, from the parser design (§0), rewrites selectors (scope, grouping fusion). The exception is the documented PromQL
   and LogQL subset the BFF evaluates over virtual sources and joins (§4.11).
 - Wire framing ([T04](T04-wire-format-and-data-plane.md)), the local executor (T13 (draft)), query
   editors ([T09](T09-query-editors.md)).
@@ -72,7 +118,7 @@ the shared crate `pulsus-plan`, which also compiles to WASM, so the browser's lo
 | [AUD-041](../product/01a-audiences-and-perspectives.md#aud-041--show-data-trust) | §4.6 (Completeness per viewport, `data_age_ms`) | `itest:completeness-trailer` (T06 co-owns) |
 | [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) | §4.6, §4.11, §4.12, T07-024 | `itest:coverage-labels`: each fallback (R2, R5, R6, R9, Postgres pyramids, virtual sources, withheld families) produces a non-empty coverage label; a complete result reports 100 % |
 | [SRF-028](../product/04-surfaces.md#srf-028--query-explain) | §4.10 (plan explain, on-demand PulsusDB explain) | `itest:explain-matches-headers`: for a seeded 7-day query, the explain view's rollup, rows read and server time equal the PulsusDB explain response |
-| [SRF-030](../product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries) | §4.14 (multi-query expressions), T07-030 | `itest:planner-expressions`: queries A and B plus `A / B` return three result sets from two physical queries; the expression equals PulsusDB's own `A / B` within float tolerance |
+| [SRF-030](../product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries) | §4.14 (multi-query expressions), T07-030 | `itest:planner-expressions`: queries A and B plus `A / B` return three result sets; in v1 (§0) from three physical queries with the expression sent as expanded text (§4.14), including `unit:expr-expand-line-comment`, and from two once T07-030 applies; the expression equals PulsusDB's own `A / B` within float tolerance |
 | [INT-028](../product/03-interaction-model.md#int-028--live-mode) | §4.13 (LIVE head refresh), T07-028 | `itest:planner-live-refresh`: in LIVE, only the head tile is re-fetched each step, by delta; a hidden tab suspends refresh |
 | [INT-030](../product/03-interaction-model.md#int-030--comparison-baseline-ghost) | §4.1 (Context baseline), §4.4 | `itest:planner-baseline`: toggling the baseline ghost plans one extra physical query per series query (shifted range), served from cache when already held |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §5.1 (`Context` in every plan) | `itest:planner-context`: changing any Context member re-plans every viewport that reads it and no other |
@@ -106,16 +152,16 @@ the shared crate `pulsus-plan`, which also compiles to WASM, so the browser's lo
  browser (scene state, cameras)                              BFF dash-planner
  ─────────────────────────────                              ──────────────────────────────────────────────────────────
  ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1 Bind       templates/{{entity}}/$vars → concrete queries (catalogue)
- Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Lower      → LogicalQuery (parse, normalise, canonical hash,
+ Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Lower      → LogicalQuery (v1: OpaqueQuery, exact-text hash, §0;
  Cancel{viewport|plan}                                                   classify PulsusDB | Virtual | Mixed, §4.11)
  ApproachHint{entity, level, dist, dwell}                  3 Resolve    step from px, level prediction, grid alignment (§4.3)
  Pressure{level}                                           4 Merge      session-local dedupe, range-union, derivation, fusion (§4.4)
                                                            5 Place⚡     local answerability per logical query (§4.5)
                                                            6 Physicalise→ PhysicalQuery[] + VirtualQuery[] + Combine DAG (§4.11, §4.12)
-                                                           7 Scope      T10 scope::rewrite on EVERY physical/virtual query (§4.7)
+                                                           7 Scope      v1: identity / refuse restricted (§0); later T10 scope::rewrite (§4.7)
                                                            8 Place▣     cache tiles by scoped key; singleflight (§4.5)
                                                            9 Admit      budget check, priority, deadline (§4.8)
-                                                          10 Execute    pulsusdb-client | dash-vsrc, streams → Combine → Arrow frames
+                                                          10 Execute    pulsusdb-client | dash-vsrc, streams → Combine → frames (JSON, Arrow from the engine)
  ◄── frames{plan, viewport, pass, gen, exactness} ─────────11 Stream     per pass; Completeness trailer per viewport
 ```
 
@@ -132,15 +178,16 @@ incremental replan of one viewport in ≤ 0.2 ms, so a full replan per camera ch
 
 ### 4.2 Normalisation and identity
 
-Each query is parsed with the same parser crates as PulsusDB and the editors
-([T09](T09-query-editors.md)): `promql-parser` (the fork PulsusDB vendors), the PulsusDB LogQL and
-TraceQL crates (AGPL-3.0, licence-compatible under D3). It is then printed canonically: matchers
-sorted, whitespace and duration literals canonical (`1m0s`→`1m`), and redundant parentheses removed.
+**v1:** every query is an `OpaqueQuery` keyed on its exact text bytes (§0); no normalisation of any
+kind, so whitespace and comments keep their meaning. **From the parser design**, a parsed query is
+printed canonically (matchers sorted, whitespace and duration literals canonical (`1m0s`→`1m`),
+redundant parentheses removed, comments dropped by the parser) and
 `LogicalKey = xxh3_128(signal, canonical_text, shape)`.
 
-#### T07-002 — Unparseable text is opaque and fails closed
-**MUST** — Text that does not parse MUST be passed through opaquely, keyed on its raw text, with no
-fusion and no virtual-source resolution. Because its scope cannot be proven, it MUST be refused with
+#### T07-002 — Opaque text is sent unchanged and fails closed
+**MUST** — *(Revised 1.3-rc.)* Query text the planner does not hold in parsed form (in v1, every
+query) MUST be sent to PulsusDB byte-for-byte, keyed on its exact bytes, with no fusion, no
+virtual-source resolution and no rewrite. Because its scope cannot be proven, it MUST be refused with
 `scope_denied` unless the principal's scope is unrestricted.
 
 ### 4.3 Resolution: step from pixel width, and rollup level selection
@@ -171,7 +218,7 @@ pub fn resolve(range: TimeRange, px: u32, pass: Pass, sig: &SignalCaps, roll: &R
     let step         = step.max(range.len() / sig.max_intervals);           // 11 000 PromQL/LogQL, 10 000 TraceQL metrics
     let start        = range.start.floor_to(step);                          // grid alignment: PulsusDB read cache + our tiles
     let end          = range.end.ceil_to(step);
-    Resolved { start, end, step, level, exactness: predict_exactness(level, &expr_fns) }
+    Resolved { start, end, step, level, exactness: predict_exactness(level, &expr_fns) } // v1: predict_exactness(level), §0
 }
 // NICE = 1s 2s 5s 10s 15s 30s 1m 2m 5m 10m 12m 15m 30m 1h 2h 3h 6h 12h 1d 2d 7d
 ```
@@ -208,7 +255,7 @@ documented range→level rule; drift is caught by explain sampling ([T06](T06-bf
 50 % of the principal's interactive budget remains, and never for prefetch, agents or alert
 evaluation.
 
-**Exactness prediction.** `RawExact` if the level is `None`. `Rollup{level}` if a selector's
+**Exactness prediction.** *(v1, §0: `RawExact` if the level is `None`, otherwise `Rollup{level}` predicted from the range alone; the function check below applies from the parser design.)* `RawExact` if the level is `None`. `Rollup{level}` if a selector's
 function is in PulsusDB's rollup-eligible list (`rate`, `increase`, `*_over_time`
 min/max/sum/avg/last, instant selector…). `RawExact` (read raw) otherwise.
 
@@ -232,7 +279,7 @@ until a PulsusDB explain or R10 confirms it; it MUST NOT be shown as ✓ exact.
 
 Four mechanisms are applied in order, each recorded in the plan:
 
-1. **Identity.** The same `PhysKey` (scoped canonical query, step, aligned range, level) is one
+1. **Identity.** The same `PhysKey` (scoped query text: exact bytes in v1, canonical from the parser design; step, aligned range, level) is one
    physical query with N subscribers.
 2. **Range union.** For the same query and step with overlapping or adjacent ranges, one fetch covers
    the union when `len(union) ≤ 1.25 × Σ len(parts)`. Typical cases are split views, the ±1 window
@@ -240,7 +287,7 @@ Four mechanisms are applied in order, each recorded in the plan:
 3. **Display derivation.** When viewport B needs the same query at a coarser step than A, and A's
    range covers B's, B subscribes to A's data. The GPU decimates it (min/max per pixel column,
    [T02](T02-vis-engine.md)), so a Lens sparkline costs nothing extra.
-4. **Template fusion.** Lens templates mark repeated tiles as `foreach(label)`, for example the pod
+4. **Template fusion** *(from the parser design, §0)*. Lens templates mark repeated tiles as `foreach(label)`, for example the pod
    small-multiples strip. N bindings `f(sel{pod="a"})…f(sel{pod="z"})` become one grouped query
    `f(sel{service="checkout"}) by (pod)`, split client-side by label (`Combine::SplitBy`). Caps:
    PromQL `limit=` set to bindings + 10 %; LogQL metric results above 500 series are an error in
@@ -248,7 +295,7 @@ Four mechanisms are applied in order, each recorded in the plan:
    fusion splits into groups of ≤ 800.
 
 #### T07-006 — Fusion is declared, never inferred
-**MUST** — Template fusion MUST be applied only where the template author declared `fusable_by`
+**MUST** (from the parser design, §0) — Template fusion MUST be applied only where the template author declared `fusable_by`
 (T11 schema). The planner MUST NOT infer grouping or common sub-expressions from arbitrary PromQL,
 because the rewrite is not semantics-preserving in general (`topk`, `absent`, binary-op matching).
 
@@ -332,7 +379,8 @@ dependency index lists for it. Other viewports keep their generation and their d
 
 ### 4.7 RBAC rewrite insertion point
 
-The scope rewrite happens at **step 7: after physicalisation (step, window, fusion, fallback and
+*v1 (§0): the rewriter is the identity for unrestricted principals and refuses restricted ones; the
+text rewrite below applies from the parser design.* The scope rewrite happens at **step 7: after physicalisation (step, window, fusion, fallback and
 virtual-query generation are all decided) and before any cross-session cache key, singleflight or
 dispatch**. This matches T10 (draft)'s contract: "rewrite after planning, before dispatch".
 Rewriting the final *physical* text, rather than the logical query, means that queries the planner
@@ -379,7 +427,7 @@ owner's decision on [ADR-0013](../adr/0013-metrics-data-scopes.md), the planner 
    derivation, [T12](T12-entity-catalogue.md)).
 
 #### T07-015 — Metrics scopes fail closed per family (O1 pending)
-**MUST** — Until O1 is decided, the planner MUST enforce metrics data scopes on metric labels per
+**MUST** (from the parser design and M-UI6; in v1 restricted principals are refused, T07-002) — Until O1 is decided, the planner MUST enforce metrics data scopes on metric labels per
 ADR-0013 option B: families carrying every scope label are filtered by the scope; families missing
 any scope label MUST return no series to the scoped principal and MUST be reported in
 `Completeness.withheld`. A `target_info` join MUST NOT be used to enforce a scope. If O1 is decided
@@ -395,6 +443,11 @@ adjusted or shown as "+N restricted".
 
 Budget unit: **cost-seconds**, the estimated backend wall time (PulsusDB or Postgres). Estimates are
 made before execution and calibrated afterwards.
+
+**v1 estimate (no parse, §0):** `est = max(prior(signal, kind, level) × points, ewma(LogicalKey))`,
+where `points = range / step`, `prior` is a per-(signal, kind, level) cost per point calibrated from
+observed latencies, and `ewma` is the observed cost of the same exact-text key (absent on first
+use). The selector-based heuristics in the table below apply from the parser design.
 
 | Signal | Heuristic estimate (R14 fallback) | Inputs (all cheap, cached ≤ 60 s) |
 |---|---|---|
@@ -484,6 +537,9 @@ predicates and the BFF evaluation time.
 
 ### 4.11 Postgres-backed virtual sources
 
+*From the parser design (§0; M-UI4). Classification, push-down, evaluation and joins all need a
+parsed query. In v1 reserved names are refused by the byte match of §0.*
+
 [ADR-0012](../adr/0012-derived-state-in-postgres.md) decision 3: the BFF exposes Dash-derived state
 through the same query interface as telemetry. The planner owns the semantics; `dash-vsrc`
 ([T06](T06-bff-architecture.md) §4.12) executes them against the Postgres tables of
@@ -499,7 +555,7 @@ through the same query interface as telemetry. The planner owns the semantics; `
 | `{source="pulsus-dash"}` | LogQL | `alert_transitions`, `notification_attempts`, `entity_change_events` | Stream labels `source`, `kind` (`alert_transition`, `notification_attempt`; `change_event` from M-UI3 with [T12](T12-entity-catalogue.md)), `alertname`, `severity`, `entity_ref`; line = the row as JSON; structured fields for every column |
 
 #### T07-020 — Reserved selectors resolve to Postgres, never to PulsusDB
-**MUST** — At step 2 the planner MUST classify every selector whose metric name equals `ALERTS`,
+**MUST** — *(v1: the refusal of §0 applies and nothing resolves to Postgres.)* From the parser design, at step 2 the planner MUST classify every selector whose metric name equals `ALERTS`,
 `ALERTS_FOR_STATE` or `pulsus_anomaly_score`, and every LogQL stream selector with the equality
 matcher `source="pulsus-dash"`, as virtual. A query containing a virtual selector MUST NOT be sent to
 PulsusDB; `pulsusdb-client`'s `VirtualGuardLayer` refuses any request text that still contains one.
@@ -527,8 +583,8 @@ Virtual evaluation:
    `pulsus-colexec` samples on the step grid to series (Prometheus staleness semantics: a series ends
    at its last interval).
 3. **Evaluate.** The PromQL or LogQL expression above the selectors is evaluated by `pulsus-colexec`
-   over those series, using the lowering in `dash-vsrc` (one Rust implementation, shared with the
-   BFF join kernel).
+   over those series, using the lowering in `dash-vsrc` (one Go implementation, shared with the BFF
+   join kernel).
 4. **Stream.** Results leave as Arrow frames with `Completeness{exactness: RawExact, source:
    Virtual{table}}`, through the same Combine, cache (T06-013 virtual horizon) and frame path.
 
@@ -544,7 +600,7 @@ shown in the viewport and in the editor diagnostics):
 | LogQL | stream selector, line filters (`|=`, `!=`, `|~`, `!~`), label filters, `| json`, `| line_format`; metric queries `count_over_time`, `rate`, `bytes_over_time`, with `sum`/`count`/`topk` by labels |
 
 #### T07-021 — Virtual PromQL is evaluated in the BFF with a documented subset
-**MUST** — PromQL and LogQL over virtual selectors MUST be evaluated in the BFF by `dash-vsrc` and
+**MUST** (from the parser design, §0) — PromQL and LogQL over virtual selectors MUST be evaluated in the BFF by `dash-vsrc` and
 `pulsus-colexec`, covering at least the supported subset above. A construct outside the subset MUST
 return `virtual_unsupported{construct}`; it MUST NOT be approximated silently or forwarded to
 PulsusDB.
@@ -581,7 +637,7 @@ The join's exactness is the weakest of its operands (a rollup or predicted Pulsu
 result `Rollup`/`Predicted`), so the coverage meter stays honest.
 
 #### T07-022 — BFF joins are bounded and honest
-**MUST** — A mixed expression MUST be split at the mixed spine; operands MUST be whole pure subtrees;
+**MUST** (from the parser design, §0) — A mixed expression MUST be split at the mixed spine; operands MUST be whole pure subtrees;
 spine nodes MUST be evaluated in the BFF with Prometheus vector-matching semantics within the join
 limits above. A range function or subquery over a mixed node MUST be refused. The result's
 exactness MUST be the weakest of its operands.
@@ -598,6 +654,11 @@ and entity identity columns, and rows whose entity is out of scope are removed. 
 "data" for ENT-006 and MUST NOT leak out-of-scope alert names, labels or counts.
 
 ### 4.12 PulsusDB fallbacks (concrete plans)
+
+*From M-UI2. Each operation below composes query text from structured inputs Dash holds (catalogue,
+Context, template fields, PulsusDB responses), never by parsing user text (§0). Where `<sel>` or
+`{sel}` stands for a selector, it is that structured selector; an operation started from an arbitrary
+user query needs the parser design.*
 
 #### T07-024 — Approximations are labelled
 **MUST** — Whenever a fallback in this section is used, the planner MUST set
@@ -709,7 +770,7 @@ R3/R7/R8 fallbacks belong to the catalogue and change feed ([T12](T12-entity-cat
 | Budget exhausted | Coarse, then cached only; the focused viewport is protected |
 | `422` too broad | Retry once at coarse ×4 if it is a resolution problem, otherwise surface it with the hint |
 | `Pressure{level}` from the browser (T01/T04 memory monitor) | Re-plan affected viewports at the next coarser rollup level, drop P4/P5 and held raw chunks are released by the browser; source badge reflects the rollup |
-| LIVE (`L`) | Each viewport's head tile is re-planned every `max(step, 1 s)` as a delta query `[last_ts, now]`; immutable tiles are untouched; a hidden tab (shim visibility) suspends live refresh |
+| LIVE (`L`) | Each viewport's head tile is re-planned every `max(step, 1 s)` as a delta query `[last_ts, now]`; immutable tiles are untouched; a hidden tab (`document.visibilityState`) suspends live refresh |
 
 #### T07-027 — Truncation and too-broad answers are surfaced
 **MUST** — A PulsusDB `truncated` flag, a `422` or a planner refusal MUST reach the viewport as a
@@ -734,8 +795,20 @@ grid (the coarser of the referenced steps). Expressions that PulsusDB can evalua
 query are not rewritten into one: keeping A and B separate lets their viewports and the expression
 share fetches.
 
+**v1 form (no BFF parse, §0).** The client expands the expression into one PromQL query by replacing
+each reference token (`A`, `B`, …, the only tokens it recognises) with `"(" + text + "\n)"`: the
+referenced query's exact text, then a newline, then the closing parenthesis. The newline ends any
+`#` line comment at the end of the operand, so the generated `)` and the rest of the expression are
+never commented out. The viewport is bound as an ordinary `Binding::Query`. The BFF plans it as an opaque
+query, so `A / B` beside A and B costs three physical queries; PulsusDB evaluates the expression and
+reports its errors. The `Combine::Kernel` form above and T07-030 apply from the parser design.
+
+Test: `unit:expr-expand-line-comment` (client, Vitest): with A = `up # note` and B = `up`, `A / B`
+expands to `(up # note` + newline + `) / (up` + newline + `)`; against `pulsus-fake` it returns
+the same series as `up / up`, and an operand without a comment expands with the same newline.
+
 #### T07-030 — Expressions reuse operand fetches
-**MUST** — An expression over workbench queries MUST be evaluated from its operands' results on a
+**MUST** (from the parser design, §0; v1 uses the expanded form above) — An expression over workbench queries MUST be evaluated from its operands' results on a
 common step grid, without issuing additional physical queries for the operands, and MUST apply the
 join limits of §4.11.3.
 
@@ -766,7 +839,28 @@ pub struct ViewportSpec {
 pub enum ServerMsg { Frame{/* T04 */}, Completeness{viewport, pass, c: Completeness}, Budget{remaining, class}, Explain(PlanExplain), Error{viewport, e} }
 ```
 
-### 5.2 Planner IR (`pulsus-plan`, authoritative; shared with T13, T15 and T16)
+### 5.2 Planner IR (authoritative; shared with T13, T15 and T16)
+
+**v1 IR (no parse, §0).** Everything the v1 planner holds about a query:
+
+```rust
+pub enum QueryLang { PromQL, LogQL, TraceQL }
+pub enum QueryKind { Range, Instant, LogStreams, LogVolume }      // TraceQL kinds from M-UI2
+pub struct OpaqueQuery { pub lang: QueryLang, pub kind: QueryKind, pub text: String } // exact bytes, never parsed
+pub struct LogicalQuery {                             // v1
+    pub key: LogicalKey,                               // xxh3_128(signal, lang, kind, text bytes, shape)
+    pub signal: Signal, pub class: SourceClass,        // class is always PulsusDb in v1
+    pub op: LogicalOp, pub range: TimeRange, pub baseline: Option<TimeRange>,
+    pub resolution: Resolution, pub shape: ResultShape, pub purpose: Purpose,
+}
+pub enum LogicalOp { Text(OpaqueQuery) }              // v1: the only variant
+// PhysicalQuery and Plan as below; Combine is Identity | ConcatTime in v1; no VirtualQuery
+```
+
+**Parsed IR (from the parser design, §0).** The variants carrying parsed expressions
+(`promql::Expr`, `logql::Expr`, `traceql::Expr`, `logql::Selector`, `Selector`), `VirtualQuery`,
+`Combine::Kernel` and `Local` exist only once the parser design is accepted; `Text(OpaqueQuery)`
+stays for text the planner does not hold in parsed form (T07-002).
 
 ```rust
 pub struct LogicalQuery {
@@ -809,7 +903,7 @@ pub struct Plan { pub id: PlanId, pub gen: u64, pub logical: Vec<LogicalQuery>, 
 
 | Interface | Direction | Contract |
 |---|---|---|
-| `pulsus-plan` IR (§5.2) | **Defined here** | T13 executes `LogicalQuery` locally. T15 agent tools submit `LogicalQuery` with `Purpose::Agent`. T16 uses `Purpose::Alert` (no passes, no budgets beyond the evaluator's) |
+| Planner IR (§5.2: v1 IR now, parsed IR from the parser design) | **Defined here** | T13 executes `LogicalQuery` locally. T15 agent tools submit `LogicalQuery` with `Purpose::Agent`. T16 uses `Purpose::Alert` (no passes, no budgets beyond the evaluator's) |
 | `ClientMsg`/`ServerMsg` (§5.1) | Defined here, framed by T04 | T04 adds stream ids, resume, compression |
 | `ScopeRewriter` (wraps T10 `scope::rewrite` / `filter_response`) | Defined in T06, implemented by T10 (draft) | Runs at step 7 on every physical and virtual query; keys use `scope_fp`; returns `withheld` families (T07-015) |
 | `VirtualSource` / `dash-vsrc` | Trait in T06; semantics here (§4.11) | Tables `alert_transitions`, `alert_instances`, `notification_attempts`, `anomaly_scores`, `entity_change_events`, `pyramid_tiles` defined by T11/T16 |
@@ -848,8 +942,8 @@ holds the WS session). It reads:
 
 ## 8. Security, tenancy & RBAC
 
-The rewrite insertion point is §4.7 (T07-014). Opaque (unparseable) queries are refused for scoped
-principals (T07-002). Metrics scopes fail closed per family pending O1 (T07-015). Virtual sources run
+The rewrite insertion point is §4.7 (T07-014). Opaque queries (in v1, every query) are refused for
+scoped principals (T07-002). Metrics scopes fail closed per family pending O1 (T07-015). Virtual sources run
 under RLS plus scope predicates (T07-023). AI agents plan as the user, with `Purpose::Agent`, under
 their own budget, and every physical query appears in the investigation's tool-call log with its
 `X-Pulsus-Query-Id`. Budgets and singleflight are keyed per tenant ([T06](T06-bff-architecture.md)
@@ -896,8 +990,8 @@ their own budget, and every physical query appears in the investigation's tool-c
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | **First:** a per-viewport subset (T07-003 step, T07-010 cancel, T07-012 off-screen) over HTTP `/query` ([T04](T04-wire-format-and-data-plane.md) §5.2), for metrics and the LogQL stream and volume plan kinds (`logql_streams`, `log_volume`). **Then:** the WS scene session (§5.1), merge, passes and budgets. Metrics; steps 1–4 and 6–11; identity/union/derivation; P0/P2/P3/P4; cancellation; human budgets; plan explain; multi-query expressions (§4.14); LIVE head refresh; memory-pressure replan |
-| M-UI2 | Traces/profiles; remaining logs plan kinds (patterns, detected fields, tail); R2/R9; fusion; approach prefetch (PRF-029) |
+| M-UI1 | **First:** a per-viewport subset (T07-003 step, T07-010 cancel, T07-012 off-screen) over HTTP `/query` ([T04](T04-wire-format-and-data-plane.md) §5.2), for metrics and the LogQL stream and volume plan kinds (`logql_streams`, `log_volume`). **Then:** the WS scene session (§5.1), merge, passes and budgets. Metrics; steps 1–4 and 6–11; identity/union/derivation; P0/P2/P3/P4; cancellation; human budgets; plan explain; multi-query expressions in the v1 form (§4.14); all query text opaque (§0); LIVE head refresh; memory-pressure replan |
+| M-UI2 | Traces/profiles; remaining logs plan kinds (patterns, detected fields, tail); R2/R9; the parser design (§0) and then fusion; approach prefetch (PRF-029) |
 | M-UI3 | Local placement (T13); R5 windowed + partitioned fallback; R6; level-split; R4 Postgres fallback pyramids |
 | M-UI4 | Virtual sources and BFF joins (ALR-085); agent budgets; explain in "How I got here" |
 | M-UI5 | Board variables dependency index (SRF-017); 200-viewport boards (PRF-022) |
@@ -935,3 +1029,7 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T07-001…T07-030. **D2 / ADR-0012:** added Postgres-backed virtual sources (§4.11: `ALERTS`, `ALERTS_FOR_STATE`, `pulsus_anomaly_score`, `{source="pulsus-dash"}`), BFF evaluation subset, mixed-spine binary-op joins with limits, `VirtualQuery` IR and `SourceClass`; R4 fallback pyramids stored as Postgres Arrow tiles (§4.12). **A1:** service graph planned as one call; partitioned TraceQL-metrics fallback kept as the degradation path on `truncated`. **O1:** metrics scopes follow ADR-0013 option B pending decision (T07-015). Added flank pass P4 wording for PRF-028, LIVE head refresh, memory-pressure replan, Board variable dependency index, multi-query expressions (SRF-030), `Pressure`/`Live`/`Visibility` client messages |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 starts with a per-viewport subset over HTTP `/query`; the WS scene session, merge, passes and budgets follow later in M-UI1; LogQL stream and volume plan kinds move to M-UI1 |
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; the planner is Go (`internal/planner`); the shared `pulsus-plan` IR is dropped in favour of Go types plus a JSON form and fixtures for T13; §4.2 parses PromQL with a Go PromQL parser and treats LogQL and TraceQL as opaque in v1 (T07-002) |
+| 1.2-rc | 2026-11-19 | ADR-0015 "Query validation": the BFF parses no query language in v1. §0 gains the v1 opaque-planning table and the later parser design (decided before fusion in M-UI2; a server-side parser needs a new ADR); §4.2 no longer uses a Go PromQL parser; §4.14 v1 expression form (client-expanded text) with T07-030 deferred to the parser design; SRF-030 test and §11 updated |
+| 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
+| 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |

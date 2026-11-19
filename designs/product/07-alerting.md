@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-19 |
 | **Requirement area** | `ALR` |
 | **Source draft** | plans/07-alerting.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [03](03-interaction-model.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [09](09-performance-contract.md), [11](11-enterprise.md), [15](15-estate-navigation.md) |
@@ -383,12 +383,13 @@ log.
 #### ALR-021 — Historical replay of every view
 **MUST** · M-UI4 · NOC, SRE, IC
 
-Every view in §5 MUST also work historically: moving the Time Ribbon into the past MUST replay the
-alert state as it was at that moment, from alert history (§10).
+Every view in §5 MUST also work historically: moving the time window into the past (the page
+header's time range picker, or the Time Ribbon in Space views) MUST replay the alert state as it was
+at that moment, from alert history (§10).
 
-*Acceptance:* Given an incident at 03:12 yesterday, when the user drags the ribbon to 03:12, then the
+*Acceptance:* Given an incident at 03:12 yesterday, when the user moves the time window to 03:12, then the
 Map, Segments and Infra views show the alert states as they were at 03:12 (verified against the
-transition log), and a "history" badge is shown in the chrome.
+transition log), and a "history" badge is shown in the page header.
 
 ### 5.2 Map (`Alt+1`): where in the world
 
@@ -720,12 +721,12 @@ then the alerts it silences are listed and a silence expiring in 2 h is not.
 
 The Timeline MUST show one swimlane per incident, expandable to its alerts, with state bars
 (pending / firing / acked / silenced) and ◆ deploys, ⚙ changes and 📣 notifications overlaid on the
-same axis. It is the First Light view ([04](04-surfaces.md)) for the whole estate. Dragging the Time
-Ribbon left MUST turn the live view into history (§6) without leaving the view.
+same axis. It is the First Light view ([04](04-surfaces.md)) for the whole estate. Moving the time
+window into the past MUST turn the live view into history (§6) without leaving the view.
 
 *Acceptance:* Given INC-2041, when the Timeline opens, then its lane shows pending and firing bars, a
-⚙ at 12:19, 📣 glyphs at each notification, and expanding it shows one sub-lane per alert; dragging
-the ribbon to yesterday shows yesterday's incidents in the same view.
+⚙ at 12:19, 📣 glyphs at each notification, and expanding it shows one sub-lane per alert; moving
+the time window to yesterday shows yesterday's incidents in the same view.
 
 ### 5.8 Alerts everywhere else
 
@@ -792,8 +793,9 @@ opens; tapping Ack acks the incident and every desktop view reflects it within 1
 
 ## 6. Alert history
 
-Three questions, three views. All are driven by the Time Ribbon, so "history" is simply moving the
-window into the past (ALR-021). History is read from Postgres (§10).
+Three questions, three views. All are driven by the Context time window (the header time range
+picker, and the Time Ribbon in Space views), so "history" is simply moving the window into the past
+(ALR-021). History is read from Postgres (§10).
 
 ### 6.1 Rule history: "how does this rule behave?"
 
@@ -938,10 +940,10 @@ The aim is parity with the contact points of existing alerting systems (includin
 | **Status pages** | Atlassian Statuspage, Better Stack, instatus, Pulsus' own public status page | Draft only: a human publishes, and the AI-drafted Business-Perspective text is pre-filled ([06](06-ai-copilot.md)) | **v2** |
 | **AI agents** | MCP push / outbound webhook to an external agent (e.g. a customer's own runbook agent), carrying the RCA card as structured data | — | **v2** |
 
-> **Note:** the PWA web-push handler in the service worker counts against the JS shim's
-> browser-integration budget ([ADR-0001](../adr/0001-rust-wasm-everywhere.md),
-> [T03](../technical/T03-browser-runtime.md)). The push payload is a binary envelope rendered in
-> Rust on the server, so the service worker parses nothing (T20 (draft)).
+> **Note:** the PWA web-push handler is TypeScript in the web client's service worker
+> ([ADR-0014](../adr/0014-typescript-react-web-client.md)) and is bound by the CSP and dependency
+> controls of [T18](../technical/T18-security.md). The push payload is a small envelope rendered by the
+> Go BFF ([ADR-0015](../adr/0015-go-bff.md)); the service worker only shows it (T20 (draft)).
 
 #### ALR-055 — v1 endpoints
 **MUST** · M-UI4 · SRE, NOC, Platform, Admin
@@ -1459,6 +1461,7 @@ alerting test suite runs, then every test passes.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Alert history moved to Postgres per D2 / ADR-0012 |
+| 1.0-rc2 | 2026-11-19 | Decisions D7–D9: history is driven by the Context time window (header picker; Time Ribbon only in Space views) in ALR-021, the Timeline and §6; the web-push note names the TS service worker and the Go BFF instead of the JS shim and a Rust server |
 
 ## Resolved during formalisation
 

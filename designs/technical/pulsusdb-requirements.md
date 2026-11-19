@@ -15,6 +15,14 @@
 > service graph at `/api/traces/v1/service_graph?start=<t>&end=<t>` on the native traces API. The
 > route exists; the R5 edge-cap raise remains assumption A1.
 >
+> **Revision 5 (2026-11-19):** the Dash backend is now written in Go and the web client in
+> TypeScript, with a Rust/WASM chart engine added later
+> ([ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md)). PulsusDB's
+> Rust parser crates are now used only in the browser, compiled to WASM for editor diagnostics (R17);
+> the BFF parses no query language in v1 and validates queries by sending them to PulsusDB. How the
+> later data-scope rewrite (R12 fallback, M-UI6) parses queries is an open question for T10 (draft).
+> No ask changes priority.
+>
 > **None of these block Pulsus Dash.** Every requirement has an interim fallback that the Dash
 > backend-for-frontend (BFF) implements first; PulsusDB support replaces the fallback when it lands,
 > usually with a large performance or fidelity gain. Priorities follow the Dash UI milestones
@@ -49,7 +57,7 @@
 | Metric rollup levels 60 / 720 / 7200 / 86400 s, chosen by time range (not step) | Dash pyramids use the same lattice; the planner predicts the level ([T07](T07-scene-query-planner.md), T13 (draft)) |
 | `X-Pulsus-Explain` bypasses the read cache | Dash predicts exactness and samples explain at ~1 % ([T06](T06-bff-architecture.md)); see **R10** |
 | Ruler is off by default (`PULSUS_RULER_ENABLED=false`) and runs in mode `all` only | R4 fallback must handle a disabled ruler; see **R4** |
-| TraceQL metrics returns Tempo-native bodies, not a Prometheus matrix | BFF converter handles both ([T04](T04-wire-format-and-data-plane.md)) |
+| TraceQL metrics returns its native trace-metrics body, not a PromQL matrix | BFF converter handles both ([T04](T04-wire-format-and-data-plane.md)) |
 | API auth is Basic only (default admin `admin`/`admin`) | Dash uses per-tenant service credentials; see **R12** |
 
 ## 1. Requirements
@@ -217,7 +225,9 @@ matcher semantics on every endpoint (including `/tags`, `service_graph`, trace-b
 applied scope's hash echoed in a response header, and a credential that is **only** valid together with
 the scope header.
 
-**Dash fallback:** the BFF rewrites queries using the same parsers.
+**Dash fallback:** the BFF rewrites queries before sending them (M-UI6). It parses no query language
+in v1 ([ADR-0015](../adr/0015-go-bff.md)); the parser for the rewrite (a Go PromQL parser, a LogQL
+parser, or this ask) is an open question for Dash's data-scope design.
 
 ### R13 (P2) — Batch query
 
@@ -259,8 +269,9 @@ datapoints).
 
 ### R17 (P3, was P1) — Permissively licensed syntax crates
 
-**Why:** Dash compiles PulsusDB's PromQL/LogQL/TraceQL parsers to WASM for in-browser editing and for
-the BFF's planner and data-scope rewriting ([T09](T09-query-editors.md), T10 (draft)).
+**Why:** Dash compiles PulsusDB's PromQL/LogQL/TraceQL parsers to WASM for in-browser editor
+diagnostics ([T09](T09-query-editors.md)). Since the Dash BFF is written in Go
+([ADR-0015](../adr/0015-go-bff.md)), the crates are no longer used on the server.
 The crates are AGPL-3.0-only, so linking them makes Dash a combined AGPL work, which constrained the Dash
 licensing decision (Q8, since closed by decision D3 in [12](../product/12-roadmap.md#3-decisions-taken)). They compile to `wasm32` today
 (`pulsus-logql` ≈ 44 KB, `pulsus-traceql` ≈ 34 KB, `pulsus-promql` ≈ 481 KB gzip).
@@ -273,8 +284,8 @@ e.g. split out `pulsus-promql-syntax`, `pulsus-logql-syntax`, `pulsus-traceql-sy
 licence of PulsusDB's patches to the vendored `promql-parser`. Nice to have: public lexers, source
 spans on AST nodes, and error recovery for editor use.
 
-**Dash fallback:** the crates sit behind one `QueryLanguage` trait; a permissive fallback build
-(upstream `promql-parser` plus Dash's own LogQL/TraceQL parsers) is kept compiling in CI.
+**Dash fallback:** the parsers sit behind one `QueryLanguage` interface in the Dash client; without
+the crates, validation goes through the BFF to PulsusDB, as it does before the WASM build exists.
 
 ## 2. Summary table
 
@@ -291,9 +302,9 @@ spans on AST nodes, and error recovery for editor use.
 | R7 | P1 | Error origination | Structural TraceQL / heuristic |
 | R8 | P1 | Version transitions | Sub-window label-values |
 | R9 | P1 | Pattern diff vs baseline | Two calls diffed |
-| R12 | P1 | Server-enforced data scope | BFF query rewrite |
+| R12 | P1 | Server-enforced data scope | BFF query rewrite (M-UI6) |
 | R16 | P1 | Resource attributes on metric series | Fail closed; collector-side copy |
-| R17 | P3 | Permissive syntax crates | Trait isolation; own parsers |
+| R17 | P3 | Permissive syntax crates | One client interface; validation through the BFF |
 | R13 | P2 | Batch query | HTTP/2 multiplexing |
 | R14 | P2 | Cost estimate dry-run | Heuristics |
 | R15 | P2 | Alerting-rule evaluation | Dash evaluator |

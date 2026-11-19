@@ -3,10 +3,30 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
+
+## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
+
+The web client is TypeScript + React ([ADR-0014](../adr/0014-typescript-react-web-client.md)), the
+chart engine is Rust/WASM and arrives later behind the `ChartFrame` seam, and the BFF is Go
+([ADR-0015](../adr/0015-go-bff.md)). The layers, rules (T05-001 to T05-015), thresholds and the lab
+stand. Rust-only tooling maps as follows:
+
+| Was | Now |
+|---|---|
+| L1 native Rust unit, property and fuzz tests for all logic | Per owner of the code: Vitest with property tests (`fast-check`) for the TS application (state reducer, Context, URL codec, keymap, number format, interim renderer scales and ticks); `go test -race` for the BFF (`ci:go-test`); `cargo nextest`, `proptest`, `loom`/`shuttle` and `cargo-fuzz` for the engine crates from the engine issue (#68). The property rules of §2 apply in whichever language owns the code |
+| L2 native GPU goldens on headless wgpu | Stand for the engine from #68. Until then `golden:gallery` renders the interim Canvas 2D gallery pages in a pinned Playwright Chromium (software rasteriser, the interim equivalent of T05-004's pinned backend) against committed PNGs with the same ꟻLIP rules (§4.2) |
+| L3 `wasm-bindgen-test` | Engine only, from #68 |
+| L4 Playwright "via the shim" | Playwright (Chromium, Firefox, WebKit) against the production build of the React application (ADR-0014 §6); shim-contract specs apply to the engine adapter from #68 |
+| `.pdrec` input-ring replays (§4.4) | Engine canvases only, from #68. Until then each `replay:*` gate runs as a Playwright script of real DOM events with the same assertions |
+| Test probe in the generated glue | A TS module included only in test builds (`window.__dashProbe`, same API); `ci:probe-absent` scans the production build |
+| `pulsus-fake` (Rust binary) | A Go binary in `server/` with the same fingerprint, latency and fault injection, run by the dev compose stack (ADR-0015) |
+| RUM encoder in Rust (§4.7) | A minimal TS OTLP/protobuf encoder in the client; no OpenTelemetry JS package (bundle size) |
+| `ci:shim-lint`, `bench:shim-input-cost`, `e2e:shim-fuzz` | `ci:shim-lint` withdrawn; the other two apply to the engine adapter from #68 |
+| Rust supply-chain gates | `ci:lockfile`, `ci:npm-audit`, `ci:dep-audit` (client) and `ci:go-*`, `ci:api-gen` (server), §7.1 |
 
 ## 1. Context & problem
 
@@ -19,8 +39,8 @@ makes the public gallery the vis test corpus ([VIZ-069](../product/05-visualisat
 [13](../product/13-core-flow-storyboard.md) needs repeatable, seeded incidents, both to demo and to
 evaluate the RCA engine (T15 (draft)).
 
-The architecture helps. All logic is Rust, so most of the product tests natively and fast. wgpu
-runs headless, so visual tests need no browser. All input enters through one binary ring
+The architecture helps. Application logic is plain TS and Go that tests natively and fast (§0). The
+chart engine's wgpu runs headless, so engine visual tests need no browser. All input enters through one binary ring
 ([T03 §5.4](T03-browser-runtime.md#54-input-ring-record-format)), so sessions can be recorded and
 replayed deterministically.
 
@@ -222,7 +242,7 @@ any 8×8 block inside a text region exceeds 0.25. Goldens MUST change only in a 
 | `bench:frame-gallery` | every gallery page | scripted pan/zoom (orbit for 3D) | the page's target volume |
 | (in `bench:frame-gallery`) | M3 rect (heatmap) | scroll | 10k × 200 cells |
 | (in `bench:frame-gallery`, M-UI2) | M3 + M8 flame | zoom into frame | 10⁵ frames |
-| (in `bench:frame-gallery`, M-UI1) | M8 text (log stream) | fling scroll; page past the window end | 10⁶ lines in window ([PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable)) |
+| (in `bench:frame-gallery`, M-UI1) | Log stream: the virtualised DOM list in M-UI1 ([ADR-0014](../adr/0014-typescript-react-web-client.md) §2); M8 GPU text from #69 | fling scroll; page past the window end | 10⁶ lines in window ([PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable)) |
 | (in `bench:frame-gallery`, M-UI3) | M4/M5 + M6 Atlas | orbit + particles | 10⁴ nodes / 5 × 10⁴ edges |
 | (in `bench:frame-gallery`, M-UI5) | Board | pan across | 200 viewports |
 | `bench:frame-high-hz` | `bench:frame-line-1e8` and the scatter page | as above, on a 120 Hz display | median ≥ 120 fps on (a) driving an external 120 Hz display |
@@ -431,7 +451,7 @@ alerted.
 The shell owns collection, reading the control-block counters ([T03 §4.3](T03-browser-runtime.md#43-shared-memory-layout-and-ownership)).
 It **aggregates locally**: frame times go into histograms, never per-frame events. It sends every
 30 s, and on `visibilitychange → hidden` via `navigator.sendBeacon`, as OTLP/protobuf from a minimal
-hand-rolled encoder (no `opentelemetry` crate, to save size). The BFF forwards the data to PulsusDB
+hand-rolled encoder (no OpenTelemetry package, to save size). The BFF forwards the data to PulsusDB
 OTLP ingest under a dedicated database or tenant (`X-Pulsus-Database` / `X-Scope-OrgID`, configured
 by [T19](T19-deployment.md)). This is Dash's self-telemetry, the write to PulsusDB that
 [ADR-0012](../adr/0012-derived-state-in-postgres.md) permits; it never lands in a customer tenant.
@@ -509,15 +529,25 @@ the merge train), nightly (release blocker).
 | Gate | Checks | Stage | Blocking |
 |---|---|---|---|
 | `ci:design-check` | `designs/tools/check.py`: no broken links or anchors, unique requirement IDs, every requirement has priority, milestone and acceptance criteria, every Satisfies reference resolves, no M-UI0/1 MUST untraced; `traceability.md` regenerated and diffed | PR | yes |
-| `ci:shim-lint` | T03-001: ≤ 300 lines, no imports outside `web/shim/`, no `eval`/`Function`/`innerHTML`; every JS file under `web/shim/` that git tracks or does not ignore is counted. `layout.gen.js` is excluded from the count when byte-identical to its generator's output, else counted and fails | PR | yes |
-| `ci:bundle-size` | Brotli size per artefact ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); core < 3 MB. `mode = enforce`; `shim`, `dash-core-mt`, `dash-core-st` `required` (over budget or absent → fail). *Later:* `twiggy` sizes and the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
-| `ci:dep-audit` | No JS UI, component, charting, mapping or diagram library in the shipped bundle; no npm runtime dependency; `web-sys` feature allowlist; no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008); no third-party asset or font host in the build; `web/shim/gen/` accepted only by regenerate-and-compare ([T03 §5.1](T03-browser-runtime.md#51-shim-files-and-line-budget)) | PR | yes |
-| `ci:token-lint` | T01-010: no colour, size or duration literal outside `dash-tokens` outputs; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
+| `ci:shim-lint` | *Withdrawn* ([ADR-0014](../adr/0014-typescript-react-web-client.md)): there is no hand-written shim. The engine adapter is bound by T01-001 and `ci:lint-ts` | — | — |
+| `ci:lint-ts` | `npm run lint`: ESLint (typescript-eslint strict type-checked, react-hooks, jsx-a11y) and Prettier check; `eval`, `Function`, `innerHTML` and `dangerouslySetInnerHTML` banned | PR | yes |
+| `ci:typecheck` | `npm run typecheck` (`tsc --noEmit`, `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) | PR | yes |
+| `ci:lockfile` | `package-lock.json` committed and `npm ci` succeeds; exact versions only (no `^` or `~`); every `resolved` URL on `https://registry.npmjs.org/` with an `integrity` hash; `.npmrc` sets `save-exact`, `engine-strict` and `ignore-scripts` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7) | PR | yes |
+| `ci:npm-audit` | `npm audit --omit=dev --audit-level=high` and `npm audit --audit-level=critical` pass; `npm audit signatures` passes | PR | yes |
+| `ci:bundle-size` | `npm run size`: brotli size per chunk class against `client/bundle-budgets.json` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8): initial JS ≤ 200 KB, initial CSS ≤ 30 KB, each lazy route chunk ≤ 120 KB, editor chunk ≤ 175 KB, fonts ≤ 150 KB, all client assets except the engine ≤ 1 MB; from #68 the engine ≤ 1.9 MB ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); client core (initial JS + CSS + engine) < 3 MB (PRF-009). Over budget or a required artefact absent → fail. *Later:* the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
+| `ci:dep-audit` | Every runtime `dependencies` entry of `client/package.json` is on the allowlist in `client/dependency-policy.json` and in no forbidden category (charting, mapping, 3D, graph-diagram, CSS-in-JS); runtime licences on the AGPL-3.0-compatible allowlist; no third-party asset or font host in the build. From #68, for the engine crates: `web-sys` feature allowlist and no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008) | PR | yes |
+| `ci:token-lint` | T01-010: no colour, size or duration literal outside the generated token outputs (`tokens.css`, `tokens.ts`, and the engine's Rust constants from #68); regenerating them leaves no diff; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
+| `ci:api-gen` | `oapi-codegen`, `openapi-typescript` and `sqlc generate` leave no diff against `api/openapi.yaml` and `server/queries/` ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
+| `ci:go-lint` | `golangci-lint run` (pinned; `depguard` package boundaries of ADR-0015, `gosec`, `errcheck`, `staticcheck`) | PR | yes |
+| `ci:go-test` | `go test -race ./...` | PR | yes |
+| `ci:govulncheck` | `govulncheck ./...`; any reachable vulnerability fails | PR | yes |
+| `ci:go-mod` | `go mod verify`; `go mod tidy` leaves no diff; `GOFLAGS=-mod=readonly` | PR | yes |
+| `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013) and an up-from-empty run on Postgres | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
 | `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis | PR | yes |
 | `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
-| `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh release build of both artefacts (default features), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
+| `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh production build of the client (and, from #68, the engine), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
 
 **Unit, property and fuzz (L1)**
 
@@ -558,13 +588,19 @@ the merge train), nightly (release blocker).
 
 | Gate | Checks |
 |---|---|
-| `e2e:shim-fuzz` | 10⁴ random DOM events decoded identically, in order, loss only as counted overflow |
-| `e2e:mode-matrix` | Smoke suite per mode (Full, T2, ST, MT-R, Static) via `?mode=` |
-| `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench module |
-| `e2e:no-dom-vis` | Every non-DOM vis is drawn by the wgpu canvas: no chart SVG or 2D-canvas elements in the DOM |
+| `e2e:shim-fuzz` | From #68, on engine canvases: 10⁴ random DOM events decoded identically by the engine, in order, loss only as counted overflow |
+| `e2e:mode-matrix` | Smoke suite per mode (Full, T2, ST, MT-R, Static) via `?mode=`; until #68 only the interim Canvas 2D mode |
+| `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench chunk; with no chart frame on screen it fetches no engine |
+| `e2e:no-dom-vis` | With the engine active, every non-DOM vis is drawn by the engine into its viewport canvas: no chart SVG and no interim Canvas 2D frames; one GPU device for the page |
+| `e2e:csp-violations` | The production build served with the [ADR-0014](../adr/0014-typescript-react-web-client.md) §9 headers reports no CSP or Trusted Types violation during the PR smoke suite |
+| `e2e:client-routing` | Boards list → board → Explore → browser back: no document navigation; the board shows its previous data in the first frame with no new query (IA-014) |
+| `e2e:app-layout` | At 1440×900 on every page of the build: sidebar at the left edge, 240 px (56 px collapsed); page header 56 px high with the title on the left and the time range picker, refresh control and user menu at the right edge in that order; content padding 24 px; board panel gap 16 px; no other persistent chrome (IA-016, VL-017) |
+| `e2e:rooms-reachable` | The sidebar lists the build's destinations for the user's role (Admin only for administrators) and marks the current page; the collapsed state persists across reload; each destination opens from the sidebar, from `⌘K` and by its `g` chord (IA-021) |
+| `e2e:chrome-every-surface` | Each surface of [04](../product/04-surfaces.md) Table 4-1 in the build shows the sidebar and page header, with the time range picker and refresh control on time-dependent surfaces and the Time Ribbon on the Atlas and Lens; Wall mode shows none of them (SRF-001) |
+| `e2e:time-range-header` | Header picker offers the relative ranges of IA-020 and absolute ranges with the time zone; choosing a range re-queries visible charts and updates the URL; a brush on any time chart sets the picker to that absolute range; a 30 s auto-refresh re-queries every 30 s and "Off" stops it (IA-020, INT-025) |
 | `e2e:a11y-rooms` | axe-core WCAG 2.2 AA checks on every room; keyboard-only traversal reaches and operates every control |
-| `e2e:focus-regions` | `F6`/`Shift+F6` cycle top bar → canvas → Time Ribbon → panels; focus never trapped |
-| `e2e:chrome-layout` | At 1440×900: top bar 32 px, Ribbon 40 px, translucent (canvas visible beneath), no other persistent chrome, no left sidebar |
+| `e2e:focus-regions` | `F6`/`Shift+F6` cycle sidebar → page header → page content → open panels (→ Time Ribbon in Space scenes) and back; focus never trapped (INT-015) |
+| `e2e:chrome-layout` | Space scenes, from M-UI3: at 1440×900 the Time Ribbon is 40 px and translucent (canvas visible beneath), the minimap is present in scenes with a camera extent, and no persistent chrome other than IA-016's is shown (IA-028, VL-017) |
 | `e2e:deep-link` | Every URL pattern opened in a fresh session reproduces Context, scene, focus and camera; browser back steps camera history; saved Context and vis overrides restored |
 | `e2e:table-csv` | `Shift+T` shows the viewport's data as a table; "Export CSV" downloads the same rows |
 | `e2e:text-dom-match` | Same string, same size: canvas vs DOM advance width and baseline differ by ≤ 1 px |
@@ -582,10 +618,10 @@ the merge train), nightly (release blocker).
 | `replay:per-axis` | Drag/wheel/double-click on an axis change only that axis; pin shown and cleared; `⌘Z` restores; overlays stay placed |
 | `replay:compare-axis` | `Shift+C` shows a real-time-labelled top axis; drag by 20 min moves the ghost by 20 min; `⌘Z` restores |
 | `replay:crosshair-sync` | Hover at 12:22 puts the cursor at 12:22 in every time viewport in the same frame; tooltip lists one value per series with its axis unit and the comparison time |
-| `replay:time-ribbon` | Edge drag resizes, body drag moves, wheel zooms the overview; Context time updates on release |
+| `replay:time-ribbon` | Space scenes, from M-UI3: edge drag resizes, body drag moves, wheel zooms the overview; Context time and the header picker update on release (IA-028, INT-025) |
 | `replay:time-scrub` | `Space` hold + 200 px moves the cursor proportionally in every time viewport at frame rate; release commits |
 | `replay:live-scroll` | LIVE x offset advances sub-pixel every frame, no jump > 1 px |
-| `replay:events-markers` | Deploy ◆ on the Ribbon and a marker on every time chart; click sets before/after baseline |
+| `replay:events-markers` | A deploy marker on every time chart (and ◆ on the Ribbon in Space scenes); click sets before/after baseline |
 | `replay:universal-interactions` | Every vis accepts crosshair, click → Inspector, brush, ghost, anomaly overlay, pivot chips; reason tooltip where not applicable; value, labels and Δ within one frame |
 | `replay:selection-sources` | Clicking a table row highlights the matching mark everywhere and opens it in the Inspector |
 | `replay:context-propagation` | Every [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) row end to end; pivots keep entity, time, translated filters and baseline |
@@ -615,7 +651,7 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 | `bench:inp-rooms` | merge | INP ≤ 200 ms | yes, from M-UI0 |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
-| `bench:shim-input-cost` | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
+| `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
 | RUM field p95 per `hw_class` | weekly review | within 20 % of the lab | tracked, not blocking |
 
 Instruction counts are used on PRs because wall-clock benchmarks on shared CI runners are too noisy
@@ -749,3 +785,4 @@ Meta-testing:
 | 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |
 | 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time (CI reports, `bench:shim-input-cost` gates); §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §4.3 log stream gallery page moves M-UI2 → M-UI1 with PRF-020 |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) and the application layout (D9): new §0 maps Rust-only tooling to TS, Go and the later engine; §7.1 withdraws `ci:shim-lint`, adds `ci:lint-ts`, `ci:typecheck`, `ci:lockfile`, `ci:npm-audit`, `ci:api-gen`, `ci:go-lint`, `ci:go-test`, `ci:govulncheck`, `ci:go-mod`, `ci:migrations`, `e2e:csp-violations`, `e2e:client-routing`, `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface` and `e2e:time-range-header`; redefines `ci:bundle-size` (ADR-0014 §8 budgets), `ci:dep-audit` (npm allowlist), `ci:token-lint`, `e2e:focus-regions`, `e2e:chrome-layout` (Space scenes only), `e2e:lazy-load`, `e2e:no-dom-vis`, `replay:time-ribbon` and `replay:events-markers`; §4.3 log stream page measures the active implementation (PRF-020) |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -171,7 +171,7 @@ Windows and Linux. † marks an inner-context override (§4.3).
 | `g` then `a`/`b`/`i`/`s`/`l`/`t`/`m`/`p` | Go to Alerts / Boards / Investigations / Space (Atlas) / Logs / Traces / Metrics / Profiles | G | M-UI1 |
 | `⌘Z` / `⌘⇧Z` | Undo / redo (§9) | G | M-UI1 |
 | `Alt+←` / `Alt+→` | Camera history back / forward | G | M-UI1 |
-| `F6` / `Shift+F6` | Move keyboard focus to the next / previous region (top bar, canvas, Time Ribbon, open panels) | G | M-UI1 |
+| `F6` / `Shift+F6` | Move keyboard focus to the next / previous region (sidebar, page header, page content, open panels; the Time Ribbon in Space scenes) | G | M-UI1 |
 | `Esc` | Exit Fly → clear selection → close Inspector → **zoom out one semantic level** (repeated `Esc` returns to the Atlas) | S | M-UI1 |
 | `Enter` | Dive into selected entity / open selected item | S | M-UI2 |
 | `Tab` / `Shift+Tab` | Cycle selection through entities/series in view by care score, worst first ([01a](01a-audiences-and-perspectives.md) AUD-010) | S | M-UI2 |
@@ -286,11 +286,12 @@ the overlay shows the new key.
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
 Because `Tab` cycles selection inside the canvas, `F6` / `Shift+F6` MUST move keyboard focus between
-regions (top bar, canvas, Time Ribbon, open panels), so a keyboard-only user can always leave the
-canvas.
+regions in the order sidebar → page header → page content → open panels, plus the Time Ribbon in
+Space scenes ([02](02-information-architecture.md) IA-016, IA-028), so a keyboard-only user can always
+leave the canvas.
 
-*Acceptance:* With focus in the canvas, `F6` moves focus to the Time Ribbon and then to the top bar;
-no region retains focus after `F6`.
+*Acceptance:* With focus in a chart canvas, `F6` moves focus to the next region in that order and
+`Shift+F6` to the previous one; no region retains focus after `F6`.
 
 #### INT-016 — Esc and Enter ladder
 **MUST** · M-UI2 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -309,7 +310,8 @@ Holding `Space` and moving the mouse horizontally MUST scrub the global time cur
 commit the new cursor position.
 
 *Acceptance:* Holding `Space` and moving 200 px right moves the time cursor proportionally to the
-Time Ribbon scale in every time viewport; release leaves it there; the scrub updates at the frame
+time scale of the chart under the pointer (the Time Ribbon scale in Space scenes) in every time
+viewport; release leaves it there; the scrub updates at the frame
 rate of PRF-001.
 
 ### 4.4 Gamepad and 3D mouse (stretch, NOC walls)
@@ -463,8 +465,10 @@ level crossing.
 
 ## 6. Time as a dimension
 
-Time is the one axis every signal shares. It is owned by the **Time Ribbon** and manipulated
-directly.
+Time is the one axis every signal shares. The Context time window is shown and set in the page
+header's time range picker ([02](02-information-architecture.md) IA-020) and manipulated directly on
+every time chart. Space scenes (Atlas, Lens) add the **Time Ribbon** (IA-028), drawn below: an
+overview strip with the active window as a brush.
 
 ```
  ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -479,11 +483,14 @@ directly.
 #### INT-025 — Window brush
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business
 
-On the Time Ribbon, dragging a window edge MUST resize the active window, dragging its body MUST move
-it, and the wheel over the ribbon MUST zoom the overview strip.
+Dragging horizontally across the plot area of any time chart MUST brush a window that becomes the
+Context time window on release, shown in the header picker as an absolute range. On the Time Ribbon
+in Space scenes (from M-UI3), dragging a window edge MUST resize the active window, dragging its body
+MUST move it, and the wheel over the ribbon MUST zoom the overview strip.
 
-*Acceptance:* Each of the three gestures changes the window or overview as stated, and the Context
-time updates on release.
+*Acceptance:* Brushing 12:10–12:20 on a time chart sets the Context window and the header picker to
+12:10–12:20 on release; on the Ribbon, each of the three gestures changes the window or overview as
+stated, and the Context time updates on release.
 
 #### INT-026 — Global time cursor and replay
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer
@@ -517,8 +524,8 @@ amount consistent with wall-clock time, with no jump larger than 1 px.
 #### INT-029 — A/B windows and A/B Everything
 **MUST** · M-UI6 · SRE, Engineer, Platform
 
-The Time Ribbon MUST hold an A window and a B window (−1d, −7d, before deploy ◆, previous version, or
-any brush). `C` MUST put the entire scene into A-vs-B diff mode ([05](05-visualisation-catalogue.md)).
+The time controls (the header time range picker, and the Time Ribbon in Space scenes) MUST hold an A
+window and a B window (−1d, −7d, before deploy ◆, previous version, or any brush). `C` MUST put the entire scene into A-vs-B diff mode ([05](05-visualisation-catalogue.md)).
 
 *Acceptance:* Setting B to "before deploy ◆ v2.31" and pressing `C` shows every viewport in the scene
 as an A-vs-B diff; pressing `C` again restores normal mode.
@@ -537,11 +544,12 @@ on a flame graph it shows a diff flame; on the Atlas it shows deviation glow.
 #### INT-031 — Events on the time axis
 **MUST** · M-UI1 · SRE, Engineer, Platform, NOC
 
-Events (deploys, config changes, alert transitions, annotations) MUST render as glyphs on the Time
-Ribbon and as vertical markers across every time viewport; clicking one MUST set a before/after
-comparison around it.
+Events (deploys, config changes, alert transitions, annotations) MUST render as vertical markers
+across every time viewport, and as glyphs on the Time Ribbon in Space scenes (from M-UI3); clicking
+one MUST set a before/after comparison around it.
 
-*Acceptance:* The v2.31 deploy shows ◆ on the Ribbon and a marker on every time chart; clicking it
+*Acceptance:* The v2.31 deploy shows a marker on every time chart (and ◆ on the Ribbon in a Space
+scene); clicking it
 sets the baseline to the window before the deploy and the current window after it.
 
 #### INT-032 — Window step and zoom keys
@@ -763,3 +771,4 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 camera table and INT-001 edited (Orbit default everywhere, Map on request); §4.1 wheel and double-click rows for 3D scenes and 3D signal views; §5 continuous infrastructure flight; §5.1 INT-042 to INT-044 added; resolutions 13–15 |
+| 1.1-rc | 2026-11-19 | Application layout (D9, roadmap Q13): the time window lives in the page header ([02](02-information-architecture.md) IA-020) and the Time Ribbon only in Space scenes (IA-028); §6 intro, INT-015 (F6 regions), INT-017, INT-025 (brush on any time chart), INT-029 and INT-031 revised in place; key table `F6` row |

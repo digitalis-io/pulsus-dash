@@ -3,10 +3,25 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI4 (evaluator, routing, v1 endpoints, incidents, backtest, history) → M-UI5 (v2 endpoints, hygiene) → post-R15 (ruler migration) |
-| **Related ADRs** | [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md) |
 | **Source draft** | plans/tech/T16-alert-evaluator.md (not tracked) |
+
+## 0. Applicability under ADR-0015 and ADR-0014 (2026-11-19)
+
+The evaluator, router and notifier are part of the Go BFF binary ([ADR-0015](../adr/0015-go-bff.md));
+the authoring UI is TypeScript ([ADR-0014](../adr/0014-typescript-react-web-client.md)). Rules,
+semantics and budgets stand. Rust specifics map as follows:
+
+| Was (Rust) | Now |
+|---|---|
+| `dash-alert-core` crate compiled native and to WASM (T16-001) | Two implementations held to one fixture corpus: Go package `internal/alertcore` (evaluator, backtest service) and TS module `client/src/alerts/core/` (in-browser backtest simulation). T16-001 revised |
+| `Notifier` Rust trait (§4.9), native Rust endpoint modules (§4.10) | A Go interface with the same methods (`Kind`, `Caps`, `Validate`, `Send`, `Update`) and Go endpoint packages; Kafka via a pure-Go client (no cgo, `CGO_ENABLED=0`) |
+| `dash-gotmpl` in-house Rust interpreter, WASM build for preview (§4.11) | Go's own `text/template/parse` parser (exact syntax and error positions) and an in-house Go executor over its tree, `internal/gotmpl`, which adds the redaction hook (T16-019) and step budget (T16-020); preview through the BFF (ALR-064) instead of WASM |
+| `rrule` crate | A Go RRULE library on the `server/` dependency review |
+| Server-side chart images (§4.12) | The Rust `pulsus-dash-render` binary in its own image, called by the Go notifier ([T19](T19-deployment.md) §4.2); `render(spec, arrow) -> Png` is its HTTP contract |
+| "Rust-everywhere" in §12 | No longer a reason; see the revised row |
 
 ## 1. Context & problem
 
@@ -39,8 +54,8 @@ SCN-007).
 **Goals**
 - Correct, HA evaluation with no duplicate and no lost notifications across restarts and
   failovers.
-- One state-machine implementation shared by the live evaluator, the backtest (server) and the
-  authoring UI (WASM).
+- One state-machine specification, implemented in Go for the live evaluator and the backtest
+  service and in TS for the authoring UI, held identical by one fixture corpus (T16-001).
 - Alertmanager semantics for `group_by`/`group_wait`/`group_interval`/`repeat_interval`,
   matchers, `continue`, inhibition and time intervals, so Alertmanager configs and those of other existing alerting systems import.
 - Incident-first paging: one page per incident.
@@ -64,13 +79,13 @@ SCN-007).
 | [ALR-002](../product/07-alerting.md#alr-002--entity-relative-templates-cover-new-entities) | §4.1 entity-relative templates, re-instantiated on `catalogue.diff` | `itest:template-new-entity` (≤ 1 refresh + 1 interval) |
 | [ALR-003](../product/07-alerting.md#alr-003--composite-rules-page-once) | §4.1 composite after children; T16-029 `notify:false` | `itest:composite-pages-once` |
 | [ALR-004](../product/07-alerting.md#alr-004--evaluation-independent-of-the-pulsusdb-ruler) | §4.1 SLO burn evaluated in Dash; §4.14 evaluator-agnostic UI; T16-008, T16-024 | `itest:alerting-ruler-disabled` |
-| [ALR-005](../product/07-alerting.md#alr-005--one-state-vocabulary) | §4.4 Table 3.2 names and glyphs in `dash-alert-core`, API and templates | `golden:alert-state-glyphs` (every state × view, greyscale) |
+| [ALR-005](../product/07-alerting.md#alr-005--one-state-vocabulary) | §4.4 Table 3.2 names and glyphs in `internal/alertcore` and its TS twin, API and templates | `golden:alert-state-glyphs` (every state × view, greyscale) |
 | [ALR-006](../product/07-alerting.md#alr-006--lifecycle-transitions) | §4.4 T16-002 | `prop:alert-core-prometheus-parity` |
 | [ALR-007](../product/07-alerting.md#alr-007--nodata-and-error-are-first-class) | §4.4 T16-003; §4.15 Unknown health for NoData/Error | `itest:nodata-error-policies` |
 | [ALR-008](../product/07-alerting.md#alr-008--flapping-detection) | §4.4 T16-004; §4.16 flap counts | `prop:flapping-damping` |
 | [ALR-009](../product/07-alerting.md#alr-009--severity-maps-to-the-health-scale) | §4.4 T16-005 | `unit:severity-health-map`; `golden:alert-severity-views` |
 | [ALR-010](../product/07-alerting.md#alr-010--create-alert-from-every-inspector) | §5.1 `rules/prefill` from viewport query, entity, Context | `e2e:create-alert-from-inspector` |
-| [ALR-011](../product/07-alerting.md#alr-011--live-backtest-with-draggable-threshold) | §4.5 fetch once, simulate in WASM | `bench:backtest-drag` (< 16 ms per change on (b)) |
+| [ALR-011](../product/07-alerting.md#alr-011--live-backtest-with-draggable-threshold) | §4.5 fetch once, simulate in the browser | `bench:backtest-drag` (< 16 ms per change on (b)) |
 | [ALR-013](../product/07-alerting.md#alr-013--notification-preview) | §4.5 step 4, §5.1 `preview` with the real renderer | `itest:notification-preview-parity` |
 | [ALR-014](../product/07-alerting.md#alr-014--blast-radius-for-entity-relative-templates) | §5.1 `rules/blast-radius` | `itest:template-blast-radius` |
 | [ALR-015](../product/07-alerting.md#alr-015--route-and-runbook-from-entity-ownership) | §5.1 prefill route from T12 ownership | `itest:route-from-owner-prefill` |
@@ -115,7 +130,7 @@ SCN-007).
 | [ALR-061](../product/07-alerting.md#alr-061--test-notification) | §4.9 T16-028 test send, response inline | `contract:test-notification` |
 | [ALR-062](../product/07-alerting.md#alr-062--secrets-are-write-only) | §8 secrets via `SecretStore` ([T18](T18-security.md) §4.8) | `itest:secret-write-only` |
 | [ALR-063](../product/07-alerting.md#alr-063--used-by-blast-radius) | §5.1 `used-by` from `rule_routes` and the policy tree | `itest:contact-point-used-by` |
-| [ALR-064](../product/07-alerting.md#alr-064--template-language-with-live-preview) | §4.11 `dash-gotmpl` with per-target preview, SMS 160 | `golden:gotmpl-differential` |
+| [ALR-064](../product/07-alerting.md#alr-064--template-language-with-live-preview) | §4.11 `internal/gotmpl` with per-target preview, SMS 160 | `golden:gotmpl-differential` |
 | [ALR-065](../product/07-alerting.md#alr-065--default-templates-carry-the-rca-card) | §4.11 default templates with `.RCA`; T16-027 ≤ 178-char push body | `golden:default-templates-rca` |
 | [ALR-067](../product/07-alerting.md#alr-067--redaction-on-every-outbound-payload) | §4.11 T16-019 redaction at output time | `itest:redaction-all-payloads` |
 | [ALR-068](../product/07-alerting.md#alr-068--every-attempt-recorded) | §4.9 T16-016; T11 `notification_deliveries` | `itest:delivery-attempt-record` |
@@ -313,13 +328,13 @@ States as [07](../product/07-alerting.md) Table 3.2.
 ```
 
 #### T16-001 — One state machine
-**MUST** — The state machine MUST be the crate `dash-alert-core`: `#![no_std]`-friendly, no I/O,
-compiled to native (evaluator, backtest service) and to **WASM** (authoring UI). The live
-evaluator, the backtest and the UI preview MUST use it, so a backtest shows exactly what the live
-evaluator would have done.
+**MUST** — The state machine MUST be specified once (this section) and implemented without I/O in Go
+(`internal/alertcore`: live evaluator, backtest service) and in TS (`client/src/alerts/core/`: UI
+backtest simulation). Both MUST pass one committed transition corpus (`wire/fixtures/alert-core/`)
+with identical transitions, so a backtest shows exactly what the live evaluator would have done.
 
 #### T16-002 — Lifecycle transitions
-**MUST** — `dash-alert-core` MUST implement the transitions of [07](../product/07-alerting.md)
+**MUST** — `internal/alertcore` and its TS twin MUST implement the transitions of [07](../product/07-alerting.md)
 Table 3.2, with Prometheus-compatible semantics for `for` and `keep_firing_for` and a 15-minute hold
 of Resolved before Normal. Every API response, template context (`.Status`, `.State`) and feed row
 MUST use the Table 3.2 names and glyphs above.
@@ -352,7 +367,7 @@ The authoring UI needs live numbers while the threshold is dragged (ALR-011).
    ≤ 10 000-step chunks executed in parallel through T07 and streamed as Arrow. Entity-relative
    templates fetch the vectorised form (all instances in one series set, capped at 500 instances for
    interactive backtest, noted in coverage).
-2. **Simulate in the browser.** `dash-alert-core` in WASM runs the state machine over the series
+2. **Simulate in the browser.** The TS state machine (T16-001) runs over the series
    for any threshold, `for` and `keep_firing_for` in < 16 ms per change (43k steps × 500 series is ≈
    20M comparisons, vectorised). Dragging the threshold needs no round trip.
 3. **Match incidents.** The BFF sends past incidents for the rule's entities (Postgres
@@ -482,7 +497,7 @@ pub struct Route {
   group) with start/end, author and a **required reason**. Creating one returns a preview of the
   currently matching instances. The expiry-nudge job notifies the creator 15 min before
   `ends_at`. Creation, change and expiry are audited.
-- **Maintenance windows** (ALR-078): RRULE (`rrule` crate) with time zone, scoped to entity
+- **Maintenance windows** (ALR-078): RRULE with time zone, scoped to entity
   selectors or segments; instances in scope get the `maintenance` flag and don't notify.
   `GET /alerting/maintenance/occurrences?from&to&entity` expands occurrences for the 🛠 regions on
   charts and hatched cells. A window MAY be created from a change ticket (ALR-079, SHOULD): the
@@ -517,17 +532,22 @@ each. The **Sankey** of real traffic (ALR-071) is an aggregate over the last 7 d
 
 ### 4.9 Delivery workers
 
-```rust
-#[async_trait::async_trait]
-pub trait Notifier: Send + Sync {
-    fn kind(&self) -> &'static str;                       // "slack", "pagerduty", …
-    fn caps(&self) -> NotifierCaps;                       // images, interactive, update_in_place, resolve, two_way
-    fn validate(&self, cfg: &serde_json::Value) -> Result<(), ConfigError>;
-    async fn send(&self, n: &RenderedNotification, cx: &DeliveryCtx) -> Result<Receipt, DeliveryError>;
-    async fn update(&self, prior: &Receipt, n: &RenderedNotification, cx: &DeliveryCtx)
-        -> Result<Receipt, DeliveryError> { self.send(n, cx).await }
+```go
+// server/internal/notify/notifier.go
+type Notifier interface {
+	Kind() string                                   // "slack", "pagerduty", …
+	Caps() NotifierCaps                             // images, interactive, update_in_place, resolve, two_way
+	Validate(cfg json.RawMessage) error             // *ConfigError
+	Send(ctx context.Context, n *RenderedNotification, dc *DeliveryCtx) (Receipt, error)
+	Update(ctx context.Context, prior Receipt, n *RenderedNotification, dc *DeliveryCtx) (Receipt, error) // default: Send
 }
-pub enum DeliveryError { Retryable { after: Option<Dur>, reason: String }, Permanent(String), RateLimited(Dur) }
+
+// DeliveryError is returned by Send and Update.
+type DeliveryError struct {
+	Kind       DeliveryErrorKind // Retryable | Permanent | RateLimited
+	RetryAfter time.Duration     // Retryable (optional) and RateLimited
+	Reason     string
+}
 ```
 
 - **Queue**: Postgres `delivery_jobs` (`SKIP LOCKED`), one job per (notification, integration).
@@ -578,13 +598,13 @@ redacted body excerpt within the integration timeout; it is recorded with `statu
 ### 4.10 Endpoint catalogue implementation tiers
 
 The product tiers are those of [07](../product/07-alerting.md) Table 7.1: **v1 at M-UI4**, **v2 at
-M-UI5**. Each endpoint is built either as a **native** Rust module implementing `Notifier`, or as a
+M-UI5**. Each endpoint is built either as a **native** Go package implementing `Notifier`, or as a
 **recipe**: a declarative HTTP recipe (URL template, headers, auth, body template, success
 predicate, dedup field) run by the generic webhook engine, shipped as data and versioned.
 
 | Product tier | Build | Endpoints |
 |---|---|---|
-| **v1** (M-UI4) | Native | Slack app (buttons), Microsoft Teams (app; workflows webhook one-way), Google Chat, PagerDuty Events v2, Atlassian JSM Operations / Opsgenie, incident.io, ServiceNow (incident + event management, CI linking), Jira / JSM (create, transition), email (SMTP with TLS/auth, Amazon SES, SendGrid; HTML + text; digest mode), Pulsus PWA web push, generic Webhook (templated body, HMAC signing, mTLS, custom headers, OAuth2 client credentials), Alertmanager-compatible webhook, forwarding to an external Alertmanager (`POST /api/v2/alerts`), Kafka (`rdkafka`) |
+| **v1** (M-UI4) | Native | Slack app (buttons), Microsoft Teams (app; workflows webhook one-way), Google Chat, PagerDuty Events v2, Atlassian JSM Operations / Opsgenie, incident.io, ServiceNow (incident + event management, CI linking), Jira / JSM (create, transition), email (SMTP with TLS/auth, Amazon SES, SendGrid; HTML + text; digest mode), Pulsus PWA web push, generic Webhook (templated body, HMAC signing, mTLS, custom headers, OAuth2 client credentials), Alertmanager-compatible webhook, forwarding to an external Alertmanager (`POST /api/v2/alerts`), Kafka (pure-Go client) |
 | **v1** (M-UI4) | Recipe | **Webhook-based chat**: presets of the generic webhook for chats that accept an incoming-webhook JSON body. The recipe engine itself ships at M-UI4 |
 | **v2** (M-UI5) | Recipe | Mattermost, Cisco Webex, Discord, Telegram, Rocket.Chat, Zulip; DingTalk, WeCom, Feishu/Lark, LINE, Threema; Splunk On-Call, Rootly, FireHydrant, xMatters, Squadcast, Zenduty, Better Stack, other external on-call / incident tools; BMC Helix, Freshservice, Zendesk; Vonage SMS, Amazon SNS SMS; Pushover, ntfy; Sensu Go; status pages (Atlassian Statuspage, Better Stack, instatus — **draft only**); outbound webhook to an external AI agent carrying the RCA card |
 | **v2** (M-UI5) | Native | Twilio SMS and voice with TTS and DTMF ack; MQTT; AWS SNS / EventBridge, GCP Pub/Sub, Azure Event Grid / Service Bus; Pulsus public status page (draft only); MCP push to an external agent; automation endpoints (GitHub Actions `repository_dispatch`, GitLab pipeline trigger, Rundeck / PagerDuty Process Automation, Ansible AWX/AAP, Argo Workflows, StackStorm), each executed through the action framework ([T18](T18-security.md) §4.7), with the result posted to the incident timeline |
@@ -600,15 +620,15 @@ predicate, dedup field) run by the generic webhook engine, shipped as data and v
 
 ### 4.11 Template engine
 
-**Decision: an in-house interpreter of the Go `text/template` subset that Alertmanager and other existing
-alerting systems' templates use**, in crate `dash-gotmpl`, rather than a third-party crate. The candidate crate
-(`gtmpl`) implements Go templates in Rust, but its maintenance status and completeness are
-uncertain, and we need things it does not give us:
+**Decision: Go's own `text/template/parse` parser with an in-house executor over its parse tree**, in
+package `internal/gotmpl` ([ADR-0015](../adr/0015-go-bff.md)). The parser gives exact Go template
+syntax and error positions; the standard executor is not used because we need things it does not
+give us:
 
 1. A **redaction hook** at value-output time (T16-019).
 2. **Execution budgets** (T16-020).
-3. **Error positions** for the editor ([T09](T09-query-editors.md)) and a WASM build for live
-   preview.
+3. **Error positions** for the editor ([T09](T09-query-editors.md)) and live preview through the BFF
+   (ALR-064).
 4. Exact Alertmanager function set: `toUpper`, `toLower`, `title`, `join`, `match`,
    `reReplaceAll`, `safeHtml`, `stringSlice`, `date`, `tz`, plus the commonly used helpers of other existing alerting systems,
    and our additions (`causalSentence`, `lensLink`, `chartImage`, `truncate`).
@@ -647,7 +667,7 @@ Images come from the **same wgpu renderer running natively and headless**
 ([T02](T02-vis-engine.md), [ADR-0003](../adr/0003-wgpu-rendering.md)): a render pool
 (`pulsus-dash render-worker`, Vulkan where a GPU exists, `llvmpipe` otherwise) takes a vis spec plus
 Arrow data (the rule's expression over the last hour with threshold and firing band) and returns a
-PNG (`png` crate), 800 × 320 at 2×. Budget p95 ≤ 300 ms on `llvmpipe`; cached by `(rule,
+PNG, 800 × 320 at 2×, from the Rust `pulsus-dash-render` binary called by the Go notifier (§0). Budget p95 ≤ 300 ms on `llvmpipe`; cached by `(rule,
 fingerprint, eval_ts)`. Images are stored as artefacts (object storage when configured, else
 Postgres, 7 days; [T11](T11-postgres-schema.md) §4.15) and referenced by a signed URL with a 7-day
 expiry, or attached directly (email CID, Slack file upload) where the endpoint needs it. If
@@ -721,7 +741,8 @@ counter, the NOC wall and the mobile PWA render **one feed**: the live alert set
   changed rows only.
 - **History** (ALR-021): `GET /alerting/state-at?t=&context=` returns the same snapshot shape as it
   was at `t`, built from `alert_transitions` intervals ([T11](T11-postgres-schema.md) §5.3); moving
-  the Time Ribbon into the past switches the views to it and marks the chrome "history".
+  the time window into the past (header picker, or the Time Ribbon in Space views) switches the views
+  to it and marks the page header "history".
 - **Timeline** (ALR-039): per incident, the state intervals of its alerts from `ALERTS`, 📣 from
   `notification_deliveries`, ⚙ and ◆ from the change feed, on one axis.
 - **Counters** pushed on the same socket: `my_unacked_incidents` (un-acked incidents of the
@@ -808,7 +829,7 @@ computations are testable.
 | T10 (draft) | Rule owner's scope for evaluation queries; permissions `alert:*`; identity links | |
 | [T18](T18-security.md) | Secrets (write-only, Vault refs); `dash-egress`; redaction; action framework for automation endpoints | |
 | [T11](T11-postgres-schema.md) | All tables in §6 | T11 holds DDL |
-| [T09](T09-query-editors.md) | Template editor uses `dash-gotmpl` WASM for errors and preview | |
+| [T09](T09-query-editors.md) | Template editor gets errors and preview from the BFF (`internal/gotmpl`) | |
 | T20 (draft) | Push envelope format; ack/silence/escalate API | |
 
 ## 6. Data & storage
@@ -879,7 +900,8 @@ credentials.
 ## 10. Testing
 
 - `prop:alert-core-prometheus-parity`: property tests for `for`/`keep_firing_for` on generated
-  series against Prometheus; WASM and native produce identical transitions.
+  series against golden transitions of the reference rule semantics (captured once); the Go and TS
+  implementations produce identical transitions on the shared corpus.
 - `prop:flapping-damping`: the 8-minute crossing series of ALR-008.
 - **Routing parity** (`itest:routing-parity-alertmanager`): imported Alertmanager configs and label
   sets compared against Alertmanager's own routing (golden outputs captured once), including
@@ -911,11 +933,11 @@ credentials.
 
 | Alternative | Why not |
 |---|---|
-| Embed Prometheus/Alertmanager (Go) | Breaks Rust-everywhere, can't evaluate LogQL/TraceQL or entity templates, no incident grouping |
+| Embed an existing open-source rule evaluator and alert router | Can't evaluate LogQL/TraceQL or entity templates, no incident grouping; we reuse Go's template parser instead (§4.11) |
 | Gossip clustering (Alertmanager-style) | Postgres is already required; leases + fences give stronger no-duplicate guarantees with less code |
 | Raft (e.g. `openraft`) for state | Extra consensus layer next to an HA Postgres; not needed at this write rate |
-| Backtest fully server-side | Every threshold drag would be a round trip; the shared WASM state machine is instant |
-| A Rust Handlebars/Tera engine | Not compatible with imported Go templates |
+| Backtest fully server-side | Every threshold drag would be a round trip; the TS state machine in the browser is instant |
+| Go's `text/template` executor as is | No output-time redaction hook and no step budget (T16-019, T16-020) |
 | History as OTLP logs + `ALERTS` remote write into PulsusDB (the draft) | Rejected with ADR-0010; consumes customer ingest, depends on ingest being enabled, and splits product state across two stores ([ADR-0012](../adr/0012-derived-state-in-postgres.md)) |
 | Materialising `ALERTS` as stored samples in Postgres | 500k instances × 1 sample/min is 7 × 10⁸ rows/day; intervals give the same answers at transition volume |
 | SLO burn via mandatory PulsusDB recording rules (the draft) | The ruler is off by default (ALR-004 requires evaluation with it disabled); kept only as an opt-in accelerator |
@@ -938,6 +960,7 @@ credentials.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; history moved to Postgres per ADR-0012; aligned with formal 07; formal design rules; Satisfies table |
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; T16-001 revised (one specification, Go and TS implementations, shared transition corpus); `Notifier` and endpoints in Go; templates parsed by Go's `text/template/parse` with an in-house executor; preview through the BFF; chart images from the separate Rust renderer |
 
 **Changes versus the draft:**
 1. **§4.7 rewritten (ADR-0012).** The draft wrote transitions and notifications as OTLP logs to

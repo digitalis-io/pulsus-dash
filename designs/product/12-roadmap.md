@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-19 |
+| **Version** | 1.5-rc · 2026-11-19 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -24,9 +24,9 @@ requirement's milestone is the earliest milestone in which it MUST be met.
 | Milestone | Theme | Scope | Proves |
 |---|---|---|---|
 | **M-UI0** | Rendering spike | wgpu line chart + scatter in an OffscreenCanvas worker behind the typed TS engine API ([ADR-0014](../adr/0014-typescript-react-web-client.md)); Arrow decode; 10⁸-point pan/zoom; WebGPU + WebGL2. Delivered **after** the first M-UI1 slice (§2.1) | The performance contract is achievable in Rust/WASM ([09](09-performance-contract.md)) |
-| **M-UI1** | PromQL and LogQL query and boards, then metrics workbench + Time Ribbon | **First (delivery order §2.1):** TS/React application with the conventional layout, Go BFF (JSON frames to the client until the engine), OIDC login, PulsusDB client for metrics and logs, PromQL and LogQL editors (PulsusDB validates), auto-vis, minimal Boards (grid of panels, save/load in Postgres), metrics vis (rate line, heatmap, stat) and logs vis (volume by level, log stream) on the interim Canvas 2D renderer. **Then:** visual builder, explain, metric browser, cardinality explorer, multiple queries and expressions, synced cursor, baseline ghost, events, LIVE, cached-first paint | PromQL and LogQL can be dashboarded against PulsusDB; day-to-day usefulness vs incumbent query explorers |
+| **M-UI1** | PromQL and LogQL query and boards, then the metrics workbench | **First (delivery order §2.1):** TS/React application with the conventional layout, Go BFF (JSON frames to the client until the engine), OIDC login, PulsusDB client for metrics and logs, PromQL and LogQL editors (PulsusDB validates), auto-vis, minimal Boards (grid of panels, save/load in Postgres), metrics vis (rate line, heatmap, stat) and logs vis (volume by level, log stream) on the interim Canvas 2D renderer. **Then:** visual builder, explain, metric browser, cardinality explorer, multiple queries and expressions, synced cursor, baseline ghost, events, LIVE, cached-first paint | PromQL and LogQL can be dashboarded against PulsusDB; day-to-day usefulness vs incumbent query explorers |
 | **M-UI2** | Entities + Lens | Entity catalogue, Service/Host Lens templates, **the rest of** logs (patterns, detected fields, line expand, live tail, log to metric), traces (scatter, waterfall) + profiles (flame), pivots, Correlate stack. Traces and profiles follow directly after the M-UI1 PromQL/LogQL slice | "Entity first" and cross-signal correlation |
-| **M-UI3** | Atlas + Change feed + Compare | Estate navigation ([15](15-estate-navigation.md)): Landscape, both zoom ladders + `V` floors, Infra grid + node packing, Explorer, Health/Capacity/Coverage layers; infrastructure model ([16](16-infrastructure-model.md)): canonical classes and shape grammar, three largest public clouds from telemetry, Kubernetes object model and Workload arrangement; Topology/Hierarchy Atlas with LOD, semantic zoom, replay, segments/bundling/anomalous subgraph; change feed; Universal Compare (+ unchanged, coverage); local WASM analytics engine; First Light; victim/origin heuristic; **MCP server** | The spatial differentiator + RCA foundations |
+| **M-UI3** | Atlas + Change feed + Compare | Estate navigation ([15](15-estate-navigation.md)): Landscape, both zoom ladders + `V` floors, Infra grid + node packing, Explorer, Health/Capacity/Coverage layers; infrastructure model ([16](16-infrastructure-model.md)): canonical classes and shape grammar, three largest public clouds from telemetry, Kubernetes object model and Workload arrangement; Topology/Hierarchy Atlas with LOD, semantic zoom, replay and the Time Ribbon in Space scenes, segments/bundling/anomalous subgraph; change feed; Universal Compare (+ unchanged, coverage); local WASM analytics engine; First Light; victim/origin heuristic; **MCP server** | The spatial differentiator + RCA foundations |
 | **M-UI4** | Alerts + Investigations + RCA v1 | Alert authoring with backtest, routing, incident grouping, Alert Lens, Investigation workspace, RCA stage 1 + agent stage 2, evidence ledger + hypothesis tree, draw-to-ask, flight recorder, mobile PWA push + offline Alert Lens card (T20 (draft)) | MTTI improvement; AI RCA accuracy on the replay corpus |
 | **M-UI5** | Boards + Perspectives + Journeys | Boards **beyond the M-UI1 minimum** (edit mode with undo history, variables, versions UI with diff and restore, library, free-form canvas, 200 viewports, dashboard import with full panel parity per [05](05-visualisation-catalogue.md) §11: tables, geomap, schematics, widgets, field config + transformations), Perspectives (NOC, Platform, Engineer, Business, Support), Journeys and customer lookup, release compare; cloud inventory connectors, Network layer, further clouds, hypervisors, network devices and storage systems ([16](16-infrastructure-model.md)) | Multi-audience value; migration path |
 | **M-UI6** | Enterprise hardening | Data scopes, audit, SCIM, Git sync, Terraform, attention-managed wall (salience ladder, wall ↔ desk, shift replay), A/B Everything, accessibility AA audit, air-gapped AI | Sellable to regulated enterprises |
@@ -49,34 +49,35 @@ requirements stay at M-UI3.
 TS/React web application first ([ADR-0014](../adr/0014-typescript-react-web-client.md)), a Go BFF
 ([ADR-0015](../adr/0015-go-bff.md)), charts on the interim Canvas 2D renderer, and the GPU chart
 engine (the M-UI0 scope) after the slice. Issues #24, #25 and #39–#49 are superseded by the steps
-below; issue numbers are assigned when the steps are filed.
+below; each step is filed as the issue named in Table 2.1a.
 
 **Table 2.1a — Step sequence.** Critical path: 1 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Step 2 runs
 alongside steps 3–4; steps 12–13 follow the slice.
 
-| Step | Delivers | Milestone | Depends on |
-|---|---|---|---|
-| 1 | Web client scaffold and application shell (layout, routing, time range, refresh, user menu, themes, empty pages), stub data, CI | M-UI1 | — |
-| 2 | Interim chart frames: `ChartFrame` seam and Canvas 2D line, stacked bars, heatmap, stat; chart gallery on stub data | M-UI1 | 1 |
-| 3 | Go BFF skeleton: Postgres under RLS, migrations, OpenAPI pipeline, serves the client with headers, dev stack | M-UI1 | 1 |
-| 4 | OIDC sign-in, sessions and built-in roles, wired into the shell | M-UI1 | 3 |
-| 5 | Boards: list, 12-column grid, panel editor, save and load with versions | M-UI1 | 4, 2 |
-| 6 | PulsusDB client and PromQL routes (JSON frames) | M-UI1 | 4 |
-| 7 | Explore metrics: PromQL editor, auto-vis, series table | M-UI1 | 6, 2 |
-| 8 | PromQL panels on boards | M-UI1 | 7, 5 |
-| 9 | LogQL routes | M-UI1 | 6 |
-| 10 | Explore logs: LogQL editor, volume by level, log stream | M-UI1 | 9, 2 |
-| 11 | LogQL panels on boards | M-UI1 | 10, 8 |
-| 12 | Chart engine foundation: Rust/WASM worker, WebGPU/WebGL2, line mark behind the seam, Arrow frames from the BFF | M-UI0 | 8 |
-| 13 | Engine marks for heatmap, bars, stat and the log stream; 10⁸-point line; scatter at 10⁷ | M-UI0 | 12 |
-| later | TraceQL panels, trace waterfall, profile panels | M-UI2 | 11 (and 13 for GPU volumes) |
+| Step | Issue | Delivers | Milestone | Depends on |
+|---|---|---|---|---|
+| 0 | #56 | Designs aligned with D7–D9 (this revision; roadmap Q13) | — | — |
+| 1 | #57 | Web client scaffold and application shell (layout, routing, time range, refresh, user menu, themes, empty pages), stub data, CI | M-UI1 | — |
+| 2 | #58 | Interim chart frames: `ChartFrame` seam and Canvas 2D line, stacked bars, heatmap, stat; chart gallery on stub data | M-UI1 | 1 |
+| 3 | #59 | Go BFF skeleton: Postgres under RLS, migrations, OpenAPI pipeline, serves the client with headers, dev stack | M-UI1 | 1 |
+| 4 | #60 | OIDC sign-in, sessions and built-in roles, wired into the shell | M-UI1 | 3 |
+| 5 | #61 | Boards: list, 12-column grid, panel editor, save and load with versions | M-UI1 | 4, 2 |
+| 6 | #62 | PulsusDB client and PromQL routes (JSON frames) | M-UI1 | 4 |
+| 7 | #63 | Explore metrics: PromQL editor, auto-vis, series table | M-UI1 | 6, 2 |
+| 8 | #64 | PromQL panels on boards | M-UI1 | 7, 5 |
+| 9 | #65 | LogQL routes | M-UI1 | 6 |
+| 10 | #66 | Explore logs: LogQL editor, volume by level, log stream | M-UI1 | 9, 2 |
+| 11 | #67 | LogQL panels on boards | M-UI1 | 10, 8 |
+| 12 | #68 | Chart engine foundation: Rust/WASM worker, WebGPU/WebGL2, line mark behind the seam, Arrow frames from the BFF | M-UI0 | 8 |
+| 13 | #69 | Engine marks for text and axes, heatmap, bars, stat and the GPU log stream; 10⁸-point line; scatter at 10⁷ | M-UI0 | 12 |
+| later | — | TraceQL panels, trace waterfall, profile panels | M-UI2 | 11 (and 13 for GPU volumes) |
 
 **Table 2.1b — Requirements moved to M-UI1** (the slice meets all their acceptance criteria).
 
 | Requirement | Doc | From | To | Delivered by |
 |---|---|---|---|---|
 | SRF-033 Log volume histogram | [04](04-surfaces.md) | M-UI2 | M-UI1 | Steps 10–11 (stacked by level; a brush sets the Context window) |
-| PRF-020 10⁶ log lines scrollable | [09](09-performance-contract.md) | M-UI2 | M-UI1 | Step 10 (virtualised DOM list); if it misses PRF-001 at 10⁶ lines, PRF-020 returns to M-UI2 and is met by step 13 (D6) |
+| PRF-020 10⁶ log lines scrollable | [09](09-performance-contract.md) | M-UI2 | M-UI1 | Step 10, #66 (virtualised DOM list). If it misses the PRF-001 frame target at 10⁶ lines on the reference lab, PRF-020 moves back to M-UI2 and is met by the GPU log stream of step 13, #69 (D6) |
 
 **Table 2.1c — Partially delivered in M-UI1; milestone unchanged (D6).**
 
@@ -85,7 +86,7 @@ alongside steps 3–4; steps 12–13 follow the slice.
 | SRF-036 Log stream | M-UI2 | stream (steps 10–11) | minimap |
 | VIZ-034 Log stream | M-UI2 | virtualised list, severity gutter, wrap (step 10); GPU text (step 13) | JSON expand, prettify, dedupe, context lines, minimap |
 | SRF-030 Metrics auto-vis + multiple queries | M-UI1 | auto-vis (step 7) | A/B queries and expressions |
-| IA-020 Time Ribbon | M-UI1 | header time range picker, brush on charts, window keys (steps 1, 2) | under revision with D9 (Q13) |
+| IA-020 Time range in the page header | M-UI1 | header time range picker and refresh control, brush on charts, window keys (steps 1, 2) | LIVE (INT-028) |
 | IA-006 Boards | M-UI5 | board in the root folder, versions stored on save (step 5) | owners, version history UI, variables |
 | SRF-014 Board layout | M-UI5 | 12-column grid (step 5) | free-form canvas, 3D viewports |
 | ENT-022 Versioned content | M-UI5 | version rows on every save (step 5) | diff and restore |
@@ -117,6 +118,8 @@ contract tests may also run against a configured shared PulsusDB deployment, rea
 | D7 | The web client is a standard **TypeScript + React + Vite** application, built first; the GPU chart engine (Rust/WASM in a worker, one canvas per panel) comes later behind a typed TS API, with an in-house Canvas 2D renderer until then | [ADR-0014](../adr/0014-typescript-react-web-client.md) | Accepted 2026-11-19 |
 | D8 | The BFF is written in **Go** | [ADR-0015](../adr/0015-go-bff.md) | Accepted 2026-11-19 |
 | D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards; the earlier no-sidebar prototype is rejected | [ADR-0014](../adr/0014-typescript-react-web-client.md) §10 | Accepted 2026-11-19 |
+| D10 | Asset integrity is verified by the BFF against the signed manifest before serving; every JS module, CSS file and worker is same-origin, and the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity`; no per-module SRI in the browser | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) | Accepted 2026-11-19 |
+| D11 | SRF-027 in M-UI1 shows PulsusDB's parse errors on run (positioned where PulsusDB returns a position); pre-run byte-offset diagnostics are SRF-078 at M-UI2 with the browser parser (was Q14, option A) | [04](04-surfaces.md) SRF-027, SRF-078 | Accepted 2026-11-19 |
 
 ### 3.1 Settled by the specification
 
@@ -129,7 +132,7 @@ product owner can confirm them at sign-off.
 | Q4 | Atlas default layout | Per Perspective: Topology for SRE/Engineer, City for NOC/Platform | [01a](01a-audiences-and-perspectives.md) AUD-045, [15](15-estate-navigation.md) |
 | Q5 | Non-PulsusDB datasources | Prometheus-API compatible, read-only; no other datasources in v1 | [01](01-vision-and-principles.md) PRN-012 |
 | Q9 | Business impact (€) data source | Both configuration constants and business metrics in PulsusDB, with the formula always visible | [01a](01a-audiences-and-perspectives.md) AUD-030 |
-| Q10 | Mobile app | PWA from the same WASM; read, acknowledge and AI only | [01](01-vision-and-principles.md) PRN-014, [09](09-performance-contract.md) PRF-035 to PRF-042 |
+| Q10 | Mobile app | PWA from the same web client; read, acknowledge and AI only | [01](01-vision-and-principles.md) PRN-014, [09](09-performance-contract.md) PRF-035 to PRF-042 |
 
 ## 4. Assumptions
 
@@ -149,7 +152,6 @@ product owner can confirm them at sign-off.
 | Q6 | Arrow natively from PulsusDB vs BFF conversion | — | BFF first, native later (part of O2) | [ADR-0005](../adr/0005-arrow-wire-format.md) (Proposed); [T01](../technical/T01-frontend-architecture.md) |
 | Q7 | Default AI provider and level of self-hosted model support | — | Claude via API by default; OpenAI-compatible endpoint for self-hosted | [06](06-ai-copilot.md); T15 (draft) |
 | Q12 | Local sign-in without an IdP | (A) OIDC only; dev installs use a bundled test IdP · (B) a local bootstrap admin with a password, break-glass only | (A) for now. T06-022 forbids stored passwords, but T19 §4.3 and T11 `users.password_hash` assume a local bootstrap admin (T18 §13 Q5). Reconcile before the M-UI1 release | [T06](../technical/T06-bff-architecture.md), [T11](../technical/T11-postgres-schema.md), [T18](../technical/T18-security.md), [T19](../technical/T19-deployment.md) |
-| Q13 | Product requirements written for the previous shell and the Rust-only stack: IA-016, IA-020, IA-021, SRF-001, VL-017 (chrome), VIZ-001 (one shared scene, Leptos room), SRF-014 (one GPU scene per board), PRF-008 and PRF-009 (WASM shell) | Revise to D7–D9 · keep and treat D7–D9 as exceptions | Revise in 02, 04, 05, 08 and 09 before step 1's code review; until then D7–D9 win where they conflict | [ADR-0014](../adr/0014-typescript-react-web-client.md) |
 
 ## 6. Next design steps
 
@@ -175,6 +177,15 @@ product owner can confirm them at sign-off.
    milestone.
 5. **Validation-scenario reference.** The scenario is [01a](01a-audiences-and-perspectives.md) §8
    (renumbered from the draft's §6).
+6. **Q13 closed (2026-11-19, #56).** The product requirements written for the previous shell and the
+   Rust-only stack are revised in place to D7–D9, with stable IDs: IA-014, IA-016, IA-020, IA-021
+   ([02](02-information-architecture.md), plus IA-028 for the Time Ribbon in Space scenes); INT-015,
+   INT-017, INT-025, INT-029, INT-031 ([03](03-interaction-model.md)); SRF-001, SRF-014, SRF-019,
+   SRF-027 ([04](04-surfaces.md); split into SRF-027 and new SRF-078 by code review, D11); VIZ-001, VIZ-057, VIZ-063 ([05](05-visualisation-catalogue.md));
+   ALR-021 ([07](07-alerting.md)); VL-017, VL-019, VL-021 ([08](08-visual-language.md)); PRF-008,
+   PRF-009, PRF-020 (note), PRF-022, PRF-033, PRF-038 ([09](09-performance-contract.md)); ENT-028
+   ([11](11-enterprise.md)). The technical designs are aligned in the same change.
+7. **Q14 closed (2026-11-19, owner)** as option A: decision D11.
 
 ## 8. Change log
 
@@ -183,3 +194,6 @@ product owner can confirm them at sign-off.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; decisions D1–D4, assumptions A1–A2 and open decisions O1–O2 added |
 | 1.1-rc | 2026-11-19 | D5 delivery order: PromQL and LogQL query and board slice first; M-UI1, M-UI2 and M-UI5 scopes re-cut; §2.1 added with the issue sequence (#39–#49); SRF-033 and PRF-020 moved from M-UI2 to M-UI1; D6 milestone rule for partial delivery (Q11 closed, option A); Q12 added; globe spike #25 paused; service graph confirmed on the native traces API |
 | 1.2-rc | 2026-11-19 | D7 TS/React/Vite client (ADR-0014, supersedes D1), D8 Go BFF (ADR-0015), D9 conventional application layout. §2.1 re-planned as steps 1–13 after the code restart; #24, #25 and #39–#49 superseded; M-UI0 delivered after the first M-UI1 slice; Q13 added for product text that assumes the previous shell |
+| 1.3-rc | 2026-11-19 | Q13 closed (#56): product requirements revised to D7–D9 (§7 item 6); Table 2.1a names the issues #56–#69; PRF-020 fallback is the GPU log stream (#69); Table 2.1c IA-020 row updated and SRF-027 row added; M-UI1 theme no longer names the Time Ribbon, which moves to the M-UI3 Space scenes (IA-028); Q10 answer reads "same web client" |
+| 1.4-rc | 2026-11-19 | Code review of #56: SRF-027 revised to errors on run and its pre-run positioned criterion split out as SRF-078 (M-UI2, proposed); the SRF-027 row leaves Table 2.1c; Q14 added for owner confirmation |
+| 1.5-rc | 2026-11-19 | Owner decisions on #56: Q14 closed as option A (D11, SRF-078 at M-UI2); D10 asset integrity verified by the BFF (ADR-0016) |

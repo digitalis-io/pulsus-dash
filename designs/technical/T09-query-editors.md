@@ -3,22 +3,44 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (PromQL editor, completion, explain, visual builder, auto-vis hint) → M-UI2 (LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0004](../adr/0004-leptos-dom-rooms.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Version** | 1.5-rc · 2026-11-19 |
+| **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
+
+## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
+
+The editor is TypeScript on CodeMirror 6 ([ADR-0014](../adr/0014-typescript-react-web-client.md)
+§1), and the BFF is Go and parses no query in the first slice
+([ADR-0015](../adr/0015-go-bff.md), "Query validation"). PulsusDB's parser stays the only authority on
+validity (T09-002): it is reached **through the BFF** first and, later, **in the browser** as
+PulsusDB's parser crates compiled to WASM. Requirements, rules and budgets stand except where
+revised below.
+
+| Was (Rust/Leptos) | Now (TS, under `client/src/editor/`) |
+|---|---|
+| `dash-lang` crate and `QueryLanguage` trait (T09-001) | `lang/` with a TS `QueryLanguage` interface (§5.1); implementations `RemoteValidator` (BFF → PulsusDB) now and `WasmValidator` (PulsusDB crates in an editor worker) later |
+| Textarea overlay (§4.3, T09-004) | CodeMirror 6 (§4.3, T09-004 revised) |
+| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail) |
+| `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005) |
+| Validation in the `editor` worker | v1: on run (and on Explore's auto-run), the BFF forwards the query to PulsusDB and maps its error and position, if any, to a diagnostic. Later: `dash-editor.wasm` (PulsusDB crates) in an editor worker on every edit (§4.2 diagram), with no change to the editor |
+| `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
+| `nucleo-matcher` fuzzy ranking | CodeMirror autocompletion's matcher plus the ranking boosts of §4.4 |
+| `pulsus-re2` regex screen (T09-016) | T09-016 revised |
+| Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree with a TS printer and a token-sequence loss check (§4.9 and T09-013 rewritten); no PulsusDB AST or printer is needed |
+| Leptos `QueryEditor`, `QueryBuilder` | React components (§5.1) |
+| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014) |
 
 ## 1. Context & problem
 
 Most users never type a query ([13](../product/13-core-flow-storyboard.md): "zero queries typed").
 The ones who do are experts, and they compare us with the query explorers of incumbent tools, which run full JS code
-editors with language servers. With no JS editor available
-([ADR-0002](../adr/0002-no-js-ui-framework.md)), we need a Rust editor that is as good for queries of
-a few hundred bytes up to 128 KB.
+editors with language servers. Since [ADR-0014](../adr/0014-typescript-react-web-client.md) we build
+on CodeMirror 6, and the editor must be as good for queries of a few hundred bytes up to 128 KB.
 
 That means:
 - highlighting;
-- exact error positions (SRF-027);
+- error positions: PulsusDB's on run (SRF-027), exact before run from the browser parser (SRF-078);
 - autocomplete for metric, label, attribute and value names, which must be scoped by RBAC;
 - hover docs;
 - formatting;
@@ -44,7 +66,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 - Native-quality IME, selection, screen-reader and mobile-keyboard behaviour.
 - One editor core for the workbenches, alert rules, Board viewport editing, ⌘K and read-only
   snippets.
-- A PromQL visual builder at M-UI1 that round-trips with the text on the same AST.
+- A PromQL visual builder at M-UI1 that round-trips with the text, built on the Lezer PromQL tree (§4.9).
 
 **Non-goals**
 - A general code editor (multi-cursor, minimap, folding, Vim mode). Vim mode is a candidate later.
@@ -56,16 +78,17 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
-| [SRF-027](../product/04-surfaces.md#srf-027--promql-editor) | §4.2, §4.3, §4.4, §4.5, T09-002, T09-009 | `e2e:editor-missing-brace`: typing `rate(http_server_duration_bucket{service="checkout"[5m])` underlines the missing `}` at its byte offset before run; `itest:editor-completion-metadata` (metric, label and value completion from seeded PulsusDB metadata); `unit:hover-docs-functions` |
+| [SRF-027](../product/04-surfaces.md#srf-027--promql-editor) | §4.2, §4.3, §4.4, §4.5, T09-002, T09-009 | `e2e:editor-error-on-run`: running `rate(http_server_duration_bucket{service="checkout"[5m])` against `pulsus-fake` shows PulsusDB's parse error inline, underlined at the returned position or across the whole query when none is returned, and keeps the previous result; `itest:editor-completion-metadata` (metric, label and value completion from seeded PulsusDB metadata); `unit:hover-docs-functions` |
+| [SRF-078](../product/04-surfaces.md#srf-078--positioned-query-diagnostics-before-run) | §4.2 (WASM validator), §4.5, T09-009 | `e2e:editor-missing-brace`: typing `rate(http_server_duration_bucket{service="checkout"[5m])` underlines the missing `}` at its byte offset before run, with no request sent |
 | [SRF-028](../product/04-surfaces.md#srf-028--query-explain) | §4.5 (explain: structure + `X-Pulsus-Explain`) | `itest:explain-matches-headers` (T07 co-owns): rollup, rows read and server time match the PulsusDB response for a seeded 7-day query |
-| [SRF-029](../product/04-surfaces.md#srf-029--visual-query-builder) | §4.9, T09-013 | `prop:builder-roundtrip`: for every query in the PromQL corpus the builder can represent, text → builder → text is AST-equal and builder → text → builder is identical; every unrepresentable query yields a reason |
+| [SRF-029](../product/04-surfaces.md#srf-029--visual-query-builder) | §4.9, T09-013 | `prop:builder-roundtrip`: for every query in the PromQL corpus the builder can represent, text → builder → text has the same non-whitespace Lezer token sequence and builder → text → builder is identical; every other corpus query (including reject cases and queries with `#` comments) yields a named refusal and leaves the text unchanged; `e2e:builder-toggle-invalid`: toggling `rate(http_server_duration_bucket{service="checkout"[5m])` names the syntax error and stays on text |
 | [SRF-030](../product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries) | §4.6 (`VisHint`), §5.1 (multiple editors, A/B refs) | `e2e:metrics-autovis`: a histogram metric shows a heatmap; queries A, B and `A / B` show overlaid or as small multiples (T07 co-owns expression evaluation) |
 | [SRF-031](../product/04-surfaces.md#srf-031--metric-browser-and-series-table) | §4.4 (metric browser source: names, type, cardinality, label value counts) | `itest:suggest-metric-browser`: `http_` lists matching metrics with type and series count; labels for the selection list value counts |
 | [SRF-032](../product/04-surfaces.md#srf-032--cardinality-explorer) | §4.4 (`kind: cardinality`) | `itest:suggest-cardinality`: a seeded metric with 3.2k series, 2.9k from `pod`, returns `pod` as the largest entry with its count |
 | [INT-038](../product/03-interaction-model.md#int-038--query-detection) | §5.1 (`QueryLanguage::detect`) | `unit:lang-detect`: `rate(`, `{app=`, `{ span.`, `process_cpu:` each score highest for PromQL, LogQL, TraceQL, profile selector; `e2e:palette-query-detect` (T08 co-owns) |
 | [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:vishint-table-5-13`: one fixture query per row decidable from the query; T07/T02 confirm the remaining rows on result shape |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2 (main-thread work bounded), §7 | `bench:editor-keystroke`: ≤ 2 ms main-thread work per keystroke on a 1 KB query; 0 long tasks during typing scripts |
-| [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.2 (lazy `dash-editor.wasm`) | `ci:bundle-size`: parsers absent from the core module; a cold load that opens no editor fetches no editor satellite |
+| [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.3 (lazy editor chunk), §0 | `ci:bundle-size`: editor chunk ≤ 175 KB and absent from initial JS; `e2e:lazy-load`: a cold load that opens no editor fetches no editor chunk |
 | [VL-010](../product/08-visual-language.md#vl-010--fonts) | §4.8 (JetBrains Mono for queries) | `golden:editor-fonts` |
 | [AI-031](../product/06-ai-copilot.md#ai-031--query-assist-shows-the-query) | §4.7, T09-012 | `e2e:query-assist-shows-query`: "p99 latency of POST /pay by pod" puts a query in the editor, runs it only after confirmation in workbenches, and editing re-runs it |
 | [ENT-006](../product/11-enterprise.md#ent-006--scoped-users-see-no-out-of-scope-data) | §4.4, §8, T09-014 | `itest:suggest-scoped`: a principal scoped to `env=staging` gets no prod label value, entity name or count from any `/suggest` kind |
@@ -112,15 +135,21 @@ default**. [R17](pulsusdb-requirements.md) (permissively licensed syntax-only cr
 of the licence of PulsusDB's patches to the vendored `promql-parser`) stays open as a P3
 nice-to-have, relevant only if a non-AGPL Dash edition is ever planned.
 
-#### T09-001 — PulsusDB crates sit behind one trait
-**MUST** — The PulsusDB parser crates MUST be named only in the `dash-lang` crate, behind the
-`QueryLanguage` trait (§5.1). Every other crate (editor, planner, scope rewriter preview, ⌘K) MUST
-use the trait, so a different implementation is a crate swap, not a redesign.
+#### T09-001 — PulsusDB parsers sit behind one interface
+**MUST** — PulsusDB's parser, whether reached through the BFF or compiled to WASM, MUST be used only
+through the `QueryLanguage` interface in `client/src/editor/lang/` (§5.1). Every other module
+(editor, builder, ⌘K detection) MUST use the interface, so moving from the BFF to the WASM crates is a
+module swap, not a redesign.
 
 ### 4.2 Architecture: three layers, two threads
 
+> **Note:** the diagram shows the WASM phase as designed in 1.0-rc. In v1 (§0) everything left of the
+> worker is CodeMirror in the main thread (the textarea, `EditBuffer` and underlay are CodeMirror's
+> `EditorState` and decorations), the context parser and completion run in the main thread, and
+> validation is a BFF call on run instead of the worker.
+
 ```
- main thread (dash-shell)                                    EDITOR worker: dash-editor.wasm (lazy)
+ main thread (TS application)                                EDITOR worker: dash-editor.wasm (lazy)
  ┌──────────────────────────────────────────────┐            ┌─────────────────────────────────────────┐
  │ <textarea> bridge  ──input──► EditBuffer      │  EditMsg   │ pulsus-promql/logql/traceql  (validate) │
  │ (native IME, caret,          │ (String +      ├───────────►│ dash-qctx tolerant context parser       │
@@ -155,49 +184,44 @@ the first token. Highlighting never waits for it.
 
 #### T09-002 — The PulsusDB parser is the only authority on validity
 **MUST** — Whether a query is valid MUST be decided only by the PulsusDB parser for its language.
-`dash-qlex` and `dash-qctx` MAY drive colour, completion, spans and recovery points, but MUST NOT mark
+`dash-qlex` and `dash-qctx` MAY drive colour, completion and spans, but MUST NOT place errors or mark
 a query valid or invalid.
 
 #### T09-003 — Highlighting never waits
-**MUST** — Highlighting MUST run synchronously on the main thread from `dash-qlex`, re-lexing only
-from the edited line to state convergence, within ≤ 2 ms per keystroke for a 1 KB query. It MUST NOT
-wait for the editor worker.
+**MUST** — Highlighting MUST run synchronously on the main thread from the CodeMirror language of
+§0 (incremental Lezer parse for PromQL, resumable stream tokenizers for LogQL and TraceQL), within
+≤ 2 ms per keystroke for a 1 KB query. It MUST NOT wait for the network or a worker.
 
-### 4.3 Editor surface: textarea bridge (decision)
+### 4.3 Editor surface: CodeMirror 6 (decision, ADR-0014)
 
 | Option | IME | Screen reader | Mobile keyboards | Decorations | Effort |
 |---|---|---|---|---|---|
-| **A. Transparent `<textarea>` over a highlighted `<pre>` underlay** | native | native (it *is* a textarea) | native | spans, squiggles, bracket marks; no inline widgets that shift text | low |
-| B. `contenteditable` + `beforeinput` interception (the model of mature JS code editors) | hard: composition mutates the DOM and must be reconciled per browser | good if done right | quirky | anything | high |
+| A. Transparent `<textarea>` over a highlighted `<pre>` underlay (1.0-rc decision) | native | native | native | spans, squiggles; no inline widgets | low, but every editor feature is ours |
+| **B. CodeMirror 6** (a mature `contenteditable` editor that reconciles composition per browser) | handled by the library, tested per browser | ARIA textbox, tested | supported | anything (widgets, gutters, tooltips) | low: completion, history, bracket matching, search and keymaps are provided |
 | C. Canvas-text editor (GPU text) | must re-implement through a hidden input | must be re-implemented | poor | anything | very high |
 
-**Decision: A.** Queries are short and plain-text. The textarea gives us correct IME, spell-check-off,
-selection, drag-drop, undo intents, mobile keyboards and AT behaviour for free. This replaces the
-"contenteditable bridge" wording in [T01](T01-frontend-architecture.md).
+**Decision: B**, as [ADR-0014](../adr/0014-typescript-react-web-client.md) §1 decides. With a JS
+framework allowed, the reasons for A (no JS editor available, ADR-0002) are gone, and CodeMirror
+supplies composition handling, accessibility, completion UI, history and bracket matching.
 
-#### T09-004 — Textarea overlay surface
-**MUST** — Query editing MUST use a native `<textarea>` overlaid on a highlighted underlay. Editors
-MUST NOT use `contenteditable` or canvas text input.
+#### T09-004 — CodeMirror 6 surface
+**MUST** — Query editing MUST use CodeMirror 6, loaded as part of the lazily loaded editor chunk with
+the Explore and panel-editor routes (≤ 175 KB brotli, ADR-0014 §8). Editors MUST NOT use another
+editor surface, a hand-built `contenteditable` or canvas text input.
 
 Mechanics:
-- **Pixel alignment.** The textarea and the underlay share font (JetBrains Mono), size, line-height,
-  padding, `white-space: pre-wrap`, `overflow-wrap: anywhere`, `tab-size` and width. The textarea's
-  text is `color: transparent` with a visible `caret-color`. Its scroll is mirrored to the underlay on
-  `scroll`. The editor auto-grows up to 12 lines, then scrolls.
-- **Edits.** On `input`, Rust reads `value` and computes a prefix/suffix diff against `EditBuffer`
-  (O(n), n ≤ 128 KB; typically < 1 KB), producing `TextEdit { range, insert }`. Diffing the whole
-  value is robust to IME, autocorrect, paste and drag-drop, where interpreting `beforeinput` intents
-  is not.
-- **Buffer.** `EditBuffer` is a `String` plus `LineIndex` (a `Vec<u32>` of line starts, updated
-  incrementally) and a version counter. A rope (`ropey`) is unnecessary under the 128 KB cap; a
-  `String` splice is microseconds.
-- **Programmatic edits** (completion accept, format, AI insert, builder sync) use `setRangeText()`.
-- **Ghost-text completion** shows only when the caret is at the end of a line. Elsewhere it would
-  shift underlay text relative to the textarea.
+- **Document.** CodeMirror's `EditorState` is the buffer; edits arrive as transactions, so no diffing
+  of the whole value is needed. Programmatic edits (completion accept, format, AI insert, builder sync)
+  are dispatched as transactions with a `userEvent` annotation.
+- **Size.** The editor auto-grows up to 12 lines, then scrolls. Font, size and line height come from
+  the tokens (JetBrains Mono, VL-010).
 - **Keys.** The editor is the 03 **Text input** context ([T08](T08-dom-component-kit.md) §4.8):
   `⌘⏎` runs, `⌘⇧F` formats, `Esc` leaves the field (closing an open completion popup first), `⌘Z`
-  and `⌘⇧Z` undo and redo typing, and `⌘K` opens the palette. `Tab`/`Enter` accept a completion only
-  while the popup is open; otherwise `Tab` moves focus, so the editor is never a keyboard trap.
+  and `⌘⇧Z` undo and redo, and `⌘K` opens the palette. `Tab`/`Enter` accept a completion only while
+  the popup is open; otherwise `Tab` moves focus (CodeMirror's tab-focus mode), so the editor is never
+  a keyboard trap.
+- **Highlighting** is a CodeMirror language per query language (§0): the Lezer PromQL grammar, and
+  in-house stream tokenizers for LogQL and TraceQL. Ghost-text completion is not used.
 
 #### T09-005 — Composition is respected
 **MUST** — During composition (`compositionstart` → `compositionend`) the editor MUST keep
@@ -205,9 +229,8 @@ re-highlighting but MUST NOT open, accept or reorder completions and MUST NOT re
 re-evaluates on `compositionend`.
 
 #### T09-006 — One undo history
-**MUST** — Native and programmatic edits MUST share one undo history: programmatic edits are pushed
-to the editor's own stack, and `beforeinput` `historyUndo`/`historyRedo` plus `⌘Z`/`⌘⇧Z` are
-intercepted so both kinds undo in order.
+**MUST** — Typed and programmatic edits MUST share one undo history: both are CodeMirror
+transactions recorded by its `history` extension, and `⌘Z`/`⌘⇧Z` undo and redo them in order.
 
 ### 4.4 Completion
 
@@ -289,10 +312,12 @@ above the highlighted item (the same rule as T08-014).
   "wrap in `rate(…[$__rate_interval])`". Squiggles use the wavy `text-decoration` in the underlay. A
   gutter glyph and an `aria-describedby` list give the non-visual channel.
 
-#### T09-009 — Error positions are byte offsets
-**MUST** — Each parser error MUST be shown at a byte offset: the structured span for LogQL and
-TraceQL; for PromQL, the position parsed out of the message. When PromQL gives no position, the
-squiggle MUST be placed at the `dash-qctx` recovery point and labelled "approximate position".
+#### T09-009 — Error positions are byte offsets, or the whole query
+**MUST** — *(Revised 1.3-rc.)* Each PulsusDB parser error MUST be underlined at the byte offset the
+parser gives: the structured span for LogQL and TraceQL; for PromQL, the position in the message. An
+error that comes with no position MUST be underlined across the whole query and labelled "position
+unknown"; no other placement (such as a guessed recovery point) is allowed. The same rule applies to
+errors from PulsusDB through the BFF on run (SRF-027) and to the WASM validator before run (SRF-078).
 
 **Board variables and macros** (`$var`, `${var}`, `$__rate_interval`, `$__interval`) are not PulsusDB
 syntax.
@@ -305,8 +330,8 @@ does before execution ([T07](T07-scene-query-planner.md) §4.1).
 
 - **Hover docs.**
   - **Functions and keywords:** from `dash-qdocs`, written by us. Prometheus docs (Apache-2.0) are
-    adapted with attribution. Loki and Tempo docs are AGPL-licensed; under D3 they MAY be adapted
-    with attribution and licence notice, but our own text is preferred so the three languages read
+    adapted with attribution. Third-party LogQL and TraceQL documentation is AGPL-licensed; under D3 it MAY be
+    adapted with attribution and licence notice, but our own text is preferred so the three languages read
     consistently.
   - **Metrics:** type, unit, help and series count (from `/api/v1/metadata` and BFF cardinality).
   - **Label values:** series or stream count.
@@ -314,7 +339,9 @@ does before execution ([T07](T07-scene-query-planner.md) §4.1).
   - **`$__rate_interval`:** its resolved value.
   - **Reserved virtual selectors:** "served by Dash from alert history (Postgres)", with the
     supported subset.
-- **Format / prettify** (`⌘⇧F`, and on save in alert rules):
+- **Format / prettify** (`⌘⇧F`, and on save in alert rules). *Ships with the WASM crates (M-UI2,
+  §11), or earlier only through a PulsusDB format route once confirmed (Q5). Until then no format
+  command is offered and `⌘⇧F` does nothing in the editor.*
   - **PromQL:** `promql-parser`'s `prettify()`. If the text contains `#` comments, formatting is
     refused with "format would drop comments" (§13 Q2).
   - **LogQL and TraceQL:** the crates' canonical `Display`, plus our line-breaking pass (pipeline
@@ -381,8 +408,8 @@ without the query (AI-031).
 
 ### 4.8 Rendering highlights
 
-- `HighlightRuns` = `Vec<(u32 start, u32 len, TokenClass)>` per line. The underlay is a keyed list of
-  line elements, so only changed lines re-render (Leptos keyed `For`).
+- `HighlightRuns` = `(start, len, TokenClass)[]` per line, produced from the CodeMirror syntax tree
+  and applied as CodeMirror decorations, so only changed lines re-render.
 - `TokenClass` maps to syntax tokens in `dash-tokens` (`--syn-metric`, `--syn-label`, `--syn-string`,
   `--syn-number`, `--syn-duration`, `--syn-func`, `--syn-keyword`, `--syn-op`, `--syn-error`,
   `--syn-var`, `--syn-virtual`), designed for dark, light and high-contrast themes
@@ -390,60 +417,72 @@ without the query (AI-031).
 - **Bracket matching:** the bracket pair at the caret, plus mismatched-bracket marks. **Occurrence
   highlighting:** the same label name everywhere in the query.
 - **Read-only snippets** (Inspector, ⌘K results, AI dock, Investigation evidence) use the same lexer
-  with no textarea.
+  in a read-only CodeMirror view or as styled spans.
 - **Canvas labels** that show queries pass `HighlightRuns` to GPU text as per-glyph colour
   ([T02](T02-vis-engine.md)).
 
 ### 4.9 Visual query builder (PromQL at M-UI1)
 
 SRF-029 requires a builder (metric → filters → operations) as a toggle that round-trips with the text
-without loss for any query it can represent.
+without loss for any query it can represent. *(Rewritten 1.4-rc for M-UI1: the builder runs in the
+browser on the Lezer PromQL tree; it needs neither PulsusDB's AST nor its printer.)*
 
-- **Model.** `BuilderModel` is a projection of the PulsusDB PromQL AST, not a separate grammar:
-  `metric` (with type and unit from metadata), `filters: Vec<Matcher>` (label pickers backed by
-  `/suggest`), and an ordered `ops: Vec<Op>` pipeline, where `Op` ∈ range function (`rate`,
-  `increase`, `*_over_time` with a duration), aggregation (`sum`/`avg`/`min`/`max`/`count`/`topk`/
-  `bottomk` with `by`/`without`), `histogram_quantile(φ)`, scalar arithmetic and comparison with a
-  constant, and binary operation with another builder query (`A / B`, with `on`/`ignoring`).
-- **Text → builder.** `project(&Expr) -> Result<BuilderModel, Unrepresentable>` walks the AST from the
-  outermost node inwards. `Unrepresentable` names the reason (e.g. "subquery", "nested binary
-  operation with vector matching on both sides", "`label_replace`", "offset/@ modifiers inside an
-  aggregation"), and the toggle shows it instead of switching.
-- **Builder → text.** `print(&BuilderModel) -> Expr` builds the AST and prints it with the canonical
-  printer; the textarea is updated with `setRangeText()` as one undoable edit.
-- **Loss check.** Every toggle checks `parse(print(project(q))) ≡ parse(q)` before switching; if it
-  fails, the toggle reports the construct and stays on text. Formatting differences (whitespace,
-  matcher order) are not loss; comments are, so a query with `#` comments is unrepresentable.
+- **Model.** `BuilderModel` is a projection of the Lezer PromQL tree: `metric` (with type and unit
+  from metadata), `filters: Matcher[]` in written order (label pickers backed by `/suggest`), and an
+  ordered `ops: Op[]` pipeline, where `Op` ∈ range function (`rate`, `increase`, `*_over_time` with
+  a duration), aggregation (`sum`/`avg`/`min`/`max`/`count`/`topk`/`bottomk` with `by`/`without`),
+  `histogram_quantile(φ)`, scalar arithmetic and comparison with a constant, and binary operation
+  with another builder query (`A / B`, with `on`/`ignoring`). The model also keeps each written
+  form the printer needs to reproduce the text: duration and number literals as written, the quote
+  character of each string, and whether a grouping clause precedes or follows the aggregation body.
+- **Text → builder.** `project(tree, text) → BuilderModel | Refusal` walks the Lezer tree from the
+  outermost node inwards. It refuses, with a named reason shown by the toggle, when:
+  - the tree contains an error node: "fix the syntax error at offset n first" (the text stays in the
+    editor; the builder never repairs text);
+  - the text contains a `#` comment: "comments cannot be shown in the builder";
+  - a construct is outside the model, e.g. "subquery", "nested binary operation with vector
+    matching on both sides", "`label_replace`", "offset/@ modifiers inside an aggregation".
+- **Builder → text.** `print(model) → string` is a TS printer over the model, emitting the written
+  forms kept above with single spaces between tokens. The editor is updated with one CodeMirror
+  transaction, so it is one undoable edit. A model without a metric prints an empty query.
+- **Loss check.** Before switching to the builder, the toggle checks that `print(project(q))` has
+  the **same sequence of non-whitespace Lezer tokens** as `q`. Equal tokens mean the texts differ only
+  in whitespace between tokens, which PromQL ignores (comments, the one whitespace-sensitive case,
+  are refused above). On a mismatch the toggle stays on text and names the first differing token.
+- **Validity.** The builder never decides validity (T09-002). Text it prints is validated like any
+  other text: by PulsusDB on run in M-UI1 (SRF-027), and by the WASM crates before run from M-UI2
+  (SRF-078). Lezer accepting a query PulsusDB rejects is caught by T09-017.
 - **Accessibility.** The builder is kit form controls (comboboxes, lists with reorder buttons), fully
   keyboard-operable ([T08](T08-dom-component-kit.md)).
 - LogQL and TraceQL builders follow at M-UI5 on the same pattern.
 
 #### T09-013 — Builder round-trips or explains
-**MUST** — Toggling from text to the builder MUST either produce a model whose printed AST equals the
-original AST, or refuse with a named reason. Toggling from the builder to text and back MUST restore
-an identical builder state.
+**MUST** — *(Revised 1.4-rc.)* Toggling from text to the builder MUST either produce a model whose
+printed text has the same sequence of non-whitespace Lezer tokens as the original, or refuse with a
+named reason (syntax error, comment, unrepresentable construct, or token mismatch) and leave the text
+unchanged. Toggling from the builder to text and back MUST restore an identical builder state.
 
 ## 5. Interfaces
 
 ### 5.1 Defined here
 
-```rust
-/// Implemented once per language in dash-lang; the only place the PulsusDB crates are named (T09-001).
-pub trait QueryLanguage {
-    const LANG: Lang;                                   // PromQL | LogQL | TraceQL | ProfileSelector
-    fn validate(&self, text: &str) -> Vec<Diagnostic>;  // authority: PulsusDB parser
-    fn format(&self, text: &str) -> Result<String, FormatRefusal>;
-    fn vis_hint(&self, text: &str, meta: &MetaView) -> Option<VisHint>;
-    fn detect(prefix: &str) -> f32;                     // ⌘K language detection score (INT-038)
+```ts
+// client/src/editor/lang/types.ts — the only way to reach PulsusDB's parser (T09-001).
+export interface QueryLanguage {
+  readonly lang: 'promql' | 'logql' | 'traceql' | 'profile';
+  validate(text: string, signal: AbortSignal): Promise<Diagnostic[]>;  // authority: PulsusDB parser (BFF now, WASM later)
+  format(text: string, signal: AbortSignal): Promise<{ text: string } | { refused: string }>;
+  visHint(text: string, meta: MetaView): VisHint | null;
+  detect(prefix: string): number;                                      // ⌘K language detection score (INT-038)
 }
 ```
 
 | Interface | Consumers |
 |---|---|
-| `QueryEditor` Leptos component (`lang`, `value: RwSignal<String>`, `on_run`, `read_only`, `vars: VarScope`, `ref_name: Option<char>` for A/B/…) | T08 rooms, workbenches (multiple editors A, B, … and expression editors, SRF-030), alert-rule room (T16), Board editor |
-| `QueryBuilder` Leptos component (`model: RwSignal<BuilderModel>`, bound to a `QueryEditor`) | Metrics workbench (M-UI1) |
+| `QueryEditor` React component (`lang`, `value`, `onChange`, `onRun`, `readOnly`, `vars: VarScope`, `refName?: string` for A/B/…) | T08 rooms, workbenches (multiple editors A, B, … and expression editors, SRF-030), alert-rule room (T16), Board editor |
+| `QueryBuilder` React component (`model: BuilderModel`, `onChange`, bound to a `QueryEditor`) | Metrics workbench (M-UI1) |
 | `highlight(lang, &str) -> HighlightRuns` (sync, main thread) | T08 (snippets, ⌘K), T02 (canvas labels) |
-| `LangMsg`/`LangReply` (shell ⇄ editor worker, `postcard`): `Edit{doc, version, edits}`, `Complete{doc, version, caret}`, `Hover{doc, offset}`, `Format{doc}`, `Explain{doc}`, `Project{doc}`, `Print{model}` → `Diagnostics`, `Completions`, `HoverCard`, `Formatted`, `VisHint`, `Builder`, `Text` | internal; worker topology from T03 |
+| `LangMsg`/`LangReply` (application ⇄ editor worker, from the WASM phase; structured clone): `Edit{doc, version, edits}`, `Complete{doc, version, caret}`, `Hover{doc, offset}`, `Format{doc}`, `Explain{doc}`, `Project{doc}`, `Print{model}` → `Diagnostics`, `Completions`, `HoverCard`, `Formatted`, `VisHint`, `Builder`, `Text` | internal; worker topology from T03 |
 | `VisHint` | T07 (planner), T02 (vis spec selection) |
 | **`POST /api/dash/v1/suggest`** (served by [T06](T06-bff-architecture.md) §5.1) | editor worker, metric browser, cardinality explorer |
 
@@ -470,12 +509,12 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 
 | From | Assumption |
 |---|---|
-| [T03](T03-browser-runtime.md) | The `dash-editor.wasm` satellite in its own `editor` worker with its own memory, loaded on first focus of a query bar, and a message channel to the shell. `dash-lang` is the crate compiled into it. The highlight lexer `dash-qlex` is linked into `dash-shell.wasm` |
+| [T03](T03-browser-runtime.md) | From the WASM phase: the `dash-editor.wasm` satellite in its own `editor` worker, loaded on first focus of a query bar, with a message channel to the application. Highlighting stays TS in the editor chunk (§0) |
 | [T06](T06-bff-architecture.md) | Implements `/suggest`, with its metadata cache, cancellation and scope rewriting. `X-Pulsus-Explain` passthrough on run |
 | [T07](T07-scene-query-planner.md) | Virtual-source subset and join limits (§4.11) for the *virtual unsupported* diagnostics; plan explain view |
 | [T12](T12-entity-catalogue.md) | A local catalogue index exposing entity identity values per label/attribute name, and the label ⇄ attribute map |
 | T15 (draft) | `POST /api/dash/v1/ai/query/{explain,generate}`, which returns spans or text and records an audit entry |
-| [T08](T08-dom-component-kit.md) | Textarea styling tokens, the dock host, the undo key routing, the keymap context `TextInput(QueryEditor)`, and kit form controls for the builder |
+| [T08](T08-dom-component-kit.md) | Editor theme tokens, the dock host, the undo key routing, the keymap context `TextInput(QueryEditor)`, and kit form controls for the builder |
 
 ## 6. Data & storage
 
@@ -484,19 +523,19 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 | Query text | The owning object: Board viewport and alert rule in Postgres ([T11](T11-postgres-schema.md)), workbench state in the URL/Context |
 | Query history (last 500 per language per user) | IndexedDB, plus optional server sync in user prefs |
 | Suggest cache | editor-worker memory (LRU 2k keys) + BFF L1 |
-| Function docs, grammar tables | Compiled into `dash-lang` |
+| Function docs, grammar tables | Bundled in the lazily loaded editor chunk |
 
 ## 7. Performance budget
 
 | Metric | Target | Notes |
 |---|---|---|
-| Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query | resumable lexer, keyed lines (PRF-005) |
-| Keystroke → diagnostics visible | ≤ 50 ms after a 30 ms idle | PromQL parse estimated ≤ 0.4 ms in wasm; measured in M-UI1 |
+| Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query | incremental CodeMirror parse (PRF-005) |
+| Keystroke → diagnostics visible | ≤ 50 ms after a 30 ms idle, once the WASM crates land; until then on run | PromQL parse estimated ≤ 0.4 ms in wasm |
 | Local completions | ≤ 16 ms from keystroke | — |
 | Remote completions (cache miss) | ≤ 150 ms p50 / 400 ms p95 after the debounce | BFF L1 hit typical |
 | Builder toggle (project + loss check) | ≤ 16 ms for a 1 KB query | editor worker |
-| Editor-worker cold start (fetch + compile + LR init) | ≤ 300 ms on (b), overlapped with first focus | ~0.45–0.55 MB br estimated (PRF-009: not in core) |
-| Main-thread code for editors | ≤ 60 KB br (`dash-qlex` + component) | in the core module |
+| Editor-worker cold start (WASM phase: fetch + compile + LR init) | ≤ 300 ms on (b), overlapped with first focus | ~0.45–0.55 MB br estimated (PRF-009: not in core) |
+| Editor chunk (CodeMirror + languages + components) | ≤ 175 KB br, lazy with the Explore and panel-editor routes | [ADR-0014](../adr/0014-typescript-react-web-client.md) §8; not in the initial JS |
 | Max query size | 128 KB (LogQL cap applied to all three) | T09-015 |
 
 These are measured with Playwright typing scripts (per-keystroke frame timing) and a corpus replay of
@@ -517,17 +556,18 @@ These are measured with Playwright typing scripts (per-keystroke frame timing) a
   same RBAC.
 
 #### T09-016 — Regex screening
-**MUST** — Matcher regexes MUST be screened in the editor worker with `pulsus-re2`'s compile budget,
-the same bound PulsusDB applies, and a regex that fails the screen MUST be a diagnostic, not a run
-error.
+**MUST** — Matcher regexes MUST be screened before run, and a regex that fails the screen MUST be a
+diagnostic, not a run error. Until the WASM crates land, the screen is a TS check for the constructs
+RE2 rejects (lookaround, backreferences, possessive quantifiers); with them, `pulsus-re2`'s compile
+budget in the editor worker, the same bound PulsusDB applies.
 
 ## 9. Failure modes & degradation
 
 | Failure | What the user sees |
 |---|---|
-| Editor worker fails to load | Highlighting still works (main thread). The status pip says "validation offline"; run still works and the server error is shown positioned by parsing its message |
+| Editor worker fails to load | Highlighting still works (main thread). The status pip says "validation offline"; run still works and the server error is underlined per T09-009 |
 | `/suggest` slow or down | Static and catalogue completions only, with the hint "live values unavailable" |
-| PulsusDB parser gives no position (PromQL) | Squiggle at the `dash-qctx` recovery point, marked "approximate" |
+| PulsusDB parser gives no position (on run or before run) | The whole query is underlined, labelled "position unknown" (T09-009) |
 | Client accepts but server rejects (version skew) | The server error is shown inline with "Dash and PulsusDB disagree: report" (telemetry counter). This is caught early by the parity CI below |
 | Query over 128 KB | Editing is allowed. Validation and completion pause, with an explanation (T09-015) |
 | Builder cannot represent the query | The toggle stays on text and names the construct (T09-013) |
@@ -535,13 +575,21 @@ error.
 ## 10. Testing
 
 #### T09-017 — Parity CI gates PulsusDB bumps
-**MUST** — Every change of the pinned PulsusDB revision MUST run the three upstream corpora (§4.1)
-through `dash-qlex` (token boundaries equal PulsusDB's), `dash-qctx` (never panics, recovers on every
-reject case), the formatter (T09-011) and the builder (T09-013), and MUST fail on any mismatch. The
-same job pins the PulsusDB git revision Dash builds against.
+**MUST** — Every change of the pinned PulsusDB revision, and every update of the Lezer PromQL grammar,
+MUST run the three upstream corpora (§4.1) through the checks that apply at that milestone, and MUST
+fail on any mismatch. The same job pins the PulsusDB git revision Dash builds against.
 
-- **Fuzzing** (`cargo-fuzz`, native) of `dash-qlex` and `dash-qctx` for panics and for
-  resumable-lexer equivalence (incremental == full re-lex) (`fuzz:qlex`, `fuzz:qctx`).
+| Check | From |
+|---|---|
+| Highlighters: token boundaries equal PulsusDB's | M-UI1 |
+| Context parser: never throws, recovers on every reject case | M-UI1 |
+| Lezer PromQL tree: accepts exactly what PulsusDB accepts | M-UI1 |
+| Builder round-trip and refusals (T09-013) | M-UI1 |
+| Formatter (T09-011) | When formatting ships: M-UI2 with the WASM crates, or earlier with a confirmed PulsusDB format route (Q5) |
+| WASM validator: errors and positions equal PulsusDB's (T09-009, SRF-078) | M-UI2 |
+
+- **Fuzzing** (`fast-check` property tests in Vitest) of the tokenizers and the context parser for
+  exceptions and for incremental == full re-tokenise (`fuzz:qlex`, `fuzz:qctx`).
 - **Completion golden tests:** caret-annotated fixtures (`sum by (|) (rate(x{a="b"}[5m]))` →
   `GroupingLabel`) (`golden:completion-contexts`).
 - **IME and AT:** Playwright CDP composition scripts (ja, zh, ko), plus manual VoiceOver/NVDA passes
@@ -554,28 +602,29 @@ same job pins the PulsusDB git revision Dash builds against.
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | PromQL: textarea bridge, `dash-qlex`, `dash-qctx`, PulsusDB validation in the editor worker, metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, prettify, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL; **LogQL validation (PulsusDB parser) and label/value completion** for LogQL panels (#49) |
-| M-UI2 | TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
+| M-UI1 | PromQL: CodeMirror 6 editor, Lezer PromQL highlighting and context, PulsusDB validation through the BFF on run (SRF-027), metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL; **LogQL validation (PulsusDB parser) and label/value completion** for LogQL panels (#49) |
+| M-UI2 | WASM validator (`dash-editor.wasm`, PulsusDB crates) for pre-run positioned diagnostics (SRF-078, [12](../product/12-roadmap.md) D11) and formatting (`⌘⇧F`, T09-011); TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
 | M-UI4 | Alert-rule editor integration (quick-fixes, variables), AI explain/generate, virtual-source completion and diagnostics |
 | M-UI5 | LogQL/TraceQL builders, Board variables UI |
 
-**Build features.** The PulsusDB crates are linked by default (`pulsusdb-parsers`, default on). A
-permissive fallback build (upstream crates.io `promql-parser`; LogQL and TraceQL validation via BFF
-round trips) is **optional**: it is not part of CI and is only revived if a non-AGPL edition is
-planned (D3, R17).
+**Build features.** When the WASM validator lands, the PulsusDB crates are linked into
+`dash-editor.wasm` by default. A permissive fallback (upstream crates.io `promql-parser`; LogQL and
+TraceQL validation through the BFF, as in v1) is **optional**: it is not part of CI and is only
+revived if a non-AGPL edition is planned (D3, R17).
 
 ## 12. Alternatives considered
 
 | Option | Why not |
 |---|---|
-| contenteditable bridge (T01 wording) | Cross-browser composition reconciliation is the hardest part of mature JS code editors and buys nothing for short plain-text queries. See §4.3 |
+| Hand-built textarea overlay (1.0-rc decision) | Every editor feature (completion UI, history, bracket matching, tooltips) would be ours; CodeMirror 6 provides them and handles composition per browser (§4.3, ADR-0014) |
+| A hand-built `contenteditable` bridge | Cross-browser composition reconciliation is the hardest part of a code editor; CodeMirror already does it |
 | Canvas-text editor | Would re-implement IME, selection, a11y and mobile input |
 | Use PulsusDB parsers for highlighting too | Lexers are private or doc-hidden and not resumable; PromQL costs 115 µs or more per parse. Fine for validation, wrong for per-keystroke colour |
-| Tree-sitter grammars (compiled to wasm) | Excellent incremental parsing, but it is a second grammar to keep at parity, a C toolchain in the build, and the Prometheus/Loki/Tempo community grammars lag. `dash-qctx` is smaller and tested against PulsusDB corpora |
+| Tree-sitter grammars (compiled to wasm) | Excellent incremental parsing, but it is a second grammar to keep at parity, a C toolchain in the build, and the community grammars for these languages lag. `dash-qctx` is smaller and tested against PulsusDB corpora |
 | Server-side language server over WS | Every keystroke would wait on the network (PRF-006) |
 | `ropey` rope | Unnecessary below the 128 KB cap |
 | Clean-room LogQL/TraceQL parsers plus upstream `promql-parser` (draft licence option 2) | No longer needed under D3; about 3–4 engineer-months plus a permanent parity burden |
-| Builder with its own grammar | Two sources of truth; projecting the PulsusDB AST makes round-trip loss checkable |
+| Builder with its own grammar | A third grammar to keep at parity; projecting the Lezer tree the editor already has (held to PulsusDB by T09-017) makes round-trip loss checkable by token comparison |
 
 ## 13. Open questions
 
@@ -585,6 +634,7 @@ planned (D3, R17).
 | Q2 | Comment-preserving PromQL formatting | Re-attach `#` comments by token position in our own printer (M-UI4), or refuse as now |
 | Q3 | Should `/suggest` responses be Arrow for very large value sets? | No: ≤ 200 items as JSON is fine (config-like, [ADR-0005](../adr/0005-arrow-wire-format.md)) |
 | Q4 | Builder coverage for binary operations with vector matching on both sides | Unrepresentable in v1; revisit with usage data |
+| Q5 | Does PulsusDB offer a parse-only route (PromQL-compatible `parse_query`/`format_query`), so the BFF can validate on idle before run? | If yes, the BFF validate route can give pre-run positions before the WASM crates (SRF-078 earlier) and a format route can bring formatting forward; if no, validation is on run (SRF-027) and formatting waits for the crates (M-UI2) |
 
 ## 14. Change log
 
@@ -592,3 +642,8 @@ planned (D3, R17).
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T09-001…T09-017. **D3:** the AGPL PulsusDB parser crates are linked by default; the licence analysis and Q8/Q1 are closed; `QueryLanguage` kept (T09-001); the permissive fallback build is optional and leaves CI; R17 is a P3 nice-to-have. **SRF-029:** the PromQL visual builder moves from M-UI5 to M-UI1 (§4.9). Added `cardinality`/metric-browser `/suggest` kinds (SRF-031, SRF-032), virtual-source completion and *virtual unsupported* diagnostics (ADR-0012), Table 5-13 row numbers on `VisHint` (VIZ-065), scope-keyed suggest cache. AI explain moved off the `.` key (a Space-context binding in 03) to the ✦ button and a ⌘K action. Draft Q4 (04 wording on positioned errors) closed: SRF-027's note now matches |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 LogQL validation and label completion move M-UI2 → M-UI1; TraceQL, profile selectors, detected fields, ⌘K detection and history stay M-UI2 |
+| 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0; the editor is CodeMirror 6 in TS (§4.3 and T09-004 rewritten); PulsusDB validation through the BFF on run until the WASM crates land; T09-001 (one TS interface), T09-003 (CodeMirror highlighting), T09-006 (CodeMirror history), T09-016 (regex screen) and T09-017 (parity incl. the Lezer PromQL grammar) revised; SRF-027 and PRF-009 rows; Q5 parse-only route |
+| 1.2-rc | 2026-11-19 | Code review of #56: SRF-027 is errors on run from PulsusDB (`e2e:editor-error-on-run`); new SRF-078 row for pre-run byte-offset diagnostics (`e2e:editor-missing-brace`) with the WASM validator in M-UI2 (proposed); T09-009, §11 and Q5 aligned |
+| 1.3-rc | 2026-11-19 | Code review r2 of #56: T09-009 has one fallback for every error without a position (whole-query underline, "position unknown"; no recovery-point placement), aligned in T09-002 and the §9 failure table; formatting moves out of M-UI1 to the WASM crates in M-UI2, optionally earlier through a confirmed PulsusDB format route (§0, §4.5, §11, Q5) |
+| 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
+| 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |

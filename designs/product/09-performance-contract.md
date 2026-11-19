@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc3 · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Requirement area** | `PRF` |
 | **Source draft** | plans/09-performance-contract.md (not tracked); mobile targets from T20 (draft) §6 |
 | **Depends on** | [01](01-vision-and-principles.md), [03](03-interaction-model.md), [08](08-visual-language.md), [T04](../technical/T04-wire-format-and-data-plane.md), [T05](../technical/T05-testing-and-performance.md), [T07](../technical/T07-scene-query-planner.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) |
@@ -122,8 +122,8 @@ be instant when `prefers-reduced-motion` is set ([03](03-interaction-model.md), 
 
 | Metric | Target | Requirement |
 |---|---|---|
-| Cold app load to interactive shell (WASM + shell, cached CDN) | < 1.0 s | PRF-008 |
-| Core WASM size | < 3 MB brotli; workbenches lazy-loaded | PRF-009 |
+| Cold app load to interactive shell (initial JS + CSS, cached CDN) | < 1.0 s | PRF-008 |
+| Client core size (initial JS + CSS + chart engine) | < 3 MB brotli; workbenches, editors and the engine lazy-loaded | PRF-009 |
 | Warm navigation to a Lens with first coarse data | < 300 ms | PRF-010 |
 | Lens fully refined (typical service, 1 h) | < 1.5 s | PRF-011 |
 | Atlas of 2 000 entities, first paint | < 800 ms | PRF-012 |
@@ -134,8 +134,10 @@ be instant when `prefers-reduced-motion` is set ([03](03-interaction-model.md), 
 #### PRF-008 — Cold load to interactive shell
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-A cold app load, with WASM and shell assets served from a warm CDN cache, MUST reach an interactive
-shell (top bar, Time Ribbon and command palette responsive) in < 1.0 s.
+A cold app load, with the shell's assets served from a warm CDN cache, MUST reach an interactive
+shell (sidebar, page header with time range picker and user menu, and command palette responsive) in
+< 1.0 s. The shell is the initial JS and CSS of the web application
+([ADR-0014](../adr/0014-typescript-react-web-client.md) §8); the chart engine is not part of it.
 
 *Acceptance:* On (a) and (b) over the CI network profile, the time from navigation start to the
 shell accepting `⌘K`/`Ctrl+K` is < 1.0 s at p75 over 20 runs.
@@ -143,11 +145,15 @@ shell accepting `⌘K`/`Ctrl+K` is < 1.0 s at p75 over 20 runs.
 #### PRF-009 — Core bundle size and lazy loading
 **MUST** · M-UI0 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-The core WASM needed for the shell MUST be < 3 MB brotli-compressed. Signal workbenches MUST be
-lazy-loaded on first use and MUST NOT be part of the core download.
+The client core (the initial JS and CSS of the web application plus the chart engine, its WASM and
+adapter) MUST be < 3 MB brotli-compressed, within the per-artefact budgets of
+[ADR-0014](../adr/0014-typescript-react-web-client.md) §8. Signal workbenches and query editors MUST
+be lazy-loaded route chunks, and the chart engine MUST load on the first chart frame; none of them
+MAY be part of the initial download.
 
-*Acceptance:* The CI bundle gate reports the brotli size of the core WASM < 3 MB, and a network
-trace of a cold load that opens no workbench fetches no workbench module.
+*Acceptance:* The CI bundle gate reports the brotli size of initial JS + initial CSS + engine < 3 MB
+and every ADR-0014 §8 budget met, and a network trace of a cold load that opens no workbench fetches
+no workbench chunk and, with no chart on screen, no engine.
 
 #### PRF-010 — Warm navigation to first coarse Lens data
 **MUST** · M-UI2 · SRE, Platform, Engineer
@@ -209,7 +215,7 @@ between the PulsusDB ingest acknowledgement and the line or sample being drawn i
 | Atlas entities / edges | 10⁴ / 5×10⁴ | PRF-019 |
 | Log lines scrollable | 10⁶ in memory window; unbounded with paging | PRF-020 |
 | Flame graph frames | 10⁵ | PRF-021 |
-| Viewports in a board | 200 (single canvas; off-screen viewports neither render nor query) | PRF-022 |
+| Viewports in a board | 200 (one canvas per viewport, one GPU device; off-screen viewports neither render nor query) | PRF-022 |
 | Tab memory, heaviest scene, on (a) | < 1.5 GB | PRF-023 |
 | 3D City / Infra scene | 10⁴ buildings + 5×10⁴ pod blocks | PRF-043 |
 | Same scene on the WebGL2 tier | Same geometry, reduced effects | PRF-044 |
@@ -266,6 +272,11 @@ without an upper bound.
 *Acceptance:* Scrolling through 10⁶ in-memory lines passes PRF-001 and PRF-003 on (a) and (b), and
 scrolling past the window end loads the next page without a scroll stall > 1 frame.
 
+> **Note:** in M-UI1 the log stream is a virtualised DOM list
+> ([12](12-roadmap.md) §2.1, Explore logs). If it misses the PRF-001 frame target at 10⁶ lines on the
+> reference lab, PRF-020 moves to M-UI2 and is met by the GPU log stream of the chart engine (issue
+> #69), per decision D6.
+
 #### PRF-021 — 10⁵ flame-graph frames
 **MUST** · M-UI2 · Engineer, Platform
 
@@ -276,8 +287,8 @@ A flame graph MUST render and interact with 10⁵ frames.
 #### PRF-022 — 200 viewports per board
 **MUST** · M-UI5 · NOC, Platform, Engineer, Business
 
-A board MUST support 200 viewports on a single canvas. Off-screen viewports MUST neither render nor
-query.
+A board MUST support 200 viewports, each a chart frame drawn by the one shared engine and GPU device
+of the page. Off-screen viewports MUST neither render nor query.
 
 *Acceptance:* Scrolling a 200-viewport board passes PRF-001 on (a) and (b), and a network and GPU
 trace shows 0 queries and 0 draw calls for viewports that have not entered the visible area.
@@ -450,7 +461,7 @@ not per pull request ([T05](../technical/T05-testing-and-performance.md)).
 | Notification tap → card text visible, warm (app in memory) | ≤ 300 ms | 500 ms | PRF-035 |
 | Notification tap → card text visible, cold (service-worker cache + IndexedDB) | ≤ 1.5 s | 2.5 s | PRF-036 |
 | Card refresh from network (4G) | ≤ 1.5 s | — | PRF-037 |
-| Mobile shell + core WASM together | ≤ 1.5 MB brotli | 2 MB | PRF-038 |
+| Mobile shell (initial JS + CSS) + chart engine together | ≤ 1.5 MB brotli | 2 MB | PRF-038 |
 | Scroll/pan | 60 fps (≥ 45 fps p99 on (d)) | — | PRF-039 |
 | Tab memory | ≤ 300 MB | 400 MB | PRF-040 |
 | Service-worker `push` handler wall time | ≤ 50 ms | — | PRF-041 |
@@ -471,11 +482,13 @@ with that visualisation's p50/p99 in the report.
 #### PRF-033 — Bundle-size and DOM-room gates
 **MUST** · M-UI0 · Platform, Engineer, Admin
 
-CI MUST enforce a bundle-size budget per crate (with the core total of PRF-009) and MUST run
-Lighthouse with an INP check on the DOM rooms, failing when INP exceeds 200 ms.
+CI MUST enforce a bundle-size budget per artefact class (initial JS, initial CSS, each lazy route
+chunk, the editor chunk, fonts, the engine; [ADR-0014](../adr/0014-typescript-react-web-client.md) §8)
+with the client-core total of PRF-009, and MUST run Lighthouse with an INP check on the DOM rooms,
+failing when INP exceeds 200 ms.
 
-*Acceptance:* A change that pushes the core WASM to ≥ 3 MB brotli, or a crate past its own budget,
-or a DOM room's INP above 200 ms, fails CI.
+*Acceptance:* A change that pushes the client core to ≥ 3 MB brotli, or an artefact past its own
+budget, or a DOM room's INP above 200 ms, fails CI.
 
 #### PRF-034 — Synthetic Lens load
 **MUST** · M-UI2 · Platform, Engineer
@@ -516,7 +529,8 @@ Refreshing an open card from the network over 4G MUST complete in ≤ 1.5 s.
 #### PRF-038 — Mobile bundle size
 **MUST** · M-UI4 · SRE, Business, Support
 
-The mobile shell and mobile core WASM together MUST be ≤ 1.5 MB brotli, and MUST NOT exceed 2 MB.
+The mobile shell (initial JS and CSS) and the chart engine together MUST be ≤ 1.5 MB brotli, and MUST
+NOT exceed 2 MB.
 
 *Acceptance:* The CI bundle gate reports the combined brotli size ≤ 1.5 MB, and fails the build at
 > 2 MB.
@@ -624,6 +638,10 @@ a requestAnimationFrame loop.
 8. **3D-first estate (1.0-rc2).** The owner's brief makes the estate a 3D scene by default, so the
    3D City/Infra volume (PRF-043), the WebGL2 tier (PRF-044), the flight and floors (PRF-045) and
    the fleet line stack (PRF-046) became gated requirements; PRF-019 now covers the 3D Topology.
+9. **Web client stack (1.1-rc, D7).** The shell is a TypeScript application and the chart engine a
+   lazily loaded Rust/WASM module ([ADR-0014](../adr/0014-typescript-react-web-client.md)). The 3 MB
+   core budget (PRF-009) now counts initial JS + CSS + engine; PRF-008, PRF-022, PRF-033 and PRF-038
+   are reworded in place with unchanged numbers.
 
 ## 12. Change log
 
@@ -633,3 +651,4 @@ a requestAnimationFrame loop.
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §5 table rows and PRF-019 acceptance edited; §5.1 PRF-043 to PRF-046 added; resolution 8 |
 | 1.0-rc2 | 2026-11-18 | #23: PRF-005 verification note (CI browser trace as the merge gate until the reference lab exists) |
 | 1.0-rc3 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): PRF-020 moves M-UI2 → M-UI1 (delivered by #49) |
+| 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): PRF-008 (JS shell with sidebar and page header), PRF-009 (client core = initial JS + CSS + engine, ADR-0014 §8), PRF-022 (one canvas per viewport), PRF-033 (budgets per artefact class) and PRF-038 (mobile shell + engine) reworded in place with unchanged numbers; PRF-020 note: virtualised DOM list in M-UI1, else M-UI2 with the GPU log stream (#69); resolution 9 |
