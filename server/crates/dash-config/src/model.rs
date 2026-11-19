@@ -25,7 +25,7 @@ fn text<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
 }
 
 /// Top level of the configuration file.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawConfig {
     pub roles: Option<Vec<String>>,
@@ -40,7 +40,7 @@ pub(crate) struct RawConfig {
     pub datasources_bootstrap: Option<Vec<RawSeed>>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawPostgres {
     #[serde(default, deserialize_with = "text")]
@@ -51,14 +51,14 @@ pub(crate) struct RawPostgres {
     pub connect_timeout_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawAssets {
     #[serde(default, deserialize_with = "text")]
     pub dir: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawLog {
     #[serde(default, deserialize_with = "text")]
@@ -67,7 +67,7 @@ pub(crate) struct RawLog {
     pub format: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawSeed {
     #[serde(default, deserialize_with = "text")]
@@ -83,6 +83,18 @@ pub(crate) struct RawSeed {
     #[serde(default, deserialize_with = "text")]
     pub credentials_ref: Option<String>,
 }
+
+/// Raw values may be inline secrets or URLs: `Debug` prints only the type name.
+macro_rules! opaque_debug {
+    ($($t:ty),*) => {$(
+        impl fmt::Debug for $t {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($t)).finish_non_exhaustive()
+            }
+        }
+    )*};
+}
+opaque_debug!(RawConfig, RawPostgres, RawAssets, RawLog, RawSeed);
 
 /// A process role (T06-003). Only `All` is implemented in this build.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,7 +143,8 @@ impl fmt::Debug for BasicCredentials {
 }
 
 /// `datasources_bootstrap[0]`: the first-run seed of the default org's binding (T06 §4.9).
-#[derive(Clone, Debug)]
+/// `Debug` redacts the URL and the credentials.
+#[derive(Clone)]
 pub struct DatasourceSeed {
     pub org_slug: String,
     pub slug: String,
@@ -142,8 +155,9 @@ pub struct DatasourceSeed {
     pub credentials: Option<BasicCredentials>,
 }
 
-/// Validated configuration of `pulsus-dash` (serve).
-#[derive(Clone, Debug)]
+/// Validated configuration of `pulsus-dash` (serve). `Debug` redacts the public URL and the
+/// seed's URL and credentials.
+#[derive(Clone)]
 pub struct ServeConfig {
     pub roles: Vec<Role>,
     pub listen: String,
@@ -152,6 +166,36 @@ pub struct ServeConfig {
     pub assets_dir: PathBuf,
     pub log: LogConfig,
     pub bootstrap: DatasourceSeed,
+}
+
+impl fmt::Debug for DatasourceSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatasourceSeed")
+            .field("org_slug", &self.org_slug)
+            .field("slug", &self.slug)
+            .field("url", &dash_core::REDACTED)
+            .field("database", &self.database)
+            .field("scope_org_id", &self.scope_org_id)
+            .field("credentials", &self.credentials)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ServeConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ServeConfig")
+            .field("roles", &self.roles)
+            .field("listen", &self.listen)
+            .field(
+                "public_url",
+                &self.public_url.as_ref().map(|_| dash_core::REDACTED),
+            )
+            .field("postgres", &self.postgres)
+            .field("assets_dir", &self.assets_dir)
+            .field("log", &self.log)
+            .field("bootstrap", &self.bootstrap)
+            .finish()
+    }
 }
 
 /// Validated configuration of `pulsus-dash migrate`.

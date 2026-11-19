@@ -16,8 +16,7 @@ const ROLES_LOCK_KEY: i64 = 0x5055_4C53_524F_4C45; // "PULSROLE"
 
 const ROLES_SQL: &str = include_str!("../sql/roles.sql");
 
-/// A throwaway database `itest_<uuid>` owned by `pulsus_owner`.
-#[derive(Debug)]
+/// A throwaway database `itest_<uuid>` owned by `pulsus_owner`. `Debug` redacts the admin URL.
 pub struct TestDb {
     pub name: String,
     admin: String,
@@ -25,6 +24,15 @@ pub struct TestDb {
 
 fn other(detail: String) -> StoreError {
     StoreError::Other(sqlx::Error::Configuration(detail.into()))
+}
+
+impl std::fmt::Debug for TestDb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestDb")
+            .field("name", &self.name)
+            .field("admin", &dash_core::REDACTED)
+            .finish()
+    }
 }
 
 impl TestDb {

@@ -15,3 +15,22 @@ pub use error::{DashError, ErrorCode, ErrorEnvelope, FieldError};
 pub use health::{HealthProbe, Readiness, ReadyCheck};
 pub use ids::{InvalidScopeOrgId, OrgId, RoleId, ScopeOrgId, TeamId, TenantBindingId, UserId};
 pub use secret::Secret;
+
+/// Printed by `Debug` in place of a configured URL or secret (plan §3.3 output rule).
+pub const REDACTED: Redacted = Redacted;
+
+/// Formats (`Debug` and `Display`) as `<redacted>`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Redacted;
+
+impl std::fmt::Debug for Redacted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<redacted>")
+    }
+}
+
+impl std::fmt::Display for Redacted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<redacted>")
+    }
+}

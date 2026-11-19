@@ -23,14 +23,26 @@ pub enum SeedOutcome {
     },
 }
 
-/// `datasources_bootstrap[0]` without credentials.
-#[derive(Clone, Copy, Debug)]
+/// `datasources_bootstrap[0]` without credentials. `Debug` redacts the URL.
+#[derive(Clone, Copy)]
 pub struct DatasourceSeedRef<'a> {
     pub org_slug: &'a str,
     pub slug: &'a str,
     pub url: &'a Url,
     pub database: Option<&'a str>,
     pub scope_org_id: Option<&'a ScopeOrgId>,
+}
+
+impl std::fmt::Debug for DatasourceSeedRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DatasourceSeedRef")
+            .field("org_slug", &self.org_slug)
+            .field("slug", &self.slug)
+            .field("url", &dash_core::REDACTED)
+            .field("database", &self.database)
+            .field("scope_org_id", &self.scope_org_id)
+            .finish()
+    }
 }
 
 /// Seeds once under `pg_advisory_xact_lock(BOOTSTRAP_LOCK_KEY)`.

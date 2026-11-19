@@ -7,13 +7,24 @@ use uuid::Uuid;
 use crate::db::OrgTx;
 use crate::error::StoreError;
 
-/// A binding to insert.
-#[derive(Clone, Copy, Debug)]
+/// A binding to insert. `Debug` redacts the URL.
+#[derive(Clone, Copy)]
 pub struct NewTenantBinding<'a> {
     pub slug: &'a str,
     pub datasource_url: &'a Url,
     pub database: Option<&'a str>,
     pub scope_org_id: Option<&'a ScopeOrgId>,
+}
+
+impl std::fmt::Debug for NewTenantBinding<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewTenantBinding")
+            .field("slug", &self.slug)
+            .field("datasource_url", &dash_core::REDACTED)
+            .field("database", &self.database)
+            .field("scope_org_id", &self.scope_org_id)
+            .finish()
+    }
 }
 
 /// Inserts a `pulsusdb` binding for the transaction's org.

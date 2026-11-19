@@ -13,21 +13,46 @@ use crate::model::RawConfig;
 pub const ENV_PREFIX: &str = "PULSUS_DASH_";
 
 /// Everything `load` reads: the `--config` path, the process environment snapshot and `--role`.
-#[derive(Clone, Debug, Default)]
+/// `Debug` prints environment variable names only, never their values.
+#[derive(Clone, Default)]
 pub struct ConfigInput {
     pub file: Option<PathBuf>,
     pub env: Vec<(String, String)>,
     pub cli_roles: Option<String>,
 }
 
-/// Parsed and merged configuration, not yet validated for a subcommand.
-#[derive(Clone, Debug)]
+/// Parsed and merged configuration, not yet validated for a subcommand. `Debug` prints the set
+/// keys and their sources, never values or the environment.
+#[derive(Clone)]
 pub struct LoadedConfig {
     pub(crate) raw: RawConfig,
     /// Leaf path → the layer that set it last.
     pub(crate) sources: BTreeMap<String, Source>,
     /// The environment snapshot, for `env:` secret references.
     pub(crate) env: Vec<(String, String)>,
+}
+
+fn env_names(env: &[(String, String)]) -> Vec<&str> {
+    env.iter().map(|(k, _)| k.as_str()).collect()
+}
+
+impl std::fmt::Debug for ConfigInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConfigInput")
+            .field("file", &self.file)
+            .field("env", &env_names(&self.env))
+            .field("cli_roles", &self.cli_roles)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for LoadedConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoadedConfig")
+            .field("keys", &self.sources)
+            .field("env", &env_names(&self.env))
+            .finish()
+    }
 }
 
 /// Parses and merges the layers; unknown keys and type errors fail here.

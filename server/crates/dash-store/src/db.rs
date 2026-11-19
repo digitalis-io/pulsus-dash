@@ -13,10 +13,20 @@ use sqlx::{PgConnection, PgPool, Postgres};
 use crate::SCHEMA_LEVEL;
 use crate::error::StoreError;
 
-/// The application pool (`pulsus_app`). Cloning shares the pool.
-#[derive(Clone, Debug)]
+/// The application pool (`pulsus_app`). Cloning shares the pool. `Debug` prints pool counters
+/// only, never connection settings.
+#[derive(Clone)]
 pub struct Db {
     pool: PgPool,
+}
+
+impl std::fmt::Debug for Db {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Db")
+            .field("size", &self.pool.size())
+            .field("idle", &self.pool.num_idle())
+            .finish()
+    }
 }
 
 /// Schema compatibility of the connected database (T11-015, T19-007).

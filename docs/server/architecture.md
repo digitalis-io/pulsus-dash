@@ -194,7 +194,8 @@ sets `lock_timeout = '5s'`, takes `pg_advisory_lock` on the constant `"PULSMIGR"
 | fresh | exit 3 (`schema not migrated`) | applies both |
 | level 1 | ready | nothing to do |
 | level 2 (a newer binary migrated) | ready | nothing (unknown versions ignored) |
-| level ≥ 3, or a required migration missing | exit 3 | exit 3 |
+| level 1 or 2 but an embedded migration not applied | exit 3 (older than required) | applies the missing migrations |
+| level ≥ 3 (beyond the N+1 window) | exit 3 | exit 3 (nothing applied) |
 | Postgres unreachable | retries every 2 s | exit 1 |
 
 `SCHEMA_LEVEL` is 1. Migration 1 creates `pulsus_org()`, `pulsus_schema_level` and the tenant-table

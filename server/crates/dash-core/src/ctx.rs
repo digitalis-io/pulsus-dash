@@ -13,13 +13,26 @@ use crate::ids::{OrgId, ScopeOrgId, TeamId, TenantBindingId, UserId};
 pub const SCOPE_HEADER: &str = "X-Scope-OrgID";
 
 /// An org's binding to a PulsusDB datasource (T06-025). Credentials are never part of it.
-#[derive(Clone, Debug)]
+/// `Debug` redacts the datasource URL (plan §3.3 output rule).
+#[derive(Clone)]
 pub struct TenantBinding {
     pub id: TenantBindingId,
     pub slug: String,
     pub datasource_url: Url,
     pub database: Option<String>,
     pub scope_org_id: Option<ScopeOrgId>,
+}
+
+impl std::fmt::Debug for TenantBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TenantBinding")
+            .field("id", &self.id)
+            .field("slug", &self.slug)
+            .field("datasource_url", &crate::REDACTED)
+            .field("database", &self.database)
+            .field("scope_org_id", &self.scope_org_id)
+            .finish()
+    }
 }
 
 impl TenantBinding {

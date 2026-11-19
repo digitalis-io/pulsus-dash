@@ -116,7 +116,9 @@ datasources_bootstrap:
 No error, log line or debug print contains a secret value, a Postgres URL, the PulsusDB base URL
 or any configured URL path. URL errors use fixed reasons ("not a valid URL", "must use http or
 https", "must not contain user info", "must not contain a query or fragment", "must have a host");
-type errors have the offending value replaced by `<value>`. `public_url` is logged only as its
+type errors have the offending value replaced by `<value>`. `Debug` output of the configuration, tenant,
+store and gateway types prints environment variable names, keys and `<redacted>` in place of
+secrets and configured URLs. `public_url` is logged only as its
 origin; store errors are logged as kind and SQLSTATE.
 
 ## Errors

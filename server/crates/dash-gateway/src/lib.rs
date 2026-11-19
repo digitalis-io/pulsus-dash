@@ -21,12 +21,24 @@ use url::Url;
 
 pub use headers::{REPORT_PATH, csp};
 
-/// What the router serves.
-#[derive(Clone, Debug)]
+/// What the router serves. `Debug` redacts the public URL.
+#[derive(Clone)]
 pub struct GatewayConfig {
     pub assets_dir: PathBuf,
     /// The externally visible URL; `https` adds `upgrade-insecure-requests`.
     pub public_url: Option<Url>,
+}
+
+impl std::fmt::Debug for GatewayConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GatewayConfig")
+            .field("assets_dir", &self.assets_dir)
+            .field(
+                "public_url",
+                &self.public_url.as_ref().map(|_| dash_core::REDACTED),
+            )
+            .finish()
+    }
 }
 
 /// The full router (plan §3.7).
