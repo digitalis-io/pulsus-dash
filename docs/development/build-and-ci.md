@@ -261,7 +261,7 @@ root) on `localhost` (default port 8080), one request at a time, with COOP `same
 
 ### `ci:probe-absent`
 
-Deletes `target/gen-check/`, builds a fresh release of both artefacts with default features (so a
+`cargo xtask ci probe-absent` deletes `target/gen-check/`, builds a fresh release of both artefacts with default features (so a
 `default = ["probe"]` would be caught), and never reads `web/shim/gen/`.
 
 | Rule id | Fails when |
@@ -271,7 +271,7 @@ Deletes `target/gen-check/`, builds a fresh release of both artefacts with defau
 
 ### `e2e`
 
-(1) `cargo xtask gen --test`; (2) both `_bg.wasm` of the test build must contain the probe marker,
+`cargo xtask ci e2e` runs: (1) `cargo xtask gen --test`; (2) both `_bg.wasm` of the test build must contain the probe marker,
 else `probe-marker-undetected` (the scanner of `probe-absent` would miss a probe); (3) deletes
 `e2e/test-results/` and runs `npx playwright test` in `e2e/` (a failing spec fails the gate; no
 `npx` is an error); (4) always checks the interaction traces the specs wrote:
