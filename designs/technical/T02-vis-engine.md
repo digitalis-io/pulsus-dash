@@ -141,7 +141,7 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
  │                           threshold) · stacking · binning · decimation · KDE · reduce       │
  │                           (Rust, shared with the local engine and the BFF)                  │
  ├───────────────────────────────────────────────────────────────────────────────────────────┤
- │ L1  Mark primitives (instanced GPU pipelines, §4.2)                                         │
+ │ L1  Mark primitives (instanced or vertex-pulled GPU pipelines, §4.2)                        │
  ├───────────────────────────────────────────────────────────────────────────────────────────┤
  │ L0  Scene & GPU runtime   retained scene graph · viewports/cameras · buffer arena over     │
  │                           SharedArrayBuffer · pipeline cache · picking ID buffer · frame    │
@@ -159,8 +159,8 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 A spec MUST NOT contain WGSL, create a pipeline or call wgpu directly. A spec that needs a new
 visual technique MUST get it as a new or extended L1 primitive owned by the vis-platform team.
 
-#### T02-002 — Instanced, columnar, one draw per mark type per viewport
-**MUST** — Each mark primitive MUST be instanced and fed from columnar (Arrow-layout) buffers in the
+#### T02-002 — Instanced or vertex-pulled, columnar, one draw per mark type per viewport
+**MUST** — Each mark primitive MUST be instanced or vertex-pulled (one draw call per mark type per viewport) and fed from columnar (Arrow-layout) buffers in the
 chunk arena or render staging slabs ([T04 §5.7](T04-wire-format-and-data-plane.md#57-zero-copy-path-from-network-to-gpu)).
 Within one viewport, marks of one type MUST be drawn in one draw call per pipeline state,
 independent of how many series or axes they belong to (§4.3).
@@ -171,7 +171,7 @@ Every pixel of every vis comes from one of these pipelines.
 
 | # | Mark | GPU technique | Used by |
 |---|---|---|---|
-| M1 | **Polyline** | Instanced segments with miter/round joins in the vertex shader; screen-space width; dashes via a distance attribute; per-vertex colour; breaks at null validity. Dense lines use column coverage (distance to the y-extents in each device-pixel column and its neighbours within the width), `Max` blending; light themes (M-UI5) revisit the blend. | Line, trend, XY lines, sparkline, routes, thresholds, gridlines, event markers |
+| M1 | **Polyline** | Instanced or vertex-pulled segments with miter/round joins in the vertex shader; screen-space width; dashes via a distance attribute; per-vertex colour; breaks at null validity. Dense lines use column coverage (distance to the y-extents in each device-pixel column and its neighbours within the width), `Max` blending; light themes (M-UI5) revisit the blend. | Line, trend, XY lines, sparkline, routes, thresholds, gridlines, event markers |
 | M2 | **Area / band** | Triangle strip between two y columns (y0/y1); stacking computed in L2 | Area, stacked, min/max band, confidence cone, baseline ghost |
 | M3 | **Rect** | Instanced quads with optional corner radius and border via an SDF in the fragment shader | Bars, heatmap cells, status history, state timeline, treemap, bar gauge, bullet, waterfall spans, flame frames, table-grid cells, calendar, Time Ribbon density strip |
 | M4 | **Point / sprite** | Instanced quads with SDF shapes (circle, square, diamond, triangle, cross) or atlas icons; size, colour and alpha per instance | Scatter (10⁷), XY/bubble, exemplars, markers, event glyphs |
@@ -759,3 +759,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T02-001 to T02-031; axis system expanded (auto-configuration, manual pin, ownership glyphs, comparison axis at M-UI1); LOD and precision rules; camera controller constants; auto-vis; glyph and state encodings per 08 (Failing ■); build order aligned with 05 milestones; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
 | 1.0-rc | 2026-11-19 | #24: §4.4 line decimation row (T2 render-to-texture; run extents, last and next samples; compares only), line coverage defined, non-finite values are gaps; §4.2 M1 row column coverage and `Max` blending; §3 PRF-016 verification adds `golden:decimation-ref` |
+| 1.0-rc | 2026-11-19 | #24: T02-002 and the §4.1 L1 box allow vertex-pulled marks (one draw per mark type per viewport; per-instance cost on software rasterisers made the instanced M1 ≈ 8× slower); §4.2 M1 row "Instanced or vertex-pulled segments" |

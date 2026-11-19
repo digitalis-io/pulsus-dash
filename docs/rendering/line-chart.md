@@ -79,9 +79,16 @@ The pass runs only when the frame changed (camera, canvas or an upload).
 layers`, `tex_w = min(4096, max_texture_dimension_2d)`; a single layer is only as tall as its data.
 Records are `tile_w × S × tiles`, `tile_w = min(slots, max_dim)`: a plot wider than the device's
 texture limit tiles across layers, and every column is still drawn. On T2 every array texture has
-at least two layers (GL makes a one-layer texture a plain 2D texture). If the series do not fit
-(`S > max_dim`, or more value layers than `max_texture_array_layers`), only the first
-`LayoutError::TooLarge { max_series }` series are drawn and the page says so.
+at least two layers (GL makes a one-layer texture a plain 2D texture).
+
+**Texture ceiling.** If the series do not fit, only the first `LayoutError::TooLarge { max_series }`
+series are drawn and the page says so (`texture-ceiling`). They do not fit when `S > max_dim` (one
+record row per series), or when they need more value layers than
+`L = min(max_texture_array_layers, ⌊max_bytes / (4·tex_w²)⌋)`, or when a pyramid layer would exceed
+`max_bytes`. On T1 `max_bytes` is unbounded; on T2 it is `T2_MAX_TEXTURE_BYTES` = 256 MiB per
+texture (4 value layers, so 671 series of 100 000 points). The GL backend never reports a failed
+texture allocation: on ANGLE/SwiftShader a 384 MiB value texture (1 000 × 100 000) silently read
+as zeros and drew every series flat at its reference value.
 
 ## Drawing: column coverage
 
@@ -117,7 +124,7 @@ requested, the render worker posts `{t: "coverage", reasons}` and `boot.js` sets
 |---|---|---|
 | `loading` | fewer series drawn than held (and capped), and no load failure | Loading data: not every series is drawn yet |
 | `st-ceiling` | ST mode holds fewer series than requested (10⁷ points) | Not every series is shown: single-thread mode limit |
-| `texture-ceiling` | the GPU textures cap the series | Not every series is shown: GPU texture limit |
+| `texture-ceiling` | the GPU textures cap the series (value capacity, record height or the T2 byte budget) | Not every series is shown: GPU texture limit |
 | `load-failed` | a wire error stopped the load | Some series failed to load |
 
 `""` (every series drawn) hides the line. The full coverage meter (VIZ-027) comes with the shell.
@@ -159,6 +166,7 @@ Labels wait for M8 text.
 | `&mode=t2` | WebGL2 (T2 decimation) |
 | `&fault=line-layers-1` | probe builds: one texture layer (forces the texture ceiling) |
 | `&fault=line-wire` | probe builds: truncates the second wire message (forces a load failure) |
+| `&fault=line-ramps` | probe builds: known all-valid linear ramps replace the synthetic values (series 0: 0 → 100, 670: 300 → 400, 671: 200 → 250, the others flat at 150), so a test can tell drawn values from zeroed ones |
 
 ST mode holds at most 10⁷ points (`series ≤ 10⁷ / points`), loaded by the render worker before the
 GPU starts; Full mode loads every series on data-0.
@@ -169,7 +177,7 @@ GPU starts; Full mode loads every series on data-0.
 |---|---|
 | `test` | `pulsus-synth` presets and statistics; the codec, slab and hostile messages; decimation properties (runs equal a naive scan, extremes kept, identical over thread counts, spike kept, 1 ms adjacency); line coverage cases; ticks and axes; camera (anchor, clamps, inertia, bounds); line scene uniforms, fit and coverage; WGSL validation and GLSL ES 300 output; layout sizes; tier limits; the chunk table and loader |
 | `golden` (`golden:decimation-ref`, blocking) | lavapipe (Mesa pinned in `ci/tools.toml`): GPU records equal `decimate_series` on T1 and T2; the mask pass equals `raw_mask` with zero missing and extra pixels for `line-1e8` and `line-gappy` at five views and DPR 1 and 2, per series and merged; the decimated image equals the reference image (every raw segment) on T1 and T2; tiling; T2 limits; NULL gaps; spikes; 1 ms adjacency; same seed, same pixels |
-| `e2e` | the line page on T1, T2 (including a 3 000 CSS px wide canvas), ST, the texture ceiling, a load failure, wheel anchoring, flick and interrupt, the hostile messages inside the wasm32 core, and the `bench:frame-line-1e8` run |
+| `e2e` | the line page on T1, T2 (including a 3 000 CSS px wide canvas), ST, the texture ceiling, the T2 byte budget (672 ramp series: 671 drawn with their real values, 4 value layers), a load failure, wheel anchoring, flick and interrupt, the hostile messages inside the wasm32 core, and the `bench:frame-line-1e8` run |
 
 **`bench:frame-line-1e8`.** The `@webgpu line_1e8_pan_zoom` test loads 10⁸ points, warms up 5 s,
 then loops for `DASH_BENCH_MS` (20 s) over: drag −400 px in 20 steps over 500 ms; 10 wheel steps
@@ -184,7 +192,8 @@ merges once the lab exists.
 
 ## Limits
 
-- One layer, synthetic data, ≤ 1 024 series, ≤ 10⁶ points per series, ≤ 10⁸ points.
+- One layer, synthetic data, ≤ 1 024 series, ≤ 10⁶ points per series, ≤ 10⁸ points; on T2 at
+  most 256 MiB per texture (671 of 1 000 series at 10⁵ points).
 - An overflow slot (more than three runs) recomputes its runs per fragment: exact, but slow for
   dense random NULLs.
 - Every frame draws `2·slots·S` quads (≈ 2.6 M at 1 280 CSS px and 1 000 series); empty ones are

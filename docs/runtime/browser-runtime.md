@@ -209,7 +209,7 @@ reason under the tier badge; the texts are in [Line chart](../rendering/line-cha
 | `?fault=webgpu-device` / `?fault=webgpu-surface` | probe builds only: fail WebGPU before / after the surface (tests the two fallback paths). Ignored by release builds |
 | `?scene=line` | the line chart (1 000 series × 100 000 points) instead of the rect spike |
 | `&series=N&points=M` | line scene size: `N ∈ [1, 1024]`, `M ∈ [2, 10⁶]`, `N·M ≤ 10⁸`; out of range or unparsable → the defaults |
-| `?fault=line-layers-1` / `?fault=line-wire` | probe builds only: one texture layer (texture ceiling) / truncate the second wire message (load failure) |
+| `?fault=line-layers-1` / `?fault=line-wire` / `?fault=line-ramps` | probe builds only: one texture layer (texture ceiling) / truncate the second wire message (load failure) / known linear ramps instead of the synthetic values |
 
 ## Headers
 
@@ -232,7 +232,7 @@ install `self.__dashProbe` on the render worker:
 | `threads()` | `{sharedMemory, instancesPublishedBy}` |
 | `pauseInput(b)` | stops or resumes draining the input ring |
 | `overflowCount()` | the input overflow count |
-| `lineStatus()` | the line scene, `null` on the rect page: `{scene: "line", decimation ("compute" or "fragment"), requested, held, published, uploaded, pointsHeld, publishedBy, loadFailed, slots, dpr, plot {x0, y0, w, h}, camera {tLeftRelMs, msPerPx, vBottom, vPerPx, moving}, coverage {drawn, reasons[]}, draws {line, segment}}` (`draws`: the last frame's draw calls) |
+| `lineStatus()` | the line scene, `null` on the rect page: `{scene: "line", decimation ("compute" or "fragment"), requested, held, published, uploaded, pointsHeld, publishedBy, loadFailed, slots, valueLayers, dpr, plot {x0, y0, w, h}, camera {tLeftRelMs, msPerPx, vBottom, vPerPx, moving}, coverage {drawn, reasons[]}, draws {line, segment}}` (`draws`: the last frame's draw calls) |
 | `wireCases()` | `[{name, got, expected}]`: the hostile wire messages of `dash_wire::hostile_cases()` through `check_message` inside the wasm32 core |
 
 Release artefacts never contain it (T03-024): `ci:probe-absent` scans a fresh release build of both
