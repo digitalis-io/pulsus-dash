@@ -116,6 +116,7 @@ Changes to an Accepted doc go through review and are recorded in that doc's chan
 |---|---|---|---|
 | O1 | Data scopes on metrics when resource attributes are not labels | Option B: enforce on labels, fail closed per metric family, and pursue R16 with PulsusDB | [ADR-0013](adr/0013-metrics-data-scopes.md) |
 | O2 | Proposed ADRs 0003 (wgpu), 0005 (Arrow), 0008 (Dash evaluator), 0009 (object storage), 0011 (Terraform in Go) | Accept. Each matches the drafts and none has a live alternative | [adr/](adr/README.md) |
+| O3 | Module integrity for lazy chunks (issue #56) | Accept ADR-0016: import-map SRI on every module, BFF per-file verification, browsers that do not enforce it are refused | [ADR-0016](adr/0016-module-integrity-import-map.md) |
 
 ## 5. Index
 

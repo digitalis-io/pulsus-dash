@@ -5,7 +5,7 @@
 | **Status** | Review |
 | **Version** | 1.2-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0016](../adr/0016-module-integrity-import-map.md) (Proposed), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
 
 ## 1. Context & problem
@@ -118,8 +118,10 @@ turns it off), and in CDN mode versioned paths are kept for 30 days.
   CSS file, and **workers** (same-origin, [T18](T18-security.md) T18-006, T18-007).
 
 #### T19-005 — CDN asset sets are verified
-**MUST** — In CDN mode the BFF MUST verify the CDN manifest signature at start-up
-([T18](T18-security.md) T18-006) and fall back to embedded assets on mismatch.
+**MUST** — At start-up the BFF MUST verify the manifest signature and the hash of every embedded
+asset file, and MUST exit without serving on any mismatch ([T18](T18-security.md) T18-006). In CDN
+mode it MUST also fetch and hash every manifest-listed CDN file and fall back to the embedded assets
+on any mismatch.
 
   The CDN must send:
   - `Content-Type: application/wasm`;
@@ -668,4 +670,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 7. The `worker` role gains the derived-state jobs (anomaly sweep, baselines, change events, pyramid
    builder, retention classes).
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): Go static build (`CGO_ENABLED=0`), `embed.FS` assets (T19-003), the chart renderer is a separate Rust binary (T19-001 exception, §4.2), no SAML glibc variant |
-| 1.2-rc | 2026-11-19 | #56 code review: CDN mode serves only the engine WASM, fonts and tiles; all JS, CSS and workers stay same-origin ([T18](T18-security.md) T18-006) |
+| 1.2-rc | 2026-11-19 | #56 code review: CDN mode serves only the engine WASM, fonts and tiles; all JS, CSS and workers stay same-origin ([T18](T18-security.md) T18-006); T19-005 adds per-file start-up verification of every embedded asset, fail closed, and hashing of every CDN file |
