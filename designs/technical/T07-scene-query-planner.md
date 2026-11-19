@@ -3,10 +3,26 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
+
+## 0. Applicability under ADR-0015 and ADR-0014 (2026-11-19)
+
+The planner runs in the Go BFF ([ADR-0015](../adr/0015-go-bff.md)); the browser is a TS application
+with the chart engine later ([ADR-0014](../adr/0014-typescript-react-web-client.md)). The pipeline,
+the rules T07-001 to T07-030 and the budgets stand. Rust specifics map as follows:
+
+| Was | Now |
+|---|---|
+| `dash-planner` crate | Go package `internal/planner` |
+| `pulsus-plan` IR shared with the browser (WASM) | **Not shared.** §5.2 is authoritative as a data shape, implemented as Go types in `internal/planner/ir` and used in-process by T15 and T16. T13 (draft), the browser's local engine, receives `LogicalQuery` in the JSON form published in `api/openapi.yaml` and is held to the same semantics by fixtures in `wire/fixtures/plan/`; T13 is revised before M-UI3 |
+| Parser crates in §4.2 | PromQL: the Prometheus project's Go PromQL parser, printed canonically by its printer; PulsusDB dialect differences are fixture cases checked against PulsusDB. LogQL and TraceQL: no Go parser in v1, so their text is opaque to the planner under T07-002 (keyed on whitespace-normalised text, no fusion, no virtual resolution); validity comes from PulsusDB. Under the full-tenant scope of M-UI1 this is allowed; restricted scopes need T10's answer (ADR-0015) |
+| `dash-vsrc`, `pulsus-colexec` (virtual sources, M-UI4) | Go packages `internal/vsrc` and `internal/colexec`; T07-021 stands |
+| Rust code blocks (§5) | Normative as data shapes; the wire form is the OpenAPI schema |
+| Frames to the browser | JSON frames until the engine (#68), then Arrow ([T04](T04-wire-format-and-data-plane.md) §0) |
+| Hidden tab via the shim | `document.visibilityState` in the TS application |
 
 ## 1. Context & problem
 
@@ -29,9 +45,9 @@ Postgres-backed **virtual sources**, evaluated in the BFF and joinable with Puls
 documented limits (§4.11). Fallback pyramids for a PulsusDB without R4 are Postgres Arrow tiles
 (§4.12).
 
-The planner runs in `dash-planner` on the BFF ([T06](T06-bff-architecture.md) §4.1). Its IR lives in
-the shared crate `pulsus-plan`, which also compiles to WASM, so the browser's local engine (T13
-(draft)) can answer the same logical plan.
+The planner runs in the Go BFF ([T06](T06-bff-architecture.md) §4.1, `internal/planner`). Its IR
+(§5.2) is Go types; the browser's local engine (T13 (draft)) receives the same logical plan in its
+JSON form and is held to the same semantics by shared fixtures (§0).
 
 ## 2. Goals / non-goals
 
@@ -132,9 +148,9 @@ incremental replan of one viewport in ≤ 0.2 ms, so a full replan per camera ch
 
 ### 4.2 Normalisation and identity
 
-Each query is parsed with the same parser crates as PulsusDB and the editors
-([T09](T09-query-editors.md)): `promql-parser` (the fork PulsusDB vendors), the PulsusDB LogQL and
-TraceQL crates (AGPL-3.0, licence-compatible under D3). It is then printed canonically: matchers
+Each PromQL query is parsed with the Prometheus project's Go PromQL parser, whose acceptance is checked
+against PulsusDB's own parser by a shared corpus ([T09](T09-query-editors.md) T09-017); LogQL and
+TraceQL are opaque to the planner in v1 (§0, T07-002). A parsed query is then printed canonically: matchers
 sorted, whitespace and duration literals canonical (`1m0s`→`1m`), and redundant parentheses removed.
 `LogicalKey = xxh3_128(signal, canonical_text, shape)`.
 
@@ -527,8 +543,8 @@ Virtual evaluation:
    `pulsus-colexec` samples on the step grid to series (Prometheus staleness semantics: a series ends
    at its last interval).
 3. **Evaluate.** The PromQL or LogQL expression above the selectors is evaluated by `pulsus-colexec`
-   over those series, using the lowering in `dash-vsrc` (one Rust implementation, shared with the
-   BFF join kernel).
+   over those series, using the lowering in `dash-vsrc` (one Go implementation, shared with the BFF
+   join kernel).
 4. **Stream.** Results leave as Arrow frames with `Completeness{exactness: RawExact, source:
    Virtual{table}}`, through the same Combine, cache (T06-013 virtual horizon) and frame path.
 
@@ -709,7 +725,7 @@ R3/R7/R8 fallbacks belong to the catalogue and change feed ([T12](T12-entity-cat
 | Budget exhausted | Coarse, then cached only; the focused viewport is protected |
 | `422` too broad | Retry once at coarse ×4 if it is a resolution problem, otherwise surface it with the hint |
 | `Pressure{level}` from the browser (T01/T04 memory monitor) | Re-plan affected viewports at the next coarser rollup level, drop P4/P5 and held raw chunks are released by the browser; source badge reflects the rollup |
-| LIVE (`L`) | Each viewport's head tile is re-planned every `max(step, 1 s)` as a delta query `[last_ts, now]`; immutable tiles are untouched; a hidden tab (shim visibility) suspends live refresh |
+| LIVE (`L`) | Each viewport's head tile is re-planned every `max(step, 1 s)` as a delta query `[last_ts, now]`; immutable tiles are untouched; a hidden tab (`document.visibilityState`) suspends live refresh |
 
 #### T07-027 — Truncation and too-broad answers are surfaced
 **MUST** — A PulsusDB `truncated` flag, a `422` or a planner refusal MUST reach the viewport as a
@@ -935,3 +951,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T07-001…T07-030. **D2 / ADR-0012:** added Postgres-backed virtual sources (§4.11: `ALERTS`, `ALERTS_FOR_STATE`, `pulsus_anomaly_score`, `{source="pulsus-dash"}`), BFF evaluation subset, mixed-spine binary-op joins with limits, `VirtualQuery` IR and `SourceClass`; R4 fallback pyramids stored as Postgres Arrow tiles (§4.12). **A1:** service graph planned as one call; partitioned TraceQL-metrics fallback kept as the degradation path on `truncated`. **O1:** metrics scopes follow ADR-0013 option B pending decision (T07-015). Added flank pass P4 wording for PRF-028, LIVE head refresh, memory-pressure replan, Board variable dependency index, multi-query expressions (SRF-030), `Pressure`/`Live`/`Visibility` client messages |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 starts with a per-viewport subset over HTTP `/query`; the WS scene session, merge, passes and budgets follow later in M-UI1; LogQL stream and volume plan kinds move to M-UI1 |
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; the planner is Go (`internal/planner`); the shared `pulsus-plan` IR is dropped in favour of Go types plus a JSON form and fixtures for T13; §4.2 parses PromQL with the Prometheus Go parser and treats LogQL and TraceQL as opaque in v1 (T07-002) |

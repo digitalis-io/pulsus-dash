@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
 | **Technical designs** | [T01 Frontend architecture](../technical/T01-frontend-architecture.md) · [T08 DOM rooms & component kit](../technical/T08-dom-component-kit.md) · [T09 Query editors](../technical/T09-query-editors.md) · [T11 Postgres schema](../technical/T11-postgres-schema.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [09-alert-lens](../mockups/09-alert-lens.svg) · [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg) · [11-rule-editor-backtest](../mockups/11-rule-editor-backtest.svg) · [12-routing-simulator](../mockups/12-routing-simulator.svg) · [13-investigation](../mockups/13-investigation.svg) · [14-board](../mockups/14-board.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
+| **Mockups** | [34-application-layout](../mockups/34-application-layout.svg) · [01-landscape-map](../mockups/01-landscape-map.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [09-alert-lens](../mockups/09-alert-lens.svg) · [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg) · [11-rule-editor-backtest](../mockups/11-rule-editor-backtest.svg) · [12-routing-simulator](../mockups/12-routing-simulator.svg) · [13-investigation](../mockups/13-investigation.svg) · [14-board](../mockups/14-board.svg) · [15-command-palette](../mockups/15-command-palette.svg) · [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -30,11 +30,12 @@ Atlas, Release Compare, Journeys) are in 01a; this document describes the shared
 
 | Term | Meaning |
 |---|---|
-| **Surface** | A top-level screen. It is a **space** (GPU scene), a **room** (Leptos DOM UI, [ADR-0004](../adr/0004-leptos-dom-rooms.md)) or both |
+| **Surface** | A top-level screen. It is a **space** (content drawn by the chart engine: one GPU scene for the Atlas and a Lens, one canvas per viewport on Boards and workbenches), a **room** (React DOM UI, [ADR-0014](../adr/0014-typescript-react-web-client.md)) or both |
 | **Viewport** | One vis instance in a scene ([05](05-visualisation-catalogue.md)) |
 | **Context** | Shared filters, time window, comparison and focus ([02](02-information-architecture.md)) |
 | **Inspector** | The side panel that shows details and pivots for the current selection ([03](03-interaction-model.md)) |
-| **Time Ribbon** | The global time control at the bottom of every space ([03](03-interaction-model.md)) |
+| **Time range picker** | The Context time window in the page header of every page ([02](02-information-architecture.md) IA-020) |
+| **Time Ribbon** | The time overview strip at the bottom of the Atlas and Lens scenes ([02](02-information-architecture.md) IA-028, [03](03-interaction-model.md) §6) |
 | **Lens** | An auto-built scene for one entity or a small set (§4.2) |
 | **Board** | A curated, saved scene (§4.3) |
 
@@ -60,15 +61,26 @@ Atlas, Release Compare, Journeys) are in 01a; this document describes the shared
 | 4.14 | Journeys & customer lookup | Space + room | Business impact, support | M-UI5 | — |
 | 4.15 | Release & rollout compare | Space | Validate change | M-UI5 | — |
 
-#### SRF-001 — Every surface carries the shared chrome
+Every surface is a page of one web application with the layout of
+[02](02-information-architecture.md) §3.1 ([mockup](../mockups/34-application-layout.svg)). Boards and the
+workbenches are reached from the left navigation sidebar (Boards, Explore); their viewports are chart
+frames drawn by the chart engine, and by the interim Canvas 2D renderer until the engine lands
+([ADR-0014](../adr/0014-typescript-react-web-client.md) §3–§4).
+
+#### SRF-001 — Every surface uses the application layout
 **MUST** · M-UI1 · SRE, Engineer, Platform, NOC, Business, Support
 
-Every space MUST show the top bar (scope selector, breadcrumb or surface title, ⌘K entry point,
-alert count and AI entry) and the Time Ribbon. Every room MUST show the top bar. Wall mode (§4.13) is
-the only exception.
+Every surface MUST show the application layout of [02](02-information-architecture.md) IA-016: the
+left navigation sidebar and the page header with the surface title (or breadcrumb) on the left and
+the ⌘K entry, alert count and AI entry (once they exist), the time range picker, the refresh control
+and the user menu on the right. A room whose content does not depend on time (for example Admin) MAY
+omit the time range picker and refresh control. The Atlas and Lens also show the Time Ribbon
+(IA-028). Wall mode (§4.13) is the only exception.
 
 *Acceptance:* Given each surface of Table 4-1 available at the milestone, when it is opened, then the
-top bar is present, and for spaces the Time Ribbon is present; and in Wall mode neither is shown.
+sidebar and the page header are present, with the time range picker and refresh control on every
+time-dependent surface, and for the Atlas and Lens the Time Ribbon; and in Wall mode none of them is
+shown.
 
 ---
 
@@ -88,7 +100,7 @@ top bar is present, and for spaces the Time Ribbon is present; and in Wall mode 
 
 | Region | Contents |
 |---|---|
-| Top bar | Scope (e.g. `prod ▾`), view switcher (Map · Topology · City · Infra · Segments · Explorer, [15](15-estate-navigation.md) §5), ⌘K, alert count ⚠, AI ✦ |
+| Page header | Breadcrumb, scope (e.g. `prod ▾`), view switcher (Map · Topology · City · Infra · Segments · Explorer, [15](15-estate-navigation.md) §5), ⌘K, alert count ⚠, AI ✦ |
 | Layer bar | Active layer ([15](15-estate-navigation.md) §7) and the active find/hide filter (e.g. `team=payments`) |
 | Scene | The active view; territories (region / cluster / namespace) drawn as translucent groups |
 | Legend | State glyphs and edge encodings for the active layer |
@@ -292,8 +304,9 @@ Boards are the classic-dashboard equivalent, rendered as a single GPU scene. Moc
 **MUST** · M-UI5 · Engineer, SRE, NOC
 
 A Board MUST lay out viewports on a responsive 12-column snapping grid by default, and MUST offer a
-free-form canvas option (for NOC storytelling boards), which MAY include 3D viewports. All viewports
-MUST render in one GPU scene.
+free-form canvas option (for NOC storytelling boards), which MAY include 3D viewports. Every
+viewport MUST be a chart frame with its own canvas, and all of them MUST be drawn by the one shared
+chart engine with one GPU device per page ([ADR-0014](../adr/0014-typescript-react-web-client.md) §3).
 
 *Acceptance:* Given a new board, when viewports are dragged, then they snap to 12 columns; when the
 board is switched to free-form, then viewports can be placed at any position, including a 3D Atlas
@@ -339,7 +352,7 @@ zooms out to show all 80 thumbnails; clicking one zooms back framed on it.
 #### SRF-019 — Board capacity
 **MUST** · M-UI5 · Engineer, NOC
 
-A board MUST support 200 viewports in one canvas. Off-screen viewports MUST neither render nor query
+A board MUST support 200 viewports on one page. Off-screen viewports MUST neither render nor query
 ([09](09-performance-contract.md) §3).
 
 *Acceptance:* Given a 200-viewport board, when only 12 are on screen, then only those 12 have issued
@@ -430,13 +443,16 @@ For when you *do* want to write PromQL or browse metric names. Mockup:
 
 The editor MUST provide syntax highlighting, autocomplete of metric names, labels and values from
 PulsusDB metadata APIs, hover docs for functions, and inline errors with byte offsets produced by
-Dash's own parsers in the browser ([T09](../technical/T09-query-editors.md)).
+PulsusDB's parser for the language: through the BFF at first, and in the browser once PulsusDB's
+parser crates are compiled to WASM ([ADR-0014](../adr/0014-typescript-react-web-client.md) §2,
+[T09](../technical/T09-query-editors.md)).
 
 *Acceptance:* Given the query `rate(http_server_duration_bucket{service="checkout"[5m])`, when it is
 typed, then the missing `}` is underlined at its byte offset before the query is run.
 
 > **Note:** PulsusDB's errors are text, with positions only in some PromQL messages, so the browser
-> parser is the source of positions.
+> parser is the source of positions. Until it lands, an error without a position is shown on the
+> whole query; the M-UI1 subset is recorded in [12](12-roadmap.md) §2.1 (Table 2.1c).
 
 #### SRF-028 — Query explain
 **MUST** · M-UI1 · Engineer, SRE
@@ -1000,7 +1016,7 @@ release and in the team channel.
 
 | ID | Title | Priority | Milestone |
 |---|---|---|---|
-| SRF-001 | Every surface carries the shared chrome | MUST | M-UI1 |
+| SRF-001 | Every surface uses the application layout | MUST | M-UI1 |
 | SRF-002 | Atlas default encodings | MUST | M-UI3 |
 | SRF-003 | Atlas hover, click and dive | MUST | M-UI3 |
 | SRF-004 | Lasso to compare | MUST | M-UI3 |
@@ -1084,6 +1100,7 @@ release and in the team channel.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII wireframes replaced by region tables and SVG mockups |
 | 1.0-rc2 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): SRF-033 moves M-UI2 → M-UI1 (delivered by #49); SRF-044 note names the native service-graph route |
+| 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): definitions (Surface, Time range picker, Time Ribbon) and a layout paragraph under Table 4-1; SRF-001 (application layout), SRF-014 (one canvas per viewport, one shared engine) and SRF-019 (200 viewports on one page) revised in place; Atlas region "Top bar" becomes "Page header"; SRF-027 errors come from the PulsusDB parser through the BFF until the browser parser lands; R15 |
 
 ## Resolved during formalisation
 
@@ -1103,3 +1120,4 @@ release and in the team channel.
 | R12 | Customer lookup and release rollback had no audit requirement in the acceptance | Both are audited actions ([11](11-enterprise.md)) |
 | R13 | Diff flame used red/blue only | Added a non-colour cue (+/−) per 05 VIZ-067 |
 | R14 | Alert history storage was unstated | Dash-derived; PostgreSQL per D2 / ADR-0012 |
+| R15 | 1.1-rc: the top bar, the Time Ribbon on every space and "one GPU scene per board" assumed the previous shell (roadmap Q13) | SRF-001 uses the application layout of D9; SRF-014 and SRF-019 use one canvas per viewport drawn by one shared engine and GPU device (D7) |

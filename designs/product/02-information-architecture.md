@@ -3,17 +3,17 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
-| **Mockups** | [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg), [13-investigation](../mockups/13-investigation.svg), [14-board](../mockups/14-board.svg) |
+| **Mockups** | [34-application-layout](../mockups/34-application-layout.svg), [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg), [13-investigation](../mockups/13-investigation.svg), [14-board](../mockups/14-board.svg) |
 
 ## 1. Purpose & scope
 
 This document defines the small vocabulary of objects that every screen is composed of, the entity
 model that is the backbone of the product, the navigation model (one space plus a few rooms), the
-global chrome, the URL and state model, and the rules by which Context propagates across views.
+application layout, the URL and state model, and the rules by which Context propagates across views.
 How each surface uses these objects is in [04](04-surfaces.md); how the user moves is in
 [03](03-interaction-model.md).
 
@@ -25,7 +25,7 @@ The UI is built on these objects. The **Persisted** column is normative (IA-001)
 |---|---|---|
 | **Entity** | A thing that emits telemetry: region, cluster, namespace, service, deployment, pod/instance, host, database, queue, endpoint/route. Derived from OTel resource attributes + Prometheus `job`/`instance` + service-graph edges. Has a type, identity labels, parents and neighbours. | Derived catalogue, cached in PostgreSQL; user overrides (names, owners, tiers) in PostgreSQL |
 | **Context** | The sticky tuple **(entity set, time window, filters, comparison baseline)** that every view reads. The single most important piece of UI state. | In the URL; saved with Boards and Investigations |
-| **Scene** | Anything rendered on the GPU canvas: the Atlas, a Lens, a Board, a workbench. A scene is a tree of Viewports, each with a camera and a visualisation. | Boards and Lenses persist their scene definition |
+| **Scene** | A composed view: the Atlas, a Lens, a Board, a workbench. A scene is a tree of Viewports, each with a camera and a visualisation. The Atlas and a Lens are Space scenes drawn on one GPU canvas; a Board or a workbench is a page of the application whose viewports are chart frames, one canvas each ([ADR-0014](../adr/0014-typescript-react-web-client.md) §3). | Boards and Lenses persist their scene definition |
 | **Viewport** | One visualisation inside a scene (a "panel" in classic dashboard tools). Has a data binding (signal query or entity-relative template), vis type, camera/axes and overlays. | As part of its scene |
 | **Lens** | An auto-generated, entity-type-specific scene: what you see when you focus a service (or a host, a pod, a DB). Templates are versioned and customisable per org/team. | Lens templates in PostgreSQL |
 | **Edge Lens** | A Lens on a relationship (client → server edge): calls, failures, latency, spans, logs and changes of that interaction, in A/B mode. Opened by double-clicking an Atlas edge ([13](13-core-flow-storyboard.md) F3). | Template, like Lens |
@@ -65,7 +65,7 @@ re-opening a saved Board or pinned evidence item restores its saved Context exac
 #### IA-003 — Scenes are trees of viewports
 **MUST** · M-UI1 · Platform, Engineer, SRE
 
-Every GPU surface (Atlas, Lens, Board, workbench) MUST be a scene composed of a tree of viewports,
+Every scene (Atlas, Lens, Board, workbench) MUST be composed of a tree of viewports,
 each with its own data binding (signal query or entity-relative template), visualisation type,
 camera/axes and overlays.
 
@@ -216,14 +216,17 @@ Navigation is a space plus a few rooms, not a tree of pages.
 #### IA-014 — The Space: camera transitions, never page loads
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
-The Space (Atlas, Lenses, Boards in view mode, workbenches) MUST be GPU-rendered. Movement between
-its scenes MUST be an animated camera transition of ≤ 250 ms (PRF-007 in
-[09](09-performance-contract.md)), never a page load, and the previous scene MUST stay resident so
-that "back" is instant.
+Moving between any two views (sidebar destinations, Boards, workbenches, rooms and Space scenes) MUST
+be client-side routing in the single-page application, never a document load, and the view left
+MUST stay cached so that "back" shows its previous data at once. The Space (Atlas and Lenses, from
+their milestones) MUST be GPU-rendered, and movement between its scenes MUST be an animated camera
+transition of ≤ 250 ms (PRF-007 in [09](09-performance-contract.md)), with the previous scene
+resident.
 
-*Acceptance:* Diving from the Atlas into a Lens and pressing `Esc` triggers no document navigation;
-each transition completes in ≤ 250 ms, and the returning scene shows its previous data in the first
-frame with no new query.
+*Acceptance:* Opening a board from the Boards list, then Explore → Metrics, then pressing the browser's
+back button triggers no document navigation, and the board shows its previous data in the first frame
+with no new query. Once the Space exists, diving from the Atlas into a Lens and pressing `Esc`
+triggers no document navigation and each transition completes in ≤ 250 ms.
 
 #### IA-015 — Rooms are conventional, accessible DOM
 **MUST** · M-UI1 · Admin, Platform, Engineer, SRE
@@ -234,40 +237,56 @@ fully keyboard-operable; they are not spatial.
 *Acceptance:* Every control in every room is reachable and operable by keyboard alone, and the rooms
 pass the WCAG 2.2 AA automated checks of [08](08-visual-language.md).
 
-### 3.1 Global chrome
+### 3.1 Application layout
+
+The application uses a conventional layout (decision D9,
+[ADR-0014](../adr/0014-typescript-react-web-client.md) §10): a left navigation sidebar, a page
+header, and the page content. Mockup: [34-application-layout](../mockups/34-application-layout.svg)
+(callouts: ① sidebar, ② page title, ③ time range picker and refresh control, ④ user menu, ⑤ board
+panel gap).
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ ◉ Pulsus  prod ▾ › eu-west-1 › k8s-core › checkout ▾        ⌘K Search…   ⚠ 3  ✦ AI  ☺ │ ← top bar (32 px)
-├──────────────────────────────────────────────────────────────────────────────────────┤
-│                                  ( G P U   C A N V A S )                             │
-│                                                                             ┌──────┐ │
-│                                                                             │minimap│ │
-│                                                                             └──────┘ │
-├──────────────────────────────────────────────────────────────────────────────────────┤
-│ ◀◀ ▶ LIVE  │▁▂▃▅▂▁▁▂▇█▆▃▂▁▁▁▂▃▂▁▁▁▁▂▃▂▁[====window====]▁▂▁│ -1h … now  ⟲ vs -7d   │ ← Time Ribbon (40 px)
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────┬───────────────────────────────────────────────────────────────────────────────┐
+│ ◉ Pulsus     │ Boards › Payments overview       ⌘K Search…  ⚠ 3  ✦ AI │ ◷ Last 1 h ▾ │ ⟳ 30 s ▾ │ ☺ ▾ │ ← page header
+│              ├───────────────────────────────────────────────────────────────────────────────┤
+│ ▦ Boards     │                                                                               │
+│ ⌕ Explore    │      page content: a board grid, a workbench, a room, or a Space scene        │
+│    Metrics   │      (Space scenes add a minimap and the Time Ribbon at the bottom)           │
+│    Logs      │                                                                               │
+│ ⚠ Alerts     │                                                                               │
+│ ⚙ Admin      │                                                                               │
+│ «            │                                                                               │
+└──────────────┴───────────────────────────────────────────────────────────────────────────────┘
+  ↑ left navigation sidebar (collapses to an icon rail)
 ```
 
 | Element | Behaviour | Requirement |
 |---|---|---|
-| Top bar (32 px) | Logo menu, breadcrumb, command palette, alerts count, AI dock, avatar (Perspective switcher) | IA-016 |
+| Left navigation sidebar | Boards, Explore (Metrics, Logs; Traces and Profiles when they exist), Alerts and Investigations when they exist, Admin; collapsible to an icon rail | IA-021 |
+| Page header, left | Page title; in the Space, the breadcrumb | IA-016, IA-017 |
+| Page header, right | ⌘K entry, alert count, AI dock toggle, time range picker, refresh control, user menu | IA-016 |
 | Breadcrumb | Depth gauge; each crumb is a dropdown of siblings | IA-017 |
 | ⚠ n | Firing alerts relevant to the current Context; click → Alert drawer | IA-018 |
 | ✦ AI | Copilot dock ([06](06-ai-copilot.md)) | IA-019 |
-| Minimap | Landscape with viewport rectangle ([15](15-estate-navigation.md)) | IA-016 |
-| Time Ribbon (40 px) | Global time control, always visible, a GPU chart ([03](03-interaction-model.md) §6) | IA-020 |
-| No left sidebar | Rooms via ⌘K, logo menu or `g` chords | IA-021 |
+| Time range picker and refresh | The Context time window (relative or absolute, with time zone); refresh now, an auto-refresh interval or LIVE | IA-020 |
+| User menu (avatar) | Preferences (theme, density, time zone), the Perspective switcher once Perspectives exist, sign-out | IA-016 |
+| Minimap | Space scenes with a camera extent: Landscape with viewport rectangle ([15](15-estate-navigation.md)) | IA-016 |
+| Time Ribbon | Space scenes only: overview strip of anomaly density and events with the active window as a brush ([03](03-interaction-model.md) §6) | IA-028 |
 
-#### IA-016 — Minimal global chrome
+#### IA-016 — Application layout
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
-The Space MUST show only: a 32 px top bar (logo menu, breadcrumb, command palette entry, alert count,
-AI dock toggle, avatar menu), the GPU canvas with a minimap in Space scenes that have a camera
-extent, and a 40 px Time Ribbon.
+Every page MUST use one application layout (§3.1): the left navigation sidebar (IA-021); a page header
+across the content column with the page title (the breadcrumb in the Space, IA-017) on the left and,
+on the right in this order, the command palette entry, the alert count (IA-018) and AI dock toggle
+(IA-019) once they exist, the time range picker and refresh control (IA-020), and the user menu; and
+the page content below the header, with a minimap in Space scenes that have a camera extent. No other
+persistent chrome MAY be shown. Sizes are in [08](08-visual-language.md) VL-017.
 
-*Acceptance:* At 1440×900, the top bar is 32 px high and the Time Ribbon 40 px, with the elements
-listed; no other persistent chrome is shown.
+*Acceptance:* At 1440×900 on every page of the milestone, the sidebar is at the left edge, the page
+header spans the content column with the title on the left and the time range picker, refresh control
+and user menu at the right edge in that order, the sizes match VL-017, and no other persistent chrome
+is shown.
 
 #### IA-017 — Breadcrumb is a depth gauge
 **MUST** · M-UI2 · SRE, Platform, Engineer, NOC
@@ -285,7 +304,7 @@ passing through the cluster level.
 
 The chrome MUST show two distinct alert indicators. The **global** `⚠ n` counts un-acked incidents for
 the user's teams ([ALR-042](07-alerting.md#alr-042--global-incident-counter)). The **Context badge** on
-the scene header counts firing alerts relevant to the current Context (its entity set and their
+the page header counts firing alerts relevant to the current Context (its entity set and their
 dependencies), not all alerts in the tenant. Clicking the Context badge MUST open the Alert drawer.
 
 *Acceptance:* With 3 firing alerts on `checkout` and its dependencies and 20 elsewhere, focusing
@@ -301,25 +320,49 @@ scene and every room.
 *Acceptance:* ✦ toggles the dock in the Atlas, a Lens, a Board and each room, keeping the dock's
 conversation.
 
-#### IA-020 — Time Ribbon is always visible
+#### IA-020 — Time range in the page header
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
-The Time Ribbon MUST be visible in every Space scene, and MUST be a GPU chart showing an overview of
-anomaly density and alert events across a long range, with the active window as a brush
-([03](03-interaction-model.md) §6).
+Every page whose content depends on time MUST show the Context time window in a time range picker in
+the page header, beside a refresh control. The picker MUST offer relative ranges (at least the last
+5 min, 15 min, 1 h, 6 h, 24 h and 7 d) and absolute ranges, and MUST show the time zone. The refresh
+control MUST offer refresh now, an auto-refresh interval (off by default) and LIVE
+([03](03-interaction-model.md) INT-028). Brushing any time chart (INT-025) and the window keys (INT-032)
+MUST change the same Context window, and the picker MUST show the result. In Space scenes the Time
+Ribbon (IA-028) controls the same window.
 
-*Acceptance:* In every Space scene the Ribbon is present; its overview strip shows anomaly density
-and alert glyphs beyond the active window, and dragging the brush changes the Context time.
+*Acceptance:* On a board and in Explore → Metrics, choosing "Last 6 hours" in the header picker
+re-queries every visible chart and updates the URL; brushing 10 minutes on any chart sets the picker
+to that absolute range; choosing a 30 s auto-refresh re-queries every visible panel every 30 s, and
+"Off" stops it.
 
-#### IA-021 — No left navigation sidebar
+#### IA-021 — Left navigation sidebar
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-There MUST be no left navigation sidebar by default. Rooms MUST be reachable through the command
-palette, the logo menu and `g` chords (`g b` Boards, `g a` Alerts, `g i` Investigations; the full set
-is in [03](03-interaction-model.md) §4.2).
+The application MUST have a left navigation sidebar listing the rooms and workbenches that exist at
+the milestone and that the user's role may open: Boards; Explore with Metrics and Logs (Traces and
+Profiles when they exist); Alerts and Investigations when they exist; and Admin for administrators.
+The current page MUST be marked. The sidebar MUST collapse to an icon rail, and its state MUST
+persist per user. Every sidebar destination MUST also be reachable from the command palette and by
+its `g` chord (`g b` Boards, `g m` Metrics, `g l` Logs; the full set is in
+[03](03-interaction-model.md) §4.2).
 
-*Acceptance:* A fresh user session shows no left sidebar; each room is reachable by `⌘K`, by the
-logo menu and by its `g` chord.
+*Acceptance:* A fresh session at 1440×900 shows the expanded sidebar with Boards, Explore → Metrics
+and Logs, and, for an administrator only, Admin; the current page is marked; collapsing the sidebar
+to the icon rail persists after reload; each destination opens from the sidebar, from `⌘K` and by its
+`g` chord.
+
+#### IA-028 — Time Ribbon in Space scenes
+**MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business, Support, IC
+
+Space scenes (the Atlas and Lenses) MUST show the Time Ribbon docked at the bottom of the scene: a GPU
+chart with an overview of anomaly density and alert events across a long range, and the active
+window as a brush ([03](03-interaction-model.md) §6). It controls the same Context window as the page
+header's time range picker (IA-020).
+
+*Acceptance:* In the Atlas and in a Lens the Ribbon is present; its overview strip shows anomaly
+density and alert glyphs beyond the active window; dragging the brush changes the Context time, and
+the header picker shows the new range.
 
 ## 4. URL & state model
 
@@ -327,7 +370,9 @@ Every view is deep-linkable and reproducible. The URL encodes Context + scene + 
 
 | Pattern | Opens |
 |---|---|
-| `/t/{tenant}/space/{scene}?e={entityRef,...}&from=…&to=…&cmp=-7d&f={filters}&cam={compact camera}&persp={perspective}` | A Space scene (Atlas, Lens, Edge Lens, workbench) with Context and camera |
+| `/t/{tenant}/space/{scene}?e={entityRef,...}&from=…&to=…&cmp=-7d&f={filters}&cam={compact camera}&persp={perspective}` | A Space scene (Atlas, Lens, Edge Lens) with Context and camera |
+| `/t/{tenant}/explore/{signal}?q={queries}&from=…&to=…&f={filters}` | An Explore workbench, `signal` = `metrics` \| `logs` (later `traces` \| `profiles`), with its queries and Context |
+| `/t/{tenant}/boards` | The Boards list |
 | `/t/{tenant}/board/{boardUid}?var-x=…&from=…&to=…&vp={focusedViewport}` | A Board with variables, time and focused viewport |
 | `/t/{tenant}/inv/{investigationId}#evidence-{n}` | An Investigation, scrolled to evidence item n |
 | `/t/{tenant}/incident/{incidentId}` | The Alert Lens (RCA card) for the incident |
@@ -424,18 +469,19 @@ changes the translation on the next pivot.
 | IA-013 | Entities outside the user's scope | MUST | M-UI6 |
 | IA-014 | The Space: camera transitions, never page loads | MUST | M-UI1 |
 | IA-015 | Rooms are conventional, accessible DOM | MUST | M-UI1 |
-| IA-016 | Minimal global chrome | MUST | M-UI1 |
+| IA-016 | Application layout | MUST | M-UI1 |
 | IA-017 | Breadcrumb is a depth gauge | MUST | M-UI2 |
 | IA-018 | Context-relevant alert count | MUST | M-UI4 |
 | IA-019 | AI dock in the chrome | MUST | M-UI4 |
-| IA-020 | Time Ribbon is always visible | MUST | M-UI1 |
-| IA-021 | No left navigation sidebar | MUST | M-UI1 |
+| IA-020 | Time range in the page header | MUST | M-UI1 |
+| IA-021 | Left navigation sidebar | MUST | M-UI1 |
 | IA-022 | Deep links reproduce the view | MUST | M-UI1 |
 | IA-023 | Shared links pin absolute time | MUST | M-UI1 |
 | IA-024 | Compact camera encoding | MUST | M-UI1 |
 | IA-025 | Browser history is camera history | MUST | M-UI1 |
 | IA-026 | Context propagation | MUST | M-UI1 |
 | IA-027 | Label ⇄ attribute translation | MUST | M-UI2 |
+| IA-028 | Time Ribbon in Space scenes | MUST | M-UI3 |
 
 ## 7. Resolved during formalisation
 
@@ -450,17 +496,23 @@ changes the translation on the next pivot.
 4. **Pinned Perspective in links.** [01a](01a-audiences-and-perspectives.md) lets a sender pin a
    Perspective, but the draft URL had no parameter for it. Added `persp`.
 5. **Lens and workbench routes.** The draft had no distinct route for Lens, Edge Lens or workbench;
-   they are Space scenes under `/space/{scene}`.
+   they are Space scenes under `/space/{scene}`. Since 1.1-rc (D9) workbenches are Explore pages under
+   `/explore/{signal}`; Lens and Edge Lens stay under `/space/{scene}`.
 6. **Alerts-room view names.** The URL `list` view is the Explorer with alert columns
    (`Alt+6` in [03](03-interaction-model.md)); `timeline` is `Alt+7`, which exists in the Alerts room.
 7. **Minimap scope.** The chrome sketch shows a minimap always; a minimap is meaningless on a single
-   chart workbench, so IA-016 requires it only in scenes with a camera extent (Atlas, estate views,
-   Boards).
+   chart workbench, so IA-016 requires it only in scenes with a camera extent (Atlas, estate views).
 8. **`job` translation example.** The draft example's `job` format is `namespace/name`; the
    acceptance criterion uses a regex match on the name part, or the tenant's mapped form.
+9. **Application layout (1.1-rc, D9).** The 32 px top bar with a logo menu, the bottom Time Ribbon on
+   every scene and "no left sidebar" are replaced by the conventional layout of
+   [ADR-0014](../adr/0014-typescript-react-web-client.md) §10: IA-016, IA-020 and IA-021 are revised in
+   place (same IDs), the Ribbon survives in Space scenes as IA-028, and IA-014 now separates
+   client-side page navigation (M-UI1) from camera transitions in the Space.
 
 ## 8. Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
+| 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §4 adds the Explore and Boards-list routes; §3.1 becomes the application layout with mockup 34; IA-016 (application layout), IA-020 (time range in the page header) and IA-021 (left navigation sidebar) revised in place; IA-028 Time Ribbon in Space scenes added (M-UI3); IA-003, IA-014 and the Scene definition no longer make Boards and workbenches GPU scenes; IA-018 Context badge sits in the page header |

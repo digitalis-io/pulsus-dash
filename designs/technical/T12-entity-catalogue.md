@@ -3,10 +3,23 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Milestone** | M-UI2 (catalogue, schema, R3 fallback) → M-UI3 (graph diffs, change feed, health, classes, Kubernetes model, three clouds) → M-UI5 (connectors, network inventory, devices, further clouds) → M-UI6 (remaining clouds, reachability, facilities) |
-| **Related ADRs** | [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T12-entity-catalogue.md (not tracked) |
+
+## 0. Applicability under ADR-0015 (2026-11-19)
+
+The catalogue runs in the Go BFF ([ADR-0015](../adr/0015-go-bff.md)). Rules, schemas, budgets and the
+wire contract stand. Rust specifics map as follows:
+
+| Was (Rust) | Now |
+|---|---|
+| Crates `dash-catalogue`, `dash-changefeed`, `dash-health` (§4.1) | Go packages `internal/catalogue`, `internal/changefeed`, `internal/health` |
+| Rust code blocks (§4.3 enums, §4.5 graph types, §4.10 diffs, §4.11 traits) | Normative as data shapes; implemented as Go types and interfaces (`async` methods take a `context.Context`). `EntityId` stays a 128-bit `xxh3` value |
+| Class and shape tables compiled as Rust enums (§4.3) | One data file, `wire/schemas/classes.yaml` (Table 16-1 and Table 12-1), generated into Go for the BFF and into Rust for the chart engine's 3D shapes; `unit:inf-class-shape-table` runs on both outputs |
+| Cloud and Kubernetes connectors | The official Kubernetes Go client and the AWS, Azure and GCP Go SDKs (ADR-0015) |
+| Entity diffs to the browser | JSON until the engine lands, then Arrow ([T04](T04-wire-format-and-data-plane.md) §0) |
 
 ## 1. Context & problem
 
@@ -101,7 +114,7 @@ never writes derived series or events into PulsusDB.
 
 ### 4.1 Placement
 
-T12 is three crates inside the BFF ([T06](T06-bff-architecture.md) §4.1 owns the layout):
+T12 is three Go packages inside the BFF ([T06](T06-bff-architecture.md) §4.1 owns the layout; package names in §0):
 
 ```
  dash-catalogue   schema + AttributeMap · classes · packs → ClassResolver · harvest (signals, cluster
@@ -194,8 +207,8 @@ for an entity attribute.
 
 ### 4.3 Classes and shape families
 
-Table 16-1 ([16](../product/16-infrastructure-model.md) §3) is compiled into the catalogue as Rust
-enums. The text form (`data.relational`) is the stable identifier used in YAML, URLs, filters and the
+Table 16-1 ([16](../product/16-infrastructure-model.md) §3) is generated into the catalogue as Go
+types (and into the engine as Rust enums) from `wire/schemas/classes.yaml` (§0). The text form (`data.relational`) is the stable identifier used in YAML, URLs, filters and the
 wire.
 
 ```rust
@@ -937,3 +950,4 @@ Packs ship with the binary; a pack update is a patch release.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from draft; extended for [16 Infrastructure model](../product/16-infrastructure-model.md): class taxonomy, mapping packs and org overrides, cloud hierarchy and metric joins, Kubernetes model from both cluster-state sources, read-only connectors with network inventory and flows, on-prem devices, shape columns for T02. Aligned with ADR-0012 (no PulsusDB writes), T06 leases and T11 DDL |
+| 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): new §0; the catalogue, change feed and health are Go packages; class and shape tables are one data file generated into Go and Rust; connectors use the Go SDKs |

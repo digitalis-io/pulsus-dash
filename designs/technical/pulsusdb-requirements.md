@@ -15,6 +15,13 @@
 > service graph at `/api/traces/v1/service_graph?start=<t>&end=<t>` on the native traces API. The
 > route exists; the R5 edge-cap raise remains assumption A1.
 >
+> **Revision 5 (2026-11-19):** the Dash backend is now written in Go and the web client in
+> TypeScript, with a Rust/WASM chart engine added later
+> ([ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md)). PulsusDB's
+> Rust parser crates are now used only in the browser, compiled to WASM for editor diagnostics (R17);
+> the BFF validates queries by sending them to PulsusDB, and its data-scope rewrite (R12 fallback)
+> uses a Go parser. No ask changes priority.
+>
 > **None of these block Pulsus Dash.** Every requirement has an interim fallback that the Dash
 > backend-for-frontend (BFF) implements first; PulsusDB support replaces the fallback when it lands,
 > usually with a large performance or fidelity gain. Priorities follow the Dash UI milestones
@@ -217,7 +224,8 @@ matcher semantics on every endpoint (including `/tags`, `service_graph`, trace-b
 applied scope's hash echoed in a response header, and a credential that is **only** valid together with
 the scope header.
 
-**Dash fallback:** the BFF rewrites queries using the same parsers.
+**Dash fallback:** the BFF rewrites queries before sending them: PromQL with the Prometheus project's
+Go parser; LogQL needs a Go parser or this ask (an open question for Dash's data-scope design).
 
 ### R13 (P2) — Batch query
 
@@ -259,8 +267,9 @@ datapoints).
 
 ### R17 (P3, was P1) — Permissively licensed syntax crates
 
-**Why:** Dash compiles PulsusDB's PromQL/LogQL/TraceQL parsers to WASM for in-browser editing and for
-the BFF's planner and data-scope rewriting ([T09](T09-query-editors.md), T10 (draft)).
+**Why:** Dash compiles PulsusDB's PromQL/LogQL/TraceQL parsers to WASM for in-browser editor
+diagnostics ([T09](T09-query-editors.md)). Since the Dash BFF is written in Go
+([ADR-0015](../adr/0015-go-bff.md)), the crates are no longer used on the server.
 The crates are AGPL-3.0-only, so linking them makes Dash a combined AGPL work, which constrained the Dash
 licensing decision (Q8, since closed by decision D3 in [12](../product/12-roadmap.md#3-decisions-taken)). They compile to `wasm32` today
 (`pulsus-logql` ≈ 44 KB, `pulsus-traceql` ≈ 34 KB, `pulsus-promql` ≈ 481 KB gzip).
@@ -273,8 +282,8 @@ e.g. split out `pulsus-promql-syntax`, `pulsus-logql-syntax`, `pulsus-traceql-sy
 licence of PulsusDB's patches to the vendored `promql-parser`. Nice to have: public lexers, source
 spans on AST nodes, and error recovery for editor use.
 
-**Dash fallback:** the crates sit behind one `QueryLanguage` trait; a permissive fallback build
-(upstream `promql-parser` plus Dash's own LogQL/TraceQL parsers) is kept compiling in CI.
+**Dash fallback:** the parsers sit behind one `QueryLanguage` interface in the Dash client; without
+the crates, validation goes through the BFF to PulsusDB, as it does before the WASM build exists.
 
 ## 2. Summary table
 
@@ -291,9 +300,9 @@ spans on AST nodes, and error recovery for editor use.
 | R7 | P1 | Error origination | Structural TraceQL / heuristic |
 | R8 | P1 | Version transitions | Sub-window label-values |
 | R9 | P1 | Pattern diff vs baseline | Two calls diffed |
-| R12 | P1 | Server-enforced data scope | BFF query rewrite |
+| R12 | P1 | Server-enforced data scope | BFF query rewrite (Go parsers) |
 | R16 | P1 | Resource attributes on metric series | Fail closed; collector-side copy |
-| R17 | P3 | Permissive syntax crates | Trait isolation; own parsers |
+| R17 | P3 | Permissive syntax crates | One client interface; validation through the BFF |
 | R13 | P2 | Batch query | HTTP/2 multiplexing |
 | R14 | P2 | Cost estimate dry-run | Heuristics |
 | R15 | P2 | Alerting-rule evaluation | Dash evaluator |

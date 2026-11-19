@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (Leptos risk check, store, router, tokens, keymap, kit core, shell chrome) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -25,14 +25,14 @@ designs, ARIA patterns, budgets and rules that are language-neutral stand.
 | `dash-a11y` | `a11y/` | T08-016 to T08-019 stand for engine canvases |
 | `dash-shell` + bridge to core rings | the React application + the `ChartEngine` API | T08-001, T08-002 revised |
 | Leptos build risk check (§4.10) | Withdrawn | — |
-| Shell chrome (§4.3: 32 px top bar, Time Ribbon frame, logo menu, no sidebar) | Application layout ([ADR-0014](../adr/0014-typescript-react-web-client.md) §10) | Satisfies rows for IA-016, IA-021 and VL-017 are suspended until the product text is revised (roadmap Q13) |
+| Shell chrome (§4.3: 32 px top bar, Time Ribbon frame, logo menu, no sidebar) | Application layout ([ADR-0014](../adr/0014-typescript-react-web-client.md) §10; [02](../product/02-information-architecture.md) §3.1), rewritten in §4.3 | Satisfies rows for IA-016, IA-020, IA-021, SRF-001 and VL-017 follow the revised product text |
 
 ## 1. Context & problem
 
 The product is "a space plus a few rooms" ([02 §3](../product/02-information-architecture.md)). The
 space is GPU-rendered in a worker ([T01](T01-frontend-architecture.md)). The rooms are conventional,
-accessible DOM UIs (IA-015), and DOM chrome floats over the space: the top bar, the Inspector, the AI
-dock, tooltips, ⌘K and query editors. [ADR-0002](../adr/0002-no-js-ui-framework.md) bans React and
+accessible DOM UIs (IA-015), and DOM chrome surrounds or floats over the content: the sidebar and
+page header (since 1.2-rc, §4.3), the Inspector, the AI dock, tooltips, ⌘K and query editors. [ADR-0002](../adr/0002-no-js-ui-framework.md) bans React and
 every JS component library, so there is no AG Grid, no date picker and no headless-UI package.
 Everything is Rust on Leptos, which is decided ([ADR-0004](../adr/0004-leptos-dom-rooms.md),
 Accepted 2026-11-18). Dioxus is not pursued.
@@ -76,10 +76,11 @@ This document fixes:
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [IA-015](../product/02-information-architecture.md#ia-015--rooms-are-conventional-accessible-dom) | §4.3, §4.4, §4.5, T08-007 | `a11y:axe-rooms` (Playwright + axe-core: 0 serious/critical in every room) and `e2e:keyboard-only-rooms` (every control reachable and operable by keyboard) |
-| [IA-016](../product/02-information-architecture.md#ia-016--minimal-global-chrome) | §4.3 (shell chrome) | `e2e:chrome-layout`: at 1440×900 the top bar is 32 px with exactly the listed elements and the Time Ribbon frame is 40 px |
-| [VL-017](../product/08-visual-language.md#vl-017--thin-translucent-chrome) | §4.3, §4.7 | `golden:chrome-translucent`: canvas content visible through top bar and Ribbon (DOM screenshot diff per theme) |
-| [SRF-001](../product/04-surfaces.md#srf-001--every-surface-carries-the-shared-chrome) | §4.3 (shell always mounted; Wall exception) | `e2e:chrome-every-surface`: each surface of Table 4-1 available at the build shows the top bar (and Ribbon for spaces); Wall mode shows neither |
-| [IA-021](../product/02-information-architecture.md#ia-021--no-left-navigation-sidebar) | §4.3 (logo menu), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: no left sidebar; each room opens by ⌘K, logo menu and its `g` chord |
+| [IA-016](../product/02-information-architecture.md#ia-016--application-layout) | §4.3 (application layout) | `e2e:app-layout`: at 1440×900 the sidebar, the page header with the title left and the time range picker, refresh control and user menu right, and no other persistent chrome |
+| [IA-020](../product/02-information-architecture.md#ia-020--time-range-in-the-page-header) | §4.3 (time range picker and refresh control) | `e2e:time-range-header` |
+| [VL-017](../product/08-visual-language.md#vl-017--application-layout-dimensions) | §4.3, §4.7 (layout tokens) | `e2e:app-layout` (sidebar 240/56 px, header 56 px, padding 24 px, panel gap 16 px); `e2e:chrome-layout` (Ribbon 40 px and translucent in Space scenes, from M-UI3) |
+| [SRF-001](../product/04-surfaces.md#srf-001--every-surface-uses-the-application-layout) | §4.3 (layout always mounted; Wall exception) | `e2e:chrome-every-surface`: each surface of Table 4-1 available at the build shows the sidebar and page header (time range picker on time-dependent surfaces; Ribbon on Atlas and Lens); Wall mode shows none |
+| [IA-021](../product/02-information-architecture.md#ia-021--left-navigation-sidebar) | §4.3 (sidebar), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: the sidebar lists the build's destinations for the role and marks the current page; collapse persists; each destination opens from the sidebar, ⌘K and its `g` chord |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §4.2 (`AppState.context`) | `unit:reducer-context`: every Context member change emits `ContextChanged` to all subscribed slices |
 | [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.2, §4.3 (Context in `Route` and pivots) | `e2e:pivot-keeps-context` (T07/[T12](T12-entity-catalogue.md) co-own the translation) |
 | [IA-022](../product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view) | §4.3 (`Route` codec), T08-005 | `prop:route-roundtrip` (`parse(print(r)) == r`, fuzzed) and `e2e:deep-link-fresh-session` for each URL pattern |
@@ -93,7 +94,7 @@ This document fixes:
 | [INT-011](../product/03-interaction-model.md#int-011--tap-and-hold) | §4.8, T08-025 | `unit:tap-hold-250` and `e2e:floors-tap-hold` (`V` 100 ms flips, 400 ms shows both) |
 | [INT-012](../product/03-interaction-model.md#int-012--chords) | §4.8, T08-025 | `unit:chord-timeout`: `g a` within 1 s opens Alerts; `g`, 1.2 s, `a` does nothing; `g` alone is unbound |
 | [INT-014](../product/03-interaction-model.md#int-014--shortcut-overlay) | §4.8 (`?` overlay generated from active contexts) | `e2e:shortcut-overlay`: in the Atlas lists S, Est and 3D bindings and no Board binding; after a remap shows the new key |
-| [INT-015](../product/03-interaction-model.md#int-015--keyboard-focus-is-never-trapped) | §4.5, T08-017 | `e2e:f6-regions`: from the canvas, `F6` moves to the Time Ribbon then the top bar; no region retains focus |
+| [INT-015](../product/03-interaction-model.md#int-015--keyboard-focus-is-never-trapped) | §4.5, T08-017 | `e2e:focus-regions`: `F6`/`Shift+F6` cycle sidebar → page header → page content → open panels (→ Time Ribbon in Space scenes); no region retains focus |
 | [INT-017](../product/03-interaction-model.md#int-017--time-scrub) | §4.8 (holds: `Space` scrub) | `e2e:space-scrub` (render loop co-owned by T02/T03) |
 | [INT-032](../product/03-interaction-model.md#int-032--window-step-and-zoom-keys) | §4.8 | `e2e:keymap-table` rows `[`, `]`, `-`, `=` (data served by T07 P4 flank) |
 | [INT-033](../product/03-interaction-model.md#int-033--hover-tooltip) | §4.4.2, T08-013 | `bench:tooltip-latency`: median ≤ 1 frame and p99 ≤ 2 frames from hover input to tooltip paint, measured with frame ids, on (a) and (b) |
@@ -121,7 +122,7 @@ This document fixes:
 | [VL-022](../product/08-visual-language.md#vl-022--component-and-mark-libraries-share-the-tokens) | §4.4, §4.7, T08-007 | `ci:token-usage`: kit components reference only generated token outputs |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2, §4.4.1, §7 | `bench:rooms-long-tasks`: 0 main-thread tasks > 16 ms during scripted room interactions |
 | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.3 (shell first), §7 | `e2e:cold-load-shell` p75 < 1.0 s to `⌘K` accepted (T03 co-owns) |
-| [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.1, §4.3 (lazy room satellites) | `ci:bundle-size` per crate; cold load fetches no room or workbench satellite |
+| [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.1, §4.3 (lazy route chunks) | `ci:bundle-size` per chunk class ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8); `e2e:lazy-load` (cold load fetches no room or workbench chunk) |
 | [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7 | `ci:bundle-size` and `ci:lighthouse-inp-rooms` (INP > 200 ms fails; target 100 ms) |
 | [ENT-003](../product/11-enterprise.md#ent-003--built-in-roles) | §4.4 (permission-aware controls), §8 | `e2e:viewer-ack-disabled`: Viewer sees Ack disabled with "request access" |
 | [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.3 (Admin room satellite), §4.4 (forms) | `e2e:admin-oidc-bind-datasource`: at M-UI1 an Admin logs in via OIDC and binds a PulsusDB instance through the Admin room |
@@ -264,6 +265,8 @@ rather than pages. The router is about 600 lines: parse, serialise, and the `pop
 ```rust
 pub enum Route {
     Space   { tenant: TenantId, scene: SceneRef, ctx: ContextQuery, cam: Option<CamCode>, persp: Option<PerspectiveId>, view: Option<EstateView>, layer: Option<Layer> },
+    Explore { tenant: TenantId, signal: Signal, queries: QueryList, ctx: ContextQuery },   // /t/{tenant}/explore/{signal} (02 §4)
+    Boards  { tenant: TenantId },                                               // /t/{tenant}/boards
     Board   { tenant: TenantId, uid: BoardUid, vars: VarMap, ctx: ContextQuery, vp: Option<ViewportId> },
     Investigation { tenant: TenantId, id: InvId, evidence: Option<EvidenceIdx> },
     Incident { tenant: TenantId, incident: IncidentId },                       // /t/{tenant}/incident/{id}: the Alert Lens
@@ -272,16 +275,22 @@ pub enum Route {
 }
 ```
 
-- The **shell** is always mounted (SRF-001): the top bar (32 px: logo menu, breadcrumb or surface
-  title, ⌘K entry point, alert count, AI dock toggle, avatar menu; IA-016), the Time Ribbon frame (40
-  px, whose content is a GPU viewport), the dock host and the overlay host (tooltips, palette,
-  dialogs, toasts). Both bars are translucent over the canvas (`background` from the `chrome-glass`
-  token with `backdrop-filter`, VL-017). Wall mode hides both.
-- The **logo menu** lists every room available at the build (Boards, Alerts, Investigations, Admin,
-  Preferences), so rooms are reachable without a left sidebar (IA-021).
-- **Space routes** mount no room DOM. The canvas fills the frame and chrome floats over it.
-- **Rooms** mount over or beside the canvas. The previous scene stays resident in the render worker,
-  so "back" is instant (IA-014).
+- The **application layout** is always mounted (SRF-001; [02](../product/02-information-architecture.md)
+  §3.1, [ADR-0014](../adr/0014-typescript-react-web-client.md) §10): the left navigation sidebar
+  (240 px, collapsible to a 56 px icon rail; IA-021), the page header (56 px: page title or
+  breadcrumb on the left; ⌘K entry, alert count and AI dock toggle once they exist, the time range
+  picker, the refresh control and the user menu on the right; IA-016, IA-020), the page content
+  (24 px padding), the dock host and the overlay host (tooltips, palette, dialogs, toasts). Sidebar
+  and header are opaque `surface-1` with a `hairline` edge (VL-017). Wall mode hides them.
+- The **sidebar** lists the destinations that exist at the build and that the user's role may open
+  (Boards; Explore → Metrics, Logs; Alerts and Investigations when they exist; Admin for
+  administrators) and marks the current route. Its collapsed state is a user preference (`Prefs`).
+- The **user menu** holds preferences (theme, density, time zone), the Perspective switcher once
+  Perspectives exist, and sign-out.
+- **Space routes** (Atlas, Lens) render the scene in the page content, with the minimap and the
+  40 px Time Ribbon translucent over the canvas (IA-028).
+- **Navigation** is client-side; the view left stays cached (TanStack Query cache and, for Space
+  scenes, the engine), so "back" is instant (IA-014).
 - **Admin rooms** (SRF-063) are kit forms in the admin satellite. At M-UI1 they cover the PulsusDB
   datasource binding (with the T06 connectivity check as an async validator) and the OIDC IdP
   settings; later rooms land with their features. Login itself is the IdP's page (T06 §4.11); Dash
@@ -309,7 +318,7 @@ pixel at the same viewport size.
 | **Table** (≤ 10k rows) | §4.4.1 | `grid` (interactive) or `table` (read-only) |
 | **Tree** (virtualised) | Flattened visible-node index over a lazy `TreeModel`. Expand or collapse is O(k) for k revealed rows; children load asynchronously from the catalogue ([T12](T12-entity-catalogue.md)) with a skeleton row. Re-rootable by ownership dimension ([15](../product/15-estate-navigation.md)). Target: 100k nodes, 1M via lazy load | `treegrid` |
 | **Forms & validation** | `FormModel<T>` with `FieldSpec { id, label_key, kind, validators, async_validator }`. Sync validators run on input; async ones (uniqueness, query validity via T09, datasource connectivity via T06) are debounced 250 ms and cancellable. Server errors map to fields by JSON pointer from the T06 error envelope. An error summary appears on submit | native form controls |
-| **Date-time / range picker** | Absolute, relative (`now-1h`, `-7d`, `now/d`) and "before deploy ◆" anchors. The expression grammar is in `dash-state` so the Time Ribbon and URL share it. A tz-aware calendar grid uses `chrono-tz` (lazy, shared with [T02](T02-vis-engine.md)). Quick ranges, keyboard date entry, and "Copy link" with "keep relative" (§4.4.4) | `dialog` + `grid` |
+| **Date-time / range picker** | Absolute, relative (`now-1h`, `-7d`, `now/d`) and "before deploy ◆" anchors. The expression grammar is in `state/` so the header time range picker, the Time Ribbon (Space scenes) and the URL share it. A tz-aware calendar grid uses `chrono-tz` (lazy, shared with [T02](T02-vis-engine.md)). Quick ranges, keyboard date entry, and "Copy link" with "keep relative" (§4.4.4) | `dialog` + `grid` |
 | **Select / combobox** | ARIA 1.2 combobox with async options, a virtualised listbox (10k options), multi-select pills and creatable values. Fuzzy matching uses `nucleo-matcher`, shared with ⌘K (MPL-2.0: cargo-deny allow-list, see [T18](T18-security.md)) | `combobox` + `listbox` |
 | **Dialogs & sheets** | Native `<dialog>` with `showModal()` gives the focus trap, `inert` background and `Esc` for free. Sheets are non-modal side panels (the Inspector and AI dock use the dock host) | `dialog` / `complementary` |
 | **Toasts** | Queue of at most 3 visible, 6 s default, paused on hover or focus, and never the only carrier of an error that needs action (those stay inline). Announced through the live-region scheduler (§4.5) | `status` / `alert` |
@@ -455,7 +464,7 @@ keyboard cursor; they append below, or replace only below the highlighted row.
 
 #### 4.4.4 Shared links
 
-"Copy link" (top bar, Inspector, date picker) serialises the current `Route`. By default it converts
+"Copy link" (page header, Inspector, date picker) serialises the current `Route`. By default it converts
 a relative window (`now-1h`) to absolute `from`/`to`; a "keep relative" checkbox keeps it relative
 (IA-023).
 
@@ -513,8 +522,8 @@ focusable list of its top marks. The mirror MUST be visually hidden by clipping,
 `display: none` or `visibility: hidden`.
 
 #### T08-017 — Focus is never trapped
-**MUST** — `F6`/`Shift+F6` MUST move keyboard focus to the next/previous region (top bar, canvas,
-Time Ribbon, open panels) from every context, including the canvas, where `Tab` cycles selection
+**MUST** — `F6`/`Shift+F6` MUST move keyboard focus to the next/previous region (sidebar, page
+header, page content, open panels, and the Time Ribbon in Space scenes) from every context, including the canvas, where `Tab` cycles selection
 (INT-015). After the last mark, `Tab` MUST leave the canvas. Only modal dialogs MAY contain focus,
 and `Esc` MUST close them.
 
@@ -759,7 +768,7 @@ with an owner and a fix milestone and do not block.
 | Table: mount the visible window | ≤ 8 ms; scroll at 60 fps with ≤ 4 ms main per frame | §4.10 |
 | `reduce` in core + mirror update in the shell, per action | ≤ 1 ms each; DOM intent → mirror ≤ 1 frame | — |
 | ⌘K local results | same frame (≤ 4 ms); remote merged ≤ 150 ms p50 | — |
-| Shell interactive (top bar, Ribbon frame, ⌘K) from navigation start, cold | contributes to < 1.0 s p75 | PRF-008 |
+| Shell interactive (sidebar, page header, ⌘K) from navigation start, cold | contributes to < 1.0 s p75 | PRF-008 |
 | wasm: Leptos + kit + store + router + tokens | ≤ 700 KB brotli, of the 3 MB core | PRF-009 |
 | ICU4X + Fluent, `en` only | ≤ 150 KB brotli; extra locales lazy | §4.10 |
 | Main-thread heap | ≤ 64 MB (no bulk data on main) | PRF-023 |
@@ -855,3 +864,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; rules T08-001…T08-028. ADR-0004 Accepted: the Leptos vs Dioxus spike became a Leptos build **risk check** (§4.10) whose blocker failure reopens the ADR. Keyboard model aligned with formal 03: contexts and precedence, chords 1 s (draft 1.2 s), tap/hold 250 ms, physical-key bindings (INT-013), reserved keys, `Shift+C`/`C`/`Shift+A`/`Shift+E` (03 and 04 agree on `Shift+E`), `Tab` by care score; draft Q1 and Q3 closed by 03 and 02 (`/incident/` and `/alerts/` routes added to `Route`). Dropped the `Alt+←/→` brush alternative (conflicts with camera history). Tooltip budget tightened to median ≤ 1 frame (INT-033) with a GPU-text fallback. Markdown removals are logged (VIZ-054). Added the shell chrome contents, logo menu, read-only banner, restricted placeholder, shimmer, copy-link, `CamCode` ≤ 64 chars, palette rooms provider and context-affinity ranking, palette validator and Admin M-UI1 rooms |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds the board panel editor (query, language picker, vis) and a minimal board list room; full Boards editor forms stay M-UI5 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 maps the Rust/Leptos modules to the TS application; T08-001, T08-002 and T08-027 revised; §4.10 Leptos risk check withdrawn; chrome rows suspended pending roadmap Q13; §11 M-UI1 and §12 updated |
+| 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): §4.3 describes the application layout (sidebar, page header, user menu, layout sizes); T08-017 regions; `Route` adds `Explore` and `Boards` (02 §4); Satisfies rows for IA-016, IA-021, SRF-001, VL-017 and INT-015 restored against `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface`, `e2e:chrome-layout` and `e2e:focus-regions`; IA-020 row added (`e2e:time-range-header`); PRF-009 row uses chunk-class budgets |

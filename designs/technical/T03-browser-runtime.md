@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (shim, topology, single core module) → M-UI1 (shell/core split, keymap, URL/history, lazy satellites) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -96,7 +96,7 @@ artefact split. [T04](T04-wire-format-and-data-plane.md) owns what flows through
 | [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7.3 (bundle part; co-satisfied with T05) | `ci:bundle-size` |
 | [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.4 | `replay:context-propagation` |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §4.4 | `replay:context-propagation`; `e2e:deep-link` (saved Context restored) |
-| [IA-021](../product/02-information-architecture.md#ia-021--no-left-navigation-sidebar) | §4.5 | `replay:key-bindings` (`g` chords); `e2e:chrome-layout` (no sidebar) |
+| [IA-021](../product/02-information-architecture.md#ia-021--left-navigation-sidebar) | §4.5 (`g` chords) | `replay:key-bindings` (`g` chords); `e2e:rooms-reachable` |
 | [IA-022](../product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view) | §4.6 | `e2e:deep-link` |
 | [IA-023](../product/02-information-architecture.md#ia-023--shared-links-pin-absolute-time) | §4.6 | `unit:url-codec` |
 | [IA-024](../product/02-information-architecture.md#ia-024--compact-camera-encoding) | §4.6 | `unit:cam-codec` (≤ 64 chars, ≤ 1 px restore) |
@@ -323,7 +323,8 @@ clock:
   `g m` Metrics, `g p` Profiles); any other key or the deadline cancels it with no side effect. `g`
   alone is never bound.
 - **Region focus.** `F6` / `Shift+F6` emit `Command::FocusRegion(next | prev)` to the shell, which
-  moves DOM focus through top bar → canvas → Time Ribbon → open panels. The canvas element is
+  moves DOM focus through sidebar → page header → page content (canvas) → open panels, plus the
+  Time Ribbon in Space scenes (INT-015). The canvas element is
   focusable (`tabindex=0`), so keyboard users can always leave and re-enter it.
 
 **Captured chords.** Each time the active keymap or context changes, core writes the hashes of the
@@ -649,13 +650,13 @@ MUST switch affected viewports to rollups within 1 s, and MUST NOT let `memory.g
 |---|---|---|
 | HTML parse + shim execute + capability probe | ≤ 30 ms | shim is ~6 KB brotli, `modulepreload` |
 | Shell compile + instantiate (code-cached) | ≤ 120 ms | from `compileStreaming` started at t ≈ 30 ms |
-| **First contentful paint** (top bar, Time Ribbon skeleton) | **≤ 300 ms** | no data spinners ([VL-015](../product/08-visual-language.md#vl-015--no-spinners-on-data)) |
+| **First contentful paint** (sidebar and page header) | **≤ 300 ms** | no data spinners ([VL-015](../product/08-visual-language.md#vl-015--no-spinners-on-data)) |
 | Core compile (code-cached) | ≤ 150 ms | in parallel with the shell |
 | Worker instantiate (each, shared memory) | ≤ 30 ms | all workers in parallel |
 | WebGPU adapter + device | ≤ 120 ms | WebGL2 context ≤ 40 ms |
 | Pipeline creation for the first scene's marks | ≤ 100 ms | M1/M3/M4/M8 first; others compiled in idle frames |
 | **First canvas frame** (from the IndexedDB scene snapshot, hatched as stale) | **≤ 600 ms** | [PRF-026](../product/09-performance-contract.md#prf-026--show-cached-marked-stale) |
-| **Interactive shell** (top bar, Time Ribbon and palette responsive; `⌘K` accepted) | **< 1.0 s** p75 of 20 runs on (a) and (b) | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) |
+| **Interactive shell** (sidebar, page header and palette responsive; `⌘K` accepted) | **< 1.0 s** p75 of 20 runs on (a) and (b) | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) |
 | Cold (no HTTP cache): network-bound | ≤ 2.5 s on 50 Mbit/s | informational; core ~1.9 MB br |
 
 Preload: `index.html` carries `<link rel="modulepreload">` for the shim and
@@ -861,3 +862,4 @@ which forces a reload.
 | 1.0-rc | 2026-11-18 | #22: §5.1 states what `ci:shim-lint` counts, the `/` rule for shim code and the SHA-256 pins checked by `ci:dep-audit`; generated output goes to the git-ignored `web/shim/gen/<crate>/`; T03-001 exclusions and the §10 `layout.gen.js` diff apply once their regenerate-and-compare checks exist; §7.3 is report-only until enforcement is enabled and names the artefact → path mapping |
 | 1.0-rc | 2026-11-18 | #23: §4.3 header and counters rows name the fields and offsets; T03-005 names its generator (`cargo xtask gen`, `layout.gen.js`); §5.1 admits `layout.gen.js` and `gen/dash-core-{mt,st}/` by regenerate-and-compare; §5.2 handshake `mode`, `query`, `memory` and the worker messages; §5.4 coalescing and flush bounds, the wrap marker; §7.3 `dash-core-st` row; §9.2 ST batch bound, T2 restart, Static without OffscreenCanvas, milestone note; T03-025 milestone note; new §9.3 status codes; §10 `?mode=t2`; §11 ST with the `-st` artefact in M-UI0 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 applicability table; the document now describes the chart engine runtime; T03-001, T03-009 and T03-013 revised; shim line budget withdrawn |
+| 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): IA-021 row verified by `e2e:rooms-reachable`; §4.5 region focus order; §7.1 first paint and interactive shell are the sidebar, page header and palette |

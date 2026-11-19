@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-18 |
+| **Version** | 1.0-rc2 · 2026-11-19 |
 | **Requirement area** | `ENT` |
 | **Source draft** | plans/11-enterprise.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [06](06-ai-copilot.md), [07](07-alerting.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -378,7 +378,9 @@ tenant's data.
 #### ENT-028 — Single binary, static assets, Helm
 **MUST** · M-UI1 · Platform
 
-Dash MUST deploy as a single Rust binary plus static WASM assets, with a Helm chart.
+Dash MUST deploy as a single Go binary that embeds the static web-client assets
+([ADR-0015](../adr/0015-go-bff.md)), plus the optional server-side chart renderer image, with a Helm
+chart.
 
 *Acceptance:* Given a Kubernetes cluster with Postgres reachable, when the Helm chart is installed
 with default values, then Dash serves the login page.
@@ -441,6 +443,7 @@ all features pass with a self-hosted model and no outbound connection is attempt
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Alert history in Postgres (D2); metrics scopes per ADR-0013 option B (pending O1); licence note (D3) |
+| 1.0-rc2 | 2026-11-19 | Decision D8: ENT-028 is a single Go binary with embedded client assets ([ADR-0015](../adr/0015-go-bff.md)) |
 
 ## Resolved during formalisation
 

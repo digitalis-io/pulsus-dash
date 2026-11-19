@@ -87,7 +87,7 @@ level), heatmap and stat, with time and value axes, a crosshair tooltip and brus
 
 > **Rationale:** placeholders would hide whether PromQL and LogQL dashboards are useful, which is
 > the point of the first milestone. A charting library would breach the library clause of
-> [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-in-one-shared-scene),
+> [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-by-one-shared-engine),
 > add a dependency to remove later, and impose a different DOM structure. The in-house renderer uses
 > the same canvas-per-panel structure the engine will take over, so the swap changes no component.
 

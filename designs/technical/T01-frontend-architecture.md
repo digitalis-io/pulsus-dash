@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-19 |
 | **Milestone** | M-UI0 (constraint, thread layout, technology choices) → M-UI1 (shell/core split, rooms, tokens) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T01-frontend-architecture.md (not tracked) |
@@ -20,7 +20,7 @@ The product specification ([01](../product/01-vision-and-principles.md) to
 [09](../product/09-performance-contract.md)) forces a particular stack on the browser. Speed is the
 product ([PRN-003](../product/01-vision-and-principles.md#prn-003--speed-is-the-feature)): 60 fps during interaction, input to photon within one frame, and no
 interaction waiting on the network. Every visualisation is drawn in one shared GPU scene
-([VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-in-one-shared-scene)), while rooms are conventional, accessible DOM ([IA-015](../product/02-information-architecture.md#ia-015--rooms-are-conventional-accessible-dom)).
+([VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-by-one-shared-engine)), while rooms are conventional, accessible DOM ([IA-015](../product/02-information-architecture.md#ia-015--rooms-are-conventional-accessible-dom)).
 
 This document is the umbrella for the frontend. It records the binding constraints and the
 decisions the UI depends on, and it delegates the detail:
@@ -58,12 +58,12 @@ decisions the UI depends on, and it delegates the detail:
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [PRN-003](../product/01-vision-and-principles.md#prn-003--speed-is-the-feature) | §4.1, §4.2, §7 | `bench:frame-gallery`, `bench:input-photon`, `bench:offline-interaction` |
-| [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-in-one-shared-scene) | §4.1, §4.3, §4.4 | `ci:dep-audit` (no JS charting/mapping/diagram library); `e2e:no-dom-vis` (non-DOM vis drawn by the wgpu canvas only) |
+| [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-by-one-shared-engine) | §4.1, §4.3, §4.4 | `ci:dep-audit` (no JS charting/mapping/3D/diagram library); `e2e:no-dom-vis` (with the engine active, non-DOM vis drawn by the engine only) |
 | [VIZ-002](../product/05-visualisation-catalogue.md#viz-002--every-vis-is-a-composition-of-shared-mark-primitives) | §4.4 (co-satisfied with T02) | `ci:spec-lint` |
-| [IA-014](../product/02-information-architecture.md#ia-014--the-space-camera-transitions-never-page-loads) | §4.3 (co-satisfied with T02) | `replay:space-transitions` |
+| [IA-014](../product/02-information-architecture.md#ia-014--the-space-camera-transitions-never-page-loads) | §4.3 (co-satisfied with T02) | `e2e:client-routing`; `replay:space-transitions` (Space, from M-UI2) |
 | [IA-015](../product/02-information-architecture.md#ia-015--rooms-are-conventional-accessible-dom) | §4.3, §4.4 | `e2e:a11y-rooms` |
-| [IA-016](../product/02-information-architecture.md#ia-016--minimal-global-chrome) | §4.3 | `e2e:chrome-layout` |
-| [VL-017](../product/08-visual-language.md#vl-017--thin-translucent-chrome) | §4.3 | `e2e:chrome-layout` |
+| [IA-016](../product/02-information-architecture.md#ia-016--application-layout) | §4.3 | `e2e:app-layout` |
+| [VL-017](../product/08-visual-language.md#vl-017--application-layout-dimensions) | §4.3 | `e2e:app-layout`; `e2e:chrome-layout` (Space scenes) |
 | [VL-021](../product/08-visual-language.md#vl-021--one-token-source-for-canvas-and-dom) | §4.5 | `ci:token-lint` |
 | [VL-022](../product/08-visual-language.md#vl-022--component-and-mark-libraries-share-the-tokens) | §4.5 (co-satisfied with T02, T08) | `ci:token-lint`, `ci:spec-lint` |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2 (co-satisfied with T03) | `bench:long-tasks` |
@@ -154,14 +154,15 @@ frames without interrupting a gesture.
 
 ### 4.3 The Space and the rooms
 
-[02](../product/02-information-architecture.md) splits the product into the **Space** (Atlas,
-Lenses, Boards in view mode, workbenches), which is GPU-rendered, and **rooms** (Boards library,
-Investigations, Alerts, Admin), which are DOM.
+[02](../product/02-information-architecture.md) splits the product into the **Space** (Atlas and
+Lenses), which is GPU-rendered, and **rooms** (Boards library, Investigations, Alerts, Admin), which
+are DOM. Boards and workbenches are application pages whose viewports are chart frames drawn by the
+engine, one canvas each (IA-003, [ADR-0014](../adr/0014-typescript-react-web-client.md) §3).
 
 | Part | Rendered by | Notes |
 |---|---|---|
-| Space scenes and every non-DOM vis | wgpu canvas in the render worker ([T02](T02-vis-engine.md)) | One shared scene per Space view; moves between scenes are camera transitions, not page loads |
-| Time Ribbon chart | wgpu, as a reserved viewport at the bottom of the canvas ([T02 §4.6](T02-vis-engine.md#46-interaction-controllers-and-the-scene)) | Its DOM controls (LIVE pill, window text, baseline picker) are overlaid by the shell |
+| Space scenes and every non-DOM vis | The engine in the render worker ([T02](T02-vis-engine.md)): one canvas per chart frame, one scene per Space view, one GPU device | Moves between Space scenes are camera transitions; moves between pages are client-side routes, never document loads (IA-014) |
+| Time Ribbon chart (Space scenes only, IA-028) | wgpu, as a reserved viewport at the bottom of the Space canvas ([T02 §4.6](T02-vis-engine.md#46-interaction-controllers-and-the-scene)) | Elsewhere the time window is the page header's time range picker (IA-020) |
 | Sidebar, page header, Inspector, AI dock, tooltips, coverage meter, table view | React ([T08](T08-dom-component-kit.md)) | Application layout (ADR-0014 §10) |
 | Rooms | React; heavy rooms as lazy route chunks | Standard DOM keyboard behaviour |
 | DOM vis (marked **DOM** in [05](../product/05-visualisation-catalogue.md)) | React | e.g. tables of ≤ 10k rows, the interim log list |
@@ -432,3 +433,4 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T01-001 to T01-011, the Space/rooms composition (§4.3), the token pipeline (§4.5), the crate map (§4.6) and the Satisfies table; applied D1 and D2 |
 | 1.0-rc | 2026-11-18 | #22: crate map adds `dash-core-mt` (the core module crate); the IndexedDB chunk cache is renamed `dash-chunk-cache` (T06's BFF `dash-cache` keeps the name in the one workspace); all crates live in one root Cargo workspace |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): TS/React client and Go BFF. §4.1 rewritten (T01-001, T01-002 revised); T01-007, T01-008 revised to the application layout; interim notes on T01-003 and T01-009; §4.4 rows, §4.5 generator, §4.6 note, §4.7 diagram, §5, §8, §10, §11, §12 updated; §13 Q1 closed |
+| 1.2-rc | 2026-11-19 | Product text revised to D7–D9 (roadmap Q13 closed): §4.3 Space is the Atlas and Lenses, Boards and workbenches are pages of chart frames, the Time Ribbon only in Space scenes; Satisfies rows for IA-014, IA-016 and VL-017 use `e2e:client-routing`, `e2e:app-layout` and `e2e:chrome-layout` |

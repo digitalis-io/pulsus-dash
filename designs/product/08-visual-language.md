@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-18 |
+| **Version** | 1.1-rc · 2026-11-19 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
-| **Mockups** | [mockups/README](../mockups/README.md) (tokens as used in mockups), [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [16-gallery](../mockups/16-gallery.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg), [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg), [21-floors-3d](../mockups/21-floors-3d.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
+| **Mockups** | [mockups/README](../mockups/README.md) (tokens as used in mockups), [34-application-layout](../mockups/34-application-layout.svg), [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [16-gallery](../mockups/16-gallery.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg), [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg), [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg), [21-floors-3d](../mockups/21-floors-3d.svg), [24-noc-wall-3d](../mockups/24-noc-wall-3d.svg) |
 
 ## 1. Purpose & scope
 
@@ -259,21 +259,28 @@ except the alert ring, which is shown as a static double ring.
 
 | Token | Value |
 |---|---|
-| Top bar height | 32 px |
-| Time Ribbon height | 40 px |
+| Sidebar width | 240 px expanded; 56 px collapsed (icon rail) |
+| Page header height | 56 px |
+| Page content padding | 24 px |
+| Board panel gap | 16 px |
+| Time Ribbon height (Space scenes) | 40 px |
 | Base grid | 4 px |
-| Viewport gutter | 8 px |
+| Viewport gutter (inside dense views: Lens strips, small multiples) | 8 px |
 | Corner radius | 6 px |
 | Hairline border | 1 px at 8% contrast (`hairline`) |
 
-#### VL-017 — Thin, translucent chrome
+#### VL-017 — Application layout dimensions
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
-Chrome MUST be thin (32 px top bar, 40 px Time Ribbon) and translucent over the canvas where possible
-([02](02-information-architecture.md) IA-016).
+The application layout ([02](02-information-architecture.md) IA-016) MUST use the sizes of the table
+above: a 240 px sidebar that collapses to a 56 px icon rail, a 56 px page header, 24 px page content
+padding and 16 px gaps between board panels, so boards stay roomy. The sidebar and page header are
+opaque `surface-1` with a 1 px `hairline` edge. In Space scenes the Time Ribbon is 40 px and, like the
+minimap, translucent over the canvas.
 
-*Acceptance:* At 1440×900 the top bar is 32 px and the Ribbon 40 px, and canvas content is visible
-through them.
+*Acceptance:* At 1440×900 the expanded sidebar is 240 px wide and 56 px when collapsed, the page
+header is 56 px high, the content padding is 24 px and board panels are 16 px apart; in a Space scene
+the Ribbon is 40 px high and canvas content is visible through it.
 
 #### VL-018 — Floating, dockable panels
 **MUST** · M-UI2 · SRE, Platform, Engineer
@@ -286,11 +293,13 @@ an IDE; the arrangement MUST persist per user.
 #### VL-019 — Layout grid
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-Layout MUST use the 4 px base grid, 8 px viewport gutters, 6 px corner radius and 1 px hairline
-borders at 8% contrast, in canvas and DOM alike.
+Layout MUST use the 4 px base grid, 8 px viewport gutters inside dense views, 16 px gaps between
+board panels (VL-017), 6 px corner radius and 1 px hairline borders at 8% contrast, in canvas and DOM
+alike.
 
 *Acceptance:* A layout audit of the Atlas, a Board and each room finds every position and size a
-multiple of 4 px, gutters of 8 px, radii of 6 px and borders of 1 px `hairline`.
+multiple of 4 px, gutters of 8 px inside dense views and 16 px between board panels, radii of 6 px and
+borders of 1 px `hairline`.
 
 ## 8. Iconography and glyphs
 
@@ -323,8 +332,9 @@ from another set.
 #### VL-021 — One token source for canvas and DOM
 **MUST** · M-UI0 · Platform, Engineer
 
-Colour, space, type and motion tokens MUST be defined once in a single token file, from which both
-the Rust constants consumed by the GPU renderer and the CSS consumed by the DOM rooms are generated.
+Colour, space, type and motion tokens MUST be defined once in a single token file, from which the
+CSS custom properties and TS constants of the web application and the Rust constants of the chart
+engine are generated ([ADR-0014](../adr/0014-typescript-react-web-client.md) §6).
 
 *Acceptance:* Changing `accent` in the token file and rebuilding changes the focus colour on the
 canvas and in every room; a CI check fails if a hard-coded colour appears outside the generated
@@ -442,7 +452,7 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | VL-014 | Purposeful motion only | MUST | M-UI1 |
 | VL-015 | No spinners on data | MUST | M-UI1 |
 | VL-016 | Reduced motion | MUST | M-UI1 |
-| VL-017 | Thin, translucent chrome | MUST | M-UI1 |
+| VL-017 | Application layout dimensions | MUST | M-UI1 |
 | VL-018 | Floating, dockable panels | MUST | M-UI2 |
 | VL-019 | Layout grid | MUST | M-UI1 |
 | VL-020 | Fixed glyph language | MUST | M-UI1 |
@@ -480,6 +490,11 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
    beacon and the victim ground ring. The draft's "SSAO-lite" is not adopted (VL-026).
 9. **Hybrid principle (1.0-rc2).** Space is 3D, signals are 2D, both from one token source (§1,
    VL-028).
+10. **Application layout (1.1-rc, D9).** The 32 px top bar and the 40 px Time Ribbon on every page were
+    sized for chrome floating over one full-screen canvas. Under the conventional layout of
+    [ADR-0014](../adr/0014-typescript-react-web-client.md) §10 the sidebar and header are opaque and
+    sized for legibility (VL-017, revised in place); translucency stays only for the Ribbon and
+    minimap over Space scenes.
 
 ## 13. Change log
 
@@ -487,3 +502,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §1 hybrid principle; definitions; VL-004 and VL-005 edited in place; motion table rows; new §10 3D scenes (VL-023 to VL-028); later sections renumbered §11–§13 |
+| 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §7 layout tokens for the sidebar, page header, content padding and board panel gap; VL-017 revised in place (application layout dimensions); VL-019 adds the 16 px board panel gap; VL-021 generates CSS, TS and Rust token outputs; resolution 10 |
