@@ -753,6 +753,18 @@ All text is in `index.html`.
 to a failed WebGPU context, so `boot.js` restarts the render worker once on a fresh canvas with
 `?mode=t2`; a second `RETRY_T2` is Failed. Booting longer than 10 s is Failed.
 
+**Coverage reasons.** A scene that draws fewer series than requested posts
+`{t: "coverage", reasons}` from the render worker on each change; `boot.js` sets
+`<html data-dash-coverage>` to the space-separated reasons (`""` when everything is drawn), and
+`index.html` shows one `role="status"` text per reason under the tier badge:
+
+| Reason | Page shows |
+|---|---|
+| `loading` | "Loading data: not every series is drawn yet" |
+| `st-ceiling` | "Not every series is shown: single-thread mode limit" |
+| `texture-ceiling` | "Not every series is shown: GPU texture limit" |
+| `load-failed` | "Some series failed to load" |
+
 ## 10. Testing
 
 Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
@@ -837,3 +849,4 @@ which forces a reload.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T03-001 to T03-025; added the state reducer and propagation table (§4.4), the keymap engine (§4.5) and the URL/camera codec (§4.6); gamepad deferred to M-UI6; workbench satellites; Satisfies table |
 | 1.0-rc | 2026-11-18 | #22: §5.1 states what `ci:shim-lint` counts, the `/` rule for shim code and the SHA-256 pins checked by `ci:dep-audit`; generated output goes to the git-ignored `web/shim/gen/<crate>/`; T03-001 exclusions and the §10 `layout.gen.js` diff apply once their regenerate-and-compare checks exist; §7.3 is report-only until enforcement is enabled and names the artefact → path mapping |
 | 1.0-rc | 2026-11-18 | #23: §4.3 header and counters rows name the fields and offsets; T03-005 names its generator (`cargo xtask gen`, `layout.gen.js`); §5.1 admits `layout.gen.js` and `gen/dash-core-{mt,st}/` by regenerate-and-compare; §5.2 handshake `mode`, `query`, `memory` and the worker messages; §5.4 coalescing and flush bounds, the wrap marker; §7.3 `dash-core-st` row; §9.2 ST batch bound, T2 restart, Static without OffscreenCanvas, milestone note; T03-025 milestone note; new §9.3 status codes; §10 `?mode=t2`; §11 ST with the `-st` artefact in M-UI0 |
+| 1.0-rc | 2026-11-19 | #24: §9.3 coverage reasons (`data-dash-coverage`, set by `boot.js` from `{t: "coverage"}`) and their four texts |

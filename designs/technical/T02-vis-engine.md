@@ -116,7 +116,7 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 | [PRF-001](../product/09-performance-contract.md#prf-001--frame-rate-during-interaction) | §4.2, §4.4, §7 | `bench:frame-gallery`; `bench:frame-high-hz` |
 | [PRF-002](../product/09-performance-contract.md#prf-002--frame-rate-floor) | §4.2, §4.4, §7 | `bench:frame-gallery` |
 | [PRF-007](../product/09-performance-contract.md#prf-007--camera-transition-duration) | §4.6 | `bench:camera-transition` |
-| [PRF-016](../product/09-performance-contract.md#prf-016--10⁸-line-chart-points) | §4.4 | `bench:frame-line-1e8`; `golden:gallery` (1 ms adjacency at epoch-scale timestamps) |
+| [PRF-016](../product/09-performance-contract.md#prf-016--10⁸-line-chart-points) | §4.4 | `bench:frame-line-1e8`; `golden:gallery` (1 ms adjacency at epoch-scale timestamps); `golden:decimation-ref` (1 ms adjacency view) until the line gallery page exists |
 | [PRF-017](../product/09-performance-contract.md#prf-017--10⁷-scatter-points) | §4.4, §4.9 | `bench:frame-scatter-1e7` |
 | [PRF-018](../product/09-performance-contract.md#prf-018--10⁴-series-per-scene) | §4.4 | `bench:frame-series-1e4` |
 
@@ -171,7 +171,7 @@ Every pixel of every vis comes from one of these pipelines.
 
 | # | Mark | GPU technique | Used by |
 |---|---|---|---|
-| M1 | **Polyline** | Instanced segments with miter/round joins in the vertex shader; screen-space width; dashes via a distance attribute; per-vertex colour; breaks at null validity | Line, trend, XY lines, sparkline, routes, thresholds, gridlines, event markers |
+| M1 | **Polyline** | Instanced segments with miter/round joins in the vertex shader; screen-space width; dashes via a distance attribute; per-vertex colour; breaks at null validity. Dense lines use column coverage (distance to the y-extents in each device-pixel column and its neighbours within the width), `Max` blending; light themes (M-UI5) revisit the blend. | Line, trend, XY lines, sparkline, routes, thresholds, gridlines, event markers |
 | M2 | **Area / band** | Triangle strip between two y columns (y0/y1); stacking computed in L2 | Area, stacked, min/max band, confidence cone, baseline ghost |
 | M3 | **Rect** | Instanced quads with optional corner radius and border via an SDF in the fragment shader | Bars, heatmap cells, status history, state timeline, treemap, bar gauge, bullet, waterfall spans, flame frames, table-grid cells, calendar, Time Ribbon density strip |
 | M4 | **Point / sprite** | Instanced quads with SDF shapes (circle, square, diamond, triangle, cross) or atlas icons; size, colour and alpha per instance | Scatter (10⁷), XY/bubble, exemplars, markers, event glyphs |
@@ -339,7 +339,7 @@ colour and each series MUST show the matching ownership glyph in the legend.
 
 | Strategy | Mechanism | Coverage disclosure |
 |---|---|---|
-| Line decimation | GPU compute (T1) or pool SIMD (T2): per pixel column, min/max/first/last of every series; deterministic (fixed chunking, order-independent reductions) | none needed: visually lossless |
+| Line decimation | GPU compute (T1) or a render-to-texture pass (T2): per pixel column, null-separated run extents, last and next samples; compares only; deterministic (fixed chunking, order-independent reductions) | none needed: visually lossless (line coverage, below) |
 | Rollup → raw switch | When the visible step drops below the stored rollup resolution, the viewport asks the planner for raw data ([T07](T07-scene-query-planner.md)) and keeps drawing the rollup until raw arrives | source badge changes to raw/exact |
 | Band + outliers | When a viewport holds > 50 series of one metric: per pixel column min/max/avg across series (M2) plus every series that leaves the band (M1); legend "N in band" | none: outliers are always drawn |
 | Scatter | M4 sprites with density-based alpha; above the tier's sprite ceiling of visible points, M10 density field; below 10⁵ visible points, individually pickable sprites | "density view" |
@@ -349,7 +349,14 @@ colour and each series MUST show the matching ownership glyph in the legend.
 
 **Gaps.** A null in the validity bitmap breaks M1 and M2 strips. The default null handling is
 "gaps": absent samples are drawn as gaps and never interpolated. "Connect under a threshold" and
-"zero" are explicit options (§4.5).
+"zero" are explicit options (§4.5). Non-finite values are drawn as gaps.
+
+**Line coverage** ([VIZ-006](../product/05-visualisation-catalogue.md)) is the set of pixels whose
+square the raw polyline (segments between consecutive valid samples, and isolated valid samples)
+touches, at positions quantised to 1/64 px. It is computed by an independent, exact rasteriser of
+the raw samples; anti-aliasing is outside it (a dropped sample can change a neighbouring pixel's
+shade, so no decimation can match an anti-aliased raw rendering exactly). Decimation is visually
+lossless when the decimated line coverage equals it with no missing and no extra pixel.
 
 #### T02-014 — Precision: f32 relative to a per-chunk origin
 **MUST** — Values and timestamps MUST be uploaded as f32 relative to a per-chunk origin (`t_rel`,
@@ -751,3 +758,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T02-001 to T02-031; axis system expanded (auto-configuration, manual pin, ownership glyphs, comparison axis at M-UI1); LOD and precision rules; camera controller constants; auto-vis; glyph and state encodings per 08 (Failing ■); build order aligned with 05 milestones; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
+| 1.0-rc | 2026-11-19 | #24: §4.4 line decimation row (T2 render-to-texture; run extents, last and next samples; compares only), line coverage defined, non-finite values are gaps; §4.2 M1 row column coverage and `Max` blending; §3 PRF-016 verification adds `golden:decimation-ref` |

@@ -488,7 +488,7 @@
 | [PRF-013](product/09-performance-contract.md#prf-013--rca-stage-1-ready) | RCA Stage 1 ready | MUST | M-UI4 | T06 §4.6 (stage-1 job scheduling), §7 | `load:rca-stage1-lag`: `dash_job_lag_seconds{job="rca1"}` p99 ≤ 1 s on the replay corpus (T15 (draft) co-owns the 10 s target) |
 | [PRF-014](product/09-performance-contract.md#prf-014--rca-stage-2-ready) | RCA Stage 2 ready | MUST | M-UI4 | — | — |
 | [PRF-015](product/09-performance-contract.md#prf-015--live-tail-latency) | Live tail latency | MUST | M-UI2 | — | — |
-| [PRF-016](product/09-performance-contract.md#prf-016--10⁸-line-chart-points) | 10⁸ line-chart points | MUST | M-UI0 | T02 §4.4<br>T04 §4.2, §5.7 | `bench:frame-line-1e8`; `golden:gallery` (1 ms adjacency at epoch-scale timestamps)<br>`bench:frame-line-1e8`; `bench:decode-r1` |
+| [PRF-016](product/09-performance-contract.md#prf-016--10⁸-line-chart-points) | 10⁸ line-chart points | MUST | M-UI0 | T02 §4.4<br>T04 §4.2, §5.7 | `bench:frame-line-1e8`; `golden:gallery` (1 ms adjacency at epoch-scale timestamps); `golden:decimation-ref` (1 ms adjacency view) until the line gallery page exists<br>`bench:frame-line-1e8`; `bench:decode-r1` |
 | [PRF-017](product/09-performance-contract.md#prf-017--10⁷-scatter-points) | 10⁷ scatter points | MUST | M-UI0 | T02 §4.4, §4.9<br>T04 §4.3 (`span_points/1`), §5.7 | `bench:frame-scatter-1e7`<br>`bench:frame-scatter-1e7` |
 | [PRF-018](product/09-performance-contract.md#prf-018--10⁴-series-per-scene) | 10⁴ series per scene | MUST | M-UI1 | T02 §4.4 | `bench:frame-series-1e4` |
 | [PRF-019](product/09-performance-contract.md#prf-019--atlas-10⁴-entities-and-510⁴-edges) | Atlas 10⁴ entities and 5×10⁴ edges | MUST | M-UI3 | — | — |

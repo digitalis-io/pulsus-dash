@@ -178,7 +178,8 @@ PulsusDB anchors on `start` (API §2.1, §3.2), so timestamps are implicit.
 
 Metadata: `dash.grid.start_ms`, `dash.grid.step_ms`, `dash.grid.len` (= N),
 `dash.result = metric | log_volume | log_rate | trace_metric | profile_series | virtual`,
-`dash.source = pulsusdb | postgres`, `dash.unit` (from the
+`dash.source = pulsusdb | postgres | synth` (`synth`: `pulsus-synth` fixtures and the gallery),
+`dash.unit` (from the
 [05 §10](../product/05-visualisation-catalogue.md#10-vis-configuration-field-config-parity)
 unit ids). Batches hold ≤ 64 series or ≤ 1 MiB. Optional negotiated variant
 `values: FixedSizeList(Float32, N)` (`precision=f32`) for render-only parts such as 10⁴-series
@@ -601,7 +602,7 @@ MUST coalesce metric updates or drop the oldest tail lines and report `dropped_c
 | `reader.read()` chunk → `net_alloc` slab in the shared arena | data-k | **copy 1** (fetch never yields SAB-backed chunks, and BYOB readers cannot target a SharedArrayBuffer) |
 | DSF header parse; Arrow IPC decode with `Buffer::from_custom_allocation` over the slab | data-k | none |
 | Publish `Arc<Chunk>` | data-k | none |
-| Render columns: `t_rel: f32` (grid index × step relative to the chunk origin, or `ts − t0`) and `v_rel: f32 = v − v_ref` per series, SIMD, written to a staging slab | pool | transform (not a copy of the f64 data) |
+| Render columns: `t_rel: f32` (grid index × step relative to the chunk origin, or `ts − t0`) and `v_rel: f32 = v − v_ref` per series, SIMD, written to a staging slab | pool | transform (not a copy of the f64 data). Until the pool ships, the render worker transforms (and builds the pyramid) while uploading, ≤ 2²¹ samples per frame. |
 | `queue.write_buffer(staging)` | render | **copy 2** (into GPU memory) |
 | Staging slab freed; f64 originals stay in the arena for tooltips, the Inspector and the local engine | — | — |
 
@@ -842,3 +843,4 @@ support in the BFF for one release.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T04-001 to T04-019; D2 applied (no write path, Postgres virtual sources and fallback pyramids); `events/1` at M-UI1; coverage `data_end` and ✓ exact; ranks, generations and eviction order; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
+| 1.0-rc | 2026-11-19 | #24: §4.3 `metric_matrix.grid/1` `dash.source` adds `synth`; §5.7 render-columns row: the render worker transforms while uploading until the pool ships |

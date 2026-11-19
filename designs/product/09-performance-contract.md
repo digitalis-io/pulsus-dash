@@ -229,6 +229,11 @@ origin (the GPU has no f64), with GPU-resident decimation ([T04](../technical/T0
 with no visible precision error at the deepest zoom (adjacent 1 ms samples at epoch-scale timestamps
 render as distinct x positions).
 
+*Verification note:* until the reference lab exists, CI runs `bench:frame-line-1e8` and reports its
+p50 and p99 only; once the lab exists the bench gates merges on (a) and (b), and M-UI0 is not
+complete until it passes. The lab trace of the same run gates PRF-005 on (a), (b); the PRF-003 and
+PRF-004 clauses wait for a presentation measurement.
+
 #### PRF-017 — 10⁷ scatter points
 **MUST** · M-UI0 · Engineer, SRE
 
@@ -633,3 +638,4 @@ a requestAnimationFrame loop.
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §5 table rows and PRF-019 acceptance edited; §5.1 PRF-043 to PRF-046 added; resolution 8 |
 | 1.0-rc2 | 2026-11-18 | #23: PRF-005 verification note (CI browser trace as the merge gate until the reference lab exists) |
 | 1.0-rc3 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): PRF-020 moves M-UI2 → M-UI1 (delivered by #49) |
+| 1.0-rc3 | 2026-11-19 | #24: PRF-016 verification note (CI reports `bench:frame-line-1e8` until the reference lab exists; the lab trace gates PRF-005; PRF-003/PRF-004 wait for a presentation measurement) |

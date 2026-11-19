@@ -19,6 +19,10 @@ lints, the generated layout and the probe check) and
 - `git`: `ci:shim-lint` and `ci:dep-audit` ask git which files under `web/shim/` exist.
 - `python3`: `ci:design-check` runs `designs/tools/check.py`.
 - `curl` and `tar`: `cargo xtask tools` downloads binaryen's `wasm-opt`.
+- For the `golden` gate: Vulkan with Mesa's lavapipe (`libvulkan1`, `mesa-vulkan-drivers`). CI
+  installs the version pinned in `ci/tools.toml` (`mesa`); `lavapipe_pinned` checks that the
+  adapter's driver is that Mesa (`mesa_upstream`), so a local run with another Mesa fails that one
+  test only.
 - Node.js 22 (`npm`, `npx`): only for the `e2e` gate (Playwright, test tooling; nothing from npm is
   shipped). Run `npm ci` and `npx playwright install --with-deps chromium` in `e2e/` once.
 
@@ -64,7 +68,7 @@ also emitted as an `::error` annotation, so it shows on the PR diff.
 | Path | Contents |
 |---|---|
 | `Cargo.toml` | The one root workspace (`crates/*`, `xtask`), shared package keys and lints |
-| `crates/` | Browser, shared (⇄) and test crates: `dash-core-mt` (the core WASM module), `dash-gpu`, `dash-scene`, `dash-marks`, `dash-scales`, `dash-axes`, `dash-tokens`, `dash-wire`; test crates `pulsus-synth`, `dash-golden`, `dash-lab`. Today they are stubs that name their design and implementing issue |
+| `crates/` | Browser, shared (⇄) and test crates: `dash-core-mt` (the core WASM module), `dash-gpu`, `dash-scene`, `dash-marks`, `dash-scales`, `dash-axes`, `dash-tokens`, `dash-wire`; test crates `pulsus-synth` (also the runtime's synthetic data source), `dash-golden`, `dash-lab`. Crates not implemented yet are stubs that name their design and implementing issue |
 | `server/` | BFF-only crates (M-UI1, T06 §4.1); not created yet |
 | `xtask/` | The gate runner and seeds (this page) |
 | `ci/` | Gate registry and gate configuration |
@@ -72,7 +76,7 @@ also emitted as an `::error` annotation, so it shows on the PR diff.
 | `web/shim/` | The JS shim: only the T03 §5.1 files (today `boot.js`, `worker.js`, `input.js`) and the generated `layout.gen.js` |
 | `web/shim/gen/` | Git-ignored wasm-bindgen output of `dash-core-mt` and `dash-core-st`, accepted only by regenerate-and-compare (`ci:dep-audit`) |
 | `e2e/` | Playwright specs of the runtime mode matrix (test tooling only) |
-| `ci/tools.toml` | The pinned nightly, wasm-bindgen and binaryen versions and binaryen checksums |
+| `ci/tools.toml` | The pinned nightly, wasm-bindgen, binaryen (with checksums) and Mesa versions |
 
 The crate map is [T01 §4.6](../../designs/technical/T01-frontend-architecture.md#46-crate-map).
 
@@ -88,7 +92,7 @@ Workspace lints deny `unwrap`, `expect`, `dbg!`, `todo!` and `unimplemented!` ou
 ## Gates
 
 The registry is `ci/gates.toml`: one entry per gate with its T05 id, owner and CI job
-(T05-001). `.github/workflows/ci.yml` runs four jobs on every pull request and on pushes to `main`.
+(T05-001). `.github/workflows/ci.yml` runs five jobs on every pull request and on pushes to `main`.
 Each gate is one step named `ci <gate-id>` that runs `cargo xtask ci <gate-id>`, exactly what you
 run locally.
 
@@ -98,19 +102,33 @@ run locally.
 | `build` | — | `area:platform` | `rust` | `cargo build --workspace --locked` |
 | `clippy` | — | `area:platform` | `rust` | `cargo clippy --workspace --all-targets --locked -- -D warnings`, then the same for `dash-core-mt` on `wasm32-unknown-unknown` |
 | `test` | — | `area:platform` | `rust` | `cargo test --workspace --locked` |
+| `golden` | `golden:decimation-ref` | `area:rendering` | `golden` | `cargo test --locked --release -p dash-golden -- --ignored --test-threads=1` on lavapipe (below) |
 | `wasm` | — | `area:platform` | `wasm` | `cargo build-wasm`, then `cargo xtask gen`'s release build of both artefacts into `web/shim/gen/` |
 | `probe-absent` | `ci:probe-absent` | `area:platform` | `wasm` | no test probe in a fresh release build (T03-024) |
 | `bundle-size` | `ci:bundle-size` | `area:rendering` | `wasm` | Brotli size per artefact against T03 §7.3 |
 | `dep-audit` | `ci:dep-audit` | `area:platform` | `wasm` | npm, browser crate graph, `web-sys` features, render-worker locks, web assets, shipped JS |
 | `design-check` | `ci:design-check` | `area:platform` | `static` | `designs/tools/check.py` and the traceability diff |
 | `shim-lint` | `ci:shim-lint` | `area:shell` | `static` | T03-001 on the shim |
-| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix, the PRF-005 trace check, and the T03-003 shim queue checks (times reported only) |
+| `e2e` | `e2e:mode-matrix` | `area:rendering` | `e2e` | Playwright mode matrix, the PRF-005 trace check, the T03-003 shim queue checks (times reported only) and the `bench:frame-line-1e8` report |
 
-The `wasm` and `e2e` jobs run `cargo xtask tools` first. The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
+The `wasm` and `e2e` jobs run `cargo xtask tools` first; the `golden` job installs lavapipe. The `static` job also runs `python3 -I designs/tools/check.py` on the checkout as its last step,
 even when an earlier gate failed.
 
 Which checks are *required* to merge is a repository setting made by the owner; this repository
 only defines the checks.
+
+### `golden`
+
+The `golden` job installs `libvulkan1` and `mesa-vulkan-drivers` at the `mesa` version of
+`ci/tools.toml` (the `apt-cache policy mesa-vulkan-drivers` Candidate on `ubuntu-24.04`), then runs
+the ignored tests of `crates/dash-golden/tests/decimation_ref.rs` in a release build, one at a time
+(`golden:decimation-ref`, T05 §4.2). They render the line chart on lavapipe with the limits of each
+browser tier and compare GPU records with the CPU specification, the mask pass with the exact line
+coverage (zero missing and zero extra pixels) and the decimated image with the reference that draws
+every raw segment; see [Line chart](../rendering/line-chart.md#tests-and-gates). The heaviest test
+(`draw_parity`, 10⁸ reference segments per view) runs its views on up to four lavapipe devices in
+parallel. To update the Mesa pin when the runner's Candidate changes, set `mesa` to the new apt
+version and `mesa_upstream` to its `x.y.z` (`tools_config_matches_lock` checks the shape).
 
 ### Fixing a cargo gate
 
@@ -174,6 +192,11 @@ comments, strings and templates, and an unmatched `)`.
 | `layout-gen-stale` | `web/shim/layout.gen.js` (admitted unpinned) differs from its generator | Run `cargo xtask gen` and commit it |
 | `generated-unknown` | an entry under `web/shim/gen/` other than the directories `dash-core-mt` and `dash-core-st` (nothing is regenerated then) | Delete it |
 | `generated-mismatch` | a file in `web/shim/gen/dash-core-{mt,st}/` is missing from, extra to, or different from a fresh `GenOptions::check` build in `target/gen-check/` | Regenerate with `cargo xtask gen` (or delete `web/shim/gen/`) |
+
+The browser graph includes the Arrow crates of `dash-wire` (#24: `arrow-*`, `flatbuffers` and their
+dependencies `ahash`, `bytes`, `chrono`, `const-random`, `getrandom`, `num-*`, `tiny-keccak`,
+`crunchy`), each with a reason. `ordered-float` and `spirv` are reported because the native golden
+harness enables wgpu's Vulkan backend in the unified graph; they are not in the wasm32 build.
 
 All allow entries need a non-empty `reason`; unknown keys in `ci/*.toml` are errors (exit 2).
 A symlinked directory inside an audited tree (`web/`, `web/shim/gen/`, a render-worker crate's
@@ -278,8 +301,14 @@ else `probe-marker-undetected` (the scanner of `probe-absent` would miss a probe
 
 | Rule id | Fails when |
 |---|---|
-| `long-task-trace-missing` | `e2e/test-results/traces/long-tasks-<p>.json` is missing for `webgpu`, `webgl2` or `noiso` |
+| `long-task-trace-missing` | `e2e/test-results/traces/long-tasks-<p>.json` is missing for `webgpu`, `webgl2`, `noiso` or `line-1e8` (the `bench:frame-line-1e8` loop) |
 | `main-thread-long-task` | a main-thread task in the interaction window took > 16 ms of thread time or > 50 ms of wall time (PRF-005, until the reference lab exists); the message gives the project, `ts`, `dur` and `tdur` |
+| `frame-report-missing` | `e2e/test-results/traces/frame-line-1e8.json` (the bench report) is missing |
+| `frame-report-short` | the bench report has fewer than 10 frame intervals |
+
+With a report of 10 or more intervals the gate prints its summary (frames, p50, p95, p99, max, over
+50 ms) and the machine-B verdict of PRF-001/PRF-002: **report only** until the reference lab exists
+(T05 §7.1).
 
 A trace the detector cannot judge (no renderer main thread, no input, no task in the window, no
 thread time) is an error, not a pass. Playwright (`e2e/playwright.config.ts`) starts two dev servers
@@ -304,6 +333,7 @@ Every gate has a seeded, committable violation, and the marker its failing log m
 | `bundle-size` | adds an incompressible `web/shim/seeded-size.js` (the config is already `enforce`) | `bundle-over-budget` |
 | `design-check` | appends a broken link to T01 | `seeded-missing.md` |
 | `shim-lint` | creates `web/shim/seeded.js` with `eval` | `shim-forbidden-token` |
+| `golden` | replaces `const PYRAMID_B: u32 = 16u;` with `8u` in `crates/dash-marks/src/line_common.wgsl` (the GPU walk no longer matches the pyramid) | `gpu_records_match_cpu` |
 | `dep-audit` | creates `web/package.json` with a runtime dependency | `npm-runtime-dependency` |
 | `e2e` | replaces the Static message in `web/index.html` | `gpu_disabled_shows_fallback` |
 

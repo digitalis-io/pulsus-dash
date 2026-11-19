@@ -177,7 +177,10 @@ target volume; two runs with the same seed produce identical goldens.
   - fail if any 8×8 block has ꟻLIP > 0.25 inside a *text region*. Text regions are the M8 instance
     bounds the renderer emits next to the PNG. This catches glyph regressions that the mean hides.
 - **Decimation reference** (`golden:decimation-ref`). 1 000 series × 100k points rendered decimated
-  and with every raw point; the line-coverage diff must be zero at the pixel level.
+  and with every raw point; the line-coverage diff must be zero at the pixel level. Line coverage
+  ([T02 §4.4](T02-vis-engine.md#44-lod-decimation-and-precision), VIZ-006) is the set of pixels whose
+  square the raw polyline touches at 1/64 px, computed by an independent exact rasteriser;
+  anti-aliasing is excluded.
 - **Determinism prerequisites:** fonts and MSDF atlases pinned; no wall-clock time (the `Clock` trait
   is fixed at t = 0 or a stated transition t); layouts seeded (T14 (draft)); decimation and pool
   reductions deterministic ([T03 §5.6](T03-browser-runtime.md#56-wasm-bindgen-web-sys-and-threads)).
@@ -606,7 +609,7 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 
 | Lab gate class | Stage | Threshold | Blocking |
 |---|---|---|---|
-| `bench:frame-*` on (a)(b) | merge | T05-007 | yes, from M-UI0 |
+| `bench:frame-*` on (a)(b) | merge once the lab exists; until then CI reports p50/p99 of `bench:frame-line-1e8` only | T05-007 | yes, once the lab exists; M-UI0 is not complete until it passes |
 | `bench:frame-*` on (c) | nightly | T05-007 | release blocker |
 | `bench:input-photon`, `bench:offline-interaction` | merge | §4.3 | yes, from M-UI0 |
 | `bench:long-tasks` | merge once the reference lab ((a), (b)) exists; until then `e2e`'s trace check (§4.3) is the merge gate | §4.3 | yes, once the lab exists; M-UI0 is not complete until it passes |
@@ -749,3 +752,4 @@ Meta-testing:
 | 1.0-rc | 2026-11-18 | #22: §7.1 `ci:shim-lint` and `ci:bundle-size` state their interim behaviour and enabling conditions (`ci:bundle-size` report mode until the first PR that builds `dash-core-mt`) |
 | 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time (CI reports, `bench:shim-input-cost` gates); §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §4.3 log stream gallery page moves M-UI2 → M-UI1 with PRF-020 |
+| 1.0-rc | 2026-11-19 | #24: §7.1 `bench:frame-*` (a)(b) row: merge once the lab exists, CI reports `bench:frame-line-1e8` until then; §4.2 line coverage defined for `golden:decimation-ref` |

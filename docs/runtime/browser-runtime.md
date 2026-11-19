@@ -3,7 +3,8 @@
 How the browser runs Pulsus Dash in M-UI0: the JS shim, the render and data workers, the shared
 control block and input ring, the GPU tier fallback, and how to run and test it locally. The demo
 page (`web/index.html`) draws one instanced rect mark (10 000 rects in one draw call), animated and
-brightened around the pointer, on a canvas the main thread never renders.
+brightened around the pointer, on a canvas the main thread never renders. With `?scene=line` it
+draws the line chart instead ([Line chart](../rendering/line-chart.md)).
 
 Implements [VIZ-001](../../designs/product/05-visualisation-catalogue.md),
 [PRF-005](../../designs/product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction)
@@ -22,7 +23,7 @@ following [ADR-0001](../../designs/adr/0001-rust-wasm-everywhere.md),
 | Mode | When | Core artefact | Workers |
 |---|---|---|---|
 | **Full** (`mt`) | cross-origin isolated (`crossOriginIsolated` and `SharedArrayBuffer`) | `dash-core-mt` (`+atomics`, one shared `WebAssembly.Memory`, max 2 GiB) | `render`, `data-0` |
-| **ST** (`st`) | not isolated, or `?mode=st` | `dash-core-st` (same crate, built without atomics, own memory) | `render` only (it also publishes the instances) |
+| **ST** (`st`) | not isolated, or `?mode=st` | `dash-core-st` (same crate, built without atomics, own memory) | `render` only (it also publishes the instances, or loads the line layer) |
 | **Static** | no `OffscreenCanvas` (until MT-R ships, M-UI1), `?mode=static`, or no GPU tier | none rendered | none, or a render worker that found no tier |
 
 The mode is written to `<html data-dash-mode>` (`mt` | `st`) and the status to
@@ -33,13 +34,22 @@ cross-origin isolation is off (ask your admin)".
 |---|---|---|---|
 | main | `boot.js`, `input.js`, the HTML | DOM, input listeners, the input queue | instantiates the core, renders, waits on an atomic |
 | render | `worker.js` + the core | the control block, the GPU device and surface, the rect pipeline, the scene, the input-ring consumer, frame statistics | takes a lock shared with another thread |
-| data-0 (Full only) | `worker.js` + `dash-core-mt` | the instance chunk it publishes | writes a chunk after publishing it |
+| data-0 (Full only) | `worker.js` + `dash-core-mt` | the instance chunk it publishes; with `?scene=line` the line chunks, their slabs and the decoder until published | writes a chunk after publishing it |
 
 The main thread compiles the core once (`WebAssembly.compileStreaming`) and sends the module to the
 workers; it never instantiates it. In Full mode the render worker's instantiation creates the shared
 memory and returns it in its first status message; boot then hands it to data-0. data-0 publishes
 the scene's instances into the chunk table (`arc-swap`); the render worker pins the chunk each frame
 and drops the pin after `queue.submit` (T03-007).
+
+**Line scene data.** With `?scene=line`, data-0 runs `line_load::run`: it synthesises the layer
+(`pulsus-synth`, seed 24), encodes it as `metric_matrix.grid/1`, copies each message into a
+64-byte aligned slab, decodes it zero-copy and publishes one chunk per series into the line table
+(`line_table::TABLE`, 1 024 lock-free slots). In ST mode the render worker runs the same load in
+`render_start`, before the GPU starts, and holds at most 10⁷ points (`effective_series`): the
+`st-ceiling` reason. A wire error stops the load; the series already published stay, and the page
+shows `load-failed`. The render worker uploads the published series within a per-frame budget of
+2²¹ samples.
 
 ## The shim
 
@@ -48,12 +58,12 @@ wasm-bindgen output in `web/shim/gen/dash-core-{mt,st}/`:
 
 | File | Budget (code lines) | Does |
 |---|---|---|
-| `boot.js` | ≤ 70 | capability probe, mode, compile, spawn workers and handshakes, status → `<html>`, T2 restart, stale-layout stop, 10 s boot timeout |
+| `boot.js` | ≤ 70 | capability probe, mode, compile, spawn workers and handshakes, status → `<html>`, coverage reasons → `<html data-dash-coverage>`, T2 restart, stale-layout stop, 10 s boot timeout |
 | `worker.js` | ≤ 35 | imports the glue of its mode, instantiates the module, dispatches by `role` (`render`, `data`), runs the frame loop on the worker's `requestAnimationFrame` (`setTimeout(16)` where it is absent), answers ST input batches |
 | `input.js` | ≤ 90 | canvas listeners, record encoding, the bounded queue, the ring and batch sinks |
 | `layout.gen.js` | excluded | control-block offsets, capability bits and status codes, generated from `dash-protocol` |
 
-The three files total ≤ 195 lines of the 300 of T03-001, and each is SHA-256-pinned in
+The three files total ≤ 195 lines of the 300 of T03-001 (today 174), and each is SHA-256-pinned in
 `ci/shim-pins.toml` (see [Build, test and CI](../development/build-and-ci.md)). `layout.gen.js` is
 written by `cargo xtask gen` from `dash_protocol::layout::render_js()` and committed; `ci:shim-lint`
 and `ci:dep-audit` accept it only while it is byte-identical to its generator.
@@ -142,6 +152,12 @@ Each worker `requestAnimationFrame` (`render_frame(t)`):
    drop the pin; a lost device sets Failed and stops the loop;
 6. update the frame clock and the frame statistics.
 
+The line scene replaces steps 3–5 with: create the line mark once the layer is published (an
+out-of-memory error shows Failed); upload this frame's series; step the camera; decimate if the
+frame changed; draw the axes and the line in one pass; submit; present; post the coverage reasons
+when they change (the first post follows frame 1). See
+[Line chart](../rendering/line-chart.md#data-path).
+
 **Frame statistics** (control block `FS_*`): frames recorded, a 64-bucket histogram of frame
 intervals (0.5 ms buckets; the last holds ≥ 31.5 ms), intervals over 50 ms, and the last 256
 intervals and render CPU times (ms). They are exported for the later frame-time gates; the probe
@@ -149,8 +165,11 @@ reads them as `frameStats()`.
 
 ## GPU tiers and fallback
 
-`dash-gpu` tries WebGPU when the worker has `navigator.gpu`, then WebGL2 (both through wgpu 30), with
-WebGL2-level limits, no features, FIFO presentation and the first non-sRGB surface format.
+`dash-gpu` tries WebGPU when the worker has `navigator.gpu`, then WebGL2 (both through wgpu 30),
+with no features, FIFO presentation and the first non-sRGB surface format. The device limits are
+`required_limits(tier, adapter)`: `downlevel_defaults` on WebGPU (compute and storage textures for
+the line decimation pass), `downlevel_webgl2_defaults` on WebGL2, each with the adapter's texture
+dimensions.
 
 | Failure | Result |
 |---|---|
@@ -172,7 +191,13 @@ WebGL2-level limits, no features, FIFO presentation and the first non-sRGB surfa
 | 5 Stale | "Pulsus was updated — reload" | hidden |
 
 `RETRY_T2` (256) is a `render_start` result only; it is never shown. All text lives in
-`web/index.html`; `boot.js` sets only the two `data-` attributes (T03-025).
+`web/index.html`; `boot.js` sets only `data-` attributes (T03-025).
+
+**Coverage line.** The line scene posts `{t: "coverage", reasons}` from the render worker
+(`postMessage`) whenever its reasons change; the first line of `boot.js`'s message handler writes
+them to `<html data-dash-coverage>` (space-separated: `loading`, `st-ceiling`, `texture-ceiling`,
+`load-failed`; `""` when every series is drawn). `web/index.html` shows one `role="status"` text per
+reason under the tier badge; the texts are in [Line chart](../rendering/line-chart.md#coverage-line-t02-016-viz-005).
 
 ## Query flags
 
@@ -182,6 +207,9 @@ WebGL2-level limits, no features, FIFO presentation and the first non-sRGB surfa
 | `?mode=static` | Static |
 | `?mode=st` | ST mode even when isolated |
 | `?fault=webgpu-device` / `?fault=webgpu-surface` | probe builds only: fail WebGPU before / after the surface (tests the two fallback paths). Ignored by release builds |
+| `?scene=line` | the line chart (1 000 series × 100 000 points) instead of the rect spike |
+| `&series=N&points=M` | line scene size: `N ∈ [1, 1024]`, `M ∈ [2, 10⁶]`, `N·M ≤ 10⁸`; out of range or unparsable → the defaults |
+| `?fault=line-layers-1` / `?fault=line-wire` | probe builds only: one texture layer (texture ceiling) / truncate the second wire message (load failure) |
 
 ## Headers
 
@@ -204,6 +232,8 @@ install `self.__dashProbe` on the render worker:
 | `threads()` | `{sharedMemory, instancesPublishedBy}` |
 | `pauseInput(b)` | stops or resumes draining the input ring |
 | `overflowCount()` | the input overflow count |
+| `lineStatus()` | the line scene, `null` on the rect page: `{scene: "line", decimation ("compute" or "fragment"), requested, held, published, uploaded, pointsHeld, publishedBy, loadFailed, slots, dpr, plot {x0, y0, w, h}, camera {tLeftRelMs, msPerPx, vBottom, vPerPx, moving}, coverage {drawn, reasons[]}, draws {line, segment}}` (`draws`: the last frame's draw calls) |
+| `wireCases()` | `[{name, got, expected}]`: the hostile wire messages of `dash_wire::hostile_cases()` through `check_message` inside the wasm32 core |
 
 Release artefacts never contain it (T03-024): `ci:probe-absent` scans a fresh release build of both
 artefacts for the marker `__dashProbe`, and the `e2e` gate checks that the marker is found in the
@@ -258,8 +288,8 @@ the probe build, `cargo xtask gen --test` writes `target/web-test/`; serve it wi
 
 ## Limits
 
-- One mark type and one data worker; no shell, no data plane, no device-loss recovery or worker
-  respawn (M-UI1). A lost device or a trap shows Failed.
+- Two scenes (the rect spike and the line chart) and one data worker; no shell, no data plane, no
+  device-loss recovery or worker respawn (M-UI1). A lost device or a trap shows Failed.
 - No OffscreenCanvas → Static until the MT-R mode ships.
 - `navigator.gpu` present but no adapter counts as "no WebGPU": the WebGPU attempt fails before the
   surface and WebGL2 runs on the same canvas.
@@ -276,5 +306,6 @@ the probe build, `cargo xtask gen --test` writes `target/web-test/`; serve it wi
 | `crates/dash-gpu` (`tier`, `web`) | T03 §9.2, PRF-044, T03-025 |
 | `crates/dash-scene::spike`, `crates/dash-marks::rect` | VIZ-001 (one instanced mark, one draw call) |
 | `crates/dash-core-mt` (`render`, `data`, `chunk`, `frame_input`, `frame_stats`, `probe`) | T01-003, T01-004, T03-007, T03-019, T03-024 |
+| `crates/dash-core-mt` (`flags`, `line_table`, `line_load`, `line_render`) | T03-007, T03 §9.2 (ST ceiling), T03 §9.3 (coverage attribute) |
 | `web/shim/{boot,worker,input}.js`, `web/index.html` | T03-001, T03-003, T03-020, T03-022, T03-025 |
 | `crates/dash-lab::trace`, `xtask e2e` | PRF-005, T05 §4.3 |
