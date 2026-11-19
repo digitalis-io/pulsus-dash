@@ -210,8 +210,10 @@ probe build, which proves the scan works.
 
 ## Performance checks in CI
 
-- **Main-thread long tasks (PRF-005).** The `e2e` gate records a Chrome trace during 5 s (or more) of
-  scripted pointer movement in the `webgpu`, `webgl2` and `noiso` projects
+- **Main-thread long tasks (PRF-005).** After the page reaches T1/T2 and settles for 1.5 s (so
+  the renderer's own startup tasks, such as the delayed shutdown of the initial `about:blank`
+  widget in the non-isolated project, fall outside the window), the `e2e` gate records a Chrome
+  trace during 5 s (or more) of scripted pointer movement in the `webgpu`, `webgl2` and `noiso` projects
   (`e2e/test-results/traces/long-tasks-<project>.json`). `dash-lab::trace::long_tasks` finds the
   renderer main thread (the `CrRendererMain` with the most input events), takes the window from the
   first to the last input `EventDispatch`, and counts top-level `RunTask`s on it. CI fails on any
