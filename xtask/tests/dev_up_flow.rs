@@ -13,7 +13,8 @@ const PORT: u16 = 8789;
 const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types pulsus-sanitised; report-to csp";
 
 fn get(path: &str) -> Option<(u16, String)> {
-    let mut s = TcpStream::connect(("127.0.0.1", PORT)).ok()?;
+    // `localhost` may resolve to `::1` first; the server binds the first address it resolves.
+    let mut s = TcpStream::connect(("localhost", PORT)).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
     write!(
         s,

@@ -17,8 +17,7 @@ pub type HttpResponse = (u16, Vec<(String, String)>, String);
 
 /// `GET path` on `localhost:port`, or `None` if the connection fails.
 pub fn http_get(port: u16, path: &str) -> Option<HttpResponse> {
-    let mut s =
-        TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2)).ok()?;
+    let mut s = connect_localhost(port)?;
     s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     write!(
         s,
@@ -36,6 +35,16 @@ pub fn http_get(port: u16, path: &str) -> Option<HttpResponse> {
         .map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))
         .collect();
     Some((status, headers, body.to_string()))
+}
+
+/// Connects to `localhost:port` on whichever loopback address the server bound (`localhost`
+/// resolves to `::1` first on some hosts).
+pub fn connect_localhost(port: u16) -> Option<TcpStream> {
+    use std::net::ToSocketAddrs;
+    ("localhost", port)
+        .to_socket_addrs()
+        .ok()?
+        .find_map(|a| TcpStream::connect_timeout(&a, Duration::from_secs(2)).ok())
 }
 
 pub fn header<'a>(h: &'a [(String, String)], name: &str) -> Option<&'a str> {
