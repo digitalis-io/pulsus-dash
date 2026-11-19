@@ -108,7 +108,8 @@ else the CSS size × `devicePixelRatio`.
 free-running `u32` byte counters. A record that does not fit before the end is preceded by a
 one-byte wrap marker (`0x00`) and written at offset 0. The producer writes the payload, then stores
 the head with release ordering; the consumer loads the head with acquire ordering. An undecodable
-record makes the consumer skip to the head and count it in `FS_RING_CORRUPT`.
+record, or a wrap marker that cannot be one (at position 0, or not followed by published bytes
+past the end), makes the consumer skip to the head and count it in `FS_RING_CORRUPT`.
 
 **The queue** (`input.js`, T03-020) sits in front of the sink:
 

@@ -62,8 +62,9 @@ impl RingView {
 
     /// Consumer: loads the head (acquire), visits every complete record in order, follows
     /// `KIND_WRAP` markers to offset 0, then stores the tail (release). A record failing
-    /// `decode` moves the tail to the head and adds 1 to `FS_RING_CORRUPT` (records before it
-    /// are visited). Returns the records visited.
+    /// `decode`, or a marker at position 0 or not followed by published bytes after the end,
+    /// moves the tail to the head and adds 1 to `FS_RING_CORRUPT` (records before it are
+    /// visited). Returns the records visited.
     pub fn drain(&mut self, f: &mut dyn FnMut(RecordHeader, InputRecord)) -> u32 {
         let head = self.word(self.head_off).load(Ordering::Acquire);
         let mut tail = self.word(self.tail_off).load(Ordering::Relaxed);
@@ -77,7 +78,16 @@ impl RingView {
             let bytes =
                 unsafe { std::slice::from_raw_parts(self.data().add(pos as usize), len as usize) };
             if bytes.first() == Some(&KIND_WRAP) {
-                tail = tail.wrapping_add(RING_BYTES - pos);
+                // The producer writes a marker only before a record it placed at offset 0, so a
+                // valid marker is never at position 0 and the published bytes extend past the
+                // end. Anything else is corruption: resync instead of skipping past the head.
+                let to_end = RING_BYTES - pos;
+                if pos != 0 && head.wrapping_sub(tail) > to_end {
+                    tail = tail.wrapping_add(to_end);
+                } else {
+                    tail = head;
+                    self.add_counter(off::FS_RING_CORRUPT, 1);
+                }
                 continue;
             }
             match decode(bytes) {
