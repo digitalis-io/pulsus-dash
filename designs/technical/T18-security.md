@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (headers, CSP, sessions, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sandboxed WASM modules, compliance) |
-| **Related ADRs** | [ADR-0016](../adr/0016-module-integrity-import-map.md) (Proposed), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
@@ -109,7 +109,7 @@ The architecture gives us some advantages to build on:
 | [ENT-017](../product/11-enterprise.md#ent-017--append-only-audit-log) | §4.1 append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017) | `itest:audit-hash-chain` |
 | [ENT-019](../product/11-enterprise.md#ent-019--siem-export) | §4.9 SIEM/OTLP export through `dash-egress`; the only product data written to PulsusDB, opt-in | `itest:audit-export-only-when-configured` |
 | [ENT-030](../product/11-enterprise.md#ent-030--air-gapped-installs) | §4.9 air-gapped egress profile; §4.11 offline-verifiable signatures | `itest:airgap-no-egress` |
-| [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.2 no inline script or nonce, so HTML is cacheable; §4.3 SRI hashing as files download (< 10 ms for the engine WASM); probe fetched in parallel with the modulepreloads | `bench:cold-load` (with [T03](T03-browser-runtime.md), [T19](T19-deployment.md)) |
+| [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.2 no inline script or nonce, so HTML is cacheable; §4.3 engine WASM hashed as it downloads (< 10 ms); no per-module checks on JS | `bench:cold-load` (with [T03](T03-browser-runtime.md), [T19](T19-deployment.md)) |
 | [PRF-026](../product/09-performance-contract.md#prf-026--show-cached-marked-stale) | §4.9 T18-022 IndexedDB cache keyed by user and scope, wiped on logout | `e2e:cache-wipe-logout` |
 | [IA-001](../product/02-information-architecture.md#ia-001--object-vocabulary-and-persistence) | §4.1 trust boundary ②: no Dash write path into PulsusDB except self-telemetry and audit export | `itest:no-pulsusdb-writes` |
 
@@ -134,7 +134,7 @@ sessions and tokens, action capability, audit integrity.
 |---|---|---|---|
 | **S**poofing | Session theft or fixation; forged SAML; stolen API token; forged webhook callbacks (Slack/Teams interactive ack, PagerDuty/ServiceNow sync) | ①, IdP, ③ | `__Host-` HttpOnly cookies, session rotation at login, SAML hardening (signed assertions required, XML signature wrapping defence, `InResponseTo` + one-time assertion IDs against replay; T10 (draft)), token prefixes + scanning, inbound callback signature verification (T18-029) |
 | | BFF impersonating users to PulsusDB | ② | Single service credential per tenant binding (Basic today), mTLS recommended, R12 scoped credential later |
-| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | Executable code same-origin only; import-map SRI on every module; per-file BFF verification against the signed manifest; SRI-checked WASM (§4.3); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
+| **T**ampering | Modified WASM/JS assets (CDN compromise); config edits bypassing review; audit edits; Git-sync poisoning; forged fenced writes | ①, ⑥, Git | Executable code same-origin only; per-file BFF verification against the signed manifest before serving; SRI-checked engine WASM from the CDN (§4.3, ADR-0016); RBAC + versions; append-only hash-chained audit ([T11](T11-postgres-schema.md) T11-017); Git sync applies only signed-off branches (optional commit-signature verification); lease fencing on derived state |
 | **R**epudiation | "I didn't silence that"; AI did something | all | Audit with actor + `on_behalf_of` + request id; actions record proposer, confirmer and approvers |
 | **I**nformation disclosure | Cross-tenant/scope reads, including of derived state; XSS reading data; secrets in logs reaching the LLM or notifications; IndexedDB cache on shared machines; `X-Pulsus-Explain` SQL leak; SSRF to cloud metadata | ①②③④⑥ | Scope rewrite + response filter (T10 (draft)); RLS on every Postgres table ([T11](T11-postgres-schema.md) §4.1); CSP + Trusted Types; redaction pipeline (§4.10); cache wipe on logout + optional no-persist policy (§4.9); header stripping; egress guard (§4.9) |
 | **D**enial of service | Expensive queries (agent loops, broad regexes); WASM module infinite loop; webhook floods; notification storms | ②⑤③ | Per-principal query budgets ([T07](T07-scene-query-planner.md)); PulsusDB 422/429 bounds; module watchdog (§4.4); rate limits per contact point ([T16](T16-alert-evaluator.md) T16-015); request body caps |
@@ -150,8 +150,7 @@ only CORP/CORS/`nosniff`. Ingress configuration MUST NOT be relied on for them
 ```
 Content-Security-Policy:                      # ADR-0014 §9
   default-src 'none';
-  script-src 'self' 'sha256-<import map>';   # import-map hash per release (ADR-0016, Proposed);
-                                              # + 'wasm-unsafe-eval' from the engine issue (#68), not before
+  script-src 'self';                          # + 'wasm-unsafe-eval' from the engine issue (#68), not before
   style-src 'self';
   img-src 'self' data: blob:;                 # external images only via BFF proxy (§4.6)
   font-src 'self';
@@ -225,29 +224,16 @@ The default policy MUST be absent, so any other sink throws.
 ### 4.3 Subresource integrity & asset integrity
 
 #### T18-006 — Content-hashed, integrity-checked, signed assets
-**MUST** — *(Revised 1.3-rc; mechanism in [ADR-0016](../adr/0016-module-integrity-import-map.md),
-Proposed.)* Every asset MUST have a content-hashed name (Vite's hashed `/assets/*` JS and CSS,
-workers, fonts, and from #68 `dash-engine.<hash>.wasm`). Its bytes MUST be verified against the
-signed manifest **by the BFF before it is served** and, for code, **by the browser before it runs**:
+**MUST** — *(Revised 1.4-rc; [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted.)*
+Every asset MUST have a content-hashed name (Vite's hashed `/assets/*` JS and CSS, workers, fonts,
+and from #68 `dash-engine.<hash>.wasm`). Its bytes MUST be verified against the signed manifest
+**by the BFF before it is served**, and code MUST be loaded as follows:
 
-| Asset | Served from | Browser check before it runs |
+| Asset | Served from | Check |
 |---|---|---|
-| Entry `boot.<hash>.js` | Same origin (the BFF) | `<script type="module" integrity="sha384-…">` |
-| Every other JS module: application chunks, lazy route chunks, the editor chunk and every module they import, wasm-bindgen glue | Same origin | The import map's `integrity` entry for its URL, applied by the browser to every fetch of that module, static or dynamic; `<link rel="modulepreload">` tags carry the same `integrity` |
-| Workers | Same origin | None available (`new Worker` takes no integrity, import maps do not apply in workers). Each worker is a single-file bundle with no imports, so the BFF per-file check below covers all of its code |
-| CSS (one file, not code-split) | Same origin | `<link rel="stylesheet" integrity>` |
-| `dash-engine.<hash>.wasm` | Same origin, or the CDN in CDN mode | `fetch(url, {integrity})`, then `WebAssembly.instantiateStreaming` on that response only |
-| Fonts, map tiles | Same origin, or the CDN in CDN mode | None: not executable; `font-src` and `img-src` limit their origins |
-
-**Build.** A Vite plugin writes, from the same hashes as the manifest:
-- the inline import map with an `integrity` entry for **every** emitted `/assets/*.js` file, plus
-  the probe entry of ADR-0016 with a deliberately wrong hash;
-- `integrity` on the entry script, the stylesheet and every `modulepreload` it emits
-  (`build.modulePreload: false` disables Vite's own preload helper; `build.cssCodeSplit: false`);
-- the import map's `sha256` into the manifest, from which the BFF adds `'sha256-…'` to `script-src`.
-
-`ci:importmap-coverage` fails the build if any emitted JS file lacks an integrity entry, a worker
-bundle has an `import`, more than one CSS file is emitted, or the CSP hash does not match the map.
+| `index.html`, `asset-manifest.json`, every JS module (entry, lazy route chunks, the editor chunk and every module they import), wasm-bindgen glue, workers, CSS | **Same origin only** (the BFF, over TLS), in every asset mode | BFF start-up verification below; CSP `script-src 'self'`, `style-src 'self'` and `worker-src 'self'` (ADR-0014 §9, unchanged) stop any other origin. No per-module `integrity` in the browser |
+| `dash-engine.<hash>.wasm` | Same origin, or the CDN in CDN mode | BFF start-up verification, and in the browser `fetch(url, {integrity: "sha384-…"})` with the hash from the manifest, then `WebAssembly.instantiateStreaming` on that response only |
+| Fonts, map tiles | Same origin, or the CDN in CDN mode | BFF start-up verification for the embedded copies; not executable, and `font-src`/`img-src` limit their origins |
 
 **Manifest and BFF start-up (fail closed).** Each release's `asset-manifest.json` lists
 `{path, sha384, size}` for every file of the set, including `index.html` and every pre-compressed
@@ -263,37 +249,33 @@ The BFF serves assets only from that verified, read-only in-memory set, so the b
 bytes verified. In CDN mode it also fetches and hashes every manifest-listed CDN file at start-up; on
 any mismatch it serves the embedded set instead (T19-005) and logs the path.
 
-**Browser failure handling.**
+**Engine WASM failure handling.** A fetch with `integrity` resolves only after the whole body has
+been read and its hash matched; on a mismatch it rejects and nothing is compiled. The adapter retries
+once from the same-origin `/assets/` path, and if that fails too, the engine is reported unavailable
+and charts stay on the interim renderer ([T03](T03-browser-runtime.md) §9), with a RUM counter
+`engine_integrity_failed`.
 
-| Altered file | Effect | User sees |
-|---|---|---|
-| Entry `boot` | The browser refuses the entry; no Dash code runs | The static message in `index.html`, "Pulsus Dash could not start safely. Reload, or contact your administrator.", which boot hides only after the application has mounted |
-| Lazy route chunk, or any module it imports | Its `import()` rejects; none of the module graph runs | The route's error boundary shows `ModuleIntegrityError`: "This part of Pulsus Dash failed its integrity check and was not loaded", with Reload. Boot re-fetches the URL with `cache: "no-store"`, hashes it with SubtleCrypto and reports `module_integrity_failed{chunk}` (mismatch) or `module_load_failed{chunk}` (network) to RUM |
-| Probe import succeeds | The browser does not enforce import-map integrity | "This browser cannot verify Pulsus Dash's code" with the supported browsers; nothing else is imported |
-| Engine WASM | The fetch rejects; nothing is compiled; one retry from the same-origin `/assets/` path | If both fail, charts stay on the interim renderer ([T03](T03-browser-runtime.md) §9); RUM `engine_integrity_failed` |
+> **Rationale (ADR-0016):** every executable asset is same-origin over TLS. Whoever can alter a
+> same-origin asset can also alter `index.html` and the CSP, so per-module SRI in the browser would
+> add nothing there; the BFF verifies the bytes against the signed release before serving them. The
+> CDN, the one third party in the asset path, serves no code that runs without a hash check.
 
-Tests (Playwright on Chromium, Firefox and WebKit, against the production build behind a test proxy
-that can alter one byte of a named response):
-- `e2e:altered-lazy-chunk`: altering the Explore metrics route chunk shows `ModuleIntegrityError` on
-  navigation; a sentinel global the chunk sets stays unset; RUM records `module_integrity_failed`.
-- `e2e:altered-transitive-chunk`: altering a chunk imported only by the editor chunk has the same
-  effect when the editor opens, and the editor chunk's own sentinel stays unset.
-- `e2e:altered-entry`: altering `boot` leaves only the static message; no `/api/` request is made.
-- `e2e:integrity-probe-unsupported`: serving an import map whose probe entry is removed makes the
-  probe succeed; the "cannot verify" page shows and no application chunk is requested.
-- `e2e:wasm-integrity-mismatch`: a tampered CDN engine is not instantiated; one same-origin retry;
-  with both tampered the interim renderer stays and the RUM counter increments.
-- `e2e:no-cross-origin-script`: in CDN mode every script, module, worker and stylesheet request goes
-  to the Dash origin and `script-src` lists no CDN origin.
+Tests:
 - `itest:bff-refuses-altered-asset`: a binary whose embedded lazy chunk differs by one byte from the
   signed manifest (test signing key) exits non-zero with `asset_integrity_failed` naming the path and
   opens no port; the same for a missing listed file and an unlisted extra file.
 - `itest:asset-manifest-signature`: a set with a bad signature is refused at start-up.
+- `itest:cdn-set-mismatch-falls-back`: in CDN mode, one altered CDN file makes the BFF serve the
+  embedded set and log the path.
+- `e2e:no-cross-origin-script`: in CDN mode every script, module, worker and stylesheet request goes
+  to the Dash origin and `script-src` lists no CDN origin.
+- `e2e:wasm-integrity-mismatch`: a tampered CDN engine is not instantiated; one same-origin retry;
+  with both tampered the interim renderer stays and the RUM counter increments.
 
 #### T18-007 — Workers are same-origin
-**MUST** — Workers, like every JS module (T18-006), MUST always be served **same-origin by the BFF**,
-even in CDN mode, and MUST be single-file bundles with no imports. Only the engine WASM, fonts and
-tiles may come from the CDN.
+**MUST** — Workers cannot take `integrity` (`new Worker(url)`). Worker scripts, like every JS module
+(T18-006), MUST therefore always be served **same-origin by the BFF**, even in CDN mode. Only the
+engine WASM, fonts and tiles may come from the CDN.
 
 ### 4.4 Sandboxed third-party WASM vis modules (M-UI6+)
 
@@ -700,7 +682,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | Headers/CSP/COOP/COEP, signed manifest with per-file start-up verification, import-map SRI for every module (T18-006, ADR-0016), Markdown sanitiser and no-iframe policy, npm and Go supply-chain gates, SBOM, signed images |
+| M-UI1 | Headers/CSP/COOP/COEP, signed manifest with per-file start-up verification (T18-006, ADR-0016), Markdown sanitiser and no-iframe policy, npm and Go supply-chain gates, SBOM, signed images |
 | M-UI4 | Secrets (envelope + Vault refs), egress guard, action framework v1 (webhook, silence, revert config), redaction and AI guardrails, callback verification |
 | M-UI5 | Image proxy, schematic actions, release pause/rollback actions, embed mode, feed fetching |
 | M-UI6 | WASM vis module sandbox, FIPS build, reproducible-build gate, pen-test, SOC 2 Type I, air-gapped egress profile |
@@ -743,7 +725,8 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; formal design rules; Satisfies table; aligned with 06, 07, 11 and ADR-0012 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0; T18-002 uses the ADR-0014 §9 CSP (`'wasm-unsafe-eval'` from #68); T18-001, T18-004 (React CSSOM) and T18-005 (policy in one TS module, no HTML string sinks) revised; T18-006 adds SRI for lazy route chunks through `modulepreload`; T18-010 Go and TS schema validators; T18-013 Markdown to React elements; T18-026 npm, Go and engine supply-chain gates; T18-027 reproducible client and Go builds |
 | 1.2-rc | 2026-11-19 | Code review r3 of #56: T18-006 rewritten: all JavaScript, CSS and workers are same-origin in every asset mode, the CDN serves only the engine WASM (SRI-checked fetch, one same-origin retry, interim-renderer fallback), fonts and tiles; per-module SRI through `modulepreload` withdrawn with its rationale; tests `e2e:no-cross-origin-script`, `e2e:wasm-integrity-mismatch`, `itest:asset-manifest-signature`; CDN CSP adds the asset origin to `font-src` and `connect-src` only; T18-007 and the STRIDE row aligned |
-| 1.3-rc | 2026-11-19 | Code review r4 of #56: T18-006 restores SRI for every JS module through a build-time import map with an `integrity` section ([ADR-0016](../adr/0016-module-integrity-import-map.md), Proposed): integrity-bearing entry, modulepreloads and stylesheet, a probe that refuses browsers which do not enforce it, single-file workers, and the BFF hashing every asset file against the signed manifest at start-up and exiting on any mismatch; failure UI table; tests for altered lazy, transitive and entry chunks, the probe and the BFF refusal; T18-007, STRIDE, PRF-008 and M-UI1 rows aligned |
+| 1.3-rc | 2026-11-19 | Code review r4 of #56: T18-006 restores SRI for every JS module through a build-time import map with an `integrity` section ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Proposed): integrity-bearing entry, modulepreloads and stylesheet, a probe that refuses browsers which do not enforce it, single-file workers, and the BFF hashing every asset file against the signed manifest at start-up and exiting on any mismatch; failure UI table; tests for altered lazy, transitive and entry chunks, the probe and the BFF refusal; T18-007, STRIDE, PRF-008 and M-UI1 rows aligned |
+| 1.4-rc | 2026-11-19 | Owner decision ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted): T18-006 drops browser per-module integrity; the import map, probe, browser-floor change, `ci:importmap-coverage`, the altered-chunk browser tests and the "cannot verify" page are removed; the BFF per-file start-up verification (fail closed), same-origin JS, CSS and workers, the unchanged `script-src 'self'`, and the SRI-checked engine WASM with one same-origin retry stay; `itest:cdn-set-mismatch-falls-back` added; T18-007 restored to same-origin workers without the single-file constraint |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

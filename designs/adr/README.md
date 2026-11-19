@@ -17,7 +17,7 @@
 | [0013](0013-metrics-data-scopes.md) | Data scopes on metrics without promoted resource attributes | Proposed — **open decision** |
 | [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19) |
 | [0015](0015-go-bff.md) | The BFF is written in Go | **Accepted** (2026-11-19) |
-| [0016](0016-module-integrity-import-map.md) | Module integrity through a build-time import map (amends 0014 §9 CSP and the browser floor) | Proposed (2026-11-19) — awaits owner |
+| [0016](0016-asset-integrity-verified-by-bff.md) | Asset integrity is verified by the BFF, not per module in the browser (amends 0014's lazy-chunk SRI) | **Accepted** (2026-11-19) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed
 only by a later ADR that supersedes it.

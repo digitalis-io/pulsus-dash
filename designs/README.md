@@ -102,6 +102,8 @@ Changes to an Accepted doc go through review and are recorded in that doc's chan
 | D7 | The web client is a standard **TypeScript + React + Vite** application, built first; GPU/3D chart frames come later from one Rust/WASM engine in a worker behind a typed TS API, with an in-house Canvas 2D renderer in the meantime | [ADR-0014](adr/0014-typescript-react-web-client.md) Accepted 2026-11-19; supersedes ADR-0001 (browser), ADR-0002, ADR-0004 |
 | D8 | The BFF is written in **Go** (spec-first OpenAPI, pgx + sqlc, goose, go-oidc) | [ADR-0015](adr/0015-go-bff.md) Accepted 2026-11-19; supersedes ADR-0001 (server) |
 | D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards | [ADR-0014](adr/0014-typescript-react-web-client.md) §10; product requirements revised (roadmap Q13 closed, [12](product/12-roadmap.md#7-resolved-during-formalisation) item 6) |
+| D10 | Asset integrity is verified by the BFF against the signed manifest before serving; all JS, CSS and workers are same-origin; no per-module SRI in the browser | [ADR-0016](adr/0016-asset-integrity-verified-by-bff.md) Accepted 2026-11-19; amends ADR-0014 (lazy-chunk SRI) |
+| D11 | SRF-027 shows PulsusDB's errors on run in M-UI1; pre-run byte-offset diagnostics are SRF-078 at M-UI2 | [12](product/12-roadmap.md) D11 (was Q14, option A), Accepted 2026-11-19 |
 
 ## 3. Assumptions
 
@@ -116,7 +118,6 @@ Changes to an Accepted doc go through review and are recorded in that doc's chan
 |---|---|---|---|
 | O1 | Data scopes on metrics when resource attributes are not labels | Option B: enforce on labels, fail closed per metric family, and pursue R16 with PulsusDB | [ADR-0013](adr/0013-metrics-data-scopes.md) |
 | O2 | Proposed ADRs 0003 (wgpu), 0005 (Arrow), 0008 (Dash evaluator), 0009 (object storage), 0011 (Terraform in Go) | Accept. Each matches the drafts and none has a live alternative | [adr/](adr/README.md) |
-| O3 | Module integrity for lazy chunks (issue #56) | Accept ADR-0016: import-map SRI on every module, BFF per-file verification, browsers that do not enforce it are refused | [ADR-0016](adr/0016-module-integrity-import-map.md) |
 
 ## 5. Index
 

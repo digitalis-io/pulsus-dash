@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-19 |
+| **Version** | 1.3-rc · 2026-11-19 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
-| **Related ADRs** | [ADR-0016](../adr/0016-module-integrity-import-map.md) (Proposed), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
 
 ## 1. Context & problem
@@ -671,3 +671,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
    builder, retention classes).
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): Go static build (`CGO_ENABLED=0`), `embed.FS` assets (T19-003), the chart renderer is a separate Rust binary (T19-001 exception, §4.2), no SAML glibc variant |
 | 1.2-rc | 2026-11-19 | #56 code review: CDN mode serves only the engine WASM, fonts and tiles; all JS, CSS and workers stay same-origin ([T18](T18-security.md) T18-006); T19-005 adds per-file start-up verification of every embedded asset, fail closed, and hashing of every CDN file |
+| 1.3-rc | 2026-11-19 | ADR-0016 (Accepted): asset integrity is verified by the BFF at start-up, per file, fail closed; no per-module integrity in the browser |

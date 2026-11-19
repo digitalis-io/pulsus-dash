@@ -455,8 +455,8 @@ across the whole query if it returns none, and the previous result is kept.
 
 > **Note:** Revised 2026-11-19 (#56) through change control to match ADR-0014 and ADR-0015: the
 > previous M-UI1 criterion (the missing `}` underlined at its byte offset *before* run) moved to
-> SRF-078, which follows the browser parser. **This M-UI1 subset and SRF-078's milestone await
-> product-owner confirmation** ([12](12-roadmap.md) §5, Q14).
+> SRF-078, which follows the browser parser. Accepted by the product owner on 2026-11-19
+> ([12](12-roadmap.md) D11).
 
 #### SRF-078 — Positioned query diagnostics before run
 **MUST** · M-UI2 · Engineer, SRE
@@ -468,8 +468,8 @@ it is run, using PulsusDB's parser crates compiled to WASM in the browser
 *Acceptance:* Given the query `rate(http_server_duration_bucket{service="checkout"[5m])`, when it is
 typed, then the missing `}` is underlined at its byte offset before the query is run.
 
-> **Note:** Split from SRF-027 on 2026-11-19 (#56). The milestone is the one that ships the browser
-> parser; M-UI2 is proposed and awaits product-owner confirmation ([12](12-roadmap.md) §5, Q14).
+> **Note:** Split from SRF-027 on 2026-11-19 (#56); M-UI2, the milestone that ships the browser
+> parser, accepted by the product owner on 2026-11-19 ([12](12-roadmap.md) D11).
 
 #### SRF-028 — Query explain
 **MUST** · M-UI1 · Engineer, SRE
@@ -1119,7 +1119,7 @@ release and in the team channel.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII wireframes replaced by region tables and SVG mockups |
 | 1.0-rc2 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): SRF-033 moves M-UI2 → M-UI1 (delivered by #49); SRF-044 note names the native service-graph route |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): definitions (Surface, Time range picker, Time Ribbon) and a layout paragraph under Table 4-1; SRF-001 (application layout), SRF-014 (one canvas per viewport, one shared engine) and SRF-019 (200 viewports on one page) revised in place; Atlas region "Top bar" becomes "Page header"; SRF-027 errors come from the PulsusDB parser through the BFF until the browser parser lands; R15 |
-| 1.2-rc | 2026-11-19 | Code review of #56: §4.3 Boards introduction describes per-viewport canvases and one shared engine (was "a single GPU scene"); SRF-027 revised to errors from PulsusDB on run, positioned where PulsusDB returns a position; the pre-run byte-offset criterion split out as new SRF-078 (M-UI2, proposed); both await owner confirmation (12 Q14) |
+| 1.2-rc | 2026-11-19 | Code review of #56: §4.3 Boards introduction describes per-viewport canvases and one shared engine (was "a single GPU scene"); SRF-027 revised to errors from PulsusDB on run, positioned where PulsusDB returns a position; the pre-run byte-offset criterion split out as new SRF-078 (M-UI2), accepted by the owner (12 D11) |
 
 ## Resolved during formalisation
 

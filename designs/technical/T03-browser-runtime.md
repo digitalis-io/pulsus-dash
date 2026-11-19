@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-19 |
+| **Version** | 1.3-rc · 2026-11-19 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -763,9 +763,7 @@ line layout without `cosmic-text`.
 | HTTP/1.1 to the BFF (proxy downgrade) | degrade | works, 6-connection limit | RUM flags `nextHopProtocol`; admin diagnostic |
 | Stale shim after deploy (layout version mismatch) | reload | T03-005 | "Pulsus was updated — reload" |
 
-Supported browsers: current and previous Chrome/Edge (T1), Firefox stable and ESR, Safari 18+, in
-each case only where import-map integrity is enforced ([T18](T18-security.md) T18-006,
-[ADR-0016](../adr/0016-module-integrity-import-map.md), Proposed; the boot probe decides at run time).
+Supported browsers: current and previous Chrome/Edge (T1), Firefox stable and ESR, Safari 17+.
 WebGPU availability in Firefox and Safari differs by OS and version, so the matrix is re-verified at
 each milestone and the probe never hard-codes version numbers.
 
@@ -884,4 +882,3 @@ which forces a reload.
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 applicability table; the document now describes the chart engine runtime; T03-001, T03-009 and T03-013 revised; shim line budget withdrawn |
 | 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): IA-021 row verified by `e2e:rooms-reachable`; §4.5 region focus order; §7.1 first paint and interactive shell are the sidebar, page header and palette |
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §0 topology note; §2 goals, §4.1 artefacts (`dash-shell.wasm`, `dash-rooms-admin.wasm` withdrawn), §4.2 diagram and thread table, T03-003, §4.4 (the TS application owns the state store; the engine holds render-local state), §4.5–§4.6 TS keymap and URL codec, §5.3 marked superseded, §5.5, §6, §7.3, §11 and §12 rewritten; Leptos and the ui↔core rings removed |
-| 1.4-rc | 2026-11-19 | #56 review r4: §9 supported browsers require import-map integrity (T18-006, ADR-0016 Proposed); Safari floor 18 |

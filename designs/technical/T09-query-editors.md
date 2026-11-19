@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Review |
 | **Version** | 1.5-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078, proposed), LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
+| **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
 
@@ -603,7 +603,7 @@ fail on any mismatch. The same job pins the PulsusDB git revision Dash builds ag
 | Milestone | Ships |
 |---|---|
 | M-UI1 | PromQL: CodeMirror 6 editor, Lezer PromQL highlighting and context, PulsusDB validation through the BFF on run (SRF-027), metric/label/value completion via `/suggest`, metric browser and cardinality kinds, hover for functions and metrics, `VisHint`, explain (structure + `X-Pulsus-Explain`), **visual builder**, multiple editors A/B with expressions; ⌘K detection for PromQL; **LogQL validation (PulsusDB parser) and label/value completion** for LogQL panels (#49) |
-| M-UI2 | WASM validator (`dash-editor.wasm`, PulsusDB crates) for pre-run positioned diagnostics (SRF-078, milestone proposed, [12](../product/12-roadmap.md) Q14) and formatting (`⌘⇧F`, T09-011); TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
+| M-UI2 | WASM validator (`dash-editor.wasm`, PulsusDB crates) for pre-run positioned diagnostics (SRF-078, [12](../product/12-roadmap.md) D11) and formatting (`⌘⇧F`, T09-011); TraceQL (incl. tags), LogQL detected fields, profile selectors, ⌘K detection for LogQL, TraceQL and profiles, history |
 | M-UI4 | Alert-rule editor integration (quick-fixes, variables), AI explain/generate, virtual-source completion and diagnostics |
 | M-UI5 | LogQL/TraceQL builders, Board variables UI |
 

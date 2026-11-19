@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-19 |
+| **Version** | 1.5-rc · 2026-11-19 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -118,6 +118,8 @@ contract tests may also run against a configured shared PulsusDB deployment, rea
 | D7 | The web client is a standard **TypeScript + React + Vite** application, built first; the GPU chart engine (Rust/WASM in a worker, one canvas per panel) comes later behind a typed TS API, with an in-house Canvas 2D renderer until then | [ADR-0014](../adr/0014-typescript-react-web-client.md) | Accepted 2026-11-19 |
 | D8 | The BFF is written in **Go** | [ADR-0015](../adr/0015-go-bff.md) | Accepted 2026-11-19 |
 | D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards; the earlier no-sidebar prototype is rejected | [ADR-0014](../adr/0014-typescript-react-web-client.md) §10 | Accepted 2026-11-19 |
+| D10 | Asset integrity is verified by the BFF against the signed manifest before serving; all JS, CSS and workers are same-origin; no per-module SRI in the browser | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) | Accepted 2026-11-19 |
+| D11 | SRF-027 in M-UI1 shows PulsusDB's parse errors on run (positioned where PulsusDB returns a position); pre-run byte-offset diagnostics are SRF-078 at M-UI2 with the browser parser (was Q14, option A) | [04](04-surfaces.md) SRF-027, SRF-078 | Accepted 2026-11-19 |
 
 ### 3.1 Settled by the specification
 
@@ -149,7 +151,6 @@ product owner can confirm them at sign-off.
 | Q3 | Alert evaluation location | Pulsus Dash evaluator · PulsusDB ruler (post-1.0) | Ours first; migrate when the ruler is ready (part of O2) | [ADR-0008](../adr/0008-dash-alert-evaluator.md) (Proposed) |
 | Q6 | Arrow natively from PulsusDB vs BFF conversion | — | BFF first, native later (part of O2) | [ADR-0005](../adr/0005-arrow-wire-format.md) (Proposed); [T01](../technical/T01-frontend-architecture.md) |
 | Q7 | Default AI provider and level of self-hosted model support | — | Claude via API by default; OpenAI-compatible endpoint for self-hosted | [06](06-ai-copilot.md); T15 (draft) |
-| Q14 | SRF-027 in M-UI1 shows PulsusDB's parse errors on run (positioned only where PulsusDB returns a position); pre-run byte-offset diagnostics are split out as SRF-078 with the browser parser (#56) | (A) confirm the split, SRF-078 at M-UI2 · (B) keep pre-run positions in M-UI1, which needs the WASM parser crates (or a PulsusDB parse-only route, T09 Q5) in the M-UI1 slice | (A); awaits product-owner confirmation | [04](04-surfaces.md) SRF-027, SRF-078; [T09](../technical/T09-query-editors.md) |
 | Q12 | Local sign-in without an IdP | (A) OIDC only; dev installs use a bundled test IdP · (B) a local bootstrap admin with a password, break-glass only | (A) for now. T06-022 forbids stored passwords, but T19 §4.3 and T11 `users.password_hash` assume a local bootstrap admin (T18 §13 Q5). Reconcile before the M-UI1 release | [T06](../technical/T06-bff-architecture.md), [T11](../technical/T11-postgres-schema.md), [T18](../technical/T18-security.md), [T19](../technical/T19-deployment.md) |
 
 ## 6. Next design steps
@@ -180,10 +181,11 @@ product owner can confirm them at sign-off.
    Rust-only stack are revised in place to D7–D9, with stable IDs: IA-014, IA-016, IA-020, IA-021
    ([02](02-information-architecture.md), plus IA-028 for the Time Ribbon in Space scenes); INT-015,
    INT-017, INT-025, INT-029, INT-031 ([03](03-interaction-model.md)); SRF-001, SRF-014, SRF-019,
-   SRF-027 ([04](04-surfaces.md); split into SRF-027 and new SRF-078 by code review, pending Q14); VIZ-001, VIZ-057, VIZ-063 ([05](05-visualisation-catalogue.md));
+   SRF-027 ([04](04-surfaces.md); split into SRF-027 and new SRF-078 by code review, D11); VIZ-001, VIZ-057, VIZ-063 ([05](05-visualisation-catalogue.md));
    ALR-021 ([07](07-alerting.md)); VL-017, VL-019, VL-021 ([08](08-visual-language.md)); PRF-008,
    PRF-009, PRF-020 (note), PRF-022, PRF-033, PRF-038 ([09](09-performance-contract.md)); ENT-028
    ([11](11-enterprise.md)). The technical designs are aligned in the same change.
+7. **Q14 closed (2026-11-19, owner)** as option A: decision D11.
 
 ## 8. Change log
 
@@ -194,3 +196,4 @@ product owner can confirm them at sign-off.
 | 1.2-rc | 2026-11-19 | D7 TS/React/Vite client (ADR-0014, supersedes D1), D8 Go BFF (ADR-0015), D9 conventional application layout. §2.1 re-planned as steps 1–13 after the code restart; #24, #25 and #39–#49 superseded; M-UI0 delivered after the first M-UI1 slice; Q13 added for product text that assumes the previous shell |
 | 1.3-rc | 2026-11-19 | Q13 closed (#56): product requirements revised to D7–D9 (§7 item 6); Table 2.1a names the issues #56–#69; PRF-020 fallback is the GPU log stream (#69); Table 2.1c IA-020 row updated and SRF-027 row added; M-UI1 theme no longer names the Time Ribbon, which moves to the M-UI3 Space scenes (IA-028); Q10 answer reads "same web client" |
 | 1.4-rc | 2026-11-19 | Code review of #56: SRF-027 revised to errors on run and its pre-run positioned criterion split out as SRF-078 (M-UI2, proposed); the SRF-027 row leaves Table 2.1c; Q14 added for owner confirmation |
+| 1.5-rc | 2026-11-19 | Owner decisions on #56: Q14 closed as option A (D11, SRF-078 at M-UI2); D10 asset integrity verified by the BFF (ADR-0016) |
