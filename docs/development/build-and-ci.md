@@ -127,7 +127,7 @@ browser tier and compare GPU records with the CPU specification, the mask pass w
 coverage (zero missing and zero extra pixels) and the decimated image with the reference that draws
 every raw segment; see [Line chart](../rendering/line-chart.md#tests-and-gates). The two heaviest tests
 (`decimation_ref_zero_diff` and `draw_parity`, 10⁸ raw segments per view) run their views on up
-to four lavapipe devices in parallel; the job takes about 25 minutes on a standard runner. To update the Mesa pin when the runner's Candidate changes, set `mesa` to the new apt
+to four lavapipe devices in parallel; the tests take about 22 minutes on a standard 4-core runner (job timeout 45 minutes). To update the Mesa pin when the runner's Candidate changes, set `mesa` to the new apt
 version and `mesa_upstream` to its `x.y.z` (`tools_config_matches_lock` checks the shape).
 
 ### Fixing a cargo gate
