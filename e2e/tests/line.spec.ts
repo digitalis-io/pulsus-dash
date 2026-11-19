@@ -118,29 +118,38 @@ test("@webgpu line_load_failure_shown", async ({ page }) => {
   expect(await htmlData(page, "dashStatus")).toBe(STATUS.T1);
 });
 
-/** Scripted pan/zoom loop of plan §4.8 until `untilMs` (Date.now()). */
-async function benchLoop(page: Page, untilMs: number) {
+/**
+ * Scripted pan/zoom loop of plan §4.8 until `untilMs` (Date.now()) and at least `minFrames` frames
+ * since `fromFrame` (a report needs 10 intervals). Both are checked before every input step: on a
+ * software GPU a 10⁸-point frame can take seconds, and each input waits for the page's next frame.
+ */
+async function benchLoop(page: Page, untilMs: number, fromFrame: number, minFrames: number) {
   const vp = page.viewportSize()!;
   const cx = vp.width / 2;
   const cy = vp.height / 2;
-  while (Date.now() < untilMs) {
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    for (let i = 1; i <= 20; i++) {
+  const late = async () =>
+    Date.now() >= untilMs && (await call(page, "frameStats")).frames - fromFrame >= minFrames;
+  const steps: (() => Promise<void>)[] = [];
+  steps.push(() => page.mouse.move(cx, cy), () => page.mouse.down());
+  for (let i = 1; i <= 20; i++) {
+    steps.push(async () => {
       await page.mouse.move(cx - 20 * i, cy);
       await page.waitForTimeout(25);
-    }
-    await page.mouse.up();
-    await page.mouse.move(cx + 100, cy);
-    for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -120);
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    for (let i = 1; i <= 3; i++) await page.mouse.move(cx + 100 * i, cy);
-    await page.mouse.up();
-    await page.waitForTimeout(400);
-    await page.mouse.move(cx + 100, cy);
-    for (let i = 0; i < 10; i++) await page.mouse.wheel(0, 120);
+    });
   }
+  steps.push(() => page.mouse.up(), () => page.mouse.move(cx + 100, cy));
+  for (let i = 0; i < 10; i++) steps.push(() => page.mouse.wheel(0, -120));
+  steps.push(() => page.mouse.move(cx, cy), () => page.mouse.down());
+  for (let i = 1; i <= 3; i++) steps.push(() => page.mouse.move(cx + 100 * i, cy));
+  steps.push(() => page.mouse.up(), () => page.waitForTimeout(400), () => page.mouse.move(cx + 100, cy));
+  for (let i = 0; i < 10; i++) steps.push(() => page.mouse.wheel(0, 120));
+  while (!(await late())) {
+    for (const step of steps) {
+      if (await late()) break;
+      await step();
+    }
+  }
+  await page.mouse.up();
 }
 
 test("@webgpu line_1e8_pan_zoom", async ({ page, browser }) => {
@@ -148,7 +157,8 @@ test("@webgpu line_1e8_pan_zoom", async ({ page, browser }) => {
   const loopMs = Number(process.env.DASH_BENCH_MS ?? (lab ? 60_000 : 20_000));
   const warmupMs = lab ? 30_000 : 5_000;
   const runs = lab ? 3 : 1;
-  test.setTimeout(15 * 60_000 + runs * loopMs + warmupMs);
+  // Load (≤ 10 min) + warm-up + loop, plus headroom for the last input steps on a slow GPU.
+  test.setTimeout(20 * 60_000 + runs * loopMs + warmupMs);
   await page.setViewportSize({ width: 1280, height: 720 });
   const t0 = Date.now();
   await page.goto("/?scene=line");
@@ -171,7 +181,7 @@ test("@webgpu line_1e8_pan_zoom", async ({ page, browser }) => {
     categories: ["toplevel", "devtools.timeline", "disabled-by-default-devtools.timeline"],
   });
   const timer = setInterval(() => void collect().catch(() => undefined), 500);
-  for (let r = 0; r < runs; r++) await benchLoop(page, Date.now() + loopMs);
+  for (let r = 0; r < runs; r++) await benchLoop(page, Date.now() + loopMs, before, 12);
   clearInterval(timer);
   await collect();
   const trace = await browser.stopTracing();
