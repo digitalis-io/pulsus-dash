@@ -152,3 +152,48 @@ fn ring_two_threads_no_loss() {
     producer.join().unwrap();
     assert_eq!(seen, (0..N).collect::<Vec<_>>());
 }
+
+/// Drains on another thread; `None` if the drain does not return within 5 s.
+fn drain_bounded(base: *mut u8) -> Option<Vec<u32>> {
+    let addr = base as usize;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut r = ring(addr as *mut u8);
+        let _ = tx.send(drain_seqs(&mut r));
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(5)).ok()
+}
+
+#[test]
+fn ring_zero_at_position_zero_resyncs() {
+    let base = cb();
+    let mut r = ring(base);
+    let mut rec = mv(0);
+    rec[0] = 0x00; // a "wrap marker" where no wrap can be
+    r.push(&rec).unwrap();
+    r.push(&mv(1)).unwrap();
+    let seen = drain_bounded(base);
+    assert_eq!(seen, Some(vec![]), "drain must return and resync");
+    assert_eq!(word(base, off::INPUT_TAIL), word(base, off::INPUT_HEAD));
+    assert_eq!(word(base, off::FS_RING_CORRUPT), 1);
+}
+
+#[test]
+fn ring_premature_wrap_marker_resyncs() {
+    let base = cb();
+    let mut r = ring(base);
+    r.push(&mv(0)).unwrap();
+    let mut rec = mv(1);
+    rec[0] = 0x00; // marker at 40, but the published bytes end before the end of the ring
+    r.push(&rec).unwrap();
+    let seen = drain_bounded(base);
+    assert_eq!(seen, Some(vec![0]), "records before the marker are visited");
+    assert_eq!(word(base, off::INPUT_TAIL), word(base, off::INPUT_HEAD));
+    assert_eq!(word(base, off::FS_RING_CORRUPT), 1);
+    r.push(&mv(2)).unwrap();
+    assert_eq!(
+        drain_seqs(&mut r),
+        vec![2],
+        "the ring keeps working after a resync"
+    );
+}
