@@ -10,7 +10,7 @@
 //! | `threads()` | `{sharedMemory, instancesPublishedBy}` |
 //! | `pauseInput(b)` | stops / resumes draining the input ring |
 //! | `overflowCount()` | `INPUT_OVERFLOW` |
-//! | `lineStatus()` | the line scene (#24 plan §3.7): `{scene, decimation, requested, held, published, uploaded, pointsHeld, publishedBy, loadFailed, slots, dpr, plot, camera, coverage, draws}`; `null` on the rect scene |
+//! | `lineStatus()` | the line scene (#24 plan §3.7): `{scene, decimation, requested, held, published, uploaded, pointsHeld, publishedBy, loadFailed, slots, valueLayers, dpr, plot, camera, coverage, draws}`; `null` on the rect scene |
 //! | `wireCases()` | `[{name, got, expected}]`: `dash_wire::hostile_cases()` through `check_message` in wasm32 |
 
 use std::collections::VecDeque;
@@ -194,6 +194,7 @@ fn line_status() -> JsValue {
             ),
             ("loadFailed", TABLE.load_failed().into()),
             ("slots", p.slots.into()),
+            ("valueLayers", p.value_layers.into()),
             ("dpr", p.dpr.into()),
             (
                 "plot",

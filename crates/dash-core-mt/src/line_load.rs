@@ -4,7 +4,7 @@
 
 use dash_scales::lod::prepare;
 use dash_wire::{GridDecoder, GridEncoder, GridMeta, Slab, WireError, series_per_batch};
-use pulsus_synth::line::{custom, series};
+use pulsus_synth::line::{SynthSeries, custom, series};
 
 use crate::flags::{LineFault, LineParams};
 use crate::line_table::{LayerMeta, LineChunk, LineTable};
@@ -62,7 +62,10 @@ fn load(
         let ids = first..(first + per).min(held);
         let rows: Vec<_> = ids
             .clone()
-            .map(|id| series(LINE_SEED, &preset, id))
+            .map(|id| match fault {
+                Some(LineFault::Ramps) => ramp(id, p.points),
+                _ => series(LINE_SEED, &preset, id),
+            })
             .collect();
         let refs: Vec<(&[f64], &[bool])> =
             rows.iter().map(|s| (&s.values[..], &s.valid[..])).collect();
@@ -86,6 +89,24 @@ fn load(
         batch_no += 1;
     }
     Ok(t.published())
+}
+
+/// `fault=line-ramps`: series `id` is the all-valid ramp `a + (b − a)·k/(n − 1)` with
+/// `(a, b)` = (0, 100) for 0, (300, 400) for 670, (200, 250) for 671 and (150, 150) otherwise, so
+/// the e2e test can tell drawn values from zeroed ones.
+fn ramp(id: u32, n: u32) -> SynthSeries {
+    let (a, b) = match id {
+        0 => (0.0, 100.0),
+        670 => (300.0, 400.0),
+        671 => (200.0, 250.0),
+        _ => (150.0, 150.0),
+    };
+    let last = f64::from(n.saturating_sub(1).max(1));
+    SynthSeries {
+        values: (0..n).map(|k| a + (b - a) * f64::from(k) / last).collect(),
+        valid: vec![true; n as usize],
+        spikes: 0,
+    }
 }
 
 /// Series to upload this frame: `min(published − uploaded, max(1, 2²¹ / n))`.

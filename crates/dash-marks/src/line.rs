@@ -47,6 +47,9 @@ pub const FRAGMENT_TARGET_BYTES: u32 = 32;
 
 /// The widest value / pyramid texture.
 const MAX_TEX_W: u32 = 4_096;
+/// Bytes per value texel (`R32Uint`) and per pyramid texel (`Rgba32Uint`).
+const VALUE_BYTES: u64 = 4;
+const PYRAMID_BYTES: u64 = 16;
 /// Pyramid levels the uniforms carry (n ≤ 10⁶).
 const MAX_LEVELS: u32 = 4;
 /// Compute workgroup width.
@@ -86,25 +89,27 @@ pub struct LineLayout {
 }
 
 impl LineLayout {
-    /// `tex_w = min(4096, max_dim)`; `series ≤ max_dim` (records are one row per series) and
-    /// `⌈S·n / tex_w²⌉ ≤ max_layers`, else `TooLarge { min(⌊max_layers·tex_w²/n⌋, max_dim) }`.
+    /// `tex_w = min(4096, max_dim)`; `L = min(max_layers, ⌊max_bytes / (4·tex_w²)⌋)` value layers;
+    /// `series ≤ max_dim` (records are one row per series), `⌈S·n / tex_w²⌉ ≤ L` and the pyramid's
+    /// bytes per layer ≤ `max_bytes`, else `TooLarge { min(⌊L·tex_w²/n⌋, max_dim) }`. T2 passes
+    /// [`T2_MAX_TEXTURE_BYTES`], T1 `u64::MAX`.
     pub fn new(
         series: u32,
         n: u32,
         max_dim: u32,
         max_layers: u32,
-        _max_bytes: u64,
+        max_bytes: u64,
     ) -> Result<LineLayout, LayoutError> {
         let tex_w = MAX_TEX_W.min(max_dim).max(1);
         let per_layer = u64::from(tex_w) * u64::from(tex_w);
+        let layers = u64::from(max_layers).min(max_bytes / (VALUE_BYTES * per_layer));
+        let too_large = || LayoutError::TooLarge {
+            max_series: (layers * per_layer / u64::from(n.max(1))).min(u64::from(max_dim)) as u32,
+        };
         let total = u64::from(series) * u64::from(n);
         let value_layers = total.div_ceil(per_layer).max(1);
-        if series > max_dim || value_layers > u64::from(max_layers) {
-            let fit =
-                (u64::from(max_layers) * per_layer / u64::from(n.max(1))).min(u64::from(max_dim));
-            return Err(LayoutError::TooLarge {
-                max_series: fit as u32,
-            });
+        if series > max_dim || value_layers > layers {
+            return Err(too_large());
         }
         let levels = levels_for(n).min(MAX_LEVELS);
         let mut pyr_base = [0u32; 4];
@@ -116,6 +121,9 @@ impl LineLayout {
             pyr_base[l] = base as u32;
             pyr_len[l] = u64::from(n).div_ceil(size) as u32;
             base += u64::from(series) * u64::from(pyr_len[l]);
+        }
+        if base.min(per_layer).saturating_mul(PYRAMID_BYTES) > max_bytes {
+            return Err(too_large());
         }
         Ok(LineLayout {
             series,

@@ -92,11 +92,12 @@ pub enum LineFault {
     Ramps,
 }
 
-/// `fault=line-layers-1|line-wire`, else `None`. Release builds never call this.
+/// `fault=line-layers-1|line-wire|line-ramps`, else `None`. Release builds never call this.
 pub fn parse_line_fault(q: &str) -> Option<LineFault> {
     match param(q, "fault") {
         Some("line-layers-1") => Some(LineFault::Layers1),
         Some("line-wire") => Some(LineFault::Wire),
+        Some("line-ramps") => Some(LineFault::Ramps),
         _ => None,
     }
 }

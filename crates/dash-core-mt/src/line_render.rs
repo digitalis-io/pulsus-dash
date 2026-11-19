@@ -9,7 +9,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use dash_gpu::{Gpu, Tier};
-use dash_marks::line::{DecimatePath, LayoutError, LineLayout, LineMark};
+use dash_marks::line::{DecimatePath, LayoutError, LineLayout, LineMark, T2_MAX_TEXTURE_BYTES};
 use dash_marks::segment::SegmentMark;
 use dash_scales::Plot;
 use dash_scales::lod::{MARGIN, Pyramid, build_pyramid, rel_bits};
@@ -70,6 +70,7 @@ pub(crate) struct LineProbe {
     pub(crate) decimation: &'static str,
     pub(crate) uploaded: u32,
     pub(crate) slots: u32,
+    pub(crate) value_layers: u32,
     pub(crate) dpr: f32,
     pub(crate) draws: (u32, u32),
     pub(crate) plot: Plot,
@@ -148,11 +149,16 @@ impl LineActive {
             limits.max_texture_array_layers
         };
         let n = layer.grid.len;
-        let layout = match LineLayout::new(layer.held, n, max_dim, max_layers, u64::MAX) {
+        // T2: the GL backend never reports a failed texture allocation (T2_MAX_TEXTURE_BYTES).
+        let max_bytes = match self.path {
+            DecimatePath::Compute => u64::MAX,
+            DecimatePath::Fragment => T2_MAX_TEXTURE_BYTES,
+        };
+        let layout = match LineLayout::new(layer.held, n, max_dim, max_layers, max_bytes) {
             Ok(l) => l,
             Err(LayoutError::TooLarge { max_series }) => {
                 self.scene.set_texture_ceiling(max_series);
-                match LineLayout::new(max_series, n, max_dim, max_layers, u64::MAX) {
+                match LineLayout::new(max_series, n, max_dim, max_layers, max_bytes) {
                     Ok(l) => l,
                     Err(_) => return,
                 }
@@ -318,6 +324,7 @@ impl LineActive {
             },
             uploaded: self.uploaded,
             slots: self.slots,
+            value_layers: self.marked.as_ref().map_or(0, |m| m.layout.value_layers),
             dpr: self.dpr,
             draws: self.draws,
             plot: self.plot,
