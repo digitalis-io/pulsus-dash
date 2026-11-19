@@ -3,19 +3,19 @@
 use dash_protocol::input::{InputRecord, RecordHeader, decode};
 use dash_protocol::layout::off;
 use dash_protocol::ring::RingView;
-use dash_scene::spike::SpikeScene;
+use dash_scene::InputSink;
 
 /// Step 2 of the frame (plan §4.5): drains every record present at frame start into the scene,
 /// before any update; `log` (if any) receives each record with `frame_no`. Returns the records
 /// drained.
-pub fn begin_frame(
+pub fn begin_frame<S: InputSink>(
     ring: &mut RingView,
-    scene: &mut SpikeScene,
+    sink: &mut S,
     frame_no: u64,
     mut log: Option<&mut Vec<(RecordHeader, InputRecord, u64)>>,
 ) -> u32 {
     ring.drain(&mut |h, r| {
-        scene.apply(&r);
+        sink.apply(&h, &r);
         if let Some(l) = log.as_deref_mut() {
             l.push((h, r, frame_no));
         }
@@ -58,6 +58,7 @@ mod tests {
     use super::*;
     use crate::control::Control;
     use dash_protocol::input::{PointerPhase, encode};
+    use dash_scene::spike::SpikeScene;
     use std::sync::atomic::Ordering::Relaxed;
 
     fn mv(seq: u32, x: f32, y: f32) -> Vec<u8> {

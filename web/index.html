@@ -17,12 +17,19 @@
   html:not([data-dash-status="4"]) [data-status="4"] { display: none }
   html:not([data-dash-status="5"]) [data-status="5"] { display: none }
   html:not([data-dash-mode="st"]) [data-mode="st"] { display: none }
+  .dash-coverage { top: 34px; padding: 0; background: none; }
+  .dash-coverage span { display: block; margin-bottom: 2px; padding: 2px 8px; background: Canvas; }
+  html:not([data-dash-coverage~="loading"]) [data-coverage="loading"] { display: none }
+  html:not([data-dash-coverage~="st-ceiling"]) [data-coverage="st-ceiling"] { display: none }
+  html:not([data-dash-coverage~="texture-ceiling"]) [data-coverage="texture-ceiling"] { display: none }
+  html:not([data-dash-coverage~="load-failed"]) [data-coverage="load-failed"] { display: none }
   html[data-dash-status="3"] #dash-canvas, html[data-dash-status="4"] #dash-canvas, html[data-dash-status="5"] #dash-canvas { visibility: hidden }
 </style>
 </head>
 <body>
 <canvas id="dash-canvas" tabindex="0"></canvas>
 <p id="dash-tier" class="dash-chrome" role="status"><span data-status="1">Tier: WebGPU (T1)</span><span data-status="2">Tier: WebGL2 (T2)</span></p>
+<p id="dash-coverage" class="dash-chrome dash-coverage" role="status"><span data-coverage="loading">Loading data: not every series is drawn yet</span><span data-coverage="st-ceiling">Not every series is shown: single-thread mode limit</span><span data-coverage="texture-ceiling">Not every series is shown: GPU texture limit</span><span data-coverage="load-failed">Some series failed to load</span></p>
 <p class="dash-chrome" role="alert" data-status="3">Interactive charts unavailable on this browser</p>
 <p class="dash-chrome" role="alert" data-status="4">Interactive charts failed. Reload the page.</p>
 <p class="dash-chrome" role="alert" data-status="5">Pulsus was updated — reload</p>

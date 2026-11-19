@@ -51,9 +51,34 @@ pub enum SceneKind {
     Line(LineParams),
 }
 
-/// `scene=line` → [`SceneKind::Line`]; out-of-range or unparsable sizes → [`LINE_DEFAULT`].
-pub fn parse_scene(_q: &str) -> SceneKind {
-    SceneKind::Rect
+/// Most series of the line scene (the chunk table's slots).
+pub const MAX_LINE_SERIES: u32 = 1_024;
+/// Most points per series (pyramid levels ≤ 4).
+pub const MAX_LINE_POINTS: u32 = 1_000_000;
+/// Most points of the layer (T04 §5.7 budget).
+pub const MAX_LINE_TOTAL: u64 = 100_000_000;
+
+/// `scene=line` → [`SceneKind::Line`] with `series ∈ [1, 1024]`, `points ∈ [2, 10⁶]` and
+/// `series·points ≤ 10⁸` (an absent size takes its default); any size out of range or
+/// unparsable → [`LINE_DEFAULT`]. Anything else → [`SceneKind::Rect`].
+pub fn parse_scene(q: &str) -> SceneKind {
+    if param(q, "scene") != Some("line") {
+        return SceneKind::Rect;
+    }
+    let size = |key, default: u32, max: u32, min: u32| match param(q, key) {
+        None => Some(default),
+        Some(v) => v.parse::<u32>().ok().filter(|v| (min..=max).contains(v)),
+    };
+    let p = match (
+        size("series", LINE_DEFAULT.series, MAX_LINE_SERIES, 1),
+        size("points", LINE_DEFAULT.points, MAX_LINE_POINTS, 2),
+    ) {
+        (Some(series), Some(points)) if u64::from(series) * u64::from(points) <= MAX_LINE_TOTAL => {
+            LineParams { series, points }
+        }
+        _ => LINE_DEFAULT,
+    };
+    SceneKind::Line(p)
 }
 
 /// Line-scene test faults (probe builds only).
@@ -65,16 +90,26 @@ pub enum LineFault {
     Wire,
 }
 
-pub fn parse_line_fault(_q: &str) -> Option<LineFault> {
-    None
+/// `fault=line-layers-1|line-wire`, else `None`. Release builds never call this.
+pub fn parse_line_fault(q: &str) -> Option<LineFault> {
+    match param(q, "fault") {
+        Some("line-layers-1") => Some(LineFault::Layers1),
+        Some("line-wire") => Some(LineFault::Wire),
+        _ => None,
+    }
 }
 
 /// The points one ST worker holds (T03 §9.2).
 pub const ST_POINT_CEILING: u64 = 10_000_000;
 
 /// Series held: `min(series, ceiling / points)` in ST, else `series`.
-pub fn effective_series(p: LineParams, _st: bool) -> u32 {
-    p.series
+pub fn effective_series(p: LineParams, st: bool) -> u32 {
+    if st {
+        let fit = ST_POINT_CEILING / u64::from(p.points.max(1));
+        p.series.min(u32::try_from(fit).unwrap_or(u32::MAX))
+    } else {
+        p.series
+    }
 }
 
 #[cfg(test)]

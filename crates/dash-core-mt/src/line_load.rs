@@ -2,30 +2,97 @@
 //! `metric_matrix.grid/1`, copies each message into a slab, decodes it zero-copy and publishes
 //! one chunk per series. Runs on data-0 (MT) or in `render_start` (ST).
 
-use dash_wire::WireError;
+use dash_scales::lod::prepare;
+use dash_wire::{GridDecoder, GridEncoder, GridMeta, Slab, WireError, series_per_batch};
+use pulsus_synth::line::{custom, series};
 
 use crate::flags::{LineFault, LineParams};
-use crate::line_table::LineTable;
+use crate::line_table::{LayerMeta, LineChunk, LineTable};
 
 /// The seed of the line scene's data.
 pub const LINE_SEED: u64 = 24;
 /// Samples the render worker converts and uploads per frame (T04 §5.7).
 pub const UPLOAD_SAMPLES_PER_FRAME: u64 = 1 << 21;
 
-/// Loads `held` of `p.series` series into `t`; returns the series published.
+/// Loads `held` of `p.series` series into `t`; returns the series published. `Wire` truncates
+/// the second batch message by 8 bytes. Any error marks the table load-failed (published
+/// series stay) and is returned.
 pub fn run(
-    _t: &LineTable,
-    _p: LineParams,
-    _held: u32,
-    _producer: &'static str,
-    _fault: Option<LineFault>,
+    t: &LineTable,
+    p: LineParams,
+    held: u32,
+    producer: &'static str,
+    fault: Option<LineFault>,
 ) -> Result<u32, WireError> {
-    Ok(0)
+    let r = load(t, p, held, producer, fault);
+    if r.is_err() {
+        t.set_load_failed();
+    }
+    r
+}
+
+fn load(
+    t: &LineTable,
+    p: LineParams,
+    held: u32,
+    producer: &'static str,
+    fault: Option<LineFault>,
+) -> Result<u32, WireError> {
+    let preset = custom(p.series, p.points);
+    let grid = GridMeta {
+        start_ms: preset.start_ms,
+        step_ms: preset.step_ms,
+        len: p.points,
+        result: "metric".into(),
+        source: "synth".into(),
+        unit: String::new(),
+    };
+    t.publish_layer(LayerMeta {
+        grid: grid.clone(),
+        requested: p.series,
+        held,
+        producer,
+    });
+    let (mut enc, schema) = GridEncoder::new(&grid)?;
+    let dec = GridDecoder::new(&Slab::copy_from(&schema)?)?;
+    let per = series_per_batch(p.points);
+    let mut first = 0u32;
+    let mut batch_no = 0u32;
+    while first < held {
+        let ids = first..(first + per).min(held);
+        let rows: Vec<_> = ids
+            .clone()
+            .map(|id| series(LINE_SEED, &preset, id))
+            .collect();
+        let refs: Vec<(&[f64], &[bool])> =
+            rows.iter().map(|s| (&s.values[..], &s.valid[..])).collect();
+        let mut msg = enc.batch(first, &refs)?;
+        if fault == Some(LineFault::Wire) && batch_no == 1 {
+            msg.truncate(msg.len().saturating_sub(8));
+        }
+        drop(rows);
+        let slab = Slab::copy_from(&msg)?;
+        drop(msg);
+        for s in dec.decode(&slab)? {
+            let prepared = prepare(&s.values, &|k| s.is_valid(k));
+            t.publish_chunk(LineChunk {
+                id: s.series_id,
+                series: s,
+                prepared,
+            })
+            .map_err(|_| WireError::Schema("series_id"))?;
+        }
+        first = ids.end;
+        batch_no += 1;
+    }
+    Ok(t.published())
 }
 
 /// Series to upload this frame: `min(published − uploaded, max(1, 2²¹ / n))`.
-pub fn uploads_this_frame(_published: u32, _uploaded: u32, _n: u32) -> u32 {
-    0
+pub fn uploads_this_frame(published: u32, uploaded: u32, n: u32) -> u32 {
+    let budget = (UPLOAD_SAMPLES_PER_FRAME / u64::from(n.max(1))).max(1);
+    let budget = u32::try_from(budget).unwrap_or(u32::MAX);
+    published.saturating_sub(uploaded).min(budget)
 }
 
 #[cfg(test)]

@@ -38,6 +38,7 @@ function startRender(query) {
 }
 
 function onStatus(w, m) {
+  if (m.t === "coverage") return void (html.dataset.dashCoverage = m.reasons);
   if (m.t !== "status") return;
   if (m.layout !== undefined && m.layout !== L.LAYOUT_VERSION) {
     setStatus(L.STATUS_STALE);

@@ -10,6 +10,8 @@
 //! | `threads()` | `{sharedMemory, instancesPublishedBy}` |
 //! | `pauseInput(b)` | stops / resumes draining the input ring |
 //! | `overflowCount()` | `INPUT_OVERFLOW` |
+//! | `lineStatus()` | the line scene (#24 plan §3.7): `{scene, decimation, requested, held, published, uploaded, pointsHeld, publishedBy, loadFailed, slots, dpr, plot, camera, coverage, draws}`; `null` on the rect scene |
+//! | `wireCases()` | `[{name, got, expected}]`: `dash_wire::hostile_cases()` through `check_message` in wasm32 |
 
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering::Relaxed;
@@ -21,7 +23,8 @@ use wasm_bindgen::closure::WasmClosure;
 use wasm_bindgen::prelude::*;
 
 use crate::frame_stats::{HIST_BUCKETS, RECENT};
-use crate::render::{control, with_renderer};
+use crate::line_table::TABLE;
+use crate::render::{Active, control, with_renderer};
 
 /// The global the probe is installed under.
 pub const PROBE_GLOBAL: &str = "__dashProbe";
@@ -163,6 +166,88 @@ fn threads() -> JsValue {
     ])
 }
 
+fn line_status() -> JsValue {
+    with_renderer(|r| {
+        let Active::Line(l) = &mut r.active else {
+            return JsValue::NULL;
+        };
+        let p = l.probe();
+        let plot = p.plot;
+        let cov = l.scene.coverage();
+        let layer = TABLE.layer();
+        let published = TABLE.published();
+        let n = layer.as_ref().map_or(0, |m| m.grid.len);
+        let ctl = l.scene.controller_mut();
+        let cam = *ctl.camera();
+        let moving = ctl.moving();
+        object(&[
+            ("scene", "line".into()),
+            ("decimation", p.decimation.into()),
+            ("requested", cov.requested.into()),
+            ("held", cov.held.into()),
+            ("published", published.into()),
+            ("uploaded", p.uploaded.into()),
+            ("pointsHeld", (f64::from(published) * f64::from(n)).into()),
+            (
+                "publishedBy",
+                layer.as_ref().map_or(JsValue::NULL, |m| m.producer.into()),
+            ),
+            ("loadFailed", TABLE.load_failed().into()),
+            ("slots", p.slots.into()),
+            ("dpr", p.dpr.into()),
+            (
+                "plot",
+                object(&[
+                    ("x0", plot.x0.into()),
+                    ("y0", plot.y0.into()),
+                    ("w", plot.w.into()),
+                    ("h", plot.h.into()),
+                ]),
+            ),
+            (
+                "camera",
+                object(&[
+                    ("tLeftRelMs", cam.t_left_rel_ms.into()),
+                    ("msPerPx", cam.ms_per_px.into()),
+                    ("vBottom", cam.v_bottom.into()),
+                    ("vPerPx", cam.v_per_px.into()),
+                    ("moving", moving.into()),
+                ]),
+            ),
+            (
+                "coverage",
+                object(&[
+                    ("drawn", cov.drawn.into()),
+                    ("reasons", array(cov.reasons.iter().map(|r| r.id().into()))),
+                ]),
+            ),
+            (
+                "draws",
+                object(&[("line", p.draws.0.into()), ("segment", p.draws.1.into())]),
+            ),
+        ])
+    })
+    .unwrap_or(JsValue::NULL)
+}
+
+fn wire_cases() -> JsValue {
+    array(
+        dash_wire::hostile_cases()
+            .into_iter()
+            .map(|(name, bytes, expected)| {
+                let got = match dash_wire::check_message(&bytes) {
+                    Ok(_) => "ok".to_string(),
+                    Err(e) => format!("{e:?}"),
+                };
+                object(&[
+                    ("name", name.into()),
+                    ("got", got.into()),
+                    ("expected", expected.into()),
+                ])
+            }),
+    )
+}
+
 fn method<T: ?Sized + WasmClosure>(o: &js_sys::Object, name: &str, c: Closure<T>) {
     // The closures live as long as the worker (`into_js_value` hands ownership to JS).
     let _ = js_sys::Reflect::set(o, &JsValue::from_str(name), &c.into_js_value());
@@ -205,6 +290,16 @@ pub(crate) fn install() {
         Closure::<dyn Fn() -> u32>::new(|| {
             control().map_or(0, |c| c.word(off::INPUT_OVERFLOW).load(Relaxed))
         }),
+    );
+    method(
+        &o,
+        "lineStatus",
+        Closure::<dyn Fn() -> JsValue>::new(line_status),
+    );
+    method(
+        &o,
+        "wireCases",
+        Closure::<dyn Fn() -> JsValue>::new(wire_cases),
     );
     let _ = js_sys::Reflect::set(&js_sys::global(), &JsValue::from_str(PROBE_GLOBAL), &o);
 }

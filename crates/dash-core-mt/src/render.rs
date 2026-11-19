@@ -1,7 +1,8 @@
 //! The render worker (plan §4.5, T03-019, T03-007): `render_start` allocates the control block
 //! and initialises the GPU tier; `render_frame` runs one frame on the worker's rAF. All state is
 //! thread-local to the render worker (T03 §4.1 ownership); nothing here takes a lock shared with
-//! another thread (T03-008).
+//! another thread (T03-008). `?scene=line` (#24) runs the line scene ([`crate::line_render`])
+//! instead of the rect spike.
 
 use std::cell::{Cell, RefCell};
 use std::sync::atomic::Ordering::{Relaxed, Release};
@@ -18,9 +19,10 @@ use wasm_bindgen::prelude::*;
 
 use crate::chunk::{self, InstanceChunk};
 use crate::control::Control;
-use crate::flags;
+use crate::flags::{self, LineFault, SceneKind};
 use crate::frame_input::{begin_frame, push_batch};
 use crate::frame_stats::FrameStats;
+use crate::line_render::{FrameEnd, LineActive};
 
 /// Seed of the spike scene's instances.
 pub(crate) const SPIKE_SEED: u64 = 7;
@@ -30,20 +32,31 @@ pub(crate) const SPIKE_SEED: u64 = 7;
 const MAX_RECORDS_PER_FRAME: usize = RING_BYTES as usize / 16;
 
 /// GPU copies of the pinned chunk's columns.
-struct Instances {
+pub(crate) struct Instances {
     generation: u32,
     xy: wgpu::Buffer,
     phase: wgpu::Buffer,
     n: u32,
 }
 
+/// The scene the renderer draws (plan §4.1).
+pub(crate) enum Active {
+    /// The #23 rect spike.
+    Rect {
+        pipeline: RectPipeline,
+        scene: SpikeScene,
+        instances: Option<Instances>,
+    },
+    /// The #24 line chart.
+    Line(Box<LineActive>),
+}
+
 /// Everything the render worker owns once a tier is up.
 pub(crate) struct Renderer {
     cb: Control,
     gpu: Gpu,
-    pipeline: RectPipeline,
     canvas: web_sys::OffscreenCanvas,
-    scene: SpikeScene,
+    pub(crate) active: Active,
     /// Consumer side of the input ring (frame start).
     ring: RingView,
     /// Producer side, used by `render_input` in ST mode only.
@@ -51,7 +64,6 @@ pub(crate) struct Renderer {
     perf: web_sys::Performance,
     /// Worker `timeOrigin` − main `timeOrigin`: rebases worker times onto the main origin.
     origin_shift_ms: f64,
-    instances: Option<Instances>,
     frame_no: u64,
     t_prev: Option<f64>,
     drained: Vec<(RecordHeader, InputRecord, u64)>,
@@ -96,6 +108,15 @@ fn fault(query: &str) -> Option<dash_gpu::Fault> {
     }
 }
 
+/// `?fault=line-*` is honoured only in probe builds (T03-024).
+pub(crate) fn line_fault(query: &str) -> Option<LineFault> {
+    if cfg!(feature = "probe") {
+        flags::parse_line_fault(query)
+    } else {
+        None
+    }
+}
+
 /// Allocates the control block, initialises the GPU tiers of the plan and returns the
 /// [`RuntimeStatus`] code, or `RETRY_T2` (plan §3.6, §4.2).
 #[wasm_bindgen]
@@ -111,12 +132,22 @@ pub async fn render_start(
     };
     cb.write_header(caps_bits);
     CB.with(|c| c.set(Some(cb)));
+    let scene = flags::parse_scene(&query);
     #[cfg(not(target_feature = "atomics"))]
-    chunk::publish(InstanceChunk {
-        generation: 1,
-        producer: "st",
-        cols: dash_scene::spike::instances(SPIKE_SEED),
-    });
+    match scene {
+        // ST: the render worker is the only worker; it loads the layer itself (plan §4.1). An
+        // error is kept in the table (`load_failed`) and shown on the page.
+        SceneKind::Line(p) => {
+            let held = flags::effective_series(p, true);
+            let _ =
+                crate::line_load::run(&crate::line_table::TABLE, p, held, "st", line_fault(&query));
+        }
+        SceneKind::Rect => chunk::publish(InstanceChunk {
+            generation: 1,
+            producer: "st",
+            cols: dash_scene::spike::instances(SPIKE_SEED),
+        }),
+    }
     let Some(perf) =
         global_get("performance").and_then(|p| p.dyn_into::<web_sys::Performance>().ok())
     else {
@@ -133,17 +164,22 @@ pub async fn render_start(
         if gpu.tier == Tier::WebGl2 {
             cb.word(off::CAPS).fetch_or(caps::WEBGL2, Relaxed);
         }
-        let pipeline = RectPipeline::new(&gpu.device, gpu.config.format);
+        let active = match scene {
+            SceneKind::Line(_) => Active::Line(Box::new(LineActive::new(&gpu, line_fault(&query)))),
+            SceneKind::Rect => Active::Rect {
+                pipeline: RectPipeline::new(&gpu.device, gpu.config.format),
+                scene: SpikeScene::default(),
+                instances: None,
+            },
+        };
         let renderer = Renderer {
             cb,
-            pipeline,
             canvas,
-            scene: SpikeScene::default(),
+            active,
             ring: cb.input_ring(),
             producer: cb.input_ring(),
             origin_shift_ms: perf.time_origin() - main_time_origin,
             perf,
-            instances: None,
             frame_no: 0,
             t_prev: None,
             drained: Vec::with_capacity(MAX_RECORDS_PER_FRAME),
@@ -200,99 +236,69 @@ impl Renderer {
         false
     }
 
-    /// Steps 1–6 of plan §4.5.
+    /// Steps 1–6 of plan §4.5 (#23), with the line scene's steps of #24 plan §4.2.
     fn frame(&mut self, t: f64) -> bool {
         let cpu0 = self.perf.now();
         let next = self.frame_no + 1;
         if !self.input_paused() {
             self.drained.clear();
-            begin_frame(
-                &mut self.ring,
-                &mut self.scene,
-                next,
-                Some(&mut self.drained),
-            );
+            let log = Some(&mut self.drained);
+            match &mut self.active {
+                Active::Rect { scene, .. } => begin_frame(&mut self.ring, scene, next, log),
+                Active::Line(l) => begin_frame(&mut self.ring, &mut l.scene, next, log),
+            };
             for (_, rec, _) in &self.drained {
                 if let InputRecord::Resize {
-                    device_w, device_h, ..
+                    device_w,
+                    device_h,
+                    dpr,
+                    ..
                 } = *rec
                 {
                     self.gpu.resize(device_w, device_h);
                     self.canvas.set_width(self.gpu.config.width);
                     self.canvas.set_height(self.gpu.config.height);
+                    if let Active::Line(l) = &mut self.active {
+                        l.on_resize(&self.gpu, dpr);
+                    }
                 }
             }
             #[cfg(feature = "probe")]
             self.probe.log_input(&self.drained);
         }
 
-        let pin = chunk::pin();
-        if let Some(c) = &pin
-            && self.instances.as_ref().map(|i| i.generation) != Some(c.generation)
-        {
-            self.instances = Some(self.upload(c));
-        }
-
-        let u = self.scene.uniforms(t);
-        let frame = match self.gpu.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(f)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.gpu.reconfigure();
-                return true;
-            }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return true;
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
+        let t_main = t + self.origin_shift_ms;
+        let end = match &mut self.active {
+            Active::Rect {
+                pipeline,
+                scene,
+                instances,
+            } => rect_frame(&mut self.gpu, pipeline, scene, instances, t),
+            Active::Line(l) => l.frame(&mut self.gpu, t_main),
+        };
+        match end {
+            FrameEnd::Presented => {}
+            FrameEnd::Skipped => return true,
+            FrameEnd::Failed => {
                 self.cb.set_status(RuntimeStatus::Failed as u32);
                 return false;
             }
-        };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let [r, g, b, a] = dash_tokens::spike::CANVAS_BG;
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("spike"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            if let (Some(_), Some(i)) = (&pin, &self.instances) {
-                self.pipeline
-                    .draw(&mut pass, &self.gpu.queue, &u, &i.xy, &i.phase, i.n);
-            }
         }
-        self.gpu.queue.submit([encoder.finish()]);
-        self.gpu.queue.present(frame);
-        drop(pin);
         if self.gpu.is_lost() {
             self.cb.set_status(RuntimeStatus::Failed as u32);
             return false;
         }
 
         self.frame_no = next;
-        let t_main = t + self.origin_shift_ms;
         self.cb.word64(off::FRAME_NO).store(next, Release);
         self.cb
             .word64(off::LAST_PRESENT_MS)
             .store(t_main.to_bits(), Release);
-        self.cb
-            .byte(off::VISIBLE)
-            .store(u8::from(self.scene.visible()), Relaxed);
+        let visible = match &self.active {
+            Active::Rect { scene, .. } => scene.visible(),
+            Active::Line(_) => true,
+        };
+        self.cb.byte(off::VISIBLE).store(u8::from(visible), Relaxed);
         if let Some(prev) = self.t_prev {
             FrameStats::new(&self.cb).record((t - prev) as f32, (self.perf.now() - cpu0) as f32);
         }
@@ -301,25 +307,82 @@ impl Renderer {
         self.probe.frame_start(next, t_main);
         true
     }
+}
 
-    /// Creates the instance buffers of a newly published chunk and writes them once.
-    fn upload(&self, c: &InstanceChunk) -> Instances {
-        let device = &self.gpu.device;
-        let buffer = |label, bytes: &[u8]| {
-            let b = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
-                size: bytes.len() as wgpu::BufferAddress,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            self.gpu.queue.write_buffer(&b, 0, bytes);
-            b
-        };
-        Instances {
-            generation: c.generation,
-            xy: buffer("instances xy", bytemuck::cast_slice(&c.cols.xy)),
-            phase: buffer("instances phase", bytemuck::cast_slice(&c.cols.phase)),
-            n: u32::try_from(c.cols.xy.len().min(c.cols.phase.len())).unwrap_or(0),
+/// One frame of the rect spike (#23 plan §4.5 steps 3–5).
+fn rect_frame(
+    gpu: &mut Gpu,
+    pipeline: &RectPipeline,
+    scene: &SpikeScene,
+    instances: &mut Option<Instances>,
+    t: f64,
+) -> FrameEnd {
+    let pin = chunk::pin();
+    if let Some(c) = &pin
+        && instances.as_ref().map(|i| i.generation) != Some(c.generation)
+    {
+        *instances = Some(upload(gpu, c));
+    }
+    let u = scene.uniforms(t);
+    let frame = match gpu.surface.get_current_texture() {
+        wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+        wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+            gpu.reconfigure();
+            return FrameEnd::Skipped;
         }
+        wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+            return FrameEnd::Skipped;
+        }
+        wgpu::CurrentSurfaceTexture::Validation => return FrameEnd::Failed,
+    };
+    let view = frame
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = gpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let [r, g, b, a] = dash_tokens::spike::CANVAS_BG;
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("spike"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        if let (Some(_), Some(i)) = (&pin, instances.as_ref()) {
+            pipeline.draw(&mut pass, &gpu.queue, &u, &i.xy, &i.phase, i.n);
+        }
+    }
+    gpu.queue.submit([encoder.finish()]);
+    gpu.queue.present(frame);
+    drop(pin);
+    FrameEnd::Presented
+}
+
+/// Creates the instance buffers of a newly published chunk and writes them once.
+fn upload(gpu: &Gpu, c: &InstanceChunk) -> Instances {
+    let device = &gpu.device;
+    let buffer = |label, bytes: &[u8]| {
+        let b = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: bytes.len() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        gpu.queue.write_buffer(&b, 0, bytes);
+        b
+    };
+    Instances {
+        generation: c.generation,
+        xy: buffer("instances xy", bytemuck::cast_slice(&c.cols.xy)),
+        phase: buffer("instances phase", bytemuck::cast_slice(&c.cols.phase)),
+        n: u32::try_from(c.cols.xy.len().min(c.cols.phase.len())).unwrap_or(0),
     }
 }

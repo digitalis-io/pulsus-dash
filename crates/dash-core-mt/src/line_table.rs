@@ -2,6 +2,7 @@
 //! in id order; the render worker pins them without locks.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering::{Acquire, Release};
 use std::sync::atomic::{AtomicBool, AtomicU32};
 
 use arc_swap::ArcSwapOption;
@@ -62,28 +63,49 @@ impl LineTable {
         }
     }
 
-    pub fn publish_layer(&self, _m: LayerMeta) {}
-
-    pub fn layer(&self) -> Option<Arc<LayerMeta>> {
-        None
+    /// Publishes the layer (before its first chunk).
+    pub fn publish_layer(&self, m: LayerMeta) {
+        self.layer.store(Some(Arc::new(m)));
     }
 
-    pub fn publish_chunk(&self, _c: LineChunk) -> Result<(), PublishError> {
+    pub fn layer(&self) -> Option<Arc<LayerMeta>> {
+        self.layer.load_full()
+    }
+
+    /// Publishes the next chunk: stores it, then `published += 1` (Release). Single producer;
+    /// a chunk out of id order (or beyond the table) is refused and nothing changes.
+    pub fn publish_chunk(&self, c: LineChunk) -> Result<(), PublishError> {
+        let expected = self.published.load(Acquire);
+        let Some(slot) = self.chunks.get(c.id as usize).filter(|_| c.id == expected) else {
+            return Err(PublishError::OutOfOrder {
+                expected,
+                got: c.id,
+            });
+        };
+        slot.store(Some(Arc::new(c)));
+        self.published.store(expected + 1, Release);
         Ok(())
     }
 
+    /// Chunks published so far (Acquire: every chunk below it is visible).
     pub fn published(&self) -> u32 {
-        0
+        self.published.load(Acquire)
     }
 
-    pub fn pin(&self, _i: u32) -> Option<Arc<LineChunk>> {
-        None
+    /// Pins chunk `i` (refcount increment) if it is published. Never waits (T03-008).
+    pub fn pin(&self, i: u32) -> Option<Arc<LineChunk>> {
+        if i >= self.published() {
+            return None;
+        }
+        self.chunks.get(i as usize)?.load_full()
     }
 
-    pub fn set_load_failed(&self) {}
+    pub fn set_load_failed(&self) {
+        self.load_failed.store(true, Release);
+    }
 
     pub fn load_failed(&self) -> bool {
-        false
+        self.load_failed.load(Acquire)
     }
 }
 
