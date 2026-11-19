@@ -8,8 +8,13 @@ publish.workspace = true
 
 [dependencies]
 bytemuck.workspace = true
+dash-axes.workspace = true
 dash-protocol.workspace = true
+dash-scales.workspace = true
 dash-tokens.workspace = true
+
+[dev-dependencies]
+pulsus-synth.workspace = true
 
 [lints]
 workspace = true

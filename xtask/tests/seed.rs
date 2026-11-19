@@ -199,6 +199,30 @@ fn seed_noise_is_deterministic_and_oversized() {
 }
 
 #[test]
+fn golden_seed_breaks_the_pyramid_walk() {
+    let s = seed_for(Gate::Golden);
+    assert_eq!(s.expect, "gpu_records_match_cpu");
+    assert!(matches!(
+        s.writes.as_slice(),
+        [SeedWrite::Replace {
+            path: "crates/dash-marks/src/line_common.wgsl",
+            from: "const PYRAMID_B: u32 = 16u;",
+            to: "const PYRAMID_B: u32 = 8u;",
+        }]
+    ));
+    let t = tree(&[(
+        "crates/dash-marks/src/line_common.wgsl",
+        b"// x\nconst PYRAMID_B: u32 = 16u;\n",
+    )]);
+    seed(Gate::Golden, t.path()).unwrap();
+    assert_eq!(
+        read(t.path(), "crates/dash-marks/src/line_common.wgsl"),
+        "// x\nconst PYRAMID_B: u32 = 8u;\n"
+    );
+    unseed(Gate::Golden, t.path()).unwrap();
+}
+
+#[test]
 fn every_gate_has_a_committable_seed() {
     for g in Gate::ALL {
         let s = seed_for(g);

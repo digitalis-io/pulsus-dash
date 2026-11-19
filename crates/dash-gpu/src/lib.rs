@@ -10,7 +10,7 @@ pub mod web;
 
 pub use tier::{
     Fallback, Fault, ForcedMode, InitEnd, InitStage, Tier, after_failure, choose_format,
-    start_code, tier_plan,
+    required_limits, start_code, tier_plan,
 };
 #[cfg(target_arch = "wasm32")]
 pub use web::Gpu;

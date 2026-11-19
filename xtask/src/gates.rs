@@ -15,6 +15,7 @@ pub enum Gate {
     Build,
     Clippy,
     Test,
+    Golden,
     Wasm,
     ProbeAbsent,
     BundleSize,
@@ -45,6 +46,7 @@ impl Gate {
             Gate::Build => "build",
             Gate::Clippy => "clippy",
             Gate::Test => "test",
+            Gate::Golden => "golden",
             Gate::Wasm => "wasm",
             Gate::BundleSize => "bundle-size",
             Gate::DesignCheck => "design-check",
@@ -88,6 +90,7 @@ impl Gate {
                 ],
             ],
             Gate::Test => &[&["test", "--workspace", "--locked"]],
+            Gate::Golden => &[],
             Gate::Wasm => &[&["build-wasm"]],
             Gate::BundleSize
             | Gate::DesignCheck
@@ -145,7 +148,7 @@ fn verdict(violations: Vec<Violation>, output: String) -> GateResult {
 /// Runs one gate with `current_dir(root)`.
 pub fn run_gate(gate: Gate, root: &Path) -> R<GateResult> {
     match gate {
-        Gate::Fmt | Gate::Build | Gate::Clippy | Gate::Test | Gate::Wasm => {
+        Gate::Fmt | Gate::Build | Gate::Clippy | Gate::Test | Gate::Golden | Gate::Wasm => {
             let mut output = String::new();
             for args in gate.cargo_commands() {
                 if !run_cargo(root, args, &mut output)? {

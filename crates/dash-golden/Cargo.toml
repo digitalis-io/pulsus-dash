@@ -1,10 +1,21 @@
 [package]
 name = "dash-golden"
+description = "Golden-image harness (T05 §4.2): headless lavapipe device, line-chart renders, line-coverage masks and the decimation reference."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+dash-gpu.workspace = true
+dash-marks.workspace = true
+dash-scales.workspace = true
+dash-scene.workspace = true
+pollster.workspace = true
+pulsus-synth.workspace = true
+wgpu = { workspace = true, features = ["vulkan"] }
 
 [lints]
 workspace = true

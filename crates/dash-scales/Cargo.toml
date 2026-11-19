@@ -1,10 +1,17 @@
 [package]
 name = "dash-scales"
+description = "Scales (T02 L2): sample positions, device-pixel columns, the min/max pyramid and the decimation specification, line coverage and ticks."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+
+[dev-dependencies]
+pulsus-synth.workspace = true
 
 [lints]
 workspace = true

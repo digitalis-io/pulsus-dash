@@ -35,6 +35,7 @@ fn gate_ids_round_trip() {
             "build",
             "clippy",
             "test",
+            "golden",
             "wasm",
             "probe-absent",
             "bundle-size",
@@ -55,11 +56,18 @@ fn gates_registry_complete() {
     let ids: Vec<&str> = reg.iter().map(|r| r.0.as_str()).collect();
     let want: Vec<&str> = Gate::ALL.iter().map(|g| g.id()).collect();
     assert_eq!(ids, want);
+    assert!(reg.contains(&(
+        "golden".to_string(),
+        "golden:decimation-ref".to_string(),
+        "area:rendering".to_string(),
+        "golden".to_string()
+    )));
     let jobs = [
         ("fmt", "rust"),
         ("build", "rust"),
         ("clippy", "rust"),
         ("test", "rust"),
+        ("golden", "golden"),
         ("wasm", "wasm"),
         ("probe-absent", "wasm"),
         ("bundle-size", "wasm"),

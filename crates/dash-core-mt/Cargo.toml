@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
-probe = [] # test probe `self.__dashProbe` and `?fault=` injection (T03-024: never in release builds)
+probe = ["dash-wire/test-cases"] # test probe `self.__dashProbe` and `?fault=` injection (T03-024: never in release builds)
 
 [dependencies]
 arc-swap.workspace = true
@@ -25,6 +25,7 @@ dash-scales.workspace = true
 dash-scene.workspace = true
 dash-tokens.workspace = true
 dash-wire.workspace = true
+pulsus-synth.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys.workspace = true

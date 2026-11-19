@@ -36,6 +36,18 @@ fn tools_config_matches_lock() {
     let parts: Vec<&str> = n.split('-').collect();
     assert_eq!(parts.iter().map(|p| p.len()).collect::<Vec<_>>(), [4, 2, 2]);
     assert!(n.chars().all(|c| c.is_ascii_digit() || c == '-'));
+    let up: Vec<&str> = t.mesa_upstream.split('.').collect();
+    assert_eq!(up.len(), 3, "mesa_upstream {:?} is x.y.z", t.mesa_upstream);
+    assert!(
+        up.iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    );
+    assert!(
+        t.mesa.starts_with(&format!("{}-", t.mesa_upstream)),
+        "mesa {:?} starts with mesa_upstream {:?}",
+        t.mesa,
+        t.mesa_upstream
+    );
     let platforms: Vec<&str> = t.binaryen_sha256.keys().map(String::as_str).collect();
     assert_eq!(
         platforms,
@@ -66,6 +78,8 @@ fn build_commands_exact() {
         nightly: "nightly-2026-11-15".into(),
         wasm_bindgen: "0.2.130".into(),
         binaryen: "version_133".into(),
+        mesa: "25.2.8-0ubuntu0.24.04.5".into(),
+        mesa_upstream: "25.2.8".into(),
         binaryen_sha256: Default::default(),
     };
     let common_remove = [

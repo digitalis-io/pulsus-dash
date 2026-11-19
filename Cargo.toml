@@ -19,6 +19,12 @@ dash-scales = { path = "crates/dash-scales" }
 dash-scene = { path = "crates/dash-scene" }
 dash-tokens = { path = "crates/dash-tokens" }
 dash-wire = { path = "crates/dash-wire" }
+pulsus-synth = { path = "crates/pulsus-synth" }
+arrow-array = { version = "60.1.0", default-features = false }
+arrow-buffer = { version = "60.1.0", default-features = false }
+arrow-ipc = { version = "60.1.0", default-features = false }
+arrow-schema = { version = "60.1.0", default-features = false }
+pollster = "1.0.3"
 wgpu = { version = "30.0.2", default-features = false, features = ["std", "webgpu", "webgl", "wgsl"] }
 wasm-bindgen = "=0.2.130"
 wasm-bindgen-futures = "0.4.80"

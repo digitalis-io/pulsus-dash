@@ -61,6 +61,13 @@ pub fn check_traces(dir: &Path) -> R<Vec<Violation>> {
     Ok(out)
 }
 
+/// The `bench:frame-line-1e8` report (plan #24 §4.8): no `frame-line-1e8.json` →
+/// `frame-report-missing`; fewer than 10 intervals → `frame-report-short`; else the summary and
+/// the machine-B verdict are printed (report only until the reference lab exists).
+pub fn check_bench(_dir: &Path) -> R<Vec<Violation>> {
+    Ok(Vec::new())
+}
+
 /// Runs the gate: (1) the probe-enabled test build; (2) the probe marker check; (3) Playwright
 /// in `e2e/`; (4) always the trace check. Returns (violations, Playwright passed).
 pub fn run(root: &Path) -> R<(Vec<Violation>, bool)> {

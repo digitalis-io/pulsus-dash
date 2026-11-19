@@ -1,10 +1,27 @@
 [package]
 name = "dash-wire"
+description = "Wire formats shared by the BFF and the browser (T04): Arrow IPC schemas (`metric_matrix.grid/1`), aligned slabs and zero-copy decode."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
+
+[features]
+default = []
+test-cases = ["dep:flatbuffers"] # `hostile_cases()` for the wasm32 probe (enabled by dash-core-mt/probe)
+
+[dependencies]
+arrow-array.workspace = true
+arrow-buffer.workspace = true
+arrow-ipc.workspace = true
+arrow-schema.workspace = true
+flatbuffers = { version = "25.12.19", default-features = false, optional = true }
+
+[dev-dependencies]
+dash-wire = { path = ".", features = ["test-cases"] }
+arrow-ipc.workspace = true
+arrow-schema.workspace = true
 
 [lints]
 workspace = true

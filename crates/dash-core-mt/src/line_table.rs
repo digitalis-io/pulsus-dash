@@ -1,0 +1,152 @@
+//! The line chunk table (T03-007; plan #24 §3.7): data-0 publishes one immutable chunk per series,
+//! in id order; the render worker pins them without locks.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32};
+
+use arc_swap::ArcSwapOption;
+use dash_scales::lod::Prepared;
+use dash_wire::{GridMeta, GridSeries};
+
+/// Series slots of the table.
+pub const MAX_SERIES: usize = 1024;
+
+/// The layer being loaded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayerMeta {
+    pub grid: GridMeta,
+    pub requested: u32,
+    pub held: u32,
+    pub producer: &'static str,
+}
+
+/// One published series.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineChunk {
+    pub id: u32,
+    pub series: GridSeries,
+    pub prepared: Prepared,
+}
+
+/// Why a chunk was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PublishError {
+    OutOfOrder { expected: u32, got: u32 },
+}
+
+/// The table: a layer, `MAX_SERIES` chunk slots and the published count.
+#[derive(Debug)]
+pub struct LineTable {
+    layer: ArcSwapOption<LayerMeta>,
+    chunks: [ArcSwapOption<LineChunk>; MAX_SERIES],
+    published: AtomicU32,
+    load_failed: AtomicBool,
+}
+
+/// The runtime's table.
+pub static TABLE: LineTable = LineTable::new();
+
+impl Default for LineTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LineTable {
+    pub const fn new() -> Self {
+        LineTable {
+            layer: ArcSwapOption::const_empty(),
+            chunks: [const { ArcSwapOption::const_empty() }; MAX_SERIES],
+            published: AtomicU32::new(0),
+            load_failed: AtomicBool::new(false),
+        }
+    }
+
+    pub fn publish_layer(&self, _m: LayerMeta) {}
+
+    pub fn layer(&self) -> Option<Arc<LayerMeta>> {
+        None
+    }
+
+    pub fn publish_chunk(&self, _c: LineChunk) -> Result<(), PublishError> {
+        Ok(())
+    }
+
+    pub fn published(&self) -> u32 {
+        0
+    }
+
+    pub fn pin(&self, _i: u32) -> Option<Arc<LineChunk>> {
+        None
+    }
+
+    pub fn set_load_failed(&self) {}
+
+    pub fn load_failed(&self) -> bool {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dash_wire::GridMeta;
+
+    fn meta() -> LayerMeta {
+        LayerMeta {
+            grid: GridMeta {
+                start_ms: 0,
+                step_ms: 10,
+                len: 4,
+                result: "metric".into(),
+                source: "synth".into(),
+                unit: String::new(),
+            },
+            requested: 6,
+            held: 6,
+            producer: "test",
+        }
+    }
+
+    fn chunk(id: u32) -> LineChunk {
+        LineChunk {
+            id,
+            series: GridSeries {
+                series_id: id,
+                values: vec![1.0, 2.0, 3.0, 4.0].into(),
+                validity: None,
+            },
+            prepared: Prepared {
+                v_ref: 2.5,
+                min: 1.0,
+                max: 4.0,
+            },
+        }
+    }
+
+    #[test]
+    fn line_table_in_order() {
+        let t = LineTable::new();
+        assert!(t.layer().is_none());
+        assert!(t.pin(0).is_none());
+        t.publish_layer(meta());
+        assert_eq!(t.layer().unwrap().producer, "test");
+        for id in 0..3 {
+            t.publish_chunk(chunk(id)).unwrap();
+        }
+        assert_eq!(t.published(), 3);
+        assert_eq!(t.pin(1).unwrap().id, 1);
+        assert!(t.pin(3).is_none());
+        assert_eq!(
+            t.publish_chunk(chunk(5)),
+            Err(PublishError::OutOfOrder {
+                expected: 3,
+                got: 5
+            })
+        );
+        assert_eq!(t.published(), 3);
+        assert!(!t.load_failed());
+        t.set_load_failed();
+        assert!(t.load_failed());
+    }
+}

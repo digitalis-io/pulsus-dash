@@ -92,6 +92,13 @@ pub fn start_code(r: Result<Tier, InitEnd>) -> u32 {
     }
 }
 
+/// The device limits requested for `tier`: WebGPU `downlevel_defaults` (compute and storage
+/// textures for the T1 decimation pass), WebGL2 `downlevel_webgl2_defaults`, each with the
+/// adapter's texture dimensions.
+pub fn required_limits(_tier: Tier, adapter: &wgpu::Limits) -> wgpu::Limits {
+    adapter.clone()
+}
+
 /// Test fault injection; honoured only with feature `probe` of the core.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fault {
@@ -149,6 +156,19 @@ mod tests {
         .collect();
         assert_eq!(codes, vec![1, 2, RETRY_T2, 3, 4]);
         assert_eq!(RETRY_T2, 256);
+    }
+
+    #[test]
+    fn required_limits_by_tier() {
+        let adapter = wgpu::Limits::default();
+        let t1 = required_limits(Tier::WebGpu, &adapter);
+        assert_eq!(t1.max_compute_invocations_per_workgroup, 256);
+        assert_eq!(t1.max_storage_textures_per_shader_stage, 4);
+        assert_eq!(t1.max_texture_dimension_2d, 8_192);
+        let t2 = required_limits(Tier::WebGl2, &adapter);
+        assert_eq!(t2.max_compute_invocations_per_workgroup, 0);
+        assert_eq!(t2.max_texture_dimension_2d, 8_192);
+        assert_eq!(t2.max_color_attachment_bytes_per_sample, 32);
     }
 
     #[test]

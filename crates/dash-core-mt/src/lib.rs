@@ -11,9 +11,13 @@ pub mod control;
 pub mod flags;
 pub mod frame_input;
 pub mod frame_stats;
+pub mod line_load;
+pub mod line_table;
 
 #[cfg(target_arch = "wasm32")]
 mod data;
+#[cfg(target_arch = "wasm32")]
+mod line_render;
 #[cfg(all(target_arch = "wasm32", feature = "probe"))]
 mod probe;
 #[cfg(target_arch = "wasm32")]

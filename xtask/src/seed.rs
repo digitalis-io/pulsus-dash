@@ -85,6 +85,7 @@ pub fn seed_for(gate: Gate) -> Seed {
             }],
             "seeded violation",
         ),
+        Gate::Golden => (Vec::new(), ""),
         Gate::Wasm => (
             vec![SeedWrite::Append {
                 path: "crates/dash-core-mt/src/lib.rs",

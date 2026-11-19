@@ -131,3 +131,43 @@ export function countWorkers(page: Page): { names: string[] } {
   page.on("worker", (w) => seen.names.push(w.url()));
   return seen;
 }
+
+/** The line scene's probe status (`lineStatus()`, plan #24 §3.7). */
+export const lineStatus = (page: Page) => call(page, "lineStatus");
+
+/** Polls `lineStatus()` until `pred` holds. */
+export async function waitLine(page: Page, pred: (s: any) => boolean, timeoutMs = 30_000): Promise<any> {
+  const deadline = Date.now() + timeoutMs;
+  let last: any = null;
+  while (Date.now() < deadline) {
+    last = await lineStatus(page).catch(() => null);
+    if (last && pred(last)) return last;
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`lineStatus never matched: ${JSON.stringify(last)}`);
+}
+
+/** A line pixel: the line colour (0.20, 0.62, 0.86) at any coverage is greener than red by > 40. */
+const isLine = (img: Image, i: number) => img.data[i + 1] - img.data[i] > 40;
+
+/**
+ * Fraction of line pixels inside the plot (`lineStatus().plot`: device px, y up from the canvas
+ * bottom), optionally only in the right-most `rightPx` CSS px. The screenshot is in CSS px.
+ */
+export function plotLit(img: Image, s: any, rightPx?: number): number {
+  const k = 1 / s.dpr;
+  const x0 = Math.ceil(s.plot.x0 * k);
+  const x1 = Math.floor((s.plot.x0 + s.plot.w) * k);
+  const y1 = img.height - Math.ceil(s.plot.y0 * k);
+  const y0 = img.height - Math.floor((s.plot.y0 + s.plot.h) * k);
+  const from = rightPx === undefined ? x0 : Math.max(x0, x1 - rightPx);
+  let n = 0;
+  let lit = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = from; x < x1; x++) {
+      n++;
+      if (isLine(img, (y * img.width + x) * img.channels)) lit++;
+    }
+  }
+  return n ? lit / n : 0;
+}
