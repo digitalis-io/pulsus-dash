@@ -10,7 +10,9 @@
 
 use std::cell::Cell;
 
-use crate::tier::{Fallback, Fault, InitEnd, InitStage, Tier, after_failure, choose_format};
+use crate::tier::{
+    Fallback, Fault, InitEnd, InitStage, Tier, after_failure, choose_format, required_limits,
+};
 
 thread_local! {
     /// Set by the device-lost callback; read once per frame.
@@ -38,12 +40,14 @@ fn canvas_size(canvas: &web_sys::OffscreenCanvas) -> (u32, u32) {
     (canvas.width().max(1), canvas.height().max(1))
 }
 
-async fn request_device(adapter: &wgpu::Adapter) -> Option<(wgpu::Device, wgpu::Queue)> {
+async fn request_device(
+    adapter: &wgpu::Adapter,
+    tier: Tier,
+) -> Option<(wgpu::Device, wgpu::Queue)> {
     let desc = wgpu::DeviceDescriptor {
         label: Some("dash-render"),
         required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::downlevel_webgl2_defaults()
-            .using_resolution(adapter.limits()),
+        required_limits: required_limits(tier, &adapter.limits()),
         ..Default::default()
     };
     let (device, queue) = adapter.request_device(&desc).await.ok()?;
@@ -91,7 +95,9 @@ async fn webgpu(canvas: &web_sys::OffscreenCanvas, fault: Option<Fault>) -> Resu
         .request_adapter(&options)
         .await
         .map_err(|_| BeforeSurface)?;
-    let (device, queue) = request_device(&adapter).await.ok_or(BeforeSurface)?;
+    let (device, queue) = request_device(&adapter, Tier::WebGpu)
+        .await
+        .ok_or(BeforeSurface)?;
     if fault == Some(Fault::WebGpuBeforeSurface) {
         return Err(BeforeSurface);
     }
@@ -127,7 +133,9 @@ async fn webgl2(canvas: &web_sys::OffscreenCanvas) -> Result<Gpu, InitStage> {
         .request_adapter(&options)
         .await
         .map_err(|_| AfterSurface)?;
-    let (device, queue) = request_device(&adapter).await.ok_or(AfterSurface)?;
+    let (device, queue) = request_device(&adapter, Tier::WebGl2)
+        .await
+        .ok_or(AfterSurface)?;
     let config = configure(&adapter, &device, &surface, canvas_size(canvas))
         .await
         .ok_or(AfterSurface)?;

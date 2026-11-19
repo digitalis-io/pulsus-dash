@@ -95,8 +95,12 @@ pub fn start_code(r: Result<Tier, InitEnd>) -> u32 {
 /// The device limits requested for `tier`: WebGPU `downlevel_defaults` (compute and storage
 /// textures for the T1 decimation pass), WebGL2 `downlevel_webgl2_defaults`, each with the
 /// adapter's texture dimensions.
-pub fn required_limits(_tier: Tier, adapter: &wgpu::Limits) -> wgpu::Limits {
-    adapter.clone()
+pub fn required_limits(tier: Tier, adapter: &wgpu::Limits) -> wgpu::Limits {
+    let base = match tier {
+        Tier::WebGpu => wgpu::Limits::downlevel_defaults(),
+        Tier::WebGl2 => wgpu::Limits::downlevel_webgl2_defaults(),
+    };
+    base.using_resolution(adapter.clone())
 }
 
 /// Test fault injection; honoured only with feature `probe` of the core.
