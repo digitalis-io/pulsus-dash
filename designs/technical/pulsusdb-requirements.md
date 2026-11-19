@@ -19,8 +19,9 @@
 > TypeScript, with a Rust/WASM chart engine added later
 > ([ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md)). PulsusDB's
 > Rust parser crates are now used only in the browser, compiled to WASM for editor diagnostics (R17);
-> the BFF validates queries by sending them to PulsusDB, and its data-scope rewrite (R12 fallback)
-> uses a Go parser. No ask changes priority.
+> the BFF parses no query language in v1 and validates queries by sending them to PulsusDB. How the
+> later data-scope rewrite (R12 fallback, M-UI6) parses queries is an open question for T10 (draft).
+> No ask changes priority.
 >
 > **None of these block Pulsus Dash.** Every requirement has an interim fallback that the Dash
 > backend-for-frontend (BFF) implements first; PulsusDB support replaces the fallback when it lands,
@@ -224,8 +225,9 @@ matcher semantics on every endpoint (including `/tags`, `service_graph`, trace-b
 applied scope's hash echoed in a response header, and a credential that is **only** valid together with
 the scope header.
 
-**Dash fallback:** the BFF rewrites queries before sending them: PromQL with the Prometheus project's
-Go parser; LogQL needs a Go parser or this ask (an open question for Dash's data-scope design).
+**Dash fallback:** the BFF rewrites queries before sending them (M-UI6). It parses no query language
+in v1 ([ADR-0015](../adr/0015-go-bff.md)); the parser for the rewrite (a Go PromQL parser, a LogQL
+parser, or this ask) is an open question for Dash's data-scope design.
 
 ### R13 (P2) — Batch query
 
@@ -300,7 +302,7 @@ the crates, validation goes through the BFF to PulsusDB, as it does before the W
 | R7 | P1 | Error origination | Structural TraceQL / heuristic |
 | R8 | P1 | Version transitions | Sub-window label-values |
 | R9 | P1 | Pattern diff vs baseline | Two calls diffed |
-| R12 | P1 | Server-enforced data scope | BFF query rewrite (Go parsers) |
+| R12 | P1 | Server-enforced data scope | BFF query rewrite (M-UI6) |
 | R16 | P1 | Resource attributes on metric series | Fail closed; collector-side copy |
 | R17 | P3 | Permissive syntax crates | One client interface; validation through the BFF |
 | R13 | P2 | Batch query | HTTP/2 multiplexing |

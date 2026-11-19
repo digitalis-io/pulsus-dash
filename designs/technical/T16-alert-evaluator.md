@@ -900,8 +900,8 @@ credentials.
 ## 10. Testing
 
 - `prop:alert-core-prometheus-parity`: property tests for `for`/`keep_firing_for` on generated
-  series against Prometheus; the Go and TS implementations produce identical transitions on the
-  shared corpus.
+  series against golden transitions of the reference rule semantics (captured once); the Go and TS
+  implementations produce identical transitions on the shared corpus.
 - `prop:flapping-damping`: the 8-minute crossing series of ALR-008.
 - **Routing parity** (`itest:routing-parity-alertmanager`): imported Alertmanager configs and label
   sets compared against Alertmanager's own routing (golden outputs captured once), including
@@ -933,7 +933,7 @@ credentials.
 
 | Alternative | Why not |
 |---|---|
-| Embed Prometheus/Alertmanager (Go) | Can't evaluate LogQL/TraceQL or entity templates, no incident grouping; we reuse Go's template parser instead (§4.11) |
+| Embed an existing open-source rule evaluator and alert router | Can't evaluate LogQL/TraceQL or entity templates, no incident grouping; we reuse Go's template parser instead (§4.11) |
 | Gossip clustering (Alertmanager-style) | Postgres is already required; leases + fences give stronger no-duplicate guarantees with less code |
 | Raft (e.g. `openraft`) for state | Extra consensus layer next to an HA Postgres; not needed at this write rate |
 | Backtest fully server-side | Every threshold drag would be a round trip; the TS state machine in the browser is instant |

@@ -497,7 +497,7 @@ text{font-family:Inter, system-ui, sans-serif;font-variant-numeric:tabular-nums;
 <rect x="276.0" y="650" width="3" height="16" class="fa"/>
 <text x="288.0" y="662" class="s12 m mu">12:24:39.812</text><text x="396.0" y="662" class="s12 m fa">error</text><text x="448.0" y="662" class="s12 m ac">psp-api</text><text x="528.0" y="662" class="s12 m">timeout calling payments after 2.000 s (attempt 3/3) trace_id=4bf92f3577b34da6</text>
 <rect x="276.0" y="674" width="3" height="16" class="wa"/>
-<text x="288.0" y="686" class="s12 m mu">12:24:39.640</text><text x="396.0" y="686" class="s12 m wa">warn</text><text x="448.0" y="686" class="s12 m ac">psp-api</text><text x="528.0" y="686" class="s12 m">retrying POST https://payments.internal/v2/charge: context deadline exceeded</text>
+<text x="288.0" y="686" class="s12 m mu">12:24:39.640</text><text x="396.0" y="686" class="s12 m wa">warn</text><text x="448.0" y="686" class="s12 m ac">psp-api</text><text x="528.0" y="686" class="s12 m">retrying POST https://payments.example.com/v2/charge: context deadline exceeded</text>
 <rect x="276.0" y="698" width="3" height="16" class="fa"/>
 <text x="288.0" y="710" class="s12 m mu">12:24:39.511</text><text x="396.0" y="710" class="s12 m fa">error</text><text x="448.0" y="710" class="s12 m ac">checkout</text><text x="528.0" y="710" class="s12 m">upstream psp-api returned 504 for order 81-5521; responding 502</text>
 <rect x="276.0" y="722" width="3" height="16" class="mu"/>

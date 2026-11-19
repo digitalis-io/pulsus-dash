@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-19 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -289,7 +289,9 @@ series overlaid with a legend per entity; and with 12 selected, the action offer
 
 ### 4.3 Boards — curated scenes
 
-Boards are the classic-dashboard equivalent, rendered as a single GPU scene. Mockup:
+Boards are the classic-dashboard equivalent: application pages whose viewports are chart frames,
+each with its own canvas, all drawn by one shared chart engine with one GPU device per page
+(SRF-014; the interim Canvas 2D renderer until the engine lands). Mockup:
 [14-board](../mockups/14-board.svg).
 
 **Board edit-mode regions**
@@ -442,17 +444,32 @@ For when you *do* want to write PromQL or browse metric names. Mockup:
 **MUST** · M-UI1 · Engineer, SRE
 
 The editor MUST provide syntax highlighting, autocomplete of metric names, labels and values from
-PulsusDB metadata APIs, hover docs for functions, and inline errors with byte offsets produced by
-PulsusDB's parser for the language: through the BFF at first, and in the browser once PulsusDB's
-parser crates are compiled to WASM ([ADR-0014](../adr/0014-typescript-react-web-client.md) §2,
-[T09](../technical/T09-query-editors.md)).
+PulsusDB metadata APIs, hover docs for functions, and inline errors from PulsusDB's parser when the
+query is run, through the BFF ([ADR-0015](../adr/0015-go-bff.md), [T09](../technical/T09-query-editors.md)).
+An error MUST be underlined at the position PulsusDB returns, and across the whole query when
+PulsusDB returns no position. Positioned diagnostics before the query is run are SRF-078.
+
+*Acceptance:* Given the query `rate(http_server_duration_bucket{service="checkout"[5m])`, when it is
+run, then PulsusDB's parse error is shown inline: underlined at the position PulsusDB returns, or
+across the whole query if it returns none, and the previous result is kept.
+
+> **Note:** Revised 2026-11-19 (#56) through change control to match ADR-0014 and ADR-0015: the
+> previous M-UI1 criterion (the missing `}` underlined at its byte offset *before* run) moved to
+> SRF-078, which follows the browser parser. **This M-UI1 subset and SRF-078's milestone await
+> product-owner confirmation** ([12](12-roadmap.md) §5, Q14).
+
+#### SRF-078 — Positioned query diagnostics before run
+**MUST** · M-UI2 · Engineer, SRE
+
+The PromQL editor MUST underline parse errors at their byte offset while the query is typed, before
+it is run, using PulsusDB's parser crates compiled to WASM in the browser
+([ADR-0014](../adr/0014-typescript-react-web-client.md) §2, [T09](../technical/T09-query-editors.md)).
 
 *Acceptance:* Given the query `rate(http_server_duration_bucket{service="checkout"[5m])`, when it is
 typed, then the missing `}` is underlined at its byte offset before the query is run.
 
-> **Note:** PulsusDB's errors are text, with positions only in some PromQL messages, so the browser
-> parser is the source of positions. Until it lands, an error without a position is shown on the
-> whole query; the M-UI1 subset is recorded in [12](12-roadmap.md) §2.1 (Table 2.1c).
+> **Note:** Split from SRF-027 on 2026-11-19 (#56). The milestone is the one that ships the browser
+> parser; M-UI2 is proposed and awaits product-owner confirmation ([12](12-roadmap.md) §5, Q14).
 
 #### SRF-028 — Query explain
 **MUST** · M-UI1 · Engineer, SRE
@@ -1093,6 +1110,7 @@ release and in the team channel.
 | SRF-075 | Release compare contents | MUST | M-UI5 |
 | SRF-076 | Release actions | MUST | M-UI5 |
 | SRF-077 | Release verdict | MUST | M-UI5 |
+| SRF-078 | Positioned query diagnostics before run | MUST | M-UI2 |
 
 ## 6. Change log
 
@@ -1101,6 +1119,7 @@ release and in the team channel.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. ASCII wireframes replaced by region tables and SVG mockups |
 | 1.0-rc2 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): SRF-033 moves M-UI2 → M-UI1 (delivered by #49); SRF-044 note names the native service-graph route |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): definitions (Surface, Time range picker, Time Ribbon) and a layout paragraph under Table 4-1; SRF-001 (application layout), SRF-014 (one canvas per viewport, one shared engine) and SRF-019 (200 viewports on one page) revised in place; Atlas region "Top bar" becomes "Page header"; SRF-027 errors come from the PulsusDB parser through the BFF until the browser parser lands; R15 |
+| 1.2-rc | 2026-11-19 | Code review of #56: §4.3 Boards introduction describes per-viewport canvases and one shared engine (was "a single GPU scene"); SRF-027 revised to errors from PulsusDB on run, positioned where PulsusDB returns a position; the pre-run byte-offset criterion split out as new SRF-078 (M-UI2, proposed); both await owner confirmation (12 Q14) |
 
 ## Resolved during formalisation
 
