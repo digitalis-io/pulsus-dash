@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-20 |
+| **Version** | 1.4-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -152,6 +152,12 @@ MUST map to at least one gate in §7.1, each with a named owning team, and every
 
 #### T05-002 — Every gate is proven to fail
 **MUST** — A new gate MUST ship with a deliberately regressing change that demonstrates it fails.
+For unit, component and end-to-end gates the proof MAY be a local run of the regressing change,
+with its output (the gate, the regression and the failing assertion) recorded in the PR. Gates that
+exist only in CI (workflow steps and build-artefact checks) MUST be proven by a CI run of a
+regressing branch, linked in the PR. A report-only benchmark is proven by its sample assertion
+failing, plus a non-red run with a deliberate slowdown that shows the reported time rising
+([D13](../README.md#2-decisions-taken-2026-11-18-2026-11-19), owner 2026-11-20).
 
 ### 4.2 Gallery = corpus, and golden-image tests
 
@@ -720,7 +726,7 @@ quarantined spec MUST NOT be the only verification of any Satisfies row.
 ## 10. Testing
 
 Meta-testing:
-- each new gate ships with a deliberately regressing PR to prove it fails (T05-002);
+- each new gate ships with a deliberately regressing change to prove it fails: a local run recorded in the PR, or a CI run for CI-only gates (T05-002, D13);
 - the replay determinism suite runs every `.pdrec` twice natively and asserts identical checkpoints
   (T05-008);
 - `pulsus-synth` has its own golden statistics (T05-010);
@@ -797,3 +803,4 @@ Meta-testing:
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) and the application layout (D9): new §0 maps Rust-only tooling to TS, Go and the later engine; §7.1 withdraws `ci:shim-lint`, adds `ci:lint-ts`, `ci:typecheck`, `ci:lockfile`, `ci:npm-audit`, `ci:api-gen`, `ci:go-lint`, `ci:go-test`, `ci:govulncheck`, `ci:go-mod`, `ci:migrations`, `e2e:csp-violations`, `e2e:client-routing`, `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface` and `e2e:time-range-header`; redefines `ci:bundle-size` (ADR-0014 §8 budgets), `ci:dep-audit` (npm allowlist), `ci:token-lint`, `e2e:focus-regions`, `e2e:chrome-layout` (Space scenes only), `e2e:lazy-load`, `e2e:no-dom-vis`, `replay:time-ribbon` and `replay:events-markers`; §4.3 log stream page measures the active implementation (PRF-020) |
 | 1.2-rc | 2026-11-20 | #57: §7.1 adds `unit:time-expr` and `unit:context-search` (time expressions and the typed URL search module of [ADR-0017](../adr/0017-react-router.md)); other gates unchanged |
 | 1.3-rc | 2026-11-20 | #58: §0 L2 row names `golden:interim-gallery` (Chromium `toHaveScreenshot`, CI-only baselines; ꟻLIP from #68); §7.1 adds `golden:interim-gallery`, `e2e:chart-brush`, `e2e:chart-hover`, `unit:series-cap`, `unit:columns`, `unit:bucket-scale` and `bench:frame-interim-line` (report only until #68), and extends `unit:colour-hash` with the 08 Table 8-1a level rule |
+| 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
