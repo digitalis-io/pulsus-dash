@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -147,5 +149,31 @@ func TestTxRefusesZeroOrg(t *testing.T) {
 	}
 	if called {
 		t.Error("fn was called for the zero organisation")
+	}
+}
+
+func TestOpenInvalidConnString(t *testing.T) {
+	for _, v := range []string{"postgres://u:MARKERz9q@h:notaport/db", "MARKERz9q nonsense"} {
+		_, err := Open(context.Background(), v, 1)
+		if err != ErrInvalidConnString || strings.Contains(err.Error(), "MARKER") {
+			t.Errorf("Open(%q) = %v, want ErrInvalidConnString", v, err)
+		}
+		_, err = Migrate(context.Background(), v, MigrateOptions{})
+		if err != ErrInvalidConnString {
+			t.Errorf("Migrate(%q) = %v, want ErrInvalidConnString", v, err)
+		}
+	}
+}
+
+func TestScrub(t *testing.T) {
+	err := scrub(fmt.Errorf("connect failed for pw MARKERz9q: %w", context.DeadlineExceeded), "MARKERz9q")
+	if strings.Contains(err.Error(), "MARKERz9q") {
+		t.Errorf("scrubbed error %q still contains the password", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Error("scrub broke errors.Is")
+	}
+	if scrub(nil, "x") != nil {
+		t.Error("scrub(nil) != nil")
 	}
 }

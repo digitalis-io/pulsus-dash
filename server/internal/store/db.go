@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,11 +22,18 @@ import (
 // ErrNotInitialised is returned by InstallState when the first-run seed has not happened.
 var ErrNotInitialised = errors.New("database is not initialised; run pulsus-dash migrate")
 
+// ErrInvalidConnString is returned when a Postgres URL does not parse. It never carries the value
+// or the parser's message, either of which could contain the password.
+var ErrInvalidConnString = errors.New("invalid connection string")
+
 // sqlstateUndefinedTable is raised when a relation does not exist yet.
 const sqlstateUndefinedTable = "42P01"
 
-// Db is a pool of connections as one Postgres role.
-type Db struct{ pool *pgxpool.Pool }
+// Db is a pool of connections as one Postgres role. password is kept only to scrub it from errors.
+type Db struct {
+	pool     *pgxpool.Pool
+	password string
+}
 
 // InstallState is the record of the first-run seed (table install_state, non-tenant).
 type InstallState struct {
@@ -38,22 +46,40 @@ type InstallState struct {
 func Open(ctx context.Context, url string, maxConns int32) (*Db, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
-		return nil, fmt.Errorf("store: postgres URL: %w", err)
+		return nil, ErrInvalidConnString
 	}
 	cfg.MaxConns = maxConns
 	cfg.ConnConfig.RuntimeParams["application_name"] = "pulsus-dash"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("store: open pool: %w", err)
+		return nil, scrub(fmt.Errorf("store: open pool: %w", err), cfg.ConnConfig.Password)
 	}
-	return &Db{pool: pool}, nil
+	return &Db{pool: pool, password: cfg.ConnConfig.Password}, nil
 }
 
 // Close closes every connection of the pool.
 func (d *Db) Close() { d.pool.Close() }
 
 // Ping checks that Postgres answers.
-func (d *Db) Ping(ctx context.Context) error { return d.pool.Ping(ctx) }
+func (d *Db) Ping(ctx context.Context) error { return scrub(d.pool.Ping(ctx), d.password) }
+
+// scrubbedError replaces the password in an error's text; Unwrap keeps errors.Is working.
+type scrubbedError struct {
+	msg string
+	err error
+}
+
+func (e *scrubbedError) Error() string { return e.msg }
+func (e *scrubbedError) Unwrap() error { return e.err }
+
+// scrub returns err with every occurrence of password replaced by "xxxxx". The driver omits the
+// password from its messages; this guarantees it.
+func scrub(err error, password string) error {
+	if err == nil || password == "" || !strings.Contains(err.Error(), password) {
+		return err
+	}
+	return &scrubbedError{msg: strings.ReplaceAll(err.Error(), password, "xxxxx"), err: err}
+}
 
 func isUndefinedTable(err error) bool {
 	var pg *pgconn.PgError
@@ -68,7 +94,7 @@ func (d *Db) SchemaVersion(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("store: schema version: %w", err)
+		return 0, scrub(fmt.Errorf("store: schema version: %w", err), d.password)
 	}
 	return v, nil
 }
@@ -80,7 +106,7 @@ func (d *Db) RoleBypassesRLS(ctx context.Context) (string, bool, error) {
 	var bypass bool
 	err := d.pool.QueryRow(ctx, "SELECT rolname::text, rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user").Scan(&role, &bypass)
 	if err != nil {
-		return "", false, fmt.Errorf("store: role attributes: %w", err)
+		return "", false, scrub(fmt.Errorf("store: role attributes: %w", err), d.password)
 	}
 	return role, bypass, nil
 }
@@ -92,7 +118,7 @@ func (d *Db) InstallState(ctx context.Context) (InstallState, error) {
 		return InstallState{}, ErrNotInitialised
 	}
 	if err != nil {
-		return InstallState{}, fmt.Errorf("store: install state: %w", err)
+		return InstallState{}, scrub(fmt.Errorf("store: install state: %w", err), d.password)
 	}
 	return InstallState{BootstrapOrg: core.OrgID(row.BootstrapOrgID.Bytes), SeededAt: row.SeededAt.Time}, nil
 }

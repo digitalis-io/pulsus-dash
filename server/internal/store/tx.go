@@ -30,10 +30,14 @@ func pgUUID(u [16]byte) pgtype.UUID { return pgtype.UUID{Bytes: u, Valid: true} 
 // sets pulsus.org_id transaction-locally (so a pooled connection carries no organisation after
 // commit or rollback), runs fn, and commits; an error or panic in fn rolls back, and a panic is
 // re-raised. Cancelling ctx cancels the statement in flight.
-func (d *Db) Tx(ctx context.Context, org core.OrgID, fn func(ctx context.Context, tx *OrgTx) error) (err error) {
+func (d *Db) Tx(ctx context.Context, org core.OrgID, fn func(ctx context.Context, tx *OrgTx) error) error {
 	if org.IsZero() {
 		return ErrNoOrg
 	}
+	return scrub(d.tx(ctx, org, fn), d.password)
+}
+
+func (d *Db) tx(ctx context.Context, org core.OrgID, fn func(ctx context.Context, tx *OrgTx) error) error {
 	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return fmt.Errorf("store: begin: %w", err)

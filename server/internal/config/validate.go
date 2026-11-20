@@ -69,7 +69,8 @@ func validListen(s string) bool {
 	return err == nil && n >= 0 && n <= 65535
 }
 
-// ValidateRoles checks the server roles (T06-003): this release runs only "all".
+// ValidateRoles checks the server roles (T06-003): this release runs exactly [all]. A named but
+// unavailable role, or an unknown one, gets its own message; an empty or repeated list is refused.
 func ValidateRoles(roles []string) error {
 	if len(roles) == 0 {
 		return errors.New(`no role given: only "all" is supported`)
@@ -82,6 +83,9 @@ func ValidateRoles(roles []string) error {
 		default:
 			return fmt.Errorf("unknown role %q (want all, api, worker, evaluator, notifier or ai)", r)
 		}
+	}
+	if len(roles) != 1 {
+		return fmt.Errorf(`roles must be exactly "all" in this release, not %q`, strings.Join(roles, ","))
 	}
 	return nil
 }

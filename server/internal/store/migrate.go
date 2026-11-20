@@ -61,7 +61,17 @@ type MigrateResult struct {
 // so concurrent runs serialise and a run never acts on a schema version read before the lock.
 // A database more than one version ahead is refused; one version ahead (N+1) is left alone.
 // Seed settings are checked before anything is written, in dry runs too.
+// A URL that does not parse returns ErrInvalidConnString; no returned error contains the password.
 func Migrate(ctx context.Context, ownerURL string, o MigrateOptions) (MigrateResult, error) {
+	cfg, err := pgx.ParseConfig(ownerURL)
+	if err != nil {
+		return MigrateResult{}, ErrInvalidConnString
+	}
+	res, err := migrate(ctx, cfg, ownerURL, o)
+	return res, scrub(err, cfg.Password)
+}
+
+func migrate(ctx context.Context, cfg *pgx.ConnConfig, ownerURL string, o MigrateOptions) (MigrateResult, error) {
 	fsys := o.FS
 	if fsys == nil {
 		fsys = migrations.FS
@@ -76,10 +86,6 @@ func Migrate(ctx context.Context, ownerURL string, o MigrateOptions) (MigrateRes
 	}
 	latest := latestOf(files)
 
-	cfg, err := pgx.ParseConfig(ownerURL)
-	if err != nil {
-		return MigrateResult{}, fmt.Errorf("store: postgres URL: %w", err)
-	}
 	cfg.RuntimeParams["application_name"] = "pulsus-dash"
 	db := stdlib.OpenDB(*cfg)
 	defer func() { _ = db.Close() }()

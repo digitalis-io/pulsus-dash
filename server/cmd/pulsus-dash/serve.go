@@ -64,8 +64,12 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 
 	// 4-7. Postgres: reachable, subject to RLS, schema in the window, seeded.
 	db, err := store.Open(ctx, appURL, cfg.Postgres.PoolMax)
+	if errors.Is(err, store.ErrInvalidConnString) {
+		// Value-free: neither the URL nor the parser's message is printed.
+		return fail(e, exitUsage, "config: postgres.app_url_ref: invalid connection string")
+	}
 	if err != nil {
-		return fail(e, exitUsage, "config: postgres.app_url_ref: "+err.Error())
+		return fail(e, exitRuntime, err.Error())
 	}
 	defer db.Close()
 	if code, msg := checkDatabase(ctx, db); code != exitOK {

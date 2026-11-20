@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -103,6 +104,15 @@ func TestServeRoles(t *testing.T) {
 	if r.code != 2 || r.stderr != want {
 		t.Errorf("--role bogus: exit %d stderr %q, want 2 %q", r.code, r.stderr, want)
 	}
+	for _, tc := range []struct{ roleEnv, want string }{
+		{"PULSUS_DASH_SERVER_ROLES=all,all", `pulsus-dash: roles must be exactly "all" in this release, not "all,all"` + "\n"},
+		{"PULSUS_DASH_SERVER_ROLES=", `pulsus-dash: no role given: only "all" is supported` + "\n"},
+	} {
+		r := runCLI(t, context.Background(), append(env, tc.roleEnv), "serve", "--config", cfg)
+		if r.code != 2 || r.stderr != tc.want {
+			t.Errorf("%s: exit %d stderr %q, want 2 %q", tc.roleEnv, r.code, r.stderr, tc.want)
+		}
+	}
 	r = runCLI(t, context.Background(), append(env, "PULSUS_DASH_SERVER_ROLES=all,api"), "serve", "--config", cfg)
 	want = `pulsus-dash: role "api" is not available in this release: only "all" is supported` + "\n"
 	if r.code != 2 || r.stderr != want {
@@ -147,3 +157,48 @@ func TestUsage(t *testing.T) {
 		}
 	}
 }
+
+// TestConnStringNeverPrinted: a Postgres URL that does not parse, or that points nowhere, is never
+// echoed (review r1 #1). Each value carries a marker in the position of the password.
+func TestConnStringNeverPrinted(t *testing.T) {
+	const marker = "MARKERz9q"
+	malformed := []string{
+		"postgres://u:" + marker + "@h:notaport/db",
+		"postgres://u:" + marker + "@[::1/db",
+		"host=h password=" + marker + " port=notaport",
+		marker + " is not a connection string",
+	}
+	unreachable := []string{
+		"postgres://u:" + marker + "@127.0.0.1:1/db?connect_timeout=2",
+		"host=127.0.0.1 port=1 user=u password=" + marker + " dbname=d connect_timeout=2",
+	}
+	type cmd struct{ name, key string }
+	for _, c := range []cmd{{"serve", "app_url_ref"}, {"migrate", "owner_url_ref"}} {
+		for _, inline := range []bool{false, true} {
+			check := func(value string, wantCode int, wantSuffix string) {
+				t.Helper()
+				yml := "postgres:\n  " + c.key + ": env:PG_URL\n"
+				env := []string{"PG_URL=" + value}
+				if inline {
+					yml = "allow_inline_secrets: true\npostgres:\n  " + c.key + ": " + strconv.Quote(value) + "\n"
+					env = nil
+				}
+				r := runCLI(t, context.Background(), env, c.name, "--config", writeConfig(t, yml+seedYAMLUnit))
+				if strings.Contains(r.stderr+r.stdout, marker) {
+					t.Errorf("%s inline=%v %q: output contains the value: %q", c.name, inline, value, r.stderr)
+				}
+				if r.code != wantCode || !strings.HasSuffix(r.stderr, wantSuffix) {
+					t.Errorf("%s inline=%v %q: exit %d stderr %q, want %d ending %q", c.name, inline, value, r.code, r.stderr, wantCode, wantSuffix)
+				}
+			}
+			for _, v := range malformed {
+				check(v, 2, "pulsus-dash: config: postgres."+c.key+": invalid connection string\n")
+			}
+			for _, v := range unreachable {
+				check(v, 1, "\n")
+			}
+		}
+	}
+}
+
+const seedYAMLUnit = "datasource:\n  url: http://localhost:9\n"

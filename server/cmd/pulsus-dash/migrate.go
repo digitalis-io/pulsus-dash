@@ -39,6 +39,10 @@ func cmdMigrate(ctx context.Context, e runEnv, args []string) int {
 	}
 
 	res, err := store.Migrate(ctx, ownerURL, store.MigrateOptions{DryRun: *dryRun, Seed: cfg.SeedSettings, Out: e.Stdout})
+	if errors.Is(err, store.ErrInvalidConnString) {
+		// Value-free: neither the URL nor the parser's message is printed.
+		return fail(e, exitUsage, "config: postgres.owner_url_ref: invalid connection string")
+	}
 	if errors.Is(err, store.ErrSeedConfig) {
 		return fail(e, exitUsage, err.Error())
 	}
