@@ -1,0 +1,32 @@
+openapi: 3.1.0
+info: { title: Pulsus Dash API, version: 0.1.0, license: { name: AGPL-3.0-only, identifier: AGPL-3.0-only } }
+paths:
+  /healthz:
+    get: { operationId: getHealthz, tags: [ops], responses: { '200': { description: Process alive, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } } } }
+  /startupz:
+    get: { operationId: getStartupz, tags: [ops], responses: { '200': { description: Start-up complete, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } } } }
+  /readyz:
+    get:
+      operationId: getReadyz
+      tags: [ops]
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: '#/components/schemas/Ready' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: '#/components/schemas/Ready' } } } }
+components:
+  schemas:
+    ErrorCode: { type: string, enum: [scope_denied, budget_exhausted, too_broad, unavailable, invalid, forbidden, virtual_unsupported, not_found, internal] }
+    FieldError: { type: object, additionalProperties: false, required: [pointer, message_key], properties: { pointer: { type: string }, message_key: { type: string } } }
+    ErrorBody:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message: { type: string }
+        hint: { type: object, additionalProperties: true }
+        query_id: { type: string }
+        fields: { type: array, items: { $ref: '#/components/schemas/FieldError' } }
+    ErrorEnvelope: { type: object, additionalProperties: false, required: [error], properties: { error: { $ref: '#/components/schemas/ErrorBody' } } }
+    Health: { type: object, required: [status], properties: { status: { type: string, enum: [ok] } } }
+    Ready: { type: object, required: [status, checks], properties: { status: { type: string, enum: [ready, not_ready] }, checks: { $ref: '#/components/schemas/ReadyChecks' } } }
+    ReadyChecks: { type: object, required: [postgres, schema], properties: { postgres: { type: string, enum: [ok, unreachable] }, schema: { type: string, enum: [ok, behind, ahead, unknown, error, timeout] } } }

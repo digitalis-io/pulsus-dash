@@ -1,0 +1,5 @@
+package: api
+output: internal/gateway/api/api.gen.go
+generate: { chi-server: true, strict-server: true, models: true }
+# Keep component schemas no path references yet (ErrorEnvelope is used by the gateway's error writer).
+output-options: { skip-prune: true }
