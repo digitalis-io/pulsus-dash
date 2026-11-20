@@ -1,0 +1,34 @@
+# Pulsus Dash server configuration (docs/server/README.md). Every key, with its default.
+# Precedence: defaults, then this file (--config), then PULSUS_DASH_<KEY> environment variables
+# (for example PULSUS_DASH_SERVER_LISTEN). Unknown keys and unknown PULSUS_DASH_* variables are
+# errors. Check a file with: pulsus-dash config check --config FILE [--for serve|migrate]
+
+server:
+  roles: [all]                  # only "all" in this release (T06-003)
+  listen: 0.0.0.0:8080          # host:port
+  shutdown_grace: 15s           # 1s to 30s
+
+postgres:
+  # Secret references (T19-010): env:NAME or file:/absolute/path. No default.
+  app_url_ref: env:PG_APP_URL       # serve: connects as pulsus_app
+  owner_url_ref: env:PG_OWNER_URL   # migrate: connects as pulsus_owner
+  pool_max: 32                      # 1 to 512
+
+# Seed of the first organisation's PulsusDB binding. Read only by migrate on an empty database;
+# afterwards the binding stored in Postgres is authoritative and these values are ignored.
+datasource:
+  url: http://localhost:3100    # http or https, no credentials, no query or fragment
+  slug: default
+  database: ""                  # optional
+  scope_org_id: ""              # optional
+  credentials_ref: ""           # optional: env:NAME or file:/absolute/path, stored as the reference
+
+bootstrap:
+  org_slug: default
+  org_name: Default organisation
+
+log:
+  level: info                   # debug, info, warn, error
+  format: json                  # json, text
+
+allow_inline_secrets: false     # true accepts literal secrets in *_ref keys (development only)

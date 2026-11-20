@@ -54,6 +54,7 @@ export default tseslint.config(
       'dist-http',
       'node_modules',
       'scripts/__fixtures__',
+      'src/api/gen',
       'src/styles/tokens.ts',
       'test-results',
       'playwright-report',

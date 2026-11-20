@@ -1,0 +1,14 @@
+# server/.golangci.yml (golangci-lint 2.15.0)
+version: "2"
+run: { build-tags: [itest] }
+linters:
+  default: none
+  enable: [depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused]
+  settings: { depguard: { rules: {
+    store-only: { files: ["$all", "!**/internal/store/**"], deny: [
+      { pkg: github.com/jackc/pgx, desc: "pgx is used only in internal/store (T11-023, ADR-0015)" },
+      { pkg: github.com/pressly/goose, desc: "migrations run only in internal/store (T11-015)" },
+      { pkg: github.com/digitalis-io/pulsus-dash/server/internal/store/dbgen, desc: "sqlc output is used only in internal/store (T11-023)" } ] },
+    gateway-only: { files: ["$all", "!**/internal/gateway/**"], deny: [
+      { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
+      { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] } } } }

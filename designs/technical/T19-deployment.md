@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-19 |
+| **Version** | 1.5-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
@@ -53,7 +53,7 @@ with its own tools, without becoming its own single point of failure. The reposi
 
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
-| [ENT-028](../product/11-enterprise.md#ent-028--single-binary-static-assets-helm) | §4.1 one binary + embedded assets; §4.2 image; §4.4 Helm chart | `e2e:helm-default-install` (kind cluster, default values → login page) |
+| [ENT-028](../product/11-enterprise.md#ent-028--single-binary-static-assets-helm) | §4.1 one binary + embedded assets; §4.2 image; §4.4 Helm chart | `e2e:helm-default-install` (kind cluster, default values → the application shell as the fixed local principal, no login page until M-UI6, D12) |
 | [ENT-027](../product/11-enterprise.md#ent-027--one-deployment-many-pulsusdb-tenants) | §4.4 `pulsusdb:` bindings list; §4.8 tenancy into PulsusDB | `itest:multi-binding` |
 | [ENT-029](../product/11-enterprise.md#ent-029--high-availability) | §4.6 HA topology; §4.5 fenced lease handover; T19-017 no sticky sessions | `chaos:replica-kill` (no missed interval, no duplicate notification, sessions survive) |
 | [ENT-030](../product/11-enterprise.md#ent-030--air-gapped-installs) | §4.11 air-gapped profile and bundle | `itest:airgap-no-egress` (full smoke suite, zero denied connections) |
@@ -364,14 +364,19 @@ Rules of thumb (assumptions to verify):
 
 ### 4.9 Configuration
 
-- **Sources and precedence:** defaults < `/etc/pulsus-dash/dash.toml` < env
-  `PULSUS_DASH_<SECTION>__<KEY>` < CLI flags. Parsed with `figment` into typed structs (`serde`) and
-  validated by `pulsus-dash config check`, which also probes connectivity.
+- **Sources and precedence** *(revised 2026-11-20, #59; [T06](T06-bff-architecture.md) §4.9)*:
+  defaults < one YAML file (`--config`) < env `PULSUS_DASH_<KEY_PATH>` (the key path upper-cased,
+  `.` → `_`, for example `PULSUS_DASH_SERVER_LISTEN`) < CLI flags (`--role`). It is validated
+  strictly (T06-019) by `pulsus-dash config check --for serve|migrate`, which resolves the Postgres
+  references but connects to nothing.
 
 #### T19-010 — Secrets in config are references
-**MUST** — Secret values in static config MUST be references: `*_file = "/var/run/secrets/…"`,
-`env:VAR`, or `vault://…`. Literal secrets MUST be refused unless `allow_inline_secrets = true` is
-set (dev only).
+**MUST** — *(Revised 2026-11-20, #59.)* Secret values in static config MUST be references: a
+`*_ref` key whose value is `env:NAME` or `file:/absolute/path` (`vault://…` is reserved and refused
+until it is supported). Literal secrets MUST be refused unless `allow_inline_secrets: true` is set
+(dev only). After the first-run seed, the tenant binding in Postgres, including its credentials
+reference, is authoritative, and later configuration values for the seed are ignored. A resolved
+secret MUST NOT be stored or logged.
 
 - **Static versus dynamic.** Static config covers listeners, Postgres, KEK, roles, public URL, asset
   mode, self-telemetry, audit export and air-gapped mode. Everything per org (IdPs, bindings, AI
@@ -594,7 +599,7 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 ## 10. Testing
 
 - `helm lint`, `kubeconform` and chart unit tests (`helm-unittest`).
-- `e2e:helm-default-install`: default values on kind → login page served.
+- `e2e:helm-default-install`: default values on kind → the application shell served as the fixed local principal (no login page until M-UI6, D12).
 - Kind-based end-to-end tests: install → upgrade N→N+1 under synthetic load
   ([T05](T05-testing-and-performance.md)), asserting zero 5xx beyond drain, no duplicate
   notifications, and browsers on N continuing to work (`e2e:upgrade-lazy-module`).
@@ -675,3 +680,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 | 1.2-rc | 2026-11-19 | #56 code review: CDN mode serves only the engine WASM, fonts and tiles; all JS, CSS and workers stay same-origin ([T18](T18-security.md) T18-006); T19-005 adds per-file start-up verification of every embedded asset, fail closed, and hashing of every CDN file |
 | 1.3-rc | 2026-11-19 | ADR-0016 (Accepted): asset integrity is verified by the BFF at start-up, per file, fail closed; no per-module integrity in the browser |
 | 1.4-rc | 2026-11-19 | Review r6 of #56: CDN-mode wording aligned with ADR-0016 (engine WASM is the one executable asset the CDN may serve); detached `asset-manifest.sig` verified with the compiled-in Ed25519 public key; only the manifest and its signature are exempt from listing |
+| 1.5-rc | 2026-11-20 | #59 Part A: T19-010 revised (`*_ref` keys with `env:NAME` or `file:/absolute/path`, `vault://` later; the seeded binding in Postgres, with its credentials reference, is authoritative); §4.9 sources aligned with T06 §4.9 (YAML file, `PULSUS_DASH_<KEY_PATH>`, `config check` connects to nothing); D12: the ENT-028 Helm gate expects the application shell, not a login page |

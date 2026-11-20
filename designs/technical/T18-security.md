@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (headers, CSP, sessions, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sandboxed WASM modules, compliance) |
+| **Version** | 1.6-rc · 2026-11-20 |
+| **Milestone** | M-UI1 (headers, CSP, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sessions with authentication (D12), sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
 
@@ -732,6 +732,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.3-rc | 2026-11-19 | Code review r4 of #56: T18-006 restores SRI for every JS module through a build-time import map with an `integrity` section ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Proposed): integrity-bearing entry, modulepreloads and stylesheet, a probe that refuses browsers which do not enforce it, single-file workers, and the BFF hashing every asset file against the signed manifest at start-up and exiting on any mismatch; failure UI table; tests for altered lazy, transitive and entry chunks, the probe and the BFF refusal; T18-007, STRIDE, PRF-008 and M-UI1 rows aligned |
 | 1.4-rc | 2026-11-19 | Owner decision ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted): T18-006 drops browser per-module integrity; the import map, probe, browser-floor change, `ci:importmap-coverage`, the altered-chunk browser tests and the "cannot verify" page are removed; the BFF per-file start-up verification (fail closed), same-origin JS, CSS and workers, the unchanged `script-src 'self'`, and the SRI-checked engine WASM with one same-origin retry stay; `itest:cdn-set-mismatch-falls-back` added; T18-007 restored to same-origin workers without the single-file constraint |
 | 1.5-rc | 2026-11-19 | Review r6 of #56: the asset rule reads "every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity` and compiled only from that verified response, with a same-origin retry" (owner decision: "The CDN still serves only the chart engine (hash-checked), fonts and map tiles"); the manifest is verification metadata outside the listed set (`asset-manifest.json` plus detached Ed25519 `asset-manifest.sig`, public key compiled into the BFF, signing key in release KMS only, both files the only unlisted exemptions); the manifest signing key removed from the BFF's own secrets |
+| 1.6-rc | 2026-11-20 | Decision D12 (authentication deferred): the header milestone moves sessions from M-UI1 to M-UI6 |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

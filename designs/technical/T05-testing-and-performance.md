@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-20 |
+| **Version** | 1.5-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -157,7 +157,7 @@ with its output (the gate, the regression and the failing assertion) recorded in
 exist only in CI (workflow steps and build-artefact checks) MUST be proven by a CI run of a
 regressing branch, linked in the PR. A report-only benchmark is proven by its sample assertion
 failing, plus a non-red run with a deliberate slowdown that shows the reported time rising
-([D13](../README.md#2-decisions-taken-2026-11-18-2026-11-19), owner 2026-11-20).
+([D13](../README.md#2-decisions-taken-2026-11-18-to-2026-11-20), owner 2026-11-20).
 
 ### 4.2 Gallery = corpus, and golden-image tests
 
@@ -548,7 +548,7 @@ the merge train), nightly (release blocker).
 | `ci:go-test` | `go test -race ./...` | PR | yes |
 | `ci:govulncheck` | `govulncheck ./...`; any reachable vulnerability fails | PR | yes |
 | `ci:go-mod` | `go mod verify`; `go mod tidy` leaves no diff; `GOFLAGS=-mod=readonly` | PR | yes |
-| `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013) and an up-from-empty run on Postgres | PR | yes |
+| `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013), proven by the failing fixture `server/testdata/squawk/create_index_not_concurrently.sql` (`require-concurrent-index-creation`), and an up-from-empty run on Postgres (`itest:migrations`); on pull requests, no merged migration is modified, deleted or renamed (append-only, T11-012) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
 | `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis | PR | yes |
@@ -583,6 +583,15 @@ the merge train), nightly (release blocker).
 | `unit:json-arrow-prop` | JSON → Arrow equals PulsusDB JSON bit for bit, NaN/±Inf and gaps |
 | `unit:fuzz-dsf` | `cargo-fuzz` on the DSF parser and IPC decode (nightly; crashes block release) |
 | `unit:ring-stress` | loom/shuttle on SPSC rings and chunk pinning; 10⁶ records through each ring with random stalls |
+| `unit:config-strict` | BFF configuration (T06-019): an unknown or repeated YAML key, a second YAML document, an unknown `PULSUS_DASH_*` variable (other than the client tooling's) or a wrong type fails with the key and line or the variable; precedence defaults → file → environment; secret references refuse literals unless `allow_inline_secrets` and never print a value (T19-010) |
+
+**BFF integration on PostgreSQL 15 and 16 (`make itest`)**
+
+| Gate | Checks | Stage | Blocking |
+|---|---|---|---|
+| `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003) | PR | yes |
+| `itest:no-extensions` | After a migration from empty, `pg_extension` holds only `plpgsql` (T11-001) | PR | yes |
+| `itest:migrations` | Up from empty, then an idempotent rerun; a dry run writes nothing; two concurrent `migrate` runs apply and seed once; a database more than one version ahead is refused (also when another run advanced it while this one waited for the lock) and one version ahead is accepted by `migrate` and `serve`; `serve` refuses an older schema (T11-015, T19-007) | PR | yes |
 
 **Goldens (L2)**
 
@@ -804,3 +813,4 @@ Meta-testing:
 | 1.2-rc | 2026-11-20 | #57: §7.1 adds `unit:time-expr` and `unit:context-search` (time expressions and the typed URL search module of [ADR-0017](../adr/0017-react-router.md)); other gates unchanged |
 | 1.3-rc | 2026-11-20 | #58: §0 L2 row names `golden:interim-gallery` (Chromium `toHaveScreenshot`, CI-only baselines; ꟻLIP from #68); §7.1 adds `golden:interim-gallery`, `e2e:chart-brush`, `e2e:chart-hover`, `unit:series-cap`, `unit:columns`, `unit:bucket-scale` and `bench:frame-interim-line` (report only until #68), and extends `unit:colour-hash` with the 08 Table 8-1a level rule |
 | 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
+| 1.5-rc | 2026-11-20 | #59 Part A: §7.1 adds `unit:config-strict` and the BFF integration gates `itest:rls-isolation`, `itest:no-extensions` (both already named by T11) and `itest:migrations`; `ci:migrations` names its failing squawk fixture and the append-only check on pull requests |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-19 |
+| **Version** | 1.3-rc · 2026-11-20 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -872,16 +872,16 @@ A user MUST be able to set a Board or the Atlas as their home instead of the bri
 ### 4.12 Admin & settings (rooms)
 
 #### SRF-063 — Admin rooms
-**MUST** · M-UI1 · Admin
+**MUST** · M-UI6 · Admin
 
 Admin MUST be conventional DOM rooms covering: users and teams; roles and permissions; SSO
 (OIDC/SAML/SCIM); tenants and data-source bindings to PulsusDB instances; entity schema editor;
 label ⇄ attribute mappings; Lens template management; AI settings (provider, data-sharing policy,
 redaction rules); audit log viewer; quotas; API tokens and service accounts; licence. Each room lands
 in the milestone of the feature it administers; OIDC login and PulsusDB data-source bindings MUST be
-present at M-UI1. Enterprise requirements are in [11](11-enterprise.md).
+present when authentication lands (M-UI6, D12). Enterprise requirements are in [11](11-enterprise.md).
 
-*Acceptance:* Given M-UI1, when an Admin logs in via OIDC, then they can bind a PulsusDB instance;
+*Acceptance:* Given M-UI6, when an Admin signs in via OIDC, then they can bind a PulsusDB instance;
 and at each later milestone, every listed room whose feature has shipped is reachable from Admin.
 
 ### 4.13 NOC / Wall mode
@@ -899,7 +899,7 @@ anomaly ("attract mode").
 no chrome; and when a new anomaly is detected, the wall flies to it within 5 s.
 
 #### SRF-065 — Kiosk tokens
-**MUST** · M-UI5 · NOC, Admin
+**MUST** · M-UI6 · NOC, Admin
 
 Unattended screens MUST authenticate with kiosk tokens scoped to read-only Wall mode.
 
@@ -1095,9 +1095,9 @@ release and in the team channel.
 | SRF-060 | Home briefing | MUST | M-UI4 |
 | SRF-061 | AI daily brief | SHOULD | M-UI4 |
 | SRF-062 | Choose your home | MUST | M-UI5 |
-| SRF-063 | Admin rooms | MUST | M-UI1 |
+| SRF-063 | Admin rooms | MUST | M-UI6 |
 | SRF-064 | Wall playlist | MUST | M-UI5 |
-| SRF-065 | Kiosk tokens | MUST | M-UI5 |
+| SRF-065 | Kiosk tokens | MUST | M-UI6 |
 | SRF-066 | Wall readability | MUST | M-UI5 |
 | SRF-067 | Salience ladder | MUST | M-UI6 |
 | SRF-068 | Wall ↔ desk link | MUST | M-UI6 |
@@ -1120,6 +1120,7 @@ release and in the team channel.
 | 1.0-rc2 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): SRF-033 moves M-UI2 → M-UI1 (delivered by #49); SRF-044 note names the native service-graph route |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): definitions (Surface, Time range picker, Time Ribbon) and a layout paragraph under Table 4-1; SRF-001 (application layout), SRF-014 (one canvas per viewport, one shared engine) and SRF-019 (200 viewports on one page) revised in place; Atlas region "Top bar" becomes "Page header"; SRF-027 errors come from the PulsusDB parser through the BFF until the browser parser lands; R15 |
 | 1.2-rc | 2026-11-19 | Code review of #56: §4.3 Boards introduction describes per-viewport canvases and one shared engine (was "a single GPU scene"); SRF-027 revised to errors from PulsusDB on run, positioned where PulsusDB returns a position; the pre-run byte-offset criterion split out as new SRF-078 (M-UI2), accepted by the owner (12 D11) |
+| 1.3-rc | 2026-11-20 | Decision D12 (authentication deferred): SRF-063 Admin rooms moves M-UI1 → M-UI6 (its OIDC login and data-source binding clause and acceptance follow authentication); SRF-065 Kiosk tokens moves M-UI5 → M-UI6 with ENT-015 and ENT-016; R10 updated |
 
 ## Resolved during formalisation
 
@@ -1134,7 +1135,7 @@ release and in the team channel.
 | R7 | Board overview `Ctrl+wheel` collides with 03's `Ctrl/⌘+wheel` = zoom both axes | Board zoom applies only over the board background; over a viewport the 03 meaning stands |
 | R8 | Log stream said "SDF glyph atlas"; 05 says MSDF | MSDF |
 | R9 | Wall mode mixed a basic playlist with the attention-managed wall, but the roadmap only puts the latter in M-UI6 | Playlist, kiosk and readability at M-UI5 (with Boards); salience ladder, wall ↔ desk and handover replay at M-UI6 |
-| R10 | Home and Admin had no milestone | Home M-UI4 (needs alerts and investigations); Admin per feature, with OIDC and data-source binding at M-UI1 |
+| R10 | Home and Admin had no milestone | Home M-UI4 (needs alerts and investigations); Admin per feature, with OIDC and data-source binding at M-UI6 (D12) |
 | R11 | Release verdict was "~15 min" | Configurable delay, default 15 min |
 | R12 | Customer lookup and release rollback had no audit requirement in the acceptance | Both are audited actions ([11](11-enterprise.md)) |
 | R13 | Diff flame used red/blue only | Added a non-colour cue (+/−) per 05 VIZ-067 |

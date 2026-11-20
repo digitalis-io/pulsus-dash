@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, OIDC auth, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (multi-tenant quotas UI, audit export) |
+| **Version** | 1.2-rc · 2026-11-20 |
+| **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
 
@@ -46,8 +46,8 @@ services. The product specification pushes several hard requirements onto that p
   self-telemetry and, when configured, the audit export.
 
 This document fixes the crate layout, the process roles, the PulsusDB client, caching, scaling,
-tenancy, backpressure, self-observability, configuration, the authentication plumbing that M-UI1
-needs, and the external API surface. Two components get their own documents: the scene planner
+tenancy, backpressure, self-observability, configuration, the authentication plumbing (M-UI6, D12),
+and the external API surface. Two components get their own documents: the scene planner
 ([T07](T07-scene-query-planner.md)) and the alert evaluator ([T16](T16-alert-evaluator.md)).
 
 ## 2. Goals / non-goals
@@ -63,8 +63,9 @@ needs, and the external API surface. Two components get their own documents: the
   interchangeable without callers changing.
 - The p50 BFF overhead (excluding PulsusDB time) is ≤ 5 ms per physical query, and the JSON→Arrow
   conversion (until R1) is ≤ 30 ms per 10⁶ points per core (§7).
-- The M-UI1 identity subset (OIDC login, sessions, built-in roles, tenant binding) is defined here,
-  because T10 (draft) is not yet promoted (blocked on O1).
+- The identity subset (OIDC login, sessions, built-in roles), delivered at M-UI6 (D12), is defined
+  here, because T10 (draft) is not yet promoted (blocked on O1). Until then every request runs as a
+  fixed local principal of the bootstrap org (§4.11); tenant binding is M-UI1.
 
 **Non-goals**
 - Arrow schemas and the browser framing protocol. [T04](T04-wire-format-and-data-plane.md) owns
@@ -92,7 +93,7 @@ needs, and the external API surface. Two components get their own documents: the
 | [ENT-011](../product/11-enterprise.md#ent-011--oidc-sso-with-idp-enforced-mfa) | §4.11, T06-022 | `itest:oidc-login`: against a test IdP (Dex/Keycloak) requiring MFA, login succeeds only through the IdP flow; `acr`/`amr` are recorded on the session; Dash exposes no second-factor endpoint |
 | [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.8, §6, T06-016 | `itest:rls-tenant-isolation` (T11 co-owns): a tenant-A session through `dash-store` returns no tenant-B row from any table |
 | [ENT-027](../product/11-enterprise.md#ent-027--one-deployment-many-pulsusdb-tenants) | §4.7, T06-006 | `itest:multi-tenant-headers`: fuzzed queries for an org bound to two databases; every outbound request carries the bound `X-Pulsus-Database` / `X-Scope-OrgID`; switching tenant switches the header |
-| [ENT-028](../product/11-enterprise.md#ent-028--single-binary-static-assets-helm) | §4.2, T06-003 | `ci:single-binary`: the release build produces one `pulsus-dash` binary plus static assets; `e2e:helm-default-login` (T19 co-owns) |
+| [ENT-028](../product/11-enterprise.md#ent-028--single-binary-static-assets-helm) | §4.2, T06-003 | `ci:single-binary`: the release build produces one `pulsus-dash` binary plus static assets; `e2e:helm-default-shell` (T19 co-owns): the default install serves the application shell with no redirect to a login page |
 | [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.11, §5.1 (datasource bindings, OIDC), T06-025 | `itest:datasource-binding`: binding a seeded PulsusDB runs the `runtimeinfo` check and stores the binding; a wrong URL is refused with a positioned field error |
 | [ENT-029](../product/11-enterprise.md#ent-029--high-availability) | §4.5, §4.6, T06-015 | `sim:lease-fencing` (turmoil: partitions, clock skew, paused processes) and `load:kill-replica` (3 replicas, one killed mid-evaluation: no missed interval, no duplicate notification) |
 | [ENT-017](../product/11-enterprise.md#ent-017--append-only-audit-log) | §4.2 (audit sink), §8, T06-004 | `itest:audit-append-only`: config edit, ack and AI tool call appear in `audit_events`; UPDATE/DELETE by the application role fail |
@@ -452,8 +453,8 @@ been seen. A lost lease MUST be taken over by another member within 15 s.
   ([02 §4](../product/02-information-architecture.md)), and is required by the type system:
   `pulsusdb-client` methods take `&RequestCtx`, not a URL.
 - **Isolation:** every cache key, singleflight key, budget, lease key and metric label includes the
-  tenant. Postgres access sets the tenant binding for row-level security on every transaction
-  (`SET LOCAL app.org_id`, T11).
+  tenant. Postgres access sets the tenant binding for row-level security on every transaction:
+  `Db.Tx` runs `SELECT set_config('pulsus.org_id', …, true)` (transaction-local) first (T11-003).
 - **Fairness:** the concurrency limiter (§4.10) is a weighted deficit-round-robin across tenants
   inside each priority class. Per-tenant quotas (queries/s, concurrent physical queries, AI
   tokens/month) are stored in Postgres and hot-reloaded.
@@ -540,9 +541,21 @@ points (`PULSUS_ROLLUP_RANGES`). The planner needs the switch points to predict 
 The 1 % explain sample compares the predicted level with PulsusDB's `rollup_route` stage and raises
 `dash_rollup_prediction_mismatch_total` if they diverge.
 
+**Implemented keys (#59).** The Go server reads the subset its features need. Today these are
+`server.roles`, `server.listen` and `server.shutdown_grace`;
+`postgres.app_url_ref` (serve, as `pulsus_app`), `postgres.owner_url_ref` (migrate, as
+`pulsus_owner`) and `postgres.pool_max`; the first-run seed `datasource.{url, slug, database,
+scope_org_id, credentials_ref}` and `bootstrap.{org_slug, org_name}`, which replace
+`datasources_bootstrap` above; `log.{level, format}`; and `allow_inline_secrets`. Each key's
+variable is `PULSUS_DASH_` plus the key path upper-cased with `.` → `_`, for example
+`PULSUS_DASH_POSTGRES_POOL_MAX`. The other fields above arrive with the features that use them.
+`docs/server/README.md` is the reference.
+
 #### T06-019 — Strict configuration
-**MUST** — Unknown YAML keys and unknown `PULSUS_DASH_*` variables MUST be rejected at start-up,
-matching PulsusDB's convention. Runtime settings MUST be validated before they are applied; an
+**MUST** — *(Revised 2026-11-20, #59.)* Unknown YAML keys, repeated keys, and unknown
+`PULSUS_DASH_*` variables MUST be rejected at start-up, matching PulsusDB's convention. The
+`PULSUS_DASH_*` variables that only the client tooling reads (the server's `ClientVars` list, for
+example `PULSUS_DASH_DEV_BFF`) are exempt: the server accepts and ignores them. Runtime settings MUST be validated before they are applied; an
 invalid hot-reload MUST be refused and leave the previous settings active.
 
 ### 4.10 Backpressure
@@ -575,11 +588,18 @@ queue interactive work behind it.
 CRUD/s), a body limit of 2 MiB for JSON and 16 MiB for uploads (imports), and answer excess with
 `429 Retry-After` and a JSON reason (§5.2).
 
-### 4.11 Authentication and authorization plumbing (M-UI1 subset)
+### 4.11 Authentication and authorization plumbing (M-UI6 subset)
 
 T10 (draft) owns identity end to end (SAML, SCIM, API tokens, service accounts, data-scope
-semantics). It is not yet promoted, so this section fixes the subset M-UI1 ships and the seams T10
-plugs into.
+semantics). It is not yet promoted, so this section fixes the subset that ships with authentication
+at M-UI6 and the seams T10 plugs into.
+
+**Until authentication lands (D12).** Sign-in, sessions, users and roles are deferred to M-UI6
+([designs README](../README.md) D12). Until then there is no login route and no session. Every
+request runs as a fixed local principal: "Local user", role admin, in the bootstrap organisation
+that `migrate` seeds (`install_state`), with that organisation's tenant binding. The BFF reports it
+to the client through its bootstrap route (#59 Part B). The rest of this section applies from
+M-UI6.
 
 - **OIDC login.** `dash-auth` implements the authorization-code flow with PKCE (`openidconnect`
   crate) against one or more configured IdPs per org. Routes: `GET /auth/login?idp=`,
@@ -678,11 +698,14 @@ MUST NOT make replicas unready, so alert state, silences and investigations stay
 
 ### 5.2 Error envelope (JSON routes)
 
-`{"error":{"code":"scope_denied|budget_exhausted|too_broad|unavailable|invalid|forbidden|virtual_unsupported","message":"…","hint":{…},"query_id":"…","fields":[{"pointer":"/rules/0/expr","message_key":"…"}]}}`.
+`{"error":{"code":"scope_denied|budget_exhausted|too_broad|unavailable|invalid|forbidden|virtual_unsupported|not_found|internal","message":"…","hint":{…},"query_id":"…","fields":[{"pointer":"/rules/0/expr","message_key":"…"}]}}`.
 
 - `hint` carries machine-readable narrowing suggestions, for example the label to add (PRF-031), or
   `request_access{owner_team}` for `forbidden` (ENT-010).
 - `fields` maps server validation errors to form fields by JSON pointer ([T08](T08-dom-component-kit.md) forms).
+- `not_found` answers an unknown route or object (404); `internal` answers an unexpected server error
+  (500), whose details are logged and never returned. A wrong method on a known route is `invalid`
+  (405).
 
 ### 5.3 PulsusDB endpoints used
 
@@ -791,11 +814,11 @@ clusters are supported for one minor version ([T19](T19-deployment.md)).
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | `--role all`; gateway, OIDC auth with built-in roles, datasource bindings, planner v1, PulsusDB client (metrics; logs on the native log routes: `logs_query_range`, `logs_volume`, labels and series), L1 cache, self-telemetry, `/suggest`, `/prefs`, `/search` |
+| M-UI1 | `--role all`; gateway, a fixed local principal (D12), datasource bindings, planner v1, PulsusDB client (metrics; logs on the native log routes: `logs_query_range`, `logs_volume`, labels and series), L1 cache, self-telemetry, `/suggest`, `/prefs`, `/search` |
 | M-UI2 | Remaining logs methods (`logs_patterns`, `logs_detected_{labels,fields}`, `logs_tail`), traces and profiles client methods; catalogue refresh as a leased job; Arrow tiles in IndexedDB |
 | M-UI3 | Split roles; Redis L2; change feed, anomaly sweep and fallback pyramid builder workers (Postgres tiles); compare service; MCP mount |
 | M-UI4 | Evaluator and notifier roles (T16); ai role (T15 (draft)); virtual sources and the Prometheus-compatible read API; HA gates |
-| M-UI6 | Per-tenant quotas UI, data-access audit, audit export, SAML/SCIM (T10 (draft)), multi-cluster fairness tuning |
+| M-UI6 | OIDC auth with built-in roles and sessions (D12); per-tenant quotas UI, data-access audit, audit export, SAML/SCIM (T10 (draft)), multi-cluster fairness tuning |
 
 Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_arrow_accept`
 (switched on per cluster when R1 ships), `audit_export`.
@@ -830,3 +853,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.0-rc | 2026-11-18 | #22: §4.1 BFF crates live in the repository's root Cargo workspace (BFF-only crates under `server/`, shared ⇄ crates under `crates/`, one lockfile); the shared wire crate is named `dash-wire`, as in T01 §4.6 |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 logs client methods on the native log routes move M-UI2 → M-UI1; patterns, detected fields, tail, traces and profiles stay M-UI2 |
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): BFF in Go. New §0 mapping; §4.1 rewritten as the Go package layout; T06-001, T06-005 (enforcement) and T06-027 (JSON internal API) revised; T06-011 notes JSON frames to the browser until the engine (ADR-0014 §5); §12 updated |
+| 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones, §2 goal, §4.11 (now the M-UI6 subset, with the fixed local principal until then) and §11 move OIDC auth from M-UI1 to M-UI6; §3 ENT-028 gate `e2e:helm-default-login` renamed `e2e:helm-default-shell`; §4.7 binds the tenant with `set_config('pulsus.org_id', …, true)` in `Db.Tx`; §4.9 lists the implemented Go keys; T06-019 revised: repeated keys rejected, client-tooling variables exempt; §5.2 adds the `not_found` and `internal` codes |

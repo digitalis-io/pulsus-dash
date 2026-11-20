@@ -1,0 +1,126 @@
+# Server (Go BFF) gates (ADR-0015, T05 §7.1). Actions are pinned by commit SHA; no secrets are used.
+name: server
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'api/**'
+      - 'tools/api-gen/**'
+      - 'client/src/api/gen/**'
+      - 'Makefile'
+      - '.github/workflows/server.yml'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -mod=readonly
+  GOTOOLCHAIN: local
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Exactly the toolchain line of server/go.mod: go-version-file reads only the go line
+          # (1.27.0), and GOTOOLCHAIN=local would then keep that older release.
+          go-version: '1.27.4'
+          cache-dependency-path: server/go.sum
+      - name: Go matches the server/go.mod toolchain
+        run: |
+          want=$(sed -n 's/^toolchain //p' server/go.mod)
+          got=$(go env GOVERSION)
+          [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: client/.nvmrc
+      - name: 'ci:lockfile (tools/api-gen install)'
+        run: npm --prefix tools/api-gen ci
+      - name: 'ci:lockfile (tools/api-gen)'
+        run: node client/scripts/check-lockfile.ts tools/api-gen
+      - name: 'ci:npm-audit (tools/api-gen)'
+        run: |
+          npm --prefix tools/api-gen audit --audit-level=critical
+          npm --prefix tools/api-gen audit signatures
+      - name: pinned tools
+        run: make tools-ci
+      - name: 'ci:go-mod'
+        run: make go-mod
+      - name: 'ci:api-gen'
+        run: make api-gen-check
+      - name: 'ci:go-lint'
+        run: make go-lint
+      - name: 'ci:go-test'
+        run: make go-test
+      - name: 'ci:govulncheck'
+        run: make govulncheck
+      - name: 'ci:migrations'
+        run: make migrations-lint
+      - name: 'ci:migrations (append-only)'
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          changed=$(git diff --name-status --diff-filter=MDR "origin/${BASE_REF}..." -- server/migrations)
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            echo "::error::migrations are immutable once merged (T11-012)"
+            exit 1
+          fi
+
+  itest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      pg16:
+        image: postgres:16.16-alpine3.24@sha256:1d5b02d3a9941fbd52437db4107f8c52d6297dac553ca1e5c299ebb3756b4857
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+      pg15:
+        image: postgres:15.20-alpine3.24@sha256:e18480a22d6e48f4d816a6696769b1ec09ac73a824c5649e49c7d8b684913f3d
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['55433:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Exactly the toolchain line of server/go.mod: go-version-file reads only the go line
+          # (1.27.0), and GOTOOLCHAIN=local would then keep that older release.
+          go-version: '1.27.4'
+          cache-dependency-path: server/go.sum
+      - name: Go matches the server/go.mod toolchain
+        run: |
+          want=$(sed -n 's/^toolchain //p' server/go.mod)
+          got=$(go env GOVERSION)
+          [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
+      - name: itest
+        run: make itest
+        env:
+          DASH_ITEST_PG_URLS: pg16=postgres://postgres@localhost:55432/postgres?sslmode=disable,pg15=postgres://postgres@localhost:55433/postgres?sslmode=disable
