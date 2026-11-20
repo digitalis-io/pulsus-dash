@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-20 |
+| **Version** | 1.5-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -125,7 +125,7 @@ This document fixes:
 | [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.1, §4.3 (lazy route chunks) | `ci:bundle-size` per chunk class ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8); `e2e:lazy-load` (cold load fetches no room or workbench chunk) |
 | [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7 | `ci:bundle-size` and `ci:lighthouse-inp-rooms` (INP > 200 ms fails; target 100 ms) |
 | [ENT-003](../product/11-enterprise.md#ent-003--built-in-roles) | §4.4 (permission-aware controls), §8 | `e2e:viewer-ack-disabled`: Viewer sees Ack disabled with "request access" |
-| [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.3 (Admin room satellite), §4.4 (forms) | `e2e:admin-oidc-bind-datasource`: at M-UI1 an Admin logs in via OIDC and binds a PulsusDB instance through the Admin room |
+| [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.3 (Admin room satellite), §4.4 (forms) | `e2e:admin-oidc-bind-datasource`: at M-UI6 (D12) an Admin signs in via OIDC and binds a PulsusDB instance through the Admin room |
 | [ENT-010](../product/11-enterprise.md#ent-010--no-dead-access-denied-pages) | §4.4 (restricted placeholder), T08-028 | `e2e:restricted-board-link`: a link to an unreadable board shows the placeholder with "Request access" and no title |
 | [INT-013](../product/03-interaction-model.md#int-013--remappable-bindings-and-presets) | §4.8 (presets, physical keys, layout labels), T08-026 | `e2e:remap-persist` (remap `F`→`Z` persists across devices) and `e2e:layout-de` (German layout `Shift+1` saves waypoint 1) |
 | [INT-016](../product/03-interaction-model.md#int-016--esc-and-enter-ladder) | §4.8 (`Esc`/`Enter` commands) | `e2e:esc-ladder` |
@@ -847,3 +847,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): §4.3 describes the application layout (sidebar, page header, user menu, layout sizes); T08-017 regions; `Route` adds `Explore` and `Boards` (02 §4); Satisfies rows for IA-016, IA-021, SRF-001, VL-017 and INT-015 restored against `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface`, `e2e:chrome-layout` and `e2e:focus-regions`; IA-020 row added (`e2e:time-range-header`); PRF-009 row uses chunk-class budgets |
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 and §2 rewritten for the React application; §4.1 Rust crate tree marked superseded; §4.2 rewritten (the TS store on the main thread owns semantic state; the engine holds render-local state and reports events through `ChartFrame`); T08-004, §4.6, §4.8 "Where it runs", §5.1, §5.2 T03 row, §7, §8 tenant switch, §9 engine restart and Q1 aligned; Leptos and the ui↔core rings removed; §4.6 `⌘⇧F` waits for T09 formatting |
 | 1.4-rc | 2026-11-20 | [ADR-0017](../adr/0017-react-router.md): `dash-route` row is `app/router.tsx` on React Router (data mode) with the typed search module `state/contextSearch.ts` |
+| 1.5-rc | 2026-11-20 | Decision D12 (authentication deferred): the SRF-063 gate `e2e:admin-oidc-bind-datasource` runs from M-UI6 with SRF-063 |

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
-| **Milestone** | M-UI1 (identity, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (Git sync, Terraform) |
+| **Version** | 1.2-rc · 2026-11-20 |
+| **Milestone** | M-UI1 (tenancy, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (identity, Git sync, Terraform) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
 
@@ -153,6 +153,10 @@ accelerate a feature; every feature MUST work without them. Dash MUST NOT depend
 **MUST** — Every tenant-owned table MUST have `org_id uuid NOT NULL` as the first column of its
 primary key and of every index, so every access path is org-local.
 
+*Note (#59):* the root table `orgs` keys on `id`, which is the organisation id itself (its policy is
+`id = pulsus_org()`); its `slug` index is the only other exception. Non-tenant tables
+(`install_state`, `goose_db_version`; §4.1) have no `org_id`.
+
 #### T11-005 — Optimistic concurrency
 **MUST** — Every mutable content row MUST carry `etag bigint`, incremented on update; the API MUST
 require `If-Match` and return `409` with both versions (for the diff UI) on conflict.
@@ -182,6 +186,16 @@ defence in depth. Schema-per-tenant is rejected.**
 | `pulsus_app` | No `BYPASSRLS`; `SELECT/INSERT/UPDATE/DELETE` on parent tables only; no `UPDATE/DELETE` on `audit_events` | Every request path |
 | `pulsus_maint` | `BYPASSRLS`; partition create/detach/drop, retention moves and purges | `worker` role maintenance jobs, separate pool |
 | `pulsus_ro` (optional) | No `BYPASSRLS`, read-only | Audit viewer and import dry-runs on a read replica |
+
+A database administrator creates the roles once per cluster, before the first `migrate`, with
+`server/deploy/postgres-roles.sql`. The script is idempotent, sets no passwords, and gives every
+role `NOSUPERUSER NOCREATEDB NOCREATEROLE`; only `pulsus_maint` has `BYPASSRLS`. The database is
+created `OWNER pulsus_owner`. `serve` refuses to start as a role with `rolsuper` or `rolbypassrls`.
+
+**Non-tenant tables.** `install_state` holds one row (`singleton`, `bootstrap_org_id`,
+`seeded_at`): the record of the first-run seed, which `migrate` writes under its lock (#59). It has
+no `org_id` and no RLS; `pulsus_app` and `pulsus_maint` may only read it, as they may
+`goose_db_version`, the migration runner's table. No other table is exempt from T11-003.
 
 #### T11-003 — Every tenant table under RLS, one transaction path
 **MUST** — Every tenant-owned table, including partitioned parents, MUST have `ENABLE` and `FORCE
@@ -232,6 +246,10 @@ filtered set.
 
 ### 4.2 Identity & access (semantics owned by T10 (draft))
 
+`orgs` and `tenant_bindings` ship first (#59, migration 1). The identity tables (`users`, `teams`,
+`memberships`, `roles`, `role_permissions`, `grants`, `idps`, `sessions` and the rest of this
+section) arrive with authentication at M-UI6 (D12).
+
 ```sql
 CREATE TABLE orgs (id uuid PRIMARY KEY, slug text UNIQUE NOT NULL, name text NOT NULL,
   settings jsonb NOT NULL DEFAULT '{}', perms_epoch bigint NOT NULL DEFAULT 0,
@@ -241,7 +259,10 @@ CREATE TABLE orgs (id uuid PRIMARY KEY, slug text UNIQUE NOT NULL, name text NOT
 CREATE TABLE tenant_bindings (org_id uuid REFERENCES orgs, id uuid, slug text NOT NULL,
   datasource_url text NOT NULL, database text, scope_org_id text
     CHECK (scope_org_id ~ '^[A-Za-z0-9_.-]{1,150}$'),
-  credentials_ref uuid,                         -- secrets(id): Basic pair / mTLS
+  credentials_ref text                          -- a secret reference, never a value (T11-004):
+    CHECK (credentials_ref ~ '^(env:[A-Za-z_][A-Za-z0-9_]{0,127}|file:/[^[:space:]]+)$'
+           AND char_length(credentials_ref) <= 1029),   -- env:NAME or file:/path (≤ 1023 after file:/);
+                                                -- secret:<uuid> is added with the secrets table
   kind text NOT NULL DEFAULT 'pulsusdb',        -- 'prometheus' read-only (PRN-012)
   PRIMARY KEY (org_id, id), UNIQUE (org_id, slug));
 
@@ -1216,11 +1237,11 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 
 | Milestone | Scope |
 |---|---|
-| M-UI1 | Identity tables, `tenant_bindings`, `user_preferences`, `saved_views`, `folders`, `boards` and `board_versions` (minimal Boards, #48), `audit_events` (config only), migration runner, RLS template, partition maintenance framework |
+| M-UI1 | `orgs`, `tenant_bindings`, `install_state`, `user_preferences`, `saved_views`, `folders`, `boards` and `board_versions` (minimal Boards, #48), `audit_events` (config only), migration runner, RLS template, partition maintenance framework |
 | M-UI2–3 | Entities tables, `layout_positions`, `waypoints`, lens templates (versioned), `entity_change_events`, `anomaly_*`, `pyramid_tiles` |
 | M-UI4 | Alerting domain incl. `alert_transitions` and `notification_deliveries`, investigations/evidence, incidents, AI tables, `actions`, `secrets`, `artefacts` |
 | M-UI5 | Boards versions UI, diff and restore, legacy dashboard import, playlists, schematics, `noise_reports` |
-| M-UI6 | Git sync, Terraform provider, data scopes, kiosks, audit hash chain and data-access audit, per-org retention classes in the admin UI |
+| M-UI6 | Identity tables with authentication (D12), Git sync, Terraform provider, data scopes, kiosks, audit hash chain and data-access audit, per-org retention classes in the admin UI |
 
 ## 12. Alternatives considered
 
@@ -1290,3 +1311,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 7. The Terraform-in-Go question is closed as Proposed ADR-0011 (tracked under O2), so it is no
    longer an open question here.
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): migrations by `goose` and repositories on `pgx` + `sqlc` (§4.8, T11-013, T11-015); `internal/store` replaces `dash-store` (§5.1, T11-023); Rust-specific mentions made language-neutral; OpenAPI spec first |
+| 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones and §11 move the identity tables from M-UI1 to M-UI6; §4.2 notes that `orgs` and `tenant_bindings` ship first; `tenant_bindings.credentials_ref` becomes `text`, a secret reference (`env:NAME` or `file:/path`; `secret:<uuid>` with the `secrets` table) under a CHECK, never a value; §4.1 adds the roles script and the non-tenant `install_state`; T11-002 note on the root table `orgs` |

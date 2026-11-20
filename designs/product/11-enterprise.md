@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc2 · 2026-11-19 |
+| **Version** | 1.1-rc · 2026-11-20 |
 | **Requirement area** | `ENT` |
 | **Source draft** | plans/11-enterprise.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [06](06-ai-copilot.md), [07](07-alerting.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -52,7 +52,7 @@ Mechanisms (query rewriting, session handling, the schema) are in T10 (draft),
 | Admin | Editor + manage users, teams, roles, data scopes, contact points, policies, AI settings |
 
 #### ENT-001 — Organisations, teams and users
-**MUST** · M-UI1 · Admin
+**MUST** · M-UI6 · Admin
 
 Dash MUST model **Organisation → Teams → Users**, with users able to belong to several teams.
 
@@ -60,7 +60,7 @@ Dash MUST model **Organisation → Teams → Users**, with users able to belong 
 then resources owned by either team are listed for them under "My teams".
 
 #### ENT-002 — Service accounts
-**MUST** · M-UI4 · Admin, Platform
+**MUST** · M-UI6 · Admin, Platform
 
 Dash MUST provide service accounts for automation, kiosks and the auto-RCA identity. A service account
 MUST have roles and a data scope like a user, and no interactive login.
@@ -70,7 +70,7 @@ ack an alert, then the ack succeeds and is audit-logged under the service accoun
 login as the service account is refused.
 
 #### ENT-003 — Built-in roles
-**MUST** · M-UI1 · Admin
+**MUST** · M-UI6 · Admin
 
 Dash MUST ship the roles of Table 3.1.
 
@@ -88,7 +88,7 @@ Admins MUST be able to define custom roles from fine-grained permissions (e.g. `
 an alert, then Silence is enabled and Ack is disabled.
 
 #### ENT-005 — Resource scoping
-**MUST** · M-UI4 · Admin, Engineer
+**MUST** · M-UI6 · Admin, Engineer
 
 Boards MUST be scoped by folder, and alert rules and Lens templates by team. Permissions MUST be
 grantable per folder and per team.
@@ -163,7 +163,7 @@ dependency on payments, then payments renders as "external · restricted" with n
 health; with policy "omit", the node and edge are absent.
 
 #### ENT-010 — No dead "Access denied" pages
-**MUST** · M-UI4 · Engineer, Business, Support, Admin
+**MUST** · M-UI6 · Engineer, Business, Support, Admin
 
 Out-of-scope or unpermitted items MUST be absent, or rendered restricted with a "request access"
 action that notifies the owning team. List endpoints MUST filter by permission rather than return
@@ -176,7 +176,7 @@ team; the board's title is not revealed.
 ## 4. Identity
 
 #### ENT-011 — OIDC SSO with IdP-enforced MFA
-**MUST** · M-UI1 · Admin
+**MUST** · M-UI6 · Admin
 
 Dash MUST support OIDC SSO. MFA MUST be enforced by the IdP; Dash MUST honour the IdP's
 authentication context and not implement its own MFA.
@@ -202,7 +202,7 @@ their sessions and tokens within 5 s.
 their next request after 5 s is rejected and their API tokens are revoked.
 
 #### ENT-014 — Group to team and role mapping
-**MUST** · M-UI4 · Admin
+**MUST** · M-UI6 · Admin
 
 IdP groups MUST map to teams and roles, applied at every login (and at every SCIM push). A role
 granted by the IdP MUST be labelled "managed by IdP" and not editable in Dash.
@@ -211,7 +211,7 @@ granted by the IdP MUST be labelled "managed by IdP" and not editable in Dash.
 logs in, then they are in team payments with Responder, and the role shows "managed by IdP".
 
 #### ENT-015 — API tokens
-**MUST** · M-UI4 · Admin, Platform
+**MUST** · M-UI6 · Admin, Platform
 
 API tokens MUST have an expiry and scopes (permissions and data scope), and MUST act with no more than
 their owner's permissions.
@@ -292,7 +292,7 @@ in PostgreSQL, in tenant-scoped tables under row-level security. DDL is in
 | Audit events | Per org policy |
 
 #### ENT-020 — Configuration and derived state in Postgres
-**MUST** · M-UI1 · Admin, Platform
+**MUST** · M-UI6 · Admin, Platform
 
 All configuration and Dash-derived state (Table 6.1) MUST be stored in Postgres in tenant-scoped
 tables under row-level security. Time-partitioned tables MUST enforce per-tenant retention (Table 6.2)
@@ -383,7 +383,8 @@ Dash MUST deploy as a single Go binary that embeds the static web-client assets
 chart.
 
 *Acceptance:* Given a Kubernetes cluster with Postgres reachable, when the Helm chart is installed
-with default values, then Dash serves the login page.
+with default values, then Dash serves the application shell as the fixed local principal, with no
+login page until authentication lands (M-UI6, D12).
 
 #### ENT-029 — High availability
 **MUST** · M-UI4 · Platform
@@ -407,26 +408,26 @@ all features pass with a self-hosted model and no outbound connection is attempt
 
 | ID | Title | Priority | Milestone |
 |---|---|---|---|
-| [ENT-001](#ent-001--organisations-teams-and-users) | Organisations, teams and users | MUST | M-UI1 |
-| [ENT-002](#ent-002--service-accounts) | Service accounts | MUST | M-UI4 |
-| [ENT-003](#ent-003--built-in-roles) | Built-in roles | MUST | M-UI1 |
+| [ENT-001](#ent-001--organisations-teams-and-users) | Organisations, teams and users | MUST | M-UI6 |
+| [ENT-002](#ent-002--service-accounts) | Service accounts | MUST | M-UI6 |
+| [ENT-003](#ent-003--built-in-roles) | Built-in roles | MUST | M-UI6 |
 | [ENT-004](#ent-004--custom-roles) | Custom roles | MUST | M-UI6 |
-| [ENT-005](#ent-005--resource-scoping) | Resource scoping | MUST | M-UI4 |
+| [ENT-005](#ent-005--resource-scoping) | Resource scoping | MUST | M-UI6 |
 | [ENT-006](#ent-006--scoped-users-see-no-out-of-scope-data) | Scoped users see no out-of-scope data | MUST | M-UI6 |
 | [ENT-007](#ent-007--metrics-scopes-on-labels-fail-closed-per-family-o1-pending) | Metrics scopes on labels, fail closed per family (O1 pending) | MUST | M-UI6 |
 | [ENT-008](#ent-008--field-level-controls) | Field-level controls | MUST | M-UI6 |
 | [ENT-009](#ent-009--out-of-scope-entities-in-the-atlas) | Out-of-scope entities in the Atlas | MUST | M-UI6 |
-| [ENT-010](#ent-010--no-dead-access-denied-pages) | No dead "Access denied" pages | MUST | M-UI4 |
-| [ENT-011](#ent-011--oidc-sso-with-idp-enforced-mfa) | OIDC SSO with IdP-enforced MFA | MUST | M-UI1 |
+| [ENT-010](#ent-010--no-dead-access-denied-pages) | No dead "Access denied" pages | MUST | M-UI6 |
+| [ENT-011](#ent-011--oidc-sso-with-idp-enforced-mfa) | OIDC SSO with IdP-enforced MFA | MUST | M-UI6 |
 | [ENT-012](#ent-012--saml-sso) | SAML SSO | MUST | M-UI6 |
 | [ENT-013](#ent-013--scim-provisioning) | SCIM provisioning | MUST | M-UI6 |
-| [ENT-014](#ent-014--group-to-team-and-role-mapping) | Group to team and role mapping | MUST | M-UI4 |
-| [ENT-015](#ent-015--api-tokens) | API tokens | MUST | M-UI4 |
+| [ENT-014](#ent-014--group-to-team-and-role-mapping) | Group to team and role mapping | MUST | M-UI6 |
+| [ENT-015](#ent-015--api-tokens) | API tokens | MUST | M-UI6 |
 | [ENT-016](#ent-016--kiosk-tokens) | Kiosk tokens | MUST | M-UI6 |
 | [ENT-017](#ent-017--append-only-audit-log) | Append-only audit log | MUST | M-UI4 |
 | [ENT-018](#ent-018--audit-viewer) | Audit viewer | MUST | M-UI4 |
 | [ENT-019](#ent-019--siem-export) | SIEM export | MUST | M-UI6 |
-| [ENT-020](#ent-020--configuration-and-derived-state-in-postgres) | Configuration and derived state in Postgres | MUST | M-UI1 |
+| [ENT-020](#ent-020--configuration-and-derived-state-in-postgres) | Configuration and derived state in Postgres | MUST | M-UI6 |
 | [ENT-021](#ent-021--large-artefacts-in-optional-object-storage) | Large artefacts in optional object storage | MAY | M-UI4 |
 | [ENT-022](#ent-022--versioned-content-with-diff-and-restore) | Versioned content with diff and restore | MUST | M-UI5 |
 | [ENT-023](#ent-023--yaml-export) | YAML export | MUST | M-UI5 |
@@ -444,6 +445,7 @@ all features pass with a self-hosted model and no outbound connection is attempt
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Alert history in Postgres (D2); metrics scopes per ADR-0013 option B (pending O1); licence note (D3) |
 | 1.0-rc2 | 2026-11-19 | Decision D8: ENT-028 is a single Go binary with embedded client assets ([ADR-0015](../adr/0015-go-bff.md)) |
+| 1.1-rc | 2026-11-20 | Decision D12 (owner): authentication deferred. ENT-001, ENT-003, ENT-011 and ENT-020 and their dependents ENT-002, ENT-005, ENT-010, ENT-014 and ENT-015 move to M-UI6; ENT-028's acceptance serves the application shell as the fixed local principal, with no login page until M-UI6; note 5 updated |
 
 ## Resolved during formalisation
 
@@ -457,9 +459,12 @@ all features pass with a self-hosted model and no outbound connection is attempt
    (ENT-007), marked pending.
 4. **"Request access" target.** The draft said it "notifies the owning team" without saying who
    owns a board; ENT-010 uses the folder's owning team.
-5. **Milestones** were not in the draft. Assigned from the roadmap and T10 (draft) rollout: OIDC and
-   built-in roles M-UI1; service accounts, tokens, team/folder bindings and audit of config + AI M-UI4;
-   data scopes, SAML, SCIM, custom roles, kiosks, data-access audit, SIEM, Git sync, Terraform M-UI6.
+5. **Milestones** were not in the draft. Assigned from the roadmap and T10 (draft) rollout: audit of
+   config + AI M-UI4; authentication M-UI6 (D12, 2026-11-20): OIDC, organisations, teams and users,
+   built-in roles, service accounts, tokens, team/folder bindings, group mapping and request access,
+   with data scopes, SAML, SCIM, custom roles, kiosks, data-access audit, SIEM, Git sync and
+   Terraform. Until then every request runs as a fixed local principal, which is also the audit
+   actor (ENT-017, ENT-018).
 6. **Gaps filled:** SCIM deprovisioning time (5 s), kiosk pairing, IdP-managed role labelling, and
    restricted-entity health hidden by default, all from T10 (draft).
 7. **Retention table** (6.2) added from ADR-0012's reference figures.

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-19 |
+| **Version** | 1.6-rc · 2026-11-20 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -24,19 +24,19 @@ requirement's milestone is the earliest milestone in which it MUST be met.
 | Milestone | Theme | Scope | Proves |
 |---|---|---|---|
 | **M-UI0** | Rendering spike | wgpu line chart + scatter in an OffscreenCanvas worker behind the typed TS engine API ([ADR-0014](../adr/0014-typescript-react-web-client.md)); Arrow decode; 10⁸-point pan/zoom; WebGPU + WebGL2. Delivered **after** the first M-UI1 slice (§2.1) | The performance contract is achievable in Rust/WASM ([09](09-performance-contract.md)) |
-| **M-UI1** | PromQL and LogQL query and boards, then the metrics workbench | **First (delivery order §2.1):** TS/React application with the conventional layout, Go BFF (JSON frames to the client until the engine), OIDC login, PulsusDB client for metrics and logs, PromQL and LogQL editors (PulsusDB validates), auto-vis, minimal Boards (grid of panels, save/load in Postgres), metrics vis (rate line, heatmap, stat) and logs vis (volume by level, log stream) on the interim Canvas 2D renderer. **Then:** visual builder, explain, metric browser, cardinality explorer, multiple queries and expressions, synced cursor, baseline ghost, events, LIVE, cached-first paint | PromQL and LogQL can be dashboarded against PulsusDB; day-to-day usefulness vs incumbent query explorers |
+| **M-UI1** | PromQL and LogQL query and boards, then the metrics workbench | **First (delivery order §2.1):** TS/React application with the conventional layout, Go BFF (JSON frames to the client until the engine), PulsusDB client for metrics and logs, PromQL and LogQL editors (PulsusDB validates), auto-vis, minimal Boards (grid of panels, save/load in Postgres), metrics vis (rate line, heatmap, stat) and logs vis (volume by level, log stream) on the interim Canvas 2D renderer. **Then:** visual builder, explain, metric browser, cardinality explorer, multiple queries and expressions, synced cursor, baseline ghost, events, LIVE, cached-first paint | PromQL and LogQL can be dashboarded against PulsusDB; day-to-day usefulness vs incumbent query explorers |
 | **M-UI2** | Entities + Lens | Entity catalogue, Service/Host Lens templates, **the rest of** logs (patterns, detected fields, line expand, live tail, log to metric), traces (scatter, waterfall) + profiles (flame), pivots, Correlate stack. Traces and profiles follow directly after the M-UI1 PromQL/LogQL slice | "Entity first" and cross-signal correlation |
 | **M-UI3** | Atlas + Change feed + Compare | Estate navigation ([15](15-estate-navigation.md)): Landscape, both zoom ladders + `V` floors, Infra grid + node packing, Explorer, Health/Capacity/Coverage layers; infrastructure model ([16](16-infrastructure-model.md)): canonical classes and shape grammar, three largest public clouds from telemetry, Kubernetes object model and Workload arrangement; Topology/Hierarchy Atlas with LOD, semantic zoom, replay and the Time Ribbon in Space scenes, segments/bundling/anomalous subgraph; change feed; Universal Compare (+ unchanged, coverage); local WASM analytics engine; First Light; victim/origin heuristic; **MCP server** | The spatial differentiator + RCA foundations |
 | **M-UI4** | Alerts + Investigations + RCA v1 | Alert authoring with backtest, routing, incident grouping, Alert Lens, Investigation workspace, RCA stage 1 + agent stage 2, evidence ledger + hypothesis tree, draw-to-ask, flight recorder, mobile PWA push + offline Alert Lens card (T20 (draft)) | MTTI improvement; AI RCA accuracy on the replay corpus |
 | **M-UI5** | Boards + Perspectives + Journeys | Boards **beyond the M-UI1 minimum** (edit mode with undo history, variables, versions UI with diff and restore, library, free-form canvas, 200 viewports, dashboard import with full panel parity per [05](05-visualisation-catalogue.md) §11: tables, geomap, schematics, widgets, field config + transformations), Perspectives (NOC, Platform, Engineer, Business, Support), Journeys and customer lookup, release compare; cloud inventory connectors, Network layer, further clouds, hypervisors, network devices and storage systems ([16](16-infrastructure-model.md)) | Multi-audience value; migration path |
-| **M-UI6** | Enterprise hardening | Data scopes, audit, SCIM, Git sync, Terraform, attention-managed wall (salience ladder, wall ↔ desk, shift replay), A/B Everything, accessibility AA audit, air-gapped AI | Sellable to regulated enterprises |
+| **M-UI6** | Enterprise hardening | Authentication: OIDC sign-in, users, teams, built-in roles, sessions (D12); data scopes, audit, SCIM, Git sync, Terraform, attention-managed wall (salience ladder, wall ↔ desk, shift replay), A/B Everything, accessibility AA audit, air-gapped AI | Sellable to regulated enterprises |
 
 The milestone of each requirement is in the requirements summary of its document and in the
 generated traceability matrix (`traceability.md`, produced by `tools/check.py --write`).
 
 ### 2.1 Delivery order (2026-11-19)
 
-Within M-UI1, the PromQL and LogQL query slice comes first. A user signs in, opens a board, adds
+Within M-UI1, the PromQL and LogQL query slice comes first. A user opens a board, adds
 PromQL and LogQL panels, sees the auto-chosen vis with live PulsusDB data and saves the board. Logs
 and Boards are delivered as a first subset in M-UI1. Requirements that the subset fully meets move to
 M-UI1 (Table 2.1b). Every other requirement keeps its milestone, which is when it is fully met (D6);
@@ -51,8 +51,9 @@ TS/React web application first ([ADR-0014](../adr/0014-typescript-react-web-clie
 engine (the M-UI0 scope) after the slice. Issues #24, #25 and #39–#49 are superseded by the steps
 below; each step is filed as the issue named in Table 2.1a.
 
-**Table 2.1a — Step sequence.** Critical path: 1 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Step 2 runs
-alongside steps 3–4; steps 12–13 follow the slice.
+**Table 2.1a — Step sequence.** Critical path: 1 → 3 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Step 2 runs
+alongside step 3; steps 12–13 follow the slice. Step 4 is deferred to M-UI6 (D12): until then the
+BFF serves a fixed local principal.
 
 | Step | Issue | Delivers | Milestone | Depends on |
 |---|---|---|---|---|
@@ -60,9 +61,9 @@ alongside steps 3–4; steps 12–13 follow the slice.
 | 1 | #57 | Web client scaffold and application shell (layout, routing, time range, refresh, user menu, themes, empty pages), stub data, CI | M-UI1 | — |
 | 2 | #58 | Interim chart frames: `ChartFrame` seam and Canvas 2D line, stacked bars, heatmap, stat; chart gallery on stub data | M-UI1 | 1 |
 | 3 | #59 | Go BFF skeleton: Postgres under RLS, migrations, OpenAPI pipeline, serves the client with headers, dev stack | M-UI1 | 1 |
-| 4 | #60 | OIDC sign-in, sessions and built-in roles, wired into the shell | M-UI1 | 3 |
-| 5 | #61 | Boards: list, 12-column grid, panel editor, save and load with versions | M-UI1 | 4, 2 |
-| 6 | #62 | PulsusDB client and PromQL routes (JSON frames) | M-UI1 | 4 |
+| 4 | #60 | OIDC sign-in, sessions and built-in roles, wired into the shell; deferred (D12) | M-UI6 | 3 |
+| 5 | #61 | Boards: list, 12-column grid, panel editor, save and load with versions | M-UI1 | 3, 2 |
+| 6 | #62 | PulsusDB client and PromQL routes (JSON frames) | M-UI1 | 3 |
 | 7 | #63 | Explore metrics: PromQL editor, auto-vis, series table | M-UI1 | 6, 2 |
 | 8 | #64 | PromQL panels on boards | M-UI1 | 7, 5 |
 | 9 | #65 | LogQL routes | M-UI1 | 6 |
@@ -120,6 +121,7 @@ contract tests may also run against a configured shared PulsusDB deployment, rea
 | D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards; the earlier no-sidebar prototype is rejected | [ADR-0014](../adr/0014-typescript-react-web-client.md) §10 | Accepted 2026-11-19 |
 | D10 | Asset integrity is verified by the BFF against the signed manifest before serving; every JS module, CSS file and worker is same-origin, and the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity`; no per-module SRI in the browser | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) | Accepted 2026-11-19 |
 | D11 | SRF-027 in M-UI1 shows PulsusDB's parse errors on run (positioned where PulsusDB returns a position); pre-run byte-offset diagnostics are SRF-078 at M-UI2 with the browser parser (was Q14, option A) | [04](04-surfaces.md) SRF-027, SRF-078 | Accepted 2026-11-19 |
+| D12 | Authentication deferred: sign-in, sessions, users and roles are not built in M-UI1. ENT-001, ENT-003, ENT-011 and ENT-020, and their dependents ENT-002, ENT-005, ENT-010, ENT-014, ENT-015, SRF-063 and SRF-065, move to M-UI6; #60 (Table 2.1a step 4) is M-UI6; #61 and #62 depend on #59. Until then the BFF serves a fixed local principal ("Local user", role admin) of the bootstrap organisation | §2.1; [11](11-enterprise.md), [04](04-surfaces.md) | Accepted 2026-11-20 (owner) |
 
 ### 3.1 Settled by the specification
 
@@ -151,7 +153,7 @@ product owner can confirm them at sign-off.
 | Q3 | Alert evaluation location | Pulsus Dash evaluator · PulsusDB ruler (post-1.0) | Ours first; migrate when the ruler is ready (part of O2) | [ADR-0008](../adr/0008-dash-alert-evaluator.md) (Proposed) |
 | Q6 | Arrow natively from PulsusDB vs BFF conversion | — | BFF first, native later (part of O2) | [ADR-0005](../adr/0005-arrow-wire-format.md) (Proposed); [T01](../technical/T01-frontend-architecture.md) |
 | Q7 | Default AI provider and level of self-hosted model support | — | Claude via API by default; OpenAI-compatible endpoint for self-hosted | [06](06-ai-copilot.md); T15 (draft) |
-| Q12 | Local sign-in without an IdP | (A) OIDC only; dev installs use a bundled test IdP · (B) a local bootstrap admin with a password, break-glass only | (A) for now. T06-022 forbids stored passwords, but T19 §4.3 and T11 `users.password_hash` assume a local bootstrap admin (T18 §13 Q5). Reconcile before the M-UI1 release | [T06](../technical/T06-bff-architecture.md), [T11](../technical/T11-postgres-schema.md), [T18](../technical/T18-security.md), [T19](../technical/T19-deployment.md) |
+| Q12 | Local sign-in without an IdP | (A) OIDC only; dev installs use a bundled test IdP · (B) a local bootstrap admin with a password, break-glass only | Moot until authentication is designed (D12, M-UI6): M-UI1 has no sign-in. T06-022 forbids stored passwords, but T19 §4.3 and T11 `users.password_hash` assume a local bootstrap admin (T18 §13 Q5); reconcile when authentication is designed | [T06](../technical/T06-bff-architecture.md), [T11](../technical/T11-postgres-schema.md), [T18](../technical/T18-security.md), [T19](../technical/T19-deployment.md) |
 
 ## 6. Next design steps
 
@@ -197,3 +199,4 @@ product owner can confirm them at sign-off.
 | 1.3-rc | 2026-11-19 | Q13 closed (#56): product requirements revised to D7–D9 (§7 item 6); Table 2.1a names the issues #56–#69; PRF-020 fallback is the GPU log stream (#69); Table 2.1c IA-020 row updated and SRF-027 row added; M-UI1 theme no longer names the Time Ribbon, which moves to the M-UI3 Space scenes (IA-028); Q10 answer reads "same web client" |
 | 1.4-rc | 2026-11-19 | Code review of #56: SRF-027 revised to errors on run and its pre-run positioned criterion split out as SRF-078 (M-UI2, proposed); the SRF-027 row leaves Table 2.1c; Q14 added for owner confirmation |
 | 1.5-rc | 2026-11-19 | Owner decisions on #56: Q14 closed as option A (D11, SRF-078 at M-UI2); D10 asset integrity verified by the BFF (ADR-0016) |
+| 1.6-rc | 2026-11-20 | Decision D12 (owner): authentication deferred; §3 records D12. §2 M-UI1 drops OIDC login and M-UI6 adds authentication; §2.1 the slice has no sign-in; Table 2.1a step 4 (#60) moves to M-UI6, steps 5 and 6 depend on step 3, critical path 1 → 3 → 5 → … → 11; Q12 moot until authentication is designed |
