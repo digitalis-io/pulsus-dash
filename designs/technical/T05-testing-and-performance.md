@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-20 |
+| **Version** | 1.7-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -585,6 +585,7 @@ the merge train), nightly (release blocker).
 | `unit:fuzz-dsf` | `cargo-fuzz` on the DSF parser and IPC decode (nightly; crashes block release) |
 | `unit:ring-stress` | loom/shuttle on SPSC rings and chunk pinning; 10⁶ records through each ring with random stalls |
 | `unit:config-strict` | BFF configuration (T06-019): an unknown or repeated YAML key, a second YAML document, an unknown `PULSUS_DASH_*` variable (other than the client tooling's) or a wrong type fails with the key and line or the variable; precedence defaults → file → environment; secret references refuse literals unless `allow_inline_secrets` and never print a value (T19-010) |
+| `unit:board-spec` | Board spec v1 (plan #61): the shared fixtures `api/fixtures/board-spec/v1-{minimal,full}.json` parse and round-trip through canonical JSON; the minimal fixture's canonical form and SHA-256 are fixed; every case of `invalid.json` returns exactly its JSON-pointer field errors in order (unknown, wrongly cased, repeated, missing and `null` keys, wrong types, non-integer grid values, and each semantic rule); the upcaster accepts v1 unchanged and refuses newer versions; the RFC 6902 patch applies back to the target. The same fixtures run in the client's test |
 
 **BFF integration on PostgreSQL 15 and 16 (`make itest`)**
 
@@ -592,9 +593,12 @@ the merge train), nightly (release blocker).
 |---|---|---|---|
 | `itest:bff-refuses-altered-asset` | Named by [T18](T18-security.md) T18-006; runs in `ci:go-test` (no database needed): an embedded set with one byte changed in a listed file, a listed file missing, or an unlisted extra file is refused by start-up verification (`hash_mismatch`, `missing_file`, `unlisted_file` naming the path), and `serve` exits 1 with `asset integrity check failed` and never opens a listener | PR | yes |
 | `itest:asset-manifest-signature` | Named by T18-006; runs in `ci:go-test`: a manifest one byte off its signed bytes, a signature by another key, a 63-byte or missing signature, a missing manifest, and no compiled-in key are refused (`bad_signature`, `missing_signature`, `missing_manifest`, `no_public_key`); of two keys, the second may sign (rotation) | PR | yes |
-| `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003) | PR | yes |
+| `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003); the audit partitions carry the same RLS, and as the app role every partition of `audit_events` refuses `SELECT` and `INSERT` with `42501` (T11-026) | PR | yes |
 | `itest:no-extensions` | After a migration from empty, `pg_extension` holds only `plpgsql` (T11-001) | PR | yes |
 | `itest:migrations` | Up from empty, then an idempotent rerun; a dry run writes nothing; two concurrent `migrate` runs apply and seed once; a database more than one version ahead is refused (also when another run advanced it while this one waited for the lock) and one version ahead is accepted by `migrate` and `serve`; `serve` refuses an older schema (T11-015, T19-007) | PR | yes |
+| `itest:board-crud` | Through `serve` (plan #61): create, read, save, unchanged save (no version, no audit event, ETag kept), stale `If-Match` → 409 with the current board and the submitted spec, missing `If-Match` → 428, list, soft delete; counts of versions and audit events after each step; every audit row names the fixed local principal, the board and the request ID; an invalid board writes nothing; two concurrent saves with one `If-Match` give one version and one 409 (T11-005, T11-006) | PR | yes |
+| `itest:board-prefs` | Through `serve`: starring is idempotent, unstarring empties the list, an unknown board is 404; recent boards are most recent first, honour `limit`, and drop deleted boards; starred boards drop deleted boards; 200 recent views are kept per user | PR | yes |
+| `itest:audit-append-only` | Board subset (plan #61), as the app role, each in its own transaction: `UPDATE`, `DELETE` and `TRUNCATE` of `audit_events`, `UPDATE` and `DELETE` of `board_versions`, `DELETE` of `boards` and of `audit_chain_heads` fail with `42501`; the hash chain verifies event by event and continues across the retention floor through `audit_chain_heads` (T11-017, T11-006, T06-004) | PR | yes |
 
 **Goldens (L2)**
 
@@ -820,3 +824,4 @@ Meta-testing:
 | 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
 | 1.5-rc | 2026-11-20 | #59 Part A: §7.1 adds `unit:config-strict` and the BFF integration gates `itest:rls-isolation`, `itest:no-extensions` (both already named by T11) and `itest:migrations`; `ci:migrations` names its failing squawk fixture and the append-only check on pull requests |
 | 1.6-rc | 2026-11-20 | #59 Part B: §7.1 adds `itest:bff-refuses-altered-asset` and `itest:asset-manifest-signature` (named by T18-006, run in `ci:go-test`), `ci:asset-integrity` (binary-level start-up refusal, PR, blocking), `e2e:bff-headers` and `e2e:bff-http-shell`; other gates unchanged |
+| 1.7-rc | 2026-11-20 | #61 Part A: §7.1 adds `unit:board-spec`, `itest:board-crud`, `itest:board-prefs` and `itest:audit-append-only` (board subset; named by T06 and T11); `itest:rls-isolation` adds the audit partitions, unreachable as the app role (T11-026) |
