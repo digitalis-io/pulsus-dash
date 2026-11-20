@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-20 |
+| **Version** | 1.7-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (headers, CSP, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sessions with authentication (D12), sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
@@ -550,8 +550,10 @@ Redactions are reversible only in the UI, and only for users who could see the o
   younger than 7 days not adopted except for security fixes
   ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7);
 - **server (Go):** `ci:govulncheck` (any reachable vulnerability fails), `ci:go-mod` (`go mod verify`,
-  tidy, read-only module mode), `depguard` and `gosec` in `ci:go-lint`
-  ([ADR-0015](../adr/0015-go-bff.md));
+  tidy, read-only module mode), `depguard` and `gosec` in `ci:go-lint`, `ci:go-licenses` (every
+  module linked into the binary under an AGPL-3.0-compatible licence (D3); the third-party notices
+  file `THIRD_PARTY_NOTICES.txt` is generated from their licence and notice files and ships with
+  releases) ([ADR-0015](../adr/0015-go-bff.md));
 - **engine crates (from #68):** `cargo-deny` (AGPL-3.0-compatible licences (D3); RustSec advisories;
   duplicate-major bans; sources limited to crates.io and the vendored PulsusDB crates) and
   `cargo-vet` (imported audits plus our own for unaudited crates in the WASM bundle);
@@ -733,6 +735,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.4-rc | 2026-11-19 | Owner decision ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted): T18-006 drops browser per-module integrity; the import map, probe, browser-floor change, `ci:importmap-coverage`, the altered-chunk browser tests and the "cannot verify" page are removed; the BFF per-file start-up verification (fail closed), same-origin JS, CSS and workers, the unchanged `script-src 'self'`, and the SRI-checked engine WASM with one same-origin retry stay; `itest:cdn-set-mismatch-falls-back` added; T18-007 restored to same-origin workers without the single-file constraint |
 | 1.5-rc | 2026-11-19 | Review r6 of #56: the asset rule reads "every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity` and compiled only from that verified response, with a same-origin retry" (owner decision: "The CDN still serves only the chart engine (hash-checked), fonts and map tiles"); the manifest is verification metadata outside the listed set (`asset-manifest.json` plus detached Ed25519 `asset-manifest.sig`, public key compiled into the BFF, signing key in release KMS only, both files the only unlisted exemptions); the manifest signing key removed from the BFF's own secrets |
 | 1.6-rc | 2026-11-20 | Decision D12 (authentication deferred): the header milestone moves sessions from M-UI1 to M-UI6 |
+| 1.7-rc | 2026-11-20 | #59 Part C: T18-026 server bullet adds `ci:go-licenses` (AGPL-3.0-compatible licences, D3) and the third-party notices file shipped with releases |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's
