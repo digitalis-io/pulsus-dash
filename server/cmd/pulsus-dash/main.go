@@ -1,4 +1,5 @@
-// Command pulsus-dash is the Pulsus Dash BFF (ADR-0015).
+// Command pulsus-dash is the Pulsus Dash BFF (ADR-0015): one binary with the commands serve,
+// migrate, config check and version.
 package main
 
 import "os"
