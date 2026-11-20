@@ -94,7 +94,10 @@ All targets run from the repository root.
 | `make itest-local` | starts `pg16` and `pg15` in their own project `pulsus-dash-itest` on ports 57432 and 57433 (`ITEST_PROJECT`, `ITEST_PG16_PORT`, `ITEST_PG15_PORT`), runs `make itest` against both, and removes the containers and volume on every exit, pass or fail. It never touches the dev volume | no |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` (`ci:dev-stack`, below) | no |
 
-Without the settings file, `dev-up` and `dev-migrate` stop before starting anything:
+`dev-up` and `dev-migrate` run their steps in order inside their recipes, so the order also holds
+with `make -j`: the settings file is checked first, then Postgres is started and waited for, then
+the migrations run, then the server starts. Without the settings file, `dev-up` and `dev-migrate`
+stop before starting anything:
 
 ```text
 dev/local.env is missing: create it as described in docs/development/dev-stack.md

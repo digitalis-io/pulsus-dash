@@ -102,11 +102,17 @@ dev-env:
 dev-db:
 	$(DC) up -d --wait pg16
 
-dev-migrate: dev-env server-build
+# The order is in the recipes, not in sibling prerequisites, so it holds under make -j: dev-env
+# first (a missing settings file stops before anything starts), then each step in turn.
+dev-migrate: dev-env
+	$(MAKE) server-build
 	$(LOAD_ENV); build/pulsus-dash migrate
 
-# Postgres, migrations, then the server in the foreground: Ctrl-C stops it, Postgres keeps running.
-dev-up: dev-env dev-db dev-migrate
+# Postgres (healthy), migrations, then the server in the foreground: Ctrl-C stops it, Postgres
+# keeps running.
+dev-up: dev-env
+	$(MAKE) dev-db
+	$(MAKE) dev-migrate
 	$(LOAD_ENV); exec build/pulsus-dash serve
 
 # Stops the containers and keeps the pg16-data volume.
