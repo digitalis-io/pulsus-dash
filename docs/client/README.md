@@ -5,8 +5,9 @@ The web client in `client/`: TypeScript, React and Vite
 data mode ([ADR-0017](../../designs/adr/0017-react-router.md)), accessible components from React Aria
 Components, server state in TanStack Query. This page covers the application shell of milestone
 M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and tokens, and the
-checks that guard them. Build and CI are in [Build, test and CI](../development/build-and-ci.md);
-dependencies in [JavaScript supply chain](supply-chain.md).
+checks that guard them. Charts (roadmap step 2, issue #58) are in [Charts](charts.md). Build and CI
+are in [Build, test and CI](../development/build-and-ci.md); dependencies in
+[JavaScript supply chain](supply-chain.md).
 
 ## Run
 
@@ -77,6 +78,7 @@ zone) are passed by closure.
 | `/t/:tenant` | `AppShell`. Loader: the session; a tenant the user has no binding for → 404 (standalone Not found); a non-canonical search → `replace()` to the canonical one |
 | `/t/:tenant` (index) | `replace()` to `/t/:tenant/boards`, keeping the (canonical) search |
 | `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too |
+| `/t/:tenant/dev/gallery` | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
 | `/t/:tenant/*` | Not found inside the shell |
 | `*` | Standalone Not found |
 
@@ -159,7 +161,12 @@ label, so state is never shown by colour alone. No page uses it yet.
 `design/tokens.toml` is the one source of colours (dark and light, designed separately), spacing,
 sizes, radius, borders, type and motion. `npm run tokens` generates `src/styles/tokens.css` (custom
 properties; reduced motion sets durations to `0ms`) and `src/styles/tokens.ts` (`colour`, `space`,
-`size`, `radius`, `border`, `font`, `motion`). Both are committed; CI regenerates and compares.
+`size`, `radius`, `border`, `font`, `motion`, and the ordered chart arrays `seriesPalette` and
+`sequentialRamp`). Both are committed; CI regenerates and compares. The chart tokens (#58) are
+`ramp-1`…`ramp-9` (the sequential heatmap ramp, one hue per theme) and `brush` in both themes,
+`size.chart` (240), `chart-stat` (120), `chart-tick` (4), `chart-line` (1.5), `chart-brush-min` (4)
+and `font.size.display` (32). `series-N` and `ramp-N` must be numbered contiguously from 1; the
+generator fails naming the first missing key.
 Components use CSS modules with `var(--…)` and, where a React Aria prop needs a number (popover
 offset, tooltip delay), the `tokens.ts` values; ESLint bans inline `style` and literal numbers in
 those props.
@@ -185,7 +192,7 @@ The generated token files and tests are not linted.
 
 ## Keyboard coverage
 
-`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L20) through
+`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L22) through
 `e2e/keyboardCoverage.ts`; ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in
 that file. After every keystroke the harness collects each interactive control (links, buttons,
 fields, menu items, options; a grid counts as one control) from the accessibility snapshot, keyed by
@@ -193,7 +200,10 @@ state: the route pattern plus the open overlay (with an overlay open, only the o
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
 overlay, it records the focused control as operated; Tab never counts. The test fails if any
 collected control was never operated, or if a required state (every route, Not found, Signed out,
-the session error) was never visited, and prints the missing keys. Two names are normalised: the
+the session error, and the chart gallery `/t/:tenant/dev/gallery`) was never visited, and prints
+the missing keys. L20 operates the header and sidebar on the gallery too; L22 operates the six chart
+crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip and the
+value text. Two names are normalised: the
 time range trigger is one control whatever range it shows, and the calendar grid one control
 whatever month. React Aria's screen-reader-only buttons are not counted: an empty button with
 `tabindex="-1"` whose parent is React Aria's VisuallyHidden wrapper (inline `clip-path: inset(50%)`),
@@ -224,7 +234,9 @@ sign-out (the keyboard script's L21 uses it).
 Every string is in `src/i18n/messages.en-GB.ts`; `t(id, values)` fills `{name}` placeholders and an
 unknown id is a type error. `src/i18n/format.ts` is the only place `Intl` formatters are created
 (locale en-GB, 24-hour time): `formatDate` (19 Nov 2026), `formatTime` (12:03:00), `formatRange`,
-`formatRangeShort` (12:03 – 13:03 GMT), `formatZone` (Europe/London (GMT)) and `describeRange`.
+`formatRangeShort` (12:03 – 13:03 GMT), `formatZone` (Europe/London (GMT)) and `describeRange`; for
+charts, `formatValue` (`2.84 s`, `1.2k rps`, `1.5 GiB`; rules in [Charts](charts.md#numbers-vl-012-t08-027)),
+`formatHourMinute` and `formatDayMonth`.
 
 ## Adding a page or a search key
 
@@ -251,7 +263,8 @@ every request, fonts included, stays on the app origin.
 
 ## Limits
 
-- No sign-in, BFF, real boards, charts, command palette, alert count or AI dock yet; starred boards
+- No sign-in, BFF, real boards, chart queries, command palette, alert count or AI dock yet (charts
+  draw only the gallery's synthetic data until the BFF serves frames, #62); starred boards
   are kept by the stub in the browser until the BFF stores them (#61).
 - Recent boards are per browser, not per user.
 - Day and week units are fixed 24 h and 7 × 24 h durations; only `now/d` and the calendar follow DST.
