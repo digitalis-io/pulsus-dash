@@ -34,8 +34,9 @@ func TestBootstrapRoute(t *testing.T) {
 	view := core.BootstrapView{
 		Org: core.Org{Slug: "default", Name: "Default organisation"},
 		Bindings: []core.TenantBinding{
-			{Slug: "demo", DatasourceURL: "http://pulsusdb.invalid:3100", Database: "db1", ScopeOrgID: "scope1", CredentialsRef: "env:PDB_CREDS", Kind: "pulsusdb"},
-			{Slug: "zeta", DatasourceURL: "http://other.invalid:3100", Kind: "pulsusdb"},
+			{Slug: "demo", DatasourceURL: "http://ds-one.invalid:3100", Database: "db1", ScopeOrgID: "scope1", CredentialsRef: "env:PDB_CREDS", Kind: "pulsusdb"}, //nolint:gosec // a reference string, not a credential
+
+			{Slug: "zeta", DatasourceURL: "http://ds-two.invalid:3100", Kind: "pulsusdb"},
 		},
 	}
 	h, _ := bootstrapHandler(view, nil)

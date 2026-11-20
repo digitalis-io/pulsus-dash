@@ -39,7 +39,8 @@ test.describe('e2e:csp-violations', () => {
     expect(console).toEqual([]);
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
 
-    const response = await page.request.get('/t/demo/boards');
+    // A navigation's Accept: the BFF serves index.html only to requests that accept HTML.
+    const response = await page.request.get('/t/demo/boards', { headers: { Accept: 'text/html' } });
     const headers = response.headers();
     for (const [k, v] of Object.entries(productionHeaders))
       expect(headers[k.toLowerCase()], k).toBe(v);

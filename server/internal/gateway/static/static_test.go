@@ -17,7 +17,7 @@ import (
 func pub() []ed25519.PublicKey { return []ed25519.PublicKey{statictest.Public(statictest.Key())} }
 
 // wantIntegrity checks that err is an *IntegrityError with the reason and path.
-func wantIntegrity(t *testing.T, set *Set, err error, reason, path string) *IntegrityError {
+func wantIntegrity(t *testing.T, set *Set, err error, reason, path string) IntegrityError {
 	t.Helper()
 	if set != nil {
 		t.Errorf("Verify returned a set with error %v", err)
@@ -25,11 +25,12 @@ func wantIntegrity(t *testing.T, set *Set, err error, reason, path string) *Inte
 	var ie *IntegrityError
 	if !errors.As(err, &ie) {
 		t.Fatalf("err = %v, want *IntegrityError %s %s", err, reason, path)
+		return IntegrityError{}
 	}
 	if ie.Reason != reason || ie.Path != path {
 		t.Errorf("IntegrityError = {%s %q}, want {%s %q}", ie.Reason, ie.Path, reason, path)
 	}
-	return ie
+	return *ie
 }
 
 // V1
