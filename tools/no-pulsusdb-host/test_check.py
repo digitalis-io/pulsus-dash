@@ -1,6 +1,7 @@
 """Tests of ci:no-pulsusdb-host (tools/no-pulsusdb-host/check.py), N1-N27 of #59 Part C.
 
 Run: python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'
+  or: python3 -I tools/no-pulsusdb-host/test_check.py
 
 The forbidden host in these tests is the fictional db.secret-host.corp. No real host appears here.
 
@@ -14,12 +15,18 @@ import errno
 import io
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-import check
+# The checker sits next to this file. python3 -I does not put the script's directory on sys.path, so
+# add it: the file runs directly (python3 -I tools/no-pulsusdb-host/test_check.py) and through
+# unittest discovery.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import check  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 BAD = HERE / "testdata" / "bad"
