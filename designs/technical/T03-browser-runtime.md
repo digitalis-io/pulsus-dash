@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-20 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -620,8 +620,8 @@ iframe requires that portal to be cross-origin isolated too; otherwise the embed
 single-threaded mode.
 
 #### T03-022 — Required headers
-**MUST** — The BFF MUST serve every Dash document and asset with the COOP, COEP, CORP and minimum
-CSP values above. A deployment that strips them MUST still work, in ST mode (§9), with the banner.
+**MUST** — The BFF MUST serve every Dash document with COOP, COEP, CORP and the CSP, and every
+asset with CORP and `nosniff` ([T18](T18-security.md) T18-002). A deployment that strips them MUST still work, in ST mode (§9), with the banner.
 
 ## 6. Data & storage
 
@@ -882,3 +882,4 @@ which forces a reload.
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 applicability table; the document now describes the chart engine runtime; T03-001, T03-009 and T03-013 revised; shim line budget withdrawn |
 | 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): IA-021 row verified by `e2e:rooms-reachable`; §4.5 region focus order; §7.1 first paint and interactive shell are the sidebar, page header and palette |
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §0 topology note; §2 goals, §4.1 artefacts (`dash-shell.wasm`, `dash-rooms-admin.wasm` withdrawn), §4.2 diagram and thread table, T03-003, §4.4 (the TS application owns the state store; the engine holds render-local state), §4.5–§4.6 TS keymap and URL codec, §5.3 marked superseded, §5.5, §6, §7.3, §11 and §12 rewritten; Leptos and the ui↔core rings removed |
+| 1.4-rc | 2026-11-20 | #59 Part B: T03-022 states the header split: every document carries COOP, COEP, CORP and the CSP; every asset carries CORP and `nosniff` (T18-002) |

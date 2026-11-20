@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -691,6 +691,9 @@ token's data scope applies.
 | `/auth/*` (OIDC), `/scim/v2/*` (M-UI6) | OIDC/SAML/SCIM | Identity | §4.11, T10 (draft) |
 | `POST /api/dash/v1/rum` | Binary | Browser RUM | T03 (record format) |
 | `GET /healthz` (liveness), `/readyz`, `/startupz`; `/metrics` on the separate admin port only | — | Ops | [T19](T19-deployment.md) |
+| `GET /api/dash/v1/version` | JSON | The server's version and commit | `api/openapi.yaml` (`Version`) |
+| `GET /api/dash/v1/bootstrap` | JSON | The client's first call: principal (the fixed local principal until M-UI6, D12), organisation, tenant slugs with their data-source check state (never a datasource URL, database, scope or credentials reference, T06-024), the server version and `can_sign_out` | `api/openapi.yaml` (`Bootstrap`) |
+| `POST /api/dash/v1/csp-report` | `application/reports+json` or `application/csp-report` | CSP violation reports ([T18](T18-security.md) T18-003): rate-limited, 64 KiB, read deadline, logged as allowlisted values only | `api/openapi.yaml` (hand-written handler) |
 
 #### T06-026 — Readiness does not depend on PulsusDB
 **MUST** — `/readyz` MUST report Postgres reachability and migration level only. A PulsusDB outage
@@ -854,3 +857,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 logs client methods on the native log routes move M-UI2 → M-UI1; patterns, detected fields, tail, traces and profiles stay M-UI2 |
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): BFF in Go. New §0 mapping; §4.1 rewritten as the Go package layout; T06-001, T06-005 (enforcement) and T06-027 (JSON internal API) revised; T06-011 notes JSON frames to the browser until the engine (ADR-0014 §5); §12 updated |
 | 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones, §2 goal, §4.11 (now the M-UI6 subset, with the fixed local principal until then) and §11 move OIDC auth from M-UI1 to M-UI6; §3 ENT-028 gate `e2e:helm-default-login` renamed `e2e:helm-default-shell`; §4.7 binds the tenant with `set_config('pulsus.org_id', …, true)` in `Db.Tx`; §4.9 lists the implemented Go keys; T06-019 revised: repeated keys rejected, client-tooling variables exempt; §5.2 adds the `not_found` and `internal` codes |
+| 1.3-rc | 2026-11-20 | #59 Part B: §5.1 adds `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` (fixed local principal until M-UI6, D12) and `POST /api/dash/v1/csp-report` |

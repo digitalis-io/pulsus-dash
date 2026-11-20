@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-20 |
+| **Version** | 1.7-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (headers, CSP, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sessions with authentication (D12), sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
@@ -219,7 +219,11 @@ The default policy MUST be absent, so any other sink throws.
   `Cross-Origin-Resource-Policy: cross-origin`. Third-party cookies are unavailable in iframes, so
   embedding uses short-lived **embed tokens** (T10 (draft)) rather than the session cookie.
 - **CSP reporting.** `report-to` goes to `/api/dash/v1/csp-report`, which is rate-limited and
-  recorded as Dash self-telemetry ([T19](T19-deployment.md) §4.10).
+  recorded as Dash self-telemetry ([T19](T19-deployment.md) §4.10). Reports are logged only as
+  allowlisted values: the directive (a known CSP directive, else `other`), the disposition, the
+  client route pattern the document matches (never the path or a parameter) and a blocked
+  category (`inline`, `eval`, `data`, `blob`, `url`, …). URLs, hosts, queries, samples and source
+  locations are never logged.
 
 ### 4.3 Subresource integrity & asset integrity
 
@@ -250,8 +254,14 @@ opens a listener, the BFF MUST:
    fatal: log `asset_integrity_failed{path, expected, actual}` and exit non-zero without serving.
    `asset-manifest.json` and `asset-manifest.sig` are the only files exempt from listing.
 
+Manifest details: `{"version": 1, "files": [{path, sha384, size}]}` sorted by path, with `sha384`
+in standard base64; the `.br` and `.gz` variants are listed as files of their own; the signature
+is the 64 raw Ed25519 bytes. `serve --api-only` is a development-only mode that serves no client at
+all, so it serves nothing unverified.
+
 The BFF serves assets only from that verified, read-only in-memory set, so the bytes served are the
-bytes verified. In CDN mode it also fetches and hashes every manifest-listed CDN file at start-up; on
+bytes verified. `asset-manifest.json` and `asset-manifest.sig` are served as the exact bytes that
+were verified. In CDN mode it also fetches and hashes every manifest-listed CDN file at start-up; on
 any mismatch it serves the embedded set instead (T19-005) and logs the path.
 
 **Engine WASM failure handling.** A fetch with `integrity` resolves only after the whole body has
@@ -733,6 +743,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.4-rc | 2026-11-19 | Owner decision ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted): T18-006 drops browser per-module integrity; the import map, probe, browser-floor change, `ci:importmap-coverage`, the altered-chunk browser tests and the "cannot verify" page are removed; the BFF per-file start-up verification (fail closed), same-origin JS, CSS and workers, the unchanged `script-src 'self'`, and the SRI-checked engine WASM with one same-origin retry stay; `itest:cdn-set-mismatch-falls-back` added; T18-007 restored to same-origin workers without the single-file constraint |
 | 1.5-rc | 2026-11-19 | Review r6 of #56: the asset rule reads "every JS module, CSS file and worker is same-origin; the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity` and compiled only from that verified response, with a same-origin retry" (owner decision: "The CDN still serves only the chart engine (hash-checked), fonts and map tiles"); the manifest is verification metadata outside the listed set (`asset-manifest.json` plus detached Ed25519 `asset-manifest.sig`, public key compiled into the BFF, signing key in release KMS only, both files the only unlisted exemptions); the manifest signing key removed from the BFF's own secrets |
 | 1.6-rc | 2026-11-20 | Decision D12 (authentication deferred): the header milestone moves sessions from M-UI1 to M-UI6 |
+| 1.7-rc | 2026-11-20 | #59 Part B: §4.3 manifest details (sorted entries, `sha384` in standard base64, variants listed, the signature as 64 raw bytes, the manifest and signature served as the verified bytes, `serve --api-only` serves no client); T18-003 CSP reports are logged only as allowlisted values (directive, disposition, route pattern, blocked category) |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

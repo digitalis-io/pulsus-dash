@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-20 |
+| **Version** | 1.6-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
@@ -121,7 +121,9 @@ turns it off), and in CDN mode versioned paths are kept for 30 days.
 **MUST** — At start-up the BFF MUST verify the detached Ed25519 `asset-manifest.sig` over
 `asset-manifest.json` with the public key compiled into the binary, and the hash of every embedded
 asset file, and MUST exit without serving on any mismatch or unlisted file (the manifest and its
-signature are the only exemptions; [T18](T18-security.md) T18-006). In CDN
+signature are the only exemptions; [T18](T18-security.md) T18-006). A binary built without
+embedded assets refuses to serve; `serve --api-only` is a development-only mode that serves no
+client, and therefore nothing unverified. In CDN
 mode it MUST also fetch and hash every manifest-listed CDN file and fall back to the embedded assets
 on any mismatch.
 
@@ -136,9 +138,11 @@ on any mismatch.
 
 #### T19-002 — Headers come from the binary
 **MUST** — Headers (CSP, COOP, COEP, HSTS…) MUST be set **by the binary**
-([T18](T18-security.md) T18-002), never by ingress configuration, so they cannot be lost. A
-start-up self-check fetches `/` through the configured public URL, if it is reachable, and warns
-when an ingress strips COOP/COEP.
+([T18](T18-security.md) T18-002), never by ingress configuration, so they cannot be lost. When the
+optional `server.public_url` is set, a start-up self-check makes one request with a 2 s timeout
+right after the listener opens (`GET <public_url>/` as HTML, or `/healthz` without a client) and
+warns when it is unreachable, answers another status, or an ingress strips or changes COOP, COEP or
+the CSP. It never retries and never fails start-up.
 
 **Build** *(revised 2026-11-19, [ADR-0015](../adr/0015-go-bff.md))*:
 - `CGO_ENABLED=0 GOOS=linux GOARCH=amd64|arm64 go build -trimpath -buildvcs=true`, statically linked,
@@ -681,3 +685,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 | 1.3-rc | 2026-11-19 | ADR-0016 (Accepted): asset integrity is verified by the BFF at start-up, per file, fail closed; no per-module integrity in the browser |
 | 1.4-rc | 2026-11-19 | Review r6 of #56: CDN-mode wording aligned with ADR-0016 (engine WASM is the one executable asset the CDN may serve); detached `asset-manifest.sig` verified with the compiled-in Ed25519 public key; only the manifest and its signature are exempt from listing |
 | 1.5-rc | 2026-11-20 | #59 Part A: T19-010 revised (`*_ref` keys with `env:NAME` or `file:/absolute/path`, `vault://` later; the seeded binding in Postgres, with its credentials reference, is authoritative); §4.9 sources aligned with T06 §4.9 (YAML file, `PULSUS_DASH_<KEY_PATH>`, `config check` connects to nothing); D12: the ENT-028 Helm gate expects the application shell, not a login page |
+| 1.6-rc | 2026-11-20 | #59 Part B: T19-002 names the optional `server.public_url` and its one 2 s self-check request after the listener opens; T19-005: a binary built without embedded assets refuses to serve, and `serve --api-only` is a development-only mode that serves no client ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) unchanged) |
