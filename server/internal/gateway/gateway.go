@@ -44,6 +44,12 @@ type Deps struct {
 	// PulsusDB is the only PulsusDB client (T06-005); nil answers every data route 503
 	// datasource_config.
 	PulsusDB *pulsusdb.Client
+	// Boards is the boards service; nil (or a zero Org) answers every board route with 503.
+	Boards core.Boards
+	// Org is the organisation of every request until authentication lands (D12).
+	Org core.OrgID
+	// AuditPartitions is the audit partition health for /readyz; nil reports unknown.
+	AuditPartitions interface{ Check() string }
 }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
@@ -60,26 +66,30 @@ func New(d Deps) http.Handler {
 		d.Logger = slog.New(slog.DiscardHandler)
 	}
 	r := chi.NewRouter()
-	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger))
+	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger), bodyLimit, boardBody, requestCtx(d))
 	a := assets{set: d.Assets}
 	r.NotFound(a.fallback)
 	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
-	r.Method(http.MethodPost, "/api/dash/v1/csp-report", newCSPReport(d))
 	q := &dataRoutes{d: d}
 	r.Post("/api/dash/v1/query/promql/range", q.serveRange)
 	r.Post("/api/dash/v1/query/promql/instant", q.serveInstant)
-	r.Get("/api/dash/v1/prom/labels", q.labels)
-	r.Get("/api/dash/v1/prom/label/{name}/values", q.labelValues)
-	r.Get("/api/dash/v1/prom/series", q.series)
-	r.Get("/api/dash/v1/prom/metadata", q.metadata)
-	r.Get("/api/dash/v1/datasource/check", q.datasourceCheck)
+	r.Method(http.MethodPost, cspReportPath, newCSPReport(d))
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusMethodNotAllowed, api.Invalid, "method not allowed")
 	})
-	badRequest := func(w http.ResponseWriter, _ *http.Request, _ error) {
+	badRequest := func(w http.ResponseWriter, _ *http.Request, err error) {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			WriteError(w, http.StatusRequestEntityTooLarge, api.Invalid, "request body too large")
+			return
+		}
+		if e := paramError(err); e != nil { // a query parameter the generated wrapper could not bind
+			writeReqError(w, e)
+			return
+		}
 		WriteError(w, http.StatusBadRequest, api.Invalid, "bad request")
 	}
-	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}, boards: boards{deps: d}, prom: prom{deps: d}, datasource: datasource{deps: d}}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: badRequest,
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			d.Logger.ErrorContext(r.Context(), "response error", "error", err.Error())
@@ -89,10 +99,14 @@ func New(d Deps) http.Handler {
 	return api.HandlerWithOptions(strict, api.ChiServerOptions{BaseRouter: r, ErrorHandlerFunc: badRequest})
 }
 
-// routes implements every generated operation: the probes and the meta routes.
+// routes implements every generated operation: the probes, the meta routes, the boards, the
+// PulsusDB completion routes and the data-source check.
 type routes struct {
 	health
 	meta
+	boards
+	prom
+	datasource
 }
 
 // WriteError writes the error envelope {"error":{"code":…,"message":…}} (T06 §5.2).
@@ -117,6 +131,23 @@ func commonHeaders(next http.Handler) http.Handler {
 }
 
 type requestIDKey struct{}
+
+// cspReportPath is the hand-written csp-report route.
+const cspReportPath = "/api/dash/v1/csp-report"
+
+// maxRequestBody bounds every POST and PUT body (T06-021); the csp-report route has its own limit.
+const maxRequestBody = 2 << 20
+
+// bodyLimit caps POST and PUT bodies at maxRequestBody; reading past it fails with
+// *http.MaxBytesError, which the request error handler answers with 413.
+func bodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.URL.Path != cspReportPath {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func newRequestID() string {
 	u, err := uuid.NewV7()

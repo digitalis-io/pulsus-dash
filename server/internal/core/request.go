@@ -29,8 +29,12 @@ type TenantCtx struct {
 	Binding TenantBinding
 }
 
-// RequestCtx is carried, by pointer, by every data call (T06-002).
+// RequestCtx is carried, by pointer, by every service and data call (T06-002): the organisation
+// and the actor of writes (#61), and for PulsusDB calls the resolved tenant binding, the principal,
+// a non-optional data scope and the priority (#62).
 type RequestCtx struct {
+	Org       OrgID
+	Actor     Actor
 	Tenant    TenantCtx
 	Principal Principal
 	Scope     DataScope

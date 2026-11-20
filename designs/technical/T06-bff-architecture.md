@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-20 |
+| **Version** | 1.5-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -222,6 +222,11 @@ separate builds, and `--role all` MUST be a complete, supported deployment.
 spilled to a local append-only file and `dash_audit_spill_total` raised; it MUST NOT be dropped
 silently. Audit rows are append-only: the application role has INSERT but not UPDATE or DELETE on
 `audit_events` (T11).
+
+*Note (#61, 2026-11-20):* configuration-change audit rows (boards first) are written inside the
+save transaction, so that a version and its audit event commit or roll back together (T11-006).
+The non-blocking sink applies to events outside a content transaction, and lands with its first
+producer.
 
 ### 4.3 The PulsusDB client (`pulsusdb-client`)
 
@@ -712,12 +717,13 @@ token's data scope applies.
 | `GET /api/dash/v1/datasource/check` (`?tenant=`) | JSON | The binding's `runtimeinfo` check (T06-025): `{state, checked_at}`; never part of readiness (T06-026) | `api/openapi.yaml` (`DatasourceStatus`) |
 
 #### T06-026 — Readiness does not depend on PulsusDB
-**MUST** — `/readyz` MUST report Postgres reachability and migration level only. A PulsusDB outage
+**MUST** — `/readyz` MUST report Postgres reachability, migration level and audit partition health
+only *(revised 2026-11-20, #61; was "Postgres reachability and migration level only")*. A PulsusDB outage
 MUST NOT make replicas unready, so alert state, silences and investigations stay available.
 
 ### 5.2 Error envelope (JSON routes)
 
-`{"error":{"code":"scope_denied|budget_exhausted|too_broad|unavailable|invalid|forbidden|virtual_unsupported|not_found|internal","message":"…","hint":{…},"query_id":"…","fields":[{"pointer":"/rules/0/expr","message_key":"…"}]}}`.
+`{"error":{"code":"scope_denied|budget_exhausted|too_broad|unavailable|invalid|forbidden|virtual_unsupported|not_found|conflict|internal","message":"…","hint":{…},"query_id":"…","fields":[{"pointer":"/rules/0/expr","message_key":"…"}]}}`.
 
 - `hint` carries machine-readable narrowing suggestions, for example the label to add (PRF-031), or
   `request_access{owner_team}` for `forbidden` (ENT-010).
@@ -725,6 +731,9 @@ MUST NOT make replicas unready, so alert state, silences and investigations stay
 - `not_found` answers an unknown route or object (404); `internal` answers an unexpected server error
   (500), whose details are logged and never returned. A wrong method on a known route is `invalid`
   (405).
+- `conflict` answers a write whose `If-Match` does not equal the object's current ETag (409,
+  [T11](T11-postgres-schema.md) T11-005). Its body is `{"error":{…},"current":{…},"submitted":{…}}`:
+  the current object and, for a save, the submitted spec, so the client can show both.
 - **Upstream mapping** (#62). PulsusDB's parse errors (400) are `invalid` with
   `fields: [{pointer: "/query"}]` and, when the message gives one, `hint.position.offset` (T09-009);
   `422` is `too_broad` with `hint.action: narrow`; upstream failures are `unavailable` with
@@ -881,4 +890,5 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): BFF in Go. New §0 mapping; §4.1 rewritten as the Go package layout; T06-001, T06-005 (enforcement) and T06-027 (JSON internal API) revised; T06-011 notes JSON frames to the browser until the engine (ADR-0014 §5); §12 updated |
 | 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones, §2 goal, §4.11 (now the M-UI6 subset, with the fixed local principal until then) and §11 move OIDC auth from M-UI1 to M-UI6; §3 ENT-028 gate `e2e:helm-default-login` renamed `e2e:helm-default-shell`; §4.7 binds the tenant with `set_config('pulsus.org_id', …, true)` in `Db.Tx`; §4.9 lists the implemented Go keys; T06-019 revised: repeated keys rejected, client-tooling variables exempt; §5.2 adds the `not_found` and `internal` codes |
 | 1.3-rc | 2026-11-20 | #59 Part B: §5.1 adds `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` (fixed local principal until M-UI6, D12) and `POST /api/dash/v1/csp-report` |
-| 1.4-rc | 2026-11-20 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
+| 1.4-rc | 2026-11-20 | #61 Part A: §5.2 adds the `conflict` code (409 on an `If-Match` mismatch, body `{error, current, submitted}`, T11-005); T06-004 note: configuration-change audit rows are written in the save transaction (T11-006), the non-blocking sink applies outside a content transaction; T06-026 revised: `/readyz` reports Postgres reachability, migration level and audit partition health only (still never PulsusDB) |
+| 1.5-rc | 2026-11-20 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |

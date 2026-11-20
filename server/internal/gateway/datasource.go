@@ -2,9 +2,7 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
@@ -21,34 +19,34 @@ type requestScope struct {
 	c  *pulsusdb.Client
 }
 
-// datasourceCheck is GET /api/dash/v1/datasource/check (T06-025): one runtimeinfo call of the
-// tenant's binding, never part of readiness (T06-026). It answers 200 with the state, 404 for
-// an unknown tenant and 503 when the configuration store is unavailable.
-func (q *dataRoutes) datasourceCheck(w http.ResponseWriter, r *http.Request) {
-	tenant, e := tenantParam(r)
-	if e != nil {
-		writeReqError(w, e)
-		return
+// datasource implements GET /api/dash/v1/datasource/check (T06-025): one runtimeinfo call of the
+// tenant's binding, never part of readiness (T06-026). It answers 200 with the state, 400 for a
+// malformed tenant, 404 for an unknown one and 503 when the configuration store is unavailable.
+type datasource struct{ deps Deps }
+
+func (d *datasource) GetDatasourceCheck(ctx context.Context, req api.GetDatasourceCheckRequestObject) (api.GetDatasourceCheckResponseObject, error) {
+	if e := tenantOf(req.Params.Tenant); e != nil {
+		return api.GetDatasourceCheck400JSONResponse(e.envelope()), nil
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), checkDeadline)
+	ctx, cancel := context.WithTimeout(ctx, checkDeadline)
 	defer cancel()
-	tc, e := resolveTenant(ctx, q.d, tenant)
+	tc, e := resolveTenant(ctx, d.deps, req.Params.Tenant)
 	if e != nil {
-		writeReqError(w, e)
-		return
+		if e.body.Code == api.NotFound {
+			return api.GetDatasourceCheck404JSONResponse(e.envelope()), nil
+		}
+		return api.GetDatasourceCheck503JSONResponse(e.envelope()), nil
 	}
 	state := api.DatasourceStatusStateError
-	if q.d.PulsusDB != nil {
-		_, err := q.d.PulsusDB.RuntimeInfo(ctx, requestCtx(r, tc))
-		if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
-			return
+	if d.deps.PulsusDB != nil {
+		_, err := d.deps.PulsusDB.RuntimeInfo(ctx, dataRequestCtxFrom(ctx, tc))
+		if errors.Is(err, context.Canceled) {
+			return nil, nil // the browser went away: nothing is written
 		}
 		state = checkState(err)
 	}
-	at := q.now().UnixMilli()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(api.DatasourceStatus{State: state, CheckedAt: &at})
+	at := (&dataRoutes{d: d.deps}).now().UnixMilli()
+	return api.GetDatasourceCheck200JSONResponse(api.DatasourceStatus{State: state, CheckedAt: &at}), nil
 }
 
 // checkState maps the runtimeinfo outcome (plan #62 §4.6).

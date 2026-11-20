@@ -95,9 +95,9 @@ func (d *discard) Flush()                      {}
 // workloadGateway is a gateway with the binding in memory (no Postgres), credentials configured
 // (so redaction is in the counted path) and the upstream m.
 func workloadGateway(m *memTransport) http.Handler {
-	b := core.TenantBinding{OrgID: testOrg, ID: demoBindingID, Slug: "demo", DatasourceURL: "http://localhost:9091",
+	b := core.TenantBinding{OrgID: pdbOrg, ID: demoBindingID, Slug: "demo", DatasourceURL: "http://localhost:9091",
 		CredentialsRef: "env:C", Kind: "pulsusdb"}
-	view := core.BootstrapView{Org: core.Org{ID: testOrg, Slug: "default", Name: "Default organisation"}, Bindings: []core.TenantBinding{b}}
+	view := core.BootstrapView{Org: core.Org{ID: pdbOrg, Slug: "default", Name: "Default organisation"}, Bindings: []core.TenantBinding{b}}
 	logger := slog.New(slog.DiscardHandler)
 	return New(Deps{Logger: logger, Probe: &fakeProbe{version: 1}, SchemaLatest: 1,
 		Bootstrap: func(context.Context) (core.BootstrapView, error) { return view, nil },

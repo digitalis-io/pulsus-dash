@@ -21,7 +21,7 @@ import (
 var goldenNow = time.UnixMilli(1767229230000)
 
 var (
-	testOrg       = core.OrgID(uuid.MustParse("01900000-0000-7000-8000-0000000000aa"))
+	pdbOrg        = core.OrgID(uuid.MustParse("01900000-0000-7000-8000-0000000000aa"))
 	demoBindingID = uuid.MustParse("01900000-0000-7000-8000-000000000001")
 )
 
@@ -29,14 +29,14 @@ var (
 // and whose PulsusDB client has options o. Logs are JSON at debug.
 func queryGateway(t *testing.T, url string, o pulsusdb.Options, mod ...func(*core.TenantBinding)) (http.Handler, *syncBuffer) {
 	t.Helper()
-	b := core.TenantBinding{OrgID: testOrg, ID: demoBindingID, Slug: "demo", DatasourceURL: url, Kind: "pulsusdb"}
+	b := core.TenantBinding{OrgID: pdbOrg, ID: demoBindingID, Slug: "demo", DatasourceURL: url, Kind: "pulsusdb"}
 	for _, m := range mod {
 		m(&b)
 	}
 	logs := &syncBuffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	o.Logger = logger
-	view := core.BootstrapView{Org: core.Org{ID: testOrg, Slug: "default", Name: "Default organisation"}, Bindings: []core.TenantBinding{b}}
+	view := core.BootstrapView{Org: core.Org{ID: pdbOrg, Slug: "default", Name: "Default organisation"}, Bindings: []core.TenantBinding{b}}
 	return New(Deps{
 		Logger: logger, Probe: &fakeProbe{version: 1}, SchemaLatest: 1,
 		Bootstrap: func(context.Context) (core.BootstrapView, error) { return view, nil },
@@ -67,8 +67,8 @@ func postJSON(h http.Handler, path, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
-// envelope decodes an error envelope.
-type envelope struct {
+// errEnvelope decodes an error errEnvelope.
+type errEnvelope struct {
 	Error struct {
 		Code    string         `json:"code"`
 		Message string         `json:"message"`
@@ -81,23 +81,23 @@ type envelope struct {
 	} `json:"error"`
 }
 
-func envelopeOf(t *testing.T, b []byte) envelope {
+func errEnvelopeOf(t *testing.T, b []byte) errEnvelope {
 	t.Helper()
-	var e envelope
+	var e errEnvelope
 	if err := json.Unmarshal(b, &e); err != nil {
-		t.Fatalf("body %q is not an envelope: %v", b, err)
+		t.Fatalf("body %q is not an errEnvelope: %v", b, err)
 	}
 	return e
 }
 
 // wantError checks status, code, and (if pointer != "-") the first field's pointer and key.
-func wantError(t *testing.T, what string, rec *httptest.ResponseRecorder, status int, code, pointer, key string) envelope {
+func wantError(t *testing.T, what string, rec *httptest.ResponseRecorder, status int, code, pointer, key string) errEnvelope {
 	t.Helper()
 	if rec.Code != status {
 		t.Errorf("%s: status %d, want %d (body %s)", what, rec.Code, status, rec.Body.String())
-		return envelope{}
+		return errEnvelope{}
 	}
-	e := envelopeOf(t, rec.Body.Bytes())
+	e := errEnvelopeOf(t, rec.Body.Bytes())
 	if e.Error.Code != code {
 		t.Errorf("%s: code %q, want %q (body %s)", what, e.Error.Code, code, rec.Body.String())
 	}

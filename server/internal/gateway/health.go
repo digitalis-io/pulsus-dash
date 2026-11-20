@@ -23,10 +23,21 @@ func (h *health) GetStartupz(context.Context, api.GetStartupzRequestObject) (api
 	return api.GetStartupz200JSONResponse{Status: api.HealthStatusOk}, nil
 }
 
+// auditPartitions is the audit partition check (T11-021): unknown without a state.
+func (h *health) auditPartitions() api.ReadyChecksAuditPartitions {
+	if h.deps.AuditPartitions == nil {
+		return api.ReadyChecksAuditPartitionsUnknown
+	}
+	return api.ReadyChecksAuditPartitions(h.deps.AuditPartitions.Check())
+}
+
+// GetReadyz checks Postgres, the schema window and the audit partitions. An audit partition state
+// of error (audited saves fail or are about to) is not ready; low is reported but stays ready.
 func (h *health) GetReadyz(ctx context.Context, _ api.GetReadyzRequestObject) (api.GetReadyzResponseObject, error) {
+	audit := h.auditPartitions()
 	notReady := func(pg api.ReadyChecksPostgres, schema api.ReadyChecksSchema) (api.GetReadyzResponseObject, error) {
 		return api.GetReadyz503JSONResponse{Status: api.ReadyStatusNotReady,
-			Checks: api.ReadyChecks{Postgres: pg, Schema: schema}}, nil
+			Checks: api.ReadyChecks{Postgres: pg, Schema: schema, AuditPartitions: audit}}, nil
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, readyCheckTimeout)
@@ -53,6 +64,9 @@ func (h *health) GetReadyz(ctx context.Context, _ api.GetReadyzRequestObject) (a
 	case v > latest+1:
 		return notReady(api.ReadyChecksPostgresOk, api.ReadyChecksSchemaAhead)
 	}
+	if audit == api.ReadyChecksAuditPartitionsError {
+		return notReady(api.ReadyChecksPostgresOk, api.ReadyChecksSchemaOk)
+	}
 	return api.GetReadyz200JSONResponse{Status: api.ReadyStatusReady,
-		Checks: api.ReadyChecks{Postgres: api.ReadyChecksPostgresOk, Schema: api.ReadyChecksSchemaOk}}, nil
+		Checks: api.ReadyChecks{Postgres: api.ReadyChecksPostgresOk, Schema: api.ReadyChecksSchemaOk, AuditPartitions: audit}}, nil
 }

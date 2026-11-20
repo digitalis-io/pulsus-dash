@@ -33,9 +33,9 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 The schemas are in `api/openapi.yaml`. Every operation declares `x-permission: query.read`, the
 T06-023 declaration that M-UI6 will check, and the required `tenant` parameter
 (`^[a-z0-9-]{1,40}$`). The two POST routes are hand-written so that they can stream; the five GET
-routes are hand-written too, because the generated binding of query parameters would need a
-parameter runtime module that is not a dependency of the server. Their answers are exactly the
-ones the spec declares.
+routes are generated strict handlers. A parameter the generated code cannot bind (missing, or not
+an integer) is answered with its field error (`field.required` or `field.type`, `tenant.invalid`
+for the tenant) by the gateway's request error handler.
 
 The tenant slug is resolved among the bootstrap organisation's bindings, read under row-level
 security through the same call as the bootstrap ([T06-006](../../designs/technical/T06-bff-architecture.md)).

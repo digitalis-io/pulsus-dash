@@ -18,9 +18,8 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
 
-// Bounds of the query routes (plan #62 §3.4, A.2).
+// Bounds of the query routes (plan #62 §3.4, A.2); the body limit is maxRequestBody (T06-021).
 const (
-	maxRequestBody   = 2 << 20 // T06-021
 	maxQueryBytes    = 65536
 	maxTimeMs        = 253402300799999
 	minTimeoutMs     = 200
@@ -30,8 +29,8 @@ const (
 	streamBuffer     = 32 << 10
 )
 
-// dataRoutes are the PulsusDB routes: the two hand-written query routes (streamed, this file),
-// the completion routes (prom.go) and the data-source check (datasource.go).
+// dataRoutes are the two hand-written PulsusDB query routes (streamed, this file); the
+// completion routes (prom.go) and the data-source check (datasource.go) are strict handlers.
 type dataRoutes struct{ d Deps }
 
 func (q *dataRoutes) now() time.Time {
@@ -41,16 +40,19 @@ func (q *dataRoutes) now() time.Time {
 	return time.Now()
 }
 
-func requestID(r *http.Request) string {
-	id, _ := r.Context().Value(requestIDKey{}).(string)
-	return id
+// dataRequestCtx is the RequestCtx of every data call: the request's (organisation, actor and
+// request ID) with the resolved tenant, the fixed local principal (D12) and the full-tenant scope.
+func dataRequestCtx(r *http.Request, t core.TenantCtx) *core.RequestCtx {
+	return dataRequestCtxFrom(r.Context(), t)
 }
 
-// requestCtx is the RequestCtx of every data call: the fixed local principal (D12) with the full
-// tenant scope.
-func requestCtx(r *http.Request, t core.TenantCtx) *core.RequestCtx {
-	return &core.RequestCtx{Tenant: t, Principal: core.LocalPrincipal, Scope: core.FullTenantScope(),
-		Priority: core.PriorityInteractive, RequestID: requestID(r)}
+func dataRequestCtxFrom(ctx context.Context, t core.TenantCtx) *core.RequestCtx {
+	rc := *rcFrom(ctx)
+	rc.Tenant, rc.Principal, rc.Scope, rc.Priority = t, core.LocalPrincipal, core.FullTenantScope(), core.PriorityInteractive
+	if rc.RequestID == "" {
+		rc.RequestID, _ = ctx.Value(requestIDKey{}).(string)
+	}
+	return &rc
 }
 
 // rangeRequest and instantRequest have pointer fields so a missing field is detected.
@@ -140,17 +142,24 @@ func firstError(es ...*reqError) *reqError {
 	return nil
 }
 
+// failure is the response of a data-call error (§4.4); a reserved selector is logged at info
+// with its field, never the text.
+func (q *dataRoutes) failure(ctx context.Context, err error) *reqError {
+	status, body, retryAfter := upstreamError(err)
+	if body.Code == api.VirtualUnsupported && body.Fields != nil {
+		id, _ := ctx.Value(requestIDKey{}).(string)
+		q.d.Logger.InfoContext(ctx, "reserved_selector", "field", (*body.Fields)[0].Pointer, "request_id", id)
+	}
+	return &reqError{status: status, body: body, retryAfter: retryAfter}
+}
+
 // fail writes the response of a data-call error. A cancel by the browser writes nothing (the
 // access log records 499).
 func (q *dataRoutes) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
 		return
 	}
-	status, body, retryAfter := upstreamError(err)
-	if body.Code == api.VirtualUnsupported && body.Fields != nil {
-		q.d.Logger.InfoContext(r.Context(), "reserved_selector", "field", (*body.Fields)[0].Pointer, "request_id", requestID(r))
-	}
-	writeReqError(w, &reqError{status: status, body: body, retryAfter: retryAfter})
+	writeReqError(w, q.failure(r.Context(), err))
 }
 
 // serveRange is POST /api/dash/v1/query/promql/range (plan #62 §4.1): the frames are written as
@@ -186,7 +195,7 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		writeReqError(w, e)
 		return
 	}
-	rc := requestCtx(r, tc)
+	rc := dataRequestCtx(r, tc)
 	grid, err := pulsusdb.PromGrid(from, to, int(width))
 	if err != nil {
 		writeReqError(w, fieldError("/from", "range.too_long", err.Error()))
@@ -320,7 +329,7 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 		q.fail(w, r, &pulsusdb.Error{Kind: pulsusdb.KindConfig})
 		return
 	}
-	rs, err := q.d.PulsusDB.Query(ctx, requestCtx(r, tc), pulsusdb.InstantQuery{Query: *req.Query, At: time.UnixMilli(*req.At), Timeout: timeout})
+	rs, err := q.d.PulsusDB.Query(ctx, dataRequestCtx(r, tc), pulsusdb.InstantQuery{Query: *req.Query, At: time.UnixMilli(*req.At), Timeout: timeout})
 	if err != nil {
 		q.fail(w, r, err)
 		return

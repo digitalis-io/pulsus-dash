@@ -7,11 +7,29 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for AuthorKind.
+const (
+	Local AuthorKind = "local"
+)
+
+// Valid indicates whether the value is a known member of the AuthorKind enum.
+func (e AuthorKind) Valid() bool {
+	switch e {
+	case Local:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for CompletenessReadCache.
 const (
@@ -67,6 +85,7 @@ func (e DatasourceStatusState) Valid() bool {
 // Defines values for ErrorCode.
 const (
 	BudgetExhausted    ErrorCode = "budget_exhausted"
+	Conflict           ErrorCode = "conflict"
 	Forbidden          ErrorCode = "forbidden"
 	Internal           ErrorCode = "internal"
 	Invalid            ErrorCode = "invalid"
@@ -81,6 +100,8 @@ const (
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case BudgetExhausted:
+		return true
+	case Conflict:
 		return true
 	case Forbidden:
 		return true
@@ -163,6 +184,24 @@ func (e PromInstantResponseResultType) Valid() bool {
 	}
 }
 
+// Defines values for QueryLang.
+const (
+	Logql  QueryLang = "logql"
+	Promql QueryLang = "promql"
+)
+
+// Valid indicates whether the value is a known member of the QueryLang enum.
+func (e QueryLang) Valid() bool {
+	switch e {
+	case Logql:
+		return true
+	case Promql:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReadyStatus.
 const (
 	ReadyStatusNotReady ReadyStatus = "not_ready"
@@ -175,6 +214,30 @@ func (e ReadyStatus) Valid() bool {
 	case ReadyStatusNotReady:
 		return true
 	case ReadyStatusReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReadyChecksAuditPartitions.
+const (
+	ReadyChecksAuditPartitionsError   ReadyChecksAuditPartitions = "error"
+	ReadyChecksAuditPartitionsLow     ReadyChecksAuditPartitions = "low"
+	ReadyChecksAuditPartitionsOk      ReadyChecksAuditPartitions = "ok"
+	ReadyChecksAuditPartitionsUnknown ReadyChecksAuditPartitions = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ReadyChecksAuditPartitions enum.
+func (e ReadyChecksAuditPartitions) Valid() bool {
+	switch e {
+	case ReadyChecksAuditPartitionsError:
+		return true
+	case ReadyChecksAuditPartitionsLow:
+		return true
+	case ReadyChecksAuditPartitionsOk:
+		return true
+	case ReadyChecksAuditPartitionsUnknown:
 		return true
 	default:
 		return false
@@ -227,6 +290,115 @@ func (e ReadyChecksSchema) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Defines values for VisKind.
+const (
+	Auto    VisKind = "auto"
+	Bars    VisKind = "bars"
+	Heatmap VisKind = "heatmap"
+	Line    VisKind = "line"
+	Logs    VisKind = "logs"
+	Stat    VisKind = "stat"
+)
+
+// Valid indicates whether the value is a known member of the VisKind enum.
+func (e VisKind) Valid() bool {
+	switch e {
+	case Auto:
+		return true
+	case Bars:
+		return true
+	case Heatmap:
+		return true
+	case Line:
+		return true
+	case Logs:
+		return true
+	case Stat:
+		return true
+	default:
+		return false
+	}
+}
+
+// Author defines model for Author.
+type Author struct {
+	Kind AuthorKind `json:"kind"`
+	Name string     `json:"name"`
+}
+
+// AuthorKind defines model for Author.Kind.
+type AuthorKind string
+
+// Board defines model for Board.
+type Board struct {
+	Etag          string          `json:"etag"`
+	SchemaVersion int64           `json:"schema_version"`
+	Spec          json.RawMessage `json:"spec"`
+	Title         string          `json:"title"`
+	Uid           string          `json:"uid"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	UpdatedBy     Author          `json:"updated_by"`
+	Version       int64           `json:"version"`
+}
+
+// BoardConflict defines model for BoardConflict.
+type BoardConflict struct {
+	Current   Board            `json:"current"`
+	Error     ErrorBody        `json:"error"`
+	Submitted *json.RawMessage `json:"submitted,omitempty"`
+}
+
+// BoardCreate defines model for BoardCreate.
+type BoardCreate struct {
+	Spec json.RawMessage `json:"spec"`
+}
+
+// BoardList defines model for BoardList.
+type BoardList struct {
+	Items     []BoardSummary `json:"items"`
+	Truncated bool           `json:"truncated"`
+}
+
+// BoardRef defines model for BoardRef.
+type BoardRef struct {
+	Title string `json:"title"`
+	Uid   string `json:"uid"`
+}
+
+// BoardRefList defines model for BoardRefList.
+type BoardRefList struct {
+	Items []BoardRef `json:"items"`
+}
+
+// BoardSaveResult defines model for BoardSaveResult.
+type BoardSaveResult struct {
+	Board   Board `json:"board"`
+	Changed bool  `json:"changed"`
+}
+
+// BoardSpec defines model for BoardSpec.
+type BoardSpec struct {
+	Panels   []Panel    `json:"panels"`
+	Sections []Section  `json:"sections"`
+	Time     *TimeRange `json:"time,omitempty"`
+	Title    string     `json:"title"`
+}
+
+// BoardSummary defines model for BoardSummary.
+type BoardSummary struct {
+	Title     string    `json:"title"`
+	Uid       string    `json:"uid"`
+	UpdatedAt time.Time `json:"updated_at"`
+	UpdatedBy Author    `json:"updated_by"`
+	Version   int64     `json:"version"`
+}
+
+// BoardUpdate defines model for BoardUpdate.
+type BoardUpdate struct {
+	Message *string         `json:"message,omitempty"`
+	Spec    json.RawMessage `json:"spec"`
 }
 
 // Bootstrap defines model for Bootstrap.
@@ -288,6 +460,14 @@ type FieldError struct {
 // FrameValue A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
 type FrameValue = json.RawMessage
 
+// Grid defines model for Grid.
+type Grid struct {
+	H int `json:"h"`
+	W int `json:"w"`
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -307,6 +487,15 @@ type MetricMetadata struct {
 type OrgInfo struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
+}
+
+// Panel defines model for Panel.
+type Panel struct {
+	Grid  Grid   `json:"grid"`
+	Id    string `json:"id"`
+	Query Query  `json:"query"`
+	Title string `json:"title"`
+	Vis   Vis    `json:"vis"`
 }
 
 // Principal defines model for Principal.
@@ -376,6 +565,15 @@ type PromValuesResponse struct {
 	Values       []string     `json:"values"`
 }
 
+// Query defines model for Query.
+type Query struct {
+	Lang QueryLang `json:"lang"`
+	Text string    `json:"text"`
+}
+
+// QueryLang defines model for Query.Lang.
+type QueryLang string
+
 // Ready defines model for Ready.
 type Ready struct {
 	Checks ReadyChecks `json:"checks"`
@@ -387,15 +585,27 @@ type ReadyStatus string
 
 // ReadyChecks defines model for ReadyChecks.
 type ReadyChecks struct {
-	Postgres ReadyChecksPostgres `json:"postgres"`
-	Schema   ReadyChecksSchema   `json:"schema"`
+	AuditPartitions ReadyChecksAuditPartitions `json:"audit_partitions"`
+	Postgres        ReadyChecksPostgres        `json:"postgres"`
+	Schema          ReadyChecksSchema          `json:"schema"`
 }
+
+// ReadyChecksAuditPartitions defines model for ReadyChecks.AuditPartitions.
+type ReadyChecksAuditPartitions string
 
 // ReadyChecksPostgres defines model for ReadyChecks.Postgres.
 type ReadyChecksPostgres string
 
 // ReadyChecksSchema defines model for ReadyChecks.Schema.
 type ReadyChecksSchema string
+
+// Section defines model for Section.
+type Section struct {
+	Collapsed bool    `json:"collapsed"`
+	Id        string  `json:"id"`
+	Panels    []Panel `json:"panels"`
+	Title     string  `json:"title"`
+}
 
 // SeriesFrame JSON image of labels/1 + metric_matrix.grid/1 (T04 §0).
 type SeriesFrame struct {
@@ -418,6 +628,12 @@ type TenantInfo struct {
 	Slug       string           `json:"slug"`
 }
 
+// TimeRange defines model for TimeRange.
+type TimeRange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 // TimedString defines model for TimedString.
 type TimedString struct {
 	Timestamp int64  `json:"timestamp"`
@@ -438,6 +654,14 @@ type Version struct {
 	Version string `json:"version"`
 }
 
+// Vis defines model for Vis.
+type Vis struct {
+	Kind VisKind `json:"kind"`
+}
+
+// VisKind defines model for Vis.Kind.
+type VisKind string
+
 // From defines model for From.
 type From = int64
 
@@ -456,11 +680,128 @@ type To = int64
 // RateLimited defines model for RateLimited.
 type RateLimited = ErrorEnvelope
 
+// DeleteBoardParams defines parameters for DeleteBoard.
+type DeleteBoardParams struct {
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// UpdateBoardParams defines parameters for UpdateBoard.
+type UpdateBoardParams struct {
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// GetDatasourceCheckParams defines parameters for GetDatasourceCheck.
+type GetDatasourceCheckParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+}
+
+// ListRecentBoardsParams defines parameters for ListRecentBoards.
+type ListRecentBoardsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromLabelValuesParams defines parameters for GetPromLabelValues.
+type GetPromLabelValuesParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From From `form:"from" json:"from"`
+
+	// To ms since the epoch
+	To    To     `form:"to" json:"to"`
+	Match *Match `form:"match,omitempty" json:"match,omitempty"`
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromLabelsParams defines parameters for GetPromLabels.
+type GetPromLabelsParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From From `form:"from" json:"from"`
+
+	// To ms since the epoch
+	To    To     `form:"to" json:"to"`
+	Match *Match `form:"match,omitempty" json:"match,omitempty"`
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromMetadataParams defines parameters for GetPromMetadata.
+type GetPromMetadataParams struct {
+	Tenant Tenant  `form:"tenant" json:"tenant"`
+	Metric *string `form:"metric,omitempty" json:"metric,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromSeriesParams defines parameters for GetPromSeries.
+type GetPromSeriesParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From From `form:"from" json:"from"`
+
+	// To ms since the epoch
+	To    To       `form:"to" json:"to"`
+	Match []string `form:"match" json:"match"`
+	Limit *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateBoardJSONRequestBody defines body for CreateBoard for application/json ContentType.
+type CreateBoardJSONRequestBody = BoardCreate
+
+// UpdateBoardJSONRequestBody defines body for UpdateBoard for application/json ContentType.
+type UpdateBoardJSONRequestBody = BoardUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /api/dash/v1/boards)
+	ListBoards(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/dash/v1/boards)
+	CreateBoard(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/dash/v1/boards/{uid})
+	DeleteBoard(w http.ResponseWriter, r *http.Request, uid string, params DeleteBoardParams)
+
+	// (GET /api/dash/v1/boards/{uid})
+	GetBoard(w http.ResponseWriter, r *http.Request, uid string)
+
+	// (PUT /api/dash/v1/boards/{uid})
+	UpdateBoard(w http.ResponseWriter, r *http.Request, uid string, params UpdateBoardParams)
+
 	// (GET /api/dash/v1/bootstrap)
 	GetBootstrap(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/dash/v1/datasource/check)
+	GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams)
+
+	// (GET /api/dash/v1/me/recent-boards)
+	ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams)
+
+	// (PUT /api/dash/v1/me/recent-boards/{uid})
+	RecordBoardView(w http.ResponseWriter, r *http.Request, uid string)
+
+	// (GET /api/dash/v1/me/starred-boards)
+	ListStarredBoards(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/dash/v1/me/starred-boards/{uid})
+	UnstarBoard(w http.ResponseWriter, r *http.Request, uid string)
+
+	// (PUT /api/dash/v1/me/starred-boards/{uid})
+	StarBoard(w http.ResponseWriter, r *http.Request, uid string)
+
+	// (GET /api/dash/v1/prom/label/{name}/values)
+	GetPromLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetPromLabelValuesParams)
+
+	// (GET /api/dash/v1/prom/labels)
+	GetPromLabels(w http.ResponseWriter, r *http.Request, params GetPromLabelsParams)
+
+	// (GET /api/dash/v1/prom/metadata)
+	GetPromMetadata(w http.ResponseWriter, r *http.Request, params GetPromMetadataParams)
+
+	// (GET /api/dash/v1/prom/series)
+	GetPromSeries(w http.ResponseWriter, r *http.Request, params GetPromSeriesParams)
 
 	// (GET /api/dash/v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -479,8 +820,83 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// (GET /api/dash/v1/boards)
+func (_ Unimplemented) ListBoards(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/dash/v1/boards)
+func (_ Unimplemented) CreateBoard(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /api/dash/v1/boards/{uid})
+func (_ Unimplemented) DeleteBoard(w http.ResponseWriter, r *http.Request, uid string, params DeleteBoardParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/boards/{uid})
+func (_ Unimplemented) GetBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/dash/v1/boards/{uid})
+func (_ Unimplemented) UpdateBoard(w http.ResponseWriter, r *http.Request, uid string, params UpdateBoardParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /api/dash/v1/bootstrap)
 func (_ Unimplemented) GetBootstrap(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/datasource/check)
+func (_ Unimplemented) GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/me/recent-boards)
+func (_ Unimplemented) ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/dash/v1/me/recent-boards/{uid})
+func (_ Unimplemented) RecordBoardView(w http.ResponseWriter, r *http.Request, uid string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/me/starred-boards)
+func (_ Unimplemented) ListStarredBoards(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /api/dash/v1/me/starred-boards/{uid})
+func (_ Unimplemented) UnstarBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/dash/v1/me/starred-boards/{uid})
+func (_ Unimplemented) StarBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/label/{name}/values)
+func (_ Unimplemented) GetPromLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetPromLabelValuesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/labels)
+func (_ Unimplemented) GetPromLabels(w http.ResponseWriter, r *http.Request, params GetPromLabelsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/metadata)
+func (_ Unimplemented) GetPromMetadata(w http.ResponseWriter, r *http.Request, params GetPromMetadataParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/series)
+func (_ Unimplemented) GetPromSeries(w http.ResponseWriter, r *http.Request, params GetPromSeriesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -513,11 +929,646 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// ListBoards operation middleware
+func (siw *ServerInterfaceWrapper) ListBoards(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBoards(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBoard operation middleware
+func (siw *ServerInterfaceWrapper) CreateBoard(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBoard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteBoard operation middleware
+func (siw *ServerInterfaceWrapper) DeleteBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", chi.URLParam(r, "uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteBoardParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteBoard(w, r, uid, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBoard operation middleware
+func (siw *ServerInterfaceWrapper) GetBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", chi.URLParam(r, "uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBoard(w, r, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateBoard operation middleware
+func (siw *ServerInterfaceWrapper) UpdateBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", chi.URLParam(r, "uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateBoardParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateBoard(w, r, uid, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetBootstrap operation middleware
 func (siw *ServerInterfaceWrapper) GetBootstrap(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetBootstrap(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDatasourceCheck operation middleware
+func (siw *ServerInterfaceWrapper) GetDatasourceCheck(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDatasourceCheckParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDatasourceCheck(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRecentBoards operation middleware
+func (siw *ServerInterfaceWrapper) ListRecentBoards(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRecentBoardsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecentBoards(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RecordBoardView operation middleware
+func (siw *ServerInterfaceWrapper) RecordBoardView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", chi.URLParam(r, "uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RecordBoardView(w, r, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListStarredBoards operation middleware
+func (siw *ServerInterfaceWrapper) ListStarredBoards(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListStarredBoards(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnstarBoard operation middleware
+func (siw *ServerInterfaceWrapper) UnstarBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", chi.URLParam(r, "uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnstarBoard(w, r, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StarBoard operation middleware
+func (siw *ServerInterfaceWrapper) StarBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", chi.URLParam(r, "uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StarBoard(w, r, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromLabelValues operation middleware
+func (siw *ServerInterfaceWrapper) GetPromLabelValues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromLabelValuesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromLabelValues(w, r, name, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromLabels operation middleware
+func (siw *ServerInterfaceWrapper) GetPromLabels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromLabelsParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromLabels(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromMetadata operation middleware
+func (siw *ServerInterfaceWrapper) GetPromMetadata(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromMetadataParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "metric" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "metric", r.URL.Query(), &params.Metric, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "metric"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "metric", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromMetadata(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromSeries operation middleware
+func (siw *ServerInterfaceWrapper) GetPromSeries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromSeriesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromSeries(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -711,6 +1762,51 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/dash/v1/bootstrap", wrapper.GetBootstrap)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/boards", wrapper.ListBoards)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/dash/v1/boards", wrapper.CreateBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/dash/v1/boards/{uid}", wrapper.DeleteBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/boards/{uid}", wrapper.GetBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/dash/v1/boards/{uid}", wrapper.UpdateBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/me/starred-boards", wrapper.ListStarredBoards)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/dash/v1/me/starred-boards/{uid}", wrapper.UnstarBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/dash/v1/me/starred-boards/{uid}", wrapper.StarBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/me/recent-boards", wrapper.ListRecentBoards)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/dash/v1/me/recent-boards/{uid}", wrapper.RecordBoardView)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/labels", wrapper.GetPromLabels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/label/{name}/values", wrapper.GetPromLabelValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/series", wrapper.GetPromSeries)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/metadata", wrapper.GetPromMetadata)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/datasource/check", wrapper.GetDatasourceCheck)
+	})
 
 	return r
 }
@@ -722,6 +1818,384 @@ type RateLimitedJSONResponse struct {
 	Body ErrorEnvelope
 
 	Headers RateLimitedResponseHeaders
+}
+
+type ListBoardsRequestObject struct {
+}
+
+type ListBoardsResponseObject interface {
+	VisitListBoardsResponse(w http.ResponseWriter) error
+}
+
+type ListBoards200JSONResponse BoardList
+
+func (response ListBoards200JSONResponse) VisitListBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoards503JSONResponse ErrorEnvelope
+
+func (response ListBoards503JSONResponse) VisitListBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardRequestObject struct {
+	Body *CreateBoardJSONRequestBody
+}
+
+type CreateBoardResponseObject interface {
+	VisitCreateBoardResponse(w http.ResponseWriter) error
+}
+
+type CreateBoard201ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateBoard201JSONResponse struct {
+	Body    Board
+	Headers CreateBoard201ResponseHeaders
+}
+
+func (response CreateBoard201JSONResponse) VisitCreateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoard400JSONResponse ErrorEnvelope
+
+func (response CreateBoard400JSONResponse) VisitCreateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoard413JSONResponse ErrorEnvelope
+
+func (response CreateBoard413JSONResponse) VisitCreateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoard503JSONResponse ErrorEnvelope
+
+func (response CreateBoard503JSONResponse) VisitCreateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBoardRequestObject struct {
+	Uid    string `json:"uid"`
+	Params DeleteBoardParams
+}
+
+type DeleteBoardResponseObject interface {
+	VisitDeleteBoardResponse(w http.ResponseWriter) error
+}
+
+type DeleteBoard204Response struct {
+}
+
+func (response DeleteBoard204Response) VisitDeleteBoardResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteBoard400JSONResponse ErrorEnvelope
+
+func (response DeleteBoard400JSONResponse) VisitDeleteBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBoard404JSONResponse ErrorEnvelope
+
+func (response DeleteBoard404JSONResponse) VisitDeleteBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBoard409JSONResponse BoardConflict
+
+func (response DeleteBoard409JSONResponse) VisitDeleteBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBoard428JSONResponse ErrorEnvelope
+
+func (response DeleteBoard428JSONResponse) VisitDeleteBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBoard503JSONResponse ErrorEnvelope
+
+func (response DeleteBoard503JSONResponse) VisitDeleteBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoardRequestObject struct {
+	Uid string `json:"uid"`
+}
+
+type GetBoardResponseObject interface {
+	VisitGetBoardResponse(w http.ResponseWriter) error
+}
+
+type GetBoard200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetBoard200JSONResponse struct {
+	Body    Board
+	Headers GetBoard200ResponseHeaders
+}
+
+func (response GetBoard200JSONResponse) VisitGetBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoard404JSONResponse ErrorEnvelope
+
+func (response GetBoard404JSONResponse) VisitGetBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoard503JSONResponse ErrorEnvelope
+
+func (response GetBoard503JSONResponse) VisitGetBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoardRequestObject struct {
+	Uid    string `json:"uid"`
+	Params UpdateBoardParams
+	Body   *UpdateBoardJSONRequestBody
+}
+
+type UpdateBoardResponseObject interface {
+	VisitUpdateBoardResponse(w http.ResponseWriter) error
+}
+
+type UpdateBoard200ResponseHeaders struct {
+	ETag *string
+}
+
+type UpdateBoard200JSONResponse struct {
+	Body    BoardSaveResult
+	Headers UpdateBoard200ResponseHeaders
+}
+
+func (response UpdateBoard200JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoard400JSONResponse ErrorEnvelope
+
+func (response UpdateBoard400JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoard404JSONResponse ErrorEnvelope
+
+func (response UpdateBoard404JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoard409JSONResponse BoardConflict
+
+func (response UpdateBoard409JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoard413JSONResponse ErrorEnvelope
+
+func (response UpdateBoard413JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoard428JSONResponse ErrorEnvelope
+
+func (response UpdateBoard428JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoard503JSONResponse ErrorEnvelope
+
+func (response UpdateBoard503JSONResponse) VisitUpdateBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetBootstrapRequestObject struct {
@@ -755,6 +2229,484 @@ func (response GetBootstrap503JSONResponse) VisitGetBootstrapResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheckRequestObject struct {
+	Params GetDatasourceCheckParams
+}
+
+type GetDatasourceCheckResponseObject interface {
+	VisitGetDatasourceCheckResponse(w http.ResponseWriter) error
+}
+
+type GetDatasourceCheck200JSONResponse DatasourceStatus
+
+func (response GetDatasourceCheck200JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck400JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck400JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck404JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck404JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck503JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck503JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecentBoardsRequestObject struct {
+	Params ListRecentBoardsParams
+}
+
+type ListRecentBoardsResponseObject interface {
+	VisitListRecentBoardsResponse(w http.ResponseWriter) error
+}
+
+type ListRecentBoards200JSONResponse BoardRefList
+
+func (response ListRecentBoards200JSONResponse) VisitListRecentBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecentBoards503JSONResponse ErrorEnvelope
+
+func (response ListRecentBoards503JSONResponse) VisitListRecentBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecordBoardViewRequestObject struct {
+	Uid string `json:"uid"`
+}
+
+type RecordBoardViewResponseObject interface {
+	VisitRecordBoardViewResponse(w http.ResponseWriter) error
+}
+
+type RecordBoardView204Response struct {
+}
+
+func (response RecordBoardView204Response) VisitRecordBoardViewResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RecordBoardView404JSONResponse ErrorEnvelope
+
+func (response RecordBoardView404JSONResponse) VisitRecordBoardViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecordBoardView503JSONResponse ErrorEnvelope
+
+func (response RecordBoardView503JSONResponse) VisitRecordBoardViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListStarredBoardsRequestObject struct {
+}
+
+type ListStarredBoardsResponseObject interface {
+	VisitListStarredBoardsResponse(w http.ResponseWriter) error
+}
+
+type ListStarredBoards200JSONResponse BoardRefList
+
+func (response ListStarredBoards200JSONResponse) VisitListStarredBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListStarredBoards503JSONResponse ErrorEnvelope
+
+func (response ListStarredBoards503JSONResponse) VisitListStarredBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnstarBoardRequestObject struct {
+	Uid string `json:"uid"`
+}
+
+type UnstarBoardResponseObject interface {
+	VisitUnstarBoardResponse(w http.ResponseWriter) error
+}
+
+type UnstarBoard204Response struct {
+}
+
+func (response UnstarBoard204Response) VisitUnstarBoardResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnstarBoard503JSONResponse ErrorEnvelope
+
+func (response UnstarBoard503JSONResponse) VisitUnstarBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StarBoardRequestObject struct {
+	Uid string `json:"uid"`
+}
+
+type StarBoardResponseObject interface {
+	VisitStarBoardResponse(w http.ResponseWriter) error
+}
+
+type StarBoard204Response struct {
+}
+
+func (response StarBoard204Response) VisitStarBoardResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type StarBoard404JSONResponse ErrorEnvelope
+
+func (response StarBoard404JSONResponse) VisitStarBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StarBoard503JSONResponse ErrorEnvelope
+
+func (response StarBoard503JSONResponse) VisitStarBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelValuesRequestObject struct {
+	Name   string `json:"name"`
+	Params GetPromLabelValuesParams
+}
+
+type GetPromLabelValuesResponseObject interface {
+	VisitGetPromLabelValuesResponse(w http.ResponseWriter) error
+}
+
+type GetPromLabelValues200JSONResponse PromValuesResponse
+
+func (response GetPromLabelValues200JSONResponse) VisitGetPromLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelValues429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromLabelValues429JSONResponse) VisitGetPromLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelValuesdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromLabelValuesdefaultJSONResponse) VisitGetPromLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelsRequestObject struct {
+	Params GetPromLabelsParams
+}
+
+type GetPromLabelsResponseObject interface {
+	VisitGetPromLabelsResponse(w http.ResponseWriter) error
+}
+
+type GetPromLabels200JSONResponse PromValuesResponse
+
+func (response GetPromLabels200JSONResponse) VisitGetPromLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabels429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromLabels429JSONResponse) VisitGetPromLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelsdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromLabelsdefaultJSONResponse) VisitGetPromLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromMetadataRequestObject struct {
+	Params GetPromMetadataParams
+}
+
+type GetPromMetadataResponseObject interface {
+	VisitGetPromMetadataResponse(w http.ResponseWriter) error
+}
+
+type GetPromMetadata200JSONResponse PromMetadataResponse
+
+func (response GetPromMetadata200JSONResponse) VisitGetPromMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromMetadata429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromMetadata429JSONResponse) VisitGetPromMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromMetadatadefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromMetadatadefaultJSONResponse) VisitGetPromMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromSeriesRequestObject struct {
+	Params GetPromSeriesParams
+}
+
+type GetPromSeriesResponseObject interface {
+	VisitGetPromSeriesResponse(w http.ResponseWriter) error
+}
+
+type GetPromSeries200JSONResponse PromSeriesResponse
+
+func (response GetPromSeries200JSONResponse) VisitGetPromSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromSeries429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromSeries429JSONResponse) VisitGetPromSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromSeriesdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromSeriesdefaultJSONResponse) VisitGetPromSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -877,8 +2829,53 @@ func (response GetStartupz200JSONResponse) VisitGetStartupzResponse(w http.Respo
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
+	// (GET /api/dash/v1/boards)
+	ListBoards(ctx context.Context, request ListBoardsRequestObject) (ListBoardsResponseObject, error)
+
+	// (POST /api/dash/v1/boards)
+	CreateBoard(ctx context.Context, request CreateBoardRequestObject) (CreateBoardResponseObject, error)
+
+	// (DELETE /api/dash/v1/boards/{uid})
+	DeleteBoard(ctx context.Context, request DeleteBoardRequestObject) (DeleteBoardResponseObject, error)
+
+	// (GET /api/dash/v1/boards/{uid})
+	GetBoard(ctx context.Context, request GetBoardRequestObject) (GetBoardResponseObject, error)
+
+	// (PUT /api/dash/v1/boards/{uid})
+	UpdateBoard(ctx context.Context, request UpdateBoardRequestObject) (UpdateBoardResponseObject, error)
+
 	// (GET /api/dash/v1/bootstrap)
 	GetBootstrap(ctx context.Context, request GetBootstrapRequestObject) (GetBootstrapResponseObject, error)
+
+	// (GET /api/dash/v1/datasource/check)
+	GetDatasourceCheck(ctx context.Context, request GetDatasourceCheckRequestObject) (GetDatasourceCheckResponseObject, error)
+
+	// (GET /api/dash/v1/me/recent-boards)
+	ListRecentBoards(ctx context.Context, request ListRecentBoardsRequestObject) (ListRecentBoardsResponseObject, error)
+
+	// (PUT /api/dash/v1/me/recent-boards/{uid})
+	RecordBoardView(ctx context.Context, request RecordBoardViewRequestObject) (RecordBoardViewResponseObject, error)
+
+	// (GET /api/dash/v1/me/starred-boards)
+	ListStarredBoards(ctx context.Context, request ListStarredBoardsRequestObject) (ListStarredBoardsResponseObject, error)
+
+	// (DELETE /api/dash/v1/me/starred-boards/{uid})
+	UnstarBoard(ctx context.Context, request UnstarBoardRequestObject) (UnstarBoardResponseObject, error)
+
+	// (PUT /api/dash/v1/me/starred-boards/{uid})
+	StarBoard(ctx context.Context, request StarBoardRequestObject) (StarBoardResponseObject, error)
+
+	// (GET /api/dash/v1/prom/label/{name}/values)
+	GetPromLabelValues(ctx context.Context, request GetPromLabelValuesRequestObject) (GetPromLabelValuesResponseObject, error)
+
+	// (GET /api/dash/v1/prom/labels)
+	GetPromLabels(ctx context.Context, request GetPromLabelsRequestObject) (GetPromLabelsResponseObject, error)
+
+	// (GET /api/dash/v1/prom/metadata)
+	GetPromMetadata(ctx context.Context, request GetPromMetadataRequestObject) (GetPromMetadataResponseObject, error)
+
+	// (GET /api/dash/v1/prom/series)
+	GetPromSeries(ctx context.Context, request GetPromSeriesRequestObject) (GetPromSeriesResponseObject, error)
 
 	// (GET /api/dash/v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -932,6 +2929,148 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// ListBoards operation middleware
+func (sh *strictHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
+	var request ListBoardsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBoards(ctx, request.(ListBoardsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBoards")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBoardsResponseObject); ok {
+		if err := validResponse.VisitListBoardsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBoard operation middleware
+func (sh *strictHandler) CreateBoard(w http.ResponseWriter, r *http.Request) {
+	var request CreateBoardRequestObject
+
+	var body CreateBoardJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBoard(ctx, request.(CreateBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBoardResponseObject); ok {
+		if err := validResponse.VisitCreateBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteBoard operation middleware
+func (sh *strictHandler) DeleteBoard(w http.ResponseWriter, r *http.Request, uid string, params DeleteBoardParams) {
+	var request DeleteBoardRequestObject
+
+	request.Uid = uid
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteBoard(ctx, request.(DeleteBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteBoardResponseObject); ok {
+		if err := validResponse.VisitDeleteBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBoard operation middleware
+func (sh *strictHandler) GetBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	var request GetBoardRequestObject
+
+	request.Uid = uid
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBoard(ctx, request.(GetBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBoardResponseObject); ok {
+		if err := validResponse.VisitGetBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateBoard operation middleware
+func (sh *strictHandler) UpdateBoard(w http.ResponseWriter, r *http.Request, uid string, params UpdateBoardParams) {
+	var request UpdateBoardRequestObject
+
+	request.Uid = uid
+	request.Params = params
+
+	var body UpdateBoardJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateBoard(ctx, request.(UpdateBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateBoardResponseObject); ok {
+		if err := validResponse.VisitUpdateBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetBootstrap operation middleware
 func (sh *strictHandler) GetBootstrap(w http.ResponseWriter, r *http.Request) {
 	var request GetBootstrapRequestObject
@@ -949,6 +3088,265 @@ func (sh *strictHandler) GetBootstrap(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetBootstrapResponseObject); ok {
 		if err := validResponse.VisitGetBootstrapResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDatasourceCheck operation middleware
+func (sh *strictHandler) GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams) {
+	var request GetDatasourceCheckRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDatasourceCheck(ctx, request.(GetDatasourceCheckRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDatasourceCheck")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDatasourceCheckResponseObject); ok {
+		if err := validResponse.VisitGetDatasourceCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRecentBoards operation middleware
+func (sh *strictHandler) ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams) {
+	var request ListRecentBoardsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRecentBoards(ctx, request.(ListRecentBoardsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRecentBoards")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRecentBoardsResponseObject); ok {
+		if err := validResponse.VisitListRecentBoardsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RecordBoardView operation middleware
+func (sh *strictHandler) RecordBoardView(w http.ResponseWriter, r *http.Request, uid string) {
+	var request RecordBoardViewRequestObject
+
+	request.Uid = uid
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RecordBoardView(ctx, request.(RecordBoardViewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RecordBoardView")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RecordBoardViewResponseObject); ok {
+		if err := validResponse.VisitRecordBoardViewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListStarredBoards operation middleware
+func (sh *strictHandler) ListStarredBoards(w http.ResponseWriter, r *http.Request) {
+	var request ListStarredBoardsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListStarredBoards(ctx, request.(ListStarredBoardsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListStarredBoards")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListStarredBoardsResponseObject); ok {
+		if err := validResponse.VisitListStarredBoardsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnstarBoard operation middleware
+func (sh *strictHandler) UnstarBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	var request UnstarBoardRequestObject
+
+	request.Uid = uid
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnstarBoard(ctx, request.(UnstarBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnstarBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnstarBoardResponseObject); ok {
+		if err := validResponse.VisitUnstarBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StarBoard operation middleware
+func (sh *strictHandler) StarBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	var request StarBoardRequestObject
+
+	request.Uid = uid
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StarBoard(ctx, request.(StarBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StarBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StarBoardResponseObject); ok {
+		if err := validResponse.VisitStarBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromLabelValues operation middleware
+func (sh *strictHandler) GetPromLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetPromLabelValuesParams) {
+	var request GetPromLabelValuesRequestObject
+
+	request.Name = name
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromLabelValues(ctx, request.(GetPromLabelValuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromLabelValues")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromLabelValuesResponseObject); ok {
+		if err := validResponse.VisitGetPromLabelValuesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromLabels operation middleware
+func (sh *strictHandler) GetPromLabels(w http.ResponseWriter, r *http.Request, params GetPromLabelsParams) {
+	var request GetPromLabelsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromLabels(ctx, request.(GetPromLabelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromLabels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromLabelsResponseObject); ok {
+		if err := validResponse.VisitGetPromLabelsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromMetadata operation middleware
+func (sh *strictHandler) GetPromMetadata(w http.ResponseWriter, r *http.Request, params GetPromMetadataParams) {
+	var request GetPromMetadataRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromMetadata(ctx, request.(GetPromMetadataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromMetadata")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromMetadataResponseObject); ok {
+		if err := validResponse.VisitGetPromMetadataResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromSeries operation middleware
+func (sh *strictHandler) GetPromSeries(w http.ResponseWriter, r *http.Request, params GetPromSeriesParams) {
+	var request GetPromSeriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromSeries(ctx, request.(GetPromSeriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromSeries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromSeriesResponseObject); ok {
+		if err := validResponse.VisitGetPromSeriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
