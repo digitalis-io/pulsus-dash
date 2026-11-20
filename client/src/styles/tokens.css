@@ -4,12 +4,22 @@
 :root[data-theme="dark"] {
   --accent: #5B9BFF;
   --backdrop: #0B0D10B3;
+  --brush: #5B9BFF29;
   --canvas: #0B0D10;
   --degraded: #E8923A;
   --failing: #E0457B;
   --focus: #5B9BFF;
   --hairline: #FFFFFF14;
   --ok: #2FB59A;
+  --ramp-1: #253444;
+  --ramp-2: #2C4967;
+  --ramp-3: #345E89;
+  --ramp-4: #4075A9;
+  --ramp-5: #538CC5;
+  --ramp-6: #6DA3DB;
+  --ramp-7: #8DBBEB;
+  --ramp-8: #B1D3F7;
+  --ramp-9: #D8EAFE;
   --series-1: #7AA2D6;
   --series-2: #C9A36B;
   --series-3: #8FBF8F;
@@ -31,12 +41,22 @@
 :root[data-theme="light"] {
   --accent: #2563C9;
   --backdrop: #1A1D2366;
+  --brush: #2563C929;
   --canvas: #F5F6F8;
   --degraded: #A85A12;
   --failing: #B8285C;
   --focus: #2563C9;
   --hairline: #0B0D1014;
   --ok: #17806A;
+  --ramp-1: #E3F0FE;
+  --ramp-2: #B9DAFD;
+  --ramp-3: #94C3F5;
+  --ramp-4: #73ACE6;
+  --ramp-5: #5995D1;
+  --ramp-6: #477EB6;
+  --ramp-7: #3C6995;
+  --ramp-8: #365371;
+  --ramp-9: #313F4D;
   --series-1: #3F6FA8;
   --series-2: #93703A;
   --series-3: #4E874E;
@@ -58,6 +78,7 @@
 :root {
   --border-hairline: 1px;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-size-display: 32px;
   --font-size-lg: 16px;
   --font-size-md: 13px;
   --font-size-sm: 12px;
@@ -74,6 +95,11 @@
   --motion-standard: 250ms;
   --radius: 6px;
   --size-avatar: 28px;
+  --size-chart: 240px;
+  --size-chart-brush-min: 4px;
+  --size-chart-line: 1.5px;
+  --size-chart-stat: 120px;
+  --size-chart-tick: 4px;
   --size-control: 32px;
   --size-crumb-max: 160px;
   --size-focus-offset: 2px;

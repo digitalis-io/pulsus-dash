@@ -1,5 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
+import { ChartEngineContext } from '../engine/index';
+import { fakeEngine } from '../test/fakeEngine';
+import { installResizeObserver } from '../test/fakeResizeObserver';
 import { locationOf, renderApp } from '../test/renderApp';
 
 async function settled(
@@ -79,5 +83,27 @@ describe('current nav item', () => {
       'aria-current',
       'page',
     );
+  });
+});
+
+describe('gallery route', () => {
+  it('renders the seven gallery charts on stub data', async () => {
+    installResizeObserver();
+    const engine = fakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChartEngineContext.Provider value={engine}>{children}</ChartEngineContext.Provider>
+    );
+    renderApp('/t/demo/dev/gallery?from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z', {
+      wrapper,
+    });
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Chart gallery' }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(7);
+    });
+    expect(screen.getAllByRole('slider')).toHaveLength(6);
+    expect(document.querySelectorAll('canvas')).toHaveLength(7);
+    expect(engine.frames).toHaveLength(7);
   });
 });

@@ -77,6 +77,27 @@ export function formatZone(tz: string, atMs: number): string {
   return `${tz} (${offset})`;
 }
 
+/** The unit of a chart value (VL-012). */
+export type Unit =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'time'; readonly base: 'ns' | 'us' | 'ms' | 's' }
+  | { readonly kind: 'bytes' }
+  | { readonly kind: 'percent' }
+  | { readonly kind: 'percentunit' }
+  | { readonly kind: 'suffix'; readonly suffix: string };
+
+export function formatValue(_v: number, _unit: Unit): string {
+  throw new Error('not implemented');
+}
+
+export function formatHourMinute(_ms: number, _tz: string): string {
+  throw new Error('not implemented');
+}
+
+export function formatDayMonth(_ms: number, _tz: string): string {
+  throw new Error('not implemented');
+}
+
 export const QUICK_RANGES = [
   '5m',
   '15m',
