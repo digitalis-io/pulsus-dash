@@ -1,0 +1,8 @@
+datasource:
+  url: http://localhost:3100
+# http://pulsus-fake:3100
+# https://pulsusdb.example:3100
+# http://127.0.0.2:3100
+# http://[::1]:3100
+# https://dash.example.com/
+# https://pulsus.test/

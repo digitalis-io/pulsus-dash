@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-20 |
+| **Version** | 1.7-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -544,11 +544,14 @@ the merge train), nightly (release blocker).
 | `ci:dep-audit` | Every runtime `dependencies` entry of `client/package.json` is on the allowlist in `client/dependency-policy.json` and in no forbidden category (charting, mapping, 3D, graph-diagram, CSS-in-JS); runtime licences on the AGPL-3.0-compatible allowlist; no third-party asset or font host in the build. From #68, for the engine crates: `web-sys` feature allowlist and no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008) | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside the generated token outputs (`tokens.css`, `tokens.ts`, and the engine's Rust constants from #68); regenerating them leaves no diff; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:api-gen` | `oapi-codegen`, `openapi-typescript` and `sqlc generate` leave no diff against `api/openapi.yaml` and `server/queries/` ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
-| `ci:go-lint` | `golangci-lint run` (pinned; `depguard` package boundaries of ADR-0015, `gosec`, `errcheck`, `staticcheck`) | PR | yes |
+| `ci:go-lint` | `golangci-lint run` (pinned; `depguard` package boundaries of ADR-0015, `gosec`, `errcheck`, `staticcheck`); depguard rules self-tested by failing fixtures (`server/testdata/depguard/`: `pgx` outside `internal/store`, `chi` outside `internal/gateway`) | PR | yes |
 | `ci:go-test` | `go test -race ./...` | PR | yes |
 | `ci:govulncheck` | `govulncheck ./...`; any reachable vulnerability fails | PR | yes |
 | `ci:go-mod` | `go mod verify`; `go mod tidy` leaves no diff; `GOFLAGS=-mod=readonly` | PR | yes |
 | `ci:asset-integrity` | Binary-level start-up refusal ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [T19](T19-deployment.md) T19-005): `make build` once, then gate binaries with the same public key over an altered packed tree must exit 1 before opening a listener: one byte of the largest `assets/*.js` flipped (`hash_mismatch`), an unlisted `assets/extra.js` (`unlisted_file`), a listed `.br` variant deleted (`missing_file`), the manifest changed by one byte (`bad_signature`), no public key (`no_public_key`); the untouched tree verifies and stops only at Postgres; a `make server-build` binary refuses without `--api-only` | PR | yes |
+| `ci:go-licenses` | `go-licenses check` over every module linked into the `pulsus-dash` binary: each licence on the AGPL-3.0-compatible allowlist (MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1, LGPL-3.0; D3); writes the third-party notices file `build/THIRD_PARTY_NOTICES.txt`; proven by the failing GPL-2.0-only fixture `server/testdata/licences/gpl` ([T18](T18-security.md) T18-026) | PR | yes |
+| `ci:no-pulsusdb-host` | Every tracked file: no forbidden host from the `DASH_FORBIDDEN_HOSTS` repository secret, in content or path, and no non-local PulsusDB URL (a host containing `pulsusdb`, or the value of a PulsusDB datasource key); output names files only by opaque index; a missing secret fails ([T19](T19-deployment.md) T19-010) | PR | yes |
+| `ci:dev-stack` | The dev compose stack (`dev/compose.yaml`) starts, migrates and seeds, serves `/readyz` 200, stops cleanly, persists across `dev-down` and resets with `dev-reset`; nothing is left behind, also after an injected failure; then `itest` runs on its PostgreSQL 15 and 16 ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
 | `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013), proven by the failing fixture `server/testdata/squawk/create_index_not_concurrently.sql` (`require-concurrent-index-creation`), and an up-from-empty run on Postgres (`itest:migrations`); on pull requests, no merged migration is modified, deleted or renamed (append-only, T11-012) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
@@ -820,3 +823,4 @@ Meta-testing:
 | 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
 | 1.5-rc | 2026-11-20 | #59 Part A: §7.1 adds `unit:config-strict` and the BFF integration gates `itest:rls-isolation`, `itest:no-extensions` (both already named by T11) and `itest:migrations`; `ci:migrations` names its failing squawk fixture and the append-only check on pull requests |
 | 1.6-rc | 2026-11-20 | #59 Part B: §7.1 adds `itest:bff-refuses-altered-asset` and `itest:asset-manifest-signature` (named by T18-006, run in `ci:go-test`), `ci:asset-integrity` (binary-level start-up refusal, PR, blocking), `e2e:bff-headers` and `e2e:bff-http-shell`; other gates unchanged |
+| 1.7-rc | 2026-11-20 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures |

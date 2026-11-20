@@ -31,6 +31,15 @@ build/pulsus-dash serve --config my.yaml     # as pulsus_app
 `unknown`. `make build` is described in [Serving the client](#serving-the-client); a binary from
 `make server-build` has no client and refuses to `serve` unless `--api-only` is given.
 
+For a local server with Postgres in containers, use the dev stack: create `dev/local.env`, then
+`make dev-up` starts Postgres, migrates and serves in the foreground
+([dev stack page](../development/dev-stack.md)).
+
+**Third-party notices.** `make go-licenses` checks that every module linked into `pulsus-dash` has an
+AGPL-3.0-compatible licence and writes `build/THIRD_PARTY_NOTICES.txt` with their licence and
+notice files ([`ci:go-licenses`](../development/build-and-ci.md#licences-cigo-licenses)). CI keeps
+the file as the `third-party-notices` artifact.
+
 ## Commands
 
 | Command | Flags | Exit 0 | Exit 1 (runtime) | Exit 2 (usage or configuration) |
@@ -397,13 +406,15 @@ record with `method`, `route` (the route pattern, never the raw path or query; `
 | `internal/telemetry` | the logger |
 
 Lint rules (`server/.golangci.yml`) keep `pgx`, `goose` and the sqlc output inside
-`internal/store` (T11-023), and `chi` and the generated server inside `internal/gateway` (T06-001).
+`internal/store` (T11-023), and `chi` and the generated server inside `internal/gateway` (T06-001). A
+self-test with failing fixtures proves these rules are enforced
+([build and CI](../development/build-and-ci.md#make-targets)).
 
 ## Designs
 
 T06-001, T06-003, T06-016, T06-019, T06-021 (CSP report limits), T06-024 and T06-026 in
 [T06](../../designs/technical/T06-bff-architecture.md); T18-001, T18-002, T18-003, T18-006 and
-T18-007 in [T18](../../designs/technical/T18-security.md); T19-002, T19-003, T19-005, T19-006,
+T18-007 and T18-026 (`ci:go-licenses`) in [T18](../../designs/technical/T18-security.md); T19-002, T19-003, T19-005, T19-006,
 T19-007 and T19-010 in [T19](../../designs/technical/T19-deployment.md); T03-022 in
 [T03](../../designs/technical/T03-browser-runtime.md);
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §6 and §9,
