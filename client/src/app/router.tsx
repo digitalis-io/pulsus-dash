@@ -122,7 +122,7 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
             },
             // The chart gallery: dev and stub builds only. The condition is inline, so Vite's
             // static replacement lets Rollup drop the branch and its chunk from `http` builds.
-            ...(true
+            ...(import.meta.env.DEV || (import.meta.env.VITE_API_MODE as string) !== 'never'
               ? [
                   {
                     id: 'gallery',
