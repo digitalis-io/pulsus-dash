@@ -1,0 +1,63 @@
+{
+  "name": "pulsus-dash-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24.22.3 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --max-warnings=0 && prettier --check .",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "tokens": "node scripts/gen-tokens.ts",
+    "token-lint": "node scripts/token-lint.ts",
+    "size": "node scripts/bundle-size.ts",
+    "check:lockfile": "node scripts/check-lockfile.ts",
+    "origins": "node scripts/check-build-origins.ts",
+    "audit": "node scripts/check-deps.ts && npm audit --omit=dev --audit-level=high && npm audit --audit-level=critical && npm audit signatures"
+  },
+  "dependencies": {
+    "@internationalized/date": "3.12.4",
+    "@tanstack/react-query": "5.107.1",
+    "react": "19.3.1",
+    "react-aria-components": "1.22.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.65.0",
+    "@react-aria/optimize-locales-plugin": "2.1.0",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.9",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "acorn": "8.19.0",
+    "acorn-walk": "8.3.5",
+    "eslint": "9.39.5",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-scope": "8.4.0",
+    "globals": "17.14.0",
+    "jsdom": "31.0.0",
+    "parse5": "8.1.1",
+    "postcss": "8.5.32",
+    "postcss-value-parser": "4.2.0",
+    "prettier": "3.10.0",
+    "smol-toml": "1.9.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}

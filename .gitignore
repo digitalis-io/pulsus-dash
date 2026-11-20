@@ -23,7 +23,7 @@ rustc-ice-*.txt
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-web/shim/gen/
-e2e/node_modules/
-e2e/test-results/
-e2e/playwright-report/
+node_modules/
+client/dist/
+test-results/
+playwright-report/

@@ -1,0 +1,3 @@
+@import url("https://react.dev/a.css");
+@font-face { src: url(//cdn.example.net/f.woff2) }
+.x { background: image-set(url(https://cdn.example.net/a.png) 1x) }
