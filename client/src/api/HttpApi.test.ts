@@ -1,5 +1,6 @@
 import createClient from 'openapi-fetch';
 import { describe, expect, it } from 'vitest';
+import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
 import { ApiError, isApiError } from './types';
@@ -22,7 +23,7 @@ function json(status: number, body: unknown): Response {
 }
 
 /** An HttpApi whose fetch is `fake`; it records the requests. */
-function api(fake: (req: Request) => Promise<Response>): { api: HttpApi; requests: Request[] } {
+function api(fake: (req: Request) => Promise<Response>): { api: Api; requests: Request[] } {
   const requests: Request[] = [];
   const client = createClient<paths>({
     baseUrl: 'http://localhost',

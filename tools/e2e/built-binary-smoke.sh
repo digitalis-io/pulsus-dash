@@ -41,7 +41,8 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 [ "$ready" = 1 ] || { cat "$OUT/serve.err" >&2; fail "/readyz not 200 within 30 s"; }
-grep -qF 'assets verified files=' "$OUT/serve.err" || { cat "$OUT/serve.err" >&2; fail "no 'assets verified files=' on stderr"; }
+# The text handler quotes a message with spaces: msg="assets verified" files=41.
+grep -qE 'assets verified"? files=[0-9]+' "$OUT/serve.err" || { cat "$OUT/serve.err" >&2; fail "no 'assets verified files=' on stderr"; }
 
 curl -s -D "$OUT/doc.headers" -o /dev/null -H 'Accept: text/html' "$BASE/"
 grep -qi '^HTTP/1.1 200' "$OUT/doc.headers" || fail "GET / is not 200"

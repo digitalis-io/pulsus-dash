@@ -1,4 +1,4 @@
-/** "About Pulsus Dash": version, build and licence. */
+/** "About Pulsus Dash": version, build, the server version (when the BFF reports one) and licence. */
 import { t } from '../i18n/t';
 import { Button } from '../kit/Button';
 import { ModalDialog } from '../kit/Dialog';
@@ -14,13 +14,21 @@ export function buildId(sha: string | undefined): string {
 export function AboutDialog({
   isOpen,
   onOpenChange,
+  serverVersion,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The BFF's version (`session.server?.version`); null in stub mode. */
+  serverVersion: string | null;
 }) {
   return (
     <ModalDialog title={t('about.title')} isOpen={isOpen} onOpenChange={onOpenChange}>
       <p className={cx(styles['aboutLine'])}>{t('about.version', { version: __APP_VERSION__ })}</p>
+      {serverVersion !== null && (
+        <p className={cx(styles['aboutLine'])}>
+          {t('about.serverVersion', { version: serverVersion })}
+        </p>
+      )}
       <p className={cx(styles['aboutLine'])}>
         {t('about.build', { sha: buildId(import.meta.env.VITE_GIT_SHA) })}
       </p>

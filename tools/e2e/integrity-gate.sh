@@ -20,7 +20,10 @@ PUB=$(cat build/keys/asset-signing.pub)
 restore() {
   rm -rf "$DIST"
   cp -a "$GATE/pristine" "$DIST"
-  if [ -f "$GATE/pulsus-dash.release" ]; then cp "$GATE/pulsus-dash.release" build/pulsus-dash; fi
+  # Copy, then rename: the old file may still be mapped by an exiting process.
+  if [ -f "$GATE/pulsus-dash.release" ]; then
+    cp "$GATE/pulsus-dash.release" build/pulsus-dash.restore && mv -f build/pulsus-dash.restore build/pulsus-dash
+  fi
 }
 trap restore EXIT
 
@@ -35,6 +38,8 @@ fresh() {
   cp -a "$GATE/pristine" "$DIST"
 }
 
+CURDIR_ABS=$(pwd)
+
 # build_gate [KEY]: the gate binary over the current tree, with KEY as its public key ("" = none).
 build_gate() {
   local ldflags=""
@@ -42,7 +47,6 @@ build_gate() {
   CGO_ENABLED=0 go -C server build -tags embedassets -trimpath -ldflags "$ldflags" \
     -o "$CURDIR_ABS/$GATE/pulsus-dash" ./cmd/pulsus-dash
 }
-CURDIR_ABS=$(pwd)
 
 # run_gate BIN: serve with nothing listening at the Postgres URL; prints stderr, returns the exit code.
 run_gate() {
