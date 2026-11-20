@@ -93,6 +93,7 @@ All targets run from the repository root.
 | `make dev-reset` | removes the containers and the volume; the next `dev-up` runs the init scripts and seeds again | no |
 | `make itest-local` | starts `pg16` and `pg15` in their own project `pulsus-dash-itest` on ports 57432 and 57433 (`ITEST_PROJECT`, `ITEST_PG16_PORT`, `ITEST_PG15_PORT`), runs `make itest` against both, and removes the containers and volume on every exit, pass or fail. If `up --wait` fails, it stops with that failure and runs no test. It never touches the dev volume | no |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` (`ci:dev-stack`, below) | no |
+| `make itest-local-selftest` | `dev/itest-local-selftest.sh`: checks that a failed `up --wait` fails `itest-local`, runs no test and still cleans up. Needs no containers; part of `make ci` | no |
 
 `dev-up` and `dev-migrate` run their steps in order inside their recipes, so the order also holds
 with `make -j`: the settings file is checked first, then Postgres is started and waited for, then
@@ -129,6 +130,13 @@ too.
 `dev/smoke-selftest.sh` checks that nothing is left behind after the normal run. It then runs
 `SMOKE_FAIL_AT=3 dev/smoke.sh`, which exits 1 right after step 3 with the server running, and checks
 again: no listener on port 58080, no `pulsus-dash-smoke` container and no volume.
+
+`dev/itest-local-selftest.sh` checks the failure path of `make itest-local` without containers. It
+replaces the compose command with a stand-in whose `up` fails, and `$(MAKE)` with a stand-in that
+records calls. It then requires that `make itest-local` exits non-zero, that `make itest` is never
+called, and that the cleanup `--profile itest down -v` still runs. It runs each case twice: with
+the Makefile's own shell flags, and with `.SHELLFLAGS=-c`, so the recipe's `&&` chaining is tested
+without `set -e`.
 
 ## Using the client
 

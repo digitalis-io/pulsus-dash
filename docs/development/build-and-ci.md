@@ -154,8 +154,9 @@ cgo.
 | `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
 | `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)) | — |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
+| `make itest-local-selftest` | `dev/itest-local-selftest.sh`: a failed `up --wait` fails `itest-local`, runs no test and still cleans up (no containers) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
-| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint go-licenses no-pulsusdb-host` | — |
+| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint go-licenses no-pulsusdb-host itest-local-selftest` | — |
 
 The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
 `chi` and `internal/gateway/api` inside `internal/gateway`.
@@ -233,7 +234,7 @@ secrets are used.
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `make go-licenses` (`ci:go-licenses`) → upload `build/THIRD_PARTY_NOTICES.txt` as artifact `third-party-notices` (14 days) |
-| `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` (`ci:dev-stack`) → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
+| `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` and `make itest-local-selftest` (`ci:dev-stack`) → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
 | `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` |
 
 <a id="ci-no-pulsusdb-host"></a>

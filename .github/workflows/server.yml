@@ -112,6 +112,8 @@ jobs:
           [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
       - name: 'ci:dev-stack'
         run: make dev-smoke
+      - name: 'ci:dev-stack (itest-local self-test)'
+        run: make itest-local-selftest
       - name: itest on the dev compose stack
         run: make itest-local
       - name: itest-local left nothing behind

@@ -12,7 +12,8 @@ SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
 .PHONY: server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci \
-	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local dev-smoke
+	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local dev-smoke \
+	itest-local-selftest
 
 # Dev stack (dev/compose.yaml, docs/development/dev-stack.md). COMPOSE may be any Docker Compose v2
 # compatible command. DEV_ENV_FILE is untracked: it holds the local settings and the PulsusDB URL.
@@ -134,9 +135,15 @@ itest-local:
 	  DASH_ITEST_PG_URLS='pg16=postgres://postgres@localhost:$(ITEST_PG16_PORT)/postgres?sslmode=disable,pg15=postgres://postgres@localhost:$(ITEST_PG15_PORT)/postgres?sslmode=disable' \
 	  $(MAKE) itest
 
+# ci:dev-stack, no containers needed: a failed up --wait fails itest-local, runs no test and still
+# cleans up (stand-ins for compose and make).
+itest-local-selftest:
+	dev/itest-local-selftest.sh
+
 # ci:dev-stack: the smoke test, then its self-test (nothing left behind after a failure).
 dev-smoke:
 	dev/smoke.sh
 	dev/smoke-selftest.sh
 
-ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint go-licenses no-pulsusdb-host
+ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint go-licenses no-pulsusdb-host \
+	itest-local-selftest
