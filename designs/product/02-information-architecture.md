@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-20 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
-| **Mockups** | [34-application-layout](../mockups/34-application-layout.svg), [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg), [13-investigation](../mockups/13-investigation.svg), [14-board](../mockups/14-board.svg) |
+| **Mockups** | [35-application-shell](../mockups/35-application-shell.svg), [01-landscape-map](../mockups/01-landscape-map.svg), [22-topology-3d](../mockups/22-topology-3d.svg), [05-service-lens](../mockups/05-service-lens.svg), [09-alert-lens](../mockups/09-alert-lens.svg), [10-alerts-list-timeline](../mockups/10-alerts-list-timeline.svg), [13-investigation](../mockups/13-investigation.svg), [14-board](../mockups/14-board.svg) |
 
 ## 1. Purpose & scope
 
@@ -241,29 +241,32 @@ pass the WCAG 2.2 AA automated checks of [08](08-visual-language.md).
 
 The application uses a conventional layout (decision D9,
 [ADR-0014](../adr/0014-typescript-react-web-client.md) §10): a left navigation sidebar, a page
-header, and the page content. Mockup: [34-application-layout](../mockups/34-application-layout.svg)
-(callouts: ① sidebar, ② page title, ③ time range picker and refresh control, ④ user menu, ⑤ board
-panel gap).
+header, and the page content. Mockup: [35-application-shell](../mockups/35-application-shell.svg),
+the shell the owner approved on 2026-11-19 (callouts: ① org and tenant switcher, ② sidebar groups,
+③ breadcrumb, title and star toggle, ④ time range picker and refresh control, ⑤ user menu, ⑥ page
+content padding). [34-application-layout](../mockups/34-application-layout.svg) still shows the
+board panel gap.
 
 ```
 ┌──────────────┬───────────────────────────────────────────────────────────────────────────────┐
-│ ◉ Pulsus     │ Boards › Payments overview       ⌘K Search…  ⚠ 3  ✦ AI │ ◷ Last 1 h ▾ │ ⟳ 30 s ▾ │ ☺ ▾ │ ← page header
-│              ├───────────────────────────────────────────────────────────────────────────────┤
+│ ◉ Demo Org   │ Boards / Service overview ☆        ⌘K  ⚠ 3  ✦ AI │ ◷ Last 1 hour ▾ │ ⟳ │ ● 30s ▾ │ AA │ ← page header
+│   Tenant: ▾  ├───────────────────────────────────────────────────────────────────────────────┤
 │ ▦ Boards     │                                                                               │
-│ ⌕ Explore    │      page content: a board grid, a workbench, a room, or a Space scene        │
-│    Metrics   │      (Space scenes add a minimap and the Time Ribbon at the bottom)           │
-│    Logs      │                                                                               │
-│ ⚠ Alerts     │                                                                               │
+│ Explore      │      page content: a board grid, a workbench, a room, or a Space scene        │
+│   Metrics    │      (Space scenes add a minimap and the Time Ribbon at the bottom)           │
+│   Logs       │                                                                               │
+│ Starred ★ …  │                                                                               │
+│ Recent …     │                                                                               │
 │ ⚙ Admin      │                                                                               │
-│ «            │                                                                               │
+│ « Collapse   │                                                                               │
 └──────────────┴───────────────────────────────────────────────────────────────────────────────┘
-  ↑ left navigation sidebar (collapses to an icon rail)
+  ↑ left navigation sidebar (collapses to an icon rail); ⌘K, ⚠ and ✦ appear once they exist
 ```
 
 | Element | Behaviour | Requirement |
 |---|---|---|
-| Left navigation sidebar | Boards, Explore (Metrics, Logs; Traces and Profiles when they exist), Alerts and Investigations when they exist, Admin; collapsible to an icon rail | IA-021 |
-| Page header, left | Page title; in the Space, the breadcrumb | IA-016, IA-017 |
+| Left navigation sidebar | Top: product mark and the org and tenant switcher; groups Boards, Explore (Metrics, Logs; Traces and Profiles when they exist), Starred, Recent, Alerts and Investigations when they exist; footer: Admin and the collapse control; collapsible to an icon rail | IA-021 |
+| Page header, left | Breadcrumb of ancestors, page title (truncates first), star toggle on boards; in the Space, the depth-gauge breadcrumb | IA-016, IA-017 |
 | Page header, right | ⌘K entry, alert count, AI dock toggle, time range picker, refresh control, user menu | IA-016 |
 | Breadcrumb | Depth gauge; each crumb is a dropdown of siblings | IA-017 |
 | ⚠ n | Firing alerts relevant to the current Context; click → Alert drawer | IA-018 |
@@ -277,16 +280,18 @@ panel gap).
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
 Every page MUST use one application layout (§3.1): the left navigation sidebar (IA-021); a page header
-across the content column with the page title (the breadcrumb in the Space, IA-017) on the left and,
-on the right in this order, the command palette entry, the alert count (IA-018) and AI dock toggle
-(IA-019) once they exist, the time range picker and refresh control (IA-020), and the user menu; and
-the page content below the header, with a minimap in Space scenes that have a camera extent. No other
-persistent chrome MAY be shown. Sizes are in [08](08-visual-language.md) VL-017.
+across the content column with, on the left, the breadcrumb of the page's ancestors, the page title
+and, on a board, a star toggle (the depth-gauge breadcrumb in the Space, IA-017) and, on the right in
+this order, the command palette entry once the palette exists, the alert count (IA-018) and AI dock
+toggle (IA-019) once they exist, the time range picker and refresh control (IA-020), and the user
+menu; and the page content below the header, with a minimap in Space scenes that have a camera
+extent. No other persistent chrome MAY be shown. Sizes are in [08](08-visual-language.md) VL-017.
 
 *Acceptance:* At 1440×900 on every page of the milestone, the sidebar is at the left edge, the page
-header spans the content column with the title on the left and the time range picker, refresh control
-and user menu at the right edge in that order, the sizes match VL-017, and no other persistent chrome
-is shown.
+header spans the content column with the breadcrumb, title and (on a board) star toggle on the left
+and the time range picker, refresh control and user menu at the right edge in that order, the sizes
+match VL-017, a long title truncates instead of moving a header control, and no other persistent
+chrome is shown.
 
 #### IA-017 — Breadcrumb is a depth gauge
 **MUST** · M-UI2 · SRE, Platform, Engineer, NOC
@@ -339,18 +344,26 @@ to that absolute range; choosing a 30 s auto-refresh re-queries every visible pa
 #### IA-021 — Left navigation sidebar
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-The application MUST have a left navigation sidebar listing the rooms and workbenches that exist at
-the milestone and that the user's role may open: Boards; Explore with Metrics and Logs (Traces and
-Profiles when they exist); Alerts and Investigations when they exist; and Admin for administrators.
+The application MUST have a left navigation sidebar. Its top block (56 px, aligned with the page
+header) shows the product mark and the org and current tenant; with two or more tenant bindings it
+is a menu of the user's bindings that switches tenant and keeps the time Context, and with one it is
+static text. Below it, the sidebar lists the rooms and workbenches that exist at the milestone and
+that the user's role may open, in groups: Boards; Explore with Metrics and Logs (Traces and Profiles
+when they exist); Starred, the user's starred boards; Recent, the last five boards visited (kept
+locally); and Alerts and Investigations when they exist. Its footer holds Admin, for administrators
+only, the collapse control and, once a data-source health call exists, a data-source status line.
 The current page MUST be marked. The sidebar MUST collapse to an icon rail, and its state MUST
 persist per user. Every sidebar destination MUST also be reachable from the command palette and by
 its `g` chord (`g b` Boards, `g m` Metrics, `g l` Logs; the full set is in
 [03](03-interaction-model.md) §4.2).
 
-*Acceptance:* A fresh session at 1440×900 shows the expanded sidebar with Boards, Explore → Metrics
-and Logs, and, for an administrator only, Admin; the current page is marked; collapsing the sidebar
-to the icon rail persists after reload; each destination opens from the sidebar, from `⌘K` and by its
-`g` chord.
+*Acceptance:* A fresh session at 1440×900 shows the expanded sidebar with the org and tenant block,
+Boards, Explore → Metrics and Logs, Starred and Recent (each with its empty text when empty), and,
+for an administrator only, Admin; with two tenant bindings, choosing the other tenant opens its
+Boards with the same time range, and with one binding the block is not a control; starring a board
+adds it to Starred and opening it adds it to the front of Recent; the current page is marked;
+collapsing the sidebar to the icon rail persists after reload; each destination opens from the
+sidebar, from `⌘K` and by its `g` chord.
 
 #### IA-028 — Time Ribbon in Space scenes
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -516,3 +529,4 @@ changes the translation on the next pivot.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §4 adds the Explore and Boards-list routes; §3.1 becomes the application layout with mockup 34; IA-016 (application layout), IA-020 (time range in the page header) and IA-021 (left navigation sidebar) revised in place; IA-028 Time Ribbon in Space scenes added (M-UI3); IA-003, IA-014 and the Scene definition no longer make Boards and workbenches GPU scenes; IA-018 Context badge sits in the page header; review r3: third-party product names replaced by generic wording |
+| 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19, mockup 35): §3.1 cites mockup 35 and its table and diagram show the tenant switcher, the Starred and Recent groups, the breadcrumb and star toggle; IA-021 revised in place (org and tenant switcher, Starred, Recent, Admin and the collapse control in the footer, a data-source status line once a health call exists); IA-016 header left is breadcrumb, title and star toggle, and the command palette entry appears once the palette exists; acceptance criteria extended to match |

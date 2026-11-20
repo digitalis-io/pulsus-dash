@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -567,6 +567,8 @@ the merge train), nightly (release blocker).
 | `unit:undo-prop` | `undo ∘ apply = id` for every command |
 | `unit:keymap-fsm` | 250 ms tap/hold; 1 s chord timeout and cancel; remap conflict refusal names the existing action |
 | `unit:url-codec` | URL round-trip for every pattern; copy link pins absolute time unless "keep relative" |
+| `unit:time-expr` | Time expressions (`now`, `now/d`, `now-<n><unit>`, ISO-8601): parse, print and resolve; `now/d` in the browser zone on both DST days; offsets normalised to UTC; each error names its cause (an unknown unit by name); print∘parse is the identity |
+| `unit:context-search` | `from`, `to` and `refresh` read from the URL search: missing, duplicate, invalid and `from ≥ to` values defaulted and reported; non-canonical encodings canonicalised; other keys kept, sorted; read∘write is the identity ([ADR-0017](../adr/0017-react-router.md)) |
 | `unit:cam-codec` | `cam` ≤ 64 chars for every mode; restore within 1 px; CRC rejects corruption |
 | `unit:codec-roundtrip` | Golden Arrow fixture per schema, BFF writer → WASM reader |
 | `unit:json-arrow-prop` | JSON → Arrow equals PulsusDB JSON bit for bit, NaN/±Inf and gaps |
@@ -786,3 +788,4 @@ Meta-testing:
 | 1.0-rc | 2026-11-18 | #23: §4.1 probe location until the shell; §4.3 long tasks measured from a Chrome trace (`dash-lab::trace`) with CI's `e2e` as PRF-005's merge gate until the reference lab exists, and the shim per-event time (CI reports, `bench:shim-input-cost` gates); §7.1 `bench:long-tasks` row split; `ci:shim-lint` `layout.gen.js` exclusion, `ci:dep-audit` regenerate-and-compare, `ci:probe-absent` fresh build at PR, `ci:bundle-size` enforced |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §4.3 log stream gallery page moves M-UI2 → M-UI1 with PRF-020 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) and the application layout (D9): new §0 maps Rust-only tooling to TS, Go and the later engine; §7.1 withdraws `ci:shim-lint`, adds `ci:lint-ts`, `ci:typecheck`, `ci:lockfile`, `ci:npm-audit`, `ci:api-gen`, `ci:go-lint`, `ci:go-test`, `ci:govulncheck`, `ci:go-mod`, `ci:migrations`, `e2e:csp-violations`, `e2e:client-routing`, `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface` and `e2e:time-range-header`; redefines `ci:bundle-size` (ADR-0014 §8 budgets), `ci:dep-audit` (npm allowlist), `ci:token-lint`, `e2e:focus-regions`, `e2e:chrome-layout` (Space scenes only), `e2e:lazy-load`, `e2e:no-dom-vis`, `replay:time-ribbon` and `replay:events-markers`; §4.3 log stream page measures the active implementation (PRF-020) |
+| 1.2-rc | 2026-11-20 | #57: §7.1 adds `unit:time-expr` and `unit:context-search` (time expressions and the typed URL search module of [ADR-0017](../adr/0017-react-router.md)); other gates unchanged |

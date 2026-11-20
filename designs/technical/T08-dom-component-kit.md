@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-19 |
+| **Version** | 1.4-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -17,7 +17,7 @@ designs, ARIA patterns, budgets and rules that are language-neutral stand.
 | Was (Rust/Leptos) | Now (TS, under `client/src/`) | Notes |
 |---|---|---|
 | `dash-state` (store, reducer, undo) | `state/` (Context store, reducer, undo) | Pure reducer, unit-tested in Vitest; T08-004 stands |
-| `dash-route` | `routes/` on TanStack Router with typed search params | T08-005 stands; T08-006 applies when cameras arrive |
+| `dash-route` | `app/router.tsx` on React Router (data mode), typed search module `state/contextSearch.ts` ([ADR-0017](../adr/0017-react-router.md)) | T08-005 stands; T08-006 applies when cameras arrive |
 | `dash-keymap` | `keys/` | T03-011, T03-012 stand |
 | `dash-tokens` | `design/tokens.toml` → `styles/tokens.css`, `styles/tokens.ts` | T08-022 stands (DOM font vs MSDF check applies from the engine) |
 | `dash-i18n` (Fluent, ICU4X) | `i18n/` (typed message catalogue; `Intl` formatters) | T08-027 revised |
@@ -846,3 +846,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0 maps the Rust/Leptos modules to the TS application; T08-001, T08-002 and T08-027 revised; §4.10 Leptos risk check withdrawn; chrome rows suspended pending roadmap Q13; §11 M-UI1 and §12 updated |
 | 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): §4.3 describes the application layout (sidebar, page header, user menu, layout sizes); T08-017 regions; `Route` adds `Explore` and `Boards` (02 §4); Satisfies rows for IA-016, IA-021, SRF-001, VL-017 and INT-015 restored against `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface`, `e2e:chrome-layout` and `e2e:focus-regions`; IA-020 row added (`e2e:time-range-header`); PRF-009 row uses chunk-class budgets |
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 and §2 rewritten for the React application; §4.1 Rust crate tree marked superseded; §4.2 rewritten (the TS store on the main thread owns semantic state; the engine holds render-local state and reports events through `ChartFrame`); T08-004, §4.6, §4.8 "Where it runs", §5.1, §5.2 T03 row, §7, §8 tenant switch, §9 engine restart and Q1 aligned; Leptos and the ui↔core rings removed; §4.6 `⌘⇧F` waits for T09 formatting |
+| 1.4-rc | 2026-11-20 | [ADR-0017](../adr/0017-react-router.md): `dash-route` row is `app/router.tsx` on React Router (data mode) with the typed search module `state/contextSearch.ts` |
