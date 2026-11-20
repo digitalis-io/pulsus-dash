@@ -45,7 +45,7 @@ type rlsFixture struct {
 
 // fixtures has one entry per tenant table. A new tenant table without an entry fails I1.
 var fixtures = map[string]rlsFixture{
-	"orgs":            {"id", "INSERT INTO orgs (id, slug, name) VALUES ($1, $3, $3)"},
+	"orgs":            {"id", "INSERT INTO orgs (id, slug, name) VALUES ($1, $3, $3 || ' ' || $2::text)"},
 	"tenant_bindings": {"org_id", "INSERT INTO tenant_bindings (org_id, id, slug, datasource_url) VALUES ($1, $2, $3, 'http://localhost:9')"},
 }
 

@@ -101,7 +101,7 @@ func TestSingleTransactionPath(t *testing.T) {
 		if strings.HasSuffix(path, "_test.go") {
 			continue
 		}
-		src, err := os.ReadFile(path)
+		src, err := os.ReadFile(path) //nolint:gosec // paths come from Glob over this package
 		if err != nil {
 			t.Fatal(err)
 		}
