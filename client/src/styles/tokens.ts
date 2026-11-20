@@ -147,3 +147,13 @@ export const motion = {
   "fast": 150,
   "standard": 250,
 } as const;
+
+export const seriesPalette = {
+  "dark": ["#7AA2D6","#C9A36B","#8FBF8F","#B48FC9","#6FB8B8","#C98F8F","#A8A8D9","#BFB07A"],
+  "light": ["#3F6FA8","#93703A","#4E874E","#7E5A97","#358282","#985757","#6262A6","#857640"],
+} as const;
+
+export const sequentialRamp = {
+  "dark": ["#253444","#2C4967","#345E89","#4075A9","#538CC5","#6DA3DB","#8DBBEB","#B1D3F7","#D8EAFE"],
+  "light": ["#E3F0FE","#B9DAFD","#94C3F5","#73ACE6","#5995D1","#477EB6","#3C6995","#365371","#313F4D"],
+} as const;

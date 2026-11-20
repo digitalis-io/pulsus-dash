@@ -1,6 +1,8 @@
 /**
  * Generates `src/styles/tokens.css` and `src/styles/tokens.ts` from `../design/tokens.toml`
- * (VL-001, VL-021, T08-022). `--check` compares in memory instead of writing (`ci:token-lint`).
+ * (VL-001, VL-021, T08-022). `tokens.ts` also carries `seriesPalette` and `sequentialRamp`, the
+ * `series-N` and `ramp-N` colours of each theme as ordered arrays for the chart engine (T01-010,
+ * T02-004). `--check` compares in memory instead of writing (`ci:token-lint`).
  *
  * Exit: 0 written or up to date, 1 stale generated file, 2 unreadable or invalid tokens.
  */
@@ -46,6 +48,12 @@ export interface Tokens {
   };
   motion: Record<string, number | string>;
 }
+
+/** Numbered colour families emitted as ordered arrays: TOML key prefix → export name. */
+const PALETTES: readonly { prefix: string; name: string }[] = [
+  { prefix: 'series', name: 'seriesPalette' },
+  { prefix: 'ramp', name: 'sequentialRamp' },
+];
 
 function isTable(v: unknown): v is Table {
   return typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
@@ -102,6 +110,24 @@ function texts(root: Table, path: string): Record<string, string> {
   return out;
 }
 
+/**
+ * The `<prefix>-1`, `<prefix>-2`, … colours in numeric order. Throws `InputError` naming the first
+ * missing key when the numbering is not contiguous from 1.
+ */
+function ordered(c: Record<string, string>, prefix: string): string[] {
+  const re = new RegExp(`^${prefix}-(\\d+)$`);
+  const numbers = Object.keys(c)
+    .map((k) => re.exec(k)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number)
+    .sort((a, b) => a - b);
+  return numbers.map((n, i) => {
+    const key = `${prefix}-${String(i + 1)}`;
+    if (n !== i + 1) throw new InputError(`${prefix}-N must be contiguous from 1: missing ${key}`);
+    return c[key] ?? '';
+  });
+}
+
 /** Parses and validates the TOML text. Throws `InputError` naming the offending key. */
 export function parseTokens(tomlText: string): Tokens {
   let root: Table;
@@ -131,6 +157,8 @@ export function parseTokens(tomlText: string): Tokens {
   if (darkKeys !== Object.keys(light).sort().join(',')) {
     throw new InputError('color.dark and color.light must define the same keys');
   }
+
+  for (const { prefix } of PALETTES) ordered(dark, prefix);
 
   const motion: Record<string, number | string> = {};
   for (const [k, v] of Object.entries(table(root, 'motion'))) {
@@ -215,6 +243,12 @@ export function generateTs(tk: Tokens): string {
   out.push(`export const border = ${literal(tk.border, '')} as const;`, '');
   out.push(`export const font = ${literal(tk.font, '')} as const;`, '');
   out.push(`export const motion = ${literal(tk.motion, '')} as const;`, '');
+  for (const { prefix, name } of PALETTES) {
+    const lines = (['dark', 'light'] as const).map(
+      (t) => `  ${JSON.stringify(t)}: ${JSON.stringify(ordered(tk.colour[t], prefix))},`,
+    );
+    out.push(`export const ${name} = {\n${lines.join('\n')}\n} as const;`, '');
+  }
   return out.join('\n');
 }
 
