@@ -1,6 +1,7 @@
 # Local dev stack
 
-The dev stack runs the server on a workstation against Postgres in containers. `dev/compose.yaml`
+The dev stack runs the server on a workstation against Postgres and a PulsusDB stand-in in
+containers. `dev/compose.yaml`
 describes the containers, and `make dev-*` targets drive them, reading local settings from the
 untracked file `dev/local.env`. The same compose file backs `make itest-local`, which runs the
 server integration tests on PostgreSQL 15 and 16
@@ -29,6 +30,12 @@ The smoke test also uses `docker` (for `docker ps` and `docker volume inspect`) 
 |---|---|---|---|---|
 | `pg16` | `postgres:16.16-alpine3.24`, pinned by digest | `127.0.0.1:55432` (`DEV_PG16_PORT`) | volume `pg16-data`, kept across `dev-down` | `dev-db`, `dev-up`, `itest-local` |
 | `pg15` | `postgres:15.20-alpine3.24`, pinned by digest | `127.0.0.1:55433` (`DEV_PG15_PORT`) | `tmpfs`, gone when the container stops | `itest-local` only (profile `itest`) |
+| `pulsus-fake` | built from `dev/pulsus-fake.Dockerfile` on first use | `127.0.0.1:59091` (`DEV_PULSUS_FAKE_PORT`) | none | `dev-up` |
+
+`pulsus-fake` answers PulsusDB's routes from recorded transcripts, and any other range or instant
+query with one generated series `{fake="generated"}`, so a board draws a line without a PulsusDB
+([testing against PulsusDB](testing-pulsusdb.md)). It has no health check (the image has no
+shell); `up --wait` waits for it to run.
 
 The digests are the same as those of the `itest` CI job. The compose project is `pulsus-dash`
 (`DEV_PROJECT`).
@@ -51,8 +58,9 @@ setting, or this compose file, outside development.
 
 `dev/local.env` holds the server's settings for the dev stack. It is listed in `.gitignore` and
 must never be committed. It is the **only** place where the real PulsusDB base URL goes. There is
-no tracked copy. Create it with this content, then put your PulsusDB base URL in
-`PULSUS_DASH_DATASOURCE_URL`:
+no tracked copy. Create it with this content. Without `PULSUS_DASH_DATASOURCE_URL`, `dev-migrate`
+seeds the binding with the fake (`http://localhost:59091`, or `DEV_PULSUS_FAKE_PORT`); to use a
+real PulsusDB, set it to your base URL:
 
 ```sh
 # dev/local.env — untracked. Never commit it.
@@ -60,7 +68,7 @@ PG_APP_URL=postgres://pulsus_app@localhost:55432/pulsus_dash?sslmode=disable
 PG_OWNER_URL=postgres://pulsus_owner@localhost:55432/pulsus_dash?sslmode=disable
 PULSUS_DASH_POSTGRES_APP_URL_REF=env:PG_APP_URL
 PULSUS_DASH_POSTGRES_OWNER_URL_REF=env:PG_OWNER_URL
-PULSUS_DASH_DATASOURCE_URL=http://localhost:3100   # your PulsusDB base URL
+# PULSUS_DASH_DATASOURCE_URL=http://localhost:3100   # your PulsusDB base URL; unset = the fake
 # PULSUS_DASH_DATASOURCE_CREDENTIALS_REF=env:PULSUSDB_BASIC   and   PULSUSDB_BASIC=user:password
 PULSUS_DASH_LOG_FORMAT=text
 ```
@@ -73,8 +81,10 @@ The Postgres URLs are secret references (`env:NAME`), as T19-010 requires
 file.
 
 The datasource URL is a seed setting: `migrate` stores it as the first organisation's tenant
-binding on an empty database, and ignores it afterwards. To change it, run `make dev-reset` and
-`make dev-up` again.
+binding on an empty database, and ignores it afterwards. To change it, or to switch between the
+fake and a real PulsusDB, run `make dev-reset` and `make dev-up` again. A credential must be
+`user:password` with a password of at least 8 characters that is not a number; `migrate` refuses a
+weaker one ([credentials](../server/pulsusdb.md#credentials)).
 
 `make no-pulsusdb-host` also reads `dev/local.env`. The host of `PULSUS_DASH_DATASOURCE_URL` joins
 the forbidden-host list, so a local run catches a tracked copy of your real host
@@ -86,9 +96,9 @@ All targets run from the repository root.
 
 | Target | What it does | Needs `dev/local.env` |
 |---|---|---|
-| `make dev-up` | `dev-db`, then `dev-migrate`, then `build/pulsus-dash serve --api-only` in the foreground on `0.0.0.0:8080` (the default `server.listen`). `make server-build` embeds no client, so the server serves the API only; run the client with `npm run dev` ([below](#using-the-client)). Ctrl-C stops the server; Postgres keeps running | yes |
+| `make dev-up` | `dev-db`, then starts `pulsus-fake` (`up -d --wait`, building it on first use), then `dev-migrate`, then `build/pulsus-dash serve --api-only` in the foreground on `0.0.0.0:8080` (the default `server.listen`). `make server-build` embeds no client, so the server serves the API only; run the client with `npm run dev` ([below](#using-the-client)). Ctrl-C stops the server; the containers keep running | yes |
 | `make dev-db` | starts `pg16` and waits until it is healthy (`up -d --wait`) | no |
-| `make dev-migrate` | `make server-build`, then `build/pulsus-dash migrate`: applies the migrations and, on an empty database, seeds the organisation and its tenant binding | yes |
+| `make dev-migrate` | `make server-build`, then `build/pulsus-dash migrate`: applies the migrations and, on an empty database, seeds the organisation and its tenant binding (the fake unless `dev/local.env` sets `PULSUS_DASH_DATASOURCE_URL`) | yes |
 | `make dev-down` | stops and removes the containers; the `pg16-data` volume and its data stay | no |
 | `make dev-reset` | removes the containers and the volume; the next `dev-up` runs the init scripts and seeds again | no |
 | `make itest-local` | starts `pg16` and `pg15` in their own project `pulsus-dash-itest` on ports 57432 and 57433 (`ITEST_PROJECT`, `ITEST_PG16_PORT`, `ITEST_PG15_PORT`), runs `make itest` against both, and removes the containers and volume on every exit, pass or fail. If `up --wait` fails, it stops with that failure and runs no test. It never touches the dev volume | no |
@@ -162,13 +172,16 @@ next to the client version. To serve the client from the server itself, build it
 | Compose fails to bind port 55432 | Another Postgres or stack uses it. Set `DEV_PG16_PORT` (and `DEV_PG15_PORT`) to free ports, for example `make dev-up DEV_PG16_PORT=55532`, and change the port in `PG_APP_URL` and `PG_OWNER_URL` in `dev/local.env` to match |
 | `migrate` fails with `database "pulsus_dash" does not exist`, or a role is missing | The init scripts run only on an empty volume. A volume created before they existed, or by another version, keeps its old state. `make dev-reset` removes it, and the next `make dev-up` initialises it again. This deletes the dev data |
 | A changed `PULSUS_DASH_DATASOURCE_URL` has no effect | The binding is seeded once. `make dev-reset`, then `make dev-up` |
+| Compose fails to bind port 59091 | Set `DEV_PULSUS_FAKE_PORT` to a free port, for example `make dev-up DEV_PULSUS_FAKE_PORT=59191`, and `make dev-reset` if the binding was already seeded with the old port |
+| The sidebar says `Data source: … · Unreachable` | The seeded datasource does not answer `runtimeinfo`: start the fake (`make dev-up` does) or check the URL |
 | `serve` exits at start-up with a Postgres error | Run `make dev-migrate` first (`make dev-up` does), and check that the URLs in `dev/local.env` use port `DEV_PG16_PORT` |
 
 ## Designs
 
 - [ADR-0015](../../designs/adr/0015-go-bff.md): the Go server and its `itest` against the dev
   compose stack.
-- [T05 §7.1](../../designs/technical/T05-testing-and-performance.md): the `ci:dev-stack` gate.
+- [T05 §7.1](../../designs/technical/T05-testing-and-performance.md): the `ci:dev-stack` and
+  `ci:fake-image` gates.
 - [T19](../../designs/technical/T19-deployment.md) T19-010: secrets as references; the private
   PulsusDB URL only in an untracked file.
 - Decision D12 in [the designs index](../../designs/README.md): no IdP until M-UI6.

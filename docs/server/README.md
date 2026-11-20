@@ -4,8 +4,10 @@ The Pulsus Dash server is one Go binary, `pulsus-dash`, in `server/`
 ([ADR-0015](../../designs/adr/0015-go-bff.md)). It loads a strict configuration, checks
 Postgres, applies migrations and seeds the first organisation, verifies and serves the embedded
 web client, and serves health, readiness, the version, the client's bootstrap and CSP reports. It
-never contacts PulsusDB ([T06-026](../../designs/technical/T06-bff-architecture.md)). The PulsusDB
-data plane, boards and authentication come in later issues.
+serves the PromQL query, completion and data-source check routes from PulsusDB through its one
+client ([the PulsusDB page](pulsusdb.md)); start-up and readiness never contact PulsusDB
+([T06-026](../../designs/technical/T06-bff-architecture.md)). Boards and authentication come in
+later issues.
 
 The HTTP contract is spec-first: `api/openapi.yaml` is the source, the Go server code
 (`server/internal/gateway/api/api.gen.go`) and the TypeScript client types
@@ -122,7 +124,8 @@ its default.
 | `datasource.slug` | `default` | seed only: `^[a-z0-9-]{1,40}$` | — |
 | `datasource.database` | `""` | seed only: `^[A-Za-z0-9_.-]{1,150}$` when set | — |
 | `datasource.scope_org_id` | `""` | seed only: same pattern | — |
-| `datasource.credentials_ref` | `""` | seed only: `env:NAME` or `file:/path`, stored as the reference string | — |
+| `datasource.credentials_ref` | `""` | seed only: `env:NAME` or `file:/path`, stored as the reference string. When it resolves, the secret must be `user:password` with a password of at least 8 characters that is not a number ([credentials](pulsusdb.md#credentials)) | — |
+| `pulsusdb.tenant_concurrency` | `16` | 1 to 1024: PulsusDB calls in flight per tenant binding ([tenant concurrency](pulsusdb.md#tenant-concurrency)) | `serve` |
 | `bootstrap.org_slug` | `default` | seed only: `^[a-z0-9-]{1,40}$` | — |
 | `bootstrap.org_name` | `Default organisation` | seed only: 1 to 200 characters | — |
 | `log.level` | `info` | `debug`, `info`, `warn`, `error` | — |
@@ -168,8 +171,11 @@ a resolved value or a literal.
 `config.Load` checks only their keys and types. Their values are checked by `SeedSettings`, which
 `migrate` calls only when the database has no seed yet. After the seed, the binding stored in
 Postgres is authoritative: `migrate` and `serve` never read these keys again, so stale or invalid
-values there are ignored. `datasource.credentials_ref` is stored as the reference string and never
-resolved by `migrate`. A literal is refused with
+values there are ignored. `datasource.credentials_ref` is stored as the reference string. When it
+resolves in `migrate`'s environment, `SeedSettings` also refuses a weak password with
+`config: datasource.credentials_ref: the PulsusDB password must be at least 8 characters and must
+not be a number`; an unresolvable reference is accepted, since `serve` resolves it later.
+`config check` (for `serve`) applies the same check. A literal is refused with
 `an inline secret cannot be stored in the tenant binding; use env:NAME or file:PATH`, even with
 `allow_inline_secrets`.
 
@@ -181,6 +187,7 @@ Requests are matched in this order:
 |---|---|
 | `GET /healthz`, `/startupz`, `/readyz`, `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` | the API routes below |
 | `POST /api/dash/v1/csp-report` | [CSP reports](#csp-reports) |
+| `POST /api/dash/v1/query/promql/{range,instant}`, `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}`, `GET /api/dash/v1/datasource/check` | [the PulsusDB routes](pulsusdb.md#routes) |
 | `GET`/`HEAD /assets/*` | the file from the verified set with the asset headers; not in the set, or no set → 404 envelope |
 | `/api` or any path under `/api/`, any method | 404 envelope |
 | any path under `/auth/`, any method | 404 envelope (there is no authentication yet, D12) |
@@ -202,6 +209,9 @@ Under `serve --api-only` there is no set, so every row that serves a file is a 4
 | `GET /api/dash/v1/bootstrap` | 200 | see [bootstrap](#bootstrap) |
 | `GET /api/dash/v1/bootstrap`, the store fails | 503 | `{"error":{"code":"unavailable","message":"configuration store unavailable"}}`, logged at `warn` as `msg=bootstrap` |
 | `GET /api/dash/v1/bootstrap`, the organisation has no binding | 503 | `{"error":{"code":"unavailable","message":"no tenant binding"}}` |
+| `POST …/query/promql/range`, `…/instant` | 200; 400, 404, 413, 422, 429, 502, 503, 504 | frames and completeness; the error envelope ([PulsusDB routes](pulsusdb.md#errors-t06-52)) |
+| `GET …/prom/labels`, `…/label/{name}/values`, `…/series`, `…/metadata` | 200; 400, 404, 422, 429 (with `Retry-After`), 502, 503, 504 | values, series or metadata with completeness; the error envelope |
+| `GET /api/dash/v1/datasource/check` | 200; 400, 404, 503 | `{"state":"ok\|unreachable\|unauthorised\|error","checked_at":<ms>}` ([check](pulsusdb.md#data-source-check-t06-025)) |
 | known path, wrong method | 405 | `{"error":{"code":"invalid","message":"method not allowed"}}` |
 | handler panic | 500 | `{"error":{"code":"internal","message":"internal error"}}`, stack logged at `error` |
 
@@ -236,7 +246,8 @@ Every API response carries `Content-Type: application/json`, `Cache-Control: no-
   `default_tenant` is the first binding.
 - **Data source.** Only the binding's slug and the state `not_checked` are returned. The
   datasource URL, database, scope and credentials reference are never returned (T06-024). The
-  data-source check itself is #62.
+  data-source check is `GET /api/dash/v1/datasource/check`
+  ([check](pulsusdb.md#data-source-check-t06-025)); the client calls it for the sidebar.
 
 ### CSP reports
 
@@ -391,7 +402,9 @@ It never retries, never fails start-up, never logs the URL, and is cancelled on 
 
 Logs are structured (`log/slog`) on stderr, JSON by default. Each request writes one `msg=http`
 record with `method`, `route` (the route pattern, never the raw path or query; `unmatched` for a
-404), `status`, `duration_ms` and `request_id`.
+404), `status`, `duration_ms` and `request_id`. A request whose client went away before any
+header was written is logged with `status=499`. PulsusDB calls add one `msg=pulsusdb` record each
+([logs](pulsusdb.md#logs)).
 
 ## Code layout
 
@@ -399,20 +412,25 @@ record with `method`, `route` (the route pattern, never the raw path or query; `
 |---|---|
 | `cmd/pulsus-dash` | the CLI; `run(ctx, runEnv)` makes every command testable in-process |
 | `internal/config` | loading, strictness, secret references, seed settings |
-| `internal/core` | shared types: `OrgID`, tenant bindings, build info |
-| `internal/gateway` | router, error envelope, headers, access log, panic recovery, health, version and bootstrap routes, CSP reports, asset and document serving, the public-URL self-check; `api/` is generated |
+| `internal/core` | shared types: `OrgID`, tenant bindings, build info, `RequestCtx`, the password rule |
+| `internal/gateway` | router, error envelope, headers, access log, panic recovery, health, version and bootstrap routes, CSP reports, asset and document serving, the public-URL self-check, the PulsusDB routes and JSON frames; `api/` is generated |
+| `internal/keyhash` | the series key (T04-004) |
+| `internal/pulsusdb` | the only PulsusDB client ([PulsusDB page](pulsusdb.md)) |
+| `internal/pulsusfake`, `cmd/pulsus-fake` | the PulsusDB stand-in for tests and the dev stack ([testing against PulsusDB](../development/testing-pulsusdb.md)) |
 | `internal/gateway/static` | the embedded client tree (`-tags embedassets`), the release public keys and start-up verification; `statictest/` builds signed trees for tests |
 | `internal/store` | the only Postgres access path ([database page](database.md)); `dbgen/` is generated by sqlc |
 | `internal/telemetry` | the logger |
 
 Lint rules (`server/.golangci.yml`) keep `pgx`, `goose` and the sqlc output inside
-`internal/store` (T11-023), and `chi` and the generated server inside `internal/gateway` (T06-001). A
-self-test with failing fixtures proves these rules are enforced
+`internal/store` (T11-023), `chi` and the generated server inside `internal/gateway` (T06-001),
+outbound HTTP inside `internal/pulsusdb` (`pulsusdb-only`, T06-005), and upstream body decoding
+inside its tokenizer (`pulsusdb-decoder`). A self-test with failing fixtures proves these rules are
+enforced
 ([build and CI](../development/build-and-ci.md#make-targets)).
 
 ## Designs
 
-T06-001, T06-003, T06-016, T06-019, T06-021 (CSP report limits), T06-024 and T06-026 in
+T06-001, T06-003, T06-016, T06-019, T06-021 (CSP report and query body limits), T06-024 and T06-026 in
 [T06](../../designs/technical/T06-bff-architecture.md); T18-001, T18-002, T18-003, T18-006 and
 T18-007 and T18-026 (`ci:go-licenses`) in [T18](../../designs/technical/T18-security.md); T19-002, T19-003, T19-005, T19-006,
 T19-007 and T19-010 in [T19](../../designs/technical/T19-deployment.md); T03-022 in

@@ -62,6 +62,9 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 
 ## Tests
 
+- **Shared fixtures.** The decoder and step tests import `wire/fixtures/json/*.json` with `?raw`;
+  `vite.config.ts` allows `../wire` for that (`server.fs.allow`). See
+  [testing against PulsusDB](testing-pulsusdb.md#shared-fixtures-wirefixtures).
 - **Unit and component tests** (`npm test`) sit next to the code as `*.test.ts(x)`. Component tests
   render the whole app with `src/test/renderApp.tsx` (`renderApp(url, { api, now, timeZone,
   queryClient, wrapper })`; `wrapper` provides, for example, a fake chart engine) on a memory router, with the stub API and a fixed clock
@@ -145,7 +148,8 @@ preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. 
 ## CI
 
 `.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml`,
-`server/`, `api/`, `tools/e2e/`, `Makefile` or the workflow (opened, synchronised, reopened, and
+`server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`, `Makefile` or
+the workflow (opened, synchronised, reopened, and
 labelled, so adding `golden-update` reruns it), and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
@@ -192,11 +196,14 @@ cgo.
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |
 | `make api-gen-check` | `server/scripts/api-gen-check.sh`, then its self-test `server/scripts/test-api-gen-check.sh` | `ci:api-gen` |
 | `make go-mod` | `go mod verify` and `go mod tidy -diff` | `ci:go-mod` |
-| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files), then the depguard self-test `server/scripts/check-depguard-fixture.sh` | `ci:go-lint` |
+| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, forbidigo, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files), then the depguard self-test `server/scripts/check-depguard-fixture.sh` | `ci:go-lint`, `ci:depguard` |
 | `make go-test` | `go test -race ./...` | `ci:go-test` |
 | `make govulncheck` | `govulncheck ./...` | `ci:govulncheck` |
 | `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
-| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations` |
+| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)), with the PulsusDB fake in-process ([testing against PulsusDB](testing-pulsusdb.md)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`; `itest:pulsusdb-contract` runs only with `DASH_CONTRACT_PULSUSDB_URL` and is skipped in CI |
+| `make cpu-instr` | `server/scripts/cpu-instr.sh`: the BFF workloads W1 and W2 under cachegrind, against `server/testdata/bench/cpu-instr.json`; more than +3 % fails, and so does a Go or valgrind version other than the baseline's (`rebaseline`). Needs valgrind | `bench:cpu-instr` |
+| `make cpu-instr-update` | rewrites the baseline; run it in CI and commit the result with the change that moves it | — |
+| `make bench-bff` | the two time budgets `TestBudgetPromqlDecode` and `TestBudgetBffOverhead`: with `REFERENCE_LAB=1` they fail over 30 ms per 10⁶ points, or over 5 ms (p50) and 20 ms (p99) of BFF overhead; without it they skip ([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)) | `bench:promql-decode`, `bench:bff-overhead` (reference lab) |
 | `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
 | `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
 | `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)) | — |
@@ -206,17 +213,30 @@ cgo.
 | `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host itest-local-selftest` | — |
 
 The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
-`chi` and `internal/gateway/api` inside `internal/gateway`.
+`chi` and `internal/gateway/api` inside `internal/gateway`. Two forbidigo rules (`ci:depguard`,
+T06-005) keep outbound HTTP and upstream decoding in place:
+
+- `pulsusdb-only` forbids constructing an HTTP client, transport or request (`http.Client`,
+  `http.Transport`, `http.DefaultClient`, `http.Get`, `http.NewRequestWithContext`, …) outside
+  `internal/pulsusdb`. Excluded: test files, the T19-002 self-check
+  (`internal/gateway/selfcheck.go`) and its client in `cmd/pulsus-dash/serve.go`.
+  `internal/notify`, `ai`, `auth` and `telemetry` get their exclusions with the issues that create
+  them.
+- `pulsusdb-decoder` forbids `json.Unmarshal`, `json.NewDecoder`, `json.RawMessage` and
+  `(*json.Decoder).Decode` inside `internal/pulsusdb` (tests excepted), so its tokenizer `updec.go`
+  is the only decoder of PulsusDB bodies ([PulsusDB page](../server/pulsusdb.md#upstream-text-is-untrusted-t06-024)).
 
 **Depguard self-test.** `server/scripts/check-depguard-fixture.sh` proves that the rules are
 enforced (T05-002). For each fixture in `server/testdata/depguard/`, it copies `server/` into a
-temporary directory, adds the fixture as `internal/core/zz_fixture.go` and lints `internal/core`
+temporary directory, adds the fixture as `internal/<package>/zz_fixture.go` and lints that package
 there. The lint must fail with the rule's message:
 
-| Fixture | Imports | Must fail with |
-|---|---|---|
-| `pgx_outside_store.go.txt` | `github.com/jackc/pgx/v5` | `pgx is used only in internal/store (T11-023, ADR-0015)` |
-| `chi_outside_gateway.go.txt` | `github.com/go-chi/chi/v5` | `the router is used only in internal/gateway (T06-001)` |
+| Fixture | Package | Uses | Must fail with |
+|---|---|---|---|
+| `pgx_outside_store.go.txt` | `core` | `github.com/jackc/pgx/v5` | `pgx is used only in internal/store (T11-023, ADR-0015)` |
+| `chi_outside_gateway.go.txt` | `core` | `github.com/go-chi/chi/v5` | `the router is used only in internal/gateway (T06-001)` |
+| `http_client_outside_pulsusdb.go.txt` | `core` | `http.DefaultClient` | `pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)` |
+| `json_outside_updec.go.txt` | `pulsusdb` | `json.Unmarshal` | `pulsusdb-decoder: upstream bodies are decoded only by updec.go, which redacts every string (§4.9)` |
 
 If a fixture passes, it prints `depguard fixture <name> passed; rule <rule> is not enforced` and
 exits 1. If the lint fails for another reason, it prints the output and `depguard fixture <name>
@@ -275,15 +295,23 @@ real checkout's `git status` and generated files are unchanged.
 
 `.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
 `tools/api-gen/`, `client/` (the client is embedded, and the packer is `client/scripts/`),
-`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `tools/no-pulsusdb-host/` or the
-workflow, and on pushes to `main`. The token is read-only, actions are pinned by commit SHA and no
-secrets are used.
+`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `wire/` (the shared fixtures),
+`tools/no-pulsusdb-host/` or the workflow, and on pushes to `main`. The token is read-only, actions
+are pinned by commit SHA and no secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `npm --prefix client ci` and `make build`, then `build/pulsus-dash version` → `tools/e2e/integrity-gate.sh` (`ci:asset-integrity`) → `make go-licenses` (`ci:go-licenses`) → upload `build/THIRD_PARTY_NOTICES.txt` as artifact `third-party-notices` (14 days) |
-| `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` and `make itest-local-selftest` (`ci:dev-stack`) → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
+| `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` and `make itest-local-selftest` (`ci:dev-stack`) → `ci:fake-image`: `docker build -f dev/pulsus-fake.Dockerfile`, run it on port 59091, and within 10 tries 1 s apart `GET /api/v1/status/runtimeinfo` must answer with `X-Pulsus-Query-Id: fake-runtimeinfo-1` and a body with `"rollupLevels"` → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
 | `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` → Node, `npm --prefix client ci`, `make build` → `smoke database` (roles and a `pulsus_smoke` database) → `tools/e2e/built-binary-smoke.sh` (F1) |
+
+### Bench CI (`bench:cpu-instr`)
+
+`.github/workflows/bench.yml` runs on **every** pull request (no `paths` filter: T05-006 gates
+PR-level CPU regressions by instruction counts) and on pushes to `main`. Its one job installs Go
+1.27.4 and the Ubuntu 24.04 `valgrind` package and runs `make cpu-instr`. Instruction counts are
+stable across runners, unlike time; the time budgets run only on the reference machines
+([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)).
 
 ### `ci:asset-integrity`
 
