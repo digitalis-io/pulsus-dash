@@ -35,8 +35,15 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: server/go.mod
+          # Exactly the toolchain line of server/go.mod: go-version-file reads only the go line
+          # (1.27.0), and GOTOOLCHAIN=local would then keep that older release.
+          go-version: '1.27.4'
           cache-dependency-path: server/go.sum
+      - name: Go matches the server/go.mod toolchain
+        run: |
+          want=$(sed -n 's/^toolchain //p' server/go.mod)
+          got=$(go env GOVERSION)
+          [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: client/.nvmrc
@@ -104,8 +111,15 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: server/go.mod
+          # Exactly the toolchain line of server/go.mod: go-version-file reads only the go line
+          # (1.27.0), and GOTOOLCHAIN=local would then keep that older release.
+          go-version: '1.27.4'
           cache-dependency-path: server/go.sum
+      - name: Go matches the server/go.mod toolchain
+        run: |
+          want=$(sed -n 's/^toolchain //p' server/go.mod)
+          got=$(go env GOVERSION)
+          [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
       - name: itest
         run: make itest
         env:

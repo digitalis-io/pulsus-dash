@@ -96,7 +96,7 @@ described in [the server page](../server/README.md) and [the database page](../s
 
 | Tool | Version | Where it is fixed |
 |---|---|---|
-| Go | 1.27.4 | `server/go.mod` (`go 1.27.0`, `toolchain go1.27.4`); CI sets `GOTOOLCHAIN=local` and `GOFLAGS=-mod=readonly` |
+| Go | 1.27.4 | `server/go.mod` (`go 1.27.0`, `toolchain go1.27.4`). CI installs exactly 1.27.4 (`setup-go` `go-version`, because `go-version-file` reads only the `go` line), sets `GOTOOLCHAIN=local` and `GOFLAGS=-mod=readonly`, and fails if `go env GOVERSION` differs from the `toolchain` line. Change both together |
 | oapi-codegen, sqlc, govulncheck | v2.8.2, v1.31.1, v1.9.0 | `tool` directives in `server/go.mod`; run as `go -C server tool <name>` |
 | golangci-lint | 2.15.0 | `make tools-ci` downloads it into `build/bin` and verifies its sha256 |
 | squawk | 2.72.0 | `make tools-ci`, same |
