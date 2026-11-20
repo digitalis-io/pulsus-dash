@@ -40,7 +40,9 @@ for the tenant) by the gateway's request error handler.
 The tenant slug is resolved among the bootstrap organisation's bindings, read under row-level
 security through the same call as the bootstrap ([T06-006](../../designs/technical/T06-bff-architecture.md)).
 An unknown slug is 404 `not_found` `unknown tenant`; a store failure is 503 `unavailable`
-`configuration store unavailable`.
+`configuration store unavailable`. Resolution runs under the route's deadline: if the deadline
+passes first the answer is 504 `upstream_timeout`, and if the browser went away nothing is
+written (the access log records 499).
 
 ## What the binding decides
 
@@ -110,7 +112,7 @@ followed: it is a protocol error.
 | Outcome of an attempt | Retried |
 |---|---|
 | connection failure before any response (refused, reset, EOF, TLS) | yes |
-| `503` with `errorType: "unavailable"` | yes |
+| `503` with `errorType: "unavailable"` | yes (the body is read through the redactor; a body that stalls past the deadline is 504, a cut, oversized or malformed one is 502 `upstream_error`, neither retried) |
 | `503` with `errorType: "timeout"` (504 `upstream_timeout`), another `503` (502 `upstream_unavailable`), `504`, `400`, `401`, `403`, `422`, `429` or any other status | no |
 
 A retry needs all of: fewer than 3 attempts so far; the cluster's retry budget, where the retries
@@ -245,7 +247,8 @@ bytes, each `match` at most 65 536 bytes, `/match/<i>` for a bad one).
 ## Reserved selectors ([T07 §0](../../designs/technical/T07-scene-query-planner.md), T07-020 v1)
 
 Pulsus Dash will serve some series itself. Until it does, a text that names one is refused before
-any request: `ALERTS_FOR_STATE`, `ALERTS` or `pulsus_anomaly_score` as a whole word (the bytes
+any I/O, tenant resolution included (the gateway checks the inputs before it resolves the tenant,
+and the client checks them again): `ALERTS_FOR_STATE`, `ALERTS` or `pulsus_anomaly_score` as a whole word (the bytes
 around it are absent or not in `[A-Za-z0-9_:]`, so `ALERTS_total` and `my_ALERTS` pass), or the
 exact bytes `source="pulsus-dash"`. The guard screens the query of the range and instant routes,
 every `match` and the metadata `metric`, and logs `msg=reserved_selector field=<pointer>` at `info`
@@ -303,7 +306,8 @@ a log or a response.
 
 `GET /api/dash/v1/datasource/check?tenant=<slug>` calls `runtimeinfo` once and answers 200
 `{"state","checked_at"}`: `ok` on success; `unauthorised` for 401/403; `unreachable` for connection
-failures, timeouts and unavailability; `error` otherwise. `/readyz` never calls it
+failures, timeouts and unavailability; `error` otherwise. It answers 404 for an unknown tenant, 503
+when the configuration store fails and 504 when its 5 s deadline passes during tenant resolution. `/readyz` never calls it
 ([T06-026](../../designs/technical/T06-bff-architecture.md)), so readiness does not depend on
 PulsusDB. The sidebar's data-source line shows the result ([client](../client/README.md#api-clients)).
 

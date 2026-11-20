@@ -240,6 +240,7 @@ paths:
         '400': { description: Tenant missing or malformed, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '404': { description: Unknown tenant, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '504': { description: The check's deadline passed while the tenant was resolved, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
   parameters:
     Tenant: { name: tenant, in: query, required: true, schema: { type: string, pattern: '^[a-z0-9-]{1,40}$' } }
