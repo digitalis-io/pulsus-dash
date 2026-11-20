@@ -77,7 +77,7 @@ func (e *env) count(t *testing.T, table string) int64 {
 
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "fixtures", "board-spec", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "fixtures", "board-spec", name)) //nolint:gosec // fixture names are constants of the tests
 	if err != nil {
 		t.Fatal(err)
 	}

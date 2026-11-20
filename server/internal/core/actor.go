@@ -19,12 +19,15 @@ type Actor struct {
 }
 
 // LocalActor returns the fixed local principal.
-func LocalActor() Actor { return Actor{} }
+func LocalActor() Actor { return Actor{Kind: ActorLocal, ID: LocalPrincipalID} }
 
 // DisplayName is the name the API shows for the actor: "Local user" for the local principal,
 // "Unknown" otherwise.
 func (a Actor) DisplayName() string {
-	return ""
+	if a.Kind == ActorLocal {
+		return "Local user"
+	}
+	return "Unknown"
 }
 
 // RequestCtx is what every service call carries (T06-002): the organisation, the actor and the

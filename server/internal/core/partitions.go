@@ -42,5 +42,18 @@ func (s *PartitionState) Horizon() (int, bool) {
 	return s.horizon, s.known
 }
 
-// Check is a stub.
-func (s *PartitionState) Check() string { return "" }
+// Check returns unknown (no run yet), error (3 or more consecutive failures, or no valid leaf for
+// the current month), low (1 or 2 failures, or a horizon of 0 or 1 month) or ok.
+func (s *PartitionState) Check() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case !s.ran:
+		return "unknown"
+	case s.failures >= 3 || (s.known && s.horizon < 0):
+		return "error"
+	case s.failures > 0 || (s.known && s.horizon < 2):
+		return "low"
+	}
+	return "ok"
+}
