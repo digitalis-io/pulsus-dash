@@ -17,10 +17,11 @@ func referenceLab(t *testing.T) {
 func TestBudgetPromqlDecode(t *testing.T) {
 	referenceLab(t)
 	var ms []float64
+	w := newW1(1000, 1000)
 	for range 5 {
 		r := testing.Benchmark(func(b *testing.B) {
 			for b.Loop() {
-				runW1(b, 1000, 1000)
+				w.run(b)
 			}
 		})
 		ms = append(ms, float64(r.NsPerOp())/1e6) // 10⁶ points per op

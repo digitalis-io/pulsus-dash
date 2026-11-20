@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,29 +24,32 @@ import (
 const workloadFrom = 1767225600000
 
 // matrixBody is a matrix of n series of points points at 5 s from workloadFrom: values "1.5",
-// every 7th "NaN".
+// every 7th "NaN". It is built before the measured boundary (A.11).
 func matrixBody(n, points int) []byte {
-	var b bytes.Buffer
-	b.WriteString(`{"status":"success","data":{"resultType":"matrix","result":[`)
+	b := make([]byte, 0, 64+n*(80+points*22))
+	b = append(b, `{"status":"success","data":{"resultType":"matrix","result":[`...)
 	for i := range n {
 		if i > 0 {
-			b.WriteByte(',')
+			b = append(b, ',')
 		}
-		fmt.Fprintf(&b, `{"metric":{"__name__":"w","instance":"i-%04d","job":"bench"},"values":[`, i)
+		b = append(b, `{"metric":{"__name__":"w","instance":"i-`...)
+		b = fmt.Appendf(b, "%04d", i)
+		b = append(b, `","job":"bench"},"values":[`...)
 		for j := range points {
 			if j > 0 {
-				b.WriteByte(',')
+				b = append(b, ',')
 			}
-			v := "1.5"
+			b = append(b, '[')
+			b = strconv.AppendInt(b, workloadFrom/1000+int64(j)*5, 10)
 			if j%7 == 0 {
-				v = "NaN"
+				b = append(b, `,"NaN"]`...)
+			} else {
+				b = append(b, `,"1.5"]`...)
 			}
-			fmt.Fprintf(&b, `[%d,"%s"]`, workloadFrom/1000+int64(j)*5, v)
 		}
-		b.WriteString("]}")
+		b = append(b, "]}"...)
 	}
-	b.WriteString("]}}")
-	return b.Bytes()
+	return append(b, "]}}"...)
 }
 
 // memTransport answers every request with body, after delay; it records the time it spent.
@@ -131,13 +135,26 @@ func (s *statusOnly) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// runW1 decodes, grids and encodes a series × points matrix once.
-func runW1(t testing.TB, series, points int) {
-	m := &memTransport{body: matrixBody(series, points)}
-	if code := rangeOnce(workloadGateway(m), points); code != 200 {
+// w1 is the W1 harness: the upstream body and the gateway, built before the measured boundary.
+type w1 struct {
+	h      http.Handler
+	points int
+}
+
+func newW1(series, points int) w1 {
+	return w1{h: workloadGateway(&memTransport{body: matrixBody(series, points)}), points: points}
+}
+
+// run decodes, grids and encodes the matrix once: from the first read of the upstream body to
+// the last byte of the response.
+func (w w1) run(t testing.TB) {
+	if code := rangeOnce(w.h, w.points); code != 200 {
 		t.Fatalf("W1: status %d", code)
 	}
 }
+
+// runW1 builds the W1 harness and runs it once.
+func runW1(t testing.TB, series, points int) { newW1(series, points).run(t) }
 
 // runW2 runs n sequential range requests for a 1-series, 60-point matrix and returns each
 // request's duration minus the upstream's.

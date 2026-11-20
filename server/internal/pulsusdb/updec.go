@@ -268,115 +268,122 @@ func (d *upstreamDecoder) value(c byte) (tokenKind, error) {
 	return tokEOF, protocolError()
 }
 
-// readNumber reads -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)? into buf.
+// readNumber reads a number token (c is its first byte) into buf: the run of number bytes is
+// copied from the buffered window, then checked against the JSON grammar. The byte after the
+// number stays unread.
 func (d *upstreamDecoder) readNumber(c byte) error {
 	d.buf = append(d.buf[:0], c)
-	next := func() (byte, bool, error) {
-		b, err := d.r.ReadByte()
-		if errors.Is(err, io.EOF) {
-			return 0, false, nil
+	for {
+		win, _ := d.r.Peek(d.r.Buffered())
+		i := 0
+		for i < len(win) && numberByte(win[i]) {
+			i++
 		}
-		if err != nil {
-			return 0, false, err
+		d.buf = append(d.buf, win[:i]...)
+		_, _ = d.r.Discard(i)
+		if i < len(win) {
+			break
 		}
-		return b, true, nil
-	}
-	digits := func(first byte, have bool) (byte, bool, int, error) {
-		n := 0
-		for have && first >= '0' && first <= '9' {
-			d.buf = append(d.buf, first)
-			n++
-			var err error
-			if first, have, err = next(); err != nil {
-				return 0, false, 0, err
+		if _, err := d.r.Peek(1); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
 			}
-		}
-		return first, have, n, nil
-	}
-	b, have, err := next()
-	if err != nil {
-		return err
-	}
-	if c == '-' {
-		if !have || b < '0' || b > '9' {
-			return protocolError()
-		}
-		d.buf = append(d.buf, b)
-		c = b
-		if b, have, err = next(); err != nil {
 			return err
 		}
 	}
-	if c != '0' {
-		if b, have, _, err = digits(b, have); err != nil {
-			return err
-		}
-	}
-	if have && b == '.' {
-		d.buf = append(d.buf, b)
-		if b, have, err = next(); err != nil {
-			return err
-		}
-		var n int
-		if b, have, n, err = digits(b, have); err != nil {
-			return err
-		}
-		if n == 0 {
-			return protocolError()
-		}
-	}
-	if have && (b == 'e' || b == 'E') {
-		d.buf = append(d.buf, b)
-		if b, have, err = next(); err != nil {
-			return err
-		}
-		if have && (b == '+' || b == '-') {
-			d.buf = append(d.buf, b)
-			if b, have, err = next(); err != nil {
-				return err
-			}
-		}
-		var n int
-		if b, have, n, err = digits(b, have); err != nil {
-			return err
-		}
-		if n == 0 {
-			return protocolError()
-		}
-	}
-	if have {
-		_ = d.r.UnreadByte()
-		_ = b
+	if !validNumber(d.buf) {
+		return protocolError()
 	}
 	return nil
 }
 
-// readString reads a string token (the opening quote was read) into buf, decoded.
+func numberByte(c byte) bool {
+	return (c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-'
+}
+
+// validNumber reports whether b is -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?.
+func validNumber(b []byte) bool {
+	i := 0
+	digits := func() int {
+		n := 0
+		for i < len(b) && b[i] >= '0' && b[i] <= '9' {
+			i++
+			n++
+		}
+		return n
+	}
+	if i < len(b) && b[i] == '-' {
+		i++
+	}
+	switch {
+	case i < len(b) && b[i] == '0':
+		i++
+	case digits() == 0:
+		return false
+	}
+	if i < len(b) && b[i] == '.' {
+		i++
+		if digits() == 0 {
+			return false
+		}
+	}
+	if i < len(b) && (b[i] == 'e' || b[i] == 'E') {
+		i++
+		if i < len(b) && (b[i] == '+' || b[i] == '-') {
+			i++
+		}
+		if digits() == 0 {
+			return false
+		}
+	}
+	return i == len(b)
+}
+
+// numberBytes is the current number token's text, valid until the next call to Next.
+func (d *upstreamDecoder) numberBytes() ([]byte, bool) {
+	return d.buf, d.kind == tokNumber
+}
+
+// readString reads a string token (the opening quote was read) into buf, decoded. Runs without
+// escapes are copied from the buffered window.
 func (d *upstreamDecoder) readString() error {
 	d.buf = d.buf[:0]
-	valid := true
+	ascii := true
 	for {
-		c, err := d.r.ReadByte()
-		if err != nil {
-			return eofIsSyntax(err)
+		win, _ := d.r.Peek(d.r.Buffered())
+		i := 0
+		for i < len(win) {
+			c := win[i]
+			if c == '"' || c == '\\' || c < 0x20 {
+				break
+			}
+			if c >= utf8.RuneSelf {
+				ascii = false
+			}
+			i++
 		}
+		d.buf = append(d.buf, win[:i]...)
+		_, _ = d.r.Discard(i)
+		if i == len(win) {
+			if _, err := d.r.Peek(1); err != nil {
+				return eofIsSyntax(err)
+			}
+			continue
+		}
+		c, _ := d.r.ReadByte()
 		switch {
 		case c == '"':
-			if !valid || !utf8.Valid(d.buf) {
+			if !ascii && !utf8.Valid(d.buf) {
 				d.buf = []byte(toValidUTF8(d.buf))
 			}
 			return nil
 		case c < 0x20:
 			return protocolError()
-		case c == '\\':
+		default: // a backslash
 			if err := d.readEscape(); err != nil {
 				return err
 			}
-		default:
-			if c >= utf8.RuneSelf {
-				valid = false // checked once at the end
-			}
-			d.buf = append(d.buf, c)
+			ascii = false // an escape may produce non-ASCII bytes; checked once at the end
 		}
 	}
 }

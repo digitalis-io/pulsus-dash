@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
@@ -470,7 +469,7 @@ func (s *ResultStream) point() (int64, float64, error) {
 	if k, err := d.Next(); err != nil || k != tokNumber {
 		return 0, 0, orProtocol(err)
 	}
-	n, _ := d.Number()
+	n, _ := d.numberBytes()
 	ms, ok := secondsToMs(n)
 	if !ok {
 		return 0, 0, protocolError()
@@ -575,7 +574,7 @@ func (s *ResultStream) instantResult() error {
 	case tokArrEnd:
 		return nil
 	case tokNumber:
-		n, _ := d.Number()
+		n, _ := d.numberBytes()
 		ms, ok := secondsToMs(n)
 		if !ok {
 			return protocolError()
@@ -688,33 +687,38 @@ func (ser *Series) add(ms int64, v float64) {
 	ser.Present = append(ser.Present, true)
 }
 
-// secondsToMs converts a JSON number of seconds to integer ms without floats: digits, then at
-// most 3 fraction digits (more only if all zero). A sign or an exponent is refused.
-func secondsToMs(s string) (int64, bool) {
-	whole, frac, dot := strings.Cut(s, ".")
-	if whole == "" || len(whole) > 15 || !allDigits(whole) || (dot && (frac == "" || !allDigits(frac))) {
+// secondsToMs converts a JSON number of seconds to integer ms without floats: 1 to 15 digits,
+// then at most 3 fraction digits (more only if all zero). A sign or an exponent is refused.
+func secondsToMs(s []byte) (int64, bool) {
+	var sec int64
+	i := 0
+	for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+		sec = sec*10 + int64(s[i]-'0')
+	}
+	if i == 0 || i > 15 {
 		return 0, false
 	}
-	if len(frac) > 3 {
-		if strings.Trim(frac[3:], "0") != "" {
+	ms := sec * 1000
+	if i == len(s) {
+		return ms, true
+	}
+	if s[i] != '.' || i+1 == len(s) {
+		return 0, false
+	}
+	scale := int64(100)
+	for j := i + 1; j < len(s); j++ {
+		c := s[j]
+		if c < '0' || c > '9' {
 			return 0, false
 		}
-		frac = frac[:3]
-	}
-	frac += strings.Repeat("0", 3-len(frac))
-	sec, err := strconv.ParseInt(whole, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	ms, _ := strconv.ParseInt(frac, 10, 64)
-	return sec*1000 + ms, true
-}
-
-func allDigits(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
+		if j-i > 3 {
+			if c != '0' {
+				return 0, false
+			}
+			continue
 		}
+		ms += int64(c-'0') * scale
+		scale /= 10
 	}
-	return true
+	return ms, true
 }
