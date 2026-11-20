@@ -44,8 +44,13 @@ retention domains exist.
 
 `tenant_bindings.credentials_ref` holds a secret **reference** (`env:NAME` or `file:/path`), never
 a value (T11-004, T19-010). A CHECK constraint enforces this: `env:` followed by a name matching
-`[A-Za-z_][A-Za-z0-9_]{0,127}`, or `file:/` followed by 1 to 1023 non-space characters. The length
-is a separate `char_length` test, because Postgres regular expressions cap repeat counts at 255.
+`[A-Za-z_][A-Za-z0-9_]{0,127}`, or `file:PATH` with an absolute `PATH` of 1 to 1023 **bytes**
+containing no ASCII whitespace or control character (bytes 0x01–0x20 and 0x7F; multibyte UTF-8 is
+allowed). The rule is byte-wise and independent of the database locale: `octet_length` bounds the
+length (Postgres regular expressions cap repeat counts at 255) and an explicit byte class
+`[\x01-\x20\x7f]` excludes the characters. The server's configuration check applies the same
+rule, and both are tested against one shared case list
+(`server/internal/config/testdata/credentials_refs.json`).
 
 The identity tables (`users`, `teams`, `memberships`, `roles`, `role_permissions`, `grants`,
 `idps`, `sessions`) arrive with authentication at M-UI6. Until then, decision D12 in

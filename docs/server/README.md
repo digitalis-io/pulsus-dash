@@ -47,7 +47,9 @@ embedded in the binary.
 **`serve`** start-up steps, in order. The first failure ends the process.
 
 1. Load the configuration and require `postgres.app_url_ref` (exit 2).
-2. The roles must be `[all]` (T06-003). `api`, `worker`, `evaluator`, `notifier` and `ai` are
+2. The roles must be exactly `[all]` (T06-003); an empty list (`no role given: only "all" is
+   supported`) or a repeated one (`roles must be exactly "all" in this release, not "all,all"`)
+   exits 2. `api`, `worker`, `evaluator`, `notifier` and `ai` are
    named but not available in this release:
    `role "api" is not available in this release: only "all" is supported`. Any other value is
    `unknown role "bogus" (want all, api, worker, evaluator, notifier or ai)`. Both exit 2.
@@ -134,7 +136,7 @@ Keys ending in `_ref` hold a reference, not a secret:
 | Reference | Resolves to | Errors |
 |---|---|---|
 | `env:NAME` (`NAME` matches `^[A-Za-z_][A-Za-z0-9_]{0,127}$`) | the variable's value | `environment variable NAME is not set` |
-| `file:/absolute/path` (1 to 1023 characters after `file:/`, no whitespace) | the file's contents, one trailing newline removed | `cannot read file PATH`; `file PATH is larger than 64 KiB` |
+| `file:/absolute/path` (the path is 1 to 1023 bytes, with no ASCII whitespace or control character) | the file's contents, one trailing newline removed | `cannot read file PATH`; `file PATH is larger than 64 KiB` |
 | `vault://…` | — | `vault references are not supported in this release` |
 | anything else | a literal | refused with `inline secrets are refused; use env:NAME or file:PATH (or set allow_inline_secrets: true for development)`. With `allow_inline_secrets: true` it is used and logged once at `warn` as `inline secret used key=<key>` |
 
