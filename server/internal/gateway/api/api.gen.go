@@ -13,6 +13,21 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Defines values for DatasourceStatusState.
+const (
+	NotChecked DatasourceStatusState = "not_checked"
+)
+
+// Valid indicates whether the value is a known member of the DatasourceStatusState enum.
+func (e DatasourceStatusState) Valid() bool {
+	switch e {
+	case NotChecked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	BudgetExhausted    ErrorCode = "budget_exhausted"
@@ -61,6 +76,27 @@ const (
 func (e HealthStatus) Valid() bool {
 	switch e {
 	case HealthStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PrincipalRole.
+const (
+	Admin  PrincipalRole = "admin"
+	Editor PrincipalRole = "editor"
+	Viewer PrincipalRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the PrincipalRole enum.
+func (e PrincipalRole) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case Editor:
+		return true
+	case Viewer:
 		return true
 	default:
 		return false
@@ -133,6 +169,24 @@ func (e ReadyChecksSchema) Valid() bool {
 	}
 }
 
+// Bootstrap defines model for Bootstrap.
+type Bootstrap struct {
+	CanSignOut    bool         `json:"can_sign_out"`
+	DefaultTenant string       `json:"default_tenant"`
+	Org           OrgInfo      `json:"org"`
+	Principal     Principal    `json:"principal"`
+	Server        Version      `json:"server"`
+	Tenants       []TenantInfo `json:"tenants"`
+}
+
+// DatasourceStatus defines model for DatasourceStatus.
+type DatasourceStatus struct {
+	State DatasourceStatusState `json:"state"`
+}
+
+// DatasourceStatusState defines model for DatasourceStatus.State.
+type DatasourceStatusState string
+
 // ErrorBody defines model for ErrorBody.
 type ErrorBody struct {
 	Code    ErrorCode               `json:"code"`
@@ -164,6 +218,23 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// OrgInfo defines model for OrgInfo.
+type OrgInfo struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// Principal defines model for Principal.
+type Principal struct {
+	Email string        `json:"email"`
+	Id    string        `json:"id"`
+	Name  string        `json:"name"`
+	Role  PrincipalRole `json:"role"`
+}
+
+// PrincipalRole defines model for Principal.Role.
+type PrincipalRole string
+
 // Ready defines model for Ready.
 type Ready struct {
 	Checks ReadyChecks `json:"checks"`
@@ -185,8 +256,27 @@ type ReadyChecksPostgres string
 // ReadyChecksSchema defines model for ReadyChecks.Schema.
 type ReadyChecksSchema string
 
+// TenantInfo defines model for TenantInfo.
+type TenantInfo struct {
+	Datasource DatasourceStatus `json:"datasource"`
+	Name       string           `json:"name"`
+	Slug       string           `json:"slug"`
+}
+
+// Version defines model for Version.
+type Version struct {
+	Commit  string `json:"commit"`
+	Version string `json:"version"`
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+
+	// (GET /api/dash/v1/bootstrap)
+	GetBootstrap(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/dash/v1/version)
+	GetVersion(w http.ResponseWriter, r *http.Request)
 
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -201,6 +291,16 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// (GET /api/dash/v1/bootstrap)
+func (_ Unimplemented) GetBootstrap(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/version)
+func (_ Unimplemented) GetVersion(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // (GET /healthz)
 func (_ Unimplemented) GetHealthz(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +325,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetBootstrap operation middleware
+func (siw *ServerInterfaceWrapper) GetBootstrap(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBootstrap(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetVersion(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVersion(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealthz operation middleware
 func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
@@ -390,8 +518,87 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/readyz", wrapper.GetReadyz)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/version", wrapper.GetVersion)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/bootstrap", wrapper.GetBootstrap)
+	})
 
 	return r
+}
+
+type GetBootstrapRequestObject struct {
+}
+
+type GetBootstrapResponseObject interface {
+	VisitGetBootstrapResponse(w http.ResponseWriter) error
+}
+
+type GetBootstrap200JSONResponse Bootstrap
+
+func (response GetBootstrap200JSONResponse) VisitGetBootstrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBootstrap503JSONResponse ErrorEnvelope
+
+func (response GetBootstrap503JSONResponse) VisitGetBootstrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVersionRequestObject struct {
+}
+
+type GetVersionResponseObject interface {
+	VisitGetVersionResponse(w http.ResponseWriter) error
+}
+
+type GetVersion200JSONResponse Version
+
+func (response GetVersion200JSONResponse) VisitGetVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVersiondefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetVersiondefaultJSONResponse) VisitGetVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthzRequestObject struct {
@@ -474,6 +681,12 @@ func (response GetStartupz200JSONResponse) VisitGetStartupzResponse(w http.Respo
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
+	// (GET /api/dash/v1/bootstrap)
+	GetBootstrap(ctx context.Context, request GetBootstrapRequestObject) (GetBootstrapResponseObject, error)
+
+	// (GET /api/dash/v1/version)
+	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
+
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
 
@@ -521,6 +734,54 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetBootstrap operation middleware
+func (sh *strictHandler) GetBootstrap(w http.ResponseWriter, r *http.Request) {
+	var request GetBootstrapRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBootstrap(ctx, request.(GetBootstrapRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBootstrap")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBootstrapResponseObject); ok {
+		if err := validResponse.VisitGetBootstrapResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVersion operation middleware
+func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
+	var request GetVersionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVersion(ctx, request.(GetVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVersionResponseObject); ok {
+		if err := validResponse.VisitGetVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetHealthz operation middleware

@@ -6,7 +6,8 @@
     "react-router",
     "@tanstack/react-query",
     "react-aria-components",
-    "@internationalized/date"
+    "@internationalized/date",
+    "openapi-fetch"
   ],
   "runtimeClosure": {
     "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
@@ -22,6 +23,7 @@
       "client-only"
     ],
     "i18n": ["@internationalized/date", "@internationalized/number", "@internationalized/string"],
+    "api-client": ["openapi-fetch", "openapi-typescript-helpers"],
     "runtime-helper": ["@swc/helpers", "tslib"]
   },
   "licenceAllowlist": [

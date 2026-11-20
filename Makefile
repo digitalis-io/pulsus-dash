@@ -3,6 +3,10 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 
 VERSION ?= 0.1.0-dev
+# make build: the client's API mode, the commit shown in About, and the binary's path.
+API_MODE ?= http
+GIT_SHA ?= $(shell git rev-parse HEAD)
+OUT ?= $(CURDIR)/build/pulsus-dash
 BIN := $(CURDIR)/build/bin
 export PATH := $(BIN):$(PATH)
 
@@ -11,8 +15,32 @@ GOLANGCI_SHA256 := 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9eb
 SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
-.PHONY: server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci
+.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci
 
+# The client build the BFF embeds (VITE_API_MODE=$(API_MODE)).
+client-build:
+	VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client run build
+
+# Packs client/dist into the embedded tree with a signed manifest, under a key generated afresh
+# for this build (plan #59 Q3); the private key never leaves build/keys/.
+assets-pack:
+	node client/scripts/pack-assets.ts --gen-key build/keys
+	node client/scripts/pack-assets.ts --in client/dist --out server/internal/gateway/static/dist --key build/keys/asset-signing.key
+
+# The release binary: the client embedded (-tags embedassets) and the build's public key.
+build: client-build assets-pack
+	CGO_ENABLED=0 go -C server build -tags embedassets -trimpath -buildvcs=true -ldflags "-X github.com/digitalis-io/pulsus-dash/server/internal/core.Version=$(VERSION) -X github.com/digitalis-io/pulsus-dash/server/internal/gateway/static.releasePublicKeys=$$(cat $(CURDIR)/build/keys/asset-signing.pub)" -o $(OUT) ./cmd/pulsus-dash
+
+# The two binaries the end-to-end suite serves (client/playwright.config.ts).
+e2e-build:
+	$(MAKE) build API_MODE=stub VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-stub/pulsus-dash
+	$(MAKE) build API_MODE=http VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-http/pulsus-dash
+
+# Needs make e2e-build and E2E_PG_APP_URL / E2E_PG_OWNER_URL (docs/development/build-and-ci.md).
+e2e:
+	npm --prefix client run e2e
+
+# The server alone, without the client: serve refuses to start unless --api-only.
 server-build:
 	CGO_ENABLED=0 go -C server build -trimpath -buildvcs=true -ldflags "-X github.com/digitalis-io/pulsus-dash/server/internal/core.Version=$(VERSION)" -o ../build/pulsus-dash ./cmd/pulsus-dash
 
@@ -70,4 +98,4 @@ tools-ci:
 	chmod +x $(BIN)/squawk
 
 # Parts B and C of #59 append targets.
-ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint
+ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint build

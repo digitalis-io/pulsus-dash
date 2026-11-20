@@ -26,6 +26,9 @@ type Server struct {
 	Roles         []string `yaml:"roles"`
 	Listen        string   `yaml:"listen"`
 	ShutdownGrace Duration `yaml:"shutdown_grace"`
+	// PublicURL is the externally visible base URL for the start-up self-check (T19-002); ""
+	// disables the check.
+	PublicURL string `yaml:"public_url"`
 }
 
 // Postgres holds the database references.

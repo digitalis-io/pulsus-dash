@@ -6,10 +6,12 @@ export const defaultSeed: StubSeed = {
     user: { id: 'u-ada', name: 'Ada Admin', email: 'ada@example.com', role: 'admin' },
     org: { name: 'Demo Org' },
     tenants: [
-      { slug: 'demo', name: 'Demo' },
-      { slug: 'sandbox', name: 'Sandbox' },
+      { slug: 'demo', name: 'Demo', dataSource: { state: 'notChecked' } },
+      { slug: 'sandbox', name: 'Sandbox', dataSource: { state: 'notChecked' } },
     ],
     defaultTenant: 'demo',
+    server: null,
+    canSignOut: true,
   },
   boards: {
     demo: [

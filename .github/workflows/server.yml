@@ -8,6 +8,11 @@ on:
       - 'api/**'
       - 'tools/api-gen/**'
       - 'client/src/api/gen/**'
+      # The client is embedded in the binary: a client-only change runs the build, the
+      # integrity gate and the built-binary smoke (the packer is client/scripts/pack-assets.ts).
+      - 'client/**'
+      - 'design/tokens.toml'
+      - 'tools/e2e/**'
       - 'Makefile'
       - '.github/workflows/server.yml'
   push:
@@ -80,6 +85,14 @@ jobs:
             echo "::error::migrations are immutable once merged (T11-012)"
             exit 1
           fi
+      - name: client install
+        run: npm --prefix client ci
+      - name: build
+        run: |
+          make build
+          build/pulsus-dash version
+      - name: 'ci:asset-integrity'
+        run: tools/e2e/integrity-gate.sh
 
   itest:
     runs-on: ubuntu-24.04
@@ -124,3 +137,20 @@ jobs:
         run: make itest
         env:
           DASH_ITEST_PG_URLS: pg16=postgres://postgres@localhost:55432/postgres?sslmode=disable,pg15=postgres://postgres@localhost:55433/postgres?sslmode=disable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: client/.nvmrc
+      - name: client install
+        run: npm --prefix client ci
+      # F1 tests a binary built in this job (no artifact is shared between jobs).
+      - name: build
+        run: make build
+      - name: smoke database
+        run: |
+          docker exec -i ${{ job.services.pg16.id }} psql -U postgres -v ON_ERROR_STOP=1 < server/deploy/postgres-roles.sql
+          docker exec ${{ job.services.pg16.id }} psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE pulsus_smoke OWNER pulsus_owner"
+      - name: F1 built-binary smoke
+        run: tools/e2e/built-binary-smoke.sh
+        env:
+          F1_OWNER_URL: postgres://pulsus_owner@localhost:55432/pulsus_smoke?sslmode=disable
+          F1_APP_URL: postgres://pulsus_app@localhost:55432/pulsus_smoke?sslmode=disable

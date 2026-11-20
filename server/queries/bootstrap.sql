@@ -12,3 +12,6 @@ INSERT INTO tenant_bindings (org_id, id, slug, datasource_url, database, scope_o
 
 -- name: ListTenantBindings :many
 SELECT org_id, id, slug, datasource_url, database, scope_org_id, credentials_ref, kind FROM tenant_bindings WHERE org_id = $1 ORDER BY slug;
+
+-- name: GetOrg :one
+SELECT id, slug, name FROM orgs WHERE id = $1;

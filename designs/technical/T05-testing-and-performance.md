@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-20 |
+| **Version** | 1.6-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -548,6 +548,7 @@ the merge train), nightly (release blocker).
 | `ci:go-test` | `go test -race ./...` | PR | yes |
 | `ci:govulncheck` | `govulncheck ./...`; any reachable vulnerability fails | PR | yes |
 | `ci:go-mod` | `go mod verify`; `go mod tidy` leaves no diff; `GOFLAGS=-mod=readonly` | PR | yes |
+| `ci:asset-integrity` | Binary-level start-up refusal ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [T19](T19-deployment.md) T19-005): `make build` once, then gate binaries with the same public key over an altered packed tree must exit 1 before opening a listener: one byte of the largest `assets/*.js` flipped (`hash_mismatch`), an unlisted `assets/extra.js` (`unlisted_file`), a listed `.br` variant deleted (`missing_file`), the manifest changed by one byte (`bad_signature`), no public key (`no_public_key`); the untouched tree verifies and stops only at Postgres; a `make server-build` binary refuses without `--api-only` | PR | yes |
 | `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013), proven by the failing fixture `server/testdata/squawk/create_index_not_concurrently.sql` (`require-concurrent-index-creation`), and an up-from-empty run on Postgres (`itest:migrations`); on pull requests, no merged migration is modified, deleted or renamed (append-only, T11-012) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
@@ -589,6 +590,8 @@ the merge train), nightly (release blocker).
 
 | Gate | Checks | Stage | Blocking |
 |---|---|---|---|
+| `itest:bff-refuses-altered-asset` | Named by [T18](T18-security.md) T18-006; runs in `ci:go-test` (no database needed): an embedded set with one byte changed in a listed file, a listed file missing, or an unlisted extra file is refused by start-up verification (`hash_mismatch`, `missing_file`, `unlisted_file` naming the path), and `serve` exits 1 with `asset integrity check failed` and never opens a listener | PR | yes |
+| `itest:asset-manifest-signature` | Named by T18-006; runs in `ci:go-test`: a manifest one byte off its signed bytes, a signature by another key, a 63-byte or missing signature, a missing manifest, and no compiled-in key are refused (`bad_signature`, `missing_signature`, `missing_manifest`, `no_public_key`); of two keys, the second may sign (rotation) | PR | yes |
 | `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003) | PR | yes |
 | `itest:no-extensions` | After a migration from empty, `pg_extension` holds only `plpgsql` (T11-001) | PR | yes |
 | `itest:migrations` | Up from empty, then an idempotent rerun; a dry run writes nothing; two concurrent `migrate` runs apply and seed once; a database more than one version ahead is refused (also when another run advanced it while this one waited for the lock) and one version ahead is accepted by `migrate` and `serve`; `serve` refuses an older schema (T11-015, T19-007) | PR | yes |
@@ -614,6 +617,8 @@ the merge train), nightly (release blocker).
 | `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench chunk; with no chart frame on screen it fetches no engine |
 | `e2e:no-dom-vis` | With the engine active, every non-DOM vis is drawn by the engine into its viewport canvas: no chart SVG and no interim Canvas 2D frames; one GPU device for the page |
 | `e2e:csp-violations` | The production build served with the [ADR-0014](../adr/0014-typescript-react-web-client.md) §9 headers reports no CSP or Trusted Types violation during the PR smoke suite |
+| `e2e:bff-headers` | Against the BFF-served stub build: `GET /` carries a `Content-Security-Policy` equal to the client's `CSP` constant and every other document header of [T18](T18-security.md) T18-002; an `/assets/*.js` file requested with `Accept-Encoding: br` is served `br` and `immutable`; a deep link returns `index.html`; an unknown `/api/` path is the 404 envelope |
+| `e2e:bff-http-shell` | Against the BFF-served `http` build, and through the Vite dev server proxied to the BFF: the shell bootstraps from `GET /api/dash/v1/bootstrap`, About shows the server version, Sign out is absent under the fixed local principal (D12), and the sidebar shows the data-source line (IA-021) |
 | `e2e:client-routing` | Boards list → board → Explore → browser back: no document navigation; the board shows its previous data in the first frame with no new query (IA-014) |
 | `e2e:app-layout` | At 1440×900 on every page of the build: sidebar at the left edge, 240 px (56 px collapsed); page header 56 px high with the title on the left and the time range picker, refresh control and user menu at the right edge in that order; content padding 24 px; board panel gap 16 px; no other persistent chrome (IA-016, VL-017) |
 | `e2e:rooms-reachable` | The sidebar lists the build's destinations for the user's role (Admin only for administrators) and marks the current page; the collapsed state persists across reload; each destination opens from the sidebar, from `⌘K` and by its `g` chord (IA-021) |
@@ -814,3 +819,4 @@ Meta-testing:
 | 1.3-rc | 2026-11-20 | #58: §0 L2 row names `golden:interim-gallery` (Chromium `toHaveScreenshot`, CI-only baselines; ꟻLIP from #68); §7.1 adds `golden:interim-gallery`, `e2e:chart-brush`, `e2e:chart-hover`, `unit:series-cap`, `unit:columns`, `unit:bucket-scale` and `bench:frame-interim-line` (report only until #68), and extends `unit:colour-hash` with the 08 Table 8-1a level rule |
 | 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
 | 1.5-rc | 2026-11-20 | #59 Part A: §7.1 adds `unit:config-strict` and the BFF integration gates `itest:rls-isolation`, `itest:no-extensions` (both already named by T11) and `itest:migrations`; `ci:migrations` names its failing squawk fixture and the append-only check on pull requests |
+| 1.6-rc | 2026-11-20 | #59 Part B: §7.1 adds `itest:bff-refuses-altered-asset` and `itest:asset-manifest-signature` (named by T18-006, run in `ci:go-test`), `ci:asset-integrity` (binary-level start-up refusal, PR, blocking), `e2e:bff-headers` and `e2e:bff-http-shell`; other gates unchanged |

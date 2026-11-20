@@ -18,14 +18,18 @@ npm run dev          # http://localhost:5173, stub API, no backend needed
 npm run build && npm run preview   # the production build on http://localhost:4173, production headers
 ```
 
+In production the BFF serves the client: `make build` embeds an `http`-mode build in the binary
+([Serving the client](../server/README.md#serving-the-client)). To develop against a running BFF,
+start it with `serve --api-only` (or a full build) and run `VITE_API_MODE=http npm run dev` with
+`PULSUS_DASH_DEV_BFF` pointing at it; About then shows the server version.
+
 | Variable | Read by | Values | Default |
 |---|---|---|---|
 | `VITE_API_MODE` | the client at build and dev time (`createApi()`) | `stub` (in-repo seeded data) or `http` (the BFF client) | `stub` |
 | `PULSUS_DASH_DEV_BFF` | `vite.config.ts` (dev server only) | base URL the dev server proxies `/api` and `/auth` to | `http://localhost:8080` |
 | `VITE_GIT_SHA` | the About dialog | commit SHA (CI sets it); shown as 12 characters | `dev` |
 
-Until the BFF exists (#59), `http` mode rejects every call with `ApiError('notImplemented')`, so the
-app shows the session error page. The proxy target is never logged.
+The proxy target is never logged. In `http` mode the client is `HttpApi` (below).
 
 ## Layout (D9, IA-016, IA-021, VL-017)
 
@@ -37,7 +41,7 @@ Sizes come from the tokens, at a 1440 × 900 reference:
 | Skip link | First tab stop, "Skip to main content"; moves focus to `<main id="main">` |
 | Sidebar, 240 px (56 px collapsed) | Full height. Top block 56 px, its bottom hairline continuing the header's: product mark (link to Boards) and the org and tenant block. With two or more tenant bindings the tenant name is a menu button (`Switch tenant, current: <name>`) listing the bindings; choosing one opens that tenant's Boards with the current time range (push). With one binding the block is static text. Collapsed: the mark, and a 32 px org-initial menu button when there are two or more bindings |
 | Sidebar navigation (`nav` "Main") | Boards; Explore with Metrics and Logs; Starred (the user's starred boards that exist, in board-list order, empty text "No starred boards"); Recent (the last five boards opened, newest first, kept locally, empty text "No recent boards"). Collapsed: icon links with tooltips; Starred and Recent hidden. The current page is marked with `aria-current="page"` (Boards also on a board page). Links carry the current `from`, `to` and `refresh`, and preload their page on hover and focus |
-| Sidebar footer | Admin (administrators only) and "Collapse sidebar" / "Expand sidebar" (`aria-expanded`). There is no keyboard shortcut for the toggle: `[` is the window-step key (INT-032). The state persists in `localStorage` |
+| Sidebar footer | Admin (administrators only); the data-source line "Data source: `<tenant slug>` · Not checked" for the current tenant (expanded sidebar only, IA-021; nothing when the tenant has no data-source state); and "Collapse sidebar" / "Expand sidebar" (`aria-expanded`). There is no keyboard shortcut for the toggle: `[` is the window-step key (INT-032). The state persists in `localStorage` |
 | Page header, 56 px | Left: a breadcrumb (`Boards` link on a board, `Explore` text on Explore pages, none elsewhere), the page title `<h1>` (20 px; truncates with an ellipsis, full title in `title`), and on a board the "Star board" toggle. Right, in this order: time range trigger, refresh split control, user menu. No command palette entry until the palette exists |
 | Page body | Scrolls; 24 px padding |
 
@@ -50,8 +54,11 @@ window in mono ("12:03 – 13:03 GMT"). The refresh control is a group "Refresh"
 an interval menu button named "Auto-refresh interval: `<label>`" that shows the interval (`Off`,
 `10s`, `30s`, `1m`, `5m`, `15m`) and a live dot when it is not off; choosing an interval replaces
 the history entry. The user menu (avatar initials, "User menu: `<name>`") shows name, email and
-role, then the theme section (Dark, Light, System), "About Pulsus Dash" (version, build, licence)
-and "Sign out". Only a confirmed sign-out clears the query cache and opens `/signed-out`; if the
+role, then the theme section (Dark, Light, System), "About Pulsus Dash" (version, build, the line
+"Server version `<version>`" when the session has a server, and the licence) and "Sign out". Sign
+out is shown only when `session.canSignOut` is true: under the BFF's fixed local principal
+(decision D12) it is false, so the item is hidden rather than offered as a no-op. Only a confirmed
+sign-out clears the query cache and opens `/signed-out`; if the
 API rejects it, the session, the cache and the page stay as they were and an alert ("Could not sign
 out. You are still signed in.") offers Retry (focused) and Dismiss (focus returns to the user menu).
 
@@ -216,13 +223,41 @@ key presses that operate it to the loop for its page (or to `chrome()` in L20 if
 sidebar or header), with an assertion of what it does. `e2e/coverage.spec.ts` checks the harness
 itself.
 
-## Stub API
+## API clients
 
 `src/api/` defines `Api` (session, boards, board, starred boards, sign-out) and `ApiError` kinds
-`notFound`, `unauthorised`, `network`, `notImplemented`, `unknown`. `StubApi` resolves on the next
+`notFound`, `unauthorised`, `network`, `notImplemented`, `unknown`. `createApi()` returns
+`HttpApi` when `VITE_API_MODE` is `http`, else `StubApi`.
+
+The session is `{user, org, tenants, defaultTenant, server, canSignOut}`. Each tenant may carry
+`dataSource: {state: 'notChecked'}`. `server` is `{version, commit}` from the BFF, or `null` in
+stub mode; `canSignOut` is false under the fixed local principal.
+
+### HttpApi
+
+`HttpApi` is `openapi-fetch` 0.17.0 over `paths` from `src/api/gen/schema.d.ts`, which is generated
+from `api/openapi.yaml` (ADR-0014 §1, ADR-0015); requests go to the page's origin.
+
+| Method | Behaviour |
+|---|---|
+| `getSession` | `GET /api/dash/v1/bootstrap`, mapped to the session: `principal` → `user`, `org.name`, tenants with `dataSource.state` `notChecked`, `default_tenant`, `server`, `can_sign_out` → `canSignOut` |
+| `listBoards`, `listStarred` | resolve `[]`: there is no boards API until #61, so Boards and the sidebar show their empty states |
+| `getBoard` | rejects `ApiError('notFound')` |
+| `setStarred` | rejects `ApiError('notImplemented')` |
+| `signOut` | resolves; never offered, because `canSignOut` is false |
+
+Errors: an `AbortError` from `fetch` is re-thrown unchanged; any other `fetch` rejection becomes
+`ApiError('network')`; 404 becomes `notFound`; any other non-2xx status becomes
+`ApiError('unknown')` with the error envelope's `message`. A failed session shows the session
+error page with Retry.
+
+### StubApi
+
+`StubApi` resolves on the next
 microtask, rejects with `AbortError` when the signal is aborted, returns copies, and serves the
-seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org, tenants Demo and Sandbox,
-three Demo boards (the third has a long title) and none in Sandbox. Starred boards are kept in
+seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org, tenants Demo and Sandbox
+(both with the data-source state "not checked"), `server: null`, `canSignOut: true`, three Demo
+boards (the third has a long title) and none in Sandbox. Starred boards are kept in
 `localStorage['pulsus-dash.stub.starred.<tenant>']` (Demo starts with `b-1`); unknown uids are kept
 there and dropped by the sidebar. Test hook: a positive integer in
 `localStorage['pulsus-dash.stub.failSession']` makes that many session calls fail with
@@ -250,8 +285,9 @@ charts, `formatValue` (`2.84 s`, `1.2k rps`, `1.5 GiB`; rules in [Charts](charts
 
 ## Headers and CSP (T18-001, T18-004, ADR-0014 §9, ADR-0016)
 
-`config/headers.ts` holds the production headers that `vite preview` sends and the BFF will send:
-the ADR-0014 §9 CSP (`script-src 'self'`, `style-src 'self'`, Trusted Types required), COOP
+`config/headers.ts` holds the production headers that `vite preview` sends; the BFF sends the same
+values (and `Reporting-Endpoints`, HSTS and `Permissions-Policy`), and `e2e:bff-headers` checks the
+served CSP equals `CSP` here: the ADR-0014 §9 CSP (`script-src 'self'`, `style-src 'self'`, Trusted Types required), COOP
 `same-origin`, COEP `require-corp`, CORP `same-origin`, `nosniff` and the referrer policy. Asset
 integrity is verified by the BFF before serving (ADR-0016); the browser loads no import map and no
 per-module SRI. The build emits no inline script or style: React sets styles through CSSOM, and the
@@ -263,9 +299,11 @@ every request, fonts included, stays on the app origin.
 
 ## Limits
 
-- No sign-in, BFF, real boards, chart queries, command palette, alert count or AI dock yet (charts
-  draw only the gallery's synthetic data until the BFF serves frames, #62); starred boards
-  are kept by the stub in the browser until the BFF stores them (#61).
+- No sign-in (the BFF serves a fixed local principal, D12), real boards (`http` mode lists none
+  until #61), chart queries, command palette, alert count or AI dock yet (charts draw only the
+  gallery's synthetic data until the BFF serves frames, #62); starred boards are kept by the stub
+  in the browser until the BFF stores them (#61).
+- The data-source line always reads "Not checked" until the data-source check exists (#62).
 - Recent boards are per browser, not per user.
 - Day and week units are fixed 24 h and 7 × 24 h durations; only `now/d` and the calendar follow DST.
 - Layouts are designed for desktop widths (1440 px reference); narrow layouts are later work.
@@ -275,6 +313,7 @@ every request, fonts included, stays on the app origin.
 D9 ([designs README](../../designs/README.md)), [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),
 [ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md),
 [ADR-0017](../../designs/adr/0017-react-router.md);
+[ADR-0015](../../designs/adr/0015-go-bff.md);
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-015,
 IA-016, IA-020, IA-021, IA-022, IA-023),
 [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-032),
