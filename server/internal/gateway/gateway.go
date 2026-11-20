@@ -58,15 +58,20 @@ func New(d Deps) http.Handler {
 		d.Logger = slog.New(slog.DiscardHandler)
 	}
 	r := chi.NewRouter()
-	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger))
+	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger), bodyLimit, requestCtx(d))
 	a := assets{set: d.Assets}
 	r.NotFound(a.fallback)
 	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
-	r.Method(http.MethodPost, "/api/dash/v1/csp-report", newCSPReport(d))
+	r.Method(http.MethodPost, cspReportPath, newCSPReport(d))
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusMethodNotAllowed, api.Invalid, "method not allowed")
 	})
-	badRequest := func(w http.ResponseWriter, _ *http.Request, _ error) {
+	badRequest := func(w http.ResponseWriter, _ *http.Request, err error) {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			WriteError(w, http.StatusRequestEntityTooLarge, api.Invalid, "request body too large")
+			return
+		}
 		WriteError(w, http.StatusBadRequest, api.Invalid, "bad request")
 	}
 	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}, boards: boards{deps: d}}, nil, api.StrictHTTPServerOptions{
@@ -79,7 +84,7 @@ func New(d Deps) http.Handler {
 	return api.HandlerWithOptions(strict, api.ChiServerOptions{BaseRouter: r, ErrorHandlerFunc: badRequest})
 }
 
-// routes implements every generated operation: the probes and the meta routes.
+// routes implements every generated operation: the probes, the meta routes and the boards.
 type routes struct {
 	health
 	meta
@@ -110,6 +115,23 @@ func commonHeaders(next http.Handler) http.Handler {
 }
 
 type requestIDKey struct{}
+
+// cspReportPath is the hand-written csp-report route.
+const cspReportPath = "/api/dash/v1/csp-report"
+
+// maxRequestBody bounds every POST and PUT body (T06-021); the csp-report route has its own limit.
+const maxRequestBody = 2 << 20
+
+// bodyLimit caps POST and PUT bodies at maxRequestBody; reading past it fails with
+// *http.MaxBytesError, which the request error handler answers with 413.
+func bodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.URL.Path != cspReportPath {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func newRequestID() string {
 	u, err := uuid.NewV7()
