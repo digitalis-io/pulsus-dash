@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -232,7 +232,9 @@ able to bind a state colour to an ordinary series or a diverging ramp to a non-d
 #### T02-005 — Stable series colour
 **MUST** — A series' colour MUST be `series-{1 + (key_hash mod 8)}`, where `key_hash` is the
 `xxh3_64` of the canonical label set ([T04 §4.2](T04-wire-format-and-data-plane.md#42-conventions-for-every-schema)),
-so the same series has the same colour on every chart, in every session and after reload. A user
+unless the series matches a [08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours)
+Table 8-1a level label, which takes that row's token; so the same series has the same colour on
+every chart, in every session and after reload. A user
 override MAY pin a colour per series key.
 
 #### T02-006 — Canvas text uses the DOM's fonts
@@ -767,3 +769,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; added design rules T02-001 to T02-031; axis system expanded (auto-configuration, manual pin, ownership glyphs, comparison axis at M-UI1); LOD and precision rules; camera controller constants; auto-vis; glyph and state encodings per 08 (Failing ■); build order aligned with 05 milestones; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md) and the revised product text (roadmap Q13): new §0 (one canvas per chart frame with one engine and GPU device, interim renderer until #68/#69, Time Ribbon in Space scenes at M-UI3); Satisfies: IA-020 row replaced by IA-028, INT-025 adds `e2e:time-range-header` |
+| 1.2-rc | 2026-11-20 | #58, owner decision 2026-11-20: T02-005 gives a series with a log-level label ([08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a) that row's token; key hash for everything else |

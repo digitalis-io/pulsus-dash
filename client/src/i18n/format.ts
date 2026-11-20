@@ -77,6 +77,109 @@ export function formatZone(tz: string, atMs: number): string {
   return `${tz} (${offset})`;
 }
 
+/** The unit of a chart value (VL-012). */
+export type Unit =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'time'; readonly base: 'ns' | 'us' | 'ms' | 's' }
+  | { readonly kind: 'bytes' }
+  | { readonly kind: 'percent' }
+  | { readonly kind: 'percentunit' }
+  | { readonly kind: 'suffix'; readonly suffix: string };
+
+/** Three significant digits, or the rounded integer from 100; trailing zeros dropped. */
+function sig(x: number): string {
+  if (Math.abs(x) >= 100) return String(Math.round(x));
+  const [mantissa = '', exponent] = x.toPrecision(3).split('e');
+  const m = mantissa.includes('.') ? mantissa.replace(/0+$/, '').replace(/\.$/, '') : mantissa;
+  return exponent === undefined ? m : `${m}e${exponent}`;
+}
+
+interface Scale {
+  /** Size of the unit in the base unit. */
+  readonly size: number;
+  readonly text: string;
+}
+
+/** The largest scale not above `abs`, carried to the next one while the digits reach its size. */
+function scaled(abs: number, scales: readonly Scale[], space: string): string {
+  let i = 0;
+  while (i + 1 < scales.length && abs >= (scales[i + 1]?.size ?? Infinity)) i += 1;
+  for (;;) {
+    const s = scales[i];
+    if (s === undefined) return sig(abs);
+    const digits = sig(abs / s.size);
+    const next = scales[i + 1];
+    if (next !== undefined && Math.abs(Number(digits)) >= Math.round(next.size / s.size)) {
+      i += 1;
+      continue;
+    }
+    return s.text === '' ? digits : `${digits}${space}${s.text}`;
+  }
+}
+
+const SI: readonly Scale[] = ['', 'k', 'M', 'G', 'T', 'P'].map((text, i) => ({
+  size: 1000 ** i,
+  text,
+}));
+const IEC: readonly Scale[] = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'].map((text, i) => ({
+  size: 1024 ** i,
+  text,
+}));
+const TIME: readonly Scale[] = [
+  { size: 1e-9, text: 'ns' },
+  { size: 1e-6, text: 'µs' },
+  { size: 1e-3, text: 'ms' },
+  { size: 1, text: 's' },
+  { size: 60, text: 'min' },
+  { size: 3_600, text: 'h' },
+  { size: 86_400, text: 'd' },
+];
+const TIME_BASE: Readonly<Record<'ns' | 'us' | 'ms' | 's', number>> = {
+  ns: 1e-9,
+  us: 1e-6,
+  ms: 1e-3,
+  s: 1,
+};
+
+/**
+ * A chart value in its unit (VL-012, T08-027): `2.84 s`, `1.2k rps`, `38 %`, `1.5 GiB`. Three
+ * significant digits; SI prefixes for plain numbers, IEC for bytes, the largest time unit whose
+ * value is at least 1. `NaN` is `—`.
+ */
+export function formatValue(v: number, unit: Unit): string {
+  if (Number.isNaN(v)) return '—';
+  if (v === Infinity) return '+Inf';
+  if (v === -Infinity) return '-Inf';
+  if (v < 0) return `-${formatValue(-v, unit)}`;
+  switch (unit.kind) {
+    case 'none':
+      return v < 1 ? sig(v) : scaled(v, SI, '');
+    case 'suffix':
+      return `${v < 1 ? sig(v) : scaled(v, SI, '')} ${unit.suffix}`;
+    case 'bytes':
+      return v < 1 ? `${sig(v)} B` : scaled(v, IEC, ' ');
+    case 'percent':
+      return `${sig(v)} %`;
+    case 'percentunit':
+      return `${sig(v * 100)} %`;
+    case 'time': {
+      const seconds = v * TIME_BASE[unit.base];
+      if (seconds === 0) return '0 s';
+      return scaled(seconds, TIME, ' ');
+    }
+  }
+}
+
+/** `14:05` in `tz`. */
+export function formatHourMinute(ms: number, tz: string): string {
+  return formatter('hourMinute', tz).format(ms);
+}
+
+/** `19 Nov` in `tz`. */
+export function formatDayMonth(ms: number, tz: string): string {
+  return formatter('dayMonth', tz).format(ms);
+}
+
 export const QUICK_RANGES = [
   '5m',
   '15m',

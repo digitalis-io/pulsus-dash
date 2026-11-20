@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-20 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -69,11 +69,29 @@ no light value is the arithmetic inverse of its dark value.
 
 Ordinary series MUST use the eight-hue desaturated `series-1`…`series-8` palette, validated for
 colour-vision-deficiency (CVD) distinguishability and equal perceived lightness. A series' colour
-MUST be chosen by a stable hash of its identity, so the same pod has the same colour on every chart.
+MUST be chosen by a stable hash of its identity, except that a series carrying a log-level label
+(`level`, then `detected_level`) whose value is in Table 8-1a takes that row's colour, so the levels
+of a log volume chart are always distinct and the same level has the same colour in every chart.
+Otherwise the same pod has the same colour on every chart.
 
 *Acceptance:* The palette validator reports all eight hues within ±3 L* of each other and pairwise
 distinguishable under deuteranopia, protanopia and tritanopia simulation; the same pod series has
-the same colour in two different charts and after reload.
+the same colour in two different charts and after reload; an `error` series has `series-6` in a
+stacked volume chart, in the same chart with the levels reordered or reduced, and in a line chart.
+
+**Table 8-1a — Series colours of log levels** (label value, case-insensitive).
+
+| Level values | Token |
+|---|---|
+| `error`, `err`, `critical`, `crit`, `fatal`, `alert`, `emergency` | `series-6` |
+| `warn`, `warning` | `series-2` |
+| `info`, `informational`, `notice` | `series-1` |
+| `debug` | `series-5` |
+| `trace` | `series-4` |
+
+> **Rationale:** five levels hashed into eight colours collide in about 80 % of cases, so a log
+> volume chart would often show two levels in one colour. The level colours are series hues, not
+> state colours: state colours stay reserved for health (VL-003).
 
 #### VL-003 — State colours are reserved for health
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -510,3 +528,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §1 hybrid principle; definitions; VL-004 and VL-005 edited in place; motion table rows; new §10 3D scenes (VL-023 to VL-028); later sections renumbered §11–§13 |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §7 layout tokens for the sidebar, page header, content padding and board panel gap; VL-017 revised in place (application layout dimensions); VL-019 adds the 16 px board panel gap; VL-021 generates CSS, TS and Rust token outputs; resolution 10 |
 | 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19): VL-017 adds the 56 px sidebar top block aligned with the header, title truncation before any header control moves, and the time trigger's absolute window from 1520 px |
+| 1.3-rc | 2026-11-20 | #58, owner decision 2026-11-20: VL-002 gives log-level series the fixed colours of the new Table 8-1a (error `series-6`, warn `series-2`, info `series-1`, debug `series-5`, trace `series-4`; key hash for everything else); acceptance extended |

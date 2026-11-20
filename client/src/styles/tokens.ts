@@ -4,12 +4,22 @@ export const colour = {
   "dark": {
     "accent": "#5B9BFF",
     "backdrop": "#0B0D10B3",
+    "brush": "#5B9BFF29",
     "canvas": "#0B0D10",
     "degraded": "#E8923A",
     "failing": "#E0457B",
     "focus": "#5B9BFF",
     "hairline": "#FFFFFF14",
     "ok": "#2FB59A",
+    "ramp-1": "#253444",
+    "ramp-2": "#2C4967",
+    "ramp-3": "#345E89",
+    "ramp-4": "#4075A9",
+    "ramp-5": "#538CC5",
+    "ramp-6": "#6DA3DB",
+    "ramp-7": "#8DBBEB",
+    "ramp-8": "#B1D3F7",
+    "ramp-9": "#D8EAFE",
     "series-1": "#7AA2D6",
     "series-2": "#C9A36B",
     "series-3": "#8FBF8F",
@@ -30,12 +40,22 @@ export const colour = {
   "light": {
     "accent": "#2563C9",
     "backdrop": "#1A1D2366",
+    "brush": "#2563C929",
     "canvas": "#F5F6F8",
     "degraded": "#A85A12",
     "failing": "#B8285C",
     "focus": "#2563C9",
     "hairline": "#0B0D1014",
     "ok": "#17806A",
+    "ramp-1": "#E3F0FE",
+    "ramp-2": "#B9DAFD",
+    "ramp-3": "#94C3F5",
+    "ramp-4": "#73ACE6",
+    "ramp-5": "#5995D1",
+    "ramp-6": "#477EB6",
+    "ramp-7": "#3C6995",
+    "ramp-8": "#365371",
+    "ramp-9": "#313F4D",
     "series-1": "#3F6FA8",
     "series-2": "#93703A",
     "series-3": "#4E874E",
@@ -72,6 +92,11 @@ export const space = {
 
 export const size = {
   "avatar": 28,
+  "chart": 240,
+  "chart-brush-min": 4,
+  "chart-line": 1.5,
+  "chart-stat": 120,
+  "chart-tick": 4,
   "control": 32,
   "crumb-max": 160,
   "focus-offset": 2,
@@ -103,6 +128,7 @@ export const font = {
     "tight": 1.25,
   },
   "size": {
+    "display": 32,
     "lg": 16,
     "md": 13,
     "sm": 12,
@@ -120,4 +146,14 @@ export const motion = {
   "easing-out": "cubic-bezier(0.2, 0, 0, 1)",
   "fast": 150,
   "standard": 250,
+} as const;
+
+export const seriesPalette = {
+  "dark": ["#7AA2D6","#C9A36B","#8FBF8F","#B48FC9","#6FB8B8","#C98F8F","#A8A8D9","#BFB07A"],
+  "light": ["#3F6FA8","#93703A","#4E874E","#7E5A97","#358282","#985757","#6262A6","#857640"],
+} as const;
+
+export const sequentialRamp = {
+  "dark": ["#253444","#2C4967","#345E89","#4075A9","#538CC5","#6DA3DB","#8DBBEB","#B1D3F7","#D8EAFE"],
+  "light": ["#E3F0FE","#B9DAFD","#94C3F5","#73ACE6","#5995D1","#477EB6","#3C6995","#365371","#313F4D"],
 } as const;

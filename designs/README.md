@@ -104,6 +104,7 @@ Changes to an Accepted doc go through review and are recorded in that doc's chan
 | D9 | Conventional application layout: left navigation sidebar, page header with time range, refresh and user menu top-right, roomy boards | [ADR-0014](adr/0014-typescript-react-web-client.md) §10; product requirements revised (roadmap Q13 closed, [12](product/12-roadmap.md#7-resolved-during-formalisation) item 6) |
 | D10 | Asset integrity is verified by the BFF against the signed manifest before serving; every JS module, CSS file and worker is same-origin, and the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity`; no per-module SRI in the browser | [ADR-0016](adr/0016-asset-integrity-verified-by-bff.md) Accepted 2026-11-19; amends ADR-0014 (lazy-chunk SRI) |
 | D11 | SRF-027 shows PulsusDB's errors on run in M-UI1; pre-run byte-offset diagnostics are SRF-078 at M-UI2 | [12](product/12-roadmap.md) D11 (was Q14, option A), Accepted 2026-11-19 |
+| D13 | Gate sensitivity proofs (T05-002): unit, component and end-to-end gates may prove that they fail with a local regression run whose output is recorded in the PR; a CI proof PR (a `gate-proof/*` branch with a red run) is needed only for CI-specific gates (workflow and build-artefact checks) (owner, 2026-11-20) | [T05](technical/T05-testing-and-performance.md#t05-002--every-gate-is-proven-to-fail) T05-002; [12](product/12-roadmap.md#3-decisions-taken) D13 |
 
 ## 3. Assumptions
 

@@ -1,7 +1,9 @@
 # Pulsus Dash design tokens: the single source of colour, spacing, size, type and motion values.
 # `client/scripts/gen-tokens.ts` generates `client/src/styles/tokens.css` and `tokens.ts` from this
-# file (VL-001, VL-021, T08-022). Colours are uppercase #RRGGBB or #RRGGBBAA; lengths are px;
-# durations are ms. Light colours are designed, not inverted from dark (VL-001).
+# file (VL-001, VL-021, T08-022). `series-1`…`series-8` (categorical, VL-002) and `ramp-1`…`ramp-9`
+# (sequential, single hue, VL-006) must be numbered contiguously from 1; they are also emitted as
+# ordered arrays (`seriesPalette`, `sequentialRamp`). Colours are uppercase #RRGGBB or #RRGGBBAA;
+# lengths are px; durations are ms. Light colours are designed, not inverted from dark (VL-001).
 
 [color.dark]
 canvas = "#0B0D10"
@@ -28,6 +30,16 @@ series-5 = "#6FB8B8"
 series-6 = "#C98F8F"
 series-7 = "#A8A8D9"
 series-8 = "#BFB07A"
+ramp-1 = "#253444"
+ramp-2 = "#2C4967"
+ramp-3 = "#345E89"
+ramp-4 = "#4075A9"
+ramp-5 = "#538CC5"
+ramp-6 = "#6DA3DB"
+ramp-7 = "#8DBBEB"
+ramp-8 = "#B1D3F7"
+ramp-9 = "#D8EAFE"
+brush = "#5B9BFF29"
 
 [color.light]
 canvas = "#F5F6F8"
@@ -54,6 +66,16 @@ series-5 = "#358282"
 series-6 = "#985757"
 series-7 = "#6262A6"
 series-8 = "#857640"
+ramp-1 = "#E3F0FE"
+ramp-2 = "#B9DAFD"
+ramp-3 = "#94C3F5"
+ramp-4 = "#73ACE6"
+ramp-5 = "#5995D1"
+ramp-6 = "#477EB6"
+ramp-7 = "#3C6995"
+ramp-8 = "#365371"
+ramp-9 = "#313F4D"
+brush = "#2563C929"
 
 # Spacing scale (px).
 [space]
@@ -68,7 +90,8 @@ series-8 = "#857640"
 12 = 48
 16 = 64
 
-# Component and layout sizes (px). Sidebar widths are VL-017's.
+# Component and layout sizes (px). Sidebar widths are VL-017's. `chart*` sizes are the chart
+# frame heights, axis tick length, line width and minimum brush drag (#58).
 [size]
 sidebar-expanded = 240
 sidebar-collapsed = 56
@@ -82,6 +105,11 @@ target-min = 24
 icon = 16
 avatar = 28
 page-padding = 24
+chart = 240
+chart-stat = 120
+chart-tick = 4
+chart-line = 1.5
+chart-brush-min = 4
 
 [radius]
 default = 6
@@ -100,6 +128,7 @@ sm = 12
 md = 13
 lg = 16
 xl = 20
+display = 32
 
 [font.weight]
 regular = 400

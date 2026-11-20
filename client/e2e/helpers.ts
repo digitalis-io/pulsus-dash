@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/draw.ts';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the suite. */
 export const T = Date.UTC(2026, 10, 19, 13, 3);
@@ -13,6 +14,7 @@ export const SHELL_PAGES = [
   '/t/demo/explore/metrics',
   '/t/demo/explore/logs',
   '/t/demo/admin',
+  '/t/demo/dev/gallery',
 ] as const;
 export const STANDALONE_PAGES = ['/nope', '/signed-out'] as const;
 export const ALL_PAGES = [...SHELL_PAGES, ...STANDALONE_PAGES] as const;
@@ -53,4 +55,69 @@ export async function openUserMenu(page: Page) {
   const menu = page.getByRole('menu', { name: 'User menu: Ada Admin' });
   await menu.waitFor();
   return menu;
+}
+
+/** The chart gallery (dev and stub builds), 12:00–13:00 UTC on 19 Nov 2026 (#58). */
+export const GALLERY = '/t/demo/dev/gallery';
+export const GALLERY_FROM = Date.UTC(2026, 10, 19, 12);
+export const GALLERY_TO = Date.UTC(2026, 10, 19, 13);
+export const GALLERY_URL = `${GALLERY}?from=${enc('2026-11-19T12:00:00.000Z')}&to=${enc('2026-11-19T13:00:00.000Z')}&refresh=off`;
+export const GALLERY_IDS = [
+  'line-1',
+  'line-50',
+  'line-gaps',
+  'line-600',
+  'heatmap',
+  'bars',
+  'stat',
+] as const;
+
+/** The chart frame of a gallery entry. */
+export function frame(page: Page, id: string): Locator {
+  return page.locator(`[data-gallery-id="${id}"] [data-chart-frame]`);
+}
+
+export interface Plot {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The frame's plot rectangle (CSS px, relative to the frame), once it has drawn. */
+export async function plotOf(f: Locator): Promise<Plot> {
+  await expect(f).toHaveAttribute('data-frame-ready', 'true');
+  const [x = 0, y = 0, width = 0, height = 0] = ((await f.getAttribute('data-plot')) ?? '')
+    .split(',')
+    .map(Number);
+  return { x, y, width, height };
+}
+
+/** The page x of time `ms` in a frame whose box starts at `boxX`. */
+export function plotX(boxX: number, plot: Plot, ms: number, fromMs: number, toMs: number): number {
+  return boxX + plot.x + ((ms - fromMs) / (toMs - fromMs)) * plot.width;
+}
+
+/** The time under page x `x` (the engine's pointer formula). */
+export function timeAt(boxX: number, plot: Plot, x: number, fromMs: number, toMs: number): number {
+  return fromMs + ((x - boxX - plot.x) / plot.width) * (toMs - fromMs);
+}
+
+/** Waits until all seven gallery charts have drawn with their fonts loaded. */
+export async function galleryReady(page: Page): Promise<void> {
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(7);
+  await page.waitForFunction(
+    (fonts) => fonts.every((f) => document.fonts.check(f)),
+    [AXIS_FONT, STAT_FONT],
+  );
+  await page.evaluate(
+    () =>
+      new Promise<void>((r) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            r();
+          });
+        });
+      }),
+  );
 }

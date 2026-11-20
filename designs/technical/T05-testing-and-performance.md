@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.4-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -18,7 +18,7 @@ stand. Rust-only tooling maps as follows:
 | Was | Now |
 |---|---|
 | L1 native Rust unit, property and fuzz tests for all logic | Per owner of the code: Vitest with property tests (`fast-check`) for the TS application (state reducer, Context, URL codec, keymap, number format, interim renderer scales and ticks); `go test -race` for the BFF (`ci:go-test`); `cargo nextest`, `proptest`, `loom`/`shuttle` and `cargo-fuzz` for the engine crates from the engine issue (#68). The property rules of §2 apply in whichever language owns the code |
-| L2 native GPU goldens on headless wgpu | Stand for the engine from #68. Until then `golden:gallery` renders the interim Canvas 2D gallery pages in a pinned Playwright Chromium (software rasteriser, the interim equivalent of T05-004's pinned backend) against committed PNGs with the same ꟻLIP rules (§4.2) |
+| L2 native GPU goldens on headless wgpu | Stand for the engine from #68. Until then `golden:interim-gallery` renders the interim Canvas 2D gallery pages in the pinned Playwright Chromium (`toHaveScreenshot`, per-pixel threshold 0.1, at most 0.2 % differing pixels, baselines from CI only, changes only under `golden-update`); ꟻLIP and T05-004/T05-005 apply from #68 |
 | L3 `wasm-bindgen-test` | Engine only, from #68 |
 | L4 Playwright "via the shim" | Playwright (Chromium, Firefox, WebKit) against the production build of the React application (ADR-0014 §6); shim-contract specs apply to the engine adapter from #68 |
 | `.pdrec` input-ring replays (§4.4) | Engine canvases only, from #68. Until then each `replay:*` gate runs as a Playwright script of real DOM events with the same assertions |
@@ -152,6 +152,12 @@ MUST map to at least one gate in §7.1, each with a named owning team, and every
 
 #### T05-002 — Every gate is proven to fail
 **MUST** — A new gate MUST ship with a deliberately regressing change that demonstrates it fails.
+For unit, component and end-to-end gates the proof MAY be a local run of the regressing change,
+with its output (the gate, the regression and the failing assertion) recorded in the PR. Gates that
+exist only in CI (workflow steps and build-artefact checks) MUST be proven by a CI run of a
+regressing branch, linked in the PR. A report-only benchmark is proven by its sample assertion
+failing, plus a non-red run with a deliberate slowdown that shows the reported time rising
+([D13](../README.md#2-decisions-taken-2026-11-18-2026-11-19), owner 2026-11-20).
 
 ### 4.2 Gallery = corpus, and golden-image tests
 
@@ -561,7 +567,10 @@ the merge train), nightly (release blocker).
 | `unit:scene-model` | Scene = tree of viewports with binding, vis, camera/axes, overlays; preserved when moved |
 | `unit:autovis-table` | One fixture per Table 5-13 row → listed vis; milestone restriction; Perspective does not change the rule; Bullet for value + threshold |
 | `unit:number-format` | `2.84 s`, `1.2k rps`, `€38k/h`, `since 12:22 (40 min)`; byte-identical output browser vs native |
-| `unit:colour-hash` | Series colour = f(`key_hash`) stable across charts, sessions and sources |
+| `unit:colour-hash` | Series colour = f(`key_hash`) stable across charts, sessions and sources; a series with a log-level label in [08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a takes that row's colour in every chart, whatever the other series or their order |
+| `unit:series-cap` | Interim renderer (until #68): 600 series → 500 drawn, `a11y` reports 500 of 600, and the frame shows "Showing 500 of 600 series" ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) |
+| `unit:columns` | Interim renderer: one polyline vertex per CSS px column per series; every raw min and max in a column drawn as a 1-px span per NaN-free run; a NaN, even inside a column, breaks the path ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) |
+| `unit:bucket-scale` | Interim heatmap: buckets placed on their numeric scale (log over ≥ 3 decades, else linear), a separate +Inf band, and every finite bucket, including the first, with a height (e.g. `[0, 5, +Inf]`, `[-5, -1, +Inf]`) |
 | `unit:text-flow-sanitise` | Markdown with `<script>`, `onerror=`, iframes renders as text runs; removal counted |
 | `unit:context-reducer` | Every [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) row; `[` `]` `-` `=` window arithmetic |
 | `unit:undo-prop` | `undo ∘ apply = id` for every command |
@@ -580,6 +589,7 @@ the merge train), nightly (release blocker).
 | Gate | Checks |
 |---|---|
 | `golden:gallery` | Every gallery page × variants (§4.2), ꟻLIP rules; two seeded runs identical |
+| `golden:interim-gallery` | Until #68: the seven interim Canvas 2D gallery charts × dark and light in the pinned Playwright Chromium against committed baselines (per-pixel threshold 0.1, ≤ 0.2 % differing pixels); two seeded runs identical; baselines written only by CI under the `golden-update` label |
 | `golden:decimation-ref` | Decimated vs every-raw-point render, zero line-coverage diff |
 | `golden:greyscale` | State glyphs and axis-ownership glyphs distinguishable in greyscale |
 | `golden:inf-shape-grammar-greyscale` | Every class family's 3D shape and 2D glyph distinguishable by silhouette in greyscale ([INF-002](../product/16-infrastructure-model.md#inf-002--one-shape-grammar-per-class-family)) |
@@ -599,6 +609,8 @@ the merge train), nightly (release blocker).
 | `e2e:app-layout` | At 1440×900 on every page of the build: sidebar at the left edge, 240 px (56 px collapsed); page header 56 px high with the title on the left and the time range picker, refresh control and user menu at the right edge in that order; content padding 24 px; board panel gap 16 px; no other persistent chrome (IA-016, VL-017) |
 | `e2e:rooms-reachable` | The sidebar lists the build's destinations for the user's role (Admin only for administrators) and marks the current page; the collapsed state persists across reload; each destination opens from the sidebar, from `⌘K` and by its `g` chord (IA-021) |
 | `e2e:chrome-every-surface` | Each surface of [04](../product/04-surfaces.md) Table 4-1 in the build shows the sidebar and page header, with the time range picker and refresh control on time-dependent surfaces and the Time Ribbon on the Atlas and Lens; Wall mode shows none of them (SRF-001) |
+| `e2e:chart-brush` | Interim charts: a drag over a line chart sets the absolute window snapped to the brush unit (e.g. 12:20–12:25 from drags 0.1–0.4 units inside it), pushed to the URL; a double-click zooms out (twice the window) and the header shows the new range (IA-020 subset) |
+| `e2e:chart-hover` | Interim charts: the tooltip shows the time, every series' name and value at the snapped sample in value order; for more than 20 series, sweeping the pointer down the plot shows every series (INT-033 subset) |
 | `e2e:time-range-header` | Header picker offers the relative ranges of IA-020 and absolute ranges with the time zone; choosing a range re-queries visible charts and updates the URL; a brush on any time chart sets the picker to that absolute range; a 30 s auto-refresh re-queries every 30 s and "Off" stops it (IA-020, INT-025) |
 | `e2e:a11y-rooms` | axe-core WCAG 2.2 AA checks on every room; keyboard-only traversal reaches and operates every control |
 | `e2e:focus-regions` | `F6`/`Shift+F6` cycle sidebar → page header → page content → open panels (→ Time Ribbon in Space scenes) and back; focus never trapped (INT-015) |
@@ -639,7 +651,7 @@ the merge train), nightly (release blocker).
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
 `bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:lens-load`,
-`bench:decode-r1`, `bench:shim-input-cost`; plus `bench:cpu-instr` (PR: decode, decimation, tick generation and layouts,
+`bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); plus `bench:cpu-instr` (PR: decode, decimation, tick generation and layouts,
 instruction counts via `iai-callgrind`, +3 % → fail).
 
 | Lab gate class | Stage | Threshold | Blocking |
@@ -654,6 +666,7 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
+| `bench:frame-interim-line` (interim renderer, until #68) | PR | none (reports p50, p95) | no |
 | RUM field p95 per `hw_class` | weekly review | within 20 % of the lab | tracked, not blocking |
 
 Instruction counts are used on PRs because wall-clock benchmarks on shared CI runners are too noisy
@@ -713,7 +726,7 @@ quarantined spec MUST NOT be the only verification of any Satisfies row.
 ## 10. Testing
 
 Meta-testing:
-- each new gate ships with a deliberately regressing PR to prove it fails (T05-002);
+- each new gate ships with a deliberately regressing change to prove it fails: a local run recorded in the PR, or a CI run for CI-only gates (T05-002, D13);
 - the replay determinism suite runs every `.pdrec` twice natively and asserts identical checkpoints
   (T05-008);
 - `pulsus-synth` has its own golden statistics (T05-010);
@@ -789,3 +802,5 @@ Meta-testing:
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §4.3 log stream gallery page moves M-UI2 → M-UI1 with PRF-020 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) and the application layout (D9): new §0 maps Rust-only tooling to TS, Go and the later engine; §7.1 withdraws `ci:shim-lint`, adds `ci:lint-ts`, `ci:typecheck`, `ci:lockfile`, `ci:npm-audit`, `ci:api-gen`, `ci:go-lint`, `ci:go-test`, `ci:govulncheck`, `ci:go-mod`, `ci:migrations`, `e2e:csp-violations`, `e2e:client-routing`, `e2e:app-layout`, `e2e:rooms-reachable`, `e2e:chrome-every-surface` and `e2e:time-range-header`; redefines `ci:bundle-size` (ADR-0014 §8 budgets), `ci:dep-audit` (npm allowlist), `ci:token-lint`, `e2e:focus-regions`, `e2e:chrome-layout` (Space scenes only), `e2e:lazy-load`, `e2e:no-dom-vis`, `replay:time-ribbon` and `replay:events-markers`; §4.3 log stream page measures the active implementation (PRF-020) |
 | 1.2-rc | 2026-11-20 | #57: §7.1 adds `unit:time-expr` and `unit:context-search` (time expressions and the typed URL search module of [ADR-0017](../adr/0017-react-router.md)); other gates unchanged |
+| 1.3-rc | 2026-11-20 | #58: §0 L2 row names `golden:interim-gallery` (Chromium `toHaveScreenshot`, CI-only baselines; ꟻLIP from #68); §7.1 adds `golden:interim-gallery`, `e2e:chart-brush`, `e2e:chart-hover`, `unit:series-cap`, `unit:columns`, `unit:bucket-scale` and `bench:frame-interim-line` (report only until #68), and extends `unit:colour-hash` with the 08 Table 8-1a level rule |
+| 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
