@@ -3,9 +3,10 @@
 The Pulsus Dash server is one Go binary, `pulsus-dash`, in `server/`
 ([ADR-0015](../../designs/adr/0015-go-bff.md)). It loads a strict configuration, checks
 Postgres, applies migrations and seeds the first organisation, verifies and serves the embedded
-web client, and serves health, readiness, the version, the client's bootstrap and CSP reports. It
-never contacts PulsusDB ([T06-026](../../designs/technical/T06-bff-architecture.md)). The PulsusDB
-data plane, boards and authentication come in later issues.
+web client, and serves health, readiness, the version, the client's bootstrap, CSP reports and the
+[boards API](boards-api.md) (boards with versions and an audit trail, starred and recent boards).
+It never contacts PulsusDB ([T06-026](../../designs/technical/T06-bff-architecture.md)). The
+PulsusDB data plane and authentication come in later issues.
 
 The HTTP contract is spec-first: `api/openapi.yaml` is the source, the Go server code
 (`server/internal/gateway/api/api.gen.go`) and the TypeScript client types
@@ -171,6 +172,7 @@ Requests are matched in this order:
 | Request | Response |
 |---|---|
 | `GET /healthz`, `/startupz`, `/readyz`, `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` | the API routes below |
+| `/api/dash/v1/boards…`, `/api/dash/v1/me/starred-boards…`, `/api/dash/v1/me/recent-boards…` | the [boards API](boards-api.md) |
 | `POST /api/dash/v1/csp-report` | [CSP reports](#csp-reports) |
 | `GET`/`HEAD /assets/*` | the file from the verified set with the asset headers; not in the set, or no set → 404 envelope |
 | `/api` or any path under `/api/`, any method | 404 envelope |
@@ -185,10 +187,13 @@ Under `serve --api-only` there is no set, so every row that serves a file is a 4
 | API request | Status | Body |
 |---|---|---|
 | `GET /healthz`, `GET /startupz` | 200 | `{"status":"ok"}` |
-| `GET /readyz`, Postgres answers and the schema is in the window | 200 | `{"status":"ready","checks":{"postgres":"ok","schema":"ok"}}` |
-| `GET /readyz`, ping fails or takes over 1 s | 503 | `{"status":"not_ready","checks":{"postgres":"unreachable","schema":"unknown"}}` |
+| `GET /readyz`, Postgres answers and the schema is in the window | 200 | `{"status":"ready","checks":{"postgres":"ok","schema":"ok","audit_partitions":"ok"}}` |
+| `GET /readyz`, ping fails or takes over 1 s | 503 | `{"status":"not_ready","checks":{"postgres":"unreachable","schema":"unknown","audit_partitions":"…"}}` |
 | `GET /readyz`, schema behind or more than one ahead | 503 | `"schema":"behind"` or `"ahead"` |
 | `GET /readyz`, the schema query fails or takes over 1 s | 503 | `"schema":"error"` or `"timeout"`, logged at `warn` as `msg=readyz check=schema` |
+| `GET /readyz`, audit partitions `low` or `unknown` | 200 | `"audit_partitions":"low"` or `"unknown"` ([audit partitions](database.md#audit-partitions)) |
+| `GET /readyz`, audit partitions `error` | 503 | `{"status":"not_ready","checks":{"postgres":"ok","schema":"ok","audit_partitions":"error"}}` |
+| a `POST` or `PUT` body over 2 MiB (not `csp-report`) | 413 | `{"error":{"code":"invalid","message":"request body too large"}}` (T06-021) |
 | `GET /api/dash/v1/version` | 200 | `{"version":"0.1.0-dev","commit":"<sha>"}` |
 | `GET /api/dash/v1/bootstrap` | 200 | see [bootstrap](#bootstrap) |
 | `GET /api/dash/v1/bootstrap`, the store fails | 503 | `{"error":{"code":"unavailable","message":"configuration store unavailable"}}`, logged at `warn` as `msg=bootstrap` |
@@ -198,7 +203,9 @@ Under `serve --api-only` there is no set, so every row that serves a file is a 4
 
 `/startupz` is 200 as soon as the listener is open, because there is no cache to warm yet
 (T19-006). `/readyz` never contacts PulsusDB, so it stays 200 while PulsusDB is down. It returns
-503 while Postgres is down, but the process keeps running.
+503 while Postgres is down, but the process keeps running. Every response, also a 503, reports
+`audit_partitions`, the health of the audit partitions (T11-021); alert on any value other than
+`ok`.
 
 Every API response carries `Content-Type: application/json`, `Cache-Control: no-store`,
 `X-Content-Type-Options: nosniff` and `X-Request-Id`; documents and assets replace
@@ -390,8 +397,10 @@ record with `method`, `route` (the route pattern, never the raw path or query; `
 |---|---|
 | `cmd/pulsus-dash` | the CLI; `run(ctx, runEnv)` makes every command testable in-process |
 | `internal/config` | loading, strictness, secret references, seed settings |
-| `internal/core` | shared types: `OrgID`, tenant bindings, build info |
-| `internal/gateway` | router, error envelope, headers, access log, panic recovery, health, version and bootstrap routes, CSP reports, asset and document serving, the public-URL self-check; `api/` is generated |
+| `internal/core` | shared types: `OrgID`, tenant bindings, build info, the actor and `RequestCtx`, the `Boards` service interface, `PartitionState` |
+| `internal/spec` | the board spec v1: strict decoding, validation, the upcaster, canonical JSON and the JSON Patch ([boards API](boards-api.md#board-spec-v1)) |
+| `internal/boards` | the boards service: versions, ETags, audit events, starred and recent boards |
+| `internal/gateway` | router, error envelope, headers, access log, panic recovery, body limit, health, version and bootstrap routes, board routes, CSP reports, asset and document serving, the public-URL self-check; `api/` is generated |
 | `internal/gateway/static` | the embedded client tree (`-tags embedassets`), the release public keys and start-up verification; `statictest/` builds signed trees for tests |
 | `internal/store` | the only Postgres access path ([database page](database.md)); `dbgen/` is generated by sqlc |
 | `internal/telemetry` | the logger |
@@ -401,7 +410,8 @@ Lint rules (`server/.golangci.yml`) keep `pgx`, `goose` and the sqlc output insi
 
 ## Designs
 
-T06-001, T06-003, T06-016, T06-019, T06-021 (CSP report limits), T06-024 and T06-026 in
+T06-001, T06-003, T06-016, T06-019, T06-021 (CSP report limits and the 2 MiB body limit), T06-024
+and T06-026 in
 [T06](../../designs/technical/T06-bff-architecture.md); T18-001, T18-002, T18-003, T18-006 and
 T18-007 in [T18](../../designs/technical/T18-security.md); T19-002, T19-003, T19-005, T19-006,
 T19-007 and T19-010 in [T19](../../designs/technical/T19-deployment.md); T03-022 in
