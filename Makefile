@@ -20,7 +20,9 @@ COMPOSE ?= docker compose
 DEV_ENV_FILE ?= dev/local.env
 DEV_PROJECT ?= pulsus-dash
 DC = $(COMPOSE) -f dev/compose.yaml -p $(DEV_PROJECT)
-LOAD_ENV = set -a; . $(DEV_ENV_FILE); set +a
+# Recipes chain their steps with &&, so a failure stops the recipe even without the -e of
+# .SHELLFLAGS.
+LOAD_ENV = set -a && . $(DEV_ENV_FILE) && set +a
 ITEST_PROJECT ?= pulsus-dash-itest
 ITEST_PG16_PORT ?= 57432
 ITEST_PG15_PORT ?= 57433
@@ -91,8 +93,8 @@ go-licenses:
 # ci:no-pulsusdb-host: the checker's self-test, then the scan of every tracked file. A present
 # DEV_ENV_FILE adds its PulsusDB host to the forbidden list. ARGS=--show-paths names the files.
 no-pulsusdb-host:
-	if [ -f $(DEV_ENV_FILE) ]; then $(LOAD_ENV); fi; \
-	  python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'; \
+	if [ -f $(DEV_ENV_FILE) ]; then $(LOAD_ENV); fi && \
+	  python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py' && \
 	  python3 -I tools/no-pulsusdb-host/check.py $(ARGS)
 
 dev-env:
@@ -106,14 +108,14 @@ dev-db:
 # first (a missing settings file stops before anything starts), then each step in turn.
 dev-migrate: dev-env
 	$(MAKE) server-build
-	$(LOAD_ENV); build/pulsus-dash migrate
+	$(LOAD_ENV) && build/pulsus-dash migrate
 
 # Postgres (healthy), migrations, then the server in the foreground: Ctrl-C stops it, Postgres
 # keeps running.
 dev-up: dev-env
 	$(MAKE) dev-db
 	$(MAKE) dev-migrate
-	$(LOAD_ENV); exec build/pulsus-dash serve
+	$(LOAD_ENV) && exec build/pulsus-dash serve
 
 # Stops the containers and keeps the pg16-data volume.
 dev-down:
@@ -123,11 +125,12 @@ dev-down:
 dev-reset:
 	$(DC) --profile itest down -v
 
-# itest against the compose stack, in its own project and ports; removed on every exit.
+# itest against the compose stack, in its own project and ports; removed on every exit. A failed
+# up --wait stops the recipe: the tests never run against whatever else answers on those ports.
 itest-local:
 	trap '$(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest down -v' EXIT; \
 	  DEV_PG16_PORT=$(ITEST_PG16_PORT) DEV_PG15_PORT=$(ITEST_PG15_PORT) \
-	  $(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest up -d --wait pg16 pg15; \
+	  $(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest up -d --wait pg16 pg15 && \
 	  DASH_ITEST_PG_URLS='pg16=postgres://postgres@localhost:$(ITEST_PG16_PORT)/postgres?sslmode=disable,pg15=postgres://postgres@localhost:$(ITEST_PG15_PORT)/postgres?sslmode=disable' \
 	  $(MAKE) itest
 

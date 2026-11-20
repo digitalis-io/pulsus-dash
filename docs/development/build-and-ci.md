@@ -151,7 +151,7 @@ cgo.
 | `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
 | `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations` |
 | `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
-| `make no-pulsusdb-host` | the checker's self-test, then the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
+| `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
 | `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)) | — |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
