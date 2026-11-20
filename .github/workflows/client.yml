@@ -3,6 +3,8 @@ name: client
 
 on:
   pull_request:
+    # `labeled`: adding `golden-update` reruns the e2e jobs with baseline writing on (T05-005).
+    types: [opened, synchronize, reopened, labeled]
     paths: ['client/**', 'design/tokens.toml', '.github/workflows/client.yml']
   push:
     branches: [main]
@@ -55,6 +57,10 @@ jobs:
           VITE_GIT_SHA: ${{ github.sha }}
       - name: 'ci:bundle-size'
         run: npm run size
+      - name: 'http build has no gallery'
+        run: |
+          VITE_API_MODE=http npx --no-install vite build --outDir dist-http --emptyOutDir
+          ! grep -q '"src/dev/' dist-http/.vite/manifest.json
       - name: 'ci:dep-audit (build origins)'
         run: npm run origins
       - name: 'ci:dep-audit, ci:npm-audit'
@@ -80,6 +86,10 @@ jobs:
       - run: npm ci
       - run: npx --no-install playwright install --with-deps ${{ matrix.browser }}
       - run: npm run e2e -- --project=${{ matrix.browser }}
+        env:
+          # Baselines are written only on Chromium, and only under the `golden-update` label.
+          PW_UPDATE_GOLDENS: >-
+            ${{ matrix.browser == 'chromium' && contains(github.event.pull_request.labels.*.name, 'golden-update') && '1' || '0' }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -87,4 +97,10 @@ jobs:
           path: |
             client/playwright-report/
             client/test-results/
+          retention-days: 14
+      - if: ${{ !cancelled() && matrix.browser == 'chromium' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-screenshots
+          path: client/e2e/__screenshots__/
           retention-days: 14

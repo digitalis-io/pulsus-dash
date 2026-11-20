@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-20 |
+| **Version** | 1.8-rc · 2026-11-20 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -92,6 +92,12 @@ BFF serves a fixed local principal.
 | IA-006 Boards | M-UI5 | board in the root folder, versions stored on save (step 5) | owners, version history UI, variables |
 | SRF-014 Board layout | M-UI5 | 12-column grid (step 5) | free-form canvas, 3D viewports |
 | ENT-022 Versioned content | M-UI5 | version rows on every save (step 5) | diff and restore |
+| VL-002 Neutral series palette with stable identity colours | M-UI1 | stable colours: level table, else key hash (step 2, #58) | `ci:palette-check` |
+| VL-012 Numbers for humans | M-UI1 | `2.84 s`, `1.2k rps`, `%`, IEC bytes (step 2, #58) | currency, relative times |
+| INT-033 Hover tooltip | M-UI1 | value and labels on line, bars and heatmap (step 2, #58) | Δ vs baseline, Atlas nodes |
+| VIZ-010 Line, area and bar style options | M-UI1 | gaps, stacking (step 2, #58) | the other options |
+| VIZ-013 Axes are first-class objects | M-UI1 | one time axis and one value axis (step 2, #58) | multiple axes |
+| VIZ-069 Gallery is the vis test corpus | M-UI1 | interim gallery goldens (step 2, #58) | manifest, frame-time gate |
 
 Traces and profiles (SRF-040 to SRF-048, VIZ-033, VIZ-036, PRF-021), the rest of logs (SRF-034,
 SRF-035, SRF-037 to SRF-039, VIZ-035, PRF-015), the rest of Boards (SRF-015 to SRF-026, PRF-022) and
@@ -123,6 +129,7 @@ contract tests may also run against a configured shared PulsusDB deployment, rea
 | D10 | Asset integrity is verified by the BFF against the signed manifest before serving; every JS module, CSS file and worker is same-origin, and the one executable asset that may come from the CDN is the engine WASM, fetched with `integrity`; no per-module SRI in the browser | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) | Accepted 2026-11-19 |
 | D11 | SRF-027 in M-UI1 shows PulsusDB's parse errors on run (positioned where PulsusDB returns a position); pre-run byte-offset diagnostics are SRF-078 at M-UI2 with the browser parser (was Q14, option A) | [04](04-surfaces.md) SRF-027, SRF-078 | Accepted 2026-11-19 |
 | D12 | Authentication deferred: sign-in, sessions, users and roles are not built in M-UI1. ENT-001, ENT-003 and ENT-011, and their dependents ENT-002, ENT-005, ENT-010, ENT-014, ENT-015, SRF-063 and SRF-065, move to M-UI6; #60 (Table 2.1a step 4) is M-UI6; #61 and #62 depend on #59. Until then the BFF serves a fixed local principal ("Local user", role admin) of the bootstrap organisation | §2.1; [11](11-enterprise.md), [04](04-surfaces.md) | Accepted 2026-11-20 (owner) |
+| D13 | Gate sensitivity proofs (T05-002): unit, component and end-to-end gates may prove that they fail with a local regression run whose output is recorded in the PR; a CI proof PR (a `gate-proof/*` branch with a red run) is needed only for CI-specific gates (workflow and build-artefact checks) | [T05](../technical/T05-testing-and-performance.md#t05-002--every-gate-is-proven-to-fail) T05-002 | Accepted 2026-11-20 (owner) |
 
 ### 3.1 Settled by the specification
 
@@ -200,4 +207,6 @@ product owner can confirm them at sign-off.
 | 1.3-rc | 2026-11-19 | Q13 closed (#56): product requirements revised to D7–D9 (§7 item 6); Table 2.1a names the issues #56–#69; PRF-020 fallback is the GPU log stream (#69); Table 2.1c IA-020 row updated and SRF-027 row added; M-UI1 theme no longer names the Time Ribbon, which moves to the M-UI3 Space scenes (IA-028); Q10 answer reads "same web client" |
 | 1.4-rc | 2026-11-19 | Code review of #56: SRF-027 revised to errors on run and its pre-run positioned criterion split out as SRF-078 (M-UI2, proposed); the SRF-027 row leaves Table 2.1c; Q14 added for owner confirmation |
 | 1.5-rc | 2026-11-19 | Owner decisions on #56: Q14 closed as option A (D11, SRF-078 at M-UI2); D10 asset integrity verified by the BFF (ADR-0016) |
-| 1.6-rc | 2026-11-20 | Decision D12 (owner): authentication deferred; §3 records D12. §2 M-UI1 drops OIDC login and M-UI6 adds authentication; §2.1 the slice has no sign-in; Table 2.1a step 4 (#60) moves to M-UI6, steps 5 and 6 depend on step 3, critical path 1 → 3 → 5 → … → 11; Q12 moot until authentication is designed; Table 2.1c records the M-UI1 subset of ENT-020 (RLS-scoped `orgs` and `tenant_bindings`, #59), which stays M-UI1 |
+| 1.6-rc | 2026-11-20 | #58: Table 2.1c adds the M-UI1 subsets of VL-002, VL-012, INT-033, VIZ-010, VIZ-013 and VIZ-069 delivered by the interim chart frames; milestones unchanged (D6) |
+| 1.7-rc | 2026-11-20 | Owner decision D13 (review of #58): gate sensitivity proofs may be local runs recorded in the PR, except for CI-only gates |
+| 1.8-rc | 2026-11-20 | Decision D12 (owner): authentication deferred; §3 records D12. §2 M-UI1 drops OIDC login and M-UI6 adds authentication; §2.1 the slice has no sign-in; Table 2.1a step 4 (#60) moves to M-UI6, steps 5 and 6 depend on step 3, critical path 1 → 3 → 5 → … → 11; Q12 moot until authentication is designed; Table 2.1c records the M-UI1 subset of ENT-020 (RLS-scoped `orgs` and `tenant_bindings`, #59), which stays M-UI1 |

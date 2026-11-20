@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { QueryClient } from '@tanstack/react-query';
 import { QueryClient as TestQueryClient } from '@tanstack/react-query';
+import type { ComponentType, ReactNode } from 'react';
 import type { DataRouter } from 'react-router';
 import type { Api } from '../api/Api';
 import { StubApi } from '../api/StubApi';
@@ -18,6 +19,8 @@ export interface RenderAppOptions {
   timeZone?: string;
   queryClient?: QueryClient;
   clock?: Clock;
+  /** Wraps the app, e.g. to provide a fake chart engine. */
+  wrapper?: ComponentType<{ children: ReactNode }>;
 }
 
 export function renderApp(url: string, o: RenderAppOptions = {}) {
@@ -30,7 +33,10 @@ export function renderApp(url: string, o: RenderAppOptions = {}) {
   const deps: RouterDeps = { api, queryClient, clock, timeZone: o.timeZone ?? 'Europe/London' };
   const router: DataRouter = createAppRouter(deps, { kind: 'memory', initialEntries: [url] });
   const user = userEvent.setup();
-  const view = render(<App deps={deps} router={router} />);
+  const view = render(
+    <App deps={deps} router={router} />,
+    o.wrapper === undefined ? undefined : { wrapper: o.wrapper },
+  );
   return { router, user, clock, queryClient, api, view };
 }
 

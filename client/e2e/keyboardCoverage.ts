@@ -90,6 +90,7 @@ async function routeState(page: Page): Promise<string> {
     [/^\/t\/[^/]+\/explore\/metrics$/, '/t/:tenant/explore/metrics'],
     [/^\/t\/[^/]+\/explore\/logs$/, '/t/:tenant/explore/logs'],
     [/^\/t\/[^/]+\/admin$/, '/t/:tenant/admin'],
+    [/^\/t\/[^/]+\/dev\/gallery$/, '/t/:tenant/dev/gallery'],
     [/^\/signed-out$/, '/signed-out'],
   ];
   for (const [re, name] of patterns) if (re.test(path)) return name;

@@ -26,9 +26,9 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run build` | `tsc -p tsconfig.app.json --noEmit`, then `vite build` into `client/dist/` (hashed names, `assetsInlineLimit: 0`, Vite manifest in `dist/.vite/manifest.json`) | build |
 | `npm run preview` | Serves `dist/` on `localhost:4173` with the production headers (`config/headers.ts`) | — |
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
-| `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code) and `tsconfig.node.json` (scripts, ESLint plugin, end-to-end tests, configs) | `ci:typecheck` |
+| `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against `npm run build && npm run preview` | `e2e:*`, `bench:startup` |
+| `npm run e2e` | Playwright against `npm run build && npm run preview` | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css` and `tokens.ts` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
@@ -60,7 +60,7 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 
 - **Unit and component tests** (`npm test`) sit next to the code as `*.test.ts(x)`. Component tests
   render the whole app with `src/test/renderApp.tsx` (`renderApp(url, { api, now, timeZone,
-  queryClient })`) on a memory router, with the stub API and a fixed clock
+  queryClient, wrapper })`; `wrapper` provides, for example, a fake chart engine) on a memory router, with the stub API and a fixed clock
   (`T` = 2026-11-19 13:03 UTC, zone Europe/London). Its query client has `retry: false`; tests of
   the production retry pass `createQueryClient()`.
 - **End-to-end tests** (`client/e2e/*.spec.ts`) run in Chromium, Firefox and WebKit against
@@ -71,17 +71,44 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 - **`bench:startup`** (`e2e/perf-cold-load.spec.ts`, Chromium only, report only, PRF-008): 20 cold
   loads of `/t/demo/boards`, time to the `shell-ready` performance mark; p50 and p75 are written to
   `test-results/prf-008.json` and added as a test annotation. There is no threshold.
+- **Chart tests** (#58; see [Charts](../client/charts.md)). The engine's unit tests draw into
+  `src/test/recordingContext.ts`, a 2D context that records every call (text measured at 7 px per
+  character), and run the animation frames themselves (`src/test/engineHarness.ts`); component tests
+  use `src/test/fakeEngine.ts` and `src/test/fakeResizeObserver.ts`. The end-to-end chart specs use
+  the chart gallery at 12:00–13:00 UTC on 19 Nov 2026 (`GALLERY_URL` in `e2e/helpers.ts`):
+  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the seven
+    gallery frames in dark and light, compared with `toHaveScreenshot` against
+    `e2e/__screenshots__/golden-gallery.spec.ts/gallery-<id>-<theme>.png` (per-pixel threshold 0.1,
+    at most 0.2 % of pixels different, animations off, caret hidden, CSS scale), after the fonts are
+    loaded and two animation frames; a reload must give the same pixels. Baselines are never written
+    locally or on a normal run (`updateSnapshots: 'none'`): they come only from CI's Chromium on
+    `ubuntu-24.04`. To change them, add the `golden-update` label to the pull request; the e2e jobs
+    rerun with `PW_UPDATE_GOLDENS=1`, the Chromium job writes new baselines and uploads them as the
+    `e2e-screenshots` artefact; download it, review the images and commit them to
+    `client/e2e/__screenshots__/`, then remove the label.
+  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a drag on `line-1` from 0.1–0.4 brush units
+    inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
+    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it.
+  - **`e2e:chart-hover`** (`e2e/chart-hover.spec.ts`): the `line-gaps` tooltip lists the time and the
+    three series with the values the generator gives; on `line-50` a pointer sweep down the plot
+    shows every one of the 50 series; on `bars` all five levels at every height.
+  - **`bench:frame-interim-line`** (`e2e/perf-chart-redraw.spec.ts`, Chromium only, report only
+    until #68): 40 theme changes, the `chart-draw` measure of the 50 × 1 440 line chart each time;
+    p50 and p95 are written to `test-results/bench-interim-line.json` and added as an annotation.
+    There is no threshold. The page is opened without Playwright's fake clock, which replaces the
+    User Timing methods.
 
 ## CI
 
 `.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml` or
-the workflow, and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
+the workflow (opened, synchronised, reopened, and labelled, so adding `golden-update` reruns it), and
+on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
-| `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
-| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`): `npm ci`, install that browser with its system dependencies, `npm run e2e -- --project=<engine>`; the HTML report and `test-results/` are uploaded for 14 days. CI retries a failed test once |
+| `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
+| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`): `npm ci`, install that browser with its system dependencies, `npm run e2e -- --project=<engine>` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once |
 
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the

@@ -51,6 +51,7 @@ export default tseslint.config(
   {
     ignores: [
       'dist',
+      'dist-http',
       'node_modules',
       'scripts/__fixtures__',
       'src/api/gen',

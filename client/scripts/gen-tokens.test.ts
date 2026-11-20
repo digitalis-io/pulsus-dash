@@ -46,3 +46,37 @@ describe('tokens invalid', () => {
     expect(() => generate(bad)).toThrow(/color\.dark\.canvas/);
   });
 });
+
+describe('T-tok-1 ordered palettes', () => {
+  it('emits seriesPalette (8 per theme) and sequentialRamp (9 per theme) in key order', () => {
+    const { ts } = generate(toml);
+    const tk = parseTokens(toml);
+    for (const theme of ['dark', 'light'] as const) {
+      const c = tk.colour[theme];
+      const series = Array.from({ length: 8 }, (_, i) => c[`series-${String(i + 1)}`]);
+      const ramp = Array.from({ length: 9 }, (_, i) => c[`ramp-${String(i + 1)}`]);
+      expect(series.every((v) => v !== undefined)).toBe(true);
+      expect(ramp.every((v) => v !== undefined)).toBe(true);
+      const block = (name: string): string =>
+        new RegExp(`export const ${name} = \\{[^]*?\\n\\}`).exec(ts)?.[0] ?? '';
+      const arr = (name: string): string[] =>
+        JSON.parse(
+          new RegExp(`"${theme}": (\\[[^\\]]*\\])`)
+            .exec(block(name))?.[1]
+            ?.replace(/,\s*\]/, ']') ?? 'null',
+        ) as string[];
+      expect(arr('seriesPalette')).toEqual(series);
+      expect(arr('sequentialRamp')).toEqual(ramp);
+    }
+  });
+});
+
+describe('T-tok-2 contiguous numbering', () => {
+  it('fails when series-N is not contiguous from 1', () => {
+    const gappy = toml
+      .split('\n')
+      .filter((l) => !/^series-[24-8] = /.test(l))
+      .join('\n');
+    expect(() => generate(gappy)).toThrow(/series-2/);
+  });
+});

@@ -25,6 +25,7 @@ rustc-ice-*.txt
 
 node_modules/
 client/dist/
+client/dist-http/
 test-results/
 playwright-report/
 

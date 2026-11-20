@@ -1,0 +1,26 @@
+/** The part of `CanvasRenderingContext2D` the Canvas 2D engine uses; tests inject a recorder. */
+export type Ctx2D = Pick<
+  CanvasRenderingContext2D,
+  | 'setTransform'
+  | 'fillRect'
+  | 'clearRect'
+  | 'beginPath'
+  | 'moveTo'
+  | 'lineTo'
+  | 'arc'
+  | 'fill'
+  | 'stroke'
+  | 'fillText'
+  | 'measureText'
+  | 'drawImage'
+  | 'save'
+  | 'restore'
+  | 'fillStyle'
+  | 'strokeStyle'
+  | 'lineWidth'
+  | 'lineJoin'
+  | 'lineCap'
+  | 'font'
+  | 'textAlign'
+  | 'textBaseline'
+>;

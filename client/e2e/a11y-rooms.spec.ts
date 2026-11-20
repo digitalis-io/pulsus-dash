@@ -1,6 +1,15 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { ALL_PAGES, open, openPicker, openUserMenu, SHELL_PAGES } from './helpers.ts';
+import {
+  ALL_PAGES,
+  frame,
+  GALLERY_URL,
+  galleryReady,
+  open,
+  openPicker,
+  openUserMenu,
+  SHELL_PAGES,
+} from './helpers.ts';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -88,5 +97,36 @@ test.describe('e2e:a11y-rooms target size', () => {
         await page.keyboard.press('Escape');
       }
     }
+  });
+});
+
+test.describe('e2e:a11y-rooms gallery', () => {
+  test('gallery canvases expose their summary', async ({ page }) => {
+    await open(page, GALLERY_URL);
+    await galleryReady(page);
+    await expect(page.locator('canvas[role="img"]')).toHaveCount(7);
+    const label = (id: string) => frame(page, id).locator('canvas').getAttribute('aria-label');
+    const range = '12:00 – 13:00 GMT';
+    expect(await label('line-50')).toMatch(
+      new RegExp(
+        `^Request latency, 50 series × 1 440 points: line chart, 50 series, ${range}\\. Min [\\d.]+ ms, max [\\d.]+ ms, last [\\d.]+ ms\\.$`,
+      ),
+    );
+    expect(await label('stat')).toBe(
+      `p99 latency: stat, 1 series, ${range}. Min 2.84 s, max 2.84 s, last 2.84 s.`,
+    );
+    expect(await label('heatmap')).toMatch(
+      new RegExp(
+        `^Request latency distribution: heatmap, 12 buckets, ${range}\\. Min .+, max .+, last .+\\.$`,
+      ),
+    );
+    expect(await label('bars')).toMatch(
+      new RegExp(
+        `^Log volume by level: stacked bar chart, 5 series, ${range}\\. Min .+, max .+, last .+\\.$`,
+      ),
+    );
+    await expect(frame(page, 'line-600').getByRole('status')).toHaveText(
+      'Showing 500 of 600 series',
+    );
   });
 });

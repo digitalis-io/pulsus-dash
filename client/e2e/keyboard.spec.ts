@@ -1,12 +1,12 @@
 /**
- * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032): loops L1–L20,
- * keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts` (ESLint bans other
- * input here); the coverage check at the end fails on any control never operated and any state
- * never visited.
+ * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22):
+ * loops L1–L22, keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
+ * (ESLint bans other input here); the coverage check at the end fails on any control never operated
+ * and any state never visited.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { keyboardHarness, type KeyboardHarness } from './keyboardCoverage.ts';
-import { enc, ORIGIN, T, timeTrigger } from './helpers.ts';
+import { enc, GALLERY_FROM, GALLERY_TO, GALLERY_URL, ORIGIN, T, timeTrigger } from './helpers.ts';
 
 const QUICK = [
   ['5m', 'Last 5 minutes'],
@@ -36,6 +36,7 @@ const REQUIRED_STATES = [
   '/t/:tenant/explore/metrics',
   '/t/:tenant/explore/logs',
   '/t/:tenant/admin',
+  '/t/:tenant/dev/gallery',
   '/signed-out',
   'not-found',
   'session-error',
@@ -173,7 +174,7 @@ function script(page: Page, h: KeyboardHarness) {
 type Script = ReturnType<typeof script>;
 
 test.describe('e2e:a11y-rooms keyboard', () => {
-  test('every control and state by keyboard (L1–L20)', async ({ page }) => {
+  test('every control and state by keyboard (L1–L22)', async ({ page }) => {
     test.setTimeout(900_000);
     await page.addInitScript(() => {
       window.__copied = [];
@@ -636,8 +637,57 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         '/t/demo/explore/metrics',
         '/t/demo/explore/logs',
         '/t/demo/admin',
+        '/t/demo/dev/gallery',
       ]) {
         await chrome(s, url);
+      }
+    });
+
+    await test.step('L22 Chart frames: the crosshair slider of every chart', async () => {
+      await s.goto(GALLERY_URL);
+      await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(7);
+      const MIN = 60_000;
+      const lineStep = Math.floor((GALLERY_TO - GALLERY_FROM) / 1_440);
+      // Title, last sample or bucket start, the second one, and the rows at a sample.
+      const charts: [string, number, number, number][] = [
+        ['Request rate, 1 series', GALLERY_FROM + 1_439 * lineStep, GALLERY_FROM + lineStep, 1],
+        [
+          'Request latency, 50 series × 1 440 points',
+          GALLERY_FROM + 1_439 * lineStep,
+          GALLERY_FROM + lineStep,
+          50,
+        ],
+        [
+          'Queue depth with gaps, 3 series',
+          GALLERY_FROM + 1_439 * lineStep,
+          GALLERY_FROM + lineStep,
+          3,
+        ],
+        ['Pod memory, 600 series', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 500],
+        ['Request latency distribution', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 12],
+        ['Log volume by level', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 5],
+      ];
+      for (const [title, last, second, n] of charts) {
+        const name = `Crosshair: ${title}`;
+        const slider = page.getByRole('slider', { name, exact: true });
+        const tip = page
+          .locator('[data-chart-frame]', { has: slider })
+          .locator('[data-chart-tooltip]');
+        await s.focus(`slider "${name}"`, { max: 60 });
+        await press('End');
+        await expect(slider).toHaveAttribute('aria-valuenow', String(last));
+        await expect(tip).toBeVisible();
+        await expect(tip.locator('[data-row]').first()).toBeVisible();
+        await press('ArrowLeft');
+        await press('Home');
+        await press('ArrowRight');
+        await expect(slider).toHaveAttribute('aria-valuenow', String(second));
+        await press('ArrowDown');
+        if (n > 1)
+          await expect(slider).toHaveAttribute('aria-valuetext', new RegExp(`2 of ${String(n)}$`));
+        await press('Escape');
+        await expect(tip).toBeHidden();
+        await expect(slider).toHaveAttribute('aria-valuetext', 'Use the arrow keys to read values');
       }
     });
 
@@ -689,8 +739,11 @@ async function chrome(s: Script, url: string): Promise<void> {
   await s.on('button "Next"');
   await s.focus('grid "Calendar"');
   await press('ArrowRight');
-  await s.on('checkbox "Keep relative"', 'Space');
-  await s.on('button "Copy link"');
+  // Share controls exist only on pages with a view URL pattern (not on the dev gallery).
+  if ((await s.dialog().getByRole('checkbox', { name: 'Keep relative' }).count()) > 0) {
+    await s.on('checkbox "Keep relative"', 'Space');
+    await s.on('button "Copy link"');
+  }
   await s.on('button "Apply"');
   await expect(s.dialog()).toBeHidden();
   await s.on('button "Refresh now"');
