@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted (2026-11-19, product owner); amended by [ADR-0016](0016-asset-integrity-verified-by-bff.md) (2026-11-19, lazy-chunk SRI) and, for §1 Routing, by [ADR-0017](0017-react-router.md) (2026-11-19) |
+| **Status** | Accepted (2026-11-19, product owner); amended by [ADR-0016](0016-asset-integrity-verified-by-bff.md) (2026-11-19, lazy-chunk SRI) and, for §1 Routing, by [ADR-0017](0017-react-router.md) (2026-11-19); §4 clarified by a note (2026-11-20, #58; no decision change) |
 | **Supersedes** | [ADR-0004](0004-leptos-dom-rooms.md) (Leptos DOM rooms), [ADR-0002](0002-no-js-ui-framework.md) (no JS UI framework), and the browser half of [ADR-0001](0001-rust-wasm-everywhere.md) (the server half is superseded by [ADR-0015](0015-go-bff.md)) |
 | **Source** | Owner decision of 2026-11-19: all code removed from `main` to start again (commit "Remove the existing code to start again") |
 | **See** | [T01](../technical/T01-frontend-architecture.md), [T03](../technical/T03-browser-runtime.md), [T08](../technical/T08-dom-component-kit.md), [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19), [ADR-0015](0015-go-bff.md) |
@@ -95,6 +95,9 @@ Limits of the interim renderer: at most 500 series per panel (the rest are dropp
 "showing 500 of N" notice) and at most one point per CSS pixel per series, which the query step
 already guarantees. VIZ-001's "drawn by the wgpu scene" clause is unmet until the engine lands; its
 M-UI0 milestone stays incomplete until then (D6).
+
+> **Note (2026-11-20, #58):** the one-point-per-CSS-px limit applies to polyline points. Extremes
+> inside a pixel column are drawn as 1-px fill rects, one per NaN-free run, never bridging a NaN.
 
 ### 5. Wire format to the browser
 
