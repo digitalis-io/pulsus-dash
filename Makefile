@@ -11,7 +11,19 @@ GOLANGCI_SHA256 := 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9eb
 SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
-.PHONY: server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci
+.PHONY: server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci \
+	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local dev-smoke
+
+# Dev stack (dev/compose.yaml, docs/development/dev-stack.md). COMPOSE may be any Docker Compose v2
+# compatible command. DEV_ENV_FILE is untracked: it holds the local settings and the PulsusDB URL.
+COMPOSE ?= docker compose
+DEV_ENV_FILE ?= dev/local.env
+DEV_PROJECT ?= pulsus-dash
+DC = $(COMPOSE) -f dev/compose.yaml -p $(DEV_PROJECT)
+LOAD_ENV = set -a; . $(DEV_ENV_FILE); set +a
+ITEST_PROJECT ?= pulsus-dash-itest
+ITEST_PG16_PORT ?= 57432
+ITEST_PG15_PORT ?= 57433
 
 server-build:
 	CGO_ENABLED=0 go -C server build -trimpath -buildvcs=true -ldflags "-X github.com/digitalis-io/pulsus-dash/server/internal/core.Version=$(VERSION)" -o ../build/pulsus-dash ./cmd/pulsus-dash
@@ -31,10 +43,11 @@ api-gen-check:
 go-mod:
 	go -C server mod verify && go -C server mod tidy -diff
 
-# ci:go-lint
+# ci:go-lint, then the depguard self-test: each fixture must fail with its rule's desc.
 go-lint:
 	@golangci-lint version 2>/dev/null | grep -q '$(GOLANGCI_VERSION)' || { echo "golangci-lint $(GOLANGCI_VERSION) required"; exit 1; }
 	cd server && golangci-lint run ./...
+	server/scripts/check-depguard-fixture.sh
 
 # ci:go-test
 go-test:
@@ -69,5 +82,52 @@ tools-ci:
 	echo "$(SQUAWK_SHA256)  $(BIN)/squawk" | sha256sum -c -
 	chmod +x $(BIN)/squawk
 
-# Parts B and C of #59 append targets.
-ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint
+# ci:go-licenses: the binary's module licences on the allowlist, build/THIRD_PARTY_NOTICES.txt,
+# then the self-test (a GPL-2.0-only fixture must fail).
+go-licenses:
+	server/scripts/go-licenses.sh
+	server/scripts/check-go-licenses-fixture.sh
+
+# ci:no-pulsusdb-host: the checker's self-test, then the scan of every tracked file. A present
+# DEV_ENV_FILE adds its PulsusDB host to the forbidden list. ARGS=--show-paths names the files.
+no-pulsusdb-host:
+	if [ -f $(DEV_ENV_FILE) ]; then $(LOAD_ENV); fi; \
+	  python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'; \
+	  python3 -I tools/no-pulsusdb-host/check.py $(ARGS)
+
+dev-env:
+	@test -f $(DEV_ENV_FILE) || { echo "$(DEV_ENV_FILE) is missing: create it as described in docs/development/dev-stack.md"; exit 1; }
+
+# Postgres 16 only, with its persistent volume; no settings file needed.
+dev-db:
+	$(DC) up -d --wait pg16
+
+dev-migrate: dev-env server-build
+	$(LOAD_ENV); build/pulsus-dash migrate
+
+# Postgres, migrations, then the server in the foreground: Ctrl-C stops it, Postgres keeps running.
+dev-up: dev-env dev-db dev-migrate
+	$(LOAD_ENV); exec build/pulsus-dash serve
+
+# Stops the containers and keeps the pg16-data volume.
+dev-down:
+	$(DC) down
+
+# Removes the containers and the volume; the next dev-up seeds afresh.
+dev-reset:
+	$(DC) --profile itest down -v
+
+# itest against the compose stack, in its own project and ports; removed on every exit.
+itest-local:
+	trap '$(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest down -v' EXIT; \
+	  DEV_PG16_PORT=$(ITEST_PG16_PORT) DEV_PG15_PORT=$(ITEST_PG15_PORT) \
+	  $(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest up -d --wait pg16 pg15; \
+	  DASH_ITEST_PG_URLS='pg16=postgres://postgres@localhost:$(ITEST_PG16_PORT)/postgres?sslmode=disable,pg15=postgres://postgres@localhost:$(ITEST_PG15_PORT)/postgres?sslmode=disable' \
+	  $(MAKE) itest
+
+# ci:dev-stack: the smoke test, then its self-test (nothing left behind after a failure).
+dev-smoke:
+	dev/smoke.sh
+	dev/smoke-selftest.sh
+
+ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint go-licenses no-pulsusdb-host

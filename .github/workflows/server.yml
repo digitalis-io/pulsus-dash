@@ -1,4 +1,5 @@
-# Server (Go BFF) gates (ADR-0015, T05 §7.1). Actions are pinned by commit SHA; no secrets are used.
+# Server (Go BFF) gates and the dev stack (ADR-0015, T05 §7.1). Actions are pinned by commit SHA; no
+# secrets are used.
 name: server
 
 on:
@@ -9,6 +10,8 @@ on:
       - 'tools/api-gen/**'
       - 'client/src/api/gen/**'
       - 'Makefile'
+      - 'dev/**'
+      - 'tools/no-pulsusdb-host/**'
       - '.github/workflows/server.yml'
   push:
     branches: [main]
@@ -78,6 +81,45 @@ jobs:
           if [ -n "$changed" ]; then
             echo "$changed"
             echo "::error::migrations are immutable once merged (T11-012)"
+            exit 1
+          fi
+      - name: 'ci:go-licenses'
+        run: make go-licenses
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: third-party-notices
+          path: build/THIRD_PARTY_NOTICES.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  dev-stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Exactly the toolchain line of server/go.mod: go-version-file reads only the go line
+          # (1.27.0), and GOTOOLCHAIN=local would then keep that older release.
+          go-version: '1.27.4'
+          cache-dependency-path: server/go.sum
+      - name: Go matches the server/go.mod toolchain
+        run: |
+          want=$(sed -n 's/^toolchain //p' server/go.mod)
+          got=$(go env GOVERSION)
+          [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
+      - name: 'ci:dev-stack'
+        run: make dev-smoke
+      - name: itest on the dev compose stack
+        run: make itest-local
+      - name: itest-local left nothing behind
+        if: always()
+        run: |
+          left=$(docker ps -aq --filter label=com.docker.compose.project=pulsus-dash-itest)
+          if [ -n "$left" ]; then
+            echo "::error::itest-local left containers"
             exit 1
           fi
 
