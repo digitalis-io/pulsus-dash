@@ -25,3 +25,20 @@ test.describe('keyboard coverage self-test (T05-002)', () => {
     expect(strip(h.uncovered())).toEqual([]);
   });
 });
+
+test.describe('keyboard coverage: only library screen-reader-only controls are skipped', () => {
+  test('a visible empty labelled button stays uncovered until operated', async ({ page }) => {
+    await page.setContent(
+      '<button aria-label="Close" tabindex="-1"></button>' +
+        '<div style="clip-path: inset(50%); position: absolute; width: 1px; height: 1px; overflow: hidden">' +
+        '<button aria-label="Dismiss" tabindex="-1"></button></div>' +
+        '<button>Other</button>',
+    );
+    const h = keyboardHarness(page);
+    await h.press('Tab');
+    expect(strip(h.uncovered())).toEqual(['button "Close"', 'button "Other"']);
+    await page.getByRole('button', { name: 'Close' }).focus();
+    await h.press('Enter');
+    expect(strip(h.uncovered())).toEqual(['button "Other"']);
+  });
+});

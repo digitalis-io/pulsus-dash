@@ -132,18 +132,18 @@ async function overlayState(
 }
 
 /**
- * Keys of React Aria's screen-reader-only controls inside `root`: visually hidden buttons with
- * `tabindex="-1"` (the popover "Dismiss" buttons, the calendar's second "Next") that exist for a
- * screen reader's virtual cursor. Escape and the visible buttons are their keyboard equivalents.
+ * Keys of React Aria's screen-reader-only controls inside `root`: empty buttons with
+ * `tabindex="-1"` whose parent is React Aria's VisuallyHidden wrapper (the popover "Dismiss"
+ * buttons, the calendar's second "Next"). They exist for a screen reader's virtual cursor; Escape
+ * and the visible buttons are their keyboard equivalents. Any other control is counted.
  */
 async function screenReaderOnly(root: Locator): Promise<string[]> {
   return root.evaluate((r) => {
-    const hidden = (el: Element): boolean => {
-      for (let e: Element | null = el; e !== null; e = e.parentElement) {
-        const st = getComputedStyle(e);
-        if (st.clipPath === 'inset(50%)') return true;
-      }
-      return false;
+    // React Aria's VisuallyHidden wraps the control in an element with an inline
+    // `clip-path: inset(50%)` style; nothing else in the app sets inline styles (ESLint bans them).
+    const visuallyHiddenByLibrary = (el: Element): boolean => {
+      const parent = el.parentElement;
+      return parent instanceof HTMLElement && parent.style.clipPath === 'inset(50%)';
     };
     const counts = new Map<string, number>();
     const out: string[] = [];
@@ -152,7 +152,7 @@ async function screenReaderOnly(root: Locator): Promise<string[]> {
       const n = (counts.get(base) ?? 0) + 1;
       counts.set(base, n);
       const empty = el.textContent.trim() === '';
-      if (el.getAttribute('tabindex') === '-1' && (hidden(el) || empty)) {
+      if (el.getAttribute('tabindex') === '-1' && empty && visuallyHiddenByLibrary(el)) {
         out.push(n === 1 ? base : `${base} #${String(n)}`);
       }
     }
