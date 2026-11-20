@@ -3,8 +3,15 @@
 # AGPL-3.0-compatible allowlist below; GPL-2.0-only, source-available licences and any unrecognised
 # licence fail. Writes build/THIRD_PARTY_NOTICES.txt from the saved licence and notice files.
 #
-# Usage: go-licenses.sh   (from any directory inside the repository)
-# Exit: 0 every licence allowed and the notices file written, non-zero otherwise.
+# Usage:
+#   go-licenses.sh
+#       the gate: check ./cmd/pulsus-dash, then write the notices file
+#   go-licenses.sh --check DIR PATTERN IGNORE [EXTRA]
+#       only the licence check, with this script's allowlist (plus the comma-separated EXTRA
+#       licences, if given), of PATTERN in module directory DIR, ignoring module IGNORE. The
+#       self-test (check-go-licenses-fixture.sh) uses it, so the gate and its test share one list.
+# Run from any directory inside the repository.
+# Exit: 0 every licence allowed (and the notices file written), 2 usage, non-zero otherwise.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -13,12 +20,36 @@ LICENCES=MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,LGPL-2.1,LGPL-3.0
 NOTICES="$ROOT/build/THIRD_PARTY_NOTICES.txt"
 
 # 1. The pinned tool (server/go.mod tool directive).
-go -C "$ROOT/server" build -o "$GL" github.com/google/go-licenses/v2
+build_tool() {
+  go -C "$ROOT/server" build -o "$GL" github.com/google/go-licenses/v2
+}
 
-# 2. Every module of the binary on the allowlist (the standard library is found through GOROOT).
-GOROOT="$(go env GOROOT)"
-export GOROOT
-(cd "$ROOT/server" && "$GL" check ./cmd/pulsus-dash --ignore github.com/digitalis-io/pulsus-dash --allowed_licenses="$LICENCES")
+# 2. The licence check (the standard library is found through GOROOT).
+# licence_check DIR PATTERN IGNORE [EXTRA]
+licence_check() {
+  local allowed=$LICENCES
+  if [ -n "${4:-}" ]; then allowed="$allowed,$4"; fi
+  GOROOT="$(go env GOROOT)"
+  export GOROOT
+  (cd "$1" && "$GL" check "$2" --ignore "$3" --allowed_licenses="$allowed")
+}
+
+if [ "${1:-}" = "--check" ]; then
+  if [ $# -lt 4 ] || [ $# -gt 5 ]; then
+    echo "usage: go-licenses.sh --check DIR PATTERN IGNORE [EXTRA]" >&2
+    exit 2
+  fi
+  [ -x "$GL" ] || build_tool
+  licence_check "$2" "$3" "$4" "${5:-}"
+  exit 0
+fi
+if [ $# -ne 0 ]; then
+  echo "usage: go-licenses.sh | go-licenses.sh --check DIR PATTERN IGNORE [EXTRA]" >&2
+  exit 2
+fi
+
+build_tool
+licence_check "$ROOT/server" ./cmd/pulsus-dash github.com/digitalis-io/pulsus-dash
 
 # 3. Save the licence and notice files of those modules.
 rm -rf "$ROOT/build/licenses"

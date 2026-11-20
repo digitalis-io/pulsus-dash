@@ -195,11 +195,13 @@ order of its path, under a `== <module path>/<file> ==` header. It fails with `n
 empty` if no file was found. CI uploads the file as the artifact `third-party-notices` (14 days);
 release packaging that ships it comes later.
 
-The self-test `server/scripts/check-go-licenses-fixture.sh` runs the same check, with the same
-allowlist, on the fixture module `server/testdata/licences/gpl`. That module links
+The self-test `server/scripts/check-go-licenses-fixture.sh` runs the gate's own check,
+`go-licenses.sh --check DIR PATTERN IGNORE [EXTRA]`, on the fixture module
+`server/testdata/licences/gpl`. The allowlist exists only in `go-licenses.sh`, so a change to it is
+what the self-test sees: adding `GPL-2.0` to it makes `make go-licenses` fail. That module links
 `example.com/gpl-dep`, whose `LICENSE` is the SPDX GPL-2.0-only text. The check must fail and name
-`example.com/gpl-dep` and `GPL-2.0`. A control run with `GPL-2.0` added to the allowlist must
-pass, which shows the failure comes from the licence. Both scripts work from any directory in the
+`example.com/gpl-dep` and `GPL-2.0`. A control run that adds `GPL-2.0` on top of the allowlist
+(`EXTRA`) must pass, which shows the failure comes from the licence. Both scripts work from any directory in the
 repository.
 
 When a new dependency fails the check, do not widen the allowlist: replace the dependency, or
