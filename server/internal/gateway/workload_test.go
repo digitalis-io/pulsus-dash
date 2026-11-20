@@ -141,8 +141,12 @@ type w1 struct {
 	points int
 }
 
-func newW1(series, points int) w1 {
-	return w1{h: workloadGateway(&memTransport{body: matrixBody(series, points)}), points: points}
+func newW1(series, points int) w1 { return newW1Body(matrixBody(series, points), points) }
+
+// newW1Body is the W1 harness over an upstream body built earlier (cpu-instr.sh writes it to a
+// file before valgrind starts).
+func newW1Body(body []byte, points int) w1 {
+	return w1{h: workloadGateway(&memTransport{body: body}), points: points}
 }
 
 // run decodes, grids and encodes the matrix once: from the first read of the upstream body to
@@ -159,7 +163,12 @@ func runW1(t testing.TB, series, points int) { newW1(series, points).run(t) }
 // runW2 runs n sequential range requests for a 1-series, 60-point matrix and returns each
 // request's duration minus the upstream's.
 func runW2(t testing.TB, n int, delay time.Duration) []time.Duration {
-	m := &memTransport{body: matrixBody(1, 60), delay: delay}
+	return runW2Body(t, matrixBody(1, 60), n, delay)
+}
+
+// runW2Body is W2 over an upstream body built earlier.
+func runW2Body(t testing.TB, body []byte, n int, delay time.Duration) []time.Duration {
+	m := &memTransport{body: body, delay: delay}
 	h := workloadGateway(m)
 	out := make([]time.Duration, 0, n)
 	for range n {

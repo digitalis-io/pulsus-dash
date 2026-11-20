@@ -342,6 +342,12 @@ The binding itself (URL, scope, database, credentials reference) lives in Postgr
 | `bench:promql-decode` | `REFERENCE_LAB=1 make bench-bff` (reference lab) | W1 takes more than 30 ms per 10⁶ points (median of 5) |
 | `bench:bff-overhead` | the same target | W2 with a 2 ms upstream adds more than 5 ms at p50 or 20 ms at p99 |
 
+**Counted boundary.** `cpu-instr.sh` first has the test binary write the W1 and W2 upstream bodies
+to files, without valgrind, so building the 10⁶-point input is never counted. Each counted run
+reads its body from those files; the empty run reads the same W1 file but is served a 0-series
+answer. W1 minus the empty run is therefore exactly the A.11 boundary: from the first read of the
+upstream body to the last byte of the response (decode, grid placement and encode).
+
 The two time budgets skip without `REFERENCE_LAB=1`: time is measured only on the reference
 machines, never on shared CI runners (T05-006). The baseline is written by `make cpu-instr-update`,
 run in CI, and committed with the change that moves it.
