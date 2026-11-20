@@ -127,6 +127,22 @@ describe('unit:columns', () => {
     expect([...m.counts]).toEqual([2, 2, 2, 2, 2]);
   });
 
+  it('keeps a bucket that overlaps the window edge, clipped to the window', () => {
+    // 3 000 one-second buckets; only bucket 100 (100–101 s) overlaps the left window.
+    const ts = new Float64Array(Array.from({ length: 3_000 }, (_, i) => i * 1_000));
+    const counts = new Float64Array(Array.from({ length: 3_000 }, (_, i) => i));
+    const plot = { x: 0, y: 0, width: 10, height: 100 };
+    const left = mergeBuckets(ts, counts, 1, { fromMs: 100_200, toMs: 100_800 }, plot);
+    expect([...left.ts]).toEqual([100_200]);
+    expect([...left.counts]).toEqual([100]);
+    expect(left.endMs).toBe(100_800);
+    // Right edge: bucket 101 starts inside and runs past the window end.
+    const right = mergeBuckets(ts, counts, 1, { fromMs: 100_200, toMs: 101_500 }, plot);
+    expect([...right.ts]).toEqual([100_200, 101_000]);
+    expect([...right.counts]).toEqual([100, 101]);
+    expect(right.endMs).toBe(101_500);
+  });
+
   describe('cases', () => {
     // Window 0–1 000 ms over 10 px: column = floor(t / 100).
     const w = { fromMs: 0, toMs: 1_000 };

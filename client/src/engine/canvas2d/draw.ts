@@ -8,7 +8,7 @@ import type { FrameData, HeatmapFrame, SeriesFrame } from '../../data/frames';
 import { formatValue, type Unit } from '../../i18n/format';
 import type { FrameSummary, HoverEvent, PlotRect, TimeWindow, VisSpec } from '../api';
 import { bucketScale, type BucketScale } from './bucketScale';
-import { columnCount, lineColumns, mergeBuckets, type Column } from './columns';
+import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
 import { LABEL_HEIGHT, layoutPlot } from './layout';
 import { rampIndex, seriesColourIndex, type ThemeColours } from './palette';
@@ -215,16 +215,19 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
   return { summary, pick };
 }
 
-/** Bars and heatmap columns: [x, width] of bucket `k` of `ts`, clamped to the plot; null outside. */
+/**
+ * Bars and heatmap columns: [x, width] of bucket `k` of `ts`, clamped to the plot; null outside.
+ * `lastEnd` overrides the last bucket's end (the clipped end reported by `mergeBuckets`).
+ */
 function bucketSpan(
   plot: PlotRect,
   w: TimeWindow,
   ts: Float64Array,
   k: number,
+  lastEnd?: number,
 ): [number, number] | null {
   const t = ts[k] ?? NaN;
-  const n = ts.length;
-  const end = k + 1 < n ? (ts[k + 1] ?? t) : n === 1 ? w.toMs : t + (t - (ts[n - 2] ?? t));
+  const end = k + 1 === ts.length && lastEnd !== undefined ? lastEnd : bucketEnd(ts, k, w.toMs);
   const x0 = Math.max(plot.x, Math.round(xOf(plot, w, t)));
   const x1 = Math.min(plot.x + plot.width, Math.round(xOf(plot, w, end)));
   if (!(x1 > x0)) return null;
@@ -270,8 +273,9 @@ function drawBars(
     s.values.forEach((v, t) => (grid[t * c + k] = v));
   });
   const first = valueAxis(i, stats.min ?? 0, stats.max ?? 0, spec.unit);
+  let lastEnd: number | undefined;
   if (ts.length > columnCount(first.plot)) {
-    ({ ts, counts: grid } = mergeBuckets(ts, grid, c, i.window, first.plot));
+    ({ ts, counts: grid, endMs: lastEnd } = mergeBuckets(ts, grid, c, i.window, first.plot));
   }
   const merged: SeriesFrame[] = shown.map((s, k) => ({
     ...s,
@@ -290,7 +294,7 @@ function drawBars(
   if (isPlotEmpty(plot)) return { summary, pick };
   drawAxes(i, plot, labels, true);
   for (let t = 0; t < ts.length; t++) {
-    const span = bucketSpan(plot, i.window, ts, t);
+    const span = bucketSpan(plot, i.window, ts, t, lastEnd);
     if (span === null) continue;
     let acc = 0;
     merged.forEach((s, k) => {
@@ -330,12 +334,13 @@ function drawHeatmap(
   drawAxes(i, plot, labels, false);
   let ts = h.timestamps;
   let counts = h.counts;
+  let lastEnd: number | undefined;
   if (ts.length > columnCount(plot))
-    ({ ts, counts } = mergeBuckets(ts, counts, nb, i.window, plot));
+    ({ ts, counts, endMs: lastEnd } = mergeBuckets(ts, counts, nb, i.window, plot));
   let maxCount = 0;
   for (const c of counts) if (c > maxCount) maxCount = c;
   for (let t = 0; t < ts.length; t++) {
-    const span = bucketSpan(plot, i.window, ts, t);
+    const span = bucketSpan(plot, i.window, ts, t, lastEnd);
     if (span === null) continue;
     for (let b = 0; b < nb; b++) {
       const r = rampIndex(counts[t * nb + b] ?? 0, maxCount);

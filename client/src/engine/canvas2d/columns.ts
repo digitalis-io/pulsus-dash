@@ -130,9 +130,22 @@ export function lineColumns(
 }
 
 /**
- * Buckets grouped by the column formula, `stride` counts per bucket summed (non-finite counts as
- * 0); a group starts at its first bucket. Buckets starting outside [from, to] are dropped, not
- * merged into the edge columns. Used when there are more buckets than CSS px.
+ * The end of bucket `i`: the next bucket's start; for the last bucket its start plus the previous
+ * step (the frame's step), or `fallbackEnd` when there is only one bucket.
+ */
+export function bucketEnd(ts: Float64Array, i: number, fallbackEnd: number): number {
+  const t = ts[i] ?? NaN;
+  if (i + 1 < ts.length) return ts[i + 1] ?? t;
+  return ts.length > 1 ? t + (t - (ts[i - 1] ?? t)) : fallbackEnd;
+}
+
+/**
+ * Buckets merged to at most one per CSS px column, `stride` counts per bucket summed (non-finite
+ * counts as 0). A bucket is kept when its interval [start, end) overlaps the window, and is placed
+ * at its start clipped to the window, so a bucket that begins before `from` still covers the left
+ * edge; buckets wholly outside the window are dropped, never merged into the edge columns. A group
+ * starts at its first (clipped) bucket; `endMs` is the clipped end of the last kept bucket. Used
+ * when there are more buckets than CSS px.
  */
 export function mergeBuckets(
   ts: Float64Array,
@@ -140,14 +153,18 @@ export function mergeBuckets(
   stride: number,
   w: TimeWindow,
   plot: PlotRect,
-): { ts: Float64Array; counts: Float64Array } {
+): { ts: Float64Array; counts: Float64Array; endMs: number } {
   const n = columnCount(plot);
   const starts: number[] = [];
   const sums: number[] = [];
   let lastX = -1;
+  let endMs = w.toMs;
   for (let i = 0; i < ts.length; i++) {
-    const t = ts[i] ?? NaN;
-    if (!(t >= w.fromMs && t <= w.toMs)) continue;
+    const start = ts[i] ?? NaN;
+    const end = bucketEnd(ts, i, w.toMs);
+    if (!(start < w.toMs && end > w.fromMs)) continue;
+    const t = Math.max(start, w.fromMs);
+    endMs = Math.min(end, w.toMs);
     const x = n === 0 ? 0 : columnOf(t, w, n);
     if (x !== lastX || starts.length === 0) {
       starts.push(t);
@@ -160,7 +177,7 @@ export function mergeBuckets(
       if (Number.isFinite(c)) sums[base + b] = (sums[base + b] ?? 0) + c;
     }
   }
-  return { ts: new Float64Array(starts), counts: new Float64Array(sums) };
+  return { ts: new Float64Array(starts), counts: new Float64Array(sums), endMs };
 }
 
 const SNAP_UNITS_MS: readonly number[] = [

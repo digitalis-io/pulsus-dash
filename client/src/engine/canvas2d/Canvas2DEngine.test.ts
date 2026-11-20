@@ -419,3 +419,79 @@ describe('large inputs', () => {
     expect(h.layer().calls('fillRect').length).toBeGreaterThan(1);
   });
 });
+
+describe('bucket overlapping the window edge (merged path)', () => {
+  // 3 000 one-second buckets (more than CSS px, so they are merged); value/count i + 1.
+  const n = 3_000;
+  const ts = Array.from({ length: n }, (_, i) => i * 1_000);
+  const BARS: VisSpec = {
+    kind: 'bars',
+    title: 'T',
+    unit: { kind: 'none' },
+    stacking: 'normal',
+    categoryLabel: 'level',
+    categoryOrder: ['info'],
+  };
+  const HEAT: VisSpec = {
+    kind: 'heatmap',
+    title: 'T',
+    unit: { kind: 'none' },
+    countUnit: { kind: 'none' },
+  };
+  const bars = seriesData(
+    seriesFrame(
+      K(1),
+      ts,
+      ts.map((_, i) => i + 1),
+      { level: 'info' },
+    ),
+  );
+  const heat: FrameData = {
+    kind: 'heatmap',
+    heatmap: {
+      timestamps: new Float64Array(ts),
+      bounds: new Float64Array([1]),
+      counts: new Float64Array(ts.map((_, i) => i + 1)),
+    },
+  };
+  const marks = (h: Harness, colours: readonly string[]) =>
+    h
+      .layer()
+      .calls('fillRect')
+      .filter((o) => colours.includes(o.fillStyle))
+      .map((o) => ({ x: Number(o.args[0]), w: Number(o.args[2]) }));
+
+  it.each([
+    ['bars', BARS, bars, seriesPalette.dark],
+    ['heatmap', HEAT, heat, sequentialRamp.dark],
+  ] as const)(
+    '%s: a bucket starting before the window covers the left edge',
+    (_k, spec, data, colours) => {
+      const h = harness(Canvas2DEngine);
+      // Bucket 100 spans 100–101 s; the window 100.2–100.8 s lies inside it.
+      show(h, spec, data, { fromMs: 100_200, toMs: 100_800 });
+      const plot = plotOf(h);
+      const m = marks(h, colours);
+      expect(m).toHaveLength(1);
+      expect(m[0]?.x).toBe(plot.x);
+      expect((m[0]?.x ?? 0) + (m[0]?.w ?? 0)).toBeGreaterThanOrEqual(plot.x + plot.width - 1);
+    },
+  );
+
+  it.each([
+    ['bars', BARS, bars, seriesPalette.dark],
+    ['heatmap', HEAT, heat, sequentialRamp.dark],
+  ] as const)(
+    '%s: a bucket running past the window end reaches the right edge',
+    (_k, spec, data, colours) => {
+      const h = harness(Canvas2DEngine);
+      show(h, spec, data, { fromMs: 100_200, toMs: 101_500 });
+      const plot = plotOf(h);
+      const m = marks(h, colours).sort((a, b) => a.x - b.x);
+      expect(m).toHaveLength(2);
+      expect(m[0]?.x).toBe(plot.x);
+      const last = m.at(-1) ?? { x: 0, w: 0 };
+      expect(last.x + last.w).toBeGreaterThanOrEqual(plot.x + plot.width - 1);
+    },
+  );
+});

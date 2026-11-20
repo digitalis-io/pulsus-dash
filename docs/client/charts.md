@@ -157,8 +157,10 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 - **Stacked bars.** Categories (`labels[categoryLabel]`) stack in `categoryOrder`, then the unlisted
   ones by name; the first 500 are drawn. Bucket *i* spans from its start to the next bucket's start
   (the last one by the previous step); bars are 1 px narrower than their span. When there are more
-  buckets than CSS px, buckets are merged per pixel column and their values summed; buckets that
-  start outside the window are dropped, never merged into the edge columns.
+  buckets than CSS px, buckets are merged per pixel column and their values summed; a bucket whose
+  interval (its start to the next start; the last one by the previous step) overlaps the window is
+  kept and clipped to it, and buckets wholly outside the window are dropped, never merged into the
+  edge columns.
 - **Heatmap.** Cells per column and bucket, merged per pixel column like bars.
 - **Stat.** The formatted value, centred, in 32 px semibold.
 
