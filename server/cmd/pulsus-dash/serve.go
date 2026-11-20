@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/boards"
 	"github.com/digitalis-io/pulsus-dash/server/internal/config"
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway"
@@ -80,7 +81,8 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 		return fail(e, exitRuntime, err.Error())
 	}
 	defer db.Close()
-	if code, msg := checkDatabase(ctx, db); code != exitOK {
+	install, code, msg := checkDatabase(ctx, db)
+	if code != exitOK {
 		return fail(e, code, msg)
 	}
 
@@ -92,10 +94,12 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 			return fail(e, exitRuntime, "listen: "+err.Error())
 		}
 	}
+	partitions := &core.PartitionState{}
 	srv := &http.Server{
 		Handler: gateway.New(gateway.Deps{
 			Logger: logger, Probe: db, SchemaLatest: store.SchemaLatest(),
 			Assets: set, Build: core.Build(store.SchemaLatest()), Bootstrap: db.BootstrapView,
+			Boards: boards.New(db), Org: install.BootstrapOrg, AuditPartitions: partitions,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -106,6 +110,17 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 	logger.Info("listening", "addr", addr)
+	// 8a. Audit partitions (plan #61 §4.4): now, then every 24 h (1 h after a failure).
+	maintCtx, stopMaint := context.WithCancel(ctx)
+	maintDone := make(chan struct{})
+	go func() {
+		defer close(maintDone)
+		maintainAuditPartitions(maintCtx, db, logger, partitions, e.AuditEvery, e.AuditRetry, e.AuditRan)
+	}()
+	defer func() {
+		stopMaint()
+		<-maintDone
+	}()
 	// 8b. The public-URL self-check (T19-002): one request, never fatal, cancelled with ctx.
 	if cfg.Server.PublicURL != "" {
 		go gateway.SelfCheck(ctx, cfg.Server.PublicURL, set != nil, selfCheckClient(), logger)
@@ -180,30 +195,33 @@ func loadAssets(e runEnv, logger *slog.Logger, apiOnly bool) (*static.Set, int, 
 	return set, exitOK, ""
 }
 
-// checkDatabase runs start-up steps 4-7 and returns the exit code and message of the first failure.
-func checkDatabase(ctx context.Context, db *store.Db) (int, string) {
+// checkDatabase runs start-up steps 4-7. It returns the install state (the organisation every
+// request is bound to until authentication lands, D12), or the exit code and message of the
+// first failure.
+func checkDatabase(ctx context.Context, db *store.Db) (store.InstallState, int, string) {
 	pingCtx, cancel := context.WithTimeout(ctx, startupPingTimeout)
 	err := db.Ping(pingCtx)
 	cancel()
 	if err != nil {
-		return exitRuntime, "postgres unreachable: " + err.Error()
+		return store.InstallState{}, exitRuntime, "postgres unreachable: " + err.Error()
 	}
 	role, bypass, err := db.RoleBypassesRLS(ctx)
 	if err != nil {
-		return exitRuntime, err.Error()
+		return store.InstallState{}, exitRuntime, err.Error()
 	}
 	if bypass {
-		return exitRuntime, fmt.Sprintf("postgres role %q bypasses row-level security; serve must connect as pulsus_app", role)
+		return store.InstallState{}, exitRuntime, fmt.Sprintf("postgres role %q bypasses row-level security; serve must connect as pulsus_app", role)
 	}
 	v, err := db.SchemaVersion(ctx)
 	if err != nil {
-		return exitRuntime, err.Error()
+		return store.InstallState{}, exitRuntime, err.Error()
 	}
 	if err := store.CheckServeSchema(v, store.SchemaLatest()); err != nil {
-		return exitRuntime, err.Error()
+		return store.InstallState{}, exitRuntime, err.Error()
 	}
-	if _, err := db.InstallState(ctx); err != nil {
-		return exitRuntime, err.Error()
+	st, err := db.InstallState(ctx)
+	if err != nil {
+		return store.InstallState{}, exitRuntime, err.Error()
 	}
-	return exitOK, ""
+	return st, exitOK, ""
 }
