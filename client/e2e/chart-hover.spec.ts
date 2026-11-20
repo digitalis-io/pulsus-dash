@@ -1,9 +1,8 @@
 /** `e2e:chart-hover` (plan #58 §5, INT-033): the tooltip shows every series' value and label. */
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { pointerWindowStart, sortedRows } from '../src/charts/chartText.ts';
+import { pointerWindowStart } from '../src/charts/chartText.ts';
 import { seriesName } from '../src/data/frames.ts';
 import { GALLERY_SEED } from '../src/dev/gallery.ts';
-import { keyHash } from '../src/dev/keyHash.ts';
 import { LEVELS, synthLineValue } from '../src/dev/synth.ts';
 import { formatTime, formatValue } from '../src/i18n/format.ts';
 import {
@@ -57,13 +56,16 @@ test.describe('e2e:chart-hover', () => {
     const rows = [0, 1, 2].map((j) => {
       const labels = { __name__: 'queue_depth', pod: `pod-${String(j).padStart(3, '0')}` };
       return {
-        key: keyHash(labels),
         name: seriesName(labels),
-        colourIndex: null,
         value: synthLineValue(GALLERY_SEED + 2, j, t, 40, 15),
       };
     });
-    const want = sortedRows(rows).map((r): [string, string] => [
+    // The tooltip order, computed here rather than with the client's sortedRows: value descending,
+    // then name ascending.
+    const sorted = [...rows].sort(
+      (a, b) => b.value - a.value || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    );
+    const want = sorted.map((r): [string, string] => [
       r.name,
       formatValue(r.value, { kind: 'none' }),
     ]);

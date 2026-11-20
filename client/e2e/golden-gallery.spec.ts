@@ -6,8 +6,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { frame, GALLERY_IDS, GALLERY_URL, galleryReady, open, waitReady } from './helpers.ts';
 
 async function compare(page: Page, theme: string): Promise<void> {
+  // Soft: one run reports every frame that differs.
   for (const id of GALLERY_IDS) {
-    await expect(frame(page, id)).toHaveScreenshot(`gallery-${id}-${theme}.png`);
+    await expect.soft(frame(page, id)).toHaveScreenshot(`gallery-${id}-${theme}.png`);
   }
 }
 
