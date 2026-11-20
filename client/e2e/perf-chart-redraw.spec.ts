@@ -4,7 +4,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { GALLERY_URL, galleryReady, open } from './helpers.ts';
+import { GALLERY_URL, galleryReady, waitReady } from './helpers.ts';
 
 const RUNS = 40;
 
@@ -20,7 +20,9 @@ function percentile(sorted: number[], p: number): number {
 }
 
 test('bench:frame-interim-line (report only)', async ({ page }, info) => {
-  await open(page, GALLERY_URL);
+  // No fake clock: it replaces the page's User Timing methods. The gallery window is absolute.
+  await page.goto(GALLERY_URL);
+  await waitReady(page, GALLERY_URL);
   await galleryReady(page);
   await page.evaluate(() => {
     window.__chartDraws = [];

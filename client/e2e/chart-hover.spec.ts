@@ -33,6 +33,7 @@ async function tooltipRows(f: Locator): Promise<[string, string][]> {
 
 /** Hovers near sample 720 at an integer page x; returns that x and the sample the engine snaps to. */
 async function hoverSample(page: Page, f: Locator, yFrac = 0.5) {
+  await f.scrollIntoViewIfNeeded();
   const plot = await plotOf(f);
   const box = await f.boundingBox();
   if (box === null) throw new Error('no box');
@@ -89,6 +90,7 @@ test.describe('e2e:chart-hover', () => {
     expect(names.size).toBe(50);
 
     const b = frame(page, 'bars');
+    await b.scrollIntoViewIfNeeded();
     const bp = await plotOf(b);
     const bb = await b.boundingBox();
     if (bb === null) throw new Error('no bars box');
