@@ -1,13 +1,18 @@
-// Package spec is the board spec v1 (plan #61 §3.4): strict decoding, validation, the upcaster,
-// canonical JSON and the RFC 6902 patch of the audit trail.
+// Package spec is the board spec v1 (plan #61 §3.4): strict, presence-aware decoding, validation
+// with JSON-pointer field errors, the upcaster entry point (T11 §4.0), canonical JSON and the
+// RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+)
 
-// BoardSchemaVersion is the current board spec version.
+// BoardSchemaVersion is the current board spec version, stored in board_versions.schema_version.
 const BoardSchemaVersion int64 = 1
 
-// Board is a board spec.
+// Board is a board spec. Panels are the ungrouped panels drawn above the sections.
 type Board struct {
 	Title    string     `json:"title"`
 	Time     *TimeRange `json:"time,omitempty"`
@@ -15,13 +20,14 @@ type Board struct {
 	Sections []Section  `json:"sections"`
 }
 
-// TimeRange is the saved time range.
+// TimeRange is the board's saved time range: relative (now, now/d, now-6h) or RFC 3339.
 type TimeRange struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-// Section groups panels.
+// Section is a titled group of panels with its own grid; a collapsed section renders and queries
+// nothing.
 type Section struct {
 	ID        string  `json:"id"`
 	Title     string  `json:"title"`
@@ -29,7 +35,7 @@ type Section struct {
 	Panels    []Panel `json:"panels"`
 }
 
-// Panel is one panel.
+// Panel is one panel of a grid.
 type Panel struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -38,7 +44,7 @@ type Panel struct {
 	Vis   Vis    `json:"vis"`
 }
 
-// Grid is the panel position.
+// Grid is a panel's position in its grid of 12 columns: column X, row Y, W columns, H rows.
 type Grid struct {
 	X int `json:"x"`
 	Y int `json:"y"`
@@ -46,45 +52,66 @@ type Grid struct {
 	H int `json:"h"`
 }
 
-// Query is the panel query.
+// Query is a panel's query: Lang promql or logql.
 type Query struct {
 	Lang string `json:"lang"`
 	Text string `json:"text"`
 }
 
-// Vis is the visualisation.
+// Vis is a panel's visualisation: auto, line, bars, heatmap, stat or logs.
 type Vis struct {
 	Kind string `json:"kind"`
 }
 
-// ErrSchemaTooNew is returned for a newer schema version.
+// ErrSchemaTooNew is returned for a spec written by a newer server (rolling upgrade, N+1).
 var ErrSchemaTooNew = errors.New("spec: schema version is newer than this server")
 
-// ErrSchemaVersion is returned for an invalid schema version.
+// ErrSchemaVersion is returned for a schema version below 1.
 var ErrSchemaVersion = errors.New("spec: invalid schema version")
 
-// FieldError is one field error.
+// FieldError is one problem: a JSON pointer into the spec and a message key the client
+// translates.
 type FieldError struct{ Pointer, MessageKey string }
 
-// ValidationError lists the field errors.
+// ValidationError lists the problems of a spec in document order, at most 50.
 type ValidationError struct{ Fields []FieldError }
 
 func (e *ValidationError) Error() string { return "invalid board" }
 
-// ParseBoard is a stub.
-func ParseBoard(raw []byte) (Board, error) { return Board{}, &ValidationError{} }
+// maxFieldErrors bounds the field errors of one spec.
+const maxFieldErrors = 50
 
-// DecodeBoard is a stub.
-func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) { return Board{}, nil }
+// ParseBoard strictly decodes a spec of the current version and validates it: exact keys, every
+// key present, no null, no duplicate key, integer grid values and no trailing data (shape.go),
+// then the semantic rules (validate.go). Every problem is a *ValidationError.
+func ParseBoard(raw []byte) (Board, error) {
+	if fields := checkShape(raw); len(fields) > 0 {
+		return Board{}, &ValidationError{Fields: fields}
+	}
+	var b Board
+	if err := json.Unmarshal(raw, &b); err != nil {
+		// The shape pass accepted raw, so this cannot happen; report it as invalid JSON anyway.
+		return Board{}, &ValidationError{Fields: []FieldError{{Pointer: "", MessageKey: keyInvalid}}}
+	}
+	if err := b.Validate(); err != nil {
+		return Board{}, err
+	}
+	return b, nil
+}
 
-// Validate is a stub.
-func (b Board) Validate() error { return nil }
-
-// Canonical is a stub.
-func Canonical(v any) ([]byte, error) { return nil, nil }
-
-// ContentHash is a stub.
-func ContentHash(canon []byte) [32]byte { return [32]byte{} }
-
-// Diff is a stub.
-func Diff(from, to []byte) ([]byte, error) { return []byte("[]"), nil }
+// DecodeBoard decodes a stored spec of schemaVersion into the current version (the upcaster, T11
+// §4.0). Version 1 is current and decodes unchanged; a newer version returns ErrSchemaTooNew and
+// a version below 1 ErrSchemaVersion.
+func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
+	switch {
+	case schemaVersion < 1:
+		return Board{}, fmt.Errorf("%w: %d", ErrSchemaVersion, schemaVersion)
+	case schemaVersion > BoardSchemaVersion:
+		return Board{}, fmt.Errorf("%w: %d", ErrSchemaTooNew, schemaVersion)
+	}
+	b, err := ParseBoard(raw)
+	if err != nil {
+		return Board{}, fmt.Errorf("spec: stored board: %w", err)
+	}
+	return b, nil
+}

@@ -69,13 +69,14 @@ func boardJSON(title string, panels, sections []string) []byte {
 }
 
 func TestValidateLimits(t *testing.T) {
-	panels := func(n int) []string {
+	named := func(prefix string, n int) []string {
 		var out []string
 		for i := range n {
-			out = append(out, panelJSON(fmt.Sprintf("p-%d", i), i, "up"))
+			out = append(out, panelJSON(fmt.Sprintf("%s-%d", prefix, i), i, "up"))
 		}
 		return out
 	}
+	panels := func(n int) []string { return named("p", n) }
 	sections := func(n int) []string {
 		var out []string
 		for i := range n {
@@ -91,7 +92,9 @@ func TestValidateLimits(t *testing.T) {
 		{"200 panels", boardJSON("b", panels(200), nil), ""},
 		{"201 panels", boardJSON("b", panels(201), nil), "/panels board.panels.tooMany"},
 		{"200 panels across sections", boardJSON("b", panels(100), []string{
-			`{"id":"s-1","title":"s","collapsed":false,"panels":[` + strings.Join(panels(101)[1:], ",") + `]}`}), ""},
+			`{"id":"s-1","title":"s","collapsed":false,"panels":[` + strings.Join(named("q", 100), ",") + `]}`}), ""},
+		{"201 panels across sections", boardJSON("b", panels(100), []string{
+			`{"id":"s-1","title":"s","collapsed":false,"panels":[` + strings.Join(named("q", 101), ",") + `]}`}), "/panels board.panels.tooMany"},
 		{"50 sections", boardJSON("b", nil, sections(50)), ""},
 		{"51 sections", boardJSON("b", nil, sections(51)), "/sections board.sections.tooMany"},
 		{"title 200 runes", boardJSON(strings.Repeat("é", 200), nil, nil), ""},
