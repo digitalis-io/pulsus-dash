@@ -35,7 +35,7 @@ func TestCPUInstrBodies(t *testing.T) {
 	for name, body := range map[string][]byte{
 		"w1.json": matrixBody(w1Series, w1Points), "w2.json": matrixBody(w2Series, w2Points), "empty.json": matrixBody(0, w1Points),
 	} {
-		if err := os.WriteFile(filepath.Join(dir, name), body, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), body, 0o600); err != nil { // #nosec G703 -- the script's temporary directory
 			t.Fatal(err)
 		}
 	}
@@ -43,7 +43,7 @@ func TestCPUInstrBodies(t *testing.T) {
 
 // body reads one body written by TestCPUInstrBodies.
 func body(t *testing.T, name string) []byte {
-	b, err := os.ReadFile(filepath.Join(os.Getenv("CPU_INSTR_BODIES"), name)) // #nosec G304 -- the script's temporary directory
+	b, err := os.ReadFile(filepath.Join(os.Getenv("CPU_INSTR_BODIES"), name)) // #nosec G304 G703 -- the script's temporary directory
 	if err != nil {
 		t.Fatalf("cpu-instr body %s: %v (CPU_INSTR_BODIES)", name, err)
 	}
