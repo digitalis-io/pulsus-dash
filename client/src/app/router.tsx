@@ -120,6 +120,18 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
               path: 'admin',
               lazy: () => routeModules.admin().then((m) => ({ Component: m.AdminPage })),
             },
+            // The chart gallery: dev and stub builds only. The condition is inline, so Vite's
+            // static replacement lets Rollup drop the branch and its chunk from `http` builds.
+            ...(import.meta.env.DEV || import.meta.env.VITE_API_MODE !== 'http'
+              ? [
+                  {
+                    id: 'gallery',
+                    path: 'dev/gallery',
+                    lazy: () =>
+                      import('../dev/GalleryPage').then((m) => ({ Component: m.GalleryPage })),
+                  },
+                ]
+              : []),
             { id: 'tenantNotFound', path: '*', Component: ShellNotFoundPage },
           ],
         },

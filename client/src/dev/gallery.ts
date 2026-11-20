@@ -1,4 +1,7 @@
+/** The chart gallery's entries (plan #58 Appendix A §A.1): one per chart kind and stress case. */
 import type { FrameData, TimeWindow, VisSpec } from '../engine/api';
+import { t } from '../i18n/t';
+import { LEVELS, synthHeatmap, synthLevels, synthLines } from './synth';
 
 export const GALLERY_SEED = 20261120;
 export type GalleryId =
@@ -9,6 +12,77 @@ export interface GalleryEntry {
   readonly data: FrameData;
 }
 
-export function galleryEntries(_w: TimeWindow, _seed?: number): GalleryEntry[] {
-  throw new Error('not implemented');
+const HEATMAP_BOUNDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, Infinity];
+
+/** The seven entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. */
+export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
+  const s0 = seed ?? GALLERY_SEED;
+  const win = { fromMs: w.fromMs, toMs: w.toMs };
+  const lines = (
+    i: number,
+    series: number,
+    points: number,
+    name: string,
+    base: number,
+    amp: number,
+    gaps = false,
+  ): FrameData => ({
+    kind: 'series',
+    series: synthLines({ seed: s0 + i, series, points, ...win, name, base, amp, gaps }),
+  });
+  return [
+    {
+      id: 'line-1',
+      spec: { kind: 'line', title: t('gallery.line1'), unit: { kind: 'suffix', suffix: 'rps' } },
+      data: lines(0, 1, 1_440, 'http_requests_per_second', 1200, 300),
+    },
+    {
+      id: 'line-50',
+      spec: { kind: 'line', title: t('gallery.line50'), unit: { kind: 'time', base: 'ms' } },
+      data: lines(1, 50, 1_440, 'http_request_duration_ms', 180, 40),
+    },
+    {
+      id: 'line-gaps',
+      spec: { kind: 'line', title: t('gallery.gaps'), unit: { kind: 'none' } },
+      data: lines(2, 3, 1_440, 'queue_depth', 40, 15, true),
+    },
+    {
+      id: 'line-600',
+      spec: { kind: 'line', title: t('gallery.line600'), unit: { kind: 'bytes' } },
+      data: lines(3, 600, 60, 'container_memory_bytes', 8e8, 2e8),
+    },
+    {
+      id: 'heatmap',
+      spec: {
+        kind: 'heatmap',
+        title: t('gallery.heatmap'),
+        unit: { kind: 'time', base: 's' },
+        countUnit: { kind: 'none' },
+      },
+      data: {
+        kind: 'heatmap',
+        heatmap: synthHeatmap({ seed: s0 + 4, ...win, columns: 60, bounds: HEATMAP_BOUNDS }),
+      },
+    },
+    {
+      id: 'bars',
+      spec: {
+        kind: 'bars',
+        title: t('gallery.bars'),
+        unit: { kind: 'suffix', suffix: 'lines' },
+        stacking: 'normal',
+        categoryLabel: 'level',
+        categoryOrder: LEVELS,
+      },
+      data: {
+        kind: 'series',
+        series: synthLevels({ seed: s0 + 5, ...win, buckets: 60, levels: LEVELS }),
+      },
+    },
+    {
+      id: 'stat',
+      spec: { kind: 'stat', title: t('gallery.stat'), unit: { kind: 'time', base: 'ms' } },
+      data: { kind: 'scalar', scalar: { value: 2843, timestampMs: w.toMs } },
+    },
+  ];
 }
