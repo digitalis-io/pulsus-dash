@@ -124,6 +124,8 @@ export const messages = {
   'user.theme': 'Theme',
   'user.about': 'About Pulsus Dash',
   'user.signOut': 'Sign out',
+  'user.signOutFailed': 'Could not sign out. You are still signed in.',
+  'user.signOutDismiss': 'Dismiss',
   'theme.dark': 'Dark',
   'theme.light': 'Light',
   'theme.system': 'System',

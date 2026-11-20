@@ -1,6 +1,7 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../api/StubApi';
+import { ApiError } from '../api/types';
 import { locationOf, renderApp } from '../test/renderApp';
 
 function mockMatchMedia(light: boolean): void {
@@ -56,5 +57,51 @@ describe('user menu', () => {
     await waitFor(() => {
       expect(screen.getByRole('main')).toHaveFocus();
     });
+  });
+});
+
+describe('sign out rejected', () => {
+  it('keeps the session and the shell, shows a recoverable alert, and Retry signs out', async () => {
+    const api = new StubApi();
+    const signOut = vi
+      .spyOn(api, 'signOut')
+      .mockImplementationOnce(() => Promise.reject(new ApiError('network', 'down')))
+      .mockImplementation(() => Promise.resolve());
+    const { router, user, queryClient } = renderApp('/t/demo/boards', { api });
+    await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not sign out. You are still signed in.');
+    expect(locationOf(router)).toBe('/t/demo/boards?from=now-1h&to=now&refresh=off');
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
+    expect(queryClient.getQueryData(['session'])).toBeDefined();
+    expect(queryClient.getQueryData(['boards', 'demo'])).toBeDefined();
+    const retry = within(alert).getByRole('button', { name: 'Retry' });
+    await waitFor(() => {
+      expect(retry).toHaveFocus();
+    });
+
+    await user.click(retry);
+    await waitFor(() => {
+      expect(locationOf(router)).toBe('/signed-out');
+    });
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(['session'])).toBeUndefined();
+  });
+
+  it('Dismiss closes the alert and returns focus to the user menu', async () => {
+    const api = new StubApi();
+    vi.spyOn(api, 'signOut').mockImplementation(() =>
+      Promise.reject(new ApiError('network', 'down')),
+    );
+    const { user } = renderApp('/t/demo/boards', { api });
+    const trigger = await screen.findByRole('button', { name: 'User menu: Ada Admin' });
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
+    const alert = await screen.findByRole('alert');
+    await user.click(within(alert).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(trigger).toHaveFocus();
   });
 });

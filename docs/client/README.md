@@ -50,7 +50,9 @@ an interval menu button named "Auto-refresh interval: `<label>`" that shows the 
 `10s`, `30s`, `1m`, `5m`, `15m`) and a live dot when it is not off; choosing an interval replaces
 the history entry. The user menu (avatar initials, "User menu: `<name>`") shows name, email and
 role, then the theme section (Dark, Light, System), "About Pulsus Dash" (version, build, licence)
-and "Sign out" (clears the query cache and opens `/signed-out`).
+and "Sign out". Only a confirmed sign-out clears the query cache and opens `/signed-out`; if the
+API rejects it, the session, the cache and the page stay as they were and an alert ("Could not sign
+out. You are still signed in.") offers Retry (focused) and Dismiss (focus returns to the user menu).
 
 **Pages.** Boards lists the tenant's boards (title link, "Updated `<date>, <time>`"; empty: "No
 boards yet"). A board shows its title, the Context summary and an empty "Panels" region, and records
@@ -193,9 +195,11 @@ overlay, it records the focused control as operated; Tab never counts. The test 
 collected control was never operated, or if a required state (every route, Not found, Signed out,
 the session error) was never visited, and prints the missing keys. Two names are normalised: the
 time range trigger is one control whatever range it shows, and the calendar grid one control
-whatever month. React Aria's screen-reader-only buttons (visually hidden, `tabindex="-1"`: the
-popover "Dismiss" buttons and the calendar's second "Next") are not counted; Escape and the visible
-buttons are their keyboard equivalents.
+whatever month. React Aria's screen-reader-only buttons are not counted: an empty button with
+`tabindex="-1"` whose parent is React Aria's VisuallyHidden wrapper (inline `clip-path: inset(50%)`),
+that is the popover "Dismiss" buttons and the calendar's second "Next"; Escape and the visible
+buttons are their keyboard equivalents. Any other control, including a visible empty icon button
+with `tabindex="-1"`, is counted (the self-test checks this).
 
 **Adding a control:** run the keyboard script; if it lists the new control as uncovered, add the
 key presses that operate it to the loop for its page (or to `chrome()` in L20 if it is in the

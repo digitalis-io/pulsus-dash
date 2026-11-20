@@ -3,11 +3,12 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { Button, MenuTrigger } from 'react-aria-components';
+import { Button as AriaButton, MenuTrigger } from 'react-aria-components';
 import { useNavigate } from 'react-router';
 import { useApi, useSession } from '../app/providers';
 import type { Role } from '../api/types';
 import { t, type MessageId } from '../i18n/t';
+import { Button } from '../kit/Button';
 import { Icon, type IconName } from '../kit/Icon';
 import { Menu, MenuItem, MenuSection } from '../kit/Menu';
 import { Popover } from '../kit/Popover';
@@ -45,18 +46,21 @@ export function UserMenu() {
   const navigate = useNavigate();
   const { pref, setPref } = useTheme();
   const [about, setAbout] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { user } = session;
 
+  // Only a confirmed sign-out clears the cached session and leaves the shell. A rejected one keeps
+  // everything as it was and shows a recoverable alert with Retry.
   const signOut = (): void => {
+    setSignOutFailed(false);
     api.signOut().then(
       () => {
         queryClient.clear();
         void navigate('/signed-out');
       },
       () => {
-        queryClient.clear();
-        void navigate('/signed-out');
+        setSignOutFailed(true);
       },
     );
   };
@@ -64,13 +68,13 @@ export function UserMenu() {
   return (
     <>
       <MenuTrigger>
-        <Button
+        <AriaButton
           ref={triggerRef}
           aria-label={t('user.menu', { name: user.name })}
           className={cx(styles['avatar'])}
         >
           <span aria-hidden="true">{initials(user.name)}</span>
-        </Button>
+        </AriaButton>
         <Popover placement="bottom end">
           <div className={cx(styles['identity'])}>
             <p className={cx(styles['name'])}>{user.name}</p>
@@ -109,6 +113,25 @@ export function UserMenu() {
           </Menu>
         </Popover>
       </MenuTrigger>
+      {signOutFailed && (
+        <div role="alert" className={cx(styles['alert'])}>
+          <p className={cx(styles['alertText'])}>{t('user.signOutFailed')}</p>
+          <div className={cx(styles['alertActions'])}>
+            <Button
+              variant="ghost"
+              onPress={() => {
+                setSignOutFailed(false);
+                triggerRef.current?.focus();
+              }}
+            >
+              {t('user.signOutDismiss')}
+            </Button>
+            <Button variant="primary" onPress={signOut} autoFocus>
+              {t('error.retry')}
+            </Button>
+          </div>
+        </div>
+      )}
       <AboutDialog
         isOpen={about}
         onOpenChange={(open) => {
