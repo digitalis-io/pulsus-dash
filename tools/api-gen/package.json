@@ -1,0 +1,16 @@
+{
+  "name": "pulsus-dash-api-gen",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24.22.3 <25"
+  },
+  "scripts": {
+    "gen": "openapi-typescript ../../api/openapi.yaml -o ../../client/src/api/gen/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}
