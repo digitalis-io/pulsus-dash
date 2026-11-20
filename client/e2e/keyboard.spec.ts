@@ -739,8 +739,11 @@ async function chrome(s: Script, url: string): Promise<void> {
   await s.on('button "Next"');
   await s.focus('grid "Calendar"');
   await press('ArrowRight');
-  await s.on('checkbox "Keep relative"', 'Space');
-  await s.on('button "Copy link"');
+  // Share controls exist only on pages with a view URL pattern (not on the dev gallery).
+  if ((await s.dialog().getByRole('checkbox', { name: 'Keep relative' }).count()) > 0) {
+    await s.on('checkbox "Keep relative"', 'Space');
+    await s.on('button "Copy link"');
+  }
   await s.on('button "Apply"');
   await expect(s.dialog()).toBeHidden();
   await s.on('button "Refresh now"');

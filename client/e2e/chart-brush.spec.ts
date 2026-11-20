@@ -42,7 +42,8 @@ test('e2e:chart-brush', async ({ page }) => {
   await expect
     .poll(() => searchOf(page))
     .toMatchObject({ from: '2026-11-19T12:20:00.000Z', to: '2026-11-19T12:25:00.000Z' });
-  await expect(f).toHaveAttribute('data-frame-ready', 'true');
+  // The URL changes before the page re-renders; the double-click must see the new window.
+  await expect(timeTrigger(page)).toHaveText('19 Nov 2026, 12:20:00 – 12:25:00');
   await page.mouse.dblclick(box.x + plot.x + plot.width / 2, y);
   await expect
     .poll(() => searchOf(page))

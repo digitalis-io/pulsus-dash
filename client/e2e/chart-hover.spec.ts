@@ -1,6 +1,6 @@
 /** `e2e:chart-hover` (plan #58 §5, INT-033): the tooltip shows every series' value and label. */
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { sortedRows } from '../src/charts/chartText.ts';
+import { pointerWindowStart, sortedRows } from '../src/charts/chartText.ts';
 import { seriesName } from '../src/data/frames.ts';
 import { GALLERY_SEED } from '../src/dev/gallery.ts';
 import { keyHash } from '../src/dev/keyHash.ts';
@@ -84,6 +84,9 @@ test.describe('e2e:chart-hover', () => {
     const names = new Set<string>();
     for (let y = top; y <= bottom; y++) {
       await page.mouse.move(x, y);
+      // Wait for the frame's hover at this height: the window the pointer position gives.
+      const start = pointerWindowStart(50, y - box.y, plot);
+      await expect(range).toHaveText(`Rows ${String(start + 1)}–${String(start + 20)} of 50`);
       for (const [n] of await tooltipRows(f)) names.add(n);
     }
     await expect(range).toHaveText('Rows 31–50 of 50');
@@ -97,8 +100,11 @@ test.describe('e2e:chart-hover', () => {
     const bx = plotX(bb.x, bp, GALLERY_FROM + 29.25 * 60_000, GALLERY_FROM, GALLERY_TO);
     for (let y = Math.ceil(bb.y + bp.y); y <= Math.floor(bb.y + bp.y + bp.height); y += 1) {
       await page.mouse.move(bx, y);
-      const shown = (await tooltipRows(b)).map(([n]) => n).sort();
-      expect(shown, `y ${String(y)}`).toEqual([...LEVELS].sort());
+      await expect
+        .poll(async () => (await tooltipRows(b)).map(([n]) => n).sort(), {
+          message: `y ${String(y)}`,
+        })
+        .toEqual([...LEVELS].sort());
     }
   });
 });
