@@ -1,6 +1,6 @@
 /**
  * The client's API seam (§3.2 of plan #57). `StubApi` serves `npm run dev` and the tests; `HttpApi`
- * becomes the BFF client generated from the OpenAPI document (ADR-0015, #59).
+ * is the BFF client generated from the OpenAPI document (ADR-0015, #59, #62).
  */
 export type Role = 'admin' | 'editor' | 'viewer';
 

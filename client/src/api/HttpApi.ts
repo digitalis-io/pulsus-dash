@@ -1,14 +1,22 @@
 /**
  * The BFF client (ADR-0014 §1, ADR-0015): `openapi-fetch` over the types generated from
  * `api/openapi.yaml`. The session comes from `GET /api/dash/v1/bootstrap`. There is no boards API
- * until #61, so the board lists are empty and a board is not found.
+ * until #61, so the board lists are empty and a board is not found. Query responses are decoded
+ * at the one seam, `data/decode.ts`; failures map to `ApiError` kinds (plan #62 §4.5).
  */
 import createClient, { type Client } from 'openapi-fetch';
 import type { Api } from './Api';
 import type { components, paths } from './gen/schema';
-import type { InstantResult, RangeResult } from '../data/decode';
+import {
+  DecodeError,
+  decodeInstant,
+  decodeRange,
+  type InstantResult,
+  type RangeResult,
+} from '../data/decode';
 import {
   ApiError,
+  type ApiErrorDetail,
   type BoardSummary,
   type DataSourceStatus,
   type InstantRequest,
@@ -49,6 +57,78 @@ function messageOf(error: unknown, status: number): string {
   const msg = (error as Partial<ErrorEnvelope> | undefined)?.error?.message;
   return typeof msg === 'string' && msg !== '' ? msg : `HTTP ${String(status)}`;
 }
+
+type ErrorBody = Partial<components['schemas']['ErrorBody']>;
+// The generated request types make timeout_ms required because it has a default (the generator's
+// default-non-nullable rule); the BFF applies the default, so the client omits it when unset.
+type RangeBody = components['schemas']['PromRangeRequest'];
+type InstantBody = components['schemas']['PromInstantRequest'];
+
+function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** The `ApiError` of a failed query or check (plan #62 §4.5). */
+function queryError(status: number, error: unknown): ApiError {
+  const body: ErrorBody = (error as Partial<ErrorEnvelope> | undefined)?.error ?? {};
+  const message = messageOf(error, status);
+  const hint = isRecord(body.hint) ? body.hint : undefined;
+  const withHint: ApiErrorDetail = hint === undefined ? {} : { hint };
+  if (status === 400 && body.code === 'virtual_unsupported') {
+    return new ApiError('queryInvalid', message, withHint);
+  }
+  if (status === 400 && body.fields?.[0]?.pointer === '/query') {
+    const detail: ApiErrorDetail = {};
+    const position = isRecord(hint?.['position']) ? hint['position']['offset'] : undefined;
+    if (typeof position === 'number') detail.position = position;
+    if (typeof body.query_id === 'string') detail.queryId = body.query_id;
+    return new ApiError('queryInvalid', message, detail);
+  }
+  switch (status) {
+    case 404:
+      return new ApiError('notFound', message);
+    case 422:
+      return new ApiError('tooBroad', message, withHint);
+    case 429:
+      return new ApiError('busy', message);
+    case 502:
+    case 503:
+      return new ApiError('unavailable', message, withHint);
+    case 504:
+      return new ApiError('timeout', message);
+  }
+  return new ApiError('unknown', message);
+}
+
+/** Runs a request: an abort is re-thrown unchanged, any other rejection is `network`. */
+async function send<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    throw new ApiError('network', 'the BFF could not be reached');
+  }
+}
+
+/** Decodes a 200 body; a body the decoder refuses is `badResponse`. */
+function decoded<T>(decode: (b: unknown) => T, body: unknown): T {
+  try {
+    return decode(body);
+  } catch (e) {
+    if (e instanceof DecodeError) {
+      throw new ApiError('badResponse', `${e.message} at ${e.path === '' ? '/' : e.path}`);
+    }
+    throw e;
+  }
+}
+
+const DATA_SOURCE_STATES = {
+  not_checked: 'notChecked',
+  ok: 'ok',
+  unreachable: 'unreachable',
+  unauthorised: 'unauthorised',
+  error: 'error',
+} as const;
 
 export class HttpApi implements Api {
   constructor(private readonly client: Client<paths> = createClient<paths>({ baseUrl: '' })) {}
@@ -91,19 +171,55 @@ export class HttpApi implements Api {
     return Promise.resolve();
   }
 
-  queryRange(_tenant: string, _req: RangeRequest, _signal?: AbortSignal): Promise<RangeResult> {
-    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as RangeBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/promql/range', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeRange, data);
   }
 
-  queryInstant(
-    _tenant: string,
-    _req: InstantRequest,
-    _signal?: AbortSignal,
+  async queryInstant(
+    tenant: string,
+    req: InstantRequest,
+    signal?: AbortSignal,
   ): Promise<InstantResult> {
-    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+    const body = {
+      query: req.query,
+      at: req.atMs,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as InstantBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/promql/instant', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeInstant, data);
   }
 
-  checkDataSource(_tenant: string, _signal?: AbortSignal): Promise<DataSourceStatus> {
-    return Promise.reject(new ApiError('notImplemented', 'the data-source check arrives with #62'));
+  async checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/datasource/check', {
+        params: { query: { tenant } },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    const state = DATA_SOURCE_STATES[data.state];
+    return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
   }
 }

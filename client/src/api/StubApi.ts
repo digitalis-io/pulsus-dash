@@ -8,7 +8,11 @@
  */
 import type { Api } from './Api';
 import { defaultSeed, defaultStarred } from './stubData';
-import type { InstantResult, RangeResult } from '../data/decode';
+import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import type { SeriesFrame } from '../data/frames';
+import { promGrid } from '../data/step';
+import { keyHash } from '../dev/keyHash';
+import { synthLineValue } from '../dev/synth';
 import {
   ApiError,
   type BoardSummary,
@@ -57,6 +61,30 @@ function write(key: string, value: string): void {
   } catch {
     // Storage unavailable: the stub keeps working without persistence.
   }
+}
+
+/** Stub frames have no upstream, so nothing is truncated or cached. */
+const EMPTY_COMPLETENESS: Completeness = {
+  truncated: false,
+  warnings: [],
+  infos: [],
+  queryId: null,
+  dataAgeMs: null,
+  readCache: null,
+  readCacheThroughMs: null,
+};
+
+/** Three synthetic series `stub_metric{series="0|1|2"}` at the given timestamps. */
+function stubSeries(timestamps: Float64Array): SeriesFrame[] {
+  return [0, 1, 2].map((j) => {
+    const labels = { __name__: 'stub_metric', series: String(j) };
+    return {
+      key: keyHash(labels),
+      labels,
+      timestamps,
+      values: timestamps.map((t) => synthLineValue(62, j, t, 100, 40)),
+    };
+  });
 }
 
 /** Resolves on the next microtask; rejects with `AbortError` if `signal` is aborted by then. */
@@ -119,20 +147,36 @@ export class StubApi implements Api {
     });
   }
 
-  queryRange(_tenant: string, _req: RangeRequest, _signal?: AbortSignal): Promise<RangeResult> {
-    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const n = (g.endMs - g.startMs) / g.stepMs + 1;
+      const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
+      return { ...g, series: stubSeries(timestamps), completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
-  queryInstant(
-    _tenant: string,
-    _req: InstantRequest,
-    _signal?: AbortSignal,
-  ): Promise<InstantResult> {
-    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  queryInstant(tenant: string, req: InstantRequest, signal?: AbortSignal): Promise<InstantResult> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      return {
+        kind: 'series' as const,
+        resultType: 'vector' as const,
+        series: stubSeries(Float64Array.of(req.atMs)),
+        atMs: req.atMs,
+        completeness: EMPTY_COMPLETENESS,
+      };
+    }, signal);
   }
 
-  checkDataSource(_tenant: string, _signal?: AbortSignal): Promise<DataSourceStatus> {
-    return Promise.reject(new ApiError('notImplemented', 'the data-source check arrives with #62'));
+  /** Deterministic: always `ok`, checked at 0. */
+  checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      return { state: 'ok' as const, checkedAtMs: 0 };
+    }, signal);
   }
 
   private boardsOf(tenant: string): BoardSummary[] {

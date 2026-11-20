@@ -25,6 +25,10 @@ export const messages = {
 
   'sidebar.dataSource': 'Data source: {slug}',
   'sidebar.dataSourceNotChecked': 'Not checked',
+  'sidebar.dataSourceOk': 'Connected',
+  'sidebar.dataSourceUnreachable': 'Unreachable',
+  'sidebar.dataSourceUnauthorised': 'Not authorised',
+  'sidebar.dataSourceError': 'Error',
 
   'tenant.label': 'Tenant: {name}',
   'tenant.prefix': 'Tenant:',
