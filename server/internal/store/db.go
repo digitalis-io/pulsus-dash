@@ -1,7 +1,7 @@
 // Package store is the only Postgres access path of the BFF (T11-003, T11-023). Tenant data is
 // read and written only inside Db.Tx, which binds the transaction to one organisation for the
 // row-level security policies. The statements in this file are the only ones outside Tx; none
-// reads a tenant table.
+// reads a tenant row.
 package store
 
 import (
@@ -121,4 +121,29 @@ func (d *Db) InstallState(ctx context.Context) (InstallState, error) {
 		return InstallState{}, scrub(fmt.Errorf("store: install state: %w", err), d.password)
 	}
 	return InstallState{BootstrapOrg: core.OrgID(row.BootstrapOrgID.Bytes), SeededAt: row.SeededAt.Time}, nil
+}
+
+// MaintainAuditPartitions runs public.pulsus_audit_partitions_maintain (plan #61 §4.4): it creates
+// the class-13 audit leaves for the current month and monthsAhead months after it, and detaches
+// and drops leaves whose whole range is older than 13 months. It runs outside Tx: the definer
+// function reads no tenant row. A relation with a leaf's name that is not the expected partition
+// fails with SQLSTATE PD001 (audit_partition_collision).
+func (d *Db) MaintainAuditPartitions(ctx context.Context, monthsAhead int) (PartitionReport, error) {
+	var r PartitionReport
+	err := d.pool.QueryRow(ctx, "SELECT created, dropped, horizon FROM public.pulsus_audit_partitions_maintain($1)", monthsAhead).
+		Scan(&r.Created, &r.Dropped, &r.Horizon)
+	if err != nil {
+		return PartitionReport{}, scrub(fmt.Errorf("store: audit partitions: %w", err), d.password)
+	}
+	return r, nil
+}
+
+// AuditPartitionHorizon returns the whole months after the current UTC month covered by
+// consecutive valid leaves, or −1 when the current month's leaf is missing or not valid.
+func (d *Db) AuditPartitionHorizon(ctx context.Context) (int, error) {
+	var h int
+	if err := d.pool.QueryRow(ctx, "SELECT public.pulsus_audit_partition_horizon()").Scan(&h); err != nil {
+		return 0, scrub(fmt.Errorf("store: audit partition horizon: %w", err), d.password)
+	}
+	return h, nil
 }

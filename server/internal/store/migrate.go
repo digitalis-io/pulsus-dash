@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,17 @@ import (
 // MigrationLockID is the session advisory lock that serialises migrate runs on one database:
 // 0x70756c7375730001 ("pulsus" + 1).
 const MigrationLockID int64 = 8103502347670585345
+
+// migrateMonthsAhead is how many months of audit leaves migrate creates after the current one.
+const migrateMonthsAhead = 3
+
+// schemaCreateGrants lists the roles other than the schema owner and pulsus_owner that hold
+// CREATE on public: the check of migration 2, repeated on every run (plan #61 review r2 #1).
+const schemaCreateGrants = `SELECT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::pg_catalog.regrole::text END AS role
+  FROM pg_catalog.pg_namespace n, pg_catalog.aclexplode(n.nspacl) a
+ WHERE n.nspname = 'public' AND a.privilege_type = 'CREATE'
+   AND a.grantee NOT IN (n.nspowner, 'pulsus_owner'::pg_catalog.regrole)
+ ORDER BY 1`
 
 // migrationLockWait bounds the wait for the lock; pg_try_advisory_lock is retried every second.
 const migrationLockWait = 5 * time.Minute
@@ -60,7 +72,9 @@ type MigrateResult struct {
 // takes MigrationLockID before reading anything and holds it through the migrations and the seed,
 // so concurrent runs serialise and a run never acts on a schema version read before the lock.
 // A database more than one version ahead is refused; one version ahead (N+1) is left alone.
-// Seed settings are checked before anything is written, in dry runs too.
+// Seed settings are checked before anything is written, in dry runs too. Every run that is not
+// a dry run, also one with nothing pending, then fails if a role other than pulsus_owner holds
+// CREATE on public (schema_create_grant), and maintains the audit partitions three months ahead.
 // A URL that does not parse returns ErrInvalidConnString; no returned error contains the password.
 func Migrate(ctx context.Context, ownerURL string, o MigrateOptions) (MigrateResult, error) {
 	cfg, err := pgx.ParseConfig(ownerURL)
@@ -160,6 +174,13 @@ func migrate(ctx context.Context, cfg *pgx.ConnConfig, ownerURL string, o Migrat
 		}
 	}
 
+	if err := checkSchemaCreate(ctx, db); err != nil {
+		return res, err
+	}
+	if _, err := db.ExecContext(ctx, "SELECT * FROM public.pulsus_audit_partitions_maintain($1)", migrateMonthsAhead); err != nil {
+		return res, fmt.Errorf("store: audit partitions: %w", err)
+	}
+
 	if !seeded {
 		org, wrote, err := seedBootstrap(ctx, ownerURL, seed)
 		if err != nil {
@@ -168,6 +189,31 @@ func migrate(ctx context.Context, cfg *pgx.ConnConfig, ownerURL string, o Migrat
 		res.Seeded, res.Org = wrote, org
 	}
 	return res, nil
+}
+
+// checkSchemaCreate fails when a role other than pulsus_owner may create objects in public, where
+// it could plant a relation the audit partition function would trust.
+func checkSchemaCreate(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, schemaCreateGrants)
+	if err != nil {
+		return fmt.Errorf("store: schema privileges: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var roles []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			return fmt.Errorf("store: schema privileges: %w", err)
+		}
+		roles = append(roles, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("store: schema privileges: %w", err)
+	}
+	if len(roles) > 0 {
+		return fmt.Errorf("schema_create_grant: roles other than pulsus_owner hold CREATE on schema public: %s", strings.Join(roles, ", "))
+	}
+	return nil
 }
 
 func acquireLock(ctx context.Context, conn *sql.Conn, out io.Writer) error {

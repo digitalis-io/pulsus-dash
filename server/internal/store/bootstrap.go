@@ -16,9 +16,9 @@ var errAlreadySeeded = errors.New("already seeded")
 
 func nullText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
 
-// seedBootstrap writes the first organisation, its tenant binding and install_state in one
-// organisation-bound transaction (pulsus_owner is subject to FORCE RLS; WITH CHECK passes because
-// Tx binds the new organisation first). It reports false, writing nothing, when a seed exists.
+// seedBootstrap writes the first organisation, its tenant binding, its root folder and
+// install_state in one organisation-bound transaction (pulsus_owner is subject to FORCE RLS;
+// WITH CHECK passes because Tx binds the new organisation first). It reports false, writing nothing, when a seed exists.
 // Migrate calls it under the migration lock.
 func seedBootstrap(ctx context.Context, ownerURL string, seed core.BootstrapSeed) (core.OrgID, bool, error) {
 	d, err := Open(ctx, ownerURL, 2)
@@ -50,6 +50,9 @@ func seedBootstrap(ctx context.Context, ownerURL string, seed core.BootstrapSeed
 			OrgID: pgUUID(org), ID: pgUUID(bindingID), Slug: b.Slug, DatasourceUrl: b.DatasourceURL,
 			Database: nullText(b.Database), ScopeOrgID: nullText(b.ScopeOrgID), CredentialsRef: nullText(b.CredentialsRef),
 		}); err != nil {
+			return err
+		}
+		if _, err := tx.EnsureRootFolder(ctx); err != nil {
 			return err
 		}
 		return tx.q.InsertInstallState(ctx, pgUUID(org))
