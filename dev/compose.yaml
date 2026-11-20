@@ -11,12 +11,14 @@ services:
       - pg16-data:/var/lib/postgresql/data
       - ../server/deploy/postgres-roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
       - ./postgres-init.sql:/docker-entrypoint-initdb.d/20-database.sql:ro
-    healthcheck: { test: [CMD, pg_isready, -U, postgres], interval: 2s, timeout: 5s, retries: 30 }
+    # Over TCP: the image's init-time server listens only on the Unix socket, so it never counts as
+    # healthy; the check passes only after the init scripts ran and the real server started.
+    healthcheck: { test: [CMD, pg_isready, -h, 127.0.0.1, -p, '5432', -U, postgres, -d, pulsus_dash], interval: 2s, timeout: 5s, retries: 30 }
   pg15:
     profiles: [itest]
     image: postgres:15.20-alpine3.24@sha256:e18480a22d6e48f4d816a6696769b1ec09ac73a824c5649e49c7d8b684913f3d
     environment: { POSTGRES_HOST_AUTH_METHOD: trust }
     ports: ['127.0.0.1:${DEV_PG15_PORT:-55433}:5432']
     tmpfs: [/var/lib/postgresql/data]
-    healthcheck: { test: [CMD, pg_isready, -U, postgres], interval: 2s, timeout: 5s, retries: 30 }
+    healthcheck: { test: [CMD, pg_isready, -h, 127.0.0.1, -p, '5432', -U, postgres, -d, postgres], interval: 2s, timeout: 5s, retries: 30 }
 volumes: { pg16-data: {} }

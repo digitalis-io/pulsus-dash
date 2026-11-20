@@ -33,6 +33,11 @@ The smoke test also uses `docker` (for `docker ps` and `docker volume inspect`) 
 The digests are the same as those of the `itest` CI job. The compose project is `pulsus-dash`
 (`DEV_PROJECT`).
 
+The health check is `pg_isready` over TCP to `127.0.0.1:5432` (database `pulsus_dash` for `pg16`,
+`postgres` for `pg15`). While the image runs its init scripts, its temporary server listens only on
+the Unix socket, so a container counts as healthy only once the scripts are done and the real
+server accepts TCP connections. `up --wait`, and so `make dev-db`, returns only then.
+
 On an empty `pg16-data` volume, the image runs two init scripts:
 1. `server/deploy/postgres-roles.sql` creates the roles `pulsus_owner`, `pulsus_app` and
    `pulsus_maint` ([the database page](../server/database.md));
