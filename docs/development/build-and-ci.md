@@ -1,8 +1,10 @@
 # Build, test and CI
 
-How to build and check the web client locally, and what CI runs. The client is TypeScript, React and
-Vite in `client/` ([ADR-0014](../../designs/adr/0014-typescript-react-web-client.md)). The gate IDs
-are those of the [T05 §7.1 gate catalogue](../../designs/technical/T05-testing-and-performance.md).
+How to build and check the web client and the server locally, and what CI runs. The client is
+TypeScript, React and Vite in `client/` ([ADR-0014](../../designs/adr/0014-typescript-react-web-client.md)).
+The server is Go in `server/` ([ADR-0015](../../designs/adr/0015-go-bff.md)); see
+[Server](#server). The gate IDs are those of the
+[T05 §7.1 gate catalogue](../../designs/technical/T05-testing-and-performance.md).
 
 ## Toolchain
 
@@ -84,3 +86,71 @@ no secrets are used.
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the
 engines whose libraries are present.
+
+## Server
+
+The server's checks run from the repository root through `Makefile`. What the server does is
+described in [the server page](../server/README.md) and [the database page](../server/database.md).
+
+### Server toolchain
+
+| Tool | Version | Where it is fixed |
+|---|---|---|
+| Go | 1.27.4 | `server/go.mod` (`go 1.27.0`, `toolchain go1.27.4`); CI sets `GOTOOLCHAIN=local` and `GOFLAGS=-mod=readonly` |
+| oapi-codegen, sqlc, govulncheck | v2.8.2, v1.31.1, v1.9.0 | `tool` directives in `server/go.mod`; run as `go -C server tool <name>` |
+| golangci-lint | 2.15.0 | `make tools-ci` downloads it into `build/bin` and verifies its sha256 |
+| squawk | 2.72.0 | `make tools-ci`, same |
+| openapi-typescript | 7.13.0 (with TypeScript 5.9.3) | `tools/api-gen/package.json` and its lockfile |
+
+`tools/api-gen` is a separate npm package because `openapi-typescript` declares a peer dependency on
+TypeScript 5, while the client pins TypeScript 6. Its `.npmrc` is a copy of the client's
+(`save-exact`, `engine-strict`, `ignore-scripts`). Install it with `npm --prefix tools/api-gen ci`.
+
+Binaries build with `CGO_ENABLED=0`. The test targets set `CGO_ENABLED=1`, because `-race` needs
+cgo.
+
+### Make targets
+
+| Target | What it does | Gate |
+|---|---|---|
+| `make server-build` | builds `build/pulsus-dash` (`VERSION ?= 0.1.0-dev`) | — |
+| `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |
+| `make api-gen-check` | `server/scripts/api-gen-check.sh`, then its self-test `server/scripts/test-api-gen-check.sh` | `ci:api-gen` |
+| `make go-mod` | `go mod verify` and `go mod tidy -diff` | `ci:go-mod` |
+| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files) | `ci:go-lint` |
+| `make go-test` | `go test -race ./...` | `ci:go-test` |
+| `make govulncheck` | `govulncheck ./...` | `ci:govulncheck` |
+| `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
+| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations` |
+| `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
+| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint` | — |
+
+The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
+`chi` and `internal/gateway/api` inside `internal/gateway`.
+
+### Generated code (`ci:api-gen`)
+
+`api/openapi.yaml` is the HTTP contract. After editing it, or `server/queries/*.sql`, or the
+migrations, run `make api-gen` and commit the result. The generated files carry no timestamp, so
+regenerating is byte-stable.
+
+`api-gen-check.sh [--root DIR] [--spec PATH]` regenerates the Go and TypeScript files into a
+temporary directory and compares them with the committed ones. It runs `sqlc diff` for the sqlc
+output. A difference prints `error[api-gen] <path> is stale: run make api-gen` and exits 1. It
+never writes inside the checkout. The self-test copies the inputs into a temporary directory and
+checks three cases there: a spec with an extra path is reported for both files; a neutral edit to
+the spec passes and is kept; an edit to `schema.d.ts` fails and is kept. It then checks that the
+real checkout's `git status` and generated files are unchanged.
+
+`client/src/api/gen/` is excluded from ESLint and Prettier, and the client's `tsc` type-checks it.
+
+### Server CI
+
+`.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
+`tools/api-gen/`, `client/src/api/gen/`, `Makefile` or the workflow, and on pushes to `main`. The
+token is read-only, actions are pinned by commit SHA and no secrets are used.
+
+| Job | Steps (gate) |
+|---|---|
+| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) |
+| `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` |
