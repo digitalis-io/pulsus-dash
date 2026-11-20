@@ -349,7 +349,8 @@ func (c *Client) attempts(ctx context.Context, rc *core.RequestCtx, cl call, cre
 			return nil, n - 1, nil, newError(KindConfig)
 		}
 		c.budget.record(cluster, c.o.Now(), n > 1)
-		resp, err := c.http.Do(req)
+		// The target is the tenant binding's datasource URL, set by the operator (T06-006).
+		resp, err := c.http.Do(req) // #nosec G704 -- the binding's configured URL, not request input
 		var last error
 		var hdr http.Header
 		switch {

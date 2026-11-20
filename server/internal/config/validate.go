@@ -29,7 +29,7 @@ var (
 	errPublicURL = "must be an absolute http or https URL"
 	errPublicRaw = "must not contain credentials, a query or a fragment"
 	errTenantCon = "must be between 1 and 1024"
-	errWeakCreds = "the PulsusDB password must be at least 8 characters and must not be a number"
+	errWeakCreds = "the PulsusDB password must be at least 8 characters and must not be a number" // #nosec G101 -- a message, not a credential
 )
 
 // validate checks every non-seed key (§3.3). Roles are checked by ValidateRoles when serve starts,

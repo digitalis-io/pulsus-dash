@@ -18,7 +18,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusfake"
 )
 
-const plantedSecret = "Zq9-planted-SECRET"
+const plantedSecret = "Zq9-planted-SECRET" // #nosec G101 -- the planted test secret
 
 // plantedUpstream serves internal/pulsusdb/testdata/adversarial with @SECRET@, @TOKEN@, @URL@ and
 // @HOST@ replaced by the binding's secret, Basic token, URL and host:port.
@@ -65,7 +65,7 @@ func responseBytes(rec *httptest.ResponseRecorder) string {
 func TestRedactAdversarial(t *testing.T) {
 	cred := "user:" + plantedSecret
 	token := base64.StdEncoding.EncodeToString([]byte(cred))
-	if token != "dXNlcjpacTktcGxhbnRlZC1TRUNSRVQ=" {
+	if token != "dXNlcjpacTktcGxhbnRlZC1TRUNSRVQ=" { // #nosec G101 -- the planted test token (A.9)
 		t.Fatalf("token %s", token)
 	}
 	up := plantedUpstream(t, plantedSecret, token)
@@ -136,9 +136,9 @@ type propCase struct {
 
 // unit:redact-prop (T06-024): 1 000 random bodies, a random needle in a random string.
 func TestRedactProperty(t *testing.T) {
-	seed := rand.Uint64()
+	seed := rand.Uint64() // #nosec G404 -- a logged seed makes failures reproducible
 	t.Logf("seed %d", seed)
-	rng := rand.New(rand.NewPCG(seed, 2))
+	rng := rand.New(rand.NewPCG(seed, 2)) // #nosec G404 -- seeded for reproducible cases
 	var mu sync.Mutex
 	var cur propCase
 	var cred string

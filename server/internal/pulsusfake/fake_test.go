@@ -120,7 +120,9 @@ func TestFakeHangRecordsCancel(t *testing.T) {
 	if err != nil || !rec.Cancelled || rec.Completed || rec.CancelledAt.Sub(t0) > time.Second {
 		t.Errorf("WaitCancelled = %+v, %v", rec, err)
 	}
-	<-done
+	if err := <-done; err == nil {
+		t.Error("the cancelled request completed")
+	}
 }
 
 func TestLoadRefuses(t *testing.T) {

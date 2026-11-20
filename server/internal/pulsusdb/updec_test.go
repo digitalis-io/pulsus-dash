@@ -161,9 +161,9 @@ func TestUpdecRoundTrip(t *testing.T) {
 	for _, doc := range updecCorpus {
 		check(doc)
 	}
-	seed := rand.Uint64()
+	seed := rand.Uint64() // #nosec G404 -- a logged seed makes failures reproducible
 	t.Logf("seed %d", seed)
-	rng := rand.New(rand.NewPCG(seed, 0))
+	rng := rand.New(rand.NewPCG(seed, 0)) // #nosec G404 -- seeded for reproducible cases
 	for range 200 {
 		check(randomDoc(rng, 0))
 	}

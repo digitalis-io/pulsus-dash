@@ -3,12 +3,32 @@ version: "2"
 run: { build-tags: [itest] }
 linters:
   default: none
-  enable: [depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused]
-  settings: { depguard: { rules: {
-    store-only: { files: ["$all", "!**/internal/store/**"], deny: [
-      { pkg: github.com/jackc/pgx, desc: "pgx is used only in internal/store (T11-023, ADR-0015)" },
-      { pkg: github.com/pressly/goose, desc: "migrations run only in internal/store (T11-015)" },
-      { pkg: github.com/digitalis-io/pulsus-dash/server/internal/store/dbgen, desc: "sqlc output is used only in internal/store (T11-023)" } ] },
-    gateway-only: { files: ["$all", "!**/internal/gateway/**"], deny: [
-      { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
-      { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] } } } }
+  enable: [depguard, errcheck, forbidigo, gosec, govet, ineffassign, staticcheck, unused]
+  settings:
+    depguard: { rules: {
+      store-only: { files: ["$all", "!**/internal/store/**"], deny: [
+        { pkg: github.com/jackc/pgx, desc: "pgx is used only in internal/store (T11-023, ADR-0015)" },
+        { pkg: github.com/pressly/goose, desc: "migrations run only in internal/store (T11-015)" },
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/store/dbgen, desc: "sqlc output is used only in internal/store (T11-023)" } ] },
+      gateway-only: { files: ["$all", "!**/internal/gateway/**"], deny: [
+        { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] } } }
+    # T06-005 and plan #62 §4.9: outbound HTTP only in internal/pulsusdb (and the allowed callers
+    # below); upstream bodies decoded only by internal/pulsusdb/updec.go.
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^http\.(Client|Transport|DefaultClient|DefaultTransport|Get|Head|Post|PostForm|NewRequest|NewRequestWithContext)$'
+          pkg: '^net/http$'
+          msg: 'pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)'
+        - pattern: '^json\.(Unmarshal|NewDecoder|RawMessage)$|^\(\*json\.Decoder\)\.Decode$'
+          pkg: '^encoding/json$'
+          msg: 'pulsusdb-decoder: upstream bodies are decoded only by updec.go, which redacts every string (§4.9)'
+  exclusions:
+    rules:
+      - { path: 'internal/pulsusdb/', text: 'pulsusdb-only', linters: [forbidigo] }
+      - { path-except: 'internal/pulsusdb/', text: 'pulsusdb-decoder', linters: [forbidigo] }
+      - { path: 'internal/pulsusdb/.*_test\.go$', text: 'pulsusdb-decoder', linters: [forbidigo] }   # tests decode responses to compare
+      - { path: '_test\.go$', linters: [forbidigo] }
+      - { path: 'internal/gateway/selfcheck\.go$', linters: [forbidigo] }   # T19-002 self-check
+      - { path: 'cmd/pulsus-dash/serve\.go$', linters: [forbidigo] }       # its client (2 s, no redirects)

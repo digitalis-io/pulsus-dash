@@ -36,12 +36,12 @@ func TestRangeGolden(t *testing.T) {
 		}
 		path := "../../../wire/fixtures/json/" + c.file
 		if *update {
-			if err := os.WriteFile(path, rec.Body.Bytes(), 0o644); err != nil {
+			if err := os.WriteFile(path, rec.Body.Bytes(), 0o644); err != nil { // #nosec G306 -- a repository fixture
 				t.Fatal(err)
 			}
 			continue
 		}
-		want, err := os.ReadFile(path)
+		want, err := os.ReadFile(path) // #nosec G304 -- a fixed fixture path
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestRangeStreams(t *testing.T) {
 		_ = r.ParseForm()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"api"},"values":[[1767225600,"1"]]}`)
-		http.NewResponseController(w).Flush()
+		_ = http.NewResponseController(w).Flush()
 		select {
 		case <-release:
 		case <-r.Context().Done():
@@ -129,7 +129,7 @@ func TestRangeAbort(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"api"},"values":[[1767225600,"1"]]},`)
-		http.NewResponseController(w).Flush()
+		_ = http.NewResponseController(w).Flush()
 		conn, _, err := http.NewResponseController(w).Hijack()
 		if err == nil {
 			_ = conn.Close()
@@ -202,7 +202,7 @@ func TestVirtualGuardRoutes(t *testing.T) {
 // unit:sanitise (gateway half; review r1 #7, T06-024).
 func TestSanitiseThroughGateway(t *testing.T) {
 	const cred = "user:pw-secret"
-	const token = "dXNlcjpwdy1zZWNyZXQ="
+	const token = "dXNlcjpwdy1zZWNyZXQ=" // #nosec G101 -- the planted test credential
 	var upURL string
 	mode := ""
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

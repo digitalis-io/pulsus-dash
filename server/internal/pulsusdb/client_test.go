@@ -400,7 +400,7 @@ func TestTenantLimit(t *testing.T) {
 	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[`))
-		http.NewResponseController(w).Flush()
+		_ = http.NewResponseController(w).Flush()
 		select {
 		case <-release:
 		case <-r.Context().Done():
@@ -476,9 +476,9 @@ func TestCredentialStrength(t *testing.T) {
 // Property (r5-1): every float text, in every format, padded or not, is a weak password, so an
 // upstream sample can never equal an accepted password.
 func TestWeakPasswordProperty(t *testing.T) {
-	seed := rand.Uint64()
+	seed := rand.Uint64() // #nosec G404 -- a logged seed makes failures reproducible
 	t.Logf("seed %d", seed)
-	rng := rand.New(rand.NewPCG(seed, 1))
+	rng := rand.New(rand.NewPCG(seed, 1)) // #nosec G404 -- seeded for reproducible cases
 	for i := range 1000 {
 		var v float64
 		switch rng.IntN(4) {

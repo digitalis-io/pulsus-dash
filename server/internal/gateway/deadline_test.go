@@ -33,7 +33,7 @@ func TestDeadlines(t *testing.T) {
 			data = `{`
 		}
 		_, _ = io.WriteString(w, `{"status":"success","data":`+data)
-		http.NewResponseController(w).Flush()
+		_ = http.NewResponseController(w).Flush()
 		block(w, r)
 	}))
 	defer midBody.Close()

@@ -88,7 +88,7 @@ func TestCorpus(t *testing.T) {
 			b.WriteString("\n")
 		}
 		b.WriteString("]\n")
-		if err := os.WriteFile(corpusPath, b.Bytes(), 0o644); err != nil {
+		if err := os.WriteFile(corpusPath, b.Bytes(), 0o644); err != nil { // #nosec G306 -- a repository fixture
 			t.Fatal(err)
 		}
 		return

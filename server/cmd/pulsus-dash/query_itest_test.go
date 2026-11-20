@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -238,15 +239,15 @@ func TestPromqlRangeItest(t *testing.T) {
 
 func sameStrings(v any, want ...string) bool {
 	xs, ok := v.([]any)
-	if !ok || len(xs) != len(want) {
+	if !ok {
 		return false
 	}
-	for i := range xs {
-		if xs[i] != want[i] {
-			return false
-		}
+	got := make([]string, 0, len(xs))
+	for _, x := range xs {
+		s, _ := x.(string)
+		got = append(got, s)
 	}
-	return true
+	return slices.Equal(got, want)
 }
 
 // closedURL is the URL of a listener that was closed: nothing answers there.
@@ -413,7 +414,7 @@ func TestCancelMidStreamItest(t *testing.T) {
 					return
 				}
 				_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"instance":"a:9090","job":"api"},"values":[[1767225600,"0.1"]]}`)
-				http.NewResponseController(w).Flush()
+				_ = http.NewResponseController(w).Flush()
 				<-r.Context().Done()
 				observed <- time.Now()
 			}))
@@ -428,7 +429,7 @@ func TestCancelMidStreamItest(t *testing.T) {
 			}
 			br := bufio.NewReader(resp.Body)
 			var got []byte
-			for !(bytes.Contains(got, []byte(`"values":[`)) && bytes.HasSuffix(got, []byte("]}"))) {
+			for !bytes.Contains(got, []byte(`"values":[`)) || !bytes.HasSuffix(got, []byte("]}")) {
 				c, err := br.ReadByte()
 				if err != nil {
 					t.Fatalf("read %q: %v", got, err)
