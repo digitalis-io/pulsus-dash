@@ -76,7 +76,15 @@
       "url": "https://github.com/remix-run/react-router/issues/new/choose",
       "reason": "bug-report text"
     },
-    { "url": "https://github.com/ungap/url-search-params", "reason": "polyfill-advice text" }
+    { "url": "https://github.com/ungap/url-search-params", "reason": "polyfill-advice text" },
+    {
+      "url": "https://github.com/react-grid-layout/react-draggable#noderef",
+      "reason": "warning text (react-draggable, Edit-mode chunk)"
+    },
+    {
+      "url": "http://fb.me/use-check-prop-types",
+      "reason": "error text of the production prop-types shim (Edit-mode chunk)"
+    }
   ],
   "installScripts": []
 }
