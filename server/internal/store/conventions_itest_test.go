@@ -68,6 +68,16 @@ func TestSchemaConventions(t *testing.T) {
 			if len(tables) == 0 {
 				t.Fatal("no tables")
 			}
+			leaf, _, _ := storetest.Leaf(0)
+			seen := map[string]bool{}
+			for _, r := range tables {
+				seen[r[0]] = true
+			}
+			for _, want := range []string{"folders", "boards", "board_versions", "audit_events", "audit_events_r13", leaf, "audit_chain_heads", "stars", "recent_views"} {
+				if !seen[want] {
+					t.Errorf("table %s is missing", want)
+				}
+			}
 			for _, r := range tables {
 				if r[0] == "goose_db_version" || r[0] == "install_state" {
 					continue

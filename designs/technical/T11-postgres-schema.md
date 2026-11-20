@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (tenancy, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (identity, Git sync, Terraform) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
@@ -110,7 +110,7 @@ conventions of §4.0.
 | [ENT-017](../product/11-enterprise.md#ent-017--append-only-audit-log) | §4.7 `audit_events`: no UPDATE/DELETE for any app role, hash chain | `itest:audit-append-only`; `itest:audit-hash-chain` |
 | [ENT-018](../product/11-enterprise.md#ent-018--audit-viewer) | §4.7 audit indexes on actor, action, resource | `bench:pg-audit-filter` (10⁴ events, ≤ 50 ms) |
 | [ENT-019](../product/11-enterprise.md#ent-019--siem-export) | §4.7 `audit_export_cursors` | `itest:audit-export-cursor` |
-| [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.1 RLS on every table (from #59: `orgs`, `tenant_bindings`; partial, roadmap Table 2.1c); §4.11 drop-partition retention; T11-001 no extensions | `itest:rls-isolation`; `itest:retention-drop`; `itest:no-extensions` (vanilla PG 15) |
+| [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.1 RLS on every table (from #59: `orgs`, `tenant_bindings`; from #61: `folders`, `boards`, `board_versions`, `audit_events` and its partitions, `audit_chain_heads`, `stars`, `recent_views`; partial, roadmap Table 2.1c); §4.11 drop-partition retention; T11-001 no extensions | `itest:rls-isolation`; `itest:retention-drop`; `itest:no-extensions` (vanilla PG 15) |
 | [ENT-021](../product/11-enterprise.md#ent-021--large-artefacts-in-optional-object-storage) | §4.15 object references with `lo_blobs` fallback | `itest:object-store-fallback` |
 | [ENT-022](../product/11-enterprise.md#ent-022--versioned-content-with-diff-and-restore) | §4.3 `<kind>` + `<kind>_versions`, diff and restore | `itest:versions-diff-restore` |
 | [ENT-023](../product/11-enterprise.md#ent-023--yaml-export) | §4.9 YAML envelope | `itest:yaml-roundtrip` (byte-identical canonical YAML) |
@@ -223,6 +223,12 @@ An unset `pulsus.org_id` yields `NULL`, so a missing context returns zero rows (
 partition is queried directly. `pulsus_app` MUST therefore have no privilege on any partition;
 partitions MUST be created by `pulsus_maint` with privileges revoked from `PUBLIC` and
 `pulsus_app`. A CI check enumerates `pg_inherits` and asserts this.
+
+*Until the worker's maintenance job exists (#61, 2026-11-20):* the audit partitions are created by
+the definer function `pulsus_audit_partitions_maintain` (§4.11), owned by `pulsus_owner`, because
+`CREATE TABLE … PARTITION OF` and `DETACH` need the parent's owner. Each partition it creates has
+RLS enabled and forced with policy `org_isolation`, and grants nothing to `PUBLIC` or `pulsus_app`
+(`itest:rls-isolation`).
 
 #### T11-027 — Pre-authentication lookups through definer functions
 **MUST** — Lookups that happen before the org is known (session cookie, API token, SCIM bearer,
@@ -372,6 +378,16 @@ The same `<kind>` + `<kind>_versions` pair is used for:
 
 `stars`, `recent_views (org_id, user_id, kind, id, viewed_at)` (kept to 200 per user) and `tags`
 are small, unversioned tables.
+
+*#61 subset (2026-11-20, migration 2):*
+- `boards` ships without `tags`, `search`, `managed_by` and `incident_open_count`; each is added,
+  expand-only, with its feature.
+- Integer columns are `bigint` (squawk `prefer-bigint-over-int`), and `board_versions.spec` has no
+  `lz4` compression setting, because a vanilla build may lack lz4 (T11-001).
+- `stars (org_id, user_id, kind, object_id, created_at)` and `recent_views (org_id, user_id, kind,
+  id, viewed_at)`, both keyed by all columns but the timestamp, `kind` limited to `board`.
+- Every organisation has a root folder (`uid` `root`, path `/`): seeded with the organisation and
+  ensured on its first board.
 
 #### T11-006 — Versions are immutable
 **MUST** — A save MUST insert version `n+1` and move `head_version` in one transaction, with an
@@ -621,12 +637,17 @@ CREATE TABLE import_jobs (org_id uuid, id uuid, kind text, status text, report j
 CREATE TABLE backfills (name text PRIMARY KEY, cursor jsonb, done bool NOT NULL DEFAULT false, updated_at timestamptz);
 ```
 
+*Audit chain head (#61, 2026-11-20):* `audit_chain_heads (org_id, last_at, last_id, last_hash)`
+holds each organisation's chain head. It is not under the retention floor, so the chain continues
+across it, and it is updated in the event's transaction (`pulsus_app` has no `DELETE`).
+
 #### T11-017 — Audit is append-only and hash-chained
 **MUST** — `audit_events` MUST NOT be updatable or deletable by `pulsus_app` or `pulsus_ro`; only
 `pulsus_maint` MAY drop whole expired partitions. Each event MUST carry `hash = SHA-256(prev_hash ‖
 canonical(event))`, chained per org. The insert takes `pg_advisory_xact_lock(hashtext(org_id::text))`,
 which serialises inserts per org; the expected rate (≤ 100/s per org) is far below the contention
-point.
+point. The previous hash is read from `audit_chain_heads` (`FOR UPDATE`), never from the newest
+visible event, which may be below the retention floor (T11-010).
 
 - Exports, gated customer lookups (ENT-008), AI tool calls, silences, acks and actions are audit
   actions; data-access audit (M-UI6) is sampled per org policy.
@@ -770,6 +791,19 @@ Partition maintenance is Dash's own job (about 300 lines in `dash-store::partiti
 `worker` role under a `job_leases` lease; it MUST NOT depend on `pg_partman`, `pg_cron` or
 TimescaleDB, which not every managed Postgres offers.
 
+*Until that job exists (#61, 2026-11-20):* `audit_events` is the first partitioned table. The
+`SECURITY DEFINER` function `pulsus_audit_partitions_maintain(months)` (owned by `pulsus_owner`,
+`search_path = pg_catalog, pg_temp`, every name qualified, executable by `pulsus_app`, months 1–12)
+creates the class-13 leaves `audit_events_r13_YYYY_MM` for the current UTC month and 3 months
+ahead, and detaches and drops a leaf once its upper bound is more than 13 months old. `migrate`
+calls it on every run, and `serve` at start and then every 24 h (1 h after a failure). Leaves are
+validated, never trusted by name: a relation with a leaf's name that is not an ordinary table, a
+direct child of `audit_events_r13`, owned by `pulsus_owner`, with exactly the month's bounds, fails
+the call with `audit_partition_collision` (SQLSTATE `PD001`). Migration 2 revokes `CREATE` on
+`public` from `PUBLIC`, `pulsus_app` and `pulsus_maint`; it, and every later `migrate`, fails with
+`schema_create_grant` (SQLSTATE `PD002`) while any role other than `pulsus_owner` may create in
+`public`.
+
 #### T11-009 — Per-org retention through retention classes
 **MUST** — Per-org retention MUST be implemented as **retention classes**: each derived-state table
 is `PARTITION BY LIST (rclass)`, and each class is sub-partitioned `BY RANGE` on time. Every row is
@@ -833,6 +867,13 @@ CREATE POLICY org_isolation ON alert_transitions
 for daily tables) for every class in use, and there MUST be no `DEFAULT` partition. A horizon below
 1 grain MUST raise a self-telemetry alert ([T19](T19-deployment.md) §4.10); an insert that finds no
 partition fails loudly rather than landing in a catch-all.
+
+*Audit partitions (#61, 2026-11-20):* until the self-telemetry exporter publishes the same state, the
+low-horizon alert is the `/readyz` check `audit_partitions` plus the error record
+`audit_partition_horizon_low`. The check is `unknown` before the first maintenance run; `error`
+(503) after 3 consecutive failed runs or when the current month has no valid leaf; `low` (200)
+after 1 or 2 failed runs or with a horizon of 0 or 1 month, below the 2 grains this rule requires;
+otherwise `ok`. Operators alert on `audit_partitions != ok`.
 
 **Table 4.11b — Retention of other tables**
 
@@ -1314,3 +1355,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
    longer an open question here.
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): migrations by `goose` and repositories on `pgx` + `sqlc` (§4.8, T11-013, T11-015); `internal/store` replaces `dash-store` (§5.1, T11-023); Rust-specific mentions made language-neutral; OpenAPI spec first |
 | 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones and §11 move the identity tables from M-UI1 to M-UI6; §4.2 notes that `orgs` and `tenant_bindings` ship first; §3 ENT-020 row marks the #59 subset (ENT-020 stays M-UI1); `tenant_bindings.credentials_ref` becomes `text`, a secret reference (`env:NAME` or `file:/path`; `secret:<uuid>` with the `secrets` table) under a CHECK, never a value; §4.1 adds the roles script and the non-tenant `install_state`; T11-002 note on the root table `orgs` |
+| 1.3-rc | 2026-11-20 | #61 Part A (migration 2): §3 ENT-020 row adds the board tables, `audit_events` and its partitions; §4.3 notes the boards subset (no `tags`, `search`, `managed_by`, `incident_open_count`; `bigint` columns; no `lz4`), the `stars` and `recent_views` DDL and the root folder; §4.7 adds `audit_chain_heads` (the chain head outside the retention floor) and T11-017 reads the previous hash from it; T11-008, T11-021 and T11-026 note the audit partition function owned by `pulsus_owner` until the worker job exists (3 months ahead, drop after 13 months, leaf validation, `REVOKE CREATE ON SCHEMA public`), and the `/readyz` check `audit_partitions` as the low-horizon alert |
