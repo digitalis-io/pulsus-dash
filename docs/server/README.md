@@ -44,8 +44,8 @@ build/pulsus-dash serve --config my.yaml     # as pulsus_app
 Errors go to stderr, prefixed `pulsus-dash: `. With no command or an unknown one, the binary
 prints `usage: pulsus-dash <serve|migrate|config check|version> [flags]` and exits 2.
 
-**`version`** prints `pulsus-dash 0.1.0-dev (commit <sha>, go1.27.4, schema 1)`. With `--json` it
-prints `{"version":…,"commit":…,"go":…,"schema":1}`, where `schema` is the latest migration
+**`version`** prints `pulsus-dash 0.1.0-dev (commit <sha>, go1.27.4, schema 2)`. With `--json` it
+prints `{"version":…,"commit":…,"go":…,"schema":2}`, where `schema` is the latest migration
 embedded in the binary.
 
 **`serve`** start-up steps, in order. The first failure ends the process.
@@ -68,8 +68,9 @@ embedded in the binary.
 6. Refuse a role that is a superuser or has `BYPASSRLS`:
    `postgres role "postgres" bypasses row-level security; serve must connect as pulsus_app`.
 7. The schema version must be the binary's latest or one newer (T11-015, T19-007). Otherwise the
-   message is `database schema version 0 is older than this binary requires (1); run pulsus-dash
-   migrate` or `database schema version 3 is newer than this binary supports (latest 1, window +1)`.
+   message is `database schema version 1 is older than this binary requires (2); run pulsus-dash
+   migrate` or `database schema version 4 is newer than this binary supports (latest 2, window +1)`.
+   A database at version 2 or 3 is accepted.
 8. The first-run seed must exist: `database is not initialised; run pulsus-dash migrate`.
 9. Listen on `server.listen`, then log `msg=listening addr=…`. If `server.public_url` is set,
    start the [public-URL self-check](#public-url-self-check).
@@ -81,13 +82,13 @@ embedded in the binary.
 
 | Situation | Output |
 |---|---|
-| Migrations applied | one `applied 00001_tenancy.sql` per file, then `schema at version 1` |
-| Nothing to apply | `schema at version 1; nothing to apply` |
-| Database one version ahead | `schema at version 2 (one ahead of this binary); nothing to apply` |
+| Migrations applied | one `applied <file>` per file (`applied 00001_tenancy.sql`, `applied 00002_boards.sql` from empty), then `schema at version 2` |
+| Nothing to apply | `schema at version 2; nothing to apply` |
+| Database one version ahead | `schema at version 3 (one ahead of this binary); nothing to apply` |
 | Seed written / already present | `seeded organisation "default" with tenant binding "default"` / `organisation already seeded` |
 | `--dry-run` | one `pending <file>` per migration; `would seed …` when unseeded; last line `dry run: nothing changed` |
 | Another migrate holds the lock | `waiting for migration lock` (once). It waits for at most 5 minutes, then fails with `timed out after 5m0s waiting for the migration lock` |
-| Database more than one version ahead | `database schema version 3 is ahead of this binary (latest 1); refusing to migrate outside the N+1 window` (exit 1) |
+| Database more than one version ahead | `database schema version 4 is ahead of this binary (latest 2); refusing to migrate outside the N+1 window` (exit 1) |
 
 **`config check`** runs the same loading and validation as the command named by `--for`. It also
 resolves every set Postgres reference and checks the roles for `serve`. It never connects to
