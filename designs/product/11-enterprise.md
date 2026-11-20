@@ -292,7 +292,7 @@ in PostgreSQL, in tenant-scoped tables under row-level security. DDL is in
 | Audit events | Per org policy |
 
 #### ENT-020 — Configuration and derived state in Postgres
-**MUST** · M-UI6 · Admin, Platform
+**MUST** · M-UI1 · Admin, Platform
 
 All configuration and Dash-derived state (Table 6.1) MUST be stored in Postgres in tenant-scoped
 tables under row-level security. Time-partitioned tables MUST enforce per-tenant retention (Table 6.2)
@@ -427,7 +427,7 @@ all features pass with a self-hosted model and no outbound connection is attempt
 | [ENT-017](#ent-017--append-only-audit-log) | Append-only audit log | MUST | M-UI4 |
 | [ENT-018](#ent-018--audit-viewer) | Audit viewer | MUST | M-UI4 |
 | [ENT-019](#ent-019--siem-export) | SIEM export | MUST | M-UI6 |
-| [ENT-020](#ent-020--configuration-and-derived-state-in-postgres) | Configuration and derived state in Postgres | MUST | M-UI6 |
+| [ENT-020](#ent-020--configuration-and-derived-state-in-postgres) | Configuration and derived state in Postgres | MUST | M-UI1 |
 | [ENT-021](#ent-021--large-artefacts-in-optional-object-storage) | Large artefacts in optional object storage | MAY | M-UI4 |
 | [ENT-022](#ent-022--versioned-content-with-diff-and-restore) | Versioned content with diff and restore | MUST | M-UI5 |
 | [ENT-023](#ent-023--yaml-export) | YAML export | MUST | M-UI5 |
@@ -445,7 +445,7 @@ all features pass with a self-hosted model and no outbound connection is attempt
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Alert history in Postgres (D2); metrics scopes per ADR-0013 option B (pending O1); licence note (D3) |
 | 1.0-rc2 | 2026-11-19 | Decision D8: ENT-028 is a single Go binary with embedded client assets ([ADR-0015](../adr/0015-go-bff.md)) |
-| 1.1-rc | 2026-11-20 | Decision D12 (owner): authentication deferred. ENT-001, ENT-003, ENT-011 and ENT-020 and their dependents ENT-002, ENT-005, ENT-010, ENT-014 and ENT-015 move to M-UI6; ENT-028's acceptance serves the application shell as the fixed local principal, with no login page until M-UI6; note 5 updated |
+| 1.1-rc | 2026-11-20 | Decision D12 (owner): authentication deferred. ENT-001, ENT-003 and ENT-011 and their dependents ENT-002, ENT-005, ENT-010, ENT-014 and ENT-015 move to M-UI6 (ENT-020 stays M-UI1); ENT-028's acceptance serves the application shell as the fixed local principal, with no login page until M-UI6; note 5 updated |
 
 ## Resolved during formalisation
 

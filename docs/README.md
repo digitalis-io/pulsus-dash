@@ -11,4 +11,4 @@ Pages are written alongside the code, per issue, and reviewed with the code.
 | Client | [Client application](client/README.md) | IA-002, IA-015, IA-016, IA-020, IA-021, IA-022, IA-023, INT-032, VL-001, VL-010, VL-017, VL-021, PRF-033; T01-007, T01-008, T01-010, T02-004, T03-013, T03-014, T03-017, T08-005, T08-007, T08-008, T08-010, T08-022, T08-023, T08-027, T18-001, T18-004; ADR-0014, ADR-0016, ADR-0017 |
 | Client | [JavaScript supply chain](client/supply-chain.md) | T01-002, ADR-0014 §7 |
 | Server | [Server (BFF)](server/README.md) | T06-001, T06-003, T06-019, T06-026, T19-006, T19-007, T19-010; ADR-0015 |
-| Server | [Server database](server/database.md) | T06-016, T11-001, T11-002, T11-003, T11-012, T11-013, T11-015, T11-023; gates `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `ci:migrations`; ADR-0012 |
+| Server | [Server database](server/database.md) | ENT-020 (partial: `orgs`, `tenant_bindings` under RLS); T06-016, T11-001, T11-002, T11-003, T11-012, T11-013, T11-015, T11-023; gates `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `ci:migrations`; ADR-0012 |
