@@ -201,14 +201,14 @@ Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, 
 overlay, it records the focused control as operated; Tab never counts. The test fails if any
 collected control was never operated, or if a required state (every route, Not found, Signed out,
 the session error, and the chart gallery `/t/:tenant/dev/gallery`) was never visited, and prints
-the missing keys. L20 operates the header and sidebar on the gallery too; L22 operates the six chart
-crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip and the
-value text. Two names are normalised: the
-time range trigger is one control whatever range it shows, and the calendar grid one control
-whatever month. React Aria's screen-reader-only buttons are not counted: an empty button with
-`tabindex="-1"` whose parent is React Aria's VisuallyHidden wrapper (inline `clip-path: inset(50%)`),
-that is the popover "Dismiss" buttons and the calendar's second "Next"; Escape and the visible
-buttons are their keyboard equivalents. Any other control, including a visible empty icon button
+the missing keys. L20 operates the header and sidebar on the gallery too (the time dialog's Keep
+relative and Copy link exist only on pages with a view URL pattern, so not there); L22 operates the
+six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
+and the value text. Two names are normalised: the time range trigger is one control whatever range
+it shows, and the calendar grid one control whatever month. React Aria's screen-reader-only buttons
+are not counted: an empty button with `tabindex="-1"` whose parent is React Aria's VisuallyHidden
+wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons and the calendar's
+second "Next"; Escape and the visible buttons are their keyboard equivalents. Any other control, including a visible empty icon button
 with `tabindex="-1"`, is counted (the self-test checks this).
 
 **Adding a control:** run the keyboard script; if it lists the new control as uncovered, add the
