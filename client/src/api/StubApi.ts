@@ -3,7 +3,8 @@
  * the per-user preference the BFF stores from #61 and are kept in `localStorage`.
  *
  * Test hook: if `localStorage['pulsus-dash.stub.failSession']` is a positive integer n,
- * `getSession` rejects with `ApiError('network')` and stores n − 1.
+ * `getSession` rejects with `ApiError('network')` and stores n − 1. `pulsus-dash.stub.failSignOut`
+ * does the same for `signOut`.
  */
 import type { Api } from './Api';
 import { defaultSeed, defaultStarred } from './stubData';
@@ -16,6 +17,15 @@ export interface StubSeed {
 
 export const STUB_STARRED_KEY = (tenant: string): string => `pulsus-dash.stub.starred.${tenant}`;
 export const STUB_FAIL_SESSION_KEY = 'pulsus-dash.stub.failSession';
+export const STUB_FAIL_SIGN_OUT_KEY = 'pulsus-dash.stub.failSignOut';
+
+/** Consumes one failure from a test-hook counter; true when the call should fail. */
+function failOnce(key: string): boolean {
+  const n = Number(read(key) ?? '0');
+  if (!Number.isInteger(n) || n <= 0) return false;
+  write(key, String(n - 1));
+  return true;
+}
 
 function storage(): Storage | null {
   try {
@@ -59,9 +69,7 @@ export class StubApi implements Api {
 
   getSession(signal?: AbortSignal): Promise<Session> {
     return settle(() => {
-      const n = Number(read(STUB_FAIL_SESSION_KEY) ?? '0');
-      if (Number.isInteger(n) && n > 0) {
-        write(STUB_FAIL_SESSION_KEY, String(n - 1));
+      if (failOnce(STUB_FAIL_SESSION_KEY)) {
         throw new ApiError('network', 'stub: session request failed');
       }
       return structuredClone(this.seed.session);
@@ -98,7 +106,9 @@ export class StubApi implements Api {
   }
 
   signOut(): Promise<void> {
-    return settle(() => undefined);
+    return settle(() => {
+      if (failOnce(STUB_FAIL_SIGN_OUT_KEY)) throw new ApiError('network', 'stub: sign-out failed');
+    });
   }
 
   private boardsOf(tenant: string): BoardSummary[] {

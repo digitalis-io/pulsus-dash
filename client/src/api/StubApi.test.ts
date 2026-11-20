@@ -43,6 +43,14 @@ describe('stub api', () => {
     expect(localStorage.getItem('pulsus-dash.stub.starred.demo')).toBe('["b-1","b-2"]');
   });
 
+  it('fails sign-out as many times as the test hook says', async () => {
+    const api = new StubApi();
+    localStorage.setItem('pulsus-dash.stub.failSignOut', '1');
+    expect(await kindOf(api.signOut())).toBe('network');
+    expect(localStorage.getItem('pulsus-dash.stub.failSignOut')).toBe('0');
+    expect(await kindOf(api.signOut())).toBe('resolved');
+  });
+
   it('HttpApi is not implemented yet', async () => {
     const http = new HttpApi();
     expect(await kindOf(http.getSession())).toBe('notImplemented');

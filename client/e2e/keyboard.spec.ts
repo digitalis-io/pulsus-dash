@@ -595,6 +595,40 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       await expect(star).toHaveAttribute('aria-pressed', 'false');
     });
 
+    await test.step('L21 Sign out rejected', async () => {
+      await s.goto('/t/demo/boards');
+      // The stub's test hook rejects the next two sign-out calls; the third succeeds.
+      await page.evaluate(() => {
+        localStorage.setItem('pulsus-dash.stub.failSignOut', '2');
+      });
+      const alert = page.getByRole('alert');
+      const retry = alert.getByRole('button', { name: 'Retry' });
+      const user = page.getByRole('button', { name: 'User menu: Ada Admin' });
+      await s.menuItem('button "User menu: Ada Admin"', 4);
+      await expect(alert).toHaveText(/Could not sign out\. You are still signed in\./);
+      await expect(retry).toBeFocused();
+      // The session is kept: still in the shell, on the same page.
+      expect(s.path()).toBe('/t/demo/boards');
+      await expect(nav).toBeVisible();
+      await expect(user).toBeVisible();
+      await s.on('button "Dismiss"', 'Enter', { back: true });
+      await expect(alert).toBeHidden();
+      await expect(user).toBeFocused();
+      await s.menuItem('button "User menu: Ada Admin"', 4);
+      await expect(retry).toBeFocused();
+      expect(s.path()).toBe('/t/demo/boards');
+      await expect(nav).toBeVisible();
+      await s.on('button "Retry"');
+      await expect.poll(() => s.path()).toBe('/signed-out');
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('You have signed out');
+      expect(await page.evaluate(() => localStorage.getItem('pulsus-dash.stub.failSignOut'))).toBe(
+        '0',
+      );
+      const covered = [...h.operated()];
+      expect(covered).toContain('/t/:tenant/boards + none › button "Retry"');
+      expect(covered).toContain('/t/:tenant/boards + none › button "Dismiss"');
+    });
+
     await test.step('L20 Every page: header and sidebar controls and their overlays', async () => {
       for (const url of [
         '/t/demo/boards',

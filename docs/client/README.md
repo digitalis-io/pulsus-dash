@@ -216,7 +216,8 @@ three Demo boards (the third has a long title) and none in Sandbox. Starred boar
 `localStorage['pulsus-dash.stub.starred.<tenant>']` (Demo starts with `b-1`); unknown uids are kept
 there and dropped by the sidebar. Test hook: a positive integer in
 `localStorage['pulsus-dash.stub.failSession']` makes that many session calls fail with
-`ApiError('network')`.
+`ApiError('network')`, and `localStorage['pulsus-dash.stub.failSignOut']` does the same for
+sign-out (the keyboard script's L21 uses it).
 
 ## Text and formatting (T08-027)
 
