@@ -1,6 +1,6 @@
 /**
  * Every user-visible string of the client, British English (T08-027). Components call `t(id)`;
- * a missing id is a type error. `{name}` placeholders are filled by `t(id, values)`.
+ * a missing id is a type error (gate proof: a client-only change). `{name}` placeholders are filled by `t(id, values)`.
  */
 export const messages = {
   'app.name': 'Pulsus Dash',
