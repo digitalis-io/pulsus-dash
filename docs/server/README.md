@@ -325,7 +325,8 @@ prints `pulsus-dash: asset integrity check failed: <reason>[ <path>]` and exits 
 `msg="assets verified" files=<n>` (logical files, variants not counted). After verification the
 set is held in memory and shared read-only; nothing is read from disk at run time.
 
-`serve --api-only` is for development only (Part C's `make dev-up` uses it with `npm run dev`). It
+`serve --api-only` is for development only, next to `VITE_API_MODE=http npm run dev`, which serves
+the client itself. It
 logs `msg="serving the API only (development); no client assets are served"` at `warn`, skips the
 assets (even an embedded set), and answers every document request with the 404 envelope. It
 therefore never serves anything unverified.
