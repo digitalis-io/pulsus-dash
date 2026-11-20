@@ -6,7 +6,15 @@
 import createClient, { type Client } from 'openapi-fetch';
 import type { Api } from './Api';
 import type { components, paths } from './gen/schema';
-import { ApiError, type BoardSummary, type Session } from './types';
+import type { InstantResult, RangeResult } from '../data/decode';
+import {
+  ApiError,
+  type BoardSummary,
+  type DataSourceStatus,
+  type InstantRequest,
+  type RangeRequest,
+  type Session,
+} from './types';
 
 type Bootstrap = components['schemas']['Bootstrap'];
 type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
@@ -81,5 +89,21 @@ export class HttpApi implements Api {
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */
   signOut(): Promise<void> {
     return Promise.resolve();
+  }
+
+  queryRange(_tenant: string, _req: RangeRequest, _signal?: AbortSignal): Promise<RangeResult> {
+    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  }
+
+  queryInstant(
+    _tenant: string,
+    _req: InstantRequest,
+    _signal?: AbortSignal,
+  ): Promise<InstantResult> {
+    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  }
+
+  checkDataSource(_tenant: string, _signal?: AbortSignal): Promise<DataSourceStatus> {
+    return Promise.reject(new ApiError('notImplemented', 'the data-source check arrives with #62'));
   }
 }

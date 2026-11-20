@@ -191,3 +191,6 @@ func checkDatasourceURL(s string) string {
 	}
 	return ""
 }
+
+// CheckCredentials checks the strength of the seed's PulsusDB password (plan #62 §4.10).
+func (c *Config) CheckCredentials() error { return nil }

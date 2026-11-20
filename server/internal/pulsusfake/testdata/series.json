@@ -1,0 +1,10 @@
+{
+  "name": "series",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/series", "sanitised": "labels, values, timestamps and query id replaced"},
+  "match": {"method": "POST", "paths": ["/api/v1/series"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-series-1"},
+    "body": {"status":"success","data":[{"__name__":"up","job":"api"}]}
+  }
+}

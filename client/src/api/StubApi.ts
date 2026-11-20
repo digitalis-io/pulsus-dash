@@ -8,7 +8,15 @@
  */
 import type { Api } from './Api';
 import { defaultSeed, defaultStarred } from './stubData';
-import { ApiError, type BoardSummary, type Session } from './types';
+import type { InstantResult, RangeResult } from '../data/decode';
+import {
+  ApiError,
+  type BoardSummary,
+  type DataSourceStatus,
+  type InstantRequest,
+  type RangeRequest,
+  type Session,
+} from './types';
 
 export interface StubSeed {
   session: Session;
@@ -109,6 +117,22 @@ export class StubApi implements Api {
     return settle(() => {
       if (failOnce(STUB_FAIL_SIGN_OUT_KEY)) throw new ApiError('network', 'stub: sign-out failed');
     });
+  }
+
+  queryRange(_tenant: string, _req: RangeRequest, _signal?: AbortSignal): Promise<RangeResult> {
+    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  }
+
+  queryInstant(
+    _tenant: string,
+    _req: InstantRequest,
+    _signal?: AbortSignal,
+  ): Promise<InstantResult> {
+    return Promise.reject(new ApiError('notImplemented', 'query routes arrive with #62'));
+  }
+
+  checkDataSource(_tenant: string, _signal?: AbortSignal): Promise<DataSourceStatus> {
+    return Promise.reject(new ApiError('notImplemented', 'the data-source check arrives with #62'));
   }
 
   private boardsOf(tenant: string): BoardSummary[] {

@@ -16,9 +16,15 @@ type Config struct {
 	Server             Server     `yaml:"server"`
 	Postgres           Postgres   `yaml:"postgres"`
 	Datasource         Datasource `yaml:"datasource"`
+	Pulsusdb           PulsusDB   `yaml:"pulsusdb"`
 	Bootstrap          Bootstrap  `yaml:"bootstrap"`
 	Log                Log        `yaml:"log"`
 	AllowInlineSecrets bool       `yaml:"allow_inline_secrets"`
+}
+
+// PulsusDB holds the PulsusDB client settings (T06 §4.9).
+type PulsusDB struct {
+	TenantConcurrency int32 `yaml:"tenant_concurrency"`
 }
 
 // Server holds process settings.

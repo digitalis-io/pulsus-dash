@@ -19,6 +19,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
 
 // Probe is the readiness view of Postgres; *store.Db implements it.
@@ -41,6 +42,8 @@ type Deps struct {
 	Now func() time.Time
 	// CSPReadTimeout is the csp-report body deadline; 0 means 5 s.
 	CSPReadTimeout time.Duration
+	// PulsusDB is the only PulsusDB client (T06-005); nil answers every data route 503.
+	PulsusDB *pulsusdb.Client
 }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)

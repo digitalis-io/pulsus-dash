@@ -1,0 +1,10 @@
+{
+  "name": "runtimeinfo",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/status/runtimeinfo", "sanitised": "labels, values, timestamps and query id replaced"},
+  "match": {"method": "GET", "paths": ["/api/v1/status/runtimeinfo"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-runtimeinfo-1"},
+    "body": {"status":"success","data":{"startTime":"2026-01-01T00:00:00.000000000+00:00","storageRetention":"30d","rollupLevels":["1m","12m","2h","1d"]}}
+  }
+}

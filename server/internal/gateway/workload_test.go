@@ -1,0 +1,156 @@
+package gateway
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/core"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+)
+
+// The budget workloads of plan #62 A.11. W1: a 1 000 × 1 000 matrix decoded, placed on the grid
+// and encoded; W2: 1 000 sequential range requests for a 1-series, 60-point matrix.
+
+const workloadFrom = 1767225600000
+
+// matrixBody is a matrix of n series of points points at 5 s from workloadFrom: values "1.5",
+// every 7th "NaN".
+func matrixBody(n, points int) []byte {
+	var b bytes.Buffer
+	b.WriteString(`{"status":"success","data":{"resultType":"matrix","result":[`)
+	for i := range n {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `{"metric":{"__name__":"w","instance":"i-%04d","job":"bench"},"values":[`, i)
+		for j := range points {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			v := "1.5"
+			if j%7 == 0 {
+				v = "NaN"
+			}
+			fmt.Fprintf(&b, `[%d,"%s"]`, workloadFrom/1000+int64(j)*5, v)
+		}
+		b.WriteString("]}")
+	}
+	b.WriteString("]}}")
+	return b.Bytes()
+}
+
+// memTransport answers every request with body, after delay; it records the time it spent.
+type memTransport struct {
+	body  []byte
+	delay time.Duration
+	mu    sync.Mutex
+	spent time.Duration
+}
+
+func (m *memTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+		_ = req.Body.Close()
+	}
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
+	m.mu.Lock()
+	m.spent += time.Since(start)
+	m.mu.Unlock()
+	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(bytes.NewReader(m.body)), Request: req, ContentLength: int64(len(m.body))}, nil
+}
+
+func (m *memTransport) take() time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.spent
+	m.spent = 0
+	return d
+}
+
+// discard is a ResponseWriter that drops the body.
+type discard struct{ h http.Header }
+
+func (d *discard) Header() http.Header         { return d.h }
+func (d *discard) Write(p []byte) (int, error) { return len(p), nil }
+func (d *discard) WriteHeader(int)             {}
+func (d *discard) Flush()                      {}
+
+// workloadGateway is a gateway with the binding in memory (no Postgres), credentials configured
+// (so redaction is in the counted path) and the upstream m.
+func workloadGateway(m *memTransport) http.Handler {
+	b := core.TenantBinding{OrgID: testOrg, ID: demoBindingID, Slug: "demo", DatasourceURL: "http://localhost:9091",
+		CredentialsRef: "env:C", Kind: "pulsusdb"}
+	view := core.BootstrapView{Org: core.Org{ID: testOrg, Slug: "default", Name: "Default organisation"}, Bindings: []core.TenantBinding{b}}
+	logger := slog.New(slog.DiscardHandler)
+	return New(Deps{Logger: logger, Probe: &fakeProbe{version: 1}, SchemaLatest: 1,
+		Bootstrap: func(context.Context) (core.BootstrapView, error) { return view, nil },
+		PulsusDB: pulsusdb.New(pulsusdb.Options{Logger: logger, Transport: m,
+			Secrets: func(string) (string, error) { return "bench:pw-secret-bench", nil }})})
+}
+
+// rangeOnce runs one range request of points grid points and reports its status.
+func rangeOnce(h http.Handler, points int) int {
+	to := workloadFrom + int64(points-1)*5000
+	body := fmt.Sprintf(`{"query":"w","from":%d,"to":%d,"width_px":%d}`, workloadFrom, to, max(points, 1))
+	req := httptest.NewRequest(http.MethodPost, rangePath, strings.NewReader(body))
+	sw := &statusRecorder{}
+	h.ServeHTTP(&statusOnly{discard: discard{h: http.Header{}}, rec: sw}, req)
+	return sw.status
+}
+
+type statusRecorder struct{ status int }
+
+type statusOnly struct {
+	discard
+	rec *statusRecorder
+}
+
+func (s *statusOnly) WriteHeader(code int) {
+	if s.rec.status == 0 {
+		s.rec.status = code
+	}
+}
+
+func (s *statusOnly) Write(p []byte) (int, error) {
+	if s.rec.status == 0 {
+		s.rec.status = 200
+	}
+	return len(p), nil
+}
+
+// runW1 decodes, grids and encodes a series × points matrix once.
+func runW1(t testing.TB, series, points int) {
+	m := &memTransport{body: matrixBody(series, points)}
+	if code := rangeOnce(workloadGateway(m), points); code != 200 {
+		t.Fatalf("W1: status %d", code)
+	}
+}
+
+// runW2 runs n sequential range requests for a 1-series, 60-point matrix and returns each
+// request's duration minus the upstream's.
+func runW2(t testing.TB, n int, delay time.Duration) []time.Duration {
+	m := &memTransport{body: matrixBody(1, 60), delay: delay}
+	h := workloadGateway(m)
+	out := make([]time.Duration, 0, n)
+	for range n {
+		start := time.Now()
+		if code := rangeOnce(h, 60); code != 200 {
+			t.Fatalf("W2: status %d", code)
+		}
+		out = append(out, time.Since(start)-m.take())
+	}
+	return out
+}

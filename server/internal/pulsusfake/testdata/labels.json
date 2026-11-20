@@ -1,0 +1,10 @@
+{
+  "name": "labels",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/labels", "sanitised": "labels, values, timestamps and query id replaced"},
+  "match": {"method": "GET", "paths": ["/api/v1/labels"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-labels-1"},
+    "body": {"status":"success","data":["__name__","instance","job"]}
+  }
+}

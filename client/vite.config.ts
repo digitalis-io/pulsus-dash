@@ -27,6 +27,8 @@ export default defineConfig({
     strictPort: true,
     headers: devHeaders,
     proxy: { '/api': bff, '/auth': bff },
+    // The tests import the shared wire fixtures (plan #62: golden frames, step cases) with ?raw.
+    fs: { allow: [root, `${root}../wire`] },
   },
   preview: {
     port: 4173,

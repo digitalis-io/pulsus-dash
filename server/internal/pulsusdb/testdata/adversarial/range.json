@@ -1,0 +1,10 @@
+{
+  "name": "adv-range",
+  "provenance": {"synthetic": "adversarial: the binding's secret, Basic token, URL and host planted in every string field (unit:redact-adversarial)"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "adv_range"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "@SECRET@", "X-Pulsus-Read-Cache": "@SECRET@", "X-Pulsus-Read-Cache-Through": "@SECRET@", "Retry-After": "@SECRET@"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"@SECRET@_x":"a-@SECRET@","esc":"Zq9-planted-SECRET","addr":"@TOKEN@ @HOST@"},"values":[[1767225600,"1"]]},{"metric":{"@SECRET@":"@SECRET@"},"values":[[1767225605,"2"]]}]},"warnings":["see @URL@/api"],"infos":["@SECRET@"]}
+  }
+}

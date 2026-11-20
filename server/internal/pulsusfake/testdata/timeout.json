@@ -1,0 +1,10 @@
+{
+  "name": "timeout",
+  "provenance": {"synthetic": "a PulsusDB timeout could not be provoked read-only; shape per the PromQL-compatible error format the captured errors use"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range", "/api/v1/query"], "query": "sum(rate(slow_total[1y]))"},
+  "response": {
+    "status": 503,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-timeout-1"},
+    "body": {"status":"error","errorType":"timeout","error":"query timed out in query execution"}
+  }
+}
