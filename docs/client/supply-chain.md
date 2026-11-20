@@ -88,8 +88,10 @@ HTML file of `dist/` (`acorn`, `postcss`, `parse5`) and classifies URLs by posit
   `srcset`, `poster`, `action`, `data`, `background` and `setAttribute` with those names; CSS
   `url()`, `image-set()`, `src()` and `@import`; HTML resource attributes. The argument is resolved
   through string literals, templates, `+` and `const` bindings (`eslint-scope`), so a URL kept in a
-  constant still fails. One value is accepted as the whole first argument of `new URL(…)`:
-  `http://localhost`, which react-router uses as a URL-parsing base.
+  constant still fails. `new URL(input, base)` resolves to its input when that is absolute, else to
+  its base, so a URL object built on any absolute base that reaches a sink (directly, through a
+  `const`, or as `.href`) fails. The construction `new URL('http://localhost')` on its own is
+  accepted: react-router uses it as a URL-parsing base and never passes it to a sink.
 - **Text:** every URL in a JS string must equal a `buildUrlAllowlist` entry (`third-party-host`);
   one that runs into a `${…}` fails as `computed-url`. CSS and HTML have no allowlist. Allowlist
   entries that no longer occur are reported as `unused-url-allowlist` warnings, so the list shrinks

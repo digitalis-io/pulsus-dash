@@ -60,8 +60,9 @@ const HTML_RESOURCE_ATTRS = new Set([
 const MAX_STEPS = 16;
 /**
  * The loopback origin as a URL-parsing base, the only value allowed as the whole first argument of
- * `new URL(…)`: react-router 8 builds `new URL('http://localhost')` to resolve paths. It names no
- * third-party host, and the CSP (`connect-src 'self'`) would block a request to it.
+ * `new URL(…)`: react-router 8 builds `new URL('http://localhost')` to resolve paths. The exception
+ * covers the construction only: a URL object built on it (or on any absolute base) that reaches a
+ * resource sink, directly or through a `const`, is resolved there and fails.
  */
 const URL_PARSE_BASES: ReadonlySet<string> = new Set(['http://localhost']);
 
@@ -143,6 +144,22 @@ class Resolver {
     return def.node.init ?? null;
   }
 
+  /**
+   * `new URL(input, base?)` as a value: the input when it is absolute, else the base followed by an
+   * unknown part (so a URL built on any absolute base, the loopback parsing base included, counts as
+   * absolute when it reaches a sink). Other constructors are unknown.
+   */
+  resolveUrl(node: ESTree.NewExpression, steps: { n: number }): Part[] {
+    if (node.callee.type !== 'Identifier' || node.callee.name !== 'URL') return [null];
+    const [input, base] = node.arguments;
+    if (input === undefined || input.type === 'SpreadElement') return [null];
+    const parts = this.resolve(input, steps);
+    if (absoluteUrl(parts) !== null) return parts;
+    if (base === undefined || base.type === 'SpreadElement') return [null];
+    const b = this.resolve(base, steps);
+    return absoluteUrl(b) === null ? [null] : [...b, null];
+  }
+
   resolve(node: ESTree.Node, steps: { n: number }): Part[] {
     if (++steps.n > MAX_STEPS) return [null];
     switch (node.type) {
@@ -166,9 +183,28 @@ class Resolver {
         const init = this.constInit(node);
         return init === null ? [null] : this.resolve(init, steps);
       }
+      case 'NewExpression':
+        return this.resolveUrl(node, steps);
       case 'MemberExpression': {
+        if (
+          node.object.type === 'NewExpression' &&
+          !node.computed &&
+          node.property.type === 'Identifier' &&
+          node.property.name === 'href'
+        ) {
+          return this.resolveUrl(node.object, steps);
+        }
         if (node.object.type !== 'Identifier') return [null];
         const init = this.constInit(node.object);
+        // `u.href` of a `const u = new URL(…)` is that URL.
+        if (
+          init?.type === 'NewExpression' &&
+          !node.computed &&
+          node.property.type === 'Identifier' &&
+          node.property.name === 'href'
+        ) {
+          return this.resolveUrl(init, steps);
+        }
         if (init?.type !== 'ObjectExpression') return [null];
         const p = node.property;
         const key =

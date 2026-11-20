@@ -42,6 +42,12 @@ describe('build origins: sink resolution (T05-002)', () => {
     expect(lines(`${fixtures}bad`, 'third-party-resource', 'assets/r.js')).toEqual([1, 2, 3, 4, 5]);
     expect(lines(`${fixtures}good`, 'third-party-resource', 'assets/r.js')).toEqual([]);
   });
+
+  it('resolves URL objects built on an allowed or loopback base when they reach a sink', () => {
+    expect(lines(`${fixtures}bad`, 'third-party-resource', 'assets/u.js')).toEqual([1, 2, 3, 4]);
+    // The same construction that reaches no sink is the allowed parsing base (good/assets/e.js).
+    expect(lines(`${fixtures}good`, 'third-party-resource', 'assets/e.js')).toEqual([]);
+  });
 });
 
 describe('build origins real build', () => {
