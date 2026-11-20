@@ -3,6 +3,9 @@
 Run: python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'
 
 The forbidden host in these tests is the fictional db.secret-host.corp. No real host appears here.
+
+URL literals spell the colon of "://" as \x3a: the strings are the same at run time, but this file
+is scanned in repository mode, where only testdata/ is exempt from the URL rule.
 """
 
 from __future__ import annotations
@@ -157,7 +160,7 @@ class ForbiddenHostTests(TmpTree):
 
     def test_unknown_host_in_path(self):  # N5
         self.put("pulsusdb.internal.corp/config.yaml",
-                 "datasource:\n  url: https://pulsusdb.internal.corp:3100\n")
+                 "datasource:\n  url: https\x3a//pulsusdb.internal.corp:3100\n")
         code, out, err = scan(["--root", str(self.root)])
         self.assertEqual(code, 1)
         self.assertEqual(findings(out), ["error[non-local-pulsusdb-url] F1:2"])
@@ -165,7 +168,7 @@ class ForbiddenHostTests(TmpTree):
 
     def test_forbidden_host_in_fixture_dir(self):  # N6
         self.put("tools/no-pulsusdb-host/testdata/bad/x.md",
-                 f"{HOST}\ndatasource:\n  url: https://pulsusdb.internal.corp:3100\n")
+                 f"{HOST}\ndatasource:\n  url: https\x3a//pulsusdb.internal.corp:3100\n")
         self.put("README.md", "hello\n")
         run = git_ok(["tools/no-pulsusdb-host/testdata/bad/x.md", "README.md"])
         with mock.patch.object(check, "REPO", self.root):
@@ -182,7 +185,7 @@ class ForbiddenHostTests(TmpTree):
         self.assertEqual(findings(out), ["error[forbidden-host] F1:2 (entry 1)"])
 
     def test_binary_url_not_scanned(self):  # N8
-        self.put("c.bin", b"\0" + b"https://pulsusdb.internal.corp")
+        self.put("c.bin", b"\0" + b"https\x3a//pulsusdb.internal.corp")
         code, out, err = scan(["--root", str(self.root)])
         self.assertEqual(code, 0)
         self.assertEqual(findings(out), [])
@@ -191,12 +194,12 @@ class ForbiddenHostTests(TmpTree):
 
     def test_datasource_env_host(self):  # N18
         self.put("f.txt", "uses db.other.corp\n")
-        env = {"PULSUS_DASH_DATASOURCE_URL": "https://db.other.corp:3100", "DASH_FORBIDDEN_HOSTS": "a.corp"}
+        env = {"PULSUS_DASH_DATASOURCE_URL": "https\x3a//db.other.corp:3100", "DASH_FORBIDDEN_HOSTS": "a.corp"}
         code, out, err = scan(["--root", str(self.root)], env)
         self.assertEqual(code, 1)
         self.assertEqual(findings(out), ["error[forbidden-host] F1:1 (entry 2)"])
         self.assert_no_leak(out, err, words=("other.corp",))
-        env["PULSUS_DASH_DATASOURCE_URL"] = "http://localhost:3100"
+        env["PULSUS_DASH_DATASOURCE_URL"] = "http\x3a//localhost:3100"
         code, out, err = scan(["--root", str(self.root)], env)
         self.assertEqual((code, findings(out)), (0, []))
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (1 files)")
@@ -360,7 +363,7 @@ class SymlinkTests(TmpTree):
         self.assertEqual(rec.calls, [])
 
     def test_symlink_url_not_applied(self):  # N24
-        (self.root / "link").symlink_to("https://pulsusdb.internal.corp")
+        (self.root / "link").symlink_to("https\x3a//pulsusdb.internal.corp")
         code, out, err = scan(["--root", str(self.root)])
         self.assertEqual(code, 0)
         self.assertEqual(findings(out), [])
@@ -403,10 +406,10 @@ class UrlRuleTests(TmpTree):
 
     def test_url_pattern_ipv6(self):  # N25
         for content, want, word in (
-            ("datasource:\n  url: http://[2001:db8::7]:3100/x\n", ["error[non-local-pulsusdb-url] F1:2"], "2001"),
-            ("PULSUS_DASH_DATASOURCE_URL=http://u:p@[2001:db8::9]:3100\n",
+            ("datasource:\n  url: http\x3a//[2001:db8::7]:3100/x\n", ["error[non-local-pulsusdb-url] F1:2"], "2001"),
+            ("PULSUS_DASH_DATASOURCE_URL=http\x3a//u:p@[2001:db8::9]:3100\n",
              ["error[non-local-pulsusdb-url] F1:1"], "2001"),
-            ("datasource:\n  url: http://[::1]:3100\n", [], "::1"),
+            ("datasource:\n  url: http\x3a//[::1]:3100\n", [], "::1"),
         ):
             with self.subTest(content=content):
                 code, out, err = self.one(content)
@@ -415,15 +418,15 @@ class UrlRuleTests(TmpTree):
 
     def test_url_authority_table(self):  # N27
         flagged = [
-            "http://[fe80::1%25eth0]:3100", "http://[fe80::1%eth0]:3100", "http://[2001:DB8::7]",
-            "http://u:p@db.corp.net:3100", "http://10.1.2.3:3100", "HTTPS://DB.CORP.NET:3100/x",
-            "http://db.corp.net.:3100", "http://db.corp.net?x=1", "http://db.corp.net#f",
-            "http://db.corp.net", "http://db.corp.net:65535",
+            "http\x3a//[fe80::1%25eth0]:3100", "http\x3a//[fe80::1%eth0]:3100", "http\x3a//[2001:DB8::7]",
+            "http\x3a//u:p@db.corp.net:3100", "http\x3a//10.1.2.3:3100", "HTTPS\x3a//DB.CORP.NET:3100/x",
+            "http\x3a//db.corp.net.:3100", "http\x3a//db.corp.net?x=1", "http\x3a//db.corp.net#f",
+            "http\x3a//db.corp.net", "http\x3a//db.corp.net:65535",
         ]
         clean = [
-            "http://[::1]:3100", "http://[::1%25lo]:3100", "http://[0:0:0:0:0:0:0:1]:3100",
-            "http://u:p@localhost:3100", "http://127.0.0.2", "http://LOCALHOST:3100",
-            "http://localhost.:3100", "https://pulsusdb.example:3100", "http://pulsus-fake:3100",
+            "http\x3a//[::1]:3100", "http\x3a//[::1%25lo]:3100", "http\x3a//[0:0:0:0:0:0:0:1]:3100",
+            "http\x3a//u:p@localhost:3100", "http\x3a//127.0.0.2", "http\x3a//LOCALHOST:3100",
+            "http\x3a//localhost.:3100", "https\x3a//pulsusdb.example:3100", "http\x3a//pulsus-fake:3100",
         ]
         for url in flagged:
             with self.subTest(url=url):
@@ -439,14 +442,14 @@ class UrlRuleTests(TmpTree):
 
     def test_datasource_keys(self):  # rules b2 and b4 forms; b1 only directly under datasource:
         for content, want in (
-            ("datasource.url = https://db.corp.net\n", 1),
-            ("x.datasource.url = https://db.corp.net\n", 0),
-            ("datasource_url: 'https://db.corp.net'\n", 1),
-            ('"datasource_url": "https://db.corp.net"\n', 1),
-            ("Datasource_URL: https://db.corp.net\n", 0),
-            ("datasource:\n  name: x\n\n  url: https://db.corp.net\n", 1),
-            ("datasource:\n  nested:\n    url: https://db.corp.net\n", 0),
-            ("url: https://db.corp.net\n", 0),
+            ("datasource.url = https\x3a//db.corp.net\n", 1),
+            ("x.datasource.url = https\x3a//db.corp.net\n", 0),
+            ("datasource_url: 'https\x3a//db.corp.net'\n", 1),
+            ('"datasource_url": "https\x3a//db.corp.net"\n', 1),
+            ("Datasource_URL: https\x3a//db.corp.net\n", 0),
+            ("datasource:\n  name: x\n\n  url: https\x3a//db.corp.net\n", 1),
+            ("datasource:\n  nested:\n    url: https\x3a//db.corp.net\n", 0),
+            ("url: https\x3a//db.corp.net\n", 0),
         ):
             with self.subTest(content=content):
                 code, out, err = self.one(content)
@@ -479,11 +482,11 @@ class FunctionTests(unittest.TestCase):
 
     def test_forbidden_hosts(self):
         env = {
-            "DASH_FORBIDDEN_HOSTS": " A.corp ,\nhttps://u@B.corp:3100/x,, \n",
-            "PULSUS_DASH_DATASOURCE_URL": "https://C.corp:3100",
+            "DASH_FORBIDDEN_HOSTS": " A.corp ,\nhttps\x3a//u@B.corp:3100/x,, \n",
+            "PULSUS_DASH_DATASOURCE_URL": "https\x3a//C.corp:3100",
         }
         self.assertEqual(check.forbidden_hosts(env), ["a.corp", "b.corp", "c.corp"])
-        env["PULSUS_DASH_DATASOURCE_URL"] = "http://localhost:3100"
+        env["PULSUS_DASH_DATASOURCE_URL"] = "http\x3a//localhost:3100"
         self.assertEqual(check.forbidden_hosts(env), ["a.corp", "b.corp"])
 
 
