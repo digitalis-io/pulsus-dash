@@ -28,6 +28,15 @@ build/pulsus-dash serve --config my.yaml     # as pulsus_app
 `make server-build VERSION=1.2.3` stamps the version (`-X …/internal/core.Version`). The commit
 is the VCS revision Go records at build time, or `unknown`.
 
+For a local server with Postgres in containers, use the dev stack: create `dev/local.env`, then
+`make dev-up` starts Postgres, migrates and serves in the foreground
+([dev stack page](../development/dev-stack.md)).
+
+**Third-party notices.** `make go-licenses` checks that every module linked into `pulsus-dash` has an
+AGPL-3.0-compatible licence and writes `build/THIRD_PARTY_NOTICES.txt` with their licence and
+notice files ([`ci:go-licenses`](../development/build-and-ci.md#licences-cigo-licenses)). CI keeps
+the file as the `third-party-notices` artifact.
+
 ## Commands
 
 | Command | Flags | Exit 0 | Exit 1 (runtime) | Exit 2 (usage or configuration) |
@@ -194,11 +203,14 @@ record with `method`, `route` (the route pattern, never the raw path or query; `
 | `internal/telemetry` | the logger |
 
 Lint rules (`server/.golangci.yml`) keep `pgx`, `goose` and the sqlc output inside
-`internal/store` (T11-023), and `chi` and the generated server inside `internal/gateway` (T06-001).
+`internal/store` (T11-023), and `chi` and the generated server inside `internal/gateway` (T06-001). A
+self-test with failing fixtures proves these rules are enforced
+([build and CI](../development/build-and-ci.md#make-targets)).
 
 ## Designs
 
 T06-001, T06-003, T06-016, T06-019 and T06-026 in
 [T06](../../designs/technical/T06-bff-architecture.md); T19-006, T19-007 and T19-010 in
-[T19](../../designs/technical/T19-deployment.md);
+[T19](../../designs/technical/T19-deployment.md); T18-026 (`ci:go-licenses`) in
+[T18](../../designs/technical/T18-security.md);
 [ADR-0015](../../designs/adr/0015-go-bff.md).
