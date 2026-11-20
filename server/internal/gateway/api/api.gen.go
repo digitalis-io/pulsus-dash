@@ -13,15 +13,51 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Defines values for CompletenessReadCache.
+const (
+	Bypass CompletenessReadCache = "bypass"
+	Hit    CompletenessReadCache = "hit"
+	Miss   CompletenessReadCache = "miss"
+	Other  CompletenessReadCache = "other"
+)
+
+// Valid indicates whether the value is a known member of the CompletenessReadCache enum.
+func (e CompletenessReadCache) Valid() bool {
+	switch e {
+	case Bypass:
+		return true
+	case Hit:
+		return true
+	case Miss:
+		return true
+	case Other:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DatasourceStatusState.
 const (
-	NotChecked DatasourceStatusState = "not_checked"
+	DatasourceStatusStateError        DatasourceStatusState = "error"
+	DatasourceStatusStateNotChecked   DatasourceStatusState = "not_checked"
+	DatasourceStatusStateOk           DatasourceStatusState = "ok"
+	DatasourceStatusStateUnauthorised DatasourceStatusState = "unauthorised"
+	DatasourceStatusStateUnreachable  DatasourceStatusState = "unreachable"
 )
 
 // Valid indicates whether the value is a known member of the DatasourceStatusState enum.
 func (e DatasourceStatusState) Valid() bool {
 	switch e {
-	case NotChecked:
+	case DatasourceStatusStateError:
+		return true
+	case DatasourceStatusStateNotChecked:
+		return true
+	case DatasourceStatusStateOk:
+		return true
+	case DatasourceStatusStateUnauthorised:
+		return true
+	case DatasourceStatusStateUnreachable:
 		return true
 	default:
 		return false
@@ -97,6 +133,30 @@ func (e PrincipalRole) Valid() bool {
 	case Editor:
 		return true
 	case Viewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PromInstantResponseResultType.
+const (
+	Matrix PromInstantResponseResultType = "matrix"
+	Scalar PromInstantResponseResultType = "scalar"
+	String PromInstantResponseResultType = "string"
+	Vector PromInstantResponseResultType = "vector"
+)
+
+// Valid indicates whether the value is a known member of the PromInstantResponseResultType enum.
+func (e PromInstantResponseResultType) Valid() bool {
+	switch e {
+	case Matrix:
+		return true
+	case Scalar:
+		return true
+	case String:
+		return true
+	case Vector:
 		return true
 	default:
 		return false
@@ -179,9 +239,24 @@ type Bootstrap struct {
 	Tenants       []TenantInfo `json:"tenants"`
 }
 
+// Completeness defines model for Completeness.
+type Completeness struct {
+	DataAgeMs          *int64                 `json:"data_age_ms,omitempty"`
+	Infos              []string               `json:"infos"`
+	QueryId            *string                `json:"query_id,omitempty"`
+	ReadCache          *CompletenessReadCache `json:"read_cache,omitempty"`
+	ReadCacheThroughMs *int64                 `json:"read_cache_through_ms,omitempty"`
+	Truncated          bool                   `json:"truncated"`
+	Warnings           []string               `json:"warnings"`
+}
+
+// CompletenessReadCache defines model for Completeness.ReadCache.
+type CompletenessReadCache string
+
 // DatasourceStatus defines model for DatasourceStatus.
 type DatasourceStatus struct {
-	State DatasourceStatusState `json:"state"`
+	CheckedAt *int64                `json:"checked_at,omitempty"`
+	State     DatasourceStatusState `json:"state"`
 }
 
 // DatasourceStatusState defines model for DatasourceStatus.State.
@@ -210,6 +285,9 @@ type FieldError struct {
 	Pointer    string `json:"pointer"`
 }
 
+// FrameValue A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
+type FrameValue = json.RawMessage
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -217,6 +295,13 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// MetricMetadata defines model for MetricMetadata.
+type MetricMetadata struct {
+	Help string `json:"help"`
+	Type string `json:"type"`
+	Unit string `json:"unit"`
+}
 
 // OrgInfo defines model for OrgInfo.
 type OrgInfo struct {
@@ -234,6 +319,62 @@ type Principal struct {
 
 // PrincipalRole defines model for Principal.Role.
 type PrincipalRole string
+
+// PromInstantRequest defines model for PromInstantRequest.
+type PromInstantRequest struct {
+	At        int64  `json:"at"`
+	Query     string `json:"query"`
+	TimeoutMs *int   `json:"timeout_ms,omitempty"`
+}
+
+// PromInstantResponse defines model for PromInstantResponse.
+type PromInstantResponse struct {
+	At           int64                         `json:"at"`
+	Completeness Completeness                  `json:"completeness"`
+	Frames       []SeriesFrame                 `json:"frames"`
+	ResultType   PromInstantResponseResultType `json:"result_type"`
+	Scalar       *TimedValue                   `json:"scalar,omitempty"`
+	String       *TimedString                  `json:"string,omitempty"`
+}
+
+// PromInstantResponseResultType defines model for PromInstantResponse.ResultType.
+type PromInstantResponseResultType string
+
+// PromMetadataResponse defines model for PromMetadataResponse.
+type PromMetadataResponse struct {
+	Completeness Completeness                `json:"completeness"`
+	Metrics      map[string][]MetricMetadata `json:"metrics"`
+}
+
+// PromRangeRequest defines model for PromRangeRequest.
+type PromRangeRequest struct {
+	From      int64  `json:"from"`
+	Query     string `json:"query"`
+	TimeoutMs *int   `json:"timeout_ms,omitempty"`
+	To        int64  `json:"to"`
+	WidthPx   int    `json:"width_px"`
+}
+
+// PromRangeResponse defines model for PromRangeResponse.
+type PromRangeResponse struct {
+	Completeness Completeness  `json:"completeness"`
+	End          int64         `json:"end"`
+	Frames       []SeriesFrame `json:"frames"`
+	Start        int64         `json:"start"`
+	Step         int64         `json:"step"`
+}
+
+// PromSeriesResponse defines model for PromSeriesResponse.
+type PromSeriesResponse struct {
+	Completeness Completeness   `json:"completeness"`
+	Series       []SeriesLabels `json:"series"`
+}
+
+// PromValuesResponse defines model for PromValuesResponse.
+type PromValuesResponse struct {
+	Completeness Completeness `json:"completeness"`
+	Values       []string     `json:"values"`
+}
 
 // Ready defines model for Ready.
 type Ready struct {
@@ -256,6 +397,20 @@ type ReadyChecksPostgres string
 // ReadyChecksSchema defines model for ReadyChecks.Schema.
 type ReadyChecksSchema string
 
+// SeriesFrame JSON image of labels/1 + metric_matrix.grid/1 (T04 §0).
+type SeriesFrame struct {
+	Key        string            `json:"key"`
+	Labels     map[string]string `json:"labels"`
+	Timestamps []int64           `json:"timestamps"`
+	Values     []FrameValue      `json:"values"`
+}
+
+// SeriesLabels defines model for SeriesLabels.
+type SeriesLabels struct {
+	Key    string            `json:"key"`
+	Labels map[string]string `json:"labels"`
+}
+
 // TenantInfo defines model for TenantInfo.
 type TenantInfo struct {
 	Datasource DatasourceStatus `json:"datasource"`
@@ -263,11 +418,43 @@ type TenantInfo struct {
 	Slug       string           `json:"slug"`
 }
 
+// TimedString defines model for TimedString.
+type TimedString struct {
+	Timestamp int64  `json:"timestamp"`
+	Value     string `json:"value"`
+}
+
+// TimedValue defines model for TimedValue.
+type TimedValue struct {
+	Timestamp int64 `json:"timestamp"`
+
+	// Value A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
+	Value FrameValue `json:"value"`
+}
+
 // Version defines model for Version.
 type Version struct {
 	Commit  string `json:"commit"`
 	Version string `json:"version"`
 }
+
+// From defines model for From.
+type From = int64
+
+// Limit defines model for Limit.
+type Limit = int
+
+// Match defines model for Match.
+type Match = []string
+
+// Tenant defines model for Tenant.
+type Tenant = string
+
+// To defines model for To.
+type To = int64
+
+// RateLimited defines model for RateLimited.
+type RateLimited = ErrorEnvelope
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -526,6 +713,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+type RateLimitedResponseHeaders struct {
+	RetryAfter *string
+}
+type RateLimitedJSONResponse struct {
+	Body ErrorEnvelope
+
+	Headers RateLimitedResponseHeaders
 }
 
 type GetBootstrapRequestObject struct {

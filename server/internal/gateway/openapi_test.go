@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
@@ -14,19 +15,24 @@ func TestPermissionDeclared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	type param struct {
+		Ref      string `yaml:"$ref"`
+		Name     string `yaml:"name"`
+		In       string `yaml:"in"`
+		Required bool   `yaml:"required"`
+		Schema   struct {
+			Pattern string `yaml:"pattern"`
+		} `yaml:"schema"`
+	}
 	var spec struct {
 		Paths map[string]map[string]struct {
-			OperationID string `yaml:"operationId"`
-			Permission  string `yaml:"x-permission"`
-			Parameters  []struct {
-				Name     string `yaml:"name"`
-				In       string `yaml:"in"`
-				Required bool   `yaml:"required"`
-				Schema   struct {
-					Pattern string `yaml:"pattern"`
-				} `yaml:"schema"`
-			} `yaml:"parameters"`
+			OperationID string  `yaml:"operationId"`
+			Permission  string  `yaml:"x-permission"`
+			Parameters  []param `yaml:"parameters"`
 		} `yaml:"paths"`
+		Components struct {
+			Parameters map[string]param `yaml:"parameters"`
+		} `yaml:"components"`
 	}
 	if err := yaml.Unmarshal(b, &spec); err != nil {
 		t.Fatal(err)
@@ -44,6 +50,9 @@ func TestPermissionDeclared(t *testing.T) {
 			}
 			tenant := false
 			for _, p := range op.Parameters {
+				if name, ok := strings.CutPrefix(p.Ref, "#/components/parameters/"); ok {
+					p = spec.Components.Parameters[name]
+				}
 				if p.Name == "tenant" && p.In == "query" && p.Required && p.Schema.Pattern == "^[a-z0-9-]{1,40}$" {
 					tenant = true
 				}

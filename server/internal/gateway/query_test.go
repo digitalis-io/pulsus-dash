@@ -77,6 +77,7 @@ func TestRangeCounterShape(t *testing.T) {
 func TestRangeStreams(t *testing.T) {
 	release := make(chan struct{})
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"api"},"values":[[1767225600,"1"]]}`)
 		http.NewResponseController(w).Flush()
@@ -241,7 +242,7 @@ func TestSanitiseThroughGateway(t *testing.T) {
 	clean := func(what string, rec *httptest.ResponseRecorder) {
 		t.Helper()
 		for _, n := range needles {
-			if strings.Contains(rec.Body.String(), n) {
+			if strings.Contains(rec.Body.String(), n) || strings.Contains(unescapedHTML(rec.Body.String()), n) {
 				t.Errorf("%s: response contains %q: %s", what, n, rec.Body.String())
 			}
 		}
@@ -300,7 +301,7 @@ func TestSanitiseThroughGateway(t *testing.T) {
 	mode = "metadata"
 	rec = do(h, http.MethodGet, "/api/dash/v1/prom/metadata?tenant=demo")
 	clean("metadata", rec)
-	if !strings.Contains(rec.Body.String(), `"help":"see <redacted>"`) {
+	if !strings.Contains(unescapedHTML(rec.Body.String()), `"help":"see <redacted>"`) {
 		t.Errorf("metadata %s", rec.Body.String())
 	}
 

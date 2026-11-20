@@ -23,7 +23,13 @@ datasource:
   slug: default
   database: ""                  # optional
   scope_org_id: ""              # optional
-  credentials_ref: ""           # optional: env:NAME or file:/absolute/path, stored as the reference
+  credentials_ref: ""           # optional: env:NAME or file:/absolute/path, stored as the reference;
+                                # the secret is user:password, the password at least 8 characters
+                                # and not a number (checked when the reference resolves)
+
+# The PulsusDB client (docs/server/pulsusdb.md).
+pulsusdb:
+  tenant_concurrency: 16        # PulsusDB calls in flight per tenant binding: 1 to 1024
 
 bootstrap:
   org_slug: default

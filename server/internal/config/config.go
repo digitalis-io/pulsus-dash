@@ -20,10 +20,15 @@ type Config struct {
 	Bootstrap          Bootstrap  `yaml:"bootstrap"`
 	Log                Log        `yaml:"log"`
 	AllowInlineSecrets bool       `yaml:"allow_inline_secrets"`
+
+	// src is where the configuration was loaded from; SeedSettings and CheckCredentials resolve
+	// the datasource credentials reference in it.
+	src Sources
 }
 
 // PulsusDB holds the PulsusDB client settings (T06 §4.9).
 type PulsusDB struct {
+	// TenantConcurrency bounds the PulsusDB calls in flight per tenant binding (T06 §4.10).
 	TenantConcurrency int32 `yaml:"tenant_concurrency"`
 }
 
@@ -130,6 +135,7 @@ func defaults() *Config {
 		Server:     Server{Roles: []string{"all"}, Listen: "0.0.0.0:8080", ShutdownGrace: Duration(15 * time.Second)},
 		Postgres:   Postgres{PoolMax: 32},
 		Datasource: Datasource{Slug: "default"},
+		Pulsusdb:   PulsusDB{TenantConcurrency: 16},
 		Bootstrap:  Bootstrap{OrgSlug: "default", OrgName: "Default organisation"},
 		Log:        Log{Level: "info", Format: "json"},
 	}

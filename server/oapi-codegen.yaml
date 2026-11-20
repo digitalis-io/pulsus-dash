@@ -2,5 +2,10 @@ package: api
 output: internal/gateway/api/api.gen.go
 generate: { chi-server: true, strict-server: true, models: true }
 # Keep component schemas no path references (ErrorEnvelope is used by the gateway's error writer).
-# postCspReport has a hand-written handler (internal/gateway/cspreport.go); the client types keep it.
-output-options: { skip-prune: true, exclude-operation-ids: [postCspReport] }
+# Hand-written handlers (the client types keep them): postCspReport (internal/gateway/cspreport.go), the two
+# streamed PromQL query routes (query.go), and the query-parameter routes (prom.go, datasource.go), whose
+# generated binding would need a parameter runtime module that is not a dependency.
+output-options:
+  skip-prune: true
+  exclude-operation-ids: [postCspReport, postPromqlRange, postPromqlInstant, getPromLabels, getPromLabelValues,
+    getPromSeries, getPromMetadata, getDatasourceCheck]

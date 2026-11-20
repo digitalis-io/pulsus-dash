@@ -97,7 +97,7 @@ func TestRedactAdversarial(t *testing.T) {
 		{"429", postJSON(h, rangePath, q("adv_429")), 429, nil},
 		{"check", do(h, http.MethodGet, "/api/dash/v1/datasource/check?tenant=demo"), 200, []string{`"state":"ok"`}},
 	} {
-		all := responseBytes(c.rec)
+		all := responseBytes(c.rec) + "\n" + unescapedHTML(responseBytes(c.rec))
 		if c.rec.Code != c.status {
 			t.Errorf("%s: status %d, want %d: %s", c.name, c.rec.Code, c.status, c.rec.Body.String())
 		}
@@ -107,7 +107,7 @@ func TestRedactAdversarial(t *testing.T) {
 			}
 		}
 		for _, w := range c.want {
-			if !strings.Contains(c.rec.Body.String(), w) {
+			if !strings.Contains(unescapedHTML(c.rec.Body.String()), w) {
 				t.Errorf("%s: body lacks %s: %s", c.name, w, c.rec.Body.String())
 			}
 		}
@@ -187,7 +187,7 @@ func TestRedactProperty(t *testing.T) {
 			rec = do(h, http.MethodGet, "/api/dash/v1/prom/metadata?tenant=demo")
 		}
 		out := logs.String()
-		all := responseBytes(rec) + out[logged:]
+		all := responseBytes(rec) + unescapedHTML(responseBytes(rec)) + out[logged:]
 		logged = len(out)
 		for _, n := range needles {
 			if strings.Contains(all, n) {

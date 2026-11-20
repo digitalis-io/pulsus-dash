@@ -101,6 +101,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dash/v1/query/promql/range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description PromQL range query on the aligned grid, as JSON frames streamed series by series (T06-011). Hand-written handler; excluded from server generation. */
+        post: operations["postPromqlRange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/query/promql/instant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description PromQL instant query. Hand-written handler; excluded from server generation. */
+        post: operations["postPromqlInstant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/prom/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPromLabels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/prom/label/{name}/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPromLabelValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/prom/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPromSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/prom/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPromMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/datasource/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The data-source check of the tenant's binding (T06-025); never part of readiness (T06-026). */
+        get: operations["getDatasourceCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -153,9 +268,106 @@ export interface components {
             slug: string;
             name: string;
         };
+        PromRangeRequest: {
+            query: string;
+            /** Format: int64 */
+            from: number;
+            /** Format: int64 */
+            to: number;
+            width_px: number;
+            /** @default 30000 */
+            timeout_ms: number;
+        };
+        PromInstantRequest: {
+            query: string;
+            /** Format: int64 */
+            at: number;
+            /** @default 30000 */
+            timeout_ms: number;
+        };
+        /** @description A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005). */
+        FrameValue: unknown;
+        /** @description JSON image of labels/1 + metric_matrix.grid/1 (T04 §0). */
+        SeriesFrame: {
+            key: string;
+            labels: {
+                [key: string]: string;
+            };
+            timestamps: number[];
+            values: components["schemas"]["FrameValue"][];
+        };
+        Completeness: {
+            truncated: boolean;
+            warnings: string[];
+            infos: string[];
+            query_id?: string;
+            /** Format: int64 */
+            data_age_ms?: number;
+            /** @enum {string} */
+            read_cache?: "hit" | "miss" | "bypass" | "other";
+            /** Format: int64 */
+            read_cache_through_ms?: number;
+        };
+        PromRangeResponse: {
+            /** Format: int64 */
+            start: number;
+            /** Format: int64 */
+            end: number;
+            /** Format: int64 */
+            step: number;
+            frames: components["schemas"]["SeriesFrame"][];
+            completeness: components["schemas"]["Completeness"];
+        };
+        TimedValue: {
+            /** Format: int64 */
+            timestamp: number;
+            value: components["schemas"]["FrameValue"];
+        };
+        TimedString: {
+            /** Format: int64 */
+            timestamp: number;
+            value: string;
+        };
+        PromInstantResponse: {
+            /** @enum {string} */
+            result_type: "vector" | "matrix" | "scalar" | "string";
+            /** Format: int64 */
+            at: number;
+            frames: components["schemas"]["SeriesFrame"][];
+            scalar?: components["schemas"]["TimedValue"];
+            string?: components["schemas"]["TimedString"];
+            completeness: components["schemas"]["Completeness"];
+        };
+        PromValuesResponse: {
+            values: string[];
+            completeness: components["schemas"]["Completeness"];
+        };
+        SeriesLabels: {
+            key: string;
+            labels: {
+                [key: string]: string;
+            };
+        };
+        PromSeriesResponse: {
+            series: components["schemas"]["SeriesLabels"][];
+            completeness: components["schemas"]["Completeness"];
+        };
+        MetricMetadata: {
+            type: string;
+            help: string;
+            unit: string;
+        };
+        PromMetadataResponse: {
+            metrics: {
+                [key: string]: components["schemas"]["MetricMetadata"][];
+            };
+            completeness: components["schemas"]["Completeness"];
+        };
         DatasourceStatus: {
             /** @enum {string} */
-            state: "not_checked";
+            state: "not_checked" | "ok" | "unreachable" | "unauthorised" | "error";
+            /** Format: int64 */
+            checked_at?: number;
         };
         TenantInfo: {
             slug: string;
@@ -171,8 +383,27 @@ export interface components {
             can_sign_out: boolean;
         };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description Too many queries in flight, or PulsusDB is rate limiting the tenant */
+        RateLimited: {
+            headers: {
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+    };
+    parameters: {
+        Tenant: string;
+        /** @description ms since the epoch */
+        From: number;
+        /** @description ms since the epoch */
+        To: number;
+        Match: string[];
+        Limit: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -374,6 +605,266 @@ export interface operations {
             };
             /** @description Internal error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postPromqlRange: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Frames and completeness */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromRangeResponse"];
+                };
+            };
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postPromqlInstant: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromInstantRequest"];
+            };
+        };
+        responses: {
+            /** @description Frames */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromInstantResponse"];
+                };
+            };
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPromLabels: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                /** @description ms since the epoch */
+                from: components["parameters"]["From"];
+                /** @description ms since the epoch */
+                to: components["parameters"]["To"];
+                match?: components["parameters"]["Match"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Label names */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromValuesResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPromLabelValues: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                /** @description ms since the epoch */
+                from: components["parameters"]["From"];
+                /** @description ms since the epoch */
+                to: components["parameters"]["To"];
+                match?: components["parameters"]["Match"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Label values */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromValuesResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPromSeries: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                /** @description ms since the epoch */
+                from: components["parameters"]["From"];
+                /** @description ms since the epoch */
+                to: components["parameters"]["To"];
+                match: string[];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Label sets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromSeriesResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPromMetadata: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                metric?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metric metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromMetadataResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getDatasourceCheck: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Check result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasourceStatus"];
+                };
+            };
+            /** @description Unknown tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

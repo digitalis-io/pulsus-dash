@@ -15,7 +15,10 @@ import (
 func TestDeadlines(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
+	// Like PulsusDB, the stalls read the form first: net/http notices a client that went away
+	// only once the request body was read.
 	block := func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		select {
 		case <-r.Context().Done():
 		case <-stop:
@@ -25,7 +28,11 @@ func TestDeadlines(t *testing.T) {
 	defer noHeaders.Close()
 	midBody := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"status":"success","data":[`)
+		data := `[` // labels: an array; metadata: an object
+		if r.URL.Path == "/api/v1/metadata" {
+			data = `{`
+		}
+		_, _ = io.WriteString(w, `{"status":"success","data":`+data)
 		http.NewResponseController(w).Flush()
 		block(w, r)
 	}))

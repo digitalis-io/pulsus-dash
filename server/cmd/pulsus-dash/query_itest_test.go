@@ -402,6 +402,7 @@ func TestCancelMidStreamItest(t *testing.T) {
 			n := 0
 			observed := make(chan time.Time, 1)
 			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = r.ParseForm() // as PulsusDB does; net/http then notices the cancel
 				mu.Lock()
 				n++
 				first := n == 1

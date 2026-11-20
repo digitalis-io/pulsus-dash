@@ -5,7 +5,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -42,14 +41,20 @@ type Deps struct {
 	Now func() time.Time
 	// CSPReadTimeout is the csp-report body deadline; 0 means 5 s.
 	CSPReadTimeout time.Duration
-	// PulsusDB is the only PulsusDB client (T06-005); nil answers every data route 503.
+	// PulsusDB is the only PulsusDB client (T06-005); nil answers every data route 503
+	// datasource_config.
 	PulsusDB *pulsusdb.Client
 }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 
+// statusClientClosed is the access log's status of a request the client abandoned before any
+// header was written.
+const statusClientClosed = 499
+
 // New returns the HTTP handler of every route: the generated operations, POST csp-report, the
-// verified client assets and the document fallback (plan #59 §3.4).
+// PulsusDB data routes (plan #62), the verified client assets and the document fallback (plan
+// #59 §3.4).
 func New(d Deps) http.Handler {
 	if d.Logger == nil {
 		d.Logger = slog.New(slog.DiscardHandler)
@@ -60,6 +65,14 @@ func New(d Deps) http.Handler {
 	r.NotFound(a.fallback)
 	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
 	r.Method(http.MethodPost, "/api/dash/v1/csp-report", newCSPReport(d))
+	q := &dataRoutes{d: d}
+	r.Post("/api/dash/v1/query/promql/range", q.serveRange)
+	r.Post("/api/dash/v1/query/promql/instant", q.serveInstant)
+	r.Get("/api/dash/v1/prom/labels", q.labels)
+	r.Get("/api/dash/v1/prom/label/{name}/values", q.labelValues)
+	r.Get("/api/dash/v1/prom/series", q.series)
+	r.Get("/api/dash/v1/prom/metadata", q.metadata)
+	r.Get("/api/dash/v1/datasource/check", q.datasourceCheck)
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusMethodNotAllowed, api.Invalid, "method not allowed")
 	})
@@ -84,9 +97,7 @@ type routes struct {
 
 // WriteError writes the error envelope {"error":{"code":…,"message":…}} (T06 §5.2).
 func WriteError(w http.ResponseWriter, status int, code api.ErrorCode, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(api.ErrorEnvelope{Error: api.ErrorBody{Code: code, Message: message}})
+	WriteErrorBody(w, status, api.ErrorBody{Code: code, Message: message})
 }
 
 // commonHeaders sets the headers every gateway response carries, and the request ID.
@@ -140,7 +151,8 @@ func (s *statusWriter) Write(b []byte) (int, error) {
 }
 
 // accessLog writes one msg=http record per request: method, route (the chi pattern, never the
-// raw path or query), status, duration_ms and request_id.
+// raw path or query), status, duration_ms and request_id. A request whose client went away
+// before a header was written is logged with status 499.
 func accessLog(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +164,11 @@ func accessLog(log *slog.Logger) func(http.Handler) http.Handler {
 				route = rc.RoutePattern()
 			}
 			id, _ := r.Context().Value(requestIDKey{}).(string)
-			log.InfoContext(r.Context(), "http", "method", r.Method, "route", route, "status", sw.status,
+			status := sw.status
+			if status == 0 && r.Context().Err() != nil {
+				status = statusClientClosed
+			}
+			log.InfoContext(r.Context(), "http", "method", r.Method, "route", route, "status", status,
 				"duration_ms", time.Since(start).Milliseconds(), "request_id", id)
 		})
 	}

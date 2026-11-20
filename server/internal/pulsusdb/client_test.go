@@ -197,6 +197,7 @@ func TestRoutesAndParameters(t *testing.T) {
 	if len(reqs) != len(want) {
 		t.Fatalf("%d requests, want %d", len(reqs), len(want))
 	}
+	instantTimeout := reqs[0].Form.Get("timeout")
 	for i, w := range want {
 		f := reqs[i].Form
 		f.Del("timeout")
@@ -204,8 +205,8 @@ func TestRoutesAndParameters(t *testing.T) {
 			t.Errorf("request %d: %s %s %s, want %s %s %s", i, reqs[i].Method, reqs[i].Path, f.Encode(), w.method, w.path, w.form)
 		}
 	}
-	if !strings.HasSuffix(reqs[0].Form.Get("timeout"), "ms") {
-		t.Errorf("instant timeout %q", reqs[0].Form.Get("timeout"))
+	if !strings.HasSuffix(instantTimeout, "ms") {
+		t.Errorf("instant timeout %q", instantTimeout)
 	}
 }
 
@@ -494,7 +495,7 @@ func TestWeakPasswordProperty(t *testing.T) {
 			v = -v
 		}
 		s := strconv.FormatFloat(v, "efgx"[rng.IntN(4)], rng.IntN(20)-1, 64)
-		if rng.IntN(3) == 0 && !strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "N") {
+		if rng.IntN(3) == 0 && s[0] >= '0' && s[0] <= '9' {
 			s = "+" + s
 		}
 		s = strings.Repeat(" ", rng.IntN(3)) + s + strings.Repeat(" ", rng.IntN(3))

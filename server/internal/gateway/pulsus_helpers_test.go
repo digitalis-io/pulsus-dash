@@ -120,3 +120,8 @@ func (b *syncBuffer) String() string {
 	defer b.mu.Unlock()
 	return b.buf.String()
 }
+
+// unescapedHTML undoes json.Marshal's HTML escaping (§3.4 keeps it on), for substring checks.
+func unescapedHTML(s string) string {
+	return strings.NewReplacer(`\u003c`, "<", `\u003e`, ">", `\u0026`, "&").Replace(s)
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store"
 	"github.com/digitalis-io/pulsus-dash/server/internal/telemetry"
 )
@@ -21,7 +22,8 @@ import (
 // startupPingTimeout bounds the first contact with Postgres.
 const startupPingTimeout = 5 * time.Second
 
-// cmdServe runs the server (§4.1). PulsusDB is never contacted (T06-026).
+// cmdServe runs the server (§4.1). PulsusDB is contacted only by the data routes, never at
+// start-up or by readiness (T06-026).
 func cmdServe(ctx context.Context, e runEnv, args []string) int {
 	fs := newFlags(e, "serve")
 	path := fs.String("config", "", "configuration file")
@@ -92,10 +94,19 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 			return fail(e, exitRuntime, "listen: "+err.Error())
 		}
 	}
+	// The PulsusDB client (T06-005): the binding's credentials reference is resolved per request
+	// in this process's environment; inline references are never accepted in a binding.
+	pdb := pulsusdb.New(pulsusdb.Options{
+		TenantConcurrency: int(cfg.Pulsusdb.TenantConcurrency), Logger: logger, Now: time.Now,
+		Secrets: func(ref string) (string, error) {
+			return config.SecretRef(ref).Resolve(config.Sources{Environ: e.Environ}, false)
+		},
+	})
 	srv := &http.Server{
 		Handler: gateway.New(gateway.Deps{
 			Logger: logger, Probe: db, SchemaLatest: store.SchemaLatest(),
 			Assets: set, Build: core.Build(store.SchemaLatest()), Bootstrap: db.BootstrapView,
+			Now: time.Now, PulsusDB: pdb,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,

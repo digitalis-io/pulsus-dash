@@ -125,7 +125,7 @@ func generic(t *testing.T, doc string, redact bool) any {
 	return walk(v)
 }
 
-func plantedRedactor() redactor { return redactor{needles: []string{planted}} }
+func plantedRedactor() redactor { return needleRedactor(planted) }
 
 var updecCorpus = []string{
 	`null`, `true`, `false`, `0`, `-0`, `1e-7`, `1767225600.123`, `-12.5E+3`, `""`, `"plain"`,
