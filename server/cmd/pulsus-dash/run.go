@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"os/signal"
@@ -29,6 +31,10 @@ type runEnv struct {
 	Stdout, Stderr io.Writer
 	Listener       net.Listener  // serve only; nil = listen on server.listen
 	Ready          chan<- string // serve only; receives the bound address once listening
+	// Assets and AssetKeys replace the embedded asset tree and the build's public keys (tests
+	// only; main leaves both nil).
+	Assets    fs.FS
+	AssetKeys []ed25519.PublicKey
 }
 
 // signalContext is cancelled by SIGINT or SIGTERM. The process exits when run returns, so the

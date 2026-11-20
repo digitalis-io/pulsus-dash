@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../api/StubApi';
 import { ApiError } from '../api/types';
 import { locationOf, renderApp } from '../test/renderApp';
+import { seedWith } from '../test/seeds';
 
 function mockMatchMedia(light: boolean): void {
   vi.stubGlobal('matchMedia', (q: string) => ({
@@ -103,5 +104,38 @@ describe('sign out rejected', () => {
     await user.click(within(alert).getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(trigger).toHaveFocus();
+  });
+});
+
+describe('sign out under the fixed local principal (A2, D12)', () => {
+  it('hides Sign out when the session cannot sign out, and shows it when it can', async () => {
+    for (const canSignOut of [false, true]) {
+      const seed = seedWith();
+      seed.session.canSignOut = canSignOut;
+      const { user, view } = renderApp('/t/demo/boards', { api: new StubApi(seed) });
+      await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+      await screen.findByRole('menuitem', { name: 'About Pulsus Dash' });
+      expect(screen.queryByRole('menuitem', { name: 'Sign out' }) !== null).toBe(canSignOut);
+      view.unmount();
+    }
+  });
+});
+
+describe('About shows the server version (A3)', () => {
+  it('shows the server line only when the session has a server', async () => {
+    for (const server of [{ version: '9.9.9', commit: 'abc' }, null]) {
+      const seed = seedWith();
+      seed.session.server = server;
+      const { user, view } = renderApp('/t/demo/boards', { api: new StubApi(seed) });
+      await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'About Pulsus Dash' }));
+      const dialog = await screen.findByRole('dialog', { name: 'About Pulsus Dash' });
+      if (server === null) {
+        expect(within(dialog).queryByText(/^Server version/)).toBeNull();
+      } else {
+        expect(within(dialog).getByText('Server version 9.9.9')).toBeInTheDocument();
+      }
+      view.unmount();
+    }
   });
 });

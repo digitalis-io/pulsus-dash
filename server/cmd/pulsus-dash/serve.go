@@ -24,6 +24,8 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 	fs := newFlags(e, "serve")
 	path := fs.String("config", "", "configuration file")
 	roleFlag := fs.String("role", "", "comma-separated roles (overrides server.roles)")
+	apiOnly := fs.Bool("api-only", false, "development only: serve the API without the client")
+	_ = apiOnly
 	if !parseFlags(e, fs, args) {
 		return exitUsage
 	}

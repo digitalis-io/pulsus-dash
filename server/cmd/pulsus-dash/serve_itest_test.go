@@ -4,14 +4,18 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static/statictest"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store/storetest"
 )
 
@@ -24,7 +28,14 @@ type served struct {
 	stdout, stderr *lockedBuffer
 }
 
+// startServe runs serve with the signed test asset tree (statictest.Default).
 func startServe(t *testing.T, cfg string, env []string) *served {
+	t.Helper()
+	return startServeArgs(t, env, true, "serve", "--config", cfg)
+}
+
+// startServeArgs runs the CLI with args; assets selects the signed test tree or none.
+func startServeArgs(t *testing.T, env []string, assets bool, args ...string) *served {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -33,8 +44,12 @@ func startServe(t *testing.T, cfg string, env []string) *served {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &served{cancel: cancel, ready: make(chan string, 1), done: make(chan int, 1), stdout: &lockedBuffer{}, stderr: &lockedBuffer{}}
 	go func() {
-		s.done <- run(ctx, runEnv{Args: []string{"serve", "--config", cfg}, Environ: env,
-			Stdout: s.stdout, Stderr: s.stderr, Listener: ln, Ready: s.ready})
+		e := runEnv{Args: args, Environ: env, Stdout: s.stdout, Stderr: s.stderr, Listener: ln, Ready: s.ready}
+		if assets {
+			e.Assets = statictest.Default()
+			e.AssetKeys = []ed25519.PublicKey{statictest.Public(statictest.Key())}
+		}
+		s.done <- run(ctx, e)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -85,10 +100,17 @@ func (s *served) stop(t *testing.T) {
 	}
 }
 
-func (s *served) get(t *testing.T, path string) (int, map[string]any) {
+func (s *served) get(t *testing.T, path string, hdr ...string) (int, map[string]any) {
 	t.Helper()
 	c := http.Client{Timeout: 5 * time.Second}
-	resp, err := c.Get("http://" + s.addr + path)
+	req, err := http.NewRequest(http.MethodGet, "http://"+s.addr+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}
@@ -213,6 +235,91 @@ func TestServeGracefulShutdown(t *testing.T) {
 			if d := time.Since(start); d >= 15*time.Second {
 				t.Errorf("shutdown took %v, want < shutdown_grace (15s)", d)
 			}
+		})
+	}
+}
+
+// S3
+func TestServeAPIOnlyFlag(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			_, cfg, env := migratedDB(t, c, "")
+			s := startServeArgs(t, env, false, "serve", "--config", cfg, "--api-only")
+			s.waitReady(t)
+			if code, m := s.get(t, "/readyz"); code != 200 {
+				t.Errorf("/readyz %d %v", code, m)
+			}
+			code, m := s.get(t, "/", "Accept", "text/html")
+			if e, _ := m["error"].(map[string]any); code != 404 || e["code"] != "not_found" {
+				t.Errorf("GET / = %d %v, want the 404 envelope", code, m)
+			}
+			s.stop(t)
+			n := 0
+			for _, line := range strings.Split(s.stderr.String(), "\n") {
+				if strings.Contains(line, `"level":"WARN"`) && strings.Contains(line, `"msg":"serving the API only (development); no client assets are served"`) {
+					n++
+				}
+			}
+			if n != 1 {
+				t.Errorf("%d warn records 'serving the API only', want 1; stderr %q", n, s.stderr.String())
+			}
+		})
+	}
+}
+
+// M4
+func TestBootstrapItest(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			_, cfg, env := migratedDB(t, c, "  slug: demo\n")
+			s := startServe(t, cfg, env)
+			s.waitReady(t)
+			code, m := s.get(t, "/api/dash/v1/bootstrap")
+			org, _ := m["org"].(map[string]any)
+			tenants, _ := m["tenants"].([]any)
+			if code != 200 || org["slug"] != "default" || org["name"] != "Default organisation" || len(tenants) != 1 {
+				t.Fatalf("bootstrap = %d %v", code, m)
+			}
+			if tn, _ := tenants[0].(map[string]any); tn["slug"] != "demo" || m["default_tenant"] != "demo" {
+				t.Errorf("tenants = %v default_tenant = %v, want demo", tenants, m["default_tenant"])
+			}
+			s.stop(t)
+		})
+	}
+}
+
+// SC4
+func TestServeRunsSelfCheck(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			var hits atomic.Int32
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				hits.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(target.Close)
+			_, cfg, env := migratedDB(t, c, "")
+
+			s := startServe(t, cfg, append(env, "PULSUS_DASH_SERVER_PUBLIC_URL="+target.URL))
+			s.waitReady(t)
+			deadline := time.Now().Add(5 * time.Second)
+			for hits.Load() == 0 && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			time.Sleep(200 * time.Millisecond)
+			if n := hits.Load(); n != 1 {
+				t.Errorf("with public_url: %d requests to the target, want 1", n)
+			}
+			s.stop(t)
+
+			hits.Store(0)
+			s = startServe(t, cfg, env)
+			s.waitReady(t)
+			time.Sleep(time.Second)
+			if n := hits.Load(); n != 0 {
+				t.Errorf("without public_url: %d requests, want 0", n)
+			}
+			s.stop(t)
 		})
 	}
 }

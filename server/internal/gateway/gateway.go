@@ -16,7 +16,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
+	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
 )
 
 // Probe is the readiness view of Postgres; *store.Db implements it.
@@ -30,6 +32,15 @@ type Deps struct {
 	Logger       *slog.Logger
 	Probe        Probe
 	SchemaLatest int64
+	// Assets is the verified client build; nil serves the API only.
+	Assets *static.Set
+	Build  core.BuildInfo
+	// Bootstrap reads the organisation and its tenant bindings (store.Db.BootstrapView).
+	Bootstrap func(ctx context.Context) (core.BootstrapView, error)
+	// Now is the csp-report rate limiter's clock; nil means time.Now.
+	Now func() time.Time
+	// CSPReadTimeout is the csp-report body deadline; 0 means 5 s.
+	CSPReadTimeout time.Duration
 }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
