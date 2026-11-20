@@ -1,0 +1,47 @@
+import { expect, test } from '@playwright/test';
+import { productionHeaders } from '../config/headers.ts';
+import { ALL_PAGES, open, openPicker, openUserMenu, SHELL_PAGES } from './helpers.ts';
+
+declare global {
+  interface Window {
+    __cspViolations: string[];
+  }
+}
+
+test.describe('e2e:csp-violations', () => {
+  test('no CSP or Trusted Types violation on any page or overlay', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__cspViolations = [];
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+      });
+    });
+    const console: string[] = [];
+    page.on('console', (m) => {
+      if (/Content[- ]Security[- ]Policy|Trusted Type/i.test(m.text())) console.push(m.text());
+    });
+
+    for (const url of ALL_PAGES) {
+      await open(page, url);
+      if ((SHELL_PAGES as readonly string[]).includes(url)) {
+        const dialog = await openPicker(page);
+        await dialog.getByRole('grid').waitFor();
+        await page.keyboard.press('Escape');
+        const menu = await openUserMenu(page);
+        await menu.getByRole('menuitem', { name: 'About Pulsus Dash' }).click();
+        await page
+          .getByRole('dialog', { name: 'About Pulsus Dash' })
+          .getByRole('button', { name: 'Close' })
+          .click();
+      }
+      expect(await page.evaluate(() => window.__cspViolations), url).toEqual([]);
+    }
+    expect(console).toEqual([]);
+    expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
+
+    const response = await page.request.get('/t/demo/boards');
+    const headers = response.headers();
+    for (const [k, v] of Object.entries(productionHeaders))
+      expect(headers[k.toLowerCase()], k).toBe(v);
+  });
+});

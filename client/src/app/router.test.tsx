@@ -1,0 +1,83 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { locationOf, renderApp } from '../test/renderApp';
+
+async function settled(
+  router: ReturnType<typeof renderApp>['router'],
+  path: string,
+): Promise<void> {
+  await waitFor(() => {
+    expect(router.state.initialized).toBe(true);
+    expect(router.state.navigation.state).toBe('idle');
+    expect(router.state.location.pathname).toBe(path);
+  });
+}
+
+describe('redirects and normalises', () => {
+  it.each([
+    ['/', '/t/demo/boards?from=now-1h&to=now&refresh=off'],
+    ['/t/demo/admin', '/t/demo/admin?from=now-1h&to=now&refresh=off'],
+    [
+      '/t/demo/boards?from=2026-11-19T12:03:00.000Z&to=2026-11-19T13:03:00.000Z',
+      '/t/demo/boards?from=2026-11-19T12%3A03%3A00.000Z&to=2026-11-19T13%3A03%3A00.000Z&refresh=off',
+    ],
+  ])('%s → %s (REPLACE)', async (url, want) => {
+    const { router } = renderApp(url);
+    await settled(router, want.split('?')[0] ?? '');
+    expect(locationOf(router)).toBe(want);
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+});
+
+describe('tenant index keeps Context', () => {
+  it('redirects to Boards with the canonical search', async () => {
+    const { router } = renderApp('/t/demo?from=now-6h');
+    await settled(router, '/t/demo/boards');
+    expect(locationOf(router)).toBe('/t/demo/boards?from=now-6h&to=now&refresh=off');
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+});
+
+describe('in-app navigation pushes once', () => {
+  it('a sidebar link pushes the canonical target', async () => {
+    const { router, user } = renderApp('/t/demo/boards?from=now-6h&to=now&refresh=30s');
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    await user.click(within(nav).getByRole('link', { name: 'Metrics' }));
+    await settled(router, '/t/demo/explore/metrics');
+    expect(router.state.historyAction).toBe('PUSH');
+    expect(router.state.location.search).toBe('?from=now-6h&to=now&refresh=30s');
+  });
+});
+
+describe('unknown tenant / path', () => {
+  it.each([
+    ['/t/other/boards', false],
+    ['/t/demo/nope', true],
+    ['/nope', false],
+  ])('%s shows Page not found (in the shell: %s)', async (url, inShell) => {
+    renderApp(url);
+    if (inShell) {
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Page not found' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+      expect(screen.queryByRole('navigation')).toBeNull();
+    }
+  });
+});
+
+describe('current nav item', () => {
+  it('marks Boards current on a board page, and nothing else', async () => {
+    renderApp('/t/demo/board/b-1');
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    await screen.findByRole('heading', { level: 1, name: 'Service overview' });
+    const current = nav.querySelectorAll('[aria-current]');
+    expect([...current].map((e) => e.textContent)).toEqual(['Boards']);
+    expect(within(nav).getByRole('link', { name: 'Boards' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+});

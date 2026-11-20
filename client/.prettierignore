@@ -1,0 +1,9 @@
+dist
+node_modules
+package-lock.json
+src/styles/tokens.*
+test-results
+playwright-report
+src/assets
+src/icons
+scripts/__fixtures__

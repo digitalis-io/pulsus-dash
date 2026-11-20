@@ -1,0 +1,32 @@
+.shell {
+  --size-sidebar: var(--size-sidebar-expanded);
+
+  display: grid;
+  grid-template-columns: var(--size-sidebar) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.shell[data-sidebar='collapsed'] {
+  --size-sidebar: var(--size-sidebar-collapsed);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--size-page-padding);
+}
+
+.main:focus {
+  outline: none;
+}
+
+.main:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}

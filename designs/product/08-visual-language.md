@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-20 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -275,12 +275,18 @@ except the alert ring, which is shown as a static double ring.
 The application layout ([02](02-information-architecture.md) IA-016) MUST use the sizes of the table
 above: a 240 px sidebar that collapses to a 56 px icon rail, a 56 px page header, 24 px page content
 padding and 16 px gaps between board panels, so boards stay roomy. The sidebar and page header are
-opaque `surface-1` with a 1 px `hairline` edge. In Space scenes the Time Ribbon is 40 px and, like the
-minimap, translucent over the canvas.
+opaque `surface-1` with a 1 px `hairline` edge; the sidebar's top block is 56 px high, so its bottom
+hairline continues the page header's. A long page title truncates with an ellipsis before any header
+control moves or the page scrolls sideways. The time range trigger adds the absolute window of a
+relative range (for example `12:03 – 13:03 GMT`) only when the viewport is at least 1520 px wide. In
+Space scenes the Time Ribbon is 40 px and, like the minimap, translucent over the canvas.
 
 *Acceptance:* At 1440×900 the expanded sidebar is 240 px wide and 56 px when collapsed, the page
-header is 56 px high, the content padding is 24 px and board panels are 16 px apart; in a Space scene
-the Ribbon is 40 px high and canvas content is visible through it.
+header is 56 px high with the sidebar's top block ending on the same line, the content padding is
+24 px and board panels are 16 px apart; with the 240 px sidebar, a board with a long title shows it
+truncated with an ellipsis and the page does not scroll sideways; the absolute window shows at
+1520 px and not at 1519 px; in a Space scene the Ribbon is 40 px high and canvas content is visible
+through it.
 
 #### VL-018 — Floating, dockable panels
 **MUST** · M-UI2 · SRE, Platform, Engineer
@@ -503,3 +509,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §1 hybrid principle; definitions; VL-004 and VL-005 edited in place; motion table rows; new §10 3D scenes (VL-023 to VL-028); later sections renumbered §11–§13 |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §7 layout tokens for the sidebar, page header, content padding and board panel gap; VL-017 revised in place (application layout dimensions); VL-019 adds the 16 px board panel gap; VL-021 generates CSS, TS and Rust token outputs; resolution 10 |
+| 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19): VL-017 adds the 56 px sidebar top block aligned with the header, title truncation before any header control moves, and the time trigger's absolute window from 1520 px |

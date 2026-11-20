@@ -1,0 +1,8 @@
+.a { color: var(--failing); }
+.b { color: var(--failing, red); }
+.c { color: var( --watch ); }
+.d { color: var(--x, var(--degraded)); }
+.e { width: calc(var(--unknown) * 1); }
+.f { --c: var(--ok); }
+.g { transition-property: --ok; }
+@supports (color: var(--failing)) {}

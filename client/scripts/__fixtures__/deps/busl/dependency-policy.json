@@ -1,0 +1,30 @@
+{
+  "forbiddenCategories": [
+    "charting",
+    "mapping",
+    "3d",
+    "graph-diagram",
+    "css-in-js"
+  ],
+  "runtimeAllowlist": [
+    "pkg-a-allowed"
+  ],
+  "runtimeClosure": {
+    "ui-framework": [
+      "pkg-a-allowed",
+      "pkg-helper"
+    ]
+  },
+  "licenceAllowlist": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "MPL-2.0"
+  ],
+  "licenceExceptionAllowlist": [],
+  "buildUrlAllowlist": [],
+  "installScripts": []
+}

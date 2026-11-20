@@ -1,0 +1,117 @@
+# Pulsus Dash design tokens: the single source of colour, spacing, size, type and motion values.
+# `client/scripts/gen-tokens.ts` generates `client/src/styles/tokens.css` and `tokens.ts` from this
+# file (VL-001, VL-021, T08-022). Colours are uppercase #RRGGBB or #RRGGBBAA; lengths are px;
+# durations are ms. Light colours are designed, not inverted from dark (VL-001).
+
+[color.dark]
+canvas = "#0B0D10"
+surface-1 = "#12151A"
+surface-2 = "#191D24"
+surface-hover = "#222731"
+hairline = "#FFFFFF14"
+text = "#E6E8EB"
+text-muted = "#8A919C"
+text-on-accent = "#0B0D10"
+accent = "#5B9BFF"
+focus = "#5B9BFF"
+ok = "#2FB59A"
+watch = "#D9C84A"
+degraded = "#E8923A"
+failing = "#E0457B"
+unknown = "#6B7280"
+backdrop = "#0B0D10B3"
+series-1 = "#7AA2D6"
+series-2 = "#C9A36B"
+series-3 = "#8FBF8F"
+series-4 = "#B48FC9"
+series-5 = "#6FB8B8"
+series-6 = "#C98F8F"
+series-7 = "#A8A8D9"
+series-8 = "#BFB07A"
+
+[color.light]
+canvas = "#F5F6F8"
+surface-1 = "#FFFFFF"
+surface-2 = "#ECEEF2"
+surface-hover = "#E2E5EA"
+hairline = "#0B0D1014"
+text = "#1A1D23"
+text-muted = "#555D69"
+text-on-accent = "#FFFFFF"
+accent = "#2563C9"
+focus = "#2563C9"
+ok = "#17806A"
+watch = "#8A7A0F"
+degraded = "#A85A12"
+failing = "#B8285C"
+unknown = "#7A818C"
+backdrop = "#1A1D2366"
+series-1 = "#3F6FA8"
+series-2 = "#93703A"
+series-3 = "#4E874E"
+series-4 = "#7E5A97"
+series-5 = "#358282"
+series-6 = "#985757"
+series-7 = "#6262A6"
+series-8 = "#857640"
+
+# Spacing scale (px).
+[space]
+1 = 4
+2 = 8
+3 = 12
+4 = 16
+5 = 20
+6 = 24
+8 = 32
+10 = 40
+12 = 48
+16 = 64
+
+# Component and layout sizes (px). Sidebar widths are VL-017's.
+[size]
+sidebar-expanded = 240
+sidebar-collapsed = 56
+crumb-max = 160
+tenant-badge = 32
+focus-ring = 2
+focus-offset = 2
+header = 56
+control = 32
+target-min = 24
+icon = 16
+avatar = 28
+page-padding = 24
+
+[radius]
+default = 6
+
+[border]
+hairline = 1
+
+[font.family]
+ui = '"Inter Variable", system-ui, sans-serif'
+mono = '"JetBrains Mono Variable", ui-monospace, monospace'
+
+# Font sizes (px).
+[font.size]
+xs = 11
+sm = 12
+md = 13
+lg = 16
+xl = 20
+
+[font.weight]
+regular = 400
+medium = 500
+semibold = 600
+
+[line-height]
+tight = 1.25
+normal = 1.5
+
+# Durations (ms) and easing. Reduced motion sets every duration to 0 ms.
+[motion]
+fast = 150
+standard = 250
+easing-out = "cubic-bezier(0.2, 0, 0, 1)"

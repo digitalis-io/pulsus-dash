@@ -1,0 +1,11 @@
+{
+  "name": "fixture",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "^19.3.1"
+  },
+  "devDependencies": {
+    "pkg-dev": "1.0.0"
+  }
+}

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Application shell: sidebar with tenant switcher, Starred and Recent; page header with breadcrumb, title and star</title>
+<desc id="d">The application shell approved on 2026-11-19 (D9, IA-016, IA-021, VL-017). A 240 px left sidebar: a 56 px top block with the product mark and the org and tenant switcher (Demo Org, Tenant: Demo with a menu chevron), aligned with the 56 px page header; the groups Boards (current), Explore with Metrics and Logs, Starred with three starred boards and Recent with three recent boards; a footer with Admin and the Collapse sidebar control. The page header shows the breadcrumb Boards, the title Service overview and an empty star toggle on the left, and on the right the time range trigger Last 1 hour with the absolute window 12:03 – 13:03 GMT (shown from a 1520 px viewport), the refresh split control with Refresh now and the auto-refresh interval 30s with a live dot, and the user menu avatar AA. The page body is empty, with its 24 px padding outlined. Callouts: 1 org and tenant switcher, 2 sidebar groups, 3 breadcrumb, title and star toggle, 4 time range and refresh, 5 user menu, 6 page padding.</desc>
+<defs>
+<style>
+text{font-family:Inter, system-ui, sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB}
+.m{font-family:JetBrains Mono, ui-monospace, monospace}
+.mu{fill:#8A919C} .ac{fill:#5B9BFF}
+.b{font-weight:600} .sb{font-weight:500}
+.s11{font-size:11px} .s12{font-size:12px} .s13{font-size:13px} .s16{font-size:16px} .s20{font-size:20px}
+.ctl{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.co{stroke:#5B9BFF;stroke-width:1.5;stroke-dasharray:4 3;fill:none}
+.cn{fill:#5B9BFF;font-size:12px;font-weight:600}
+</style>
+</defs>
+<rect width="1440" height="900" fill="#0B0D10"/>
+<g id="sidebar">
+<rect x="0" y="0" width="240" height="900" fill="#12151A"/>
+<line x1="239.5" y1="0" x2="239.5" y2="900" stroke="#FFFFFF14"/>
+<g id="sidebar-top">
+<path d="M20,28 L25,28 L28,20 L32,36 L35,28 L40,28" fill="none" stroke="#5B9BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="25" class="s13 b">Demo Org</text>
+<text x="56" y="43" class="s12 mu">Tenant:</text>
+<text x="100" y="43" class="s12">Demo</text>
+<text x="136" y="43" class="s11 mu">▾</text>
+<line x1="0" y1="55.5" x2="240" y2="55.5" stroke="#FFFFFF14"/>
+</g>
+<g id="sidebar-nav">
+<rect x="8" y="68" width="224" height="32" rx="6" fill="#191D24"/><rect x="8" y="68" width="2" height="32" fill="#5B9BFF"/>
+<text x="20" y="88" class="s13 ac">▦</text><text x="44" y="88" class="s13 sb">Boards</text>
+<text x="16" y="124" class="s11 mu b">Explore</text>
+<text x="44" y="148" class="s13 mu">⌁</text><text x="64" y="148" class="s13 mu">Metrics</text>
+<text x="44" y="184" class="s13 mu">≡</text><text x="64" y="184" class="s13 mu">Logs</text>
+<text x="16" y="220" class="s11 mu b">Starred</text>
+<text x="32" y="244" class="s13 ac">★</text><text x="52" y="244" class="s13 mu">Service overview</text>
+<text x="32" y="280" class="s13 ac">★</text><text x="52" y="280" class="s13 mu">Checkout latency</text>
+<text x="32" y="316" class="s13 ac">★</text><text x="52" y="316" class="s13 mu">Edge gateway, eu-west-1: p9…</text>
+<text x="16" y="352" class="s11 mu b">Recent</text>
+<text x="32" y="376" class="s13 mu">Checkout latency</text>
+<text x="32" y="412" class="s13 mu">Service overview</text>
+<text x="32" y="448" class="s13 mu">Edge gateway, eu-west-1: p99 l…</text>
+</g>
+<g id="sidebar-footer">
+<line x1="0" y1="820.5" x2="240" y2="820.5" stroke="#FFFFFF14"/>
+<text x="20" y="848" class="s13 mu">⚙</text><text x="44" y="848" class="s13 mu">Admin</text>
+<text x="20" y="884" class="s13 mu">⇤</text><text x="44" y="884" class="s13 mu">Collapse sidebar</text>
+</g>
+</g>
+<g id="page-header">
+<rect x="240" y="0" width="1200" height="56" fill="#12151A"/>
+<line x1="240" y1="55.5" x2="1440" y2="55.5" stroke="#FFFFFF14"/>
+<text x="264" y="33" class="s13 mu">Boards</text><text x="314" y="33" class="s13 mu">/</text>
+<text x="330" y="35" class="s20 b">Service overview</text>
+<text x="508" y="35" class="s16 mu">☆</text>
+<rect x="948" y="12" width="280" height="32" rx="6" class="ctl"/>
+<text x="960" y="33" class="s13 mu">◷</text><text x="980" y="33" class="s13 sb">Last 1 hour</text>
+<text x="1064" y="33" class="s12 m mu">12:03 – 13:03 GMT</text><text x="1214" y="33" class="s11 mu" text-anchor="end">▾</text>
+<rect x="1236" y="12" width="120" height="32" rx="6" class="ctl"/>
+<text x="1256" y="33" class="s13 mu" text-anchor="middle">⟳</text>
+<line x1="1276.5" y1="12" x2="1276.5" y2="44" stroke="#FFFFFF14"/>
+<circle cx="1292" cy="28" r="4" fill="#5B9BFF"/><text x="1304" y="33" class="s13">30s</text>
+<text x="1346" y="33" class="s11 mu" text-anchor="end">▾</text>
+<circle cx="1402" cy="28" r="14" fill="#7AA2D6"/><text x="1402" y="32" class="s12 b" text-anchor="middle" fill="#0B0D10">AA</text>
+</g>
+<g id="page-body">
+<rect x="264" y="80" width="1152" height="796" fill="none" stroke="#FFFFFF14" stroke-dasharray="6 4"/>
+<text x="840" y="478" class="s13 mu" text-anchor="middle">Page content (24 px padding)</text>
+</g>
+<g id="callouts">
+<rect x="48" y="6" width="150" height="44" rx="4" class="co"/><text x="204" y="32" class="cn">①</text>
+<rect x="4" y="62" width="232" height="396" rx="4" class="co"/><text x="222" y="474" class="cn">②</text>
+<rect x="258" y="10" width="280" height="36" rx="4" class="co"/><text x="544" y="34" class="cn">③</text>
+<rect x="942" y="6" width="420" height="44" rx="4" class="co"/><text x="1150" y="68" class="cn">④</text>
+<rect x="1384" y="10" width="36" height="36" rx="4" class="co"/><text x="1424" y="66" class="cn">⑤</text>
+<line x1="240" y1="478" x2="264" y2="478" class="co"/><text x="242" y="498" class="cn">⑥</text>
+</g>
+</svg>

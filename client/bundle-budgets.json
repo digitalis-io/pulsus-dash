@@ -1,0 +1,25 @@
+{
+  "initialRouteModules": ["src/pages/boards/BoardsPage.tsx"],
+  "required": {
+    "files": ["index.html", ".vite/manifest.json"],
+    "lazyModules": [
+      "src/pages/board/BoardPage.tsx",
+      "src/pages/explore/MetricsPage.tsx",
+      "src/pages/explore/LogsPage.tsx",
+      "src/pages/admin/AdminPage.tsx",
+      "src/pages/SignedOutPage.tsx",
+      "src/shell/TimeRangeDialog.tsx"
+    ],
+    "fonts": ["inter-latin-wght-normal", "jetbrains-mono-latin-wght-normal"],
+    "initialCss": true
+  },
+  "budgets": {
+    "initialJs": 200000,
+    "initialCss": 30000,
+    "lazyChunk": 120000,
+    "editorChunk": 175000,
+    "fonts": 150000,
+    "totalExceptEngine": 1000000
+  },
+  "editorModules": []
+}

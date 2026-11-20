@@ -1,0 +1,10 @@
+.iconButton {
+  width: var(--size-control);
+  height: var(--size-control);
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.iconButton[data-hovered] {
+  color: var(--text);
+}

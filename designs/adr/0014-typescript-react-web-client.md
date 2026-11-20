@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted (2026-11-19, product owner); amended by [ADR-0016](0016-asset-integrity-verified-by-bff.md) (2026-11-19, lazy-chunk SRI) |
+| **Status** | Accepted (2026-11-19, product owner); amended by [ADR-0016](0016-asset-integrity-verified-by-bff.md) (2026-11-19, lazy-chunk SRI) and, for §1 Routing, by [ADR-0017](0017-react-router.md) (2026-11-19) |
 | **Supersedes** | [ADR-0004](0004-leptos-dom-rooms.md) (Leptos DOM rooms), [ADR-0002](0002-no-js-ui-framework.md) (no JS UI framework), and the browser half of [ADR-0001](0001-rust-wasm-everywhere.md) (the server half is superseded by [ADR-0015](0015-go-bff.md)) |
 | **Source** | Owner decision of 2026-11-19: all code removed from `main` to start again (commit "Remove the existing code to start again") |
 | **See** | [T01](../technical/T01-frontend-architecture.md), [T03](../technical/T03-browser-runtime.md), [T08](../technical/T08-dom-component-kit.md), [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19), [ADR-0015](0015-go-bff.md) |
@@ -25,7 +25,7 @@ components, date and time pickers, a code editor and a large hiring pool.
 | Language | TypeScript, `strict` with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` |
 | UI framework | React (current major), client-side rendering only; no server-side rendering |
 | Build and dev server | Vite (current major); Node.js active LTS (24), npm with `package-lock.json` |
-| Routing | TanStack Router: typed routes and validated search parameters (the URL reproduces the view, T08-005) |
+| Routing | React Router in data mode (code-based, client-only) with a typed search-parameter module that validates and canonicalises the URL (the URL reproduces the view, T08-005). *Amended 2026-11-19 by [ADR-0017](0017-react-router.md); was TanStack Router.* |
 | Server state | TanStack Query: caching, refetch, and `AbortSignal` cancellation of superseded requests |
 | Accessible components | React Aria Components (menus, dialogs, combobox, date and time range, table, toasts) |
 | Styling | CSS Modules over generated token CSS custom properties; no CSS-in-JS runtime |

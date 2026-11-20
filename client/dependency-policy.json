@@ -1,0 +1,67 @@
+{
+  "forbiddenCategories": ["charting", "mapping", "3d", "graph-diagram", "css-in-js"],
+  "runtimeAllowlist": [
+    "react",
+    "react-dom",
+    "react-router",
+    "@tanstack/react-query",
+    "react-aria-components",
+    "@internationalized/date"
+  ],
+  "runtimeClosure": {
+    "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
+    "routing": ["react-router", "cookie-es", "@remix-run/route-pattern"],
+    "server-state": ["@tanstack/react-query", "@tanstack/query-core"],
+    "accessible-components": [
+      "react-aria-components",
+      "react-aria",
+      "react-stately",
+      "@react-types/shared",
+      "aria-hidden",
+      "clsx",
+      "client-only"
+    ],
+    "i18n": ["@internationalized/date", "@internationalized/number", "@internationalized/string"],
+    "runtime-helper": ["@swc/helpers", "tslib"]
+  },
+  "licenceAllowlist": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "MPL-2.0"
+  ],
+  "licenceExceptionAllowlist": [],
+  "buildUrlAllowlist": [
+    { "url": "http://www.w3.org/2000/svg", "reason": "SVG namespace URI (react-dom)" },
+    { "url": "http://www.w3.org/1999/xlink", "reason": "XLink namespace URI (react-dom)" },
+    { "url": "http://www.w3.org/1998/Math/MathML", "reason": "MathML namespace URI (react-dom)" },
+    { "url": "http://www.w3.org/XML/1998/namespace", "reason": "XML namespace URI (react-dom)" },
+    { "url": "http://localhost", "reason": "URL-parsing base (react-router)" },
+    {
+      "url": "https://react.dev/errors/",
+      "reason": "error-help link; React appends the code with +"
+    },
+    {
+      "url": "https://reactrouter.com/en/main/routers/picking-a-router",
+      "reason": "error-help text"
+    },
+    { "url": "https://reactrouter.com/how-to/error-boundary", "reason": "error-help text" },
+    {
+      "url": "https://reactrouter.com/start/framework/route-module#meta",
+      "reason": "error-help text"
+    },
+    {
+      "url": "https://reactrouter.com/explanation/sessions-and-cookies#signing-cookies",
+      "reason": "error-help text"
+    },
+    {
+      "url": "https://github.com/remix-run/react-router/issues/new/choose",
+      "reason": "bug-report text"
+    },
+    { "url": "https://github.com/ungap/url-search-params", "reason": "polyfill-advice text" }
+  ],
+  "installScripts": []
+}
