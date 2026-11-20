@@ -112,7 +112,10 @@ node -e '
   fs.writeFileSync(process.argv[1], b);
 ' "$DIST/$largest"
 build_gate "$PUB"
-expect_refusal G1 "asset integrity check failed: hash_mismatch assets/"
+# Gate proof (do not merge): the expected exit of G1 is inverted, so the refusal fails the gate.
+code=0
+out=$(run_gate "$GATE/pulsus-dash") || code=$?
+[ "$code" -eq 0 ] || { echo "$out" >&2; fail "G1 (gate proof, expected exit inverted): exit $code, want 0"; }
 
 # G2: an unlisted file.
 fresh
