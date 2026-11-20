@@ -89,7 +89,9 @@ func TestStalledBootstrapTimeout(t *testing.T) {
 		{"instant", func() *httptest.ResponseRecorder {
 			return postJSON(h, instantPath, `{"query":"up","at":1767229200000,"timeout_ms":300}`)
 		}},
-		{"check", func() *httptest.ResponseRecorder { return do(h, http.MethodGet, "/api/dash/v1/datasource/check?tenant=demo") }},
+		{"check", func() *httptest.ResponseRecorder {
+			return do(h, http.MethodGet, "/api/dash/v1/datasource/check?tenant=demo")
+		}},
 	} {
 		start := time.Now()
 		e := wantError(t, c.name, c.rec(), 504, "unavailable", "-", "")

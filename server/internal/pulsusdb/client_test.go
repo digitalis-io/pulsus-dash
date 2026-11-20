@@ -537,7 +537,7 @@ func TestUnavailableBodyUsesRequestRedactor(t *testing.T) {
 // review r1 #1: readErrorBody returns errorType and error redacted with the request's needles.
 func TestErrorBodyRedacted(t *testing.T) {
 	u := newUpstream(t, answer(503, ""))
-	cred := "user:Zq9-planted-SECRET"
+	cred := "user:Zq9-planted-SECRET" // #nosec G101 -- the planted test credential
 	red := newRedactor(testBinding(u.URL), cred)
 	token := base64.StdEncoding.EncodeToString([]byte(cred))
 	host := strings.TrimPrefix(u.URL, "http://")
