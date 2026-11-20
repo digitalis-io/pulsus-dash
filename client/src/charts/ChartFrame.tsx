@@ -50,7 +50,7 @@ interface HoverState {
 
 const px = (n: number): string => `${String(n)}px`;
 
-export function ChartFrame({ spec, data }: ChartFrameProps) {
+export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
   const tz = useTimeZone();
@@ -227,7 +227,10 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
   return (
     <div
       ref={hostRef}
-      className={cx(styles['frame'], isStat ? styles['stat'] : styles['chart'])}
+      className={cx(
+        styles['frame'],
+        fill ? styles['fill'] : isStat ? styles['stat'] : styles['chart'],
+      )}
       data-chart-frame=""
       data-frame-ready={summary === null ? 'false' : 'true'}
       data-plot={plot === null ? undefined : [plot.x, plot.y, plot.width, plot.height].join(',')}

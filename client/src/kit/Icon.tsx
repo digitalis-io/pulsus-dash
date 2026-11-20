@@ -22,7 +22,14 @@ export type IconName =
   | 'log-out'
   | 'link'
   | 'calendar'
-  | 'check';
+  | 'check'
+  | 'plus'
+  | 'maximize-2'
+  | 'ellipsis'
+  | 'move'
+  | 'x'
+  | 'share-2'
+  | 'square-arrow-out-up-right';
 
 const CLASS: Readonly<Record<IconName, string | undefined>> = {
   activity: styles['activity'],
@@ -43,6 +50,13 @@ const CLASS: Readonly<Record<IconName, string | undefined>> = {
   link: styles['link'],
   calendar: styles['calendar'],
   check: styles['check'],
+  plus: styles['plus'],
+  'maximize-2': styles['maximize2'],
+  ellipsis: styles['ellipsis'],
+  move: styles['move'],
+  x: styles['x'],
+  'share-2': styles['share2'],
+  'square-arrow-out-up-right': styles['squareArrowOutUpRight'],
 };
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

@@ -80,3 +80,31 @@
 .check {
   mask-image: url('../icons/check.svg');
 }
+
+.plus {
+  mask-image: url('../icons/plus.svg');
+}
+
+.maximize2 {
+  mask-image: url('../icons/maximize-2.svg');
+}
+
+.ellipsis {
+  mask-image: url('../icons/ellipsis.svg');
+}
+
+.move {
+  mask-image: url('../icons/move.svg');
+}
+
+.x {
+  mask-image: url('../icons/x.svg');
+}
+
+.share2 {
+  mask-image: url('../icons/share-2.svg');
+}
+
+.squareArrowOutUpRight {
+  mask-image: url('../icons/square-arrow-out-up-right.svg');
+}

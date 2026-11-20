@@ -60,6 +60,9 @@ test.describe('e2e:board-edit-save', () => {
     const errors = errorsOf(page);
     const title = `E2E board ${testInfo.project.name} w${String(testInfo.workerIndex)} ${crypto.randomUUID()}`;
     let uid: string | null = null;
+    // Tall enough that C's resize handle is clear of the bottom edge, where react-grid-layout
+    // scrolls the page during a drag and so adds to the pointer's travel.
+    await page.setViewportSize({ width: 1440, height: 1600 });
     try {
       // 1. Create.
       await page.goto('/t/demo/boards');
@@ -95,6 +98,9 @@ test.describe('e2e:board-edit-save', () => {
       // 3. Move C to column 7 with the pointer.
       const gridBox = await page.locator('[data-board-grid]').first().boundingBox();
       const cell = cellPx(gridBox?.width ?? 0);
+      await panel(page, 'C').evaluate((e) => {
+        e.scrollIntoView({ block: 'center' });
+      });
       const header = await panel(page, 'C').getByRole('heading', { level: 3 }).boundingBox();
       if (header === null) throw new Error('no header');
       await dragBy(page, header, 6 * (cell + 16), 0);
@@ -105,6 +111,10 @@ test.describe('e2e:board-edit-save', () => {
         .locator('.react-grid-item')
         .filter({ has: page.getByRole('heading', { level: 3, name: 'C', exact: true }) })
         .locator('.react-resizable-handle');
+      // Centred, so the drag stays clear of the grid's edge auto-scroll.
+      await handle.evaluate((e) => {
+        e.scrollIntoView({ block: 'center' });
+      });
       const hb = await handle.boundingBox();
       if (hb === null) throw new Error('no resize handle');
       await dragBy(page, hb, 0, 2 * (40 + 16));

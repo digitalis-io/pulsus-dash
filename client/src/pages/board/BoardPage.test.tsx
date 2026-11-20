@@ -414,7 +414,7 @@ describe('navigation and time', () => {
 
 /** A stub whose second and later `getBoard` of b-1 wait for `next`, a v2 head of 3 panels. */
 class RemoteSaveApi extends StubApi {
-  readonly next = deferred<void>();
+  readonly next = deferred<undefined>();
   private reads = 0;
   remote: Board | null = null;
 
@@ -488,7 +488,7 @@ describe('saving', () => {
     await user.click(screen.getByRole('button', { name: 'Add panel' }));
     void queryClient.invalidateQueries({ queryKey: ['board'] });
     await act(async () => {
-      api.next.resolve();
+      api.next.resolve(undefined);
       await api.next.promise;
     });
     expect(
@@ -507,7 +507,7 @@ describe('saving', () => {
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
     void queryClient.invalidateQueries({ queryKey: ['board'] });
     await act(async () => {
-      api.next.resolve();
+      api.next.resolve(undefined);
       await api.next.promise;
     });
     await waitFor(() => {

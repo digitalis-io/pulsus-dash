@@ -21,7 +21,10 @@ const WIDTH = 1152;
 
 /** A grid item's offset from its transform (jsdom has no layout). */
 function offsetOf(el: Element): { left: number; top: number } {
-  const m = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform);
+  // jsdom prints `translate(584px)` when y is 0.
+  const m = /translate\((-?[\d.]+)px(?:,\s*(-?[\d.]+)px)?\)/.exec(
+    (el as HTMLElement).style.transform,
+  );
   return { left: Number(m?.[1] ?? 0), top: Number(m?.[2] ?? 0) };
 }
 
@@ -98,16 +101,13 @@ describe('BoardGridEditor', () => {
     expect(offsetOf(item('C')).top).toBe(8 * 56);
     expect(parseFloat(item('A').style.width)).toBeCloseTo(6 * cell + 5 * 16, 1);
 
-    act(() => {
-      drag('C', 6 * (cell + 16), 0);
-    });
+    // Each fireEvent is its own act(), so React renders between the pointer events.
+    drag('C', 6 * (cell + 16), 0);
     expect(onLayout).toHaveBeenCalledTimes(1);
     const items = (onLayout.mock.calls[0]?.[0] ?? []) as LayoutItem[];
     expect(items.map((l) => [l.i, l.x, l.y, l.w, l.h])).toEqual([['C', 6, 8, 6, 8]]);
 
-    act(() => {
-      drag('B', -6 * (cell + 16), 0);
-    });
+    drag('B', -6 * (cell + 16), 0);
     expect(onLayout).toHaveBeenCalledTimes(1);
     expect(offsetOf(item('B')).left).toBeCloseTo(6 * (cell + 16), 1);
     expect(offsetOf(item('A')).left).toBe(0);

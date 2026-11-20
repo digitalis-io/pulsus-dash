@@ -92,8 +92,9 @@ describe('board list', () => {
     await user.clear(name);
     await user.type(name, 'Checkout p99');
     await user.click(within(r).getByRole('button', { name: 'Save' }));
+    // Most recently updated first, as the API lists them.
     await waitFor(async () => {
-      expect(await rowTitles()).toEqual(['Service overview', 'Checkout p99', EDGE]);
+      expect(await rowTitles()).toEqual(['Checkout p99', 'Service overview', EDGE]);
     });
 
     await user.click(screen.getByRole('button', { name: 'Actions for Checkout p99' }));

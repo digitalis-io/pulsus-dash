@@ -14,6 +14,18 @@ import { useShellRoute } from './useShellRoute';
 import styles from './Sidebar.module.css';
 import { cx } from '../kit/cx';
 
+/**
+ * The history state of a board link (plan #61 Part B §4.2): the board page applies the board's
+ * saved time range once, then clears the state. Deep links and reloads have none (IA-022).
+ */
+export interface BoardLinkState {
+  applySavedTime: true;
+  /** New board: open in Edit mode. */
+  edit?: true;
+}
+
+export const BOARD_LINK_STATE: BoardLinkState = { applySavedTime: true };
+
 export function useBoards(tenant: string) {
   const api = useApi();
   return useQuery({
@@ -56,6 +68,7 @@ function BoardLinks({
         <li key={b.uid}>
           <Link
             to={{ pathname: `/t/${tenant}/board/${b.uid}`, search: contextSearchString(search) }}
+            state={BOARD_LINK_STATE}
             className={cx(styles['link'], styles['nested'])}
             onPointerEnter={() => {
               preloadRoute('board');

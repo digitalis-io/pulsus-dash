@@ -1,5 +1,5 @@
 /** Shared setup of the board page tests: a fake chart engine, ResizeObserver and panel lookups. */
-import { screen, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import createClient from 'openapi-fetch';
 import type { paths } from '../api/gen/schema';
@@ -27,10 +27,6 @@ export function gridOf(title: string): string | null {
 
 export function panelTitles(): string[] {
   return screen.queryAllByRole('heading', { level: 3 }).map((h) => h.textContent);
-}
-
-export function within_(title: string) {
-  return within(panelOf(title));
 }
 
 export function grid(
@@ -97,8 +93,14 @@ export function httpApi(put?: (req: Request) => Promise<Response>): HttpApi {
         return Promise.resolve(
           json(200, {
             items: defaultSeed.boards.map((b) => {
-              const { etag: _e, schema_version: _v, spec: _s, ...rest } = wireBoard(b.uid);
-              return rest;
+              const w = wireBoard(b.uid);
+              return {
+                uid: w.uid,
+                title: w.title,
+                version: w.version,
+                updated_at: w.updated_at,
+                updated_by: w.updated_by,
+              };
             }),
             truncated: false,
           }),
