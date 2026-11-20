@@ -48,11 +48,28 @@ export function stackedTotals(series: readonly SeriesFrame[]): Float64Array {
   return totals;
 }
 
+/**
+ * The finite minimum and maximum of `values`, in one pass (no spread into `Math.min`/`Math.max`,
+ * which throws past the engine's argument limit); `null` when there is no finite value.
+ */
+export function extent(values: ArrayLike<number>): { min: number; max: number } | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i] ?? NaN;
+    if (!Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return min === Infinity ? null : { min, max };
+}
+
 /** Bars: min and max over the stacked totals; last = the last bucket's total. */
 export function barStats(series: readonly SeriesFrame[]): Stats {
   const totals = stackedTotals(series);
-  if (totals.length === 0) return NONE;
-  return { min: Math.min(...totals), max: Math.max(...totals), last: totals.at(-1) ?? null };
+  const e = extent(totals);
+  if (e === null) return NONE;
+  return { min: e.min, max: e.max, last: totals.at(-1) ?? null };
 }
 
 /** Heatmap: min and max over every cell count (zeros included); last = the last column's total. */

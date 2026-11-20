@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient } from '@tanstack/react-query';
-import { StrictMode, type ReactNode } from 'react';
+import { StrictMode, useState, type ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider, type DataRouter } from 'react-router';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { StubApi } from '../api/StubApi';
@@ -247,6 +247,68 @@ describe('component summary', () => {
       lastFrame(engine).emit('a11y', { ...summary('line', 600, 1, 2, 3), seriesShown: 500 });
     });
     expect(screen.getByRole('status')).toHaveTextContent('Showing 500 of 600 series');
+  });
+});
+
+describe('component summary label follows the spec', () => {
+  it('updates the label when only the title or the unit changes', async () => {
+    const engine = fakeEngine();
+    let setSpec: (s: VisSpec) => void = () => undefined;
+    function Switchable() {
+      const [spec, set] = useState<VisSpec>(LINE);
+      setSpec = set;
+      return <ChartFrame spec={spec} data={DATA} />;
+    }
+    const deps: RouterDeps = {
+      api: new StubApi(),
+      queryClient: new QueryClient(),
+      clock: createClock(() => T),
+      timeZone: TZ,
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/t/:tenant/x',
+          element: (
+            <ChartEngineContext.Provider value={engine}>
+              <Switchable />
+            </ChartEngineContext.Provider>
+          ),
+        },
+      ],
+      { initialEntries: [URL0] },
+    );
+    render(
+      <Providers deps={deps}>
+        <RouterProvider router={router} />
+      </Providers>,
+    );
+    await waitFor(() => {
+      expect(engine.frames).toHaveLength(1);
+    });
+    act(() => {
+      lastFrame(engine).emit('a11y', summary('line', 50, 24, 336, 200));
+    });
+    const canvas = (): Element | null => document.querySelector('canvas');
+    expect(canvas()).toHaveAttribute(
+      'aria-label',
+      'T: line chart, 50 series, 12:00 – 13:00 GMT. Min 24 ms, max 336 ms, last 200 ms.',
+    );
+    act(() => {
+      setSpec({ ...LINE, title: 'U' });
+    });
+    expect(canvas()).toHaveAttribute(
+      'aria-label',
+      'U: line chart, 50 series, 12:00 – 13:00 GMT. Min 24 ms, max 336 ms, last 200 ms.',
+    );
+    act(() => {
+      setSpec({ kind: 'line', title: 'U', unit: { kind: 'time', base: 's' } });
+    });
+    expect(canvas()).toHaveAttribute(
+      'aria-label',
+      'U: line chart, 50 series, 12:00 – 13:00 GMT. Min 24 s, max 5.6 min, last 3.33 min.',
+    );
+    expect(engine.frames).toHaveLength(1);
   });
 });
 

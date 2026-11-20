@@ -65,6 +65,7 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
   const sliderRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<EngineFrame | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // The latest inputs, for the mount effect and the event callbacks (not effect dependencies).
   const latest = useRef({ spec, frameData, fromMs, toMs, theme, dispatch, tz });
   useLayoutEffect(() => {
@@ -83,6 +84,7 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
     canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', latest.current.spec.title);
     host.insertBefore(canvas, host.firstChild);
+    canvasRef.current = canvas;
     let frame: EngineFrame;
     try {
       frame = engine.createFrame(canvas, {
@@ -101,7 +103,6 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
     frameRef.current = frame;
     const offs = [
       frame.on('a11y', (s) => {
-        canvas.setAttribute('aria-label', summaryLabel(latest.current.spec, s, latest.current.tz));
         setSummary(s);
       }),
       frame.on('hover', (h) => {
@@ -161,6 +162,7 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
       frame.dispose();
       canvas.remove();
       frameRef.current = null;
+      canvasRef.current = null;
     };
   }, [engine, tz, isStat]);
 
@@ -176,6 +178,15 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
   useEffect(() => {
     frameRef.current?.setTheme(theme);
   }, [theme]);
+
+  // The summary label follows the spec (title, unit, kind) and the zone as well as the summary: the
+  // engine emits `a11y` only when the numbers change.
+  useEffect(() => {
+    canvasRef.current?.setAttribute(
+      'aria-label',
+      summary === null ? spec.title : summaryLabel(spec, summary, tz),
+    );
+  }, [spec, summary, tz, engine, isStat]);
 
   // Tooltip beside the crosshair, flipped left at the host's right edge (CSSOM, T18-004).
   useLayoutEffect(() => {

@@ -107,6 +107,26 @@ describe('unit:columns', () => {
     expect(m.counts[0]).toBe((counts[0] ?? 0) + (counts[3] ?? 0));
   });
 
+  it('drops buckets outside the window instead of merging them into the edge columns', () => {
+    // 30 buckets of 1 s from −10 s; window 0–9 999 ms over 5 px (2 s per column).
+    const ts = new Float64Array(Array.from({ length: 30 }, (_, i) => (i - 10) * 1_000));
+    const counts = new Float64Array(30).fill(1);
+    const m = mergeBuckets(
+      ts,
+      counts,
+      1,
+      { fromMs: 0, toMs: 9_999 },
+      {
+        x: 0,
+        y: 0,
+        width: 5,
+        height: 100,
+      },
+    );
+    expect([...m.ts]).toEqual([0, 2_000, 4_000, 6_000, 8_000]);
+    expect([...m.counts]).toEqual([2, 2, 2, 2, 2]);
+  });
+
   describe('cases', () => {
     // Window 0–1 000 ms over 10 px: column = floor(t / 100).
     const w = { fromMs: 0, toMs: 1_000 };

@@ -14,6 +14,7 @@ import { LABEL_HEIGHT, layoutPlot } from './layout';
 import { rampIndex, seriesColourIndex, type ThemeColours } from './palette';
 import {
   barStats,
+  extent,
   frameSummary,
   heatmapStats,
   lineStats,
@@ -277,11 +278,11 @@ function drawBars(
     timestamps: ts,
     values: Float64Array.from({ length: ts.length }, (_, t) => grid[t * c + k] ?? 0),
   }));
-  const totals = stackedTotals(merged);
+  const range = extent(stackedTotals(merged));
   const { plot, y, labels } = valueAxis(
     i,
-    Math.min(...totals, 0),
-    Math.max(...totals, 0),
+    Math.min(range?.min ?? 0, 0),
+    Math.max(range?.max ?? 0, 0),
     spec.unit,
   );
   const summary = frameSummary('bars', i.window, plot, series.length, shown.length, stats);

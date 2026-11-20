@@ -12,6 +12,7 @@ import {
 } from '../../test/engineHarness';
 import { colour, seriesPalette, sequentialRamp } from '../../styles/tokens';
 import { bucketScale } from './bucketScale';
+import { barStats } from './summary';
 import { brushSnapUnit } from './columns';
 import { Canvas2DEngine, ChartUnsupportedError, MAX_SERIES } from './Canvas2DEngine';
 
@@ -391,5 +392,30 @@ describe('engine', () => {
     expect(() =>
       engine.createFrame(document.createElement('canvas'), { timeZone: 'UTC', keyTarget: null }),
     ).toThrow(ChartUnsupportedError);
+  });
+});
+
+describe('large inputs', () => {
+  // More buckets than the JavaScript engine's argument limit: extrema are computed without a spread.
+  it('renders and summarises 200 000 bar buckets without throwing', () => {
+    const n = 200_000;
+    const ts = Array.from({ length: n }, (_, i) => i * 1_000);
+    const vs = ts.map((_, i) => (i % 100) + 1);
+    const s = seriesFrame(K(1), ts, vs, { level: 'info' });
+    expect(barStats([s])).toEqual({ min: 1, max: 100, last: 100 });
+    const h = harness(Canvas2DEngine);
+    const spec: VisSpec = {
+      kind: 'bars',
+      title: 'T',
+      unit: { kind: 'none' },
+      stacking: 'normal',
+      categoryLabel: 'level',
+      categoryOrder: ['info'],
+    };
+    expect(() => {
+      show(h, spec, seriesData(s), { fromMs: 0, toMs: n * 1_000 });
+    }).not.toThrow();
+    expect(h.a11y.at(-1)).toMatchObject({ kind: 'bars', min: 1, max: 100, last: 100 });
+    expect(h.layer().calls('fillRect').length).toBeGreaterThan(1);
   });
 });

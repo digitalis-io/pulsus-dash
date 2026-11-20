@@ -131,7 +131,8 @@ export function lineColumns(
 
 /**
  * Buckets grouped by the column formula, `stride` counts per bucket summed (non-finite counts as
- * 0); a group starts at its first bucket. Used when there are more buckets than CSS px.
+ * 0); a group starts at its first bucket. Buckets starting outside [from, to] are dropped, not
+ * merged into the edge columns. Used when there are more buckets than CSS px.
  */
 export function mergeBuckets(
   ts: Float64Array,
@@ -146,6 +147,7 @@ export function mergeBuckets(
   let lastX = -1;
   for (let i = 0; i < ts.length; i++) {
     const t = ts[i] ?? NaN;
+    if (!(t >= w.fromMs && t <= w.toMs)) continue;
     const x = n === 0 ? 0 : columnOf(t, w, n);
     if (x !== lastX || starts.length === 0) {
       starts.push(t);
