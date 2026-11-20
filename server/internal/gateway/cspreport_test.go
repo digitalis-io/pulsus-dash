@@ -399,3 +399,27 @@ func TestCSPReportStatusesInSpec(t *testing.T) {
 		t.Errorf("postCspReport responses = %v, want %v", codes, want)
 	}
 }
+
+// The read deadline is wall-clock time: a limiter clock fixed in the past must not time out a
+// body that arrives after the headers.
+func TestCSPReportDeadlineIsWallClock(t *testing.T) {
+	d := cspDeps(&syncBuffer{})
+	d.Now = func() time.Time { return time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC) }
+	srv := cspServer(t, d)
+	body := mustJSON([]any{violation(map[string]any{"effectiveDirective": "img-src"})})
+	c, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if _, err := fmt.Fprintf(c, "POST %s HTTP/1.1\r\nHost: x\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n", cspPath, reportsJSON, len(body)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if _, err := io.WriteString(c, body); err != nil {
+		t.Fatal(err)
+	}
+	if resp, _, _ := readResponse(t, c, 2*time.Second); resp.StatusCode != http.StatusNoContent {
+		t.Errorf("status %d, want 204", resp.StatusCode)
+	}
+}

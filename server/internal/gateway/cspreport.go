@@ -117,8 +117,9 @@ func (c *cspReport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusUnsupportedMediaType, api.Invalid, "unsupported media type")
 		return
 	}
-	// The body is never read without a deadline.
-	if err := http.NewResponseController(w).SetReadDeadline(c.now().Add(c.deadline)); err != nil {
+	// The body is never read without a deadline. The deadline is on the real connection, so it is
+	// wall-clock time, not the rate limiter's clock.
+	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(c.deadline)); err != nil {
 		c.log.ErrorContext(ctx, "csp_report_no_deadline", "error", err.Error())
 		refuse(w, http.StatusInternalServerError, api.Internal, "internal error")
 		return
