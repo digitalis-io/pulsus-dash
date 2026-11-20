@@ -1,0 +1,8 @@
+.tooltip {
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}

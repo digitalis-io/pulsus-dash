@@ -1,0 +1,157 @@
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-1);
+  /* The right hairline is drawn inside the 240 px, so the column and the nav are the same width. */
+  box-shadow: inset calc(var(--border-hairline) * -1) 0 0 var(--hairline);
+}
+
+.top {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--size-header);
+  padding: 0 var(--space-3);
+  border-bottom: var(--border-hairline) solid var(--hairline);
+}
+
+.mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-control);
+  height: var(--size-control);
+  border-radius: var(--radius);
+  color: var(--accent);
+}
+
+.mark:focus-visible,
+.link:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+.markIcon {
+  width: var(--font-size-xl);
+  height: var(--font-size-xl);
+}
+
+.rail {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) 0 0;
+}
+
+.nav {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.groups {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-3) 0;
+  overflow-y: auto;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 var(--space-2);
+  list-style: none;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--size-control);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  text-decoration: none;
+}
+
+.link:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.link[aria-current='page'] {
+  background: var(--surface-2);
+  box-shadow: inset var(--size-focus-ring) 0 0 var(--accent);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.nested {
+  padding-left: var(--space-6);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.star {
+  flex: none;
+  color: var(--accent);
+}
+
+.heading {
+  margin: var(--space-4) var(--space-4) var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.footerLinks {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-top: var(--border-hairline) solid var(--hairline);
+}
+
+.footer {
+  flex: none;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.toggle {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+.sidebar[data-state='collapsed'] .top {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar[data-state='collapsed'] .link,
+.sidebar[data-state='collapsed'] .toggle {
+  justify-content: center;
+  padding: 0;
+}

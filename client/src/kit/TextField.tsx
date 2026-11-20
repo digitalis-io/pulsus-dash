@@ -1,7 +1,13 @@
-// Stub for the tests-first commit: the implementation follows.
-import { type TextFieldProps as AriaTextFieldProps } from 'react-aria-components';
-
+import {
+  FieldError,
+  Input,
+  Label,
+  TextField as AriaTextField,
+  type TextFieldProps as AriaTextFieldProps,
+} from 'react-aria-components';
 import type { Ref } from 'react';
+import styles from './TextField.module.css';
+import { cx } from './cx';
 
 export interface TextFieldProps extends Omit<AriaTextFieldProps, 'className' | 'children'> {
   label: string;
@@ -11,12 +17,18 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, 'className' | '
   inputRef?: Ref<HTMLInputElement>;
 }
 
-export function TextField({
-  label,
-  error,
-  mono,
-  inputRef,
-  ...props
-}: TextFieldProps): import('react').JSX.Element {
-  throw new Error('not implemented');
+export function TextField({ label, error, mono = false, inputRef, ...props }: TextFieldProps) {
+  const invalid = error !== null && error !== undefined;
+  return (
+    <AriaTextField
+      {...props}
+      isInvalid={invalid}
+      validationBehavior="aria"
+      className={cx(styles['field'])}
+    >
+      <Label className={cx(styles['label'])}>{label}</Label>
+      <Input ref={inputRef} className={cx(styles['input'], mono ? styles['mono'] : undefined)} />
+      <FieldError className={cx(styles['error'])}>{error}</FieldError>
+    </AriaTextField>
+  );
 }

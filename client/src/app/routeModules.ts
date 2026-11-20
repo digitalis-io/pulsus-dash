@@ -1,23 +1,16 @@
-// Stub for the tests-first commit: the implementation follows.
-/** Stub (tests-first commit): any use throws. */
-function notImplemented<T>(): T {
-  const fail = (): never => {
-    throw new Error('not implemented');
-  };
-  return new Proxy(fail, { get: fail, apply: fail, construct: fail, ownKeys: fail }) as T;
-}
-
-export const routeModules: {
-  readonly boards: () => Promise<typeof import('../pages/boards/BoardsPage')>;
-  readonly board: () => Promise<typeof import('../pages/board/BoardPage')>;
-  readonly metrics: () => Promise<typeof import('../pages/explore/MetricsPage')>;
-  readonly logs: () => Promise<typeof import('../pages/explore/LogsPage')>;
-  readonly admin: () => Promise<typeof import('../pages/admin/AdminPage')>;
-  readonly signedOut: () => Promise<typeof import('../pages/SignedOutPage')>;
-} = notImplemented();
+/** Route module importers, shared by the router's `lazy` and by preloading on hover and focus. */
+export const routeModules = {
+  boards: () => import('../pages/boards/BoardsPage'),
+  board: () => import('../pages/board/BoardPage'),
+  metrics: () => import('../pages/explore/MetricsPage'),
+  logs: () => import('../pages/explore/LogsPage'),
+  admin: () => import('../pages/admin/AdminPage'),
+  signedOut: () => import('../pages/SignedOutPage'),
+} as const;
 
 export type RouteModuleId = keyof typeof routeModules;
 
+/** Starts loading a route module. Rejection is swallowed here; the route's `lazy` surfaces it. */
 export function preloadRoute(id: RouteModuleId): void {
-  throw new Error('not implemented');
+  routeModules[id]().catch(() => undefined);
 }

@@ -1,0 +1,109 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 100%;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--space-12);
+  padding: 0 var(--space-4);
+}
+
+.row + .row {
+  border-top: var(--border-hairline) solid var(--hairline);
+}
+
+.rowLink {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--size-target-min);
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  text-decoration: none;
+  text-overflow: ellipsis;
+}
+
+.rowLink:hover {
+  text-decoration: underline;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--size-target-min);
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.rowLink:focus-visible,
+.link:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.meta {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(var(--size-sidebar-expanded) + var(--space-16)), 1fr)
+  );
+  gap: var(--space-4);
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.standalone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: calc(var(--size-sidebar-expanded) * 3);
+  margin: 0 auto;
+  padding: var(--space-16) var(--size-page-padding);
+}
+
+.standaloneTitle {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.panelsTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}

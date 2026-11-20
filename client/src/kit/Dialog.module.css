@@ -1,0 +1,36 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--backdrop);
+}
+
+.modal {
+  max-width: calc(100vw - var(--space-12));
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--size-sidebar-expanded) * 2);
+  max-width: 100%;
+  padding: var(--space-6);
+  outline: none;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plain {
+  outline: none;
+}

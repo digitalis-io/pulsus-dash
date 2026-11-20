@@ -1,24 +1,26 @@
-// Stub for the tests-first commit: the implementation follows.
 /**
  * Routes on React Router data mode (ADR-0017): code-based routes, loaders and `lazy`, client only.
  * Loaders gate rendering on the session, reject unknown tenants and `replace()` non-canonical
  * search to its canonical form (IA-022, T08-005), so no extra history entry is added.
  */
-import { type QueryClient } from '@tanstack/react-query';
-
-import { type DataRouter, type RouteObject } from 'react-router';
-
+import { queryOptions, type QueryClient } from '@tanstack/react-query';
+import {
+  createBrowserRouter,
+  createMemoryRouter,
+  data,
+  Outlet,
+  replace,
+  type DataRouter,
+  type LoaderFunctionArgs,
+  type RouteObject,
+} from 'react-router';
 import type { Api } from '../api/Api';
-
+import { NotFoundPage, ShellNotFoundPage } from '../pages/NotFoundPage';
+import { AppShell } from '../shell/AppShell';
 import type { Clock } from '../state/clock';
-
-/** Stub (tests-first commit): any use throws. */
-function notImplemented<T>(): T {
-  const fail = (): never => {
-    throw new Error('not implemented');
-  };
-  return new Proxy(fail, { get: fail, apply: fail, construct: fail, ownKeys: fail }) as T;
-}
+import { contextSearchString, DEFAULT_CONTEXT, normalisedSearch } from '../state/contextSearch';
+import { RouteErrorPage } from './RouteErrorPage';
+import { routeModules } from './routeModules';
 
 export interface RouterDeps {
   api: Api;
@@ -27,32 +29,109 @@ export interface RouterDeps {
   timeZone: string;
 }
 
-export type RouterHistory =
-  | {
-      kind: 'browser';
-    }
-  | {
-      kind: 'memory';
-      initialEntries: string[];
-    };
+export type RouterHistory = { kind: 'browser' } | { kind: 'memory'; initialEntries: string[] };
 
-export const sessionQuery: (api: Api) => import('@tanstack/query-core').OmitKeyof<
-  import('@tanstack/react-query').UseQueryOptions<
-    import('../api').Session,
-    Error,
-    import('../api').Session,
-    string[]
-  >,
-  'queryFn'
-> & {
-  queryFn?: import('@tanstack/query-core').QueryFunction<import('../api').Session, string[], never>;
-} & import('@tanstack/query-core').QueryKeyWithDataTag<string[], import('../api').Session, Error> =
-  notImplemented();
+// retry: false: a failed session shows the error page at once with an explicit, keyboard-reachable
+// Retry; other queries keep the QueryClient default (retry: 1).
+export const sessionQuery = (api: Api) =>
+  queryOptions({
+    queryKey: ['session'],
+    queryFn: ({ signal }) => api.getSession(signal),
+    staleTime: Infinity,
+    retry: false,
+  });
+
+function BootFallback() {
+  return <div aria-busy="true" />;
+}
 
 export function createRoutes(deps: RouterDeps): RouteObject[] {
-  throw new Error('not implemented');
+  const { api, queryClient, clock, timeZone } = deps;
+  const env = () => ({ nowMs: clock.anchor(), timeZone });
+  // Cached for the page's lifetime; `removeQueries` (Retry) and `clear()` (Sign out) drop it.
+  const session = () => queryClient.query({ ...sessionQuery(api), staleTime: 'static' });
+
+  return [
+    {
+      id: 'root',
+      Component: Outlet,
+      HydrateFallback: BootFallback,
+      ErrorBoundary: RouteErrorPage,
+      children: [
+        {
+          id: 'index',
+          index: true,
+          loader: async () => {
+            const s = await session();
+            throw replace(`/t/${s.defaultTenant}/boards${contextSearchString(DEFAULT_CONTEXT)}`);
+          },
+        },
+        {
+          id: 'signedOut',
+          path: 'signed-out',
+          lazy: () => routeModules.signedOut().then((m) => ({ Component: m.SignedOutPage })),
+        },
+        {
+          id: 'tenant',
+          path: 't/:tenant',
+          Component: AppShell,
+          loader: async ({ request, params }: LoaderFunctionArgs) => {
+            const s = await session();
+            if (!s.tenants.some((t) => t.slug === params['tenant'])) {
+              throw data(null, { status: 404 });
+            }
+            const url = new URL(request.url);
+            const n = normalisedSearch(url.search, env());
+            if (n !== null) throw replace(url.pathname + n);
+            return null;
+          },
+          children: [
+            {
+              id: 'tenantIndex',
+              index: true,
+              loader: ({ request, params }: LoaderFunctionArgs) => {
+                const url = new URL(request.url);
+                const search = normalisedSearch(url.search, env()) ?? url.search;
+                throw replace(`/t/${params['tenant'] ?? ''}/boards${search}`);
+              },
+            },
+            {
+              id: 'boards',
+              path: 'boards',
+              lazy: () => routeModules.boards().then((m) => ({ Component: m.BoardsPage })),
+            },
+            {
+              id: 'board',
+              path: 'board/:uid',
+              lazy: () => routeModules.board().then((m) => ({ Component: m.BoardPage })),
+            },
+            {
+              id: 'metrics',
+              path: 'explore/metrics',
+              lazy: () => routeModules.metrics().then((m) => ({ Component: m.MetricsPage })),
+            },
+            {
+              id: 'logs',
+              path: 'explore/logs',
+              lazy: () => routeModules.logs().then((m) => ({ Component: m.LogsPage })),
+            },
+            {
+              id: 'admin',
+              path: 'admin',
+              lazy: () => routeModules.admin().then((m) => ({ Component: m.AdminPage })),
+            },
+            { id: 'tenantNotFound', path: '*', Component: ShellNotFoundPage },
+          ],
+        },
+        { id: 'notFound', path: '*', Component: NotFoundPage },
+      ],
+    },
+  ];
 }
 
 export function createAppRouter(deps: RouterDeps, h: RouterHistory): DataRouter {
-  throw new Error('not implemented');
+  const routes = createRoutes(deps);
+  return h.kind === 'browser'
+    ? createBrowserRouter(routes)
+    : createMemoryRouter(routes, { initialEntries: h.initialEntries });
 }

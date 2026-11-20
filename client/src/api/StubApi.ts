@@ -1,4 +1,3 @@
-// Stub for the tests-first commit: the implementation follows.
 /**
  * In-repo stub of the BFF API (ADR-0014 §6): seeded data, no network. Starred boards stand in for
  * the per-user preference the BFF stores from #61 and are kept in `localStorage`.
@@ -7,52 +6,118 @@
  * `getSession` rejects with `ApiError('network')` and stores n − 1.
  */
 import type { Api } from './Api';
-
-import { type BoardSummary, type Session } from './types';
-
-/** Stub (tests-first commit): any use throws. */
-function notImplemented<T>(): T {
-  const fail = (): never => {
-    throw new Error('not implemented');
-  };
-  return new Proxy(fail, { get: fail, apply: fail, construct: fail, ownKeys: fail }) as T;
-}
+import { defaultSeed, defaultStarred } from './stubData';
+import { ApiError, type BoardSummary, type Session } from './types';
 
 export interface StubSeed {
   session: Session;
   boards: Record<string, BoardSummary[]>;
 }
 
-export const STUB_STARRED_KEY: (tenant: string) => string = notImplemented();
-
+export const STUB_STARRED_KEY = (tenant: string): string => `pulsus-dash.stub.starred.${tenant}`;
 export const STUB_FAIL_SESSION_KEY = 'pulsus-dash.stub.failSession';
 
+function storage(): Storage | null {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function read(key: string): string | null {
+  try {
+    return storage()?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function write(key: string, value: string): void {
+  try {
+    storage()?.setItem(key, value);
+  } catch {
+    // Storage unavailable: the stub keeps working without persistence.
+  }
+}
+
+/** Resolves on the next microtask; rejects with `AbortError` if `signal` is aborted by then. */
+function settle<T>(value: () => T, signal?: AbortSignal): Promise<T> {
+  return Promise.resolve().then(() => {
+    if (signal?.aborted === true)
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    return value();
+  });
+}
+
 export class StubApi implements Api {
-  constructor(seed?: StubSeed) {
-    throw new Error('not implemented');
+  private readonly seed: StubSeed;
+
+  constructor(seed: StubSeed = defaultSeed) {
+    this.seed = structuredClone(seed);
   }
 
   getSession(signal?: AbortSignal): Promise<Session> {
-    throw new Error('not implemented');
+    return settle(() => {
+      const n = Number(read(STUB_FAIL_SESSION_KEY) ?? '0');
+      if (Number.isInteger(n) && n > 0) {
+        write(STUB_FAIL_SESSION_KEY, String(n - 1));
+        throw new ApiError('network', 'stub: session request failed');
+      }
+      return structuredClone(this.seed.session);
+    }, signal);
   }
 
   listBoards(tenant: string, signal?: AbortSignal): Promise<BoardSummary[]> {
-    throw new Error('not implemented');
+    return settle(() => structuredClone(this.boardsOf(tenant)), signal);
   }
 
   getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<BoardSummary> {
-    throw new Error('not implemented');
+    return settle(() => {
+      const b = this.boardsOf(tenant).find((x) => x.uid === uid);
+      if (b === undefined) throw new ApiError('notFound', `board ${uid} not found`);
+      return structuredClone(b);
+    }, signal);
   }
 
   listStarred(tenant: string, signal?: AbortSignal): Promise<string[]> {
-    throw new Error('not implemented');
+    return settle(() => {
+      this.boardsOf(tenant);
+      return this.starredOf(tenant);
+    }, signal);
   }
 
   setStarred(tenant: string, uid: string, starred: boolean): Promise<string[]> {
-    throw new Error('not implemented');
+    return settle(() => {
+      this.boardsOf(tenant);
+      const current = this.starredOf(tenant).filter((x) => x !== uid);
+      const next = starred ? [...current, uid] : current;
+      write(STUB_STARRED_KEY(tenant), JSON.stringify(next));
+      return [...next];
+    });
   }
 
   signOut(): Promise<void> {
-    throw new Error('not implemented');
+    return settle(() => undefined);
+  }
+
+  private boardsOf(tenant: string): BoardSummary[] {
+    const boards = this.seed.boards[tenant];
+    if (boards === undefined) throw new ApiError('notFound', `tenant ${tenant} not found`);
+    return boards;
+  }
+
+  private starredOf(tenant: string): string[] {
+    const raw = read(STUB_STARRED_KEY(tenant));
+    if (raw === null) return [...(defaultStarred[tenant] ?? [])];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every((x): x is string => typeof x === 'string')) {
+        return parsed;
+      }
+    } catch {
+      // Invalid stored value: fall through to empty.
+    }
+    return [];
   }
 }

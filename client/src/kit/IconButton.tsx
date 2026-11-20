@@ -1,7 +1,8 @@
-// Stub for the tests-first commit: the implementation follows.
 import type { ButtonProps as AriaButtonProps } from 'react-aria-components';
-
-import { type IconName } from './Icon';
+import { Button } from './Button';
+import { Icon, type IconName } from './Icon';
+import styles from './IconButton.module.css';
+import { cx } from './cx';
 
 export interface IconButtonProps extends Omit<AriaButtonProps, 'className' | 'children'> {
   icon: IconName;
@@ -9,10 +10,11 @@ export interface IconButtonProps extends Omit<AriaButtonProps, 'className' | 'ch
   className?: string;
 }
 
-export function IconButton({
-  icon,
-  className,
-  ...props
-}: IconButtonProps): import('react').JSX.Element {
-  throw new Error('not implemented');
+/** A square icon-only button (≥ 24 × 24 px target, T08-010) with an accessible name. */
+export function IconButton({ icon, className, ...props }: IconButtonProps) {
+  return (
+    <Button {...props} variant="ghost" className={cx(styles['iconButton'], className)}>
+      <Icon name={icon} />
+    </Button>
+  );
 }

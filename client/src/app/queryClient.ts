@@ -1,6 +1,10 @@
-// Stub for the tests-first commit: the implementation follows.
 import { QueryClient } from '@tanstack/react-query';
 
+/** Production query defaults (§3.4 of plan #57). */
 export function createQueryClient(): QueryClient {
-  throw new Error('not implemented');
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 30_000 },
+    },
+  });
 }

@@ -1,14 +1,9 @@
-// Stub for the tests-first commit: the implementation follows.
-/** Stub (tests-first commit): any use throws. */
-function notImplemented<T>(): T {
-  const fail = (): never => {
-    throw new Error('not implemented');
-  };
-  return new Proxy(fail, { get: fail, apply: fail, construct: fail, ownKeys: fail }) as T;
-}
+import { createContext, useContext } from 'react';
+import { browserTimeZone } from '../i18n/format';
 
-export const TimeZoneContext: import('react').Context<string> = notImplemented();
+/** The IANA zone the Context resolves `now/d` and calendar days in; the browser's by default. */
+export const TimeZoneContext = createContext<string>(browserTimeZone());
 
 export function useTimeZone(): string {
-  throw new Error('not implemented');
+  return useContext(TimeZoneContext);
 }

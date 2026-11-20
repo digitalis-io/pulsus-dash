@@ -1,0 +1,21 @@
+/* The only CSS that references the state colour tokens (T02-004). A state is always shown with its
+   glyph and label as well as its colour. */
+.ok {
+  --state-colour: var(--ok);
+}
+
+.watch {
+  --state-colour: var(--watch);
+}
+
+.degraded {
+  --state-colour: var(--degraded);
+}
+
+.failing {
+  --state-colour: var(--failing);
+}
+
+.unknown {
+  --state-colour: var(--unknown);
+}

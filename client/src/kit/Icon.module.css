@@ -1,0 +1,82 @@
+.icon {
+  display: inline-block;
+  flex: none;
+  width: var(--size-icon);
+  height: var(--size-icon);
+  background-color: currentcolor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.activity {
+  mask-image: url('../icons/activity.svg');
+}
+
+.layoutDashboard {
+  mask-image: url('../icons/layout-dashboard.svg');
+}
+
+.chartLine {
+  mask-image: url('../icons/chart-line.svg');
+}
+
+.scrollText {
+  mask-image: url('../icons/scroll-text.svg');
+}
+
+.settings {
+  mask-image: url('../icons/settings.svg');
+}
+
+.panelLeftClose {
+  mask-image: url('../icons/panel-left-close.svg');
+}
+
+.panelLeftOpen {
+  mask-image: url('../icons/panel-left-open.svg');
+}
+
+.clock {
+  mask-image: url('../icons/clock.svg');
+}
+
+.refreshCw {
+  mask-image: url('../icons/refresh-cw.svg');
+}
+
+.chevronDown {
+  mask-image: url('../icons/chevron-down.svg');
+}
+
+.sun {
+  mask-image: url('../icons/sun.svg');
+}
+
+.moon {
+  mask-image: url('../icons/moon.svg');
+}
+
+.monitor {
+  mask-image: url('../icons/monitor.svg');
+}
+
+.info {
+  mask-image: url('../icons/info.svg');
+}
+
+.logOut {
+  mask-image: url('../icons/log-out.svg');
+}
+
+.link {
+  mask-image: url('../icons/link.svg');
+}
+
+.calendar {
+  mask-image: url('../icons/calendar.svg');
+}
+
+.check {
+  mask-image: url('../icons/check.svg');
+}
