@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static/statictest"
 )
 
 // lockedBuffer is a bytes.Buffer safe for concurrent writes and reads.
@@ -183,7 +187,11 @@ func TestConnStringNeverPrinted(t *testing.T) {
 					yml = "allow_inline_secrets: true\npostgres:\n  " + c.key + ": " + strconv.Quote(value) + "\n"
 					env = nil
 				}
-				r := runCLI(t, context.Background(), env, c.name, "--config", writeConfig(t, yml+seedYAMLUnit))
+				args := []string{c.name, "--config", writeConfig(t, yml+seedYAMLUnit)}
+				if c.name == "serve" {
+					args = append(args, "--api-only") // reach Postgres without embedded assets
+				}
+				r := runCLI(t, context.Background(), env, args...)
 				if strings.Contains(r.stderr+r.stdout, marker) {
 					t.Errorf("%s inline=%v %q: output contains the value: %q", c.name, inline, value, r.stderr)
 				}
@@ -202,3 +210,57 @@ func TestConnStringNeverPrinted(t *testing.T) {
 }
 
 const seedYAMLUnit = "datasource:\n  url: http://localhost:9\n"
+
+// serveUnit runs serve in-process with a Ready channel and returns the result and whether Ready
+// ever received.
+func serveUnit(t *testing.T, e runEnv) (result, bool) {
+	t.Helper()
+	var out, errb lockedBuffer
+	ready := make(chan string, 1)
+	e.Stdout, e.Stderr, e.Ready = &out, &errb, ready
+	code := run(context.Background(), e)
+	select {
+	case <-ready:
+		return result{code, out.String(), errb.String()}, true
+	default:
+		return result{code, out.String(), errb.String()}, false
+	}
+}
+
+// unreachablePG points serve at a port where nothing listens; asset checks run before Postgres.
+var unreachablePG = []string{
+	"PULSUS_DASH_POSTGRES_APP_URL_REF=env:PG_APP_URL",
+	"PG_APP_URL=postgres://pulsus_app@localhost:1/x?sslmode=disable",
+}
+
+// S1
+func TestServeRefusesAlteredAssets(t *testing.T) {
+	fsys := statictest.Default()
+	b := bytes.Clone(statictest.AppJS)
+	b[0] ^= 1
+	fsys["assets/app.js"] = &fstest.MapFile{Data: b}
+	r, ready := serveUnit(t, runEnv{Args: []string{"serve"}, Environ: unreachablePG, Assets: fsys,
+		AssetKeys: []ed25519.PublicKey{statictest.Public(statictest.Key())}})
+	want := "pulsus-dash: asset integrity check failed: hash_mismatch assets/app.js\n"
+	if r.code != 1 || !strings.HasSuffix(r.stderr, want) {
+		t.Errorf("exit %d stderr %q, want 1 ending %q", r.code, r.stderr, want)
+	}
+	if !strings.Contains(r.stderr, "asset_integrity_failed") {
+		t.Errorf("no asset_integrity_failed record in %q", r.stderr)
+	}
+	if ready {
+		t.Error("Ready received: a listener opened")
+	}
+}
+
+// S2
+func TestServeRefusesWithoutAssets(t *testing.T) {
+	r, ready := serveUnit(t, runEnv{Args: []string{"serve"}, Environ: unreachablePG})
+	want := "pulsus-dash: no embedded client assets: this binary was built without -tags embedassets; use make build, or serve --api-only for development\n"
+	if r.code != 1 || r.stderr != want {
+		t.Errorf("exit %d stderr %q, want 1 %q", r.code, r.stderr, want)
+	}
+	if ready {
+		t.Error("Ready received: a listener opened")
+	}
+}

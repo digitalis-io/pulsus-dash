@@ -12,6 +12,38 @@ paths:
       responses:
         '200': { description: Ready, content: { application/json: { schema: { $ref: '#/components/schemas/Ready' } } } }
         '503': { description: Not ready, content: { application/json: { schema: { $ref: '#/components/schemas/Ready' } } } }
+  /api/dash/v1/version:
+    get:
+      operationId: getVersion
+      tags: [meta]
+      responses:
+        '200': { description: Server version, content: { application/json: { schema: { $ref: '#/components/schemas/Version' } } } }
+        default: { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/bootstrap:
+    get:
+      operationId: getBootstrap
+      tags: [meta]
+      responses:
+        '200': { description: Principal, organisation, tenants and server, content: { application/json: { schema: { $ref: '#/components/schemas/Bootstrap' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/csp-report:
+    post:
+      operationId: postCspReport
+      tags: [ops]
+      description: CSP violation reports (T18-003). Hand-written handler; excluded from server generation.
+      requestBody:
+        required: true
+        content:
+          application/reports+json: { schema: { type: array, items: { type: object } } }
+          application/csp-report: { schema: { type: object } }
+      responses:
+        '204': { description: Accepted }
+        '400': { description: Malformed, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '408': { description: Body not received in time, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '413': { description: Too large, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '415': { description: Unsupported media type, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '429': { description: Rate limited, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '500': { description: Internal error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
   schemas:
     ErrorCode: { type: string, enum: [scope_denied, budget_exhausted, too_broad, unavailable, invalid, forbidden, virtual_unsupported, not_found, internal] }
@@ -30,3 +62,34 @@ components:
     Health: { type: object, required: [status], properties: { status: { type: string, enum: [ok] } } }
     Ready: { type: object, required: [status, checks], properties: { status: { type: string, enum: [ready, not_ready] }, checks: { $ref: '#/components/schemas/ReadyChecks' } } }
     ReadyChecks: { type: object, required: [postgres, schema], properties: { postgres: { type: string, enum: [ok, unreachable] }, schema: { type: string, enum: [ok, behind, ahead, unknown, error, timeout] } } }
+    Version: { type: object, additionalProperties: false, required: [version, commit], properties: { version: { type: string }, commit: { type: string } } }
+    Principal:
+      type: object
+      additionalProperties: false
+      required: [id, name, email, role]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [admin, editor, viewer] }
+    OrgInfo: { type: object, additionalProperties: false, required: [slug, name], properties: { slug: { type: string }, name: { type: string } } }
+    DatasourceStatus: { type: object, additionalProperties: false, required: [state], properties: { state: { type: string, enum: [not_checked] } } }
+    TenantInfo:
+      type: object
+      additionalProperties: false
+      required: [slug, name, datasource]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        datasource: { $ref: '#/components/schemas/DatasourceStatus' }
+    Bootstrap:
+      type: object
+      additionalProperties: false
+      required: [principal, org, tenants, default_tenant, server, can_sign_out]
+      properties:
+        principal: { $ref: '#/components/schemas/Principal' }
+        org: { $ref: '#/components/schemas/OrgInfo' }
+        tenants: { type: array, items: { $ref: '#/components/schemas/TenantInfo' } }
+        default_tenant: { type: string }
+        server: { $ref: '#/components/schemas/Version' }
+        can_sign_out: { type: boolean }

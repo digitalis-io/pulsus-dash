@@ -26,6 +26,8 @@ var (
 	errPoolMax   = "must be between 1 and 512"
 	errLogLevel  = "must be one of debug, info, warn, error"
 	errLogFormat = "must be one of json, text"
+	errPublicURL = "must be an absolute http or https URL"
+	errPublicRaw = "must not contain credentials, a query or a fragment"
 )
 
 // validate checks every non-seed key (§3.3). Roles are checked by ValidateRoles when serve starts,
@@ -36,6 +38,12 @@ func (c *Config) validate() error {
 	}
 	if g := time.Duration(c.Server.ShutdownGrace); g < time.Second || g > 30*time.Second {
 		return &Error{Key: "server.shutdown_grace", Msg: errGrace}
+	}
+	if c.Server.PublicURL != "" {
+		if msg := checkPublicURL(c.Server.PublicURL); msg != "" {
+			return &Error{Key: "server.public_url", Msg: msg}
+		}
+		c.Server.PublicURL = strings.TrimSuffix(c.Server.PublicURL, "/")
 	}
 	for _, r := range []struct {
 		key string
@@ -58,6 +66,19 @@ func (c *Config) validate() error {
 		return &Error{Key: "log.format", Msg: errLogFormat}
 	}
 	return nil
+}
+
+// checkPublicURL returns the message for an invalid server.public_url, or "". Messages never
+// contain the URL.
+func checkPublicURL(s string) string {
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errPublicURL
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(s, "#") {
+		return errPublicRaw
+	}
+	return ""
 }
 
 func validListen(s string) bool {

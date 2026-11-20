@@ -62,3 +62,29 @@ func seedBootstrap(ctx context.Context, ownerURL string, seed core.BootstrapSeed
 	}
 	return org, true, nil
 }
+
+// BootstrapView reads the bootstrap organisation (install_state) and its tenant bindings in one
+// organisation-bound transaction, for GET /api/dash/v1/bootstrap.
+func (d *Db) BootstrapView(ctx context.Context) (core.BootstrapView, error) {
+	st, err := d.InstallState(ctx)
+	if err != nil {
+		return core.BootstrapView{}, err
+	}
+	var view core.BootstrapView
+	err = d.Tx(ctx, st.BootstrapOrg, func(ctx context.Context, tx *OrgTx) error {
+		org, err := tx.Org(ctx)
+		if err != nil {
+			return err
+		}
+		bindings, err := tx.TenantBindings(ctx)
+		if err != nil {
+			return err
+		}
+		view = core.BootstrapView{Org: org, Bindings: bindings}
+		return nil
+	})
+	if err != nil {
+		return core.BootstrapView{}, err
+	}
+	return view, nil
+}

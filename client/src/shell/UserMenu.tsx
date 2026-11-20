@@ -1,5 +1,6 @@
 /**
- * The user menu (D9): identity, theme (Dark, Light, System), About and Sign out (VL-001).
+ * The user menu (D9): identity, theme (Dark, Light, System), About and Sign out (VL-001). Sign out
+ * is hidden when the session cannot sign out (the fixed local principal, D12).
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
@@ -106,9 +107,11 @@ export function UserMenu() {
               >
                 {t('user.about')}
               </MenuItem>
-              <MenuItem id="signOut" icon={<Icon name="log-out" />} onAction={signOut}>
-                {t('user.signOut')}
-              </MenuItem>
+              {session.canSignOut && (
+                <MenuItem id="signOut" icon={<Icon name="log-out" />} onAction={signOut}>
+                  {t('user.signOut')}
+                </MenuItem>
+              )}
             </MenuSection>
           </Menu>
         </Popover>
@@ -134,6 +137,7 @@ export function UserMenu() {
       )}
       <AboutDialog
         isOpen={about}
+        serverVersion={session.server?.version ?? null}
         onOpenChange={(open) => {
           setAbout(open);
           // The menu item that opened the dialog is gone; return focus to the menu button.

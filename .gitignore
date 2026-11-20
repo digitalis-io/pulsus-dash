@@ -31,6 +31,8 @@ playwright-report/
 
 # Server build output and pinned tools (make server-build, make tools-ci)
 build/
+# The packed client the BFF embeds (make assets-pack)
+server/internal/gateway/static/dist/
 
 # Local dev stack settings, including the real PulsusDB URL (docs/development/dev-stack.md)
 dev/local.env

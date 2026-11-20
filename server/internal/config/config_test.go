@@ -336,3 +336,28 @@ func TestReferenceRuleBytes(t *testing.T) {
 		}
 	}
 }
+
+// U1
+func TestPublicURLKey(t *testing.T) {
+	if c := mustLoad(t, ""); c.Server.PublicURL != "" {
+		t.Errorf("default server.public_url = %q, want empty", c.Server.PublicURL)
+	}
+	if c := mustLoad(t, "server:\n  public_url: https://dash.example.com/\n"); c.Server.PublicURL != "https://dash.example.com" {
+		t.Errorf("server.public_url = %q, want https://dash.example.com", c.Server.PublicURL)
+	}
+	if c := mustLoad(t, "", "PULSUS_DASH_SERVER_PUBLIC_URL=http://localhost:8080"); c.Server.PublicURL != "http://localhost:8080" {
+		t.Errorf("env server.public_url = %q", c.Server.PublicURL)
+	}
+	for _, tc := range []struct{ value, want string }{
+		{"ftp://x", "config: server.public_url: must be an absolute http or https URL"},
+		{"dash.example.com", "config: server.public_url: must be an absolute http or https URL"},
+		{"https://u:p@h", "config: server.public_url: must not contain credentials, a query or a fragment"},
+		{"https://h/?q", "config: server.public_url: must not contain credentials, a query or a fragment"},
+		{"https://h/#f", "config: server.public_url: must not contain credentials, a query or a fragment"},
+	} {
+		_, err := load(t, "", "PULSUS_DASH_SERVER_PUBLIC_URL="+tc.value)
+		if err == nil || err.Error() != tc.want {
+			t.Errorf("public_url %q: error %v, want %q", tc.value, err, tc.want)
+		}
+	}
+}

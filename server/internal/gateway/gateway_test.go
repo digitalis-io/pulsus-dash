@@ -250,3 +250,20 @@ func TestCommonHeaders(t *testing.T) {
 		}
 	}
 }
+
+// R8: the access-log wrapper lets ResponseController reach the connection.
+func TestStatusWriterUnwrap(t *testing.T) {
+	got := make(chan error, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		got <- http.NewResponseController(&statusWriter{ResponseWriter: w}).SetReadDeadline(time.Now().Add(time.Second))
+	}))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if err := <-got; err != nil {
+		t.Errorf("SetReadDeadline through statusWriter = %v, want nil", err)
+	}
+}

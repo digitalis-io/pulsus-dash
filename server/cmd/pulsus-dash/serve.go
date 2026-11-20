@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/config"
+	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway"
+	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store"
 	"github.com/digitalis-io/pulsus-dash/server/internal/telemetry"
 )
@@ -24,6 +26,7 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 	fs := newFlags(e, "serve")
 	path := fs.String("config", "", "configuration file")
 	roleFlag := fs.String("role", "", "comma-separated roles (overrides server.roles)")
+	apiOnly := fs.Bool("api-only", false, "development only: serve the API and no client assets")
 	if !parseFlags(e, fs, args) {
 		return exitUsage
 	}
@@ -61,6 +64,11 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 	if cfg.Postgres.AppURLRef.IsInline() {
 		logger.Warn("inline secret used", "key", "postgres.app_url_ref")
 	}
+	// 3b. The client assets, verified before Postgres is contacted or a listener opens (ADR-0016).
+	set, code, msg := loadAssets(e, logger, *apiOnly)
+	if code != exitOK {
+		return fail(e, code, msg)
+	}
 
 	// 4-7. Postgres: reachable, subject to RLS, schema in the window, seeded.
 	db, err := store.Open(ctx, appURL, cfg.Postgres.PoolMax)
@@ -85,7 +93,10 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 		}
 	}
 	srv := &http.Server{
-		Handler:           gateway.New(gateway.Deps{Logger: logger, Probe: db, SchemaLatest: store.SchemaLatest()}),
+		Handler: gateway.New(gateway.Deps{
+			Logger: logger, Probe: db, SchemaLatest: store.SchemaLatest(),
+			Assets: set, Build: core.Build(store.SchemaLatest()), Bootstrap: db.BootstrapView,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
@@ -95,6 +106,10 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 	logger.Info("listening", "addr", addr)
+	// 8b. The public-URL self-check (T19-002): one request, never fatal, cancelled with ctx.
+	if cfg.Server.PublicURL != "" {
+		go gateway.SelfCheck(ctx, cfg.Server.PublicURL, set != nil, selfCheckClient(), logger)
+	}
 	if e.Ready != nil {
 		select {
 		case e.Ready <- addr:
@@ -119,6 +134,50 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 		return fail(e, exitRuntime, "serve: "+err.Error())
 	}
 	return exitOK
+}
+
+// selfCheckClient is the public-URL self-check's client: a 2 s budget and no redirects.
+func selfCheckClient() *http.Client {
+	return &http.Client{
+		Timeout:       2 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+// errNoAssets is the refusal of a binary built without -tags embedassets (plan #59 §3.3).
+const errNoAssets = "no embedded client assets: this binary was built without -tags embedassets; use make build, or serve --api-only for development"
+
+// loadAssets is start-up step 3b. It returns the verified set, or nil with --api-only, or the
+// exit code and message of the refusal.
+func loadAssets(e runEnv, logger *slog.Logger, apiOnly bool) (*static.Set, int, string) {
+	if apiOnly {
+		logger.Warn("serving the API only (development); no client assets are served")
+		return nil, exitOK, ""
+	}
+	fsys := e.Assets
+	if fsys == nil {
+		fsys = static.Embedded()
+	}
+	if fsys == nil {
+		return nil, exitRuntime, errNoAssets
+	}
+	keys := e.AssetKeys
+	if keys == nil {
+		var err error
+		if keys, err = static.PublicKeys(); err != nil {
+			return nil, exitRuntime, err.Error()
+		}
+	}
+	set, err := static.Verify(fsys, keys)
+	if err != nil {
+		var ie *static.IntegrityError
+		if errors.As(err, &ie) {
+			logger.Error("asset_integrity_failed", "reason", ie.Reason, "path", ie.Path, "expected", ie.Expected, "actual", ie.Actual)
+		}
+		return nil, exitRuntime, err.Error()
+	}
+	logger.Info("assets verified", "files", set.Len())
+	return set, exitOK, ""
 }
 
 // checkDatabase runs start-up steps 4-7 and returns the exit code and message of the first failure.

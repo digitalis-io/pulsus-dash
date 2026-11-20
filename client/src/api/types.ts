@@ -11,9 +11,20 @@ export interface User {
   role: Role;
 }
 
+/** The data-source check state of a tenant binding; only "not checked" until #62. */
+export interface DataSourceStatus {
+  state: 'notChecked';
+}
+
 export interface Tenant {
   slug: string;
   name: string;
+  dataSource?: DataSourceStatus;
+}
+
+export interface ServerInfo {
+  version: string;
+  commit: string;
 }
 
 export interface Org {
@@ -26,6 +37,10 @@ export interface Session {
   /** The user's tenant bindings. */
   tenants: Tenant[];
   defaultTenant: string;
+  /** The BFF build; null in stub mode. */
+  server: ServerInfo | null;
+  /** False under the fixed local principal (D12). */
+  canSignOut: boolean;
 }
 
 export interface BoardSummary {

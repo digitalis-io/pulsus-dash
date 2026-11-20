@@ -23,6 +23,9 @@ export const messages = {
   'nav.collapse': 'Collapse sidebar',
   'nav.expand': 'Expand sidebar',
 
+  'sidebar.dataSource': 'Data source: {slug}',
+  'sidebar.dataSourceNotChecked': 'Not checked',
+
   'tenant.label': 'Tenant: {name}',
   'tenant.prefix': 'Tenant:',
   'tenant.switch': 'Switch tenant, current: {name}',
@@ -136,6 +139,7 @@ export const messages = {
   'about.title': 'About Pulsus Dash',
   'about.version': 'Version {version}',
   'about.build': 'Build {sha}',
+  'about.serverVersion': 'Server version {version}',
   'about.dev': 'dev',
   'about.licence': 'Free software under the GNU Affero General Public License v3.0 (AGPL-3.0).',
   'about.close': 'Close',

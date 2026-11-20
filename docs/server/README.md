@@ -1,11 +1,11 @@
 # Server (BFF)
 
 The Pulsus Dash server is one Go binary, `pulsus-dash`, in `server/`
-([ADR-0015](../../designs/adr/0015-go-bff.md)). This release is the server core. It loads a
-strict configuration, checks Postgres, applies migrations and seeds the first organisation, and
-serves health and readiness. It never contacts PulsusDB
-([T06-026](../../designs/technical/T06-bff-architecture.md)). Serving the web client, the
-bootstrap API and the PulsusDB data plane come in later issues.
+([ADR-0015](../../designs/adr/0015-go-bff.md)). It loads a strict configuration, checks
+Postgres, applies migrations and seeds the first organisation, verifies and serves the embedded
+web client, and serves health, readiness, the version, the client's bootstrap and CSP reports. It
+never contacts PulsusDB ([T06-026](../../designs/technical/T06-bff-architecture.md)). The PulsusDB
+data plane, boards and authentication come in later issues.
 
 The HTTP contract is spec-first: `api/openapi.yaml` is the source, the Go server code
 (`server/internal/gateway/api/api.gen.go`) and the TypeScript client types
@@ -18,15 +18,18 @@ Postgres roles, the schema, row-level security and migrations are described in
 ## Build and run
 
 ```bash
-make server-build                      # build/pulsus-dash, CGO_ENABLED=0, version from VERSION
+make build                             # build/pulsus-dash with the client embedded (release)
+make server-build                      # build/pulsus-dash without the client (serve --api-only)
 build/pulsus-dash version
 build/pulsus-dash config check --config server/config.example.yaml
 build/pulsus-dash migrate --config my.yaml   # as pulsus_owner; once per release
 build/pulsus-dash serve --config my.yaml     # as pulsus_app
 ```
 
-`make server-build VERSION=1.2.3` stamps the version (`-X …/internal/core.Version`). The commit
-is the VCS revision Go records at build time, or `unknown`.
+`make build VERSION=1.2.3` (or `make server-build VERSION=1.2.3`) stamps the version
+(`-X …/internal/core.Version`). The commit is the VCS revision Go records at build time, or
+`unknown`. `make build` is described in [Serving the client](#serving-the-client); a binary from
+`make server-build` has no client and refuses to `serve` unless `--api-only` is given.
 
 For a local server with Postgres in containers, use the dev stack: create `dev/local.env`, then
 `make dev-up` starts Postgres, migrates and serves in the foreground
@@ -41,7 +44,7 @@ the file as the `third-party-notices` artifact.
 
 | Command | Flags | Exit 0 | Exit 1 (runtime) | Exit 2 (usage or configuration) |
 |---|---|---|---|---|
-| `serve` | `--config PATH`, `--role LIST` (overrides `server.roles`) | clean shutdown after SIGINT or SIGTERM | Postgres unreachable, role bypasses RLS, schema outside the window, database not seeded, listen failure, shutdown timeout | configuration error, unknown or unavailable role |
+| `serve` | `--config PATH`, `--role LIST` (overrides `server.roles`), `--api-only` (development only: no client) | clean shutdown after SIGINT or SIGTERM | no embedded client, asset integrity failure, Postgres unreachable, role bypasses RLS, schema outside the window, database not seeded, listen failure, shutdown timeout | configuration error, unknown or unavailable role |
 | `migrate` | `--config PATH`, `--dry-run` | applied, or nothing to apply | Postgres, lock or schema-ahead failure | configuration error, including invalid seed settings on an unseeded database |
 | `config check` | `--config PATH`, `--for serve\|migrate` (default `serve`) | prints `config ok (for <command>)` | — | any configuration error |
 | `version` | `--json` | prints the version | — | bad flag |
@@ -63,16 +66,22 @@ embedded in the binary.
    `role "api" is not available in this release: only "all" is supported`. Any other value is
    `unknown role "bogus" (want all, api, worker, evaluator, notifier or ai)`. Both exit 2.
 3. Build the logger and resolve the app role's URL (exit 2).
-4. Ping Postgres with a 5 s timeout: `postgres unreachable: <driver error>` (exit 1). The driver's
+4. Verify the client assets before Postgres is contacted or a listener opens
+   ([ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md)); see
+   [start-up verification](#start-up-verification). A binary without embedded assets exits 1 with
+   `no embedded client assets: this binary was built without -tags embedassets; use make build, or
+   serve --api-only for development`. With `--api-only` this step only logs a warning.
+5. Ping Postgres with a 5 s timeout: `postgres unreachable: <driver error>` (exit 1). The driver's
    message never contains the password.
-5. Refuse a role that is a superuser or has `BYPASSRLS`:
+6. Refuse a role that is a superuser or has `BYPASSRLS`:
    `postgres role "postgres" bypasses row-level security; serve must connect as pulsus_app`.
-6. The schema version must be the binary's latest or one newer (T11-015, T19-007). Otherwise the
+7. The schema version must be the binary's latest or one newer (T11-015, T19-007). Otherwise the
    message is `database schema version 0 is older than this binary requires (1); run pulsus-dash
    migrate` or `database schema version 3 is newer than this binary supports (latest 1, window +1)`.
-7. The first-run seed must exist: `database is not initialised; run pulsus-dash migrate`.
-8. Listen on `server.listen`, then log `msg=listening addr=…`.
-9. Serve until SIGINT or SIGTERM, then drain for at most `server.shutdown_grace`. Exit 1 if the
+8. The first-run seed must exist: `database is not initialised; run pulsus-dash migrate`.
+9. Listen on `server.listen`, then log `msg=listening addr=…`. If `server.public_url` is set,
+   start the [public-URL self-check](#public-url-self-check).
+10. Serve until SIGINT or SIGTERM, then drain for at most `server.shutdown_grace`. Exit 1 if the
    drain times out.
 
 **`migrate`** connects as the owner role and prints its progress on stdout. See
@@ -105,6 +114,7 @@ its default.
 | `server.roles` | `[all]` | only `all` in this release | — |
 | `server.listen` | `0.0.0.0:8080` | `host:port` | — |
 | `server.shutdown_grace` | `15s` | 1 s to 30 s | — |
+| `server.public_url` | `""` | optional: an absolute `http` or `https` URL with a host and no credentials, query or fragment; a trailing `/` is removed. Errors: `must be an absolute http or https URL`, `must not contain credentials, a query or a fragment` | the [self-check](#public-url-self-check) |
 | `postgres.app_url_ref` | — | secret reference | `serve` |
 | `postgres.owner_url_ref` | — | secret reference | `migrate` |
 | `postgres.pool_max` | `32` | 1 to 512 | — |
@@ -165,14 +175,33 @@ resolved by `migrate`. A literal is refused with
 
 ## HTTP routes
 
-| Request | Status | Body |
+Requests are matched in this order:
+
+| Request | Response |
+|---|---|
+| `GET /healthz`, `/startupz`, `/readyz`, `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` | the API routes below |
+| `POST /api/dash/v1/csp-report` | [CSP reports](#csp-reports) |
+| `GET`/`HEAD /assets/*` | the file from the verified set with the asset headers; not in the set, or no set → 404 envelope |
+| `/api` or any path under `/api/`, any method | 404 envelope |
+| any path under `/auth/`, any method | 404 envelope (there is no authentication yet, D12) |
+| `GET`/`HEAD /asset-manifest.json`, `/asset-manifest.sig` | the exact bytes that were verified, `Cache-Control: no-cache`, `application/json` / `application/octet-stream` |
+| `GET`/`HEAD` of another root file of the set (not `index.html`) | that file with the asset headers and `Cache-Control: no-cache` |
+| `GET`/`HEAD` whose `Accept` contains `text/html` | `index.html` with the document headers: client-side routes such as `/t/demo/boards` deep-link (ADR-0014 §6) |
+| anything else | 404 envelope `{"error":{"code":"not_found","message":"not found"}}` |
+
+Under `serve --api-only` there is no set, so every row that serves a file is a 404 envelope.
+
+| API request | Status | Body |
 |---|---|---|
 | `GET /healthz`, `GET /startupz` | 200 | `{"status":"ok"}` |
 | `GET /readyz`, Postgres answers and the schema is in the window | 200 | `{"status":"ready","checks":{"postgres":"ok","schema":"ok"}}` |
 | `GET /readyz`, ping fails or takes over 1 s | 503 | `{"status":"not_ready","checks":{"postgres":"unreachable","schema":"unknown"}}` |
 | `GET /readyz`, schema behind or more than one ahead | 503 | `"schema":"behind"` or `"ahead"` |
 | `GET /readyz`, the schema query fails or takes over 1 s | 503 | `"schema":"error"` or `"timeout"`, logged at `warn` as `msg=readyz check=schema` |
-| any other path | 404 | `{"error":{"code":"not_found","message":"not found"}}` |
+| `GET /api/dash/v1/version` | 200 | `{"version":"0.1.0-dev","commit":"<sha>"}` |
+| `GET /api/dash/v1/bootstrap` | 200 | see [bootstrap](#bootstrap) |
+| `GET /api/dash/v1/bootstrap`, the store fails | 503 | `{"error":{"code":"unavailable","message":"configuration store unavailable"}}`, logged at `warn` as `msg=bootstrap` |
+| `GET /api/dash/v1/bootstrap`, the organisation has no binding | 503 | `{"error":{"code":"unavailable","message":"no tenant binding"}}` |
 | known path, wrong method | 405 | `{"error":{"code":"invalid","message":"method not allowed"}}` |
 | handler panic | 500 | `{"error":{"code":"internal","message":"internal error"}}`, stack logged at `error` |
 
@@ -180,10 +209,183 @@ resolved by `migrate`. A literal is refused with
 (T19-006). `/readyz` never contacts PulsusDB, so it stays 200 while PulsusDB is down. It returns
 503 while Postgres is down, but the process keeps running.
 
-Every response carries `Content-Type: application/json`, `Cache-Control: no-store`,
-`X-Content-Type-Options: nosniff` and `X-Request-Id`. An incoming `X-Request-Id` that matches
+Every API response carries `Content-Type: application/json`, `Cache-Control: no-store`,
+`X-Content-Type-Options: nosniff` and `X-Request-Id`; documents and assets replace
+`Content-Type` and `Cache-Control` with their own. An incoming `X-Request-Id` that matches
 `^[A-Za-z0-9-]{1,64}$` is kept; otherwise the server generates a UUIDv7. The HTTP server uses
 `ReadHeaderTimeout` 10 s, `IdleTimeout` 120 s and `MaxHeaderBytes` 1 MiB.
+
+### Bootstrap
+
+`GET /api/dash/v1/bootstrap` is the client's first call in `VITE_API_MODE=http`:
+
+```json
+{"principal": {"id": "local", "name": "Local user", "email": "", "role": "admin"},
+ "org": {"slug": "default", "name": "Default organisation"},
+ "tenants": [{"slug": "default", "name": "default", "datasource": {"state": "not_checked"}}],
+ "default_tenant": "default",
+ "server": {"version": "0.1.0-dev", "commit": "<sha>"},
+ "can_sign_out": false}
+```
+
+- **Principal.** There is no authentication yet (decision D12). Every request is the fixed local
+  principal `local`, an administrator, which cannot sign out (`can_sign_out: false`). This lasts
+  until authentication lands (M-UI6).
+- **Organisation and tenants.** The bootstrap organisation (`install_state`) and its tenant
+  bindings, ordered by slug, read in one organisation-bound transaction under row-level security.
+  `default_tenant` is the first binding.
+- **Data source.** Only the binding's slug and the state `not_checked` are returned. The
+  datasource URL, database, scope and credentials reference are never returned (T06-024). The
+  data-source check itself is #62.
+
+### CSP reports
+
+`POST /api/dash/v1/csp-report` receives the reports the documents' `Reporting-Endpoints` and
+`report-to csp` ask browsers to send (T18-003). The operation is in `api/openapi.yaml` (so the
+client types cover it) but excluded from Go generation and handled by hand
+(`internal/gateway/cspreport.go`).
+
+| Aspect | Behaviour |
+|---|---|
+| Media type | `application/reports+json` (an array; only `type: "csp-violation"` entries are used) or `application/csp-report` (`{"csp-report": {…}}`); anything else → 415 `unsupported media type` |
+| Rate | one process-wide token bucket, 10 per second with a burst of 20, and at most 8 reports read at once; checked before the body is read. Empty bucket or no free slot → 429 `unavailable` `rate limited` with `Retry-After: 1` |
+| Body | at most 64 KiB (413 `payload too large`), read under a 5 s read deadline (408 `request timeout`). The body is never read without a deadline: if the connection cannot take one, the request fails with 500 `internal error` and `msg=csp_report_no_deadline` at `error` |
+| Parse | invalid JSON → 400 `bad request`; at most 20 reports per request are used, and `msg=csp_report_truncated ignored=<n>` is logged for the rest |
+| Success | 204, no body |
+
+Every refusal before the body is fully read also closes the connection. Each used report writes
+one `warn` record `msg=csp_violation` with allowlisted values only:
+
+| Attribute | Value |
+|---|---|
+| `directive` | the effective (else violated) directive up to the first space, if it is a known CSP directive; else `other` |
+| `disposition` | `enforce`, `report` or `other` |
+| `route` | the client route pattern the document path matches (`/`, `/signed-out`, `/t/:tenant`, `/t/:tenant/boards`, `/t/:tenant/board/:uid`, `/t/:tenant/explore/metrics`, `/t/:tenant/explore/logs`, `/t/:tenant/admin`), else `unknown` |
+| `blocked` | `inline`, `eval`, `wasm-eval`, `trusted-types-policy`, `trusted-types-sink`, `data`, `blob`, `url` (any other value) or `none` |
+
+URLs, hosts, paths, tenant slugs, queries, samples, source files, line and column numbers are
+never logged. This record is the self-telemetry of CSP violations until OTel export exists.
+
+## Serving the client
+
+The release binary embeds the client build and serves it with the security headers itself, so the
+headers do not depend on a proxy (T18-001, T18-002, T19-002, ADR-0014 §9).
+
+### Build
+
+`make build` runs three steps:
+
+1. `make client-build`: `VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client
+   run build`, with `API_MODE ?= http` and `GIT_SHA ?=` the current commit.
+2. `make assets-pack`: `node client/scripts/pack-assets.ts --gen-key build/keys` writes a fresh
+   Ed25519 key pair, then `pack-assets.ts --in client/dist --out
+   server/internal/gateway/static/dist --key build/keys/asset-signing.key` packs the build (below).
+3. `go build -tags embedassets` with the build's public key in
+   `-X …/internal/gateway/static.releasePublicKeys=…`, into `$(OUT)` (default
+   `build/pulsus-dash`).
+
+`server/internal/gateway/static/dist/` and `build/` are gitignored. Without `-tags embedassets`
+(`make server-build`, `go test`), the binary has no embedded tree.
+
+### Packing and the manifest
+
+`client/scripts/pack-assets.ts` (Node, no dependencies):
+
+- copies every file of the build except `.vite/` (the Vite manifest is a build artefact). A
+  symlink or another non-regular entry fails with `pack: symlink in build output: <path>` (exit 2);
+- writes `<file>.br` (brotli quality 11) and `<file>.gz` (gzip level 9) for each `.html`, `.js`,
+  `.mjs`, `.css`, `.svg`, `.json`, `.txt`, `.map`, `.wasm` or `.xml` file of at least 256 bytes,
+  and keeps a variant only if it is smaller;
+- writes `asset-manifest.json`: `{"version": 1, "files": [{"path", "sha384", "size"}]}` for
+  every file except the manifest and its signature (variants and `index.html` included), sorted
+  by path, `sha384` in standard base64, two-space indented with a final newline;
+- writes `asset-manifest.sig`: the 64-byte raw Ed25519 signature over the manifest's exact bytes;
+- prints `packed <n> files (<m> compressed variants) into <out>`.
+
+The output is byte-identical for the same build and key. Errors print `pack: <reason>` and exit 2;
+no message contains key material.
+
+**Keys.** Each `make build` generates a new key pair (decision Q3): the private key stays in
+`build/keys/asset-signing.key` (mode 0600) and is never embedded or printed; the public key is
+compiled into that binary only. `releasePublicKeys` takes a comma-separated list, so a release
+key and a rotation key can both be accepted (T18-006). Signing with a long-lived release key (KMS)
+belongs to the release pipeline and is not built yet; until then the signature proves that the
+served bytes are the ones this build packed.
+
+### Start-up verification
+
+`serve` verifies the embedded tree before it contacts Postgres or opens a listener, and refuses to
+start on any failure (ADR-0016). In order:
+
+1. at least one public key (`no_public_key`);
+2. `asset-manifest.json` and `asset-manifest.sig` exist (`missing_manifest`, `missing_signature`);
+3. the signature is 64 bytes and verifies under one of the keys (`bad_signature`);
+4. the manifest is one strict JSON value with `version: 1`, valid, unique and sorted paths, no
+   `..`, sizes ≥ 0, 48-byte digests, and no `.br`/`.gz` entry without its base file
+   (`bad_manifest <path>`);
+5. the tree holds only directories and listed regular files (`walk_error`, `unexpected_entry`,
+   `unlisted_file <path>`);
+6. every listed file exists and is regular (`missing_file`, `read_error`, `unexpected_entry`), has
+   the listed size (`size_mismatch`, checked before hashing) and the listed SHA-384
+   (`hash_mismatch`).
+
+A failure logs `msg=asset_integrity_failed reason=… path=… expected=… actual=…` at `error`,
+prints `pulsus-dash: asset integrity check failed: <reason>[ <path>]` and exits 1. Success logs
+`msg="assets verified" files=<n>` (logical files, variants not counted). After verification the
+set is held in memory and shared read-only; nothing is read from disk at run time.
+
+`serve --api-only` is for development only, next to `VITE_API_MODE=http npm run dev`, which serves
+the client itself. It
+logs `msg="serving the API only (development); no client assets are served"` at `warn`, skips the
+assets (even an embedded set), and answers every document request with the 404 envelope. It
+therefore never serves anything unverified.
+
+### Headers, caching and encoding
+
+Documents (`index.html`) carry, in this order:
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types pulsus-sanitised; report-to csp` (ADR-0014 §9; identical to `CSP` in `client/config/headers.ts`) |
+| `Reporting-Endpoints` | `csp="/api/dash/v1/csp-report"` |
+| `Cross-Origin-Opener-Policy` | `same-origin` |
+| `Cross-Origin-Embedder-Policy` | `require-corp` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` (ignored by browsers over plain HTTP) |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), geolocation=(), microphone=(self), usb=(), payment=(), gamepad=(self)` |
+| `Cache-Control` | `no-cache` |
+| `Content-Type` | `text/html; charset=utf-8` |
+
+Other files carry `Cross-Origin-Resource-Policy: same-origin`, `X-Content-Type-Options: nosniff`,
+the content type of their extension, an `ETag`, and `Cache-Control: public, max-age=31536000,
+immutable` under `/assets/` (the names are content-hashed) or `no-cache` elsewhere. They carry no
+CSP.
+
+- **Encoding.** `Accept-Encoding` is parsed with q-values (`q=0` refuses a coding). The `br`
+  variant is sent if accepted and present, else `gzip`, else the file itself. `Vary:
+  Accept-Encoding` is set when a variant exists; `Content-Encoding` only for `br` and `gzip`.
+- **Validators.** Each representation (identity, br, gzip) has its own strong ETag, so a validator
+  of one encoding never produces a 304 for another.
+- **Ranges.** The identity representation supports `HEAD`, `Range` (206) and `If-None-Match` (304).
+  Encoded variants send `Accept-Ranges: none` and ignore `Range`.
+
+### Public-URL self-check
+
+When `server.public_url` is set, `serve` makes one request right after the listener opens
+(T19-002), with a 2 s timeout and no redirects: `GET <public_url>/` with `Accept: text/html`, or
+`GET <public_url>/healthz` under `--api-only`. It checks that a proxy in front of the BFF keeps the
+document headers:
+
+| Outcome | Log (`msg=public_url_self_check`) |
+|---|---|
+| 200 and, with assets, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp` and the exact CSP | `info` `result=ok` |
+| transport error or timeout | `warn` `result=unreachable` |
+| another status | `warn` `result=status status=<code>` |
+| a header missing or changed | `warn` `result=headers_stripped header=<the first one found>` |
+
+It never retries, never fails start-up, never logs the URL, and is cancelled on shutdown.
 
 ## Logs
 
@@ -198,7 +400,8 @@ record with `method`, `route` (the route pattern, never the raw path or query; `
 | `cmd/pulsus-dash` | the CLI; `run(ctx, runEnv)` makes every command testable in-process |
 | `internal/config` | loading, strictness, secret references, seed settings |
 | `internal/core` | shared types: `OrgID`, tenant bindings, build info |
-| `internal/gateway` | router, error envelope, headers, access log, panic recovery, health routes; `api/` is generated |
+| `internal/gateway` | router, error envelope, headers, access log, panic recovery, health, version and bootstrap routes, CSP reports, asset and document serving, the public-URL self-check; `api/` is generated |
+| `internal/gateway/static` | the embedded client tree (`-tags embedassets`), the release public keys and start-up verification; `statictest/` builds signed trees for tests |
 | `internal/store` | the only Postgres access path ([database page](database.md)); `dbgen/` is generated by sqlc |
 | `internal/telemetry` | the logger |
 
@@ -209,8 +412,11 @@ self-test with failing fixtures proves these rules are enforced
 
 ## Designs
 
-T06-001, T06-003, T06-016, T06-019 and T06-026 in
-[T06](../../designs/technical/T06-bff-architecture.md); T19-006, T19-007 and T19-010 in
-[T19](../../designs/technical/T19-deployment.md); T18-026 (`ci:go-licenses`) in
-[T18](../../designs/technical/T18-security.md);
-[ADR-0015](../../designs/adr/0015-go-bff.md).
+T06-001, T06-003, T06-016, T06-019, T06-021 (CSP report limits), T06-024 and T06-026 in
+[T06](../../designs/technical/T06-bff-architecture.md); T18-001, T18-002, T18-003, T18-006 and
+T18-007 and T18-026 (`ci:go-licenses`) in [T18](../../designs/technical/T18-security.md); T19-002, T19-003, T19-005, T19-006,
+T19-007 and T19-010 in [T19](../../designs/technical/T19-deployment.md); T03-022 in
+[T03](../../designs/technical/T03-browser-runtime.md);
+[ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §6 and §9,
+[ADR-0015](../../designs/adr/0015-go-bff.md),
+[ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md).

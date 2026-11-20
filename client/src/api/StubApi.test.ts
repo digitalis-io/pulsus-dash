@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { HttpApi } from './HttpApi';
 import { StubApi } from './StubApi';
 import { ApiError } from './types';
 
@@ -49,11 +48,5 @@ describe('stub api', () => {
     expect(await kindOf(api.signOut())).toBe('network');
     expect(localStorage.getItem('pulsus-dash.stub.failSignOut')).toBe('0');
     expect(await kindOf(api.signOut())).toBe('resolved');
-  });
-
-  it('HttpApi is not implemented yet', async () => {
-    const http = new HttpApi();
-    expect(await kindOf(http.getSession())).toBe('notImplemented');
-    expect(await kindOf(http.listStarred())).toBe('notImplemented');
   });
 });

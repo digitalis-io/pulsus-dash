@@ -1,7 +1,8 @@
 /**
  * The left sidebar (D9, IA-021, VL-017): product mark and tenant switcher, main navigation with the
- * Starred and Recent board groups, and a footer with Admin (administrators only) and the collapse
- * control. Collapsed, it is a 56 px icon rail with tooltips.
+ * Starred and Recent board groups, and a footer with Admin (administrators only), the data-source
+ * status line (expanded only) and the collapse control. Collapsed, it is a 56 px icon rail with
+ * tooltips.
  */
 import { Focusable } from 'react-aria-components';
 import { Link } from 'react-router';
@@ -14,6 +15,7 @@ import { Tooltip } from '../kit/Tooltip';
 import { contextSearchString } from '../state/contextSearch';
 import { useTimeContext } from '../state/useTimeContext';
 import type { SidebarState } from './sidebarState';
+import { DataSourceStatus } from './DataSourceStatus';
 import { SidebarBoards } from './SidebarBoards';
 import { TenantSwitcher } from './TenantSwitcher';
 import { useShellRoute } from './useShellRoute';
@@ -147,6 +149,7 @@ export function Sidebar({ state, onToggle }: SidebarProps) {
         )}
       </nav>
       <div className={cx(styles['footer'])}>
+        {!collapsed && <DataSourceStatus tenant={session.tenants.find((x) => x.slug === tenant)} />}
         <Button
           variant="ghost"
           className={cx(styles['toggle'])}

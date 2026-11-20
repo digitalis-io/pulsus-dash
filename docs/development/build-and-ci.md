@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against `npm run build && npm run preview` | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css` and `tokens.ts` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
@@ -51,6 +51,10 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 | `token-lint.ts [root]` | no findings | findings | a file does not parse | `colour-literal`, `size-literal`, `duration-literal`, `state-token`, `computed-token-name`, `suppressed-token-rule` | `scripts/__fixtures__/token-lint/bad` (and `good`, which must pass) |
 | `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
+| `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
+
+`pack-assets.ts` is not a checker: it packs the build the BFF embeds
+([Serving the client](../server/README.md#serving-the-client)).
 
 The rules of each checker are described where they are used: token-lint in
 [the client page](../client/README.md#tokens-and-token-lint), the dependency checks and the
@@ -63,8 +67,9 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   queryClient, wrapper })`; `wrapper` provides, for example, a fake chart engine) on a memory router, with the stub API and a fixed clock
   (`T` = 2026-11-19 13:03 UTC, zone Europe/London). Its query client has `retry: false`; tests of
   the production retry pass `createQueryClient()`.
-- **End-to-end tests** (`client/e2e/*.spec.ts`) run in Chromium, Firefox and WebKit against
-  `vite preview` with the production CSP. `Date.now()` is frozen with `page.clock.setFixedTime(T)`.
+- **End-to-end tests** (`client/e2e/*.spec.ts`) run in Chromium, Firefox and WebKit against the
+  BFF, which serves the client with the production headers; see
+  [end-to-end tests](#end-to-end-tests). `Date.now()` is frozen with `page.clock.setFixedTime(T)`.
   To run one engine locally: `npm run e2e -- --project=chromium`.
 - **Keyboard coverage** (`e2e/keyboard.spec.ts`, part of `e2e:a11y-rooms`): see
   [the client page](../client/README.md#keyboard-coverage).
@@ -98,17 +103,56 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     There is no threshold. The page is opened without Playwright's fake clock, which replaces the
     User Timing methods.
 
+### End-to-end tests
+
+`npm run e2e` (or `make e2e`) starts three servers (`client/playwright.config.ts`):
+
+| Server | Command | Used by |
+|---|---|---|
+| stub-mode BFF on `localhost:4173` | `tools/e2e/serve.sh stub 4173` | every existing spec (`baseURL`): the stub's seeded boards and tenants, served with the real headers; and `e2e:bff-headers` |
+| http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap` |
+| Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
+
+Before a run:
+
+1. `make e2e-build` builds the two binaries, `build/e2e-stub/pulsus-dash` and
+   `build/e2e-http/pulsus-dash` (version `0.1.0-e2e`), each with its client embedded.
+2. Set `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` to the `pulsus_app` and `pulsus_owner` URLs of a
+   `pulsus_e2e` database on any PostgreSQL 15 or 16 where `server/deploy/postgres-roles.sql` has
+   been applied (Part C's development stack is one way to get one), for example
+   `postgres://pulsus_app@localhost:55432/pulsus_e2e?sslmode=disable`.
+
+`tools/e2e/serve.sh MODE PORT` runs from the repository root. It needs the binary (else `run make
+e2e-build first`) and both variables (else `E2E_PG_APP_URL and E2E_PG_OWNER_URL must be set`). It
+sets the `PULSUS_DASH_*` variables (Postgres references to those two variables, datasource
+`http://localhost:9` with slug `demo`, listen `localhost:PORT`, text logs), runs `migrate`
+(idempotent; the two BFFs serialise on its lock), then `serve`. Locally an already running server
+on a port is reused.
+
+`E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
+preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
+`bff-http` and `dev-proxy` run on Chromium only.
+
+- **`e2e:bff-headers`** (`bff-headers.spec.ts`): `GET /` has `Content-Security-Policy` equal to
+  `CSP` from `config/headers.ts` and every other document header; the first `/assets/*.js` the page
+  loads, requested with `Accept-Encoding: br`, is served `br` and `immutable`; `/t/demo/boards`
+  returns `index.html`; `/api/nope` is the 404 envelope.
+- **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
+  `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
+  shows `Data source: demo · Not checked`; no console errors. Through the dev server, About shows
+  the same version.
+
 ## CI
 
-`.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml` or
-the workflow (opened, synchronised, reopened, and labelled, so adding `golden-update` reruns it), and
-on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
+`.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml`,
+`server/`, `api/`, `tools/e2e/`, `Makefile` or the workflow (opened, synchronised, reopened, and
+labelled, so adding `golden-update` reruns it), and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
-| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`): `npm ci`, install that browser with its system dependencies, `npm run e2e -- --project=<engine>` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once |
+| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`), with a PostgreSQL 16.16 service on port 55432: `npm ci`, Go 1.27.4 and its toolchain check, install that browser with its system dependencies, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once |
 
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the
@@ -141,7 +185,10 @@ cgo.
 
 | Target | What it does | Gate |
 |---|---|---|
-| `make server-build` | builds `build/pulsus-dash` (`VERSION ?= 0.1.0-dev`) | — |
+| `make build` | `client-build` (`VITE_API_MODE=$(API_MODE)`, `API_MODE ?= http`, `VITE_GIT_SHA=$(GIT_SHA)`), `assets-pack` (a new signing key in `build/keys/`, then `pack-assets.ts` into `server/internal/gateway/static/dist/`), then `go build -tags embedassets` with the public key into `$(OUT)` (`OUT ?= build/pulsus-dash`); see [Serving the client](../server/README.md#serving-the-client) | build |
+| `make e2e-build` | `make build` twice, `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e` | — |
+| `make e2e` | `npm --prefix client run e2e` | `e2e:*` |
+| `make server-build` | builds `build/pulsus-dash` without the client (`VERSION ?= 0.1.0-dev`); its `serve` refuses to start unless `--api-only` | — |
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |
 | `make api-gen-check` | `server/scripts/api-gen-check.sh`, then its self-test `server/scripts/test-api-gen-check.sh` | `ci:api-gen` |
 | `make go-mod` | `go mod verify` and `go mod tidy -diff` | `ci:go-mod` |
@@ -156,7 +203,7 @@ cgo.
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
 | `make itest-local-selftest` | `dev/itest-local-selftest.sh`: a failed `up --wait` fails `itest-local`, runs no test and still cleans up (no containers) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
-| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint go-licenses no-pulsusdb-host itest-local-selftest` | — |
+| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host itest-local-selftest` | — |
 
 The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
 `chi` and `internal/gateway/api` inside `internal/gateway`.
@@ -227,15 +274,46 @@ real checkout's `git status` and generated files are unchanged.
 ### Server CI
 
 `.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
-`tools/api-gen/`, `client/src/api/gen/`, `Makefile`, `dev/`, `tools/no-pulsusdb-host/` or the
+`tools/api-gen/`, `client/` (the client is embedded, and the packer is `client/scripts/`),
+`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `tools/no-pulsusdb-host/` or the
 workflow, and on pushes to `main`. The token is read-only, actions are pinned by commit SHA and no
 secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
-| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `make go-licenses` (`ci:go-licenses`) → upload `build/THIRD_PARTY_NOTICES.txt` as artifact `third-party-notices` (14 days) |
+| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `npm --prefix client ci` and `make build`, then `build/pulsus-dash version` → `tools/e2e/integrity-gate.sh` (`ci:asset-integrity`) → `make go-licenses` (`ci:go-licenses`) → upload `build/THIRD_PARTY_NOTICES.txt` as artifact `third-party-notices` (14 days) |
 | `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` and `make itest-local-selftest` (`ci:dev-stack`) → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
-| `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` |
+| `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` → Node, `npm --prefix client ci`, `make build` → `smoke database` (roles and a `pulsus_smoke` database) → `tools/e2e/built-binary-smoke.sh` (F1) |
+
+### `ci:asset-integrity`
+
+`tools/e2e/integrity-gate.sh` proves at binary level that a release binary whose embedded client
+was altered after signing refuses to start (ADR-0016, T19-005). It runs `make build` once, then
+for each case copies the packed tree into `server/internal/gateway/static/dist/`, applies one
+change, rebuilds a gate binary with the same public key, and runs `serve` with nothing listening
+at the Postgres URL. Verification runs first, so no database is needed. Each case must exit 1
+within 10 s with the expected text on stderr:
+
+| Case | Change | Expected |
+|---|---|---|
+| control | none | `assets verified`, then `postgres unreachable` |
+| G1 | one byte of the largest `assets/*.js` flipped | `asset integrity check failed: hash_mismatch assets/` |
+| G2 | `assets/extra.js` added | `unlisted_file assets/extra.js` |
+| G3 | the first `.br` file the manifest lists deleted | `missing_file <that path>` |
+| G4 | one byte of `asset-manifest.json` changed | `bad_signature` |
+| G5 | built without `releasePublicKeys` | `no_public_key` |
+| — | a `make server-build` binary | `no embedded client assets: …` |
+
+The gate restores the untouched packed tree and `build/pulsus-dash` on exit.
+
+### Built-binary smoke (F1)
+
+`tools/e2e/built-binary-smoke.sh` needs `F1_OWNER_URL` and `F1_APP_URL` (a database with the roles
+applied). It runs `build/pulsus-dash migrate` (it must print `seeded organisation "default" with
+tenant binding "default"`), starts `serve` on `localhost:18080`, and checks: `msg="assets
+verified" files=<n>` on stderr; `/readyz` 200 within 30 s; `GET /` (HTML) 200 with the CSP and
+`Cross-Origin-Embedder-Policy: require-corp`; the first `assets/*.js` of `/asset-manifest.json`
+served `Content-Encoding: br`; and exit 0 on SIGTERM.
 
 <a id="ci-no-pulsusdb-host"></a>
 

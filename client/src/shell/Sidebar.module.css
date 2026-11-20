@@ -137,6 +137,16 @@
   padding: var(--space-1) var(--space-2) var(--space-2);
 }
 
+.dataSource {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .toggle {
   width: 100%;
   justify-content: flex-start;
