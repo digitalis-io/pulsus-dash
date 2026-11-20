@@ -82,7 +82,7 @@ export function SidebarBoards() {
   const boards = useBoards(tenant);
   const starred = useStarred(tenant);
   const recentJson = useRecent(tenant);
-  const all = boards.data ?? [];
+  const all = boards.data?.items ?? [];
   const starredSet = new Set(starred.data ?? []);
   const starredBoards = all.filter((b) => starredSet.has(b.uid));
   const byUid = new Map(all.map((b) => [b.uid, b]));

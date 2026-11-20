@@ -92,6 +92,10 @@ export const space = {
 
 export const size = {
   "avatar": 28,
+  "board-cols": 12,
+  "board-editor": 360,
+  "board-panel-header": 40,
+  "board-row": 40,
   "chart": 240,
   "chart-brush-min": 4,
   "chart-line": 1.5,

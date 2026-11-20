@@ -6,7 +6,17 @@
 import createClient, { type Client } from 'openapi-fetch';
 import type { Api } from './Api';
 import type { components, paths } from './gen/schema';
-import { ApiError, type BoardSummary, type Session } from './types';
+import {
+  ApiError,
+  type Board,
+  type BoardList,
+  type BoardSpec,
+  type PanelData,
+  type PanelSpec,
+  type SaveResult,
+  type Session,
+  type TimeWindow,
+} from './types';
 
 type Bootstrap = components['schemas']['Bootstrap'];
 type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
@@ -62,12 +72,28 @@ export class HttpApi implements Api {
     return toSession(data);
   }
 
-  listBoards(): Promise<BoardSummary[]> {
-    return Promise.resolve([]);
+  listBoards(): Promise<BoardList> {
+    return Promise.resolve({ items: [], truncated: false });
   }
 
-  getBoard(_tenant: string, uid: string): Promise<BoardSummary> {
+  getBoard(_tenant: string, uid: string): Promise<Board> {
     return Promise.reject(new ApiError('notFound', `board ${uid} not found`));
+  }
+
+  createBoard(_tenant: string, _spec: BoardSpec): Promise<Board> {
+    return Promise.reject(new ApiError('notImplemented', 'createBoard'));
+  }
+
+  saveBoard(_tenant: string, _uid: string, _etag: string, _spec: BoardSpec): Promise<SaveResult> {
+    return Promise.reject(new ApiError('notImplemented', 'saveBoard'));
+  }
+
+  deleteBoard(_tenant: string, _uid: string, _etag: string): Promise<void> {
+    return Promise.reject(new ApiError('notImplemented', 'deleteBoard'));
+  }
+
+  panelData(_tenant: string, _panel: PanelSpec, _window: TimeWindow): Promise<PanelData> {
+    return Promise.reject(new ApiError('notImplemented', 'panelData'));
   }
 
   listStarred(): Promise<string[]> {

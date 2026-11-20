@@ -26,7 +26,7 @@ export function BoardsPage() {
       </p>
     );
   else if (boards.isError) body = <p className={cx(styles['muted'])}>{t('boards.error')}</p>;
-  else if (boards.data.length === 0) {
+  else if (boards.data.items.length === 0) {
     body = (
       <EmptyState title={t('boards.empty')}>
         <p className={cx(styles['muted'])}>{t('boards.emptyDetail')}</p>
@@ -35,7 +35,7 @@ export function BoardsPage() {
   } else {
     body = (
       <ul className={cx(styles['list'])} aria-label={t('boards.list')}>
-        {boards.data.map((b) => {
+        {boards.data.items.map((b) => {
           const ms = Date.parse(b.updatedAt);
           return (
             <li key={b.uid} className={cx(styles['row'])}>

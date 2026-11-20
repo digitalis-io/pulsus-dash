@@ -15,6 +15,7 @@ import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine'
 import { installResizeObserver, liveObservers, resizeAll } from '../test/fakeResizeObserver';
 import { T } from '../test/renderApp';
 import { ChartFrame } from './ChartFrame';
+import styles from './ChartFrame.module.css';
 
 const TZ = 'Europe/London';
 const FROM = Date.UTC(2026, 10, 19, 12);
@@ -44,7 +45,7 @@ function renderFrame(
   engine: FakeEngine,
   spec: VisSpec,
   data: FrameData,
-  o: { strict?: boolean } = {},
+  o: { strict?: boolean; fill?: boolean } = {},
 ): { router: DataRouter; unmount: () => void } {
   const deps: RouterDeps = {
     api: new StubApi(),
@@ -58,7 +59,11 @@ function renderFrame(
         path: '/t/:tenant/x',
         element: (
           <ChartEngineContext.Provider value={engine}>
-            <ChartFrame spec={spec} data={data} />
+            <ChartFrame
+              spec={spec}
+              data={data}
+              {...(o.fill === undefined ? {} : { fill: o.fill })}
+            />
           </ChartEngineContext.Provider>
         ),
       },
@@ -465,5 +470,23 @@ describe('component theme', () => {
     await waitFor(() => {
       expect(lastFrame(engine).last('setTheme')).toEqual(['light']);
     });
+  });
+});
+
+describe('component fill', () => {
+  it('fill', () => {
+    const engine = fakeEngine();
+    const filled = renderFrame(engine, LINE, DATA, { fill: true });
+    const root = (): HTMLElement => {
+      const el = document.querySelector<HTMLElement>('[data-chart-frame]');
+      if (el === null) throw new Error('no frame');
+      return el;
+    };
+    expect(root()).toHaveClass(styles['fill'] ?? 'fill');
+    expect(root()).not.toHaveClass(styles['chart'] ?? 'chart');
+    filled.unmount();
+    renderFrame(engine, LINE, DATA);
+    expect(root()).toHaveClass(styles['chart'] ?? 'chart');
+    expect(root()).not.toHaveClass(styles['fill'] ?? 'fill');
   });
 });

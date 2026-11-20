@@ -8,11 +8,30 @@
  */
 import type { Api } from './Api';
 import { defaultSeed, defaultStarred } from './stubData';
-import { ApiError, type BoardSummary, type Session } from './types';
+import {
+  ApiError,
+  type Board,
+  type BoardList,
+  type BoardSpec,
+  type PanelData,
+  type PanelSpec,
+  type SaveResult,
+  type Session,
+  type TimeWindow,
+} from './types';
+
+/** A seeded board; the stub serves it as version 1, etag `"1"`. */
+export interface StubBoard {
+  uid: string;
+  title: string;
+  /** ISO-8601 UTC. */
+  updatedAt: string;
+  spec: BoardSpec;
+}
 
 export interface StubSeed {
   session: Session;
-  boards: Record<string, BoardSummary[]>;
+  boards: StubBoard[];
 }
 
 export const STUB_STARRED_KEY = (tenant: string): string => `pulsus-dash.stub.starred.${tenant}`;
@@ -76,16 +95,59 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  listBoards(tenant: string, signal?: AbortSignal): Promise<BoardSummary[]> {
-    return settle(() => structuredClone(this.boardsOf(tenant)), signal);
+  listBoards(tenant: string, signal?: AbortSignal): Promise<BoardList> {
+    return settle(
+      () => ({
+        items: this.boardsOf(tenant).map((b) => ({
+          uid: b.uid,
+          title: b.title,
+          version: 1,
+          updatedAt: b.updatedAt,
+          updatedBy: this.seed.session.user.name,
+        })),
+        truncated: false,
+      }),
+      signal,
+    );
   }
 
-  getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<BoardSummary> {
+  getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<Board> {
     return settle(() => {
       const b = this.boardsOf(tenant).find((x) => x.uid === uid);
       if (b === undefined) throw new ApiError('notFound', `board ${uid} not found`);
-      return structuredClone(b);
+      return structuredClone({
+        ...b,
+        version: 1,
+        etag: '1',
+        updatedBy: this.seed.session.user.name,
+      });
     }, signal);
+  }
+
+  createBoard(tenant: string, _spec: BoardSpec): Promise<Board> {
+    return this.getBoard(tenant, 'b-1');
+  }
+
+  async saveBoard(
+    tenant: string,
+    uid: string,
+    _etag: string,
+    _spec: BoardSpec,
+  ): Promise<SaveResult> {
+    return { board: await this.getBoard(tenant, uid), changed: false };
+  }
+
+  deleteBoard(_tenant: string, _uid: string, _etag: string): Promise<void> {
+    return Promise.resolve();
+  }
+
+  panelData(
+    _tenant: string,
+    _panel: PanelSpec,
+    _window: TimeWindow,
+    _signal?: AbortSignal,
+  ): Promise<PanelData> {
+    return Promise.resolve({ kind: 'noVis' });
   }
 
   listStarred(tenant: string, signal?: AbortSignal): Promise<string[]> {
@@ -111,10 +173,11 @@ export class StubApi implements Api {
     });
   }
 
-  private boardsOf(tenant: string): BoardSummary[] {
-    const boards = this.seed.boards[tenant];
-    if (boards === undefined) throw new ApiError('notFound', `tenant ${tenant} not found`);
-    return boards;
+  private boardsOf(tenant: string): StubBoard[] {
+    if (!this.seed.session.tenants.some((t) => t.slug === tenant)) {
+      throw new ApiError('notFound', `tenant ${tenant} not found`);
+    }
+    return this.seed.boards;
   }
 
   private starredOf(tenant: string): string[] {

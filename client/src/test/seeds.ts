@@ -1,10 +1,10 @@
-import type { StubSeed } from '../api/StubApi';
+import type { StubBoard, StubSeed } from '../api/StubApi';
 import { defaultSeed } from '../api/stubData';
 import type { Role } from '../api/types';
 
 /** The default seed with some fields replaced (deep copies). */
 export function seedWith(
-  o: { tenants?: string[]; role?: Role; boards?: StubSeed['boards'] } = {},
+  o: { tenants?: string[]; role?: Role; boards?: StubBoard[] } = {},
 ): StubSeed {
   const s = structuredClone(defaultSeed);
   if (o.tenants !== undefined)

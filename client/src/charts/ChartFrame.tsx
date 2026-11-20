@@ -38,6 +38,8 @@ import { crosshairText, issueText, summaryLabel, valueUnit } from './chartText';
 export interface ChartFrameProps {
   readonly spec: VisSpec;
   readonly data: FrameData;
+  /** Fill the parent's height (board panels, full screen) instead of the fixed chart height. */
+  readonly fill?: boolean;
 }
 
 interface HoverState {

@@ -1,10 +1,10 @@
 /**
- * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22):
- * loops L1–L22, keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
+ * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
+ * plan #61 Part B L23–L28, Appendix B-A §A.5): loops L1–L28, keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
  * (ESLint bans other input here); the coverage check at the end fails on any control never operated
  * and any state never visited.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { keyboardHarness, type KeyboardHarness } from './keyboardCoverage.ts';
 import { enc, GALLERY_FROM, GALLERY_TO, GALLERY_URL, ORIGIN, T, timeTrigger } from './helpers.ts';
 
@@ -153,6 +153,102 @@ function script(page: Page, h: KeyboardHarness) {
     await press('ControlOrMeta+A');
     await type(text);
   }
+
+  /** The harness scope (body, or the top overlay) and the drained region (main, or the overlay). */
+  async function scopes(): Promise<{ scope: Locator; region: Locator }> {
+    const kind = await page.evaluate((popover) => {
+      const roots = [...document.querySelectorAll(`${popover}, [role="dialog"]`)].filter(
+        (el) =>
+          el.closest('#root') === null && el.closest('[data-trigger="TooltipTrigger"]') === null,
+      );
+      const top = roots.at(-1);
+      return top === undefined ? 'none' : top.matches(popover) ? 'popover' : 'modal';
+    }, POPOVER);
+    if (kind === 'none') return { scope: page.locator('body'), region: page.getByRole('main') };
+    const overlay =
+      kind === 'popover' ? page.locator(POPOVER).last() : page.locator('[role="dialog"]').last();
+    return { scope: overlay, region: overlay };
+  }
+
+  /** The element of a `role "name" #n` key in `scope`. */
+  function resolve(scope: Locator, key: string): Locator {
+    const m = /^([a-z]+) "((?:[^"\\]|\\.)*)"(?: #(\d+))?$/.exec(key);
+    if (m === null) throw new Error(`bad key ${key}`);
+    const name = JSON.parse(`"${m[2] ?? ''}"`) as string;
+    return scope
+      .getByRole(m[1] as Parameters<Page['getByRole']>[0], { name, exact: true })
+      .nth(Number(m[3] ?? '1') - 1);
+  }
+
+  async function inside(region: Locator, el: Locator): Promise<boolean> {
+    if ((await el.count()) === 0) return false;
+    const handle = await el.elementHandle();
+    return region.evaluate((r, e) => r.contains(e), handle);
+  }
+
+  /** The operating key of each role that can occur in a drained region (Appendix B-A §A.5). */
+  async function operate(name: string, key: string): Promise<void> {
+    const role = key.split(' ')[0] ?? '';
+    await focus(key, { max: 160 });
+    if (['link', 'button', 'menuitem', 'option'].includes(role)) await press('Enter');
+    else if (['checkbox', 'switch'].includes(role)) await press('Space');
+    else if (role === 'slider') {
+      await press('End');
+      await press('Escape');
+    } else if (role === 'textbox') await press('End');
+    else throw new Error(`drain ${name}: no operation for ${key}`);
+  }
+
+  /** Operates every pending control of one state's region, re-entering the state each round. */
+  async function drain(name: string, enter: () => Promise<void>): Promise<void> {
+    for (let round = 0; round < 80; round++) {
+      await enter();
+      const { scope, region } = await scopes();
+      let next: string | undefined;
+      for (const key of await h.pendingHere()) {
+        if (await inside(region, resolve(scope, key))) {
+          next = key;
+          break;
+        }
+      }
+      if (next === undefined) return;
+      await operate(name, next);
+    }
+    throw new Error(`drain ${name}: still pending ${(await h.pendingHere()).join(', ')}`);
+  }
+
+  /** Link keys of the sidebar and the page body now. */
+  async function linkKeys(): Promise<string[]> {
+    const { scope } = await scopes();
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    const main = page.getByRole('main');
+    const out: string[] = [];
+    for (const key of await h.pendingHere()) {
+      if (!key.startsWith('link ')) continue;
+      const el = resolve(scope, key);
+      if ((await inside(nav, el)) || (await inside(main, el))) out.push(key);
+    }
+    return out;
+  }
+
+  /**
+   * Operates, in this page session, each link that an action added (Appendix B-A §A.5, review r3):
+   * Enter on it, then back with `back` (keyboard only).
+   */
+  async function shellAfter(before: readonly string[], back: () => Promise<void>): Promise<void> {
+    for (let guard = 0; guard < 20; guard++) {
+      const key = (await linkKeys()).find((k) => !before.includes(k));
+      if (key === undefined) return;
+      const state = await h.state();
+      await on(key);
+      expect([...h.operated()]).toContain(`${state} › ${key}`);
+      await ready();
+      await back();
+      await ready();
+    }
+    throw new Error('shellAfter: links keep appearing');
+  }
+
   return {
     page,
     h,
@@ -168,14 +264,22 @@ function script(page: Page, h: KeyboardHarness) {
     quickRange,
     menuItem,
     replaceText,
+    drain,
+    shellAfter,
+    linkKeys,
   };
 }
+
+const POPOVER = '[data-trigger]:not([data-trigger="TooltipTrigger"])';
+const EDGE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
+const B1_PANELS = ['Request rate', 'Error ratio', 'Errors', 'Request latency'];
+const B3_PANELS = ['Edge p99', 'Edge errors', 'Pods'];
 
 type Script = ReturnType<typeof script>;
 
 test.describe('e2e:a11y-rooms keyboard', () => {
-  test('every control and state by keyboard (L1–L22)', async ({ page }) => {
-    test.setTimeout(900_000);
+  test('every control and state by keyboard (L1–L28)', async ({ page }) => {
+    test.setTimeout(3_600_000);
     await page.addInitScript(() => {
       window.__copied = [];
       const writeText = (s: string): Promise<void> => {
@@ -189,7 +293,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
     await page.clock.setFixedTime(T);
     const h = keyboardHarness(page);
     const s = script(page, h);
-    const { press } = h;
+    const { press, type } = h;
     const nav = page.getByRole('navigation', { name: 'Main' });
     const navWidth = async (): Promise<number> => (await nav.boundingBox())?.width ?? 0;
 
@@ -213,6 +317,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         'button "Refresh now"',
         'button "Auto-refresh interval: Off"',
         'button "User menu: Ada Admin"',
+        'button "New board"',
         'link "Service overview" #2',
       ];
       for (const [i, name] of want.entries()) {
@@ -689,6 +794,354 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         await expect(tip).toBeHidden();
         await expect(slider).toHaveAttribute('aria-valuetext', 'Use the arrow keys to read values');
       }
+    });
+
+    // Plan #61 Part B, Appendix B-A §A.5: the board list, the board in View and Edit, and their
+    // overlays. Each loop asserts its behaviours, then the drains operate whatever is left.
+    const backToList = async (): Promise<void> => {
+      await s.on('link "Boards"');
+      await expect.poll(() => s.path()).toBe('/t/demo/boards');
+    };
+    const table = page.getByRole('table', { name: 'All boards' });
+    const rowTitles = async (): Promise<string[]> =>
+      (await table.getByRole('rowgroup').last().getByRole('row').all()).length === 0
+        ? []
+        : table.getByRole('rowgroup').last().getByRole('link').allTextContents();
+    const status = page.getByRole('status', { name: 'Save status' });
+    const panelCount = page.locator('[data-panel]');
+    const gridOf = (title: string) =>
+      page
+        .locator('[data-panel]')
+        .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) })
+        .getAttribute('data-grid');
+
+    await test.step('L23 Board list', async () => {
+      await s.goto('/t/demo/boards');
+      let before = await s.linkKeys();
+      await s.on('button "New board"');
+      const nb = page.getByRole('dialog', { name: 'New board' });
+      await expect(nb).toBeVisible();
+      await s.replaceText('textbox "Name"', 'Keyboard board');
+      await s.on('button "Create"');
+      await expect.poll(() => s.path()).toBe('/t/demo/board/b-4');
+      await s.ready();
+      await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+      await s.on('button "Done"');
+      await s.shellAfter(before, async () => {
+        await expect.poll(() => s.path()).toBe('/t/demo/board/b-4');
+      });
+      before = await s.linkKeys();
+      await backToList();
+      await s.shellAfter(before, backToList);
+      await s.on('button "New board"');
+      await expect(nb).toBeVisible();
+      await s.on('button "Cancel"');
+      await expect(nb).toBeHidden();
+
+      for (const title of await rowTitles()) {
+        before = await s.linkKeys();
+        await s.menuItem(`button "Actions for ${title}"`, 0);
+        const rename = page.getByRole('dialog', { name: 'Rename board' });
+        await expect(rename).toBeVisible();
+        await s.focus('textbox "Name"');
+        await press('End');
+        await type(' 2');
+        await s.on('button "Save"');
+        await expect(rename).toBeHidden();
+        await expect.poll(rowTitles).toContain(`${title} 2`);
+        await s.shellAfter(before, async () => {
+          const onBoard = s.path().startsWith('/t/demo/board/');
+          if (onBoard) {
+            const inner = await s.linkKeys();
+            await s.shellAfter(inner, async () => {
+              await s.ready();
+            });
+          }
+          if (s.path() !== '/t/demo/boards') await backToList();
+        });
+        await s.menuItem(`button "Actions for ${title} 2"`, 0);
+        await expect(rename).toBeVisible();
+        await s.on('button "Cancel"');
+        await s.menuItem(`button "Actions for ${title} 2"`, 1);
+        const del = page.getByRole('dialog', { name: 'Delete board?' });
+        await expect(del).toBeVisible();
+        await s.on('button "Cancel"');
+        await expect(del).toBeHidden();
+      }
+      for (const title of await rowTitles()) {
+        await s.menuItem(`button "Actions for ${title}"`, 1);
+        await s.on('button "Delete"');
+        await expect.poll(rowTitles).not.toContain(title);
+      }
+      await expect(page.getByText('No boards yet')).toBeVisible();
+
+      await s.drain('list', () => s.goto('/t/demo/boards'));
+      await s.drain('New board', async () => {
+        await s.goto('/t/demo/boards');
+        await s.on('button "New board"');
+      });
+      for (const title of ['Service overview', 'Checkout latency', EDGE]) {
+        for (const [i, name] of [
+          [0, 'Rename'],
+          [1, 'Delete'],
+        ] as const) {
+          await s.drain(`${name} ${title}`, async () => {
+            await s.goto('/t/demo/boards');
+            await s.menuItem(`button "Actions for ${title}"`, i);
+          });
+        }
+        await s.drain(`Actions ${title}`, async () => {
+          await s.goto('/t/demo/boards');
+          await s.on(`button "Actions for ${title}"`);
+        });
+      }
+    });
+
+    await test.step('L24 View tools', async () => {
+      for (const [uid, titles] of [
+        ['b-1', B1_PANELS],
+        ['b-3', B3_PANELS],
+      ] as const) {
+        const url = `/t/demo/board/${uid}`;
+        await s.goto(url);
+        await s.shellAfter(await s.linkKeys(), () => s.goto(url));
+        for (const title of titles) {
+          await s.goto(url);
+          await s.on(`link "Open in Explore: ${title}"`);
+          await expect.poll(() => s.path()).toMatch(/^\/t\/demo\/explore\/(metrics|logs)$/);
+          expect(s.search()['q']).toBeTruthy();
+          await s.goto(url);
+          const full = page.getByRole('button', { name: `Full screen: ${title}` });
+          await s.on(`button "Full screen: ${title}"`);
+          const d = page.getByRole('dialog', { name: title });
+          await expect(d).toBeVisible();
+          if ((await d.getByRole('slider').count()) > 0) {
+            await s.focus(`slider "Crosshair: ${title}"`);
+            await press('End');
+            await press('Escape');
+          }
+          await s.on('button "Close"');
+          await expect(d).toBeHidden();
+          await expect(full).toBeFocused();
+          await s.menuItem(`button "Panel menu: ${title}"`, 1);
+          await expect.poll(() => page.evaluate(() => window.__copied.at(-1) ?? '')).not.toBe('');
+          await s.menuItem(`button "Panel menu: ${title}"`, 0);
+          await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeVisible();
+        }
+        await s.drain(`${uid} view`, () => s.goto(url));
+        for (const title of titles) {
+          await s.drain(`${uid} full screen ${title}`, async () => {
+            await s.goto(url);
+            await s.on(`button "Full screen: ${title}"`);
+          });
+          await s.drain(`${uid} panel menu ${title}`, async () => {
+            await s.goto(url);
+            await s.on(`button "Panel menu: ${title}"`);
+          });
+        }
+      }
+      await s.goto('/t/demo/board/b-2');
+      await s.shellAfter(await s.linkKeys(), () => s.goto('/t/demo/board/b-2'));
+      await s.drain('b-2 view', () => s.goto('/t/demo/board/b-2'));
+    });
+
+    await test.step('L25 Toolbar', async () => {
+      const url = '/t/demo/board/b-1?from=now-1h&to=now&refresh=off';
+      await s.goto(url);
+      await s.on('button "Share"');
+      const share = page.getByRole('dialog', { name: 'Share board' });
+      await expect(share).toBeVisible();
+      await s.on('checkbox "Keep relative"', 'Space');
+      await s.on('checkbox "Keep relative"', 'Space');
+      await s.on('button "Copy link"');
+      const copied = await page.evaluate(() => window.__copied.at(-1) ?? '');
+      expect(copied).toContain(
+        `${ORIGIN}/t/demo/board/b-1?from=${enc('2026-11-19T12:03:00.000Z')}`,
+      );
+      await press('Escape');
+      await expect(share).toBeHidden();
+      await s.on('button "Edit board"');
+      await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+      await press('Shift+E');
+      await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
+      await press('Shift+E');
+      await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+      await s.drain('share', async () => {
+        await s.goto(url);
+        await s.on('button "Share"');
+      });
+    });
+
+    await test.step('L26 Edit layout', async () => {
+      const url = '/t/demo/board/b-3';
+      await s.goto(url);
+      await s.on('button "Edit board"');
+      await s.focus('button "Move or resize: Pods"', { max: 160 });
+      for (let i = 0; i < 6; i++) await press('ArrowRight');
+      for (let i = 0; i < 2; i++) await press('Shift+ArrowDown');
+      expect(await gridOf('Pods')).toBe('6,8,6,10');
+      await s.on('button "Add panel"');
+      await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeVisible();
+      await expect(panelCount).toHaveCount(4);
+      for (const title of ['Edge p99', 'Edge errors', 'Untitled panel']) {
+        await s.focus(`button "Move or resize: ${title}"`, { max: 160 });
+        for (const key of [
+          'ArrowRight',
+          'ArrowLeft',
+          'ArrowDown',
+          'ArrowUp',
+          'Shift+ArrowRight',
+          'Shift+ArrowLeft',
+          'Shift+ArrowDown',
+          'Shift+ArrowUp',
+        ]) {
+          await press(key);
+        }
+      }
+      await s.on('checkbox "Save current time range"', 'Space');
+      await press('Space');
+      await press('ControlOrMeta+S');
+      await expect(status).toHaveText('Saved');
+      await s.on('button "Add panel"');
+      await s.focus('button "Save"', { max: 160 });
+      const state = await h.state();
+      await press('Enter');
+      await expect(status).toHaveText('Saved');
+      expect([...h.operated()]).toContain(`${state} › button "Save"`);
+      expect(state).toBe('/t/:tenant/board/:uid + none');
+      await s.on('button "Add panel"');
+      await s.on('button "Discard"');
+      await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
+      await expect(panelCount).toHaveCount(5);
+      await s.on('button "Edit board"');
+      await s.on('button "Done"');
+      await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
+
+      for (const uid of ['b-1', 'b-2', 'b-3']) {
+        const u = `/t/demo/board/${uid}`;
+        const edit = async (): Promise<void> => {
+          await s.goto(u);
+          await s.on('button "Edit board"');
+        };
+        await s.drain(`${uid} edit`, edit);
+        await s.drain(`${uid} edit, added`, async () => {
+          await edit();
+          await s.on('button "Add panel"');
+        });
+        if (uid !== 'b-2') {
+          await s.drain(`${uid} edit, editor`, async () => {
+            await edit();
+            await s.menuItem(/^button "Panel menu: /, 0);
+          });
+        }
+      }
+    });
+
+    await test.step('L27 Editor', async () => {
+      const url = '/t/demo/board/b-3';
+      const openEditor = async (): Promise<void> => {
+        await s.goto(url);
+        await s.on('button "Edit board"');
+        await s.menuItem('button "Panel menu: Edge p99"', 0);
+        await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeVisible();
+      };
+      await openEditor();
+      await s.replaceText('textbox "Title"', 'Edge p99 by region');
+      await expect(
+        page.getByRole('heading', { level: 3, name: 'Edge p99 by region' }),
+      ).toBeVisible();
+      for (const option of ['LogQL', 'PromQL']) {
+        await s.on(/^button "\w+ Query language"$/);
+        await expect(page.getByRole('listbox')).toBeVisible();
+        await press('Home');
+        const steps = option === 'PromQL' ? 0 : 1;
+        for (let k = 0; k < steps; k++) await press('ArrowDown');
+        await press('Enter');
+        await expect(page.getByRole('button', { name: `${option} Query language` })).toBeVisible();
+      }
+      await s.focus('textbox "Query"');
+      await press('End');
+      await type(' by (region)');
+      const kinds = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Logs'];
+      for (const [i, kind] of kinds.entries()) {
+        await s.on(/^button "\w+ Visualisation"$/);
+        await expect(page.getByRole('listbox')).toBeVisible();
+        await press('Home');
+        for (let k = 0; k < i; k++) await press('ArrowDown');
+        await press('Enter');
+        await expect(page.getByRole('button', { name: `${kind} Visualisation` })).toBeVisible();
+      }
+      // The last trigger name is operated too: open it and close it.
+      await s.on('button "Logs Visualisation"');
+      await press('Escape');
+      await s.on('button "Close editor"');
+      await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeHidden();
+      await s.menuItem('button "Panel menu: Edge errors"', 0);
+      await s.on('button "Remove panel"');
+      await expect(panelCount).toHaveCount(2);
+
+      for (const which of ['Query language', 'Visualisation']) {
+        await s.drain(`${which} list box`, async () => {
+          await openEditor();
+          await s.on(new RegExp(`^button "\\w+ ${which}"$`));
+          await expect(page.getByRole('listbox')).toBeVisible();
+        });
+      }
+    });
+
+    await test.step('L28 Guard and conflict', async () => {
+      const url = '/t/demo/board/b-3';
+      const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
+      const dirty = async (): Promise<void> => {
+        await s.goto(url);
+        await s.on('button "Edit board"');
+        await s.on('button "Add panel"');
+        await expect(panelCount).toHaveCount(4);
+      };
+      await dirty();
+      await s.on('link "Boards"', 'Enter', { back: true });
+      await expect(guard).toBeVisible();
+      await s.on('button "Keep editing"');
+      await expect(guard).toBeHidden();
+      expect(s.path()).toBe('/t/demo/board/b-3');
+      await expect(panelCount).toHaveCount(4);
+      await s.on('link "Boards"', 'Enter', { back: true });
+      await expect(guard).toBeVisible();
+      await s.on('button "Discard changes"');
+      await expect.poll(() => s.path()).toBe('/t/demo/boards');
+
+      const conflict = page.getByRole('dialog', { name: 'This board was changed' });
+      const conflicted = async (): Promise<void> => {
+        await s.goto(url);
+        await page.evaluate(() => {
+          localStorage.setItem('pulsus-dash.stub.conflictSave', '1');
+        });
+        await s.on('button "Edit board"');
+        await s.on('button "Add panel"');
+        await expect(panelCount).toHaveCount(4);
+        await press('ControlOrMeta+S');
+        await expect(conflict).toBeVisible();
+      };
+      await conflicted();
+      await expect(conflict).toContainText('Someone saved version 2 after you opened it.');
+      await s.on('button "Save mine as a new version"');
+      await expect(status).toHaveText('Saved');
+      await expect(panelCount).toHaveCount(4);
+      await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+      await conflicted();
+      await s.on('button "Discard mine and load theirs"');
+      await expect(panelCount).toHaveCount(3);
+      await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+      await s.drain('guard', async () => {
+        await dirty();
+        await s.on('link "Boards"', 'Enter', { back: true });
+        await expect(guard).toBeVisible();
+      });
+      await s.drain('conflict', conflicted);
+      await page.evaluate(() => {
+        localStorage.removeItem('pulsus-dash.stub.conflictSave');
+      });
     });
 
     await test.step('Coverage', () => {
