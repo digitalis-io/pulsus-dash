@@ -17,7 +17,7 @@ SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11
 
 .PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci \
 	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local dev-smoke \
-	itest-local-selftest
+	itest-local-selftest bench-bff cpu-instr cpu-instr-update
 
 # Dev stack (dev/compose.yaml, docs/development/dev-stack.md). COMPOSE may be any Docker Compose v2
 # compatible command. DEV_ENV_FILE is untracked: it holds the local settings and the PulsusDB URL.
@@ -28,6 +28,10 @@ DC = $(COMPOSE) -f dev/compose.yaml -p $(DEV_PROJECT)
 # Recipes chain their steps with &&, so a failure stops the recipe even without the -e of
 # .SHELLFLAGS.
 LOAD_ENV = set -a && . $(DEV_ENV_FILE) && set +a
+# The pulsus-fake service's loopback port (dev/compose.yaml); dev-migrate seeds it as the
+# datasource when dev/local.env sets no PULSUS_DASH_DATASOURCE_URL.
+DEV_PULSUS_FAKE_PORT ?= 59091
+export DEV_PULSUS_FAKE_PORT
 ITEST_PROJECT ?= pulsus-dash-itest
 ITEST_PG16_PORT ?= 57432
 ITEST_PG15_PORT ?= 57433
@@ -137,13 +141,15 @@ dev-db:
 # first (a missing settings file stops before anything starts), then each step in turn.
 dev-migrate: dev-env
 	$(MAKE) server-build
-	$(LOAD_ENV) && build/pulsus-dash migrate
+	$(LOAD_ENV) && PULSUS_DASH_DATASOURCE_URL="$${PULSUS_DASH_DATASOURCE_URL:-http://localhost:$(DEV_PULSUS_FAKE_PORT)}" build/pulsus-dash migrate
 
-# Postgres (healthy), migrations, then the server in the foreground: Ctrl-C stops it, Postgres
-# keeps running. server-build has no embedded client, so it serves --api-only; the client runs from
-# npm run dev (VITE_API_MODE=http), which proxies /api here.
+# Postgres (healthy), the PulsusDB fake (running, built on first use), migrations, then the server
+# in the foreground: Ctrl-C stops it, the containers keep running. server-build has no embedded
+# client, so it serves --api-only; the client runs from npm run dev (VITE_API_MODE=http), which
+# proxies /api here.
 dev-up: dev-env
 	$(MAKE) dev-db
+	$(DC) up -d --wait pulsus-fake
 	$(MAKE) dev-migrate
 	$(LOAD_ENV) && exec build/pulsus-dash serve --api-only
 
@@ -173,6 +179,20 @@ itest-local-selftest:
 dev-smoke:
 	dev/smoke.sh
 	dev/smoke-selftest.sh
+
+# The BFF budgets (plan #62 §8.1, T05-006). bench-bff runs the two time budgets: under
+# REFERENCE_LAB=1 they fail over their thresholds, elsewhere they skip (reference lab only).
+bench-bff:
+	go -C server test -count=1 -run '^TestBudget' -v ./internal/gateway
+
+# bench:cpu-instr: instruction counts of the BFF workloads under cachegrind; more than +3 % over
+# the committed baseline fails (needs valgrind). cpu-instr-update rewrites the baseline: it is run
+# in CI and the result is committed with the change that moves it.
+cpu-instr:
+	server/scripts/cpu-instr.sh
+
+cpu-instr-update:
+	server/scripts/cpu-instr.sh --update
 
 ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host \
 	itest-local-selftest

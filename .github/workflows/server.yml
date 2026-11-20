@@ -16,6 +16,7 @@ on:
       - 'tools/e2e/**'
       - 'Makefile'
       - 'dev/**'
+      - 'wire/**'
       - 'tools/no-pulsusdb-host/**'
       - '.github/workflows/server.yml'
   push:
@@ -127,6 +128,21 @@ jobs:
         run: make dev-smoke
       - name: 'ci:dev-stack (itest-local self-test)'
         run: make itest-local-selftest
+      # ci:fake-image (plan #62 §4.7): the dev stack's PulsusDB fake builds from its Dockerfile and
+      # .dockerignore, runs, and answers its runtimeinfo transcript within 10 s.
+      - name: 'ci:fake-image'
+        run: |
+          docker build -f dev/pulsus-fake.Dockerfile -t pulsus-fake:ci .
+          docker run -d --rm --name pulsus-fake-ci -p 59091:9091 pulsus-fake:ci
+          ok=""
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS -D headers.txt -o body.json http://localhost:59091/api/v1/status/runtimeinfo; then ok=1; break; fi
+            sleep 1
+          done
+          docker stop pulsus-fake-ci >/dev/null || true
+          [ -n "$ok" ] || { echo "::error::pulsus-fake did not answer within 10 s"; exit 1; }
+          grep -qi '^x-pulsus-query-id: fake-runtimeinfo-1' headers.txt || { echo "::error::no fake-runtimeinfo-1 query id"; exit 1; }
+          grep -q '"rollupLevels"' body.json || { echo "::error::no rollupLevels in the body"; exit 1; }
       - name: itest on the dev compose stack
         run: make itest-local
       - name: itest-local left nothing behind

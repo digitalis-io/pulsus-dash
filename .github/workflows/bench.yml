@@ -1,0 +1,36 @@
+# bench:cpu-instr (T05-006, plan #62 §8.1): PR-level CPU regressions are gated by instruction
+# counts. Runs on every pull request (no paths filter) and on main; no secrets are used.
+name: bench
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -mod=readonly
+  GOTOOLCHAIN: local
+
+jobs:
+  cpu-instr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.4'
+          cache-dependency-path: server/go.sum
+      - name: valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+      - name: 'bench:cpu-instr'
+        run: make cpu-instr
