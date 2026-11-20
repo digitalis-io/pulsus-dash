@@ -380,6 +380,21 @@ func (q *Queries) MoveBoardHead(ctx context.Context, arg MoveBoardHeadParams) er
 	return err
 }
 
+const recentLock = `-- name: RecentLock :exec
+SELECT pg_advisory_xact_lock(hashtext($1::uuid::text || ':' || $2::uuid::text))
+`
+
+type RecentLockParams struct {
+	OrgID  pgtype.UUID
+	UserID pgtype.UUID
+}
+
+// Serialises RecordView per (org, user) until commit (plan #61 review r1 #2).
+func (q *Queries) RecentLock(ctx context.Context, arg RecentLockParams) error {
+	_, err := q.db.Exec(ctx, recentLock, arg.OrgID, arg.UserID)
+	return err
+}
+
 const rootFolderID = `-- name: RootFolderID :one
 SELECT id FROM folders WHERE org_id = $1 AND uid = 'root'
 `

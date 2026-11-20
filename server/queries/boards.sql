@@ -61,6 +61,10 @@ DELETE FROM stars WHERE org_id = $1 AND user_id = $2 AND kind = 'board' AND obje
 SELECT b.uid, b.title FROM stars s JOIN boards b ON b.org_id = s.org_id AND b.id = s.object_id
 WHERE s.org_id = $1 AND s.user_id = $2 AND s.kind = 'board' AND b.deleted_at IS NULL ORDER BY lower(b.title), b.uid LIMIT 200;
 
+-- name: RecentLock :exec
+-- Serialises RecordView per (org, user) until commit (plan #61 review r1 #2).
+SELECT pg_advisory_xact_lock(hashtext(sqlc.arg(org_id)::uuid::text || ':' || sqlc.arg(user_id)::uuid::text));
+
 -- name: UpsertRecent :exec
 INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at) VALUES ($1, $2, 'board', $3, now())
 ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = excluded.viewed_at;

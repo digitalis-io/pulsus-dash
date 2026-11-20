@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -419,6 +420,47 @@ func TestRecentTrim(t *testing.T) {
 			refs, err := e.svc.ListRecent(ctx, rc, 5)
 			if err != nil || len(refs) == 0 || refs[0].UID != b.UID {
 				t.Errorf("ListRecent(5) = %v, %v; want %s first", refs, err, b.UID)
+			}
+		})
+	}
+}
+
+// Review r1 #2: concurrent views of different boards keep at most 200 recent views per user.
+func TestRecentTrimConcurrent(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := newEnv(t, c)
+			ctx, rc := itestCtx(t), e.rc(e.org)
+			storetest.Exec(t, e.db.SuperURL, `INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at)
+				SELECT $1, $2, 'board', gen_random_uuid(), now() - interval '1 day' - make_interval(secs => n) FROM generate_series(1, 200) n`,
+				uuid.UUID(e.org), core.LocalPrincipalID)
+			const rounds = 20
+			var uids []string
+			for i := range 2 * rounds {
+				b, err := e.svc.CreateBoard(ctx, rc, titled(t, fmt.Sprintf("B%d", i)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				uids = append(uids, b.UID)
+			}
+			for r := range rounds {
+				start := make(chan struct{})
+				errs := make(chan error, 2)
+				for _, uid := range uids[2*r : 2*r+2] {
+					go func() {
+						<-start
+						errs <- e.svc.RecordView(ctx, rc, uid)
+					}()
+				}
+				close(start)
+				for range 2 {
+					if err := <-errs; err != nil {
+						t.Fatal(err)
+					}
+				}
+				if n := e.count(t, "recent_views"); n != 200 {
+					t.Fatalf("round %d: %d recent views, want 200", r, n)
+				}
 			}
 		})
 	}
