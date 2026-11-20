@@ -7,24 +7,30 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 )
 
-// envRef is the syntax of an env: reference. Together with validFileRef it is the
-// tenant_bindings.credentials_ref CHECK of migration 1:
-// ^(env:[A-Za-z_][A-Za-z0-9_]{0,127}|file:/[^[:space:]]{1,1023})$ (Go's regexp caps repeats at
-// 1000, so the file: half is checked by hand).
+// envRef is the syntax of an env: reference.
 var envRef = regexp.MustCompile(`^env:[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
-// validFileRef reports whether s is "file:/" followed by 1 to 1023 characters, none of them
-// POSIX space.
+// maxFilePath bounds the PATH of a file: reference, in bytes.
+const maxFilePath = 1023
+
+// validFileRef reports whether s is file:PATH with PATH absolute (starting with "/"), 1 to 1023
+// bytes long, and free of ASCII whitespace and control characters (bytes 0x00-0x20 and 0x7F);
+// other bytes, including multibyte UTF-8, are allowed. The tenant_bindings.credentials_ref CHECK of
+// migration 1 states the same rule byte-wise (octet_length and an explicit byte class), so it does
+// not depend on the database locale.
 func validFileRef(s string) bool {
-	rest, ok := strings.CutPrefix(s, "file:/")
-	if !ok {
+	path, ok := strings.CutPrefix(s, "file:")
+	if !ok || len(path) < 1 || len(path) > maxFilePath || path[0] != '/' {
 		return false
 	}
-	n := utf8.RuneCountInString(rest)
-	return n >= 1 && n <= 1023 && !strings.ContainsAny(rest, " \t\n\v\f\r")
+	for i := 0; i < len(path); i++ {
+		if b := path[i]; b <= 0x20 || b == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // maxSecretFile bounds a file: reference.

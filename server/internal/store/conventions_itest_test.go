@@ -4,12 +4,17 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store/storetest"
 )
 
@@ -118,6 +123,42 @@ func TestRoleAttributes(t *testing.T) {
 			for role, w := range want {
 				if got[role] != w {
 					t.Errorf("%s: bypassrls,super = %v, want %v", role, got[role], w)
+				}
+			}
+		})
+	}
+}
+
+// TestCredentialsRefCheck holds the tenant_bindings.credentials_ref CHECK to the same cases as the
+// Go rule (internal/config/testdata/credentials_refs.json; review r1 #3).
+func TestCredentialsRefCheck(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "config", "testdata", "credentials_refs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Ref   string `json:"ref"`
+		Valid bool   `json:"valid"`
+		Why   string `json:"why"`
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			db := migrated(t, c)
+			org := storetest.QueryString(t, db.SuperURL, "SELECT bootstrap_org_id::text FROM install_state")
+			for i, tc := range cases {
+				id, _ := core.NewID()
+				code := storetest.ExecCode(t, db.SuperURL,
+					"INSERT INTO tenant_bindings (org_id, id, slug, datasource_url, credentials_ref) VALUES ($1::uuid, $2, $3, 'http://localhost:9', $4)",
+					org, id, fmt.Sprintf("case-%d", i), tc.Ref)
+				want := "23514"
+				if tc.Valid {
+					want = ""
+				}
+				if code != want {
+					t.Errorf("%s: SQLSTATE %q, want %q", tc.Why, code, want)
 				}
 			}
 		})

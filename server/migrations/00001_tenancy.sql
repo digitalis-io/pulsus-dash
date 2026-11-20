@@ -17,11 +17,13 @@ CREATE TABLE orgs (id uuid PRIMARY KEY, slug text UNIQUE NOT NULL, name text NOT
 CREATE TABLE tenant_bindings (org_id uuid REFERENCES orgs (id), id uuid, slug text NOT NULL,
   datasource_url text NOT NULL, database text,
   scope_org_id text CHECK (scope_org_id ~ '^[A-Za-z0-9_.-]{1,150}$'),
-  -- ◆ a reference, never a value: env:NAME, or file:/ and 1 to 1023 non-space characters
-  -- (the length is a separate test because Postgres regular expressions cap repeats at 255)
+  -- ◆ a reference, never a value: env:NAME, or file:PATH with an absolute PATH of 1 to 1023
+  -- bytes and no ASCII whitespace or control character (bytes 0x01-0x20, 0x7F). Byte-wise and
+  -- locale-independent; the length is octet_length because Postgres caps regex repeats at 255.
   credentials_ref text CHECK (credentials_ref IS NULL
-    OR (credentials_ref ~ '^(env:[A-Za-z_][A-Za-z0-9_]{0,127}|file:/[^[:space:]]+)$'
-        AND char_length(credentials_ref) <= 1029)),
+    OR (credentials_ref ~ '^(env:[A-Za-z_][A-Za-z0-9_]{0,127}|file:/.*)$'
+        AND credentials_ref !~ '[\x01-\x20\x7f]'
+        AND octet_length(credentials_ref) <= 1028)),
   kind text NOT NULL DEFAULT 'pulsusdb',
   PRIMARY KEY (org_id, id), UNIQUE (org_id, slug));
 -- ◆ non-tenant: written once by the first-run seed (migrate), read by serve

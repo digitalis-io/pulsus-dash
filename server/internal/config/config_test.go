@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -300,4 +302,37 @@ func TestValidateRoles(t *testing.T) {
 		wantErr(t, err, `role "`+r+`" is not available in this release: only "all" is supported`)
 	}
 	wantErr(t, ValidateRoles([]string{"bogus"}), `unknown role "bogus" (want all, api, worker, evaluator, notifier or ai)`)
+	// Exactly [all] (review r1 #4).
+	wantErr(t, ValidateRoles([]string{"all", "all"}), `roles must be exactly "all" in this release, not "all,all"`)
+	wantErr(t, ValidateRoles(nil), `no role given: only "all" is supported`)
+	wantErr(t, ValidateRoles([]string{}), `no role given: only "all" is supported`)
+}
+
+// refCase is one row of testdata/credentials_refs.json, shared with the SQL CHECK itest
+// (internal/store), so Go and Postgres are held to the same byte-wise rule (review r1 #3).
+type refCase struct {
+	Ref   string `json:"ref"`
+	Valid bool   `json:"valid"`
+	Why   string `json:"why"`
+}
+
+func TestReferenceRuleBytes(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "credentials_refs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []refCase
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
+		if got := SecretRef(tc.Ref).check(false) == nil; got != tc.Valid {
+			t.Errorf("%s: check = %v, want %v", tc.Why, got, tc.Valid)
+		}
+		c := mustLoad(t, "datasource:\n  url: http://localhost:3100\n  credentials_ref: "+strconv.Quote(tc.Ref)+"\n")
+		_, err := c.SeedSettings()
+		if (err == nil) != tc.Valid {
+			t.Errorf("%s: SeedSettings = %v, want valid=%v", tc.Why, err, tc.Valid)
+		}
+	}
 }
