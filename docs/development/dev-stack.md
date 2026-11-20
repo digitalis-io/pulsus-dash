@@ -86,7 +86,7 @@ All targets run from the repository root.
 
 | Target | What it does | Needs `dev/local.env` |
 |---|---|---|
-| `make dev-up` | `dev-db`, then `dev-migrate`, then `build/pulsus-dash serve` in the foreground on `0.0.0.0:8080` (the default `server.listen`). Ctrl-C stops the server; Postgres keeps running | yes |
+| `make dev-up` | `dev-db`, then `dev-migrate`, then `build/pulsus-dash serve --api-only` in the foreground on `0.0.0.0:8080` (the default `server.listen`). `make server-build` embeds no client, so the server serves the API only; run the client with `npm run dev` ([below](#using-the-client)). Ctrl-C stops the server; Postgres keeps running | yes |
 | `make dev-db` | starts `pg16` and waits until it is healthy (`up -d --wait`) | no |
 | `make dev-migrate` | `make server-build`, then `build/pulsus-dash migrate`: applies the migrations and, on an empty database, seeds the organisation and its tenant binding | yes |
 | `make dev-down` | stops and removes the containers; the `pg16-data` volume and its data stay | no |
@@ -140,10 +140,20 @@ without `set -e`.
 
 ## Using the client
 
-After `make dev-up`, the server runs on port 8080. The web client's dev server proxies `/api` to it
-(`PULSUS_DASH_DEV_BFF`, default `http://localhost:8080`; see [the client page](../client/README.md)).
-`npm run dev` with `VITE_API_MODE=http` uses the server instead of the stub API. The server does
-not yet serve the client or the bootstrap API: those come with #59 Part B.
+After `make dev-up`, the server serves the API on port 8080 (`serve --api-only`: a
+`make server-build` binary embeds no client). Run the client from its dev server, which proxies
+`/api` and `/auth` to the server (`PULSUS_DASH_DEV_BFF`, default `http://localhost:8080`; see
+[the client page](../client/README.md)):
+
+```bash
+make dev-up                                    # terminal 1: Postgres, migrate, serve --api-only
+VITE_API_MODE=http npm --prefix client run dev # terminal 2: http://localhost:5173
+```
+
+With `VITE_API_MODE=http`, the client calls the server instead of the stub API, starting with
+`GET /api/dash/v1/bootstrap`. The About dialog in the user menu then shows the server version
+next to the client version. To serve the client from the server itself, build it with
+`make build` instead ([the server page](../server/README.md)).
 
 ## Troubleshooting
 

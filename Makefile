@@ -140,11 +140,12 @@ dev-migrate: dev-env
 	$(LOAD_ENV) && build/pulsus-dash migrate
 
 # Postgres (healthy), migrations, then the server in the foreground: Ctrl-C stops it, Postgres
-# keeps running.
+# keeps running. server-build has no embedded client, so it serves --api-only; the client runs from
+# npm run dev (VITE_API_MODE=http), which proxies /api here.
 dev-up: dev-env
 	$(MAKE) dev-db
 	$(MAKE) dev-migrate
-	$(LOAD_ENV) && exec build/pulsus-dash serve
+	$(LOAD_ENV) && exec build/pulsus-dash serve --api-only
 
 # Stops the containers and keeps the pg16-data volume.
 dev-down:

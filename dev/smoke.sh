@@ -68,13 +68,14 @@ echo "$out"
 grep -qF 'seeded organisation "default" with tenant binding "default"' <<<"$out" || fail 2
 passed 2
 
-# 3. The server, started directly (never through make), becomes ready.
+# 3. The server, started directly (never through make), becomes ready. A server-build binary has no
+# embedded client, so it serves --api-only.
 (
   set -a
   # shellcheck disable=SC1090
   . "$DEV_ENV_FILE"
   set +a
-  exec build/pulsus-dash serve
+  exec build/pulsus-dash serve --api-only
 ) &
 SERVER_PID=$!
 ready=""
