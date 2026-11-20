@@ -1,0 +1,144 @@
+package spec
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+type fixtureCase struct {
+	Name   string          `json:"name"`
+	Raw    *string         `json:"raw"`
+	Spec   json.RawMessage `json:"spec"`
+	Fields []struct {
+		Pointer    string `json:"pointer"`
+		MessageKey string `json:"message_key"`
+	} `json:"fields"`
+}
+
+func fieldsOf(t *testing.T, err error) []FieldError {
+	t.Helper()
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error = %v, want *ValidationError", err)
+	}
+	if ve.Error() != "invalid board" {
+		t.Errorf("Error() = %q, want %q", ve.Error(), "invalid board")
+	}
+	return ve.Fields
+}
+
+func TestValidateCases(t *testing.T) {
+	var cases []fixtureCase
+	if err := json.Unmarshal(fixture(t, "invalid.json"), &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) < 30 {
+		t.Fatalf("%d cases, want at least 30", len(cases))
+	}
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			raw := []byte(tc.Spec)
+			if tc.Raw != nil {
+				raw = []byte(*tc.Raw)
+			}
+			_, err := ParseBoard(raw)
+			got := fieldsOf(t, err)
+			want := make([]FieldError, 0, len(tc.Fields))
+			for _, f := range tc.Fields {
+				want = append(want, FieldError{Pointer: f.Pointer, MessageKey: f.MessageKey})
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("fields = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func panelJSON(id string, y int, text string) string {
+	q, _ := json.Marshal(text)
+	return fmt.Sprintf(`{"id":%q,"title":"t","grid":{"x":0,"y":%d,"w":12,"h":1},"query":{"lang":"promql","text":%s},"vis":{"kind":"auto"}}`, id, y, q)
+}
+
+func boardJSON(title string, panels, sections []string) []byte {
+	t, _ := json.Marshal(title)
+	return []byte(fmt.Sprintf(`{"title":%s,"panels":[%s],"sections":[%s]}`, t, strings.Join(panels, ","), strings.Join(sections, ",")))
+}
+
+func TestValidateLimits(t *testing.T) {
+	panels := func(n int) []string {
+		var out []string
+		for i := range n {
+			out = append(out, panelJSON(fmt.Sprintf("p-%d", i), i, "up"))
+		}
+		return out
+	}
+	sections := func(n int) []string {
+		var out []string
+		for i := range n {
+			out = append(out, fmt.Sprintf(`{"id":"s-%d","title":"s","collapsed":false,"panels":[]}`, i))
+		}
+		return out
+	}
+	cases := []struct {
+		name string
+		raw  []byte
+		want string // "" = valid
+	}{
+		{"200 panels", boardJSON("b", panels(200), nil), ""},
+		{"201 panels", boardJSON("b", panels(201), nil), "/panels board.panels.tooMany"},
+		{"200 panels across sections", boardJSON("b", panels(100), []string{
+			`{"id":"s-1","title":"s","collapsed":false,"panels":[` + strings.Join(panels(101)[1:], ",") + `]}`}), ""},
+		{"50 sections", boardJSON("b", nil, sections(50)), ""},
+		{"51 sections", boardJSON("b", nil, sections(51)), "/sections board.sections.tooMany"},
+		{"title 200 runes", boardJSON(strings.Repeat("é", 200), nil, nil), ""},
+		{"title 201 runes", boardJSON(strings.Repeat("é", 201), nil, nil), "/title board.title.tooLong"},
+		{"text 16384 bytes", boardJSON("b", []string{panelJSON("p-1", 0, strings.Repeat("a", 16384))}, nil), ""},
+		{"text 16385 bytes", boardJSON("b", []string{panelJSON("p-1", 0, strings.Repeat("a", 16385))}, nil), "/panels/0/query/text board.query.text.tooLong"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseBoard(tc.raw)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("ParseBoard = %v, want ok", err)
+				}
+				return
+			}
+			got := fieldsOf(t, err)
+			if len(got) != 1 || got[0].Pointer+" "+got[0].MessageKey != tc.want {
+				t.Errorf("fields = %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateTimeForms(t *testing.T) {
+	for _, v := range []string{"now", "now/d", "now-5m", "now-99999w", "2026-11-20T10:00Z", "2026-11-20T10:00:05+09:00", "2026-11-20T10:00:05.123Z"} {
+		raw := []byte(fmt.Sprintf(`{"title":"b","time":{"from":%q,"to":"now"},"panels":[],"sections":[]}`, v))
+		if _, err := ParseBoard(raw); err != nil {
+			t.Errorf("time.from %q: %v, want ok", v, err)
+		}
+	}
+	for _, v := range []string{"now-0m", "now-100000s", "now-1y", "2026-11-20", "2026-11-20T10:00:05.12Z", "now+1h"} {
+		raw := []byte(fmt.Sprintf(`{"title":"b","time":{"from":%q,"to":"now"},"panels":[],"sections":[]}`, v))
+		_, err := ParseBoard(raw)
+		if got := fieldsOf(t, err); len(got) != 1 || got[0] != (FieldError{"/time/from", "board.time.invalid"}) {
+			t.Errorf("time.from %q: fields %v, want /time/from board.time.invalid", v, got)
+		}
+	}
+}
+
+func TestValidateStopsAt50(t *testing.T) {
+	var panels []string
+	for i := range 60 {
+		panels = append(panels, panelJSON("BAD", i, "up"))
+	}
+	_, err := ParseBoard(boardJSON("b", panels, nil))
+	if got := fieldsOf(t, err); len(got) != 50 {
+		t.Errorf("%d fields, want 50", len(got))
+	}
+}

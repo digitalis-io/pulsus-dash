@@ -115,8 +115,8 @@ func wantJSON(t *testing.T, rec *httptest.ResponseRecorder, status int, body str
 }
 
 const (
-	readyBody       = `{"status":"ready","checks":{"postgres":"ok","schema":"ok"}}`
-	unreachableBody = `{"status":"not_ready","checks":{"postgres":"unreachable","schema":"unknown"}}`
+	readyBody       = `{"status":"ready","checks":{"postgres":"ok","schema":"ok","audit_partitions":"unknown"}}`
+	unreachableBody = `{"status":"not_ready","checks":{"postgres":"unreachable","schema":"unknown","audit_partitions":"unknown"}}`
 )
 
 func TestNotFoundEnvelope(t *testing.T) {
@@ -135,8 +135,8 @@ func TestReadyz(t *testing.T) {
 	}{
 		{"ok", &fakeProbe{version: 1}, 200, readyBody},
 		{"ping error", &fakeProbe{ping: func(context.Context) error { return errors.New("down") }}, 503, unreachableBody},
-		{"behind", &fakeProbe{version: 0}, 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"behind"}}`},
-		{"ahead", &fakeProbe{version: 3}, 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"ahead"}}`},
+		{"behind", &fakeProbe{version: 0}, 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"behind","audit_partitions":"unknown"}}`},
+		{"ahead", &fakeProbe{version: 3}, 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"ahead","audit_partitions":"unknown"}}`},
 		{"n+1", &fakeProbe{version: 2}, 200, readyBody},
 	}
 	for _, tc := range cases {
@@ -175,7 +175,7 @@ func warnRecords(t *testing.T, logs *syncBuffer, check string) int {
 
 func TestReadyzSchemaError(t *testing.T) {
 	h, logs := newHandler(&fakeProbe{schema: func(context.Context) (int64, error) { return 0, errors.New("boom") }})
-	wantJSON(t, do(h, http.MethodGet, "/readyz"), 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"error"}}`)
+	wantJSON(t, do(h, http.MethodGet, "/readyz"), 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"error","audit_partitions":"unknown"}}`)
 	if n := warnRecords(t, logs, "schema"); n != 1 {
 		t.Errorf("%d warn records with check=schema, want 1", n)
 	}
@@ -186,7 +186,7 @@ func TestReadyzSchemaTimeout(t *testing.T) {
 	start := time.Now()
 	rec := do(h, http.MethodGet, "/readyz")
 	elapsed := time.Since(start)
-	wantJSON(t, rec, 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"timeout"}}`)
+	wantJSON(t, rec, 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"timeout","audit_partitions":"unknown"}}`)
 	if elapsed < time.Second || elapsed >= 2*time.Second {
 		t.Errorf("elapsed %v, want >= 1s and < 2s", elapsed)
 	}
@@ -266,4 +266,20 @@ func TestStatusWriterUnwrap(t *testing.T) {
 	if err := <-got; err != nil {
 		t.Errorf("SetReadDeadline through statusWriter = %v, want nil", err)
 	}
+}
+
+type fixedCheck string
+
+func (c fixedCheck) Check() string { return string(c) }
+
+func TestReadyzAuditPartitions(t *testing.T) {
+	for _, state := range []string{"ok", "low", "unknown"} {
+		h := New(Deps{Probe: &fakeProbe{version: 1}, SchemaLatest: 1, AuditPartitions: fixedCheck(state)})
+		wantJSON(t, do(h, http.MethodGet, "/readyz"), 200,
+			`{"status":"ready","checks":{"postgres":"ok","schema":"ok","audit_partitions":"`+state+`"}}`)
+	}
+	h := New(Deps{Probe: &fakeProbe{version: 1}, SchemaLatest: 1, AuditPartitions: fixedCheck("error")})
+	wantJSON(t, do(h, http.MethodGet, "/readyz"), 503, `{"status":"not_ready","checks":{"postgres":"ok","schema":"ok","audit_partitions":"error"}}`)
+	h = New(Deps{Probe: &fakeProbe{ping: func(context.Context) error { return errors.New("down") }}, SchemaLatest: 1, AuditPartitions: fixedCheck("ok")})
+	wantJSON(t, do(h, http.MethodGet, "/readyz"), 503, `{"status":"not_ready","checks":{"postgres":"unreachable","schema":"unknown","audit_partitions":"ok"}}`)
 }

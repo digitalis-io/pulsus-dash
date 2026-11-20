@@ -41,6 +41,12 @@ type Deps struct {
 	Now func() time.Time
 	// CSPReadTimeout is the csp-report body deadline; 0 means 5 s.
 	CSPReadTimeout time.Duration
+	// Boards is the boards service; nil (or a zero Org) answers every board route with 503.
+	Boards core.Boards
+	// Org is the organisation of every request until authentication lands (D12).
+	Org core.OrgID
+	// AuditPartitions is the audit partition health for /readyz; nil reports unknown.
+	AuditPartitions interface{ Check() string }
 }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
@@ -63,7 +69,7 @@ func New(d Deps) http.Handler {
 	badRequest := func(w http.ResponseWriter, _ *http.Request, _ error) {
 		WriteError(w, http.StatusBadRequest, api.Invalid, "bad request")
 	}
-	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}, boards: boards{deps: d}}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: badRequest,
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			d.Logger.ErrorContext(r.Context(), "response error", "error", err.Error())
@@ -77,6 +83,7 @@ func New(d Deps) http.Handler {
 type routes struct {
 	health
 	meta
+	boards
 }
 
 // WriteError writes the error envelope {"error":{"code":…,"message":…}} (T06 §5.2).

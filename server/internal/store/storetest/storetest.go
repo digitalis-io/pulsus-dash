@@ -234,6 +234,75 @@ func QueryInt(t testing.TB, dsn, sql string, args ...any) int64 {
 	return n
 }
 
+// QueryRows runs a query whose columns are all text (cast them in SQL) and returns the rows; a
+// NULL is returned as "NULL".
+func QueryRows(t testing.TB, dsn, sql string, args ...any) [][]string {
+	t.Helper()
+	conn, err := pgx.Connect(ctx(t), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	rows, err := conn.Query(ctx(t), sql, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	defer rows.Close()
+	var out [][]string
+	for rows.Next() {
+		vals := make([]*string, len(rows.FieldDescriptions()))
+		ptrs := make([]any, len(vals))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+		row := make([]string, len(vals))
+		for i, v := range vals {
+			row[i] = "NULL"
+			if v != nil {
+				row[i] = *v
+			}
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	return out
+}
+
+// OrgQueryInt runs a one-row integer query in a transaction bound to org with the audit floor
+// set as store.Db.Tx binds it (for tests outside the store package, which cannot use pgx).
+func OrgQueryInt(t testing.TB, dsn string, org [16]byte, floor time.Time, sql string, args ...any) int64 {
+	t.Helper()
+	conn, err := pgx.Connect(ctx(t), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	tx, err := conn.Begin(ctx(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx(t), "SELECT set_config('pulsus.org_id', $1, true), set_config('pulsus.floor.audit', $2, true)",
+		uuidString(org), floor.UTC().Format("2006-01-02T15:04:05.000000Z07:00")); err != nil {
+		t.Fatal(err)
+	}
+	var n int64
+	if err := tx.QueryRow(ctx(t), sql, args...).Scan(&n); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	return n
+}
+
+func uuidString(u [16]byte) string {
+	h := hex.EncodeToString(u[:])
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
 // Exec runs a statement and fails the test on error.
 func Exec(t testing.TB, dsn, sql string, args ...any) {
 	t.Helper()
@@ -245,6 +314,14 @@ func Exec(t testing.TB, dsn, sql string, args ...any) {
 // ExecCode runs a statement and returns its SQLSTATE, or "" when it succeeds.
 func ExecCode(t testing.TB, dsn, sql string, args ...any) string {
 	t.Helper()
+	code, _ := ExecErr(t, dsn, sql, args...)
+	return code
+}
+
+// ExecErr runs a statement and returns its SQLSTATE and message, or two empty strings when it
+// succeeds.
+func ExecErr(t testing.TB, dsn, sql string, args ...any) (string, string) {
+	t.Helper()
 	conn, err := pgx.Connect(ctx(t), dsn)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
@@ -252,14 +329,40 @@ func ExecCode(t testing.TB, dsn, sql string, args ...any) string {
 	defer func() { _ = conn.Close(context.Background()) }()
 	_, err = conn.Exec(ctx(t), sql, args...)
 	if err == nil {
-		return ""
+		return "", ""
 	}
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		return pg.Code, pg.Message
+	}
+	t.Fatalf("%s: %v", sql, err)
+	return "", ""
+}
+
+// Code returns the SQLSTATE of a Postgres error anywhere in err's chain, or "".
+func Code(err error) string {
 	var pg *pgconn.PgError
 	if errors.As(err, &pg) {
 		return pg.Code
 	}
-	t.Fatalf("%s: %v", sql, err)
 	return ""
+}
+
+// Leaf returns the name of the class-13 audit leaf k months after the current UTC month, and the
+// bounds of its range as Postgres timestamptz literals.
+func Leaf(k int) (name, from, to string) {
+	now := time.Now().UTC()
+	m := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, k, 0)
+	return "audit_events_r13_" + m.Format("2006_01"), m.Format("2006-01-02 15:04:05+00"), m.AddDate(0, 1, 0).Format("2006-01-02 15:04:05+00")
+}
+
+// CreateLeaf creates the leaf k months after the current month on dsn's connection role, as
+// maintenance would, but without RLS (tests only).
+func CreateLeaf(t testing.TB, dsn string, k int) string {
+	t.Helper()
+	name, from, to := Leaf(k)
+	Exec(t, dsn, "CREATE TABLE public."+name+" PARTITION OF public.audit_events_r13 FOR VALUES FROM ('"+from+"') TO ('"+to+"')")
+	return name
 }
 
 // AheadFS returns the embedded migrations plus testdata/ahead migrations up to version upTo,
