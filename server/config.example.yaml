@@ -7,6 +7,8 @@ server:
   roles: [all]                  # only "all" in this release (T06-003)
   listen: 0.0.0.0:8080          # host:port
   shutdown_grace: 15s           # 1s to 30s
+  public_url: ""                # optional: the URL users open; serve checks once that the
+                                # document headers arrive intact (T19-002)
 
 postgres:
   # Secret references (T19-010): env:NAME or file:/absolute/path. No default.

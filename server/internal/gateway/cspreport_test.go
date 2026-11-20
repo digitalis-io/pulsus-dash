@@ -33,12 +33,29 @@ func cspDeps(logs *syncBuffer) Deps {
 	return Deps{Logger: slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), Probe: &fakeProbe{version: 1}}
 }
 
-func post(h http.Handler, contentType, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, cspPath, strings.NewReader(body))
-	req.Header.Set("Content-Type", contentType)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	return rec
+// poster serves h on a real listener (the handler needs a connection for its read deadline, R7)
+// and returns a function that posts one report and records the response.
+func poster(t *testing.T, h http.Handler) func(contentType, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return func(contentType, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		resp, err := srv.Client().Post(srv.URL+cspPath, contentType, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		rec := httptest.NewRecorder()
+		for k, v := range resp.Header {
+			rec.Header()[k] = v
+		}
+		rec.WriteHeader(resp.StatusCode)
+		if _, err := io.Copy(rec.Body, resp.Body); err != nil {
+			t.Fatalf("response body: %v", err)
+		}
+		return rec
+	}
 }
 
 // violation returns one Reporting API entry of type csp-violation with the given body fields.
@@ -76,19 +93,19 @@ func cspServer(t *testing.T, d Deps) *httptest.Server {
 // R1
 func TestCSPReportAccepts(t *testing.T) {
 	logs := &syncBuffer{}
-	h := New(cspDeps(logs))
+	post := poster(t, New(cspDeps(logs)))
 	body := mustJSON([]any{violation(map[string]any{
 		"effectiveDirective": "script-src-elem", "disposition": "enforce", "blockedURL": "inline",
 		"documentURL": "http://x/t/demo/boards?q=1",
 	})})
-	if rec := post(h, reportsJSON, body); rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+	if rec := post(reportsJSON, body); rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("reports+json: %d %q, want 204 and no body", rec.Code, rec.Body.String())
 	}
 	legacy := mustJSON(map[string]any{"csp-report": map[string]any{
 		"effective-directive": "style-src-elem", "violated-directive": "style-src-elem 'self'",
 		"disposition": "report", "blocked-uri": "data", "document-uri": "http://x/t/demo/admin",
 	}})
-	if rec := post(h, legacyCSP, legacy); rec.Code != http.StatusNoContent {
+	if rec := post(legacyCSP, legacy); rec.Code != http.StatusNoContent {
 		t.Fatalf("csp-report: %d %q, want 204", rec.Code, rec.Body.String())
 	}
 	recs := byMsg(logs.records(t), "csp_violation")
@@ -119,11 +136,11 @@ func TestCSPReportAccepts(t *testing.T) {
 
 // R2
 func TestCSPReportLimits(t *testing.T) {
-	h := New(cspDeps(&syncBuffer{}))
+	post := poster(t, New(cspDeps(&syncBuffer{})))
 	big := `[{"type":"csp-violation","body":{"sample":"` + strings.Repeat("a", 65*1024) + `"}}]`
-	wantJSON(t, post(h, reportsJSON, big), http.StatusRequestEntityTooLarge, `{"error":{"code":"invalid","message":"payload too large"}}`)
-	wantJSON(t, post(h, "text/plain", "[]"), http.StatusUnsupportedMediaType, `{"error":{"code":"invalid","message":"unsupported media type"}}`)
-	wantJSON(t, post(h, reportsJSON, "{"), http.StatusBadRequest, `{"error":{"code":"invalid","message":"bad request"}}`)
+	wantJSON(t, post(reportsJSON, big), http.StatusRequestEntityTooLarge, `{"error":{"code":"invalid","message":"payload too large"}}`)
+	wantJSON(t, post("text/plain", "[]"), http.StatusUnsupportedMediaType, `{"error":{"code":"invalid","message":"unsupported media type"}}`)
+	wantJSON(t, post(reportsJSON, "{"), http.StatusBadRequest, `{"error":{"code":"invalid","message":"bad request"}}`)
 }
 
 // R3
@@ -132,14 +149,14 @@ func TestCSPReportRateLimit(t *testing.T) {
 	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
 	d := cspDeps(&syncBuffer{})
 	d.Now = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
-	h := New(d)
+	post := poster(t, New(d))
 	body := mustJSON([]any{violation(map[string]any{"effectiveDirective": "img-src"})})
 	for i := range 20 {
-		if rec := post(h, reportsJSON, body); rec.Code != http.StatusNoContent {
+		if rec := post(reportsJSON, body); rec.Code != http.StatusNoContent {
 			t.Fatalf("request %d: %d, want 204", i+1, rec.Code)
 		}
 	}
-	rec := post(h, reportsJSON, body)
+	rec := post(reportsJSON, body)
 	wantJSON(t, rec, http.StatusTooManyRequests, `{"error":{"code":"unavailable","message":"rate limited"}}`)
 	if got := rec.Header().Get("Retry-After"); got != "1" {
 		t.Errorf("Retry-After = %q, want 1", got)
@@ -147,7 +164,7 @@ func TestCSPReportRateLimit(t *testing.T) {
 	mu.Lock()
 	now = now.Add(time.Second)
 	mu.Unlock()
-	if rec := post(h, reportsJSON, body); rec.Code != http.StatusNoContent {
+	if rec := post(reportsJSON, body); rec.Code != http.StatusNoContent {
 		t.Errorf("after 1 s: %d, want 204", rec.Code)
 	}
 }
@@ -155,12 +172,12 @@ func TestCSPReportRateLimit(t *testing.T) {
 // R4
 func TestCSPReportTruncation(t *testing.T) {
 	logs := &syncBuffer{}
-	h := New(cspDeps(logs))
+	post := poster(t, New(cspDeps(logs)))
 	var reports []any
 	for range 25 {
 		reports = append(reports, violation(map[string]any{"effectiveDirective": "font-src"}))
 	}
-	if rec := post(h, reportsJSON, mustJSON(reports)); rec.Code != http.StatusNoContent {
+	if rec := post(reportsJSON, mustJSON(reports)); rec.Code != http.StatusNoContent {
 		t.Fatalf("status %d, want 204", rec.Code)
 	}
 	recs := logs.records(t)
@@ -177,7 +194,7 @@ func TestCSPReportTruncation(t *testing.T) {
 func TestCSPReportLogsNoSecrets(t *testing.T) {
 	const secret = "s3cr3t-T0K"
 	logs := &syncBuffer{}
-	h := New(cspDeps(logs))
+	post := poster(t, New(cspDeps(logs)))
 	extra := map[string]any{
 		"sample": secret, "sourceFile": "https://" + secret + "/a.js", "referrer": "https://" + secret + "/",
 		"statusCode": 200, "lineNumber": 7, "columnNumber": 9, "x-" + secret: secret,
@@ -196,7 +213,7 @@ func TestCSPReportLogsNoSecrets(t *testing.T) {
 		with(map[string]any{"effectiveDirective": "img-src", "documentURL": "http://x/t/" + secret + "/boards/" + secret}),
 		with(map[string]any{"effectiveDirective": "img-src", "documentURL": "http://x/" + secret}),
 	}
-	if rec := post(h, reportsJSON, mustJSON(reports)); rec.Code != http.StatusNoContent {
+	if rec := post(reportsJSON, mustJSON(reports)); rec.Code != http.StatusNoContent {
 		t.Fatalf("status %d, want 204", rec.Code)
 	}
 	if all := logs.buf.String(); strings.Contains(all, secret) {

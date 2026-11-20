@@ -45,23 +45,25 @@ type Deps struct {
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 
-// New returns the HTTP handler of every route.
+// New returns the HTTP handler of every route: the generated operations, POST csp-report, the
+// verified client assets and the document fallback (plan #59 §3.4).
 func New(d Deps) http.Handler {
 	if d.Logger == nil {
 		d.Logger = slog.New(slog.DiscardHandler)
 	}
 	r := chi.NewRouter()
 	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger))
-	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		WriteError(w, http.StatusNotFound, api.NotFound, "not found")
-	})
+	a := assets{set: d.Assets}
+	r.NotFound(a.fallback)
+	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
+	r.Method(http.MethodPost, "/api/dash/v1/csp-report", newCSPReport(d))
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusMethodNotAllowed, api.Invalid, "method not allowed")
 	})
 	badRequest := func(w http.ResponseWriter, _ *http.Request, _ error) {
 		WriteError(w, http.StatusBadRequest, api.Invalid, "bad request")
 	}
-	strict := api.NewStrictHandlerWithOptions(&health{deps: d}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: badRequest,
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			d.Logger.ErrorContext(r.Context(), "response error", "error", err.Error())
@@ -69,6 +71,12 @@ func New(d Deps) http.Handler {
 		},
 	})
 	return api.HandlerWithOptions(strict, api.ChiServerOptions{BaseRouter: r, ErrorHandlerFunc: badRequest})
+}
+
+// routes implements every generated operation: the probes and the meta routes.
+type routes struct {
+	health
+	meta
 }
 
 // WriteError writes the error envelope {"error":{"code":…,"message":…}} (T06 §5.2).
@@ -117,6 +125,9 @@ func (s *statusWriter) WriteHeader(code int) {
 	}
 	s.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach the connection (the csp-report read deadline).
+func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 func (s *statusWriter) Write(b []byte) (int, error) {
 	if s.status == 0 {

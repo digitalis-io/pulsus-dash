@@ -64,8 +64,17 @@ func (d *Db) tx(ctx context.Context, org core.OrgID, fn func(ctx context.Context
 	return nil
 }
 
-// Org returns the organisation the transaction is bound to.
-func (t *OrgTx) Org() core.OrgID { return t.org }
+// OrgID returns the organisation the transaction is bound to.
+func (t *OrgTx) OrgID() core.OrgID { return t.org }
+
+// Org reads the bound organisation's row (under RLS, like every tenant read).
+func (t *OrgTx) Org(ctx context.Context) (core.Org, error) {
+	row, err := t.q.GetOrg(ctx, pgUUID(t.org))
+	if err != nil {
+		return core.Org{}, fmt.Errorf("store: organisation: %w", err)
+	}
+	return core.Org{ID: core.OrgID(row.ID.Bytes), Slug: row.Slug, Name: row.Name}, nil
+}
 
 func text(s pgtype.Text) string {
 	if !s.Valid {

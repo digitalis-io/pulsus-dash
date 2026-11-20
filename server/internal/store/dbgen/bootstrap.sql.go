@@ -27,6 +27,23 @@ func (q *Queries) GetInstallState(ctx context.Context) (GetInstallStateRow, erro
 	return i, err
 }
 
+const getOrg = `-- name: GetOrg :one
+SELECT id, slug, name FROM orgs WHERE id = $1
+`
+
+type GetOrgRow struct {
+	ID   pgtype.UUID
+	Slug string
+	Name string
+}
+
+func (q *Queries) GetOrg(ctx context.Context, id pgtype.UUID) (GetOrgRow, error) {
+	row := q.db.QueryRow(ctx, getOrg, id)
+	var i GetOrgRow
+	err := row.Scan(&i.ID, &i.Slug, &i.Name)
+	return i, err
+}
+
 const insertInstallState = `-- name: InsertInstallState :exec
 INSERT INTO install_state (singleton, bootstrap_org_id) VALUES (true, $1)
 `
