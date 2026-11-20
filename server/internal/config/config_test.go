@@ -165,7 +165,7 @@ func TestInlineSecret(t *testing.T) {
 	}
 	c := mustLoad(t, "allow_inline_secrets: true\npostgres:\n  app_url_ref: \"postgres://u:hunter2@h/db\"\n")
 	v, err := c.Postgres.AppURLRef.Resolve(Sources{}, c.AllowInlineSecrets)
-	if err != nil || v != "postgres://u:hunter2@h/db" {
+	if err != nil || v != "postgres://u:hunter2@h/db" { //nolint:gosec // a test literal, not a credential
 		t.Fatalf("Resolve with allow = %q, %v; want the literal", v, err)
 	}
 }
