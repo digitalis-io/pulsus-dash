@@ -1,12 +1,15 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
@@ -21,21 +24,82 @@ var (
 )
 
 const (
-	recentDefault    = 5
-	recentMax        = 50
-	maxMessageRunes  = 500
-	msgUnavailable   = "configuration store unavailable"
-	msgNotFound      = "board not found"
-	msgTooNew        = "board saved by a newer server version"
-	msgInvalidBoard  = "invalid board"
-	msgIfMatchNeeded = "If-Match is required"
-	msgIfMatchBad    = "If-Match must be an ETag from this API"
+	recentDefault     = 5
+	recentMax         = 50
+	maxMessageRunes   = 500
+	msgUnavailable    = "configuration store unavailable"
+	msgNotFound       = "board not found"
+	msgTooNew         = "board saved by a newer server version"
+	msgInvalidBoard   = "invalid board"
+	msgInvalidRequest = "invalid request"
+	msgIfMatchNeeded  = "If-Match is required"
+	msgIfMatchBad     = "If-Match must be an ETag from this API"
 )
 
 // boards implements the board, starred and recent routes over Deps.Boards.
 type boards struct{ deps Deps }
 
 type requestCtxKey struct{}
+
+// boardRequest returns the envelope a request's body must have: POST /api/dash/v1/boards is a
+// BoardCreate and PUT /api/dash/v1/boards/{uid} a BoardUpdate.
+func boardRequest(r *http.Request) (spec.Envelope, bool) {
+	const prefix = "/api/dash/v1/boards"
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == prefix:
+		return spec.CreateEnvelope, true
+	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, prefix+"/") && !strings.Contains(r.URL.Path[len(prefix)+1:], "/"):
+		return spec.UpdateEnvelope, true
+	}
+	return 0, false
+}
+
+// boardBody validates the whole body of a board create or update before the generated decoder
+// sees it (plan #61 review r1 #1). The generated decoder reads one JSON value into a struct, so it
+// would accept unknown, wrongly cased or repeated envelope keys and trailing data, and could stop
+// before the 2 MiB limit. boardBody reads the body to its end through bodyLimit's MaxBytesReader
+// (413 when it is longer), checks it with the spec's shape rules (400 invalid "invalid request"
+// with fields), and hands the same bytes on.
+func boardBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		e, ok := boardRequest(r)
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		var tooLarge *http.MaxBytesError
+		switch {
+		case errors.As(err, &tooLarge):
+			WriteError(w, http.StatusRequestEntityTooLarge, api.Invalid, "request body too large")
+			return
+		case err != nil:
+			WriteError(w, http.StatusBadRequest, api.Invalid, "bad request")
+			return
+		}
+		if fields := spec.CheckEnvelope(body, e); len(fields) > 0 {
+			writeFields(w, msgInvalidRequest, fields)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		next.ServeHTTP(w, r)
+	})
+}
+
+func apiFields(fields []spec.FieldError) *[]api.FieldError {
+	out := make([]api.FieldError, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, api.FieldError{Pointer: f.Pointer, MessageKey: f.MessageKey})
+	}
+	return &out
+}
+
+// writeFields writes a 400 invalid envelope with field errors.
+func writeFields(w http.ResponseWriter, msg string, fields []spec.FieldError) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(api.ErrorEnvelope{Error: api.ErrorBody{Code: api.Invalid, Message: msg, Fields: apiFields(fields)}})
+}
 
 // requestCtx puts the request's core.RequestCtx in its context: the configured organisation, the
 // fixed local principal (D12) and the request ID.
@@ -137,11 +201,7 @@ func (b *boards) fail(ctx context.Context, op string, err error, submitted json.
 	var ce *core.ConflictError
 	switch {
 	case errors.As(err, &ve):
-		fields := make([]api.FieldError, 0, len(ve.Fields))
-		for _, f := range ve.Fields {
-			fields = append(fields, api.FieldError{Pointer: f.Pointer, MessageKey: f.MessageKey})
-		}
-		return errResponse{status: http.StatusBadRequest, body: api.ErrorEnvelope{Error: api.ErrorBody{Code: api.Invalid, Message: msgInvalidBoard, Fields: &fields}}}
+		return errResponse{status: http.StatusBadRequest, body: api.ErrorEnvelope{Error: api.ErrorBody{Code: api.Invalid, Message: msgInvalidBoard, Fields: apiFields(ve.Fields)}}}
 	case errors.Is(err, core.ErrNotFound):
 		return errNotFound
 	case errors.As(err, &ce):

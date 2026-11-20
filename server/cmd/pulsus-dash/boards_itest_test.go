@@ -218,6 +218,48 @@ func TestBoardInvalidWritesNothing(t *testing.T) {
 			if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM audit_events"); n != 0 {
 				t.Errorf("%d audit rows, want 0", n)
 			}
+
+			// Review r1 #1: envelope problems are refused before dispatch, for create and update.
+			minimal := string(specFixture(t, "v1-minimal.json"))
+			full := string(specFixture(t, "v1-full.json"))
+			code, _, b = do(t, s, "POST", boardsURL, []byte(`{"spec":`+minimal+`}`))
+			if code != 201 {
+				t.Fatalf("create = %d %s", code, b)
+			}
+			path := boardsURL + "/" + obj(t, b)["uid"].(string)
+			counts := func() string {
+				return fmt.Sprintf("boards %d %s", storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM boards"), boardCounts(t, db))
+			}
+			before := counts()
+			if before != "boards 1 versions 1 audit 1" {
+				t.Fatalf("after create: %s", before)
+			}
+			for _, tc := range []struct {
+				name, method, path, body string
+				status                   int
+			}{
+				{"create unknown key", "POST", boardsURL, `{"spec":` + full + `,"extra":true}`, 400},
+				{"create wrong case", "POST", boardsURL, `{"Spec":` + full + `}`, 400},
+				{"create duplicate spec", "POST", boardsURL, `{"spec":` + minimal + `,"spec":` + full + `}`, 400},
+				{"create trailing value", "POST", boardsURL, `{"spec":` + full + `}{"spec":` + full + `}`, 400},
+				{"create oversized trailer", "POST", boardsURL, `{"spec":` + full + `}` + strings.Repeat(" ", 2<<20), 413},
+				{"update unknown key", "PUT", path, `{"spec":` + full + `,"msg":"x"}`, 400},
+				{"update duplicate spec", "PUT", path, `{"spec":` + minimal + `,"spec":` + full + `}`, 400},
+				{"update trailing data", "PUT", path, `{"spec":` + full + `} trailing`, 400},
+				{"update oversized trailer", "PUT", path, `{"spec":` + full + `}` + strings.Repeat(" ", 2<<20), 413},
+			} {
+				code, _, b := do(t, s, tc.method, tc.path, []byte(tc.body), "If-Match", `"1"`)
+				e, _ := obj(t, b)["error"].(map[string]any)
+				if code != tc.status || e["code"] != "invalid" {
+					t.Errorf("%s = %d %s, want %d invalid", tc.name, code, b, tc.status)
+				}
+				if got := counts(); got != before {
+					t.Errorf("%s wrote rows: %s, want %s", tc.name, got, before)
+				}
+			}
+			if code, hdr, b := do(t, s, "GET", path, nil); code != 200 || hdr.Get("ETag") != `"1"` {
+				t.Errorf("board after refused writes = %d ETag %q %s, want unchanged at \"1\"", code, hdr.Get("ETag"), b)
+			}
 			s.stop(t)
 		})
 	}

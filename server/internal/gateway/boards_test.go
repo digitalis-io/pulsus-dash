@@ -355,3 +355,52 @@ func TestIfMatch(t *testing.T) {
 		t.Errorf("parseIfMatch(empty value) status %d, want 428", status)
 	}
 }
+
+// Review r1 #1: the whole body of a create or update is checked before the generated decoder.
+func TestBoardRequestEnvelope(t *testing.T) {
+	spec := `{"title":"T","panels":[],"sections":[]}`
+	cases := []struct {
+		name, method, path, body string
+		status                   int
+		fields                   string // JSON of error.fields, "" = not checked
+	}{
+		{"unknown key", "POST", boardsPath, `{"spec":` + spec + `,"extra":1}`, 400, `[{"pointer":"/extra","message_key":"board.json.unknownKey"}]`},
+		{"wrong case", "POST", boardsPath, `{"Spec":` + spec + `}`, 400, `[{"pointer":"/Spec","message_key":"board.json.unknownKey"},{"pointer":"/spec","message_key":"board.json.required"}]`},
+		{"duplicate spec", "POST", boardsPath, `{"spec":` + spec + `,"spec":` + spec + `}`, 400, `[{"pointer":"/spec","message_key":"board.json.duplicateKey"}]`},
+		{"trailing value", "POST", boardsPath, `{"spec":` + spec + `}{"spec":` + spec + `}`, 400, `[{"pointer":"","message_key":"board.json.invalid"}]`},
+		{"missing spec", "POST", boardsPath, `{}`, 400, `[{"pointer":"/spec","message_key":"board.json.required"}]`},
+		{"not JSON", "POST", boardsPath, `{"spec":`, 400, `[{"pointer":"","message_key":"board.json.invalid"}]`},
+		{"message on create", "POST", boardsPath, `{"spec":` + spec + `,"message":"m"}`, 400, `[{"pointer":"/message","message_key":"board.json.unknownKey"}]`},
+		{"put unknown key", "PUT", boardsPath + "/abc", `{"spec":` + spec + `,"Message":"m"}`, 400, `[{"pointer":"/Message","message_key":"board.json.unknownKey"}]`},
+		{"put message type", "PUT", boardsPath + "/abc", `{"spec":` + spec + `,"message":5}`, 400, `[{"pointer":"/message","message_key":"board.json.type"}]`},
+		{"put duplicate message", "PUT", boardsPath + "/abc", `{"spec":` + spec + `,"message":"a","message":"b"}`, 400, `[{"pointer":"/message","message_key":"board.json.duplicateKey"}]`},
+		{"put trailing data", "PUT", boardsPath + "/abc", `{"spec":` + spec + `} x`, 400, `[{"pointer":"","message_key":"board.json.invalid"}]`},
+		{"oversized trailing whitespace", "POST", boardsPath, `{"spec":` + spec + `}` + strings.Repeat(" ", 2<<20), 413, ""},
+		{"oversized trailing value", "PUT", boardsPath + "/abc", `{"spec":` + spec + `}` + `[` + strings.Repeat("1,", 1<<20) + `1]`, 413, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeBoards{board: sampleBoard(1, 1), saved: core.SaveResult{Board: sampleBoard(2, 2), Changed: true}}
+			h := New(Deps{Probe: &fakeProbe{version: 1}, SchemaLatest: 1, Boards: f, Org: testOrg})
+			r := call(t, h, tc.method, tc.path, []byte(tc.body), "If-Match", `"1"`)
+			if r.code != tc.status || errCode(r) != "invalid" || len(f.calls) != 0 {
+				t.Fatalf("%d %s, calls %v; want %d invalid and no call", r.code, r.raw, f.calls, tc.status)
+			}
+			if tc.fields != "" {
+				e, _ := r.body["error"].(map[string]any)
+				if e["message"] != "invalid request" || !jsonEqual(t, e["fields"], []byte(tc.fields)) {
+					t.Errorf("error = %v, want invalid request with fields %s", e, tc.fields)
+				}
+			}
+		})
+	}
+	// A valid envelope still reaches the service, with the same bytes.
+	f := &fakeBoards{board: sampleBoard(1, 1), saved: core.SaveResult{Board: sampleBoard(2, 2), Changed: true}}
+	h := New(Deps{Probe: &fakeProbe{version: 1}, SchemaLatest: 1, Boards: f, Org: testOrg})
+	if r := call(t, h, "PUT", boardsPath+"/abc", []byte(`{"spec":`+spec+`,"message":"m"}`+"\n"), "If-Match", `"1"`); r.code != 200 {
+		t.Errorf("valid update = %d %s", r.code, r.raw)
+	}
+	if r := call(t, h, "POST", boardsPath, []byte(`{"spec":`+spec+`}`)); r.code != 201 {
+		t.Errorf("valid create = %d %s", r.code, r.raw)
+	}
+}

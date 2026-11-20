@@ -27,6 +27,7 @@ const (
 	kInt // a JSON number with no '.', 'e' or 'E' that fits int32
 	kArray
 	kObject
+	kAny // any JSON value, checked later (the spec inside a request envelope)
 )
 
 // valueType is the expected type of a value: an object of a shape, or an array of elem.
@@ -62,6 +63,10 @@ var (
 		{"sections", true, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: sectionShape}}},
 		{"time", false, valueType{kind: kObject, shape: timeShape}}}
 	tBoard = valueType{kind: kObject, shape: boardShape}
+
+	// The request envelopes of POST /boards (BoardCreate) and PUT /boards/{uid} (BoardUpdate).
+	tCreate = valueType{kind: kObject, shape: []field{{"spec", true, valueType{kind: kAny}}}}
+	tUpdate = valueType{kind: kObject, shape: []field{{"spec", true, valueType{kind: kAny}}, {"message", false, tString}}}
 )
 
 // errSyntax aborts the shape pass: raw is not one JSON value.
@@ -81,11 +86,34 @@ func (c *shapeChecker) add(pointer, key string) {
 
 // checkShape returns the shape problems of raw in document order (nil when the shape is clean).
 // A document that is not exactly one JSON value reports only board.json.invalid.
-func checkShape(raw []byte) []FieldError {
+func checkShape(raw []byte) []FieldError { return checkValue(raw, tBoard) }
+
+// Envelope is the request body around a board spec.
+type Envelope int
+
+const (
+	// CreateEnvelope is {"spec": …}.
+	CreateEnvelope Envelope = iota
+	// UpdateEnvelope is {"spec": …, "message": "…"} with message optional.
+	UpdateEnvelope
+)
+
+// CheckEnvelope checks a whole request body with the shape rules of the spec: exactly one JSON
+// object, exact keys, no duplicate, required spec, a string message, no trailing data. The spec's
+// own value is not inspected here; ParseBoard checks it, with pointers relative to the spec.
+// Pointers of envelope problems are relative to the body (/spec, /message, /<unknown key>).
+func CheckEnvelope(raw []byte, e Envelope) []FieldError {
+	if e == UpdateEnvelope {
+		return checkValue(raw, tUpdate)
+	}
+	return checkValue(raw, tCreate)
+}
+
+func checkValue(raw []byte, t valueType) []FieldError {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	c := &shapeChecker{dec: dec}
-	if err := c.value("", tBoard); err != nil {
+	if err := c.value("", t); err != nil {
 		return []FieldError{{Pointer: "", MessageKey: keyInvalid}}
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -104,6 +132,9 @@ func (c *shapeChecker) token() (json.Token, error) {
 
 // value reads one value at pointer and checks it against t.
 func (c *shapeChecker) value(pointer string, t valueType) error {
+	if t.kind == kAny {
+		return c.skip()
+	}
 	tok, err := c.token()
 	if err != nil {
 		return err

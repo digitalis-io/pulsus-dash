@@ -145,3 +145,36 @@ func TestValidateStopsAt50(t *testing.T) {
 		t.Errorf("%d fields, want 50", len(got))
 	}
 }
+
+func TestCheckEnvelope(t *testing.T) {
+	spec := `{"title":"b","panels":[],"sections":[]}`
+	cases := []struct {
+		name string
+		e    Envelope
+		raw  string
+		want []FieldError
+	}{
+		{"create ok", CreateEnvelope, `{"spec":` + spec + `}`, nil},
+		{"create ok with any spec value", CreateEnvelope, `{"spec":"not a board"}`, nil},
+		{"update ok", UpdateEnvelope, `{"spec":` + spec + `,"message":"m"}`, nil},
+		{"update without message", UpdateEnvelope, `{"spec":` + spec + `}`, nil},
+		{"unknown key", CreateEnvelope, `{"spec":` + spec + `,"extra":1}`, []FieldError{{"/extra", keyUnknownKey}}},
+		{"message on create", CreateEnvelope, `{"spec":` + spec + `,"message":"m"}`, []FieldError{{"/message", keyUnknownKey}}},
+		{"wrong case", CreateEnvelope, `{"Spec":` + spec + `}`, []FieldError{{"/Spec", keyUnknownKey}, {"/spec", keyRequired}}},
+		{"duplicate spec", CreateEnvelope, `{"spec":` + spec + `,"spec":` + spec + `}`, []FieldError{{"/spec", keyDuplicateKey}}},
+		{"missing spec", UpdateEnvelope, `{"message":"m"}`, []FieldError{{"/spec", keyRequired}}},
+		{"message not a string", UpdateEnvelope, `{"spec":` + spec + `,"message":1}`, []FieldError{{"/message", keyType}}},
+		{"message null", UpdateEnvelope, `{"spec":` + spec + `,"message":null}`, []FieldError{{"/message", keyNull}}},
+		{"trailing value", CreateEnvelope, `{"spec":` + spec + `} {"spec":{}}`, []FieldError{{"", keyInvalid}}},
+		{"trailing garbage", CreateEnvelope, `{"spec":` + spec + `}x`, []FieldError{{"", keyInvalid}}},
+		{"not an object", CreateEnvelope, `[]`, []FieldError{{"", keyType}}},
+		{"empty", CreateEnvelope, ``, []FieldError{{"", keyInvalid}}},
+		{"truncated", UpdateEnvelope, `{"spec":{"title":`, []FieldError{{"", keyInvalid}}},
+	}
+	for _, tc := range cases {
+		got := CheckEnvelope([]byte(tc.raw), tc.e)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

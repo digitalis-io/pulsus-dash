@@ -57,6 +57,24 @@ A board is a JSON object, called the spec. The server stores it with `schema_ver
 A board has at most 200 panels in total, counting the panels of every section (SRF-019). No string
 may contain U+0000. The request body, including the spec, is at most 2 MiB (T06-021).
 
+### Request bodies
+
+Before a create or an update reaches the handler, the server reads the whole body, at most 2 MiB
+(413 `request body too large` otherwise, even when the excess follows a complete JSON value), and
+checks its envelope with the same shape rules as the spec:
+
+| Route | Envelope |
+|---|---|
+| `POST /api/dash/v1/boards` | `{"spec": …}`: `spec` required, no other key |
+| `PUT /api/dash/v1/boards/{uid}` | `{"spec": …, "message": "…"}`: `spec` required, `message` an optional string, no other key |
+
+Exactly one JSON object, exact keys and case, no repeated key, no `null`, and nothing after the
+object. A refused envelope answers 400 `invalid` with message `invalid request` and `fields` whose
+pointers are relative to the body, for example
+`{"pointer":"/extra","message_key":"board.json.unknownKey"}`, `/spec` `board.json.required` or
+`board.json.duplicateKey`, `""` `board.json.invalid` for trailing data. Nothing is written. The
+`spec` value is then checked as described next, with pointers relative to the spec.
+
 ### Validation
 
 The server decodes the spec strictly before anything is written (`internal/spec`). A refused spec
@@ -208,7 +226,9 @@ events stay. A deleted board answers 404 and leaves the list, the starred list a
 
 The starred and recent lists belong to the principal, in its organisation. Each view recorded with
 `PUT /me/recent-boards/{uid}` moves the board to the front. The server keeps the 200 most recent
-views per principal and drops older ones. A list returns at most 50.
+views per principal and drops older ones; concurrent views of one principal are serialised by a
+transaction-scoped advisory lock on the organisation and user, so the limit also holds under
+concurrency. A list returns at most 50.
 
 ## Audit events
 
@@ -240,7 +260,8 @@ role cannot update or delete audit events (T11-017).
 | Status | `error.code` | Message | When |
 |---|---|---|---|
 | 400 | `invalid` | `invalid board` (with `fields`) | the spec is refused ([validation](#validation)) |
-| 400 | `invalid` | `bad request` | the body is not a JSON object of the right shape |
+| 400 | `invalid` | `invalid request` (with `fields`) | the envelope is refused ([request bodies](#request-bodies)) |
+| 400 | `invalid` | `bad request` | the body cannot be read, or a parameter does not parse |
 | 400 | `invalid` | `message must be valid text of at most 500 characters` | `message` too long or containing U+0000 |
 | 400 | `invalid` | `If-Match must be an ETag from this API` | see [concurrency](#concurrency-etag-and-if-match) |
 | 404 | `not_found` | `board not found` | see [routes](#routes) |

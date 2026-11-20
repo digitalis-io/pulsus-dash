@@ -58,7 +58,7 @@ func New(d Deps) http.Handler {
 		d.Logger = slog.New(slog.DiscardHandler)
 	}
 	r := chi.NewRouter()
-	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger), bodyLimit, requestCtx(d))
+	r.Use(commonHeaders, accessLog(d.Logger), recoverer(d.Logger), bodyLimit, boardBody, requestCtx(d))
 	a := assets{set: d.Assets}
 	r.NotFound(a.fallback)
 	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
