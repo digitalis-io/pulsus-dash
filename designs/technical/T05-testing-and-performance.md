@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-20 |
+| **Version** | 1.8-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -544,13 +544,14 @@ the merge train), nightly (release blocker).
 | `ci:dep-audit` | Every runtime `dependencies` entry of `client/package.json` is on the allowlist in `client/dependency-policy.json` and in no forbidden category (charting, mapping, 3D, graph-diagram, CSS-in-JS); runtime licences on the AGPL-3.0-compatible allowlist; no third-party asset or font host in the build. From #68, for the engine crates: `web-sys` feature allowlist and no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008) | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside the generated token outputs (`tokens.css`, `tokens.ts`, and the engine's Rust constants from #68); regenerating them leaves no diff; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:api-gen` | `oapi-codegen`, `openapi-typescript` and `sqlc generate` leave no diff against `api/openapi.yaml` and `server/queries/` ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
-| `ci:go-lint` | `golangci-lint run` (pinned; `depguard` package boundaries of ADR-0015, `gosec`, `errcheck`, `staticcheck`); depguard rules self-tested by failing fixtures (`server/testdata/depguard/`: `pgx` outside `internal/store`, `chi` outside `internal/gateway`) | PR | yes |
+| `ci:go-lint` | `golangci-lint run` (pinned; `depguard` package boundaries of ADR-0015, `forbidigo`, `gosec`, `errcheck`, `staticcheck`); the `ci:depguard` self-test proves the rules with failing fixtures (`server/testdata/depguard/`: `pgx` outside `internal/store`, `chi` outside `internal/gateway`, an HTTP client outside `internal/pulsusdb` (`pulsusdb-only`, T06-005), `encoding/json` decoding inside `internal/pulsusdb` (`pulsusdb-decoder`, #62)) | PR | yes |
 | `ci:go-test` | `go test -race ./...` | PR | yes |
 | `ci:govulncheck` | `govulncheck ./...`; any reachable vulnerability fails | PR | yes |
 | `ci:go-mod` | `go mod verify`; `go mod tidy` leaves no diff; `GOFLAGS=-mod=readonly` | PR | yes |
 | `ci:asset-integrity` | Binary-level start-up refusal ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [T19](T19-deployment.md) T19-005): `make build` once, then gate binaries with the same public key over an altered packed tree must exit 1 before opening a listener: one byte of the largest `assets/*.js` flipped (`hash_mismatch`), an unlisted `assets/extra.js` (`unlisted_file`), a listed `.br` variant deleted (`missing_file`), the manifest changed by one byte (`bad_signature`), no public key (`no_public_key`); the untouched tree verifies and stops only at Postgres; a `make server-build` binary refuses without `--api-only` | PR | yes |
 | `ci:go-licenses` | `go-licenses check` over every module linked into the `pulsus-dash` binary: each licence on the AGPL-3.0-compatible allowlist (MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1, LGPL-3.0; D3); writes the third-party notices file `build/THIRD_PARTY_NOTICES.txt`; proven by the failing GPL-2.0-only fixture `server/testdata/licences/gpl` ([T18](T18-security.md) T18-026) | PR | yes |
 | `ci:no-pulsusdb-host` | Every tracked file: no forbidden host from the `DASH_FORBIDDEN_HOSTS` repository secret, in content or path, and no non-local PulsusDB URL (a host containing `pulsusdb`, or the value of a PulsusDB datasource key); output names files only by opaque index; a missing secret fails ([T19](T19-deployment.md) T19-010) | PR | yes |
+| `ci:fake-image` | The dev stack's PulsusDB fake image (`dev/pulsus-fake.Dockerfile` with its `.dockerignore`) builds, runs, and answers `GET /api/v1/status/runtimeinfo` within 10 s with `X-Pulsus-Query-Id: fake-runtimeinfo-1` and `rollupLevels` (#62) | PR | yes |
 | `ci:dev-stack` | The dev compose stack (`dev/compose.yaml`) starts, migrates and seeds, serves `/readyz` 200, stops cleanly, persists across `dev-down` and resets with `dev-reset`; nothing is left behind, also after an injected failure; then `itest` runs on its PostgreSQL 15 and 16 ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
 | `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013), proven by the failing fixture `server/testdata/squawk/create_index_not_concurrently.sql` (`require-concurrent-index-creation`), and an up-from-empty run on Postgres (`itest:migrations`); on pull requests, no merged migration is modified, deleted or renamed (append-only, T11-012) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
@@ -587,6 +588,13 @@ the merge train), nightly (release blocker).
 | `unit:json-arrow-prop` | JSON → Arrow equals PulsusDB JSON bit for bit, NaN/±Inf and gaps |
 | `unit:fuzz-dsf` | `cargo-fuzz` on the DSF parser and IPC decode (nightly; crashes block release) |
 | `unit:ring-stress` | loom/shuttle on SPSC rings and chunk pinning; 10⁶ records through each ring with random stalls |
+| `unit:decode-frames` | The client decoder (`client/src/data/decode.ts`, T04-010) maps the golden range and instant bodies of `wire/fixtures/json/` to `SeriesFrame`s on the grid bit for bit (NaN, ±Inf, −0, subnormals; `null` → gap) and reports the JSON pointer of the first bad element (#62) |
+| `unit:promql-step` | Go `PromGrid` and TS `promGrid` give the step, start and end of every case of `wire/fixtures/json/promql-step.json`, and refuse a range of more than 11 000 steps of 1 d (#62) |
+| `unit:keyhash-corpus` | `key_hash` of every entry of `wire/fixtures/keyhash/labels.json`: the empty set is the published XXH3-64 of empty input, the canonical bytes are `name 0xFF value 0xFF`, input order is irrelevant (T04-004) |
+| `unit:virtual-guard` | Reserved names are refused as whole words and `source="pulsus-dash"` as bytes, on the query, every `match` and the metadata `metric`, before any request; near misses pass (T07-020 v1) |
+| `unit:sanitise` | Upstream error, warning, info and help texts and the accepted headers reach no response or log with the binding's credential, password (any length), Basic token, URL or host; texts are cleaned and capped (T06-024) |
+| `unit:deadlines` | Every PulsusDB route ends at its deadline when the upstream sends no header or stalls mid-body (504, or `unreachable` for the check), and the tenant slot is free afterwards (T06-010) |
+| `unit:body-limits` | Each body and value limit of the PulsusDB client and the 2 MiB request body give their documented error (#62) |
 | `unit:config-strict` | BFF configuration (T06-019): an unknown or repeated YAML key, a second YAML document, an unknown `PULSUS_DASH_*` variable (other than the client tooling's) or a wrong type fails with the key and line or the variable; precedence defaults → file → environment; secret references refuse literals unless `allow_inline_secrets` and never print a value (T19-010) |
 
 **BFF integration on PostgreSQL 15 and 16 (`make itest`)**
@@ -597,6 +605,12 @@ the merge train), nightly (release blocker).
 | `itest:asset-manifest-signature` | Named by T18-006; runs in `ci:go-test`: a manifest one byte off its signed bytes, a signature by another key, a 63-byte or missing signature, a missing manifest, and no compiled-in key are refused (`bad_signature`, `missing_signature`, `missing_manifest`, `no_public_key`); of two keys, the second may sign (rotation) | PR | yes |
 | `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003) | PR | yes |
 | `itest:no-extensions` | After a migration from empty, `pg_extension` holds only `plpgsql` (T11-001) | PR | yes |
+| `itest:promql-range` | The range route against the fake: the grid, one frame per series with its key, every transcript value bit for bit and every other grid point `null`; the upstream form (`start`, `end`, `step`, `timeout`, the query byte for byte); truncation by warning and by flag; keys in any order (PRF-031, T06-011, T04-004, T04-005, T07-002) | PR | yes |
+| `itest:promql-errors` | Parse errors with and without a position, timeout, hang with `timeout_ms: 300`, too broad, `timeout_ms` out of range and a reserved name without an upstream request, an unreachable PulsusDB (502) while `/readyz` stays 200 (T06-026, T06-009, T09-009) | PR | yes |
+| `itest:cancel` | A browser abort before headers reaches PulsusDB within 100 ms; the access log records `499` (PRF-030, T06-010) | PR | yes |
+| `itest:cancel-mid-stream` | A browser abort after the first frame reaches PulsusDB within 100 ms, frees the tenant slot and logs no stream abort (PRF-030, T06-010) | PR | yes |
+| `itest:tenant-header` | `X-Scope-OrgID`, `X-Pulsus-Database` and Basic credentials come only from the resolved binding; a binding without them sends none; a browser header is never forwarded; an unknown tenant is 404 (T06-006, T06-002) | PR | yes |
+| `itest:datasource-check` | The check answers `ok` against the fake and `unreachable` against a closed port; `/readyz` stays 200 (T06-025, T06-026) | PR | yes |
 | `itest:migrations` | Up from empty, then an idempotent rerun; a dry run writes nothing; two concurrent `migrate` runs apply and seed once; a database more than one version ahead is refused (also when another run advanced it while this one waited for the lock) and one version ahead is accepted by `migrate` and `serve`; `serve` refuses an older schema (T11-015, T19-007) | PR | yes |
 
 **Goldens (L2)**
@@ -668,8 +682,14 @@ the merge train), nightly (release blocker).
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
 `bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:lens-load`,
-`bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); plus `bench:cpu-instr` (PR: decode, decimation, tick generation and layouts,
-instruction counts via `iai-callgrind`, +3 % → fail).
+`bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold);
+`bench:promql-decode` and `bench:bff-overhead` (#62, `REFERENCE_LAB=1 make bench-bff`: W1, a 1 000 × 1 000
+PulsusDB matrix decoded, gridded and encoded, ≤ 30 ms per 10⁶ points, median of 5; W2, 1 000 sequential
+range requests with a 2 ms upstream, BFF overhead p50 ≤ 5 ms and p99 ≤ 20 ms ([T06](T06-bff-architecture.md)
+§7); they fail over threshold and skip without the lab); plus `bench:cpu-instr` (PR: decode, decimation,
+tick generation and layouts, instruction counts via `iai-callgrind`, and from #62 the BFF workloads W1
+and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull request against
+`server/testdata/bench/cpu-instr.json`; +3 % → fail).
 
 | Lab gate class | Stage | Threshold | Blocking |
 |---|---|---|---|
@@ -824,3 +844,4 @@ Meta-testing:
 | 1.5-rc | 2026-11-20 | #59 Part A: §7.1 adds `unit:config-strict` and the BFF integration gates `itest:rls-isolation`, `itest:no-extensions` (both already named by T11) and `itest:migrations`; `ci:migrations` names its failing squawk fixture and the append-only check on pull requests |
 | 1.6-rc | 2026-11-20 | #59 Part B: §7.1 adds `itest:bff-refuses-altered-asset` and `itest:asset-manifest-signature` (named by T18-006, run in `ci:go-test`), `ci:asset-integrity` (binary-level start-up refusal, PR, blocking), `e2e:bff-headers` and `e2e:bff-http-shell`; other gates unchanged |
 | 1.7-rc | 2026-11-20 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures |
+| 1.8-rc | 2026-11-20 | #62: §7.1 adds `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`, `unit:decode-frames`, `unit:promql-step`, `unit:keyhash-corpus`, `unit:virtual-guard`, `unit:sanitise`, `unit:deadlines`, `unit:body-limits` and `ci:fake-image`; the lab gates `bench:promql-decode` and `bench:bff-overhead` (`REFERENCE_LAB=1`); `bench:cpu-instr` adds the BFF workloads W1 and W2 (cachegrind for Go); `ci:go-lint`'s `ci:depguard` self-test names `pulsusdb-only` and `pulsusdb-decoder` |

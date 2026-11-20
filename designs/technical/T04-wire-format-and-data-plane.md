@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-20 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -15,10 +15,10 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 
 | Topic | Until the engine (#68) | From the engine on |
 |---|---|---|
-| Results to the browser | **JSON frames** (`application/json`), one schema per result type in `api/openapi.yaml`, carrying the same fields, `key_hash` and coverage block as the §4.3 schemas; decoded in TS at one seam, `client/src/data/decode.ts` | Arrow IPC in DSF frames (§4.3–§5.4) for engine-rendered frames, streamed to the engine worker without main-thread parsing; JSON for config, CRUD and DOM-only results |
+| Results to the browser | **JSON frames** (`application/json`), one schema per result type in `api/openapi.yaml`, carrying the same fields, `key_hash` and coverage block as the §4.3 schemas; decoded in TS at one seam, `client/src/data/decode.ts`. The JSON image of `labels/1` + `metric_matrix.grid/1` is `SeriesFrame {key, labels, timestamps, values}` (#62): `key` is 16 lower-case hex digits; labels sorted by name; timestamps in ms on the grid; a value is a number (the shortest float64 round trip, `-0` kept), `"NaN"`, `"+Inf"`, `"-Inf"`, or `null` for an absent point (T04-005); golden bodies in `wire/fixtures/json/` | Arrow IPC in DSF frames (§4.3–§5.4) for engine-rendered frames, streamed to the engine worker without main-thread parsing; JSON for config, CRUD and DOM-only results |
 | Schemas | §4.3 is authoritative; the machine-readable copy is `wire/schemas/*.yaml` (field names, Arrow types, metadata keys) with golden IPC fixtures in `wire/fixtures/` | The Go writer reproduces the fixtures and the Rust engine decodes them (`unit:codec-roundtrip`, both sides) |
-| BFF conversion (§5.6) | Go: streaming `encoding/json` token decoder; `strconv` for value strings; protobuf via `google.golang.org/protobuf` | Plus Arrow Go (`arrow-go`) builders and IPC writer with 64-byte alignment |
-| `dash-keyhash` | Go in the BFF, writing `key_hash` into JSON frames | Also Rust in the engine and `pulsus-synth`; one fixture corpus fixes the hash of sorted canonical label sets |
+| BFF conversion (§5.6) | Go: a hand-written streaming JSON tokenizer (`internal/pulsusdb/updec.go`, #62), the only decoder of PulsusDB bodies, redacting every string ([T06](T06-bff-architecture.md) T06-024); `strconv.ParseFloat` for value strings; protobuf via `google.golang.org/protobuf` | Plus Arrow Go (`arrow-go`) builders and IPC writer with 64-byte alignment |
+| `dash-keyhash` | Go in the BFF (`internal/keyhash`), writing `key_hash` into JSON frames. Canonical key bytes: the labels sorted by name, each written as name, `0xFF`, value, `0xFF`, hashed with xxh3-64 (seed 0); corpus `wire/fixtures/keyhash/labels.json` (#62) | Also Rust in the engine and `pulsus-synth`; one fixture corpus fixes the hash of sorted canonical label sets |
 | `QueryRequest` (§5.2) | Built by the TS client from the OpenAPI types, parsed by the Go BFF | Same |
 | Browser byte path (§4.1, §5.7), T04-015 | Not applicable: `fetch` + JSON decode in TS | Stand, through the engine adapter (the successor of `shim/net.js`, [T03](T03-browser-runtime.md) §0) |
 | IndexedDB chunk cache (§6.1) | Implemented in TS; caches JSON frames; T04-017 and T04-018 stand | Caches Arrow chunks |
@@ -868,3 +868,4 @@ support in the BFF for one release.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft. Restructured to the template; design rules T04-001 to T04-019; D2 applied (no write path, Postgres virtual sources and fallback pyramids); `events/1` at M-UI1; coverage `data_end` and ✓ exact; ranks, generations and eviction order; Satisfies table |
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |
+| 1.2-rc | 2026-11-20 | #62: §0 gives the JSON image of `labels/1` + `metric_matrix.grid/1` (`SeriesFrame`, value encoding, absent points as `null`), the hand-written Go tokenizer and the key-hash canonical bytes with their corpus |

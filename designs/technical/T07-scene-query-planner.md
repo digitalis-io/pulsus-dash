@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-19 |
+| **Version** | 1.5-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -37,7 +37,7 @@ Board-variable substitution, which replaces `$name` and `${name}` tokens textual
 | Exactness prediction (§4.3, T07-005) | `Predicted{level}` from the range→level rule alone (`predict_exactness(level)`); `RawExact` only when the level is `None` | Per-function rollup eligibility |
 | Dedupe (§4.4, T07-007) | Identity, range union and display derivation on the exact-text key | — |
 | Classification (§4.11.2) | Always `SourceClass::PulsusDb` | `Virtual`, `Mixed` |
-| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so | Virtual resolution |
+| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so. The v1 guard also screens the editor-completion inputs (`match[]`, `metric`) with the same byte match (#62) | Virtual resolution |
 | Fusion (§4.4, T07-006), virtual sources and joins (§4.11, T07-021 to T07-023), selector-based estimates (§4.8), metrics-family scopes (T07-015) | Not available | All of these |
 | Expressions (§4.14, T07-030) | v1 form in §4.14: the client sends the expanded expression as one query text | Operand reuse (T07-030) |
 | Scope rewrite (§4.7, T07-014) | The v1 `ScopeRewriter` returns the text unchanged with a full-tenant `ScopeProof` for an unrestricted principal and refuses every restricted principal with `scope_denied` (T07-002) | T10 (draft), M-UI6 |
@@ -1033,3 +1033,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.2-rc | 2026-11-19 | ADR-0015 "Query validation": the BFF parses no query language in v1. §0 gains the v1 opaque-planning table and the later parser design (decided before fusion in M-UI2; a server-side parser needs a new ADR); §4.2 no longer uses a Go PromQL parser; §4.14 v1 expression form (client-expanded text) with T07-030 deferred to the parser design; SRF-030 test and §11 updated |
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
+| 1.5-rc | 2026-11-20 | #62: §0 v1 reserved-name refusal also screens the completion inputs (`match[]`, `metric`) |
