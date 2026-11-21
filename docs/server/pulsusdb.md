@@ -211,7 +211,8 @@ series or metrics are cut and marked `truncated`.
 **Native histograms.** A range or instant series that carries native histogram samples
 (`histograms` in a matrix, `histogram` in a vector) instead of `values` or `value` is skipped; the
 rest of the response is kept. Histogram samples next to float samples are dropped and the floats
-kept. Either way the completeness gets one warning,
+kept. A skipped series takes no grid space and does not count towards the points limit. Either
+way the completeness gets one warning,
 `pulsus-dash: native histogram samples skipped in N series`. `truncated` is not set.
 
 ## Errors ([T06 §5.2](../../designs/technical/T06-bff-architecture.md))
