@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-21 |
+| **Version** | 1.11-rc · 2026-11-21 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -108,8 +108,10 @@ the rest of the metrics workbench keep their milestones.
 
 **PulsusDB routes.** The slice uses PulsusDB's native routes: PromQL under `/api/v1/` (`query`,
 `query_range`, `series`, `labels`, `label/{name}/values`, `metadata`, `status/{runtimeinfo, tsdb}`)
-and LogQL under `/api/logs/v1/` (`query_range`, `volume`, `labels`, `label/{name}/values`,
-`series`). Later work uses `/api/logs/v1/{patterns, detected_labels, detected_fields, tail}`,
+and LogQL under `/api/logs/v1/` (`query_range`, `labels`, `label/{name}/values`, `series`). The
+M-UI1 log volume uses `query_range` with `count_over_time` by level (#65; `/volume` answers bytes per
+label at one instant, so it cannot give counts per bucket). Later work uses
+`/api/logs/v1/{volume, patterns, detected_labels, detected_fields, tail}`,
 `/api/traces/v1/{search, trace/{id}, metrics/query_range, metrics/query, tags, tag/{tag}/values}`,
 the service graph at `/api/traces/v1/service_graph?start=<t>&end=<t>` (confirmed by the PulsusDB
 owner on 2026-11-19; the edge cap remains assumption A1), and the profiles Connect API under
@@ -215,3 +217,4 @@ product owner can confirm them at sign-off.
 | 1.8-rc | 2026-11-20 | Decision D12 (owner): authentication deferred; §3 records D12. §2 M-UI1 drops OIDC login and M-UI6 adds authentication; §2.1 the slice has no sign-in; Table 2.1a step 4 (#60) moves to M-UI6, steps 5 and 6 depend on step 3, critical path 1 → 3 → 5 → … → 11; Q12 moot until authentication is designed; Table 2.1c records the M-UI1 subset of ENT-020 (RLS-scoped `orgs` and `tenant_bindings`, #59), which stays M-UI1 |
 | 1.9-rc | 2026-11-20 | #61 Part A: Table 2.1c ENT-020 subset adds `folders`, `boards`, `board_versions`, `audit_events` (partitioned by class and month), `stars` and `recent_views` (step 5) |
 | 1.10-rc | 2026-11-21 | #61 Part C: Table 2.1c adds the M-UI1 subsets of SRF-016 (collapsible sections that do not query), SRF-017 (filter bar with URL values) and SRF-026 (starred and recently viewed boards); milestones unchanged (D6) |
+| 1.11-rc | 2026-11-21 | #65 Part B: §2.1 "PulsusDB routes": the M-UI1 log volume uses `query_range` (`count_over_time` by level); `/api/logs/v1/volume` moves to the later list |

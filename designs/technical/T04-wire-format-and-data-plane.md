@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-21 |
+| **Version** | 1.4-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -254,6 +254,18 @@ other value, `unknown` included, falls through to the next label, then to the ne
 | 3 | info | `info`, `informational`, `notice` |
 | 2 | debug | `debug` |
 | 1 | trace | `trace` |
+
+*(2026-11-21, #65 Part B.)* **JSON image** ([ADR-0014](../adr/0014-typescript-react-web-client.md) §5,
+until Arrow frames, #68). `POST /api/dash/v1/query/logql/range` answers a page as
+`{"kind":"streams","start","end","step","direction","streams":[{"key","labels","entries":[…]}],"cursor"?,"completeness"}`:
+streams are grouped by stream key ascending (`key` and `labels` are the `labels/1` image of the
+indexed stream labels), each stream's entries keep page order, and an entry is
+`{"ts_ns","line","level","metadata"?,"parsed"?}`, where `ts_ns` is the timestamp in ns as a decimal
+string (it does not fit a double), `level` the level's name above, and `metadata` and `parsed`
+string maps when the row has any. The rows of the page in request direction are the k-way merge by
+ts in direction, then stream key, then entry. The window of a page is `(from, to]` in ns:
+`start` and `end` are the request's `from` and `to` in ms, `step` the grid step. `cursor` continues
+the page (absent at the end of the window). `entry_key` and `trace_id` are not in the JSON image.
 
 **`log_patterns/1`**. Used by `/patterns` and the R9 baseline diff.
 
@@ -538,7 +550,7 @@ This single-row batch is sent as META twice per part: once `planned` before the 
 | `exactness` | `UInt8` | 0 raw-exact, 1 rollup, 2 sampled, 3 estimated. From `X-Pulsus-Explain: 1` → `exactness` `"raw-exact"`/`"rollup"` (API headers, §3.6) |
 | `rollup_level_s` | `UInt32` nullable | inferred from the range → level table (API §3.6) until reported directly |
 | `sampled_ratio` | `Float64` nullable | R2 response; TraceQL exemplar budgets |
-| `truncated` | `Boolean` | `warnings: ["results truncated due to limit"]` (§3.2); `truncated` on service graph (§4.5) and tags (§4.3); `limit` hit on log streams |
+| `truncated` | `Boolean` | `warnings: ["results truncated due to limit"]` (§3.2); `truncated` on service graph (§4.5) and tags (§4.3). On paged log routes a `limit` hit gives a cursor, not `truncated`; `truncated` marks lines cut by the BFF (or PulsusDB's own flag or warning). A group of 5 000 or more entries at one nanosecond is a documented paging limit (owner decision Q5 of #65), not marked |
 | `truncation_reason` | `Dictionary(UInt8, Utf8)` nullable | `limit`, `series_cap` (500 per variant, §2.2), `edges_cap` (1 000 today), `max_nodes` (profiles), `tail_dropped` |
 | `dropped_count` | `UInt64` nullable | live tail `dropped_total` (§2.4); edges dropped |
 | `series_returned` | `UInt32` | counted by the BFF |
@@ -886,3 +898,4 @@ support in the BFF for one release.
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |
 | 1.2-rc | 2026-11-20 | #62: §0 gives the JSON image of `labels/1` + `metric_matrix.grid/1` (`SeriesFrame`, value encoding, absent points as `null`), the hand-written Go tokenizer and the key-hash canonical bytes with their corpus |
 | 1.3-rc | 2026-11-21 | #65 Part A: §4.3 `log_lines/1` `level` code 6 is `critical`, with the value table and the precedence stream labels, structured metadata, parsed fields, and within each `detected_level`, then `level` (else `unknown`); §5.2 `log_volume` row gives the v1 composition on `query_range` |
+| 1.4-rc | 2026-11-21 | #65 Part B: §4.3 `log_lines/1` JSON image (streams by key ascending, `ts_ns` as decimal strings, `level` by name, optional `metadata` and `parsed`; the page window `(from, to]` in ns); §5.3 `truncated` row: a `limit` hit on paged log routes gives a cursor, and a group of 5 000 or more entries at one nanosecond is a documented limit |
