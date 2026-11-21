@@ -169,6 +169,38 @@ func readLogValues(d *upstreamDecoder, lim Limits, lr *logResponse, bytes *int64
 	}
 }
 
+// openLogs reads a 200 log query_range response through the decoder its Content-Type selects
+// (#65 §4.1). It returns either a decoded streams result (the body read and closed, the slot
+// freed) or a matrix stream on g: streaming when resultType came first, else read from the
+// capture with the body already closed.
+func (c *Client) openLogs(ctx context.Context, resp *response, mode logMode, g Grid) (*ResultStream, *logResponse, error) {
+	comp := newComp(resp.hdr, c.o.Limits)
+	src, err := newSource(resp, comp, c.o.Limits)
+	var o logOpen
+	if err == nil {
+		ls, ok := src.(logSource)
+		if !ok {
+			err = protocolError() // a body format without a log decoder
+		} else {
+			o, err = ls.openLogs(mode)
+		}
+	}
+	if err != nil {
+		resp.close()
+		return nil, nil, readError(ctx, err)
+	}
+	if o.matrix {
+		rs := newRangeStream(ctx, src, resp, c.o.Limits, comp, g)
+		if o.ended {
+			resp.close() // the body has ended: free the slot before any series is handed out
+		}
+		return rs, nil, nil
+	}
+	resp.close()
+	o.logs.comp = comp.finish()
+	return nil, o.logs, nil
+}
+
 // pageEntry is a delivered entry with its stream.
 type pageEntry struct {
 	ts     int64

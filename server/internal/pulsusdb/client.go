@@ -2,8 +2,8 @@
 // request's context (deadline and the browser's cancellation) and its *core.RequestCtx (the
 // resolved tenant binding and a non-optional data scope, T06-002). Requests are decorated from
 // the binding only (T06-006), limited per binding, retried only before response headers or on
-// 503 unavailable under a 10 % retry budget (T06-009), and every upstream string is redacted on
-// the one decode path (§4.9 of plan #62).
+// 503 unavailable under a 10 % retry budget (T06-009), and every body decoder yields upstream
+// strings only through the request's redactor (§4.9 of plan #62).
 package pulsusdb
 
 import (
@@ -196,28 +196,10 @@ type call struct {
 // limit below the 8 KiB request-line limit common to HTTP servers and proxies.
 const maxGetQuery = 8 << 10
 
-// bodyFormat is the decoder of a 2xx body. JSON is the only one today; the seam lets a second
-// decoder (an Arrow stream) be added per Content-Type without touching the callers.
-type bodyFormat uint8
-
-const formatJSON bodyFormat = 1
-
-// acceptFor is the Accept header of every call: the one place a second format would be asked
-// for (per binding, once the upstream offers it).
-func acceptFor(call) string { return "application/json" }
-
-// formatOf maps a 2xx Content-Type to its decoder; any other type is not decodable.
-func formatOf(contentType string) (bodyFormat, bool) {
-	mt, _, err := mime.ParseMediaType(contentType)
-	if err == nil && mt == "application/json" {
-		return formatJSON, true
-	}
-	return 0, false
-}
-
 // response is an upstream 2xx response with its slot held.
 type response struct {
 	body     io.ReadCloser // capped at call.limit
+	format   bodyFormat    // from Content-Type; selects the decoder (newSource)
 	red      redactor
 	hdr      upstreamHeaders
 	rawID    string // the raw X-Pulsus-Query-Id, for the log's HMAC only
@@ -292,14 +274,15 @@ func (c *Client) do(ctx context.Context, rc *core.RequestCtx, cl call) (*respons
 	rawID := resp.Header.Get("X-Pulsus-Query-Id")
 	hdr := readHeaders(resp.Header, red)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		if _, ok := formatOf(resp.Header.Get("Content-Type")); !ok {
+		f, ok := formatOf(resp.Header.Get("Content-Type"))
+		if !ok {
 			_ = resp.Body.Close()
 			release()
 			e := protocolError()
 			e.Status, e.QueryID = resp.StatusCode, hdr.QueryID
 			return &response{attempts: attempts, rawID: rawID}, e
 		}
-		return &response{body: closer{&capReader{r: resp.Body, left: cl.limit}, resp.Body}, red: red, hdr: hdr,
+		return &response{body: closer{&capReader{r: resp.Body, left: cl.limit}, resp.Body}, format: f, red: red, hdr: hdr,
 			rawID: rawID, release: release, status: resp.StatusCode, attempts: attempts}, nil
 	}
 	e := c.statusError(ctx, resp, red, hdr, cl)
@@ -464,7 +447,7 @@ func (c *Client) request(ctx context.Context, b core.TenantBinding, cl call, for
 		return nil, err
 	}
 	h := req.Header
-	h.Set("Accept", acceptFor(cl))
+	h.Set("Accept", acceptHeader)
 	h.Set("User-Agent", "pulsus-dash/"+core.Version)
 	if method == http.MethodPost {
 		h.Set("Content-Type", "application/x-www-form-urlencoded")

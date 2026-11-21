@@ -31,9 +31,25 @@ import (
 type recorder struct {
 	mu     sync.Mutex
 	bodies [][]byte
+	forms  []url.Values // the form of each request (query string or POST body)
 }
 
 func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	form := req.URL.Query()
+	if req.Body != nil {
+		b, err := io.ReadAll(req.Body)
+		_ = req.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if form, err = url.ParseQuery(string(b)); err != nil {
+			return nil, err
+		}
+		req.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	r.mu.Lock()
+	r.forms = append(r.forms, form)
+	r.mu.Unlock()
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -48,6 +64,12 @@ func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.mu.Unlock()
 	resp.Body = io.NopCloser(bytes.NewReader(b))
 	return resp, nil
+}
+
+func (r *recorder) lastForm() url.Values {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.forms[len(r.forms)-1]
 }
 
 func (r *recorder) last() []byte {
@@ -121,6 +143,42 @@ func TestPulsusDBContract(t *testing.T) {
 			}
 		}
 		compareGeneric(t, rec.last(), ss)
+	})
+	// The client always sends timeout=<n>ms (T06-010); the reference clients send none or a
+	// duration in seconds, so this pins that PulsusDB accepts the ms form on both routes.
+	t.Run("Timeout in ms accepted", func(t *testing.T) {
+		rs, err := c.Query(ctx(), rc, InstantQuery{Query: "vector(1)", At: now, Timeout: 30 * time.Second})
+		if err != nil {
+			t.Fatalf("instant: %v", err)
+		}
+		_ = rs.Close()
+		if tm := rec.lastForm().Get("timeout"); !strings.HasSuffix(tm, "ms") || strings.TrimSuffix(tm, "ms") == "" {
+			t.Fatalf("instant sent timeout %q, want <n>ms", tm)
+		}
+		rs, err = c.QueryRange(ctx(), rc, RangeQuery{Query: "vector(1)", Start: from, End: now, Step: time.Minute, Timeout: 30 * time.Second})
+		if err != nil {
+			t.Fatalf("range: %v", err)
+		}
+		defer func() { _ = rs.Close() }()
+		if tm := rec.lastForm().Get("timeout"); !strings.HasSuffix(tm, "ms") {
+			t.Fatalf("range sent timeout %q, want <n>ms", tm)
+		}
+		if _, err := drain(rs); err != nil {
+			t.Fatalf("range: %v", err)
+		}
+	})
+	// The grid's end is raised to the step, so it can lie after now.
+	t.Run("QueryRange end after now", func(t *testing.T) {
+		end := now.Add(5 * time.Minute)
+		rs, err := c.QueryRange(ctx(), rc, RangeQuery{Query: "vector(1)", Start: from, End: end, Step: time.Minute, Timeout: 30 * time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = rs.Close() }()
+		ss, err := drain(rs)
+		if err != nil || len(ss) != 1 || len(ss[0].Timestamps) != 66 {
+			t.Fatalf("end after now: %d series %v", len(ss), err)
+		}
 	})
 	mq := MatchQuery{Match: []string{"up"}, Start: from, End: now, Limit: 1}
 	t.Run("Series", func(t *testing.T) {
