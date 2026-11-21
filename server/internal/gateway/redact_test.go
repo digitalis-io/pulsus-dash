@@ -312,7 +312,7 @@ func propEncode(rng *rand.Rand, s string, escape bool) string {
 // unit:sanitise (log routes, plan #65 Part B, T06-024): a credential in a log line, a stream
 // label value or a text/plain error reaches the browser only as <redacted>, and never the log.
 func TestSanitiseLogs(t *testing.T) {
-	const cred = "user:pw-secret-1"
+	const cred = "user:pw-secret-1"          // #nosec G101 -- the planted test credential
 	const token = "dXNlcjpwdy1zZWNyZXQtMQ==" // #nosec G101 -- the planted test credential
 	var upURL string
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

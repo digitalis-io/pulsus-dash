@@ -402,7 +402,7 @@ func TestLogVirtualGuard(t *testing.T) {
 	})
 	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
 	const reserved = `{source="pulsus-dash"}`
-	const passes = `{source="pulsus-dashboard"}`
+	const passes = `{source="pulsus-dashboard"}` // #nosec G101 -- a selector, not a credential
 	esc := func(s string) string {
 		return strings.NewReplacer("{", "%7B", "}", "%7D", `"`, "%22", "=", "%3D").Replace(s)
 	}
