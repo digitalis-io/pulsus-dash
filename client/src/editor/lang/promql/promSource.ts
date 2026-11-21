@@ -3,7 +3,7 @@
  * goes through the BFF's `/prom/*` routes (`Api.prom*`) and the suggest cache, keyed by tenant and
  * 15-min window bucket. Names, label names and label values are asked over the window snapped to
  * whole minutes (start floored, end ceiled, one minute when they meet), series over whole seconds,
- * the shapes the upstream PulsusDB is tested with. A source never rejects: any failure, abort or
+ * the request shapes PulsusDB is tested with. A source never rejects: any failure, abort or
  * ended generation resolves `[]` (`{}` for metadata), with nothing logged or shown (T09 §9).
  */
 import { promMetadataQuery } from '../../../explore/promMetadata';
