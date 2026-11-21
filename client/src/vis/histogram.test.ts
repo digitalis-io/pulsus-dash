@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HeatmapFrame, SeriesFrame } from '../data/frames';
 import { arr, fixture, fkey, G2, G3, H1, J6, le, N } from '../test/histogramFixtures';
+import { countFloat64 } from '../test/allocations';
 import { histogramBuckets, isHistogram, isolateBucket } from './histogram';
 
 const I = Infinity;
@@ -151,26 +152,65 @@ const timed = <T>(f: () => T): [T, number] => {
   return [v, performance.now() - t0];
 };
 
+/** Float64 elements one conversion of `groups` sparse groups allocates (`nt` timestamps). */
+function sparseWork(groups: number, nt: number, cap: 'budget' | 'unbounded') {
+  const s = sparseGroups(groups, nt);
+  const input = s.length * nt;
+  const output = nt * (groups + 1);
+  // Generous for linear work (input + output a few times over), far below groups × output.
+  const budget = cap === 'budget' ? 4 * (input + output) : Infinity;
+  return {
+    input,
+    output,
+    budget,
+    eligible: countFloat64(() => isHistogram(s), budget),
+    full: countFloat64(() => histogramBuckets(s), budget),
+    iso: countFloat64(() => isolateBucket(s, fkey(1)), budget),
+  };
+}
+
 describe('unit:heatmap-buckets scale', () => {
-  it('many groups × many bounds: linear in input and output', () => {
+  it('many groups × many bounds: allocation linear in input and output', () => {
     const groups = 400;
     const nt = 1000;
-    const s = sparseGroups(groups, nt);
-    const [eligible, tEligible] = timed(() => isHistogram(s));
-    expect(eligible).toBe(true);
-    const [h, tFull] = timed(() => histogramBuckets(s));
-    const [iso, tIso] = timed(() => isolateBucket(s, fkey(1)));
+    const w = sparseWork(groups, nt, 'budget');
+    // Eligibility converts nothing; a conversion allocates its output, the axis and little else.
+    // The old per-group grid allocated 2 × output per group (~0.3 G elements here).
+    const linear = w.output + 2 * nt + groups + 1;
+    expect({
+      eligible: w.eligible.elements,
+      full: w.full.elements <= linear,
+      iso: w.iso.elements <= linear,
+    }).toEqual({ eligible: 0, full: true, iso: true });
+    expect(w.eligible.value).toBe(true);
+    const h = w.full.value;
     expect(h?.bounds.length).toBe(groups + 1);
-    expect(h?.counts.length).toBe(nt * (groups + 1));
+    expect(h?.counts.length).toBe(w.output);
     // Every group lacks every other group's bound: no cell is invented (T02 §4.4).
     expect(h?.counts.every((c) => Number.isNaN(c))).toBe(true);
-    expect(iso?.counts.every((c) => Number.isNaN(c))).toBe(true);
-    // The old per-group grid takes seconds here (~0.4 G cells allocated and scanned 3×).
-    expect({ tEligible: tEligible < 100, tFull: tFull < 400, tIso: tIso < 100 }).toEqual({
-      tEligible: true,
-      tFull: true,
-      tIso: true,
-    });
+    expect(w.iso.value?.counts.every((c) => Number.isNaN(c))).toBe(true);
+  });
+
+  it('doubling the groups doubles the allocation, not quadruples it', () => {
+    const nt = 200;
+    const a = sparseWork(100, nt, 'unbounded');
+    const b = sparseWork(200, nt, 'unbounded');
+    const ratio = (x: number, y: number) => Math.round((y / x) * 10) / 10;
+    expect({
+      full: ratio(a.full.elements, b.full.elements),
+      iso: ratio(a.iso.elements, b.iso.elements),
+    }).toEqual({ full: 2, iso: 2 });
+  });
+
+  it('reports wall-clock times (report-only, no gate: T05-006)', () => {
+    const s = sparseGroups(400, 1000);
+    const [, tEligible] = timed(() => isHistogram(s));
+    const [, tFull] = timed(() => histogramBuckets(s));
+    const [, tIso] = timed(() => isolateBucket(s, fkey(1)));
+    console.info(
+      `heatmap-buckets 400 groups × 1000 ts: eligible ${tEligible.toFixed(1)} ms, ` +
+        `full ${tFull.toFixed(1)} ms, isolate ${tIso.toFixed(1)} ms`,
+    );
   });
 
   it('many complete groups: every interval sums over the groups', () => {

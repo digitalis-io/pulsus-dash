@@ -14,7 +14,8 @@ import {
   N,
 } from '../test/histogramFixtures';
 import type { ExploreResult } from './autovis';
-import { canIsolate, framePlan, SCALAR_KEY, type FramePlan } from './framePlan';
+import { countFloat64 } from '../test/allocations';
+import { canIsolate, framePlan, MAX_GRID_CELLS, SCALAR_KEY, type FramePlan } from './framePlan';
 
 const I = Infinity;
 const NONE = { kind: 'none' } as const;
@@ -161,6 +162,55 @@ describe('unit:frame-plan', () => {
       seriesOf([at(fkey(1), 'b', [2000], [2])]),
     );
     expect(plain(plan('line', instant)).data).toEqual(seriesOf(instant.series));
+  });
+
+  describe('bars grid bound (review r2 #3)', () => {
+    /** `n` instant series, each on its own `perSeries` timestamps, disjoint from the others'. */
+    const disjoint = (n: number, perSeries: number, extra = 0): ExploreResult => ({
+      kind: 'series',
+      source: 'instant',
+      series: Array.from({ length: n }, (_, i) => {
+        const len = perSeries + (i === 0 ? extra : 0);
+        return {
+          key: fkey(i),
+          labels: { job: `j${i}` },
+          timestamps: Float64Array.from({ length: len }, (_, t) => (t * n + i) * 1000),
+          values: new Float64Array(len).fill(i),
+        };
+      }),
+      stepMs: null,
+      completeness: EMPTY_COMPLETENESS,
+    });
+    const points = (r: ExploreResult) =>
+      r.kind === 'series' ? r.series.reduce((a, s) => a + s.timestamps.length, 0) : 0;
+
+    it('500 series × 1 000 disjoint timestamps: notice, allocation linear in the input', () => {
+      const r = disjoint(500, 1000);
+      const input = points(r);
+      // The ungated grid is 500 × 500 000 values (~2 GB); linear work stays near the input.
+      const a = countFloat64(() => plan('bars', r), 4 * input);
+      expect(a.elements).toBeLessThanOrEqual(4 * input);
+      expect(a.value === undefined ? 'over budget' : plain(a.value)).toEqual({
+        spec: BARS(NONE),
+        data: null,
+        notice: 'tooManyTimestamps',
+      });
+      // Line keeps each series' own timestamps: every point is drawn, nothing is dropped.
+      const line = plan('line', r);
+      expect(line.data?.kind === 'series' ? line.data.series.length : 0).toBe(500);
+    });
+
+    it('a grid of exactly MAX_GRID_CELLS draws; one more timestamp is the notice', () => {
+      expect(MAX_GRID_CELLS).toBe(500 * 11_000);
+      const at = disjoint(500, 22);
+      const a = countFloat64(() => plan('bars', at), 2 * MAX_GRID_CELLS);
+      const p = a.value;
+      expect(p?.notice).toBe(null);
+      expect(p?.spec !== null && p?.data ? validateFrameData(p.spec, p.data) : 'none').toBe(null);
+      expect(p?.data?.kind === 'series' ? p.data.series[0]?.timestamps.length : 0).toBe(11_000);
+      expect(a.elements).toBeLessThanOrEqual(MAX_GRID_CELLS + 2 * points(at));
+      expect(plain(plan('bars', disjoint(500, 22, 1))).notice).toBe('tooManyTimestamps');
+    });
   });
 
   it('scalar overrides: SC1–SC4', () => {

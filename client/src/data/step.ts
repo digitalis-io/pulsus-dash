@@ -13,7 +13,8 @@ export const LADDER_MS: readonly number[] = [
   1e3, 5e3, 10e3, 15e3, 30e3, 60e3, 300e3, 900e3, 3600e3, 21600e3, 86400e3,
 ];
 
-const MAX_STEPS = 11000;
+/** The most steps a range grid has (`promGrid` is null past it). */
+export const MAX_STEPS = 11000;
 
 /**
  * The step is also the base of the rate window the Explore planner writes for a bare counter or

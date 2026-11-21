@@ -6,13 +6,22 @@
  */
 import type { FrameData, ScalarFrame, SeriesFrame } from '../data/frames';
 import type { Unit, VisKind, VisSpec } from '../engine/api';
+import { MAX_STEPS } from '../data/step';
+import { MAX_SERIES } from '../engine/canvas2d/Canvas2DEngine';
 import type { ExploreResult } from './autovis';
 import { histogramBuckets, isHistogram, isolateBucket } from './histogram';
 
 export type FramePlan =
   | { readonly spec: VisSpec; readonly data: FrameData; readonly notice: null }
   | { readonly spec: VisSpec; readonly data: null; readonly notice: 'noBuckets' }
+  | { readonly spec: VisSpec; readonly data: null; readonly notice: 'tooManyTimestamps' }
   | { readonly spec: null; readonly data: null; readonly notice: 'string' };
+
+/**
+ * The most values `commonGrid` allocates (series × distinct timestamps): every drawable series on
+ * a grid of the most steps a range query has (review r2 #3).
+ */
+export const MAX_GRID_CELLS = MAX_SERIES * MAX_STEPS;
 
 /** The key of a scalar drawn as a series (matches `KEY_PATTERN`). */
 export const SCALAR_KEY = '0000000000000000';
