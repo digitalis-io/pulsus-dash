@@ -9,6 +9,9 @@ on:
     paths:
       - 'client/**'
       - 'design/tokens.toml'
+      # The engine parity fixtures and the generated Rust tokens are checked by npm test (#68).
+      - 'engine/fixtures/**'
+      - 'engine/crates/dash-tokens/src/tokens.rs'
       - 'server/**'
       - 'api/**'
       - 'tools/e2e/**'

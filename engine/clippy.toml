@@ -1,0 +1,5 @@
+# T03-008: the render worker never waits on a lock (no exception in Part A of #68).
+disallowed-types = [
+  { path = "std::sync::Mutex", reason = "T03-008: the render worker never waits on a lock" },
+  { path = "std::sync::RwLock", reason = "T03-008" },
+]
