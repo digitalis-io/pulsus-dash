@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:inp-rooms` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css` and `tokens.ts` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
@@ -73,6 +73,26 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   To run one engine locally: `npm run e2e -- --project=chromium`.
 - **Keyboard coverage** (`e2e/keyboard.spec.ts`, part of `e2e:a11y-rooms`): see
   [the client page](../client/README.md#keyboard-coverage).
+- **`bench:inp-rooms`** (`e2e/perf-inp-rooms.spec.ts`, Chromium only, PRF-033, T05 §4.3): scripted
+  pointer and keyboard interactions on the board room (Appendix C-A §A.6 of plan #61 Part C), in
+  three documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
+  times both ways), `/t/demo/board/b-3` (a variable chip, typing and Apply; `+ Filter`, Add and
+  Remove filter; three times each), and `/t/demo/board/b-1` again (Edit board, Add section, Done
+  and Discard changes, three times). An init script observes the Event Timing entries (`event`,
+  `durationThreshold` 16) in every document the page loads and flushes them before each
+  navigation; `scripts/inp.ts` (`aggregateInp`, `gateFailures`) computes **INP per document**
+  (each interaction once, at its longest entry; the durations padded with zeros to the
+  document's scripted count, then the `floor(n / 50)`-th largest, so one outlier per 50
+  interactions of that document is ignored), never pooled across documents. The test always
+  checks three documents, each with its scripted count, and no page error. The 200 ms limit
+  applies per document; 100 ms is the target. On CI's shared runners the check is **report only**
+  until the reference lab exists (#68, T05-006): a document above 200 ms adds a `warning`
+  annotation. With `INP_GATE=enforce` (the reference lab, and local gate proofs) any document above
+  200 ms fails the test, naming the document, its INP and its slowest step. Both modes write
+  `test-results/bench-inp-rooms.json` (`documents[]` with `doc`, `url`, `inp`, `n`, `reported`,
+  `slowest`; `worst`, `mode`, `limitMs`, `targetMs`, `unit`) and a `bench:inp-rooms` annotation with
+  the same JSON. To run it alone: `npx playwright test perf-inp-rooms --project=chromium`
+  (`INP_GATE=enforce npx playwright test perf-inp-rooms --project=chromium` for the blocking form).
 - **`bench:startup`** (`e2e/perf-cold-load.spec.ts`, Chromium only, report only, PRF-008): 20 cold
   loads of `/t/demo/boards`, time to the `shell-ready` performance mark; p50 and p75 are written to
   `test-results/prf-008.json` and added as a test annotation. There is no threshold.
@@ -110,7 +130,7 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 | Server | Command | Used by |
 |---|---|---|
 | stub-mode BFF on `localhost:4173` | `tools/e2e/serve.sh stub 4173` | every existing spec (`baseURL`): the stub's seeded boards and tenants, served with the real headers; and `e2e:bff-headers` |
-| http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap` |
+| http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap`; `e2e:board-edit-save`, `e2e:board-tall` and `e2e:board-sections` (`board-edit.spec.ts`): boards created, laid out, saved and reloaded through the boards API, and collapsed sections, their URL overrides and saved state; `e2e:board-prefs` (`board-prefs.spec.ts`): Starred and Recent across two tabs and a fresh browser context (each test creates its own uniquely named board and deletes it in `finally`) |
 | Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
 
 Before a run:

@@ -101,12 +101,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dash/v1/boards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBoards"];
+        put?: never;
+        post: operations["createBoard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/boards/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBoard"];
+        put: operations["updateBoard"];
+        post?: never;
+        delete: operations["deleteBoard"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/me/starred-boards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listStarredBoards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/me/starred-boards/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["starBoard"];
+        post?: never;
+        delete: operations["unstarBoard"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/me/recent-boards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listRecentBoards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/me/recent-boards/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["recordBoardView"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
-        ErrorCode: "scope_denied" | "budget_exhausted" | "too_broad" | "unavailable" | "invalid" | "forbidden" | "virtual_unsupported" | "not_found" | "internal";
+        ErrorCode: "scope_denied" | "budget_exhausted" | "too_broad" | "unavailable" | "invalid" | "forbidden" | "virtual_unsupported" | "not_found" | "conflict" | "internal";
         FieldError: {
             pointer: string;
             message_key: string;
@@ -137,6 +233,8 @@ export interface components {
             postgres: "ok" | "unreachable";
             /** @enum {string} */
             schema: "ok" | "behind" | "ahead" | "unknown" | "error" | "timeout";
+            /** @enum {string} */
+            audit_partitions: "ok" | "low" | "error" | "unknown";
         };
         Version: {
             version: string;
@@ -169,6 +267,98 @@ export interface components {
             default_tenant: string;
             server: components["schemas"]["Version"];
             can_sign_out: boolean;
+        };
+        BoardSpec: {
+            title: string;
+            time?: components["schemas"]["TimeRange"];
+            panels: components["schemas"]["Panel"][];
+            sections: components["schemas"]["Section"][];
+        };
+        TimeRange: {
+            from: string;
+            to: string;
+        };
+        Section: {
+            id: string;
+            title: string;
+            collapsed: boolean;
+            panels: components["schemas"]["Panel"][];
+        };
+        Panel: {
+            id: string;
+            title: string;
+            grid: components["schemas"]["Grid"];
+            query: components["schemas"]["Query"];
+            vis: components["schemas"]["Vis"];
+        };
+        Grid: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+        };
+        Query: {
+            /** @enum {string} */
+            lang: "promql" | "logql";
+            text: string;
+        };
+        Vis: {
+            /** @enum {string} */
+            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs";
+        };
+        Author: {
+            /** @enum {string} */
+            kind: "local";
+            name: string;
+        };
+        BoardSummary: {
+            uid: string;
+            title: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by: components["schemas"]["Author"];
+        };
+        Board: {
+            uid: string;
+            title: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by: components["schemas"]["Author"];
+            etag: string;
+            /** Format: int64 */
+            schema_version: number;
+            spec: components["schemas"]["BoardSpec"];
+        };
+        BoardList: {
+            items: components["schemas"]["BoardSummary"][];
+            truncated: boolean;
+        };
+        BoardCreate: {
+            spec: components["schemas"]["BoardSpec"];
+        };
+        BoardUpdate: {
+            spec: components["schemas"]["BoardSpec"];
+            message?: string;
+        };
+        BoardSaveResult: {
+            board: components["schemas"]["Board"];
+            changed: boolean;
+        };
+        BoardConflict: {
+            error: components["schemas"]["ErrorBody"];
+            current: components["schemas"]["Board"];
+            submitted?: components["schemas"]["BoardSpec"];
+        };
+        BoardRef: {
+            uid: string;
+            title: string;
+        };
+        BoardRefList: {
+            items: components["schemas"]["BoardRef"][];
         };
     };
     responses: never;
@@ -374,6 +564,451 @@ export interface operations {
             };
             /** @description Internal error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listBoards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Boards of the organisation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardList"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createBoard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardCreate"];
+            };
+        };
+        responses: {
+            /** @description Board created */
+            201: {
+                headers: {
+                    /** @description Strong entity tag of the board head */
+                    ETag?: string;
+                    /** @description URL of the new board */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Invalid board */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBoard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The board head */
+            200: {
+                headers: {
+                    /** @description Strong entity tag of the board head */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Board not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateBoard: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardUpdate"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    /** @description Strong entity tag of the board head */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardSaveResult"];
+                };
+            };
+            /** @description Invalid board or If-Match */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Board not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Board changed since it was read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
+                };
+            };
+            /** @description Request body too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description If-Match is required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteBoard: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid If-Match */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Board not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Board changed since it was read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
+                };
+            };
+            /** @description If-Match is required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStarredBoards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Boards starred by the principal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardRefList"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    starBoard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Starred */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Board not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unstarBoard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not starred */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listRecentBoards: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Boards the principal viewed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardRefList"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recordBoardView: {
+        parameters: {
+            query?: {
+                /** @description Navigation time in ms since the Unix epoch. Absent → the server's now(). */
+                at?: number;
+            };
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Board not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

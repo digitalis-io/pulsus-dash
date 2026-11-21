@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-20 |
+| **Version** | 1.10-rc · 2026-11-21 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -87,10 +87,13 @@ BFF serves a fixed local principal.
 | SRF-036 Log stream | M-UI2 | stream (steps 10–11) | minimap |
 | VIZ-034 Log stream | M-UI2 | virtualised list, severity gutter, wrap (step 10); GPU text (step 13) | JSON expand, prettify, dedupe, context lines, minimap |
 | SRF-030 Metrics auto-vis + multiple queries | M-UI1 | auto-vis (step 7) | A/B queries and expressions |
-| ENT-020 Configuration and derived state in Postgres | M-UI1 | tenant-scoped tables under RLS (`orgs`, `tenant_bindings`), no extension (step 3, #59) | the other Table 6.1 tables with their features; partition retention with the first time-partitioned table; met only when its full acceptance is (D6) |
+| ENT-020 Configuration and derived state in Postgres | M-UI1 | tenant-scoped tables under RLS (`orgs`, `tenant_bindings`), no extension (step 3, #59); `folders`, `boards`, `board_versions`, `audit_events` (partitioned), `stars`, `recent_views` (step 5, #61) | the other Table 6.1 tables with their features; partition retention with the first time-partitioned table; met only when its full acceptance is (D6) |
 | IA-020 Time range in the page header | M-UI1 | header time range picker and refresh control, brush on charts, window keys (steps 1, 2) | LIVE (INT-028) |
 | IA-006 Boards | M-UI5 | board in the root folder, versions stored on save (step 5) | owners, version history UI, variables |
 | SRF-014 Board layout | M-UI5 | 12-column grid (step 5) | free-form canvas, 3D viewports |
+| SRF-016 Lazy collapsed sections | M-UI5 | collapsible sections that do not query (step 5, #61) | anomaly strip of a collapsed section |
+| SRF-017 Variables | M-UI5 | filter bar with URL values (step 5, #61) | variable definitions, seeding from Context, re-query and crossfade |
+| SRF-026 Board library | M-UI5 | starred and recently viewed boards in the sidebar (step 5, #61) | folders, tags, search, owners, incident ranking |
 | ENT-022 Versioned content | M-UI5 | version rows on every save (step 5) | diff and restore |
 | VL-002 Neutral series palette with stable identity colours | M-UI1 | stable colours: level table, else key hash (step 2, #58) | `ci:palette-check` |
 | VL-012 Numbers for humans | M-UI1 | `2.84 s`, `1.2k rps`, `%`, IEC bytes (step 2, #58) | currency, relative times |
@@ -210,3 +213,5 @@ product owner can confirm them at sign-off.
 | 1.6-rc | 2026-11-20 | #58: Table 2.1c adds the M-UI1 subsets of VL-002, VL-012, INT-033, VIZ-010, VIZ-013 and VIZ-069 delivered by the interim chart frames; milestones unchanged (D6) |
 | 1.7-rc | 2026-11-20 | Owner decision D13 (review of #58): gate sensitivity proofs may be local runs recorded in the PR, except for CI-only gates |
 | 1.8-rc | 2026-11-20 | Decision D12 (owner): authentication deferred; §3 records D12. §2 M-UI1 drops OIDC login and M-UI6 adds authentication; §2.1 the slice has no sign-in; Table 2.1a step 4 (#60) moves to M-UI6, steps 5 and 6 depend on step 3, critical path 1 → 3 → 5 → … → 11; Q12 moot until authentication is designed; Table 2.1c records the M-UI1 subset of ENT-020 (RLS-scoped `orgs` and `tenant_bindings`, #59), which stays M-UI1 |
+| 1.9-rc | 2026-11-20 | #61 Part A: Table 2.1c ENT-020 subset adds `folders`, `boards`, `board_versions`, `audit_events` (partitioned by class and month), `stars` and `recent_views` (step 5) |
+| 1.10-rc | 2026-11-21 | #61 Part C: Table 2.1c adds the M-UI1 subsets of SRF-016 (collapsible sections that do not query), SRF-017 (filter bar with URL values) and SRF-026 (starred and recently viewed boards); milestones unchanged (D6) |

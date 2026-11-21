@@ -7,7 +7,8 @@
     "@tanstack/react-query",
     "react-aria-components",
     "@internationalized/date",
-    "openapi-fetch"
+    "openapi-fetch",
+    "react-grid-layout"
   ],
   "runtimeClosure": {
     "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
@@ -24,7 +25,19 @@
     ],
     "i18n": ["@internationalized/date", "@internationalized/number", "@internationalized/string"],
     "api-client": ["openapi-fetch", "openapi-typescript-helpers"],
-    "runtime-helper": ["@swc/helpers", "tslib"]
+    "runtime-helper": ["@swc/helpers", "tslib"],
+    "board-layout": [
+      "react-grid-layout",
+      "react-draggable",
+      "react-resizable",
+      "fast-equals",
+      "prop-types",
+      "object-assign",
+      "loose-envify",
+      "js-tokens",
+      "react-is",
+      "resize-observer-polyfill"
+    ]
   },
   "licenceAllowlist": [
     "MIT",
@@ -63,7 +76,15 @@
       "url": "https://github.com/remix-run/react-router/issues/new/choose",
       "reason": "bug-report text"
     },
-    { "url": "https://github.com/ungap/url-search-params", "reason": "polyfill-advice text" }
+    { "url": "https://github.com/ungap/url-search-params", "reason": "polyfill-advice text" },
+    {
+      "url": "https://github.com/react-grid-layout/react-draggable#noderef",
+      "reason": "warning text (react-draggable, Edit-mode chunk)"
+    },
+    {
+      "url": "http://fb.me/use-check-prop-types",
+      "reason": "error text of the production prop-types shim (Edit-mode chunk)"
+    }
   ],
   "installScripts": []
 }

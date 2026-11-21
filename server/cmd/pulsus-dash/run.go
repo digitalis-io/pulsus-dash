@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/config"
 )
@@ -35,6 +36,11 @@ type runEnv struct {
 	// only; main leaves both nil).
 	Assets    fs.FS
 	AssetKeys []ed25519.PublicKey
+	// AuditEvery and AuditRetry replace the audit partition maintenance intervals after a
+	// successful and a failed run (zero = 24 h and 1 h). AuditRan is called after each run's
+	// Record and blocks the loop until it returns. Tests only; nil and zero in production.
+	AuditEvery, AuditRetry time.Duration
+	AuditRan               func(err error)
 }
 
 // signalContext is cancelled by SIGINT or SIGTERM. The process exits when run returns, so the

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-20 |
+| **Version** | 1.10-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -270,13 +270,16 @@ estate, §4.5):
 | `bench:camera-transition` | focus, back, dive, "show me" | trigger → final pose | 100 % ≤ 250 ms, (a) and (b); next frame under reduced motion | M-UI1 |
 | `bench:memory-heaviest` | heaviest gallery/surface scene | peak tab memory | < 1.5 GB on (a) | M-UI0 |
 | `bench:memory-pressure` | memory pressure induced past the budget | crash; time to rollup; badge | no crash; rollup within 1 s; badge changes | M-UI1 |
-| `bench:inp-rooms` | Lighthouse with scripted room interactions | INP | ≤ 200 ms (fail above); 100 ms tracked target | M-UI0 |
+| `bench:inp-rooms` | scripted room interactions in Chromium; INP per document from the Event Timing entries of each document the script loads (the data Lighthouse reads), each document's INP ≤ 200 ms | INP | ≤ 200 ms (fail above); 100 ms tracked target | M-UI0 |
 | `bench:lens-load` | warm nav → Lens coarse; Lens fully refined (1 h) | dive input → first data frame in every visible viewport; → last `coverage.final` | < 300 ms p75; < 1.5 s p75 (PRF-010, PRF-011, PRF-034) | M-UI2 |
 | `bench:decode-r1` | R1 harness ([T04 §10](T04-wire-format-and-data-plane.md#10-testing)) | A1 decode on (a) | < 50 ms p95 | M-UI0 |
 | `bench:shim-input-cost` | synthetic N, B; trusted pointer and wheel (R); the 66c rAF flush ([T03-003](T03-browser-runtime.md#t03-003--the-main-thread-never-blocks-and-never-renders)) | time per listener call; per rAF callback | p99 ≤ 0.05 ms (N, B median of 3; R all and wheel); callback ≤ 2 ms; (a) and (b) | M-UI0 |
 | — | Atlas 2 000 entities first paint | → first frame with all nodes | < 800 ms (PRF-012) | M-UI3 |
 | — | F2 Space-scrub, 2 000 entities | frame time during scrub; network requests | PRF-001/PRF-002; 0 requests | M-UI3 |
 | — | Live tail | ingest timestamp → frame containing the line | < 2 s p95 (PRF-015) | M-UI2 |
+
+The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
+gain interactions.
 
 **Measurement methods**
 - **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
@@ -588,6 +591,7 @@ the merge train), nightly (release blocker).
 | `unit:fuzz-dsf` | `cargo-fuzz` on the DSF parser and IPC decode (nightly; crashes block release) |
 | `unit:ring-stress` | loom/shuttle on SPSC rings and chunk pinning; 10⁶ records through each ring with random stalls |
 | `unit:config-strict` | BFF configuration (T06-019): an unknown or repeated YAML key, a second YAML document, an unknown `PULSUS_DASH_*` variable (other than the client tooling's) or a wrong type fails with the key and line or the variable; precedence defaults → file → environment; secret references refuse literals unless `allow_inline_secrets` and never print a value (T19-010) |
+| `unit:board-spec` | Board spec v1 (plan #61): the shared fixtures `api/fixtures/board-spec/v1-{minimal,full}.json` parse and round-trip through canonical JSON; the minimal fixture's canonical form and SHA-256 are fixed; every case of `invalid.json` returns exactly its JSON-pointer field errors in order (unknown, wrongly cased, repeated, missing and `null` keys, wrong types, non-integer grid values, and each semantic rule); the upcaster accepts v1 unchanged and refuses newer versions; the RFC 6902 patch applies back to the target. The client's `checkBoardSpec` (`client/src/boards/spec.test.ts`, plan #61 Part B) runs the same fixtures and returns the same pointers and message keys in the same order; the six cases that exist only as JSON text (not JSON, trailing data, empty body, duplicate key, `6.5` and `1e2` as integers) are the server's alone |
 
 **BFF integration on PostgreSQL 15 and 16 (`make itest`)**
 
@@ -595,9 +599,12 @@ the merge train), nightly (release blocker).
 |---|---|---|---|
 | `itest:bff-refuses-altered-asset` | Named by [T18](T18-security.md) T18-006; runs in `ci:go-test` (no database needed): an embedded set with one byte changed in a listed file, a listed file missing, or an unlisted extra file is refused by start-up verification (`hash_mismatch`, `missing_file`, `unlisted_file` naming the path), and `serve` exits 1 with `asset integrity check failed` and never opens a listener | PR | yes |
 | `itest:asset-manifest-signature` | Named by T18-006; runs in `ci:go-test`: a manifest one byte off its signed bytes, a signature by another key, a 63-byte or missing signature, a missing manifest, and no compiled-in key are refused (`bad_signature`, `missing_signature`, `missing_manifest`, `no_public_key`); of two keys, the second may sign (rotation) | PR | yes |
-| `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003) | PR | yes |
+| `itest:rls-isolation` | For every tenant table, enumerated from `pg_class` (a table without a test fixture fails): a transaction bound to organisation A sees no row of B, as the app role and as the owner (`FORCE`); with no organisation bound every table reads empty; writing B's row from A fails with `42501`; a pooled connection carries no organisation after commit; every table except `install_state` and `goose_db_version` has `ENABLE` and `FORCE` RLS and policy `org_isolation`, and every key leads with `org_id` except the root table's (T11-002, T11-003); the audit partitions carry the same RLS, and as the app role every partition of `audit_events` refuses `SELECT` and `INSERT` with `42501` (T11-026) | PR | yes |
 | `itest:no-extensions` | After a migration from empty, `pg_extension` holds only `plpgsql` (T11-001) | PR | yes |
 | `itest:migrations` | Up from empty, then an idempotent rerun; a dry run writes nothing; two concurrent `migrate` runs apply and seed once; a database more than one version ahead is refused (also when another run advanced it while this one waited for the lock) and one version ahead is accepted by `migrate` and `serve`; `serve` refuses an older schema (T11-015, T19-007) | PR | yes |
+| `itest:board-crud` | Through `serve` (plan #61): create, read, save, unchanged save (no version, no audit event, ETag kept), stale `If-Match` → 409 with the current board and the submitted spec, missing `If-Match` → 428, list, soft delete; counts of versions and audit events after each step; every audit row names the fixed local principal, the board and the request ID; an invalid board writes nothing; two concurrent saves with one `If-Match` give one version and one 409 (T11-005, T11-006) | PR | yes |
+| `itest:board-prefs` | Through `serve`: starring is idempotent, unstarring empties the list, an unknown board is 404; recent boards are most recent first, honour `limit`, and drop deleted boards; starred boards drop deleted boards; 200 recent views are kept per user | PR | yes |
+| `itest:audit-append-only` | Board subset (plan #61), as the app role, each in its own transaction: `UPDATE`, `DELETE` and `TRUNCATE` of `audit_events`, `UPDATE` and `DELETE` of `board_versions`, `DELETE` of `boards` and of `audit_chain_heads` fail with `42501`; the hash chain verifies event by event and continues across the retention floor through `audit_chain_heads` (T11-017, T11-006, T06-004) | PR | yes |
 
 **Goldens (L2)**
 
@@ -622,6 +629,9 @@ the merge train), nightly (release blocker).
 | `e2e:csp-violations` | The production build served with the [ADR-0014](../adr/0014-typescript-react-web-client.md) §9 headers reports no CSP or Trusted Types violation during the PR smoke suite |
 | `e2e:bff-headers` | Against the BFF-served stub build: `GET /` carries a `Content-Security-Policy` equal to the client's `CSP` constant and every other document header of [T18](T18-security.md) T18-002; an `/assets/*.js` file requested with `Accept-Encoding: br` is served `br` and `immutable`; a deep link returns `index.html`; an unknown `/api/` path is the 404 envelope |
 | `e2e:bff-http-shell` | Against the BFF-served `http` build, and through the Vite dev server proxied to the BFF: the shell bootstraps from `GET /api/dash/v1/bootstrap`, About shows the server version, Sign out is absent under the fixed local principal (D12), and the sidebar shows the data-source line (IA-021) |
+| `e2e:board-edit-save` | Against the BFF-served `http` build and its database, in Chromium, Firefox and WebKit (plan #61 Part B): create a board, add three panels, move one with the pointer to column 7 and resize it to 6 × 10, set titles and visualisations, save with `⌘S`/`Ctrl+S`, reload: the same grid positions, titles and visualisations in View mode, and `GET /api/dash/v1/boards/<uid>` agrees; each panel shows the PromQL empty state; with unsaved changes, in-app navigation asks first (Keep editing stays, Discard changes leaves). A board at the last row (y 9 999, h 100) renders at the same box in View and Edit mode. Each run uses its own uniquely named board and deletes it |
+| `e2e:board-prefs` | Against the BFF-served `http` build and its database, in Chromium, Firefox and WebKit (plan #61 Part C), PR: Starred and Recent survive a fresh browser context: a board starred and opened in context A is listed in Starred and Recent of a fresh context B before B opens it; a second tab of A sees the star with no reload (cross-tab channel); an unstar in B shows in A when A becomes visible again; a failed star shows a visible message. Each run uses its own uniquely named board and deletes it |
+| `e2e:board-sections` | Against the BFF-served `http` build and its database, in Chromium, Firefox and WebKit (plan #61 Part C), PR: collapsed sections render no panels; View-mode toggles are URL overrides (`collapse`/`expand`) that survive reload and Copy link into a fresh context, while the plain URL shows the saved state; the Edit-mode state and new sections survive reload and match `GET /api/dash/v1/boards/<uid>` |
 | `e2e:client-routing` | Boards list → board → Explore → browser back: no document navigation; the board shows its previous data in the first frame with no new query (IA-014) |
 | `e2e:app-layout` | At 1440×900 on every page of the build: sidebar at the left edge, 240 px (56 px collapsed); page header 56 px high with the title on the left and the time range picker, refresh control and user menu at the right edge in that order; content padding 24 px; board panel gap 16 px; no other persistent chrome (IA-016, VL-017) |
 | `e2e:rooms-reachable` | The sidebar lists the build's destinations for the user's role (Admin only for administrators) and marks the current page; the collapsed state persists across reload; each destination opens from the sidebar, from `⌘K` and by its `g` chord (IA-021) |
@@ -679,7 +689,7 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 | `bench:long-tasks` | merge once the reference lab ((a), (b)) exists; until then `e2e`'s trace check (§4.3) is the merge gate | §4.3 | yes, once the lab exists; M-UI0 is not complete until it passes |
 | `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
 | `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
-| `bench:inp-rooms` | merge | INP ≤ 200 ms | yes, from M-UI0 |
+| `bench:inp-rooms` | merge once the reference lab ((a), (b)) exists; until then CI's `e2e` Chromium leg runs it report-only (INP, count, slowest interaction) | INP ≤ 200 ms | yes once the lab exists (`INP_GATE=enforce`); until then not blocking |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
@@ -823,4 +833,7 @@ Meta-testing:
 | 1.4-rc | 2026-11-20 | Owner decision D13 (review of #58): T05-002 allows local regression runs, recorded in the PR, as the proof for unit, component and end-to-end gates; CI proof runs only for CI-only gates; report-only benchmarks add a non-red slowdown run; §10 updated to match |
 | 1.5-rc | 2026-11-20 | #59 Part A: §7.1 adds `unit:config-strict` and the BFF integration gates `itest:rls-isolation`, `itest:no-extensions` (both already named by T11) and `itest:migrations`; `ci:migrations` names its failing squawk fixture and the append-only check on pull requests |
 | 1.6-rc | 2026-11-20 | #59 Part B: §7.1 adds `itest:bff-refuses-altered-asset` and `itest:asset-manifest-signature` (named by T18-006, run in `ci:go-test`), `ci:asset-integrity` (binary-level start-up refusal, PR, blocking), `e2e:bff-headers` and `e2e:bff-http-shell`; other gates unchanged |
-| 1.7-rc | 2026-11-20 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures; owner decision 2026-11-21: `ci:no-pulsusdb-host` uses no repository secret and also rejects a bare datasource host |
+| 1.8-rc | 2026-11-20 | #61 Part B: §7.1 adds `e2e:board-edit-save` (BFF, PR); `unit:board-spec` names the client's side, held to the server by `api/fixtures/board-spec/` |
+| 1.7-rc | 2026-11-20 | #61 Part A: §7.1 adds `unit:board-spec`, `itest:board-crud`, `itest:board-prefs` and `itest:audit-append-only` (board subset; named by T06 and T11); `itest:rls-isolation` adds the audit partitions, unreachable as the app role (T11-026) |
+| 1.9-rc | 2026-11-21 | #61 Part C: §4.3 `bench:inp-rooms` scenario is scripted room interactions in Chromium with INP per document from Event Timing (the board room first, #61); §7.1 lab gate row: merge once the reference lab exists, until then report-only in CI's `e2e` Chromium leg, as `bench:long-tasks` (D-INP-interim; T05-006 unchanged); §7.1 adds `e2e:board-prefs` and `e2e:board-sections` (BFF, PR) |
+| 1.10-rc | 2026-11-21 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures; owner decision 2026-11-21: `ci:no-pulsusdb-host` uses no repository secret and also rejects a bare datasource host |

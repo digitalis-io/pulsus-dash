@@ -4,7 +4,7 @@ import { StubApi } from './StubApi';
 
 export type { Api } from './Api';
 export { HttpApi } from './HttpApi';
-export { StubApi, type StubSeed } from './StubApi';
+export { StubApi, type StubBoard, type StubSeed } from './StubApi';
 export * from './types';
 
 export function createApi(mode: 'stub' | 'http' = import.meta.env.VITE_API_MODE ?? 'stub'): Api {

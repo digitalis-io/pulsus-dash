@@ -95,6 +95,10 @@
   --motion-standard: 250ms;
   --radius: 6px;
   --size-avatar: 28px;
+  --size-board-cols: 12px;
+  --size-board-editor: 360px;
+  --size-board-panel-header: 40px;
+  --size-board-row: 40px;
   --size-chart: 240px;
   --size-chart-brush-min: 4px;
   --size-chart-line: 1.5px;

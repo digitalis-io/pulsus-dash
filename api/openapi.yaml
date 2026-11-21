@@ -44,9 +44,117 @@ paths:
         '415': { description: Unsupported media type, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '429': { description: Rate limited, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '500': { description: Internal error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/boards:
+    get:
+      operationId: listBoards
+      tags: [boards]
+      responses:
+        '200': { description: Boards of the organisation, content: { application/json: { schema: { $ref: '#/components/schemas/BoardList' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      operationId: createBoard
+      tags: [boards]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BoardCreate' } } } }
+      responses:
+        '201':
+          description: Board created
+          headers:
+            ETag: { description: Strong entity tag of the board head, schema: { type: string } }
+            Location: { description: URL of the new board, schema: { type: string } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/Board' } } }
+        '400': { description: Invalid board, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '413': { description: Request body too large, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/boards/{uid}:
+    get:
+      operationId: getBoard
+      tags: [boards]
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The board head, headers: { ETag: { description: Strong entity tag of the board head, schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/Board' } } } }
+        '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    put:
+      operationId: updateBoard
+      tags: [boards]
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string } }
+        - { name: If-Match, in: header, required: false, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BoardUpdate' } } } }
+      responses:
+        '200': { description: Saved, or unchanged when the spec equals the head, headers: { ETag: { description: Strong entity tag of the board head, schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BoardSaveResult' } } } }
+        '400': { description: Invalid board or If-Match, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '409': { description: Board changed since it was read, content: { application/json: { schema: { $ref: '#/components/schemas/BoardConflict' } } } }
+        '413': { description: Request body too large, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '428': { description: If-Match is required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      operationId: deleteBoard
+      tags: [boards]
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string } }
+        - { name: If-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '204': { description: Deleted }
+        '400': { description: Invalid If-Match, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '409': { description: Board changed since it was read, content: { application/json: { schema: { $ref: '#/components/schemas/BoardConflict' } } } }
+        '428': { description: If-Match is required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/me/starred-boards:
+    get:
+      operationId: listStarredBoards
+      tags: [boards]
+      responses:
+        '200': { description: Boards starred by the principal, content: { application/json: { schema: { $ref: '#/components/schemas/BoardRefList' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/me/starred-boards/{uid}:
+    put:
+      operationId: starBoard
+      tags: [boards]
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Starred }
+        '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      operationId: unstarBoard
+      tags: [boards]
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Not starred }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/me/recent-boards:
+    get:
+      operationId: listRecentBoards
+      tags: [boards]
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 5 } }
+      responses:
+        '200': { description: Boards the principal viewed, most recent first, content: { application/json: { schema: { $ref: '#/components/schemas/BoardRefList' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/me/recent-boards/{uid}:
+    put:
+      operationId: recordBoardView
+      tags: [boards]
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string } }
+        - name: at
+          in: query
+          required: false
+          description: Navigation time in ms since the Unix epoch. Absent → the server's now().
+          schema: { type: integer, format: int64, minimum: 0, maximum: 253402300799999 }
+      responses:
+        '204': { description: Recorded }
+        '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
   schemas:
-    ErrorCode: { type: string, enum: [scope_denied, budget_exhausted, too_broad, unavailable, invalid, forbidden, virtual_unsupported, not_found, internal] }
+    ErrorCode: { type: string, enum: [scope_denied, budget_exhausted, too_broad, unavailable, invalid, forbidden, virtual_unsupported, not_found, conflict, internal] }
     FieldError: { type: object, additionalProperties: false, required: [pointer, message_key], properties: { pointer: { type: string }, message_key: { type: string } } }
     ErrorBody:
       type: object
@@ -61,7 +169,7 @@ components:
     ErrorEnvelope: { type: object, additionalProperties: false, required: [error], properties: { error: { $ref: '#/components/schemas/ErrorBody' } } }
     Health: { type: object, required: [status], properties: { status: { type: string, enum: [ok] } } }
     Ready: { type: object, required: [status, checks], properties: { status: { type: string, enum: [ready, not_ready] }, checks: { $ref: '#/components/schemas/ReadyChecks' } } }
-    ReadyChecks: { type: object, required: [postgres, schema], properties: { postgres: { type: string, enum: [ok, unreachable] }, schema: { type: string, enum: [ok, behind, ahead, unknown, error, timeout] } } }
+    ReadyChecks: { type: object, required: [postgres, schema, audit_partitions], properties: { postgres: { type: string, enum: [ok, unreachable] }, schema: { type: string, enum: [ok, behind, ahead, unknown, error, timeout] }, audit_partitions: { type: string, enum: [ok, low, error, unknown] } } }
     Version: { type: object, additionalProperties: false, required: [version, commit], properties: { version: { type: string }, commit: { type: string } } }
     Principal:
       type: object
@@ -93,3 +201,61 @@ components:
         default_tenant: { type: string }
         server: { $ref: '#/components/schemas/Version' }
         can_sign_out: { type: boolean }
+    BoardSpec:
+      type: object
+      additionalProperties: false
+      required: [title, panels, sections]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        time: { $ref: '#/components/schemas/TimeRange' }
+        panels: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Panel' } }
+        sections: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/Section' } }
+    TimeRange: { type: object, additionalProperties: false, required: [from, to], properties: { from: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' }, to: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' } } }
+    Section:
+      type: object
+      additionalProperties: false
+      required: [id, title, collapsed, panels]
+      properties:
+        id: { type: string, pattern: '^[a-z0-9-]{1,40}$' }
+        title: { type: string, maxLength: 200 }
+        collapsed: { type: boolean }
+        panels: { type: array, items: { $ref: '#/components/schemas/Panel' } }
+    Panel:
+      type: object
+      additionalProperties: false
+      required: [id, title, grid, query, vis]
+      properties:
+        id: { type: string, pattern: '^[a-z0-9-]{1,40}$' }
+        title: { type: string, maxLength: 200 }
+        grid: { $ref: '#/components/schemas/Grid' }
+        query: { $ref: '#/components/schemas/Query' }
+        vis: { $ref: '#/components/schemas/Vis' }
+    Grid:
+      type: object
+      additionalProperties: false
+      required: [x, y, w, h]
+      properties:
+        x: { type: integer, minimum: 0, maximum: 11 }
+        y: { type: integer, minimum: 0, maximum: 9999 }
+        w: { type: integer, minimum: 1, maximum: 12 }
+        h: { type: integer, minimum: 1, maximum: 100 }
+    Query: { type: object, additionalProperties: false, required: [lang, text], properties: { lang: { type: string, enum: [promql, logql] }, text: { type: string, maxLength: 16384 } } }
+    Vis: { type: object, additionalProperties: false, required: [kind], properties: { kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs] } } }
+    Author: { type: object, additionalProperties: false, required: [kind, name], properties: { kind: { type: string, enum: [local] }, name: { type: string } } }
+    BoardSummary:
+      type: object
+      additionalProperties: false
+      required: [uid, title, version, updated_at, updated_by]
+      properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' } }
+    Board:
+      type: object
+      additionalProperties: false
+      required: [uid, title, version, updated_at, updated_by, etag, schema_version, spec]
+      properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' }, etag: { type: string }, schema_version: { type: integer, format: int64 }, spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } }
+    BoardList: { type: object, additionalProperties: false, required: [items, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardSummary' } }, truncated: { type: boolean } } }
+    BoardCreate: { type: object, additionalProperties: false, required: [spec], properties: { spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
+    BoardUpdate: { type: object, additionalProperties: false, required: [spec], properties: { spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage }, message: { type: string, maxLength: 500 } } }
+    BoardSaveResult: { type: object, additionalProperties: false, required: [board, changed], properties: { board: { $ref: '#/components/schemas/Board' }, changed: { type: boolean } } }
+    BoardConflict: { type: object, additionalProperties: false, required: [error, current], properties: { error: { $ref: '#/components/schemas/ErrorBody' }, current: { $ref: '#/components/schemas/Board' }, submitted: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
+    BoardRef: { type: object, additionalProperties: false, required: [uid, title], properties: { uid: { type: string }, title: { type: string } } }
+    BoardRefList: { type: object, additionalProperties: false, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardRef' } } } }

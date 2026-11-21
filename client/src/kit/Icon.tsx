@@ -15,6 +15,7 @@ export type IconName =
   | 'clock'
   | 'refresh-cw'
   | 'chevron-down'
+  | 'chevron-right'
   | 'sun'
   | 'moon'
   | 'monitor'
@@ -22,7 +23,14 @@ export type IconName =
   | 'log-out'
   | 'link'
   | 'calendar'
-  | 'check';
+  | 'check'
+  | 'plus'
+  | 'maximize-2'
+  | 'ellipsis'
+  | 'move'
+  | 'x'
+  | 'share-2'
+  | 'square-arrow-out-up-right';
 
 const CLASS: Readonly<Record<IconName, string | undefined>> = {
   activity: styles['activity'],
@@ -35,6 +43,7 @@ const CLASS: Readonly<Record<IconName, string | undefined>> = {
   clock: styles['clock'],
   'refresh-cw': styles['refreshCw'],
   'chevron-down': styles['chevronDown'],
+  'chevron-right': styles['chevronRight'],
   sun: styles['sun'],
   moon: styles['moon'],
   monitor: styles['monitor'],
@@ -43,6 +52,13 @@ const CLASS: Readonly<Record<IconName, string | undefined>> = {
   link: styles['link'],
   calendar: styles['calendar'],
   check: styles['check'],
+  plus: styles['plus'],
+  'maximize-2': styles['maximize2'],
+  ellipsis: styles['ellipsis'],
+  move: styles['move'],
+  x: styles['x'],
+  'share-2': styles['share2'],
+  'square-arrow-out-up-right': styles['squareArrowOutUpRight'],
 };
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

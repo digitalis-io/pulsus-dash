@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-20 |
+| **Version** | 1.8-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
@@ -223,6 +223,9 @@ Templates included:
 - `/readyz`: Postgres reachable and the migration level compatible. It MUST NOT check PulsusDB: an
   unreachable PulsusDB must not take the UI down, because users still need alert state, silences,
   alert history and investigations, all of which are in Postgres;
+  *(#61, 2026-11-20)* the body also lists `audit_partitions` (`ok`, `low`, `error`, `unknown`; T11-021).
+  Operators alert on `audit_partitions != ok`. `error` answers 503, which takes replicas out of
+  rotation, because audited saves are failing or about to; `low` stays ready;
 - `/startupz`: true once warm caches are loaded.
 
 ### 4.5 Zero-downtime upgrades & schema migrations
@@ -428,6 +431,11 @@ storyboard and the alerting suite against a recording PulsusDB proxy and asserts
 - **Correlation:** every PulsusDB call is a client span carrying the `X-Pulsus-Query-Id` response
   header as a span attribute, so a slow viewport can be traced to ClickHouse statements (PulsusDB
   writes the id as `log_comment`).
+
+- **Audit partitions (#61):** until the exporter publishes it, the audit partition horizon is
+  observable as the `/readyz` check `audit_partitions` and the error record
+  `audit_partition_horizon_low` (fields `state`, `horizon_months`, `failures`); see T19-006 and
+  [T11](T11-postgres-schema.md) T11-021.
 
 #### T19-018 — Metrics only on the admin port
 **MUST** — The Prometheus `/metrics` endpoint MUST be exposed only on a separate admin port
@@ -686,4 +694,5 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 | 1.4-rc | 2026-11-19 | Review r6 of #56: CDN-mode wording aligned with ADR-0016 (engine WASM is the one executable asset the CDN may serve); detached `asset-manifest.sig` verified with the compiled-in Ed25519 public key; only the manifest and its signature are exempt from listing |
 | 1.5-rc | 2026-11-20 | #59 Part A: T19-010 revised (`*_ref` keys with `env:NAME` or `file:/absolute/path`, `vault://` later; the seeded binding in Postgres, with its credentials reference, is authoritative); §4.9 sources aligned with T06 §4.9 (YAML file, `PULSUS_DASH_<KEY_PATH>`, `config check` connects to nothing); D12: the ENT-028 Helm gate expects the application shell, not a login page |
 | 1.6-rc | 2026-11-20 | #59 Part B: T19-002 names the optional `server.public_url` and its one 2 s self-check request after the listener opens; T19-005: a binary built without embedded assets refuses to serve, and `serve --api-only` is a development-only mode that serves no client ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) unchanged) |
-| 1.7-rc | 2026-11-20 | #59 Part C: the example PulsusDB URLs in §4.4 and §4.9 use the reserved `pulsusdb.example` name, so `ci:no-pulsusdb-host` ([T05](T05-testing-and-performance.md) §7.1) passes on every tracked file |
+| 1.7-rc | 2026-11-20 | #61 Part A: T19-006 `/readyz` lists `audit_partitions`; operators alert on `audit_partitions != ok`, and `error` answers 503; §4.10 names the `audit_partition_horizon_low` record as the observable alert until the self-telemetry exporter publishes the same state (T11-021) |
+| 1.8-rc | 2026-11-21 | #59 Part C: the example PulsusDB URLs in §4.4 and §4.9 use the reserved `pulsusdb.example` name, so `ci:no-pulsusdb-host` ([T05](T05-testing-and-performance.md) §7.1) passes on every tracked file |
