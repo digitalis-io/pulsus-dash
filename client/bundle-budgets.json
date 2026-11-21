@@ -17,7 +17,7 @@
   "budgets": {
     "initialJs": 200000,
     "initialCss": 30000,
-    "lazyChunk": 120000,
+    "lazyChunk": 10000,
     "editorChunk": 175000,
     "fonts": 150000,
     "totalExceptEngine": 1000000
