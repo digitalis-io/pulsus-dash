@@ -44,10 +44,14 @@ export interface CompletionGuard {
 /** One per view: the plugin binds it to its view. */
 export function completionGuard(): CompletionGuard {
   let composing = false;
-  /** The document changed during the current composition. */
+  // The refresh intent of the compositions since the last re-evaluation ran: kept across
+  // consecutive compositions, consumed by the timer of the last one.
+  /** The document changed during a composition. */
   let changed = false;
   /** `compositionstart` closed a popup. */
   let closed = false;
+  /** A result arrived during a composition and was dropped. */
+  let dropped = false;
   const held: ((v: null) => void)[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** Incremented by every `compositionstart`: a re-evaluation runs only for the last one. */
@@ -100,8 +104,6 @@ export function completionGuard(): CompletionGuard {
       eventObservers: {
         compositionstart(_e, view) {
           composing = true;
-          changed = false;
-          closed = false;
           stopTimer();
           gen += 1;
           if (completionStatus(view.state) !== null) {
@@ -111,13 +113,15 @@ export function completionGuard(): CompletionGuard {
         },
         compositionend(_e, view) {
           composing = false;
-          const wasHeld = releaseHeld();
+          if (releaseHeld()) dropped = true;
           stopTimer();
           const g = gen;
           timer = setTimeout(() => {
             timer = null;
             if (g !== gen || composing || bound !== view) return;
-            if (!blocked(view) && (changed || closed || wasHeld)) startCompletion(view);
+            const refresh = changed || closed || dropped;
+            changed = closed = dropped = false;
+            if (refresh && !blocked(view)) startCompletion(view);
           }, REEVALUATE_MS);
         },
       },
