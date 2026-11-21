@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.15-rc · 2026-11-21 |
+| **Version** | 1.17-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -607,11 +607,16 @@ the merge train), nightly (release blocker).
 | `unit:axis-patterns` | Table 5-2 triggers apply per milestone; `origin = User` disables auto; ≤ 2 axes per side auto; "consider stacking" hint |
 | `unit:camera-controller` | Cursor-anchored zoom drift < 1 px over 100 random steps (2D and 3D); inertia settles 300 ± 50 ms, no overshoot, stops on the next input frame |
 | `unit:scene-model` | Scene = tree of viewports with binding, vis, camera/axes, overlays; preserved when moved |
-| `unit:autovis-table` | One fixture per Table 5-13 row → listed vis; milestone restriction; Perspective does not change the rule; Bullet for value + threshold |
+| `unit:autovis-table` | One fixture per Table 5-13 row → listed vis; milestone restriction; Perspective does not change the rule; Bullet for value + threshold. v1 (#63): rows 5, 6, 7, 14 in that order; row 7 only for a scalar or an instant result of one series with one point; the URL `vis` override wins |
+| `unit:explore-plan` | The Explore run planner (#63): one fixture per planner row (bare counter and histogram bucket rewritten to `rate(…[w])` and `sum by (le) (rate(…[w]))` behind the rate chip, `w = max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), with rows where 4 × S and 4 × step set the window, as written with it off, instant for scalar and string types); the 64 KiB limit on the **sent** text in UTF-8 bytes at ±1 byte for both rewrites and multi-byte text; metric types from metadata; the sent-to-source index mapping (T09-009) |
+| `unit:heatmap-buckets` | Prometheus buckets → heatmap counts (#63): per group (labels without `le`) and interval, summed over groups; a missing sample, or a group without a bound, makes the cells it touches missing (single and grouped series), never 0 or a partial sum; per-group clamp; row isolation on the full view's axis from the row's group |
+| `unit:frame-plan` | Every vis × result kind (series, scalar, string) gives a spec and data that `validateFrameData` accepts, or a notice (#63); scalar overrides; heatmap row isolation fills only the row and a second click restores the full view |
+| `unit:series-rows` | The Explore series table rows (#63): last and max ignore NaN; sort by name or value with nulls last in both directions, ties by name then key; the next-sort and isolation toggles |
+| `unit:explore-params` | The `q`, `vis`, `rate` URL keys (#63, IA-022): first value read, invalid `vis` ignored, defaults omitted on write, pairs sorted; a non-canonical search is replaced by the `metrics` route |
 | `unit:number-format` | `2.84 s`, `1.2k rps`, `€38k/h`, `since 12:22 (40 min)`; byte-identical output browser vs native |
 | `unit:colour-hash` | Series colour = f(`key_hash`) stable across charts, sessions and sources; a series with a log-level label in [08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a takes that row's colour in every chart, whatever the other series or their order |
 | `unit:series-cap` | Interim renderer (until #68): 600 series → 500 drawn, `a11y` reports 500 of 600, and the frame shows "Showing 500 of 600 series" ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) |
-| `unit:columns` | Interim renderer: one polyline vertex per CSS px column per series; every raw min and max in a column drawn as a 1-px span per NaN-free run; a NaN, even inside a column, breaks the path ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) |
+| `unit:columns` | Interim renderer: one polyline vertex per CSS px column per series; every raw min and max in a column drawn as a 1-px span per NaN-free run; a NaN, even inside a column, breaks the path; a merged heatmap cell with a missing constituent is missing (#63) ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) |
 | `unit:bucket-scale` | Interim heatmap: buckets placed on their numeric scale (log over ≥ 3 decades, else linear), a separate +Inf band, and every finite bucket, including the first, with a height (e.g. `[0, 5, +Inf]`, `[-5, -1, +Inf]`) |
 | `unit:text-flow-sanitise` | Markdown with `<script>`, `onerror=`, iframes renders as text runs; removal counted |
 | `unit:context-reducer` | Every [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) row; `[` `]` `-` `=` window arithmetic |
@@ -728,7 +733,7 @@ the merge train), nightly (release blocker).
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
 `bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:lens-load`,
-`bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold);
+`bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
 `bench:promql-decode` and `bench:bff-overhead` (#62, `REFERENCE_LAB=1 make bench-bff`: W1, a 1 000 × 1 000
 PulsusDB matrix decoded, gridded and encoded, ≤ 30 ms per 10⁶ points, median of 5; W2, 1 000 sequential
 range requests with a 2 ms upstream, BFF overhead p50 ≤ 5 ms and p99 ≤ 20 ms ([T06](T06-bff-architecture.md)
@@ -739,7 +744,7 @@ and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull
 
 | Lab gate class | Stage | Threshold | Blocking |
 |---|---|---|---|
-| `bench:frame-*` on (a)(b) | merge | T05-007 | yes, from M-UI0 |
+| `bench:frame-*` on (a)(b) | merge | T05-007 | yes, from M-UI0; until #68 the interim Canvas 2D stand-ins `bench:frame-interim-line` and `bench:frame-interim-heatmap` (the M3 heatmap row at 10k × 200 cells) report only on shared CI (T05-006); a PR that changes the interim draw path records a local before/after run, p95 regression ≤ 10 % |
 | `bench:frame-*` on (c) | nightly | T05-007 | release blocker |
 | `bench:input-photon`, `bench:offline-interaction` | merge | §4.3 | yes, from M-UI0 |
 | `bench:long-tasks` | merge once the reference lab ((a), (b)) exists; until then `e2e`'s trace check (§4.3) is the merge gate | §4.3 | yes, once the lab exists; M-UI0 is not complete until it passes |
@@ -898,4 +903,6 @@ Meta-testing:
 | 1.12-rc | 2026-11-21 | #68 Part A: §4.2 decimation references (`golden:decimation-raw` replaces the old every-raw-point wording of `golden:decimation-ref`, which becomes the f64 structural reference) and the image pins in `engine/tools.toml`; §7.1 adds `ci:engine-lint`, the `ci:spec-lint` subset (crate graph, WGSL location, image literals), the `ci:dep-audit` engine leg (`cargo deny`), `unit:columns-parity`, `unit:decimation-batches`, `unit:decimation-tier-parity`, `unit:buffer-lifetime`, `unit:value-encoding`, `unit:segment-clip`, `unit:epoch-adjacency`, `unit:extreme-ticks`, `unit:spike-visible`, `unit:chunk-builder`, `unit:layout-parity`, `unit:manual-axis`, `unit:held-band`, `unit:camera-primitives`, `unit:commit-shape`, `unit:spec-value-range`, `unit:drawn`, `unit:frame-summary-parity`, `unit:synth-parity`, `unit:engine-fixtures`, `golden:decimation-raw` and `golden:extreme-range`; `golden:gallery` includes the engine line pages |
 | 1.13-rc | 2026-11-21 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures; owner decision 2026-11-21: `ci:no-pulsusdb-host` uses no repository secret and needs no host name |
 | 1.14-rc | 2026-11-21 | #62: §7.1 adds `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`, `unit:decode-frames`, `unit:promql-step`, `unit:keyhash-corpus`, `unit:virtual-guard`, `unit:sanitise`, `unit:deadlines`, `unit:body-limits` and `ci:fake-image`; the lab gates `bench:promql-decode` and `bench:bff-overhead` (`REFERENCE_LAB=1`); `bench:cpu-instr` adds the BFF workloads W1 and W2 (cachegrind for Go); `ci:go-lint`'s `ci:depguard` self-test names `pulsusdb-only` and `pulsusdb-decoder` |
-| 1.15-rc | 2026-11-21 | #93: §4.3 chart-gesture scenario |
+| 1.15-rc | 2026-11-21 | #63 Part A: §7.1 adds `unit:explore-plan`, `unit:heatmap-buckets`, `unit:frame-plan`, `unit:series-rows`, `unit:explore-params` and the report-only `bench:frame-interim-heatmap`; `unit:autovis-table` states its v1 rows; `unit:columns` adds the missing merged heatmap cell; the `bench:frame-*` lab-gate row names the interim stand-ins and the before/after rule for interim draw-path changes |
+| 1.16-rc | 2026-11-21 | #63 Part A: `unit:explore-plan` states the rate window `max(4 × step, step + S, 4 × S)` (`S` the scrape interval, default 15 s, per binding later) in place of `4 × step`, with rows where 4 × S and 4 × step set the window |
+| 1.17-rc | 2026-11-21 | #93: §4.3 chart-gesture scenario |

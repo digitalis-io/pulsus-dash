@@ -606,7 +606,7 @@ function drawHeatmap(
   let counts = h.counts;
   let lastEnd: number | undefined;
   if (ts.length > columnCount(plot))
-    ({ ts, counts, endMs: lastEnd } = mergeBuckets(ts, counts, nb, i.window, plot));
+    ({ ts, counts, endMs: lastEnd } = mergeBuckets(ts, counts, nb, i.window, plot, 'missing'));
   let maxCount = 0;
   for (const c of counts) if (c > maxCount) maxCount = c;
   for (let t = 0; t < ts.length; t++) {

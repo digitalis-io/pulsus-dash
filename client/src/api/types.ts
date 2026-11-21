@@ -38,6 +38,16 @@ export interface InstantRequest {
   timeoutMs?: number;
 }
 
+/** The window and selectors of a `/prom/*` metadata read (plan #63 §3.1). */
+export interface PromMatchRequest {
+  readonly fromMs: number;
+  readonly toMs: number;
+  /** Repeated `match`, in order; omitted when empty. */
+  readonly match?: readonly string[];
+  /** 1..10 000; omitted = the BFF's default (1 000). */
+  readonly limit?: number;
+}
+
 export interface Tenant {
   slug: string;
   name: string;

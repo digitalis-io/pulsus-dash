@@ -51,10 +51,12 @@ assets-pack:
 build: client-build assets-pack
 	CGO_ENABLED=0 go -C server build -tags embedassets -trimpath -buildvcs=true -ldflags "-X github.com/digitalis-io/pulsus-dash/server/internal/core.Version=$(VERSION) -X github.com/digitalis-io/pulsus-dash/server/internal/gateway/static.releasePublicKeys=$$(cat $(CURDIR)/build/keys/asset-signing.pub)" -o $(OUT) ./cmd/pulsus-dash
 
-# The two binaries the end-to-end suite serves (client/playwright.config.ts).
+# The binaries the end-to-end suite serves (client/playwright.config.ts): the stub and http BFFs
+# and the PulsusDB fake (tools/e2e/fake.sh).
 e2e-build:
 	$(MAKE) build API_MODE=stub VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-stub/pulsus-dash
 	$(MAKE) build API_MODE=http VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-http/pulsus-dash
+	CGO_ENABLED=0 go -C server build -trimpath -o $(CURDIR)/build/e2e-fake/pulsus-fake ./cmd/pulsus-fake
 
 # Needs make e2e-build and E2E_PG_APP_URL / E2E_PG_OWNER_URL (docs/development/build-and-ci.md).
 e2e:

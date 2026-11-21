@@ -1,0 +1,10 @@
+{
+  "name": "gauge-range",
+  "provenance": {"synthetic": "series table sort: a has the largest max, b the largest last"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "node_memory_free_bytes"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-gauge-range-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"node_memory_free_bytes","instance":"a:9100"},"values":[[1767225600,"1e9"],[1767227400,"3e9"],[1767229200,"1e9"]]},{"metric":{"__name__":"node_memory_free_bytes","instance":"b:9100"},"values":[[1767225600,"2e9"],[1767229200,"2e9"]]},{"metric":{"__name__":"node_memory_free_bytes","instance":"c:9100"},"values":[[1767225600,"1e9"],[1767229200,"5e8"]]}]}}
+  }
+}

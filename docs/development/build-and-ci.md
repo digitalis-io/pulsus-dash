@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:inp-rooms`, `bench:rooms-long-tasks` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
@@ -192,21 +192,33 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     p50 and p95 are written to `test-results/bench-interim-line.json` and added as an annotation.
     There is no threshold. The page is opened without Playwright's fake clock, which replaces the
     User Timing methods.
+  - **`bench:frame-interim-heatmap`** (`e2e/perf-heatmap-draw.spec.ts`, Chromium only, report only
+    until #68, skipped under `E2E_SERVER=preview`): on the Vite dev server (5174) the page imports
+    the engine's `draw.ts`, `palette.ts` and `dev/synth.ts` and draws a 10 000 × 200 heatmap
+    (`synthHeatmap`, seed 20261120, every 97th cell NaN) into a 1 200 × 400 `OffscreenCanvas`: 10
+    warm-up draws, then 50 timed with `performance.now()`. It asserts 50 samples and a heatmap
+    summary, writes p50 and p95 to `test-results/bench-interim-heatmap.json` and adds an
+    annotation. There is no threshold on shared CI. `HEATMAP_BENCH_NAN=0` draws the same fixture
+    without NaN cells. A change to the interim heatmap draw path (`columns.ts`, `draw.ts`) records
+    a local before/after run in its PR: 3 runs each with the base's files and the branch's, with
+    and without NaN cells; the median after-p95 is at most 1.10 × the median before-p95.
 
 ### End-to-end tests
 
-`npm run e2e` (or `make e2e`) starts three servers (`client/playwright.config.ts`):
+`npm run e2e` (or `make e2e`) starts four servers (`client/playwright.config.ts`):
 
 | Server | Command | Used by |
 |---|---|---|
+| PulsusDB fake on `localhost:4190` (first; ready on `/__fake/requests`) | `tools/e2e/fake.sh 4190` | both BFFs' data source; the specs read its request records through `e2e/fake.ts` ([control mode](testing-pulsusdb.md#in-the-e2e-suite-control-mode)) |
 | stub-mode BFF on `localhost:4173` | `tools/e2e/serve.sh stub 4173` | every existing spec (`baseURL`): the stub's seeded boards and tenants, served with the real headers; and `e2e:bff-headers` |
 | http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap`; `e2e:board-edit-save`, `e2e:board-tall` and `e2e:board-sections` (`board-edit.spec.ts`): boards created, laid out, saved and reloaded through the boards API, and collapsed sections, their URL overrides and saved state; `e2e:board-prefs` (`board-prefs.spec.ts`): Starred and Recent across two tabs and a fresh browser context (each test creates its own uniquely named board and deletes it in `finally`) |
 | Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
 
 Before a run:
 
-1. `make e2e-build` builds the two binaries, `build/e2e-stub/pulsus-dash` and
-   `build/e2e-http/pulsus-dash` (version `0.1.0-e2e`), each with its client embedded.
+1. `make e2e-build` builds the two BFF binaries, `build/e2e-stub/pulsus-dash` and
+   `build/e2e-http/pulsus-dash` (version `0.1.0-e2e`), each with its client embedded, and the
+   fake, `build/e2e-fake/pulsus-fake`.
 2. Set `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` to the `pulsus_app` and `pulsus_owner` URLs of a
    `pulsus_e2e` database on any PostgreSQL 15 or 16 where `server/deploy/postgres-roles.sql` has
    been applied (Part C's development stack is one way to get one), for example
@@ -215,9 +227,16 @@ Before a run:
 `tools/e2e/serve.sh MODE PORT` runs from the repository root. It needs the binary (else `run make
 e2e-build first`) and both variables (else `E2E_PG_APP_URL and E2E_PG_OWNER_URL must be set`). It
 sets the `PULSUS_DASH_*` variables (Postgres references to those two variables, datasource
-`http://localhost:9` with slug `demo`, listen `localhost:PORT`, text logs), runs `migrate`
-(idempotent; the two BFFs serialise on its lock), then `serve`. Locally an already running server
-on a port is reused.
+`http://localhost:4190` (the fake) with slug `demo`, listen `localhost:PORT`, text logs), runs
+`migrate` (idempotent; the two BFFs serialise on its lock), then `serve`. Locally an already
+running server on a port is reused. `tools/e2e/fake.sh PORT` needs `build/e2e-fake/pulsus-fake`
+(else `run make e2e-build first`) and serves `client/e2e/transcripts` with `--generate=false
+--control`.
+
+The data-source binding is seeded once, when the database is first migrated. A local e2e database
+seeded before #63 still points at `http://localhost:9`, and the sidebar then reads `Unreachable`:
+drop and recreate it (`DROP DATABASE pulsus_e2e;` then `CREATE DATABASE pulsus_e2e OWNER
+pulsus_owner;`). CI creates `pulsus_e2e` per job.
 
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
@@ -238,7 +257,9 @@ preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. 
   see [the client page](../client/README.md#stubapi).
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
-  shows `Data source: demo · Not checked`; no console errors. Through the dev server, About shows
+  shows `Data source: demo · Connected`, and the fake lists at least one completed
+  `/api/v1/status/runtimeinfo` request answered by the `runtimeinfo` transcript (T06-025); no
+  console errors. Through the dev server, About shows
   the same version.
 
 ## CI
@@ -363,7 +384,7 @@ cgo.
 | Target | What it does | Gate |
 |---|---|---|
 | `make build` | `client-build` (`VITE_API_MODE=$(API_MODE)`, `API_MODE ?= http`, `VITE_GIT_SHA=$(GIT_SHA)`), `assets-pack` (a new signing key in `build/keys/`, then `pack-assets.ts` into `server/internal/gateway/static/dist/`), then `go build -tags embedassets` with the public key into `$(OUT)` (`OUT ?= build/pulsus-dash`); see [Serving the client](../server/README.md#serving-the-client) | build |
-| `make e2e-build` | `make build` twice, `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e` | — |
+| `make e2e-build` | `make build` twice, `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e`; and the PulsusDB fake, `CGO_ENABLED=0 go build -trimpath` of `./cmd/pulsus-fake` into `build/e2e-fake/pulsus-fake` | — |
 | `make e2e` | `npm --prefix client run e2e` | `e2e:*` |
 | `make server-build` | builds `build/pulsus-dash` without the client (`VERSION ?= 0.1.0-dev`); its `serve` refuses to start unless `--api-only` | — |
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |

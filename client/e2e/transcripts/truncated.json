@@ -1,0 +1,10 @@
+{
+  "name": "truncated",
+  "provenance": {"synthetic": "empty result so any narrowed window is valid"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "topk(1000, up)"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-truncated-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[]},"warnings":["results truncated due to limit"]}
+  }
+}
