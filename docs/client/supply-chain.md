@@ -104,9 +104,9 @@ preloaded then). Measured by `npm run size` (brotli, stub build) at the time of 
 
 | Chunk | Brotli bytes | Budget |
 |---|---|---|
-| `BoardGridEditor` (with react-grid-layout, react-draggable, react-resizable) | 18 050 | 120 000 (`lazyChunk`) |
-| `BoardPage` (the board route) | 9 862 | 120 000 (`lazyChunk`) |
-| Initial JS (163 369 before the board pages) | 169 705 | 200 000 (`initialJs`) |
+| `BoardGridEditor` (with react-grid-layout, react-draggable, react-resizable) | 17 991 | 120 000 (`lazyChunk`) |
+| `BoardPage` (the board route) | 9 978 | 120 000 (`lazyChunk`) |
+| Initial JS (163 369 before the board pages) | 169 819 | 200 000 (`initialJs`) |
 
 **Build text.** The production chunk contains two help URLs as plain text, both on
 `buildUrlAllowlist`: react-draggable's `https://github.com/react-grid-layout/react-draggable#noderef`
