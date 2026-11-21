@@ -4,6 +4,11 @@
  * the DOM tooltip, the notices, the summary label and the keyboard crosshair slider. The engine
  * owns scales, marks, picking and the brush gesture. The canvas is created for the frame's lifetime,
  * so a later `transferControlToOffscreen()` (#68) survives StrictMode re-mounts.
+ *
+ * Readiness (#90, ADR-0019): the caller's `pending` shows over the frame until the engine reports,
+ * with `drawn`, a complete draw at the size last applied; every resize, kind change and new frame
+ * resets it. A new `fill` frame is sized at once from the caller's `sizeMemo` (the host's last
+ * non-empty size), so a re-created frame draws in its first animation frame.
  */
 import {
   useContext,
@@ -15,6 +20,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { emptyFrameData, validateFrameData } from '../data/frames';
 import type {
   ChartFrame as EngineFrame,
@@ -60,7 +66,10 @@ interface HoverState {
 
 const px = (n: number): string => `${String(n)}px`;
 
-export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
+/** Diagnostic frame ids (`f1`, `f2`, …): `data-frame-id` and the `chart-draw` measures' `frame`. */
+let frameSeq = 0;
+
+export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
   const tz = useTimeZone();
@@ -87,10 +96,18 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
   const [summary, setSummary] = useState<FrameSummary | null>(null);
   const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
   const [unsupported, setUnsupported] = useState(false);
+  const ownSize = useRef<FrameSize | null>(null);
+  const memo = sizeMemo ?? ownSize;
+  // Drawn at its current size: `pending` hides. The ref skips redundant updates (hover redraws).
+  const [drawn, setDrawn] = useState(false);
+  const drawnRef = useRef(false);
+  const kindRef = useRef(spec.kind);
 
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) return;
+    const id = `f${String(++frameSeq)}`;
+    host.dataset['frameId'] = id;
     const canvas = document.createElement('canvas');
     canvas.className = cx(styles['canvas']);
     canvas.setAttribute('role', 'img');
@@ -102,9 +119,11 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
       frame = engine.createFrame(canvas, {
         timeZone: tz,
         keyTarget: isStat ? null : sliderRef.current,
+        id,
       });
     } catch (e) {
       canvas.remove();
+      delete host.dataset['frameId'];
       if (!(e instanceof ChartUnsupportedError)) throw e;
       // Only trying to create the frame reveals a missing 2D context; the notice follows it.
       queueMicrotask(() => {
@@ -113,6 +132,29 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
       return;
     }
     frameRef.current = frame;
+    let size = { width: 0, height: 0 };
+    let applied = false;
+    /**
+     * `sync`: from the observer, the DPR callback or the engine's frame callback, outside React's
+     * commit, so the change shows before this frame's paint.
+     */
+    const setDrawnTo = (v: boolean, sync: boolean): void => {
+      if (drawnRef.current === v) return;
+      drawnRef.current = v;
+      if (sync) {
+        flushSync(() => {
+          setDrawn(v);
+        });
+      } else {
+        setDrawn(v);
+      }
+    };
+    const resize = (sync: boolean): void => {
+      applied = true;
+      // Setting the canvas size clears it, 0 × 0 included.
+      setDrawnTo(false, sync);
+      frame.resize(size.width, size.height, globalThis.devicePixelRatio);
+    };
     const offs = [
       frame.on('a11y', (s) => {
         setSummary(s);
@@ -132,28 +174,40 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
           to: printTimeExpr({ kind: 'absolute', ms: b.toMs }),
         });
       }),
+      frame.on('drawn', (d) => {
+        // A draw at a superseded size leaves the progress up.
+        if (d.cssWidth !== size.width || d.cssHeight !== size.height) return;
+        // In the engine's frame callback: hides `pending` before this frame's paint.
+        setDrawnTo(true, true);
+      }),
     ];
     const l = latest.current;
     frame.setSpec(l.spec);
     frame.setData(l.frameData);
     frame.setTimeWindow({ fromMs: l.fromMs, toMs: l.toMs });
     frame.setTheme(l.theme);
+    // A new canvas is blank.
+    setDrawnTo(false, false);
+    // A new fill frame takes the host's last size at once, so it draws in its first frame.
+    if (fill && memo.current !== null) {
+      size = memo.current;
+      resize(false);
+    }
 
-    let size = { width: 0, height: 0 };
-    const resize = (): void => {
-      frame.resize(size.width, size.height, globalThis.devicePixelRatio);
-    };
     const ro = new ResizeObserver((entries) => {
       const r = entries[0]?.contentRect;
       if (r === undefined) return;
+      if (r.width > 0 && r.height > 0) memo.current = { width: r.width, height: r.height };
+      // Re-applying an equal size would clear the canvas drawn in this frame.
+      if (applied && r.width === size.width && r.height === size.height) return;
       size = { width: r.width, height: r.height };
-      resize();
+      resize(true);
     });
     ro.observe(host);
     // A DPR change (zoom, another screen) does not resize the host: watch the resolution query.
     let mql: MediaQueryList | null = null;
     const onDpr = (): void => {
-      resize();
+      resize(true);
       watchDpr();
     };
     const watchDpr = (): void => {
@@ -173,12 +227,20 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
       mql?.removeEventListener('change', onDpr);
       frame.dispose();
       canvas.remove();
+      delete host.dataset['frameId'];
       frameRef.current = null;
       canvasRef.current = null;
+      setDrawnTo(false, false);
     };
-  }, [engine, tz, isStat]);
+  }, [engine, tz, isStat, fill, memo]);
 
   useEffect(() => {
+    // A kind change on a kept frame clears its canvas (the engine), so it is not drawn.
+    if (kindRef.current !== spec.kind) {
+      drawnRef.current = false;
+      setDrawn(false);
+    }
+    kindRef.current = spec.kind;
     frameRef.current?.setSpec(spec);
   }, [spec]);
   useEffect(() => {
@@ -284,6 +346,11 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
         <p className={cx(styles['notice'])}>{t('chart.invalid', { reason: issueText(issue) })}</p>
       )}
       {unsupported && <p className={cx(styles['notice'])}>{t('chart.unsupported')}</p>}
+      {pending !== undefined && !drawn && !unsupported && (
+        <div className={cx(styles['pending'])} data-chart-pending="">
+          {pending}
+        </div>
+      )}
     </div>
   );
 }

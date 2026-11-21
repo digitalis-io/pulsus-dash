@@ -147,7 +147,11 @@ describe('component lifecycle', () => {
     const canvases = document.querySelectorAll('canvas[role=img]');
     expect(canvases).toHaveLength(1);
     const slider = screen.getByRole('slider', { name: 'Crosshair: T' });
-    expect(engine.createCalls[0]?.init).toEqual({ timeZone: TZ, keyTarget: slider });
+    expect(engine.createCalls[0]?.init).toEqual({
+      timeZone: TZ,
+      keyTarget: slider,
+      id: expect.stringMatching(/^f\d+$/) as unknown,
+    });
     expect(engine.createCalls[0]?.canvas).toBe(canvases[0]);
     const f = lastFrame(engine);
     expect(f.last('setSpec')).toEqual([LINE]);
