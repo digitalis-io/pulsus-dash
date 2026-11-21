@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-21 |
+| **Version** | 1.7-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -389,9 +389,11 @@ pub struct VisHint { pub primary: VisKind, pub alternatives: SmallVec<[VisKind; 
 
 **v1 (#63).** The Explore metrics page computes the hint on the main thread from the Lezer tree and
 the metric metadata (`client/src/explore/plan.ts`); there is no editor worker yet. Behind the rate
-chip, a bare counter selector is sent as `rate(<sel>[4 × step])` and a bare histogram bucket
-selector as `sum by (le) (rate(<sel>[4 × step]))` (rows 6 and 5); with the chip off the selector is
-sent as written and drawn as a line. A scalar- or string-typed query is sent as an instant query.
+chip, a bare counter selector is sent as `rate(<sel>[w])` and a bare histogram bucket selector as
+`sum by (le) (rate(<sel>[w]))` (rows 6 and 5), with the rate window `w = max(4 × step, step + S,
+4 × S)`: `S` is the scrape interval, 15 s by default until a per-binding value exists, so a window
+always holds at least four scrapes. With the chip off the selector is sent as written and drawn as
+a line. A scalar- or string-typed query is sent as an instant query.
 The result confirms the hint: rows 5, 6, 7 and 14 apply in that order (`client/src/vis/autovis.ts`),
 and row 7 applies only to a scalar or an instant result of one series with one point. The BFF's
 size limit (64 KiB) applies to the **sent** text, rewrite included, and a position in the sent text
@@ -658,3 +660,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
 | 1.6-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
+| 1.7-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
