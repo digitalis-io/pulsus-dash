@@ -5,7 +5,7 @@
  * order and show on hover and focus. `PanelPreview` is the panel editor's live preview (#90).
  */
 import { useQuery } from '@tanstack/react-query';
-import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MenuTrigger, type ButtonProps } from 'react-aria-components';
 import { Link } from 'react-router';
 import { useApi } from '../../app/providers';
@@ -199,124 +199,131 @@ export interface PanelFrameProps {
   className?: string;
 }
 
-export const PanelFrame = forwardRef<HTMLElement, PanelFrameProps>(function PanelFrame(
-  { panel, tenant, mode, readOnly, selected, onEdit, onKeyOp, className },
-  ref,
-) {
-  const headingId = useId();
-  const { search } = useTimeContext();
-  const [full, setFull] = useState(false);
-  const data = usePanelData(tenant, panel);
-  // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
-  const frameSize = useRef<FrameSize | null>(null);
-  const title = panelTitle(panel);
-  const unit = data.data?.kind === 'frame' ? unitText(data.data.spec.unit) : null;
-  const g = panel.grid;
-  const explore = `/t/${tenant}/explore/${panel.query.lang === 'promql' ? 'metrics' : 'logs'}${contextSearchString(search)}&q=${encodeURIComponent(panel.query.text)}`;
+/**
+ * Memoised (#111): a board state change that leaves a panel's props alone (opening the panel
+ * editor, an edit to another panel) does not render it. The page passes stable callbacks, and the
+ * draft keeps the objects of the panels an edit does not touch.
+ */
+export const PanelFrame = memo(
+  forwardRef<HTMLElement, PanelFrameProps>(function PanelFrame(
+    { panel, tenant, mode, readOnly, selected, onEdit, onKeyOp, className },
+    ref,
+  ) {
+    const headingId = useId();
+    const { search } = useTimeContext();
+    const [full, setFull] = useState(false);
+    const data = usePanelData(tenant, panel);
+    // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
+    const frameSize = useRef<FrameSize | null>(null);
+    const title = panelTitle(panel);
+    const unit = data.data?.kind === 'frame' ? unitText(data.data.spec.unit) : null;
+    const g = panel.grid;
+    const explore = `/t/${tenant}/explore/${panel.query.lang === 'promql' ? 'metrics' : 'logs'}${contextSearchString(search)}&q=${encodeURIComponent(panel.query.text)}`;
 
-  const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
-    const op = keyOp(e);
-    if (op === null) {
-      // Other keys (Tab, the board keys) carry on to their handlers.
-      e.continuePropagation();
-      return;
-    }
-    e.preventDefault();
-    onKeyOp(panel.id, op);
-  };
+    const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
+      const op = keyOp(e);
+      if (op === null) {
+        // Other keys (Tab, the board keys) carry on to their handlers.
+        e.continuePropagation();
+        return;
+      }
+      e.preventDefault();
+      onKeyOp(panel.id, op);
+    };
 
-  return (
-    <section
-      ref={ref}
-      className={cx(styles['panel'], className)}
-      aria-labelledby={headingId}
-      data-panel={panel.id}
-      data-grid={[g.x, g.y, g.w, g.h].join(',')}
-      data-vis={panel.vis.kind}
-      data-selected={selected ? '' : undefined}
-    >
-      <div
-        className={cx(styles['panelHeader'])}
-        data-drag-handle={mode === 'edit' ? '' : undefined}
+    return (
+      <section
+        ref={ref}
+        className={cx(styles['panel'], className)}
+        aria-labelledby={headingId}
+        data-panel={panel.id}
+        data-grid={[g.x, g.y, g.w, g.h].join(',')}
+        data-vis={panel.vis.kind}
+        data-selected={selected ? '' : undefined}
       >
-        <div className={cx(styles['titles'])}>
-          <h3
-            id={headingId}
-            className={cx(styles['title'], panel.title === '' ? styles['untitled'] : undefined)}
-            title={title}
-          >
-            {title}
-          </h3>
-          {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
-        </div>
-        <div className={cx(styles['tools'])}>
-          <Link
-            to={explore}
-            className={cx(styles['tool'])}
-            aria-label={t('panel.explore', { title })}
-          >
-            <Icon name="square-arrow-out-up-right" />
-          </Link>
-          <IconButton
-            icon="maximize-2"
-            aria-label={t('panel.fullScreen', { title })}
-            onPress={() => {
-              setFull(true);
-            }}
-          />
-          <MenuTrigger>
-            <IconButton
-              icon="ellipsis"
-              aria-label={t('panel.menu', { title })}
-              data-panel-menu=""
-            />
-            <Popover placement="bottom end">
-              <Menu aria-label={t('panel.menu', { title })}>
-                <MenuItem
-                  id="edit"
-                  onAction={() => {
-                    onEdit(panel.id);
-                  }}
-                >
-                  {t('panel.editPanel')}
-                </MenuItem>
-                <MenuItem
-                  id="copy"
-                  onAction={() => {
-                    // On the gesture (T08-021); a refused clipboard leaves nothing to undo.
-                    navigator.clipboard.writeText(panel.query.text).catch(() => undefined);
-                  }}
-                >
-                  {t('panel.copyQuery')}
-                </MenuItem>
-              </Menu>
-            </Popover>
-          </MenuTrigger>
-          {mode === 'edit' && (
-            <Button
-              variant="ghost"
-              className={cx(styles['tool'])}
-              aria-label={t('panel.layout', { title })}
-              isDisabled={readOnly}
-              onKeyDown={onLayoutKey}
+        <div
+          className={cx(styles['panelHeader'])}
+          data-drag-handle={mode === 'edit' ? '' : undefined}
+        >
+          <div className={cx(styles['titles'])}>
+            <h3
+              id={headingId}
+              className={cx(styles['title'], panel.title === '' ? styles['untitled'] : undefined)}
+              title={title}
             >
-              <Icon name="move" />
-            </Button>
-          )}
+              {title}
+            </h3>
+            {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
+          </div>
+          <div className={cx(styles['tools'])}>
+            <Link
+              to={explore}
+              className={cx(styles['tool'])}
+              aria-label={t('panel.explore', { title })}
+            >
+              <Icon name="square-arrow-out-up-right" />
+            </Link>
+            <IconButton
+              icon="maximize-2"
+              aria-label={t('panel.fullScreen', { title })}
+              onPress={() => {
+                setFull(true);
+              }}
+            />
+            <MenuTrigger>
+              <IconButton
+                icon="ellipsis"
+                aria-label={t('panel.menu', { title })}
+                data-panel-menu=""
+              />
+              <Popover placement="bottom end">
+                <Menu aria-label={t('panel.menu', { title })}>
+                  <MenuItem
+                    id="edit"
+                    onAction={() => {
+                      onEdit(panel.id);
+                    }}
+                  >
+                    {t('panel.editPanel')}
+                  </MenuItem>
+                  <MenuItem
+                    id="copy"
+                    onAction={() => {
+                      // On the gesture (T08-021); a refused clipboard leaves nothing to undo.
+                      navigator.clipboard.writeText(panel.query.text).catch(() => undefined);
+                    }}
+                  >
+                    {t('panel.copyQuery')}
+                  </MenuItem>
+                </Menu>
+              </Popover>
+            </MenuTrigger>
+            {mode === 'edit' && (
+              <Button
+                variant="ghost"
+                className={cx(styles['tool'])}
+                aria-label={t('panel.layout', { title })}
+                isDisabled={readOnly}
+                onKeyDown={onLayoutKey}
+              >
+                <Icon name="move" />
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
-      <div className={cx(styles['body'])}>
-        <PanelBody title={title} data={data.data} isError={data.isError} sizeMemo={frameSize} />
-      </div>
-      <PanelFullScreen
-        isOpen={full}
-        title={title}
-        data={data.data}
-        isError={data.isError}
-        onClose={() => {
-          setFull(false);
-        }}
-      />
-    </section>
-  );
-});
+        <div className={cx(styles['body'])}>
+          <PanelBody title={title} data={data.data} isError={data.isError} sizeMemo={frameSize} />
+        </div>
+        <PanelFullScreen
+          isOpen={full}
+          title={title}
+          data={data.data}
+          isError={data.isError}
+          onClose={() => {
+            setFull(false);
+          }}
+        />
+      </section>
+    );
+  }),
+);

@@ -6,7 +6,16 @@
  * View-mode section overrides live in the URL (`useBoardParams`).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { lazy, Suspense, useEffect, useReducer, useRef, useState } from 'react';
+import {
+  lazy,
+  startTransition,
+  Suspense,
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useBlocker, useLocation, useNavigate } from 'react-router';
 import { useApi, useBoardPrefs } from '../../app/providers';
 import {
@@ -360,19 +369,26 @@ function BoardEditor({
     return f === undefined ? null : fieldMessage(f.messageKey);
   };
 
+  // Stable, so a memoised `PanelFrame` whose panel is unchanged skips the page's renders (#111).
+  // The editor opens in a transition: React renders the dialog in slices that yield to the
+  // browser instead of in one long task after the click (#111, PRF-005).
+  const onEdit = useCallback((id: string) => {
+    startTransition(() => {
+      dispatch({ type: 'enterEdit' });
+      dispatch({ type: 'select', id });
+    });
+  }, []);
+  const onKeyOp = useCallback((id: string, op: LayoutOp) => {
+    dispatch({ type: 'keyOp', id, op });
+  }, []);
   const panelProps = (p: PanelSpec): PanelFrameProps => ({
     panel: p,
     tenant,
     mode: s.mode,
     readOnly: busy,
     selected: edit && s.selected === p.id,
-    onEdit: (id: string) => {
-      dispatch({ type: 'enterEdit' });
-      dispatch({ type: 'select', id });
-    },
-    onKeyOp: (id: string, op: LayoutOp) => {
-      dispatch({ type: 'keyOp', id, op });
-    },
+    onEdit,
+    onKeyOp,
   });
 
   const viewGrid = (panels: readonly PanelSpec[]) => (
@@ -438,7 +454,11 @@ function BoardEditor({
           <BoardToolbar
             mode="view"
             onEdit={() => {
-              dispatch({ type: 'enterEdit' });
+              // In a transition, as the panel editor's opening (#111): the Edit grid replaces the
+              // View grid in slices.
+              startTransition(() => {
+                dispatch({ type: 'enterEdit' });
+              });
             }}
             onPreloadEdit={preloadGridEditor}
           />
