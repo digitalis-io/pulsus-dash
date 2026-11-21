@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/spec"
@@ -565,6 +566,134 @@ func TestRecentEqualTimestamps(t *testing.T) {
 			e.view(t, ctx, rc, uids["A"], &ts)
 			if got := recentNames(t, e, ctx, rc); got != "A,B" {
 				t.Errorf("then A(t): %s, want A,B", got)
+			}
+		})
+	}
+}
+
+// inMilli fails unless the stored viewed_at of every board in names is inside the millisecond of
+// ts: a tie never moves a view into a later millisecond, where it would beat a later navigation.
+func (e *env) inMilli(t *testing.T, uids map[string]string, ts time.Time, label string, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		if v, _ := e.viewedAt(t, uids[name]); v.Before(ts) || !v.Before(ts.Add(time.Millisecond)) {
+			t.Fatalf("%s: %s stored %v, outside [%v, +1 ms)", label, name, v, ts)
+		}
+	}
+}
+
+// Review code c-r1 #1: the tie-break has no limit. More than 1,001 alternating writes of one
+// timestamp still let each later write win, and no stored time leaves the millisecond.
+func TestRecentEqualTimestampsRepeated(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e, ctx, rc, uids := recentEnv(t, c)
+			ts := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
+			const writes = 1205
+			for i := range writes {
+				name, other := "A", "B"
+				if i%2 == 1 {
+					name, other = "B", "A"
+				}
+				e.view(t, ctx, rc, uids[name], &ts)
+				if i == 0 {
+					continue
+				}
+				if got := recentNames(t, e, ctx, rc); got != name+","+other {
+					t.Fatalf("write %d (%s at t): %s, want %s,%s", i+1, name, got, name, other)
+				}
+			}
+			e.inMilli(t, uids, ts, "after the writes", "A", "B")
+			// A genuinely later navigation still wins over the tied pair.
+			next := ts.Add(time.Millisecond)
+			e.view(t, ctx, rc, uids["A"], &next)
+			e.view(t, ctx, rc, uids["B"], &ts)
+			if got := recentNames(t, e, ctx, rc); got != "A,B" {
+				t.Errorf("A(t+1ms), then B(t): %s, want A,B", got)
+			}
+		})
+	}
+}
+
+// waitLockWaiters waits until n sessions wait for an advisory lock in the test database.
+func waitLockWaiters(t *testing.T, e *env, n int64) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for storetest.QueryInt(t, e.db.SuperURL, `SELECT count(*) FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+		WHERE l.locktype = 'advisory' AND NOT l.granted AND d.datname = current_database()`) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("fewer than %d advisory-lock waiters after 30 s", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Review code c-r1 #1: concurrent views of one timestamp. Free-running pairs keep a strict order
+// inside the millisecond past the old limit; views queued on the per-user lock are applied in lock
+// order, so the one that takes the lock last is first.
+func TestRecentEqualTimestampsConcurrent(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e, ctx, rc, uids := recentEnv(t, c)
+			ts := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
+			const rounds = 800 // about 1,200 alternations: past the old limit of 1,000
+			for r := range rounds {
+				start := make(chan struct{})
+				errs := make(chan error, 2)
+				for _, name := range []string{"A", "B"} {
+					go func() {
+						<-start
+						errs <- e.svc.RecordView(ctx, rc, uids[name], &ts)
+					}()
+				}
+				close(start)
+				for range 2 {
+					if err := <-errs; err != nil {
+						t.Fatal(err)
+					}
+				}
+				if r%20 == 19 {
+					e.inMilli(t, uids, ts, fmt.Sprintf("round %d", r+1), "A", "B")
+				}
+			}
+			e.inMilli(t, uids, ts, "after the rounds", "A", "B")
+			va, _ := e.viewedAt(t, uids["A"])
+			vb, _ := e.viewedAt(t, uids["B"])
+			if va.Equal(vb) {
+				t.Errorf("A and B stored the same time %v; want a strict order", va)
+			}
+
+			for _, order := range [][2]string{{"A", "B"}, {"B", "A"}, {"A", "B"}} {
+				holder, err := pgx.Connect(ctx, e.db.SuperURL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				tx, err := holder.Begin(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1::uuid::text || ':' || $2::uuid::text))",
+					uuid.UUID(e.org), core.LocalPrincipalID); err != nil {
+					t.Fatal(err)
+				}
+				errs := make(chan error, 2)
+				for i, name := range order {
+					go func() { errs <- e.svc.RecordView(ctx, rc, uids[name], &ts) }()
+					waitLockWaiters(t, e, int64(i+1))
+				}
+				if err := tx.Commit(ctx); err != nil {
+					t.Fatal(err)
+				}
+				for range 2 {
+					if err := <-errs; err != nil {
+						t.Fatal(err)
+					}
+				}
+				_ = holder.Close(ctx)
+				if got, want := recentNames(t, e, ctx, rc), order[1]+","+order[0]; got != want {
+					t.Errorf("%s then %s queued on the lock: %s, want %s", order[0], order[1], got, want)
+				}
+				e.inMilli(t, uids, ts, "queued", "A", "B")
 			}
 		})
 	}
