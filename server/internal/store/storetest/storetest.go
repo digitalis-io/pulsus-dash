@@ -311,6 +311,31 @@ func Exec(t testing.TB, dsn, sql string, args ...any) {
 	}
 }
 
+// InTx opens a transaction on dsn, runs sql in it and returns the function that commits it and
+// closes the connection; it fails the test on error. Tests use it to hold transaction-scoped locks.
+func InTx(t testing.TB, dsn, sql string, args ...any) (commit func()) {
+	t.Helper()
+	conn, err := pgx.Connect(ctx(t), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	tx, err := conn.Begin(ctx(t))
+	if err == nil {
+		_, err = tx.Exec(ctx(t), sql, args...)
+	}
+	if err != nil {
+		_ = conn.Close(context.Background())
+		t.Fatalf("%s: %v", sql, err)
+	}
+	return func() {
+		t.Helper()
+		defer func() { _ = conn.Close(context.Background()) }()
+		if err := tx.Commit(ctx(t)); err != nil {
+			t.Errorf("commit: %v", err)
+		}
+	}
+}
+
 // ExecCode runs a statement and returns its SQLSTATE, or "" when it succeeds.
 func ExecCode(t testing.TB, dsn, sql string, args ...any) string {
 	t.Helper()

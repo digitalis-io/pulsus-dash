@@ -107,6 +107,24 @@ test.describe('e2e:app-layout', () => {
     }
   });
 
+  test('board panel gap', async ({ page }) => {
+    await open(page, '/t/demo/board/b-1');
+    const box = async (title: string) => {
+      const b = await page
+        .locator('[data-panel]')
+        .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) })
+        .boundingBox();
+      if (b === null) throw new Error(`no panel ${title}`);
+      return b;
+    };
+    const rate = await box('Request rate');
+    const ratio = await box('Error ratio');
+    const errors = await box('Errors');
+    expect(ratio.x - (rate.x + rate.width)).toBeCloseTo(16, 1);
+    expect(errors.y - (rate.y + rate.height)).toBeCloseTo(16, 1);
+    expect(rate.height).toBeCloseTo(8 * 40 + 7 * 16, 1);
+  });
+
   test('the picker opens without overflow', async ({ page }) => {
     await open(page, '/t/demo/boards');
     await openPicker(page);

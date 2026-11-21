@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-21 |
 | **Requirement area** | `PRF` |
 | **Source draft** | plans/09-performance-contract.md (not tracked); mobile targets from T20 (draft) §6 |
 | **Depends on** | [01](01-vision-and-principles.md), [03](03-interaction-model.md), [08](08-visual-language.md), [T04](../technical/T04-wire-format-and-data-plane.md), [T05](../technical/T05-testing-and-performance.md), [T07](../technical/T07-scene-query-planner.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) |
@@ -484,11 +484,13 @@ with that visualisation's p50/p99 in the report.
 
 CI MUST enforce a bundle-size budget per artefact class (initial JS, initial CSS, each lazy route
 chunk, the editor chunk, fonts, the engine; [ADR-0014](../adr/0014-typescript-react-web-client.md) §8)
-with the client-core total of PRF-009, and MUST run Lighthouse with an INP check on the DOM rooms,
-failing when INP exceeds 200 ms.
+with the client-core total of PRF-009. INP MUST be measured with scripted interactions on the DOM
+rooms, per page load; a room above 200 ms fails the reference-lab gate; on shared CI runners the
+check reports a warning until the reference lab exists (#68).
 
 *Acceptance:* A change that pushes the client core to ≥ 3 MB brotli, or an artefact past its own
-budget, or a DOM room's INP above 200 ms, fails CI.
+budget, fails CI. A DOM room whose INP is above 200 ms fails the reference-lab gate (T05-006); until
+the lab exists (#68), CI's shared runners report it as a warning.
 
 #### PRF-034 — Synthetic Lens load
 **MUST** · M-UI2 · Platform, Engineer
@@ -652,3 +654,4 @@ a requestAnimationFrame loop.
 | 1.0-rc2 | 2026-11-18 | #23: PRF-005 verification note (CI browser trace as the merge gate until the reference lab exists) |
 | 1.0-rc3 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): PRF-020 moves M-UI2 → M-UI1 (delivered by #49) |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): PRF-008 (JS shell with sidebar and page header), PRF-009 (client core = initial JS + CSS + engine, ADR-0014 §8), PRF-022 (one canvas per viewport), PRF-033 (budgets per artefact class) and PRF-038 (mobile shell + engine) reworded in place with unchanged numbers; PRF-020 note: virtualised DOM list in M-UI1, else M-UI2 with the GPU log stream (#69); resolution 9 |
+| 1.2-rc | 2026-11-21 | #61 Part C (D-INP-interim; open questions Q4, Q5 of the plan): PRF-033 measures INP with scripted interactions on the DOM rooms, per page load (Event Timing, the data Lighthouse reads); a room above 200 ms fails the reference-lab gate, and shared CI runners report a warning until the lab exists (#68), as T05-006 requires; acceptance revised to match |

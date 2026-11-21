@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-20 |
+| **Version** | 1.5-rc · 2026-11-21 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -368,7 +368,7 @@ reserved keys of T03-011.
 
 The URL is **derived from state**. The TS URL codec encodes the Context, scene and camera into the
 [02 §4](../product/02-information-architecture.md#4-url--state-model) patterns
-(`/t/{tenant}/space/{scene}?e=…&from=…&to=…&cmp=…&f=…&cam=…&persp=…`, `/t/{tenant}/board/{uid}?var-x=…&vp=…`,
+(`/t/{tenant}/space/{scene}?e=…&from=…&to=…&cmp=…&f=…&cam=…&persp=…`, `/t/{tenant}/board/{uid}?var-x=…&f=…&vp=…`,
 `/t/{tenant}/inv/{id}#evidence-{n}`, `/t/{tenant}/incident/{id}`, `/t/{tenant}/alerts/{view}?…`).
 The shell writes `history.pushState` when a `ContextChanged` carries `commit = true` (a committed
 camera move or a committed Context change) and `history.replaceState` otherwise.
@@ -883,3 +883,4 @@ which forces a reload.
 | 1.2-rc | 2026-11-19 | Product text revised to D9 (roadmap Q13 closed): IA-021 row verified by `e2e:rooms-reachable`; §4.5 region focus order; §7.1 first paint and interactive shell are the sidebar, page header and palette |
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §0 topology note; §2 goals, §4.1 artefacts (`dash-shell.wasm`, `dash-rooms-admin.wasm` withdrawn), §4.2 diagram and thread table, T03-003, §4.4 (the TS application owns the state store; the engine holds render-local state), §4.5–§4.6 TS keymap and URL codec, §5.3 marked superseded, §5.5, §6, §7.3, §11 and §12 rewritten; Leptos and the ui↔core rings removed |
 | 1.4-rc | 2026-11-20 | #59 Part B: T03-022 states the header split: every document carries COOP, COEP, CORP and the CSP; every asset carries CORP and `nosniff` (T18-002) |
+| 1.5-rc | 2026-11-21 | #61 Part C: §4.6 the board pattern in the codec list adds `&f=…` (02 §4) |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-21 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
@@ -349,8 +349,13 @@ header) shows the product mark and the org and current tenant; with two or more 
 is a menu of the user's bindings that switches tenant and keeps the time Context, and with one it is
 static text. Below it, the sidebar lists the rooms and workbenches that exist at the milestone and
 that the user's role may open, in groups: Boards; Explore with Metrics and Logs (Traces and Profiles
-when they exist); Starred, the user's starred boards; Recent, the last five boards visited (kept
-locally); and Alerts and Investigations when they exist. Its footer holds Admin, for administrators
+when they exist); Starred, the user's starred boards; Recent, the last five boards the user opened,
+newest first; and Alerts and Investigations when they exist. Starred and Recent are stored per user
+by the server, so they are the same after reload, in every browser and under every tenant. Recent
+follows navigation order within one app instance (stamps are monotonic per app); across browsers or
+app instances the order is best effort and subject to clock skew; ties on an equal timestamp are
+broken by the later write; clamped views use the server transaction start time (`now()`), best
+effort. Its footer holds Admin, for administrators
 only, the collapse control and, once a data-source health call exists, a data-source status line.
 The current page MUST be marked. The sidebar MUST collapse to an icon rail, and its state MUST
 persist per user. Every sidebar destination MUST also be reachable from the command palette and by
@@ -361,9 +366,10 @@ its `g` chord (`g b` Boards, `g m` Metrics, `g l` Logs; the full set is in
 Boards, Explore → Metrics and Logs, Starred and Recent (each with its empty text when empty), and,
 for an administrator only, Admin; with two tenant bindings, choosing the other tenant opens its
 Boards with the same time range, and with one binding the block is not a control; starring a board
-adds it to Starred and opening it adds it to the front of Recent; the current page is marked;
-collapsing the sidebar to the icon rail persists after reload; each destination opens from the
-sidebar, from `⌘K` and by its `g` chord.
+adds it to Starred and opening it adds it to the front of Recent; a board starred and opened in one
+browser appears in Starred and Recent in a fresh browser profile of the same user; the current page
+is marked; collapsing the sidebar to the icon rail persists after reload; each destination opens
+from the sidebar, from `⌘K` and by its `g` chord.
 
 #### IA-028 — Time Ribbon in Space scenes
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -386,13 +392,17 @@ Every view is deep-linkable and reproducible. The URL encodes Context + scene + 
 | `/t/{tenant}/space/{scene}?e={entityRef,...}&from=…&to=…&cmp=-7d&f={filters}&cam={compact camera}&persp={perspective}` | A Space scene (Atlas, Lens, Edge Lens) with Context and camera |
 | `/t/{tenant}/explore/{signal}?q={queries}&from=…&to=…&f={filters}` | An Explore workbench, `signal` = `metrics` \| `logs` (later `traces` \| `profiles`), with its queries and Context |
 | `/t/{tenant}/boards` | The Boards list |
-| `/t/{tenant}/board/{boardUid}?var-x=…&from=…&to=…&vp={focusedViewport}` | A Board with variables, time and focused viewport |
+| `/t/{tenant}/board/{boardUid}?var-x=…&f={filters}&collapse={sectionId}&expand={sectionId}&from=…&to=…&vp={focusedViewport}` | A Board with variables, filters, View-mode section state, time and focused viewport |
 | `/t/{tenant}/inv/{investigationId}#evidence-{n}` | An Investigation, scrolled to evidence item n |
 | `/t/{tenant}/incident/{incidentId}` | The Alert Lens (RCA card) for the incident |
 | `/t/{tenant}/alerts/{view}?…` | The Alerts room, `view` = `map` \| `topology` \| `city` \| `infra` \| `segments` \| `list` \| `timeline` |
 
 `persp` is present only when the sender pinned a Perspective ([01a](01a-audiences-and-perspectives.md)
 AUD-048).
+
+On the board pattern, `f` is repeated, one `label=value` equality filter per parameter (at most 20);
+`var-<name>` carries one value; `collapse` and `expand` are repeated View-mode overrides of a
+section's saved collapsed state. The board link's path and search stay within 4 096 bytes.
 
 #### IA-022 — Deep links reproduce the view
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -530,3 +540,4 @@ changes the translation on the next pivot.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §4 adds the Explore and Boards-list routes; §3.1 becomes the application layout with mockup 34; IA-016 (application layout), IA-020 (time range in the page header) and IA-021 (left navigation sidebar) revised in place; IA-028 Time Ribbon in Space scenes added (M-UI3); IA-003, IA-014 and the Scene definition no longer make Boards and workbenches GPU scenes; IA-018 Context badge sits in the page header; review r3: third-party product names replaced by generic wording |
 | 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19, mockup 35): §3.1 cites mockup 35 and its table and diagram show the tenant switcher, the Starred and Recent groups, the breadcrumb and star toggle; IA-021 revised in place (org and tenant switcher, Starred, Recent, Admin and the collapse control in the footer, a data-source status line once a health call exists); IA-016 header left is breadcrumb, title and star toggle, and the command palette entry appears once the palette exists; acceptance criteria extended to match |
+| 1.3-rc | 2026-11-21 | #61 Part C: IA-021 revised in place: Recent is the last five boards the user opened, and Starred and Recent are stored per user by the server (the same after reload, in every browser and under every tenant), with the ordering guarantee of decision D-RECENT-window; its acceptance adds a fresh browser profile. §4 board pattern adds `f`, `collapse` and `expand`, with a note on their form and the 4 096-byte link budget |

@@ -159,7 +159,10 @@ type ResultStream struct {
 // newRangeStream returns the range stream of src on grid g; src has read up to the first series.
 func newRangeStream(ctx context.Context, src seriesSource, resp *response, lim Limits, comp *compBuilder, g Grid) *ResultStream {
 	rs := &ResultStream{ctx: ctx, src: src, resp: resp, lim: lim, comp: comp, stream: true, grid: g, typ: ResultMatrix}
-	rs.ts = make([]int64, g.points())
+	n := g.points()
+	rs.ts = make([]int64, n)
+	// The source's buffer holds at most one point per grid point of a valid series.
+	rs.raw.T, rs.raw.V = make([]int64, 0, n), make([]float64, 0, n)
 	for i := range rs.ts {
 		rs.ts[i] = g.Start + int64(i)*g.Step
 	}

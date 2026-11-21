@@ -488,17 +488,41 @@ func (q *Queries) UpsertAuditChainHead(ctx context.Context, arg UpsertAuditChain
 }
 
 const upsertRecent = `-- name: UpsertRecent :exec
-INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at) VALUES ($1, $2, 'board', $3, now())
-ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = excluded.viewed_at
+WITH c AS (SELECT LEAST(GREATEST(COALESCE($4::timestamptz, now()), now() - interval '1 day'), now() + interval '5 minutes') AS v),
+m AS (SELECT c.v, date_trunc('milliseconds', c.v) AS lo FROM c),
+t AS (SELECT r.id, row_number() OVER (ORDER BY r.viewed_at DESC, r.id DESC) AS k FROM recent_views r, m
+  WHERE r.org_id = $1 AND r.user_id = $2 AND r.kind = 'board' AND r.id <> $3
+  AND r.viewed_at >= m.lo AND r.viewed_at < m.lo + interval '1 millisecond'),
+renumbered AS (UPDATE recent_views r SET viewed_at = m.lo + (999 - t.k) * interval '1 microsecond' FROM t, m
+  WHERE r.org_id = $1 AND r.user_id = $2 AND r.kind = 'board' AND r.id = t.id)
+INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at)
+SELECT $1, $2, 'board', $3,
+  CASE WHEN EXISTS (SELECT 1 FROM t) THEN m.lo + interval '999 microseconds' ELSE m.v END FROM m
+ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = GREATEST(recent_views.viewed_at, excluded.viewed_at)
 `
 
 type UpsertRecentParams struct {
 	OrgID  pgtype.UUID
 	UserID pgtype.UUID
 	ID     pgtype.UUID
+	At     pgtype.Timestamptz
 }
 
+// viewed_at is the client's navigation time clamped to [now() - 1 day, now() + 5 minutes], or now()
+// (transaction start, not commit order, for nil and clamped stamps); the greater stored time wins,
+// so within one app instance (monotonic stamps) a view inside the window that commits late never
+// moves a board above a later in-window view. Clamped views order by transaction start, best
+// effort; across app instances the order is best effort (clock skew) (D-RECENT-window).
+// Tie: the user's other rows in v's millisecond m are renumbered, in their order, to m + 998 µs,
+// m + 997 µs, …, and v becomes m + 999 µs, so the later write (the later holder of the per-user
+// advisory lock) sorts first. A tie never leaves m and never runs out: the trim keeps at most
+// 201 rows per user, fewer than the 999 slots below m + 999 µs.
 func (q *Queries) UpsertRecent(ctx context.Context, arg UpsertRecentParams) error {
-	_, err := q.db.Exec(ctx, upsertRecent, arg.OrgID, arg.UserID, arg.ID)
+	_, err := q.db.Exec(ctx, upsertRecent,
+		arg.OrgID,
+		arg.UserID,
+		arg.ID,
+		arg.At,
+	)
 	return err
 }

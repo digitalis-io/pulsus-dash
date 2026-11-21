@@ -69,7 +69,8 @@ decoder its `Content-Type` selects (`formatOf`; JSON is the only one today, any 
 environment. The secret must be `user:password` with a non-empty user, and the password must be
 **at least 8 bytes and not a number**: neither it nor its space-trimmed form may parse with Go's
 `strconv.ParseFloat`, which covers signs, decimals, exponents, hex floats, `Inf`, `NaN` and
-underscores (`core.WeakPassword`). A credential that is missing, malformed or weak is refused
+underscores. A number outside the float64 range (`1e999`, which ParseFloat answers with `ErrRange`)
+counts as a number too (`core.WeakPassword`). A credential that is missing, malformed or weak is refused
 before any request: 503 `unavailable` with `hint.reason: datasource_config`, and one log record
 `msg=pulsusdb_credentials_weak tenant=<slug>` without the value.
 
