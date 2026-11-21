@@ -227,20 +227,39 @@ evaluated at its own time. Otherwise points take their bucket's value. Range fun
 to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes.
 
 `resolve` is pipeline step 1b. Its `sig` comes from step 1a (Classify), which reads only the binding
-and the query's source kind; for a virtual source, `sig.min_step` carries the virtual floor (below).
-Step 2 (Bind) passes the resulting `step` to the language module's `Plan`. So:
+and the query's source kind: `sig.source` is the source it found (`PulsusDb` or `Virtual`), and for
+a virtual source `sig.min_step` carries the virtual floor (below).
+Step 2 (Bind) passes the resulting `step` to the language module's `Plan`. Resolution depends on the
+source that Classify found:
+
+- **PulsusDB source:** predict the rollup level from the range (table above), then
+  `step = max(rollup-derived step, sig.min_step)`.
+- **Virtual source:** no rollup prediction at all; a virtual source has no rollup level.
+  `step = max(base step from range, width and pass, virtual floor)`.
+- **Mixed scenes:** each logical query resolves its own step from its own source. A PulsusDB
+  viewport and a virtual viewport in the same scene can therefore get different steps for the same
+  window.
+
+So:
 
 ```rust
 pub fn resolve(range: TimeRange, px: u32, pass: Pass, sig: &SignalCaps, roll: &RollupTable) -> Resolved {
     let px_per_point = match pass { Pass::Coarse => 4.0, _ => 1.0 };        // PRF-027: coarse ≈ width/4
     let raw_step     = range.len() / (px as f64 / px_per_point);            // CSS px, not device px
-    let level        = roll.predict(range.len());                           // table above; None = raw
-    let floor        = level.map(|l| l.width).unwrap_or(sig.min_step);      // scrape interval, 5 s logs, 10 s patterns
+    let level        = match sig.source {                                   // from step 1a (Classify)
+        Source::Virtual  => None,                                           // virtual sources have no rollup level
+        Source::PulsusDb => roll.predict(range.len()),                      // table above; None = raw
+    };
+    let floor        = level.map_or(sig.min_step, |l| l.width.max(sig.min_step)); // scrape interval, 5 s logs, 10 s patterns, virtual floor
     let step         = NICE.ceil_multiple_of(raw_step.max(floor), floor);   // ladder below, multiple of floor
     let step         = step.max(range.len() / sig.max_intervals);           // 11 000 PromQL/LogQL, 10 000 TraceQL metrics
     let start        = range.start.floor_to(step);                          // grid alignment: PulsusDB read cache + our tiles
     let end          = range.end.ceil_to(step);
-    Resolved { start, end, step, level, exactness: predict_exactness(level, &expr_fns) } // v1: predict_exactness(level), §0
+    let exactness    = match sig.source {
+        Source::Virtual  => Exactness::Virtual,
+        Source::PulsusDb => predict_exactness(level, &expr_fns),            // v1: predict_exactness(level), §0
+    };
+    Resolved { start, end, step, level, exactness }
 }
 // NICE = 1s 2s 5s 10s 15s 30s 1m 2m 5m 10m 12m 15m 30m 1h 2h 3h 6h 12h 1d 2d 7d
 ```
@@ -253,13 +272,19 @@ Examples (1 600 CSS-px viewport, fine pass):
 | 6 h | 13.5 s | 60 s | 60 s | 360 |
 | 2 d | 108 s | 720 s | 12 m | 240 |
 | 30 d | 27 min | 7200 s | 2 h | 360 |
+| 6 h, `pulsus_anomaly_score` (virtual) | 13.5 s | none (a PulsusDB query would read 60 s) | 5 m (virtual floor 300 s) | 72 |
+
+The last row is the case where the rollup width a PulsusDB query would get (60 s at 6 h) is below
+the virtual floor (300 s). The virtual source skips rollup prediction, so the 60 s width never
+applies: the step is `max(13.5 s, 300 s)` = 300 s, already on the `NICE` ladder (5 m).
 
 For PRF-027's example (1 200 px, 1 h, coarse), `raw_step` = 12 s, raised to the 15 s scrape floor:
 within the ±1 level tolerance of the acceptance.
 
 #### T07-003 — Step from pixels, aligned to the level grid
 **MUST** — The coarse pass (P2) MUST use a step of about range / (CSS px / 4) and the fine pass (P3)
-about range / CSS px, each raised to the predicted level width (or the signal floor), rounded up to
+about range / CSS px, each raised to the larger of the predicted level width and the signal floor
+(a virtual source has no level and uses its virtual floor alone), rounded up to
 the `NICE` ladder as a multiple of that floor, and raised further to respect the signal's interval
 cap. `start` MUST be floored and `end` ceiled to the step.
 
@@ -1061,3 +1086,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): PromQL is parsed in `internal/pulsusdb/prom` for the planning shape only (§0 table); v1 queries are opaque except for ADR-0021's closed list of planning rewrites, and `LogicalKey` hashes the planned text; new §0 row "Planning rewrites"; §4.1 Bind substitutes through the language module's `Plan`; T07-002 revised; open question 10 |
 | 1.5-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: §4.1 pipeline runs Resolve before Bind, so `Plan` gets the width-dependent step, and Lower keys the planned text (classification is now step 3); `unit:planner-opaque-key` compares the upstream query with the planned text |
 | 1.5-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: §4.1 step 1 splits into 1a Classify (source and signal from the binding and the source kind: `SignalCaps` and the virtual-source floor, 15 s alerts, 300 s anomaly scores) and 1b Resolve (step from range, width, pass and that floor), so Bind calls `Plan` with the final step; §4.3 `resolve` and the virtual-source floor reference the stages |
+| 1.5-rc | 2026-11-21 | Design review r3 of the ADR-0021 PR: §4.3 `resolve` branches on the source from Classify: a PulsusDB source predicts the rollup level and takes `max(level width, sig.min_step)`; a virtual source skips rollup prediction and takes `max(base step, virtual floor)`, with `Exactness::Virtual`; in a mixed scene each logical query resolves its own step; worked case 6 h anomaly score gives 300 s, not 60 s; T07-003 wording aligned |
