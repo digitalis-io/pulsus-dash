@@ -24,6 +24,8 @@ import {
   vAt,
   winOf,
   at,
+  lineData,
+  measuredX,
 } from '../../test/cameraKit';
 
 describe('camera', () => {
@@ -330,6 +332,57 @@ describe('camera', () => {
     expect(h.commit).toEqual([]);
     expect(h.brush).toEqual([]);
   });
+
+  // Code review r1 #2: a page scroll that passes over a plot keeps scrolling there, even while
+  // the chart's own wheel gesture has not yet committed (Appendix A §A.10).
+  it('scroll latch during a pending wheel gesture', () => {
+    let pageAt = -Infinity;
+    const h = setup({ latch: { lastPageWheel: () => pageAt } });
+    const s0 = last(h);
+    const p = at(s0, 0.5);
+    const t = 10_000;
+    const first = wheel(h.canvas, p.x, p.y, { deltaY: -100, timeStamp: t });
+    h.flush();
+    expect(first.defaultPrevented).toBe(true);
+    const zoomed = last(h);
+    // The pointer leaves the plot and the page scrolls (a wheel no chart consumed) …
+    h.advance(50);
+    pageAt = t + 50;
+    // … and comes back over the plot within the idle period and the latch.
+    h.advance(50);
+    const back = wheel(h.canvas, p.x, p.y, { deltaY: -100, timeStamp: t + 100 });
+    h.flush();
+    expect(back.defaultPrevented).toBe(false);
+    expect(last(h)).toEqual(zoomed);
+    h.advance(300);
+    expect(h.commit).toHaveLength(1);
+  });
+
+  // Code review r1 #3: a cancelled press releases the band hold, so measured labels return.
+  it.each(['Escape', 'pointercancel', 'lostpointercapture'] as const)(
+    'a cancelled press releases the band (%s)',
+    (how) => {
+      const target = document.createElement('div');
+      const h = setup({ keyTarget: target });
+      const s0 = last(h);
+      const p = at(s0, 0.5);
+      pointer(h.canvas, 'pointerdown', p.x, p.y, { buttons: 1 });
+      pointer(h.canvas, 'pointermove', p.x + 150, p.y, { buttons: 1 });
+      h.flush();
+      // New data whose measured band is wider: kept out by the hold while the press runs.
+      const small = lineData(0, 2e-5);
+      h.frame.setData(small);
+      h.flush();
+      expect(last(h).plot.x).toBe(s0.plot.x);
+      if (how === 'Escape') key(target, 'Escape');
+      else h.canvas.dispatchEvent(new PointerEvent(how, { pointerId: 1 }));
+      h.flush();
+      const s = last(h);
+      expect(winOf(s)).toEqual(winOf(s0));
+      expect(s.plot.x).toBe(measuredX(LINE, small, winOf(s0), null));
+      expect(s.plot.x).toBeGreaterThan(s0.plot.x);
+    },
+  );
 
   it('Escape and pointercancel cancel a press', () => {
     const target = document.createElement('div');

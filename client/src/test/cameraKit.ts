@@ -133,13 +133,26 @@ export function tickValues(s: FrameSummary, l: readonly Label[]): number[] {
 }
 
 /** The label the hold draws for `t`: full when it fits `band`, else compact, else chipped whole. */
-export function heldText(t: number, unit: Unit, band: number): { text: string; chip: boolean } {
+export function heldText(
+  t: number,
+  unit: Unit,
+  band: number,
+  plotWidth = Infinity,
+): { text: string; chip: boolean } {
   const full = formatValue(t, unit);
   if (CHAR_WIDTH * full.length <= band) return { text: full, chip: false };
   const compact = formatCompact(t, unit);
   if (CHAR_WIDTH * compact.length <= band) return { text: compact, chip: false };
-  return { text: full, chip: true };
+  // A chip holds the label and 4 px of padding a side inside the plot: the full form when it fits,
+  // else the compact one, else the narrower of the two.
+  const room = plotWidth - 2 * CHIP_PAD;
+  if (CHAR_WIDTH * full.length <= room) return { text: full, chip: true };
+  if (CHAR_WIDTH * compact.length <= room) return { text: compact, chip: true };
+  return { text: compact.length < full.length ? compact : full, chip: true };
 }
+
+/** The chip's padding a side (`space.1`). */
+export const CHIP_PAD = 4;
 
 /** Clears the layer ops, runs `act`, flushes; returns the summary and the drawn value labels. */
 export function step(h: Harness, act: () => void): { s: FrameSummary; l: Label[] } {

@@ -28,6 +28,7 @@ import {
   winOf,
   labels,
   tickValues,
+  CHIP_PAD,
   heldText,
   step,
   measuredX,
@@ -393,7 +394,7 @@ describe('camera', () => {
       expect(Math.abs(yOf(s, va) - p.y)).toBeLessThan(1);
       const ticks = tickValues(s, l);
       l.forEach((x, k) => {
-        const want = heldText(ticks[k] ?? NaN, NONE, band);
+        const want = heldText(ticks[k] ?? NaN, NONE, band, s.plot.width);
         expect(x.text).toBe(want.text);
         expect(x.chip).toBe(want.chip);
         if (want.chip) {
@@ -452,5 +453,64 @@ describe('camera', () => {
     expect(idle.s.plot.x).toBe(measuredX(LINE, data, winOf(idle.s), null));
     expect(idle.s.plot.x).toBeGreaterThan(s0.plot.x);
     expect(idle.l.every((x) => !x.chip && x.right <= idle.s.plot.x)).toBe(true);
+  });
+  // Code review r1 #1: a chip on a narrow plot stays whole inside it, the plot unmoved.
+  describe('non-fitting label on a narrow plot', () => {
+    /** 126 px wide: a 64 px plot, too narrow for `15000000P` (63 px and its padding). */
+    const NARROW = [126, 240] as const;
+    const inside = (x: Label, s: FrameSummary): void => {
+      expect(x.chip).toBe(true);
+      expect(x.left - CHIP_PAD).toBeGreaterThanOrEqual(s.plot.x);
+      expect(x.right + CHIP_PAD).toBeLessThanOrEqual(s.plot.x + s.plot.width);
+    };
+
+    it('during a Y zoom', () => {
+      const h = setup({ size: NARROW });
+      const s0 = last(h);
+      expect(s0.plot.width).toBe(64);
+      const band = s0.plot.x - GAP_X;
+      const p = at(s0, 0.5, 0.9);
+      const frames: { s: FrameSummary; l: Label[] }[] = [];
+      let narrowed = 0;
+      for (let i = 0; i < 200 && narrowed === 0; i++) {
+        const f = step(h, () => {
+          wheel(h.canvas, p.x, p.y, { deltaY: 1000, shiftKey: true });
+        });
+        frames.push(f);
+        const ticks = f.l.length > 1 ? tickValues(f.s, f.l) : [];
+        narrowed += f.l.filter(
+          (x, k) => x.chip && CHAR_WIDTH * formatValue(ticks[k] ?? NaN, NONE).length + 8 > 64,
+        ).length;
+      }
+      // Some chipped tick's full form is wider than the plot.
+      expect(narrowed).toBeGreaterThan(0);
+      for (const { s, l } of frames) {
+        expect(s.plot).toEqual(s0.plot);
+        const ticks = tickValues(s, l);
+        l.forEach((x, k) => {
+          const want = heldText(ticks[k] ?? NaN, NONE, band, s.plot.width);
+          expect(x.text).toBe(want.text);
+          if (want.chip) inside(x, s);
+        });
+      }
+    });
+
+    it('after the refetch', () => {
+      const h = setup({ size: NARROW });
+      const s0 = last(h);
+      const p = at(s0, 0.3);
+      for (let i = 0; i < 4; i++) wheel(h.canvas, p.x, p.y, { deltaY: -300 });
+      h.flush();
+      h.advance(300);
+      const c = present(h.commit[0]?.window, 'commit');
+      h.frame.setTimeWindow(c);
+      const r = step(h, () => {
+        h.frame.setData(lineData(0, 2e22));
+      });
+      expect(r.s.plot).toEqual(s0.plot);
+      const chips = r.l.filter((x) => x.chip);
+      expect(chips.map((x) => x.text)).toEqual(['1.5e+22']);
+      for (const x of chips) inside(x, r.s);
+    });
   });
 });
