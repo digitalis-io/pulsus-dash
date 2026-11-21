@@ -451,8 +451,8 @@ order. A value is `[ts, line]` or `[ts, line, <third>]`: an object third element
 categorised entry (its `structuredMetadata` and `parsed` members must be string maps, each at most
 once; other members are skipped), and any other third element is skipped. `ts` must be a decimal
 string without a leading zero that fits in int64. Lines, labels, metadata and parsed fields are
-redacted; label, metadata and parsed names and values are cut at 4 096 bytes, and metadata and
-parsed fields count towards the 64 MiB page bound pair by pair, so the decode stops at the pair
+redacted; label, metadata and parsed names and values are cut at 4 096 bytes, and stream labels,
+metadata and parsed fields count towards the 64 MiB page bound pair by pair, so the decode stops at the pair
 that crosses it. Stream objects with the same label set are merged. A page lists only the streams
 it delivers, by key ascending.
 
