@@ -204,8 +204,9 @@ The generated token files and tests are not linted.
 ## Keyboard coverage
 
 `e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L28) through
-`e2e/keyboardCoverage.ts`; ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in
-that file. After every keystroke the harness collects each interactive control (links, buttons,
+`e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
+text, `drain`, `shellAfter`) and the board loops L23–L28 in `e2e/keyboardBoards.ts`, run inside the
+one test. ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in all three files. After every keystroke the harness collects each interactive control (links, buttons,
 fields, menu items, options; a grid counts as one control) from the accessibility snapshot, keyed by
 state: the route pattern plus the open overlay (with an overlay open, only the overlay is read).
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
@@ -220,7 +221,8 @@ the panel tools, Share, the layout buttons, the panel editor and its selects, th
 conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
-Space for checkboxes; End then Escape for sliders; End for text fields), until none is left. An
+Space for checkboxes; End then Escape for sliders; End for text fields), until none is left; when
+an operation opens a dialog, menu or list box, that overlay is drained next (two levels deep). An
 action that adds sidebar or table links (create, rename) is followed in the same page session by
 `shellAfter`, which operates each new link. Two names are normalised: the time range trigger is one control whatever range
 it shows, and the calendar grid one control whatever month. React Aria's screen-reader-only buttons
