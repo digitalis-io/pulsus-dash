@@ -323,12 +323,14 @@ The private PulsusDB host must never appear in a tracked file
 ([T19-010](../../designs/technical/T19-deployment.md)). The real base URL lives only in the
 untracked `dev/local.env` ([dev stack page](dev-stack.md#devlocalenv)).
 `tools/no-pulsusdb-host/check.py` (Python standard library only) enforces this on every pull
-request.
+request. It needs no host name: CI rejects any non-local host containing `pulsusdb`, and any
+non-local datasource value, with or without a scheme. No host name is stored in the repository or
+in its secrets.
 
 ```bash
 make no-pulsusdb-host                      # self-test, then scan every tracked file
 make no-pulsusdb-host ARGS=--show-paths    # the same, naming the files (local only)
-python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]
+python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
 ```
 
 By default it scans every file `git ls-files` lists; nothing is excluded. `--root DIR` scans a
@@ -339,15 +341,26 @@ target path, which is what Git stores.
 
 | Rule | Applies to | Finds |
 |---|---|---|
-| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word) |
-| `forbidden-host-in-path` | every file | a forbidden host in the file's path |
-| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | an `http` or `https` URL whose host is not local and either contains `pulsusdb`, or is the value of a PulsusDB datasource key: YAML `url:` directly under a `datasource:` key; `datasource.url`; `PULSUS_DASH_DATASOURCE_URL`; `datasource_url` or `DatasourceURL`, followed by `:` or `=` |
+| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word); local runs only |
+| `forbidden-host-in-path` | every file | a forbidden host in the file's path; local runs only |
+| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | a non-local host that is either (a) the host of an `http` or `https` URL containing `pulsusdb`, or (b) the value of a PulsusDB datasource key, see below |
 
-**Forbidden hosts** are the entries of `DASH_FORBIDDEN_HOSTS`: comma- or newline-separated,
-trimmed, lower-cased, numbered from 1. An entry written as a URL is reduced to its host. If
-`PULSUS_DASH_DATASOURCE_URL` is set and its host is not local, that host is added as the last
-entry. `make no-pulsusdb-host` loads `dev/local.env` first, so a local run also forbids your real
-host.
+A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
+`PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
+Its value is caught either as an `http` or `https` URL, or as a bare host without a scheme:
+`<host>[:<port>]` where the host has at least one dot or a port is given, followed by a space, a
+quote, `/`, `#`, `,` or the end of the line (for example `db.corp.net:3100`). A bare value may be
+unquoted after `PULSUS_DASH_DATASOURCE_URL` and the YAML `url:` key; after `datasource.url`,
+`datasource_url` and `DatasourceURL` it is caught only in quotes, so code such as
+`DatasourceURL: d.URL` is not taken for a host. A single label without a port (`pulsusdb`) is not
+caught as a bare value; neither is a variable (`$X`, `${...}`) or a placeholder (`<host:port>`).
+
+**Forbidden hosts** apply only to local runs. They are the entries of the optional
+`DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
+1 (an entry written as a URL is reduced to its host), then the host of `PULSUS_DASH_DATASOURCE_URL`
+if it is set and not local, as the last entry. `make no-pulsusdb-host` loads `dev/local.env` first,
+so a local run also forbids your real host in any form, even without `pulsusdb` in it. CI sets
+neither variable, and if neither is set the scan runs the URL rule alone, without a warning.
 
 **Local hosts**, which the URL rule accepts, are: `localhost` and names ending in `.localhost`;
 loopback addresses (`127.0.0.0/8` and `::1` in any spelling, with or without a zone); names ending in
@@ -390,20 +403,18 @@ when `CI` is set. A clean run ends with `no-pulsusdb-host: clean (<m> files)`.
 | 2 | `--root` is not a directory | `error[bad-root] --root is not a directory` |
 | 2 | a file or link could not be read (the scan continues) | `error[unreadable] F<i> (<errno name>)` |
 | 2 | a directory under `--root` could not be listed (the scan continues) | `error[unreadable] a directory under --root could not be listed` |
-| 2 | no `DASH_FORBIDDEN_HOSTS` entry and `--require-secret` | `error[missing-secret] DASH_FORBIDDEN_HOSTS is not set: …` |
 | 2 | any other error | `error[internal] <exception class>` |
 
-Without `--require-secret`, a missing secret prints `warning[missing-secret] …` and the scan
-continues with the URL rule and the datasource host only.
+An unknown option, including the removed `--require-secret`, is a usage error.
 
-### The `DASH_FORBIDDEN_HOSTS` secret
+### Limits
 
-CI reads the forbidden hosts from the repository secret `DASH_FORBIDDEN_HOSTS`. A repository owner
-creates it once, in the repository's Actions secrets, holding the private PulsusDB host or hosts,
-comma-separated. Until it exists, the `hygiene` workflow fails on every pull request with the
-missing-secret message: the gate never passes silently. Pull requests from forks cannot read
-repository secrets, so their run fails the same way; a maintainer runs the check from a branch in
-the repository instead.
+CI knows no host name, so it catches the private host only where it is recognisable: in a URL whose
+host contains `pulsusdb`, or as a datasource value. A private host without `pulsusdb` in its name,
+written outside a datasource key, is caught only by a local run with `dev/local.env`. Keep the real
+base URL in `dev/local.env` and nowhere else.
+
+### Self-test
 
 The checker's tests use only fictional hosts (`.corp` names and reserved names). Its fixtures are in
 `tools/no-pulsusdb-host/testdata/`, where only the URL rule is switched off in repository mode.
@@ -413,5 +424,5 @@ The checker's tests use only fictional hosts (`.corp` names and reserved names).
 `.github/workflows/hygiene.yml` runs on every pull request and on pushes to `main`, with a read-only
 token. Its one job, `no-pulsusdb-host`, runs the checker's self-test
 (`python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'`), then
-`check.py --require-secret` with the `DASH_FORBIDDEN_HOSTS` secret
-([above](#ci-no-pulsusdb-host)). It is the only workflow that reads a secret.
+`check.py` ([above](#ci-no-pulsusdb-host)). It reads no secret, so pull requests from forks run it
+too.
