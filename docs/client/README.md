@@ -223,8 +223,8 @@ the missing keys. L20 operates the header and sidebar on the gallery too (the ti
 relative and Copy link exist only on pages with a view URL pattern, so not there); L22 operates the
 six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
 and the value text. L23–L28 cover the board list and its dialogs, the board in View and Edit mode,
-the panel tools, Share, the layout buttons, the panel editor and its selects, the guard and the
-conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
+the panel tools, Share, the layout buttons, the panel editor dialog and its selects, the guard and
+the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
 Space for checkboxes; End then Escape for sliders; End for text fields), until none is left; when
@@ -326,6 +326,13 @@ down:
 | `pulsus-dash.stub.failSave` | `saveBoard` rejects `network` |
 | `pulsus-dash.stub.conflictSave` | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
 | `pulsus-dash.stub.failStar` | `setStarred` rejects `network` and changes nothing (`e2e:a11y-rooms` state `b-1 star failed`) |
+| `pulsus-dash.stub.failPanelData` | `panelData` rejects `network` ("stub: panel data failed") after the delay below (#90, `panel-editor-dialog.spec.ts` E11, E13, E15) |
+
+`pulsus-dash.stub.panelDelayMs` (#90), a positive integer n, makes every `panelData` call resolve
+after n ms instead of the next microtask; it is read on every call and never consumed, and an abort
+of the call's signal clears the timer and rejects with `AbortError`. Every `panelData` call also
+leaves a `stub:panelData` performance mark with `detail` `{ id, lang, text, vis }`, which the
+frame-timing e2e specs read to see when a request started.
 
 ## Boards
 
@@ -360,7 +367,51 @@ creates an empty marker element with that id first (an inert `<meta>`, since eve
 with `react-grid-layout` and its stylesheet, is the separate lazy chunk of
 `src/pages/board/BoardGridEditor.tsx`, preloaded when the pointer or the focus reaches Edit board. Both are listed in `bundle-budgets.json` and checked against
 the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-chain.md#react-grid-layout);
-after Part C the board chunk is 11 765 bytes, the Edit grid 18 029 and the initial JS 171 050).
+after #90 the board chunk is 12 196 bytes, the Edit grid 18 016, the chart frame chunk 10 668, the
+initial JS 171 112 and the initial CSS 5 373).
+
+**Panel editor** (`PanelEditor.tsx`, #90; IA-015, T08-017). The editor is the kit's `ModalDialog`
+with `size="editor"`: a centred window of `--size-dialog-editor-width` × `--size-dialog-editor-height`
+(800 × 720), capped to the viewport less 24 px a side, with no drag handle or resize affordance,
+over the kit's `--backdrop`. The page renders it while Edit mode has a selected panel (`key` = the
+panel id, so a switch remounts it); Done, Escape and a backdrop click dispatch `select(null)`, and
+the draft is never reverted. Its tree is `PanelPreview`, then Title, Query language, Query (both
+columns) and Visualisation in a two-column grid that scrolls vertically, then Remove panel, a
+mirror of the page's save status (`role="status"`, "Save status": the board behind is `aria-hidden`
+while the modal is open) and Done. Focus return: when `selected` goes from an id to null in Edit
+mode, `BoardEditor` calls `focusAfterEditor(document, id)` one animation frame later (after the
+overlay's own restore), which focuses the panel's `[data-panel-menu]` button, else the toolbar's
+`[data-board-add]` Add panel.
+
+`PanelPreview` (`PanelFrame.tsx`) renders the draft through the board panel's own path,
+`usePanelData` → `PanelBody` → `ChartFrame`. The two share one TanStack query key (`vis.kind` stays
+in it, because `panelData` is shaped per visualisation), so the preview adds no request: every
+draft key is fetched once, for both. What a change shows:
+
+| Change | In the change's commit | Then |
+|---|---|---|
+| Title | the preview title and the chart spec; no request | drawn in the next frame |
+| Visualisation, query or language, key already cached | the cached result (or the Logs message); no request | drawn in the next frame, also after an error or Logs message |
+| Same, not cached | one `panelData` call, shared with the panel behind; `Loading` | the chart, or `Something went wrong` (no retry) |
+| Same, changed again before a result | both observers move to the newest key; the superseded call's signal aborts | only the newest key's result renders |
+
+**Chart readiness** (`ChartFrame.tsx`, #90; [ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md)).
+`ChartFrame` takes `pending` (shown over the frame) and `sizeMemo`. `pending` stays until the
+engine's `drawn` event reports a complete draw at the size last applied; it shows again on every
+resize (a zero size included, since setting the canvas size clears it), on a DPR change, on a new
+engine frame (a switch to or from Stat), on a kind change of a kept frame (the engine clears its
+canvas) and on unmount. Changes from the observer, the DPR callback and the engine's frame callback
+are committed with `flushSync`, so they show before that frame's paint. A new `fill` frame is
+sized at once from `sizeMemo.current` (the host's last non-empty observed size) and an equal
+observed size is then skipped, so a re-created frame draws in its first animation frame. Every
+`PanelBody` caller holds its own memo above `ChartFrame`: the board panel (`PanelFrame`), full
+screen (`PanelFullScreen`, kept across close and reopen) and the preview. The preview measures an
+always-mounted host element (`[data-preview-host]`) with its own observer, so its memo is current
+while a message shows, on a fresh dialog too. `PanelChart` passes the panel's `Loading` as
+`pending`, so no panel ever paints a blank canvas. Explore and the gallery pass neither prop and
+keep their behaviour. Each frame has a diagnostic id (`f1`, `f2`, …): the host's `data-frame-id`,
+`FrameInit.id`, and `detail.frame` of the engine's `chart-draw` measures; it is for tests and
+traces only.
 
 **Saving.** Save checks the draft with `checkBoardSpec` first (field errors open the editor on the
 first panel they point into), then calls `saveBoard` with the head's etag. A 409 opens the conflict
@@ -502,14 +553,15 @@ every request, fonts included, stays on the app origin.
 
 D9 ([designs README](../../designs/README.md)), [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),
 [ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md),
-[ADR-0017](../../designs/adr/0017-react-router.md);
+[ADR-0017](../../designs/adr/0017-react-router.md),
+[ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md);
 [ADR-0015](../../designs/adr/0015-go-bff.md);
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-003,
 IA-006, IA-015, IA-016, IA-020, IA-021, IA-022, IA-023),
 [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014, SRF-016, SRF-017, SRF-020, SRF-026),
-[03 Interaction model](../../designs/product/03-interaction-model.md) (INT-032),
+[03 Interaction model](../../designs/product/03-interaction-model.md) (INT-015, INT-032),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-001, VL-010, VL-017, VL-021),
-[09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-008, PRF-033);
+[09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-005, PRF-008, PRF-033);
 [T01](../../designs/technical/T01-frontend-architecture.md) (T01-007, T01-008, T01-010),
 [T07](../../designs/technical/T07-scene-query-planner.md) (T07-012, collapsed sections do not query),
 [T02](../../designs/technical/T02-vis-engine.md) (T02-004),
