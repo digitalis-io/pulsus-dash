@@ -32,5 +32,6 @@ jobs:
           cache-dependency-path: server/go.sum
       - name: valgrind
         run: sudo apt-get update && sudo apt-get install -y valgrind
-      - name: 'bench:cpu-instr'
-        run: make cpu-instr
+      # gate proof #65 (do not merge): writes the baseline with W3 in CI and prints it.
+      - name: 'bench:cpu-instr baseline'
+        run: make cpu-instr-update
