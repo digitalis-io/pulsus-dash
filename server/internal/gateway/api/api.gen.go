@@ -31,15 +31,51 @@ func (e AuthorKind) Valid() bool {
 	}
 }
 
+// Defines values for CompletenessReadCache.
+const (
+	Bypass CompletenessReadCache = "bypass"
+	Hit    CompletenessReadCache = "hit"
+	Miss   CompletenessReadCache = "miss"
+	Other  CompletenessReadCache = "other"
+)
+
+// Valid indicates whether the value is a known member of the CompletenessReadCache enum.
+func (e CompletenessReadCache) Valid() bool {
+	switch e {
+	case Bypass:
+		return true
+	case Hit:
+		return true
+	case Miss:
+		return true
+	case Other:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DatasourceStatusState.
 const (
-	NotChecked DatasourceStatusState = "not_checked"
+	DatasourceStatusStateError        DatasourceStatusState = "error"
+	DatasourceStatusStateNotChecked   DatasourceStatusState = "not_checked"
+	DatasourceStatusStateOk           DatasourceStatusState = "ok"
+	DatasourceStatusStateUnauthorised DatasourceStatusState = "unauthorised"
+	DatasourceStatusStateUnreachable  DatasourceStatusState = "unreachable"
 )
 
 // Valid indicates whether the value is a known member of the DatasourceStatusState enum.
 func (e DatasourceStatusState) Valid() bool {
 	switch e {
-	case NotChecked:
+	case DatasourceStatusStateError:
+		return true
+	case DatasourceStatusStateNotChecked:
+		return true
+	case DatasourceStatusStateOk:
+		return true
+	case DatasourceStatusStateUnauthorised:
+		return true
+	case DatasourceStatusStateUnreachable:
 		return true
 	default:
 		return false
@@ -118,6 +154,30 @@ func (e PrincipalRole) Valid() bool {
 	case Editor:
 		return true
 	case Viewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PromInstantResponseResultType.
+const (
+	Matrix PromInstantResponseResultType = "matrix"
+	Scalar PromInstantResponseResultType = "scalar"
+	String PromInstantResponseResultType = "string"
+	Vector PromInstantResponseResultType = "vector"
+)
+
+// Valid indicates whether the value is a known member of the PromInstantResponseResultType enum.
+func (e PromInstantResponseResultType) Valid() bool {
+	switch e {
+	case Matrix:
+		return true
+	case Scalar:
+		return true
+	case String:
+		return true
+	case Vector:
 		return true
 	default:
 		return false
@@ -351,9 +411,24 @@ type Bootstrap struct {
 	Tenants       []TenantInfo `json:"tenants"`
 }
 
+// Completeness defines model for Completeness.
+type Completeness struct {
+	DataAgeMs          *int64                 `json:"data_age_ms,omitempty"`
+	Infos              []string               `json:"infos"`
+	QueryId            *string                `json:"query_id,omitempty"`
+	ReadCache          *CompletenessReadCache `json:"read_cache,omitempty"`
+	ReadCacheThroughMs *int64                 `json:"read_cache_through_ms,omitempty"`
+	Truncated          bool                   `json:"truncated"`
+	Warnings           []string               `json:"warnings"`
+}
+
+// CompletenessReadCache defines model for Completeness.ReadCache.
+type CompletenessReadCache string
+
 // DatasourceStatus defines model for DatasourceStatus.
 type DatasourceStatus struct {
-	State DatasourceStatusState `json:"state"`
+	CheckedAt *int64                `json:"checked_at,omitempty"`
+	State     DatasourceStatusState `json:"state"`
 }
 
 // DatasourceStatusState defines model for DatasourceStatus.State.
@@ -382,6 +457,9 @@ type FieldError struct {
 	Pointer    string `json:"pointer"`
 }
 
+// FrameValue A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
+type FrameValue = json.RawMessage
+
 // Grid defines model for Grid.
 type Grid struct {
 	H int `json:"h"`
@@ -397,6 +475,13 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// MetricMetadata defines model for MetricMetadata.
+type MetricMetadata struct {
+	Help string `json:"help"`
+	Type string `json:"type"`
+	Unit string `json:"unit"`
+}
 
 // OrgInfo defines model for OrgInfo.
 type OrgInfo struct {
@@ -423,6 +508,62 @@ type Principal struct {
 
 // PrincipalRole defines model for Principal.Role.
 type PrincipalRole string
+
+// PromInstantRequest defines model for PromInstantRequest.
+type PromInstantRequest struct {
+	At        int64  `json:"at"`
+	Query     string `json:"query"`
+	TimeoutMs *int   `json:"timeout_ms,omitempty"`
+}
+
+// PromInstantResponse defines model for PromInstantResponse.
+type PromInstantResponse struct {
+	At           int64                         `json:"at"`
+	Completeness Completeness                  `json:"completeness"`
+	Frames       []SeriesFrame                 `json:"frames"`
+	ResultType   PromInstantResponseResultType `json:"result_type"`
+	Scalar       *TimedValue                   `json:"scalar,omitempty"`
+	String       *TimedString                  `json:"string,omitempty"`
+}
+
+// PromInstantResponseResultType defines model for PromInstantResponse.ResultType.
+type PromInstantResponseResultType string
+
+// PromMetadataResponse defines model for PromMetadataResponse.
+type PromMetadataResponse struct {
+	Completeness Completeness                `json:"completeness"`
+	Metrics      map[string][]MetricMetadata `json:"metrics"`
+}
+
+// PromRangeRequest defines model for PromRangeRequest.
+type PromRangeRequest struct {
+	From      int64  `json:"from"`
+	Query     string `json:"query"`
+	TimeoutMs *int   `json:"timeout_ms,omitempty"`
+	To        int64  `json:"to"`
+	WidthPx   int    `json:"width_px"`
+}
+
+// PromRangeResponse defines model for PromRangeResponse.
+type PromRangeResponse struct {
+	Completeness Completeness  `json:"completeness"`
+	End          int64         `json:"end"`
+	Frames       []SeriesFrame `json:"frames"`
+	Start        int64         `json:"start"`
+	Step         int64         `json:"step"`
+}
+
+// PromSeriesResponse defines model for PromSeriesResponse.
+type PromSeriesResponse struct {
+	Completeness Completeness   `json:"completeness"`
+	Series       []SeriesLabels `json:"series"`
+}
+
+// PromValuesResponse defines model for PromValuesResponse.
+type PromValuesResponse struct {
+	Completeness Completeness `json:"completeness"`
+	Values       []string     `json:"values"`
+}
 
 // Query defines model for Query.
 type Query struct {
@@ -466,6 +607,20 @@ type Section struct {
 	Title     string  `json:"title"`
 }
 
+// SeriesFrame JSON image of labels/1 + metric_matrix.grid/1 (T04 §0).
+type SeriesFrame struct {
+	Key        string            `json:"key"`
+	Labels     map[string]string `json:"labels"`
+	Timestamps []int64           `json:"timestamps"`
+	Values     []FrameValue      `json:"values"`
+}
+
+// SeriesLabels defines model for SeriesLabels.
+type SeriesLabels struct {
+	Key    string            `json:"key"`
+	Labels map[string]string `json:"labels"`
+}
+
 // TenantInfo defines model for TenantInfo.
 type TenantInfo struct {
 	Datasource DatasourceStatus `json:"datasource"`
@@ -477,6 +632,20 @@ type TenantInfo struct {
 type TimeRange struct {
 	From string `json:"from"`
 	To   string `json:"to"`
+}
+
+// TimedString defines model for TimedString.
+type TimedString struct {
+	Timestamp int64  `json:"timestamp"`
+	Value     string `json:"value"`
+}
+
+// TimedValue defines model for TimedValue.
+type TimedValue struct {
+	Timestamp int64 `json:"timestamp"`
+
+	// Value A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
+	Value FrameValue `json:"value"`
 }
 
 // Version defines model for Version.
@@ -493,6 +662,24 @@ type Vis struct {
 // VisKind defines model for Vis.Kind.
 type VisKind string
 
+// From defines model for From.
+type From = int64
+
+// Limit defines model for Limit.
+type Limit = int
+
+// Match defines model for Match.
+type Match = []string
+
+// Tenant defines model for Tenant.
+type Tenant = string
+
+// To defines model for To.
+type To = int64
+
+// RateLimited defines model for RateLimited.
+type RateLimited = ErrorEnvelope
+
 // DeleteBoardParams defines parameters for DeleteBoard.
 type DeleteBoardParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
@@ -501,6 +688,11 @@ type DeleteBoardParams struct {
 // UpdateBoardParams defines parameters for UpdateBoard.
 type UpdateBoardParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// GetDatasourceCheckParams defines parameters for GetDatasourceCheck.
+type GetDatasourceCheckParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
 }
 
 // ListRecentBoardsParams defines parameters for ListRecentBoards.
@@ -512,6 +704,52 @@ type ListRecentBoardsParams struct {
 type RecordBoardViewParams struct {
 	// At Navigation time in ms since the Unix epoch. Absent → the server's now().
 	At *int64 `form:"at,omitempty" json:"at,omitempty"`
+}
+
+// GetPromLabelValuesParams defines parameters for GetPromLabelValues.
+type GetPromLabelValuesParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From From `form:"from" json:"from"`
+
+	// To ms since the epoch
+	To    To     `form:"to" json:"to"`
+	Match *Match `form:"match,omitempty" json:"match,omitempty"`
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromLabelsParams defines parameters for GetPromLabels.
+type GetPromLabelsParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From From `form:"from" json:"from"`
+
+	// To ms since the epoch
+	To    To     `form:"to" json:"to"`
+	Match *Match `form:"match,omitempty" json:"match,omitempty"`
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromMetadataParams defines parameters for GetPromMetadata.
+type GetPromMetadataParams struct {
+	Tenant Tenant  `form:"tenant" json:"tenant"`
+	Metric *string `form:"metric,omitempty" json:"metric,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPromSeriesParams defines parameters for GetPromSeries.
+type GetPromSeriesParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From From `form:"from" json:"from"`
+
+	// To ms since the epoch
+	To    To       `form:"to" json:"to"`
+	Match []string `form:"match" json:"match"`
+	Limit *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateBoardJSONRequestBody defines body for CreateBoard for application/json ContentType.
@@ -541,6 +779,9 @@ type ServerInterface interface {
 	// (GET /api/dash/v1/bootstrap)
 	GetBootstrap(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/dash/v1/datasource/check)
+	GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams)
+
 	// (GET /api/dash/v1/me/recent-boards)
 	ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams)
 
@@ -555,6 +796,18 @@ type ServerInterface interface {
 
 	// (PUT /api/dash/v1/me/starred-boards/{uid})
 	StarBoard(w http.ResponseWriter, r *http.Request, uid string)
+
+	// (GET /api/dash/v1/prom/label/{name}/values)
+	GetPromLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetPromLabelValuesParams)
+
+	// (GET /api/dash/v1/prom/labels)
+	GetPromLabels(w http.ResponseWriter, r *http.Request, params GetPromLabelsParams)
+
+	// (GET /api/dash/v1/prom/metadata)
+	GetPromMetadata(w http.ResponseWriter, r *http.Request, params GetPromMetadataParams)
+
+	// (GET /api/dash/v1/prom/series)
+	GetPromSeries(w http.ResponseWriter, r *http.Request, params GetPromSeriesParams)
 
 	// (GET /api/dash/v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -603,6 +856,11 @@ func (_ Unimplemented) GetBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /api/dash/v1/datasource/check)
+func (_ Unimplemented) GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /api/dash/v1/me/recent-boards)
 func (_ Unimplemented) ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -625,6 +883,26 @@ func (_ Unimplemented) UnstarBoard(w http.ResponseWriter, r *http.Request, uid s
 
 // (PUT /api/dash/v1/me/starred-boards/{uid})
 func (_ Unimplemented) StarBoard(w http.ResponseWriter, r *http.Request, uid string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/label/{name}/values)
+func (_ Unimplemented) GetPromLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetPromLabelValuesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/labels)
+func (_ Unimplemented) GetPromLabels(w http.ResponseWriter, r *http.Request, params GetPromLabelsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/metadata)
+func (_ Unimplemented) GetPromMetadata(w http.ResponseWriter, r *http.Request, params GetPromMetadataParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/prom/series)
+func (_ Unimplemented) GetPromSeries(w http.ResponseWriter, r *http.Request, params GetPromSeriesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -825,6 +1103,39 @@ func (siw *ServerInterfaceWrapper) GetBootstrap(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetDatasourceCheck operation middleware
+func (siw *ServerInterfaceWrapper) GetDatasourceCheck(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDatasourceCheckParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDatasourceCheck(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListRecentBoards operation middleware
 func (siw *ServerInterfaceWrapper) ListRecentBoards(w http.ResponseWriter, r *http.Request) {
 
@@ -957,6 +1268,329 @@ func (siw *ServerInterfaceWrapper) StarBoard(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StarBoard(w, r, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromLabelValues operation middleware
+func (siw *ServerInterfaceWrapper) GetPromLabelValues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromLabelValuesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromLabelValues(w, r, name, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromLabels operation middleware
+func (siw *ServerInterfaceWrapper) GetPromLabels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromLabelsParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromLabels(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromMetadata operation middleware
+func (siw *ServerInterfaceWrapper) GetPromMetadata(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromMetadataParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "metric" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "metric", r.URL.Query(), &params.Metric, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "metric"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "metric", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromMetadata(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPromSeries operation middleware
+func (siw *ServerInterfaceWrapper) GetPromSeries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPromSeriesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPromSeries(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1180,8 +1814,32 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/dash/v1/me/recent-boards/{uid}", wrapper.RecordBoardView)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/labels", wrapper.GetPromLabels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/label/{name}/values", wrapper.GetPromLabelValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/series", wrapper.GetPromSeries)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/prom/metadata", wrapper.GetPromMetadata)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/datasource/check", wrapper.GetDatasourceCheck)
+	})
 
 	return r
+}
+
+type RateLimitedResponseHeaders struct {
+	RetryAfter *string
+}
+type RateLimitedJSONResponse struct {
+	Body ErrorEnvelope
+
+	Headers RateLimitedResponseHeaders
 }
 
 type ListBoardsRequestObject struct {
@@ -1597,6 +2255,84 @@ func (response GetBootstrap503JSONResponse) VisitGetBootstrapResponse(w http.Res
 	return err
 }
 
+type GetDatasourceCheckRequestObject struct {
+	Params GetDatasourceCheckParams
+}
+
+type GetDatasourceCheckResponseObject interface {
+	VisitGetDatasourceCheckResponse(w http.ResponseWriter) error
+}
+
+type GetDatasourceCheck200JSONResponse DatasourceStatus
+
+func (response GetDatasourceCheck200JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck400JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck400JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck404JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck404JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck503JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck503JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDatasourceCheck504JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck504JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(504)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRecentBoardsRequestObject struct {
 	Params ListRecentBoardsParams
 }
@@ -1787,6 +2523,231 @@ func (response StarBoard503JSONResponse) VisitStarBoardResponse(w http.ResponseW
 	return err
 }
 
+type GetPromLabelValuesRequestObject struct {
+	Name   string `json:"name"`
+	Params GetPromLabelValuesParams
+}
+
+type GetPromLabelValuesResponseObject interface {
+	VisitGetPromLabelValuesResponse(w http.ResponseWriter) error
+}
+
+type GetPromLabelValues200JSONResponse PromValuesResponse
+
+func (response GetPromLabelValues200JSONResponse) VisitGetPromLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelValues429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromLabelValues429JSONResponse) VisitGetPromLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelValuesdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromLabelValuesdefaultJSONResponse) VisitGetPromLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelsRequestObject struct {
+	Params GetPromLabelsParams
+}
+
+type GetPromLabelsResponseObject interface {
+	VisitGetPromLabelsResponse(w http.ResponseWriter) error
+}
+
+type GetPromLabels200JSONResponse PromValuesResponse
+
+func (response GetPromLabels200JSONResponse) VisitGetPromLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabels429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromLabels429JSONResponse) VisitGetPromLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromLabelsdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromLabelsdefaultJSONResponse) VisitGetPromLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromMetadataRequestObject struct {
+	Params GetPromMetadataParams
+}
+
+type GetPromMetadataResponseObject interface {
+	VisitGetPromMetadataResponse(w http.ResponseWriter) error
+}
+
+type GetPromMetadata200JSONResponse PromMetadataResponse
+
+func (response GetPromMetadata200JSONResponse) VisitGetPromMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromMetadata429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromMetadata429JSONResponse) VisitGetPromMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromMetadatadefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromMetadatadefaultJSONResponse) VisitGetPromMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromSeriesRequestObject struct {
+	Params GetPromSeriesParams
+}
+
+type GetPromSeriesResponseObject interface {
+	VisitGetPromSeriesResponse(w http.ResponseWriter) error
+}
+
+type GetPromSeries200JSONResponse PromSeriesResponse
+
+func (response GetPromSeries200JSONResponse) VisitGetPromSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromSeries429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetPromSeries429JSONResponse) VisitGetPromSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPromSeriesdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetPromSeriesdefaultJSONResponse) VisitGetPromSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVersionRequestObject struct {
 }
 
@@ -1923,6 +2884,9 @@ type StrictServerInterface interface {
 	// (GET /api/dash/v1/bootstrap)
 	GetBootstrap(ctx context.Context, request GetBootstrapRequestObject) (GetBootstrapResponseObject, error)
 
+	// (GET /api/dash/v1/datasource/check)
+	GetDatasourceCheck(ctx context.Context, request GetDatasourceCheckRequestObject) (GetDatasourceCheckResponseObject, error)
+
 	// (GET /api/dash/v1/me/recent-boards)
 	ListRecentBoards(ctx context.Context, request ListRecentBoardsRequestObject) (ListRecentBoardsResponseObject, error)
 
@@ -1937,6 +2901,18 @@ type StrictServerInterface interface {
 
 	// (PUT /api/dash/v1/me/starred-boards/{uid})
 	StarBoard(ctx context.Context, request StarBoardRequestObject) (StarBoardResponseObject, error)
+
+	// (GET /api/dash/v1/prom/label/{name}/values)
+	GetPromLabelValues(ctx context.Context, request GetPromLabelValuesRequestObject) (GetPromLabelValuesResponseObject, error)
+
+	// (GET /api/dash/v1/prom/labels)
+	GetPromLabels(ctx context.Context, request GetPromLabelsRequestObject) (GetPromLabelsResponseObject, error)
+
+	// (GET /api/dash/v1/prom/metadata)
+	GetPromMetadata(ctx context.Context, request GetPromMetadataRequestObject) (GetPromMetadataResponseObject, error)
+
+	// (GET /api/dash/v1/prom/series)
+	GetPromSeries(ctx context.Context, request GetPromSeriesRequestObject) (GetPromSeriesResponseObject, error)
 
 	// (GET /api/dash/v1/version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -2156,6 +3132,32 @@ func (sh *strictHandler) GetBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetDatasourceCheck operation middleware
+func (sh *strictHandler) GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams) {
+	var request GetDatasourceCheckRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDatasourceCheck(ctx, request.(GetDatasourceCheckRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDatasourceCheck")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDatasourceCheckResponseObject); ok {
+		if err := validResponse.VisitGetDatasourceCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRecentBoards operation middleware
 func (sh *strictHandler) ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams) {
 	var request ListRecentBoardsRequestObject
@@ -2278,6 +3280,111 @@ func (sh *strictHandler) StarBoard(w http.ResponseWriter, r *http.Request, uid s
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StarBoardResponseObject); ok {
 		if err := validResponse.VisitStarBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromLabelValues operation middleware
+func (sh *strictHandler) GetPromLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetPromLabelValuesParams) {
+	var request GetPromLabelValuesRequestObject
+
+	request.Name = name
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromLabelValues(ctx, request.(GetPromLabelValuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromLabelValues")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromLabelValuesResponseObject); ok {
+		if err := validResponse.VisitGetPromLabelValuesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromLabels operation middleware
+func (sh *strictHandler) GetPromLabels(w http.ResponseWriter, r *http.Request, params GetPromLabelsParams) {
+	var request GetPromLabelsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromLabels(ctx, request.(GetPromLabelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromLabels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromLabelsResponseObject); ok {
+		if err := validResponse.VisitGetPromLabelsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromMetadata operation middleware
+func (sh *strictHandler) GetPromMetadata(w http.ResponseWriter, r *http.Request, params GetPromMetadataParams) {
+	var request GetPromMetadataRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromMetadata(ctx, request.(GetPromMetadataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromMetadata")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromMetadataResponseObject); ok {
+		if err := validResponse.VisitGetPromMetadataResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPromSeries operation middleware
+func (sh *strictHandler) GetPromSeries(w http.ResponseWriter, r *http.Request, params GetPromSeriesParams) {
+	var request GetPromSeriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPromSeries(ctx, request.(GetPromSeriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPromSeries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPromSeriesResponseObject); ok {
+		if err := validResponse.VisitGetPromSeriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

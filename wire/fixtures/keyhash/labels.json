@@ -1,0 +1,11 @@
+[
+  {"labels":[],"key":"2d06800538d394c2"},
+  {"labels":[["a","1"]],"key":"ec77f7b8249c519f"},
+  {"labels":[["__name__","up"],["job","api"]],"key":"b11daa6c4323c14b"},
+  {"labels":[["job","api"],["__name__","up"]],"key":"b11daa6c4323c14b"},
+  {"labels":[["a",""]],"key":"abc428f6ee4d53cd"},
+  {"labels":[["a","1\",b=\"2"]],"key":"d2b73fdeead9999d"},
+  {"labels":[["a","1"],["b","2"]],"key":"b8a47bf274769923"},
+  {"labels":[["msg","héllo ✓"]],"key":"e9f60a3e1a2eab44"},
+  {"labels":[["instance","a:9090"],["job","api"]],"key":"47ad55f1f828d9ee"}
+]

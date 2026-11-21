@@ -1,0 +1,5 @@
+package pulsusdb
+
+import "encoding/json"
+
+var _ = json.Unmarshal

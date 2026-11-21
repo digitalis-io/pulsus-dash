@@ -30,10 +30,4 @@ func (a Actor) DisplayName() string {
 	return "Unknown"
 }
 
-// RequestCtx is what every service call carries (T06-002): the organisation, the actor and the
-// request ID. Tenant and Scope join with the PulsusDB client (#62).
-type RequestCtx struct {
-	Org       OrgID
-	Actor     Actor
-	RequestID string
-}
+// RequestCtx (request.go) carries the actor of every service call.

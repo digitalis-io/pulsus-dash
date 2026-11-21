@@ -22,7 +22,7 @@ test.describe('e2e:bff-http-shell', () => {
     expect(new URL(page.url()).pathname).toBe('/t/demo/boards');
 
     const sidebar = page.locator('aside');
-    await expect(sidebar.getByText('Data source: demo · Not checked')).toBeVisible();
+    await expect(sidebar.getByText('Data source: demo · Unreachable')).toBeVisible();
 
     await page.getByRole('button', { name: 'User menu: Local user' }).click();
     const menu = page.getByRole('menu', { name: 'User menu: Local user' });

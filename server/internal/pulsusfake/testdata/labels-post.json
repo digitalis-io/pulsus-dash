@@ -1,0 +1,10 @@
+{
+  "name": "labels-post",
+  "provenance": {"synthetic": "the client sends labels as a POST form first, the method the reference clients use; the body is the labels capture's"},
+  "match": {"method": "POST", "paths": ["/api/v1/labels"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-labels-1"},
+    "body": {"status":"success","data":["__name__","instance","job"]}
+  }
+}

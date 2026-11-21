@@ -1,0 +1,10 @@
+{
+  "name": "truncated",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query_range", "sanitised": "labels, values, timestamps and query id replaced; captured with limit: warnings after data"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "topk(1000, up)"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-truncated-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up","job":"api"},"values":[[1767225600,"1"]]}]},"warnings":["results truncated due to limit"]}
+  }
+}
