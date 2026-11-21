@@ -330,7 +330,7 @@ creates an empty marker element with that id first (an inert `<meta>`, since eve
 
 **Chunks.** The board page is the lazy chunk of `src/pages/board/BoardPage.tsx`; the Edit grid,
 with `react-grid-layout` and its stylesheet, is the separate lazy chunk of
-`src/pages/board/BoardGridEditor.tsx`. Both are listed in `bundle-budgets.json` and checked against
+`src/pages/board/BoardGridEditor.tsx`, preloaded when the pointer or the focus reaches Edit board. Both are listed in `bundle-budgets.json` and checked against
 the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-chain.md#react-grid-layout)).
 
 **Saving.** Save checks the draft with `checkBoardSpec` first (field errors open the editor on the

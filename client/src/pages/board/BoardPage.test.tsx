@@ -612,7 +612,10 @@ describe('panel tools', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Request rate' })).toBeNull();
     });
-    expect(full).toHaveFocus();
+    // React Aria restores focus a frame after the dialog unmounts.
+    await waitFor(() => {
+      expect(full).toHaveFocus();
+    });
     await user.click(screen.getByRole('button', { name: 'Panel menu: Request rate' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Copy query' }));
     await waitFor(async () => {

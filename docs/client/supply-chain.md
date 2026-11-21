@@ -99,13 +99,14 @@ compatibility is checked by the component test `mounts under React 19 without er
 
 **Bundle.** Only the Edit-mode chunk loads the library: `src/pages/board/BoardGridEditor.tsx` is a
 lazy module of its own (`required.lazyModules` in `bundle-budgets.json`), so View mode and every
-other page carry none of it. Measured by `npm run size` (brotli) at the time of adoption:
+other page carry none of it until the pointer or the focus reaches Edit board (the chunk is
+preloaded then). Measured by `npm run size` (brotli, stub build) at the time of adoption:
 
 | Chunk | Brotli bytes | Budget |
 |---|---|---|
-| `BoardGridEditor` (with react-grid-layout, react-draggable, react-resizable) | 17 966 | 120 000 (`lazyChunk`) |
-| `BoardPage` (the board route) | 9 744 | 120 000 (`lazyChunk`) |
-| Initial JS | 169 751 | 200 000 (`initialJs`) |
+| `BoardGridEditor` (with react-grid-layout, react-draggable, react-resizable) | 18 050 | 120 000 (`lazyChunk`) |
+| `BoardPage` (the board route) | 9 862 | 120 000 (`lazyChunk`) |
+| Initial JS (163 369 before the board pages) | 169 705 | 200 000 (`initialJs`) |
 
 **Build text.** The production chunk contains two help URLs as plain text, both on
 `buildUrlAllowlist`: react-draggable's `https://github.com/react-grid-layout/react-draggable#noderef`
