@@ -211,7 +211,8 @@ function ticksRows(s: Sources): unknown[] {
 
 /** A recording 2D context: label widths from the §3.5 formula (monospace advance). */
 function fakeCtx(s: Sources, labels: string[]): Record<string, unknown> {
-  const width = (t: string): number => [...t].length * s.font.advance.mono * s.font.size.xs;
+  // Unicode scalar values, as the Rust label_width counts them.
+  const width = (t: string): number => Array.from(t).length * s.font.advance.mono * s.font.size.xs;
   const nop = (): void => undefined;
   const ctx: Record<string, unknown> = {
     setTransform: nop,
