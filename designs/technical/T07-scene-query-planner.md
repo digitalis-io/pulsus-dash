@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-21 |
+| **Version** | 1.7-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -181,7 +181,8 @@ JSON form and is held to the same semantics by shared fixtures (§0).
   `prom.Plan` uses (ADR-0021), and finds every reserved or virtual selector and its floor. A text the
   parser rejects is classified as a PulsusDB query; the `VirtualGuardLayer` byte match still applies
   (T07-020). In v1 nothing resolves to a virtual source (§0), so Classify yields the signal's
-  capabilities alone.
+  capabilities alone. PromQL Classify is `prom.Prepare` (#112); LogQL Classify lands with
+  `logs.Plan`, until then the LogQL routes use the T07-020 byte guard.
 - **Resolve** (1b) computes the step from the viewport's range, width and pass and the floor from
   Classify (§4.3; the §0 table: step, level and alignment do not depend on the text). The step is
   therefore final before any text is planned. Exactness that depends on the query's functions (from
@@ -1112,3 +1113,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.6-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: §4.1 step 1 splits into 1a Classify (source and signal from the binding and the source kind: `SignalCaps` and the virtual-source floor, 15 s alerts, 300 s anomaly scores) and 1b Resolve (step from range, width, pass and that floor), so Bind calls `Plan` with the final step; §4.3 `resolve` and the virtual-source floor reference the stages |
 | 1.6-rc | 2026-11-21 | Design review r3 of the ADR-0021 PR: §4.3 `resolve` branches on the source from Classify: a PulsusDB source predicts the rollup level and takes `max(level width, sig.min_step)`; a virtual source skips rollup prediction and takes `max(base step, virtual floor)`, with `Exactness::Virtual`; in a mixed scene each logical query resolves its own step; worked case 6 h anomaly score gives 300 s, not 60 s; T07-003 wording aligned |
 | 1.6-rc | 2026-11-21 | Design review r4 of the ADR-0021 PR: §4.1 Classify runs on the substituted text with step-dependent macros as placeholder durations, reading selectors with the upstream parser to find every reserved selector and floor; §4.3 a mixed expression has one shared step (max of the PulsusDB rollup-derived step, every operand's `min_step` and every virtual floor), with a worked case (anomaly score joined with a rate, 300 s for both operands); `Exactness::Virtual` removed: a virtual source resolves to `RawExact` with `source: Virtual{table}`, and the weakest-operand rule applies to mixed joins |
+| 1.7-rc | 2026-11-21 | #112: §4.1 Classify names its PromQL implementation (`prom.Prepare`) and the LogQL interim (the T07-020 byte guard until `logs.Plan`) |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-21 |
+| **Version** | 1.13-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -86,7 +86,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 | [SRF-031](../product/04-surfaces.md#srf-031--metric-browser-and-series-table) | §4.4 (metric browser source: names, type, cardinality, label value counts) | `itest:suggest-metric-browser`: `http_` lists matching metrics with type and series count; labels for the selection list value counts |
 | [SRF-032](../product/04-surfaces.md#srf-032--cardinality-explorer) | §4.4 (`kind: cardinality`) | `itest:suggest-cardinality`: a seeded metric with 3.2k series, 2.9k from `pod`, returns `pod` as the largest entry with its count |
 | [INT-038](../product/03-interaction-model.md#int-038--query-detection) | §5.1 (`QueryLanguage::detect`) | `unit:lang-detect`: `rate(`, `{app=`, `{ span.`, `process_cpu:` each score highest for PromQL, LogQL, TraceQL, profile selector; `e2e:palette-query-detect` (T08 co-owns) |
-| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:explore-plan` (the rewrite and hint rows decidable from the query and metadata) and `unit:autovis-table` (the rows confirmed on result shape); T07/T02 confirm the remaining rows |
+| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:plan-parity` (the rewrite and hint rows decidable from the query and metric types; #112) and `unit:autovis-table` (the rows confirmed on result shape); T07/T02 confirm the remaining rows |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2 (main-thread work bounded), §7 | `bench:editor-keystroke`: ≤ 2 ms main-thread work per keystroke on a 1 KB query; 0 long tasks during typing scripts |
 | [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.3 (lazy editor chunk), §0 | `ci:bundle-size`: editor chunk ≤ 175 KB and absent from initial JS; `e2e:lazy-load`: a cold load that opens no editor fetches no editor chunk |
 | [VL-010](../product/08-visual-language.md#vl-010--fonts) | §4.8 (JetBrains Mono for queries) | `golden:editor-fonts` |
@@ -719,3 +719,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.10-rc | 2026-11-21 | #63 Part C: §4.3 v1 Explore keys (`Esc` moves the focus to Run); §7 Editor chunk row measures the editor entries and the `editor-*` files they statically reach; T09-015 v1: Run is also refused above the BFF's 64 KiB on the sent text, planned only with the definitive inputs |
 | 1.11-rc | 2026-11-21 | #63 Part C plan 7: §7 "Keystroke → highlighted repaint" row: the 2 ms is the editor's update (parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` |
 | 1.12-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §0 the BFF parses PromQL only to plan it; T09-009 note (positions arrive mapped to the raw text); T09-010 revised (the server's `Plan` substitutes and maps positions; the browser substitutes placeholders only for WASM validation); §4.6 rate chip and rules 5 and 6 read the server's `planned` facts; T09-015 revised (the BFF repeats the 128 KB check and refuses a planned text above 65 536 bytes) |
+| 1.13-rc | 2026-11-21 | #112: the VIZ-065 Satisfies row names `unit:plan-parity`, which replaces `unit:explore-plan` (T05 §7.1) |
