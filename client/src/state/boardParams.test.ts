@@ -161,14 +161,16 @@ describe('board params', () => {
     expect(fitsUrlBudget(path, context, smile(1), [])).toBe(true);
     expect(fitsUrlBudget(path, context, smile(2), [])).toBe(false);
 
-    // 300 one-character variables: true up to the last that keeps the total within 4 096 − 96.
-    const xs = Array.from({ length: 300 }, (_, i) => v(i + 1, 1, 'x'));
+    // One-character variables: true up to the last that keeps the total within 4 096 − 96. (300
+    // such pairs come to 3 240 bytes, inside the budget; 400 cross it.)
+    const xs = Array.from({ length: 400 }, (_, i) => v(i + 1, 1, 'x'));
     const bytes = (n: number) =>
       requestTargetBytes(path, contextSearchString(context, xs.slice(0, n)));
     let last = 0;
-    while (last < 300 && bytes(last + 1) <= 4096 - 96) last += 1;
-    expect(last).toBeGreaterThan(0);
-    expect(last).toBeLessThan(300);
+    expect(bytes(300)).toBeLessThanOrEqual(4096 - 96);
+    while (last < 400 && bytes(last + 1) <= 4096 - 96) last += 1;
+    expect(last).toBeGreaterThan(300);
+    expect(last).toBeLessThan(400);
     expect(fitsUrlBudget(path, context, xs.slice(0, last), [])).toBe(true);
     expect(fitsUrlBudget(path, context, xs.slice(0, last + 1), [])).toBe(false);
 

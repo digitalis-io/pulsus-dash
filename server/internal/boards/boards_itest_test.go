@@ -507,7 +507,8 @@ func TestRecentOrderByClientTime(t *testing.T) {
 			}
 			e2, ctx2, rc2, uids2 := recentEnv(t, c)
 			e2.view(t, ctx2, rc2, uids2["A"], at(time.Now().Add(-7*24*time.Hour)))
-			if v, now := e2.viewedAt(t, uids2["A"]); v.Before(now.Add(-24 * time.Hour)) {
+			// now() is read in a later transaction: allow it 1 s.
+			if v, now := e2.viewedAt(t, uids2["A"]); v.Before(now.Add(-24*time.Hour - time.Second)) {
 				t.Errorf("at now-7d stored %v, before now()-1day (%v)", v, now.Add(-24*time.Hour))
 			}
 			e2.view(t, ctx2, rc2, uids2["B"], nil)

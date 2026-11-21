@@ -114,7 +114,7 @@ async function boardStates(
   await check('b-1 edit, select open');
 
   await edit();
-  await page.getByRole('button', { name: 'Add panel' }).click();
+  await page.getByRole('button', { name: 'Add panel', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Main' })
     .getByRole('link', { name: 'Boards', exact: true })

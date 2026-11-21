@@ -185,7 +185,7 @@ describe('filter bar', () => {
 
   it('chips follow the draft', async () => {
     const { user } = open('/t/demo/board/b-1');
-    await user.click(await screen.findByRole('button', { name: 'Edit board' }));
+    // Edit panel from the View-mode menu enters Edit with the editor on the panel.
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     const editor = await screen.findByRole('complementary', { name: 'Panel editor' });

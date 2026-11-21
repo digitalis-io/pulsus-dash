@@ -78,7 +78,12 @@ describe('sections', () => {
     expect(queried(data)).toEqual(['p-1', 'p-2', 'p-3']);
 
     await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    });
     await waitFor(() => {
       expect(queried(data)).toEqual(['p-1', 'p-2', 'p-3', 'p-4', 'p-5']);
     });
@@ -93,22 +98,32 @@ describe('sections', () => {
     const toggle = await screen.findByRole('button', { name: 'Latency' });
     const before = window.history.length;
     await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await waitFor(() => {
       expect(router.state.location.search).toContain('collapse=s-1');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
     });
     expect(router.state.historyAction).toBe('REPLACE');
     expect(window.history.length).toBe(before);
     expect(save).not.toHaveBeenCalled();
     expect((await api.getBoard('demo', 'b-1')).spec.sections[0]?.collapsed).toBe(false);
 
-    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: 'Latency' }));
     await waitFor(() => {
       expect(router.state.location.search).not.toMatch(/collapse=|expand=/);
     });
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    });
 
-    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: 'Latency' }));
     await waitFor(() => {
       expect(router.state.location.search).toContain('collapse=s-1');
     });
@@ -116,10 +131,12 @@ describe('sections', () => {
     await waitFor(() => {
       expect(router.state.location.search).not.toContain('collapse');
     });
-    expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    });
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
@@ -143,10 +160,12 @@ describe('sections', () => {
     const data = vi.spyOn(api, 'panelData');
     const one = open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off&expand=s-1', { api });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
-    expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    });
     await waitFor(() => {
       expect(queried(data)).toEqual(expect.arrayContaining(['p-4', 'p-5']));
     });
@@ -156,10 +175,12 @@ describe('sections', () => {
     const data2 = vi.spyOn(api2, 'panelData');
     open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off', { api: api2 });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
-    expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+    });
     await waitFor(() => {
       expect(queried(data2)).toEqual(['p-1', 'p-2', 'p-3']);
     });
@@ -179,10 +200,12 @@ describe('sections', () => {
     expect(save.mock.calls[0]?.[3].sections[0]?.collapsed).toBe(true);
     await user.click(screen.getByRole('button', { name: 'Done' }));
     await screen.findByRole('button', { name: 'Edit board' });
-    expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+    });
   });
 
   it('add, rename and remove sections', async () => {

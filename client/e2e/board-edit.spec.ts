@@ -84,7 +84,7 @@ test.describe('e2e:board-edit-save', () => {
         ['B', 'Stat'],
         ['C', 'Heatmap'],
       ] as const) {
-        await page.getByRole('button', { name: 'Add panel' }).click();
+        await page.getByRole('button', { name: 'Add panel', exact: true }).click();
         await editor.getByRole('textbox', { name: 'Title' }).fill(name);
         await editor.getByRole('button', { name: /Visualisation$/ }).click();
         await page.getByRole('option', { name: vis, exact: true }).click();
@@ -154,7 +154,7 @@ test.describe('e2e:board-edit-save', () => {
       // 7. The guard keeps unsaved work.
       const nav = page.getByRole('navigation', { name: 'Main' });
       await page.getByRole('button', { name: 'Edit board' }).click();
-      await page.getByRole('button', { name: 'Add panel' }).click();
+      await page.getByRole('button', { name: 'Add panel', exact: true }).click();
       const url = page.url();
       await nav.getByRole('link', { name: 'Boards', exact: true }).click();
       const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
