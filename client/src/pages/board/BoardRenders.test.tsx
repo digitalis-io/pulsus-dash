@@ -1,7 +1,9 @@
 /**
- * Render counts of the board's panels (#111): opening the panel editor, and editing in it, render
- * only the panel being edited; the rest of the grid is left alone. A panel's renders are counted
- * through its `PanelFullScreen`, which every `PanelFrame` render renders.
+ * Render counts of the board's panels (#111). In Edit mode, opening the panel editor, editing in
+ * it and closing it render only the panel being edited; the rest of the grid is left alone. Entering
+ * Edit mode (Edit board, or Edit panel from View mode) swaps the View grid for the lazy Edit grid
+ * (`react-grid-layout`), so every panel mounts again: the last two tests record that. A panel's
+ * renders are counted through its `PanelFullScreen`, which every `PanelFrame` render renders.
  */
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +28,7 @@ beforeEach(() => {
 });
 
 const OTHERS = ['Error ratio', 'Errors', 'Request latency'];
+const ALL = ['Request rate', ...OTHERS];
 
 function rendersOf(titles: readonly string[]): Record<string, number> {
   return Object.fromEntries(titles.map((x) => [x, counts.get(x) ?? 0]));
@@ -79,5 +82,28 @@ describe('board render counts (#111)', () => {
       expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
     });
     expect(rendersOf(OTHERS)).toEqual(none);
+  });
+
+  it('entering Edit mode mounts every panel again in the Edit grid', async () => {
+    const { user } = renderApp('/t/demo/board/b-1', { wrapper: EngineWrapper });
+    const edit = await screen.findByRole('button', { name: 'Edit board' });
+    counts.clear();
+    await user.click(edit);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.react-grid-item')).toHaveLength(4);
+    });
+    for (const n of Object.values(rendersOf(ALL))) expect(n).toBeGreaterThan(0);
+  });
+
+  it('Edit panel from View mode enters Edit mode: every panel mounts again', async () => {
+    const { user } = renderApp('/t/demo/board/b-1', { wrapper: EngineWrapper });
+    await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
+    counts.clear();
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
+    await screen.findByRole('dialog', { name: 'Edit panel' });
+    await waitFor(() => {
+      expect(document.querySelectorAll('.react-grid-item')).toHaveLength(4);
+    });
+    for (const n of Object.values(rendersOf(ALL))) expect(n).toBeGreaterThan(0);
   });
 });
