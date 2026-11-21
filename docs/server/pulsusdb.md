@@ -155,9 +155,11 @@ The browser sends the range and its chart width; the BFF picks the grid (T07-003
 One hour at 1 200 px is a 5 s step. The cases are in `wire/fixtures/json/promql-step.json`, which
 both `pulsusdb.PromGrid` and the client's `promGrid` are tested against.
 
-Each upstream series is decoded first and then placed on that grid, in `ResultStream`, so every
-body decoder shares the placement and the points limit. A point whose timestamp is off the grid,
-before `start` or after `end` makes the response a protocol error. A grid point without an upstream point
+Each upstream point is placed on that grid by `ResultStream` as soon as the body decoder reads it,
+so every decoder shares the placement and the points limit and no series is buffered: a series
+holds at most one value per grid point. A point whose timestamp is off the grid, before `start`,
+after `end` or already present in its series makes the response a protocol error, and decoding
+stops there. A grid point without an upstream point
 stays **absent**: `null` in the frame, never filled or interpolated
 ([T04-005](../../designs/technical/T04-wire-format-and-data-plane.md)).
 
@@ -568,7 +570,7 @@ properties the pager relies on ([testing against PulsusDB](../development/testin
 | `internal/keyhash` | the series key |
 | `internal/pulsusdb/client.go` | options, transport, decoration, attempts, logs |
 | `internal/pulsusdb/promql.go` | the seven methods and the completion decoders |
-| `internal/pulsusdb/stream.go` | `ResultStream`: range streaming, grid placement after decoding, instant results, completeness |
+| `internal/pulsusdb/stream.go` | `ResultStream`: range streaming, grid placement point by point (the sources' `seriesSink`), instant results, completeness |
 | `internal/pulsusdb/source.go`, `source_json.go` | the decoder seam: `Accept`, the `Content-Type` dispatch, and the JSON source (both member orders, native histograms skipped; logs mode with the capture, `logSource`) |
 | `internal/pulsusdb/logql.go` | the five LogQL methods, levels, `nsParam`, volume composition and position mapping |
 | `internal/pulsusdb/logpage.go` | the decoded `logResponse`, `streamsResult`, `openLogs` and the pager |

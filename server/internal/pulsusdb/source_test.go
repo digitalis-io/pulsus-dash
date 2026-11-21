@@ -10,7 +10,14 @@ import (
 	"time"
 )
 
-// fakeSource is a non-JSON source: it yields the raw series it holds.
+// rawSeries is one series of fakeSource: labels and points as a body would give them.
+type rawSeries struct {
+	Labels []Label
+	T      []int64 // ms
+	V      []float64
+}
+
+// fakeSource is a non-JSON source: it hands the series it holds to the sink point by point.
 type fakeSource struct {
 	series []rawSeries
 	i      int
@@ -18,13 +25,21 @@ type fakeSource struct {
 
 func (f *fakeSource) openRange() error { return nil }
 
-func (f *fakeSource) nextRange(r *rawSeries) error {
+func (f *fakeSource) nextRange(sink seriesSink) ([]Label, error) {
 	if f.i == len(f.series) {
-		return io.EOF
+		return nil, io.EOF
 	}
-	*r = f.series[f.i]
+	r := f.series[f.i]
 	f.i++
-	return nil
+	if err := sink.begin(); err != nil {
+		return nil, err
+	}
+	for i, ms := range r.T {
+		if err := sink.add(ms, r.V[i]); err != nil {
+			return nil, err
+		}
+	}
+	return r.Labels, nil
 }
 
 func (f *fakeSource) readInstant() (instantResult, error) { return instantResult{}, nil }
