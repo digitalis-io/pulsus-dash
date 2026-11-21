@@ -1,0 +1,55 @@
+[package]
+name = "dash-marks"
+description = "Mark descriptions and, under feature gpu, the M1 line pipeline and decimation passes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+gpu = ["dep:dash-gpu", "dep:wgpu"]
+
+[dependencies]
+bytemuck.workspace = true
+dash-gpu = { workspace = true, optional = true }
+dash-scales.workspace = true
+dash-tokens.workspace = true
+dash-wire.workspace = true
+serde.workspace = true
+wgpu = { workspace = true, optional = true }
+
+[dev-dependencies]
+dash-colour.workspace = true
+dash-scene.workspace = true
+dash-units.workspace = true
+glam.workspace = true
+naga.workspace = true
+pulsus-synth.workspace = true
+
+[[test]]
+name = "batches"
+required-features = ["gpu"]
+
+[[test]]
+name = "tier_parity"
+required-features = ["gpu"]
+
+[[test]]
+name = "spike"
+required-features = ["gpu"]
+
+[[test]]
+name = "drawn"
+required-features = ["gpu"]
+
+[[test]]
+name = "lifetime"
+required-features = ["gpu"]
+
+[[test]]
+name = "wgsl"
+required-features = ["gpu"]

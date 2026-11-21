@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { generate, parseTokens, TOKENS_CSS, TOKENS_TOML, TOKENS_TS } from './gen-tokens.ts';
+import {
+  checkGenerated,
+  generate,
+  parseTokens,
+  TOKENS_CSS,
+  TOKENS_RS,
+  TOKENS_TOML,
+  TOKENS_TS,
+} from './gen-tokens.ts';
 
 const toml = readFileSync(TOKENS_TOML, 'utf8');
 
@@ -78,5 +86,46 @@ describe('T-tok-2 contiguous numbering', () => {
       .filter((l) => !/^series-[24-8] = /.test(l))
       .join('\n');
     expect(() => generate(gappy)).toThrow(/series-2/);
+  });
+});
+
+describe('ci:token-lint Rust output', () => {
+  const bytes = (hex: string): string => {
+    const b = [1, 3, 5, 7].map((i) => (i < hex.length ? hex.slice(i, i + 2) : 'FF'));
+    return `Rgba8([${b.map((x) => `0x${x.toUpperCase()}`).join(', ')}])`;
+  };
+  const rustName = (k: string): string => {
+    const n = k.toUpperCase().replace(/-/g, '_');
+    return /^\d/.test(n) ? `S_${n}` : n;
+  };
+
+  it('emits every colour as sRGB-encoded Rgba8 bytes equal to its CSS hex', () => {
+    const { rs } = generate(toml);
+    expect(rs).toContain('pub const SURFACE_1: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xFF]);');
+    expect(rs).toContain('pub mod advance { pub const MONO: f32 = 0.6; }');
+    const tk = parseTokens(toml);
+    for (const theme of ['dark', 'light'] as const) {
+      const body = new RegExp(`pub mod ${theme} \\{([^}]*)\\}`).exec(rs)?.[1] ?? '';
+      expect(body, theme).not.toBe('');
+      for (const [k, hex] of Object.entries(tk.colour[theme])) {
+        expect(body, `${theme}.${k}`).toContain(`pub const ${rustName(k)}: Rgba8 = ${bytes(hex)};`);
+      }
+    }
+    const dark = /pub mod dark \{([^}]*)\}/.exec(rs)?.[1] ?? '';
+    expect(dark).toContain('pub const HAIRLINE: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x14]);');
+    expect(rs).not.toContain('Lin(');
+    expect(rs).not.toMatch(/\[f32; 4\]/);
+    for (const line of rs.split('\n').filter((l) => l.includes('Rgba8('))) {
+      expect(line).not.toContain('f32');
+    }
+  });
+
+  it('checkGenerated reports a stale tokens.rs', () => {
+    const { css, ts } = generate(toml);
+    const files: Record<string, string> = { [TOKENS_CSS]: css, [TOKENS_TS]: ts, [TOKENS_RS]: '// stale\n' };
+    const findings = checkGenerated((p) => files[p] ?? '');
+    expect(findings.map((f) => f.rule)).toEqual([
+      'stale-generated:engine/crates/dash-tokens/src/tokens.rs',
+    ]);
   });
 });
