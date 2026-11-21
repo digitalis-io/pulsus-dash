@@ -107,6 +107,32 @@ describe('board list', () => {
     });
   });
 
+  it('rename updates the sidebar', async () => {
+    const { user } = renderApp('/t/demo/boards');
+    await table();
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const starred = () => {
+      const h = within(nav).getByRole('heading', { name: 'Starred' });
+      const list = h.nextElementSibling;
+      return list === null
+        ? []
+        : [...list.querySelectorAll('a')].map((a) => a.textContent.replace('★', ''));
+    };
+    await waitFor(() => {
+      expect(starred()).toEqual(['Service overview']);
+    });
+    await user.click(screen.getByRole('button', { name: 'Actions for Service overview' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const r = await dialog('Rename board');
+    const name = within(r).getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Service overview 2');
+    await user.click(within(r).getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(starred()).toEqual(['Service overview 2']);
+    });
+  });
+
   it('empty and truncated', async () => {
     const empty = renderApp('/t/demo/boards', { api: new StubApi(seedWith({ boards: [] })) });
     expect(await screen.findByText('No boards yet')).toBeInTheDocument();

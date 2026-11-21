@@ -309,12 +309,12 @@ func (s *Service) ListRecent(ctx context.Context, rc *core.RequestCtx, limit int
 }
 
 // RecordView records that the principal viewed a live board, or returns core.ErrNotFound.
-func (s *Service) RecordView(ctx context.Context, rc *core.RequestCtx, uid string) error {
+func (s *Service) RecordView(ctx context.Context, rc *core.RequestCtx, uid string, at *time.Time) error {
 	return s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
 		id, _, err := tx.BoardID(ctx, uid)
 		if err != nil {
 			return err
 		}
-		return tx.RecordView(ctx, rc.Actor.ID, id)
+		return tx.RecordView(ctx, rc.Actor.ID, id, at)
 	})
 }

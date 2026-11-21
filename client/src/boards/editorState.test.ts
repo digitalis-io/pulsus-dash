@@ -3,6 +3,7 @@ import type { Board, BoardSpec } from '../api/types';
 import {
   boardReducer,
   initialState,
+  isCollapsed,
   isDirty,
   type BoardAction,
   type BoardPageState,
@@ -77,5 +78,108 @@ describe('reducer', () => {
     expect(run(saving, { type: 'addPanel' }).draft).toEqual(saving.draft);
     const ok = run(kept, { type: 'saveStart' }, { type: 'saveOk', board: board('3') });
     expect(ok.remote).toBeNull();
+  });
+});
+
+const SECTIONED: BoardSpec = {
+  title: 'Sectioned',
+  panels: [
+    {
+      id: 'p-1',
+      title: 'Top',
+      grid: { x: 0, y: 0, w: 6, h: 8 },
+      query: { lang: 'promql', text: 'up' },
+      vis: { kind: 'auto' },
+    },
+  ],
+  sections: [
+    {
+      id: 's-1',
+      title: 'Latency',
+      collapsed: false,
+      panels: [
+        {
+          id: 'p-4',
+          title: 'Wide',
+          grid: { x: 0, y: 0, w: 12, h: 8 },
+          query: { lang: 'promql', text: 'up' },
+          vis: { kind: 'auto' },
+        },
+      ],
+    },
+  ],
+};
+
+const none = { collapse: new Set<string>(), expand: new Set<string>() };
+
+describe('sections', () => {
+  it('sections reducer', () => {
+    const loaded = run(initialState(board('1', SECTIONED)), {
+      type: 'loaded',
+      board: board('1', SECTIONED),
+    });
+    expect(run(loaded, { type: 'toggleSection', id: 's-1' })).toBe(loaded);
+
+    const sec = SECTIONED.sections[0];
+    if (sec === undefined) throw new Error('no section');
+    const collapsedSec = { ...sec, collapsed: true };
+    expect(isCollapsed('view', sec, { collapse: new Set(['s-1']), expand: new Set() })).toBe(true);
+    expect(
+      isCollapsed('view', collapsedSec, { collapse: new Set(), expand: new Set(['s-1']) }),
+    ).toBe(false);
+    expect(isCollapsed('view', collapsedSec, none)).toBe(true);
+    expect(isCollapsed('edit', sec, { collapse: new Set(['s-1']), expand: new Set() })).toBe(false);
+    expect(
+      isCollapsed('edit', collapsedSec, { collapse: new Set(), expand: new Set(['s-1']) }),
+    ).toBe(true);
+
+    let s = run(loaded, { type: 'enterEdit' }, { type: 'toggleSection', id: 's-1' });
+    expect(s.draft.sections[0]?.collapsed).toBe(true);
+    expect(isDirty(s)).toBe(true);
+
+    s = run(s, { type: 'addPanel', grid: 0 });
+    expect(s.draft.sections[0]?.collapsed).toBe(false);
+    expect(s.draft.sections[0]?.panels.at(-1)?.id).toBe('p-5');
+    expect(s.draft.sections[0]?.panels.at(-1)?.grid).toEqual({ x: 0, y: 8, w: 6, h: 8 });
+    expect(s.draft.panels).toHaveLength(1);
+    expect(s.selected).toBe('p-5');
+
+    s = run(s, { type: 'addSection' });
+    expect(s.draft.sections[1]).toEqual({ id: 's-2', title: '', collapsed: false, panels: [] });
+    s = run(s, { type: 'updateSection', id: 's-2', title: 'More' });
+    expect(s.draft.sections[1]?.title).toBe('More');
+    s = run(s, { type: 'removeSection', id: 's-1' });
+    expect(s.draft.sections.map((x) => x.id)).toEqual(['s-2']);
+    expect(s.selected).toBeNull();
+
+    const saving = run(s, { type: 'saveStart' });
+    expect(run(saving, { type: 'addSection' }).draft).toEqual(saving.draft);
+    expect(run(saving, { type: 'toggleSection', id: 's-2' }).draft).toEqual(saving.draft);
+  });
+
+  it('sections full', () => {
+    const fifty: BoardSpec = {
+      title: 'Full',
+      panels: [],
+      sections: Array.from({ length: 50 }, (_, i) => ({
+        id: `s-${String(i + 1)}`,
+        title: '',
+        collapsed: false,
+        panels: [],
+      })),
+    };
+    const s = run(initialState(board('1', fifty)), { type: 'enterEdit' }, { type: 'addSection' });
+    expect(s.draft.sections).toHaveLength(50);
+    expect(s.announce).toBe('A board can have at most 50 sections');
+  });
+
+  it('discard failure', () => {
+    let s = run(initialState(board('1')), { type: 'enterEdit' }, { type: 'addPanel' });
+    expect(isDirty(s)).toBe(true);
+    s = run(s, { type: 'discardFailed' });
+    expect(s.save.status).toBe('discardFailed');
+    s = run(s, { type: 'updatePanel', id: 'p-1', patch: { title: 'A' } });
+    expect(s.draft.panels[0]?.title).toBe('A');
+    expect(s.save.status).toBe('discardFailed');
   });
 });

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -408,7 +409,7 @@ func TestRecentTrim(t *testing.T) {
 			storetest.Exec(t, e.db.SuperURL, `INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at)
 				SELECT $1, $2, 'board', gen_random_uuid(), now() - make_interval(secs => n) FROM generate_series(1, 205) n`,
 				uuid.UUID(e.org), core.LocalPrincipalID)
-			if err := e.svc.RecordView(ctx, rc, b.UID); err != nil {
+			if err := e.svc.RecordView(ctx, rc, b.UID, nil); err != nil {
 				t.Fatal(err)
 			}
 			if n := e.count(t, "recent_views"); n != 200 {
@@ -420,6 +421,149 @@ func TestRecentTrim(t *testing.T) {
 			refs, err := e.svc.ListRecent(ctx, rc, 5)
 			if err != nil || len(refs) == 0 || refs[0].UID != b.UID {
 				t.Errorf("ListRecent(5) = %v, %v; want %s first", refs, err, b.UID)
+			}
+		})
+	}
+}
+
+// recentEnv is a fresh database with boards A and B and an empty Recent.
+func recentEnv(t *testing.T, c storetest.Cluster) (*env, context.Context, *core.RequestCtx, map[string]string) {
+	t.Helper()
+	e := newEnv(t, c)
+	ctx, rc := itestCtx(t), e.rc(e.org)
+	uids := map[string]string{}
+	for _, name := range []string{"A", "B"} {
+		b, err := e.svc.CreateBoard(ctx, rc, titled(t, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		uids[name] = b.UID
+	}
+	return e, ctx, rc, uids
+}
+
+// recentNames lists the user's Recent by board title.
+func recentNames(t *testing.T, e *env, ctx context.Context, rc *core.RequestCtx) string {
+	t.Helper()
+	refs, err := e.svc.ListRecent(ctx, rc, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, r := range refs {
+		out = append(out, r.Title)
+	}
+	return strings.Join(out, ",")
+}
+
+func (e *env) view(t *testing.T, ctx context.Context, rc *core.RequestCtx, uid string, at *time.Time) {
+	t.Helper()
+	if err := e.svc.RecordView(ctx, rc, uid, at); err != nil {
+		t.Fatalf("RecordView(%s, %v): %v", uid, at, err)
+	}
+}
+
+// viewedAt is the stored viewed_at of uid, and the database's now().
+func (e *env) viewedAt(t *testing.T, uid string) (viewed, now time.Time) {
+	t.Helper()
+	rows := storetest.QueryRows(t, e.db.SuperURL, `SELECT (extract(epoch FROM r.viewed_at) * 1000000)::bigint::text,
+		(extract(epoch FROM now()) * 1000000)::bigint::text FROM recent_views r JOIN boards b ON b.id = r.id WHERE b.uid = $1`, uid)
+	if len(rows) != 1 || len(rows[0]) != 2 {
+		t.Fatalf("viewed_at of %s: %v", uid, rows)
+	}
+	us := func(s string) time.Time {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return time.UnixMicro(n)
+	}
+	return us(rows[0][0]), us(rows[0][1])
+}
+
+func at(t time.Time) *time.Time { return &t }
+
+// Plan #61 Part C §3.9 (review c-r2 R1-3): the client's navigation time orders Recent, and a late
+// commit of an older view never moves a board above a later view.
+func TestRecentOrderByClientTime(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e, ctx, rc, uids := recentEnv(t, c)
+			t0 := time.Now()
+			e.view(t, ctx, rc, uids["B"], at(t0.Add(2*time.Second)))
+			e.view(t, ctx, rc, uids["A"], at(t0.Add(time.Second))) // A commits after B
+			if got := recentNames(t, e, ctx, rc); got != "B,A" {
+				t.Errorf("after B(t0+2s), A(t0+1s): %s, want B,A", got)
+			}
+			e.view(t, ctx, rc, uids["A"], at(t0.Add(3*time.Second)))
+			e.view(t, ctx, rc, uids["A"], at(t0.Add(time.Second))) // late and older
+			if got := recentNames(t, e, ctx, rc); got != "A,B" {
+				t.Errorf("after A(t0+3s), late A(t0+1s): %s, want A,B", got)
+			}
+
+			e.view(t, ctx, rc, uids["B"], at(time.Now().Add(time.Hour)))
+			if v, now := e.viewedAt(t, uids["B"]); v.After(now.Add(5 * time.Minute)) {
+				t.Errorf("at now+1h stored %v, after now()+5min (%v)", v, now.Add(5*time.Minute))
+			}
+			e2, ctx2, rc2, uids2 := recentEnv(t, c)
+			e2.view(t, ctx2, rc2, uids2["A"], at(time.Now().Add(-7*24*time.Hour)))
+			if v, now := e2.viewedAt(t, uids2["A"]); v.Before(now.Add(-24 * time.Hour)) {
+				t.Errorf("at now-7d stored %v, before now()-1day (%v)", v, now.Add(-24*time.Hour))
+			}
+			e2.view(t, ctx2, rc2, uids2["B"], nil)
+			if v, now := e2.viewedAt(t, uids2["B"]); v.Sub(now).Abs() > time.Second {
+				t.Errorf("nil stored %v, not within 1 s of now() %v", v, now)
+			}
+		})
+	}
+}
+
+// Plan #61 Part C §3.9 (D-RECENT-window, review c-r3 R1-3): stamps outside the window clamp to its
+// edge; such views order by transaction start (`now()`), best effort. No commit-order claim.
+func TestClampedViewsOrderByTransactionStart(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				offset time.Duration
+			}{{"slow clock", -2 * 24 * time.Hour}, {"fast clock", time.Hour}} {
+				t.Run(tc.name, func(t *testing.T) {
+					e, ctx, rc, uids := recentEnv(t, c)
+					base := time.Now().Add(tc.offset)
+					a, b := base, base.Add(time.Second)
+					e.view(t, ctx, rc, uids["B"], &b)
+					time.Sleep(20 * time.Millisecond)
+					e.view(t, ctx, rc, uids["A"], &a) // A's transaction starts later
+					if got := recentNames(t, e, ctx, rc); got != "A,B" {
+						t.Errorf("%s: %s, want A,B (transaction start order)", tc.name, got)
+					}
+					for _, name := range []string{"A", "B"} {
+						v, now := e.viewedAt(t, uids[name])
+						if v.Before(now.Add(-24*time.Hour-time.Second)) || v.After(now.Add(5*time.Minute+time.Second)) {
+							t.Errorf("%s: %s stored %v, outside [now()-1day, now()+5min] of %v", tc.name, name, v, now)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+// Plan #61 Part C §3.9 (D-RECENT-window, review c-r4 R1-3): on an equal timestamp the later write
+// wins.
+func TestRecentEqualTimestamps(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e, ctx, rc, uids := recentEnv(t, c)
+			ts := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
+			e.view(t, ctx, rc, uids["A"], &ts)
+			e.view(t, ctx, rc, uids["B"], &ts)
+			if got := recentNames(t, e, ctx, rc); got != "B,A" {
+				t.Errorf("A(t), then B(t): %s, want B,A", got)
+			}
+			e.view(t, ctx, rc, uids["A"], &ts)
+			if got := recentNames(t, e, ctx, rc); got != "A,B" {
+				t.Errorf("then A(t): %s, want A,B", got)
 			}
 		})
 	}
@@ -449,7 +593,7 @@ func TestRecentTrimConcurrent(t *testing.T) {
 				for _, uid := range uids[2*r : 2*r+2] {
 					go func() {
 						<-start
-						errs <- e.svc.RecordView(ctx, rc, uid)
+						errs <- e.svc.RecordView(ctx, rc, uid, nil)
 					}()
 				}
 				close(start)

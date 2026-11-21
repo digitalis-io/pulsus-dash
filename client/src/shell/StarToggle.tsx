@@ -11,16 +11,12 @@ export function StarToggle({ tenant, uid }: { tenant: string; uid: string }) {
   const api = useApi();
   const queryClient = useQueryClient();
   const starred = useStarred(tenant);
-  const isStarred = starred.data?.includes(uid) ?? false;
+  const isStarred = starred.data?.some((r) => r.uid === uid) ?? false;
   const onChange = (next: boolean): void => {
-    api.setStarred(tenant, uid, next).then(
-      (list) => {
-        queryClient.setQueryData(['starred', tenant], list);
-      },
-      () => {
-        void queryClient.invalidateQueries({ queryKey: ['starred', tenant] });
-      },
-    );
+    const settled = (): void => {
+      void queryClient.invalidateQueries({ queryKey: ['starred', tenant] });
+    };
+    api.setStarred(tenant, uid, next).then(settled, settled);
   };
   return (
     <ToggleButton

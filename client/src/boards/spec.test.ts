@@ -6,7 +6,7 @@ import type { BoardSpec, PanelSpec } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
 import { fieldMessage } from './fieldMessages';
 import { GRID_LIMITS } from './layout';
-import { canonicalJson, checkBoardSpec, nextPanelId } from './spec';
+import { canonicalJson, checkBoardSpec, nextId, nextPanelId, nextSectionId } from './spec';
 
 /** `api/fixtures/board-spec/` (vitest runs in `client/`). */
 const FIXTURES = join(process.cwd(), '..', 'api', 'fixtures', 'board-spec');
@@ -123,5 +123,20 @@ describe('unit:board-spec (TS)', () => {
     expect(checkBoardSpec(board([0, 9999, 12, 100]))).toEqual([]);
     expect(checkBoardSpec(board([0, 10000, 12, 1]))).toEqual(bounds);
     expect(checkBoardSpec(board([0, 0, 12, 101]))).toEqual(bounds);
+  });
+});
+
+describe('section ids', () => {
+  it('nextSectionId', () => {
+    const empty: BoardSpec = { title: 'B', panels: [], sections: [] };
+    expect(nextSectionId(empty)).toBe('s-1');
+    const sec = (id: string) => ({ id, title: '', collapsed: false, panels: [] });
+    const spec: BoardSpec = {
+      title: 'B',
+      panels: [panel('s-9', [0, 0, 1, 1])],
+      sections: [sec('s-1'), sec('s-7')],
+    };
+    expect(nextSectionId(spec)).toBe('s-10');
+    expect(nextId(spec, 'p')).toBe(nextPanelId(spec));
   });
 });

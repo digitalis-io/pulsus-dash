@@ -3,12 +3,20 @@
  * user edits. The draft is dirty when its canonical JSON differs from the head's. A later read of
  * the board never replaces a dirty draft, and no edit is taken while a save is in flight.
  */
-import type { Board, BoardSpec, FieldError, PanelSpec, TimeRangeSpec } from '../api/types';
+import type {
+  Board,
+  BoardSpec,
+  FieldError,
+  PanelSpec,
+  SectionSpec,
+  TimeRangeSpec,
+} from '../api/types';
+import type { SectionOverrides } from '../state/boardParams';
 import { t } from '../i18n/t';
 import { applyOp, firstFree, fits, type LayoutOp, overlaps } from './layout';
 import { canonicalJson, MAX_PANELS, nextPanelId } from './spec';
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed' | 'invalid';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed' | 'invalid' | 'discardFailed';
 
 export interface BoardPageState {
   mode: 'view' | 'edit';
@@ -42,7 +50,12 @@ export type BoardAction =
   | { type: 'remoteHead'; board: Board }
   | { type: 'enterEdit' }
   | { type: 'exitEdit' }
-  | { type: 'addPanel' }
+  | { type: 'addPanel'; grid?: GridRef }
+  | { type: 'addSection' }
+  | { type: 'updateSection'; id: string; title: string }
+  | { type: 'removeSection'; id: string }
+  | { type: 'toggleSection'; id: string }
+  | { type: 'discardFailed' }
   | {
       type: 'updatePanel';
       id: string;
@@ -256,5 +269,22 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
       return { ...s, conflict: a.current, save: { status: 'idle', fields: [] } };
     case 'announce':
       return { ...s, announce: a.text };
+    case 'addSection':
+    case 'updateSection':
+    case 'removeSection':
+    case 'toggleSection':
+    case 'discardFailed':
+      return s;
   }
+}
+
+/** Stub. */
+export function isCollapsed(
+  mode: 'view' | 'edit',
+  section: SectionSpec,
+  o: SectionOverrides,
+): boolean {
+  void mode;
+  void o;
+  return section.collapsed;
 }

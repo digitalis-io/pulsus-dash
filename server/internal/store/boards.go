@@ -204,7 +204,8 @@ func (t *OrgTx) ListStarred(ctx context.Context, user uuid.UUID) ([]core.BoardRe
 // RecordView records that user viewed the board now and keeps the user's 200 most recent views
 // (T11 §4.3). A transaction-scoped advisory lock on (org, user) serialises concurrent views, so
 // that each trim sees the other's insert and the limit holds.
-func (t *OrgTx) RecordView(ctx context.Context, user, board uuid.UUID) error {
+func (t *OrgTx) RecordView(ctx context.Context, user, board uuid.UUID, at *time.Time) error {
+	_ = at
 	if err := t.q.RecentLock(ctx, dbgen.RecentLockParams{OrgID: pgUUID(t.org), UserID: pgUUID(user)}); err != nil {
 		return fmt.Errorf("store: recent lock: %w", err)
 	}

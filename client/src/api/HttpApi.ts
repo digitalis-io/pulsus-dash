@@ -12,6 +12,7 @@ import {
   BoardConflictError,
   type Board,
   type BoardList,
+  type BoardRef,
   type BoardSpec,
   type PanelData,
   type PanelSpec,
@@ -211,12 +212,20 @@ export class HttpApi implements Api {
     });
   }
 
-  listStarred(): Promise<string[]> {
+  listStarred(): Promise<BoardRef[]> {
     return Promise.resolve([]);
   }
 
-  setStarred(): Promise<string[]> {
+  setStarred(): Promise<void> {
     return Promise.reject(new ApiError('notImplemented', 'starring boards arrives with #61'));
+  }
+
+  listRecent(): Promise<BoardRef[]> {
+    return Promise.resolve([]);
+  }
+
+  recordView(): Promise<void> {
+    return Promise.resolve();
   }
 
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */

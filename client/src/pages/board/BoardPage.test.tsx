@@ -1,10 +1,11 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
 import type { GridLayoutProps, LayoutItem } from 'react-grid-layout';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
 import { ApiError, BoardConflictError, type Board, type SaveResult } from '../../api/types';
-import { readRecent } from '../../shell/recentBoards';
+import header from '../../shell/Header.module.css';
+import { failingApi } from '../../test/failingApi';
 import {
   deferred,
   EngineWrapper,
@@ -59,8 +60,26 @@ function statusLine(): HTMLElement {
 
 const B1 = ['Request rate', 'Error ratio', 'Errors', 'Request latency'];
 
+/** Links between a sidebar group heading and the next heading. */
+function linksAfter(heading: HTMLElement): string[] {
+  const out: string[] = [];
+  let el = heading.nextElementSibling;
+  while (el !== null && el.tagName !== 'H2') {
+    for (const a of el.querySelectorAll('a')) out.push(a.textContent.replace('★', ''));
+    el = el.nextElementSibling;
+  }
+  return out;
+}
+
+/** The uids of the stub's stored Recent entries, newest first. */
+function recentUids(): string[] {
+  const raw = localStorage.getItem('pulsus-dash.stub.recent');
+  if (raw === null) return [];
+  return (JSON.parse(raw) as { uid: string }[]).map((e) => e.uid);
+}
+
 describe('star toggle', () => {
-  it('stars and unstars the board and records it as recent', async () => {
+  it('star toggle', async () => {
     const { user } = renderApp('/t/demo/board/b-2');
     const star = await screen.findByRole('button', { name: 'Star board' });
     await waitFor(() => {
@@ -72,15 +91,115 @@ describe('star toggle', () => {
       expect(star).toHaveAttribute('aria-pressed', 'true');
     });
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(nav).getAllByRole('link', { name: 'Checkout latency' }).length).toBeGreaterThan(
-      0,
-    );
-    expect(localStorage.getItem('pulsus-dash.stub.starred.demo')).toBe('["b-1","b-2"]');
+    await waitFor(() => {
+      expect(linksAfter(within(nav).getByRole('heading', { name: 'Starred' }))).toContain(
+        'Checkout latency',
+      );
+    });
+    expect(localStorage.getItem('pulsus-dash.stub.starred')).toBe('["b-1","b-2"]');
     await user.click(star);
     await waitFor(() => {
       expect(star).toHaveAttribute('aria-pressed', 'false');
     });
-    expect(readRecent(localStorage, 'demo')).toEqual(['b-2']);
+    expect(recentUids()).toEqual(['b-2']);
+    await waitFor(() => {
+      expect(linksAfter(within(nav).getByRole('heading', { name: 'Recent' }))[0]).toBe(
+        'Checkout latency',
+      );
+    });
+  });
+
+  it('star failure', async () => {
+    const api = failingApi({ setStarred: [new ApiError('network', 'x')] });
+    const { user } = renderApp('/t/demo/board/b-2', { api });
+    const star = await screen.findByRole('button', { name: 'Star board' });
+    await waitFor(() => {
+      expect(star).toBeEnabled();
+    });
+    const status = star.nextElementSibling;
+    expect(status).not.toBeNull();
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveTextContent('');
+    await user.click(star);
+    await waitFor(() => {
+      expect(status).toHaveTextContent('Could not update Starred. Try again.');
+    });
+    expect(star).toHaveAttribute('aria-pressed', 'false');
+    expect(status?.tagName).toBe('SPAN');
+    expect(status).toHaveClass(header['starStatus'] ?? 'starStatus');
+    expect(status?.className).not.toMatch(/visuallyHidden/);
+    await user.click(star);
+    await waitFor(() => {
+      expect(star).toHaveAttribute('aria-pressed', 'true');
+    });
+    expect(status).toHaveTextContent('');
+  });
+
+  it('records a view once', async () => {
+    const api = new StubApi();
+    const record = vi.spyOn(api, 'recordView');
+    const before = Date.now();
+    const { user } = open('/t/demo/board/b-1', { api });
+    await editMode(user);
+    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent('Saved');
+    });
+    expect(record).toHaveBeenCalledTimes(1);
+    const [tenant, uid, at, signal] = record.mock.calls[0] ?? [];
+    expect([tenant, uid]).toEqual(['demo', 'b-1']);
+    expect(Number.isInteger(at)).toBe(true);
+    expect(at).toBeGreaterThanOrEqual(before);
+    expect(signal).toBeInstanceOf(AbortSignal);
+
+    cleanup();
+    const failing = failingApi({ recordView: [new ApiError('notFound', 'gone')] });
+    open('/t/demo/board/b-1', { api: failing });
+    await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    await waitFor(() => {
+      expect(failing.calls.some((c) => c.method === 'recordView')).toBe(true);
+    });
+    expect(panelTitles()).toHaveLength(4);
+    expect(screen.queryByText(/Could not/)).toBeNull();
+  });
+
+  it('rapid board changes keep the latest first', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const api = new GatedRecentApi();
+      const { router } = renderApp('/t/demo/board/b-1', { api });
+      await screen.findByRole('heading', { level: 1, name: 'Service overview' });
+      await waitFor(() => {
+        expect(api.sent).toContain('b-1');
+      });
+      await act(() => router.navigate('/t/demo/board/b-2'));
+      await screen.findByRole('heading', { level: 1, name: 'Checkout latency' });
+      const recent = () =>
+        linksAfter(
+          within(screen.getByRole('navigation', { name: 'Main' })).getByRole('heading', {
+            name: 'Recent',
+          }),
+        );
+      await waitFor(() => {
+        expect(recent()).toEqual(['Checkout latency']);
+      });
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
+      expect(api.aborted).toBe(true);
+      // b-1 commits after its client timeout and after b-2's refresh.
+      await act(async () => {
+        api.gate.resolve(undefined);
+        await api.committed;
+      });
+      expect(recentUids()).toEqual(['b-2', 'b-1']);
+      expect(recent()).toEqual(['Checkout latency']);
+      await act(() => vi.advanceTimersByTimeAsync(5_000));
+      await waitFor(() => {
+        expect(recent()).toEqual(['Checkout latency', 'Service overview']);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is not shown on the boards list', async () => {
@@ -320,6 +439,58 @@ describe('edit mode', () => {
     expect(await screen.findByRole('button', { name: 'Edit board' })).toBeInTheDocument();
     expect(panelTitles()).toEqual(B1);
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('failed discard keeps the draft editable', async () => {
+    const api = new GatedReadApi(new ApiError('network', 'x'));
+    const save = vi.spyOn(api, 'saveBoard');
+    const { user } = open('/t/demo/board/b-1', { api });
+    await editMode(user);
+    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    await act(async () => {
+      api.next.resolve(undefined);
+      await api.next.promise;
+    });
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent(
+        'Could not discard: the saved version did not load. Your changes are kept.',
+      );
+    });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeVisible();
+    expect(panelTitles()).toHaveLength(5);
+    const title = within(editor).getByRole('textbox', { name: 'Title' });
+    expect(title).not.toHaveAttribute('readonly');
+    await user.type(title, 'A');
+    expect(title).toHaveValue('A');
+    for (const name of ['Discard', 'Add panel', 'Done', 'Save']) {
+      expect(screen.getByRole('button', { name }), name).toBeEnabled();
+    }
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent('Saved');
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('Shift+E while Discard is pending', async () => {
+    const api = new GatedReadApi();
+    const { user } = open('/t/demo/board/b-1', { api });
+    await editMode(user);
+    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    (document.activeElement as HTMLElement).blur();
+    await user.keyboard('{Shift>}E{/Shift}');
+    expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeVisible();
+    expect(panelTitles()).toHaveLength(5);
+    await act(async () => {
+      api.next.resolve(undefined);
+      await api.next.promise;
+    });
+    expect(await screen.findByRole('button', { name: 'Edit board' })).toBeInTheDocument();
+    expect(panelTitles()).toEqual(B1);
   });
 
   it('read-only while saving', async () => {
@@ -709,5 +880,31 @@ class GatedReadApi extends StubApi {
     await this.next.promise;
     if (this.fail !== null) throw this.fail;
     return b;
+  }
+}
+
+/**
+ * A stub whose `recordView` of b-1 rejects with `AbortError` when its signal aborts, and writes the
+ * view (the stub's greater-time-wins write) only when the test opens `gate`, modelling a server
+ * that commits after the client gave up. It never touches the query client.
+ */
+class GatedRecentApi extends StubApi {
+  readonly gate = deferred<undefined>();
+  readonly sent: string[] = [];
+  aborted = false;
+  committed: Promise<void> = Promise.resolve();
+
+  override recordView(tenant: string, uid: string, at: number, signal?: AbortSignal) {
+    this.sent.push(uid);
+    if (uid !== 'b-1') return super.recordView(tenant, uid, at, signal);
+    const write = () => super.recordView(tenant, uid, at);
+    this.committed = this.gate.promise.then(write);
+    return new Promise<void>((resolve, reject) => {
+      signal?.addEventListener('abort', () => {
+        this.aborted = true;
+        reject(new DOMException('The operation was aborted.', 'AbortError'));
+      });
+      this.committed.then(resolve, reject);
+    });
   }
 }

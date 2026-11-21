@@ -1,5 +1,5 @@
 /**
- * Keyboard loops L23–L28 (plan #61 Part B, Appendix B-A §A.5): the board list and its dialogs, the
+ * Keyboard loops L23–L31 (plan #61 Part B, Appendix B-A §A.5; Part C, Appendix C-A §A.3): the board list and its dialogs, the
  * board in View and Edit mode, the panel tools, Share, the layout buttons, the panel editor and its
  * selects, the guard and the conflict dialog. Each loop asserts its behaviours, then drains its
  * states. Run inside the one keyboard test, so the final coverage check covers them.
@@ -383,5 +383,156 @@ export async function boardLoops(s: Script): Promise<void> {
     await page.evaluate(() => {
       localStorage.removeItem('pulsus-dash.stub.conflictSave');
     });
+  });
+
+  // Plan #61 Part C, Appendix C-A §A.3: sections, variable chips and filters.
+  const section = (title: string) =>
+    page.locator('[data-section]').filter({
+      has: page
+        .getByRole('heading', { level: 2 })
+        .getByRole('button', { name: title, exact: true }),
+    });
+
+  await test.step('L29 Sections', async () => {
+    const url = '/t/demo/board/b-1';
+    await s.goto(url);
+    await s.shellAfter(await s.linkKeys(), () => s.goto(url));
+    const latency = page.getByRole('button', { name: 'Latency', exact: true });
+    await s.on('button "Latency"');
+    await expect(latency).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('heading', { level: 3, name: 'Request latency' })).toHaveCount(0);
+    await expect(section('Latency').getByText('1 panel')).toBeVisible();
+    await expect.poll(() => s.search()['collapse']).toBe('s-1');
+    await press('Enter');
+    await expect(latency).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => s.search()['collapse']).toBeUndefined();
+
+    await s.on('button "Edit board"');
+    await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+    await s.on('button "Add section"');
+    await expect(page.getByRole('button', { name: 'Untitled section' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Section 2 title' })).toBeVisible();
+    await s.replaceText('textbox "Section 2 title"', 'Keyboard section');
+    await expect(page.getByRole('button', { name: 'Keyboard section', exact: true })).toBeVisible();
+    await s.on('button "Add panel to Keyboard section"');
+    const editor = page.getByRole('complementary', { name: 'Panel editor' });
+    await expect(editor).toBeVisible();
+    await expect(editor.getByRole('textbox', { name: 'Title' })).toHaveValue('');
+    await expect(section('Keyboard section').locator('[data-panel]')).toHaveCount(1);
+    const kb = page.getByRole('button', { name: 'Keyboard section', exact: true });
+    await s.on('button "Keyboard section"');
+    await expect(kb).toHaveAttribute('aria-expanded', 'false');
+    await press('Enter');
+    await expect(kb).toHaveAttribute('aria-expanded', 'true');
+    await s.focus('textbox "Section 1 title"');
+    await press('End');
+    await s.on('button "Add panel to Latency"');
+    await expect(section('Latency').locator('[data-panel]')).toHaveCount(2);
+    await s.on('button "Remove section Keyboard section"');
+    await expect(section('Keyboard section')).toHaveCount(0);
+    await press('ControlOrMeta+S');
+    await expect(status).toHaveText('Saved');
+    await s.drain('b-1 edit sections', async () => {
+      await s.goto(url);
+      await s.on('button "Edit board"');
+      await s.on('button "Add section"');
+    });
+    await s.on('button "Done"');
+    const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
+    if (await guard.isVisible()) await s.on('button "Discard changes"');
+    await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
+  });
+
+  await test.step('L30 Variables', async () => {
+    const url = '/t/demo/board/b-3';
+    await s.goto(url);
+    await s.shellAfter(await s.linkKeys(), () => s.goto(url));
+    await s.on('button "Variable region: not set"');
+    const region = page.getByRole('dialog', { name: 'Variable region' });
+    await expect(region).toBeVisible();
+    await s.replaceText('textbox "Value"', 'eu-west-1');
+    await s.on('button "Apply"');
+    await expect(region).toBeHidden();
+    await expect.poll(() => s.search()['var-region']).toBe('eu-west-1');
+    await expect(page.getByRole('button', { name: 'Variable region: eu-west-1' })).toBeFocused();
+    await press('Enter');
+    await expect(region).toBeVisible();
+    await s.on('button "Clear"');
+    await expect(page.getByRole('button', { name: 'Variable region: not set' })).toBeVisible();
+
+    const env = page.getByRole('dialog', { name: 'Variable env' });
+    const search = page.url();
+    await s.on('button "Variable env: not set"');
+    await expect(env).toBeVisible();
+    await press('Escape');
+    await expect(env).toBeHidden();
+    expect(page.url()).toBe(search);
+    await expect(page.getByRole('button', { name: 'Variable env: not set' })).toBeFocused();
+    await press('Enter');
+    await expect(env).toBeVisible();
+    await s.replaceText('textbox "Value"', 'prod');
+    await s.on('button "Apply"');
+    await expect(page.getByRole('button', { name: 'Variable env: prod' })).toBeVisible();
+    await s.on('button "Variable env: prod"');
+    await s.on('button "Apply"');
+    await expect(env).toBeHidden();
+    await s.drain('b-3 variable dialog', async () => {
+      await s.goto(url);
+      await s.on('button "Variable region: not set"');
+    });
+  });
+
+  await test.step('L31 Filters', async () => {
+    const url = '/t/demo/board/b-1';
+    await s.goto(url);
+    await s.on('button "Filter"');
+    const add = page.getByRole('dialog', { name: 'Add filter' });
+    await expect(add).toBeVisible();
+    await s.replaceText('textbox "Label"', '9x');
+    await s.replaceText('textbox "Value"', 'checkout');
+    await s.on('button "Add"');
+    await expect(add.getByText(/^Use a label name: /)).toBeVisible();
+    await expect(add).toBeVisible();
+    await s.replaceText('textbox "Label"', 'service');
+    await s.on('button "Add"');
+    await expect(add).toBeHidden();
+    const chip = page.getByRole('button', { name: 'Filter service: checkout' });
+    await expect(chip).toBeVisible();
+    await expect.poll(() => s.search()['f']).toBe('service=checkout');
+    await s.on('button "Filter service: checkout"');
+    const edit = page.getByRole('dialog', { name: 'Filter service' });
+    await expect(edit).toBeVisible();
+    await s.replaceText('textbox "Value"', 'payments');
+    await s.on('button "Apply"');
+    await expect(page.getByRole('button', { name: 'Filter service: payments' })).toBeVisible();
+    await press('Enter');
+    await expect(edit).toBeVisible();
+    await s.on('button "Remove filter"');
+    await expect(page.getByRole('button', { name: /^Filter service: / })).toHaveCount(0);
+    await s.on('button "Filter"');
+    await expect(add).toBeVisible();
+    await s.on('button "Cancel"');
+    await expect(add).toBeHidden();
+
+    const deep =
+      '/t/demo/board/b-3?from=now-1h&to=now&refresh=off&f=service%3Dcheckout&var-env=prod';
+    await s.goto(deep);
+    await s.on('button "Share"');
+    await s.on('checkbox "Keep relative"', 'Space');
+    await s.on('button "Copy link"');
+    await expect
+      .poll(() => page.evaluate(() => window.__copied.at(-1) ?? ''))
+      .toMatch(/&f=service%3Dcheckout&var-env=prod$/);
+    await press('Escape');
+
+    await s.drain('b-1 add filter', async () => {
+      await s.goto(url);
+      await s.on('button "Filter"');
+    });
+    await s.drain('b-3 filter dialog', async () => {
+      await s.goto(deep);
+      await s.on('button "Filter service: checkout"');
+    });
+    await s.drain('b-3 view with params', () => s.goto(deep));
   });
 }

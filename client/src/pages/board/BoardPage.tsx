@@ -305,6 +305,7 @@ function BoardEditor({
     saved: t('board.saved'),
     failed: gone ? t('board.saveGone') : t('board.saveFailed'),
     invalid: t('board.saveInvalid', { n: s.save.fields.length }),
+    discardFailed: t('board.saveFailed'),
   }[s.save.status];
   // Errors outside any panel (the board title, the time) show under the status line.
   const boardErrors =

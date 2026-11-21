@@ -1,6 +1,7 @@
 import type {
   Board,
   BoardList,
+  BoardRef,
   BoardSpec,
   PanelData,
   PanelSpec,
@@ -32,9 +33,16 @@ export interface Api {
     window: TimeWindow,
     signal?: AbortSignal,
   ): Promise<PanelData>;
-  /** Starred board uids, per user and tenant. */
-  listStarred(tenant: string, signal?: AbortSignal): Promise<string[]>;
-  /** Returns the new list. */
-  setStarred(tenant: string, uid: string, starred: boolean): Promise<string[]>;
+  /** Starred boards of the principal, in the server's order (title, then uid). */
+  listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]>;
+  /** Star: unknown or deleted board → `notFound`. Unstar: idempotent, never `notFound`. */
+  setStarred(tenant: string, uid: string, starred: boolean): Promise<void>;
+  /** The principal's `RECENT_LIMIT` most recently opened boards, newest first. */
+  listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]>;
+  /**
+   * Records that the principal opened `uid` at `at` (integer ms since the Unix epoch; the greater
+   * of the stored and the new time wins). Unknown or deleted → `notFound`. Abort is rethrown.
+   */
+  recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void>;
   signOut(): Promise<void>;
 }

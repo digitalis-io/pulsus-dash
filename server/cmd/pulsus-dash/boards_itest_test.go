@@ -325,11 +325,24 @@ func TestBoardPrefs(t *testing.T) {
 			if _, _, b := do(t, s, "GET", recent+"?limit=2", nil); refUIDs(t, b) != list("C", "B") {
 				t.Errorf("recent?limit=2 = %s, want [C B]", b)
 			}
+			// Plan #61 Part C §3.9: the client's navigation time orders Recent, whatever the commit order.
+			now := time.Now()
+			for _, v := range []struct {
+				name string
+				at   time.Time
+			}{{"B", now.Add(2 * time.Second)}, {"A", now.Add(time.Second)}} {
+				if code, _, b := do(t, s, "PUT", fmt.Sprintf("%s/%s?at=%d", recent, uids[v.name], v.at.UnixMilli()), nil); code != 204 {
+					t.Errorf("view %s at %v = %d %s", v.name, v.at, code, b)
+				}
+			}
+			if _, _, b := do(t, s, "GET", recent, nil); refUIDs(t, b) != list("B", "A", "C") {
+				t.Errorf("recent after B(now+2s), A(now+1s) = %s, want [B A C]", b)
+			}
 			if code, _, _ := do(t, s, "DELETE", boardsURL+"/"+uids["B"], nil, "If-Match", `"1"`); code != 204 {
 				t.Errorf("delete B = %d", code)
 			}
-			if _, _, b := do(t, s, "GET", recent, nil); refUIDs(t, b) != list("C", "A") {
-				t.Errorf("recent after deleting B = %s, want [C A]", b)
+			if _, _, b := do(t, s, "GET", recent, nil); refUIDs(t, b) != list("A", "C") {
+				t.Errorf("recent after deleting B = %s, want [A C]", b)
 			}
 			do(t, s, "PUT", starred+"/"+uids["A"], nil)
 			if code, _, _ := do(t, s, "DELETE", boardsURL+"/"+uids["A"], nil, "If-Match", `"1"`); code != 204 {

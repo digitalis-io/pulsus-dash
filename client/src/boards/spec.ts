@@ -236,6 +236,16 @@ function sortKeys(v: unknown): unknown {
   return out;
 }
 
+/** Stub (plan #61 Part C §2). */
+export function nextId(spec: BoardSpec, prefix: string): string {
+  return prefix === 'p' ? nextPanelId(spec) : 's-1';
+}
+
+/** Stub. */
+export function nextSectionId(spec: BoardSpec): string {
+  return nextId(spec, 's');
+}
+
 /**
  * `p-<n>` with n one more than the largest `p-<n>` id of the board. Ids are unique across panels
  * and sections, so section ids count too; n is a BigInt, so a suffix past 2^53 does not round onto

@@ -1,7 +1,12 @@
 /**
  * View URLs: route plus time Context (02 §4 patterns, time subset; T08-005, IA-023).
  */
-import { contextSearchString, readContextSearch, type ContextSearch } from './contextSearch';
+import {
+  contextSearchString,
+  readContextSearch,
+  type ContextSearch,
+  type SearchParamPair,
+} from './contextSearch';
 import { parseTimeExpr, printTimeExpr, resolveTimeExpr } from './timeExpr';
 
 export type AppRoute =
@@ -32,7 +37,8 @@ export function routePath(route: AppRoute): string {
   }
 }
 
-export function printViewUrl(v: ViewUrl): string {
+export function printViewUrl(v: ViewUrl, rest: readonly SearchParamPair[] = []): string {
+  rest;
   return routePath(v.route) + contextSearchString(v.context);
 }
 
@@ -86,7 +92,12 @@ function pinned(s: string, anchorMs: number, timeZone: string): string {
 export function buildShareUrl(
   origin: string,
   v: ViewUrl,
-  o: { keepRelative: boolean; anchorMs: number; timeZone: string },
+  o: {
+    keepRelative: boolean;
+    anchorMs: number;
+    timeZone: string;
+    rest?: readonly SearchParamPair[];
+  },
 ): string {
   if (o.keepRelative) return origin + printViewUrl(v);
   const context: ContextSearch = {

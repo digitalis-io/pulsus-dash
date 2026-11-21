@@ -19,6 +19,7 @@ import {
   BoardConflictError,
   type Board,
   type BoardList,
+  type BoardRef,
   type BoardSpec,
   type PanelData,
   type PanelSpec,
@@ -199,21 +200,37 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  listStarred(tenant: string, signal?: AbortSignal): Promise<string[]> {
+  listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
     return settle(() => {
       this.checkTenant(tenant);
-      return this.starredOf(tenant);
+      return this.starredOf(tenant).flatMap((uid) => {
+        const b = this.boards.find((x) => x.uid === uid);
+        return b === undefined ? [] : [{ uid, title: b.title }];
+      });
     }, signal);
   }
 
-  setStarred(tenant: string, uid: string, starred: boolean): Promise<string[]> {
+  setStarred(tenant: string, uid: string, starred: boolean): Promise<void> {
     return settle(() => {
       this.checkTenant(tenant);
       const current = this.starredOf(tenant).filter((x) => x !== uid);
       const next = starred ? [...current, uid] : current;
       write(STUB_STARRED_KEY(tenant), JSON.stringify(next));
-      return [...next];
     });
+  }
+
+  listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+    tenant;
+    signal;
+    return Promise.resolve([]);
+  }
+
+  recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void> {
+    tenant;
+    uid;
+    at;
+    signal;
+    return Promise.resolve();
   }
 
   signOut(): Promise<void> {

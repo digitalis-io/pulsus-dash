@@ -375,7 +375,7 @@ func (b *boards) RecordBoardView(ctx context.Context, req api.RecordBoardViewReq
 	if !uidPattern.MatchString(req.Uid) {
 		return errNotFound, nil
 	}
-	if err := b.deps.Boards.RecordView(ctx, rcFrom(ctx), req.Uid); err != nil {
+	if err := b.deps.Boards.RecordView(ctx, rcFrom(ctx), req.Uid, nil); err != nil {
 		return b.fail(ctx, "record_view", err, nil), nil
 	}
 	return api.RecordBoardView204Response{}, nil
