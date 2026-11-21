@@ -1,0 +1,28 @@
+[package]
+name = "dash-golden"
+description = "Headless golden renders, comparison and the decimation references"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dash-axes.workspace = true
+dash-gpu.workspace = true
+dash-marks = { workspace = true, features = ["gpu"] }
+dash-scales.workspace = true
+dash-scene.workspace = true
+dash-tokens.workspace = true
+dash-units.workspace = true
+dash-wire.workspace = true
+nv-flip.workspace = true
+png.workspace = true
+pulsus-synth.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true

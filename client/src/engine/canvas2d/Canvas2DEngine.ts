@@ -2,7 +2,7 @@
  * The interim Canvas 2D chart engine (ADR-0014 §3, §4; T01-003 interim exception, until #68). One
  * `Canvas2DFrame` per `<canvas>`, on the main thread. Inputs only store values and schedule one
  * frame; the frame redraws a cached layer when an input changed, then blits it and draws the
- * overlay (crosshair, hover dots, brush band). The frame owns render-local state only; windows it
+ * overlay (crosshair, hover dots, brush band), and reports the completed draw (`drawn`, ADR-0019). The frame owns render-local state only; windows it
  * proposes go out as `brush` events and the application changes the Context.
  */
 import { size } from '../../styles/tokens';
@@ -193,6 +193,11 @@ class Canvas2DFrame implements ChartFrame {
 
   setSpec(spec: VisSpec): void {
     if (this.disposed) return;
+    if (this.spec !== null && spec.kind !== this.spec.kind) {
+      // A kept canvas never shows the previous kind; the redraw follows in the next frame (#90).
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
     this.spec = spec;
     this.syncListeners();
     this.changed();
@@ -321,7 +326,11 @@ class Canvas2DFrame implements ChartFrame {
           performance.measure('chart-draw', {
             start,
             end,
-            detail: { kind: this.model.summary.kind, series: this.model.summary.seriesShown },
+            detail: {
+              kind: this.model.summary.kind,
+              series: this.model.summary.seriesShown,
+              frame: this.init.id ?? null,
+            },
           });
           performance.clearMeasures('chart-draw');
         } catch {
@@ -344,6 +353,8 @@ class Canvas2DFrame implements ChartFrame {
       }
     }
     this.drawVisible(hover);
+    // The visible canvas is complete at this size (ADR-0019); never at a zero size or disposed.
+    this.emit('drawn', { cssWidth: this.cssW, cssHeight: this.cssH, dpr: this.dpr });
   }
 
   private drawLayer(): LayerModel | null {

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-21 |
+| **Version** | 1.3-rc · 2026-11-21 |
 | **Requirement area** | `PRF` |
 | **Source draft** | plans/09-performance-contract.md (not tracked); mobile targets from T20 (draft) §6 |
 | **Depends on** | [01](01-vision-and-principles.md), [03](03-interaction-model.md), [08](08-visual-language.md), [T04](../technical/T04-wire-format-and-data-plane.md), [T05](../technical/T05-testing-and-performance.md), [T07](../technical/T07-scene-query-planner.md), [pulsusdb-requirements](../technical/pulsusdb-requirements.md) |
@@ -228,8 +228,11 @@ Every volume requirement is met while also meeting PRF-001 to PRF-005.
 **MUST** · M-UI0 · Platform, Engineer, SRE
 
 A line chart MUST hold and interactively pan/zoom 10⁸ raw points client-side. Points are held as
-columnar Float64/Int64 buffers in memory and uploaded to the GPU as Float32 relative to a per-chunk
-origin (the GPU has no f64), with GPU-resident decimation ([T04](../technical/T04-wire-format-and-data-plane.md)).
+columnar Float64/Int64 buffers in memory. Timestamps are not uploaded: column positions are derived
+on the CPU from the f64 timestamps. Values are uploaded as Float32, encoded per draw relative to an
+origin chosen from the exact f64 span (the GPU has no f64). Decimation is GPU-resident, except the
+CPU fallback for a line beyond its encoding's clip box ([VIZ-006](05-visualisation-catalogue.md#viz-006--line-decimation-is-visually-lossless)) and the T2 tier
+([T02](../technical/T02-vis-engine.md) §4.4, [T04](../technical/T04-wire-format-and-data-plane.md)).
 
 *Acceptance:* The line-chart benchmark loads 10⁸ points and passes PRF-001 to PRF-005 on (a) and (b),
 with no visible precision error at the deepest zoom (adjacent 1 ms samples at epoch-scale timestamps
@@ -655,3 +658,4 @@ a requestAnimationFrame loop.
 | 1.0-rc3 | 2026-11-19 | Roadmap D5 ([12](12-roadmap.md) §2.1): PRF-020 moves M-UI2 → M-UI1 (delivered by #49) |
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): PRF-008 (JS shell with sidebar and page header), PRF-009 (client core = initial JS + CSS + engine, ADR-0014 §8), PRF-022 (one canvas per viewport), PRF-033 (budgets per artefact class) and PRF-038 (mobile shell + engine) reworded in place with unchanged numbers; PRF-020 note: virtualised DOM list in M-UI1, else M-UI2 with the GPU log stream (#69); resolution 9 |
 | 1.2-rc | 2026-11-21 | #61 Part C (D-INP-interim; open questions Q4, Q5 of the plan): PRF-033 measures INP with scripted interactions on the DOM rooms, per page load (Event Timing, the data Lighthouse reads); a room above 200 ms fails the reference-lab gate, and shared CI runners report a warning until the lab exists (#68), as T05-006 requires; acceptance revised to match |
+| 1.3-rc | 2026-11-21 | PRF-016 restated for #68: CPU-derived column positions, per-draw Float32 value encoding from the exact span, GPU-resident decimation except the far-line CPU fallback and T2; acceptance unchanged |

@@ -1,0 +1,27 @@
+# cargo-deny 0.20.2 (T18 §4.11 engine leg). The licence allow list is the ADR-0014 §7 set; the three
+# exceptions are exact versions, so a version change fails until the exception is reviewed again.
+[graph]
+all-features = false
+
+[licenses]
+allow = ["MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "0BSD", "MPL-2.0"]
+confidence-threshold = 0.93
+unused-allowed-license = "allow"
+exceptions = [
+  { crate = "unicode-ident@1.0.27", allow = ["Unicode-3.0"] },  # naga, proc-macro2: Unicode data tables
+  { crate = "foldhash@0.2.0", allow = ["Zlib"] },               # hashbrown <- gpu-allocator (native Vulkan only)
+  { crate = "slotmap@1.1.1", allow = ["Zlib"] },                # glow <- wgpu-hal (WebGL2 backend)
+]
+
+[licenses.private]
+ignore = true                       # workspace crates: AGPL-3.0-only, publish = false
+
+[advisories]
+yanked = "deny"
+
+[bans]
+multiple-versions = "warn"          # today: hashbrown, miniz_oxide, syn (wgpu tree)
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

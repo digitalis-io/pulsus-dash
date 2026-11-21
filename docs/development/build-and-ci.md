@@ -3,7 +3,7 @@
 How to build and check the web client and the server locally, and what CI runs. The client is
 TypeScript, React and Vite in `client/` ([ADR-0014](../../designs/adr/0014-typescript-react-web-client.md)).
 The server is Go in `server/` ([ADR-0015](../../designs/adr/0015-go-bff.md)); see
-[Server](#server). The gate IDs are those of the
+[Server](#server). The Rust chart engine is in `engine/`; see [Engine](#engine). The gate IDs are those of the
 [T05 §7.1 gate catalogue](../../designs/technical/T05-testing-and-performance.md).
 
 ## Toolchain
@@ -28,8 +28,9 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:inp-rooms` |
-| `npm run tokens` | Regenerates `src/styles/tokens.css` and `tokens.ts` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:inp-rooms`, `bench:rooms-long-tasks` |
+| `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
+| `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
 | `npm run check:lockfile` | Exact versions, lockfile v3, registry and integrity of every locked package | `ci:lockfile` |
@@ -49,7 +50,8 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 | `check-deps.ts [dir]` | no findings | findings | unreadable input | `not-allowlisted`, `not-in-closure`, `stale-closure`, `forbidden-category`, `licence` | `scripts/__fixtures__/deps/*` |
 | `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>` | built in a temporary directory by `bundle-size.test.ts` |
 | `token-lint.ts [root]` | no findings | findings | a file does not parse | `colour-literal`, `size-literal`, `duration-literal`, `state-token`, `computed-token-name`, `suppressed-token-rule` | `scripts/__fixtures__/token-lint/bad` (and `good`, which must pass) |
-| `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`) |
+| `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`, including `engine/crates/dash-tokens/src/tokens.rs`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`, a stale `tokens.rs`) |
+| `engine-fixtures.ts [--write]` | written / up to date | a fixture is stale (`error[engine-fixtures] engine/fixtures/<file> is stale`) | — | — | `engine-fixtures.test.ts` (a fresh run equals the committed files) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
 
@@ -78,16 +80,19 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   [the client page](../client/README.md#keyboard-coverage).
 - **`bench:inp-rooms`** (`e2e/perf-inp-rooms.spec.ts`, Chromium only, PRF-033, T05 §4.3): scripted
   pointer and keyboard interactions on the board room (Appendix C-A §A.6 of plan #61 Part C), in
-  three documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
+  four documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
   times both ways), `/t/demo/board/b-3` (a variable chip, typing and Apply; `+ Filter`, Add and
-  Remove filter; three times each), and `/t/demo/board/b-1` again (Edit board, Add section, Done
-  and Discard changes, three times). An init script observes the Event Timing entries (`event`,
+  Remove filter; three times each), `/t/demo/board/b-1` again (Edit board, Add section, Done
+  and Discard changes, three times), and `/t/demo/board/b-1` a third time with the panel editor
+  scenario of #90 (`e2e/boardEditorScenario.ts`, 43 clicks and key presses: Edit board, then three
+  rounds of opening the editor from the Panel menu, typing in Title, picking a query language,
+  typing in Query, picking a visualisation, and Done). An init script observes the Event Timing entries (`event`,
   `durationThreshold` 16) in every document the page loads and flushes them before each
   navigation; `scripts/inp.ts` (`aggregateInp`, `gateFailures`) computes **INP per document**
   (each interaction once, at its longest entry; the durations padded with zeros to the
   document's scripted count, then the `floor(n / 50)`-th largest, so one outlier per 50
   interactions of that document is ignored), never pooled across documents. The test always
-  checks three documents, each with its scripted count, and no page error. The 200 ms limit
+  checks four documents, each with its scripted count, and no page error. The 200 ms limit
   applies per document; 100 ms is the target. On CI's shared runners the check is **report only**
   until the reference lab exists (#68, T05-006): a document above 200 ms adds a `warning`
   annotation. With `INP_GATE=enforce` (the reference lab, and local gate proofs) any document above
@@ -96,6 +101,35 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   `slowest`; `worst`, `mode`, `limitMs`, `targetMs`, `unit`) and a `bench:inp-rooms` annotation with
   the same JSON. To run it alone: `npx playwright test perf-inp-rooms --project=chromium`
   (`INP_GATE=enforce npx playwright test perf-inp-rooms --project=chromium` for the blocking form).
+- **`bench:rooms-long-tasks`** (`e2e/perf-rooms-long-tasks.spec.ts`, Chromium only, PRF-005, T05
+  §4.3, T08 §7; #90): main-thread long tasks during scripted room interactions, from a Chromium
+  trace. Its first scenario is the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
+  `bench:inp-rooms`) on `/t/demo/board/b-1`, with no fake clock. Around the scenario it records a
+  trace with the categories `devtools.timeline`, `disabled-by-default-devtools.timeline` and
+  `blink.user_timing`; each step leaves a `step:<label>` mark. `scripts/longTasks.ts` reads it:
+
+  | Rule | Definition |
+  |---|---|
+  | Main thread | the `CrRendererMain` thread with the most `EventDispatch` events; none → error `no renderer main thread` |
+  | Inputs | its `EventDispatch` events of type `click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup` or `input`; none → error `no input` |
+  | Window | from the first input's start to the last input's end |
+  | Long task | a `RunTask` on the main thread that overlaps the window and lasts over 16 ms wall |
+  | Thread time | the task's `tdur`; when no task in the window has one, error `no thread time` (the CI check cannot be judged); a single task without it counts as failing when over 50 ms wall |
+  | Label | the last `step:` mark at or before the task, else `unlabelled` |
+
+  It writes `test-results/bench-rooms-long-tasks.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
+  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `mode`, `unit`) and a
+  `bench:rooms-long-tasks` annotation. It always asserts at least 28 clicks and 15 key presses, no
+  page error, and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
+  interim trace check. That check **blocks merge** on CI, in the `e2e` job's Chromium leg (the
+  spec is Chromium only, so no workflow change). With `LONG_TASK_GATE=enforce` (the reference lab,
+  #68, and local gate proofs) it also asserts `over16` 0: no task over 16 ms wall. Without it, each
+  such task adds a `warning` annotation.
+
+  | Where | Command | Asserts |
+  |---|---|---|
+  | CI, `e2e` job, Chromium leg | `npm run e2e -- --project=chromium` | `ciOver` 0 |
+  | Local gate proof, reference lab | `LONG_TASK_GATE=enforce npx playwright test perf-rooms-long-tasks --project=chromium` | `ciOver` 0 and `over16` 0 |
 - **`bench:startup`** (`e2e/perf-cold-load.spec.ts`, Chromium only, report only, PRF-008): 20 cold
   loads of `/t/demo/boards`, time to the `shell-ready` performance mark; p50 and p75 are written to
   `test-results/prf-008.json` and added as a test annotation. There is no threshold.
@@ -160,6 +194,15 @@ preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. 
   `CSP` from `config/headers.ts` and every other document header; the first `/assets/*.js` the page
   loads, requested with `Accept-Encoding: br`, is served `br` and `immutable`; `/t/demo/boards`
   returns `index.html`; `/api/nope` is the 404 envelope.
+- **Panel editor dialog** (`panel-editor-dialog.spec.ts`, #90, all three engines): the dialog's
+  size, position and backdrop, focus containment and return, and the live preview. Its frame-timing
+  cases (E4, E7–E16) run without the fake clock, which would replace the page's User Timing
+  methods: an init script observes the engine's `chart-draw` measures (with `detail.frame`, the
+  frame id) and the stub's `stub:panelData` marks, and snapshots the preview in the first animation
+  frame after an input, in that frame's resize-observer step (what the frame paints), and one frame
+  later. They use the stub's test hooks `pulsus-dash.stub.panelDelayMs` (a delay in ms for every
+  `panelData` call, never consumed) and `pulsus-dash.stub.failPanelData` (fail the next n calls);
+  see [the client page](../client/README.md#stubapi).
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
   shows `Data source: demo · Not checked`; no console errors. Through the dev server, About shows
@@ -168,8 +211,8 @@ preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. 
 ## CI
 
 `.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml`,
-`server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`, `Makefile` or
-the workflow (opened, synchronised, reopened, and
+`engine/fixtures/`, `engine/crates/dash-tokens/src/tokens.rs` (both checked by `npm test` and
+`tokens -- --check`), `server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`, `Makefile` or the workflow (opened, synchronised, reopened, and
 labelled, so adding `golden-update` reruns it), and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
@@ -181,6 +224,83 @@ no secrets are used.
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the
 engines whose libraries are present.
+
+## Engine
+
+The Rust chart engine is the Cargo workspace `engine/` ([the engine page](../client/engine.md),
+issue #68). Every engine gate runs in one pinned image, `engine/ci/lavapipe.Dockerfile`, both in CI
+and through `make`.
+
+### Engine toolchain and image pins
+
+`engine/tools.toml` holds every pin; the Dockerfile must carry the same literals and the toolchain
+file the same channel (`cargo xtask spec-lint` fails otherwise).
+
+| Pin | Value |
+|---|---|
+| Base image | `docker.io/library/ubuntu:noble-20261110` by index digest (`[golden] image`) |
+| Apt snapshot | `20261115T000000Z` on snapshot.ubuntu.com (`apt_snapshot`): every package resolves to the same build |
+| lavapipe | `mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4` (`mesa`; the golden tests assert `Mesa 25.2.8`, `mesa_upstream`) |
+| LLVM | `libllvm20` `1:20.1.2-0ubuntu1~24.04.3` (`llvm`; asserted, not requested) |
+| Vulkan loader | `libvulkan1=1.3.275.0-1build1` (`vulkan_loader`) |
+| CA store | `ca-certificates=20240203` from the frozen noble release pocket (`ca_certificates`): the base image has none and the snapshot is HTTPS only |
+| Rust | `1.98.0` (`rust`; also `engine/rust-toolchain.toml` with rustfmt, clippy and the wasm32 target) |
+| rustup-init | `1.29.3`, verified by sha256 (`rustup`, `rustup_sha256`) |
+| cargo-nextest, cargo-deny | `0.9.152`, `0.20.2` |
+
+`VK_ICD_FILENAMES` selects the lavapipe ICD (`lvp_icd.json`). A change to any pin is one PR that
+edits `tools.toml` and the Dockerfile together and carries the `golden-update` label (T05-004).
+
+### Engine dependencies
+
+- Every crate in `engine/Cargo.toml` `[workspace.dependencies]` is pinned exactly (`=x.y.z`) and
+  `engine/Cargo.lock` is committed; every build uses `--locked`. A release younger than 7 days is
+  not adopted (the T18 §4.11 rule), and any change to the locked set is a reviewed dependency PR.
+- `cargo deny check licenses advisories bans sources` (`engine/deny.toml`, `ci:dep-audit` engine
+  leg) allows exactly MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD and MPL-2.0, with three
+  exact-version exceptions: `unicode-ident@1.0.27` (Unicode-3.0), `foldhash@0.2.0` and
+  `slotmap@1.1.1` (Zlib); yanked crates, unknown registries and git sources are denied; duplicate
+  versions warn (today `hashbrown`, `miniz_oxide`, `syn`).
+- Workspace lints deny `unwrap_used`, `expect_used`, `dbg_macro`, `todo` and `disallowed_types`;
+  `engine/clippy.toml` disallows `std::sync::Mutex` and `RwLock` (T03-008, `ci:engine-lint`).
+
+### Engine make targets
+
+Run from the repository root. They need Docker or Podman (`DOCKER=podman`; rootless Podman keeps
+file ownership with `ENGINE_RUN_FLAGS=--userns=keep-id`). The image keeps its build in
+`engine/target/image`.
+
+| Target | What it runs | Gate |
+|---|---|---|
+| `make engine-image` | `docker build -f engine/ci/lavapipe.Dockerfile -t pulsus-engine-ci:local engine/ci` | — |
+| `make engine-test` | `cargo nextest run --workspace --exclude dash-golden --locked` | `unit:*` |
+| `make engine-lint` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo xtask spec-lint`, `cargo deny --locked check …` | `ci:engine-lint`, `ci:spec-lint`, `ci:dep-audit` |
+| `make engine-goldens` | `cargo test -p dash-golden --release --locked golden_` | `golden:gallery`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
+| `make engine-goldens-update` | the same with `GOLDEN_UPDATE=1`, writing `engine/crates/dash-golden/goldens/*.png` | — |
+
+Outside the image, `cargo test --workspace` in `engine/` runs everything on the host's lavapipe;
+`golden_gallery` then fails its pinned-Mesa assertion by design.
+
+### Engine CI
+
+`.github/workflows/engine.yml` runs on pull requests that touch `engine/`, `design/tokens.toml`,
+`client/scripts/gen-tokens.ts`, `client/scripts/engine-fixtures.ts`, `client/src/i18n/format.ts`,
+`client/src/engine/canvas2d/`, `client/src/engine/api.ts`, `client/src/dev/{synth,keyHash,gallery}.ts`
+or the workflow (opened, synchronised, reopened, labelled), on pushes to `main`, and nightly at
+02:00 UTC. Actions are pinned by commit SHA and no secrets are used.
+
+| Job | Runs (in the image) | Gate |
+|---|---|---|
+| `image` | builds the image, or restores it from the Actions cache keyed by the sha256 of the Dockerfile and `tools.toml` | — |
+| `lint` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo xtask spec-lint` | `ci:engine-lint`, `ci:spec-lint` |
+| `deny` | `cargo deny --locked check licenses advisories bans sources` | `ci:dep-audit` (engine leg) |
+| `test` | `cargo nextest run --workspace --exclude dash-golden --locked` | `unit:*` |
+| `goldens` | `cargo test -p dash-golden --release --locked golden_`; nightly also `-- --ignored golden_decimation_` (10⁸ points) | `golden:gallery`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
+
+**Engine goldens.** With the `golden-update` label on the PR, the `goldens` job runs with
+`GOLDEN_UPDATE=1` and uploads the written PNGs as the `engine-goldens` artefact (14 days); commit
+them, review them as images in the PR, remove the label and re-run so the comparison runs. The
+parity fixtures are not goldens: they are rewritten with `npm run engine-fixtures -- --write`.
 
 ## Server
 
@@ -316,9 +436,9 @@ real checkout's `git status` and generated files are unchanged.
 
 `.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
 `tools/api-gen/`, `client/` (the client is embedded, and the packer is `client/scripts/`),
-`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `wire/` (the shared fixtures),
-`tools/no-pulsusdb-host/` or the workflow, and on pushes to `main`. The token is read-only, actions
-are pinned by commit SHA and no secrets are used.
+`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `wire/` (the shared fixtures), `tools/no-pulsusdb-host/` or the
+workflow, and on pushes to `main`. The token is read-only, actions are pinned by commit SHA and no
+secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
@@ -372,12 +492,17 @@ The private PulsusDB host must never appear in a tracked file
 ([T19-010](../../designs/technical/T19-deployment.md)). The real base URL lives only in the
 untracked `dev/local.env` ([dev stack page](dev-stack.md#devlocalenv)).
 `tools/no-pulsusdb-host/check.py` (Python standard library only) enforces this on every pull
-request.
+request. It needs no host name. CI rejects:
+
+- any non-local host containing `pulsusdb` in a URL;
+- any non-local URL used as a datasource value.
+
+No host name is stored in the repository or in its secrets.
 
 ```bash
 make no-pulsusdb-host                      # self-test, then scan every tracked file
 make no-pulsusdb-host ARGS=--show-paths    # the same, naming the files (local only)
-python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]
+python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
 ```
 
 By default it scans every file `git ls-files` lists; nothing is excluded. `--root DIR` scans a
@@ -388,15 +513,20 @@ target path, which is what Git stores.
 
 | Rule | Applies to | Finds |
 |---|---|---|
-| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word) |
-| `forbidden-host-in-path` | every file | a forbidden host in the file's path |
-| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | an `http` or `https` URL whose host is not local and either contains `pulsusdb`, or is the value of a PulsusDB datasource key: YAML `url:` directly under a `datasource:` key; `datasource.url`; `PULSUS_DASH_DATASOURCE_URL`; `datasource_url` or `DatasourceURL`, followed by `:` or `=` |
+| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word); local runs only |
+| `forbidden-host-in-path` | every file | a forbidden host in the file's path; local runs only |
+| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | a non-local host that is either (a) the host of an `http` or `https` URL containing `pulsusdb`, or (b) the value of a PulsusDB datasource key, see below |
 
-**Forbidden hosts** are the entries of `DASH_FORBIDDEN_HOSTS`: comma- or newline-separated,
-trimmed, lower-cased, numbered from 1. An entry written as a URL is reduced to its host. If
-`PULSUS_DASH_DATASOURCE_URL` is set and its host is not local, that host is added as the last
-entry. `make no-pulsusdb-host` loads `dev/local.env` first, so a local run also forbids your real
-host.
+A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
+`PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
+Its value is checked only when it is an `http` or `https` URL.
+
+**Forbidden hosts** apply only to local runs. They are the entries of the optional
+`DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
+1 (an entry written as a URL is reduced to its host), then the host of `PULSUS_DASH_DATASOURCE_URL`
+if it is set and not local, as the last entry. `make no-pulsusdb-host` loads `dev/local.env` first,
+so a local run also forbids your real host in any form, even without `pulsusdb` in it. CI sets
+neither variable, and if neither is set the scan runs the URL rule alone, without a warning.
 
 **Local hosts**, which the URL rule accepts, are: `localhost` and names ending in `.localhost`;
 loopback addresses (`127.0.0.0/8` and `::1` in any spelling, with or without a zone); names ending in
@@ -439,20 +569,19 @@ when `CI` is set. A clean run ends with `no-pulsusdb-host: clean (<m> files)`.
 | 2 | `--root` is not a directory | `error[bad-root] --root is not a directory` |
 | 2 | a file or link could not be read (the scan continues) | `error[unreadable] F<i> (<errno name>)` |
 | 2 | a directory under `--root` could not be listed (the scan continues) | `error[unreadable] a directory under --root could not be listed` |
-| 2 | no `DASH_FORBIDDEN_HOSTS` entry and `--require-secret` | `error[missing-secret] DASH_FORBIDDEN_HOSTS is not set: …` |
 | 2 | any other error | `error[internal] <exception class>` |
 
-Without `--require-secret`, a missing secret prints `warning[missing-secret] …` and the scan
-continues with the URL rule and the datasource host only.
+An unknown option, including the removed `--require-secret`, is a usage error.
 
-### The `DASH_FORBIDDEN_HOSTS` secret
+### Limits
 
-CI reads the forbidden hosts from the repository secret `DASH_FORBIDDEN_HOSTS`. A repository owner
-creates it once, in the repository's Actions secrets, holding the private PulsusDB host or hosts,
-comma-separated. Until it exists, the `hygiene` workflow fails on every pull request with the
-missing-secret message: the gate never passes silently. Pull requests from forks cannot read
-repository secrets, so their run fails the same way; a maintainer runs the check from a branch in
-the repository instead.
+Bare host names without a scheme are not scanned. CI knows no host name, so it misses a private
+host that has no `pulsusdb` in its name unless it is a datasource URL; only a local run with
+`dev/local.env` forbids it in any form.
+The rule for contributors is simple: never commit a real host name. Keep the real base URL in
+`dev/local.env` and nowhere else.
+
+### Self-test
 
 The checker's tests use only fictional hosts (`.corp` names and reserved names). Its fixtures are in
 `tools/no-pulsusdb-host/testdata/`, where only the URL rule is switched off in repository mode.
@@ -462,5 +591,5 @@ The checker's tests use only fictional hosts (`.corp` names and reserved names).
 `.github/workflows/hygiene.yml` runs on every pull request and on pushes to `main`, with a read-only
 token. Its one job, `no-pulsusdb-host`, runs the checker's self-test
 (`python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'`), then
-`check.py --require-secret` with the `DASH_FORBIDDEN_HOSTS` secret
-([above](#ci-no-pulsusdb-host)). It is the only workflow that reads a secret.
+`check.py` ([above](#ci-no-pulsusdb-host)). It reads no secret, so pull requests from forks run it
+too.
