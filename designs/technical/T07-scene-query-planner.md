@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-19 |
+| **Version** | 1.5-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
 
 ## 0. Applicability under ADR-0015 and ADR-0014 (2026-11-19)
@@ -19,20 +19,23 @@ parsed query applies only from the later parser design (table below). Rust speci
 |---|---|
 | `dash-planner` crate | Go package `internal/planner` |
 | `pulsus-plan` IR shared with the browser (WASM) | **Not shared.** §5.2 is authoritative as a data shape (the **v1 IR** of §5.2 now; the parsed IR of §5.2 from the parser design), implemented as Go types in `internal/planner/ir` and used in-process by T15 and T16. T13 (draft), the browser's local engine, receives `LogicalQuery` in the JSON form published in `api/openapi.yaml` and is held to the same semantics by fixtures in `wire/fixtures/plan/`; T13 is revised before M-UI3 |
-| Parser crates in §4.2 | **No query parsing in the BFF in v1** ([ADR-0015](../adr/0015-go-bff.md), "Query validation"). PromQL, LogQL and TraceQL text is opaque to the planner (T07-002 and the v1 rules below); PulsusDB's answer is the validity check. Parsing in the planner waits for the later parser design (below) |
+| Parser crates in §4.2 | PromQL is parsed in `internal/pulsusdb/prom` with the upstream Go PromQL parser, **for the planning shape only** ([ADR-0021](../adr/0021-query-planning-is-server-side.md)). LogQL and TraceQL stay opaque |
 | `dash-vsrc`, `pulsus-colexec` (virtual sources, M-UI4) | Go packages `internal/vsrc` and `internal/colexec`; T07-021 stands |
 | Rust code blocks (§5) | Normative as data shapes; the wire form is the OpenAPI schema |
 | Frames to the browser | JSON frames until the engine (#68), then Arrow ([T04](T04-wire-format-and-data-plane.md) §0) |
 | Hidden tab via the shim | `document.visibilityState` in the TS application |
 
-**v1: queries are opaque in the BFF.** Until a later parser design is accepted, no part of the
-planner parses, lexes or rewrites query text. A query is the **v1 IR** of §5.2: an
-`OpaqueQuery{lang, kind, text}` whose `text` is sent to PulsusDB byte-for-byte as received (after
-Board-variable substitution, which replaces `$name` and `${name}` tokens textually, M-UI5).
+**v1: queries are opaque except for the planning rewrites.** No part of the planner normalises,
+fuses or re-prints query text. The only rewrites are the closed list of
+[ADR-0021](../adr/0021-query-planning-is-server-side.md): variable and macro substitution, and the
+PromQL counter and histogram rate wraps of the exact source bytes. `LogicalKey` hashes the planned
+text. A query is the **v1 IR** of §5.2: an `OpaqueQuery{lang, kind, text}` whose `text` is sent to
+PulsusDB byte-for-byte as planned (after substitution by the language module, M-UI1, ADR-0021).
 
 | Planner feature | v1 behaviour (no parse) | From the parser design |
 |---|---|---|
 | Identity (§4.2) | `LogicalKey = xxh3_128(signal, lang, kind, text bytes, shape)` on the **exact** text: no trimming, no whitespace or comment normalisation | Canonical printing (§4.2) |
+| Planning rewrites | `prom.Plan` / `logs.Plan` (ADR-0021) | unchanged |
 | Step, level, alignment (§4.3, T07-003, T07-004) | Unchanged: they depend on the viewport range and width, not on the text | — |
 | Exactness prediction (§4.3, T07-005) | `Predicted{level}` from the range→level rule alone (`predict_exactness(level)`); `RawExact` only when the level is `None` | Per-function rollup eligibility |
 | Dedupe (§4.4, T07-007) | Identity, range union and display derivation on the exact-text key | — |
@@ -166,7 +169,8 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
 
 - **Bind** reads the scene's `Context` (entity set, window, filters, baseline; IA-002) and the
-  Board's variable values. It keeps a **dependency index** `(context member | $var) →
+  Board's variable values. `$vars` and macros are substituted by the language module's `Plan`
+  (ADR-0021). It keeps a **dependency index** `(context member | $var) →
   Vec<ViewportId>`, so a change re-binds only the viewports that read it (T07-013).
 - The baseline (comparison ghost, A/B) is bound as a second `TimeRange` on the `LogicalQuery`
   (`baseline: Some(..)`), which physicalises to a shifted query with the same step grid.
@@ -185,9 +189,9 @@ redundant parentheses removed, comments dropped by the parser) and
 `LogicalKey = xxh3_128(signal, canonical_text, shape)`.
 
 #### T07-002 — Opaque text is sent unchanged and fails closed
-**MUST** — *(Revised 1.3-rc.)* Query text the planner does not hold in parsed form (in v1, every
-query) MUST be sent to PulsusDB byte-for-byte, keyed on its exact bytes, with no fusion, no
-virtual-source resolution and no rewrite. Because its scope cannot be proven, it MUST be refused with
+**MUST** — *(Revised 1.5-rc, ADR-0021.)* Query text the planner holds only in planned form MUST be
+sent to PulsusDB byte-for-byte as `Plan` returned it, keyed on those bytes, with no fusion, no
+virtual-source resolution and no rewrite beyond ADR-0021's list. Because its scope cannot be proven, it MUST be refused with
 `scope_denied` unless the principal's scope is unrestricted.
 
 ### 4.3 Resolution: step from pixel width, and rollup level selection
@@ -1022,6 +1026,7 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 7. Reserved names shadow PulsusDB series named `ALERTS` (e.g. from Prometheus remote-write). Is an escape hatch needed (a per-tenant prefix for the virtual names)?
 8. Virtual PromQL: own `pulsus-colexec` lowering (chosen) vs `pulsus-promql`'s evaluator behind an adapter.
 9. O1: if the product owner picks an option other than B, §4.7 and T07-015 are revised.
+10. `S` per binding (scrape interval) for the rate window: from the catalogue or runtimeinfo.
 
 ## 14. Change log
 
@@ -1033,3 +1038,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.2-rc | 2026-11-19 | ADR-0015 "Query validation": the BFF parses no query language in v1. §0 gains the v1 opaque-planning table and the later parser design (decided before fusion in M-UI2; a server-side parser needs a new ADR); §4.2 no longer uses a Go PromQL parser; §4.14 v1 expression form (client-expanded text) with T07-030 deferred to the parser design; SRF-030 test and §11 updated |
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
+| 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): PromQL is parsed in `internal/pulsusdb/prom` for the planning shape only (§0 table); v1 queries are opaque except for ADR-0021's closed list of planning rewrites, and `LogicalKey` hashes the planned text; new §0 row "Planning rewrites"; §4.1 Bind substitutes through the language module's `Plan`; T07-002 revised; open question 10 |

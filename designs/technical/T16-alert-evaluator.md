@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-21 |
 | **Milestone** | M-UI4 (evaluator, routing, v1 endpoints, incidents, backtest, history) → M-UI5 (v2 endpoints, hygiene) → post-R15 (ruler migration) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T16-alert-evaluator.md (not tracked) |
 
 ## 0. Applicability under ADR-0015 and ADR-0014 (2026-11-19)
@@ -259,6 +259,11 @@ reproducible). Queries go through [T07](T07-scene-query-planner.md) with the bud
 **MUST** — Evaluation queries MUST use the planner budget class `alerting`, which is never shed
 before interactive or AI classes; backtests use the interactive class `backtest` and MUST NOT
 consume the `alerting` budget.
+
+Evaluation queries are planned by `prom.Plan`
+([ADR-0021](../adr/0021-query-planning-is-server-side.md)) with `step` = the rule interval and the
+rule's stored `vars` and `rate`. A rule created from a panel stores the panel's raw query and
+inputs, not its planned text.
 
 #### T16-011 — Missed evaluations are recorded and alerted
 **MUST** — A tick that cannot start within one interval MUST be recorded as a **missed
@@ -961,6 +966,7 @@ credentials.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; history moved to Postgres per ADR-0012; aligned with formal 07; formal design rules; Satisfies table |
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; T16-001 revised (one specification, Go and TS implementations, shared transition corpus); `Notifier` and endpoints in Go; templates parsed by Go's `text/template/parse` with an in-house executor; preview through the BFF; chart images from the separate Rust renderer |
+| 1.2-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.2 evaluation queries are planned by `prom.Plan` with the rule interval as step and the rule's stored `vars` and `rate`; a rule made from a panel stores the raw query and inputs |
 
 **Changes versus the draft:**
 1. **§4.7 rewritten (ADR-0012).** The draft wrote transitions and notifications as OTLP logs to
