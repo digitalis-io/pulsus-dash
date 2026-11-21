@@ -229,6 +229,9 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     const path = await page.evaluate(() => {
       let el = document.activeElement;
       if (el === null || el === document.body || el === document.documentElement) return null;
+      // React Aria's combobox keeps focus on the input and marks the option it points at.
+      const id = el.getAttribute('aria-activedescendant');
+      if (id) el = document.getElementById(id) ?? el;
       el = el.closest('[role="grid"]') ?? el;
       const parts: string[] = [];
       for (

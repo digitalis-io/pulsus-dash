@@ -24,7 +24,7 @@ function randomBytes(n: number, seed = 57): Buffer {
 
 const LAZY = [
   ['src/pages/board/BoardPage.tsx', 'assets/BoardPage-x.js'],
-  ['src/pages/explore/MetricsPage.tsx', 'assets/MetricsPage-x.js'],
+  ['src/pages/explore/MetricsPage.tsx', 'assets/MetricsPage-r.js'],
   ['src/pages/explore/LogsPage.tsx', 'assets/LogsPage-x.js'],
   ['src/pages/admin/AdminPage.tsx', 'assets/AdminPage-x.js'],
   ['src/pages/SignedOutPage.tsx', 'assets/SignedOutPage-x.js'],
@@ -36,7 +36,15 @@ interface Overrides {
   files?: Record<string, Buffer | null>;
   dropKeys?: string[];
   entryCss?: string[];
+  /** Extra static imports of the entry `index.html`. */
+  entryImports?: string[];
 }
+
+/** The editor entries E1, E2 and their shared chunk S (plan #63 Part C §5 (h)–(k)). */
+const E1 = 'assets/editor-e1.js';
+const E2 = 'assets/editor-e2.js';
+const S = 'assets/editor-s.js';
+const R = 'assets/MetricsPage-r.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -52,7 +60,7 @@ function makeDist(o: Overrides = {}): string {
       file: 'assets/index-x.js',
       src: 'index.html',
       isEntry: true,
-      imports: ['_shared-x.js'],
+      imports: ['_shared-x.js', ...(o.entryImports ?? [])],
       dynamicImports: ['src/pages/boards/BoardsPage.tsx', ...LAZY.map(([k]) => k)],
       css: o.entryCss ?? ['assets/index-x.css'],
       assets: [
@@ -69,7 +77,19 @@ function makeDist(o: Overrides = {}): string {
     ...Object.fromEntries(
       LAZY.map(([k, f]) => [k, { file: f, isDynamicEntry: true, imports: ['_shared-x.js'] }]),
     ),
+    'src/editor/editor.ts': { file: E1, isDynamicEntry: true, imports: [] },
+    'src/editor/lang/promql/promql.ts': {
+      file: E2,
+      isDynamicEntry: true,
+      imports: ['_editor-s.js', 'src/pages/explore/MetricsPage.tsx'],
+    },
+    '_editor-s.js': { file: S, imports: ['index.html'] },
   };
+  const metrics = manifest['src/pages/explore/MetricsPage.tsx'] as
+    Record<string, unknown> | undefined;
+  if (metrics !== undefined) {
+    metrics['dynamicImports'] = ['src/editor/editor.ts', 'src/editor/lang/promql/promql.ts'];
+  }
   for (const k of o.dropKeys ?? []) Reflect.deleteProperty(manifest, k);
   const files: Record<string, Buffer | null> = {
     'index.html': Buffer.from(
@@ -83,6 +103,9 @@ function makeDist(o: Overrides = {}): string {
     'assets/inter-latin-wght-normal-x.woff2': Buffer.from('font-a'),
     'assets/jetbrains-mono-latin-wght-normal-x.woff2': Buffer.from('font-b'),
     ...Object.fromEntries(LAZY.map(([, f]) => [f, Buffer.from('export default 1')])),
+    [E1]: Buffer.from('export const e1 = 1'),
+    [E2]: Buffer.from('export const e2 = 1'),
+    [S]: Buffer.from('export const s = 1'),
     ...o.files,
   };
   for (const [path, content] of Object.entries(files)) {
@@ -147,5 +170,40 @@ describe('bundle-size required artefacts (T05-002)', () => {
     const r = checkBundle(makeDist(overrides), budgets);
     expect(r.findings.map((f) => f.rule)).toContain(rule);
     expect(r.exitCode).toBe(1);
+  });
+});
+
+describe('bundle-size editor closure (PRF-009)', () => {
+  const big = {
+    [E1]: randomBytes(100_000, 1),
+    [E2]: randomBytes(60_000, 2),
+    [S]: randomBytes(20_000, 3),
+    [R]: randomBytes(30_000, 4),
+  };
+  it('(h) the editor-* closure is one row; the route chunk keeps its own', () => {
+    const r = checkBundle(makeDist({ files: big }), budgets);
+    expect(r.findings.map((f) => f.rule)).toEqual(['over-budget:editorChunk']);
+    const editor = r.rows.filter((x) => x.cls === 'editorChunk');
+    expect(editor).toHaveLength(1);
+    expect(editor[0]?.file).toBe('editor closure (3 files)');
+    expect(editor[0]?.bytes).toBeGreaterThan(180_000);
+    expect(r.rows.some((x) => x.cls === 'lazyChunk' && x.file === S)).toBe(false);
+    const route = r.rows.find((x) => x.cls === 'lazyChunk' && x.file === R);
+    expect(route?.bytes).toBeGreaterThan(30_000);
+    expect(route?.bytes).toBeLessThan(31_000);
+  });
+  it('(i) a smaller shared chunk passes', () => {
+    const r = checkBundle(makeDist({ files: { ...big, [S]: randomBytes(10_000, 3) } }), budgets);
+    expect(r.findings).toEqual([]);
+  });
+  it('(j) an editor entry in the initial JS', () => {
+    expect(rules(makeDist({ entryImports: ['src/editor/editor.ts'] }))).toEqual([
+      'editor-in-initial',
+    ]);
+  });
+  it('(k) an editor-* file outside the closure', () => {
+    expect(rules(makeDist({ files: { 'assets/editor-x.js': Buffer.from('x') } }))).toEqual([
+      'editor-orphan',
+    ]);
   });
 });

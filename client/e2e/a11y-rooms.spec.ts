@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import {
   ALL_PAGES,
+  EXPLORE_RESULT,
   frame,
   GALLERY_URL,
   galleryReady,
@@ -196,6 +197,45 @@ test.describe('e2e:a11y-rooms boards', () => {
     await boardStates(page, async (state) => {
       expect(await smallTargets(page), state).toEqual([]);
     });
+  });
+});
+
+/** Explore with a result: the page, the editor, its completion popup and the metric picker (C.7). */
+async function exploreResult(page: Page): Promise<void> {
+  await open(page, EXPLORE_RESULT);
+  await expect(page.getByRole('table').getByRole('row')).toHaveCount(4);
+}
+
+test.describe('e2e:a11y-rooms explore', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} explore with a result`, async ({ page }) => {
+      await page.addInitScript((t) => {
+        localStorage.setItem('pulsus-dash.theme', t);
+      }, theme);
+      await exploreResult(page);
+      expect(await seriousViolations(page)).toEqual([]);
+    });
+  }
+
+  test('dark, completion popup open', async ({ page }) => {
+    await exploreResult(page);
+    await page.getByRole('textbox', { name: 'PromQL query' }).click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+Space');
+    await page.locator('.cm-tooltip-autocomplete').waitFor();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('dark, metric picker open', async ({ page }) => {
+    await exploreResult(page);
+    await page.getByRole('combobox', { name: 'Metric' }).focus();
+    await page.getByRole('listbox').waitFor();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('explore targets are at least 24 × 24 px', async ({ page }) => {
+    await exploreResult(page);
+    expect(await smallTargets(page)).toEqual([]);
   });
 });
 

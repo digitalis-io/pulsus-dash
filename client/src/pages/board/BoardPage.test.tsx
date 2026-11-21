@@ -861,6 +861,55 @@ describe('panel tools', () => {
   });
 });
 
+describe('refresh', () => {
+  it('BoardPage refresh leaves panel queries', async () => {
+    const api = new HeldPanelApi();
+    const { user } = open(
+      '/t/demo/board/b-1?from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z&refresh=off',
+      { api },
+    );
+    await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    await waitFor(() => {
+      expect(api.held.length).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(api.held).toHaveLength(B1.length);
+    });
+    await user.click(screen.getByRole('button', { name: 'Refresh now' }));
+    await act(async () => {
+      await new Promise((r) => {
+        setTimeout(r, 0);
+      });
+    });
+    expect(api.held.map((h) => h.signal?.aborted ?? false)).toEqual(B1.map(() => false));
+    expect(api.held).toHaveLength(B1.length);
+    await act(async () => {
+      for (const h of api.held) h.release();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Loading')).toBeNull();
+    });
+  });
+});
+
+/** A stub whose `panelData` calls wait until the test releases them; each keeps its signal. */
+class HeldPanelApi extends StubApi {
+  readonly held: { signal: AbortSignal | undefined; release: () => void }[] = [];
+
+  override panelData(...a: Parameters<StubApi['panelData']>): ReturnType<StubApi['panelData']> {
+    const [tenant, panel, window, signal] = a;
+    const gate = deferred<undefined>();
+    this.held.push({
+      signal,
+      release: () => {
+        gate.resolve(undefined);
+      },
+    });
+    return gate.promise.then(() => super.panelData(tenant, panel, window));
+  }
+}
+
 /**
  * A stub whose second and later `getBoard` of b-1 wait for `next`, then return the head again or,
  * given `fail`, reject with it.
