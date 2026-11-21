@@ -108,6 +108,15 @@ preloaded then). Measured by `npm run size` (brotli, stub build) at the time of 
 | `BoardPage` (the board route) | 9 978 | 120 000 (`lazyChunk`) |
 | Initial JS (163 369 before the board pages) | 169 819 | 200 000 (`initialJs`) |
 
+After #61 Part C (the filter bar, sections, and Starred and Recent from the BFF; no new
+dependency), measured the same way:
+
+| Chunk | Brotli bytes | Budget |
+|---|---|---|
+| `BoardGridEditor` | 18 029 | 120 000 (`lazyChunk`) |
+| `BoardPage` (with the filter bar and sections) | 11 765 | 120 000 (`lazyChunk`) |
+| Initial JS (with `BoardPrefs` and the sidebar lists) | 171 050 | 200 000 (`initialJs`) |
+
 **Build text.** The production chunk contains two help URLs as plain text, both on
 `buildUrlAllowlist`: react-draggable's `https://github.com/react-grid-layout/react-draggable#noderef`
 (a warning) and the prop-types shim's `http://fb.me/use-check-prop-types` (an error message).
@@ -162,7 +171,7 @@ They are copied in, not npm dependencies:
 |---|---|---|---|
 | `src/assets/fonts/inter-latin-wght-normal.woff2` | `@fontsource-variable/inter` 5.3.0 | OFL-1.1 (`OFL-Inter.txt`) | `src/assets/fonts/SOURCES.md` (full SHA-256) |
 | `src/assets/fonts/jetbrains-mono-latin-wght-normal.woff2` | `@fontsource-variable/jetbrains-mono` 5.3.0 | OFL-1.1 (`OFL-JetBrainsMono.txt`) | same |
-| `src/icons/*.svg` (25 line icons) | `lucide-static` 1.72.0 | ISC (`LICENSE-lucide.txt`) | the `@license` comment in each file |
+| `src/icons/*.svg` (26 line icons) | `lucide-static` 1.72.0 | ISC (`LICENSE-lucide.txt`) | the `@license` comment in each file |
 
 Fonts are self-hosted and hashed by the build (VL-010); icons are drawn as CSS masks, so no SVG
 markup is injected at run time.

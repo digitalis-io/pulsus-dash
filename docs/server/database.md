@@ -83,7 +83,7 @@ leads with `org_id`, and every integer column is `bigint`.
 | `audit_events` | `(org_id, rclass, at, id)` | partitioned, see [audit partitions](#audit-partitions): `actor_kind`, `actor_id`, `on_behalf_of`, `action`, `resource_kind`, `resource_id`, `reason`, `diff` (an RFC 6902 patch), `ip`, `request_id`, `prev_hash`, `hash`. Indexed on `(org_id, actor_id, at)`, `(org_id, action, at)` and `(org_id, resource_kind, resource_id, at)` |
 | `audit_chain_heads` | `org_id` | the organisation's hash-chain head: `last_at`, `last_id`, `last_hash` (T11-017) |
 | `stars` | `(org_id, user_id, kind, object_id)` | starred objects (`kind` `board`), `created_at` |
-| `recent_views` | `(org_id, user_id, kind, id)` | `viewed_at`; indexed on `(org_id, user_id, kind, viewed_at)`; kept to 200 per user (each view's upsert and trim hold `pg_advisory_xact_lock(hashtext(org_id ‖ ':' ‖ user_id))`) |
+| `recent_views` | `(org_id, user_id, kind, id)` | `viewed_at`: the client's navigation time when given (clamped to `now()` − 1 day … `now()` + 5 min), else `now()`; an upsert keeps the greater time, and a time within 1 ms of another row of the user becomes that row's + 1 µs (the later write first); indexed on `(org_id, user_id, kind, viewed_at)`; kept to 200 per user (each view's upsert and trim hold `pg_advisory_xact_lock(hashtext(org_id ‖ ':' ‖ user_id))`) |
 
 The boards API that uses these tables is described in [the boards API page](boards-api.md).
 
