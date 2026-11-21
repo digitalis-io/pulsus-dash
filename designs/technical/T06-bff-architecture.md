@@ -248,16 +248,17 @@ Return contracts (T06-011). No method returns untyped JSON values.
 
 | Methods | Return |
 |---|---|
-| `prom` `QueryRange`, `Query`; the `resultType: matrix` branch of `LogQueryRange` | `ResultStream` (streamed metric results) |
-| `LogQueryRange` | `*LogResult`: a `*LogPage` (`resultType: streams`, typed streams and entries) or a `ResultStream` (`resultType: matrix`) |
+| `prom` `QueryRange`, `Query`; the `resultType: matrix` branch of `LogQueryRange` (streamed when `resultType` precedes `result`) | `ResultStream` (streamed metric results) |
+| `LogQueryRange` | `*LogResult`: a `*LogPage` (`resultType: streams`, typed streams and entries) or a `ResultStream` (`resultType: matrix`). The matrix branch streams only when `resultType` precedes `result` in the response; when `result` comes first, the response is buffered |
 | `LogVolume` | `[]*Series` with its `Completeness`, one aggregated series per level |
 | `Series`, `LogSeries` | `*SeriesResult` |
 | `Labels`, `LabelValues`, `LogLabels`, `LogLabelValues` | `*ValuesResult` |
 | `Metadata` | `*MetadataResult` |
 | `RuntimeInfo` | `*RuntimeInfo` |
 
-The completion and metadata results are typed and fully decoded. The log page and the log volume are
-buffered within bounds that T06-011 sets when the LogQL client lands (#65).
+The completion and metadata results are typed and fully decoded. Three cases are buffered: the log
+page, the log volume, and a `LogQueryRange` response whose `result` comes before `resultType`. T06-011
+sets the bounds for all three when the LogQL client lands (#65).
 
 #### T06-005 — One PulsusDB client
 **MUST** — Every request from Dash to PulsusDB MUST be made through `pulsusdb-client`. No other crate
@@ -900,4 +901,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones, §2 goal, §4.11 (now the M-UI6 subset, with the fixed local principal until then) and §11 move OIDC auth from M-UI1 to M-UI6; §3 ENT-028 gate `e2e:helm-default-login` renamed `e2e:helm-default-shell`; §4.7 binds the tenant with `set_config('pulsus.org_id', …, true)` in `Db.Tx`; §4.9 lists the implemented Go keys; T06-019 revised: repeated keys rejected, client-tooling variables exempt; §5.2 adds the `not_found` and `internal` codes |
 | 1.3-rc | 2026-11-20 | #59 Part B: §5.1 adds `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` (fixed local principal until M-UI6, D12) and `POST /api/dash/v1/csp-report` |
 | 1.4-rc | 2026-11-20 | #61 Part A: §5.2 adds the `conflict` code (409 on an `If-Match` mismatch, body `{error, current, submitted}`, T11-005); T06-004 note: configuration-change audit rows are written in the save transaction (T11-006), the non-blocking sink applies outside a content transaction; T06-026 revised: `/readyz` reports Postgres reachability, migration level and audit partition health only (still never PulsusDB) |
-| 1.5-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §4.3 split into core and language modules, with the log completion methods and a return-contract table (streamed metric results, typed completion and metadata results, the log page and volume returns); T06-011 note on typed completion and metadata results; T06-028; T06-005 note |
+| 1.5-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §4.3 split into core and language modules, with the log completion methods and a return-contract table (streamed metric results, typed completion and metadata results, the log page and volume returns, and the buffered `LogQueryRange` response when `result` precedes `resultType`); T06-011 note on typed completion and metadata results; T06-028; T06-005 note |
