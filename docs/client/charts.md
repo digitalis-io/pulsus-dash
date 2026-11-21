@@ -157,7 +157,10 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 - **Held band** (#93). While the camera is worked the band keeps its width (below, "The band
   hold"). Each tick label is then drawn in full when it fits, else in compact form
   (`formatCompact`), else whole inside the plot: left edge at `plot.x + 4 px`, over the marks, on a
-  chip in the tooltip surface colour with the corner radius and 4 px padding. A label is never cut.
+  chip in the tooltip surface colour with the corner radius and 4 px padding. The chip shows the
+  full label when it fits the plot width (less the padding), else the compact form, else the
+  narrower of the two, so on a narrow plot it does not run past the plot's right edge. A label is
+  never cut.
 - **Value axis** (line, bars). Auto: the domain includes 0 and the data (bars: the stacked totals).
   Steps are 1, 2 or 5 × 10^k in units of 1 000^p (1 024^p for bytes), widened until labels are at
   least label height + 2 px apart. Grid lines are hairlines. Manual (`valueRange` set): the domain is
@@ -266,7 +269,9 @@ zone under the pointer in `data-zone` and the press in progress in `data-gesture
 ### Wheel and page scroll
 
 A wheel over a plot is consumed unless the page saw an unconsumed wheel in the last 300 ms: then a
-scroll already in progress keeps scrolling as it passes over a chart. One passive `wheel` listener
+scroll already in progress keeps scrolling as it passes over a chart. This holds while the chart's
+own wheel gesture is still pending too (zoom, scroll the page elsewhere, come back within 300 ms:
+the page keeps scrolling, and the pending zoom commits as usual). One passive `wheel` listener
 per page (`windowWheelLatch`, created with the first frame) records the `timeStamp` of every wheel
 no listener prevented. A wheel over an axis band, a margin, the title, the Reset Y axis button or
 outside charts is never consumed, so the page scrolls, and `Ctrl`+wheel outside plots zooms the page
@@ -319,7 +324,7 @@ compacted or chipped (see Axes).
 |---|---|
 | A preview step | Held at the width of the frame on screen |
 | Gesture end, commit, `setData`, `setSpec` with the same kind and unit and a set `valueRange`, the echoed `setTimeWindow` equal to the base window, any `setTimeWindow` during a gesture | Kept |
-| `resize` to another size; `setSpec` with another kind or unit; `setSpec` whose `valueRange` goes from set to absent (Reset Y axis, the fit commit); an idle `setTimeWindow` to another window (picker, keys, Back, auto-refresh, another panel's commit); the pointer leaving the canvas while idle | Released: the next draw measures the labels again, and full labels return |
+| A press that moved, then cancelled (`Escape`, `pointercancel`, `lostpointercapture`); `resize` to another size; `setSpec` with another kind or unit; `setSpec` whose `valueRange` goes from set to absent (Reset Y axis, the fit commit); an idle `setTimeWindow` to another window (picker, keys, Back, auto-refresh, another panel's commit); the pointer leaving the canvas while idle | Released: the next draw measures the labels again, and full labels return |
 
 ### The value-axis pin in `ChartFrame`
 

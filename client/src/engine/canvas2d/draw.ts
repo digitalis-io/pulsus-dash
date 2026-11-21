@@ -139,14 +139,29 @@ interface HeldLabel {
   readonly chip: boolean;
 }
 
-function heldLabels(ctx: Ctx2D, ticks: readonly number[], unit: Unit, band: number): HeldLabel[] {
+/**
+ * Per tick: the full label when it fits `band`, else the compact one; else a chip inside the plot,
+ * whose text is the full label when it fits `room` (the plot width less the chip padding), else
+ * the compact one, else the narrower of the two (code review r1: never past the plot's edge).
+ */
+function heldLabels(
+  ctx: Ctx2D,
+  ticks: readonly number[],
+  unit: Unit,
+  band: number,
+  room = Infinity,
+): HeldLabel[] {
   ctx.font = AXIS_FONT;
   return ticks.map((t) => {
     const full = formatValue(t, unit);
-    if (ctx.measureText(full).width <= band) return { text: full, chip: false };
+    const fullW = ctx.measureText(full).width;
+    if (fullW <= band) return { text: full, chip: false };
     const compact = formatCompact(t, unit);
-    if (ctx.measureText(compact).width <= band) return { text: compact, chip: false };
-    return { text: full, chip: true };
+    const compactW = ctx.measureText(compact).width;
+    if (compactW <= band) return { text: compact, chip: false };
+    if (fullW <= room) return { text: full, chip: true };
+    if (compactW <= room) return { text: compact, chip: true };
+    return { text: compactW < fullW ? compact : full, chip: true };
   });
 }
 
@@ -172,7 +187,8 @@ function axisTexts(
   extra: readonly string[] = [],
 ): { texts: HeldLabel[]; width: number; held: boolean } {
   if (i.band !== null) {
-    const texts = heldLabels(i.ctx, ticks, unit, i.band);
+    const room = layoutPlot(i.spec.kind, i.cssW, i.cssH, i.band).width - 2 * space['1'];
+    const texts = heldLabels(i.ctx, ticks, unit, i.band, room);
     for (const e of extra) texts.push({ text: e, chip: false });
     return { texts, width: i.band, held: true };
   }

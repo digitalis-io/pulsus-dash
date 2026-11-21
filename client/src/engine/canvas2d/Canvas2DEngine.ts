@@ -663,8 +663,9 @@ class Canvas2DFrame implements ChartFrame {
     if (s === null) return;
     const p = this.local(e);
     if (zoneOf(p, s.plot, s.spec.kind) !== 'plot') return;
-    // A page scroll already in progress keeps scrolling over a plot (§4.4).
-    if (g === null && e.timeStamp - this.r.wheelLatch.lastPageWheel() < PAGE_WHEEL_LATCH_MS) return;
+    // A page scroll already in progress keeps scrolling over a plot (§4.4, A.10), also while this
+    // chart's own wheel gesture is pending (code review r1).
+    if (e.timeStamp - this.r.wheelLatch.lastPageWheel() < PAGE_WHEEL_LATCH_MS) return;
     if (g !== null && g.scale !== null && e.ctrlKey) {
       // Safari sends `ctrl` wheels alongside its gesture events: the gesture drives the zoom.
       e.preventDefault();
@@ -859,7 +860,7 @@ class Canvas2DFrame implements ChartFrame {
     if (toMs - fromMs >= MIN_BRUSH_MS) this.emit('brush', { fromMs, toMs, gesture: 'drag' });
   }
 
-  /** Escape, `pointercancel`, `lostpointercapture`: the press ends; view and value restored. */
+  /** Escape, `pointercancel`, `lostpointercapture`: the press ends; view, value and band restored. */
   private cancelPress(): boolean {
     const g = this.gesture;
     if (g?.kind !== 'press') return false;
@@ -868,6 +869,8 @@ class Canvas2DFrame implements ChartFrame {
     if (g.moved) {
       this.view = this.window === null ? null : spanOf(this.window);
       this.valueView = g.value0;
+      // The camera move is undone: the band re-measures and full labels return.
+      this.bandHold = null;
       this.layerDirty = true;
     }
     this.schedule();
