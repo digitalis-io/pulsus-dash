@@ -357,7 +357,7 @@ negotiated (`Accept`), the converter is bypassed and batches pass through, re-ch
 
 #### T06-011 — Results are Arrow streams
 **MUST** — Client methods MUST return `ResultStream` (record batches plus a `Completeness` trailer),
-never untyped JSON values. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
+never untyped JSON values; the dated amendments below list the typed exceptions. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
 serialises the batches as JSON frames for the TS client.)* *(2026-11-20, #62: until #68 the batch
 type is the Go-native `pulsusdb.Series`, the columns of `labels/1` + `metric_matrix.grid/1`, streamed one
 series at a time; Arrow Go builders arrive with the engine, #68.)* Until R1, the converter MUST stream: the first batch MUST leave
@@ -365,6 +365,12 @@ the BFF ≤ 10 ms after PulsusDB's first byte, and batches MUST be flushed at �
 *(2026-11-21, ADR-0018.)* The completion and metadata methods (series, label names, label values,
 metadata, runtime info) return typed, fully decoded results (§4.3), never untyped JSON values. They
 carry no record batches, so the streaming bounds above do not apply to them.
+*(2026-11-21, #65.)* **Log returns.** The two log query methods return typed results, never
+untyped JSON values, as in the §4.3 table: `LogQueryRange` returns `*LogResult`, which holds
+either a `*LogPage` (`resultType: streams`; typed streams and entries; buffered case 1 below) or a
+`ResultStream` (`resultType: matrix`; streamed when `resultType` precedes `result`, else buffered
+case 2). `LogVolume` returns `[]*Series` with its `Completeness`, one aggregated series per level
+(buffered case 3).
 *(2026-11-21, #65.)* **Buffered cases.** Three bounded cases are buffered instead of streamed. The
 10 ms first-batch bound does not apply to them; batches are still flushed at ≤ 64k rows.
 (1) **A log page** (`resultType: streams`) is decoded whole before its batch is built, because a
@@ -946,4 +952,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.4-rc | 2026-11-20 | #61 Part A: §5.2 adds the `conflict` code (409 on an `If-Match` mismatch, body `{error, current, submitted}`, T11-005); T06-004 note: configuration-change audit rows are written in the save transaction (T11-006), the non-blocking sink applies outside a content transaction; T06-026 revised: `/readyz` reports Postgres reachability, migration level and audit partition health only (still never PulsusDB) |
 | 1.5-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §4.3 split into core and language modules, with the log completion methods and a return-contract table (streamed metric results, typed completion and metadata results, the log page and volume returns, and the buffered `LogQueryRange` response when `result` precedes `resultType`); T06-011 note on typed completion and metadata results; T06-028; T06-005 note |
 | 1.6-rc | 2026-11-21 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
-| 1.7-rc | 2026-11-21 | #65 Part A: T06-011 and §7: the bounds of the three buffered cases (the typed returns are the §4.3 table of ADR-0018); the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |
+| 1.7-rc | 2026-11-21 | #65 Part A: T06-011 states the typed `LogQueryRange` (`*LogResult`: a `*LogPage` or a `ResultStream`) and `LogVolume` (`[]*Series` with its `Completeness`) returns, as in the §4.3 table of ADR-0018, and the bounds of the three buffered cases; the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |
