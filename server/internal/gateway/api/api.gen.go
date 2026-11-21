@@ -2297,6 +2297,20 @@ func (response GetDatasourceCheck503JSONResponse) VisitGetDatasourceCheckRespons
 	return err
 }
 
+type GetDatasourceCheck504JSONResponse ErrorEnvelope
+
+func (response GetDatasourceCheck504JSONResponse) VisitGetDatasourceCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(504)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRecentBoardsRequestObject struct {
 	Params ListRecentBoardsParams
 }

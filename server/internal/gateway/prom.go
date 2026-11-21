@@ -87,26 +87,46 @@ func optional(ms *[]string) []string {
 // completion runs the shared steps of a completion route after its parameter check: the
 // deadline, tenant resolution and the call. It returns the 200 body or the error to answer; both
 // are nil when the browser went away (nothing is written; the access log records 499).
-func (p *prom) completion(ctx context.Context, tenant string, check *reqError,
+func (p *prom) completion(ctx context.Context, tenant string, check *reqError, reserved *pulsusdb.Error,
 	call func(context.Context, *requestScope) (any, error)) (any, *reqError) {
 	if check != nil {
 		return nil, check
 	}
+	q := &dataRoutes{d: p.deps}
+	// Reserved selectors are refused before any I/O, tenant resolution included (T07-020 v1).
+	if reserved != nil {
+		return nil, q.failure(ctx, reserved)
+	}
 	ctx, cancel := context.WithTimeout(ctx, completionDeadline)
 	defer cancel()
 	tc, e := resolveTenant(ctx, p.deps, tenant)
+	if e == errCancelled {
+		return nil, nil
+	}
 	if e != nil {
 		return nil, e
 	}
-	q := &dataRoutes{d: p.deps}
 	if p.deps.PulsusDB == nil {
 		return nil, q.failure(ctx, &pulsusdb.Error{Kind: pulsusdb.KindConfig})
 	}
 	body, err := call(ctx, &requestScope{rc: dataRequestCtxFrom(ctx, tc), c: p.deps.PulsusDB})
 	if err != nil {
-		return nil, q.failure(ctx, err)
+		if f := q.failure(ctx, err); f != errCancelled {
+			return nil, f
+		}
+		return nil, nil
 	}
 	return body, nil
+}
+
+// reservedMatch is the guard over every match value (pointer /match/<i>).
+func reservedMatch(ms []string) *pulsusdb.Error {
+	for i, m := range ms {
+		if v := pulsusdb.CheckReserved("match/"+strconv.Itoa(i), m); v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 // toAPI is the completeness of a completion route (no data age).
@@ -140,7 +160,7 @@ func (p *prom) GetPromLabels(ctx context.Context, req api.GetPromLabelsRequestOb
 	pr := req.Params
 	limit, le := limitParam(pr.Limit)
 	mq := pulsusdb.MatchQuery{Match: optional(pr.Match), Start: time.UnixMilli(pr.From), End: time.UnixMilli(pr.To), Limit: limit}
-	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), windowParams(pr.From, pr.To), matchParams(mq.Match, false), le),
+	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), windowParams(pr.From, pr.To), matchParams(mq.Match, false), le), reservedMatch(mq.Match),
 		func(ctx context.Context, s *requestScope) (any, error) {
 			return valuesCall(func() (*pulsusdb.ValuesResult, error) { return s.c.Labels(ctx, s.rc, mq) })
 		})
@@ -164,7 +184,7 @@ func (p *prom) GetPromLabelValues(ctx context.Context, req api.GetPromLabelValue
 	}
 	limit, le := limitParam(pr.Limit)
 	mq := pulsusdb.MatchQuery{Match: optional(pr.Match), Start: time.UnixMilli(pr.From), End: time.UnixMilli(pr.To), Limit: limit}
-	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), ne, windowParams(pr.From, pr.To), matchParams(mq.Match, false), le),
+	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), ne, windowParams(pr.From, pr.To), matchParams(mq.Match, false), le), reservedMatch(mq.Match),
 		func(ctx context.Context, s *requestScope) (any, error) {
 			return valuesCall(func() (*pulsusdb.ValuesResult, error) { return s.c.LabelValues(ctx, s.rc, req.Name, mq) })
 		})
@@ -184,7 +204,7 @@ func (p *prom) GetPromSeries(ctx context.Context, req api.GetPromSeriesRequestOb
 	pr := req.Params
 	limit, le := limitParam(pr.Limit)
 	mq := pulsusdb.MatchQuery{Match: pr.Match, Start: time.UnixMilli(pr.From), End: time.UnixMilli(pr.To), Limit: limit}
-	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), windowParams(pr.From, pr.To), matchParams(mq.Match, true), le),
+	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), windowParams(pr.From, pr.To), matchParams(mq.Match, true), le), reservedMatch(mq.Match),
 		func(ctx context.Context, s *requestScope) (any, error) {
 			v, err := s.c.Series(ctx, s.rc, mq)
 			if err != nil {
@@ -223,7 +243,7 @@ func (p *prom) GetPromMetadata(ctx context.Context, req api.GetPromMetadataReque
 			me = fieldError("/metric", "field.range", "metric must be at most 65536 bytes")
 		}
 	}
-	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), me, le),
+	body, e := p.completion(ctx, pr.Tenant, firstError(tenantOf(pr.Tenant), me, le), pulsusdb.CheckReserved("metric", mq.Metric),
 		func(ctx context.Context, s *requestScope) (any, error) {
 			v, err := s.c.Metadata(ctx, s.rc, mq)
 			if err != nil {

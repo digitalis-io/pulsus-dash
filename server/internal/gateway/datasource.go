@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
@@ -21,7 +22,8 @@ type requestScope struct {
 
 // datasource implements GET /api/dash/v1/datasource/check (T06-025): one runtimeinfo call of the
 // tenant's binding, never part of readiness (T06-026). It answers 200 with the state, 400 for a
-// malformed tenant, 404 for an unknown one and 503 when the configuration store is unavailable.
+// malformed tenant, 404 for an unknown one, 503 when the configuration store is unavailable and
+// 504 when the deadline passes during tenant resolution.
 type datasource struct{ deps Deps }
 
 func (d *datasource) GetDatasourceCheck(ctx context.Context, req api.GetDatasourceCheckRequestObject) (api.GetDatasourceCheckResponseObject, error) {
@@ -31,10 +33,14 @@ func (d *datasource) GetDatasourceCheck(ctx context.Context, req api.GetDatasour
 	ctx, cancel := context.WithTimeout(ctx, checkDeadline)
 	defer cancel()
 	tc, e := resolveTenant(ctx, d.deps, req.Params.Tenant)
-	if e != nil {
-		if e.body.Code == api.NotFound {
-			return api.GetDatasourceCheck404JSONResponse(e.envelope()), nil
-		}
+	switch {
+	case e == errCancelled:
+		return nil, nil // the browser went away: nothing is written
+	case e != nil && e.body.Code == api.NotFound:
+		return api.GetDatasourceCheck404JSONResponse(e.envelope()), nil
+	case e != nil && e.status == http.StatusGatewayTimeout:
+		return api.GetDatasourceCheck504JSONResponse(e.envelope()), nil
+	case e != nil:
 		return api.GetDatasourceCheck503JSONResponse(e.envelope()), nil
 	}
 	state := api.DatasourceStatusStateError

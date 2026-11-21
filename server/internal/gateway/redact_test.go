@@ -95,6 +95,7 @@ func TestRedactAdversarial(t *testing.T) {
 		{"400", postJSON(h, rangePath, q("adv_400")), 400, []string{`"message":"bad <redacted> at <redacted>"`}},
 		{"422", postJSON(h, rangePath, q("adv_422")), 422, []string{`"message":"too broad <redacted> <redacted>"`}},
 		{"429", postJSON(h, rangePath, q("adv_429")), 429, nil},
+		{"503", postJSON(h, rangePath, q("adv_503")), 502, []string{`"reason":"upstream_unavailable"`}},
 		{"check", do(h, http.MethodGet, "/api/dash/v1/datasource/check?tenant=demo"), 200, []string{`"state":"ok"`}},
 	} {
 		all := responseBytes(c.rec) + "\n" + unescapedHTML(responseBytes(c.rec))

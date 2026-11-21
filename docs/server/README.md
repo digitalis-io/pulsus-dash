@@ -216,7 +216,7 @@ Under `serve --api-only` there is no set, so every row that serves a file is a 4
 | `GET /api/dash/v1/bootstrap`, the organisation has no binding | 503 | `{"error":{"code":"unavailable","message":"no tenant binding"}}` |
 | `POST …/query/promql/range`, `…/instant` | 200; 400, 404, 413, 422, 429, 502, 503, 504 | frames and completeness; the error envelope ([PulsusDB routes](pulsusdb.md#errors-t06-52)) |
 | `GET …/prom/labels`, `…/label/{name}/values`, `…/series`, `…/metadata` | 200; 400, 404, 422, 429 (with `Retry-After`), 502, 503, 504 | values, series or metadata with completeness; the error envelope |
-| `GET /api/dash/v1/datasource/check` | 200; 400, 404, 503 | `{"state":"ok\|unreachable\|unauthorised\|error","checked_at":<ms>}` ([check](pulsusdb.md#data-source-check-t06-025)) |
+| `GET /api/dash/v1/datasource/check` | 200; 400, 404, 503, 504 | `{"state":"ok\|unreachable\|unauthorised\|error","checked_at":<ms>}` ([check](pulsusdb.md#data-source-check-t06-025)) |
 | known path, wrong method | 405 | `{"error":{"code":"invalid","message":"method not allowed"}}` |
 | handler panic | 500 | `{"error":{"code":"internal","message":"internal error"}}`, stack logged at `error` |
 
