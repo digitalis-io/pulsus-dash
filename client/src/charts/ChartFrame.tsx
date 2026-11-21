@@ -213,6 +213,12 @@ export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
   }, [summary]);
 
   const onSliderKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // Escape clears an active crosshair (the engine does that) and goes no further, so a dialog
+    // around the chart closes only on the next Escape.
+    if (e.key === 'Escape') {
+      if (hover !== null) e.stopPropagation();
+      return;
+    }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
     const n = hover?.rows.length ?? 0;

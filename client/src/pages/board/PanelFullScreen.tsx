@@ -33,7 +33,7 @@ export function PanelFullScreen({
       }}
     >
       <div className={cx(styles['fullBody'])}>
-        {isOpen && <PanelBody data={data} isError={isError} />}
+        {isOpen && <PanelBody title={title} data={data} isError={isError} />}
       </div>
       <div className={cx(styles['dialogActions'])}>
         <Button variant="primary" onPress={onClose}>

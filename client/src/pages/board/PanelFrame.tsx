@@ -5,7 +5,7 @@
  * order and show on hover and focus.
  */
 import { useQuery } from '@tanstack/react-query';
-import { forwardRef, useId, useState } from 'react';
+import { forwardRef, useId, useMemo, useState } from 'react';
 import { MenuTrigger, type ButtonProps } from 'react-aria-components';
 import { Link } from 'react-router';
 import { useApi } from '../../app/providers';
@@ -80,12 +80,32 @@ export function usePanelData(tenant: string, panel: PanelSpec) {
   });
 }
 
-export function PanelBody({ data, isError }: { data: PanelData | undefined; isError: boolean }) {
+/** A chart frame titled with the panel's current title (a rename shows at once). */
+function PanelChart({
+  title,
+  data,
+}: {
+  title: string;
+  data: Extract<PanelData, { kind: 'frame' }>;
+}) {
+  const spec = useMemo(() => ({ ...data.spec, title }), [data.spec, title]);
+  return <ChartFrame fill spec={spec} data={data.data} />;
+}
+
+export function PanelBody({
+  title,
+  data,
+  isError,
+}: {
+  title: string;
+  data: PanelData | undefined;
+  isError: boolean;
+}) {
   if (isError) return <EmptyState title={t('error.generic')} />;
   if (data === undefined) return <p className={cx(styles['message'])}>{t('panel.loading')}</p>;
   switch (data.kind) {
     case 'frame':
-      return <ChartFrame fill spec={data.spec} data={data.data} />;
+      return <PanelChart title={title} data={data} />;
     case 'noRoute':
       return (
         <p className={cx(styles['message'])}>
@@ -211,7 +231,7 @@ export const PanelFrame = forwardRef<HTMLElement, PanelFrameProps>(function Pane
         </div>
       </div>
       <div className={cx(styles['body'])}>
-        <PanelBody data={data.data} isError={data.isError} />
+        <PanelBody title={title} data={data.data} isError={data.isError} />
       </div>
       <PanelFullScreen
         isOpen={full}

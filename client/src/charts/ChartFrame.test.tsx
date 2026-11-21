@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient } from '@tanstack/react-query';
 import { StrictMode, useState, type ReactNode } from 'react';
@@ -366,6 +366,27 @@ describe('component hover', () => {
     });
     return f;
   }
+
+  it('Escape at an active crosshair stays in the chart', async () => {
+    const f = await ready(LINE7);
+    const outer: string[] = [];
+    const listen = (e: KeyboardEvent): void => {
+      outer.push(e.key);
+    };
+    document.addEventListener('keydown', listen);
+    const slider = screen.getByRole('slider');
+    act(() => {
+      f.emit('hover', hover(rows(1), 8, 'keyboard'));
+    });
+    fireEvent.keyDown(slider, { key: 'Escape' });
+    expect(outer).toEqual([]);
+    act(() => {
+      f.emit('hover', null);
+    });
+    fireEvent.keyDown(slider, { key: 'Escape' });
+    expect(outer).toEqual(['Escape']);
+    document.removeEventListener('keydown', listen);
+  });
 
   it.each([LINE7, BARS30])('the pointer row window reaches all 30 rows (%o)', async (spec) => {
     const f = await ready(spec);
