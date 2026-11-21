@@ -69,7 +69,14 @@ fn gpu_edge_into_dash_scene_fails() {
         .args(["metadata", "--format-version", "1", "--offline"])
         .current_dir(&dir)
         .output();
-    assert!(refreshed.is_ok_and(|o| o.status.success()));
+    let Ok(refreshed) = refreshed else {
+        panic!("run cargo metadata")
+    };
+    assert!(
+        refreshed.status.success(),
+        "cargo metadata in the copy: {}",
+        String::from_utf8_lossy(&refreshed.stderr)
+    );
     let (code, err) = spec_lint(&dir);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("dash-scene → wgpu"), "{err}");
