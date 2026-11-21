@@ -233,6 +233,74 @@ paths:
         '200': { description: Metric metadata, content: { application/json: { schema: { $ref: '#/components/schemas/PromMetadataResponse' } } } }
         '429': { $ref: '#/components/responses/RateLimited' }
         default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/logql/range:
+    post:
+      operationId: postLogqlRange
+      tags: [query]
+      description: LogQL range query. A log query answers one page of the window (from, to] with a continuation cursor; a LogQL metric query answers JSON frames on the aligned grid, streamed series by series (T06-011). Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlRangeRequest' } } } }
+      responses:
+        '200': { description: A log page (kind streams) or frames on the grid (kind series), content: { application/json: { schema: { $ref: '#/components/schemas/LogqlRangeResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/logql/volume:
+    post:
+      operationId: postLogqlVolume
+      tags: [query]
+      description: Log volume by level on the aligned grid, one frame per level with lines (labels exactly {level}). Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlVolumeRequest' } } } }
+      responses:
+        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromRangeResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/logs/labels:
+    get:
+      operationId: getLogsLabels
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/LogFrom' }
+        - { $ref: '#/components/parameters/LogTo' }
+        - { name: query, in: query, required: false, schema: { type: string, maxLength: 65536 } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Log label names, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/logs/label/{name}/values:
+    get:
+      operationId: getLogsLabelValues
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/LogFrom' }
+        - { $ref: '#/components/parameters/LogTo' }
+        - { name: query, in: query, required: false, schema: { type: string, maxLength: 65536 } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Log label values, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/logs/series:
+    get:
+      operationId: getLogsSeries
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/LogFrom' }
+        - { $ref: '#/components/parameters/LogTo' }
+        - { name: match, in: query, required: true, style: form, explode: true, schema: { type: array, minItems: 1, items: { type: string, maxLength: 65536 } } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Stream label sets, content: { application/json: { schema: { $ref: '#/components/schemas/PromSeriesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/datasource/check:
     get:
       operationId: getDatasourceCheck
@@ -253,6 +321,8 @@ components:
     To: { name: to, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64 } }
     Match: { name: match, in: query, required: false, style: form, explode: true, schema: { type: array, items: { type: string, maxLength: 65536 } } }
     Limit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 10000, default: 1000 } }
+    LogFrom: { name: from, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854 } }
+    LogTo: { name: to, in: query, required: true, description: ms since the epoch; at most 9223372036854 (2262-04-11), schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854 } }
   responses:
     RateLimited:
       description: Too many queries in flight, or PulsusDB is rate limiting the tenant
@@ -391,6 +461,78 @@ components:
       properties:
         metrics: { type: object, additionalProperties: { type: array, items: { $ref: '#/components/schemas/MetricMetadata' } } }
         completeness: { $ref: '#/components/schemas/Completeness' }
+    LogDirection: { type: string, enum: [backward, forward] }
+    LogLevel: { type: string, enum: [critical, error, warn, info, debug, trace, unknown] }
+    LogqlRangeRequest:
+      type: object
+      additionalProperties: false
+      required: [query, from, to, width_px]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 65536 }
+        from: { type: integer, format: int64, minimum: 0 }                    # ms since the epoch
+        to: { type: integer, format: int64, maximum: 9223372036854 }          # and the aligned grid end must not pass it
+        width_px: { type: integer, minimum: 1, maximum: 10000 }
+        limit: { type: integer, minimum: 1, maximum: 5000, default: 1000 }
+        direction: { $ref: '#/components/schemas/LogDirection' }             # default backward
+        cursor: { type: string, pattern: '^[A-Za-z0-9_-]{48}$' }             # from the previous page of the same request
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+    LogqlVolumeRequest:
+      type: object
+      additionalProperties: false
+      required: [query, from, to, width_px]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 65536 }
+        from: { type: integer, format: int64, minimum: 0 }
+        to: { type: integer, format: int64, maximum: 9223372036854 }
+        width_px: { type: integer, minimum: 1, maximum: 10000 }
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+    LogEntry:
+      type: object
+      additionalProperties: false
+      required: [ts_ns, line, level]
+      properties:
+        ts_ns: { type: string, pattern: '^(0|[1-9][0-9]{0,18})$' }          # ns since the epoch, decimal
+        line: { type: string }
+        level: { $ref: '#/components/schemas/LogLevel' }
+        metadata: { type: object, additionalProperties: { type: string } }   # structured metadata; absent if none
+        parsed: { type: object, additionalProperties: { type: string } }     # parsed fields; absent if none
+    LogStream:
+      type: object
+      additionalProperties: false
+      required: [key, labels, entries]
+      properties:
+        key: { type: string, pattern: '^[0-9a-f]{16}$' }
+        labels: { type: object, additionalProperties: { type: string } }     # the indexed stream labels
+        entries: { type: array, items: { $ref: '#/components/schemas/LogEntry' } }
+    LogqlStreamsResponse:
+      type: object
+      additionalProperties: false
+      required: [kind, start, end, step, direction, streams, completeness]
+      properties:
+        kind: { type: string, enum: [streams] }
+        start: { type: integer, format: int64 }                              # the request's from: the window is (start, end] in ms
+        end: { type: integer, format: int64 }                                # the request's to
+        step: { type: integer, format: int64 }                               # the grid step
+        direction: { $ref: '#/components/schemas/LogDirection' }
+        streams: { type: array, items: { $ref: '#/components/schemas/LogStream' } }
+        cursor: { type: string }                                             # absent: no further entry in the window
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    LogqlSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [kind, start, end, step, frames, completeness]
+      properties:
+        kind: { type: string, enum: [series] }
+        start: { type: integer, format: int64 }                              # the grid
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    LogqlRangeResponse:
+      oneOf:
+        - { $ref: '#/components/schemas/LogqlStreamsResponse' }
+        - { $ref: '#/components/schemas/LogqlSeriesResponse' }
+      discriminator: { propertyName: kind, mapping: { streams: '#/components/schemas/LogqlStreamsResponse', series: '#/components/schemas/LogqlSeriesResponse' } }
     DatasourceStatus:                         # bootstrap still returns not_checked
       type: object
       additionalProperties: false

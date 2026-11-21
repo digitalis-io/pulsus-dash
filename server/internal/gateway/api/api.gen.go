@@ -139,6 +139,87 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for LogDirection.
+const (
+	Backward LogDirection = "backward"
+	Forward  LogDirection = "forward"
+)
+
+// Valid indicates whether the value is a known member of the LogDirection enum.
+func (e LogDirection) Valid() bool {
+	switch e {
+	case Backward:
+		return true
+	case Forward:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LogLevel.
+const (
+	LogLevelCritical LogLevel = "critical"
+	LogLevelDebug    LogLevel = "debug"
+	LogLevelError    LogLevel = "error"
+	LogLevelInfo     LogLevel = "info"
+	LogLevelTrace    LogLevel = "trace"
+	LogLevelUnknown  LogLevel = "unknown"
+	LogLevelWarn     LogLevel = "warn"
+)
+
+// Valid indicates whether the value is a known member of the LogLevel enum.
+func (e LogLevel) Valid() bool {
+	switch e {
+	case LogLevelCritical:
+		return true
+	case LogLevelDebug:
+		return true
+	case LogLevelError:
+		return true
+	case LogLevelInfo:
+		return true
+	case LogLevelTrace:
+		return true
+	case LogLevelUnknown:
+		return true
+	case LogLevelWarn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LogqlSeriesResponseKind.
+const (
+	Series LogqlSeriesResponseKind = "series"
+)
+
+// Valid indicates whether the value is a known member of the LogqlSeriesResponseKind enum.
+func (e LogqlSeriesResponseKind) Valid() bool {
+	switch e {
+	case Series:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LogqlStreamsResponseKind.
+const (
+	Streams LogqlStreamsResponseKind = "streams"
+)
+
+// Valid indicates whether the value is a known member of the LogqlStreamsResponseKind enum.
+func (e LogqlStreamsResponseKind) Valid() bool {
+	switch e {
+	case Streams:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PrincipalRole.
 const (
 	Admin  PrincipalRole = "admin"
@@ -476,6 +557,82 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// LogDirection defines model for LogDirection.
+type LogDirection string
+
+// LogEntry defines model for LogEntry.
+type LogEntry struct {
+	Level    LogLevel           `json:"level"`
+	Line     string             `json:"line"`
+	Metadata *map[string]string `json:"metadata,omitempty"`
+	Parsed   *map[string]string `json:"parsed,omitempty"`
+	TsNs     string             `json:"ts_ns"`
+}
+
+// LogLevel defines model for LogLevel.
+type LogLevel string
+
+// LogStream defines model for LogStream.
+type LogStream struct {
+	Entries []LogEntry        `json:"entries"`
+	Key     string            `json:"key"`
+	Labels  map[string]string `json:"labels"`
+}
+
+// LogqlRangeRequest defines model for LogqlRangeRequest.
+type LogqlRangeRequest struct {
+	Cursor    *string       `json:"cursor,omitempty"`
+	Direction *LogDirection `json:"direction,omitempty"`
+	From      int64         `json:"from"`
+	Limit     *int          `json:"limit,omitempty"`
+	Query     string        `json:"query"`
+	TimeoutMs *int          `json:"timeout_ms,omitempty"`
+	To        int64         `json:"to"`
+	WidthPx   int           `json:"width_px"`
+}
+
+// LogqlRangeResponse defines model for LogqlRangeResponse.
+type LogqlRangeResponse struct {
+	union json.RawMessage
+}
+
+// LogqlSeriesResponse defines model for LogqlSeriesResponse.
+type LogqlSeriesResponse struct {
+	Completeness Completeness            `json:"completeness"`
+	End          int64                   `json:"end"`
+	Frames       []SeriesFrame           `json:"frames"`
+	Kind         LogqlSeriesResponseKind `json:"kind"`
+	Start        int64                   `json:"start"`
+	Step         int64                   `json:"step"`
+}
+
+// LogqlSeriesResponseKind defines model for LogqlSeriesResponse.Kind.
+type LogqlSeriesResponseKind string
+
+// LogqlStreamsResponse defines model for LogqlStreamsResponse.
+type LogqlStreamsResponse struct {
+	Completeness Completeness             `json:"completeness"`
+	Cursor       *string                  `json:"cursor,omitempty"`
+	Direction    LogDirection             `json:"direction"`
+	End          int64                    `json:"end"`
+	Kind         LogqlStreamsResponseKind `json:"kind"`
+	Start        int64                    `json:"start"`
+	Step         int64                    `json:"step"`
+	Streams      []LogStream              `json:"streams"`
+}
+
+// LogqlStreamsResponseKind defines model for LogqlStreamsResponse.Kind.
+type LogqlStreamsResponseKind string
+
+// LogqlVolumeRequest defines model for LogqlVolumeRequest.
+type LogqlVolumeRequest struct {
+	From      int64  `json:"from"`
+	Query     string `json:"query"`
+	TimeoutMs *int   `json:"timeout_ms,omitempty"`
+	To        int64  `json:"to"`
+	WidthPx   int    `json:"width_px"`
+}
+
 // MetricMetadata defines model for MetricMetadata.
 type MetricMetadata struct {
 	Help string `json:"help"`
@@ -668,6 +825,12 @@ type From = int64
 // Limit defines model for Limit.
 type Limit = int
 
+// LogFrom defines model for LogFrom.
+type LogFrom = int64
+
+// LogTo defines model for LogTo.
+type LogTo = int64
+
 // Match defines model for Match.
 type Match = []string
 
@@ -693,6 +856,45 @@ type UpdateBoardParams struct {
 // GetDatasourceCheckParams defines parameters for GetDatasourceCheck.
 type GetDatasourceCheckParams struct {
 	Tenant Tenant `form:"tenant" json:"tenant"`
+}
+
+// GetLogsLabelValuesParams defines parameters for GetLogsLabelValues.
+type GetLogsLabelValuesParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From LogFrom `form:"from" json:"from"`
+
+	// To ms since the epoch; at most 9223372036854 (2262-04-11)
+	To    LogTo   `form:"to" json:"to"`
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+	Limit *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetLogsLabelsParams defines parameters for GetLogsLabels.
+type GetLogsLabelsParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From LogFrom `form:"from" json:"from"`
+
+	// To ms since the epoch; at most 9223372036854 (2262-04-11)
+	To    LogTo   `form:"to" json:"to"`
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+	Limit *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetLogsSeriesParams defines parameters for GetLogsSeries.
+type GetLogsSeriesParams struct {
+	Tenant Tenant `form:"tenant" json:"tenant"`
+
+	// From ms since the epoch
+	From LogFrom `form:"from" json:"from"`
+
+	// To ms since the epoch; at most 9223372036854 (2262-04-11)
+	To    LogTo    `form:"to" json:"to"`
+	Match []string `form:"match" json:"match"`
+	Limit *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListRecentBoardsParams defines parameters for ListRecentBoards.
@@ -758,6 +960,107 @@ type CreateBoardJSONRequestBody = BoardCreate
 // UpdateBoardJSONRequestBody defines body for UpdateBoard for application/json ContentType.
 type UpdateBoardJSONRequestBody = BoardUpdate
 
+// AsLogqlStreamsResponse returns the union data inside the LogqlRangeResponse as a LogqlStreamsResponse
+func (t LogqlRangeResponse) AsLogqlStreamsResponse() (LogqlStreamsResponse, error) {
+	var body LogqlStreamsResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLogqlStreamsResponse overwrites any union data inside the LogqlRangeResponse as the provided LogqlStreamsResponse
+func (t *LogqlRangeResponse) FromLogqlStreamsResponse(v LogqlStreamsResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"streams"}`))
+	t.union = b
+	return err
+}
+
+// MergeLogqlStreamsResponse performs a merge with any union data inside the LogqlRangeResponse, using the provided LogqlStreamsResponse
+func (t *LogqlRangeResponse) MergeLogqlStreamsResponse(v LogqlStreamsResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"streams"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsLogqlSeriesResponse returns the union data inside the LogqlRangeResponse as a LogqlSeriesResponse
+func (t LogqlRangeResponse) AsLogqlSeriesResponse() (LogqlSeriesResponse, error) {
+	var body LogqlSeriesResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLogqlSeriesResponse overwrites any union data inside the LogqlRangeResponse as the provided LogqlSeriesResponse
+func (t *LogqlRangeResponse) FromLogqlSeriesResponse(v LogqlSeriesResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"series"}`))
+	t.union = b
+	return err
+}
+
+// MergeLogqlSeriesResponse performs a merge with any union data inside the LogqlRangeResponse, using the provided LogqlSeriesResponse
+func (t *LogqlRangeResponse) MergeLogqlSeriesResponse(v LogqlSeriesResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"series"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t LogqlRangeResponse) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t LogqlRangeResponse) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "series":
+		return t.AsLogqlSeriesResponse()
+	case "streams":
+		return t.AsLogqlStreamsResponse()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t LogqlRangeResponse) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *LogqlRangeResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -781,6 +1084,15 @@ type ServerInterface interface {
 
 	// (GET /api/dash/v1/datasource/check)
 	GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams)
+
+	// (GET /api/dash/v1/logs/label/{name}/values)
+	GetLogsLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetLogsLabelValuesParams)
+
+	// (GET /api/dash/v1/logs/labels)
+	GetLogsLabels(w http.ResponseWriter, r *http.Request, params GetLogsLabelsParams)
+
+	// (GET /api/dash/v1/logs/series)
+	GetLogsSeries(w http.ResponseWriter, r *http.Request, params GetLogsSeriesParams)
 
 	// (GET /api/dash/v1/me/recent-boards)
 	ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams)
@@ -858,6 +1170,21 @@ func (_ Unimplemented) GetBootstrap(w http.ResponseWriter, r *http.Request) {
 
 // (GET /api/dash/v1/datasource/check)
 func (_ Unimplemented) GetDatasourceCheck(w http.ResponseWriter, r *http.Request, params GetDatasourceCheckParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/logs/label/{name}/values)
+func (_ Unimplemented) GetLogsLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetLogsLabelValuesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/logs/labels)
+func (_ Unimplemented) GetLogsLabels(w http.ResponseWriter, r *http.Request, params GetLogsLabelsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/dash/v1/logs/series)
+func (_ Unimplemented) GetLogsSeries(w http.ResponseWriter, r *http.Request, params GetLogsSeriesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1127,6 +1454,270 @@ func (siw *ServerInterfaceWrapper) GetDatasourceCheck(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDatasourceCheck(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLogsLabelValues operation middleware
+func (siw *ServerInterfaceWrapper) GetLogsLabelValues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetLogsLabelValuesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLogsLabelValues(w, r, name, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLogsLabels operation middleware
+func (siw *ServerInterfaceWrapper) GetLogsLabels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetLogsLabelsParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLogsLabels(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLogsSeries operation middleware
+func (siw *ServerInterfaceWrapper) GetLogsSeries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetLogsSeriesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "match" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "match", r.URL.Query(), &params.Match, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "match"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "match", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLogsSeries(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1827,6 +2418,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/dash/v1/prom/metadata", wrapper.GetPromMetadata)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/logs/labels", wrapper.GetLogsLabels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/logs/label/{name}/values", wrapper.GetLogsLabelValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/dash/v1/logs/series", wrapper.GetLogsSeries)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/dash/v1/datasource/check", wrapper.GetDatasourceCheck)
 	})
 
@@ -2329,6 +2929,175 @@ func (response GetDatasourceCheck504JSONResponse) VisitGetDatasourceCheckRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(504)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsLabelValuesRequestObject struct {
+	Name   string `json:"name"`
+	Params GetLogsLabelValuesParams
+}
+
+type GetLogsLabelValuesResponseObject interface {
+	VisitGetLogsLabelValuesResponse(w http.ResponseWriter) error
+}
+
+type GetLogsLabelValues200JSONResponse PromValuesResponse
+
+func (response GetLogsLabelValues200JSONResponse) VisitGetLogsLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsLabelValues429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetLogsLabelValues429JSONResponse) VisitGetLogsLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsLabelValuesdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetLogsLabelValuesdefaultJSONResponse) VisitGetLogsLabelValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsLabelsRequestObject struct {
+	Params GetLogsLabelsParams
+}
+
+type GetLogsLabelsResponseObject interface {
+	VisitGetLogsLabelsResponse(w http.ResponseWriter) error
+}
+
+type GetLogsLabels200JSONResponse PromValuesResponse
+
+func (response GetLogsLabels200JSONResponse) VisitGetLogsLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsLabels429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetLogsLabels429JSONResponse) VisitGetLogsLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsLabelsdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetLogsLabelsdefaultJSONResponse) VisitGetLogsLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsSeriesRequestObject struct {
+	Params GetLogsSeriesParams
+}
+
+type GetLogsSeriesResponseObject interface {
+	VisitGetLogsSeriesResponse(w http.ResponseWriter) error
+}
+
+type GetLogsSeries200JSONResponse PromSeriesResponse
+
+func (response GetLogsSeries200JSONResponse) VisitGetLogsSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsSeries429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response GetLogsSeries429JSONResponse) VisitGetLogsSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLogsSeriesdefaultJSONResponse struct {
+	Body       ErrorEnvelope
+	StatusCode int
+}
+
+func (response GetLogsSeriesdefaultJSONResponse) VisitGetLogsSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2887,6 +3656,15 @@ type StrictServerInterface interface {
 	// (GET /api/dash/v1/datasource/check)
 	GetDatasourceCheck(ctx context.Context, request GetDatasourceCheckRequestObject) (GetDatasourceCheckResponseObject, error)
 
+	// (GET /api/dash/v1/logs/label/{name}/values)
+	GetLogsLabelValues(ctx context.Context, request GetLogsLabelValuesRequestObject) (GetLogsLabelValuesResponseObject, error)
+
+	// (GET /api/dash/v1/logs/labels)
+	GetLogsLabels(ctx context.Context, request GetLogsLabelsRequestObject) (GetLogsLabelsResponseObject, error)
+
+	// (GET /api/dash/v1/logs/series)
+	GetLogsSeries(ctx context.Context, request GetLogsSeriesRequestObject) (GetLogsSeriesResponseObject, error)
+
 	// (GET /api/dash/v1/me/recent-boards)
 	ListRecentBoards(ctx context.Context, request ListRecentBoardsRequestObject) (ListRecentBoardsResponseObject, error)
 
@@ -3151,6 +3929,85 @@ func (sh *strictHandler) GetDatasourceCheck(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDatasourceCheckResponseObject); ok {
 		if err := validResponse.VisitGetDatasourceCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLogsLabelValues operation middleware
+func (sh *strictHandler) GetLogsLabelValues(w http.ResponseWriter, r *http.Request, name string, params GetLogsLabelValuesParams) {
+	var request GetLogsLabelValuesRequestObject
+
+	request.Name = name
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLogsLabelValues(ctx, request.(GetLogsLabelValuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLogsLabelValues")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLogsLabelValuesResponseObject); ok {
+		if err := validResponse.VisitGetLogsLabelValuesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLogsLabels operation middleware
+func (sh *strictHandler) GetLogsLabels(w http.ResponseWriter, r *http.Request, params GetLogsLabelsParams) {
+	var request GetLogsLabelsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLogsLabels(ctx, request.(GetLogsLabelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLogsLabels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLogsLabelsResponseObject); ok {
+		if err := validResponse.VisitGetLogsLabelsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLogsSeries operation middleware
+func (sh *strictHandler) GetLogsSeries(w http.ResponseWriter, r *http.Request, params GetLogsSeriesParams) {
+	var request GetLogsSeriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLogsSeries(ctx, request.(GetLogsSeriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLogsSeries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLogsSeriesResponseObject); ok {
+		if err := validResponse.VisitGetLogsSeriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
