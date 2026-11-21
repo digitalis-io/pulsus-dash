@@ -33,19 +33,41 @@ pub fn axis_of(fx: &RefFixture) -> Range64 {
     }
     let (lo, hi) = fx.chunk.finite.unwrap_or((0.0, 1.0));
     let pad = (hi - lo).max(1.0) * 0.05;
-    Range64 { lo: lo - pad, hi: hi + pad }
+    Range64 {
+        lo: lo - pad,
+        hi: hi + pad,
+    }
 }
 
 pub fn list_of(fx: &RefFixture, dpr: f32) -> DrawList {
-    line_list(Arc::new(fx.chunk.clone()), CSS, dpr, PLOT, WINDOW, axis_of(fx), fx.manual.is_some())
+    line_list(
+        Arc::new(fx.chunk.clone()),
+        CSS,
+        dpr,
+        PLOT,
+        WINDOW,
+        axis_of(fx),
+        fx.manual.is_some(),
+    )
 }
 
 pub fn frame_of(fx: &RefFixture, dpr: f32) -> RefFrame {
     let size = dash_golden::device_size(CSS, dpr);
-    RefFrame { plot: PLOT, window: WINDOW, axis: axis_of(fx), dpr: f64::from(dpr), width_css: 1.5, size }
+    RefFrame {
+        plot: PLOT,
+        window: WINDOW,
+        axis: axis_of(fx),
+        dpr: f64::from(dpr),
+        width_css: 1.5,
+        size,
+    }
 }
 
 pub fn render(ctx: &GpuContext, list: &DrawList) -> Image {
-    let mut r = Renderer::new(ctx, wgpu::TextureFormat::Rgba8Unorm, RendererOptions::default());
+    let mut r = Renderer::new(
+        ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
     render_list(ctx, &mut r, list)
 }

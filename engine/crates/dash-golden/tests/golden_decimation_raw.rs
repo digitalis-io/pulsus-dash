@@ -21,7 +21,11 @@ const ROUND: u32 = (1 << 6) | (1 << 7);
 
 /// Cut parameter of bound `c` along the value from `va` to `vb` (A.4 rule).
 fn cut(c: f64, va: f64, vb: f64) -> f64 {
-    if (vb - va).is_finite() { (c - va) / (vb - va) } else { (c / 2.0 - va / 2.0) / (vb / 2.0 - va / 2.0) }
+    if (vb - va).is_finite() {
+        (c - va) / (vb - va)
+    } else {
+        (c / 2.0 - va / 2.0) / (vb / 2.0 - va / 2.0)
+    }
 }
 
 fn col_of(t: f64, n: u32) -> Option<u32> {
@@ -29,7 +33,11 @@ fn col_of(t: f64, n: u32) -> Option<u32> {
     if !(t >= from && t <= to) {
         return None;
     }
-    Some((((t - from) / (to - from)) * f64::from(n)).floor().clamp(0.0, f64::from(n - 1)) as u32)
+    Some(
+        (((t - from) / (to - from)) * f64::from(n))
+            .floor()
+            .clamp(0.0, f64::from(n - 1)) as u32,
+    )
 }
 
 /// Every raw sample: a capsule per consecutive finite pair (vertical inside a column), a dot per
@@ -44,7 +52,9 @@ fn raw_instances(chunk: &Chunk, enc: &Encoding, n: u32) -> Vec<LineInstance> {
         let mut gap = false;
         for k in lo..hi {
             let t = match &chunk.time {
-                TimeAxis::Grid { start_ms, step_ms, .. } => (start_ms + step_ms * (k - lo) as i64) as f64,
+                TimeAxis::Grid {
+                    start_ms, step_ms, ..
+                } => (start_ms + step_ms * (k - lo) as i64) as f64,
                 TimeAxis::Explicit { t_ms } => t_ms[k],
             };
             let Some(c) = col_of(t, n) else { continue };
@@ -62,18 +72,36 @@ fn raw_instances(chunk: &Chunk, enc: &Encoding, n: u32) -> Vec<LineInstance> {
             let left = k > 0 && !gap_before;
             let right = k + 1 < samples.len() && !samples[k + 1].2;
             if !left && !right {
-                out.push(LineInstance { col: c, va: u(v), vb: u(v), meta: slot | DOT | ROUND });
+                out.push(LineInstance {
+                    col: c,
+                    va: u(v),
+                    vb: u(v),
+                    meta: slot | DOT | ROUND,
+                });
             }
             if !right {
                 continue;
             }
             let (c2, v2, _) = samples[k + 1];
             if c2 == c {
-                out.push(LineInstance { col: c, va: u(v), vb: u(v2), meta: slot | SPAN | ROUND });
+                out.push(LineInstance {
+                    col: c,
+                    va: u(v),
+                    vb: u(v2),
+                    meta: slot | SPAN | ROUND,
+                });
                 continue;
             }
             let col = c2 | ((c2 - c) << 16);
-            let side = |x: f64| if x < b.lo { Some((b.lo, 1u32)) } else if x > b.hi { Some((b.hi, 2u32)) } else { None };
+            let side = |x: f64| {
+                if x < b.lo {
+                    Some((b.lo, 1u32))
+                } else if x > b.hi {
+                    Some((b.hi, 2u32))
+                } else {
+                    None
+                }
+            };
             let (mut va, mut vb, mut meta) = (u(v), u(v2), slot | ROUND);
             match (side(v), side(v2)) {
                 (Some((_, sa)), Some((_, sb))) if sa == sb => {
@@ -103,9 +131,17 @@ fn raw_instances(chunk: &Chunk, enc: &Encoding, n: u32) -> Vec<LineInstance> {
 fn raw_render(ctx: &dash_gpu::GpuContext, list: &DrawList, raw: &[LineInstance]) -> Image {
     let (w, h) = device_size(list.css, list.dpr);
     let mut t = HeadlessTarget::new(ctx, w, h);
-    let mut r = Renderer::new(ctx, wgpu::TextureFormat::Rgba8Unorm, RendererOptions::default());
+    let mut r = Renderer::new(
+        ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
     r.render_instances(ctx, list, raw, &mut t);
-    Image { w, h, rgba: t.read(ctx) }
+    Image {
+        w,
+        h,
+        rgba: t.read(ctx),
+    }
 }
 
 fn mask_diff(a: &Image, b: &Image) -> Vec<(u32, u32)> {
@@ -130,20 +166,36 @@ fn run(fixtures: &[RefFixture]) {
             };
             let raw = raw_instances(&fx.chunk, encoding, *n);
             let reference = raw_render(&t1, &list, &raw);
-            assert!(reference.rgba.iter().step_by(4).any(|r| *r > 0), "{} @{dpr}: empty raw render", fx.name);
+            assert!(
+                reference.rgba.iter().step_by(4).any(|r| *r > 0),
+                "{} @{dpr}: empty raw render",
+                fx.name
+            );
             if fx.name == "F5" {
                 let f = frame_of(fx, dpr);
                 let d = f64::from(dpr);
                 let px = |x: f64, v: f64| ((x * d).floor() as u32, (f.y(v) * d).floor() as u32);
                 let (x5, y5) = px(PLOT[0] + 500.5, 0.5);
                 let (x3, y3) = px(PLOT[0] + 500.5, 0.3);
-                assert!(reference.covered(x5, y5), "F5 @{dpr}: raw misses the first-sample join");
-                assert!(!reference.covered(x3, y3), "F5 @{dpr}: raw covers the last → last join");
+                assert!(
+                    reference.covered(x5, y5),
+                    "F5 @{dpr}: raw misses the first-sample join"
+                );
+                assert!(
+                    !reference.covered(x3, y3),
+                    "F5 @{dpr}: raw covers the last → last join"
+                );
             }
             for (tier, ctx) in [(Tier::T1, &t1), (Tier::T2, &t2)] {
                 let img = render(ctx, &list);
                 let diff = mask_diff(&img, &reference);
-                assert!(diff.is_empty(), "{} @{dpr} {tier:?}: {} pixels differ, first {:?}", fx.name, diff.len(), &diff[..diff.len().min(8)]);
+                assert!(
+                    diff.is_empty(),
+                    "{} @{dpr} {tier:?}: {} pixels differ, first {:?}",
+                    fx.name,
+                    diff.len(),
+                    &diff[..diff.len().min(8)]
+                );
             }
         }
     }

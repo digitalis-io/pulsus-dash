@@ -1,5 +1,114 @@
 //! `dash-golden render` and `dash-golden compare` (plan #68 A.11 §3.12).
+//!
+//! ```text
+//! dash-golden render  --page line-1|line-50|line-gaps|line-600 --theme dark|light
+//!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX] --out <png>
+//! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] → prints mean ꟻLIP
+//! ```
+//! Exit 0 on success (compare: mean ≤ max), 1 when the comparison exceeds `--max`, 2 on bad
+//! arguments or an I/O, adapter or render error.
 
-fn main() -> std::process::ExitCode {
-    std::process::ExitCode::FAILURE
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use dash_golden::{Image, flip_mean, render_page};
+use dash_gpu::{AdapterChoice, GpuContext, Tier};
+use dash_scene::{Size64, Theme, ValueRange};
+use pulsus_synth::GalleryLine;
+
+fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str)
+}
+
+fn pair(s: &str, sep: char) -> Option<(f64, f64)> {
+    let (a, b) = s.split_once(sep)?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+fn render(args: &[String]) -> Result<(), String> {
+    let page = flag(args, "--page").ok_or("--page is required")?;
+    let line = GalleryLine::ALL
+        .into_iter()
+        .find(|g| g.id() == page)
+        .ok_or(format!("unknown page {page}"))?;
+    let theme = match flag(args, "--theme").unwrap_or("dark") {
+        "dark" => Theme::Dark,
+        "light" => Theme::Light,
+        t => return Err(format!("unknown theme {t}")),
+    };
+    let (w, h) = pair(flag(args, "--size").unwrap_or("1118x240"), 'x').ok_or("--size is WxH")?;
+    let dpr: f32 = flag(args, "--dpr")
+        .unwrap_or("1")
+        .parse()
+        .map_err(|_| "--dpr is a number")?;
+    let tier = match flag(args, "--tier").unwrap_or("t1") {
+        "t1" => Tier::T1,
+        "t2" => Tier::T2,
+        t => return Err(format!("unknown tier {t}")),
+    };
+    let value_range = match flag(args, "--value-range") {
+        Some(v) => {
+            let (min, max) = pair(v, ',').ok_or("--value-range is MIN,MAX")?;
+            Some(ValueRange { min, max })
+        }
+        None => None,
+    };
+    let out = PathBuf::from(flag(args, "--out").ok_or("--out is required")?);
+    let ctx = GpuContext::headless(AdapterChoice::Lavapipe, tier)
+        .map_err(|e| format!("{e}; adapters: {:?}", GpuContext::adapter_list()))?;
+    render_page(&ctx, line, theme, Size64 { w, h }, dpr, value_range).write_png(&out)
+}
+
+fn compare(args: &[String]) -> Result<bool, String> {
+    let files: Vec<&String> = args
+        .iter()
+        .skip(1)
+        .take_while(|a| !a.starts_with("--"))
+        .collect();
+    let [a, b] = files[..] else {
+        return Err("compare needs two PNG paths".into());
+    };
+    let (a, b) = (Image::read_png(a.as_ref())?, Image::read_png(b.as_ref())?);
+    let mut regions = Vec::new();
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "--region" {
+            let v: Vec<u32> = args
+                .get(i + 1)
+                .ok_or("--region is x,y,w,h")?
+                .split(',')
+                .filter_map(|p| p.parse().ok())
+                .collect();
+            let [x, y, w, h] = v[..] else {
+                return Err("--region is x,y,w,h".into());
+            };
+            regions.push([x, y, w, h]);
+        }
+    }
+    let max: f32 = flag(args, "--max")
+        .unwrap_or("0.005")
+        .parse()
+        .map_err(|_| "--max is a number")?;
+    let mean = flip_mean(&a, &b, &regions);
+    println!("{mean}");
+    Ok(mean <= max)
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let result = match args.first().map(String::as_str) {
+        Some("render") => render(&args).map(|()| true),
+        Some("compare") => compare(&args),
+        _ => Err("usage: dash-golden render … | dash-golden compare <a.png> <b.png> …".into()),
+    };
+    match result {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::from(1),
+        Err(e) => {
+            eprintln!("error[dash-golden] {e}");
+            ExitCode::from(2)
+        }
+    }
 }

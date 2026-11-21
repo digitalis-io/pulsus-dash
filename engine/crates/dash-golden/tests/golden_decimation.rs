@@ -12,7 +12,11 @@ fn check(fx: &RefFixture, dpr: f32, img: &Image, f: &RefFrame) {
     let tag = format!("{} @{dpr}", fx.name);
     let m = reference_mask(&fx.chunk, f);
     // (1) every in-plot sample pixel is covered.
-    let missing: Vec<_> = m.a.iter().filter(|(x, y)| !img.covered(*x, *y)).take(5).collect();
+    let missing: Vec<_> =
+        m.a.iter()
+            .filter(|(x, y)| !img.covered(*x, *y))
+            .take(5)
+            .collect();
     assert!(missing.is_empty(), "{tag}: (1) uncovered {missing:?}");
     // (2) nothing outside R⁺.
     let mut stray = Vec::new();
@@ -23,9 +27,15 @@ fn check(fx: &RefFixture, dpr: f32, img: &Image, f: &RefFrame) {
             }
         }
     }
-    assert!(stray.is_empty(), "{tag}: (2) {} stray pixels, first {:?}", stray.len(), &stray[..stray.len().min(5)]);
+    assert!(
+        stray.is_empty(),
+        "{tag}: (2) {} stray pixels, first {:?}",
+        stray.len(),
+        &stray[..stray.len().min(5)]
+    );
     let d = f64::from(dpr);
-    let dev_cols = |c: f64| ((PLOT[0] + c) * d).floor() as u32..((PLOT[0] + c + 1.0) * d).ceil() as u32;
+    let dev_cols =
+        |c: f64| ((PLOT[0] + c) * d).floor() as u32..((PLOT[0] + c + 1.0) * d).ceil() as u32;
     match fx.name {
         "F3" => {
             // (3) rows between two runs, beyond a dot's reach (radius + AA + 1 px), are empty in
@@ -33,16 +43,31 @@ fn check(fx: &RefFixture, dpr: f32, img: &Image, f: &RefFrame) {
             let reach = 1.5 * d + 0.5 + 1.0;
             let runs: [(f64, &[(f64, f64)]); 2] = [
                 (300.0, &[(10.0, 10.2), (50.0, 50.3), (89.8, 90.0)]),
-                (500.0, &[(10.0, 10.0), (30.0, 30.0), (50.0, 50.0), (70.0, 70.1), (90.0, 90.2)]),
+                (
+                    500.0,
+                    &[
+                        (10.0, 10.0),
+                        (30.0, 30.0),
+                        (50.0, 50.0),
+                        (70.0, 70.1),
+                        (90.0, 90.2),
+                    ],
+                ),
             ];
             for (c, rs) in runs {
                 for pair in rs.windows(2) {
                     let (below_top, above_bottom) = (f.y(pair[0].1) * d, f.y(pair[1].0) * d);
-                    let (y0, y1) = ((above_bottom + reach).ceil() as u32, (below_top - reach).floor() as u32);
+                    let (y0, y1) = (
+                        (above_bottom + reach).ceil() as u32,
+                        (below_top - reach).floor() as u32,
+                    );
                     assert!(y1 > y0 + 10, "{tag}: band {y0}..{y1}");
                     for x in dev_cols(c - 1.0).start..dev_cols(c + 1.0).end {
                         for y in y0..y1 {
-                            assert!(!img.covered(x, y), "{tag}: (3) column {c} gap pixel ({x}, {y})");
+                            assert!(
+                                !img.covered(x, y),
+                                "{tag}: (3) column {c} gap pixel ({x}, {y})"
+                            );
                         }
                     }
                 }
@@ -66,7 +91,9 @@ fn check(fx: &RefFixture, dpr: f32, img: &Image, f: &RefFrame) {
             for c in 0..1000u32 {
                 for x in dev_cols(f64::from(c)) {
                     for y in 0..img.h {
-                        let beyond = rows[c as usize].is_none_or(|(lo, hi)| f64::from(y) + 3.0 < lo || f64::from(y) > hi + 3.0);
+                        let beyond = rows[c as usize].is_none_or(|(lo, hi)| {
+                            f64::from(y) + 3.0 < lo || f64::from(y) > hi + 3.0
+                        });
                         if img.covered(x, y) && beyond {
                             outside += 1;
                         }
@@ -85,7 +112,10 @@ fn check(fx: &RefFixture, dpr: f32, img: &Image, f: &RefFrame) {
                 for x in px0..px1 {
                     if img.covered(x, y) {
                         any = true;
-                        assert!((f64::from(x) + 0.5 - x_c).abs() <= tol, "{tag}: (5) pixel ({x}, {y}) off the crossing {x_c}");
+                        assert!(
+                            (f64::from(x) + 0.5 - x_c).abs() <= tol,
+                            "{tag}: (5) pixel ({x}, {y}) off the crossing {x_c}"
+                        );
                     }
                 }
                 assert!(any, "{tag}: (5) row {y} empty");
@@ -98,7 +128,12 @@ fn check(fx: &RefFixture, dpr: f32, img: &Image, f: &RefFrame) {
             let b = ((PLOT[0] + 800.5) * d, f.y(0.7) * d);
             for x in (a.0.ceil() as u32)..(b.0.floor() as u32) {
                 let near = (0..img.h).any(|y| {
-                    img.covered(x, y) && dash_golden::reference::dist((f64::from(x) + 0.5, f64::from(y) + 0.5), a, b) <= tol
+                    img.covered(x, y)
+                        && dash_golden::reference::dist(
+                            (f64::from(x) + 0.5, f64::from(y) + 0.5),
+                            a,
+                            b,
+                        ) <= tol
                 });
                 assert!(near, "{tag}: (6) column {x} has no pixel on S");
             }
@@ -144,5 +179,8 @@ fn golden_decimation_ref() {
 #[test]
 #[ignore]
 fn golden_decimation_full() {
-    run(&[ok(f1a(100, 1_000_000), "F1a"), ok(f2(100, 1_000_000), "F2")], false);
+    run(
+        &[ok(f1a(100, 1_000_000), "F1a"), ok(f2(100, 1_000_000), "F2")],
+        false,
+    );
 }

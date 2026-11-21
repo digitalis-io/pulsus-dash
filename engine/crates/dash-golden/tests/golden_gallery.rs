@@ -4,7 +4,9 @@
 mod common;
 
 use common::*;
-use dash_golden::{Image, PAGE_CSS, flip_mean, goldens_dir, manual_range, pages, pinned_driver, render_page};
+use dash_golden::{
+    Image, PAGE_CSS, flip_mean, goldens_dir, manual_range, pages, pinned_driver, render_page,
+};
 use dash_gpu::Tier;
 
 #[test]
@@ -16,7 +18,11 @@ fn golden_gallery() {
     let mut failures = Vec::new();
     for page in pages() {
         let name = page.name();
-        let vr = if page.manual { manual_range(page.line, PAGE_CSS) } else { None };
+        let vr = if page.manual {
+            manual_range(page.line, PAGE_CSS)
+        } else {
+            None
+        };
         assert!(!page.manual || vr.is_some(), "{name}: no manual range");
         let a = render_page(&t1, page.line, page.theme, PAGE_CSS, page.dpr, vr);
         let again = render_page(&t1, page.line, page.theme, PAGE_CSS, page.dpr, vr);
@@ -32,11 +38,13 @@ fn golden_gallery() {
         match Image::read_png(&path) {
             Ok(golden) => {
                 let mean = flip_mean(&golden, &a, &[]);
-                if !(mean <= 0.005) {
+                if mean.is_nan() || mean > 0.005 {
                     failures.push(format!("{name}: mean FLIP {mean}"));
                 }
             }
-            Err(e) => failures.push(format!("{name}: no baseline ({e}); run with the golden-update label")),
+            Err(e) => failures.push(format!(
+                "{name}: no baseline ({e}); run with the golden-update label"
+            )),
         }
     }
     assert!(failures.is_empty(), "{failures:#?}");

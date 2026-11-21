@@ -9,7 +9,9 @@ fn engine() -> PathBuf {
 }
 
 fn copy_tree(from: &Path, to: &Path) {
-    let Ok(entries) = std::fs::read_dir(from) else { panic!("read {}", from.display()) };
+    let Ok(entries) = std::fs::read_dir(from) else {
+        panic!("read {}", from.display())
+    };
     assert!(std::fs::create_dir_all(to).is_ok());
     for e in entries.flatten() {
         let name = e.file_name();
@@ -26,9 +28,15 @@ fn copy_tree(from: &Path, to: &Path) {
 }
 
 fn spec_lint(root: &Path) -> (i32, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_xtask")).args(["spec-lint", "--root"]).arg(root).output();
+    let out = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["spec-lint", "--root"])
+        .arg(root)
+        .output();
     let Ok(out) = out else { panic!("run xtask") };
-    (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stderr).into_owned())
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
 }
 
 fn scratch(name: &str) -> PathBuf {
@@ -49,12 +57,18 @@ fn gpu_edge_into_dash_scene_fails() {
     let dir = scratch("spec-lint-wgpu");
     let manifest = dir.join("crates/dash-scene/Cargo.toml");
     let text = std::fs::read_to_string(&manifest).unwrap_or_default();
-    let edited = text.replacen("[dependencies]\n", "[dependencies]\nwgpu.workspace = true\n", 1);
+    let edited = text.replacen(
+        "[dependencies]\n",
+        "[dependencies]\nwgpu.workspace = true\n",
+        1,
+    );
     assert_ne!(text, edited);
     assert!(std::fs::write(&manifest, edited).is_ok());
     // Refresh the copy's lockfile for the new edge (offline; wgpu is already in it).
-    let refreshed = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1", "--offline"])
-        .current_dir(&dir).output();
+    let refreshed = Command::new(env!("CARGO"))
+        .args(["metadata", "--format-version", "1", "--offline"])
+        .current_dir(&dir)
+        .output();
     assert!(refreshed.is_ok_and(|o| o.status.success()));
     let (code, err) = spec_lint(&dir);
     assert_eq!(code, 1, "{err}");
@@ -66,7 +80,10 @@ fn dockerfile_literal_must_equal_tools_toml() {
     let dir = scratch("spec-lint-mesa");
     let docker = dir.join("ci/lavapipe.Dockerfile");
     let text = std::fs::read_to_string(&docker).unwrap_or_default();
-    let edited = text.replace("mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4", "mesa-vulkan-drivers=25.2.7-0ubuntu0.24.04.1");
+    let edited = text.replace(
+        "mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4",
+        "mesa-vulkan-drivers=25.2.7-0ubuntu0.24.04.1",
+    );
     assert_ne!(text, edited, "the Dockerfile has no pinned Mesa literal");
     assert!(std::fs::write(&docker, edited).is_ok());
     let (code, err) = spec_lint(&dir);

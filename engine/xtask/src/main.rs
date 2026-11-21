@@ -17,7 +17,11 @@ fn main() -> ExitCode {
                 for line in &v {
                     eprintln!("error[spec-lint] {line}");
                 }
-                if v.is_empty() { ExitCode::SUCCESS } else { ExitCode::from(1) }
+                if v.is_empty() {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                }
             }
             Err(e) => {
                 eprintln!("error[spec-lint] {e}");
