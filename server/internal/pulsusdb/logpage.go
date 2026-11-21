@@ -483,6 +483,16 @@ func (p *pager) page(es []pageEntry, next *PageCursor) *LogPage {
 		}
 		return groupCompare(a, b)
 	})
+	// gate proof #65 (do not merge): the page is sorted twice.
+	slices.SortStableFunc(es, func(a, b pageEntry) int {
+		if a.ts != b.ts {
+			if dir == Backward {
+				return cmp.Compare(b.ts, a.ts)
+			}
+			return cmp.Compare(a.ts, b.ts)
+		}
+		return groupCompare(a, b)
+	})
 	out := &LogPage{Streams: []LogStream{}, Entries: make([]LogEntry, 0, len(es)), Next: next, Requests: p.n}
 	var keys []uint64
 	labels := map[uint64][]Label{}
