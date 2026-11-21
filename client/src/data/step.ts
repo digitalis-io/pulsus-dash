@@ -16,6 +16,9 @@ export const LADDER_MS: readonly number[] = [
 const MAX_STEPS = 11000;
 
 /**
+ * The step is also the base of the rate window the Explore planner writes for a bare counter or
+ * histogram selector (`4 × step`, plan #63 §3.3).
+ *
  * The step is the first ladder entry with `entry × widthPx ≥ toMs − fromMs` (else 1 d); the
  * start is floored and the end raised to it. `null` when the range needs more than 11 000 steps.
  */

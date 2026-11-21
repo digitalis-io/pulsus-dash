@@ -140,22 +140,26 @@ export function bucketEnd(ts: Float64Array, i: number, fallbackEnd: number): num
 }
 
 /**
+ * `'zero'`: a non-finite count adds 0 (bars). `'missing'`: a merged cell is NaN when any of its
+ * constituent counts is non-finite (heatmap; T02 §4.4 gaps rule, plan #63 §4.3.1).
+ */
+export type MergeMissing = 'zero' | 'missing';
+
+/**
  * Buckets merged to at most one per CSS px column, `stride` counts per bucket summed (non-finite
- * counts as 0). A bucket is kept when its interval [start, end) overlaps the window, and is placed
+ * counts as 0, or a NaN merged cell under `'missing'`). A bucket is kept when its interval [start, end) overlaps the window, and is placed
  * at its start clipped to the window, so a bucket that begins before `from` still covers the left
  * edge; buckets wholly outside the window are dropped, never merged into the edge columns. A group
  * starts at its first (clipped) bucket; `endMs` is the clipped end of the last kept bucket. Used
  * when there are more buckets than CSS px.
  */
-export type MergeMissing = 'zero' | 'missing';
-
 export function mergeBuckets(
   ts: Float64Array,
   counts: Float64Array,
   stride: number,
   w: TimeWindow,
   plot: PlotRect,
-  _missing: MergeMissing = 'zero',
+  missing: MergeMissing = 'zero',
 ): { ts: Float64Array; counts: Float64Array; endMs: number } {
   const n = columnCount(plot);
   const starts: number[] = [];
@@ -178,6 +182,7 @@ export function mergeBuckets(
     for (let b = 0; b < stride; b++) {
       const c = counts[i * stride + b] ?? 0;
       if (Number.isFinite(c)) sums[base + b] = (sums[base + b] ?? 0) + c;
+      else if (missing === 'missing') sums[base + b] = NaN;
     }
   }
   return { ts: new Float64Array(starts), counts: new Float64Array(sums), endMs };

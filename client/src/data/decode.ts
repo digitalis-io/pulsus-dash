@@ -235,26 +235,52 @@ export interface PromMetadata {
   readonly completeness: Completeness;
 }
 
-/** Stub (tests first, plan #63 §5). */
-export function decodeValues(_body: unknown): PromValues {
+/** Decodes a `PromValuesResponse` body (label names or values). */
+export function decodeValues(body: unknown): PromValues {
+  const b = object(body, '');
   return {
-    values: [],
-    completeness: decodeCompleteness({ truncated: false, warnings: [], infos: [] }, ''),
+    values: strings(b['values'], '/values'),
+    completeness: decodeCompleteness(b['completeness'], '/completeness'),
   };
 }
 
-/** Stub (tests first, plan #63 §5). */
-export function decodeSeriesSet(_body: unknown): PromSeriesSet {
-  return {
-    series: [],
-    completeness: decodeCompleteness({ truncated: false, warnings: [], infos: [] }, ''),
-  };
+/** A JSON object of strings; `Object.fromEntries` keeps every name an own property. */
+function labelSet(v: unknown, path: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(object(v, path)).map(([k, x]) => [k, string(x, `${path}/${token(k)}`)]),
+  );
 }
 
-/** Stub (tests first, plan #63 §5). */
-export function decodeMetadata(_body: unknown): PromMetadata {
-  return {
-    metrics: {},
-    completeness: decodeCompleteness({ truncated: false, warnings: [], infos: [] }, ''),
-  };
+/** Decodes a `PromSeriesResponse` body; every key matches `KEY_PATTERN`. */
+export function decodeSeriesSet(body: unknown): PromSeriesSet {
+  const b = object(body, '');
+  const series = array(b['series'], '/series').map((v, i) => {
+    const path = `/series/${String(i)}`;
+    const s = object(v, path);
+    const key = string(s['key'], `${path}/key`);
+    if (!KEY_PATTERN.test(key)) throw new DecodeError(`${path}/key`, 'expected 16 hex digits');
+    return { key, labels: labelSet(s['labels'], `${path}/labels`) };
+  });
+  return { series, completeness: decodeCompleteness(b['completeness'], '/completeness') };
+}
+
+/** Decodes a `PromMetadataResponse` body. */
+export function decodeMetadata(body: unknown): PromMetadata {
+  const b = object(body, '');
+  const metrics = Object.fromEntries(
+    Object.entries(object(b['metrics'], '/metrics')).map(([name, entries]) => {
+      const path = `/metrics/${token(name)}`;
+      const list = array(entries, path).map((e, i): PromMetricMetadata => {
+        const p = `${path}/${String(i)}`;
+        const m = object(e, p);
+        return {
+          type: string(m['type'], `${p}/type`),
+          help: string(m['help'], `${p}/help`),
+          unit: string(m['unit'], `${p}/unit`),
+        };
+      });
+      return [name, list];
+    }),
+  );
+  return { metrics, completeness: decodeCompleteness(b['completeness'], '/completeness') };
 }

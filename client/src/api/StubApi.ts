@@ -7,7 +7,14 @@
  * does the same for `signOut`.
  */
 import type { Api } from './Api';
-import { defaultSeed, defaultStarred } from './stubData';
+import {
+  defaultSeed,
+  defaultStarred,
+  STUB_PROM_LABEL_VALUES,
+  STUB_PROM_LABELS,
+  STUB_PROM_METADATA,
+  STUB_PROM_METRIC_NAMES,
+} from './stubData';
 import type {
   Completeness,
   InstantResult,
@@ -187,21 +194,42 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  // Stubs (tests first, plan #63 §5).
-  promLabels(_tenant: string, _req: PromMatchRequest): Promise<PromValues> {
-    return Promise.resolve({ values: [], completeness: EMPTY_COMPLETENESS });
+  promLabels(tenant: string, _req: PromMatchRequest, signal?: AbortSignal): Promise<PromValues> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      return { values: [...STUB_PROM_LABELS], completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
-  promLabelValues(_tenant: string, _name: string, _req: PromMatchRequest): Promise<PromValues> {
-    return Promise.resolve({ values: [], completeness: EMPTY_COMPLETENESS });
+  promLabelValues(
+    tenant: string,
+    name: string,
+    _req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      const values = name === '__name__' ? STUB_PROM_METRIC_NAMES : STUB_PROM_LABEL_VALUES;
+      return { values: [...values], completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
-  promSeries(_tenant: string, _req: PromMatchRequest): Promise<PromSeriesSet> {
-    return Promise.resolve({ series: [], completeness: EMPTY_COMPLETENESS });
+  promSeries(tenant: string, _req: PromMatchRequest, signal?: AbortSignal): Promise<PromSeriesSet> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      return { series: [], completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
-  promMetadata(_tenant: string, _req: { readonly metric?: string }): Promise<PromMetadata> {
-    return Promise.resolve({ metrics: {}, completeness: EMPTY_COMPLETENESS });
+  promMetadata(
+    tenant: string,
+    _req: { readonly metric?: string; readonly limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PromMetadata> {
+    return settle(() => {
+      this.boardsOf(tenant);
+      return { metrics: structuredClone(STUB_PROM_METADATA), completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
   private boardsOf(tenant: string): BoardSummary[] {

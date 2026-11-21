@@ -1,11 +1,17 @@
-/** Stub (tests first, plan #63 §5). */
+/**
+ * Auto-vis (plan #63 §4.2; VIZ-065 Table 5-13 rows 5, 6, 7, 14; SRF-030): the vis the Explore page
+ * draws a result with, unless the URL's `vis` overrides it. The first matching row wins.
+ */
 import type { Completeness, InstantResult, RangeResult } from '../data/decode';
 import type { ScalarFrame, SeriesFrame } from '../data/frames';
 import type { VisKind } from '../engine/api';
+import { histogramBuckets } from './histogram';
 
+/** A query result as the Explore page shows it. */
 export type ExploreResult =
   | {
       readonly kind: 'series';
+      /** A range result is gridded by the BFF; an instant result is not. */
       readonly source: 'range' | 'instant';
       readonly series: readonly SeriesFrame[];
       readonly stepMs: number | null;
@@ -15,28 +21,66 @@ export type ExploreResult =
   | { readonly kind: 'string'; readonly value: string; readonly completeness: Completeness };
 
 export function fromRange(r: RangeResult): ExploreResult {
-  return { kind: 'string', value: '', completeness: r.completeness };
+  return {
+    kind: 'series',
+    source: 'range',
+    series: r.series,
+    stepMs: r.stepMs,
+    completeness: r.completeness,
+  };
 }
 
 export function fromInstant(r: InstantResult): ExploreResult {
-  return { kind: 'string', value: '', completeness: r.completeness };
+  switch (r.kind) {
+    case 'series':
+      return {
+        kind: 'series',
+        source: 'instant',
+        series: r.series,
+        stepMs: null,
+        completeness: r.completeness,
+      };
+    case 'scalar':
+      return { kind: 'scalar', scalar: r.scalar, completeness: r.completeness };
+    case 'string':
+      return { kind: 'string', value: r.value, completeness: r.completeness };
+  }
 }
 
 export interface AutoVis {
   readonly vis: VisKind | null;
+  /** The Table 5-13 row that chose `vis`. */
   readonly rule: 5 | 6 | 7 | 14 | null;
 }
 
-export function autoVis(_i: {
+/**
+ * The auto vis of a result. A range result is never a stat (row 7 is "1 series, 1 value"): the
+ * BFF grids it, so a series with one sample is a series with gaps.
+ */
+export function autoVis(i: {
   readonly histogram: boolean;
   readonly rateApplied: boolean;
   readonly result: ExploreResult;
 }): AutoVis {
-  return { vis: null, rule: null };
+  const r = i.result;
+  if (r.kind === 'string') return { vis: null, rule: null };
+  if (i.histogram && r.kind === 'series' && histogramBuckets(r.series) !== null) {
+    return { vis: 'heatmap', rule: 5 };
+  }
+  if (i.rateApplied) return { vis: 'line', rule: 6 };
+  if (
+    r.kind === 'scalar' ||
+    (r.source === 'instant' && r.series.length === 1 && r.series[0]?.timestamps.length === 1)
+  ) {
+    return { vis: 'stat', rule: 7 };
+  }
+  return { vis: 'line', rule: 14 };
 }
 
+/** The URL's `vis` key: a vis kind, or `auto`. */
 export type VisParam = VisKind | 'auto';
 
-export function chooseVis(_param: VisParam, _auto: AutoVis): VisKind | null {
-  return null;
+/** The vis drawn: the URL's override, else the auto vis. */
+export function chooseVis(param: VisParam, auto: AutoVis): VisKind | null {
+  return param === 'auto' ? auto.vis : param;
 }
