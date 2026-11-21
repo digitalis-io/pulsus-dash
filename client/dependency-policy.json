@@ -7,8 +7,7 @@
     "@tanstack/react-query",
     "react-aria-components",
     "@internationalized/date",
-    "openapi-fetch",
-    "react-grid-layout"
+    "openapi-fetch"
   ],
   "runtimeClosure": {
     "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
