@@ -16,11 +16,15 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 /**
  * Rules not run in one engine and state, with the reason. Firefox's page crashes inside axe's
  * `label` rule once a kit text field has been typed into or focused by the pointer (reproduced
- * with the panel editor's Title and the filter dialog's Label as well); Chromium and WebKit run
- * every rule in these states.
+ * with the panel editor's Title, in its field-errors state too, and the filter dialog's Label as
+ * well); Chromium and WebKit run every rule in these states.
  */
 const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
-  firefox: { 'b-1 edit with sections': ['label'], 'b-1 add filter with error': ['label'] },
+  firefox: {
+    'b-1 edit with sections': ['label'],
+    'b-1 add filter with error': ['label'],
+    'b-1 edit, editor field errors': ['label'],
+  },
 };
 
 async function seriousViolations(page: Page, state = ''): Promise<string[]> {

@@ -161,9 +161,24 @@ export async function boardLoops(s: Script): Promise<void> {
         await expect.poll(() => page.evaluate(() => window.__copied.at(-1) ?? '')).not.toBe('');
         await s.menuItem(`button "Panel menu: ${title}"`, 0);
         await expect(editor).toBeVisible();
+        // The preview's crosshair (#90), named after the panel: End sets it, Escape clears it.
+        await editor.locator('[data-preview-host] > *').first().waitFor();
+        if ((await editor.getByRole('slider').count()) > 0) {
+          await s.focus(`slider "Crosshair: ${title}"`);
+          await press('End');
+          await press('Escape');
+          await expect(editor).toBeVisible();
+        }
         await closeEditor();
         await expect(page.getByRole('button', { name: `Panel menu: ${title}` })).toBeFocused();
       }
+      // #90: Add panel opens the modal editor, which a drain replays from its entry state. The View
+      // drain starts in View, so Edit board and Add panel are operated here, from Edit: the View
+      // drain then stays in View, and the Edit drains of L26 (entered in Edit) take the rest.
+      await s.goto(url);
+      await s.on('button "Edit board"');
+      await s.on('button "Add panel"');
+      await closeEditor();
       await s.drain(`${uid} view`, () => s.goto(url));
       for (const title of titles) {
         await s.drain(`${uid} full screen ${title}`, async () => {
