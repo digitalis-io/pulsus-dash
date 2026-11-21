@@ -49,12 +49,16 @@ export async function exploreLoops(s: Script): Promise<void> {
       await press('ArrowRight');
     }
     await press('Space');
-    await press('Home');
+    // Back to Auto with the arrows: React Aria's toolbar keys are the arrows only (no Home).
+    for (let i = 0; i < 4; i++) await press('ArrowLeft');
     await press('Space');
     await expect.poll(() => s.search()['vis']).toBeUndefined();
 
     for (let i = 0; i < 5; i++) {
       await s.focus('combobox "Metric"');
+      // The list opens on focus; once, close it so the combobox itself is operated (ArrowDown
+      // reopens the list on its first option).
+      if (i === 0) await press('Escape');
       for (let k = 0; k <= i; k++) await press('ArrowDown');
       await press('Enter');
     }

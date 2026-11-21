@@ -264,9 +264,12 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     const n = await same.count();
     for (let i = 0; i < n; i++) {
       if (
-        await same
-          .nth(i)
-          .evaluate((e) => e === document.activeElement || e.contains(document.activeElement))
+        await same.nth(i).evaluate((e) => {
+          // Into open shadow roots: the editor's textbox is focused inside its host (plan #63 R2).
+          let a = document.activeElement;
+          while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement;
+          return a !== null && (e === a || e.contains(a));
+        })
       ) {
         return i === 0 ? first : `${first} #${String(i + 1)}`;
       }
