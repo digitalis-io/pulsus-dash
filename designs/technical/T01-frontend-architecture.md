@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-20 |
+| **Version** | 1.5-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (React application, rooms, tokens, interim charts; first, [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)) → M-UI0 (chart engine in workers behind the `ChartFrame` seam) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T01-frontend-architecture.md (not tracked) |
@@ -217,13 +217,13 @@ add a draw pipeline outside [T02](T02-vis-engine.md)'s L1. *Interim (ADR-0014 §
 ### 4.5 One token source for canvas and DOM
 
 Colour, space, type and motion tokens ([08](../product/08-visual-language.md)) are defined once in
-`design/tokens.toml`. *(Revised 2026-11-19.)* `client/scripts/gen-tokens.ts` generates `tokens.css`
-and `tokens.ts`; the `dash-tokens` crate's `build.rs` adds `tokens.rs` for the engine when it lands.
-The outputs are:
+`design/tokens.toml`. *(Revised 2026-11-21, #68.)* `client/scripts/gen-tokens.ts` generates
+`tokens.css`, `tokens.ts` and the engine's `engine/crates/dash-tokens/src/tokens.rs` (committed and
+checked by `checkGenerated`, not a `build.rs`). The outputs are:
 
 | Output | Consumer | Form |
 |---|---|---|
-| `tokens.rs` | engine (`dash-marks`, `dash-scene`) | `pub const` linear-space RGBA (`[f32; 4]`), px sizes, durations in ms, per theme and density |
+| `tokens.rs` | engine (`dash-marks`, `dash-scene`, `dash-axes`) | `pub const` colours as sRGB-encoded `Rgba8([u8; 4])`, the same bytes as the CSS hex (the engine blends in sRGB-encoded space, [T02](T02-vis-engine.md) §4.2); px sizes, font metrics, durations in ms, per theme |
 | `tokens.ts` | TS application, `Canvas2DEngine` | typed constants per theme and density |
 | `tokens.css` | application, rooms, component kit | CSS custom properties under `:root[data-theme][data-density]` |
 | `tokens.json` | palette validator, gallery, docs | Flat map, for tooling only |
@@ -253,15 +253,16 @@ lives in the TS store.
 | `dash-core-mt` (`-st`) | `dash-core-mt.wasm` (the engine, ADR-0014 §8) | Engine module crate: links the engine crates; built for wasm32 (`cargo build-wasm`) | [T03](T03-browser-runtime.md) |
 | `dash-protocol` | engine + adapter | Records behind the `ChartFrame` API and engine events; control block layout | [T03](T03-browser-runtime.md) |
 | `dash-scene`, `dash-gpu`, `dash-marks` | engine, native | Scene graph, wgpu runtime, mark pipelines, render-local state | [T02](T02-vis-engine.md) |
-| `dash-scales`, `dash-axes`, `dash-units`, `dash-colour`, `dash-fieldcfg`, `dash-autovis` | engine, native | L2–L4 layers | [T02](T02-vis-engine.md) |
+| `dash-scales`, `dash-axes`, `dash-units`, `dash-colour`, `dash-fieldcfg`, `dash-autovis` | engine, native | L2–L4 layers; `dash-scales` also holds the value encoding and the CPU decimation reference (the T2 path) | [T02](T02-vis-engine.md) |
 | `dash-wire` | engine | DSF framing, Arrow decode, coverage; the Go writer reproduces its fixtures | [T04](T04-wire-format-and-data-plane.md) |
 | `dash-chunk-cache` | engine | IndexedDB chunk cache | [T04](T04-wire-format-and-data-plane.md) |
 | `dash-tokens` | engine | `tokens.rs` generated from `design/tokens.toml` | §4.5 |
 | `dash-editor` | `dash-editor.wasm` (later) | PulsusDB's parser crates for editor diagnostics | [T09](T09-query-editors.md) §0 |
 | `dash-replay`, `dash-golden`, `pulsus-synth`, `dash-lab` | test, native | Replay, goldens, synthetic data, lab agent | [T05](T05-testing-and-performance.md) |
 
-All crates live in one root Cargo workspace: engine and test crates under `crates/`, tooling in
-`xtask/`. `pulsus-fake` (the fake upstream) is part of the Go test tooling ([T05](T05-testing-and-performance.md)).
+*(Revised 2026-11-21, #68.)* All crates live in one Cargo workspace, `engine/`, beside `client/`
+and `server/`: engine and test crates under `engine/crates/`, tooling in `engine/xtask/`.
+`pulsus-fake` (the fake upstream) is part of the Go test tooling ([T05](T05-testing-and-performance.md)).
 
 ### 4.7 Backend shape implied by the UI
 
@@ -451,3 +452,4 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 | 1.2-rc | 2026-11-19 | Product text revised to D7–D9 (roadmap Q13 closed): §4.3 Space is the Atlas and Lenses, Boards and workbenches are pages of chart frames, the Time Ribbon only in Space scenes; Satisfies rows for IA-014, IA-016 and VL-017 use `e2e:client-routing`, `e2e:app-layout` and `e2e:chrome-layout` |
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 note and VIZ-001 sentence; §4.2 rewritten (React owns semantic state on the main thread; the engine in workers holds render-local state behind `ChartFrame`; no Leptos shell, no Rust on main); T01-003 and T01-004 aligned; §4.6 crate map rewritten (`dash-shell`, `dash-state` withdrawn; no BFF crates); §5, §6, §10, §12 and §13 resolved items 1 and 3 aligned; review r3: third-party product names replaced by generic wording; review r8: §4.7 and §8 separate M-UI1 JSON frames from the later Arrow path and state v1 scope handling (text unchanged, restricted scopes refused, matcher injection from the parser design) |
 | 1.4-rc | 2026-11-20 | [ADR-0017](../adr/0017-react-router.md): §4.4 names React Router (data mode) and TanStack Query |
+| 1.5-rc | 2026-11-21 | #68: §4.6 crates live in the `engine/` workspace (`engine/crates/`, `engine/xtask/`), `dash-scales` holds the CPU decimation reference; §4.5 `tokens.rs` is written by `gen-tokens.ts` (committed, `checkGenerated`), colours as sRGB-encoded `Rgba8` bytes equal to the CSS hex (replaces linear-space `[f32; 4]`) |

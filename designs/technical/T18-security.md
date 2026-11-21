@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-20 |
+| **Version** | 1.8-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (headers, CSP, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sessions with authentication (D12), sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
@@ -564,7 +564,14 @@ Redactions are reversible only in the UI, and only for users who could see the o
   ([ADR-0015](../adr/0015-go-bff.md));
 - **engine crates (from #68):** `cargo-deny` (AGPL-3.0-compatible licences (D3); RustSec advisories;
   duplicate-major bans; sources limited to crates.io and the vendored PulsusDB crates) and
-  `cargo-vet` (imported audits plus our own for unaudited crates in the WASM bundle);
+  `cargo-vet` (imported audits plus our own for unaudited crates in the WASM bundle). *(Engine leg
+  as built, #68 Part A:)* `engine/deny.toml` allows exactly the
+  [ADR-0014](../adr/0014-typescript-react-web-client.md) §7 licence set (MIT, ISC, BSD-2-Clause,
+  BSD-3-Clause, Apache-2.0, 0BSD, MPL-2.0) with three exact-version exceptions, each permissive and
+  AGPL-3.0-compatible (D3): `unicode-ident` (Unicode-3.0), `foldhash` and `slotmap` (Zlib); a
+  version change fails until the exception is reviewed again. Every crate in `engine/Cargo.lock`
+  is pinned exactly and the 7-day rule above applies to the Rust lockfile; a change to the locked
+  set is a reviewed dependency PR;
 - an image vulnerability scan (`grype`/Trivy) that blocks on Critical issues with a fix available.
 
 SBOMs are attached to every release: `npm sbom --sbom-format cyclonedx` for the client, a CycloneDX
@@ -764,3 +771,4 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 6. **Licence:** `cargo-deny` licence policy is set against AGPL-3.0 (decision D3); the vendored
    PulsusDB crates are no longer a licensing risk.
 7. **No Dash MFA** (ENT-011) stated; the "no training" clause of AI-046 made concrete.
+| 1.8-rc | 2026-11-21 | #68: §4.11 engine leg as built: the cargo-deny licence allow list is the ADR-0014 §7 set with exact-version exceptions for `unicode-ident` (Unicode-3.0), `foldhash` and `slotmap` (Zlib), both AGPL-3.0-compatible (D3); exact crate pins and the 7-day rule apply to the Rust lockfile |
