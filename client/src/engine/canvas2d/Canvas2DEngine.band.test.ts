@@ -4,7 +4,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { FrameSummary, TimeWindow, VisSpec } from '../api';
-import { formatValue, type Unit } from '../../i18n/format';
+import { formatCompact, formatValue, type Unit } from '../../i18n/format';
+import { LABEL_HEIGHT } from './layout';
+import { valueTicks } from './valueTicks';
 import { pointer, seriesData, seriesFrame, wheel, type Harness } from '../../test/engineHarness';
 import { CHAR_WIDTH, recordingContext } from '../../test/recordingContext';
 import { minValueBand } from './draw';
@@ -28,6 +30,7 @@ import {
   winOf,
   labels,
   tickValues,
+  CHIP,
   CHIP_PAD,
   heldText,
   step,
@@ -511,6 +514,76 @@ describe('camera', () => {
       const chips = r.l.filter((x) => x.chip);
       expect(chips.map((x) => x.text)).toEqual(['1.5e+22']);
       for (const x of chips) inside(x, r.s);
+    });
+  });
+  // Code review r2: on a plot narrower than both forms of a label, no chip is drawn (T02-011:
+  // never a partial label); nothing is drawn outside the plot rectangle but the value band's labels.
+  describe('non-fitting label on a plot narrower than both forms', () => {
+    /** 86 px wide: a 24 px plot, 16 px of room inside the chip padding. */
+    const TINY = [86, 240] as const;
+    /** The layer's chip fills, and its labels outside the band (left-aligned: in the plot). */
+    const inPlotText = (h: Harness): number =>
+      h
+        .layer()
+        .calls('fillText')
+        .filter((o) => o.textAlign === 'left').length;
+    const chipFills = (h: Harness): number =>
+      h
+        .layer()
+        .calls('fill')
+        .filter((o) => o.fillStyle === CHIP).length;
+    /** The ticks the manual or auto axis of `s` has (as draw.ts computes them). */
+    const ticksOf = (s: FrameSummary): number[] => {
+      const a = axisOf(s);
+      const tol = 1e-9 * (a.max - a.min);
+      return valueTicks(a.min, a.max, s.plot.height, LABEL_HEIGHT, 1000).ticks.filter(
+        (t) => t >= a.min - tol && t <= a.max + tol,
+      );
+    };
+    const check = (h: Harness, s0: FrameSummary, s: FrameSummary, l: Label[]): number => {
+      expect(s.plot).toEqual(s0.plot);
+      expect(chipFills(h)).toBe(0);
+      expect(inPlotText(h)).toBe(0);
+      const band = s0.plot.x - GAP_X;
+      for (const x of l) {
+        expect(x.chip).toBe(false);
+        expect(x.left).toBeGreaterThanOrEqual(0);
+        expect(x.right).toBeLessThanOrEqual(s.plot.x);
+        expect(CHAR_WIDTH * x.text.length).toBeLessThanOrEqual(band);
+      }
+      // Ticks with no form that fits the band are left out (not chipped).
+      return ticksOf(s).filter((t) => CHAR_WIDTH * formatCompact(t, NONE).length > band).length;
+    };
+
+    it('during a Y zoom', () => {
+      const h = setup({ size: TINY });
+      const s0 = last(h);
+      expect(s0.plot.width).toBe(24);
+      const p = at(s0, 0.5, 0.9);
+      let omitted = 0;
+      for (let i = 0; i < 200 && omitted === 0; i++) {
+        const f = step(h, () => {
+          wheel(h.canvas, p.x, p.y, { deltaY: 1000, shiftKey: true });
+        });
+        omitted += check(h, s0, f.s, f.l);
+      }
+      expect(omitted).toBeGreaterThan(0);
+    });
+
+    it('after the refetch', () => {
+      const h = setup({ size: TINY });
+      const s0 = last(h);
+      const p = at(s0, 0.3);
+      for (let i = 0; i < 4; i++) wheel(h.canvas, p.x, p.y, { deltaY: -300 });
+      h.flush();
+      h.advance(300);
+      const c = present(h.commit[0]?.window, 'commit');
+      h.frame.setTimeWindow(c);
+      const r = step(h, () => {
+        h.frame.setData(lineData(0, 2e22));
+      });
+      expect(check(h, s0, r.s, r.l)).toBe(1);
+      expect(r.l.map((x) => x.text)).not.toContain('1.5e+22');
     });
   });
 });
