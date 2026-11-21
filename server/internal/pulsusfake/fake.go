@@ -53,22 +53,17 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) { f.Serve(w, r)
 // Serve answers one request and returns its record as it ended (cmd/pulsus-fake logs it).
 func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) Recorded {
 	_ = r.ParseForm()
-	query, hasQuery := r.Form["query"]
-	q := ""
-	if hasQuery {
-		q = query[0]
-	}
 	rec := &Recorded{Method: r.Method, Path: r.URL.Path, Form: r.Form, Header: r.Header.Clone(), ReceivedAt: time.Now()}
 	var t *Transcript
 	for i := range f.ts {
-		if f.ts[i].matches(r.Method, r.URL.Path, q, hasQuery) && f.ts[i].Match.Query != nil {
+		if f.ts[i].matches(r.Method, r.URL.Path, r.Form) && f.ts[i].Match.Query != nil {
 			t = &f.ts[i]
 			break
 		}
 	}
 	if t == nil {
 		for i := range f.ts {
-			if f.ts[i].Match.Query == nil && f.ts[i].matches(r.Method, r.URL.Path, q, hasQuery) {
+			if f.ts[i].Match.Query == nil && f.ts[i].matches(r.Method, r.URL.Path, r.Form) {
 				t = &f.ts[i]
 				break
 			}
@@ -118,7 +113,11 @@ func (f *Fake) replay(w http.ResponseWriter, r *http.Request, rec *Recorded, res
 		w.Header().Set(k, v)
 	}
 	w.WriteHeader(resp.Status)
-	_, _ = w.Write(resp.Body)
+	if resp.BodyText != nil {
+		_, _ = io.WriteString(w, *resp.BodyText)
+	} else {
+		_, _ = w.Write(resp.Body)
+	}
 	f.update(rec, func(x *Recorded) { x.Completed = true })
 }
 

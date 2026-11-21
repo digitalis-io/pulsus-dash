@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"path"
 	"slices"
 	"strings"
@@ -29,16 +30,18 @@ type Provenance struct {
 	Synthetic string `json:"synthetic,omitempty"` // reason; exclusive with Captured
 }
 
-// Match selects the requests a transcript answers: the method, one of the paths and, if set,
-// the form's query byte for byte.
+// Match selects the requests a transcript answers: the method, one of the paths, if set the
+// form's query byte for byte, and every Form entry. The form is the request's query string and
+// form body together, so a match holds for a GET and its POST fallback alike.
 type Match struct {
 	Method string            `json:"method"`
 	Paths  []string          `json:"paths"`
 	Query  *string           `json:"query,omitempty"`
-	Form   map[string]string `json:"form,omitempty"`
+	Form   map[string]string `json:"form,omitempty"` // each key's first form value must equal
 }
 
-// Response is what the fake answers. Body is served byte for byte as it appears in the file.
+// Response is what the fake answers. Body is served byte for byte as it appears in the file;
+// BodyText (exclusive with Body) is served byte for byte as the string's value, for text bodies.
 type Response struct {
 	Status   int               `json:"status"`
 	Headers  map[string]string `json:"headers"`
@@ -82,6 +85,8 @@ func Load(fsys fs.FS) ([]Transcript, error) {
 			return nil, fmt.Errorf("pulsusfake: %s: provenance must be either captured or synthetic", n)
 		case t.Match.Method == "" || len(t.Match.Paths) == 0:
 			return nil, fmt.Errorf("pulsusfake: %s: match needs a method and paths", n)
+		case t.Response.BodyText != nil && len(t.Response.Body) > 0:
+			return nil, fmt.Errorf("pulsusfake: %s: response sets both body and body_text", n)
 		}
 		seen[t.Name] = true
 		out = append(out, t)
@@ -102,12 +107,18 @@ func Default() []Transcript {
 	return ts
 }
 
-func (t Transcript) matches(method, p string, query string, hasQuery bool) bool {
+func (t Transcript) matches(method, p string, form url.Values) bool {
 	if t.Match.Method != method || !slices.Contains(t.Match.Paths, path.Clean(p)) {
 		return false
 	}
+	for k, v := range t.Match.Form {
+		if vs, ok := form[k]; !ok || vs[0] != v {
+			return false
+		}
+	}
+	query, hasQuery := form["query"]
 	if t.Match.Query == nil {
 		return true
 	}
-	return hasQuery && *t.Match.Query == query
+	return hasQuery && *t.Match.Query == query[0]
 }
