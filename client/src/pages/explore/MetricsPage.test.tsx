@@ -587,12 +587,15 @@ describe('MetricsPage state across views', () => {
         expect(cell(0, 1)).toBe('2');
       });
       await act(async () => {
-        await router.navigate('/t/demo/boards');
+        // The canonical search (encoded), so the loader does not turn the push into a replace.
+        await router.navigate(`/t/demo/boards?${ABS.replaceAll(':', '%3A')}`);
       });
       await screen.findByRole('heading', { level: 1, name: 'Boards' });
       await act(async () => {
         await router.navigate(-1);
       });
+      // A new chart host: a browser's ResizeObserver reports its first size on observe.
+      await sized();
       await waitFor(() => {
         expect(cell(0, 1)).toBe('2');
       });
@@ -638,7 +641,7 @@ describe('MetricsPage state across views', () => {
       expect(router.state.location.search).not.toContain('q=');
     });
     expect(router.state.historyAction).toBe('PUSH');
-    expect(screen.getByText('Run a query to see a chart')).toBeInTheDocument();
+    expect(await screen.findByText('Run a query to see a chart')).toBeInTheDocument();
     expect(document.querySelector('[data-chart-frame]')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByRole('radiogroup', { name: 'Visualisation' })).toBeNull();
