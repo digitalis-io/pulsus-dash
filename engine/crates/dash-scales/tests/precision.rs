@@ -14,7 +14,11 @@ fn adjacent_milliseconds_are_ten_columns_apart() {
     let enc = encoding_for(&chunk);
     let p = prepare(&chunk, &enc, t, t + 100.0, 1000);
     let d = run(&chunk, &p);
-    let seg: Vec<_> = d.instances.iter().filter(|i| kind(i) == KIND_SEGMENT).collect();
+    let seg: Vec<_> = d
+        .instances
+        .iter()
+        .filter(|i| kind(i) == KIND_SEGMENT)
+        .collect();
     assert_eq!(seg.len(), 1, "{:?}", d.instances);
     let x_b = column(seg[0]);
     let x_a = x_b - dx(seg[0]);

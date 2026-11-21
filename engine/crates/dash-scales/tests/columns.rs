@@ -1,8 +1,8 @@
 //! unit:columns-parity (plan #68 §5, A.15.2): CPU `decimate` reproduces TS `lineColumns` per
 //! column: count class, `first`, `last`, every run in order (inline and spilled) and the break flag.
+mod common;
 #[path = "../../../tests-common/fixture.rs"]
 mod fixture;
-mod common;
 
 use common::*;
 use dash_scales::decimate::ColOut;
@@ -20,7 +20,10 @@ fn decimate_matches_line_columns() {
     for (ri, r) in rows.iter().enumerate() {
         let ts = fixture::nums(&r["ts"]);
         let vs = fixture::nums(&r["vs"]);
-        let (from, to) = (fixture::num(&r["w"]["fromMs"]), fixture::num(&r["w"]["toMs"]));
+        let (from, to) = (
+            fixture::num(&r["w"]["fromMs"]),
+            fixture::num(&r["w"]["toMs"]),
+        );
         let n = fixture::num(&r["width"]).floor().max(0.0) as u32;
         let chunk = explicit(&[(ts, vs)]);
         let enc = encoding_for(&chunk);
@@ -42,12 +45,24 @@ fn decimate_matches_line_columns() {
             }
             let count = want["count"].as_u64().unwrap_or(0);
             assert_eq!(class as u64, count.min(2), "row {ri} col {c}: class");
-            assert_eq!(got.last.to_bits(), enc.encode(fixture::num(&want["last"])), "row {ri} col {c}: last");
-            assert_eq!(got.first.to_bits(), enc.encode(fixture::num(&want["first"])), "row {ri} col {c}: first");
+            assert_eq!(
+                got.last.to_bits(),
+                enc.encode(fixture::num(&want["last"])),
+                "row {ri} col {c}: last"
+            );
+            assert_eq!(
+                got.first.to_bits(),
+                enc.encode(fixture::num(&want["first"])),
+                "row {ri} col {c}: first"
+            );
             let runs = want["runs"].as_array().cloned().unwrap_or_default();
             assert_eq!(got.n_runs as usize, runs.len(), "row {ri} col {c}: n_runs");
             let brk = pending || got.meta & (GAP_LEAD | GAP_INNER) != 0;
-            assert_eq!(brk, want["breakBefore"].as_bool().unwrap_or(false), "row {ri} col {c}: break");
+            assert_eq!(
+                brk,
+                want["breakBefore"].as_bool().unwrap_or(false),
+                "row {ri} col {c}: break"
+            );
             pending = got.meta & GAP_TRAIL != 0;
             if count >= 2 {
                 if runs.len() > 2 {
@@ -61,11 +76,19 @@ fn decimate_matches_line_columns() {
                     .collect();
                 let want_spans: Vec<[u32; 2]> = runs
                     .iter()
-                    .map(|run| [enc.encode(fixture::num(&run["max"])), enc.encode(fixture::num(&run["min"]))])
+                    .map(|run| {
+                        [
+                            enc.encode(fixture::num(&run["max"])),
+                            enc.encode(fixture::num(&run["min"])),
+                        ]
+                    })
                     .collect();
                 assert_eq!(spans, want_spans, "row {ri} col {c}: spans");
             }
         }
     }
-    assert!(multi_run_columns > 0, "the corpus has no column with more than two runs");
+    assert!(
+        multi_run_columns > 0,
+        "the corpus has no column with more than two runs"
+    );
 }
