@@ -38,7 +38,24 @@ export interface LongTaskResult {
   ciOver: number;
   /** The longest task's wall time, 0 when none. */
   worstMs: number;
+  /** EventDispatch count per input type in the window. */
+  counts: Readonly<Record<string, number>>;
 }
+
+/** #90's input list, unchanged. */
+export const DEFAULT_INPUTS = [
+  'click',
+  'keydown',
+  'keyup',
+  'keypress',
+  'pointerdown',
+  'pointerup',
+  'mousedown',
+  'mouseup',
+  'input',
+] as const;
+/** STUB (#93 tests first). */
+export const CHART_INPUTS = [...DEFAULT_INPUTS] as const;
 
 const INPUTS = new Set([
   'click',
@@ -57,7 +74,10 @@ const CI_THREAD_MS = 16;
 
 const threadKey = (e: { pid: number; tid: number }): string => `${String(e.pid)}:${String(e.tid)}`;
 
-export function longTasks(events: readonly TraceEvent[]): LongTaskResult {
+export function longTasks(
+  events: readonly TraceEvent[],
+  _o: { inputs?: readonly string[] } = {},
+): LongTaskResult {
   const renderers = new Set(
     events
       .filter((e) => e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')
@@ -123,5 +143,6 @@ export function longTasks(events: readonly TraceEvent[]): LongTaskResult {
     over16: tasks.length,
     ciOver,
     worstMs: tasks.reduce((m, x) => Math.max(m, x.durMs), 0),
+    counts: {},
   };
 }

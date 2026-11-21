@@ -170,6 +170,16 @@ export function formatValue(v: number, unit: Unit): string {
   }
 }
 
+/** STUB (#93 tests first). */
+export function formatCompact(_v: number, _unit: Unit): string {
+  return '';
+}
+
+/** STUB (#93 tests first). */
+export function compactSamples(_unit: Unit): readonly string[] {
+  return [];
+}
+
 /** `14:05` in `tz`. */
 export function formatHourMinute(ms: number, tz: string): string {
   return formatter('hourMinute', tz).format(ms);

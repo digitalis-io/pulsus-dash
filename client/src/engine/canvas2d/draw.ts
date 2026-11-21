@@ -6,7 +6,7 @@
 import { font, size, space } from '../../styles/tokens';
 import type { FrameData, HeatmapFrame, SeriesFrame } from '../../data/frames';
 import { formatValue, type Unit } from '../../i18n/format';
-import type { FrameSummary, HoverEvent, PlotRect, TimeWindow, VisSpec } from '../api';
+import type { FrameSummary, HoverEvent, PlotRect, TimeWindow, ValueRange, VisSpec } from '../api';
 import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
@@ -40,6 +40,10 @@ export interface LayerInput {
   readonly cssH: number;
   readonly timeZone: string;
   readonly colours: ThemeColours;
+  /** Manual value range (line, bars); null = auto. */
+  readonly valueRange: ValueRange | null;
+  /** Held value-label band width (#93); null = measure. */
+  readonly band: number | null;
 }
 
 /** What picking and the overlay need from the last layer draw. */
@@ -67,7 +71,35 @@ export type PickModel =
 export interface LayerModel {
   readonly summary: FrameSummary;
   readonly pick: PickModel | null;
+  /** The value-label band width the layout used. */
+  readonly labelW: number;
+  /** The value axis mapping domain (line, bars); null for heatmap and stat. */
+  readonly valueDomain: ValueRange | null;
+  /** True when the layout used `i.band`. */
+  readonly bandHeld: boolean;
 }
+
+/** STUB (#93 tests first). */
+export function minValueBand(_ctx: Ctx2D, _unit: Unit): number {
+  return 0;
+}
+
+/** STUB (#93 tests first). */
+export function measureValueBand(_i: LayerInput): number {
+  return 0;
+}
+
+/** STUB (#93 tests first). */
+export function holdLabels(
+  _ctx: Ctx2D,
+  _ticks: readonly number[],
+  _unit: Unit,
+  _band: number,
+): string[] | null {
+  return null;
+}
+
+const STUB_MODEL = { labelW: 0, valueDomain: null, bandHeld: false } as const;
 
 interface AxisLabel {
   readonly y: number;
@@ -192,14 +224,14 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
   const shown = series.slice(0, MAX_SERIES);
   const stats = lineStats(shown);
   const { plot, y, labels } = valueAxis(i, stats.min ?? 0, stats.max ?? 0, i.spec.unit);
-  const summary = frameSummary('line', i.window, plot, series.length, shown.length, stats);
+  const summary = frameSummary('line', i.window, plot, series.length, shown.length, stats, null);
   const pick: PickModel = {
     kind: 'line',
     ref: shown[0]?.timestamps ?? new Float64Array(0),
     series: shown,
     y,
   };
-  if (isPlotEmpty(plot)) return { summary, pick };
+  if (isPlotEmpty(plot)) return { summary, pick, ...STUB_MODEL };
   drawAxes(i, plot, labels, true);
   for (const s of shown) {
     const cols = lineColumns(s.timestamps, s.values, i.window, plot);
@@ -212,7 +244,7 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
       size['chart-line'],
     );
   }
-  return { summary, pick };
+  return { summary, pick, ...STUB_MODEL };
 }
 
 /**
@@ -289,9 +321,9 @@ function drawBars(
     Math.max(range?.max ?? 0, 0),
     spec.unit,
   );
-  const summary = frameSummary('bars', i.window, plot, series.length, shown.length, stats);
+  const summary = frameSummary('bars', i.window, plot, series.length, shown.length, stats, null);
   const pick: PickModel = { kind: 'bars', ref, series: shown, categoryLabel: spec.categoryLabel };
-  if (isPlotEmpty(plot)) return { summary, pick };
+  if (isPlotEmpty(plot)) return { summary, pick, ...STUB_MODEL };
   drawAxes(i, plot, labels, true);
   for (let t = 0; t < ts.length; t++) {
     const span = bucketSpan(plot, i.window, ts, t, lastEnd);
@@ -306,7 +338,7 @@ function drawBars(
       acc += v;
     });
   }
-  return { summary, pick };
+  return { summary, pick, ...STUB_MODEL };
 }
 
 function drawHeatmap(
@@ -322,8 +354,8 @@ function drawHeatmap(
   const texts = (scale0?.ticks ?? []).map((t) => formatValue(t, spec.unit));
   if (scale0?.infBand !== null && scale0 !== null) texts.push('+Inf');
   const plot = layoutPlot('heatmap', i.cssW, i.cssH, labelWidth(i.ctx, texts));
-  const summary = frameSummary('heatmap', i.window, plot, nb, nb, stats);
-  if (empty || isPlotEmpty(plot)) return { summary, pick: null };
+  const summary = frameSummary('heatmap', i.window, plot, nb, nb, stats, null);
+  if (empty || isPlotEmpty(plot)) return { summary, pick: null, ...STUB_MODEL };
   const scale = bucketScale(h.bounds, plot, LABEL_HEIGHT);
   const labels: AxisLabel[] = scale.ticks.map((t) => ({
     y: scale.y(t),
@@ -355,6 +387,7 @@ function drawHeatmap(
   return {
     summary,
     pick: { kind: 'heatmap', ref: h.timestamps, heatmap: h, scale, unit: spec.unit },
+    ...STUB_MODEL,
   };
 }
 
@@ -362,18 +395,26 @@ function drawStat(i: LayerInput): LayerModel {
   const v = statValue(i.data);
   const plot = layoutPlot('stat', i.cssW, i.cssH, 0);
   const shown = Number.isFinite(v) ? v : null;
-  const summary = frameSummary('stat', i.window, plot, 1, 1, {
-    min: shown,
-    max: shown,
-    last: shown,
-  });
+  const summary = frameSummary(
+    'stat',
+    i.window,
+    plot,
+    1,
+    1,
+    {
+      min: shown,
+      max: shown,
+      last: shown,
+    },
+    null,
+  );
   const { ctx } = i;
   ctx.font = STAT_FONT;
   ctx.fillStyle = i.colours.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(formatValue(v, i.spec.unit), i.cssW / 2, i.cssH / 2);
-  return { summary, pick: null };
+  return { summary, pick: null, ...STUB_MODEL };
 }
 
 /** The background and the marks of `spec`'s kind. */

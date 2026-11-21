@@ -21,6 +21,7 @@ import { brushSnapUnit } from './columns';
 import type { Ctx2D } from './ctx';
 import { AXIS_FONT, drawLayer, drawOverlay, MAX_SERIES, STAT_FONT, type LayerModel } from './draw';
 import { bucketIndex, hoverRows, nearestIndex } from './pick';
+import type { WheelLatch } from './input';
 import { themeColours } from './palette';
 
 export { MAX_SERIES };
@@ -43,6 +44,12 @@ export interface Canvas2DOptions {
   fonts?: Pick<FontFaceSet, 'load'> | null;
   /** Default `performance.now`. */
   now?: () => number;
+  /** Default `setTimeout`. */
+  setTimer?: (cb: () => void, ms: number) => number;
+  /** Default `clearTimeout`. */
+  clearTimer?: (id: number) => void;
+  /** Default: one `windowWheelLatch(globalThis)` per page, created at the first `createFrame`. */
+  wheelLatch?: WheelLatch;
 }
 
 interface Resolved {
@@ -375,6 +382,8 @@ class Canvas2DFrame implements ChartFrame {
       cssH: this.cssH,
       timeZone: this.init.timeZone,
       colours,
+      valueRange: null,
+      band: null,
     });
   }
 
