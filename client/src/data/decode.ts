@@ -5,6 +5,7 @@
  * element. Arrow arrives behind the same functions with the engine (#68).
  */
 import { KEY_PATTERN, type ScalarFrame, type SeriesFrame } from './frames';
+import type { LogFrame } from './logFrame';
 
 export interface Completeness {
   readonly truncated: boolean;
@@ -209,4 +210,53 @@ export function decodeInstant(body: unknown): InstantResult {
       };
     }
   }
+}
+
+export type LogsResult =
+  | {
+      readonly kind: 'streams';
+      readonly fromMs: number;
+      readonly toMs: number;
+      readonly stepMs: number;
+      readonly frame: LogFrame;
+      readonly cursor: string | null;
+      readonly completeness: Completeness;
+    }
+  | ({ readonly kind: 'series' } & RangeResult);
+
+const NO_COMPLETENESS: Completeness = {
+  truncated: false,
+  warnings: [],
+  infos: [],
+  queryId: null,
+  dataAgeMs: null,
+  readCache: null,
+  readCacheThroughMs: null,
+};
+
+/** Stub. */
+export function decodeLogs(_body: unknown): LogsResult {
+  return {
+    kind: 'streams',
+    fromMs: 0,
+    toMs: 0,
+    stepMs: 0,
+    cursor: null,
+    completeness: NO_COMPLETENESS,
+    frame: {
+      direction: 'backward',
+      streams: [],
+      tsNs: new BigInt64Array(0),
+      streamIndex: new Uint32Array(0),
+      lines: [],
+      levels: new Uint8Array(0),
+      metadata: [],
+      parsed: [],
+    },
+  };
+}
+
+/** Stub. */
+export function decodeVolume(_body: unknown): RangeResult {
+  return { startMs: 0, endMs: 0, stepMs: 0, series: [], completeness: NO_COMPLETENESS };
 }

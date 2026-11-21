@@ -1,4 +1,4 @@
-import type { InstantResult, RangeResult } from '../data/decode';
+import type { InstantResult, LogsResult, RangeResult } from '../data/decode';
 import type {
   Board,
   BoardList,
@@ -6,12 +6,14 @@ import type {
   BoardSpec,
   DataSourceStatus,
   InstantRequest,
+  LogsRequest,
   PanelData,
   PanelSpec,
   RangeRequest,
   SaveResult,
   Session,
   TimeWindow,
+  VolumeRequest,
 } from './types';
 
 /**
@@ -53,6 +55,10 @@ export interface Api {
   queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult>;
   /** A PromQL instant query. */
   queryInstant(tenant: string, req: InstantRequest, signal?: AbortSignal): Promise<InstantResult>;
+  /** One page of a LogQL log query, or the frames of a LogQL metric query (plan #65 Part B §4.4). */
+  queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult>;
+  /** Log volume by level on the BFF's grid. */
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeResult>;
   /** The data-source check of the tenant's binding (T06-025). */
   checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus>;
 }

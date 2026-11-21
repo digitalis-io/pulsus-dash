@@ -1,0 +1,10 @@
+{
+  "name": "logs-group-300",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/query_range", "sanitised": "categorised shape (categorize-labels) as captured; labels, lines, structured metadata, parsed fields, timestamps and query ids replaced"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"x\"}", "form": {"step": "5000ms", "start": "1767229100000000299", "end": "1767229100000000300", "limit": "5000", "direction": "forward"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-group-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"x","pod":"c"},"values":[["1767229100000000300","c3",{"structuredMetadata":{"detected_level":"ERR"},"parsed":{"level":"debug"}}]]},{"stream":{"app":"x","pod":"a"},"values":[["1767229100000000300","a3",{"structuredMetadata":{"detected_level":"info"}}],["1767229100000000300","a3",{"structuredMetadata":{"detected_level":"info"}}]]},{"stream":{"app":"x","pod":"b"},"values":[["1767229100000000300","b3",{"structuredMetadata":{"detected_level":"unknown"},"parsed":{"level":"WARNING"}}]]}],"stats":{"streams":3,"entries":4,"bytes":8}}}
+  }
+}

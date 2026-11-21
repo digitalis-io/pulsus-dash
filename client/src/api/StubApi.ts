@@ -24,7 +24,14 @@ import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
 import { RECENT_LIMIT } from '../boards/queries';
 import { defaultSeed, defaultStarred } from './stubData';
-import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import {
+  decodeLogs,
+  decodeVolume,
+  type Completeness,
+  type InstantResult,
+  type LogsResult,
+  type RangeResult,
+} from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
@@ -39,12 +46,14 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogsRequest,
   type PanelData,
   type PanelSpec,
   type RangeRequest,
   type SaveResult,
   type Session,
   type TimeWindow,
+  type VolumeRequest,
 } from './types';
 
 /** A seeded board; the stub serves it as version 1, etag `"1"`. */
@@ -408,5 +417,15 @@ export class StubApi implements Api {
       const b = this.boards.find((x) => x.uid === uid);
       return b === undefined ? [] : [{ uid, title: b.title }];
     });
+  }
+
+  /** Stub. */
+  queryLogs(_tenant: string, _req: LogsRequest, _signal?: AbortSignal): Promise<LogsResult> {
+    return Promise.resolve(decodeLogs(null));
+  }
+
+  /** Stub. */
+  queryVolume(_tenant: string, _req: VolumeRequest, _signal?: AbortSignal): Promise<RangeResult> {
+    return Promise.resolve(decodeVolume(null));
   }
 }

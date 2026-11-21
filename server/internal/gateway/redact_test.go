@@ -308,3 +308,63 @@ func propEncode(rng *rand.Rand, s string, escape bool) string {
 	b.WriteByte('"')
 	return b.String()
 }
+
+// unit:sanitise (log routes, plan #65 Part B, T06-024): a credential in a log line, a stream
+// label value or a text/plain error reaches the browser only as <redacted>, and never the log.
+func TestSanitiseLogs(t *testing.T) {
+	const cred = "user:pw-secret-1"
+	const token = "dXNlcjpwdy1zZWNyZXQtMQ==" // #nosec G101 -- the planted test credential
+	var upURL string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		host := strings.TrimPrefix(upURL, "http://")
+		leak := "pw-secret-1 " + token + " " + upURL + "/x " + host
+		if r.Form.Get("query") == `{app="bad"}` {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, "unexpected token at byte 3: "+leak)
+			return
+		}
+		line, _ := json.Marshal("line " + leak)
+		label, _ := json.Marshal("v " + leak)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"x","leak":`+string(label)+`},"values":[["1767229100000000500",`+string(line)+`]]}]}}`)
+	}))
+	defer up.Close()
+	upURL = up.URL
+	host := strings.TrimPrefix(up.URL, "http://")
+	h, logs := queryGateway(t, up.URL, pulsusdb.Options{Secrets: func(string) (string, error) { return cred, nil }}, withCredentials("env:C"))
+	needles := []string{cred, "pw-secret-1", token, up.URL, host}
+	clean := func(what string, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		for _, n := range needles {
+			if s := rec.Body.String(); strings.Contains(s, n) || strings.Contains(unescapedHTML(s), n) {
+				t.Errorf("%s: the response contains %q: %s", what, n, s)
+			}
+		}
+	}
+	rec := postJSON(h, logRangePath, logBody(`{app="x"}`, ""))
+	clean("page", rec)
+	p := decodePage(t, rec.Body.Bytes())
+	if rec.Code != 200 || len(p.Streams) != 1 || len(p.Streams[0].Entries) != 1 {
+		t.Fatalf("page: %d %s", rec.Code, rec.Body.String())
+	}
+	if l := unescapedHTML(p.Streams[0].Entries[0].Line); !strings.HasPrefix(l, "line <redacted>") || strings.Count(l, "<redacted>") < 3 {
+		t.Errorf("line %q, want each needle redacted", l)
+	}
+	if v := p.Streams[0].Labels["leak"]; !strings.HasPrefix(v, "v <redacted>") {
+		t.Errorf("label value %q, want redacted", v)
+	}
+	rec = postJSON(h, logRangePath, logBody(`{app="bad"}`, ""))
+	clean("text error", rec)
+	e := wantError(t, "text error", rec, 400, "invalid", "/query", "query.invalid")
+	if !strings.HasPrefix(e.Error.Message, "unexpected token at byte 3: <redacted>") {
+		t.Errorf("message %q", e.Error.Message)
+	}
+	out := logs.String()
+	for _, n := range needles {
+		if strings.Contains(out, n) {
+			t.Errorf("the log contains %q", n)
+		}
+	}
+}

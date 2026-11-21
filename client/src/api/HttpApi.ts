@@ -13,8 +13,11 @@ import type { components, paths } from './gen/schema';
 import {
   DecodeError,
   decodeInstant,
+  decodeLogs,
   decodeRange,
+  decodeVolume,
   type InstantResult,
+  type LogsResult,
   type RangeResult,
 } from '../data/decode';
 import {
@@ -27,11 +30,13 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogsRequest,
   type PanelData,
   type PanelSpec,
   type RangeRequest,
   type SaveResult,
   type Session,
+  type VolumeRequest,
 } from './types';
 
 type Bootstrap = components['schemas']['Bootstrap'];
@@ -407,5 +412,15 @@ export class HttpApi implements Api {
     if (data === undefined) throw queryError(response.status, error);
     const state = DATA_SOURCE_STATES[data.state];
     return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
+  }
+
+  /** Stub. */
+  queryLogs(_tenant: string, _req: LogsRequest, _signal?: AbortSignal): Promise<LogsResult> {
+    return Promise.resolve(decodeLogs(null));
+  }
+
+  /** Stub. */
+  queryVolume(_tenant: string, _req: VolumeRequest, _signal?: AbortSignal): Promise<RangeResult> {
+    return Promise.resolve(decodeVolume(null));
   }
 }

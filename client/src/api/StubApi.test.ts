@@ -3,7 +3,13 @@ import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
 import { StubApi, type StubBoard } from './StubApi';
-import { ApiError, BoardConflictError, type BoardSpec, type PanelSpec } from './types';
+import {
+  ApiError,
+  BoardConflictError,
+  type BoardSpec,
+  type LogsRequest,
+  type PanelSpec,
+} from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
   try {
@@ -264,5 +270,90 @@ describe('stub starred and recent', () => {
     expect(await api.listRecent('demo')).toEqual([]);
     localStorage.setItem('pulsus-dash.stub.starred.demo', '[]');
     expect(await api.listStarred('demo')).toEqual([{ uid: 'b-1', title: 'Service overview' }]);
+  });
+});
+
+describe('stub log queries (plan #65 Part B §4.4)', () => {
+  const F = 1767225600000;
+  const f = BigInt(F) * 1000000n;
+  const s = 1000000000n;
+  const req = (toMs: number, extra: Partial<LogsRequest> = {}): LogsRequest => ({
+    query: '{app="x"}',
+    fromMs: F,
+    toMs,
+    widthPx: 1200,
+    ...extra,
+  });
+  async function streams(r: LogsRequest) {
+    const out = await new StubApi().queryLogs('demo', r);
+    expect(out.kind).toBe('streams');
+    if (out.kind !== 'streams') throw new Error('not a streams result');
+    const toNs = BigInt(r.toMs) * 1000000n;
+    for (const t of out.frame.tsNs) {
+      expect(t > BigInt(r.fromMs) * 1000000n && t <= toNs, `${String(t)} in the window`).toBe(true);
+    }
+    return out;
+  }
+
+  it('serves a synthetic page within the window', async () => {
+    const r = await streams(req(F + 3600000));
+    expect(r.frame.tsNs).toHaveLength(30);
+    expect(r.frame.direction).toBe('backward');
+    expect(r.frame.streams.map((x) => x.labels['pod'])).toEqual(['stub-0', 'stub-1', 'stub-2']);
+    expect(r.frame.streams.map((x) => x.key)).toEqual(
+      [0, 1, 2].map((j) =>
+        keyHash({ service_name: 'stub', pod: `stub-${String(j)}`, level: ['info', 'warn', 'error'][j] ?? '' }),
+      ),
+    );
+    expect(Array.from(r.frame.levels.slice(0, 3))).toEqual([3, 4, 5]);
+    expect(r.frame.tsNs[0]).toBe(BigInt(F + 3600000) * 1000000n);
+    expect(r.frame.lines[0]).toBe('stub line 0');
+    expect(r.cursor).toBeNull();
+    expect(r.fromMs).toBe(F);
+    expect(r.toMs).toBe(F + 3600000);
+    expect(r.stepMs).toBe(5000);
+
+    expect((await streams(req(F + 3600000, { limit: 5 }))).frame.tsNs).toHaveLength(5);
+    const fw = await streams(req(F + 3600000, { direction: 'forward' }));
+    expect(fw.frame.tsNs[0]).toBe(f + s);
+    const ts = Array.from(fw.frame.tsNs);
+    expect(ts).toEqual([...ts].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+  });
+
+  it('keeps short windows to (from, to]', async () => {
+    const ts = async (toMs: number, direction: 'backward' | 'forward') =>
+      Array.from((await streams(req(toMs, { direction }))).frame.tsNs);
+    expect(await ts(F + 2000, 'backward')).toEqual([f + 2n * s, f + s]);
+    expect(await ts(F + 2000, 'forward')).toEqual([f + s, f + 2n * s]);
+    expect(await ts(F + 2500, 'backward')).toEqual([f + 2500000000n, f + 1500000000n, f + 500000000n]);
+    expect(await ts(F + 2500, 'forward')).toEqual([f + s, f + 2n * s]);
+    const one = await streams(req(F + 1, { direction: 'backward' }));
+    expect(Array.from(one.frame.tsNs)).toEqual([f + 1000000n]);
+    expect(one.frame.streams.map((x) => x.labels['pod'])).toEqual(['stub-0']);
+    const none = await streams(req(F + 1, { direction: 'forward' }));
+    expect(none.frame.tsNs).toHaveLength(0);
+    expect(none.frame.streams).toEqual([]);
+    expect(await ts(F + 999, 'forward')).toEqual([]);
+    expect(await ts(F, 'backward')).toEqual([]);
+    expect(await ts(F, 'forward')).toEqual([]);
+  });
+
+  it('rejects unknown tenants, aborts and a range too long, and serves the volume', async () => {
+    const api = new StubApi();
+    expect(await kindOf(api.queryLogs('nope', req(F + 1000)))).toBe('notFound');
+    const c = new AbortController();
+    c.abort();
+    expect(await kindOf(api.queryLogs('demo', req(F + 1000), c.signal))).toBe('AbortError');
+    expect(await kindOf(api.queryVolume('demo', req(F + 1000), c.signal))).toBe('AbortError');
+    expect(
+      await kindOf(api.queryLogs('demo', { ...req(1262304000000), fromMs: 0, widthPx: 1 })),
+    ).toBe('queryInvalid');
+    const v = await api.queryVolume('demo', req(F + 3600000));
+    expect(v.series.map((x) => x.labels)).toEqual([{ level: 'error' }, { level: 'warn' }, { level: 'info' }]);
+    expect(v.stepMs).toBe(5000);
+    expect(v.series[0]?.timestamps).toHaveLength(721);
+    expect(v.series[0]?.key).toBe(keyHash({ level: 'error' }));
+    const t1 = v.series[1]?.timestamps[1] ?? 0;
+    expect(v.series[1]?.values[1]).toBe(Math.round(Math.abs(synthLineValue(65, 1, t1, 20, 10))));
   });
 });

@@ -1,0 +1,10 @@
+{
+  "name": "logs-volume",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/query_range", "sanitised": "labels, values, timestamps and query ids replaced; the volume template with | drop __error__ and step=5000ms accepted as captured"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))", "form": {"step": "5000ms", "start": "1767225600000000000", "end": "1767229200000000000"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-volume-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"detected_level":"info"},"values":[[1767225600.000,"3"],[1767225605.000,"2"]]},{"metric":{"detected_level":"info","level":"warn"},"values":[[1767225600.000,"2"]]},{"metric":{"level":"WARNING"},"values":[[1767225600.000,"1"],[1767229200.000,"4"]]},{"metric":{"detected_level":"error"},"values":[[1767225600.000,"4"]]},{"metric":{"detected_level":"error","level":"error"},"values":[[1767225600.000,"1"]]},{"metric":{"detected_level":"unknown","level":"debug"},"values":[[1767225600.000,"6"]]},{"metric":{},"values":[[1767225605.000,"7"]]}],"stats":{"series":7}}}
+  }
+}

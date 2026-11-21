@@ -1,0 +1,10 @@
+{
+  "name": "logs-timeout",
+  "provenance": {"synthetic": "no timeout could be provoked on the development deployment"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"slow\"}"},
+  "response": {
+    "status": 504,
+    "headers": {"Content-Type": "text/plain; charset=utf-8"},
+    "body_text": "query timed out"
+  }
+}

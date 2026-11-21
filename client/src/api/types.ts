@@ -32,6 +32,27 @@ export interface RangeRequest {
   timeoutMs?: number;
 }
 
+/** A LogQL range request (plan #65 Part B §3.5). */
+export interface LogsRequest {
+  query: string;
+  fromMs: number;
+  toMs: number;
+  widthPx: number;
+  limit?: number;
+  direction?: 'backward' | 'forward';
+  cursor?: string;
+  timeoutMs?: number;
+}
+
+/** A log volume request. */
+export interface VolumeRequest {
+  query: string;
+  fromMs: number;
+  toMs: number;
+  widthPx: number;
+  timeoutMs?: number;
+}
+
 export interface InstantRequest {
   query: string;
   atMs: number;
