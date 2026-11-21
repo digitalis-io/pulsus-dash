@@ -1,0 +1,10 @@
+{
+  "name": "hang",
+  "provenance": {"synthetic": "stall: the response is never written"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range", "/api/v1/query"], "query": "sum(hang_total)"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json"},
+    "hang": true
+  }
+}

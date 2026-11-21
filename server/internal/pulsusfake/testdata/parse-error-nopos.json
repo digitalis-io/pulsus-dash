@@ -1,0 +1,10 @@
+{
+  "name": "parse-error-nopos",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query", "sanitised": "labels, values, timestamps and query id replaced; message verbatim"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range", "/api/v1/query"], "query": "sum("},
+  "response": {
+    "status": 400,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-parse-nopos-1"},
+    "body": {"status":"error","errorType":"bad_data","error":"unclosed left parenthesis"}
+  }
+}

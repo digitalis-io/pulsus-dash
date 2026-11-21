@@ -1,0 +1,10 @@
+{
+  "name": "reordered",
+  "provenance": {"synthetic": "every object in reverse key order, so ordering is not assumed"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "up{job=\"api\"}"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-reordered-1"},
+    "body": {"data":{"result":[{"values":[[1767225600,"1"]],"metric":{"job":"api"}}],"resultType":"matrix"},"warnings":[],"status":"success"}
+  }
+}

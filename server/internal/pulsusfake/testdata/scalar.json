@@ -1,0 +1,10 @@
+{
+  "name": "scalar",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query", "sanitised": "labels, values, timestamps and query id replaced; 1/0 gave +Inf"},
+  "match": {"method": "POST", "paths": ["/api/v1/query"], "query": "scalar(vector(1)) / 0"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-scalar-1"},
+    "body": {"status":"success","data":{"resultType":"scalar","result":[1767229200,"+Inf"]}}
+  }
+}

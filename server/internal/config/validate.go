@@ -28,6 +28,8 @@ var (
 	errLogFormat = "must be one of json, text"
 	errPublicURL = "must be an absolute http or https URL"
 	errPublicRaw = "must not contain credentials, a query or a fragment"
+	errTenantCon = "must be between 1 and 1024"
+	errWeakCreds = "the PulsusDB password must be at least 8 characters and must not be a number" // #nosec G101 -- a message, not a credential
 )
 
 // validate checks every non-seed key (§3.3). Roles are checked by ValidateRoles when serve starts,
@@ -58,6 +60,9 @@ func (c *Config) validate() error {
 	}
 	if c.Postgres.PoolMax < 1 || c.Postgres.PoolMax > 512 {
 		return &Error{Key: "postgres.pool_max", Msg: errPoolMax}
+	}
+	if n := c.Pulsusdb.TenantConcurrency; n < 1 || n > 1024 {
+		return &Error{Key: "pulsusdb.tenant_concurrency", Msg: errTenantCon}
 	}
 	if !slices.Contains(logLevels, c.Log.Level) {
 		return &Error{Key: "log.level", Msg: errLogLevel}
@@ -131,7 +136,8 @@ func (c *Config) Require(cmd Command) error {
 
 // SeedSettings validates the seed keys (datasource.*, bootstrap.*) and returns them. migrate calls
 // it under its lock only when install_state has no row; config check prints its error as a
-// warning. The credentials reference is checked for syntax and stored as written, never resolved.
+// warning. The credentials reference is checked for syntax and stored as written; when it
+// resolves in this process's environment, the password must also pass CheckCredentials.
 func (c *Config) SeedSettings() (core.BootstrapSeed, error) {
 	d, b := c.Datasource, c.Bootstrap
 	if d.URL == "" {
@@ -159,6 +165,9 @@ func (c *Config) SeedSettings() (core.BootstrapSeed, error) {
 				return core.BootstrapSeed{}, &Error{Key: "datasource.credentials_ref", Msg: err.Error()}
 			}
 		}
+	}
+	if err := c.CheckCredentials(); err != nil {
+		return core.BootstrapSeed{}, err
 	}
 	if !slugPattern.MatchString(b.OrgSlug) {
 		return core.BootstrapSeed{}, &Error{Key: "bootstrap.org_slug", Msg: "must match " + slugPattern.String()}
@@ -190,4 +199,24 @@ func checkDatasourceURL(s string) string {
 		return "must not have a query or fragment"
 	}
 	return ""
+}
+
+// CheckCredentials checks the PulsusDB credentials of datasource.credentials_ref when the
+// reference resolves here (plan #62 §4.10): user:password with a non-empty user and a password
+// core.WeakPassword accepts. An unset or unresolvable reference is not an error: migrate stores
+// only the reference and serve resolves it. The message never contains the value.
+func (c *Config) CheckCredentials() error {
+	ref := c.Datasource.CredentialsRef
+	if ref == "" || ref.kind() == refInline {
+		return nil
+	}
+	v, err := ref.Resolve(c.src, false)
+	if err != nil {
+		return nil
+	}
+	user, pw, ok := strings.Cut(v, ":")
+	if !ok || user == "" || core.WeakPassword(pw) {
+		return &Error{Key: "datasource.credentials_ref", Msg: errWeakCreds}
+	}
+	return nil
 }

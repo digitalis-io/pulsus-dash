@@ -43,7 +43,7 @@ Sizes come from the tokens, at a 1440 × 900 reference:
 | Skip link | First tab stop, "Skip to main content"; moves focus to `<main id="main">` |
 | Sidebar, 240 px (56 px collapsed) | Full height. Top block 56 px, its bottom hairline continuing the header's: product mark (link to Boards) and the org and tenant block. With two or more tenant bindings the tenant name is a menu button (`Switch tenant, current: <name>`) listing the bindings; choosing one opens that tenant's Boards with the current time range (push). With one binding the block is static text. Collapsed: the mark, and a 32 px org-initial menu button when there are two or more bindings |
 | Sidebar navigation (`nav` "Main") | Boards; Explore with Metrics and Logs; Starred (the user's starred boards, from the BFF, in title order, empty text "No starred boards", "Could not load starred boards" on failure); Recent (the last five boards the user opened, from the BFF, newest first, empty text "No recent boards", "Could not load recent boards" on failure). Both are per user, the same in every browser and tenant (IA-021), and refetch on every return to the tab. Collapsed: icon links with tooltips; Starred and Recent hidden. The current page is marked with `aria-current="page"` (Boards also on a board page). Links carry the current `from`, `to` and `refresh`, and preload their page on hover and focus |
-| Sidebar footer | Admin (administrators only); the data-source line "Data source: `<tenant slug>` · Not checked" for the current tenant (expanded sidebar only, IA-021; nothing when the tenant has no data-source state); and "Collapse sidebar" / "Expand sidebar" (`aria-expanded`). There is no keyboard shortcut for the toggle: `[` is the window-step key (INT-032). The state persists in `localStorage` |
+| Sidebar footer | Admin (administrators only); the data-source line "Data source: `<tenant slug>` · `<state>`" for the current tenant (expanded sidebar only, IA-021; nothing when the tenant has no data-source state): the result of the data-source check, "Connected", "Unreachable", "Not authorised" or "Error", and "Not checked" while it is pending or when it fails (`useQuery` key `['datasource', tenant]`, reused for 60 s, no retry); and "Collapse sidebar" / "Expand sidebar" (`aria-expanded`). There is no keyboard shortcut for the toggle: `[` is the window-step key (INT-032). The state persists in `localStorage` |
 | Page header, 56 px | Left: a breadcrumb (`Boards` link on a board, `Explore` text on Explore pages, none elsewhere), the page title `<h1>` (20 px; truncates with an ellipsis, full title in `title`), and on a board the "Star board" toggle. Right, in this order: time range trigger, refresh split control, user menu. No command palette entry until the palette exists |
 | Page body | Scrolls; 24 px padding |
 
@@ -244,9 +244,18 @@ itself.
 
 ## API clients
 
-`src/api/` defines `Api` and `ApiError` kinds `notFound`, `unauthorised`, `network`,
-`notImplemented`, `conflict`, `invalid` and `unknown`; an `invalid` error carries `fields`
-(`{pointer, messageKey}`), and a stale etag is a `BoardConflictError` carrying the `current` board.
+`src/api/` defines `Api` and one `ApiError(kind, message, {fields?, detail?})`. Its kinds come in
+three families:
+
+- common: `notFound`, `unauthorised`, `network`, `notImplemented` and `unknown`;
+- boards (#61): `conflict` and `invalid`. An `invalid` error carries `fields`
+  (`{pointer, messageKey}`), and a stale etag is a `BoardConflictError` carrying the `current`
+  board;
+- queries (#62): `queryInvalid`, `tooBroad`, `timeout`, `unavailable`, `busy` and `badResponse`.
+  `detail` carries the BFF's `queryId`, the error `position` (a byte offset into the query,
+  T09-009) and its `hint`.
+
+`fields` is `[]` and `detail` is `{}` when there is nothing to carry.
 `createApi()` returns `HttpApi` when `VITE_API_MODE` is `http`, else `StubApi`.
 
 | Method | Result |
@@ -261,10 +270,12 @@ itself.
 | `listRecent(tenant)` | `BoardRef[]`: the `RECENT_LIMIT` (5) most recently opened, newest first |
 | `recordView(tenant, uid, at, signal)` | nothing; `at` is the navigation time (integer ms since the epoch), the greater of the stored and the new time wins; unknown → `notFound`; an abort is rethrown |
 | `signOut()` | as before |
+| `queryRange(tenant, req, signal)`, `queryInstant(tenant, req, signal)` | the PromQL range and instant results of #62 (below) |
+| `checkDataSource(tenant, signal)` | `{state, checkedAtMs?}` (T06-025) |
 
 Boards belong to the organisation: `tenant` is checked against the session's tenants (unknown →
-`notFound`) and otherwise only selects the data source of `panelData`. Each tenant may carry
-`dataSource: {state: 'notChecked'}`. `server` is `{version, commit}` from the BFF, or `null` in
+`notFound`) and otherwise only selects the data source of `panelData` and the queries. Each tenant
+may carry `dataSource: {state: 'notChecked'}` from the bootstrap. `server` is `{version, commit}` from the BFF, or `null` in
 stub mode; `canSignOut` is false under the fixed local principal.
 
 ### HttpApi
@@ -286,12 +297,48 @@ from `api/openapi.yaml` (ADR-0014 §1, ADR-0015); requests go to the page's orig
 | `listRecent` | `GET /api/dash/v1/me/recent-boards?limit=5` | 200 → `items` |
 | `recordView` | `PUT /api/dash/v1/me/recent-boards/{uid}?at=<ms>`, with the signal | 204; 404 → `notFound` |
 | `signOut` | none | resolves; never offered, because `canSignOut` is false |
+| `queryRange` | `POST /api/dash/v1/query/promql/range?tenant=…` `{query, from, to, width_px}` (`timeout_ms` only when given) | decoded by `data/decode.ts` into `{startMs, endMs, stepMs, series, completeness}`; errors below |
+| `queryInstant` | `POST …/query/promql/instant?tenant=…` `{query, at}` | a `series` (vector or matrix), `scalar` or `string` result; errors below |
+| `checkDataSource` | `GET /api/dash/v1/datasource/check?tenant=…` | `{state, checkedAtMs?}` (`not_checked` → `notChecked`); errors below |
 
 Errors: an `AbortError` from `fetch` is re-thrown unchanged; any other `fetch` rejection becomes
 `ApiError('network')`; any other status without its success body becomes `ApiError('unknown')`
 with the error envelope's `message`. A failed session shows the session error page with Retry.
+The query and check methods map the BFF's answers
+([PulsusDB routes](../server/pulsusdb.md#errors-t06-52)) further:
+
+| Response | `ApiError` |
+|---|---|
+| 400 `virtual_unsupported` (a reserved selector) | `queryInvalid`, `detail.hint` |
+| 400 with `fields[0].pointer` `/query` (PulsusDB rejected the query) | `queryInvalid`, `detail.position` (from `hint.position.offset`) and `detail.queryId` when present |
+| other 400, 413 | `unknown` with the envelope's message |
+| 422 | `tooBroad`, `detail.hint` (`action: narrow`) |
+| 429 | `busy` |
+| 502, 503 | `unavailable`, `detail.hint` (`reason`) |
+| 504 | `timeout` |
+| 200 that the decoder refuses | `badResponse`, the message naming the JSON pointer of the bad element |
+
+A connection reset in the middle of a range body (the BFF's abort after a failure) is a `network`
+error, never a partial result.
+
+### Decoding frames (`data/decode.ts`)
+
+`decodeRange` and `decodeInstant` are the single seam between the wire and the charts
+(ADR-0014 §5, T04-010; Arrow replaces the wire behind them with #68). They validate every field
+of the JSON frames: `key` matches `^[0-9a-f]{16}$`, label values are strings, `timestamps` are
+integers and strictly increasing, `values` has the same length and each value is a number,
+`"NaN"`, `"+Inf"`, `"-Inf"` or `null` (absent, decoded as NaN: a gap). Optional completeness fields
+become `null`. Anything else throws `DecodeError` with the JSON pointer of the first bad element,
+for example `/frames/0/values/3`. The output is fresh `Float64Array`s in `SeriesFrame`
+(`data/frames.ts`).
 
 ### StubApi
+
+`StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
+`promGrid` (`data/step.ts`, the mirror of the BFF's step rule, tested against the same
+`wire/fixtures/json/promql-step.json`), with values `synthLineValue(62, j, t, 100, 40)` and an empty
+completeness; a range too long for the width rejects `queryInvalid`. `queryInstant` returns the same
+three series as a vector at `atMs`; `checkDataSource` resolves `{state: 'ok', checkedAtMs: 0}`.
 
 `StubApi` resolves on the next microtask, rejects with `AbortError` when the signal is aborted,
 returns copies, and serves the seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org,
@@ -545,7 +592,8 @@ every request, fonts included, stays on the app origin.
   when PromQL support lands"; #64, #67), command palette, alert count or AI dock yet.
 - Boards: no undo or history, no reordering of sections or moving panels between them, variables
   and filters do not change queries yet (#64), no permissions (D12).
-- The data-source line always reads "Not checked" until the data-source check exists (#62).
+- No page runs PromQL queries yet: Explore and the panels come with #63 and #64. The data-source
+  line shows the check, but nothing retries it before the cached result goes stale (60 s).
 - Day and week units are fixed 24 h and 7 × 24 h durations; only `now/d` and the calendar follow DST.
 - Layouts are designed for desktop widths (1440 px reference); narrow layouts are later work.
 
@@ -561,11 +609,15 @@ IA-006, IA-015, IA-016, IA-020, IA-021, IA-022, IA-023),
 [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014, SRF-016, SRF-017, SRF-020, SRF-026),
 [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-015, INT-032),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-001, VL-010, VL-017, VL-021),
-[09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-005, PRF-008, PRF-033);
+[09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-005, PRF-008, PRF-030
+client half, PRF-033);
 [T01](../../designs/technical/T01-frontend-architecture.md) (T01-007, T01-008, T01-010),
 [T07](../../designs/technical/T07-scene-query-planner.md) (T07-012, collapsed sections do not query),
 [T02](../../designs/technical/T02-vis-engine.md) (T02-004),
 [T03](../../designs/technical/T03-browser-runtime.md) (T03-013, T03-014, T03-017),
 [T08](../../designs/technical/T08-dom-component-kit.md) (T08-005, T08-007, T08-008, T08-010, T08-022,
 T08-015, T08-017, T08-018, T08-021, T08-023, T08-024, T08-027), [T18](../../designs/technical/T18-security.md)
-(T18-001, T18-004).
+(T18-001, T18-004),
+[T04](../../designs/technical/T04-wire-format-and-data-plane.md) (T04-005, T04-010),
+[T06](../../designs/technical/T06-bff-architecture.md) (T06-025),
+[T09](../../designs/technical/T09-query-editors.md) (T09-009).

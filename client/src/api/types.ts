@@ -1,7 +1,7 @@
 /**
  * The client's API types (§3.2 of plan #57, §3.1 of plan #61 Part B). `StubApi` serves `npm run dev`
  * and the tests; `HttpApi` is the BFF client over the types generated from the OpenAPI document
- * (ADR-0015).
+ * (ADR-0015, #59, #61, #62).
  */
 import type { components } from './gen/schema';
 import type { FrameData, TimeWindow, VisSpec } from '../engine/api';
@@ -15,9 +15,27 @@ export interface User {
   role: Role;
 }
 
-/** The data-source check state of a tenant binding; only "not checked" until #62. */
+/** The data-source check state of a tenant binding (T06-025). */
+export type DataSourceState = 'notChecked' | 'ok' | 'unreachable' | 'unauthorised' | 'error';
+
 export interface DataSourceStatus {
-  state: 'notChecked';
+  state: DataSourceState;
+  /** ms; absent while not checked. */
+  checkedAtMs?: number;
+}
+
+export interface RangeRequest {
+  query: string;
+  fromMs: number;
+  toMs: number;
+  widthPx: number;
+  timeoutMs?: number;
+}
+
+export interface InstantRequest {
+  query: string;
+  atMs: number;
+  timeoutMs?: number;
 }
 
 export interface Tenant {
@@ -108,19 +126,56 @@ export type PanelData =
 
 export type { TimeWindow };
 
+/**
+ * The kinds of `ApiError`. Common: `notFound`, `unauthorised`, `network`, `notImplemented`,
+ * `unknown`. Boards (#61): `conflict` (a stale etag) and `invalid` (spec problems in `fields`).
+ * Queries (#62 §4.5): `queryInvalid`, `tooBroad`, `timeout`, `unavailable`, `busy` and
+ * `badResponse`, with what the BFF said in `detail`.
+ */
 export type ApiErrorKind =
-  'notFound' | 'unauthorised' | 'network' | 'notImplemented' | 'conflict' | 'invalid' | 'unknown';
+  | 'notFound'
+  | 'unauthorised'
+  | 'network'
+  | 'notImplemented'
+  | 'unknown'
+  | 'conflict'
+  | 'invalid'
+  | 'queryInvalid'
+  | 'tooBroad'
+  | 'timeout'
+  | 'unavailable'
+  | 'busy'
+  | 'badResponse';
+
+/** What the BFF said about a failed query (§4.5 of plan #62). */
+export interface ApiErrorDetail {
+  queryId?: string;
+  /** Byte offset into the query text (T09-009). */
+  position?: number;
+  hint?: Readonly<Record<string, unknown>>;
+}
+
+/** The optional parts of an `ApiError`. */
+export interface ApiErrorExtra {
+  /** The spec problems of an `invalid` error. */
+  fields?: readonly FieldError[];
+  /** The BFF's answer to a failed query or check. */
+  detail?: ApiErrorDetail;
+}
 
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   /** The spec problems; empty unless `kind` is `invalid`. */
   readonly fields: readonly FieldError[];
+  /** `{}` unless a query or check failed with something to say. */
+  readonly detail: ApiErrorDetail;
 
-  constructor(kind: ApiErrorKind, message: string, fields: readonly FieldError[] = []) {
+  constructor(kind: ApiErrorKind, message: string, extra: ApiErrorExtra = {}) {
     super(message);
     this.name = 'ApiError';
     this.kind = kind;
-    this.fields = fields;
+    this.fields = extra.fields ?? [];
+    this.detail = extra.detail ?? {};
   }
 }
 

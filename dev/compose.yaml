@@ -1,5 +1,6 @@
 # dev/compose.yaml — local development and itests only. No IdP: authentication is deferred (D12).
 # Driven by make dev-db, dev-up, dev-down, dev-reset and itest-local (docs/development/dev-stack.md).
+# pulsus-fake stands in for PulsusDB (docs/development/testing-pulsusdb.md); it is built on first use.
 # Trust authentication is for development only; the ports bind to loopback.
 name: pulsus-dash
 services:
@@ -21,4 +22,8 @@ services:
     ports: ['127.0.0.1:${DEV_PG15_PORT:-55433}:5432']
     tmpfs: [/var/lib/postgresql/data]
     healthcheck: { test: [CMD, pg_isready, -h, 127.0.0.1, -p, '5432', -U, postgres, -d, postgres], interval: 2s, timeout: 5s, retries: 30 }
+  pulsus-fake:
+    build: { context: .., dockerfile: dev/pulsus-fake.Dockerfile }
+    ports: ['127.0.0.1:${DEV_PULSUS_FAKE_PORT:-59091}:9091']
+    # No healthcheck: the image has no shell; up --wait waits for it to run.
 volumes: { pg16-data: {} }

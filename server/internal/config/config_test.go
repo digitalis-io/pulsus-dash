@@ -242,7 +242,7 @@ func TestSeedSettings(t *testing.T) {
 			}
 		})
 	}
-	// Valid: the reference is returned as written; the environment is never read.
+	// Valid: the reference is returned as written (PDB_CREDS is unset, so it is not checked).
 	c := mustLoad(t, valid+"  database: db1\n  scope_org_id: tenant-1\n  credentials_ref: env:PDB_CREDS\n")
 	seed, err := c.SeedSettings()
 	if err != nil {
@@ -359,5 +359,51 @@ func TestPublicURLKey(t *testing.T) {
 		if err == nil || err.Error() != tc.want {
 			t.Errorf("public_url %q: error %v, want %q", tc.value, err, tc.want)
 		}
+	}
+}
+
+// unit:config-strict (extended, T06-019): pulsusdb.tenant_concurrency.
+func TestTenantConcurrency(t *testing.T) {
+	if c := mustLoad(t, ""); c.Pulsusdb.TenantConcurrency != 16 {
+		t.Errorf("pulsusdb.tenant_concurrency = %d, want 16", c.Pulsusdb.TenantConcurrency)
+	}
+	if c := mustLoad(t, "pulsusdb:\n  tenant_concurrency: 1024\n"); c.Pulsusdb.TenantConcurrency != 1024 {
+		t.Errorf("tenant_concurrency = %d, want 1024", c.Pulsusdb.TenantConcurrency)
+	}
+	for _, v := range []string{"0", "1025", "-1"} {
+		_, err := load(t, "", "PULSUS_DASH_PULSUSDB_TENANT_CONCURRENCY="+v)
+		wantErr(t, err, "config: pulsusdb.tenant_concurrency: must be between 1 and 1024")
+	}
+	_, err := load(t, "pulsusdb:\n  tenant_concurrency: 0\n")
+	wantErr(t, err, "config: pulsusdb.tenant_concurrency: must be between 1 and 1024")
+	_, err = load(t, "pulsusdb:\n  tenant_concurency: 3\n")
+	wantErr(t, err, `config: unknown key "pulsusdb.tenant_concurency" (line 2)`)
+}
+
+const weakMsg = "config: datasource.credentials_ref: the PulsusDB password must be at least 8 characters and must not be a number"
+
+// unit:credential-strength (config half, §4.10): SeedSettings refuses a weak password when the
+// reference resolves, and accepts an unresolvable one (migrate stores only the reference).
+func TestSeedCredentialStrength(t *testing.T) {
+	const yml = "datasource:\n  url: http://localhost:3100\n  credentials_ref: env:PW\n"
+	for _, v := range []string{"u:1234567", "u:12345678", "u:", ":abcdefgh", "nocolon", "u:-1234567", "u:1.5e+300",
+		"u:0x1p-1074", "u:+Infinity", "u:  12345678  ", "u:1_000_000"} {
+		c := mustLoad(t, yml, "PW="+v)
+		_, err := c.SeedSettings()
+		wantErr(t, err, weakMsg)
+		if err := c.CheckCredentials(); err == nil || err.Error() != weakMsg {
+			t.Errorf("CheckCredentials(%q) = %v, want %q", v, err, weakMsg)
+		}
+	}
+	c := mustLoad(t, yml, "PW=u:abcd1234")
+	if _, err := c.SeedSettings(); err != nil {
+		t.Errorf("u:abcd1234: %v", err)
+	}
+	c = mustLoad(t, yml)
+	if _, err := c.SeedSettings(); err != nil {
+		t.Errorf("PW unset: %v", err)
+	}
+	if err := c.CheckCredentials(); err != nil {
+		t.Errorf("CheckCredentials with PW unset: %v", err)
 	}
 }

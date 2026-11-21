@@ -28,6 +28,11 @@ import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
 import { RECENT_LIMIT } from '../boards/queries';
 import { defaultSeed, defaultStarred } from './stubData';
+import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import type { SeriesFrame } from '../data/frames';
+import { promGrid } from '../data/step';
+import { keyHash } from '../dev/keyHash';
+import { synthLineValue } from '../dev/synth';
 import { stubPanelData } from './stubPanels';
 import {
   ApiError,
@@ -36,8 +41,11 @@ import {
   type BoardList,
   type BoardRef,
   type BoardSpec,
+  type DataSourceStatus,
+  type InstantRequest,
   type PanelData,
   type PanelSpec,
+  type RangeRequest,
   type SaveResult,
   type Session,
   type TimeWindow,
@@ -146,6 +154,30 @@ function write(key: string, value: string): void {
   } catch {
     // Storage unavailable: the stub keeps working without persistence.
   }
+}
+
+/** Stub frames have no upstream, so nothing is truncated or cached. */
+const EMPTY_COMPLETENESS: Completeness = {
+  truncated: false,
+  warnings: [],
+  infos: [],
+  queryId: null,
+  dataAgeMs: null,
+  readCache: null,
+  readCacheThroughMs: null,
+};
+
+/** Three synthetic series `stub_metric{series="0|1|2"}` at the given timestamps. */
+function stubSeries(timestamps: Float64Array): SeriesFrame[] {
+  return [0, 1, 2].map((j) => {
+    const labels = { __name__: 'stub_metric', series: String(j) };
+    return {
+      key: keyHash(labels),
+      labels,
+      timestamps,
+      values: timestamps.map((t) => synthLineValue(62, j, t, 100, 40)),
+    };
+  });
 }
 
 /** Resolves on the next microtask; rejects with `AbortError` if `signal` is aborted by then. */
@@ -350,6 +382,38 @@ export class StubApi implements Api {
     });
   }
 
+  queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const n = (g.endMs - g.startMs) / g.stepMs + 1;
+      const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
+      return { ...g, series: stubSeries(timestamps), completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  queryInstant(tenant: string, req: InstantRequest, signal?: AbortSignal): Promise<InstantResult> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return {
+        kind: 'series' as const,
+        resultType: 'vector' as const,
+        series: stubSeries(Float64Array.of(req.atMs)),
+        atMs: req.atMs,
+        completeness: EMPTY_COMPLETENESS,
+      };
+    }, signal);
+  }
+
+  /** Deterministic: always `ok`, checked at 0. */
+  checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { state: 'ok' as const, checkedAtMs: 0 };
+    }, signal);
+  }
+
   /** Unknown tenant → `notFound`; boards belong to the organisation, so it selects nothing else. */
   private checkTenant(tenant: string): void {
     if (!this.seed.session.tenants.some((t) => t.slug === tenant)) {
@@ -366,7 +430,7 @@ export class StubApi implements Api {
 
   private check(spec: BoardSpec): void {
     const fields = checkBoardSpec(spec);
-    if (fields.length > 0) throw new ApiError('invalid', 'invalid board', fields);
+    if (fields.length > 0) throw new ApiError('invalid', 'invalid board', { fields });
   }
 
   private stamp(): string {

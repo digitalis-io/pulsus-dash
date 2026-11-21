@@ -7,7 +7,8 @@ import (
 )
 
 // cmdConfigCheck validates the configuration for a command without connecting to Postgres or
-// PulsusDB: Load, Require, the roles (for serve), and Resolve of every set Postgres reference.
+// PulsusDB: Load, Require, the roles and the PulsusDB credential strength (for serve, when the
+// reference resolves), and Resolve of every set Postgres reference.
 // With --for migrate, seed-setting errors are printed as warnings: they matter only when
 // migrate seeds an empty database.
 func cmdConfigCheck(e runEnv, args []string) int {
@@ -30,6 +31,9 @@ func cmdConfigCheck(e runEnv, args []string) int {
 	}
 	if cmd == config.CommandServe {
 		if err := config.ValidateRoles(cfg.Server.Roles); err != nil {
+			return fail(e, exitUsage, err.Error())
+		}
+		if err := cfg.CheckCredentials(); err != nil {
 			return fail(e, exitUsage, err.Error())
 		}
 	}

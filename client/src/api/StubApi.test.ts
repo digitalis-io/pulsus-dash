@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { keyHash } from '../dev/keyHash';
+import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
 import { STUB_FAIL_PANEL_DATA_KEY, STUB_PANEL_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
 import { ApiError, BoardConflictError, type BoardSpec, type PanelSpec } from './types';
@@ -42,6 +44,69 @@ describe('stub api', () => {
     expect(await kindOf(api.signOut())).toBe('network');
     expect(localStorage.getItem('pulsus-dash.stub.failSignOut')).toBe('0');
     expect(await kindOf(api.signOut())).toBe('resolved');
+  });
+});
+
+describe('stub api queries (plan #62 §4.5)', () => {
+  it('serves three synthetic series on the BFF grid', async () => {
+    const r = await new StubApi().queryRange('demo', {
+      query: 'x',
+      fromMs: 0,
+      toMs: 3600000,
+      widthPx: 1200,
+    });
+    expect(r.stepMs).toBe(5000);
+    expect(r.startMs).toBe(0);
+    expect(r.endMs).toBe(3600000);
+    expect(r.series).toHaveLength(3);
+    r.series.forEach((s, j) => {
+      const labels = { __name__: 'stub_metric', series: String(j) };
+      expect(s.labels).toEqual(labels);
+      expect(s.key).toBe(keyHash(labels));
+      expect(s.timestamps).toHaveLength(721);
+      s.timestamps.forEach((t, i) => {
+        expect(t).toBe(i * 5000);
+        expect(s.values[i]).toBe(synthLineValue(62, j, t, 100, 40));
+      });
+    });
+    expect(r.completeness).toEqual({
+      truncated: false,
+      warnings: [],
+      infos: [],
+      queryId: null,
+      dataAgeMs: null,
+      readCache: null,
+      readCacheThroughMs: null,
+    });
+  });
+
+  it('refuses a range too long for the width', async () => {
+    const e = await new StubApi()
+      .queryRange('demo', { query: 'x', fromMs: 0, toMs: 1262304000000, widthPx: 1 })
+      .catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).kind).toBe('queryInvalid');
+  });
+
+  it('serves an instant vector of the same series', async () => {
+    const r = await new StubApi().queryInstant('demo', { query: 'x', atMs: 1000 });
+    expect(r.kind).toBe('series');
+    if (r.kind !== 'series') return;
+    expect(r.resultType).toBe('vector');
+    expect(r.series).toHaveLength(3);
+    for (const s of r.series) expect(Array.from(s.timestamps)).toEqual([1000]);
+  });
+
+  it('rejects unknown tenants and aborted requests, and checks the data source', async () => {
+    const api = new StubApi();
+    const R = { query: 'x', fromMs: 0, toMs: 3600000, widthPx: 1200 };
+    expect(await kindOf(api.queryRange('nope', R))).toBe('notFound');
+    expect(await kindOf(api.queryInstant('nope', { query: 'x', atMs: 1 }))).toBe('notFound');
+    const c = new AbortController();
+    c.abort();
+    expect(await kindOf(api.queryRange('demo', R, c.signal))).toBe('AbortError');
+    expect(await api.checkDataSource('demo')).toEqual({ state: 'ok', checkedAtMs: 0 });
+    expect(await kindOf(api.checkDataSource('nope'))).toBe('notFound');
   });
 });
 

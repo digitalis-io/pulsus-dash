@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-21 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -40,7 +40,7 @@ PulsusDB byte-for-byte as planned (after substitution by the language module, M-
 | Exactness prediction (§4.3, T07-005) | `Predicted{level}` from the range→level rule alone (`predict_exactness(level)`); `RawExact` only when the level is `None` | Per-function rollup eligibility |
 | Dedupe (§4.4, T07-007) | Identity, range union and display derivation on the exact-text key | — |
 | Classification (§4.11.2) | Always `SourceClass::PulsusDb` | `Virtual`, `Mixed` |
-| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so | Virtual resolution |
+| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so. The v1 guard also screens the editor-completion inputs (`match[]`, `metric`) with the same byte match (#62) | Virtual resolution |
 | Fusion (§4.4, T07-006), virtual sources and joins (§4.11, T07-021 to T07-023), selector-based estimates (§4.8), metrics-family scopes (T07-015) | Not available | All of these |
 | Expressions (§4.14, T07-030) | v1 form in §4.14: the client sends the expanded expression as one query text | Operand reuse (T07-030) |
 | Scope rewrite (§4.7, T07-014) | The v1 `ScopeRewriter` returns the text unchanged with a full-tenant `ScopeProof` for an unrestricted principal and refuses every restricted principal with `scope_denied` (T07-002) | T10 (draft), M-UI6 |
@@ -1111,3 +1111,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.5-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: §4.1 step 1 splits into 1a Classify (source and signal from the binding and the source kind: `SignalCaps` and the virtual-source floor, 15 s alerts, 300 s anomaly scores) and 1b Resolve (step from range, width, pass and that floor), so Bind calls `Plan` with the final step; §4.3 `resolve` and the virtual-source floor reference the stages |
 | 1.5-rc | 2026-11-21 | Design review r3 of the ADR-0021 PR: §4.3 `resolve` branches on the source from Classify: a PulsusDB source predicts the rollup level and takes `max(level width, sig.min_step)`; a virtual source skips rollup prediction and takes `max(base step, virtual floor)`, with `Exactness::Virtual`; in a mixed scene each logical query resolves its own step; worked case 6 h anomaly score gives 300 s, not 60 s; T07-003 wording aligned |
 | 1.5-rc | 2026-11-21 | Design review r4 of the ADR-0021 PR: §4.1 Classify runs on the substituted text with step-dependent macros as placeholder durations, reading selectors with the upstream parser to find every reserved selector and floor; §4.3 a mixed expression has one shared step (max of the PulsusDB rollup-derived step, every operand's `min_step` and every virtual floor), with a worked case (anomaly score joined with a rate, 300 s for both operands); `Exactness::Virtual` removed: a virtual source resolves to `RawExact` with `source: Virtual{table}`, and the weakest-operand rule applies to mixed joins |
+| 1.6-rc | 2026-11-21 | #62: §0 v1 reserved-name refusal also screens the completion inputs (`match[]`, `metric`) |

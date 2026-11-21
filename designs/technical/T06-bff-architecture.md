@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-21 |
+| **Version** | 1.7-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -272,6 +272,12 @@ sets the bounds for all three when the LogQL client lands (#65).
 MAY construct an HTTP request to a PulsusDB endpoint; `depguard` bans `net/http` client use in feature
 packages other than `internal/pulsusdb`, `internal/notify` (external endpoints), `internal/ai` (model
 providers), `internal/auth` (IdP calls through the egress guard) and `internal/telemetry` (self-export, §4.8).
+*(2026-11-20, #62: depguard bans imports, and `net/http` servers are legitimate in `internal/gateway`,
+the fake and `cmd`, so the rule is enforced by golangci-lint `forbidigo` rule `pulsusdb-only`, alongside
+depguard: constructing an HTTP client, transport or request outside `internal/pulsusdb` fails the lint,
+proven by a failing fixture. The T19-002 public-URL self-check (`internal/gateway/selfcheck.go` and its
+client in `cmd/pulsus-dash`) is an allowed caller; the packages above get their exclusions with the
+issues that create them.)*
 
 *Note (ADR-0018, 2026-11-21):* "`internal/pulsusdb`" means the core package only; the language
 modules use no `net/http` client.
@@ -334,9 +340,11 @@ from the pool. Whether PulsusDB then cancels the underlying ClickHouse statement
 the transport sends `RST_STREAM` (HTTP/2) or closes the connection (HTTP/1.1). Until R11 is verified:
 1. the planner coalesces and debounces (T07 §4.6), so a supersede storm turns into at most one
    in-flight query per (viewport, pass);
-2. every query MUST carry a `timeout` no longer than its priority's deadline (Interactive 10 s,
-   Refine 20 s, Background 60 s), so an orphaned statement dies at that deadline, not at
-   `PULSUS_QUERY_TIMEOUT`;
+2. every query MUST carry a `timeout` no longer than its deadline, so an orphaned statement dies at
+   that deadline, not at `PULSUS_QUERY_TIMEOUT`: a query planned by T07 carries its priority's
+   deadline (Interactive 10 s, Refine 20 s, Background 60 s); a direct query route
+   (`POST /api/dash/v1/query/promql/{range,instant}`, #62) carries the request's `timeout_ms`
+   (default 30 s, max 120 s), sent as the remaining deadline minus 100 ms *(revised 2026-11-20, #62)*;
 3. a query that has delivered > 80 % of its expected batches is allowed to finish and fill the cache
    rather than being cancelled (T07-010).
 
@@ -356,7 +364,9 @@ necessary.
 #### T06-011 — Results are Arrow streams
 **MUST** — Client methods MUST return `ResultStream` (record batches plus a `Completeness` trailer),
 never untyped JSON values. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
-serialises the batches as JSON frames for the TS client; the batch type is Arrow Go throughout.)* Until R1, the converter MUST stream: the first batch MUST leave
+serialises the batches as JSON frames for the TS client.)* *(2026-11-20, #62: until #68 the batch
+type is the Go-native `pulsusdb.Series`, the columns of `labels/1` + `metric_matrix.grid/1`, streamed one
+series at a time; Arrow Go builders arrive with the engine, #68.)* Until R1, the converter MUST stream: the first batch MUST leave
 the BFF ≤ 10 ms after PulsusDB's first byte, and batches MUST be flushed at ≤ 64k rows.
 *(2026-11-21, ADR-0018.)* The completion and metadata methods (series, label names, label values,
 metadata, runtime info) return typed, fully decoded results (§4.3), never untyped JSON values. They
@@ -605,7 +615,8 @@ The 1 % explain sample compares the predicted level with PulsusDB's `rollup_rout
 `postgres.app_url_ref` (serve, as `pulsus_app`), `postgres.owner_url_ref` (migrate, as
 `pulsus_owner`) and `postgres.pool_max`; the first-run seed `datasource.{url, slug, database,
 scope_org_id, credentials_ref}` and `bootstrap.{org_slug, org_name}`, which replace
-`datasources_bootstrap` above; `log.{level, format}`; and `allow_inline_secrets`. Each key's
+`datasources_bootstrap` above; `log.{level, format}`; `allow_inline_secrets`; and (#62) `pulsusdb.tenant_concurrency` (default
+16, 1 to 1024: PulsusDB calls in flight per tenant binding, §4.10). Each key's
 variable is `PULSUS_DASH_` plus the key path upper-cased with `.` → `_`, for example
 `PULSUS_DASH_POSTGRES_POOL_MAX`. The other fields above arrive with the features that use them.
 `docs/server/README.md` is the reference.
@@ -690,7 +701,9 @@ NOT store user passwords or implement its own second factor, and MUST refuse a l
 on the axum handler), and the gateway MUST check it against the principal's role set before the
 handler runs. List endpoints MUST filter by permission in the query rather than return items for the
 UI to hide. A refused action returns `forbidden` with a `request_access` hint (§5.2), never a bare
-`403` page.
+`403` page. *(Go form, 2026-11-20, #62: the declaration is `x-permission: <permission>` on the
+operation in `api/openapi.yaml`, for example `query.read` on the query routes; the gateway checks it
+from M-UI6.)*
 
 #### T06-024 — Credentials never reach the browser
 **MUST** — Datasource credentials, IdP client secrets and notification secrets MUST NOT be sent to
@@ -753,6 +766,9 @@ token's data scope applies.
 | `GET /api/dash/v1/version` | JSON | The server's version and commit | `api/openapi.yaml` (`Version`) |
 | `GET /api/dash/v1/bootstrap` | JSON | The client's first call: principal (the fixed local principal until M-UI6, D12), organisation, tenant slugs with their data-source check state (never a datasource URL, database, scope or credentials reference, T06-024), the server version and `can_sign_out` | `api/openapi.yaml` (`Bootstrap`) |
 | `POST /api/dash/v1/csp-report` | `application/reports+json` or `application/csp-report` | CSP violation reports ([T18](T18-security.md) T18-003): rate-limited, 64 KiB, read deadline, logged as allowlisted values only | `api/openapi.yaml` (hand-written handler) |
+| `POST /api/dash/v1/query/promql/range`, `…/instant` (`?tenant=`) | JSON request → JSON frames, the range body streamed series by series | Direct PromQL queries on the BFF's grid (M-UI1, #62): `PromRangeRequest` → `PromRangeResponse` (frames and completeness), `PromInstantRequest` → `PromInstantResponse`; `x-permission: query.read` | `api/openapi.yaml`; frames: [T04](T04-wire-format-and-data-plane.md) §0 |
+| `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}` (`?tenant=`) | JSON | Editor completion metadata for M-UI1 (#62): label names and values, series and metric metadata with completeness. `/suggest` stays T09's ranked, cached design | `api/openapi.yaml` |
+| `GET /api/dash/v1/datasource/check` (`?tenant=`) | JSON | The binding's `runtimeinfo` check (T06-025): `{state, checked_at}`; never part of readiness (T06-026) | `api/openapi.yaml` (`DatasourceStatus`) |
 
 #### T06-026 — Readiness does not depend on PulsusDB
 **MUST** — `/readyz` MUST report Postgres reachability, migration level and audit partition health
@@ -772,6 +788,13 @@ MUST NOT make replicas unready, so alert state, silences and investigations stay
 - `conflict` answers a write whose `If-Match` does not equal the object's current ETag (409,
   [T11](T11-postgres-schema.md) T11-005). Its body is `{"error":{…},"current":{…},"submitted":{…}}`:
   the current object and, for a save, the submitted spec, so the client can show both.
+- **Upstream mapping** (#62). PulsusDB's parse errors (400) are `invalid` with
+  `fields: [{pointer: "/query"}]` and, when the message gives one, `hint.position.offset` (T09-009);
+  `422` is `too_broad` with `hint.action: narrow`; upstream failures are `unavailable` with
+  `hint.reason` (`upstream_unreachable`, `upstream_unavailable`, `upstream_unauthorised`,
+  `upstream_error` as 502; `upstream_timeout` as 504; `datasource_config` as 503); `429` and a full
+  tenant limiter are `budget_exhausted` with `Retry-After`. PulsusDB's text is returned only for
+  400 and 422, and only redacted and cleaned (T06-024).
 
 ### 5.3 PulsusDB endpoints used
 
@@ -926,3 +949,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.6-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.3 `prom.Plan` and `logs.Plan` in the language modules, with fixtures under `wire/fixtures/plan/`; §4.4 L1 metric-types row; new rule T06-029 (the server builds the final query, `itest:plan-authority`); ENT-006 row |
 | 1.6-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: T06-029 scoped to the PromQL paths (LogQL once `logs.Plan` lands) and separates the planned text from the final scope-rewritten text; `itest:plan-authority` no longer requires the re-planned text to differ; §4.4 metric types keyed, with singleflight, by tenant binding |
 | 1.6-rc | 2026-11-21 | Final review of the ADR-0021 PR: §4.3 `Completeness.exactness` drops `Virtual`; virtual provenance lives only in `source` (`Virtual{table}`), as in T07 §4.3 and §4.11.2 |
+| 1.7-rc | 2026-11-21 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |

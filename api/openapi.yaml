@@ -152,7 +152,112 @@ paths:
         '204': { description: Recorded }
         '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/promql/range:
+    post:
+      operationId: postPromqlRange
+      tags: [query]
+      description: PromQL range query on the aligned grid, as JSON frames streamed series by series (T06-011). Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromRangeRequest' } } } }
+      responses:
+        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromRangeResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/promql/instant:
+    post:
+      operationId: postPromqlInstant
+      tags: [query]
+      description: PromQL instant query. Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromInstantRequest' } } } }
+      responses:
+        '200': { description: Frames, scalar or string, and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromInstantResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/labels:
+    get:
+      operationId: getPromLabels
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { $ref: '#/components/parameters/Match' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Label names, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/label/{name}/values:
+    get:
+      operationId: getPromLabelValues
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { $ref: '#/components/parameters/Match' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Label values, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/series:
+    get:
+      operationId: getPromSeries
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { name: match, in: query, required: true, style: form, explode: true, schema: { type: array, minItems: 1, items: { type: string, maxLength: 65536 } } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Label sets, content: { application/json: { schema: { $ref: '#/components/schemas/PromSeriesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/metadata:
+    get:
+      operationId: getPromMetadata
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { name: metric, in: query, required: false, schema: { type: string, maxLength: 65536 } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Metric metadata, content: { application/json: { schema: { $ref: '#/components/schemas/PromMetadataResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/datasource/check:
+    get:
+      operationId: getDatasourceCheck
+      tags: [query]
+      description: The data-source check of the tenant's binding (T06-025); never part of readiness (T06-026).
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      responses:
+        '200': { description: Check result, content: { application/json: { schema: { $ref: '#/components/schemas/DatasourceStatus' } } } }
+        '400': { description: Tenant missing or malformed, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: Unknown tenant, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '504': { description: The check's deadline passed while the tenant was resolved, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
+  parameters:
+    Tenant: { name: tenant, in: query, required: true, schema: { type: string, pattern: '^[a-z0-9-]{1,40}$' } }
+    From: { name: from, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64 } }
+    To: { name: to, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64 } }
+    Match: { name: match, in: query, required: false, style: form, explode: true, schema: { type: array, items: { type: string, maxLength: 65536 } } }
+    Limit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 10000, default: 1000 } }
+  responses:
+    RateLimited:
+      description: Too many queries in flight, or PulsusDB is rate limiting the tenant
+      headers: { Retry-After: { schema: { type: string } } }
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
   schemas:
     ErrorCode: { type: string, enum: [scope_denied, budget_exhausted, too_broad, unavailable, invalid, forbidden, virtual_unsupported, not_found, conflict, internal] }
     FieldError: { type: object, additionalProperties: false, required: [pointer, message_key], properties: { pointer: { type: string }, message_key: { type: string } } }
@@ -181,7 +286,118 @@ components:
         email: { type: string }
         role: { type: string, enum: [admin, editor, viewer] }
     OrgInfo: { type: object, additionalProperties: false, required: [slug, name], properties: { slug: { type: string }, name: { type: string } } }
-    DatasourceStatus: { type: object, additionalProperties: false, required: [state], properties: { state: { type: string, enum: [not_checked] } } }
+    PromRangeRequest:
+      type: object
+      additionalProperties: false
+      required: [query, from, to, width_px]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 65536 }
+        from: { type: integer, format: int64, minimum: 0 }                    # ms since the epoch
+        to: { type: integer, format: int64, maximum: 253402300799999 }
+        width_px: { type: integer, minimum: 1, maximum: 10000 }
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+    PromInstantRequest:
+      type: object
+      additionalProperties: false
+      required: [query, at]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 65536 }
+        at: { type: integer, format: int64, minimum: 0, maximum: 253402300799999 }
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+    FrameValue:
+      description: A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
+      x-go-type: json.RawMessage   # generated gateway type for our own output; not upstream decoding (the generated file imports encoding/json)
+    SeriesFrame:
+      description: JSON image of labels/1 + metric_matrix.grid/1 (T04 §0).
+      type: object
+      additionalProperties: false
+      required: [key, labels, timestamps, values]
+      properties:
+        key: { type: string, pattern: '^[0-9a-f]{16}$' }
+        labels: { type: object, additionalProperties: { type: string } }
+        timestamps: { type: array, items: { type: integer, format: int64 } }
+        values: { type: array, items: { $ref: '#/components/schemas/FrameValue' } }
+    Completeness:
+      type: object
+      additionalProperties: false
+      required: [truncated, warnings, infos]
+      properties:
+        truncated: { type: boolean }
+        warnings: { type: array, items: { type: string } }
+        infos: { type: array, items: { type: string } }
+        query_id: { type: string }
+        data_age_ms: { type: integer, format: int64, minimum: 0 }
+        read_cache: { type: string, enum: [hit, miss, bypass, other] }
+        read_cache_through_ms: { type: integer, format: int64, minimum: 0 }
+    PromRangeResponse:
+      type: object
+      additionalProperties: false
+      required: [start, end, step, frames, completeness]
+      properties:
+        start: { type: integer, format: int64 }
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    TimedValue:
+      type: object
+      additionalProperties: false
+      required: [timestamp, value]
+      properties: { timestamp: { type: integer, format: int64 }, value: { $ref: '#/components/schemas/FrameValue' } }
+    TimedString:
+      type: object
+      additionalProperties: false
+      required: [timestamp, value]
+      properties: { timestamp: { type: integer, format: int64 }, value: { type: string } }
+    PromInstantResponse:
+      type: object
+      additionalProperties: false
+      required: [result_type, at, frames, completeness]
+      properties:
+        result_type: { type: string, enum: [vector, matrix, scalar, string] }
+        at: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }   # [] for scalar and string
+        scalar: { $ref: '#/components/schemas/TimedValue' }                             # scalar results only
+        string: { $ref: '#/components/schemas/TimedString' }                            # string results only
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    PromValuesResponse:
+      type: object
+      additionalProperties: false
+      required: [values, completeness]
+      properties:
+        values: { type: array, items: { type: string } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    SeriesLabels:
+      type: object
+      additionalProperties: false
+      required: [key, labels]
+      properties: { key: { type: string, pattern: '^[0-9a-f]{16}$' }, labels: { type: object, additionalProperties: { type: string } } }
+    PromSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [series, completeness]
+      properties:
+        series: { type: array, items: { $ref: '#/components/schemas/SeriesLabels' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    MetricMetadata:
+      type: object
+      additionalProperties: false
+      required: [type, help, unit]
+      properties: { type: { type: string }, help: { type: string }, unit: { type: string } }
+    PromMetadataResponse:
+      type: object
+      additionalProperties: false
+      required: [metrics, completeness]
+      properties:
+        metrics: { type: object, additionalProperties: { type: array, items: { $ref: '#/components/schemas/MetricMetadata' } } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    DatasourceStatus:                         # bootstrap still returns not_checked
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: { type: string, enum: [not_checked, ok, unreachable, unauthorised, error] }
+        checked_at: { type: integer, format: int64 }                          # ms; absent for not_checked
     TenantInfo:
       type: object
       additionalProperties: false
