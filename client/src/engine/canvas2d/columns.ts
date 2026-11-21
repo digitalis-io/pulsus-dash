@@ -147,12 +147,15 @@ export function bucketEnd(ts: Float64Array, i: number, fallbackEnd: number): num
  * starts at its first (clipped) bucket; `endMs` is the clipped end of the last kept bucket. Used
  * when there are more buckets than CSS px.
  */
+export type MergeMissing = 'zero' | 'missing';
+
 export function mergeBuckets(
   ts: Float64Array,
   counts: Float64Array,
   stride: number,
   w: TimeWindow,
   plot: PlotRect,
+  _missing: MergeMissing = 'zero',
 ): { ts: Float64Array; counts: Float64Array; endMs: number } {
   const n = columnCount(plot);
   const starts: number[] = [];

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -39,14 +40,7 @@ func run(args []string) int {
 		}
 	}
 	f := pulsusfake.New(ts, pulsusfake.Options{Generate: *generate})
-	enc := json.NewEncoder(os.Stdout)
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sw := &statusWriter{ResponseWriter: w}
-		rec := f.Serve(sw, r)
-		_ = enc.Encode(map[string]any{"method": rec.Method, "path": rec.Path, "transcript": rec.Transcript,
-			"status": sw.status, "cancelled": rec.Cancelled})
-		f.Reset() // the dev fake keeps no history: memory stays bounded
-	})
+	h := newHandler(f, false, os.Stdout)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var lc net.ListenConfig
@@ -72,6 +66,38 @@ func run(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// controlRecords bounds the records a --control fake keeps.
+const controlRecords = 1000
+
+// requestSummary is one record as GET /__fake/requests lists it (stub: tests first, plan #63 §5).
+type requestSummary struct {
+	Transcript   string `json:"transcript"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	Query        string `json:"query"`
+	Start        string `json:"start"`
+	End          string `json:"end"`
+	Step         string `json:"step"`
+	Time         string `json:"time"`
+	State        string `json:"state"`
+	ReceivedAtMs int64  `json:"receivedAtMs"`
+}
+
+// summarise is a stub (tests first).
+func summarise(_ pulsusfake.Recorded) requestSummary { return requestSummary{} }
+
+// newHandler is run's handler (stub: control is ignored until the implementation).
+func newHandler(f *pulsusfake.Fake, _ bool, log io.Writer) http.Handler {
+	enc := json.NewEncoder(log)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w}
+		rec := f.Serve(sw, r)
+		_ = enc.Encode(map[string]any{"method": rec.Method, "path": rec.Path, "transcript": rec.Transcript,
+			"status": sw.status, "cancelled": rec.Cancelled})
+		f.Reset() // the dev fake keeps no history: memory stays bounded
+	})
 }
 
 // statusWriter records the status for the log line.

@@ -12,6 +12,9 @@ import {
   decodeInstant,
   decodeRange,
   type InstantResult,
+  type PromMetadata,
+  type PromSeriesSet,
+  type PromValues,
   type RangeResult,
 } from '../data/decode';
 import {
@@ -20,6 +23,7 @@ import {
   type BoardSummary,
   type DataSourceStatus,
   type InstantRequest,
+  type PromMatchRequest,
   type RangeRequest,
   type Session,
 } from './types';
@@ -122,6 +126,16 @@ function decoded<T>(decode: (b: unknown) => T, body: unknown): T {
   }
 }
 
+const NOT_YET = {
+  truncated: false,
+  warnings: [],
+  infos: [],
+  queryId: null,
+  dataAgeMs: null,
+  readCache: null,
+  readCacheThroughMs: null,
+};
+
 const DATA_SOURCE_STATES = {
   not_checked: 'notChecked',
   ok: 'ok',
@@ -221,5 +235,22 @@ export class HttpApi implements Api {
     if (data === undefined) throw queryError(response.status, error);
     const state = DATA_SOURCE_STATES[data.state];
     return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
+  }
+
+  // Stubs (tests first, plan #63 §5).
+  promLabels(_tenant: string, _req: PromMatchRequest): Promise<PromValues> {
+    return Promise.resolve({ values: [], completeness: NOT_YET });
+  }
+
+  promLabelValues(_tenant: string, _name: string, _req: PromMatchRequest): Promise<PromValues> {
+    return Promise.resolve({ values: [], completeness: NOT_YET });
+  }
+
+  promSeries(_tenant: string, _req: PromMatchRequest): Promise<PromSeriesSet> {
+    return Promise.resolve({ series: [], completeness: NOT_YET });
+  }
+
+  promMetadata(_tenant: string, _req: { readonly metric?: string }): Promise<PromMetadata> {
+    return Promise.resolve({ metrics: {}, completeness: NOT_YET });
   }
 }

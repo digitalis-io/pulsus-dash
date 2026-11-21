@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { E2E_VERSION, HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
+import { fakeRequests } from './fake.ts';
 
 /** Collects console errors and page errors. */
 function errorsOf(page: Page): string[] {
@@ -15,14 +16,21 @@ test.describe('e2e:bff-http-shell', () => {
   test.skip(PREVIEW, NEEDS_BFF);
   test.use({ baseURL: HTTP_BFF });
 
-  test('the http build bootstraps from the BFF', async ({ page }) => {
+  test('the http build bootstraps from the BFF', async ({ page, request }) => {
     const errors = errorsOf(page);
     await page.goto('/');
     await page.locator('html[data-shell-ready="true"]').waitFor();
     expect(new URL(page.url()).pathname).toBe('/t/demo/boards');
 
     const sidebar = page.locator('aside');
-    await expect(sidebar.getByText('Data source: demo · Unreachable')).toBeVisible();
+    await expect(sidebar.getByText('Data source: demo · Connected')).toBeVisible();
+    // The data-source check reached the e2e fake (T06-025).
+    const checks = await fakeRequests(request, {
+      path: '/api/v1/status/runtimeinfo',
+      state: 'completed',
+    });
+    expect(checks.length).toBeGreaterThanOrEqual(1);
+    expect(checks.every((r) => r.transcript === 'runtimeinfo')).toBe(true);
 
     await page.getByRole('button', { name: 'User menu: Local user' }).click();
     const menu = page.getByRole('menu', { name: 'User menu: Local user' });

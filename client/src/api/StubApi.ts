@@ -8,7 +8,14 @@
  */
 import type { Api } from './Api';
 import { defaultSeed, defaultStarred } from './stubData';
-import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import type {
+  Completeness,
+  InstantResult,
+  PromMetadata,
+  PromSeriesSet,
+  PromValues,
+  RangeResult,
+} from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
@@ -18,6 +25,7 @@ import {
   type BoardSummary,
   type DataSourceStatus,
   type InstantRequest,
+  type PromMatchRequest,
   type RangeRequest,
   type Session,
 } from './types';
@@ -177,6 +185,23 @@ export class StubApi implements Api {
       this.boardsOf(tenant);
       return { state: 'ok' as const, checkedAtMs: 0 };
     }, signal);
+  }
+
+  // Stubs (tests first, plan #63 §5).
+  promLabels(_tenant: string, _req: PromMatchRequest): Promise<PromValues> {
+    return Promise.resolve({ values: [], completeness: EMPTY_COMPLETENESS });
+  }
+
+  promLabelValues(_tenant: string, _name: string, _req: PromMatchRequest): Promise<PromValues> {
+    return Promise.resolve({ values: [], completeness: EMPTY_COMPLETENESS });
+  }
+
+  promSeries(_tenant: string, _req: PromMatchRequest): Promise<PromSeriesSet> {
+    return Promise.resolve({ series: [], completeness: EMPTY_COMPLETENESS });
+  }
+
+  promMetadata(_tenant: string, _req: { readonly metric?: string }): Promise<PromMetadata> {
+    return Promise.resolve({ metrics: {}, completeness: EMPTY_COMPLETENESS });
   }
 
   private boardsOf(tenant: string): BoardSummary[] {

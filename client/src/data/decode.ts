@@ -210,3 +210,51 @@ export function decodeInstant(body: unknown): InstantResult {
     }
   }
 }
+
+export interface PromValues {
+  readonly values: readonly string[];
+  readonly completeness: Completeness;
+}
+
+export interface PromSeriesSet {
+  readonly series: readonly {
+    readonly key: string;
+    readonly labels: Readonly<Record<string, string>>;
+  }[];
+  readonly completeness: Completeness;
+}
+
+export interface PromMetricMetadata {
+  readonly type: string;
+  readonly help: string;
+  readonly unit: string;
+}
+
+export interface PromMetadata {
+  readonly metrics: Readonly<Record<string, readonly PromMetricMetadata[]>>;
+  readonly completeness: Completeness;
+}
+
+/** Stub (tests first, plan #63 §5). */
+export function decodeValues(_body: unknown): PromValues {
+  return {
+    values: [],
+    completeness: decodeCompleteness({ truncated: false, warnings: [], infos: [] }, ''),
+  };
+}
+
+/** Stub (tests first, plan #63 §5). */
+export function decodeSeriesSet(_body: unknown): PromSeriesSet {
+  return {
+    series: [],
+    completeness: decodeCompleteness({ truncated: false, warnings: [], infos: [] }, ''),
+  };
+}
+
+/** Stub (tests first, plan #63 §5). */
+export function decodeMetadata(_body: unknown): PromMetadata {
+  return {
+    metrics: {},
+    completeness: decodeCompleteness({ truncated: false, warnings: [], infos: [] }, ''),
+  };
+}

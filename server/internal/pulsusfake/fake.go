@@ -16,8 +16,12 @@ import (
 )
 
 // Options configure a Fake. Generate answers an unmatched /api/v1/query_range or /api/v1/query
-// with one generated series instead of a 404 (dev stack only).
-type Options struct{ Generate bool }
+// with one generated series instead of a 404 (dev stack only). MaxRecords > 0 keeps only the
+// newest MaxRecords records (stub: tests first, plan #63 §5).
+type Options struct {
+	Generate   bool
+	MaxRecords int
+}
 
 // Recorded is one request the fake received.
 type Recorded struct {
