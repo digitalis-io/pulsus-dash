@@ -118,6 +118,15 @@ fn f1_primitives() {
     );
     let z = zoom_about(zoom_about(v2, 0.3, 0.8, &l), 0.3, 0.8, &l);
     assert_eq!(bits(z), bits(v2));
+    // At the floor with fractional ends, recomputing a − f·w would move the ends by an ulp.
+    let fractional = r(0.1, 2000.3);
+    for f in [0.37, 0.61, 0.13, 0.3, 0.7] {
+        assert_eq!(
+            bits(zoom_about(fractional, f, 0.8, &l)),
+            bits(fractional),
+            "f {f}"
+        );
+    }
     let wide = r(T - l.max_span, T);
     assert_eq!(bits(zoom_about(wide, 0.5, 1.25, &l)), bits(wide));
     let w = to_window(v2);
