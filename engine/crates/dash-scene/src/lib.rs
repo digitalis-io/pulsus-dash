@@ -48,3 +48,6 @@ pub struct Viewport {
 pub struct Scene {
     pub viewports: Vec<Viewport>,
 }
+
+/// Gate proof for ci:engine-lint (T03-008): must be rejected by clippy disallowed_types.
+pub static GATE_PROOF: std::sync::Mutex<u8> = std::sync::Mutex::new(0);
