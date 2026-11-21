@@ -15,7 +15,7 @@ GOLANGCI_SHA256 := 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9eb
 SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
-.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci
+.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint engine-goldens engine-goldens-update
 
 # The client build the BFF embeds (VITE_API_MODE=$(API_MODE)).
 client-build:
@@ -99,3 +99,30 @@ tools-ci:
 
 # Parts B and C of #59 append targets.
 ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint build
+
+# Engine (plan #68 Part A): every target runs in the pinned lavapipe image (engine/ci, T05-004), as
+# engine.yml does. DOCKER may be podman; rootless Podman keeps file ownership with
+# ENGINE_RUN_FLAGS=--userns=keep-id. The image's own target dir keeps its build apart from a host one.
+DOCKER ?= docker
+ENGINE_IMAGE ?= pulsus-engine-ci:local
+ENGINE_RUN_FLAGS ?=
+ENGINE_RUN = $(DOCKER) run --rm $(ENGINE_RUN_FLAGS) -v $(CURDIR):/w -w /w/engine -e CARGO_TARGET_DIR=/w/engine/target/image -e GOLDEN_UPDATE $(ENGINE_IMAGE)
+
+engine-image:
+	$(DOCKER) build -f engine/ci/lavapipe.Dockerfile -t $(ENGINE_IMAGE) engine/ci
+
+# unit:* (parity, property and GPU tests).
+engine-test:
+	$(ENGINE_RUN) cargo nextest run --workspace --exclude dash-golden --locked
+
+# ci:engine-lint, ci:spec-lint, ci:dep-audit (engine leg).
+engine-lint:
+	$(ENGINE_RUN) bash -euo pipefail -c 'cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo xtask spec-lint && cargo deny --locked check licenses advisories bans sources'
+
+# golden:gallery, golden:decimation-ref, golden:decimation-raw, golden:extreme-range.
+engine-goldens:
+	$(ENGINE_RUN) cargo test -p dash-golden --release --locked golden_
+
+# Writes engine/crates/dash-golden/goldens/*.png; CI's `golden-update` label is the reviewed path.
+engine-goldens-update:
+	GOLDEN_UPDATE=1 $(MAKE) engine-goldens
