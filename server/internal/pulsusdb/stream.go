@@ -2,6 +2,7 @@ package pulsusdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -139,9 +140,9 @@ type ResultStream struct {
 
 	stream  bool // range: series are decoded on Next
 	grid    Grid
-	ts      []int64   // the grid's timestamps, shared
-	emitted int       // grid points handed out
-	raw     rawSeries // the source's buffer, reused across series
+	ts      []int64 // the grid's timestamps, shared
+	emitted int     // grid points handed out
+	cur     *Series // the series being decoded (seriesSink)
 
 	typ    ResultType
 	series []*Series // instant
@@ -157,10 +158,7 @@ type ResultStream struct {
 // newRangeStream returns the range stream of src on grid g; src has read up to the first series.
 func newRangeStream(ctx context.Context, src seriesSource, resp *response, lim Limits, comp *compBuilder, g Grid) *ResultStream {
 	rs := &ResultStream{ctx: ctx, src: src, resp: resp, lim: lim, comp: comp, stream: true, grid: g, typ: ResultMatrix}
-	n := g.points()
-	rs.ts = make([]int64, n)
-	// The source's buffer holds at most one point per grid point of a valid series.
-	rs.raw.T, rs.raw.V = make([]int64, 0, n), make([]float64, 0, n)
+	rs.ts = make([]int64, g.points())
 	for i := range rs.ts {
 		rs.ts[i] = g.Start + int64(i)*g.Step
 	}
@@ -222,49 +220,56 @@ func (s *ResultStream) Next() (*Series, error) {
 	if s.done {
 		return nil, io.EOF
 	}
-	err := s.src.nextRange(&s.raw)
-	if err == io.EOF {
+	labels, err := s.src.nextRange(s)
+	switch {
+	case err == io.EOF:
 		s.finish()
 		return nil, io.EOF
-	}
-	if err != nil {
-		return nil, s.fail(err)
-	}
-	n := s.grid.points()
-	if s.emitted+n > s.lim.MaxPoints {
+	case errors.Is(err, errPointsCut):
 		s.comp.pointsCut = true
 		s.finish()
 		return nil, io.EOF
-	}
-	ser, err := s.place(&s.raw)
-	if err != nil {
+	case err != nil:
 		return nil, s.fail(err)
 	}
-	s.emitted += n
+	ser := s.cur
+	s.cur = nil
+	if labels == nil {
+		labels = []Label{}
+	}
+	ser.Labels, ser.Key = labels, keyhash.Labels(labels)
+	s.emitted += s.grid.points()
 	return ser, nil
 }
 
-// place puts a decoded series on the grid; an off-grid timestamp is KindProtocol. Absent points
-// stay absent (T04-005).
-func (s *ResultStream) place(r *rawSeries) (*Series, error) {
+// begin starts a series on the grid (seriesSink): a series that would pass Limits.MaxPoints ends
+// the stream, truncated; else its values are allocated once, at the grid's size.
+func (s *ResultStream) begin() error {
+	n := s.grid.points()
+	if s.emitted+n > s.lim.MaxPoints {
+		return errPointsCut
+	}
+	s.cur = &Series{Timestamps: s.ts, Values: make([]float64, n), Present: make([]bool, n)}
+	return nil
+}
+
+// add places one point as it is decoded (seriesSink). A timestamp off the grid, before its start,
+// after its end or already present is KindProtocol, so a series never holds more points than the
+// grid and decoding stops at the first bad point. Absent points stay absent (T04-005).
+func (s *ResultStream) add(ms int64, v float64) error {
 	g := s.grid
-	n := g.points()
-	ser := &Series{Labels: r.Labels, Timestamps: s.ts, Values: make([]float64, n), Present: make([]bool, n)}
-	if ser.Labels == nil {
-		ser.Labels = []Label{}
+	if ms < g.Start || ms > g.End || (ms-g.Start)%g.Step != 0 {
+		return protocolError()
 	}
-	for i, ms := range r.T {
-		if ms < g.Start || ms > g.End || (ms-g.Start)%g.Step != 0 {
-			return nil, protocolError()
-		}
-		j := (ms - g.Start) / g.Step
-		ser.Values[j], ser.Present[j] = r.V[i], true
-		if ms > s.comp.c.NewestSampleMs {
-			s.comp.c.NewestSampleMs = ms
-		}
+	j := (ms - g.Start) / g.Step
+	if s.cur.Present[j] {
+		return protocolError()
 	}
-	ser.Key = keyhash.Labels(ser.Labels)
-	return ser, nil
+	s.cur.Values[j], s.cur.Present[j] = v, true
+	if ms > s.comp.c.NewestSampleMs {
+		s.comp.c.NewestSampleMs = ms
+	}
+	return nil
 }
 
 func (s *ResultStream) fail(err error) error {
