@@ -8,7 +8,17 @@
     "react-aria-components",
     "@internationalized/date",
     "openapi-fetch",
-    "react-grid-layout"
+    "react-grid-layout",
+    "@codemirror/autocomplete",
+    "@codemirror/commands",
+    "@codemirror/language",
+    "@codemirror/lint",
+    "@codemirror/state",
+    "@codemirror/view",
+    "@lezer/common",
+    "@lezer/highlight",
+    "@prometheus-io/codemirror-promql",
+    "@prometheus-io/lezer-promql"
   ],
   "runtimeClosure": {
     "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
@@ -37,6 +47,25 @@
       "js-tokens",
       "react-is",
       "resize-observer-polyfill"
+    ],
+    "query-editor": [
+      "@codemirror/autocomplete",
+      "@codemirror/commands",
+      "@codemirror/language",
+      "@codemirror/lint",
+      "@codemirror/state",
+      "@codemirror/streamparser",
+      "@codemirror/view",
+      "@lezer/common",
+      "@lezer/highlight",
+      "@lezer/lr",
+      "@marijn/find-cluster-break",
+      "@prometheus-io/codemirror-promql",
+      "@prometheus-io/lezer-promql",
+      "crelt",
+      "lru-cache",
+      "style-mod",
+      "w3c-keyname"
     ]
   },
   "licenceAllowlist": [
@@ -50,11 +79,26 @@
   ],
   "licenceExceptionAllowlist": [],
   "buildUrlAllowlist": [
-    { "url": "http://www.w3.org/2000/svg", "reason": "SVG namespace URI (react-dom)" },
-    { "url": "http://www.w3.org/1999/xlink", "reason": "XLink namespace URI (react-dom)" },
-    { "url": "http://www.w3.org/1998/Math/MathML", "reason": "MathML namespace URI (react-dom)" },
-    { "url": "http://www.w3.org/XML/1998/namespace", "reason": "XML namespace URI (react-dom)" },
-    { "url": "http://localhost", "reason": "URL-parsing base (react-router)" },
+    {
+      "url": "http://www.w3.org/2000/svg",
+      "reason": "SVG namespace URI (react-dom)"
+    },
+    {
+      "url": "http://www.w3.org/1999/xlink",
+      "reason": "XLink namespace URI (react-dom)"
+    },
+    {
+      "url": "http://www.w3.org/1998/Math/MathML",
+      "reason": "MathML namespace URI (react-dom)"
+    },
+    {
+      "url": "http://www.w3.org/XML/1998/namespace",
+      "reason": "XML namespace URI (react-dom)"
+    },
+    {
+      "url": "http://localhost",
+      "reason": "URL-parsing base (react-router)"
+    },
     {
       "url": "https://react.dev/errors/",
       "reason": "error-help link; React appends the code with +"
@@ -63,7 +107,10 @@
       "url": "https://reactrouter.com/en/main/routers/picking-a-router",
       "reason": "error-help text"
     },
-    { "url": "https://reactrouter.com/how-to/error-boundary", "reason": "error-help text" },
+    {
+      "url": "https://reactrouter.com/how-to/error-boundary",
+      "reason": "error-help text"
+    },
     {
       "url": "https://reactrouter.com/start/framework/route-module#meta",
       "reason": "error-help text"
@@ -76,7 +123,10 @@
       "url": "https://github.com/remix-run/react-router/issues/new/choose",
       "reason": "bug-report text"
     },
-    { "url": "https://github.com/ungap/url-search-params", "reason": "polyfill-advice text" },
+    {
+      "url": "https://github.com/ungap/url-search-params",
+      "reason": "polyfill-advice text"
+    },
     {
       "url": "https://github.com/react-grid-layout/react-draggable#noderef",
       "reason": "warning text (react-draggable, Edit-mode chunk)"
