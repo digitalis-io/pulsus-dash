@@ -114,7 +114,7 @@ heatmap it is the count unit.
 | Vis | Series result | Scalar result | String result |
 |---|---|---|---|
 | line | the series (or the isolated one) | the scalar as one point (`scalarSeries`, key `SCALAR_KEY`) | notice `string` |
-| bars | as line, on one grid (below); spec `stacking: 'normal'`, `categoryLabel: ''`, `categoryOrder: []` | as line | notice `string` |
+| bars | as line, on one grid (below), or notice `tooManyTimestamps` when the grid is too large; spec `stacking: 'normal'`, `categoryLabel: ''`, `categoryOrder: []` | as line | notice `string` |
 | stat | the series (or the isolated one) | the scalar | notice `string` |
 | heatmap | `histogramBuckets`, or notice `noBuckets` when it is null | notice `noBuckets` | notice `string` |
 
@@ -122,6 +122,13 @@ heatmap it is the count unit.
 series of an instant result can each have their own. `commonGrid(series)` then puts every series
 on the sorted union of all timestamps, with NaN (a gap) where a series has no sample. Line and stat
 keep each series' own timestamps.
+
+The grid holds one value per series and distinct timestamp, so disjoint timestamps multiply: 500
+series of 1 000 disjoint timestamps would need 250 million values. `commonGrid` counts the distinct
+timestamps first and returns `null`, allocating no grid, when series × distinct timestamps passes
+`MAX_GRID_CELLS` (500 series × 11 000 steps = 5 500 000, about 44 MB). `framePlan` then returns
+notice `tooManyTimestamps` with the bars spec: no series is dropped silently, and line still draws
+every series on its own timestamps.
 
 **Isolation.** On line, bars and stat, isolating a row keeps only that series (an `le` row is its
 raw cumulative series). On a heatmap, `isolateBucket(series, key)` keeps the full view's axis and
@@ -173,8 +180,8 @@ metric names, `["a","b"]` for any other label, and no series.
 |---|---|
 | `unit:explore-plan` | `src/explore/plan.test.ts`: the planner rows, the sent-size boundary, metric types, durations, the source index, byte length |
 | `unit:autovis-table` | `src/vis/autovis.test.ts`: one fixture per rule, rule order, range never stat, the override |
-| `unit:heatmap-buckets` | `src/vis/histogram.test.ts`: complete, missing single and grouped samples, groups with differing bounds, row isolation, and a many-group, many-bound time bound |
-| `unit:frame-plan` | `src/vis/framePlan.test.ts`: every vis × result valid, bars over instant series with unequal timestamps, scalar overrides, heatmap row isolation and restore |
+| `unit:heatmap-buckets` | `src/vis/histogram.test.ts`: complete, missing single and grouped samples, groups with differing bounds, row isolation, and many-group, many-bound allocation checks: Float64 elements allocated stay within the output plus the axis, eligibility allocates none, and doubling the groups doubles the allocation (`src/test/allocations.ts` counts them). Wall-clock times are printed only, never asserted (T05-006) |
+| `unit:frame-plan` | `src/vis/framePlan.test.ts`: every vis × result valid, bars over instant series with unequal timestamps, the bars grid bound (500 series × 1 000 disjoint timestamps gives the notice with allocation linear in the input; exactly `MAX_GRID_CELLS` draws, one more timestamp gives the notice), scalar overrides, heatmap row isolation and restore |
 | `unit:series-rows` | `src/explore/seriesRows.test.ts` |
 | `unit:explore-params` | `src/state/exploreParams.test.ts`, with `useExploreParams.test.tsx` and the `router` explore canonical test |
 | `unit:decode-frames` (prom) | `src/data/decode.test.ts` |

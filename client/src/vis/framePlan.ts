@@ -46,15 +46,17 @@ function sameTimestamps(a: Float64Array, b: Float64Array): boolean {
 
 /**
  * `series` on one grid (`bars`, §4.3): unchanged when they already share their timestamps, else
- * each on the sorted union of all timestamps with NaN where it has no sample.
+ * each on the sorted union of all timestamps with NaN where it has no sample. `null` when that grid
+ * would pass `MAX_GRID_CELLS` (series × distinct timestamps); nothing is allocated for it then.
  */
-export function commonGrid(series: readonly SeriesFrame[]): readonly SeriesFrame[] {
+export function commonGrid(series: readonly SeriesFrame[]): readonly SeriesFrame[] | null {
   const first = series[0];
   if (first === undefined || series.every((s) => sameTimestamps(s.timestamps, first.timestamps))) {
     return series;
   }
   const all = new Set<number>();
   for (const s of series) for (const t of s.timestamps) all.add(t);
+  if (all.size * series.length > MAX_GRID_CELLS) return null;
   const grid = Float64Array.from(all).sort();
   const at = new Map<number, number>();
   grid.forEach((t, i) => at.set(t, i));
@@ -103,6 +105,7 @@ export function framePlan(
   if (vis !== 'heatmap') {
     const shown = isolated === undefined ? r.series : [isolated];
     const series = vis === 'bars' ? commonGrid(shown) : shown;
+    if (series === null) return { spec, data: null, notice: 'tooManyTimestamps' };
     return { spec, data: { kind: 'series', series }, notice: null };
   }
   const heatmap =
