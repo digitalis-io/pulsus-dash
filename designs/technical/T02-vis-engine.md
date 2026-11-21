@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-21 |
+| **Version** | 1.4-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -21,7 +21,8 @@ budgets stand, with these readings:
 | Canvases | One canvas per chart frame (panel), all driven by one engine instance and one GPU device per page; the Atlas and a Lens are one scene on one canvas ([05](../product/05-visualisation-catalogue.md) VIZ-001, [04](../product/04-surfaces.md) SRF-014) |
 | "Browser JavaScript only proxies bytes and events" (§1) | Now: semantic state, layout and DOM are TS (ADR-0014 §2); the engine adapter moves bytes and events and is bound by T01-001. The library ban stands (VIZ-001) |
 | §11 M-UI1 row | Delivered on the interim renderer in M-UI1; the GPU versions land with #68 and #69 (M-UI0 milestone, delivered after the first M-UI1 slice). The Time Ribbon moves to M-UI3 with the Space scenes ([02](../product/02-information-architecture.md) IA-028) |
-| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`, `drawn`; ADR-0014 §3, amended by [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md)) |
+| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`, `drawn`, `commit`; ADR-0014 §3, amended by [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md) and [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md)) |
+| Interim 2D camera (#93) | The Canvas 2D frame holds the 2D camera of §4.6 as render-local state: a view (time window, value range) previewed per frame from resident data, committed by a `commit` event at gesture end (wheel idle 300 ms, pointer up). Time commits become the Context window; a value range is held by the chart component and returned in the spec as `valueRange` ([03](../product/03-interaction-model.md) §4.1 note). The value-label band is held from the first camera move until a layout transition (resize, kind or unit change, a value-axis reset, an outside time change while idle, the pointer leaving the chart), so neither a gesture, its commit nor the refetched data moves the plot under the pointer (T02-021); labels wider than the held band are drawn in compact form (T02-011). The minimum time span is max(1 s, 1 ms per plot px), so whole-ms commits keep the anchor below 0.51 px. Band shrink hysteresis (T02-011), inertia (T02-022) and wheel on an axis band arrive with the engine |
 
 ## 1. Context & problem
 
@@ -100,13 +101,14 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 | [IA-003](../product/02-information-architecture.md#ia-003--scenes-are-trees-of-viewports) | §4.6 | `unit:scene-model` |
 | [IA-014](../product/02-information-architecture.md#ia-014--the-space-camera-transitions-never-page-loads) | §4.6 | `replay:space-transitions` |
 | [IA-028](../product/02-information-architecture.md#ia-028--time-ribbon-in-space-scenes) | §4.6 (Time Ribbon) | `replay:time-ribbon`; `e2e:chrome-layout` |
-| [INT-002](../product/03-interaction-model.md#int-002--cursor-anchored-zoom) | §4.6 | `unit:camera-controller` (100 random wheel steps, < 1 px drift) |
+| [INT-001](../product/03-interaction-model.md#int-001--camera-per-scene-and-camera-modes) | §4.3, §4.6 (2D charts: per-axis camera; interim renderer, #93) | `unit:camera-controller` (X and Y zoom independently); `e2e:chart-zoom` |
+| [INT-002](../product/03-interaction-model.md#int-002--cursor-anchored-zoom) | §4.6 | `unit:camera-controller` (100 random wheel steps, < 1 px drift); `e2e:chart-zoom` (interim renderer, #93) |
 | [INT-003](../product/03-interaction-model.md#int-003--inertia) | §4.6 | `unit:camera-controller` (settle 300 ± 50 ms, no overshoot, interrupt next frame) |
 | [INT-004](../product/03-interaction-model.md#int-004--smooth-programmatic-transitions) | §4.6 | `bench:camera-transition`; `replay:reduced-motion` |
-| [INT-007](../product/03-interaction-model.md#int-007--mouse-and-trackpad-bindings) | §4.6 (co-satisfied with T03) | `replay:mouse-bindings` |
-| [INT-008](../product/03-interaction-model.md#int-008--per-axis-pan-zoom-and-fit) | §4.3 | `replay:per-axis` |
+| [INT-007](../product/03-interaction-model.md#int-007--mouse-and-trackpad-bindings) | §4.6 (co-satisfied with T03) | `replay:mouse-bindings`; `e2e:chart-zoom` (interim renderer, #93) |
+| [INT-008](../product/03-interaction-model.md#int-008--per-axis-pan-zoom-and-fit) | §4.3 | `replay:per-axis`; `e2e:chart-zoom` (interim renderer, #93) |
 | [INT-017](../product/03-interaction-model.md#int-017--time-scrub) | §4.6 | `replay:time-scrub` |
-| [INT-025](../product/03-interaction-model.md#int-025--window-brush) | §4.6 (brush on any time chart; Ribbon gestures) | `e2e:time-range-header` (brush sets the window); `replay:time-ribbon` (Ribbon, from M-UI3) |
+| [INT-025](../product/03-interaction-model.md#int-025--window-brush) | §4.6 (brush on any time chart; Ribbon gestures) | `e2e:time-range-header` (brush sets the window); `replay:time-ribbon` (Ribbon, from M-UI3); `e2e:chart-zoom` (interim renderer, #93) |
 | [INT-026](../product/03-interaction-model.md#int-026--global-time-cursor-and-replay) | §4.3, §4.6 | `replay:crosshair-sync` |
 | [INT-028](../product/03-interaction-model.md#int-028--live-mode) | §4.6 (co-satisfied with T04) | `replay:live-scroll` |
 | [INT-030](../product/03-interaction-model.md#int-030--comparison-baseline-ghost) | §4.3, §4.5 | `golden:gallery` (ghost page); `replay:compare-axis` |
@@ -338,8 +340,16 @@ different axis MUST be pixel-identical before and after.
 
 #### T02-011 — Axis bands do not jitter
 **MUST** — Axis band widths MUST grow immediately and MUST shrink only after 500 ms of stable
-measurement. Bands MUST NOT overlap, and tick labels MUST NOT collide, including across stacked
-lanes.
+measurement, except during a camera hold. A value-label band MUST be at least as wide as the widest
+compact label of its unit (sign, at most four significant characters, an SI prefix, the unit's
+suffix; e.g. `-88.8µ`). A camera hold runs from the first camera move of a gesture until the
+pointer leaves the chart or the layout changes (resize, kind or unit, axis reset, a time change
+not made by the gesture); during it the band keeps its width, T02-021 takes precedence over
+growth, and every tick label wider than the band MUST be drawn in its compact form. A tick
+label MUST NOT be truncated or clipped. Under a hold, a label with no compact form that fits is
+drawn whole inside the plot on a background chip until the hold is released. After a hold the
+band re-measures and full labels return. Bands MUST NOT overlap, and tick labels MUST NOT collide,
+including across stacked lanes.
 
 #### T02-012 — Per-axis interaction is undoable and visible
 **MUST** — Drag, wheel and double-click on an axis band MUST affect only that axis, MUST go through
@@ -771,3 +781,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md) and the revised product text (roadmap Q13): new §0 (one canvas per chart frame with one engine and GPU device, interim renderer until #68/#69, Time Ribbon in Space scenes at M-UI3); Satisfies: IA-020 row replaced by IA-028, INT-025 adds `e2e:time-range-header` |
 | 1.2-rc | 2026-11-20 | #58, owner decision 2026-11-20: T02-005 gives a series with a log-level label ([08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a) that row's token; key hash for everything else |
 | 1.3-rc | 2026-11-21 | #90: `drawn` event and frame id (ADR-0019): §0 Shell overlays row; Related ADRs |
+| 1.4-rc | 2026-11-21 | #93 (owner-delegated decision 2026-11-21): T02-011 amended (minimum band of the widest compact label; compact tick labels during a camera hold, where T02-021 takes precedence; no truncation; under a hold, a label with no fitting compact form is drawn whole inside the plot on a chip, plan review r5); §0 interim 2D camera row; Satisfies INT-001 (2D) and `e2e:chart-zoom`; `commit` in the shell event list (ADR-0020) |

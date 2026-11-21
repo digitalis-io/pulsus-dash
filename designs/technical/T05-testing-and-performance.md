@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-21 |
+| **Version** | 1.12-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -280,7 +280,8 @@ estate, §4.5):
 
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
 gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
-scripted room interactions, with the board editor first (#90). Until the reference lab exists, CI's
+scripted room interactions, with the board editor (#90) and chart gestures, wheel and drag on a
+board panel (#93) as its scenarios. Until the reference lab exists, CI's
 `e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
 fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
 
@@ -690,7 +691,7 @@ instruction counts via `iai-callgrind`, +3 % → fail).
 | `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
 | `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
 | `bench:inp-rooms` | merge once the reference lab ((a), (b)) exists; until then CI's `e2e` Chromium leg runs it report-only (INP, count, slowest interaction) | INP ≤ 200 ms | yes once the lab exists (`INP_GATE=enforce`); until then not blocking |
-| `bench:rooms-long-tasks` (owner: [T08](T08-dom-component-kit.md) §7, PRF-005; `e2e/perf-rooms-long-tasks.spec.ts`; the board editor scenario first, #90) | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab ((a), (b)) exists | interim CI: `ciOver === 0`, no main-thread task over 50 ms wall with over 16 ms thread time (§4.3 trace check; a task without thread time counts); lab: no task over 16 ms wall between the first and last input (`LONG_TASK_GATE=enforce`) | interim CI check: yes, blocks merge now; 16 ms wall: yes once the lab exists (#68), pending until then |
+| `bench:rooms-long-tasks` (owner: [T08](T08-dom-component-kit.md) §7, PRF-005; `e2e/perf-rooms-long-tasks.spec.ts`; the board editor scenario, #90, and chart gestures, #93) | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab ((a), (b)) exists | interim CI: `ciOver === 0`, no main-thread task over 50 ms wall with over 16 ms thread time (§4.3 trace check; a task without thread time counts); lab: no task over 16 ms wall between the first and last input (`LONG_TASK_GATE=enforce`) | interim CI check: yes, blocks merge now; 16 ms wall: yes once the lab exists (#68), pending until then |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
@@ -839,3 +840,4 @@ Meta-testing:
 | 1.9-rc | 2026-11-21 | #61 Part C: §4.3 `bench:inp-rooms` scenario is scripted room interactions in Chromium with INP per document from Event Timing (the board room first, #61); §7.1 lab gate row: merge once the reference lab exists, until then report-only in CI's `e2e` Chromium leg, as `bench:long-tasks` (D-INP-interim; T05-006 unchanged); §7.1 adds `e2e:board-prefs` and `e2e:board-sections` (BFF, PR) |
 | 1.10-rc | 2026-11-21 | #90: §4.3 `bench:rooms-long-tasks` scenario and its interim CI check |
 | 1.11-rc | 2026-11-21 | #90 code review: §7.1 defines `bench:rooms-long-tasks` (owner T08 §7, PRF-005): interim CI check `ciOver === 0` blocking on PRs; 16 ms wall in the reference lab, pending #68 |
+| 1.12-rc | 2026-11-21 | #93: §4.3 chart-gesture scenario |
