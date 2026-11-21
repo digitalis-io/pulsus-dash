@@ -496,3 +496,25 @@ func TestLogReservedBeforeResolution(t *testing.T) {
 		}
 	}
 }
+
+// §3.4: the query_id of a page with more than one request is that of its last request, also when
+// the last response has none (review B r1 finding 1).
+func TestLogPageQueryIDOfLastRequest(t *testing.T) {
+	up := newLogUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Form.Get("limit") != "5000" { // the main fetch: limited at one timestamp
+			w.Header().Set("X-Pulsus-Query-Id", "q-first")
+			writeJSONBody(w, `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"pod":"a"},"values":[["1767229100000000300","x"]]},{"stream":{"pod":"b"},"values":[["1767229100000000300","y"]]}]}}`)
+			return
+		}
+		writeJSONBody(w, `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"pod":"a"},"values":[["1767229100000000300","x"]]},{"stream":{"pod":"b"},"values":[["1767229100000000300","y"]]}]}}`)
+	})
+	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
+	rec := postJSON(h, logRangePath, logBody(`{app="x"}`, `,"limit":1`))
+	p := decodePage(t, rec.Body.Bytes())
+	if n := len(up.requests()); rec.Code != 200 || n != 2 {
+		t.Fatalf("%d after %d requests: %s", rec.Code, n, rec.Body.String())
+	}
+	if id, ok := p.Completeness["query_id"]; ok {
+		t.Errorf("query_id %v, want none: the last request had no query id", id)
+	}
+}
