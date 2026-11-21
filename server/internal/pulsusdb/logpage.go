@@ -156,7 +156,7 @@ func readLogValues(d *upstreamDecoder, lim Limits, lr *logResponse, bytes *int64
 		}
 		if k != tokArrEnd {
 			if k == tokObjStart {
-				err = readCategorised(d, &e, bytes)
+				err = readCategorised(d, lim, &e, bytes)
 			} else {
 				err = d.Skip()
 			}
@@ -179,9 +179,9 @@ func readLogValues(d *upstreamDecoder, lim Limits, lr *logResponse, bytes *int64
 }
 
 // readCategorised reads the members of a categorised entry object whose '{' was read:
-// structuredMetadata and parsed are string maps (redacted and cut like labels, counted towards
-// PageBytes); any other member is skipped.
-func readCategorised(d *upstreamDecoder, e *decodedEntry, bytes *int64) error {
+// structuredMetadata and parsed are string maps (redacted and cut like labels, each pair counted
+// towards PageBytes as it is decoded); any other member is skipped.
+func readCategorised(d *upstreamDecoder, lim Limits, e *decodedEntry, bytes *int64) error {
 	var gotMeta, gotParsed bool
 	for {
 		k, err := d.Next()
@@ -210,17 +210,43 @@ func readCategorised(d *upstreamDecoder, e *decodedEntry, bytes *int64) error {
 			return protocolError() // a repeated member
 		}
 		*seen = true
-		ls, err := readLabels(d)
+		ls, err := readBoundedLabels(d, lim, bytes)
 		if err != nil {
 			return err
-		}
-		for _, l := range ls {
-			*bytes += int64(len(l.Name) + len(l.Value))
 		}
 		if len(ls) > 0 {
 			*dst = ls
 		}
 	}
+}
+
+// readBoundedLabels reads a string map like readLabels, adding each name and value to bytes as it
+// is decoded and stopping with errPageTooLarge at the first pair that crosses Limits.PageBytes.
+func readBoundedLabels(d *upstreamDecoder, lim Limits, bytes *int64) ([]Label, error) {
+	if k, err := d.Next(); err != nil || k != tokObjStart {
+		return nil, orProtocol(err)
+	}
+	var ls []Label
+	for {
+		k, err := d.Next()
+		if err != nil {
+			return nil, err
+		}
+		if k == tokObjEnd {
+			break
+		}
+		name := cutData(d.String())
+		if k, err := d.Next(); err != nil || k != tokString {
+			return nil, orProtocol(err)
+		}
+		l := Label{Name: name, Value: cutData(d.String())}
+		if *bytes += int64(len(l.Name) + len(l.Value)); *bytes > lim.PageBytes {
+			return nil, errPageTooLarge()
+		}
+		ls = append(ls, l)
+	}
+	slices.SortFunc(ls, labelCompare)
+	return ls, nil
 }
 
 // openLogs reads a 200 log query_range response through the decoder its Content-Type selects
