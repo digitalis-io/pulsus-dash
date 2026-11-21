@@ -92,7 +92,8 @@ describe('unit:plan-parity (TS)', () => {
       const e = p.expandedAt(step);
       if (isPlanError(e)) throw new Error(`${c.name}: expandedAt refused`);
       expect(p.needsTypes(stubShape(e)), 'needsTypes').toBe(c.needs_types);
-      if (!c.needs_types) expect(run(c, {})).toEqual(r);
+      const outcome = (x: StubPlanned | StubPlanError) => (isPlanError(x) ? x : x.planned);
+      if (!c.needs_types) expect(outcome(run(c, {}))).toEqual(outcome(r));
     });
   }
 

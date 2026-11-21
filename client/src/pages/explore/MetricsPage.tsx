@@ -12,7 +12,6 @@ import type { PromMetadata } from '../../data/decode';
 import { promGrid } from '../../data/step';
 import type { PromQLEditorHandle } from '../../editor/PromQLEditor';
 import type { Diagnostic } from '../../editor/lang/types';
-import { toSourceIndex } from '../../explore/plan';
 import { promMetadataQuery } from '../../explore/promMetadata';
 import { overQueryLimit } from '../../explore/querySize';
 import {
@@ -26,12 +25,11 @@ import {
 import { useEditorModules } from '../../explore/useEditorModules';
 import { useElementWidth } from '../../explore/useElementWidth';
 import {
-  planFor,
-  plannable,
+  runnable,
   STRING_PLAN,
   useExploreRun,
-  type PlanInputs,
   type Refusal,
+  type RunInputs,
 } from '../../explore/useExploreRun';
 import { t } from '../../i18n/t';
 import { cx } from '../../kit/cx';
@@ -60,17 +58,18 @@ export function MetricsPage() {
   const q = params.q;
 
   const modules = useEditorModules();
+  // The picker's and completion's metadata only: the server reads metric types itself (ADR-0021).
   const metaQ = useQuery(promMetadataQuery(api, tenant));
-  const meta = metaQ.isPending ? null : (metaQ.data?.metrics ?? NO_META);
+  const meta = metaQ.data?.metrics ?? NO_META;
   const [chartRef, widthPx] = useElementWidth<HTMLDivElement>();
   const stepMs =
     widthPx === null ? null : (promGrid(win.fromMs, win.toMs, widthPx)?.stepMs ?? null);
   const rate = params.rate !== 'off';
-  const inputs = useMemo<PlanInputs>(
-    () => ({ lang: modules.lang, meta, stepMs, rate }),
-    [modules.lang, meta, stepMs, rate],
+  const inputs = useMemo<RunInputs>(
+    () => ({ lang: modules.lang, stepMs, rate }),
+    [modules.lang, stepMs, rate],
   );
-  const runReady = modules.editor !== null && plannable(inputs);
+  const runReady = modules.editor !== null && runnable(inputs);
   const run = useExploreRun({ tenant, q, inputs, widthPx, window: win });
 
   // The draft lives in a ref: typing re-renders nothing unless one of the flags below flips.
@@ -126,14 +125,10 @@ export function MetricsPage() {
     }
     // Only a key can reach this while not ready (the button is disabled): the status says why.
     if (!runReady) return;
-    if (planFor(d, inputs)?.tooLong === true) {
-      setRunRefusal('tooLong');
-      return;
-    }
     setRunRefusal(null);
     if (d !== q) set({ q: d }, { replace: false });
     else run.rerun();
-  }, [set, runReady, inputs, q, run]);
+  }, [set, runReady, q, run]);
 
   const onEscape = useCallback(() => {
     runButtonRef.current?.focus();
@@ -164,8 +159,8 @@ export function MetricsPage() {
       shown === null
         ? null
         : autoVis({
-            histogram: shown.plan.histogram,
-            rateApplied: shown.plan.rateApplied,
+            histogram: shown.planned.histogram,
+            rateApplied: shown.planned.rateApplied,
             result: shown.result,
           }),
     [shown],
@@ -179,7 +174,7 @@ export function MetricsPage() {
     return framePlan(vis, shown.result, {
       isolatedKey,
       title: t('explore.result.title'),
-      rateApplied: shown.plan.rateApplied,
+      rateApplied: shown.planned.rateApplied,
     });
   }, [shown, vis, isolatedKey]);
   const rows = useMemo(
@@ -198,14 +193,14 @@ export function MetricsPage() {
   );
 
   const lang = modules.lang;
-  const runPlan = run.plan;
   const runError = run.error;
+  // The server maps PulsusDB's position to the raw text (ADR-0021 §3): the mapping is the identity.
   const diagnostics = useMemo(
     () =>
-      !dirty && runError !== null && runPlan !== null && lang !== null
-        ? lang.diagnosticsOf(q, runError, (i) => toSourceIndex(runPlan, i), runPlan.query)
+      !dirty && runError !== null && lang !== null
+        ? lang.diagnosticsOf(q, runError, (i) => i, q)
         : NO_DIAGNOSTICS,
-    [dirty, runError, runPlan, lang, q],
+    [dirty, runError, lang, q],
   );
   const view = statusView({
     runRefusal,
@@ -224,7 +219,7 @@ export function MetricsPage() {
         tenant={tenant}
         q={q}
         source={source}
-        meta={meta ?? NO_META}
+        meta={meta}
         diagnostics={diagnostics}
         onDraft={onDraft}
         onRun={onRun}

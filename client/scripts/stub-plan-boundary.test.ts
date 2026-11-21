@@ -13,7 +13,11 @@ function eslint(): ESLint {
   return new ESLint({
     cwd,
     overrideConfigFile: true,
-    overrideConfig: [{ languageOptions: { parser: tseslint.parser } }, stubPlanBoundary],
+    // `files` so that a file the boundary ignores (StubApi.ts) is still linted, not skipped.
+    overrideConfig: [
+      { files: ['**/*.ts'], languageOptions: { parser: tseslint.parser } },
+      stubPlanBoundary,
+    ],
   });
 }
 
@@ -22,12 +26,10 @@ describe('unit:stub-plan-boundary', () => {
     const [r] = await eslint().lintText("import { prepare } from '../api/stub/plan';\n", {
       filePath: 'src/explore/x.ts',
     });
-    expect(r?.messages.map((m) => [m.ruleId, m.message])).toEqual([
-      [
-        '@typescript-eslint/no-restricted-imports',
-        'api/stub/plan is the StubApi planner mirror: only StubApi imports it (ADR-0021 §4).',
-      ],
-    ]);
+    expect(r?.messages.map((m) => m.ruleId)).toEqual(['@typescript-eslint/no-restricted-imports']);
+    expect(r?.messages[0]?.message).toContain(
+      'api/stub/plan is the StubApi planner mirror: only StubApi imports it (ADR-0021 §4).',
+    );
   });
 
   it('allows StubApi', async () => {

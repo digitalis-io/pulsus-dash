@@ -1,15 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import type { InstantResult, RangeResult } from '../data/decode';
+import type { InstantResult, PlannedQuery, RangeResult } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { EMPTY_COMPLETENESS, fixture, H1, N } from '../test/histogramFixtures';
 import { autoVis, chooseVis, fromInstant, fromRange, type ExploreResult } from './autovis';
 
+const PLANNED: PlannedQuery = {
+  query: 'q',
+  expanded: 'q',
+  bytes: 1,
+  valueType: 'vector',
+  rateCandidate: false,
+  rateApplied: false,
+  histogram: false,
+};
+
 function range(series: readonly SeriesFrame[], stepMs = 5000): RangeResult {
-  return { startMs: 0, endMs: 10_000, stepMs, series, completeness: EMPTY_COMPLETENESS };
+  return {
+    planned: PLANNED,
+    startMs: 0,
+    endMs: 10_000,
+    stepMs,
+    series,
+    completeness: EMPTY_COMPLETENESS,
+  };
 }
 
 function instant(series: readonly SeriesFrame[], resultType: 'vector' | 'matrix' = 'vector') {
   const r: InstantResult = {
+    planned: PLANNED,
     kind: 'series',
     resultType,
     series,
@@ -56,6 +74,7 @@ describe('unit:autovis-table', () => {
 
   it('rule 7: a scalar, or an instant result of one series with one point, is a stat', () => {
     const s1: InstantResult = {
+      planned: PLANNED,
       kind: 'scalar',
       scalar: { value: Infinity, timestampMs: 0 },
       atMs: 0,
@@ -96,6 +115,7 @@ describe('unit:autovis-table', () => {
     expect(chooseVis('bars', { vis: 'heatmap', rule: 5 })).toBe('bars');
     expect(chooseVis('auto', { vis: 'heatmap', rule: 5 })).toBe('heatmap');
     const str: InstantResult = {
+      planned: PLANNED,
       kind: 'string',
       value: 'x',
       timestampMs: 0,
@@ -116,6 +136,7 @@ describe('unit:autovis-table', () => {
     });
     expect(
       fromInstant({
+        planned: PLANNED,
         kind: 'scalar',
         scalar: { value: 1, timestampMs: 2 },
         atMs: 2,
@@ -128,6 +149,7 @@ describe('unit:autovis-table', () => {
     });
     expect(
       fromInstant({
+        planned: PLANNED,
         kind: 'string',
         value: 's',
         timestampMs: 2,

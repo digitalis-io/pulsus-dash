@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
 import { STUB_PROM_METRIC_NAMES } from '../../api/stubData';
 import { ApiError } from '../../api/types';
-import type { InstantResult, PromMetadata } from '../../data/decode';
+import type { InstantResult, PromMetadata, RangeResult } from '../../data/decode';
 import { seriesName } from '../../data/frames';
 import { queryBytes } from '../../explore/querySize';
 import {
@@ -839,7 +839,8 @@ describe('unit:explore-run-size', () => {
     });
     expect(spy.mock.calls[0]?.[1].query).toBe(raw);
     expect(queryBytes(raw)).toBe(65_526);
-    const planned = (await spy.mock.results[0]?.value)?.planned;
+    const result = (await spy.mock.results[0]?.value) as RangeResult | undefined;
+    const planned = result?.planned;
     expect(planned?.bytes).toBe(65_536);
     expect(planned?.query.startsWith('rate(x_total{a="')).toBe(true);
     expect(planned?.query.endsWith('"}[1m])')).toBe(true);

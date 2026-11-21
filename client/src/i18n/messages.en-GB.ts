@@ -229,8 +229,7 @@ export const messages = {
   'explore.query.loading': 'Loading the editor…',
   'explore.query.loadFailed': 'The query editor could not be loaded. Reload the page to try again.',
   'explore.query.run': 'Run',
-  'explore.query.waiting':
-    'Run is available once the metric types have loaded and the chart has a size.',
+  'explore.query.waiting': 'Run is available once the chart has a size.',
   'explore.query.runHint': 'Shift+Enter',
   'explore.picker.label': 'Metric',
   'explore.picker.placeholder': 'Find a metric',

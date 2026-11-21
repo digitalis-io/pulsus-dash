@@ -1,19 +1,27 @@
 /**
- * The StubApi planner mirror (plan #112 §3.7, ADR-0021 §4): the server's `prom.Plan` rules for
- * `npm run dev` and the tests, run against the shared fixture `wire/fixtures/plan/promql.json`.
- * Only `StubApi` imports it (an ESLint rule forbids other importers): in http mode the server
- * plans and the client reads `planned`.
+ * The StubApi planner mirror (plan #112 §3.7, ADR-0021 §4): the rules of the server's `prom.Plan`
+ * for `npm run dev` and the tests, run against the shared fixture `wire/fixtures/plan/promql.json`
+ * by `plan.test.ts` as the Go planner is. Only `StubApi` imports it (an ESLint rule forbids other
+ * importers): in http mode the server plans and the client reads `planned`.
+ *
+ * The raw text is encoded once and planned on its UTF-8 bytes, as Go does: offsets, sizes and the
+ * position map are in bytes.
  */
-import type { PlannedQuery } from '../../data/decode';
+import type { PlannedQuery, PromMetadata } from '../../data/decode';
 import type { QueryShape, ValueType } from '../../editor/lang/types';
-import type { MetricKind } from '../../explore/metricKind';
-import type { PromMetadata } from '../../data/decode';
+import { kindOfType, metricKind, type MetricKind } from '../../explore/metricKind';
 import type { FieldError } from '../types';
 
 export const MAX_RAW_BYTES = 131_072,
   MAX_SENT_BYTES = 65_536,
   MAX_VARS = 64,
   MAX_VALUE_BYTES = 4_096;
+/** The processing cap (the request-body limit, T06-021). */
+const MAX_EXPANDED_BYTES = 2 * 1024 * 1024;
+/** The scrape interval of the rate window until a per-binding one exists. */
+const DEFAULT_SCRAPE_MS = 15_000;
+const MAX_NAME_LEN = 64;
+
 /** The Go constant `prom.WarnTypesUnavailable`, byte for byte. */
 export const WARN_TYPES_UNAVAILABLE =
   'pulsus-dash: metric types unavailable, so only names ending in _total are rated (metric_types_unavailable)';
@@ -57,56 +65,518 @@ export interface StubClass {
 }
 
 export interface Prepared {
+  /** The placeholder text: the byte guard and Classify read it, nothing sends it. */
   readonly substituted: string;
   needsTypes(s: ByteShape): boolean;
   classify(s: ByteShape): StubClass;
+  /** The text with the macros at `stepMs`, before the rate rewrite. */
   expandedAt(stepMs: number): string | StubPlanError;
   plan(stepMs: number, s: ByteShape, t: MetricTypes): StubPlanned | StubPlanError;
 }
 
-const notImplemented = (): never => {
-  throw new Error('not implemented');
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+/** UTF-8 bytes of `s`; a lone surrogate counts 3 (as `TextEncoder`'s U+FFFD). */
+export function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      const next = s.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        n += 4;
+        i += 1;
+      } else n += 3;
+    } else n += 3;
+  }
+  return n;
+}
+
+// The byte guard (pulsusdb.reservedIn, T07-020 v1): a reserved metric name as a whole word, or the
+// exact bytes source="pulsus-dash"; strings included.
+const RESERVED_NAMES = ['ALERTS_FOR_STATE', 'ALERTS', 'pulsus_anomaly_score'] as const;
+const RESERVED_SOURCE = 'source="pulsus-dash"';
+const RESERVED_FLOORS: Readonly<Record<string, number>> = {
+  ALERTS: 15_000,
+  ALERTS_FOR_STATE: 15_000,
+  pulsus_anomaly_score: 300_000,
 };
 
+const wordChar = (c: string | undefined): boolean => c !== undefined && /^[A-Za-z0-9_:]$/.test(c);
+
+function wholeWord(s: string, w: string): boolean {
+  for (let i = s.indexOf(w); i >= 0; i = s.indexOf(w, i + 1)) {
+    if (!wordChar(s[i - 1]) && !wordChar(s[i + w.length])) return true;
+  }
+  return false;
+}
+
 /** The server's byte guard (`pulsusdb.reservedIn`), byte for byte. */
-export function reservedIn(_text: string): string | null {
-  return notImplemented();
+export function reservedIn(text: string): string | null {
+  for (const n of RESERVED_NAMES) if (wholeWord(text, n)) return n;
+  return text.includes(RESERVED_SOURCE) ? RESERVED_SOURCE : null;
 }
 
-export function floorStep(_stepMs: number, _floorMs: number): number {
-  return notImplemented();
+/** `stepMs` when `floorMs ≤ 0`, else the least multiple of `floorMs` at least `stepMs` (T07 §4.3). */
+export function floorStep(stepMs: number, floorMs: number): number {
+  if (floorMs <= 0 || stepMs <= 0) return stepMs;
+  return Math.ceil(stepMs / floorMs) * floorMs;
 }
 
-export function prepare(_i: PlanInputs): Prepared | StubPlanError {
-  return notImplemented();
+/** `max(4 × step, step + S, 4 × S)`, S the default scrape interval (15 s). */
+export function rateWindowMs(stepMs: number): number {
+  return Math.max(4 * stepMs, stepMs + DEFAULT_SCRAPE_MS, 4 * DEFAULT_SCRAPE_MS);
+}
+
+const DURATION_UNITS = [
+  ['d', 86_400_000],
+  ['h', 3_600_000],
+  ['m', 60_000],
+  ['s', 1_000],
+] as const;
+
+/** The largest of d, h, m, s that divides `ms` (> 0), else `<ms>ms`. */
+export function formatDuration(ms: number): string {
+  for (const [unit, size] of DURATION_UNITS) {
+    if (ms > 0 && ms % size === 0) return `${String(ms / size)}${unit}`;
+  }
+  return `${String(ms)}ms`;
+}
+
+export function kindOf(name: string, t: MetricTypes): MetricKind {
+  return metricKind(name, (n) => (Object.hasOwn(t, n) ? kindOfType(t[n]) : null));
+}
+
+/** Each name's first entry; a type not one of the kinds is unknown; no entry is absent. */
+export function typesFromMetadata(m: PromMetadata['metrics']): MetricTypes {
+  const out: Record<string, MetricKind> = {};
+  for (const [name, list] of Object.entries(m)) {
+    const k = kindOfType(list[0]?.type);
+    if (k !== null) out[name] = k;
+  }
+  return out;
+}
+
+/** A Lezer shape (UTF-16 offsets) in UTF-8 byte offsets. */
+export function byteShape(text: string, s: QueryShape): ByteShape {
+  const b = s.bareSelector;
+  return {
+    bare:
+      b === null
+        ? null
+        : {
+            metric: b.metric,
+            from: utf8Length(text.slice(0, b.from)),
+            to: utf8Length(text.slice(0, b.to)),
+          },
+    metrics: s.metrics,
+    hasHistogramQuantile: s.hasHistogramQuantile,
+    valueType: s.valueType,
+  };
 }
 
 export function isPlanError(x: unknown): x is StubPlanError {
   return typeof x === 'object' && x !== null && 'status' in x && 'message' in x;
 }
 
-/** A Lezer shape (UTF-16 offsets) in UTF-8 byte offsets. */
-export function byteShape(_text: string, _s: QueryShape): ByteShape {
-  return notImplemented();
+// The segment map (plan #112 §4.2).
+interface Segment {
+  readonly sentFrom: number;
+  readonly sentLen: number;
+  readonly rawFrom: number;
+  readonly rawLen: number;
+  readonly kind: 'copy' | 'insert' | 'added';
 }
 
-export function rateWindowMs(_stepMs: number): number {
-  return notImplemented();
+function at(segs: readonly Segment[], total: number, s: number): number | null {
+  if (!Number.isInteger(s) || s < 0) return null;
+  for (const g of segs) {
+    if (g.kind === 'added' || s < g.sentFrom || s >= g.sentFrom + g.sentLen) continue;
+    return g.kind === 'copy' ? g.rawFrom + (s - g.sentFrom) : g.rawFrom;
+  }
+  const last = segs.at(-1);
+  return last !== undefined && s === total && last.kind !== 'added'
+    ? last.rawFrom + last.rawLen
+    : null;
 }
 
-export function formatDuration(_ms: number): string {
-  return notImplemented();
+interface Macros {
+  readonly interval: Uint8Array;
+  readonly rateInterval: Uint8Array;
 }
 
-export function kindOf(_name: string, _t: MetricTypes): MetricKind {
-  return notImplemented();
+const PLACEHOLDERS: Macros = { interval: encoder.encode('1s'), rateInterval: encoder.encode('1s') };
+
+function macrosAt(stepMs: number): Macros {
+  return {
+    interval: encoder.encode(formatDuration(stepMs)),
+    rateInterval: encoder.encode(formatDuration(rateWindowMs(stepMs))),
+  };
 }
 
-export function typesFromMetadata(_m: PromMetadata['metrics']): MetricTypes {
-  return notImplemented();
+interface Substitution {
+  readonly size: number;
+  readonly missing: readonly string[];
+  readonly macro: boolean;
+  readonly bytes: Uint8Array;
+  readonly segs: readonly Segment[];
 }
 
-/** UTF-8 bytes of `s`; a lone surrogate counts 3 (as `TextEncoder`'s U+FFFD). */
-export function utf8Length(_s: string): number {
-  return notImplemented();
+const DOLLAR = 0x24,
+  BRACE_OPEN = 0x7b,
+  BRACE_CLOSE = 0x7d,
+  BACKSLASH = 0x5c,
+  DQUOTE = 0x22,
+  SQUOTE = 0x27,
+  BACKTICK = 0x60;
+
+const isNameStart = (b: number | undefined): boolean =>
+  b !== undefined && (b === 0x5f || (b >= 0x61 && b <= 0x7a) || (b >= 0x41 && b <= 0x5a));
+const isNameByte = (b: number | undefined): boolean =>
+  isNameStart(b) || (b !== undefined && b >= 0x30 && b <= 0x39);
+
+/** A reference at raw[i] === '$': its name and end, or null ($ alone, ${ without a close). */
+function reference(raw: Uint8Array, i: number): { name: string; end: number } | null {
+  let j = i + 1;
+  const braced = raw[j] === BRACE_OPEN;
+  if (braced) j++;
+  if (!isNameStart(raw[j])) return null;
+  let k = j;
+  while (isNameByte(raw[k])) k++;
+  const name = decoder.decode(raw.subarray(j, k));
+  if (braced) {
+    if (raw[k] !== BRACE_CLOSE) return null;
+    k++;
+  }
+  return { name, end: k };
+}
+
+function escaped(v: Uint8Array, quote: number): Uint8Array {
+  if (quote !== DQUOTE && quote !== SQUOTE) return v;
+  let n = v.length;
+  for (const b of v) if (b === BACKSLASH || b === quote) n++;
+  if (n === v.length) return v;
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const b of v) {
+    if (b === BACKSLASH || b === quote) out[o++] = BACKSLASH;
+    out[o++] = b;
+  }
+  return out;
+}
+
+/** One scan of the raw bytes (plan #112 §4.2); `build` false only counts the output. */
+function substitute(
+  raw: Uint8Array,
+  vars: ReadonlyMap<string, Uint8Array>,
+  m: Macros,
+  build: boolean,
+): Substitution {
+  const parts: Uint8Array[] = [];
+  const segs: Segment[] = [];
+  const missing: string[] = [];
+  let size = 0;
+  let macro = false;
+  let copyFrom = 0;
+  const flush = (to: number) => {
+    if (to <= copyFrom) return;
+    if (build) {
+      const last = segs.at(-1);
+      if (
+        last?.kind === 'copy' &&
+        last.sentFrom + last.sentLen === size &&
+        last.rawFrom + last.rawLen === copyFrom
+      ) {
+        segs[segs.length - 1] = {
+          ...last,
+          sentLen: last.sentLen + to - copyFrom,
+          rawLen: last.rawLen + to - copyFrom,
+        };
+      } else
+        segs.push({
+          sentFrom: size,
+          sentLen: to - copyFrom,
+          rawFrom: copyFrom,
+          rawLen: to - copyFrom,
+          kind: 'copy',
+        });
+      parts.push(raw.subarray(copyFrom, to));
+    }
+    size += to - copyFrom;
+  };
+  let quote = 0;
+  for (let i = 0; i < raw.length;) {
+    const c = raw[i];
+    if (c === DOLLAR) {
+      const ref = reference(raw, i);
+      if (ref === null) {
+        i++;
+        continue;
+      }
+      let value: Uint8Array | null = null;
+      if (ref.name === '__interval') {
+        value = m.interval;
+        macro = true;
+      } else if (ref.name === '__rate_interval') {
+        value = m.rateInterval;
+        macro = true;
+      } else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
+        value = vars.get(ref.name) ?? null;
+        if (value === null && !missing.includes(ref.name)) missing.push(ref.name);
+      }
+      if (value === null) {
+        i = ref.end;
+        continue;
+      }
+      flush(i);
+      const v = escaped(value, quote);
+      if (build) {
+        segs.push({
+          sentFrom: size,
+          sentLen: v.length,
+          rawFrom: i,
+          rawLen: ref.end - i,
+          kind: 'insert',
+        });
+        parts.push(v);
+      }
+      size += v.length;
+      i = ref.end;
+      copyFrom = ref.end;
+      continue;
+    }
+    if (quote === 0) {
+      if (c === DQUOTE || c === SQUOTE || c === BACKTICK) quote = c;
+    } else if (quote === BACKTICK) {
+      if (c === BACKTICK) quote = 0;
+    } else if (c === BACKSLASH) {
+      i += 2;
+      continue;
+    } else if (c === quote) quote = 0;
+    i++;
+  }
+  flush(raw.length);
+  let bytes = new Uint8Array(0);
+  if (build) {
+    bytes = new Uint8Array(size);
+    let o = 0;
+    for (const p of parts) {
+      bytes.set(p, o);
+      o += p.length;
+    }
+  }
+  return { size, missing, macro, bytes, segs };
+}
+
+const pointerToken = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
+
+function inputError(pointer: string, messageKey: string, message: string): StubPlanError {
+  return { status: 400, message, fields: [{ pointer, messageKey }] };
+}
+
+const NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+function byteOrder(a: string, b: string): number {
+  const x = encoder.encode(a);
+  const y = encoder.encode(b);
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return x.length - y.length;
+}
+
+/** Rows 2–5 of §3.1 (a JS string is always UTF-8 once encoded: row 1 cannot apply). */
+function checkInputs(i: PlanInputs, rawBytes: number): StubPlanError | null {
+  if (rawBytes === 0 || rawBytes > MAX_RAW_BYTES)
+    return inputError('/query', 'field.range', 'query must be 1 to 131072 bytes');
+  const names = Object.keys(i.vars);
+  if (names.length > MAX_VARS)
+    return inputError('/vars', 'field.range', 'vars must have at most 64 entries');
+  for (const n of names.sort(byteOrder)) {
+    if (!NAME.test(n))
+      return inputError(
+        `/vars/${pointerToken(n)}`,
+        'field.pattern',
+        'a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$',
+      );
+    if (utf8Length(i.vars[n] ?? '') > MAX_VALUE_BYTES)
+      return inputError(
+        `/vars/${pointerToken(n)}`,
+        'field.range',
+        'a variable value must be UTF-8 and at most 4096 bytes',
+      );
+  }
+  return null;
+}
+
+function classifyShape(s: ByteShape): StubClass {
+  const reserved = s.metrics.filter((m) => Object.hasOwn(RESERVED_FLOORS, m));
+  const floorMs = Math.max(0, ...reserved.map((m) => RESERVED_FLOORS[m] ?? 0));
+  const source =
+    reserved.length === 0
+      ? 'pulsus_db'
+      : reserved.length === s.metrics.length
+        ? 'virtual'
+        : 'mixed';
+  return { source, reserved, floorMs };
+}
+
+const isCounter = (n: string, t: MetricTypes): boolean =>
+  n.endsWith('_total') || kindOf(n, t) === 'counter';
+
+function isHistogram(n: string, t: MetricTypes): boolean {
+  if (!n.endsWith('_bucket')) return false;
+  const k = kindOf(n, t);
+  return k === 'histogram' || k === 'unknown';
+}
+
+/** Prepare: rows 1–5 and 7–9 of §3.1, the placeholder substitution (plan #112 §4.1). */
+export function prepare(i: PlanInputs): Prepared | StubPlanError {
+  const raw = encoder.encode(i.query);
+  const bad = checkInputs(i, raw.length);
+  if (bad !== null) return bad;
+  const vars = new Map(Object.entries(i.vars).map(([k, v]) => [k, encoder.encode(v)] as const));
+  const count = substitute(raw, vars, PLACEHOLDERS, false);
+  if (count.missing.length > 0) {
+    return {
+      status: 400,
+      message: `no value for variable $${count.missing.join(', $')}`,
+      fields: count.missing.map((n) => ({
+        pointer: `/vars/${pointerToken(n)}`,
+        messageKey: 'variable.missing',
+      })),
+    };
+  }
+  if (count.macro && i.stepMs === 0)
+    return inputError(
+      '/step_ms',
+      'field.required',
+      'step_ms is required for $__interval and $__rate_interval',
+    );
+  if (count.size > MAX_EXPANDED_BYTES) {
+    return {
+      status: 413,
+      message: 'the substituted query is over 2097152 bytes, the most the server processes',
+      fields: [{ pointer: '/query', messageKey: 'query.too_large_to_plan' }],
+      hint: { reason: 'processing_cap' },
+    };
+  }
+  const substituted = decoder.decode(substitute(raw, vars, PLACEHOLDERS, true).bytes);
+  const expanded = new Map<number, Substitution>();
+  const sub = (stepMs: number): Substitution => {
+    let s = expanded.get(stepMs);
+    if (s === undefined) {
+      s = substitute(raw, vars, macrosAt(stepMs), true);
+      expanded.set(stepMs, s);
+    }
+    return s;
+  };
+  return {
+    substituted,
+    needsTypes(s) {
+      if (s.bare !== null) return !s.bare.metric.endsWith('_total');
+      return !s.hasHistogramQuantile && s.metrics.some((m) => m.endsWith('_bucket'));
+    },
+    classify: classifyShape,
+    expandedAt: (stepMs) => decoder.decode(sub(stepMs).bytes),
+    plan(stepMs, s, types) {
+      if ((i.kind === 'range' && stepMs <= 0) || stepMs < 0)
+        return inputError('/step_ms', 'field.range', 'step_ms must be positive');
+      const e = sub(stepMs);
+      const expandedText = decoder.decode(e.bytes);
+      interface Facts {
+        readonly query: string;
+        readonly rw: readonly Segment[];
+        readonly rateCandidate: boolean;
+        readonly rateApplied: boolean;
+        readonly histogram: boolean;
+      }
+      const asIs: Facts = {
+        query: expandedText,
+        rw: [{ sentFrom: 0, sentLen: e.size, rawFrom: 0, rawLen: e.size, kind: 'copy' }],
+        rateCandidate: false,
+        rateApplied: false,
+        histogram: false,
+      };
+      const rated = stepMs > 0 && i.rate;
+      const bare = s.bare;
+      const w = (): string => formatDuration(rateWindowMs(stepMs));
+      // A wrap sends the selector's exact bytes; the bytes of `expanded` outside it are dropped.
+      const wrap = (
+        b: NonNullable<ByteShape['bare']>,
+        prefix: string,
+        suffix: string,
+        histogram: boolean,
+      ): Facts => {
+        const span = e.bytes.subarray(b.from, b.to);
+        return {
+          query: prefix + decoder.decode(span) + suffix,
+          rw: [
+            { sentFrom: 0, sentLen: prefix.length, rawFrom: 0, rawLen: 0, kind: 'added' },
+            {
+              sentFrom: prefix.length,
+              sentLen: span.length,
+              rawFrom: b.from,
+              rawLen: span.length,
+              kind: 'copy',
+            },
+            {
+              sentFrom: prefix.length + span.length,
+              sentLen: suffix.length,
+              rawFrom: 0,
+              rawLen: 0,
+              kind: 'added',
+            },
+          ],
+          rateCandidate: true,
+          rateApplied: true,
+          histogram,
+        };
+      };
+      let f: Facts;
+      if (bare !== null && isHistogram(bare.metric, types)) {
+        f = rated
+          ? wrap(bare, 'sum by (le) (rate(', `[${w()}]))`, true)
+          : { ...asIs, rateCandidate: true };
+      } else if (bare !== null && isCounter(bare.metric, types)) {
+        f = rated ? wrap(bare, 'rate(', `[${w()}])`, false) : { ...asIs, rateCandidate: true };
+      } else {
+        const histogram = !s.hasHistogramQuantile && s.metrics.some((m) => isHistogram(m, types));
+        f = { ...asIs, histogram };
+      }
+      const { query, rateCandidate, rateApplied, histogram } = f;
+      const bytes = utf8Length(query);
+      const planned: PlannedQuery = {
+        query,
+        expanded: expandedText,
+        bytes,
+        valueType: s.valueType,
+        rateCandidate,
+        rateApplied,
+        histogram,
+        ...(stepMs > 0 ? { stepMs } : {}),
+        ...(rateApplied ? { rateWindowMs: rateWindowMs(stepMs) } : {}),
+      };
+      if (bytes > MAX_SENT_BYTES) {
+        return {
+          status: 413,
+          message: 'the planned query is over 65536 bytes',
+          fields: [{ pointer: '/query', messageKey: 'query.sent_too_large' }],
+          planned,
+        };
+      }
+      const map = f.rw;
+      return {
+        planned,
+        toSource: (sent) => {
+          const x = at(map, bytes, sent);
+          return x === null ? null : at(e.segs, e.size, x);
+        },
+      };
+    },
+  };
 }

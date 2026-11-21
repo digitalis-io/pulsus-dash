@@ -6,12 +6,30 @@
  */
 export type MetricKind = 'counter' | 'gauge' | 'histogram' | 'summary' | 'unknown';
 
+const KINDS: readonly MetricKind[] = ['counter', 'gauge', 'histogram', 'summary', 'unknown'];
+const SUFFIXES = ['_bucket', '_count', '_sum', '_total'] as const;
+
 /** Undefined → null; a type that is not one of the kinds → `'unknown'`. */
-export function kindOfType(_type: string | undefined): MetricKind | null {
-  throw new Error('not implemented');
+export function kindOfType(type: string | undefined): MetricKind | null {
+  if (type === undefined) return null;
+  return KINDS.find((k) => k === type) ?? 'unknown';
 }
 
-/** The kind of `name`, given `own(n)`: the kind of `n`'s own metadata entry, or null. */
-export function metricKind(_name: string, _own: (name: string) => MetricKind | null): MetricKind {
-  throw new Error('not implemented');
+/**
+ * The kind of `name`, given `own(n)` (the kind of `n`'s own metadata entry, or null): its own kind;
+ * else that of its base name without one of the suffixes, where a `_count` or `_sum` of a histogram
+ * or summary is a counter; a name with neither is unknown.
+ */
+export function metricKind(name: string, own: (name: string) => MetricKind | null): MetricKind {
+  const k = own(name);
+  if (k !== null) return k;
+  for (const suffix of SUFFIXES) {
+    if (!name.endsWith(suffix)) continue;
+    const base = own(name.slice(0, -suffix.length));
+    if (base === null) return 'unknown';
+    if ((suffix === '_count' || suffix === '_sum') && (base === 'histogram' || base === 'summary'))
+      return 'counter';
+    return base;
+  }
+  return 'unknown';
 }

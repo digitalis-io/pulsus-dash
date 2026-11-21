@@ -79,10 +79,10 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
   const shown = p.run.shown;
   const shimmer = useDelayedFlag(p.run.fetching, SHIMMER_DELAY_MS);
   const empty = p.q === '';
-  const rateCandidate = (p.run.plan ?? shown?.plan)?.rateCandidate === true;
-  const sent = shown !== null && shown.plan.query !== shown.text ? shown.plan.query : null;
+  const rateCandidate = shown?.planned.rateCandidate === true;
+  const sent = shown !== null && shown.planned.query !== shown.text ? shown.planned.query : null;
   const unitOf =
-    shown?.plan.rateApplied === true
+    shown?.planned.rateApplied === true
       ? ({ kind: 'suffix', suffix: '/s' } as const)
       : ({ kind: 'none' } as const);
   return (

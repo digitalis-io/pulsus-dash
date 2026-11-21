@@ -37,6 +37,9 @@ export function errorView(error: unknown, diagnostics: readonly Diagnostic[]): E
       return plain(t('explore.error.network'));
     case 'notFound':
       return plain(t('explore.error.notFound'));
+    case 'queryTooLong':
+      // The server's 413 on the planned text (plan #112 §3.10): the 64 KiB text, no Narrow.
+      return plain(refusalText('tooLong'));
     default:
       return plain(`${t('explore.error.unknown')}: ${error.message}`);
   }

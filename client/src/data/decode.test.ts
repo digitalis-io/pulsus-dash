@@ -89,6 +89,15 @@ describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
 
   it('decodes a string result', () => {
     const r = decodeInstant({
+      planned: {
+        query: '"hello"',
+        expanded: '"hello"',
+        bytes: 7,
+        value_type: 'string',
+        rate_candidate: false,
+        rate_applied: false,
+        histogram: false,
+      },
       result_type: 'string',
       at: 5,
       frames: [],

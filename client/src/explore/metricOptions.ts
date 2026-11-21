@@ -5,7 +5,7 @@
  */
 import type { PromMetadata } from '../data/decode';
 import { t } from '../i18n/t';
-import { metricType } from './plan';
+import { kindOfType, metricKind } from './metricKind';
 
 export const PICKER_OPTIONS = 100;
 
@@ -29,7 +29,9 @@ function helpOf(name: string, meta: PromMetadata['metrics']): string {
 }
 
 function describe(name: string, meta: PromMetadata['metrics']): string {
-  const k = metricType(name, meta);
+  const k = metricKind(name, (n) =>
+    Object.hasOwn(meta, n) ? kindOfType(meta[n]?.[0]?.type) : null,
+  );
   const type = k === 'unknown' ? '' : k;
   const help = helpOf(name, meta);
   if (type !== '' && help !== '') return t('explore.picker.description', { type, help });
