@@ -3,9 +3,12 @@
  *
  * - **Views.** Each view is stamped with a navigation time that strictly increases within the app
  *   (even if the clock steps back) and is sent at once, with no queue. The server keeps each
- *   board's greatest time, so Recent follows navigation order within this app whatever order the
- *   requests commit in. A request is aborted after `VIEW_TIMEOUT_MS`; the abort only frees the
- *   connection, since the server may still commit it.
+ *   board's greatest time, so while the stamps are inside the server's window (now − 1 day …
+ *   now + 5 min) Recent follows navigation order within this app whatever order the requests
+ *   commit in. A stamp outside the window is clamped to its edge and orders by the server's
+ *   transaction start time, best effort; across app instances the order is best effort, subject
+ *   to clock skew (D-RECENT-window). A request is aborted after `VIEW_TIMEOUT_MS`; the abort only
+ *   frees the connection, since the server may still commit it.
  * - **Reconciliation.** After an ambiguous failure (the timeout, `network`, or `unknown`, which
  *   covers 5xx) one timer per app refetches Recent at the request's send time +
  *   `VIEW_TIMEOUT_MS` + `RECONCILE_DELAY_MS`; several pending reconciliations coalesce into the

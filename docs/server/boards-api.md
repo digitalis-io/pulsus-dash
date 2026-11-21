@@ -234,9 +234,13 @@ it, newest first:
   (now is the transaction's start, `now()`); without `at`, it is now. A fast client clock can
   therefore not pin a board at the top for more than 5 minutes.
 - The greater of the stored and the new time wins, so a view whose request commits late (for
-  example after the client gave up waiting) never moves a board above a later view.
-- On an equal time, the later write sorts first: a view whose time is within 1 ms of another
-  board's is stored 1 µs after it.
+  example after the client gave up waiting) never moves a board above a later view of the same
+  app instance, as long as both times are inside the window. Clamped views (and views without
+  `at`) order by the transaction start, best effort, which is not commit order; views from other
+  browsers or app instances order by their clocks, best effort.
+- On an equal time, the later write sorts first: when the new time falls in the same millisecond
+  as other boards' times, those keep their order a microsecond apart below it and the new view
+  takes the millisecond's last microsecond. A tie never moves a view into a later millisecond.
 
 **Ordering guarantee:** Recent follows navigation order within one app instance (stamps are
 monotonic per app); across browsers or app instances the order is best effort and subject to clock

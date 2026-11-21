@@ -325,7 +325,8 @@ func TestBoardPrefs(t *testing.T) {
 			if _, _, b := do(t, s, "GET", recent+"?limit=2", nil); refUIDs(t, b) != list("C", "B") {
 				t.Errorf("recent?limit=2 = %s, want [C B]", b)
 			}
-			// Plan #61 Part C §3.9: the client's navigation time orders Recent, whatever the commit order.
+			// Plan #61 Part C §3.9: in-window navigation times of one client order Recent, whatever
+			// the commit order (D-RECENT-window; clamped views order by transaction start, best effort).
 			now := time.Now()
 			for _, v := range []struct {
 				name string

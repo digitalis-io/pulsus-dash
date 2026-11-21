@@ -128,7 +128,10 @@ The sidebar's **Starred** and **Recent** groups list boards for you:
   it. Starred lists boards by name. If the change fails, "Could not update Starred. Try again."
   shows next to the star, and the star goes back to what it was.
 - **Recent** lists the last five boards you opened, the most recent first, in the order you opened
-  them. Across browsers, the order follows each browser's clock.
+  them in one browser tab's app. Across browsers or tabs, the order follows each one's clock, so it
+  is approximate when the clocks differ. If a computer's clock is more than five minutes fast or a
+  day slow, its views are ordered by when the server started handling them, which is also
+  approximate.
 
 Both are stored for you on the server, so they are the same after a reload, in every browser and
 under every tenant. Another tab of the same browser updates at once; another browser updates when

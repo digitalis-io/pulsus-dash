@@ -484,8 +484,9 @@ func (e *env) viewedAt(t *testing.T, uid string) (viewed, now time.Time) {
 
 func at(t time.Time) *time.Time { return &t }
 
-// Plan #61 Part C §3.9 (review c-r2 R1-3): the client's navigation time orders Recent, and a late
-// commit of an older view never moves a board above a later view.
+// Plan #61 Part C §3.9 (review c-r2 R1-3): in-window navigation times of one client order Recent,
+// and a late commit of an older in-window view never moves a board above a later view
+// (D-RECENT-window; clamped views are covered by TestClampedViewsOrderByTransactionStart).
 func TestRecentOrderByClientTime(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {

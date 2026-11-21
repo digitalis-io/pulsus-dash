@@ -426,9 +426,12 @@ channel in an effect and disposes it on unmount; `useBoardPrefs()` reads it.
 - **Views.** The board page calls `recordView(tenant, uid)` once per opening. Each view is stamped
   `at = max(floor(now), last + 1)`, strictly increasing within the app even if the clock steps
   back, and sent at once (requests may overlap), with a 10 s timeout (`VIEW_TIMEOUT_MS`) that
-  aborts it. The server keeps each board's greatest time, so Recent follows navigation order
-  within one app instance whatever order the requests commit in; across browsers it follows each
-  browser's clock. Success invalidates `['recent']` and tells other tabs; `notFound` is ignored; an
+  aborts it. The server keeps each board's greatest time, so, while the stamps fall inside the
+  server's window (now − 1 day … now + 5 min), Recent follows navigation order within one app
+  instance whatever order the requests commit in. A stamp outside the window (a clock off by more
+  than that) is clamped to its edge, and such views order by the server's transaction start time,
+  best effort: a transaction that starts first can commit last. Across browsers or app instances
+  the order is best effort, by each one's clock, subject to skew (D-RECENT-window). Success invalidates `['recent']` and tells other tabs; `notFound` is ignored; an
   ambiguous failure (the timeout, `network`, `unknown`) arms one reconciliation per app at the
   send + 15 s (`VIEW_TIMEOUT_MS` + `RECONCILE_DELAY_MS`), re-armed to the latest due time when
   several are pending, which invalidates `['recent']` and tells other tabs once.

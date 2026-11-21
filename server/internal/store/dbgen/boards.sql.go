@@ -510,8 +510,9 @@ type UpsertRecentParams struct {
 
 // viewed_at is the client's navigation time clamped to [now() - 1 day, now() + 5 minutes], or now()
 // (transaction start, not commit order, for nil and clamped stamps); the greater stored time wins,
-// so within one app instance (monotonic stamps) a view that commits late never moves a board above
-// a later view. Across app instances the order is best effort (clock skew) (D-RECENT-window).
+// so within one app instance (monotonic stamps) a view inside the window that commits late never
+// moves a board above a later in-window view. Clamped views order by transaction start, best
+// effort; across app instances the order is best effort (clock skew) (D-RECENT-window).
 // Tie: the user's other rows in v's millisecond m are renumbered, in their order, to m + 998 µs,
 // m + 997 µs, …, and v becomes m + 999 µs, so the later write (the later holder of the per-user
 // advisory lock) sorts first. A tie never leaves m and never runs out: the trim keeps at most
