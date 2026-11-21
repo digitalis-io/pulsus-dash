@@ -27,10 +27,15 @@ const (
 	defaultTimeoutMs = 30_000
 	maxWidthPx       = 10_000
 	streamBuffer     = 32 << 10
+	// maxLogTimeMs is the latest time the log routes accept, before and after grid alignment:
+	// ⌊(2⁶³−1)/10⁶⌋ ms (2262-04-11T23:47:16.854Z), so every ns value fits int64 (plan #65
+	// Part B §3.3, Q6). The PromQL routes keep maxTimeMs.
+	maxLogTimeMs = 9_223_372_036_854
 )
 
-// dataRoutes are the two hand-written PulsusDB query routes (streamed, this file); the
-// completion routes (prom.go) and the data-source check (datasource.go) are strict handlers.
+// dataRoutes are the hand-written PulsusDB query routes: PromQL range and instant (this file) and
+// LogQL range and volume (logql.go); the completion routes (prom.go, logs.go) and the data-source
+// check (datasource.go) are strict handlers.
 type dataRoutes struct{ d Deps }
 
 func (q *dataRoutes) now() time.Time {
@@ -225,7 +230,7 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		q.fail(w, r, err)
 		return
 	}
-	q.stream(w, r, rc, rs, grid, first)
+	q.stream(w, r, rc, rs, grid, first, "", "promql_stream_aborted")
 }
 
 func rangeIf(bad bool, pointer, msg string) *reqError {
@@ -237,12 +242,21 @@ func rangeIf(bad bool, pointer, msg string) *reqError {
 
 // stream writes the range body from the first frame on (§4.1 steps 8-10). A failure after the
 // header was written resets the connection, so the browser never sees a truncated body as valid.
-func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.RequestCtx, rs *pulsusdb.ResultStream, g pulsusdb.Grid, first *pulsusdb.Series) {
+// kind "" writes no kind member (the PromQL body); else the body starts with {"kind":<kind>,
+// (a LogQL metric result, plan #65 Part B §3.4). abortMsg is the log message of a reset.
+func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.RequestCtx, rs *pulsusdb.ResultStream, g pulsusdb.Grid,
+	first *pulsusdb.Series, kind, abortMsg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	bw := bufio.NewWriterSize(w, streamBuffer)
 	buf := make([]byte, 0, streamBuffer)
-	buf = append(buf, `{"start":`...)
+	buf = append(buf, '{')
+	if kind != "" {
+		buf = append(buf, `"kind":`...)
+		buf = appendString(buf, kind)
+		buf = append(buf, ',')
+	}
+	buf = append(buf, `"start":`...)
 	buf = strconv.AppendInt(buf, g.Start, 10)
 	buf = append(buf, `,"end":`...)
 	buf = strconv.AppendInt(buf, g.End, 10)
@@ -266,7 +280,7 @@ func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.Req
 				break
 			}
 			if err != nil {
-				q.abort(r, rc, err)
+				q.abort(r, rc, err, abortMsg)
 				return
 			}
 			buf = append(buf, ',')
@@ -277,21 +291,26 @@ func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.Req
 		}
 	}
 	c := rs.Completeness()
-	age := int64(-1)
-	if c.NewestSampleMs >= 0 {
-		age = max(0, q.now().UnixMilli()-c.NewestSampleMs)
-	}
 	buf = append(buf, `],"completeness":`...)
-	buf = appendCompleteness(buf, c, age)
+	buf = appendCompleteness(buf, c, q.dataAge(c))
 	buf = append(buf, '}')
 	if write() && bw.Flush() == nil {
 		_ = http.NewResponseController(w).Flush()
 	}
 }
 
+// dataAge is the data_age_ms of c: now minus its newest sample, at least 0; -1 (omitted) when it
+// has none.
+func (q *dataRoutes) dataAge(c pulsusdb.Completeness) int64 {
+	if c.NewestSampleMs < 0 {
+		return -1
+	}
+	return max(0, q.now().UnixMilli()-c.NewestSampleMs)
+}
+
 // abort ends a stream that failed after its header: silently if the browser went away, else
-// logged and the connection reset (the recoverer re-panics http.ErrAbortHandler).
-func (q *dataRoutes) abort(r *http.Request, rc *core.RequestCtx, err error) {
+// logged as msg and the connection reset (the recoverer re-panics http.ErrAbortHandler).
+func (q *dataRoutes) abort(r *http.Request, rc *core.RequestCtx, err error, msg string) {
 	if r.Context().Err() != nil {
 		return
 	}
@@ -300,7 +319,7 @@ func (q *dataRoutes) abort(r *http.Request, rc *core.RequestCtx, err error) {
 	if errors.As(err, &pe) {
 		kind = pe.Kind.String()
 	}
-	q.d.Logger.WarnContext(r.Context(), "promql_stream_aborted", "tenant", rc.Tenant.Binding.Slug, "kind", kind, "request_id", rc.RequestID)
+	q.d.Logger.WarnContext(r.Context(), msg, "tenant", rc.Tenant.Binding.Slug, "kind", kind, "request_id", rc.RequestID)
 	panic(http.ErrAbortHandler)
 }
 

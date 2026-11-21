@@ -403,7 +403,9 @@ func TestLogVirtualGuard(t *testing.T) {
 	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
 	const reserved = `{source="pulsus-dash"}`
 	const passes = `{source="pulsus-dashboard"}`
-	esc := func(s string) string { return strings.NewReplacer("{", "%7B", "}", "%7D", `"`, "%22", "=", "%3D").Replace(s) }
+	esc := func(s string) string {
+		return strings.NewReplacer("{", "%7B", "}", "%7D", `"`, "%22", "=", "%3D").Replace(s)
+	}
 	for _, c := range []struct {
 		name    string
 		rec     func(sel string) *httptest.ResponseRecorder
