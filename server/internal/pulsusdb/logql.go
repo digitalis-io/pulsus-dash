@@ -255,18 +255,21 @@ func (c *Client) LogVolume(ctx context.Context, rc *core.RequestCtx, q VolumeQue
 			return nil, Completeness{}, err
 		}
 		lv := LevelOf(s.Labels)
-		a := acc[lv]
-		if a == nil {
-			ls := []Label{{Name: "level", Value: lv.String()}}
-			a = &Series{Key: keyhash.Labels(ls), Labels: ls, Timestamps: s.Timestamps,
-				Values: make([]float64, len(s.Values)), Present: make([]bool, len(s.Present))}
-			acc[lv] = a
-		}
 		for i, ok := range s.Present {
-			if ok {
-				a.Values[i] += s.Values[i]
-				a.Present[i] = true
+			if !ok {
+				continue
 			}
+			// The accumulator is made at the level's first present point, so a level whose
+			// input series have none is omitted.
+			a := acc[lv]
+			if a == nil {
+				ls := []Label{{Name: "level", Value: lv.String()}}
+				a = &Series{Key: keyhash.Labels(ls), Labels: ls, Timestamps: s.Timestamps,
+					Values: make([]float64, len(s.Values)), Present: make([]bool, len(s.Present))}
+				acc[lv] = a
+			}
+			a.Values[i] += s.Values[i]
+			a.Present[i] = true
 		}
 	}
 	out := []*Series{}
