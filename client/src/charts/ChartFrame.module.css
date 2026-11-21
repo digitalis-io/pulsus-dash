@@ -144,3 +144,11 @@
   color: var(--text-muted);
   font-size: var(--font-size-sm);
 }
+
+/* Over the frame until the engine has drawn it at its current size (#90): the caller's progress state. */
+.pending {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}

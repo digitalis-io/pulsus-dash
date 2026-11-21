@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.15-rc · 2026-11-21 |
+| **Version** | 1.17-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -279,7 +279,10 @@ estate, §4.5):
 | — | Live tail | ingest timestamp → frame containing the line | < 2 s p95 (PRF-015) | M-UI2 |
 
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
-gain interactions.
+gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
+scripted room interactions, with the board editor first (#90). Until the reference lab exists, CI's
+`e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
+fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
 
 **Measurement methods**
 - **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
@@ -722,7 +725,7 @@ the merge train), nightly (release blocker).
 **Lab benchmarks (L5)** — defined in §4.3: `bench:frame-gallery`, `bench:frame-line-1e8`,
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
-`bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:lens-load`,
+`bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:lens-load`,
 `bench:decode-r1`, `bench:shim-input-cost`, `bench:editor-keystroke` (Chromium, stub BFF: 100 keys typed at the end of a 1 KB PromQL query; main-thread task time per key minus the idle overhead; p95 ≤ 2 ms and no key > 16 ms; PRF-005, T09-003; #63); `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
 `bench:promql-decode` and `bench:bff-overhead` (#62, `REFERENCE_LAB=1 make bench-bff`: W1, a 1 000 × 1 000
 PulsusDB matrix decoded, gridded and encoded, ≤ 30 ms per 10⁶ points, median of 5; W2, 1 000 sequential
@@ -741,6 +744,7 @@ and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull
 | `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
 | `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
 | `bench:inp-rooms` | merge once the reference lab ((a), (b)) exists; until then CI's `e2e` Chromium leg runs it report-only (INP, count, slowest interaction) | INP ≤ 200 ms | yes once the lab exists (`INP_GATE=enforce`); until then not blocking |
+| `bench:rooms-long-tasks` (owner: [T08](T08-dom-component-kit.md) §7, PRF-005; `e2e/perf-rooms-long-tasks.spec.ts`; the board editor scenario first, #90) | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab ((a), (b)) exists | interim CI: `ciOver === 0`, no main-thread task over 50 ms wall with over 16 ms thread time (§4.3 trace check; a task without thread time counts); lab: no task over 16 ms wall between the first and last input (`LONG_TASK_GATE=enforce`) | interim CI check: yes, blocks merge now; 16 ms wall: yes once the lab exists (#68), pending until then |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
@@ -894,3 +898,5 @@ Meta-testing:
 | 1.13-rc | 2026-11-21 | #63 Part A: `unit:explore-plan` states the rate window `max(4 × step, step + S, 4 × S)` (`S` the scrape interval, default 15 s, per binding later) in place of `4 × step`, with rows where 4 × S and 4 × step set the window |
 | 1.14-rc | 2026-11-21 | #63 Part B: §7.1 adds `unit:promql-shape`, `unit:promql-diagnostics`, `unit:suggest-cache`, `unit:prom-source`, `unit:prom-client`, `unit:editor-keys`, `unit:editor-completion`, `unit:editor-doc`, `unit:editor-diagnostics`, `unit:editor-no-linter`, `unit:editor-styles`, `unit:editor-host`, `unit:query-size`, `unit:editor-composition`, `unit:editor-size`, `unit:lang-table` and `unit:window-keys` |
 | 1.15-rc | 2026-11-21 | #63 Part C: §7.1 adds `unit:explore-run-size`, `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:editor-ime` and the lab benchmark `bench:editor-keystroke` (lab-gate row: merge once the lab exists, report-only on shared CI until then); `e2e:lazy-load` and `ci:bundle-size` name the editor closure |
+| 1.16-rc | 2026-11-21 | #90: §4.3 `bench:rooms-long-tasks` scenario and its interim CI check |
+| 1.17-rc | 2026-11-21 | #90 code review: §7.1 defines `bench:rooms-long-tasks` (owner T08 §7, PRF-005): interim CI check `ciOver === 0` blocking on PRs; 16 ms wall in the reference lab, pending #68 |

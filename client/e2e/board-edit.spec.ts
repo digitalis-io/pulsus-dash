@@ -78,7 +78,7 @@ test.describe('e2e:board-edit-save', () => {
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(`${title} (editing)`);
 
       // 2. Three panels.
-      const editor = page.getByRole('complementary', { name: 'Panel editor' });
+      const editor = page.getByRole('dialog', { name: 'Edit panel' });
       for (const [name, vis] of [
         ['A', 'Line'],
         ['B', 'Stat'],
@@ -88,9 +88,9 @@ test.describe('e2e:board-edit-save', () => {
         await editor.getByRole('textbox', { name: 'Title' }).fill(name);
         await editor.getByRole('button', { name: /Visualisation$/ }).click();
         await page.getByRole('option', { name: vis, exact: true }).click();
+        await editor.getByRole('button', { name: 'Done' }).click();
+        await expect(editor).toBeHidden();
       }
-      await editor.getByRole('button', { name: 'Close editor' }).click();
-      await expect(editor).toBeHidden();
       expect(await grid(page, 'A')).toBe('0,0,6,8');
       expect(await grid(page, 'B')).toBe('6,0,6,8');
       expect(await grid(page, 'C')).toBe('0,8,6,8');
@@ -155,6 +155,8 @@ test.describe('e2e:board-edit-save', () => {
       const nav = page.getByRole('navigation', { name: 'Main' });
       await page.getByRole('button', { name: 'Edit board' }).click();
       await page.getByRole('button', { name: 'Add panel', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await expect(editor).toBeHidden();
       const url = page.url();
       await nav.getByRole('link', { name: 'Boards', exact: true }).click();
       const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
@@ -381,8 +383,11 @@ test.describe('e2e:board-sections', () => {
       await page.getByRole('button', { name: 'Add section' }).click();
       await page.getByRole('textbox', { name: 'Section 3 title' }).fill('Second');
       await page.getByRole('button', { name: 'Add panel to Second' }).click();
+      const editor = page.getByRole('dialog', { name: 'Edit panel' });
       await page.keyboard.press('ControlOrMeta+S');
-      await expect(page.getByRole('status', { name: 'Save status' })).toHaveText('Saved');
+      await expect(editor.getByRole('status', { name: 'Save status' })).toHaveText('Saved');
+      await page.keyboard.press('Escape');
+      await expect(editor).toBeHidden();
 
       // 8. Reload: View mode shows what was saved, and the server agrees.
       await page.reload();

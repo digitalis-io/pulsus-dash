@@ -122,12 +122,13 @@ chart-stat = 120
 chart-tick = 4
 chart-line = 1.5
 chart-brush-min = 4
-# Boards (plan #61 Part B): 12 columns of 40 px rows; the Edit-mode panel editor sheet; the
-# panel header (the drag handle in Edit).
+# Boards (plan #61 Part B): 12 columns of 40 px rows; the panel header (the drag handle in Edit).
 board-cols = 12
 board-row = 40
-board-editor = 360
 board-panel-header = 40
+# The fixed-size editing window (kit ModalDialog size "editor", #90).
+dialog-editor-width = 800
+dialog-editor-height = 720
 
 [radius]
 default = 6

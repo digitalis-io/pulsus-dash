@@ -17,11 +17,15 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 /**
  * Rules not run in one engine and state, with the reason. Firefox's page crashes inside axe's
  * `label` rule once a kit text field has been typed into or focused by the pointer (reproduced
- * with the panel editor's Title and the filter dialog's Label as well); Chromium and WebKit run
- * every rule in these states.
+ * with the panel editor's Title, in its field-errors state too, and the filter dialog's Label as
+ * well); Chromium and WebKit run every rule in these states.
  */
 const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
-  firefox: { 'b-1 edit with sections': ['label'], 'b-1 add filter with error': ['label'] },
+  firefox: {
+    'b-1 edit with sections': ['label'],
+    'b-1 add filter with error': ['label'],
+    'b-1 edit, editor field errors': ['label'],
+  },
 };
 
 async function seriousViolations(page: Page, state = ''): Promise<string[]> {
@@ -106,7 +110,7 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
   await check('b-1 view');
 
-  const editor = page.getByRole('complementary', { name: 'Panel editor' });
+  const editor = page.getByRole('dialog', { name: 'Edit panel' });
   const edit = async (): Promise<void> => {
     await open(page, '/t/demo/board/b-1');
     await page.getByRole('button', { name: 'Edit board' }).click();
@@ -124,8 +128,20 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await page.getByRole('listbox').waitFor();
   await check('b-1 edit, select open');
 
+  // #90: field errors from a save, shown under the dialog's fields.
   await edit();
+  await editor.getByRole('textbox', { name: 'Title' }).fill('x'.repeat(201));
+  await page.keyboard.press('ControlOrMeta+S');
+  await editor.getByText('Use at most 200 characters').waitFor();
+  await check('b-1 edit, editor field errors');
+
+  await edit();
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
   await page.getByRole('button', { name: 'Add panel', exact: true }).click();
+  await editor.waitFor();
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
   await page
     .getByRole('navigation', { name: 'Main' })
     .getByRole('link', { name: 'Boards', exact: true })
