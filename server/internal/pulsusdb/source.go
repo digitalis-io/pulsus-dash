@@ -1,6 +1,11 @@
 package pulsusdb
 
-import "context"
+import "mime"
+
+// The decoder seam. A success body is decoded by the seriesSource its Content-Type selects; the
+// sources share the grid placement, the points limit and the completeness block (ResultStream).
+// Every source yields strings only through the request's redactor (T06-024): today the one
+// source is the JSON tokenizer (updec.go, source_json.go); a later Arrow source joins it here.
 
 // bodyFormat is a success-body encoding the client can decode.
 type bodyFormat uint8
@@ -10,13 +15,24 @@ const (
 	formatJSON bodyFormat = iota + 1
 )
 
-// acceptHeader is the Accept header of every request.
+// acceptHeader is the Accept header of every request: the formats newSource decodes.
 const acceptHeader = "application/json"
 
-// formatOf maps a success response's Content-Type to its decoder.
-func formatOf(string) (bodyFormat, bool) { return 0, false }
+// formatOf maps a success response's Content-Type to its decoder; false for any other type.
+func formatOf(contentType string) (bodyFormat, bool) {
+	mt, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return 0, false
+	}
+	switch mt {
+	case "application/json":
+		return formatJSON, true
+	}
+	return 0, false
+}
 
-// rawSeries is one decoded series before grid placement.
+// rawSeries is one decoded series before grid placement: labels (redacted, sorted) and the
+// points as the body gave them.
 type rawSeries struct {
 	Labels []Label
 	T      []int64 // ms
@@ -26,22 +42,31 @@ type rawSeries struct {
 // instantResult is a decoded instant body.
 type instantResult struct {
 	typ      ResultType
-	series   []*Series
-	t        int64
+	series   []*Series // points as given
+	t        int64     // scalar or string: its timestamp (ms)
 	scalar   float64
 	scalarOK bool
-	str      string
-	cut      bool
+	str      string // redacted and cut
+	cut      bool   // the points limit stopped decoding
 }
 
-// seriesSource is one success-body decoder.
+// seriesSource is one success-body decoder. It fills the completeness builder it was made with
+// (warnings, infos, truncated, skipped native histograms).
 type seriesSource interface {
+	// openRange reads a range (matrix) body up to its first series.
 	openRange() error
+	// nextRange decodes the next series into r, reusing r's slices; io.EOF once the body ended
+	// and was validated.
 	nextRange(r *rawSeries) error
+	// readInstant decodes a whole instant body.
 	readInstant() (instantResult, error)
 }
 
-// newRangeStream returns the range stream of src on grid g.
-func newRangeStream(_ context.Context, _ seriesSource, resp *response, _ Limits, comp *compBuilder, _ Grid) *ResultStream {
-	return &ResultStream{resp: resp, comp: comp, stream: true, done: true, final: comp.finish()}
+// newSource returns the decoder of resp's body.
+func newSource(resp *response, comp *compBuilder, lim Limits) (seriesSource, error) {
+	switch resp.format {
+	case formatJSON:
+		return &jsonSource{dec: newUpstreamDecoder(resp.body, resp.red), comp: comp, lim: lim}, nil
+	}
+	return nil, protocolError()
 }

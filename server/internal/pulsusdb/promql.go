@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 )
@@ -86,18 +88,10 @@ func (c *Client) QueryRange(ctx context.Context, rc *core.RequestCtx, q RangeQue
 		c.logCall(ctx, rc, cl.route, start, resp, err)
 		return nil, err
 	}
-	rs := c.newStream(ctx, resp)
-	rs.stream, rs.grid, rs.typ = true, g, ResultMatrix
-	rs.ts = make([]int64, g.points())
-	for i := range rs.ts {
-		rs.ts[i] = g.Start + int64(i)*g.Step
-	}
-	at, err := rs.walk()
-	if err == nil && !at {
-		err = rs.endCheck()
-		if err == nil {
-			err = protocolError() // a matrix document without a result array
-		}
+	comp := newComp(resp.hdr, c.o.Limits)
+	src, err := newSource(resp, comp, c.o.Limits)
+	if err == nil {
+		err = src.openRange()
 	}
 	if err != nil {
 		err = readError(ctx, err)
@@ -106,12 +100,7 @@ func (c *Client) QueryRange(ctx context.Context, rc *core.RequestCtx, q RangeQue
 		return nil, err
 	}
 	c.logCall(ctx, rc, cl.route, start, resp, nil)
-	return rs, nil
-}
-
-func (c *Client) newStream(ctx context.Context, resp *response) *ResultStream {
-	return &ResultStream{ctx: ctx, dec: newUpstreamDecoder(resp.body, resp.red), resp: resp, lim: c.o.Limits,
-		comp: newComp(resp.hdr, c.o.Limits)}
+	return newRangeStream(ctx, src, resp, c.o.Limits, comp, g), nil
 }
 
 // Query runs an instant query. The body is decoded completely before Query returns.
@@ -125,18 +114,11 @@ func (c *Client) Query(ctx context.Context, rc *core.RequestCtx, q InstantQuery)
 		c.logCall(ctx, rc, cl.route, start, resp, err)
 		return nil, err
 	}
-	rs := c.newStream(ctx, resp)
-	_, err = rs.walk()
-	switch {
-	case errors.Is(err, errPointsCut):
-		rs.comp.pointsCut = true
-		rs.typ = rs.seenType
-		if rs.typ != ResultMatrix {
-			rs.typ = ResultVector
-		}
-		err = nil
-	case err == nil:
-		err = rs.endCheck()
+	comp := newComp(resp.hdr, c.o.Limits)
+	src, err := newSource(resp, comp, c.o.Limits)
+	var res instantResult
+	if err == nil {
+		res, err = src.readInstant()
 	}
 	if err != nil {
 		err = readError(ctx, err)
@@ -144,14 +126,22 @@ func (c *Client) Query(ctx context.Context, rc *core.RequestCtx, q InstantQuery)
 		c.logCall(ctx, rc, cl.route, start, resp, err)
 		return nil, err
 	}
-	rs.finish()
+	rs := newInstantStream(ctx, src, resp, c.o.Limits, comp, res)
 	c.logCall(ctx, rc, cl.route, start, resp, nil)
 	return rs, nil
 }
 
-// matchCall is the call of the completion routes.
-func (c *Client) matchCall(route, method, path string, q MatchQuery) call {
-	form := url.Values{"start": {formatSeconds(q.Start)}, "end": {formatSeconds(q.End)}, "limit": {strconv.Itoa(q.Limit)}}
+// matchCall is the call of the completion routes. Times are whole seconds, the start floored and
+// the end raised to unit seconds; with a 60 s unit an empty window becomes one minute. These are
+// the shapes the reference clients send PulsusDB (labels and values snapped to the minute,
+// series to the second).
+func (c *Client) matchCall(route, method, path string, q MatchQuery, unit int64) call {
+	from := floorDiv(q.Start.UnixMilli(), unit*1000) * unit
+	to := -floorDiv(-q.End.UnixMilli(), unit*1000) * unit
+	if unit > 1 && to <= from {
+		to = from + unit
+	}
+	form := url.Values{"start": {strconv.FormatInt(from, 10)}, "end": {strconv.FormatInt(to, 10)}, "limit": {strconv.Itoa(q.Limit)}}
 	in := make([]guardInput, 0, len(q.Match))
 	for i, m := range q.Match {
 		form.Add("match[]", m)
@@ -163,7 +153,7 @@ func (c *Client) matchCall(route, method, path string, q MatchQuery) call {
 // Series lists the label sets matching q (len(q.Match) ≥ 1).
 func (c *Client) Series(ctx context.Context, rc *core.RequestCtx, q MatchQuery) (*SeriesResult, error) {
 	out := &SeriesResult{Series: [][]Label{}}
-	cl := c.matchCall("series", http.MethodPost, "/api/v1/series", q)
+	cl := c.matchCall("series", http.MethodPost, "/api/v1/series", q, 1)
 	comp, err := c.meta(ctx, rc, cl, c.o.Timeouts.Metadata, func(d *upstreamDecoder, b *compBuilder) error {
 		return eachElement(d, func() error {
 			ls, err := readLabelBody(d)
@@ -185,14 +175,21 @@ func (c *Client) Series(ctx context.Context, rc *core.RequestCtx, q MatchQuery) 
 	return out, nil
 }
 
-// Labels lists label names.
+// Labels lists label names. It sends a POST form first and, on a 405 or a 400, the same request
+// once as GET: the method order of the reference clients.
 func (c *Client) Labels(ctx context.Context, rc *core.RequestCtx, q MatchQuery) (*ValuesResult, error) {
-	return c.values(ctx, rc, c.matchCall("labels", http.MethodGet, "/api/v1/labels", q))
+	out, err := c.values(ctx, rc, c.matchCall("labels", http.MethodPost, "/api/v1/labels", q, 60))
+	var pe *Error
+	if errors.As(err, &pe) && (pe.Status == http.StatusMethodNotAllowed || pe.Status == http.StatusBadRequest) {
+		return c.values(ctx, rc, c.matchCall("labels", http.MethodGet, "/api/v1/labels", q, 60))
+	}
+	return out, err
 }
 
-// LabelValues lists the values of label name.
+// LabelValues lists the values of label name; a name that is not a legacy label name is sent in
+// the U__ form, so the path never holds a percent escape.
 func (c *Client) LabelValues(ctx context.Context, rc *core.RequestCtx, name string, q MatchQuery) (*ValuesResult, error) {
-	return c.values(ctx, rc, c.matchCall("label_values", http.MethodGet, "/api/v1/label/"+url.PathEscape(name)+"/values", q))
+	return c.values(ctx, rc, c.matchCall("label_values", http.MethodGet, "/api/v1/label/"+escapeLabelName(name)+"/values", q, 60))
 }
 
 func (c *Client) values(ctx context.Context, rc *core.RequestCtx, cl call) (*ValuesResult, error) {
@@ -341,7 +338,11 @@ func (c *Client) meta(ctx context.Context, rc *core.RequestCtx, cl call, timeout
 	}
 	defer resp.close()
 	comp := newComp(resp.hdr, c.o.Limits)
-	err = decodeTop(newUpstreamDecoder(resp.body, resp.red), comp, onData)
+	if resp.format == formatJSON {
+		err = decodeTop(newUpstreamDecoder(resp.body, resp.red), comp, onData)
+	} else {
+		err = protocolError() // completion and check bodies have one decoder
+	}
 	if err != nil {
 		err = readError(ctx, err)
 		if pe, ok := err.(*Error); ok {
@@ -429,5 +430,38 @@ func eachElement(d *upstreamDecoder, fn func() error, kind tokenKind) error {
 	}
 }
 
-// escapeLabelName is name in the U__ form when it is not a legacy label name.
-func escapeLabelName(name string) string { return name }
+// escapeLabelName returns name unchanged when it is a legacy label name ([a-zA-Z_][a-zA-Z0-9_]*),
+// else its U__ form: "U__", then each rune as itself if it is a legacy rune, "__" for '_', and
+// "_<hex code point>_" otherwise ("_FFFD_" for invalid UTF-8).
+func escapeLabelName(name string) string {
+	legacyRune := func(r rune, i int) bool {
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '_' || (i > 0 && r >= '0' && r <= '9')
+	}
+	legacy := name != ""
+	for i, r := range name {
+		if !legacyRune(r, i) {
+			legacy = false
+			break
+		}
+	}
+	if legacy {
+		return name
+	}
+	var b strings.Builder
+	b.WriteString("U__")
+	for i, r := range name {
+		switch {
+		case r == '_':
+			b.WriteString("__")
+		case legacyRune(r, i):
+			b.WriteRune(r)
+		case r == utf8.RuneError:
+			b.WriteString("_FFFD_")
+		default:
+			b.WriteByte('_')
+			b.WriteString(strconv.FormatInt(int64(r), 16))
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
