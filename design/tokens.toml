@@ -40,6 +40,12 @@ ramp-7 = "#8DBBEB"
 ramp-8 = "#B1D3F7"
 ramp-9 = "#D8EAFE"
 brush = "#5B9BFF29"
+# Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
+syn-keyword = "#B48FC9"
+syn-func = "#7AA2D6"
+syn-string = "#8FBF8F"
+syn-number = "#D6A86B"
+syn-label = "#6FB8B8"
 
 [color.light]
 canvas = "#F5F6F8"
@@ -76,6 +82,12 @@ ramp-7 = "#3C6995"
 ramp-8 = "#365371"
 ramp-9 = "#313F4D"
 brush = "#2563C929"
+# Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
+syn-keyword = "#6B4A84"
+syn-func = "#2563C9"
+syn-string = "#3D7340"
+syn-number = "#7F5F2A"
+syn-label = "#2E6E6E"
 
 # Spacing scale (px).
 [space]
