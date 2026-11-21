@@ -19,6 +19,7 @@
 | [0015](0015-go-bff.md) | The BFF is written in Go | **Accepted** (2026-11-19) |
 | [0016](0016-asset-integrity-verified-by-bff.md) | Asset integrity is verified by the BFF, not per module in the browser (amends 0014's lazy-chunk SRI) | **Accepted** (2026-11-19) |
 | [0017](0017-react-router.md) | React Router (data mode) replaces TanStack Router | **Accepted** (2026-11-19) |
+| [0018](0018-query-language-modules.md) | One PulsusDB client with a module per query language; one QueryLanguage per language in the browser | **Accepted** (2026-11-21) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed
 only by a later ADR that supersedes it.
