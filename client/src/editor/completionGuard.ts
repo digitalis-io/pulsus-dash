@@ -75,8 +75,9 @@ export function completionGuard(): CompletionGuard {
       return {
         update(u: ViewUpdate) {
           if (composing && u.docChanged) changed = true;
-          // Typing while composing starts CodeMirror's own pending query: nothing opens.
-          if (composing && completionStatus(u.state) !== null) {
+          // Text typed while composing starts CodeMirror's own pending query: nothing opens.
+          const typed = u.transactions.some((tr) => tr.isUserEvent('input'));
+          if (composing && typed && completionStatus(u.state) !== null) {
             queueMicrotask(() => {
               if (bound === u.view && composing) closeCompletion(u.view);
             });
