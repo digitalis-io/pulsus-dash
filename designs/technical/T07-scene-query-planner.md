@@ -155,7 +155,7 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
  browser (scene state, cameras)                              BFF dash-planner
  ─────────────────────────────                              ──────────────────────────────────────────────────────────
- ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1a Classify  source and signal from the binding → SignalCaps, virtual floor (§4.3)
+ ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1a Classify  source, signal, selectors and floors from the substituted text (§4.3)
                                                           1b Resolve   step from range, px, pass and floor; level prediction, grid alignment (§4.3)
  Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Bind       templates/{{entity}}/$vars → concrete queries (catalogue);
  Cancel{viewport|plan}                                                   language module Plan with the resolved step → planned text
@@ -172,10 +172,16 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
 
 - **Classify** (1a) runs first. It is a cheap classification of the source and the signal, which
-  yields the signal's capabilities (`SignalCaps`) and any virtual-source floor (15 s for `ALERTS`
-  and `ALERTS_FOR_STATE`, 300 s for `pulsus_anomaly_score`; §4.3). It reads only the binding and the
-  query's source kind, never the planned text. In v1 every query is a PulsusDB query (§0), so it
-  yields the signal's capabilities alone.
+  yields the signal's capabilities (`SignalCaps`) and every virtual-source floor (15 s for `ALERTS`
+  and `ALERTS_FOR_STATE`, 300 s for `pulsus_anomaly_score`; §4.3). It runs on the query after the
+  language module's variable substitution, with the step-dependent macros (`$__interval`,
+  `$__rate_interval`) left as placeholder durations. Macros never change selectors, so the step is
+  not needed to classify and there is no circularity; selectors that a variable value introduces are
+  seen. It reads the metric names and selectors from that text with the same upstream parser that
+  `prom.Plan` uses (ADR-0021), and finds every reserved or virtual selector and its floor. A text the
+  parser rejects is classified as a PulsusDB query; the `VirtualGuardLayer` byte match still applies
+  (T07-020). In v1 nothing resolves to a virtual source (§0), so Classify yields the signal's
+  capabilities alone.
 - **Resolve** (1b) computes the step from the viewport's range, width and pass and the floor from
   Classify (§4.3; the §0 table: step, level and alignment do not depend on the text). The step is
   therefore final before any text is planned. Exactness that depends on the query's functions (from
@@ -226,9 +232,10 @@ PulsusDB documents that when `start` and `step` are whole buckets of the level, 
 evaluated at its own time. Otherwise points take their bucket's value. Range functions are rounded up
 to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes.
 
-`resolve` is pipeline step 1b. Its `sig` comes from step 1a (Classify), which reads only the binding
-and the query's source kind: `sig.source` is the source it found (`PulsusDb` or `Virtual`), and for
-a virtual source `sig.min_step` carries the virtual floor (below).
+`resolve` is pipeline step 1b. Its `sig` comes from step 1a (Classify), which reads the substituted
+text with macro placeholders (§4.1): `sig.source` is the source it found (`PulsusDb`, `Virtual` or
+`Mixed`), and `sig.min_step` is the largest of every operand's `min_step` and every virtual floor
+it found (below).
 Step 2 (Bind) passes the resulting `step` to the language module's `Plan`. Resolution depends on the
 source that Classify found:
 
@@ -236,6 +243,9 @@ source that Classify found:
   `step = max(rollup-derived step, sig.min_step)`.
 - **Virtual source:** no rollup prediction at all; a virtual source has no rollup level.
   `step = max(base step from range, width and pass, virtual floor)`.
+- **Mixed expression** (one logical query with PulsusDB and virtual operands, §4.11.2): the whole
+  logical query has one shared step, `step = max(PulsusDB rollup-derived step, every operand's
+  min_step, every virtual floor)`. Join operands always share that step.
 - **Mixed scenes:** each logical query resolves its own step from its own source. A PulsusDB
   viewport and a virtual viewport in the same scene can therefore get different steps for the same
   window.
@@ -248,16 +258,16 @@ pub fn resolve(range: TimeRange, px: u32, pass: Pass, sig: &SignalCaps, roll: &R
     let raw_step     = range.len() / (px as f64 / px_per_point);            // CSS px, not device px
     let level        = match sig.source {                                   // from step 1a (Classify)
         Source::Virtual  => None,                                           // virtual sources have no rollup level
-        Source::PulsusDb => roll.predict(range.len()),                      // table above; None = raw
+        Source::PulsusDb | Source::Mixed => roll.predict(range.len()),      // table above; None = raw (the PulsusDB operands' level)
     };
-    let floor        = level.map_or(sig.min_step, |l| l.width.max(sig.min_step)); // scrape interval, 5 s logs, 10 s patterns, virtual floor
+    let floor        = level.map_or(sig.min_step, |l| l.width.max(sig.min_step)); // sig.min_step: max of operand floors and virtual floors
     let step         = NICE.ceil_multiple_of(raw_step.max(floor), floor);   // ladder below, multiple of floor
     let step         = step.max(range.len() / sig.max_intervals);           // 11 000 PromQL/LogQL, 10 000 TraceQL metrics
     let start        = range.start.floor_to(step);                          // grid alignment: PulsusDB read cache + our tiles
     let end          = range.end.ceil_to(step);
     let exactness    = match sig.source {
-        Source::Virtual  => Exactness::Virtual,
-        Source::PulsusDb => predict_exactness(level, &expr_fns),            // v1: predict_exactness(level), §0
+        Source::Virtual  => Exactness::RawExact,                            // with source: Virtual{table} (§4.11.2)
+        Source::PulsusDb | Source::Mixed => predict_exactness(level, &expr_fns), // v1: predict_exactness(level), §0; Mixed: weakest operand (§4.11.3)
     };
     Resolved { start, end, step, level, exactness }
 }
@@ -277,6 +287,19 @@ Examples (1 600 CSS-px viewport, fine pass):
 The last row is the case where the rollup width a PulsusDB query would get (60 s at 6 h) is below
 the virtual floor (300 s). The virtual source skips rollup prediction, so the 60 s width never
 applies: the step is `max(13.5 s, 300 s)` = 300 s, already on the `NICE` ladder (5 m).
+
+**Mixed worked case** (6 h, 1 600 CSS px, fine pass):
+`sum by (service) (rate(http_requests_total[$__rate_interval])) and on(service) pulsus_anomaly_score{signal="latency"} > 0.8`.
+Classify finds a PulsusDB operand (scrape floor 15 s) and a `pulsus_anomaly_score` operand (virtual
+floor 300 s), so `sig.source` is `Mixed` and `sig.min_step` = 300 s. The PulsusDB operand's
+predicted level is 60 s. The step is `max(13.5 s, 60 s, 15 s, 300 s)` = 300 s, applied to both
+operands (72 points); 300 s is a whole multiple of the 60 s level, so the PulsusDB operand stays on
+its grid. `Plan` receives 300 s, so `$__rate_interval` is planned from that step.
+
+**Exactness of virtual and mixed results.** `resolve` returns `RawExact` for a virtual source, and
+the result carries `Completeness{exactness: RawExact, source: Virtual{table}}` (§4.11.2). For a
+mixed join, the weakest-operand rule (§4.11.3) applies unchanged: in the case above, the join is
+`Predicted{60 s}` from its PulsusDB operand.
 
 For PRF-027's example (1 200 px, 1 h, coarse), `raw_step` = 12 s, raised to the 15 s scrape floor:
 within the ±1 level tolerance of the acceptance.
@@ -1087,3 +1110,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.5-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: §4.1 pipeline runs Resolve before Bind, so `Plan` gets the width-dependent step, and Lower keys the planned text (classification is now step 3); `unit:planner-opaque-key` compares the upstream query with the planned text |
 | 1.5-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: §4.1 step 1 splits into 1a Classify (source and signal from the binding and the source kind: `SignalCaps` and the virtual-source floor, 15 s alerts, 300 s anomaly scores) and 1b Resolve (step from range, width, pass and that floor), so Bind calls `Plan` with the final step; §4.3 `resolve` and the virtual-source floor reference the stages |
 | 1.5-rc | 2026-11-21 | Design review r3 of the ADR-0021 PR: §4.3 `resolve` branches on the source from Classify: a PulsusDB source predicts the rollup level and takes `max(level width, sig.min_step)`; a virtual source skips rollup prediction and takes `max(base step, virtual floor)`, with `Exactness::Virtual`; in a mixed scene each logical query resolves its own step; worked case 6 h anomaly score gives 300 s, not 60 s; T07-003 wording aligned |
+| 1.5-rc | 2026-11-21 | Design review r4 of the ADR-0021 PR: §4.1 Classify runs on the substituted text with step-dependent macros as placeholder durations, reading selectors with the upstream parser to find every reserved selector and floor; §4.3 a mixed expression has one shared step (max of the PulsusDB rollup-derived step, every operand's `min_step` and every virtual floor), with a worked case (anomaly score joined with a rate, 300 s for both operands); `Exactness::Virtual` removed: a virtual source resolves to `RawExact` with `source: Virtual{table}`, and the weakest-operand rule applies to mixed joins |
