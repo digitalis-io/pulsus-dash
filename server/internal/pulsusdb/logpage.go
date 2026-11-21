@@ -483,7 +483,9 @@ func (p *pager) page(es []pageEntry, next *PageCursor) *LogPage {
 		}
 		return groupCompare(a, b)
 	})
-	// gate proof #65 (do not merge): the page is sorted twice.
+	// gate proof #65 (do not merge): the page is sorted twice, the second time from the
+	// reverse order.
+	slices.Reverse(es)
 	slices.SortStableFunc(es, func(a, b pageEntry) int {
 		if a.ts != b.ts {
 			if dir == Backward {
