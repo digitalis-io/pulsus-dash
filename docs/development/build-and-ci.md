@@ -3,7 +3,7 @@
 How to build and check the web client and the server locally, and what CI runs. The client is
 TypeScript, React and Vite in `client/` ([ADR-0014](../../designs/adr/0014-typescript-react-web-client.md)).
 The server is Go in `server/` ([ADR-0015](../../designs/adr/0015-go-bff.md)); see
-[Server](#server). The gate IDs are those of the
+[Server](#server). The Rust chart engine is in `engine/`; see [Engine](#engine). The gate IDs are those of the
 [T05 §7.1 gate catalogue](../../designs/technical/T05-testing-and-performance.md).
 
 ## Toolchain
@@ -29,7 +29,8 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
 | `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke` |
-| `npm run tokens` | Regenerates `src/styles/tokens.css` and `tokens.ts` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
+| `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
+| `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
 | `npm run check:lockfile` | Exact versions, lockfile v3, registry and integrity of every locked package | `ci:lockfile` |
@@ -49,7 +50,8 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 | `check-deps.ts [dir]` | no findings | findings | unreadable input | `not-allowlisted`, `not-in-closure`, `stale-closure`, `forbidden-category`, `licence` | `scripts/__fixtures__/deps/*` |
 | `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>`, `editor-in-initial`, `editor-orphan` | built in a temporary directory by `bundle-size.test.ts` |
 | `token-lint.ts [root]` | no findings | findings | a file does not parse | `colour-literal`, `size-literal`, `duration-literal`, `state-token`, `computed-token-name`, `suppressed-token-rule` | `scripts/__fixtures__/token-lint/bad` (and `good`, which must pass) |
-| `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`) |
+| `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`, including `engine/crates/dash-tokens/src/tokens.rs`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`, a stale `tokens.rs`) |
+| `engine-fixtures.ts [--write]` | written / up to date | a fixture is stale (`error[engine-fixtures] engine/fixtures/<file> is stale`) | — | — | `engine-fixtures.test.ts` (a fresh run equals the committed files) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
 
@@ -274,8 +276,9 @@ and use one time window per browser, so parallel projects never count each other
 ## CI
 
 `.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml`,
-`server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`, `Makefile` or
-the workflow (opened, synchronised, reopened, and
+`engine/fixtures/`, `engine/crates/dash-tokens/src/tokens.rs` (both checked by `npm test` and
+`tokens -- --check`), `server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`,
+`Makefile` or the workflow (opened, synchronised, reopened, and
 labelled, so adding `golden-update` reruns it), and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
@@ -287,6 +290,83 @@ no secrets are used.
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the
 engines whose libraries are present.
+
+## Engine
+
+The Rust chart engine is the Cargo workspace `engine/` ([the engine page](../client/engine.md),
+issue #68). Every engine gate runs in one pinned image, `engine/ci/lavapipe.Dockerfile`, both in CI
+and through `make`.
+
+### Engine toolchain and image pins
+
+`engine/tools.toml` holds every pin; the Dockerfile must carry the same literals and the toolchain
+file the same channel (`cargo xtask spec-lint` fails otherwise).
+
+| Pin | Value |
+|---|---|
+| Base image | `docker.io/library/ubuntu:noble-20261110` by index digest (`[golden] image`) |
+| Apt snapshot | `20261115T000000Z` on snapshot.ubuntu.com (`apt_snapshot`): every package resolves to the same build |
+| lavapipe | `mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4` (`mesa`; the golden tests assert `Mesa 25.2.8`, `mesa_upstream`) |
+| LLVM | `libllvm20` `1:20.1.2-0ubuntu1~24.04.3` (`llvm`; asserted, not requested) |
+| Vulkan loader | `libvulkan1=1.3.275.0-1build1` (`vulkan_loader`) |
+| CA store | `ca-certificates=20240203` from the frozen noble release pocket (`ca_certificates`): the base image has none and the snapshot is HTTPS only |
+| Rust | `1.98.0` (`rust`; also `engine/rust-toolchain.toml` with rustfmt, clippy and the wasm32 target) |
+| rustup-init | `1.29.3`, verified by sha256 (`rustup`, `rustup_sha256`) |
+| cargo-nextest, cargo-deny | `0.9.152`, `0.20.2` |
+
+`VK_ICD_FILENAMES` selects the lavapipe ICD (`lvp_icd.json`). A change to any pin is one PR that
+edits `tools.toml` and the Dockerfile together and carries the `golden-update` label (T05-004).
+
+### Engine dependencies
+
+- Every crate in `engine/Cargo.toml` `[workspace.dependencies]` is pinned exactly (`=x.y.z`) and
+  `engine/Cargo.lock` is committed; every build uses `--locked`. A release younger than 7 days is
+  not adopted (the T18 §4.11 rule), and any change to the locked set is a reviewed dependency PR.
+- `cargo deny check licenses advisories bans sources` (`engine/deny.toml`, `ci:dep-audit` engine
+  leg) allows exactly MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD and MPL-2.0, with three
+  exact-version exceptions: `unicode-ident@1.0.27` (Unicode-3.0), `foldhash@0.2.0` and
+  `slotmap@1.1.1` (Zlib); yanked crates, unknown registries and git sources are denied; duplicate
+  versions warn (today `hashbrown`, `miniz_oxide`, `syn`).
+- Workspace lints deny `unwrap_used`, `expect_used`, `dbg_macro`, `todo` and `disallowed_types`;
+  `engine/clippy.toml` disallows `std::sync::Mutex` and `RwLock` (T03-008, `ci:engine-lint`).
+
+### Engine make targets
+
+Run from the repository root. They need Docker or Podman (`DOCKER=podman`; rootless Podman keeps
+file ownership with `ENGINE_RUN_FLAGS=--userns=keep-id`). The image keeps its build in
+`engine/target/image`.
+
+| Target | What it runs | Gate |
+|---|---|---|
+| `make engine-image` | `docker build -f engine/ci/lavapipe.Dockerfile -t pulsus-engine-ci:local engine/ci` | — |
+| `make engine-test` | `cargo nextest run --workspace --exclude dash-golden --locked` | `unit:*` |
+| `make engine-lint` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo xtask spec-lint`, `cargo deny --locked check …` | `ci:engine-lint`, `ci:spec-lint`, `ci:dep-audit` |
+| `make engine-goldens` | `cargo test -p dash-golden --release --locked golden_` | `golden:gallery`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
+| `make engine-goldens-update` | the same with `GOLDEN_UPDATE=1`, writing `engine/crates/dash-golden/goldens/*.png` | — |
+
+Outside the image, `cargo test --workspace` in `engine/` runs everything on the host's lavapipe;
+`golden_gallery` then fails its pinned-Mesa assertion by design.
+
+### Engine CI
+
+`.github/workflows/engine.yml` runs on pull requests that touch `engine/`, `design/tokens.toml`,
+`client/scripts/gen-tokens.ts`, `client/scripts/engine-fixtures.ts`, `client/src/i18n/format.ts`,
+`client/src/engine/canvas2d/`, `client/src/engine/api.ts`, `client/src/dev/{synth,keyHash,gallery}.ts`
+or the workflow (opened, synchronised, reopened, labelled), on pushes to `main`, and nightly at
+02:00 UTC. Actions are pinned by commit SHA and no secrets are used.
+
+| Job | Runs (in the image) | Gate |
+|---|---|---|
+| `image` | builds the image, or restores it from the Actions cache keyed by the sha256 of the Dockerfile and `tools.toml` | — |
+| `lint` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo xtask spec-lint` | `ci:engine-lint`, `ci:spec-lint` |
+| `deny` | `cargo deny --locked check licenses advisories bans sources` | `ci:dep-audit` (engine leg) |
+| `test` | `cargo nextest run --workspace --exclude dash-golden --locked` | `unit:*` |
+| `goldens` | `cargo test -p dash-golden --release --locked golden_`; nightly also `-- --ignored golden_decimation_` (10⁸ points) | `golden:gallery`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
+
+**Engine goldens.** With the `golden-update` label on the PR, the `goldens` job runs with
+`GOLDEN_UPDATE=1` and uploads the written PNGs as the `engine-goldens` artefact (14 days); commit
+them, review them as images in the PR, remove the label and re-run so the comparison runs. The
+parity fixtures are not goldens: they are rewritten with `npm run engine-fixtures -- --write`.
 
 ## Server
 

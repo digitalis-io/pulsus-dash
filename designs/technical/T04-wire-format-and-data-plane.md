@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -625,19 +625,34 @@ MUST coalesce metric updates or drop the oldest tail lines and report `dropped_c
 | `reader.read()` chunk → `net_alloc` slab in the shared arena | data-k | **copy 1** (fetch never yields SAB-backed chunks, and BYOB readers cannot target a SharedArrayBuffer) |
 | DSF header parse; Arrow IPC decode with `Buffer::from_custom_allocation` over the slab | data-k | none |
 | Publish `Arc<Chunk>` | data-k | none |
-| Render columns: `t_rel: f32` (grid index × step relative to the chunk origin, or `ts − t0`) and `v_rel: f32 = v − v_ref` per series, SIMD, written to a staging slab | pool | transform (not a copy of the f64 data) |
-| `queue.write_buffer(staging)` | render | **copy 2** (into GPU memory) |
-| Staging slab freed; f64 originals stay in the arena for tooltips, the Inspector and the local engine | — | — |
+| Column ranges: u32 per (series, column) from f64 timestamps, recomputed on every window or plot-width change (one shared table for a grid chunk; no timestamp is uploaded) | pool | transform |
+| Encoded values: `u = (v − v_ref)·2^−exp` per value for the draw's encoding ([T02-014](T02-vis-engine.md#t02-014--precision-f64-on-the-cpu-f32-relative-to-an-encoding-origin); non-finite → gap bits), rebuilt only when the encoding changes, written in slices of ≤ 16 MiB | pool | transform (not a copy of the f64 data) |
+| `queue.write_buffer(slice)` | render | **copy 2** (into GPU memory) |
+| Staging slab freed on T1; on T2 the encoded slab stays in CPU memory as the decimation input. f64 originals stay in the arena for tooltips, the Inspector and the local engine | — | — |
 
-f32 render columns keep the ~7 significant digits that pixels need. Camera transforms use the
-per-chunk origin in f64 on the CPU (T02-014). WGSL has no f64 or i64, which is why values are
-converted before upload. A WebGPU-only variant uploads raw f64 bits as `array<vec2<u32>>` and
-converts in a compute pass. This saves the CPU transform and is a benchmark candidate (§10).
+*(Revised 2026-11-21, #68.)* f32 values keep ~7 significant digits of the encoding's span, which
+pixels need; timestamps stay f64 and only column indices reach the GPU (T02-014). WGSL has no f64 or
+i64, which is why values are encoded before upload. A WebGPU-only variant uploads raw f64 bits as
+`array<vec2<u32>>` and converts to the draw's encoding in a compute pass. This saves the CPU
+transform and is a benchmark candidate (§10).
 
-**Memory.** At 10⁸ grid points: 0.8 GB of f64 in the arena plus 0.4 GB of f32 on the GPU. That fits
-the 1.5 GB tab budget only because grid timestamps are implicit. **Eviction order** under arena
-pressure (85 % threshold, T03-023): (1) f64 originals of off-screen chunks, keeping GPU columns plus
-a re-fetch key; (2) raw chunks of visible viewports, replaced by the next rollup level (re-fetched at
+The encoded values of a chunk are keyed (ChunkId, Encoding) in the renderer: a draw list that no
+longer references a key releases its buffer before anything is allocated, so a chunk drawn by one
+item has at most one resident encoding, and a dropped chunk has no GPU buffer after the next render.
+Pan, zoom and resize rebuild the column ranges only; a value-range change re-encodes only when the
+encoding choice changes; a theme change rebuilds neither.
+
+**Memory.** At 10⁸ grid points, 1 000 series in one 1 000 × 400 CSS px viewport at DPR 2: f64
+values in the arena 0.80 GB; encoded `u` for one encoding 0.40 GB (on the GPU on T1, in CPU memory
+on T2), each further simultaneous encoding of the chunk + 0.40 GB; transient staging ≤ 32 MiB on T1
+(the 16 MiB slab plus the driver's copy of one slice), 0 on T2; `ColOut` 40 B × series × columns
+≈ 80 MB; instances 16 B × (guides + total) ≤ 64 MB; column ranges of a grid chunk < 10 kB. The
+engine total ≈ 1.38 GB, so 10⁸ points fit the 1.5 GB tab budget (PRF-023) only for grid chunks,
+one resident encoding per chunk, slice staging and ≤ 0.12 GB for the rest of the tab; explicit
+timestamps (+0.80 GB of f64 time) and two simultaneous encodings of such a chunk do not fit. Part C
+of #68 measures it (`bench:frame-line-1e8`). **Eviction order** under arena
+pressure (85 % threshold, T03-023): (1) f64 originals of off-screen chunks, keeping GPU value
+buffers and column ranges plus a re-fetch key; (2) raw chunks of visible viewports, replaced by the next rollup level (re-fetched at
 `priority = interactive`), with coverage reason `memory`; (3) resident previous scenes beyond the
 immediate parent.
 
@@ -869,3 +884,4 @@ support in the BFF for one release.
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |
 | 1.2-rc | 2026-11-20 | #62: §0 gives the JSON image of `labels/1` + `metric_matrix.grid/1` (`SeriesFrame`, value encoding, absent points as `null`), the hand-written Go tokenizer and the key-hash canonical bytes with their corpus |
+| 1.3-rc | 2026-11-21 | §5.7 render columns and memory follow T02-014 as restated for #68 (column ranges on the CPU, per-draw value encoding, buffers per (chunk, encoding)): two rows (column ranges recomputed per window or width; encoded values rebuilt only on an encoding change, ≤ 16 MiB slices), the buffer-lifetime paragraph, and the 10⁸-point memory table qualified to grid chunks with one resident encoding |
