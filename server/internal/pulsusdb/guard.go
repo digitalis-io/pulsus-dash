@@ -49,6 +49,10 @@ func reservedError(field, name string) *Error {
 		Message: name + " is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)"}
 }
 
+// ReservedError is the KindVirtual refusal of input field naming the reserved name, for a
+// caller that found the name itself (the PromQL planner's Classify, plan #112 §4.4 step 4).
+func ReservedError(field, name string) *Error { return reservedError(field, name) }
+
 // CheckReserved is the guard for one input, for callers that must refuse before any I/O of
 // their own (the gateway, before tenant resolution): the KindVirtual refusal, or nil.
 func CheckReserved(field, text string) *Error {

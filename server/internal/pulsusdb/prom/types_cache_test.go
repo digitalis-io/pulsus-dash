@@ -106,7 +106,7 @@ func TestTypesCacheKeys(t *testing.T) {
 func TestTypesCacheCancelledWaiter(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		release := make(chan struct{})
-		var inside error = errors.New("unset")
+		inside := errors.New("unset")
 		f := &counting{fn: func(ctx context.Context) (MetricTypes, error) {
 			<-release
 			inside = ctx.Err()

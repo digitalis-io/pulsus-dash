@@ -11,7 +11,7 @@ import (
 func fields(fs []fxField) []FieldError {
 	out := make([]FieldError, 0, len(fs))
 	for _, f := range fs {
-		out = append(out, FieldError{Pointer: f.Pointer, MessageKey: f.MessageKey})
+		out = append(out, FieldError(f))
 	}
 	return out
 }

@@ -2,8 +2,16 @@
 // variables and the step macros, reads the query's shape with the upstream PromQL parser,
 // classifies its reserved selectors (T07 §4.1 step 1a), applies the bare-counter and
 // bare-histogram rate rewrites and the 65 536-byte limit on the final planned text. Every
-// function here is pure: metric types come from the caller (TypesSource).
+// function here is pure: metric types come from the caller (TypesSource). Nothing here logs or
+// returns the query text or a variable value in an error.
 package prom
+
+import (
+	"sort"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+)
 
 // Limits of a plan (plan #112 §3.1).
 const (
@@ -61,10 +69,21 @@ type PlannedWire struct {
 }
 
 // Wire is the plan's wire form.
-func (p Planned) Wire() PlannedWire { return PlannedWire{} }
+func (p Planned) Wire() PlannedWire {
+	return PlannedWire{Query: p.Query, Expanded: p.Expanded, Bytes: p.Bytes, ValueType: string(p.ValueType),
+		RateCandidate: p.RateCandidate, RateApplied: p.RateApplied, Histogram: p.Histogram,
+		StepMs: p.StepMs, RateWindowMs: p.RateWindowMs}
+}
 
-// ToSource maps a byte offset of the sent text to the raw text (plan #112 §4.2).
-func (p Planned) ToSource(sentByte int) (rawByte int, ok bool) { return 0, false }
+// ToSource maps a byte offset of the sent text to the raw text (plan #112 §4.2): none inside a
+// rewrite prefix or suffix (its first byte included), or out of range.
+func (p Planned) ToSource(sentByte int) (rawByte int, ok bool) {
+	e, ok := at(p.rw, len(p.Query), sentByte)
+	if !ok {
+		return 0, false
+	}
+	return at(p.sub, len(p.Expanded), e)
+}
 
 // Source is the data source a query reads (T07 §4.1 step 1a).
 type Source string
@@ -84,6 +103,60 @@ type Class struct {
 	FloorMs  int64
 }
 
+// reservedFloors are the virtual metric names of T07 §0 and their step floors (T07 §4.3).
+var reservedFloors = map[string]int64{"ALERTS": 15_000, "ALERTS_FOR_STATE": 15_000, "pulsus_anomaly_score": 300_000}
+
+// ClassifyShape classifies a shape (plan #112 §4.3): selectors without a metric name are not
+// counted (T07 §4.11 decides them at Lower), and an unknown shape is pulsus_db; the T07-020
+// byte guard covers both.
+func ClassifyShape(s Shape) Class {
+	c := Class{Source: SourcePulsusDB, Reserved: []string{}}
+	for _, m := range s.Metrics {
+		if f, ok := reservedFloors[m]; ok {
+			c.Reserved = append(c.Reserved, m)
+			c.FloorMs = max(c.FloorMs, f)
+		}
+	}
+	switch {
+	case len(c.Reserved) == 0:
+	case len(c.Reserved) == len(s.Metrics):
+		c.Source = SourceVirtual
+	default:
+		c.Source = SourceMixed
+	}
+	return c
+}
+
+// FloorStep is stepMs when floorMs ≤ 0, else the least multiple of floorMs at least stepMs
+// (T07 §4.3).
+func FloorStep(stepMs, floorMs int64) int64 {
+	if floorMs <= 0 || stepMs <= 0 {
+		return stepMs
+	}
+	return (stepMs + floorMs - 1) / floorMs * floorMs
+}
+
+// RateWindowMs is max(4 × step, step + DefaultScrapeMs, 4 × DefaultScrapeMs): a window holds
+// at least four scrapes however small the step.
+func RateWindowMs(stepMs int64) int64 {
+	return max(4*stepMs, stepMs+DefaultScrapeMs, 4*DefaultScrapeMs)
+}
+
+var durationUnits = []struct {
+	unit string
+	ms   int64
+}{{"d", 86_400_000}, {"h", 3_600_000}, {"m", 60_000}, {"s", 1_000}}
+
+// FormatDuration is the largest of d, h, m, s that divides ms (> 0), else "<ms>ms".
+func FormatDuration(ms int64) string {
+	for _, u := range durationUnits {
+		if ms > 0 && ms%u.ms == 0 {
+			return strconv.FormatInt(ms/u.ms, 10) + u.unit
+		}
+	}
+	return strconv.FormatInt(ms, 10) + "ms"
+}
+
 // Prepared is a query checked, substituted with placeholder macros and classified.
 type Prepared struct {
 	in          Inputs
@@ -92,10 +165,79 @@ type Prepared struct {
 	class       Class
 }
 
+// pointerToken escapes a JSON pointer reference token (RFC 6901).
+func pointerToken(s string) string {
+	return strings.NewReplacer("~", "~0", "/", "~1").Replace(s)
+}
+
+func inputError(pointer, key, msg string) *PlanError {
+	return &PlanError{Kind: ErrInput, Message: msg, Fields: []FieldError{{Pointer: pointer, MessageKey: key}}}
+}
+
+func validName(n string) bool {
+	if n == "" || len(n) > maxNameLen || !isNameStart(n[0]) {
+		return false
+	}
+	for i := 1; i < len(n); i++ {
+		if !isNameByte(n[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// checkInputs is rows 1–5 of §3.1, first error wins.
+func checkInputs(in Inputs) *PlanError {
+	if !utf8.ValidString(in.Query) {
+		return inputError("/query", "field.range", "query must be UTF-8")
+	}
+	if len(in.Query) == 0 || len(in.Query) > MaxRawBytes {
+		return inputError("/query", "field.range", "query must be 1 to 131072 bytes")
+	}
+	if len(in.Vars) > MaxVars {
+		return inputError("/vars", "field.range", "vars must have at most 64 entries")
+	}
+	names := make([]string, 0, len(in.Vars))
+	for n := range in.Vars {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if !validName(n) {
+			return inputError("/vars/"+pointerToken(n), "field.pattern", "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+		}
+		if v := in.Vars[n]; !utf8.ValidString(v) || len(v) > MaxValueBytes {
+			return inputError("/vars/"+pointerToken(n), "field.range", "a variable value must be UTF-8 and at most 4096 bytes")
+		}
+	}
+	return nil
+}
+
 // Prepare checks the inputs, substitutes the variables (each macro as the placeholder "1s"),
-// reads the shape and classifies it (rows 1–5 and 7–9 of §3.1, before any I/O).
+// reads the shape and classifies it: rows 1–5 and 7–9 of §3.1, before any I/O.
 func Prepare(in Inputs) (*Prepared, *PlanError) {
-	return nil, &PlanError{Kind: ErrInput, Message: "not implemented"}
+	if e := checkInputs(in); e != nil {
+		return nil, e
+	}
+	count := substitute(in.Query, in.Vars, placeholders(), false)
+	if len(count.missing) > 0 {
+		e := &PlanError{Kind: ErrVariableMissing, Message: "no value for variable $" + strings.Join(count.missing, ", $")}
+		for _, n := range count.missing {
+			e.Fields = append(e.Fields, FieldError{Pointer: "/vars/" + pointerToken(n), MessageKey: "variable.missing"})
+		}
+		return nil, e
+	}
+	if count.macro && in.StepMs == 0 {
+		return nil, inputError("/step_ms", "field.required", "step_ms is required for $__interval and $__rate_interval")
+	}
+	if count.size > MaxExpandedBytes {
+		return nil, &PlanError{Kind: ErrProcessingCap,
+			Message: "the substituted query is over 2097152 bytes, the most the server processes",
+			Fields:  []FieldError{{Pointer: "/query", MessageKey: "query.too_large_to_plan"}}}
+	}
+	text := substitute(in.Query, in.Vars, placeholders(), true).text
+	shape := ShapeOf(text)
+	return &Prepared{in: in, substituted: text, shape: shape, class: ClassifyShape(shape)}, nil
 }
 
 // Substituted is the placeholder text: the byte guard and Classify read it, nothing sends it.
@@ -104,28 +246,99 @@ func (p *Prepared) Substituted() string { return p.substituted }
 // Class is the query's classification.
 func (p *Prepared) Class() Class { return p.class }
 
-// NeedsTypes reports whether the plan depends on metric types.
-func (p *Prepared) NeedsTypes() bool { return false }
+// NeedsTypes reports whether the plan depends on metric types (plan #112 §4.1), from the
+// placeholder shape: the macros never change the selectors. False guarantees that Plan gives the
+// same plan with any types.
+func (p *Prepared) NeedsTypes() bool {
+	s := p.shape
+	if s.Bare != nil {
+		return !strings.HasSuffix(s.Bare.Metric, "_total")
+	}
+	if s.HasHistogramQuantile {
+		return false
+	}
+	for _, m := range s.Metrics {
+		if strings.HasSuffix(m, "_bucket") {
+			return true
+		}
+	}
+	return false
+}
+
+func isCounter(n string, t MetricTypes) bool {
+	return strings.HasSuffix(n, "_total") || KindOf(n, t) == MetricCounter
+}
+
+func isHistogram(n string, t MetricTypes) bool {
+	if !strings.HasSuffix(n, "_bucket") {
+		return false
+	}
+	k := KindOf(n, t)
+	return k == MetricHistogram || k == MetricUnknown
+}
 
 // Plan substitutes the macros at stepMs, reads the shape, applies the rewrites and the size
-// limit (rows 6 and 10 of §3.1).
+// limit: rows 6 and 10 of §3.1 (plan #112 §4.1).
 func (p *Prepared) Plan(stepMs int64, types MetricTypes) (Planned, *PlanError) {
-	return Planned{}, &PlanError{Kind: ErrInput, Message: "not implemented"}
+	if (p.in.Kind == KindRange && stepMs <= 0) || stepMs < 0 {
+		return Planned{}, inputError("/step_ms", "field.range", "step_ms must be positive")
+	}
+	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), true)
+	expanded := sub.text
+	shape := ShapeOf(expanded)
+	out := Planned{Query: expanded, Expanded: expanded, ValueType: shape.ValueType, StepMs: stepMs, sub: sub.segs,
+		rw: []segment{{sentFrom: 0, sentLen: len(expanded), rawFrom: 0, rawLen: len(expanded), kind: segCopy}}}
+	rated := stepMs > 0 && p.in.Rate
+	wrap := func(prefix, suffix string, histogram bool) {
+		b := shape.Bare
+		span := expanded[b.From:b.To]
+		out.Query = prefix + span + suffix
+		out.RateCandidate, out.RateApplied, out.Histogram = true, true, histogram
+		out.RateWindowMs = RateWindowMs(stepMs)
+		out.rw = []segment{
+			{sentFrom: 0, sentLen: len(prefix), kind: segAdded},
+			{sentFrom: len(prefix), sentLen: len(span), rawFrom: b.From, rawLen: len(span), kind: segCopy},
+			{sentFrom: len(prefix) + len(span), sentLen: len(suffix), kind: segAdded},
+		}
+	}
+	window := func() string { return FormatDuration(RateWindowMs(stepMs)) }
+	switch b := shape.Bare; {
+	case b != nil && isHistogram(b.Metric, types):
+		if rated {
+			wrap("sum by (le) (rate(", "["+window()+"]))", true)
+		} else {
+			out.RateCandidate = true
+		}
+	case b != nil && isCounter(b.Metric, types):
+		if rated {
+			wrap("rate(", "["+window()+"])", false)
+		} else {
+			out.RateCandidate = true
+		}
+	default:
+		if !shape.HasHistogramQuantile {
+			for _, m := range shape.Metrics {
+				if isHistogram(m, types) {
+					out.Histogram = true
+					break
+				}
+			}
+		}
+	}
+	out.Bytes = len(out.Query)
+	if out.Bytes > MaxSentBytes {
+		planned := out
+		return Planned{}, &PlanError{Kind: ErrSentTooLarge, Message: "the planned query is over 65536 bytes",
+			Fields: []FieldError{{Pointer: "/query", MessageKey: "query.sent_too_large"}}, Planned: &planned}
+	}
+	return out, nil
 }
 
 // Plan is Prepare, then Plan at FloorStep(in.StepMs, Class().FloorMs).
 func Plan(in Inputs, types MetricTypes) (Planned, *PlanError) {
-	return Planned{}, &PlanError{Kind: ErrInput, Message: "not implemented"}
+	p, err := Prepare(in)
+	if err != nil {
+		return Planned{}, err
+	}
+	return p.Plan(FloorStep(in.StepMs, p.Class().FloorMs), types)
 }
-
-// ClassifyShape classifies a shape (plan #112 §4.3).
-func ClassifyShape(s Shape) Class { return Class{} }
-
-// FloorStep is stepMs when floorMs ≤ 0, else the least multiple of floorMs at least stepMs.
-func FloorStep(stepMs, floorMs int64) int64 { return 0 }
-
-// RateWindowMs is max(4 × step, step + DefaultScrapeMs, 4 × DefaultScrapeMs).
-func RateWindowMs(stepMs int64) int64 { return 0 }
-
-// FormatDuration is the largest of d, h, m, s that divides ms (> 0), else "<ms>ms".
-func FormatDuration(ms int64) string { return "" }

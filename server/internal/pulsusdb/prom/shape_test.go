@@ -104,7 +104,7 @@ func TestFunctionTable(t *testing.T) {
 		}
 		buf.WriteString("\n ]\n}\n")
 		out := append(append([]byte{}, b[:i]...), buf.Bytes()...)
-		if err := os.WriteFile(fixturePath, out, 0o644); err != nil { // #nosec G306 -- a repository fixture
+		if err := os.WriteFile(fixturePath, out, 0o644); err != nil { // #nosec G306 G703 -- a fixed repository fixture path
 			t.Fatal(err)
 		}
 		return
