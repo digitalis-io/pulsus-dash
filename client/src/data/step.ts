@@ -18,7 +18,7 @@ export const MAX_STEPS = 11000;
 
 /**
  * The step is also the base of the rate window the Explore planner writes for a bare counter or
- * histogram selector (`4 × step`, plan #63 §3.3).
+ * histogram selector (`rateWindowMs` in `explore/plan.ts`: at least 4 × step).
  *
  * The step is the first ladder entry with `entry × widthPx ≥ toMs − fromMs` (else 1 d); the
  * start is floored and the end raised to it. `null` when the range needs more than 11 000 steps.

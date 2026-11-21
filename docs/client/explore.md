@@ -34,8 +34,8 @@ reads `Connected`); [ADR-0014](../../designs/adr/0014-typescript-react-web-clien
 
 `planRun(text, shape, meta, {rate, stepMs})` returns the request (`RunPlan`). The first matching
 row wins; "bare" is `shape.bareSelector` (a top-level selector with a metric name) and `sel` its
-exact source text; `w` is `formatDuration(4 × stepMs)`; "rate" means the chip is on and the step
-is known:
+exact source text; `w` is `formatDuration(rateWindowMs(stepMs))` (below); "rate" means the chip is
+on and the step is known:
 
 | Condition | Sent query | Chip shown | Rate applied | Heatmap rule may apply | Kind |
 |---|---|---|---|---|---|
@@ -50,12 +50,25 @@ is known:
   histogram or summary is a counter; a type outside counter, gauge, histogram, summary is
   `unknown`. A name is a counter when its type is `counter` or it ends in `_total`; a histogram
   bucket when it ends in `_bucket` and its type is `histogram` or `unknown`.
-- **Window.** `formatDuration` writes the largest of `d`, `h`, `m`, `s` that divides the window
-  (20 000 ms → `20s`, 240 000 ms → `4m`). The step is the client's mirror of the BFF grid
-  (`data/step.ts`); the BFF re-grids, so only the window text depends on it.
+- **Window.** `rateWindowMs(step) = max(4 × step, step + S, 4 × S)`, with `S` =
+  `DEFAULT_SCRAPE_S` = 15 s, the scrape interval assumed for every target until a per-binding
+  value exists. The window therefore never holds fewer than four scrapes: at a step of 15 s or
+  less it is `1m` (a 1 h range at 1 200 px has a 5 s step and gets `1m`, not `20s`, which would be
+  gappy at a 15 s scrape and empty at 30–60 s); above that it is 4 × step (30 s → `2m`). The
+  `step + S` term never sets the window on its own while the `4 × step` term is present (it is
+  below 4 × step for a step of S/3 or more, and below 4 × S under it); it is kept so the formula
+  matches the reference client's once `S` is per binding. `formatDuration` writes the largest of
+  `d`, `h`, `m`, `s` that divides the window (60 000 ms → `1m`, 240 000 ms → `4m`). The step is
+  the client's mirror of the BFF grid (`data/step.ts`); the BFF re-grids, so only the window text
+  depends on it.
+- **Deviation from the posted plan: rate window floor from the reference client behaviour.**
+  Plan #63 §3.3 wrote the window as `4 × step`. The study of the clients PulsusDB was tested with
+  found that window too short at small steps; the floor of `max(step + S, 4 × S)` is that
+  client's. Both rewrites (counter and histogram) use it.
 - **Size limit.** The limit applies to the **sent** text: `bytes = utf8Length(query)` and
-  `tooLong = bytes > 65 536` (the BFF's limit, #62). The rewrite adds 11 bytes (counter) or 25
-  (histogram), so a source text that fits can still be refused. `utf8Length` counts a lone
+  `tooLong = bytes > 65 536` (the BFF's limit, #62). The rewrite adds 8 bytes plus the window text
+  (counter) or 22 plus it (histogram): 10 or 24 at `1m`, so a source text that fits can still be
+  refused. `utf8Length` counts a lone
   surrogate as 3 bytes, as the BFF sees it after JSON decoding. Part C sends nothing when
   `tooLong`.
 - **Source index (T09-009).** A rewritten plan keeps the source slice at `sentStart` (5 for a
@@ -178,7 +191,7 @@ metric names, `["a","b"]` for any other label, and no series.
 
 | Gate | File |
 |---|---|
-| `unit:explore-plan` | `src/explore/plan.test.ts`: the planner rows, the sent-size boundary, metric types, durations, the source index, byte length |
+| `unit:explore-plan` | `src/explore/plan.test.ts`: the planner rows, the sent-size boundary (at the `1m` window), the rate window rows (set by 4 × S, by 4 × step, and the proof that step + S never sets it), metric types, durations, the source index, byte length |
 | `unit:autovis-table` | `src/vis/autovis.test.ts`: one fixture per rule, rule order, range never stat, the override |
 | `unit:heatmap-buckets` | `src/vis/histogram.test.ts`: complete, missing single and grouped samples, groups with differing bounds, row isolation, and many-group, many-bound allocation checks: Float64 elements allocated stay within the output plus the axis, eligibility allocates none, and doubling the groups doubles the allocation (`src/test/allocations.ts` counts them). Wall-clock times are printed only, never asserted (T05-006) |
 | `unit:frame-plan` | `src/vis/framePlan.test.ts`: every vis × result valid, bars over instant series with unequal timestamps, the bars grid bound (500 series × 1 000 disjoint timestamps gives the notice with allocation linear in the input; exactly `MAX_GRID_CELLS` draws, one more timestamp gives the notice), scalar overrides, heatmap row isolation and restore |

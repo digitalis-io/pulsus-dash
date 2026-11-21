@@ -1,8 +1,8 @@
 /**
  * The Explore run planner (plan #63 §3.3, SRF-030, VIZ-065): turns the editor text, its shape and
  * the metric metadata into the request the page sends. A bare counter selector is sent as
- * `rate(<sel>[4 × step])` and a bare histogram bucket selector as
- * `sum by (le) (rate(<sel>[4 × step]))` behind the rate chip; a scalar- or string-typed query is an
+ * `rate(<sel>[w])` and a bare histogram bucket selector as `sum by (le) (rate(<sel>[w]))` behind
+ * the rate chip, `w = rateWindowMs(step)`; a scalar- or string-typed query is an
  * instant query. The size limit applies to the text sent, in UTF-8 bytes (the BFF's limit, #62).
  * PulsusDB validates the query (ADR-0015); nothing here parses PromQL.
  */
@@ -109,9 +109,14 @@ export function utf8Length(s: string): number {
  */
 export const DEFAULT_SCRAPE_S = 15;
 
-/** Stub: the rate window of a step. */
+/**
+ * The rate window of a step: `max(4 × step, step + S, 4 × S)` with `S = DEFAULT_SCRAPE_S`, so a
+ * window holds at least four scrapes however small the step (rate window floor from the reference
+ * client behaviour; plan #63 §3.3 wrote `4 × step`).
+ */
 export function rateWindowMs(stepMs: number): number {
-  return 4 * stepMs;
+  const scrapeMs = DEFAULT_SCRAPE_S * 1000;
+  return Math.max(4 * stepMs, stepMs + scrapeMs, 4 * scrapeMs);
 }
 
 function sized(p: Omit<RunPlan, 'bytes' | 'tooLong'>): RunPlan {
@@ -153,11 +158,11 @@ export function planRun(
       });
     if (isHistogram(bare.metric, meta)) {
       if (stepMs === null) return asIs(true, false, 'range');
-      return rewritten('sum by (le) (rate(', `[${formatDuration(4 * stepMs)}]))`, true);
+      return rewritten('sum by (le) (rate(', `[${formatDuration(rateWindowMs(stepMs))}]))`, true);
     }
     if (isCounter(bare.metric, meta)) {
       if (stepMs === null) return asIs(true, false, 'range');
-      return rewritten('rate(', `[${formatDuration(4 * stepMs)}])`, false);
+      return rewritten('rate(', `[${formatDuration(rateWindowMs(stepMs))}])`, false);
     }
   }
   const histogram = shape.metrics.some((m) => isHistogram(m, meta)) && !shape.hasHistogramQuantile;

@@ -210,13 +210,13 @@ describe('unit:explore-plan', () => {
 
   // w = max(4 × step, step + S, 4 × S), S = DEFAULT_SCRAPE_S (reference client behaviour).
   it.each([
-    [1_000, '1m', '4 × S'],
-    [5_000, '1m', '4 × S'],
-    [15_000, '1m', '4 × S = 4 × step'],
-    [30_000, '2m', '4 × step'],
-    [60_000, '4m', '4 × step'],
-    [3_600_000, '4h', '4 × step'],
-  ] as const)('rate window at step %i ms: %s (%s)', (stepMs, w, _by) => {
+    [1_000, '1m'], // 4 × S
+    [5_000, '1m'], // 4 × S (1 h at 1 200 px; was `20s`)
+    [15_000, '1m'], // 4 × S = 4 × step
+    [30_000, '2m'], // 4 × step
+    [60_000, '4m'], // 4 × step
+    [3_600_000, '4h'], // 4 × step
+  ] as const)('rate window at step %i ms: %s', (stepMs, w) => {
     expect(DEFAULT_SCRAPE_S).toBe(15);
     expect(formatDuration(rateWindowMs(stepMs))).toBe(w);
     const o = { rate: true, stepMs };
