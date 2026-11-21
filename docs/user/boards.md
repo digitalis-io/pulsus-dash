@@ -81,7 +81,7 @@ toolbar becomes:
 |---|---|
 | **Add panel** | Adds an empty 6 × 8 panel in the first free place (top to bottom, left to right) and opens it in the panel editor |
 | **Save current time range** | Checked when the board has a saved time range. Checking saves the current one with the board; unchecking removes it |
-| **Discard** | Throws away the unsaved changes: reloads the board and returns to View mode |
+| **Discard** | Throws away the unsaved changes: reloads the board and returns to View mode. While it reloads, the board cannot be edited or saved |
 | **Save** (**⌘S** on macOS, **Ctrl+S** elsewhere) | Saves the changes as a new version. Disabled when there is nothing to save |
 | **Done** (or **Shift+E**) | Returns to View mode; with unsaved changes it asks first |
 
@@ -134,6 +134,11 @@ Saves are checked against the version you opened. If someone saved the board aft
   and load theirs** loads their version.
 
 A save is never silently lost or overwritten.
+
+If the board cannot be read again while it is open (the connection dropped, or it was deleted
+elsewhere), the board and your unsaved changes stay on screen with a note: "Could not reload this
+board. Your changes are kept." or "This board was deleted elsewhere. Your changes are kept here
+but cannot be saved." Leaving the page still asks first.
 
 ## Keys
 

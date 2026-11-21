@@ -337,7 +337,20 @@ the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-
 first panel they point into), then calls `saveBoard` with the head's etag. A 409 opens the conflict
 dialog (save again with the other version's etag, or load it); `invalid` shows the field errors;
 `notFound` and network failures keep the draft and leave Save enabled. The query cache entry of the
-board is set from the response and the board list is invalidated.
+board is set from the response and the board list is invalidated. **Discard** reads the head
+again with `staleTime: 0`; until that read settles, Edit is read-only exactly as while saving
+(toolbar, layout buttons, grid and editor fields disabled; `⌘S`/`Ctrl+S` and `Shift+E` ignored), so
+the response's `loaded` and `exitEdit` cannot replace an edit or race a save.
+
+**Failed reads.** Only a failed first read replaces the page (`Board not found` or the generic
+error). A failed later read (an invalidation or refetch with the board already loaded) keeps
+`BoardEditor` mounted, so the draft and the unsaved-changes guard stay; a notice says the board was
+deleted elsewhere (`notFound`) or could not be reloaded (anything else), and clears on the next
+successful read.
+
+**Panel ids.** New panel ids are `p-<n>` above the largest `p-<n>` among panel and section ids
+(ids are unique across both), computed with `BigInt`; when that does not fit the 40-character id,
+the lowest free `p-<n>` is used.
 
 **Saved time and the guard.** Board links pass `BOARD_LINK_STATE` (`{applySavedTime: true}`,
 `SidebarBoards.tsx`); on the first load with that state the board's `spec.time` is applied with a
