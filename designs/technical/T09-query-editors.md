@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-21 |
+| **Version** | 1.10-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -227,6 +227,8 @@ Mechanics:
 - **Host (v1, #63).** The view mounts in an open shadow root, so CodeMirror's style modules are
   adopted stylesheets, which `style-src 'self'` allows (ADR-0014 §9). Window-key exclusions read the
   whole `composedPath()`, so keys typed in the editor do not step the window (INT-032).
+- **v1 Explore keys (#63 Part C).** `Esc` with no popup open moves the focus to the page's **Run**
+  button, so the editor never traps focus; Shift+Enter and Mod+Enter run from the editor.
 - **v1 composition guard (T09-005, #63).** An open or pending completion popup closes at
   `compositionstart`; while composing nothing opens, is looked up or is accepted, and results that
   arrive are held and dropped; completion re-evaluates once, 20 ms after the last `compositionend`.
@@ -582,7 +584,7 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 | Remote completions (cache miss) | ≤ 150 ms p50 / 400 ms p95 after the debounce | BFF L1 hit typical |
 | Builder toggle (project + loss check) | ≤ 16 ms for a 1 KB query | editor worker |
 | Editor-worker cold start (WASM phase: fetch + compile + LR init) | ≤ 300 ms on (b), overlapped with first focus | ~0.45–0.55 MB br estimated (PRF-009: not in core) |
-| Editor chunk (CodeMirror + languages + components) | ≤ 175 KB br, lazy with the Explore and panel-editor routes | [ADR-0014](../adr/0014-typescript-react-web-client.md) §8; not in the initial JS |
+| Editor chunk (CodeMirror + languages + components) | ≤ 175 KB br, lazy with the Explore and panel-editor routes; measured as `editor.ts`, `lang/promql/promql.ts` and the `editor-*` files statically reachable from them (the walk does not pass through other chunks; v1, #63) | [ADR-0014](../adr/0014-typescript-react-web-client.md) §8; not in the initial JS |
 | Max query size | 128 KB (LogQL cap applied to all three) | T09-015 |
 
 These are measured with Playwright typing scripts (per-keystroke frame timing) and a corpus replay of
@@ -593,7 +595,10 @@ These are measured with Playwright typing scripts (per-keystroke frame timing) a
 128 KB, with an explanation, and the run action MUST refuse such a query with the same message.
 
 v1 (#63) measures UTF-8 bytes (`TextEncoder`) on every change: above 131 072 bytes the editor pauses
-completion, and the page explains and refuses Run.
+completion, and the page explains and refuses Run. Run is also refused, with its own message, when
+the text to **send** (the rate rewrite included) is over the BFF's 64 KiB; the page plans the run only
+once the metric metadata and the chart width are known, so the check uses the text that would be
+sent (#63 Part C).
 
 ## 8. Security, tenancy & RBAC
 
@@ -701,3 +706,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.7-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
 | 1.8-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
 | 1.9-rc | 2026-11-21 | #63 Part B: §0 rows `dash-qlex` (PromQL v1 language and completion over `/prom/*`) and "Editor-worker suggest cache" (v1 key, TTL from settle, LRU, per-kind supersede, tenant generations); §4.3 v1 host (shadow root, composed-path window keys) and composition guard; §4.4 v1 limits and lookup windows; §4.8 v1 syntax tokens; §5.1 v1 `LanguageDeps` fields, `lang/promql/`, `LANGUAGES`, `detect` until INT-038, `PromQLEditor`; T09-015 v1 measurement |
+| 1.10-rc | 2026-11-21 | #63 Part C: §4.3 v1 Explore keys (`Esc` moves the focus to Run); §7 Editor chunk row measures the editor entries and the `editor-*` files they statically reach; T09-015 v1: Run is also refused above the BFF's 64 KiB on the sent text, planned only with the definitive inputs |

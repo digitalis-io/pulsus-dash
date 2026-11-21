@@ -47,11 +47,31 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 |---|---|---|---|---|---|
 | `check-lockfile.ts [dir]` | no findings | findings | unreadable input | `non-exact-version`, `lockfile-version`, `non-registry-resolved`, `missing-integrity` | `scripts/__fixtures__/lockfile/{caret,foreign,no-integrity,v2}` |
 | `check-deps.ts [dir]` | no findings | findings | unreadable input | `not-allowlisted`, `not-in-closure`, `stale-closure`, `forbidden-category`, `licence` | `scripts/__fixtures__/deps/*` |
-| `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>` | built in a temporary directory by `bundle-size.test.ts` |
+| `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>`, `editor-in-initial`, `editor-orphan` | built in a temporary directory by `bundle-size.test.ts` |
 | `token-lint.ts [root]` | no findings | findings | a file does not parse | `colour-literal`, `size-literal`, `duration-literal`, `state-token`, `computed-token-name`, `suppressed-token-rule` | `scripts/__fixtures__/token-lint/bad` (and `good`, which must pass) |
 | `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
+
+### Bundle budgets
+
+`bundle-size.ts` (`ci:bundle-size`, PRF-009, PRF-033) reports one row per budget class:
+
+| Class | Measured | Budget (brotli) |
+|---|---|---|
+| `initialJs` | the entry and the initial route module with their static imports | 200 000 |
+| `initialCss` | the CSS of those chunks | 30 000 |
+| `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
+| `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
+| `fonts`, `totalExceptEngine` | the fonts; every file | 150 000; 1 000 000 |
+
+Every chunk holding an editor module is named `editor-<hash>.js` by `vite.config.ts`, so the
+closure and `e2e:lazy-load` can name the editor's files. `editor-in-initial` fails when a closure
+file is in the initial JS; `editor-orphan` fails when an `assets/editor-*.js` file is outside the
+closure (named as editor code, but no editor entry reaches it). The editor entries are also
+`required.lazyModules`, so a build that drops them fails `missing-artefact`. The CI proof that the
+editor row fails over budget is the branch `gate-proof/63-editor-chunk` (budget `editorChunk`
+lowered to 50 000), run as a draft PR whose `check` job must fail on `over-budget:editorChunk`.
 
 `pack-assets.ts` is not a checker: it packs the build the BFF embeds
 ([Serving the client](../server/README.md#serving-the-client)).
@@ -136,6 +156,18 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     a local before/after run in its PR: 3 runs each with the base's files and the branch's, with
     and without NaN cells; the median after-p95 is at most 1.10 × the median before-p95.
 
+- **`bench:editor-keystroke`** (`e2e/perf-editor-keystroke.spec.ts`, Chromium only, PRF-005,
+  T09-003): on the stub build, 100 keys (` or up`, cycled, after 20 warm-up keys) typed at the end
+  of a 1 KB PromQL query in Explore. Each sample is the main-thread `TaskDuration` (CDP
+  `Performance.getMetrics`) from the key press through two animation frames, minus the median of
+  30 samples without a key. It asserts 100 samples and the final text length, and writes
+  `test-results/bench-editor-keystroke.json` (`samples`, `overheadMs`, `p50`, `p95`, `max`). On
+  shared CI it is report only: each breach of p95 ≤ 2 ms or a key over 16 ms is a `warning`
+  annotation. `EDITOR_BENCH_GATE=enforce` (the reference lab, once it exists) fails the test on a
+  breach instead.
+- **`e2e:editor-ime`** (`e2e/editor-ime.spec.ts`, Chromium only, T09-005): a CDP IME composition in
+  the Explore editor opens no completion popup while it lasts; the popup follows once it commits.
+
 ### End-to-end tests
 
 `npm run e2e` (or `make e2e`) starts four servers (`client/playwright.config.ts`):
@@ -173,7 +205,9 @@ pulsus_owner;`). CI creates `pulsus_e2e` per job.
 
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
-`bff-http` and `dev-proxy` run on Chromium only.
+`bff-http`, `dev-proxy`, `editor-ime` and `perf-editor-keystroke` run on Chromium only. The Explore
+specs that read the fake's request records (`e2e/explore-metrics.spec.ts`) run on the http-mode BFF
+and use one time window per browser, so parallel projects never count each other's requests.
 
 - **`e2e:bff-headers`** (`bff-headers.spec.ts`): `GET /` has `Content-Security-Policy` equal to
   `CSP` from `config/headers.ts` and every other document header; the first `/assets/*.js` the page

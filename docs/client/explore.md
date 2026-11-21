@@ -1,9 +1,10 @@
-# Explore: metrics (data and rules)
+# Explore: metrics (data, rules, the editor chunk and the page)
 
 The Explore metrics page (issue #63) is built in three parts. This page documents **Part A**, the
 modules that decide what the page sends and draws, without drawing it (each rule is a pure,
-table-tested function), and **Part B**, the PromQL editor chunk: a library the page loads lazily
-([Editor chunk](#editor-chunk)). The page itself (Part C) extends this page when it lands.
+table-tested function); **Part B**, the PromQL editor chunk, a library the page loads lazily
+([Editor chunk](#editor-chunk)); and **Part C**, the page itself ([Page](#page)). How to use the
+page is in the user guide, [Explore: metrics](../user/explore-metrics.md).
 
 Requirements: [SRF-030](../../designs/product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries)
 (auto-vis subset), [SRF-031](../../designs/product/04-surfaces.md#srf-031--metric-browser-and-series-table)
@@ -194,9 +195,9 @@ metric names, `["a","b"]` for any other label, and no series.
 
 The PromQL editor (Part B) is CodeMirror 6 with the Lezer PromQL grammar of
 `@prometheus-io/codemirror-promql` and `@prometheus-io/lezer-promql` (pinned versions in
-[JavaScript supply chain](supply-chain.md#query-editor)). It is a library: nothing in Part B imports
-it from a page, so the build emits no editor chunk yet. Part C loads it with a dynamic import of
-`src/editor/editor.ts`, which exports `PromQLEditor`, `promql` and `createPromSource`.
+[JavaScript supply chain](supply-chain.md#query-editor)). The page loads it with a dynamic import of `src/editor/editor.ts`, which exports `PromQLEditor`,
+`promql` and `createPromSource`; `LANGUAGES.promql()` loads `lang/promql/promql.ts`. Both are
+named `editor-*` in the build ([Chunk naming and the closure budget](#chunk-naming-and-the-closure-budget)).
 
 ### Modules
 
@@ -417,6 +418,162 @@ to on focus. Vitest resolves `@prometheus-io/codemirror-promql` to its ES module
 no `exports` map, and its CommonJS build would load a second `@codemirror/state`), as the browser
 build does.
 
+## Page
+
+Explore › Metrics (`src/pages/explore/`, Part C) is two cards: **Query** and **Result**. It adds no
+server, wire or database change.
+
+### Components and state owners
+
+| Module | Owns or renders |
+|---|---|
+| `MetricsPage.tsx` | The state owner. The draft in a ref (typing re-renders nothing unless a flag flips), `dirty` (draft ≠ `q`), `draftOver` (`overQueryLimit(draft)`), `runRefusal`, `sort`, `isolatedKey` (D-ISO), the editor and Run button refs, and the `PromSource` (`useMemo` on the editor module, API, query client and tenant; the window is read through a ref on each lookup) |
+| `QueryCard.tsx` | `PromQL` tag, `MetricPicker`, Run hint, **Run** (disabled until `runReady`, described by the status row), the editor or its placeholder (`Loading the editor…`, or an alert when the chunk failed to load), the status row |
+| `QueryStatus.tsx` | `statusView` and its rendering: `refused` and `error` as `role="alert"` (Narrow for `tooBroad` and `timeout`), `limit`, `waiting` and `ok` as `role="status"`, else nothing |
+| `MetricPicker.tsx` | React Aria `ComboBox` (`Metric`), opens on focus; names are `['prom', tenant, 'pickerNames']` (60 s stale), asked only after the first open; options from `metricOptions` (at most 100, type and help); Enter with no option highlighted picks the first match |
+| `ResultCard.tsx` | Toolbar (`SegmentedControl` *Visualisation*, the **Rate applied** chip, **Sent query** when the planner rewrote it), `CompletenessNotice`, the chart host (always mounted, so its width is known before the first Run; the 2 px shimmer after 300 ms, `aria-busy`), `<ChartFrame>` or the notice text, `SeriesTable` |
+| `CompletenessNotice.tsx` | `Partial data` badge with its warnings and Narrow when truncated; `Warnings` badge without truncation; `Notes` for infos; five items each, then `and n more` |
+| `SeriesTable.tsx` | Sortable table (Series, Last, Max) in a focusable scrolling region; row buttons isolate (`aria-pressed`) when the vis can isolate; others dimmed; first 500 rows |
+| `src/kit/SegmentedControl.tsx` | React Aria `ToggleButtonGroup`, single selection: a `radiogroup` whose arrow keys move the one tab stop; the selected option cannot be deselected |
+| `src/explore/useExploreRun.ts` | The run: `plannable`, `planFor`, `refusalOf`, `exploreRunKey`, `useExploreRun` (below) |
+| `src/explore/useEditorModules.ts` | Starts `LANGUAGES.promql()` and `import('../editor/editor')` on mount; a rejection sets `failed` |
+| `src/explore/useDelayedFlag.ts`, `useElementWidth.ts` | True once a flag has been on for a delay; the chart host's content width in whole CSS px through one `ResizeObserver` (`0` is `null`) |
+| `src/explore/statusText.ts`, `metricOptions.ts` | Error, outcome and refusal texts; the picker filter and descriptions |
+
+### The run hook and D-RUN
+
+`useExploreRun({tenant, q, inputs, widthPx, window})`:
+
+- `plan = planFor(q, inputs)`: null for blank text, or while the language, the metadata or the step
+  is unknown (`plannable`). The metadata is `null` while its query is pending and `{}` after its
+  error; the step is `promGrid(fromMs, toMs, widthPx).stepMs`.
+- `refusal = refusalOf(q, plan)`: `queryTooLarge` above 128 KB of UTF-8 (T09-015), else `tooLong`
+  when the **sent** text is over 64 KiB (the BFF's limit). A refused or unplanned query is not sent.
+- The query key is `['data', 'explore', tenant, q, sent, kind, histogram, fromMs, toMs, step]`
+  (`step` null for an instant query). `q` is in the key as well as the sent text, so a rewritten
+  `http_requests_total` and a typed `rate(http_requests_total[1m])` never share an outcome. A new
+  key aborts the old request (TanStack Query aborts the signal of a query that loses its observer;
+  PRF-030). `widthPx` is read through a ref, so a width change within one step does not refetch.
+- `placeholderData` keeps the previous key's outcome only from the same tenant, so a window-only
+  change keeps the chart frame and its data (the frame is not remounted).
+- **D-RUN:** the last success that is not a placeholder is kept in hook state with its tenant.
+  `shown` is null when `q` is empty; on an error it is the kept outcome; otherwise the current data,
+  else the kept outcome. An error or a pending key never blanks the chart. `last` lives for the
+  page mount only.
+- `rerun()` = `cancelQueries({queryKey: key, exact: true})`, then `refetch()`: the cancel (revert)
+  aborts the request in flight, its first fetch included, and dispatches no error; the refetch
+  starts a new request. `refetch({cancelRefetch: true})` alone would reuse a first fetch.
+- `error` is null for an `AbortError`.
+
+### Run order and refusals
+
+`runReady` = the editor chunk loaded and `plannable(inputs)`. Until then **Run** is disabled and the
+status reads `Run is available once the metric types have loaded and the chart has a size.` Run
+never plans with stand-in inputs, so a draft that grows past 64 KiB once the rate rewrite applies is
+refused before it reaches the URL.
+
+Run (button, Shift+Enter, Mod+Enter), first match, on the draft `d`:
+
+| Case | Effect |
+|---|---|
+| `d` blank | `q` removed (push): the empty state, no request |
+| `overQueryLimit(d)` | `queryTooLarge` alert; no navigation, no request |
+| not `runReady` (only a key reaches this) | nothing |
+| `planFor(d, inputs).tooLong` | `tooLong` alert; no navigation, no request |
+| `d ≠ q` | `q = d` (push): a new key |
+| `d = q` | `rerun()` |
+
+While the draft is over 128 KB the same text shows as a status (the T09-015 explanation). A URL
+query over either limit (a shared link) shows the refusal as an alert and sends nothing.
+
+The status line, first match: a refused Run; the draft over 128 KB; the URL query refused; not
+ready; the run error ([below](#errors-and-status)); the outcome (`3 series · step 5 s · 120 ms`,
+`1 series · 120 ms`, `Scalar · …`, `String · …`).
+
+### Errors and status
+
+| Error | Status text (alert) | Narrow |
+|---|---|---|
+| `queryInvalid` | the first diagnostic's message (with ` (position unknown)` when PulsusDB gave none), else the message; the editor underlines it while the draft is unchanged | — |
+| `tooBroad` | the message | yes |
+| `timeout` | `The query timed out. Narrow the time range or the query.` | yes |
+| `busy` | `Too many queries are running for this tenant. Try again in a moment.` | — |
+| `unavailable` | `PulsusDB is unavailable: <message>` | — |
+| `network` | `The server could not be reached.` | — |
+| `notFound` | `This tenant no longer exists.` | — |
+| any other | `The query failed: <message>` | — |
+| `AbortError` | not shown | — |
+
+Narrow dispatches the Context `zoom in` (the middle half of the window). Diagnostics are
+`lang.diagnosticsOf(q, error, toSourceIndex(plan, ·), plan.query)` while the draft equals `q`, else
+`[]`; the editor sees a new array only when those inputs change.
+
+### Empty query, string results and isolation
+
+- `q` empty: the Result card shows only the chart host with the empty state; no toolbar, notice,
+  frame or table, even with a previous success (which stays cached for Back).
+- A string result is drawn as `String result: <value>` under every vis option; the first option
+  reads `Auto` (no auto vis), otherwise `Auto (<vis>)`.
+- `isolatedKey` survives new results: `framePlan` ignores a key the result lacks, and then no row
+  is pressed or dimmed. Row buttons show only when `canIsolate(vis, result)`; swatches only when
+  the vis is not a heatmap.
+
+### Ownership and lifetimes
+
+| Resource | Owner | Lifetime |
+|---|---|---|
+| Editor and language modules | `useEditorModules` state; the browser's module cache | page mount; one fetch per page load |
+| `PromSource` | `MetricsPage` | until the tenant changes (a new source retains the new tenant in the suggest cache, T09-014) |
+| Run query, metadata, picker names | the `QueryClient` | `gcTime` defaults |
+| `last`, `isolatedKey`, `sort`, draft state | React state | page mount (not in the URL) |
+| `ResizeObserver` | `useElementWidth` | while the host is attached |
+| `<ChartFrame>` and its engine frame | `ResultCard` | while there is frame data; a window-only change keeps it |
+
+All work runs on the main thread in React effects and TanStack callbacks; the only timer is
+`useDelayedFlag`'s (cleared on change and unmount), and one run query is observed at a time.
+
+### Refresh, time changes and the chart (ADR-0019, #93)
+
+The header's **Refresh now** and the auto-refresh tick call the shell's `refreshNow()`, which
+cancels and then invalidates `['data']`, so a request in flight (a first fetch included) is aborted
+and a new one starts; with a relative window the window moves and a new key runs. A time change
+(picker, brush, window keys, a chart zoom or pan commit) is a new key. Explore passes no `pending`
+prop to `<ChartFrame>` (ADR-0019): the frame is kept across reruns with the previous data drawn, so
+the only blank canvas is the first draw, under the shimmer. A chart zoom or pan commit (#93) is a
+Context `setRange` inside `<ChartFrame>`, a time change here, and the frame survives the refetch
+because a window-only key change keeps its data.
+
+### Chunk naming and the closure budget
+
+`vite.config.ts` names every chunk that holds an editor module `assets/editor-<hash>.js`
+(`build.rolldownOptions.output.chunkFileNames`). Editor modules are `src/editor/` except
+`lang/index.ts` and `lang/types.ts` (the route imports them), and the 17 packages of
+`dependency-policy.json` `runtimeClosure.query-editor`. Rollup's own split is kept (no manual
+chunks). The editor imports some modules from other chunks: the initial entry (React, `t`), shared
+chunks and the route chunk, where Rollup places `explore/promMetadata` and `explore/querySize`
+because the route loads first.
+
+`ci:bundle-size` measures the editor closure: the files of the `editorModules` entries
+(`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, both in `required.lazyModules`) and
+every `assets/editor-*.js` file reachable from them through static manifest imports, walking only
+through `editor-*` files; other imported chunks keep their own initial or lazy rows, so each byte is
+counted once. The build measures 2 files, about 125 KB brotli (budget 175 000); the route chunk
+`MetricsPage-*` keeps its own `lazyChunk` row (about 14 KB, budget 120 000). See
+[Build, test and CI](../development/build-and-ci.md#bundle-budgets).
+
+### Testing the page
+
+Page tests mock the editor chunk with `src/test/fakeEditor.tsx`:
+`vi.mock('../../editor/editor', () => import('../../test/fakeEditor'))`. Its `PromQLEditor` is a
+`<textarea>` controlled from `value` as the real host is (a changed value replaces the text and is
+reported through `onChange`), with the Run keys, Escape, `focus()`, `insert()` and the latest
+diagnostics in `data-diagnostics`. `createPromSource` returns a `fakePromSource` of
+`fakeEditorSource.data` (default `F`, which a test may replace); `promql` and `LANGUAGES` are the
+real modules. `src/test/exploreTestKit.tsx` renders the app with a fake engine and has spies that
+answer, reject or hold `queryRange` and `queryInstant`. The chart host has no width until a test
+calls `resizeAll` (a browser's `ResizeObserver` reports on observe), so tests that render the page
+install the fake `ResizeObserver`.
+
 ## Gates
 
 | Gate                                                                                                                                      | File                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -441,10 +598,19 @@ build does.
 | `unit:editor-host`                                                                                                                        | `src/editor/PromQLEditor.test.tsx`                                                                                                                                                                                                                                                                                                                                                                                     |
 | `unit:lang-table`                                                                                                                         | `src/editor/lang/index.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        |
 | `unit:window-keys`                                                                                                                        | `src/state/useWindowKeys.test.tsx`: an editable element in a shadow root, a shadow host in a dialog, and an event without a path                                                                                                                                                                                                                                                                                       |
+| `unit:explore-run-size` | `src/pages/explore/MetricsPage.test.tsx`: R1–R8 (128 KB of draft or URL query, 64 KiB sent with the rewrite counted, `rate=off`, the width and the metadata arriving after the draft) |
+| Page component tests | `src/pages/explore/MetricsPage.test.tsx` (run on load, metadata, scalar, histogram, string, supersede, frame kept, refresh, interval refresh, refresh and rerun during the first fetch, shimmer, errors, partial data, warnings, rate and vis, run keys, escape, picker, away and back, empty query, isolation, tenant switch, heatmap isolation), `SeriesTable`, `MetricPicker`, `CompletenessNotice`, `src/kit/SegmentedControl.test.tsx`, `src/pages/board/BoardPage.test.tsx` (Refresh leaves panel queries) |
+| Hook and helper tests | `src/explore/useExploreRun.test.tsx`, `useDelayedFlag.test.tsx`, `useElementWidth.test.tsx`, `statusText.test.ts`, `metricOptions.test.ts` |
+| `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:lazy-load` (explore) | `e2e/explore-metrics.spec.ts` (against `pulsus-fake` through the http-mode BFF; lazy-load on the stub build) |
+| `e2e:deep-link` (explore) | `e2e/deep-link.spec.ts` |
+| `e2e:editor-ime` | `e2e/editor-ime.spec.ts` (Chromium) |
+| `bench:editor-keystroke` | `e2e/perf-editor-keystroke.spec.ts` (Chromium; report only, `EDITOR_BENCH_GATE=enforce` on the lab) |
+| `e2e:a11y-rooms`, `e2e:csp-violations` (explore) | `e2e/a11y-rooms.spec.ts`, `e2e/keyboard.spec.ts` (L32, `e2e/keyboardExplore.ts`), `e2e/csp-violations.spec.ts` |
+| `ci:bundle-size` (editor closure) | `scripts/bundle-size.test.ts` (h)–(k) and the real build |
 
-The editor's budgets (PRF-005 keystroke work, `bench:editor-keystroke`; PRF-009 editor chunk,
-`ci:bundle-size`) and its browser gates (`e2e:csp-violations`, `e2e:lazy-load`, `e2e:editor-ime`)
-are Part C's, where a page first loads the chunk.
+The editor's budgets are measured with the page: PRF-005 keystroke work by `bench:editor-keystroke`
+(report only on shared CI) and PRF-009 by the editor closure row of `ci:bundle-size`; its browser
+gates are `e2e:csp-violations`, `e2e:lazy-load` and `e2e:editor-ime`.
 
 Editor design rules: [T09](../../designs/technical/T09-query-editors.md) T09-001 (one interface per
 language), T09-002 (no client-side validity), T09-003 (Lezer highlighting), T09-004 (keys), T09-005

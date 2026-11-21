@@ -110,8 +110,12 @@ zone) are passed by closure.
   after a create, rename, save or delete, `invalidateBoardLists(queryClient)`
   (`src/boards/queries.ts`) invalidates `['boards']`, `['starred']` and `['recent']`, since all three
   show titles;
-  `refreshNow()` invalidates `['data']` (the chart queries of later issues); a refresh moves the
-  window, so the panel queries follow it.
+  `['data', 'explore', tenant, q, …]` (the Explore run, [Explore: metrics](explore.md#the-run-hook-and-d-run)).
+  `refreshNow()` (`src/state/useTimeContext.ts`) cancels `['data']`, then invalidates it, so a
+  request in flight, a first fetch included, is aborted and started again (`invalidateQueries`
+  alone refetches with `cancelRefetch`, which reuses a first fetch). The `['panel', …]` queries
+  are not under `['data']`: they follow the window only, so a refresh with a relative window moves
+  them and one with an absolute window does not refetch them (#101).
 
 ## Time Context (IA-020, IA-022, IA-023, INT-032, T03-014, T03-017, T08-005)
 
