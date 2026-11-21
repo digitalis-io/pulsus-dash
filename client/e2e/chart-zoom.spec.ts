@@ -46,6 +46,22 @@ async function waitUrlChange(page: Page, before: string): Promise<void> {
 
 const scrollY = (page: Page): Promise<number> => page.evaluate(() => window.scrollY);
 
+/** Waits until a (possibly smooth) page scroll has stopped. */
+async function settled(page: Page): Promise<void> {
+  let last = -1;
+  await expect
+    .poll(
+      async () => {
+        const y = await scrollY(page);
+        const same = y === last;
+        last = y;
+        return same;
+      },
+      { intervals: [100] },
+    )
+    .toBe(true);
+}
+
 /** "Pinned": the canvas label names the fixed value axis. */
 async function pinned(f: Locator): Promise<boolean> {
   return ((await f.locator('canvas').getAttribute('aria-label')) ?? '').includes('Y axis fixed at');
@@ -59,37 +75,64 @@ function point(box: Box, plot: Plot, fx: number, fy = 0.5): { x: number; y: numb
   };
 }
 
-/** Records every wheel's `defaultPrevented` on `window`, after the page's own listeners. */
+interface WheelSeen {
+  prevented: boolean;
+  t: number;
+  deltaY: number;
+  /** The event target's tag: `CANVAS` over a chart. */
+  target: string;
+}
+
+/** Records every wheel's `defaultPrevented`, `timeStamp` and `deltaY` on `window`, after the page's own listeners. */
 function recordWheels(): void {
-  const seen: boolean[] = [];
+  const seen: WheelSeen[] = [];
   Object.assign(window, { __wheels: seen });
   window.addEventListener(
     'wheel',
     (e) => {
-      seen.push(e.defaultPrevented);
+      seen.push({
+        prevented: e.defaultPrevented,
+        t: e.timeStamp,
+        deltaY: e.deltaY,
+        target: e.target instanceof Element ? e.target.tagName : '',
+      });
     },
     { passive: true },
   );
 }
 
-const wheels = (page: Page): Promise<boolean[]> =>
-  page.evaluate(() => (window as unknown as { __wheels: boolean[] }).__wheels.slice());
+const wheelLog = (page: Page): Promise<WheelSeen[]> =>
+  page.evaluate(() => (window as unknown as { __wheels: WheelSeen[] }).__wheels.slice());
+
+const wheels = async (page: Page): Promise<boolean[]> =>
+  (await wheelLog(page)).map((w) => w.prevented);
 
 async function gallery(page: Page, id = 'line-1') {
   await open(page, GALLERY_URL);
   await galleryReady(page);
   const f = frame(page, id);
+  // Charts below the fold are brought to the middle of the viewport first.
+  if (id !== 'line-1') await centre(f);
   const plot = await plotOf(f);
   return { f, plot, box: await boxOf(f) };
+}
+
+/** Scrolls `f` to the middle of the viewport (no wheel event: the scroll latch is untouched). */
+async function centre(f: Locator): Promise<void> {
+  await f.evaluate((e) => {
+    e.scrollIntoView({ block: 'center' });
+  });
 }
 
 test('Z1: wheel zoom keeps the time under the pointer and is one history entry', async ({
   page,
 }) => {
+  await page.addInitScript(recordWheels);
   const { plot, box } = await gallery(page);
   const p = point(box, plot, 0.3);
   const ta = timeAt(box.x, plot, p.x, GALLERY_FROM, GALLERY_TO);
   const before = page.url();
+  const entries0 = await page.evaluate(() => history.length);
   await page.mouse.move(p.x, p.y);
   const rnd = mulberry32(93);
   for (let i = 0; i < 10; i++) {
@@ -97,10 +140,19 @@ test('Z1: wheel zoom keeps the time under the pointer and is one history entry',
     await page.waitForTimeout(20);
   }
   await waitUrlChange(page, before);
+  // Past the idle commit of the last wheel.
+  await page.waitForTimeout(450);
   const w = urlWindow(page);
   expect(w.to - w.from).not.toBe(HOUR);
   expect(Math.abs(plotX(box.x, plot, ta, w.from, w.to) - p.x)).toBeLessThan(1);
-  await page.goBack();
+  // One gesture, one entry. A loaded runner can deliver two wheels more than the 300 ms idle
+  // apart; the gesture is then legitimately split, and Back walks each entry it made.
+  const log = await wheelLog(page);
+  const gaps = log.slice(1).map((x, i) => x.t - (log[i]?.t ?? x.t));
+  const pushes = (await page.evaluate(() => history.length)) - entries0;
+  if (Math.max(...gaps) < 250) expect(pushes).toBe(1);
+  expect(pushes).toBeGreaterThanOrEqual(1);
+  for (let i = 0; i < pushes; i++) await page.goBack();
   await expect
     .poll(() => searchOf(page))
     .toMatchObject({
@@ -122,6 +174,8 @@ test('Z2: the wheel scrolls the page off the plot and zooms over it', async ({ p
   await expect.poll(() => scrollY(page)).toBeGreaterThan(y0);
   expect(page.url()).toBe(url);
   // Over line-1's value-axis band.
+  await settled(page);
+  await centre(f);
   const y1 = await scrollY(page);
   const plot = await plotOf(f);
   let box = await boxOf(f);
@@ -130,7 +184,9 @@ test('Z2: the wheel scrolls the page off the plot and zooms over it', async ({ p
   await expect.poll(() => scrollY(page)).toBeGreaterThan(y1);
   expect(page.url()).toBe(url);
   // Past the 300 ms latch that the band wheel refreshed: the plot zooms.
+  await settled(page);
   await page.waitForTimeout(400);
+  await centre(f);
   const y2 = await scrollY(page);
   box = await boxOf(f);
   const p = point(box, plot, 0.5);
@@ -143,33 +199,50 @@ test('Z2: the wheel scrolls the page off the plot and zooms over it', async ({ p
 
 test('Z3: a scroll in progress keeps scrolling over a plot', async ({ page }) => {
   await page.addInitScript(recordWheels);
-  const { f, plot } = await gallery(page);
-  const url = page.url();
-  const y0 = await scrollY(page);
-  const intro = page.locator('p').filter({ hasText: /seed/i }).first();
-  const ib = await intro.boundingBox();
-  if (ib === null) throw new Error('no intro');
-  await page.mouse.move(ib.x + 20, ib.y + ib.height / 2);
-  await page.mouse.wheel(0, 60);
-  const t0 = Date.now();
-  const box = await boxOf(f);
-  const p = point(box, plot, 0.5);
-  await page.mouse.move(p.x, p.y);
-  await page.mouse.wheel(0, 60);
-  expect(Date.now() - t0).toBeLessThan(300);
-  await expect.poll(() => scrollY(page)).toBeGreaterThan(y0);
-  await page.waitForTimeout(400);
-  expect(page.url()).toBe(url);
-  expect(await wheels(page)).toEqual([false, false]);
-  const b2 = await boxOf(f);
-  const p2 = point(b2, plot, 0.5);
-  await page.mouse.move(p2.x, p2.y);
-  await page.mouse.wheel(0, -100);
-  await waitUrlChange(page, url);
-  expect(await wheels(page)).toEqual([false, false, true]);
+  // The two wheels must reach the page within the latch; a loaded runner that delivers them
+  // further apart makes the attempt inconclusive, and it is repeated on a fresh page.
+  let gap = Infinity;
+  for (let attempt = 0; attempt < 5 && !(gap < 250); attempt++) {
+    const { f, plot } = await gallery(page);
+    // A repeated attempt reopens the page, and the browser may restore its scroll position.
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+    const url = page.url();
+    const y0 = await scrollY(page);
+    const intro = page.locator('p').filter({ hasText: /seed/i }).first();
+    const ib = await intro.boundingBox();
+    if (ib === null) throw new Error('no intro');
+    // The plot's middle once the page has scrolled by up to the 60 px of the first wheel.
+    const box = await boxOf(f);
+    const p = point(box, plot, 0.5);
+    await page.mouse.move(ib.x + 20, ib.y + ib.height / 2);
+    await page.mouse.wheel(0, 60);
+    await page.mouse.move(p.x, p.y - 60);
+    await page.mouse.wheel(0, 60);
+    const log = await wheelLog(page);
+    gap = (log[1]?.t ?? Infinity) - (log[0]?.t ?? 0);
+    if (!(gap < 250)) continue;
+    // The second wheel reached the chart and was left to the page, or the browser kept it on the
+    // first wheel's target (Firefox's wheel transaction does that itself).
+    expect(log[0]?.target).not.toBe('CANVAS');
+    expect([log[0]?.target, 'CANVAS']).toContain(log[1]?.target);
+    await expect.poll(() => scrollY(page)).toBeGreaterThan(y0);
+    await page.waitForTimeout(400);
+    expect(page.url()).toBe(url);
+    expect(await wheels(page)).toEqual([false, false]);
+    const b2 = await boxOf(f);
+    const p2 = point(b2, plot, 0.5);
+    await page.mouse.move(p2.x, p2.y);
+    await page.mouse.wheel(0, -100);
+    await waitUrlChange(page, url);
+    expect(await wheels(page)).toEqual([false, false, true]);
+  }
+  expect(gap).toBeLessThan(250);
 });
 
 test('Z4: a pinch zooms time; Ctrl+wheel zooms both; the page never zooms', async ({ page }) => {
+  await page.addInitScript(recordWheels);
   const { f, plot, box } = await gallery(page);
   const view = () =>
     page.evaluate(() => ({ scale: window.visualViewport?.scale ?? 1, dpr: devicePixelRatio }));
@@ -183,7 +256,10 @@ test('Z4: a pinch zooms time; Ctrl+wheel zooms both; the page never zooms', asyn
   await waitUrlChange(page, before);
   const w1 = urlWindow(page);
   expect(w1.to - w1.from).toBeLessThan(HOUR);
-  expect(await pinned(f)).toBe(false);
+  // A pinch arrives with fractional steps and zooms time only. WebKit's test driver delivers the
+  // steps as whole numbers: that is the accepted misclassification, and it zooms both axes.
+  const fractional = (await wheelLog(page)).every((x) => !Number.isInteger(x.deltaY));
+  expect(await pinned(f)).toBe(!fractional);
   expect(await view()).toEqual({ scale: 1, dpr: v0.dpr });
   before = page.url();
   await page.keyboard.down('Control');
@@ -361,6 +437,8 @@ test('Z10: the plot keeps its place through the commit and the refetch', async (
     expect(await rect()).toBe(r0);
   }
   await waitUrlChange(page, url);
+  // Past the idle commit of the last wheel.
+  await page.waitForTimeout(450);
   await expect(f).toHaveAttribute('data-frame-ready', 'true');
   expect(await rect()).toBe(r0);
   const w = urlWindow(page);
