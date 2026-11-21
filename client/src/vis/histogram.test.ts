@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HeatmapFrame, SeriesFrame } from '../data/frames';
 import { arr, fixture, fkey, G2, G3, H1, J6, le, N } from '../test/histogramFixtures';
-import { histogramBuckets, isolateBucket } from './histogram';
+import { histogramBuckets, isHistogram, isolateBucket } from './histogram';
 
 const I = Infinity;
 
@@ -101,5 +101,84 @@ describe('unit:heatmap-buckets', () => {
     expectFrame(isolateBucket(G3(), fkey(6)), b, [N, N, N, N, N, N]);
     expectFrame(isolateBucket(G3(), fkey(0)), b, [1, N, N, 2, N, N]);
     expectFrame(isolateBucket(G3(), fkey(1)), b, [N, 2, N, N, 2, N]);
+  });
+});
+
+/**
+ * Many groups over many distinct bounds: each group `{job: g}` has its own finite bound and
+ * `+Inf`, so the full view has `groups + 1` bounds but each group only two. The work must scale with
+ * the input and the output, not with groups × timestamps × bounds (review r1 #2).
+ */
+function sparseGroups(groups: number, nt: number): SeriesFrame[] {
+  const timestamps = new Float64Array(nt).map((_, t) => t * 1000);
+  const out: SeriesFrame[] = [];
+  for (let g = 0; g < groups; g++) {
+    for (const [bound, v] of [
+      [String(g + 1), 1],
+      ['+Inf', 2],
+    ] as const) {
+      out.push({
+        key: fkey(out.length),
+        labels: { job: `j${g}`, le: bound },
+        timestamps,
+        values: new Float64Array(nt).fill(v),
+      });
+    }
+  }
+  return out;
+}
+
+/** Many complete groups on the same bounds: every interval of every group counts 1. */
+function denseGroups(groups: number, bounds: number, nt: number): SeriesFrame[] {
+  const timestamps = new Float64Array(nt).map((_, t) => t * 1000);
+  const out: SeriesFrame[] = [];
+  for (let g = 0; g < groups; g++) {
+    for (let b = 0; b < bounds; b++) {
+      out.push({
+        key: fkey(out.length),
+        labels: { job: `j${g}`, le: b === bounds - 1 ? '+Inf' : String(b + 1) },
+        timestamps,
+        values: new Float64Array(nt).fill(b + 1),
+      });
+    }
+  }
+  return out;
+}
+
+const timed = <T>(f: () => T): [T, number] => {
+  const t0 = performance.now();
+  const v = f();
+  return [v, performance.now() - t0];
+};
+
+describe('unit:heatmap-buckets scale', () => {
+  it('many groups × many bounds: linear in input and output', () => {
+    const groups = 400;
+    const nt = 1000;
+    const s = sparseGroups(groups, nt);
+    const [eligible, tEligible] = timed(() => isHistogram(s));
+    expect(eligible).toBe(true);
+    const [h, tFull] = timed(() => histogramBuckets(s));
+    const [iso, tIso] = timed(() => isolateBucket(s, fkey(1)));
+    expect(h?.bounds.length).toBe(groups + 1);
+    expect(h?.counts.length).toBe(nt * (groups + 1));
+    // Every group lacks every other group's bound: no cell is invented (T02 §4.4).
+    expect(h?.counts.every((c) => Number.isNaN(c))).toBe(true);
+    expect(iso?.counts.every((c) => Number.isNaN(c))).toBe(true);
+    // The old per-group grid takes seconds here (~0.4 G cells allocated and scanned 3×).
+    expect({ tEligible: tEligible < 100, tFull: tFull < 400, tIso: tIso < 100 }).toEqual({
+      tEligible: true,
+      tFull: true,
+      tIso: true,
+    });
+  });
+
+  it('many complete groups: every interval sums over the groups', () => {
+    const groups = 50;
+    const bounds = 20;
+    const nt = 200;
+    const h = histogramBuckets(denseGroups(groups, bounds, nt));
+    expect(h?.bounds.length).toBe(bounds);
+    expect(h?.counts.every((c) => c === groups)).toBe(true);
   });
 });

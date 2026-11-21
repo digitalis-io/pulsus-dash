@@ -130,6 +130,39 @@ describe('unit:frame-plan', () => {
     });
   });
 
+  it('bars over instant series with unequal timestamps grids them, keeping gaps', () => {
+    const at = (key: string, job: string, ts: number[], vs: number[]): SeriesFrame => ({
+      key,
+      labels: { job },
+      timestamps: new Float64Array(ts),
+      values: new Float64Array(vs),
+    });
+    const instant: ExploreResult = {
+      kind: 'series',
+      source: 'instant',
+      series: [at(fkey(0), 'a', [1000, 3000], [1, 3]), at(fkey(1), 'b', [2000], [2])],
+      stepMs: null,
+      completeness: EMPTY_COMPLETENESS,
+    };
+    const p = plan('bars', instant);
+    expect(p.spec === null || p.data === null ? 'none' : validateFrameData(p.spec, p.data)).toBe(
+      null,
+    );
+    expect(plain(p)).toEqual({
+      spec: BARS(NONE),
+      data: seriesOf([
+        at(fkey(0), 'a', [1000, 2000, 3000], [1, N, 3]),
+        at(fkey(1), 'b', [1000, 2000, 3000], [N, 2, N]),
+      ]),
+      notice: null,
+    });
+    // Isolating one series keeps it as it is; line keeps each series' own timestamps.
+    expect(plain(plan('bars', instant, { isolatedKey: fkey(1) })).data).toEqual(
+      seriesOf([at(fkey(1), 'b', [2000], [2])]),
+    );
+    expect(plain(plan('line', instant)).data).toEqual(seriesOf(instant.series));
+  });
+
   it('scalar overrides: SC1–SC4', () => {
     const lone = seriesOf([
       {

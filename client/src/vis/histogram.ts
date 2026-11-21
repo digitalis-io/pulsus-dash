@@ -97,6 +97,11 @@ function groupsOf(l: Layout): Map<string, number[]> {
   return groups;
 }
 
+/** Stub: whether `series` is a histogram (§4.2). */
+export function isHistogram(series: readonly SeriesFrame[]): boolean {
+  return histogramBuckets(series) !== null;
+}
+
 /**
  * The bucket counts of `series` (§4.2): `null` unless every series has a valid `le`, all share
  * their timestamps and one bound is finite. Each cell is the sum over the groups' counts, NaN when
