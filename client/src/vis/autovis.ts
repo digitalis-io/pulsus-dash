@@ -5,7 +5,7 @@
 import type { Completeness, InstantResult, RangeResult } from '../data/decode';
 import type { ScalarFrame, SeriesFrame } from '../data/frames';
 import type { VisKind } from '../engine/api';
-import { histogramBuckets } from './histogram';
+import { isHistogram } from './histogram';
 
 /** A query result as the Explore page shows it. */
 export type ExploreResult =
@@ -64,7 +64,7 @@ export function autoVis(i: {
 }): AutoVis {
   const r = i.result;
   if (r.kind === 'string') return { vis: null, rule: null };
-  if (i.histogram && r.kind === 'series' && histogramBuckets(r.series) !== null) {
+  if (i.histogram && r.kind === 'series' && isHistogram(r.series)) {
     return { vis: 'heatmap', rule: 5 };
   }
   if (i.rateApplied) return { vis: 'line', rule: 6 };

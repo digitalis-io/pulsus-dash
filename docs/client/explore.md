@@ -25,7 +25,7 @@ reads `Connected`); [ADR-0014](../../designs/adr/0014-typescript-react-web-clien
 | `src/explore/plan.ts` | The run planner: `planRun`, `metricType`, `formatDuration`, `toSourceIndex`, `utf8Length`, `MAX_QUERY_BYTES` |
 | `src/explore/seriesRows.ts` | The series table's rows: `seriesRows`, `sortRows`, `nextSort`, `toggleIsolation`, `TABLE_ROWS` (500, the engine's series cap) |
 | `src/vis/autovis.ts` | `ExploreResult` and its adapters `fromRange`, `fromInstant`; `autoVis`, `chooseVis` |
-| `src/vis/histogram.ts` | `histogramBuckets`, `isolateBucket`: Prometheus buckets as heatmap counts |
+| `src/vis/histogram.ts` | `isHistogram`, `histogramBuckets`, `isolateBucket`: Prometheus buckets as heatmap counts |
 | `src/vis/framePlan.ts` | `framePlan`, `canIsolate`, `scalarSeries`, `SCALAR_KEY`: the `<ChartFrame>` spec and data for every vis and result |
 | `src/state/exploreParams.ts`, `useExploreParams.ts` | The URL codec of `q`, `vis`, `rate` and its hook |
 | `src/api/*`, `src/data/decode.ts` | The four `/prom/*` reads and their decoders |
@@ -71,7 +71,7 @@ is known:
 | Row | Condition | Vis |
 |---|---|---|
 | — | a string result | none |
-| 5 | `histogram` and a series result whose buckets convert (`histogramBuckets` is not null) | heatmap |
+| 5 | `histogram` and a series result whose buckets convert (`isHistogram`) | heatmap |
 | 6 | `rateApplied` | line |
 | 7 | a scalar, or an **instant** result of exactly one series with one point | stat |
 | 14 | otherwise | line |
@@ -82,7 +82,9 @@ series with gaps. `chooseVis(param, auto)` returns the URL's `vis` when it is no
 ## Histogram buckets
 
 `histogramBuckets(series)` is `null` unless every series has an `le` label (`+Inf`, `Inf` or a
-finite number), all series share their timestamps and at least one bound is finite. Bounds are the
+finite number), all series share their timestamps and at least one bound is finite.
+`isHistogram(series)` checks only these conditions, without converting; auto-vis and
+`canIsolate` use it. Bounds are the
 distinct `le` values, ascending. A **group** is the series with the same labels without `le`.
 
 - Each group's cumulative value at a bound is the sum of its series with that bound; it is
@@ -94,6 +96,9 @@ distinct `le` values, ascending. A **group** is the series with the same labels 
   missing: no partial sum. A missing sample blanks its interval and the one above; a group without
   a bound blanks the interval ending there and the one starting there. A frame whose cells are all
   NaN is still a heatmap (an empty grid).
+
+The conversion is linear in the input and the output: each group visits only its own bounds, and
+the intervals blanked by a group without a bound are set once for every timestamp.
 
 The engine draws a NaN cell as no fill and no hover row, and skips it in the summary. When the
 heatmap has more columns than CSS px, a merged pixel column is missing when any merged bucket is
@@ -109,9 +114,14 @@ heatmap it is the count unit.
 | Vis | Series result | Scalar result | String result |
 |---|---|---|---|
 | line | the series (or the isolated one) | the scalar as one point (`scalarSeries`, key `SCALAR_KEY`) | notice `string` |
-| bars | as line; spec `stacking: 'normal'`, `categoryLabel: ''`, `categoryOrder: []` | as line | notice `string` |
+| bars | as line, on one grid (below); spec `stacking: 'normal'`, `categoryLabel: ''`, `categoryOrder: []` | as line | notice `string` |
 | stat | the series (or the isolated one) | the scalar | notice `string` |
 | heatmap | `histogramBuckets`, or notice `noBuckets` when it is null | notice `noBuckets` | notice `string` |
+
+**Bars grid.** Bars need every series on the same timestamps. A range result already is; the
+series of an instant result can each have their own. `commonGrid(series)` then puts every series
+on the sorted union of all timestamps, with NaN (a gap) where a series has no sample. Line and stat
+keep each series' own timestamps.
 
 **Isolation.** On line, bars and stat, isolating a row keeps only that series (an `le` row is its
 raw cumulative series). On a heatmap, `isolateBucket(series, key)` keeps the full view's axis and
@@ -163,8 +173,8 @@ metric names, `["a","b"]` for any other label, and no series.
 |---|---|
 | `unit:explore-plan` | `src/explore/plan.test.ts`: the planner rows, the sent-size boundary, metric types, durations, the source index, byte length |
 | `unit:autovis-table` | `src/vis/autovis.test.ts`: one fixture per rule, rule order, range never stat, the override |
-| `unit:heatmap-buckets` | `src/vis/histogram.test.ts`: complete, missing single and grouped samples, groups with differing bounds, row isolation |
-| `unit:frame-plan` | `src/vis/framePlan.test.ts`: every vis × result valid, scalar overrides, heatmap row isolation and restore |
+| `unit:heatmap-buckets` | `src/vis/histogram.test.ts`: complete, missing single and grouped samples, groups with differing bounds, row isolation, and a many-group, many-bound time bound |
+| `unit:frame-plan` | `src/vis/framePlan.test.ts`: every vis × result valid, bars over instant series with unequal timestamps, scalar overrides, heatmap row isolation and restore |
 | `unit:series-rows` | `src/explore/seriesRows.test.ts` |
 | `unit:explore-params` | `src/state/exploreParams.test.ts`, with `useExploreParams.test.tsx` and the `router` explore canonical test |
 | `unit:decode-frames` (prom) | `src/data/decode.test.ts` |

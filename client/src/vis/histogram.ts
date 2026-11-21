@@ -15,105 +15,142 @@ function boundOf(le: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Whether every series has a valid `le` and the first series' timestamps. */
+function onOneGrid(series: readonly SeriesFrame[]): boolean {
+  const first = series[0];
+  if (first === undefined) return false;
+  const ts = first.timestamps;
+  for (const s of series) {
+    if (boundOf(s.labels['le']) === null) return false;
+    if (s.timestamps === ts) continue;
+    if (s.timestamps.length !== ts.length) return false;
+    for (let i = 0; i < ts.length; i++) if (s.timestamps[i] !== ts[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether `series` are a histogram (§4.2): every series has a valid `le`, all share their
+ * timestamps and one bound is finite. `histogramBuckets(series) !== null` iff this is true; it
+ * does not convert, so auto-vis and isolation can ask it cheaply.
+ */
+export function isHistogram(series: readonly SeriesFrame[]): boolean {
+  return onOneGrid(series) && series.some((s) => Number.isFinite(boundOf(s.labels['le'])));
+}
+
+/** One group's series of one bound. */
+interface Level {
+  /** The index of the bound in the full view's `bounds`. */
+  readonly bound: number;
+  readonly members: readonly number[];
+}
+
 interface Layout {
   readonly timestamps: Float64Array;
   readonly bounds: Float64Array;
   /** Per series: the index of its bound in `bounds`. */
-  readonly boundIndex: readonly number[];
-  /** Per series: its group's name (labels without `le`). */
-  readonly group: readonly string[];
+  readonly boundIndex: Int32Array;
+  /** Per series: the index of its group in `groups`. */
+  readonly groupOf: Int32Array;
+  /** Per group (labels without `le`, in order of first appearance): its levels by bound. */
+  readonly groups: readonly (readonly Level[])[];
 }
 
-/** The full view's axis, or `null` when the series are not a histogram (§4.2). */
+/** The full view's axis and groups, or `null` when the series are not a histogram (§4.2). */
 function layout(series: readonly SeriesFrame[]): Layout | null {
   const first = series[0];
-  if (first === undefined) return null;
-  const own: number[] = [];
-  for (const s of series) {
-    const b = boundOf(s.labels['le']);
-    if (b === null) return null;
-    const same =
-      s.timestamps.length === first.timestamps.length &&
-      s.timestamps.every((t, i) => t === first.timestamps[i]);
-    if (!same) return null;
-    own.push(b);
-  }
+  if (first === undefined || !isHistogram(series)) return null;
+  const own = series.map((s) => boundOf(s.labels['le']) ?? NaN);
   const sorted = [...new Set(own)].sort((a, b) => a - b);
-  if (!sorted.some((b) => Number.isFinite(b))) return null;
-  const bounds = new Float64Array(sorted);
+  const index = new Map(sorted.map((b, i) => [b, i]));
+  const boundIndex = Int32Array.from(own, (b) => index.get(b) ?? 0);
+  const names = new Map<string, number>();
+  const byGroup: Map<number, number[]>[] = [];
+  const groupOf = new Int32Array(series.length);
+  series.forEach((s, i) => {
+    const name = seriesName(
+      Object.fromEntries(Object.entries(s.labels).filter(([k]) => k !== 'le')),
+    );
+    let g = names.get(name);
+    if (g === undefined) {
+      g = byGroup.length;
+      names.set(name, g);
+      byGroup.push(new Map());
+    }
+    groupOf[i] = g;
+    const levels = byGroup[g];
+    const b = boundIndex[i] ?? 0;
+    const m = levels?.get(b);
+    if (m === undefined) levels?.set(b, [i]);
+    else m.push(i);
+  });
   return {
     timestamps: Float64Array.from(first.timestamps),
-    bounds,
-    boundIndex: own.map((b) => sorted.indexOf(b)),
-    group: series.map((s) =>
-      seriesName(Object.fromEntries(Object.entries(s.labels).filter(([k]) => k !== 'le'))),
+    bounds: new Float64Array(sorted),
+    boundIndex,
+    groupOf,
+    groups: byGroup.map((levels) =>
+      [...levels].sort(([a], [b]) => a - b).map(([bound, members]) => ({ bound, members })),
     ),
   };
 }
 
 /**
- * Group `members`' count per cell (`c_g`, §4.2), row-major by time; NaN where the group lacks, or
- * misses a sample at, either bound of the interval. The lower bound of the first interval is 0.
+ * A group's cumulative value of one bound at time `t`: the sum over its series of that bound; NaN
+ * when one of them misses the sample (T02 §4.4).
  */
-function groupCounts(
-  series: readonly SeriesFrame[],
-  members: readonly number[],
-  l: Layout,
-): Float64Array {
-  const nt = l.timestamps.length;
-  const nb = l.bounds.length;
-  // cum[t·nb + b]: Σ over the group's series with bound b; NaN when none has it or one is missing.
-  const cum = new Float64Array(nt * nb).fill(NaN);
-  const has = new Uint8Array(nb);
-  for (const i of members) {
-    const b = l.boundIndex[i] ?? 0;
-    const values = series[i]?.values;
-    for (let t = 0; t < nt; t++) {
-      const v = values?.[t] ?? NaN;
-      const prev = has[b] === 1 ? (cum[t * nb + b] ?? NaN) : 0;
-      cum[t * nb + b] = Number.isFinite(v) ? prev + v : NaN;
-    }
-    has[b] = 1;
+function cumulative(series: readonly SeriesFrame[], level: Level, t: number): number {
+  let sum = 0;
+  for (const i of level.members) {
+    const v = series[i]?.values[t] ?? NaN;
+    sum = Number.isFinite(v) ? sum + v : NaN;
   }
-  const out = new Float64Array(nt * nb);
-  for (let t = 0; t < nt; t++) {
-    for (let b = 0; b < nb; b++) {
-      const hi = cum[t * nb + b] ?? NaN;
-      const lo = b === 0 ? 0 : (cum[t * nb + b - 1] ?? NaN);
-      out[t * nb + b] = Number.isFinite(hi) && Number.isFinite(lo) ? Math.max(0, hi - lo) : NaN;
-    }
-  }
-  return out;
+  return sum;
 }
 
-/** The series indexes of each group, in order of first appearance. */
-function groupsOf(l: Layout): Map<string, number[]> {
-  const groups = new Map<string, number[]>();
-  l.group.forEach((g, i) => {
-    const m = groups.get(g);
-    if (m === undefined) groups.set(g, [i]);
-    else m.push(i);
-  });
-  return groups;
-}
-
-/** Stub: whether `series` is a histogram (§4.2). */
-export function isHistogram(series: readonly SeriesFrame[]): boolean {
-  return histogramBuckets(series) !== null;
+/** A group's count `c_g` of one interval: NaN when either cumulative value is missing (§4.2). */
+function count(hi: number, lo: number): number {
+  return Number.isFinite(hi) && Number.isFinite(lo) ? Math.max(0, hi - lo) : NaN;
 }
 
 /**
- * The bucket counts of `series` (§4.2): `null` unless every series has a valid `le`, all share
- * their timestamps and one bound is finite. Each cell is the sum over the groups' counts, NaN when
- * any group's count is missing. A frame whose cells are all NaN is still returned.
+ * The bucket counts of `series` (§4.2): `null` unless `isHistogram(series)`. Each cell is the sum
+ * over the groups' counts, NaN when any group's count is missing: a group lacking a bound makes
+ * that interval and the next missing for every timestamp, and a missing sample makes the cell's
+ * group count missing. The lower bound of the first interval is 0. A frame whose cells are all NaN
+ * is still returned. Work is linear in the input and the output: each group visits only its own
+ * bounds.
  */
 export function histogramBuckets(series: readonly SeriesFrame[]): HeatmapFrame | null {
   const l = layout(series);
   if (l === null) return null;
-  const counts = new Float64Array(l.timestamps.length * l.bounds.length);
-  for (const members of groupsOf(l).values()) {
-    const c = groupCounts(series, members, l);
-    for (let k = 0; k < counts.length; k++) counts[k] = (counts[k] ?? 0) + (c[k] ?? NaN);
+  const nt = l.timestamps.length;
+  const nb = l.bounds.length;
+  // missing[b]: some group lacks bound b, so its count of intervals b and b + 1 is missing.
+  const present = new Uint32Array(nb);
+  for (const levels of l.groups)
+    for (const { bound } of levels) present[bound] = (present[bound] ?? 0) + 1;
+  const missing = (b: number) => b >= 0 && (present[b] ?? 0) < l.groups.length;
+  const counts = new Float64Array(nt * nb);
+  for (const levels of l.groups) {
+    for (let t = 0; t < nt; t++) {
+      let lo = 0;
+      let loBound = -1;
+      for (const level of levels) {
+        const hi = cumulative(series, level, t);
+        const b = level.bound;
+        if (loBound === b - 1 && !missing(b) && !missing(b - 1)) {
+          const k = t * nb + b;
+          counts[k] = (counts[k] ?? NaN) + count(hi, lo);
+        }
+        lo = hi;
+        loBound = b;
+      }
+    }
+  }
+  for (let b = 0; b < nb; b++) {
+    if (!missing(b) && !missing(b - 1)) continue;
+    for (let t = 0; t < nt; t++) counts[t * nb + b] = NaN;
   }
   return { timestamps: l.timestamps, bounds: l.bounds, counts };
 }
@@ -128,11 +165,19 @@ export function isolateBucket(series: readonly SeriesFrame[], key: string): Heat
   if (i < 0) return histogramBuckets(series);
   const l = layout(series);
   if (l === null) return null;
-  const members = groupsOf(l).get(l.group[i] ?? '') ?? [i];
-  const c = groupCounts(series, members, l);
-  const nb = l.bounds.length;
+  const levels = l.groups[l.groupOf[i] ?? 0] ?? [];
   const row = l.boundIndex[i] ?? 0;
-  const counts = new Float64Array(c.length).fill(NaN);
-  for (let t = 0; t < l.timestamps.length; t++) counts[t * nb + row] = c[t * nb + row] ?? NaN;
+  const hiLevel = levels.find((v) => v.bound === row);
+  const loLevel = row === 0 ? undefined : levels.find((v) => v.bound === row - 1);
+  const nt = l.timestamps.length;
+  const nb = l.bounds.length;
+  const counts = new Float64Array(nt * nb).fill(NaN);
+  if (hiLevel === undefined || (row > 0 && loLevel === undefined)) {
+    return { timestamps: l.timestamps, bounds: l.bounds, counts };
+  }
+  for (let t = 0; t < nt; t++) {
+    const lo = loLevel === undefined ? 0 : cumulative(series, loLevel, t);
+    counts[t * nb + row] = count(cumulative(series, hiLevel, t), lo);
+  }
   return { timestamps: l.timestamps, bounds: l.bounds, counts };
 }
