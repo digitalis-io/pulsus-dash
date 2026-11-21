@@ -232,3 +232,49 @@ fn cpu_batches_hold_one_batch() {
         "{c:?}"
     );
 }
+
+/// A failed wait during the value upload stops it: no further slice is submitted, nothing beyond
+/// the slice is outstanding, the incomplete buffer is not cached, and the frame is not drawn.
+#[test]
+fn failed_upload_wait_stops_and_discards() {
+    let ctx = ctx(Tier::T1);
+    let len = 10_000_000u32; // three 16 MiB slices
+    let mut b = dash_wire::ChunkBuilder::grid(dash_wire::ChunkId(78), 0, 1, len);
+    let vs: Vec<f64> = (0..len).map(|k| (f64::from(k) * 1e-3).sin()).collect();
+    ok(
+        b.push_series(
+            dash_wire::SeriesMeta {
+                key_hash: 1,
+                labels: Vec::new(),
+            },
+            None,
+            &vs,
+        ),
+        "series",
+    );
+    let chunk = Arc::new(b.finish());
+    let axis = Range64 { lo: -1.0, hi: 1.0 };
+    let list = line_list(
+        chunk,
+        (1048.0, 440.0),
+        1.0,
+        [40.0, 8.0, 1000.0, 400.0],
+        (0.0, f64::from(len)),
+        axis,
+        false,
+    );
+    let mut r = Renderer::new(
+        &ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
+    ctx.fail_waits_after(0);
+    let (_, drawn) = render(&ctx, &mut r, &list);
+    ctx.fail_waits_after(u64::MAX);
+    let c = r.debug_counters();
+    assert_eq!(c.value_slices_submitted, 1, "{c:?}");
+    assert!(c.staging_outstanding_max <= 16 << 20, "{c:?}");
+    assert!(r.debug_resident().is_empty(), "{:?}", r.debug_resident());
+    assert_eq!(drawn, None);
+    assert!(r.last_error().is_some(), "no error recorded");
+}

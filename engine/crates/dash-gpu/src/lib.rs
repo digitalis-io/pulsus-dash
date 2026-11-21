@@ -30,6 +30,8 @@ pub struct GpuContext {
     pub info: wgpu::AdapterInfo,
     /// min(max_buffer_size, max_storage_buffer_binding_size) / 16.
     pub max_instances: u64,
+    /// Test hook: waits left before `wait` fails (`u64::MAX` = never).
+    wait_budget: std::sync::atomic::AtomicU64,
 }
 
 fn instance() -> wgpu::Instance {
@@ -69,6 +71,7 @@ impl GpuContext {
             .map_err(|e| GpuError::Device(e.to_string()))?;
         let max_instances = al.max_buffer_size.min(al.max_storage_buffer_binding_size) / 16;
         Ok(Self {
+            wait_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
             device,
             queue,
             tier,
@@ -91,10 +94,24 @@ impl GpuContext {
 
     /// Blocks until the queue is idle (native).
     pub fn wait(&self) -> Result<(), GpuError> {
+        use std::sync::atomic::Ordering;
+        match self.wait_budget.load(Ordering::Relaxed) {
+            0 => return Err(GpuError::Device("wait failed (injected)".into())),
+            u64::MAX => {}
+            _ => {
+                self.wait_budget.fetch_sub(1, Ordering::Relaxed);
+            }
+        }
         self.device
             .poll(wgpu::PollType::wait_indefinitely())
             .map(|_| ())
             .map_err(|e| GpuError::Device(e.to_string()))
+    }
+
+    /// Test hook: every `wait` after the next `n` successful ones fails with `GpuError::Device`.
+    pub fn fail_waits_after(&self, n: u64) {
+        self.wait_budget
+            .store(n, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Copies `size` bytes of `src` from `offset` and maps them (blocking, native).

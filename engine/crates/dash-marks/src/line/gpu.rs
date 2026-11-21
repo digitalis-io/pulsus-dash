@@ -51,6 +51,8 @@ pub struct DebugCounters {
     pub staging_outstanding_max: u64,
     /// Peak bytes of CPU-path instance batches held at once (T2 and far items).
     pub cpu_instance_bytes_peak: u64,
+    /// Value-upload slices submitted to the queue.
+    pub value_slices_submitted: u64,
 }
 
 /// The P1–P5 uniform.
@@ -191,6 +193,8 @@ pub struct Renderer {
     counters: DebugCounters,
     draws: u32,
     last: Option<LastLine>,
+    /// The GPU error that ended the last render early, if any.
+    error: Option<dash_gpu::GpuError>,
 }
 
 /// The fields of a `MarkItem::Line`.
@@ -299,6 +303,7 @@ impl Renderer {
             counters: DebugCounters::default(),
             draws: 0,
             last: None,
+            error: None,
         }
     }
 
@@ -591,6 +596,7 @@ impl Renderer {
                 // L2: flush this slice and wait for it, so one slice is queued at a time
                 // (native; Part C awaits the submission instead of blocking).
                 ctx.queue.submit([]);
+                self.counters.value_slices_submitted += 1;
                 if ctx.wait().is_ok() {
                     outstanding = 0;
                 }
@@ -932,6 +938,11 @@ impl Renderer {
     /// Draw calls issued by the last render (1 unless batched, §4.2).
     pub fn last_draws(&self) -> u32 {
         self.draws
+    }
+
+    /// Test hook: the GPU error that ended the last render early (the frame was not drawn).
+    pub fn last_error(&self) -> Option<&dash_gpu::GpuError> {
+        self.error.as_ref()
     }
 
     pub fn debug_counters(&self) -> DebugCounters {
