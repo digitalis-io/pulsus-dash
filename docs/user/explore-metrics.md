@@ -22,7 +22,9 @@ the **Run** button, then the query editor and a status line.
   type and help text. Type to filter: names that start with what you typed come first. Choose a
   name with the arrow keys and Enter (Enter alone takes the first match) or a click: it is inserted
   into the query at the caret, and the editor gets the focus back. The list shows at most 100
-  names; "keep typing to narrow" says when there are more.
+  names; "keep typing to narrow" says when there are more. While the list is open, the rest of the
+  page cannot be used: a click outside only closes the list, and Tab or Shift+Tab closes it and moves
+  on.
 - **Run keys.** **Shift+Enter**, **Ctrl+Enter** (**⌘+Enter** on macOS) or **Run** run the query.
   Enter alone starts a new line. **Esc** leaves the editor and moves the focus to **Run** (when a
   completion list is open, Esc closes it first). Tab is not taken by the editor.

@@ -190,13 +190,23 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 
 - **`bench:editor-keystroke`** (`e2e/perf-editor-keystroke.spec.ts`, Chromium only, PRF-005,
   T09-003): on the stub build, 100 keys (` or up`, cycled, after 20 warm-up keys) typed at the end
-  of a 1 KB PromQL query in Explore. Each sample is the main-thread `TaskDuration` (CDP
-  `Performance.getMetrics`) from the key press through two animation frames, minus the median of
-  30 samples without a key. It asserts 100 samples and the final text length, and writes
-  `test-results/bench-editor-keystroke.json` (`samples`, `overheadMs`, `p50`, `p95`, `max`). On
-  shared CI it is report only: each breach of p95 ≤ 2 ms or a key over 16 ms is a `warning`
-  annotation. `EDITOR_BENCH_GATE=enforce` (the reference lab, once it exists) fails the test on a
-  breach instead.
+  of a 1 KB PromQL query in Explore, with no fake clock (it would replace `performance.now`).
+  - **Editor update (T09-003).** Before the page loads, the spec installs
+    `window.__pulsusEditorProbe`; the editor (`src/editor/probe.ts`, `probedDispatch`) then times
+    each `view.update(trs)`. A key's work is the sum of its doc-changing updates minus the median of
+    30 samples without a key. Without the probe, CodeMirror's own dispatch runs unchanged.
+  - **Long tasks (PRF-005).** A Chromium trace of the 100 measured keys is read by
+    `scripts/longTasks.ts` (the `bench:rooms-long-tasks` parser): the page's renderer main thread,
+    from the first to the last input.
+  - **Always (blocking in CI's `e2e` Chromium leg):** 100 samples, every key with an editor update,
+    at least 100 keydowns in the trace, the final text length, and `ciOver` 0 (T05 §4.3's interim
+    check: a task fails only over 50 ms wall **and** over 16 ms thread time, or without thread
+    time).
+  - **`EDITOR_BENCH_GATE=enforce`** (the reference lab, #68, and the local D13 proofs) also fails on
+    an editor-update p95 over 2 ms or any task over 16 ms wall (`over16`); otherwise each breach is a
+    `warning` annotation.
+  - Report: `test-results/bench-editor-keystroke.json` (`samples`, `overheadMs`, `p50`, `p95`,
+    `max`, `longestTaskMs`, `longTasks`, `ciOver`, `windowMs`, `mode`).
 - **`e2e:editor-ime`** (`e2e/editor-ime.spec.ts`, Chromium only, T09-005): a CDP IME composition in
   the Explore editor opens no completion popup while it lasts; the popup follows once it commits.
 

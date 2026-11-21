@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-21 |
+| **Version** | 1.18-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -280,9 +280,11 @@ estate, §4.5):
 
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
 gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
-scripted room interactions, with the board editor first (#90). Until the reference lab exists, CI's
-`e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
-fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
+scripted room interactions, with the board editor first (#90), and `bench:editor-keystroke` to the
+100 measured keys of the Explore editor (#63). Until the reference lab exists, CI's `e2e` Chromium
+leg runs both with the interim trace check as a merge gate; PRF-005's limit, no main-thread task over
+16 ms, is the reference lab's gate (`over16`, enforce mode), pending #68. `bench:long-tasks` is
+unchanged.
 
 **Measurement methods**
 - **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
@@ -293,8 +295,11 @@ fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchan
   headed), on the reference machines. A weekly headed run checks the two agree within 5 %.
 - **Long tasks on main**: top-level `RunTask` on the page's `CrRendererMain` between first and last
   input `EventDispatch` in a Chrome trace, judged on wall `dur` (`dash-lab::trace`); LoAF serves
-  RUM. CI's `e2e` runs it (thread > 16 ms, wall > 50 ms) as PRF-005's merge gate until the
-  reference lab exists (§7.1).
+  RUM. **Interim CI check** (`ciOver`, until the reference lab exists, §7.1): CI's `e2e` fails a task
+  only when it exceeds **both** thresholds, over 50 ms wall **and** over 16 ms thread time, or when
+  the trace has no thread time for it (the check fails closed). This is deliberately looser than
+  PRF-005 for shared runners, whose wall times are noisy. **PRF-005's limit** (no main-thread task over
+  16 ms wall) is enforced by the reference-lab check (`over16`, enforce mode), pending #68.
 - **Shim per-event time** (T03-003): CI's `e2e` reports listener times and asserts only
   deterministic queue checks; `bench:shim-input-cost` gates the times.
 - **Input → photon** is estimated in CI as event `t_ms` → `queue.submit` of the frame that consumed
@@ -726,7 +731,7 @@ the merge train), nightly (release blocker).
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
 `bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:lens-load`,
-`bench:decode-r1`, `bench:shim-input-cost`, `bench:editor-keystroke` (Chromium, stub BFF: 100 keys typed at the end of a 1 KB PromQL query; main-thread task time per key minus the idle overhead; p95 ≤ 2 ms and no key > 16 ms; PRF-005, T09-003; #63); `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
+`bench:decode-r1`, `bench:shim-input-cost`, `bench:editor-keystroke` (Chromium, stub BFF: 100 keys typed at the end of a 1 KB PromQL query; the editor's update time per key (each CodeMirror transaction's state and view update, highlighting and DOM sync included, timed in the page) minus the idle overhead, p95 ≤ 2 ms (T09-003); a trace of the measured keys, read by the `bench:rooms-long-tasks` parser, with no main-thread task over 50 ms wall and 16 ms thread time, blocking in CI's `e2e` Chromium leg now (PRF-005, §4.3 interim); p95 ≤ 2 ms and no task over 16 ms wall in the lab (`EDITOR_BENCH_GATE=enforce`, #68); #63); `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
 `bench:promql-decode` and `bench:bff-overhead` (#62, `REFERENCE_LAB=1 make bench-bff`: W1, a 1 000 × 1 000
 PulsusDB matrix decoded, gridded and encoded, ≤ 30 ms per 10⁶ points, median of 5; W2, 1 000 sequential
 range requests with a 2 ms upstream, BFF overhead p50 ≤ 5 ms and p99 ≤ 20 ms ([T06](T06-bff-architecture.md)
@@ -748,7 +753,7 @@ and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
-| `bench:editor-keystroke` | merge once the reference lab exists (`EDITOR_BENCH_GATE=enforce`); until then report-only in CI's `e2e` Chromium leg | p95 ≤ 2 ms, no key > 16 ms | yes once the lab exists; until then not blocking |
+| `bench:editor-keystroke` | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab exists (`EDITOR_BENCH_GATE=enforce`, #68) | interim CI: `ciOver === 0` (§4.3); lab: editor update p95 ≤ 2 ms, 0 main-thread tasks > 16 ms | the CI check blocks now; the lab thresholds once the lab exists, report only until then |
 | `bench:frame-interim-line` (interim renderer, until #68) | PR | none (reports p50, p95) | no |
 | RUM field p95 per `hw_class` | weekly review | within 20 % of the lab | tracked, not blocking |
 
@@ -900,3 +905,4 @@ Meta-testing:
 | 1.15-rc | 2026-11-21 | #63 Part C: §7.1 adds `unit:explore-run-size`, `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:editor-ime` and the lab benchmark `bench:editor-keystroke` (lab-gate row: merge once the lab exists, report-only on shared CI until then); `e2e:lazy-load` and `ci:bundle-size` name the editor closure |
 | 1.16-rc | 2026-11-21 | #90: §4.3 `bench:rooms-long-tasks` scenario and its interim CI check |
 | 1.17-rc | 2026-11-21 | #90 code review: §7.1 defines `bench:rooms-long-tasks` (owner T08 §7, PRF-005): interim CI check `ciOver === 0` blocking on PRs; 16 ms wall in the reference lab, pending #68 |
+| 1.18-rc | 2026-11-21 | #63 Part C (orchestrator decision on plan C.12): §4.3 states the interim CI long-task check as AND: a task fails CI only over 50 ms wall **and** over 16 ms thread time, or without thread time; PRF-005's 16 ms limit is the reference-lab gate (`over16`, enforce mode), pending #68; `bench:editor-keystroke` uses the same check. §7.1 `bench:editor-keystroke`: the editor update per key (probe) p95 ≤ 2 ms and the traced tasks |

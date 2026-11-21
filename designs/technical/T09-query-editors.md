@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-21 |
+| **Version** | 1.11-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -578,7 +578,7 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 
 | Metric | Target | Notes |
 |---|---|---|
-| Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query | incremental CodeMirror parse (PRF-005) |
+| Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query: the editor's update (incremental parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` (#63) | incremental CodeMirror parse (PRF-005) |
 | Keystroke → diagnostics visible | ≤ 50 ms after a 30 ms idle, once the WASM crates land; until then on run | PromQL parse estimated ≤ 0.4 ms in wasm |
 | Local completions | ≤ 16 ms from keystroke | — |
 | Remote completions (cache miss) | ≤ 150 ms p50 / 400 ms p95 after the debounce | BFF L1 hit typical |
@@ -707,3 +707,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.8-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
 | 1.9-rc | 2026-11-21 | #63 Part B: §0 rows `dash-qlex` (PromQL v1 language and completion over `/prom/*`) and "Editor-worker suggest cache" (v1 key, TTL from settle, LRU, per-kind supersede, tenant generations); §4.3 v1 host (shadow root, composed-path window keys) and composition guard; §4.4 v1 limits and lookup windows; §4.8 v1 syntax tokens; §5.1 v1 `LanguageDeps` fields, `lang/promql/`, `LANGUAGES`, `detect` until INT-038, `PromQLEditor`; T09-015 v1 measurement |
 | 1.10-rc | 2026-11-21 | #63 Part C: §4.3 v1 Explore keys (`Esc` moves the focus to Run); §7 Editor chunk row measures the editor entries and the `editor-*` files they statically reach; T09-015 v1: Run is also refused above the BFF's 64 KiB on the sent text, planned only with the definitive inputs |
+| 1.11-rc | 2026-11-21 | #63 Part C plan 7: §7 "Keystroke → highlighted repaint" row: the 2 ms is the editor's update (parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` |
