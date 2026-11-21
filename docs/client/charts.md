@@ -158,9 +158,9 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   hold"). Each tick label is then drawn in full when it fits, else in compact form
   (`formatCompact`), else whole inside the plot: left edge at `plot.x + 4 px`, over the marks, on a
   chip in the tooltip surface colour with the corner radius and 4 px padding. The chip shows the
-  full label when it fits the plot width (less the padding), else the compact form, else the
-  narrower of the two, so on a narrow plot it does not run past the plot's right edge. A label is
-  never cut.
+  full label when it fits the plot width (less the padding), else the compact form. When neither
+  fits (a plot only a few pixels wide), that tick has no label at all: a label is never cut or
+  drawn past the plot, and its value is still read from the crosshair slider and the summary.
 - **Value axis** (line, bars). Auto: the domain includes 0 and the data (bars: the stacked totals).
   Steps are 1, 2 or 5 × 10^k in units of 1 000^p (1 024^p for bytes), widened until labels are at
   least label height + 2 px apart. Grid lines are hairlines. Manual (`valueRange` set): the domain is

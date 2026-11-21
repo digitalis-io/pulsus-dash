@@ -144,11 +144,11 @@ export function heldText(
   const compact = formatCompact(t, unit);
   if (CHAR_WIDTH * compact.length <= band) return { text: compact, chip: false };
   // A chip holds the label and 4 px of padding a side inside the plot: the full form when it fits,
-  // else the compact one, else the narrower of the two.
+  // else the compact one, else none (nothing is drawn).
   const room = plotWidth - 2 * CHIP_PAD;
   if (CHAR_WIDTH * full.length <= room) return { text: full, chip: true };
   if (CHAR_WIDTH * compact.length <= room) return { text: compact, chip: true };
-  return { text: compact.length < full.length ? compact : full, chip: true };
+  return { text: '', chip: false };
 }
 
 /** The chip's padding a side (`space.1`). */

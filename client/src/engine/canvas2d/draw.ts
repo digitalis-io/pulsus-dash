@@ -141,6 +141,7 @@ export function forgetValueBands(ctx: Ctx2D): void {
 }
 
 interface HeldLabel {
+  /** Empty when no form of the label fits the band or the plot: nothing is drawn for it. */
   readonly text: string;
   readonly chip: boolean;
 }
@@ -148,7 +149,7 @@ interface HeldLabel {
 /**
  * Per tick: the full label when it fits `band`, else the compact one; else a chip inside the plot,
  * whose text is the full label when it fits `room` (the plot width less the chip padding), else
- * the compact one, else the narrower of the two (code review r1: never past the plot's edge).
+ * the compact one; else no label at all (never past the plot's edge, never partial: T02-011).
  */
 function heldLabels(
   ctx: Ctx2D,
@@ -167,7 +168,9 @@ function heldLabels(
     if (compactW <= band) return { text: compact, chip: false };
     if (fullW <= room) return { text: full, chip: true };
     if (compactW <= room) return { text: compact, chip: true };
-    return { text: compactW < fullW ? compact : full, chip: true };
+    // No form fits even the plot: T02-011 never draws a partial label, so this tick has none (its
+    // value stays in the crosshair readout and the summary).
+    return { text: '', chip: false };
   });
 }
 
@@ -220,7 +223,7 @@ export function drawAxes(
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   const labelX = plot.x - size['chart-tick'] - space['1'];
-  for (const v of values) if (!v.chip) ctx.fillText(v.label, labelX, v.y);
+  for (const v of values) if (!v.chip && v.label !== '') ctx.fillText(v.label, labelX, v.y);
   const ticks = timeTicks({
     fromMs: i.window.fromMs,
     toMs: i.window.toMs,
