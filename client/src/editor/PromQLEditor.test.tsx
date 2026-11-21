@@ -9,6 +9,11 @@ import type { Diagnostic, PromSource } from './lang/types';
 import { PromQLEditor, type PromQLEditorHandle } from './PromQLEditor';
 import { setDocument } from './view';
 
+// jsdom has no execCommand; CodeMirror's selection read in a shadow root falls back to it on focus.
+if (!('execCommand' in document)) {
+  Object.defineProperty(document, 'execCommand', { value: () => false, configurable: true });
+}
+
 describe('unit:editor-host', () => {
   it('one shadow root and view under StrictMode; follows its props; cleans up', async () => {
     const r = createRef<PromQLEditorHandle>();
