@@ -473,6 +473,24 @@ class UrlRuleTests(TmpTree):
             ("DatasourceURL\x3a 'db.corp.net:3100',\n", 1),
             ("datasource:\n  url\x3a db.corp.net:3100\n", 2),
             ("datasource:\n  url\x3a 'db.corp.net'\n", 2),
+            # single-label hosts, with and without a port
+            (env_key + "pulsusdb\n", 1),
+            (env_key + "db:3100\n", 1),
+            (env_key + "'db'\n", 1),
+            (env_key + "db # dev\n", 1),
+            ("datasource:\n  url\x3a pulsusdb\n", 2),
+            ("datasource:\n  url\x3a db:3100 # local\n", 2),
+            ('"DatasourceURL"\x3a "dbhost",\n', 1),
+            # unquoted values after the dotted and code-style keys: the whole value up to the end
+            # of the line or a comment
+            ("datasource.url \x3d db.corp.net:3100\n", 1),
+            ("datasource.url\x3a pulsusdb\n", 1),
+            ("datasource_url\x3a db.corp.net # x\n", 1),
+            ("datasource_url\x3a db:3100/api\n", 1),
+            ("DatasourceURL\x3a db:3100 // dev\n", 1),
+            ("DatasourceURL \x3d pulsusdb\n", 1),
+            # after the env and YAML keys a dotted or ported host may be followed by more words
+            (env_key + "db.corp.net:3100 ./run\n", 1),
         ]
         clean = [
             env_key + "pulsus-fake:3100\n",
@@ -489,6 +507,26 @@ class UrlRuleTests(TmpTree):
             "x.DatasourceURL \x3d cfg.Url\n",
             "datasource:\n  url\x3a string,\n",
             "url\x3a db.corp.net:3100\n",
+            # code expressions, types, variables, placeholders and prose stay clean
+            "DatasourceURL\x3a d.URL\n",
+            "DatasourceURL\x3a cfg.URL()\n",
+            "DatasourceURL\x3a url,\n",
+            "cfg.DatasourceURL \x3d dsurl\n",
+            "T{DatasourceURL\x3a u}\n",
+            "datasource_url\x3a string;\n",
+            "datasource_url\x3a str\n",
+            "datasource_url\x3a string\n",
+            '"datasource_url"\x3a "string"\n',
+            "datasource.url\x3a <host:port>\n",
+            "datasource_url\x3a ${X}\n",
+            "datasource_url\x3a $X\n",
+            "datasource_url\x3a\n  type\x3a string\n",
+            "datasource.url\x3a\n  db.corp.net\n",
+            "the datasource.url\x3a pulsusdb is set by the operator\n",
+            "datasource:\n  url\x3a string\n",
+            env_key + "pulsus-fake\n",
+            env_key + "localhost\n",
+            env_key + "db trailing words\n",
         ]
         for content, line in flagged:
             with self.subTest(content=content):
