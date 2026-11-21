@@ -190,6 +190,8 @@ type call struct {
 	// postOver: a GET whose URL would be longer than maxGetQuery is sent as a POST form instead
 	// (the log query_range and series calls, #65).
 	postOver bool
+	// categorize: send the categorize-labels encoding flag (log query_range pages, #65).
+	categorize bool
 }
 
 // maxGetQuery bounds the URL of a GET call that may fall back to a POST form: a conservative
@@ -451,6 +453,9 @@ func (c *Client) request(ctx context.Context, b core.TenantBinding, cl call, for
 	h.Set("User-Agent", "pulsus-dash/"+core.Version)
 	if method == http.MethodPost {
 		h.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if cl.categorize {
+		h.Set(categorizeHeader, categorizeValue)
 	}
 	if b.ScopeOrgID != "" {
 		h.Set("X-Scope-OrgID", b.ScopeOrgID)

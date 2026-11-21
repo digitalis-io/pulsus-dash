@@ -70,17 +70,23 @@ var levelValues = map[string]Level{
 // (ASCII case-insensitive), else that of "level" if the table knows it, else LevelUnknown. ls is
 // sorted by name.
 func LevelOf(ls []Label) Level {
+	lv, _ := levelIn(ls)
+	return lv
+}
+
+// levelIn is LevelOf, and whether ls has a recognised level.
+func levelIn(ls []Label) (Level, bool) {
 	for _, name := range []string{"detected_level", "level"} {
 		for _, l := range ls {
 			if l.Name != name {
 				continue
 			}
 			if lv, ok := levelValues[strings.ToLower(l.Value)]; ok && isASCII(l.Value) {
-				return lv
+				return lv, true
 			}
 		}
 	}
-	return LevelUnknown
+	return LevelUnknown, false
 }
 
 func isASCII(s string) bool {
@@ -129,8 +135,8 @@ type LogRangeQuery struct {
 // LogStream is one stream of a page.
 type LogStream struct {
 	Key    uint64  // keyhash.Labels(Labels)
-	Labels []Label // sorted by name
-	Level  Level   // LevelOf(Labels)
+	Labels []Label // sorted by name; the indexed stream labels of a categorised response
+	Level  Level   // LevelOf(Labels); an entry's own level is LogEntry.Level
 }
 
 // LogEntry is one entry of a page.
@@ -154,7 +160,12 @@ const categorizeHeader, categorizeValue = "X-Loki-Response-Encoding-Flags", "cat
 // EntryLevel is the level of an entry: that of its stream labels if LevelOf finds one, else that
 // of its structured metadata, else that of its parsed fields, else LevelUnknown.
 func EntryLevel(stream, metadata, parsed []Label) Level {
-	return LevelUnknown // stub
+	for _, ls := range [][]Label{stream, metadata, parsed} {
+		if lv, ok := levelIn(ls); ok {
+			return lv
+		}
+	}
+	return LevelUnknown
 }
 
 // LogPage is one page of a log query (#65 §4.2).

@@ -291,16 +291,24 @@ type rawLogs struct {
 	text      string
 	typeFirst bool
 	entries   []refEntry
+	flags     []string // data.encodingFlags
+	third     int      // entries with an object third element (the categorised shape)
+	metaLevel int      // stream objects without detected_level whose entries carry it in metadata
 }
 
 // rawLogQuery sends one GET /api/logs/v1/query_range through the client's transport, decorated
-// as the client decorates.
+// as the client decorates a page request (categorize-labels included).
 func rawLogQuery(ctx context.Context, c *Client, rc *core.RequestCtx, form url.Values) (rawLogs, error) {
+	return rawLogQueryAs(ctx, c, rc, form, true)
+}
+
+// rawLogQueryAs is rawLogQuery with or without the categorize-labels flag.
+func rawLogQueryAs(ctx context.Context, c *Client, rc *core.RequestCtx, form url.Values, categorize bool) (rawLogs, error) {
 	cred, err := c.credential(ctx, rc)
 	if err != nil {
 		return rawLogs{}, err
 	}
-	req, err := c.request(ctx, rc.Tenant.Binding, call{method: http.MethodGet, path: "/api/logs/v1/query_range"}, form, cred)
+	req, err := c.request(ctx, rc.Tenant.Binding, call{method: http.MethodGet, path: "/api/logs/v1/query_range", categorize: categorize}, form, cred)
 	if err != nil {
 		return rawLogs{}, err
 	}
@@ -321,8 +329,9 @@ func rawLogQuery(ctx context.Context, c *Client, rc *core.RequestCtx, form url.V
 	out.typeFirst = rt >= 0 && rt < rs
 	var doc struct {
 		Data struct {
-			ResultType string `json:"resultType"`
-			Result     []struct {
+			ResultType    string   `json:"resultType"`
+			EncodingFlags []string `json:"encodingFlags"`
+			Result        []struct {
 				Stream map[string]string `json:"stream"`
 				Values [][]any           `json:"values"`
 			} `json:"result"`
@@ -334,7 +343,24 @@ func rawLogQuery(ctx context.Context, c *Client, rc *core.RequestCtx, form url.V
 	if doc.Data.ResultType != "streams" {
 		return out, fmt.Errorf("resultType %q", doc.Data.ResultType)
 	}
+	out.flags = doc.Data.EncodingFlags
 	for _, r := range doc.Data.Result {
+		_, streamLevel := r.Stream["detected_level"]
+		metaLevel := false
+		for _, v := range r.Values {
+			if len(v) < 3 {
+				continue
+			}
+			if m, ok := v[2].(map[string]any); ok {
+				out.third++
+				if sm, ok := m["structuredMetadata"].(map[string]any); ok && sm["detected_level"] != nil {
+					metaLevel = true
+				}
+			}
+		}
+		if !streamLevel && metaLevel {
+			out.metaLevel++
+		}
 		var ls []Label
 		for k, v := range r.Stream {
 			ls = append(ls, Label{Name: k, Value: v})
@@ -512,6 +538,35 @@ func contractLogQL(t *testing.T, c *Client, rc *core.RequestCtx) {
 		t.Fatalf("limit %d: paging did not end", limit)
 		return nil
 	}
+	t.Run("categorised", func(t *testing.T) {
+		// With the flag: data.encodingFlags names it and every entry has an object third element.
+		r := raw(lo, hi, 50, "backward")
+		if !slices.Contains(r.flags, "categorize-labels") || r.third != len(r.entries) {
+			t.Errorf("with the flag: encodingFlags %q, %d of %d entries categorised", r.flags, r.third, len(r.entries))
+		}
+		t.Logf("with the flag: %d stream objects carry detected_level in metadata only", r.metaLevel)
+		p, err := rawLogQueryAs(ctx(), c, rc, logForm(sel, lo, hi, 50, "backward", nsParam), false)
+		if err != nil || p.status != http.StatusOK {
+			t.Fatalf("without the flag: %d %v", p.status, err)
+		}
+		if len(p.flags) != 0 || p.third != 0 {
+			t.Errorf("without the flag: encodingFlags %q, %d categorised entries; want the plain shape", p.flags, p.third)
+		}
+		res, err := c.LogQueryRange(ctx(), rc, q(50))
+		if err != nil || res.Page == nil {
+			t.Fatalf("LogQueryRange: %v", err)
+		}
+		withMeta, known := 0, 0
+		for _, e := range res.Page.Entries {
+			if e.Metadata != nil {
+				withMeta++
+			}
+			if e.Level != LevelUnknown {
+				known++
+			}
+		}
+		t.Logf("client page: %d entries, %d with metadata, %d with a known level", len(res.Page.Entries), withMeta, known)
+	})
 	t.Run("paging", func(t *testing.T) {
 		if a, b := multiset(collect(5000)), multiset(collect(3)); !slices.Equal(a, b) {
 			t.Errorf("limit 5000 gave %d entries, limit 3 gave %d", len(a), len(b))

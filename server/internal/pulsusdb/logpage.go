@@ -30,9 +30,11 @@ type decodedStream struct {
 
 type decodedEntry struct {
 	ts     int64
-	stream int    // index into logResponse.streams
-	line   string // redacted; cut at Limits.LineBytes
-	cut    bool   // the line was cut
+	stream int     // index into logResponse.streams
+	line   string  // redacted; cut at Limits.LineBytes
+	cut    bool    // the line was cut
+	meta   []Label // structured metadata (categorised shape); nil if none
+	parsed []Label // parsed fields (categorised shape); nil if none
 }
 
 // errPageTooLarge is the refusal of a log response over Limits.PageBytes (#65 §4.3).
@@ -41,8 +43,9 @@ func errPageTooLarge() *Error {
 }
 
 // streamsResult reads the elements of a streams result array whose '[' was read (#65 §4.3):
-// objects with stream and values in any order; values of [ts, line] or [ts, line, <any>]. Stream
-// objects with equal label sets are merged.
+// objects with stream and values in any order; values of [ts, line] or [ts, line, <any>], where
+// an object third element is the categorised entry (readCategorised). Stream objects with equal
+// label sets are merged.
 func streamsResult(d *upstreamDecoder, lim Limits) (*logResponse, error) {
 	lr := &logResponse{}
 	index := map[uint64]int{}
@@ -117,7 +120,8 @@ func streamsResult(d *upstreamDecoder, lim Limits) (*logResponse, error) {
 	}
 }
 
-// readLogValues reads a values array of [ts, line] pairs (an optional third element skipped).
+// readLogValues reads a values array of [ts, line] pairs with an optional third element: an
+// object is read by readCategorised, any other value is skipped.
 func readLogValues(d *upstreamDecoder, lim Limits, lr *logResponse, bytes *int64) error {
 	if k, err := d.Next(); err != nil || k != tokArrStart {
 		return orProtocol(err)
@@ -151,7 +155,12 @@ func readLogValues(d *upstreamDecoder, lim Limits, lr *logResponse, bytes *int64
 			return err
 		}
 		if k != tokArrEnd {
-			if err := d.Skip(); err != nil {
+			if k == tokObjStart {
+				err = readCategorised(d, &e, bytes)
+			} else {
+				err = d.Skip()
+			}
+			if err != nil {
 				return err
 			}
 			if k, err := d.Next(); err != nil || k != tokArrEnd {
@@ -166,6 +175,51 @@ func readLogValues(d *upstreamDecoder, lim Limits, lr *logResponse, bytes *int64
 			return errPageTooLarge()
 		}
 		lr.entries = append(lr.entries, e)
+	}
+}
+
+// readCategorised reads the members of a categorised entry object whose '{' was read:
+// structuredMetadata and parsed are string maps (redacted and cut like labels, counted towards
+// PageBytes); any other member is skipped.
+func readCategorised(d *upstreamDecoder, e *decodedEntry, bytes *int64) error {
+	var gotMeta, gotParsed bool
+	for {
+		k, err := d.Next()
+		if err != nil {
+			return err
+		}
+		if k == tokObjEnd {
+			return nil
+		}
+		var (
+			dst  *[]Label
+			seen *bool
+		)
+		switch d.String() {
+		case "structuredMetadata":
+			dst, seen = &e.meta, &gotMeta
+		case "parsed":
+			dst, seen = &e.parsed, &gotParsed
+		default:
+			if err := skipValue(d); err != nil {
+				return err
+			}
+			continue
+		}
+		if *seen {
+			return protocolError() // a repeated member
+		}
+		*seen = true
+		ls, err := readLabels(d)
+		if err != nil {
+			return err
+		}
+		for _, l := range ls {
+			*bytes += int64(len(l.Name) + len(l.Value))
+		}
+		if len(ls) > 0 {
+			*dst = ls
+		}
 	}
 }
 
@@ -208,23 +262,39 @@ type pageEntry struct {
 	labels []Label
 	line   string
 	cut    bool
+	meta   []Label
+	parsed []Label
 }
 
 func flatten(lr *logResponse) []pageEntry {
 	out := make([]pageEntry, len(lr.entries))
 	for i, e := range lr.entries {
 		s := lr.streams[e.stream]
-		out[i] = pageEntry{ts: e.ts, key: s.key, labels: s.labels, line: e.line, cut: e.cut}
+		out[i] = pageEntry{ts: e.ts, key: s.key, labels: s.labels, line: e.line, cut: e.cut, meta: e.meta, parsed: e.parsed}
 	}
 	return out
 }
 
-// groupCompare is the group order: stream key ascending, then line bytes ascending.
+// groupCompare is the group order: stream key ascending, then line bytes ascending, then
+// structured metadata, then parsed fields (each as its sorted (name, value) list).
 func groupCompare(a, b pageEntry) int {
 	if c := cmp.Compare(a.key, b.key); c != 0 {
 		return c
 	}
-	return strings.Compare(a.line, b.line)
+	if c := strings.Compare(a.line, b.line); c != 0 {
+		return c
+	}
+	if c := slices.CompareFunc(a.meta, b.meta, labelCompare); c != 0 {
+		return c
+	}
+	return slices.CompareFunc(a.parsed, b.parsed, labelCompare)
+}
+
+func labelCompare(a, b Label) int {
+	if c := strings.Compare(a.Name, b.Name); c != 0 {
+		return c
+	}
+	return strings.Compare(a.Value, b.Value)
 }
 
 // pager builds one page of a log query (#65 §4.2). Every request goes through Client.do with
@@ -252,7 +322,8 @@ func (p *pager) fetch(start, end int64, limit int, matrix bool) (*logResponse, *
 	cl := call{route: "logs_query_range", method: http.MethodGet, path: "/api/logs/v1/query_range", query: q.Query,
 		form: url.Values{"query": {q.Query}, "start": {nsParam(start)}, "end": {nsParam(end)},
 			"step": {stepParam(q.Grid)}, "limit": {strconv.Itoa(limit)}, "direction": {q.Direction.String()}},
-		inputs: []guardInput{{"query", q.Query}}, limit: c.o.Limits.DataBody, retry: true, timeout: true, postOver: true}
+		inputs: []guardInput{{"query", q.Query}}, limit: c.o.Limits.DataBody, retry: true, timeout: true, postOver: true,
+		categorize: true}
 	t0 := time.Now()
 	resp, err := c.do(ctx, p.rc, cl)
 	if err != nil {
@@ -406,7 +477,8 @@ func (p *pager) page(es []pageEntry, next *PageCursor) *LogPage {
 		out.Streams = append(out.Streams, LogStream{Key: k, Labels: labels[k], Level: LevelOf(labels[k])})
 	}
 	for _, e := range es {
-		out.Entries = append(out.Entries, LogEntry{TsNs: e.ts, Stream: index[e.key], Line: e.line})
+		out.Entries = append(out.Entries, LogEntry{TsNs: e.ts, Stream: index[e.key], Line: e.line,
+			Level: EntryLevel(e.labels, e.meta, e.parsed), Metadata: e.meta, Parsed: e.parsed})
 	}
 	out.Completeness = mergeComp(p.comps)
 	if newest >= 0 {
