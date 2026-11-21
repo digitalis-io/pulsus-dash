@@ -13,8 +13,23 @@ import {
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-async function seriousViolations(page: Page): Promise<string[]> {
-  const r = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+/**
+ * Rules not run in one engine and state, with the reason. Firefox's page crashes inside axe's
+ * `label` rule once a kit text field has been typed into or focused by the pointer (reproduced
+ * with the panel editor's Title and the filter dialog's Label as well); Chromium and WebKit run
+ * every rule in these states.
+ */
+const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  firefox: { 'b-1 edit with sections': ['label'], 'b-1 add filter with error': ['label'] },
+};
+
+async function seriousViolations(page: Page, state = ''): Promise<string[]> {
+  const engine = page.context().browser()?.browserType().name() ?? '';
+  const skip = ENGINE_SKIPS[engine]?.[state] ?? [];
+  const r = await new AxeBuilder({ page })
+    .withTags(TAGS)
+    .disableRules([...skip])
+    .analyze();
   return r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
@@ -171,7 +186,7 @@ test.describe('e2e:a11y-rooms boards', () => {
         localStorage.setItem('pulsus-dash.theme', t);
       }, theme);
       await boardStates(page, async (state) => {
-        expect(await seriousViolations(page), state).toEqual([]);
+        expect(await seriousViolations(page, state), state).toEqual([]);
       });
     });
   }
