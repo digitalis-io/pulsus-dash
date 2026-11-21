@@ -25,6 +25,7 @@ import { useTimeContext } from '../../state/useTimeContext';
 import pages from '../pages.module.css';
 import { DeleteBoardDialog, NewBoardDialog, RenameBoardDialog } from './BoardDialogs';
 import styles from './BoardsPage.module.css';
+import { invalidateBoardLists } from '../../boards/queries';
 
 type Open =
   | { kind: 'none' }
@@ -53,7 +54,7 @@ export function BoardsPage() {
 
   const onCreated = (board: Board): void => {
     queryClient.setQueryData(['board', tenant, board.uid], board);
-    void queryClient.invalidateQueries({ queryKey: ['boards'] });
+    void invalidateBoardLists(queryClient);
     close();
     void navigate(boardPath(board.uid), { state: NEW_BOARD_STATE });
   };
@@ -180,7 +181,7 @@ export function BoardsPage() {
           board={open.board}
           onClose={close}
           onGone={() => {
-            void queryClient.invalidateQueries({ queryKey: ['boards'] });
+            void invalidateBoardLists(queryClient);
             setNotice(t('boards.gone'));
             close();
           }}

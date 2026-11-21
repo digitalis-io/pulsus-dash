@@ -1,10 +1,12 @@
 /**
  * The BFF client (ADR-0014 §1, ADR-0015): `openapi-fetch` over the types generated from
  * `api/openapi.yaml`. The session comes from `GET /api/dash/v1/bootstrap`; boards from the boards
- * API (`docs/server/boards-api.md`, plan #61 Part B §3.3). Panels have no query route yet (#64,
- * #67): `panelData` answers without a request.
+ * API (`docs/server/boards-api.md`, plan #61 Part B §3.3); Starred and Recent from the `/me/…`
+ * routes (Part C §3.2). Panels have no query route yet (#64, #67): `panelData` answers without a
+ * request.
  */
 import createClient, { type Client } from 'openapi-fetch';
+import { RECENT_LIMIT } from '../boards/queries';
 import type { Api } from './Api';
 import type { components, paths } from './gen/schema';
 import {
@@ -25,6 +27,7 @@ type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 type WireBoard = components['schemas']['Board'];
 type WireSummary = components['schemas']['BoardSummary'];
 type WireConflict = components['schemas']['BoardConflict'];
+type WireRef = components['schemas']['BoardRef'];
 
 /** An abort from fetch: a DOMException, which is not an Error subclass in every runtime. */
 function isAbort(e: unknown): boolean {
@@ -59,6 +62,10 @@ function toSummary(b: WireSummary) {
     updatedAt: b.updated_at,
     updatedBy: b.updated_by.name,
   };
+}
+
+function toRef(r: WireRef): BoardRef {
+  return { uid: r.uid, title: r.title };
 }
 
 function toBoard(b: WireBoard): Board {
@@ -212,20 +219,51 @@ export class HttpApi implements Api {
     });
   }
 
-  listStarred(): Promise<BoardRef[]> {
-    return Promise.resolve([]);
+  async listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+    this.checkTenant(tenant);
+    const list = await call(
+      () =>
+        this.client.GET('/api/dash/v1/me/starred-boards', signal === undefined ? {} : { signal }),
+      200,
+    );
+    return required(list).items.map(toRef);
   }
 
-  setStarred(): Promise<void> {
-    return Promise.reject(new ApiError('notImplemented', 'starring boards arrives with #61'));
+  async setStarred(tenant: string, uid: string, starred: boolean): Promise<void> {
+    this.checkTenant(tenant);
+    const init = { params: { path: { uid } } };
+    await call(
+      () =>
+        starred
+          ? this.client.PUT('/api/dash/v1/me/starred-boards/{uid}', init)
+          : this.client.DELETE('/api/dash/v1/me/starred-boards/{uid}', init),
+      204,
+    );
   }
 
-  listRecent(): Promise<BoardRef[]> {
-    return Promise.resolve([]);
+  async listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+    this.checkTenant(tenant);
+    const list = await call(
+      () =>
+        this.client.GET('/api/dash/v1/me/recent-boards', {
+          params: { query: { limit: RECENT_LIMIT } },
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      200,
+    );
+    return required(list).items.map(toRef);
   }
 
-  recordView(): Promise<void> {
-    return Promise.resolve();
+  async recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void> {
+    this.checkTenant(tenant);
+    await call(
+      () =>
+        this.client.PUT('/api/dash/v1/me/recent-boards/{uid}', {
+          params: { path: { uid }, query: { at } },
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      204,
+    );
   }
 
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */

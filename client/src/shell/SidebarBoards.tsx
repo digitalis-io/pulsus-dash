@@ -1,15 +1,12 @@
-/** The Starred and Recent board groups of the sidebar (IA-021). */
+/** The Starred and Recent board groups of the sidebar (IA-021), from the BFF (plan #61 Part C). */
 import { useQuery } from '@tanstack/react-query';
-import { useSyncExternalStore } from 'react';
 import { Link } from 'react-router';
 import { preloadRoute } from '../app/routeModules';
 import { useApi } from '../app/providers';
-import type { BoardSummary } from '../api/types';
+import type { BoardRef } from '../api/types';
 import { t } from '../i18n/t';
-import { safeStorage } from '../theme/theme';
 import { contextSearchString } from '../state/contextSearch';
 import { useTimeContext } from '../state/useTimeContext';
-import { readRecent, subscribeRecent } from './recentBoards';
 import { useShellRoute } from './useShellRoute';
 import styles from './Sidebar.module.css';
 import { cx } from '../kit/cx';
@@ -34,28 +31,38 @@ export function useBoards(tenant: string) {
   });
 }
 
+/**
+ * Starred, from the BFF (plan #61 Part C §4.5). Refetched on every return to the tab, whatever its
+ * age (the app default is no focus refetch), so another browser's change shows; another tab of
+ * this profile invalidates it through `BoardPrefs`.
+ */
 export function useStarred(tenant: string) {
   const api = useApi();
   return useQuery({
     queryKey: ['starred', tenant],
     queryFn: ({ signal }) => api.listStarred(tenant, signal),
+    refetchOnWindowFocus: 'always',
   });
 }
 
-function useRecent(tenant: string): string {
-  // The serialised list, so the snapshot is stable between pushes.
-  return useSyncExternalStore(subscribeRecent, () =>
-    JSON.stringify(readRecent(safeStorage(), tenant)),
-  );
+/** Recent, from the BFF, newest first; refetched as Starred is. */
+export function useRecent(tenant: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['recent', tenant],
+    queryFn: ({ signal }) => api.listRecent(tenant, signal),
+    refetchOnWindowFocus: 'always',
+  });
 }
 
+/** Links carry the time Context only: the board's own parameters stay on its URL. */
 function BoardLinks({
   boards,
   tenant,
   empty,
   star = false,
 }: {
-  boards: readonly BoardSummary[];
+  boards: readonly BoardRef[];
   tenant: string;
   empty: string;
   star?: boolean;
@@ -90,28 +97,54 @@ function BoardLinks({
   );
 }
 
-export function SidebarBoards() {
-  const { tenant } = useShellRoute();
-  const boards = useBoards(tenant);
-  const starred = useStarred(tenant);
-  const recentJson = useRecent(tenant);
-  const all = boards.data?.items ?? [];
-  const starredSet = new Set((starred.data ?? []).map((r) => r.uid));
-  const starredBoards = all.filter((b) => starredSet.has(b.uid));
-  const byUid = new Map(all.map((b) => [b.uid, b]));
-  const recentBoards = (JSON.parse(recentJson) as string[])
-    .map((u) => byUid.get(u))
-    .filter((b): b is BoardSummary => b !== undefined);
-  const ready = boards.isSuccess;
-
+/** One group: the heading, then nothing while pending, a muted note on failure, or the links. */
+function Group({
+  heading,
+  query,
+  tenant,
+  empty,
+  failed,
+  star = false,
+}: {
+  heading: string;
+  query: ReturnType<typeof useStarred>;
+  tenant: string;
+  empty: string;
+  failed: string;
+  star?: boolean;
+}) {
   return (
     <>
-      <h2 className={cx(styles['heading'])}>{t('nav.starred')}</h2>
-      {ready && starred.isSuccess && (
-        <BoardLinks boards={starredBoards} tenant={tenant} empty={t('nav.starredEmpty')} star />
+      <h2 className={cx(styles['heading'])}>{heading}</h2>
+      {query.isError && query.data === undefined && <p className={cx(styles['empty'])}>{failed}</p>}
+      {query.data !== undefined && (
+        <BoardLinks boards={query.data} tenant={tenant} empty={empty} star={star} />
       )}
-      <h2 className={cx(styles['heading'])}>{t('nav.recent')}</h2>
-      {ready && <BoardLinks boards={recentBoards} tenant={tenant} empty={t('nav.recentEmpty')} />}
+    </>
+  );
+}
+
+export function SidebarBoards() {
+  const { tenant } = useShellRoute();
+  const starred = useStarred(tenant);
+  const recent = useRecent(tenant);
+  return (
+    <>
+      <Group
+        heading={t('nav.starred')}
+        query={starred}
+        tenant={tenant}
+        empty={t('nav.starredEmpty')}
+        failed={t('nav.starredFailed')}
+        star
+      />
+      <Group
+        heading={t('nav.recent')}
+        query={recent}
+        tenant={tenant}
+        empty={t('nav.recentEmpty')}
+        failed={t('nav.recentFailed')}
+      />
     </>
   );
 }

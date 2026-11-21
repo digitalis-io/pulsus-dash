@@ -22,6 +22,7 @@ import { ModalDialog } from '../../kit/Dialog';
 import { TextField } from '../../kit/TextField';
 import { cx } from '../../kit/cx';
 import styles from './BoardsPage.module.css';
+import { invalidateBoardLists } from '../../boards/queries';
 
 /** The message of the `/title` field error, if any. */
 function titleError(fields: readonly FieldError[]): string | null {
@@ -158,7 +159,7 @@ export function RenameBoardDialog({
         }
         return api.saveBoard(tenant, board.uid, head.etag, spec).then((r) => {
           queryClient.setQueryData(['board', tenant, board.uid], r.board);
-          void queryClient.invalidateQueries({ queryKey: ['boards'] });
+          void invalidateBoardLists(queryClient);
           setBusy(false);
           onClose();
         });
@@ -219,7 +220,7 @@ export function DeleteBoardDialog({
 
   const done = (): void => {
     queryClient.removeQueries({ queryKey: ['board', tenant, board.uid] });
-    void queryClient.invalidateQueries({ queryKey: ['boards'] });
+    void invalidateBoardLists(queryClient);
     onClose();
   };
 

@@ -16,6 +16,7 @@ const EDGE_TITLE = 'Edge gateway, eu-west-1: p99 latency by pod and region after
 
 /**
  * The seed `npm run dev` and the tests use (generic names only; plan #61 Part B Appendix B-A §A.1).
+ * b-3's queries reference the variables `region` and `env` (Part C Appendix C-A §A.2).
  * Boards belong to the organisation, so every tenant shows the same list.
  */
 export const defaultSeed: StubSeed = {
@@ -93,7 +94,7 @@ export const defaultSeed: StubSeed = {
             'p-1',
             'Edge p99',
             'promql',
-            'histogram_quantile(0.99, sum(rate(edge_request_seconds_bucket[5m])) by (le))',
+            'histogram_quantile(0.99, sum(rate(edge_request_seconds_bucket{region=~"${region}"}[5m])) by (le))',
             'line',
             [0, 0, 6, 8],
           ),
@@ -109,7 +110,7 @@ export const defaultSeed: StubSeed = {
             'p-3',
             'Pods',
             'promql',
-            'sum(kube_pod_status_ready) by (pod)',
+            'sum(kube_pod_status_ready{env="$env"}) by (pod)',
             'heatmap',
             [0, 8, 6, 8],
           ),
@@ -120,5 +121,5 @@ export const defaultSeed: StubSeed = {
   ],
 };
 
-/** Starred boards seeded for a tenant when its stub key is absent. */
-export const defaultStarred: Readonly<Record<string, readonly string[]>> = { demo: ['b-1'] };
+/** Starred boards seeded when the stub key is absent (organisation-level, as on the BFF). */
+export const defaultStarred: readonly string[] = ['b-1'];

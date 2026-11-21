@@ -1,12 +1,14 @@
 /**
- * A board (IA-022, plan #61 Part B §4): the toolbar, the grids in View or Edit mode, the panel
- * editor, saving with the head's etag and the conflict dialog, and the guard against leaving with
- * unsaved changes. The page holds the loaded head and the draft in one reducer (`editorState.ts`).
+ * A board (IA-022, plan #61 Part B §4, Part C §4.2–§4.4): the filter bar and the toolbar, the
+ * grids and their collapsible sections in View or Edit mode, the panel editor, saving with the
+ * head's etag and the conflict dialog, and the guard against leaving with unsaved changes. The page
+ * holds the loaded head and the draft in one reducer (`editorState.ts`); variables, filters and
+ * View-mode section overrides live in the URL (`useBoardParams`).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useReducer, useRef, useState } from 'react';
 import { Link, useBlocker, useLocation, useNavigate } from 'react-router';
-import { useApi } from '../../app/providers';
+import { useApi, useBoardPrefs } from '../../app/providers';
 import {
   BoardConflictError,
   isApiError,
@@ -21,29 +23,34 @@ import {
   blockedText,
   boardReducer,
   initialState,
+  isCollapsed,
   isDirty,
   panelPointer,
   type GridRef,
 } from '../../boards/editorState';
 import { fieldMessage } from '../../boards/fieldMessages';
 import type { LayoutOp } from '../../boards/layout';
+import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
+import { boardVariables } from '../../boards/variables';
 import { t } from '../../i18n/t';
 import { cx } from '../../kit/cx';
 import { EmptyState } from '../../kit/EmptyState';
 import { ContextSummary } from '../../shell/ContextSummary';
 import { usePageTitle } from '../../shell/PageTitle';
-import { pushRecent } from '../../shell/recentBoards';
 import type { BoardLinkState } from '../../shell/SidebarBoards';
 import { useShellRoute } from '../../shell/useShellRoute';
+import type { ParamError } from '../../state/boardParams';
 import { contextSearchString } from '../../state/contextSearch';
+import { useBoardParams } from '../../state/useBoardParams';
 import { useTimeContext } from '../../state/useTimeContext';
-import { safeStorage } from '../../theme/theme';
 import pages from '../pages.module.css';
 import styles from './Board.module.css';
 import { BoardConflict } from './BoardConflict';
+import { BoardFilterBar } from './BoardFilterBar';
 import { BoardGridView } from './BoardGridView';
 import { BoardGuard } from './BoardGuard';
+import { BoardSection } from './BoardSection';
 import { BoardToolbar } from './BoardToolbar';
 import { PanelEditor } from './PanelEditor';
 import { PanelFrame, type PanelFrameProps } from './PanelFrame';
@@ -59,6 +66,8 @@ function preloadGridEditor(): void {
 }
 
 const PANEL_POINTER = /^(?:\/sections\/(\d+))?\/panels\/(\d+)(?:\/|$)/;
+/** A section title's error shows under its field, not under the status line. */
+const SECTION_TITLE_POINTER = /^\/sections\/(\d+)\/title$/;
 
 function isLinkState(v: unknown): v is BoardLinkState {
   return typeof v === 'object' && v !== null && 'applySavedTime' in v;
@@ -94,10 +103,12 @@ export function BoardPage() {
     retry: (count, e) => !isApiError(e, 'notFound') && count < 1,
   });
   const notFound = board.isError && isApiError(board.error, 'notFound');
-  const loadedUid = board.isSuccess ? board.data.uid : null;
+  // Set once the board first loads (a later failed read keeps the data): one view per opening.
+  const loadedUid = board.data?.uid ?? null;
+  const prefs = useBoardPrefs();
   useEffect(() => {
-    if (loadedUid !== null) pushRecent(safeStorage(), tenant, loadedUid);
-  }, [tenant, loadedUid]);
+    if (loadedUid !== null) prefs.recordView(tenant, loadedUid);
+  }, [prefs, tenant, loadedUid]);
 
   if (board.isPending) {
     return (
@@ -163,6 +174,16 @@ function BoardEditor({
   const saving = s.save.status === 'saving';
   const busy = saving || discarding;
   const edit = s.mode === 'edit';
+  const boardParams = useBoardParams(s.draft.sections.map((x) => x.id));
+  // A View-mode section toggle the URL budget refused; shown until the next press.
+  const [overrideError, setOverrideError] = useState<ParamError | null>(null);
+
+  // Edit starts from, and saves, the saved section state: View-mode overrides are dropped on
+  // every way into Edit (button, Shift+E, a new board's link state).
+  const { clearSectionOverrides } = boardParams;
+  useEffect(() => {
+    if (edit) clearSectionOverrides();
+  }, [edit, clearSectionOverrides]);
 
   usePageTitle(edit ? t('board.editingTitle', { title: s.head.title }) : s.head.title);
 
@@ -226,7 +247,8 @@ function BoardEditor({
         seen.current = r.board;
         dispatch({ type: 'saveOk', board: r.board });
         queryClient.setQueryData(['board', tenant, uid], r.board);
-        void queryClient.invalidateQueries({ queryKey: ['boards'] });
+        // The title may have changed: the list and the sidebar groups show it.
+        void invalidateBoardLists(queryClient);
       },
       (e: unknown) => {
         if (e instanceof BoardConflictError) {
@@ -261,8 +283,9 @@ function BoardEditor({
           dispatch({ type: 'exitEdit' });
         },
         () => {
+          // The draft stays, editable; the status says the saved version did not load.
           setDiscarding(false);
-          dispatch({ type: 'saveFailed' });
+          dispatch({ type: 'discardFailed' });
         },
       );
   };
@@ -297,19 +320,29 @@ function BoardEditor({
 
   const selected =
     s.selected === null ? undefined : allPanels(s.draft).find((x) => x.panel.id === s.selected);
-  const full =
-    s.announce === t('board.full') || s.announce === t('board.fullPanels') ? s.announce : '';
+  const full = [t('board.full'), t('board.fullPanels'), t('board.sectionsFull')].includes(
+    s.announce,
+  )
+    ? s.announce
+    : '';
   const statusText = {
     idle: full,
     saving: t('board.saving'),
     saved: t('board.saved'),
     failed: gone ? t('board.saveGone') : t('board.saveFailed'),
     invalid: t('board.saveInvalid', { n: s.save.fields.length }),
-    discardFailed: t('board.saveFailed'),
+    discardFailed: t('board.discardFailed'),
   }[s.save.status];
-  // Errors outside any panel (the board title, the time) show under the status line.
-  const boardErrors =
-    s.save.status === 'invalid' ? s.save.fields.filter((f) => !PANEL_POINTER.test(f.pointer)) : [];
+  // Errors outside any panel and section title (the board title, the time) show under the status
+  // line.
+  const invalid = s.save.status === 'invalid' ? s.save.fields : [];
+  const boardErrors = invalid.filter(
+    (f) => !PANEL_POINTER.test(f.pointer) && !SECTION_TITLE_POINTER.test(f.pointer),
+  );
+  const titleErrorOf = (j: number): string | null => {
+    const f = invalid.find((x) => x.pointer === `/sections/${String(j)}/title`);
+    return f === undefined ? null : fieldMessage(f.messageKey);
+  };
 
   const panelProps = (p: PanelSpec): PanelFrameProps => ({
     panel: p,
@@ -360,6 +393,7 @@ function BoardEditor({
     <div className={cx(styles['page'])}>
       <div className={cx(styles['bar'])}>
         <ContextSummary />
+        <BoardFilterBar variables={boardVariables(s.draft)} state={boardParams} />
         {edit ? (
           <BoardToolbar
             mode="edit"
@@ -368,6 +402,9 @@ function BoardEditor({
             savesTime={s.draft.time !== undefined}
             onAdd={() => {
               dispatch({ type: 'addPanel' });
+            }}
+            onAddSection={() => {
+              dispatch({ type: 'addSection' });
             }}
             onSaveTime={(on) => {
               dispatch({
@@ -391,9 +428,13 @@ function BoardEditor({
           />
         )}
       </div>
-      {edit && (
+      {edit ? (
         <p role="status" aria-label={t('board.saveStatus')} className={cx(styles['status'])}>
           {statusText}
+        </p>
+      ) : (
+        <p role="status" className={cx(styles['status'])}>
+          {overrideError === null ? '' : t(overrideError)}
         </p>
       )}
       {boardErrors.map((f) => (
@@ -419,12 +460,45 @@ function BoardEditor({
           ) : (
             <>
               {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
-              {s.draft.sections.map((sec, j) => (
-                <section key={sec.id} className={cx(styles['section'])} aria-label={sec.title}>
-                  <h2 className={cx(styles['sectionTitle'])}>{sec.title}</h2>
-                  {grid(sec.panels, j)}
-                </section>
-              ))}
+              {s.draft.sections.map((sec, j) => {
+                const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
+                return (
+                  <BoardSection
+                    key={sec.id}
+                    section={sec}
+                    index={j}
+                    mode={s.mode}
+                    collapsed={collapsed}
+                    busy={busy}
+                    titleError={titleErrorOf(j)}
+                    onToggle={() => {
+                      if (edit) {
+                        dispatch({ type: 'toggleSection', id: sec.id });
+                        return;
+                      }
+                      // Only a state that differs from the saved one is written to the URL.
+                      const next = !collapsed;
+                      setOverrideError(
+                        boardParams.setSectionOverride(
+                          sec.id,
+                          next === sec.collapsed ? null : next,
+                        ),
+                      );
+                    }}
+                    onTitle={(title) => {
+                      dispatch({ type: 'updateSection', id: sec.id, title });
+                    }}
+                    onAddPanel={() => {
+                      dispatch({ type: 'addPanel', grid: j });
+                    }}
+                    onRemove={() => {
+                      dispatch({ type: 'removeSection', id: sec.id });
+                    }}
+                  >
+                    {grid(sec.panels, j)}
+                  </BoardSection>
+                );
+              })}
             </>
           )}
         </div>

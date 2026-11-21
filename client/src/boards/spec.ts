@@ -236,37 +236,39 @@ function sortKeys(v: unknown): unknown {
   return out;
 }
 
-/** Stub (plan #61 Part C §2). */
-export function nextId(spec: BoardSpec, prefix: string): string {
-  return prefix === 'p' ? nextPanelId(spec) : 's-1';
-}
-
-/** Stub. */
-export function nextSectionId(spec: BoardSpec): string {
-  return nextId(spec, 's');
-}
-
 /**
- * `p-<n>` with n one more than the largest `p-<n>` id of the board. Ids are unique across panels
- * and sections, so section ids count too; n is a BigInt, so a suffix past 2^53 does not round onto
- * an id in use. When n + 1 no longer fits an id (40 characters), the lowest free `p-<n>` is used.
+ * `<prefix>-<n>` with n one more than the largest `<prefix>-<n>` id of the board. Ids are unique
+ * across panels and sections, so both count; n is a BigInt, so a suffix past 2^53 does not round
+ * onto an id in use. When n + 1 no longer fits an id (40 characters), the lowest free
+ * `<prefix>-<n>` is used.
  */
-export function nextPanelId(spec: BoardSpec): string {
+export function nextId(spec: BoardSpec, prefix: string): string {
   const used = new Set<string>(spec.sections.map((s) => s.id));
   for (const p of [...spec.panels, ...spec.sections.flatMap((s) => s.panels)]) used.add(p.id);
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
   let max = 0n;
   for (const id of used) {
-    const m = /^p-(\d+)$/.exec(id);
+    const m = pattern.exec(id);
     if (m?.[1] !== undefined) {
       const n = BigInt(m[1]);
       if (n > max) max = n;
     }
   }
-  const next = `p-${String(max + 1n)}`;
+  const next = `${prefix}-${String(max + 1n)}`;
   if (ID_PATTERN.test(next) && !used.has(next)) return next;
   // At most `used.size` ids are taken, so this ends within `used.size + 1` steps.
   for (let n = 1; ; n++) {
-    const id = `p-${String(n)}`;
+    const id = `${prefix}-${String(n)}`;
     if (!used.has(id)) return id;
   }
+}
+
+/** `p-<n>`: see `nextId`. */
+export function nextPanelId(spec: BoardSpec): string {
+  return nextId(spec, 'p');
+}
+
+/** `s-<n>`: see `nextId`. */
+export function nextSectionId(spec: BoardSpec): string {
+  return nextId(spec, 's');
 }
