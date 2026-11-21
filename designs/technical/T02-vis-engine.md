@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -21,7 +21,7 @@ budgets stand, with these readings:
 | Canvases | One canvas per chart frame (panel), all driven by one engine instance and one GPU device per page; the Atlas and a Lens are one scene on one canvas ([05](../product/05-visualisation-catalogue.md) VIZ-001, [04](../product/04-surfaces.md) SRF-014) |
 | "Browser JavaScript only proxies bytes and events" (§1) | Now: semantic state, layout and DOM are TS (ADR-0014 §2); the engine adapter moves bytes and events and is bound by T01-001. The library ban stands (VIZ-001) |
 | §11 M-UI1 row | Delivered on the interim renderer in M-UI1; the GPU versions land with #68 and #69 (M-UI0 milestone, delivered after the first M-UI1 slice). The Time Ribbon moves to M-UI3 with the Space scenes ([02](../product/02-information-architecture.md) IA-028) |
-| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`; ADR-0014 §3) |
+| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`, `drawn`; ADR-0014 §3, amended by [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md)) |
 
 ## 1. Context & problem
 
@@ -770,3 +770,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md) and the revised product text (roadmap Q13): new §0 (one canvas per chart frame with one engine and GPU device, interim renderer until #68/#69, Time Ribbon in Space scenes at M-UI3); Satisfies: IA-020 row replaced by IA-028, INT-025 adds `e2e:time-range-header` |
 | 1.2-rc | 2026-11-20 | #58, owner decision 2026-11-20: T02-005 gives a series with a log-level label ([08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a) that row's token; key hash for everything else |
+| 1.3-rc | 2026-11-21 | #90: `drawn` event and frame id (ADR-0019): §0 Shell overlays row; Related ADRs |

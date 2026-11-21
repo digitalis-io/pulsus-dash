@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-21 |
+| **Version** | 1.10-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -279,7 +279,10 @@ estate, §4.5):
 | — | Live tail | ingest timestamp → frame containing the line | < 2 s p95 (PRF-015) | M-UI2 |
 
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
-gain interactions.
+gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
+scripted room interactions, with the board editor first (#90). Until the reference lab exists, CI's
+`e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
+fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
 
 **Measurement methods**
 - **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
@@ -833,3 +836,4 @@ Meta-testing:
 | 1.8-rc | 2026-11-20 | #61 Part B: §7.1 adds `e2e:board-edit-save` (BFF, PR); `unit:board-spec` names the client's side, held to the server by `api/fixtures/board-spec/` |
 | 1.7-rc | 2026-11-20 | #61 Part A: §7.1 adds `unit:board-spec`, `itest:board-crud`, `itest:board-prefs` and `itest:audit-append-only` (board subset; named by T06 and T11); `itest:rls-isolation` adds the audit partitions, unreachable as the app role (T11-026) |
 | 1.9-rc | 2026-11-21 | #61 Part C: §4.3 `bench:inp-rooms` scenario is scripted room interactions in Chromium with INP per document from Event Timing (the board room first, #61); §7.1 lab gate row: merge once the reference lab exists, until then report-only in CI's `e2e` Chromium leg, as `bench:long-tasks` (D-INP-interim; T05-006 unchanged); §7.1 adds `e2e:board-prefs` and `e2e:board-sections` (BFF, PR) |
+| 1.10-rc | 2026-11-21 | #90: §4.3 `bench:rooms-long-tasks` scenario and its interim CI check |

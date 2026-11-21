@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-21 |
+| **Version** | 1.8-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -321,10 +321,15 @@ pixel at the same viewport size.
 | **Progress shimmer** | Thin edge shimmer on a viewport or list, shown only after a load has taken > 300 ms; there is no spinner component for data (VL-015) | `aria-busy` on the region |
 | **Basics** | Button, icon button (24×24 minimum target, WCAG 2.5.8), tabs, menu, switch, slider, splitter, badge, entity chip, state glyph (shape + colour + text, VIZ-067), pill, skeleton, empty-state, kbd hint, banner | standard patterns |
 
-**M-UI1 board editor (#61 Part B).** The panel editor is a non-modal sheet (`complementary`
-"Panel editor", 360 px) at the right of the board grid in Edit mode: Title, Query language, Query
-and Visualisation, every change applied to the draft at once, field errors from a save under their
-controls (T08-008); focus is never trapped (T08-017). The keyboard path for grid moves is a
+**M-UI1 board editor (#61 Part B, #90).** The panel editor is a modal dialog (`dialog` "Edit
+panel"), centred and of fixed size (800 × 720 px, capped to the viewport), over the dimmed board: a
+live preview of the panel at the top, drawn through the same `ChartFrame` path and query as the
+board panel, then Title, Query language, Query and Visualisation, every change applied to the draft
+at once, field errors from a save under their controls (T08-008); a title change shows in the
+preview within one frame; a visualisation, query or language change updates it at once, with the
+result if already loaded, otherwise Loading until the result arrives, and the panel's error state
+if the load fails; it contains focus while open, `Esc`, Done or a click outside closes it, and
+focus returns to the panel's Panel menu button (T08-017). The keyboard path for grid moves is a
 per-panel **Move or resize** button: arrows move the panel one cell, `Shift`+arrows resize it; the
 result, or "blocked", is announced through a polite live region (T08-018). Pointer drag and resize
 follow the same rule: no panel pushes another and no gap closes. The board keys are `Shift+E` (Edit
@@ -763,7 +768,7 @@ with an owner and a fix milestone and do not block.
 
 | Metric | Target | Source |
 |---|---|---|
-| Main-thread long tasks during interaction | 0 > 16 ms | PRF-005 |
+| Main-thread long tasks during interaction | 0 > 16 ms (`bench:rooms-long-tasks`, scripted room interactions in Chromium from a trace; until the reference lab exists, #68, CI's `e2e` gates thread > 16 ms and wall > 50 ms as T05 §4.3's interim trace check; the board editor is its first scenario, #90) | PRF-005 |
 | Hover tooltip | median ≤ 1 frame, p99 ≤ 2 frames (crosshair ≤ 1, GPU) | PRF-003, PRF-004, INT-033 |
 | INP in rooms | ≤ 100 ms p75 (a room above 200 ms fails the reference-lab gate; on shared CI runners a warning until the reference lab exists, #68) | PRF-033 |
 | Table: mount the visible window | ≤ 8 ms; scroll at 60 fps with ≤ 4 ms main per frame | §4.10 |
@@ -826,7 +831,7 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | *(2026-11-19: delivered by the TS application in the order of [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19); the Leptos risk check is withdrawn.)* Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48); the board editor of #61: the non-modal right-hand panel editor, the per-panel Move or resize button as the keyboard path for grid moves (§4.4), and the board keys `Shift+E` and `Mod+S` |
+| M-UI1 | *(2026-11-19: delivered by the TS application in the order of [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19); the Leptos risk check is withdrawn.)* Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48); the board editor of #61: the panel editor as a centred, fixed-size modal window with a live preview (#90), the per-panel Move or resize button as the keyboard path for grid moves (§4.4), and the board keys `Shift+E` and `Mod+S` |
 | M-UI2 | JSON, Markdown, image, link and pill cells. Tree. Logs/traces inspector content. Viewport a11y mirror for time-series. Dock host. ⌘K entities |
 | M-UI3 | Explorer (tree + table). Atlas mirror. Pivot-chip and entity-chip cells |
 | M-UI4 | Alert, Investigation and contact-point rooms. Action buttons. ⌘K alerts and investigations |
@@ -869,3 +874,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.5-rc | 2026-11-20 | Decision D12 (authentication deferred): the SRF-063 gate `e2e:admin-oidc-bind-datasource` runs from M-UI6 with SRF-063; §4 Admin rooms and §11 rollout move the datasource-binding and OIDC rooms from M-UI1 to M-UI6, with the fixed local principal until then |
 | 1.6-rc | 2026-11-20 | #61 Part B: §4.4 and §11 M-UI1 add the board editor: the non-modal right-hand panel editor, the per-panel Move or resize button (arrows, `Shift`+arrows) as the keyboard path for grid moves, and the board keys `Shift+E` and `Mod+S` (`Shift+E` moves from M-UI5 to M-UI1) |
 | 1.7-rc | 2026-11-21 | #61 Part C: §4.3 sidebar: Starred and Recent from the BFF, per user, with the ordering guarantee of D-RECENT-window and one reconciling refetch after an ambiguous view; §6 row for starred and recent boards in Postgres; IA-021 Satisfies adds `e2e:board-prefs`; PRF-033 Satisfies and the §7 INP row name `bench:inp-rooms`, failing the reference-lab gate above 200 ms and reporting a warning on shared CI runners until the lab exists (#68, D-INP-interim) |
+| 1.8-rc | 2026-11-21 | #90: §4.4 and §11 M-UI1: the panel editor is a centred, fixed-size modal dialog with a live preview (owner decision 2026-11-21); it replaces the non-modal right-hand sheet. §7: `bench:rooms-long-tasks` and its interim CI check |
