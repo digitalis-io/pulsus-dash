@@ -367,7 +367,7 @@ carry no record batches, so the streaming bounds above do not apply to them.
 ```rust
 pub struct Completeness {
     pub truncated: bool,                 // service_graph.truncated, "results truncated due to limit", 422s
-    pub exactness: Exactness,            // RawExact | Rollup{level_s} | Predicted{level_s} (T07 §4.3) | Sampled{ratio} | Windowed | Virtual
+    pub exactness: Exactness,            // RawExact | Rollup{level_s} | Predicted{level_s} (T07 §4.3) | Sampled{ratio} | Windowed
     pub source: SourceKind,              // PulsusDb{cluster} | Virtual{table} (T07 §4.11) | Cache{tier, age_ms}
     pub data_age_ms: Option<u64>,        // now − newest sample; drives the freshness indicator (AUD-041)
     pub warnings: Vec<String>,           // PromQL warnings/infos verbatim
@@ -925,3 +925,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.5-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §4.3 split into core and language modules, with the log completion methods and a return-contract table (streamed metric results, typed completion and metadata results, the log page and volume returns, and the buffered `LogQueryRange` response when `result` precedes `resultType`); T06-011 note on typed completion and metadata results; T06-028; T06-005 note |
 | 1.6-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.3 `prom.Plan` and `logs.Plan` in the language modules, with fixtures under `wire/fixtures/plan/`; §4.4 L1 metric-types row; new rule T06-029 (the server builds the final query, `itest:plan-authority`); ENT-006 row |
 | 1.6-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: T06-029 scoped to the PromQL paths (LogQL once `logs.Plan` lands) and separates the planned text from the final scope-rewritten text; `itest:plan-authority` no longer requires the re-planned text to differ; §4.4 metric types keyed, with singleflight, by tenant binding |
+| 1.6-rc | 2026-11-21 | Final review of the ADR-0021 PR: §4.3 `Completeness.exactness` drops `Virtual`; virtual provenance lives only in `source` (`Virtual{table}`), as in T07 §4.3 and §4.11.2 |
