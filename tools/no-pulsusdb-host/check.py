@@ -3,20 +3,21 @@
 
 Python 3.12 standard library only. Usage:
 
-    python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]
+    python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
 
 Rules (docs/development/build-and-ci.md#ci-no-pulsusdb-host):
-- forbidden-host: each DASH_FORBIDDEN_HOSTS entry (and the host of PULSUS_DASH_DATASOURCE_URL, if
-  set and not local) in the bytes of every file, binaries, symlinks and fixtures included;
+- forbidden-host: each entry of the optional local DASH_FORBIDDEN_HOSTS variable (and the host of
+  PULSUS_DASH_DATASOURCE_URL, if set and not local) in the bytes of every file, binaries, symlinks
+  and fixtures included. CI sets neither; no host name is stored in the repository or its secrets;
 - forbidden-host-in-path: the same entries in the file's relative path;
 - non-local-pulsusdb-url: a URL whose host contains "pulsusdb", or the value of a PulsusDB
-  datasource key, whose host is not local. Text files only; not symlinks; in repository mode not
-  under URL_RULE_EXEMPT.
+  datasource key (a URL, or a bare host with a dot or a port), whose host is not local. Text files
+  only; not symlinks; in repository mode not under URL_RULE_EXEMPT.
 
 Output rule: no path, host, line text, argument or subprocess message is ever printed. A file is
 F<i>, its 1-based index in the sorted scanned list; --show-paths (refused when CI is set) prints
-the path instead, for local use. Exit: 0 clean, 1 findings, 2 usage, git, bad root, unreadable,
-missing secret with --require-secret, or an internal error.
+the path instead, for local use. Exit: 0 clean, 1 findings, 2 usage, git, bad root, unreadable or
+an internal error.
 """
 
 from __future__ import annotations
@@ -37,11 +38,7 @@ COMPOSE_HOSTS = frozenset({"pulsus-fake"})
 URL_RULE_EXEMPT = "tools/no-pulsusdb-host/testdata/"  # repository mode; exempts ONLY the URL rule
 REPO = Path(__file__).resolve().parents[2]
 
-USAGE = "usage: python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]"
-SECRET_TEXT = (
-    "DASH_FORBIDDEN_HOSTS is not set: a repository owner must create this repository secret "
-    "(see docs/development/build-and-ci.md#ci-no-pulsusdb-host); pull requests from forks cannot read it"
-)
+USAGE = "usage: python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]"
 TEXT_PROBE = 8192
 
 _DELIMS = "\\s/?#\"'<>()\\[\\]{}\\\\`"
@@ -50,13 +47,28 @@ URL = (
     r"(?:\[[0-9A-Fa-f:.]+(?:%(?:25)?[0-9A-Za-z._~-]+)?\]|[^" + _DELIMS + r":@]+)"
     r"(?::[0-9]{1,5})?)"
 )
+# (c) A bare datasource value: a host with at least one dot or a port, no scheme, then a delimiter.
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+BARE = (
+    r"(?P<a>" + _LABEL + r"(?:(?:\." + _LABEL + r")+\.?(?::[0-9]{1,5})?|:[0-9]{1,5}))"
+    r"(?=[\s/\"'#,]|$)"
+)
 URL_RE = re.compile(URL)
-B1_RE = re.compile(r"(?P<i>\s*)url\s*:\s*[\"']?" + URL)
+_B1 = r"(?P<i>\s*)url\s*:\s*"
+B1_RES = (re.compile(_B1 + r"[\"']?" + URL), re.compile(_B1 + r"[\"']?" + BARE))
 B1_PARENT_RE = re.compile(r"\s*datasource\s*:\s*")
+_B2 = r"(?<![A-Za-z0-9_.])datasource\.url\s*[:=]\s*"
+_B3 = r"(?<![A-Za-z0-9_])PULSUS_DASH_DATASOURCE_URL\s*[:=]\s*"
+_B4 = r"(?<![A-Za-z0-9_])(?:datasource_url|DatasourceURL)[\"']?\s*[:=]\s*"
 KEY_RES = (
-    re.compile(r"(?<![A-Za-z0-9_.])datasource\.url\s*[:=]\s*[\"']?" + URL),  # b2
-    re.compile(r"(?<![A-Za-z0-9_])PULSUS_DASH_DATASOURCE_URL\s*[:=]\s*[\"']?" + URL),  # b3
-    re.compile(r"(?<![A-Za-z0-9_])(?:datasource_url|DatasourceURL)[\"']?\s*[:=]\s*[\"']?" + URL),  # b4
+    re.compile(_B2 + r"[\"']?" + URL),  # b2
+    re.compile(_B3 + r"[\"']?" + URL),  # b3
+    re.compile(_B4 + r"[\"']?" + URL),  # b4
+    # (c): bare values. The env key (b3) and the YAML key (b1) may be unquoted; the dotted and
+    # code-style keys (b2, b4) only quoted, so code such as `DatasourceURL: d.URL` is not a value.
+    re.compile(_B2 + r"[\"']" + BARE),
+    re.compile(_B3 + r"[\"']?" + BARE),
+    re.compile(_B4 + r"[\"']" + BARE),
 )
 
 
@@ -136,7 +148,7 @@ def _indent(line: str) -> int:
 
 
 def _url_findings(text: str) -> list[int]:
-    """Line numbers of non-local PulsusDB URL candidates (rules a, b1-b4), deduplicated."""
+    """Line numbers of non-local PulsusDB URL candidates (rules a, b1-b4, c), deduplicated."""
     starts: list[int] = []
     for m in URL_RE.finditer(text):  # (a)
         h = url_host(m.group("a"))
@@ -148,8 +160,8 @@ def _url_findings(text: str) -> list[int]:
                 starts.append(m.start("a"))
     lines = text.split("\n")
     found = {text.count("\n", 0, s) + 1 for s in starts}
-    for n, line in enumerate(lines):  # (b1)
-        m = B1_RE.match(line)
+    for n, line in enumerate(lines):  # (b1), and (c) under b1
+        m = B1_RES[0].match(line) or B1_RES[1].match(line)
         if m and not is_local(url_host(m.group("a"))):
             ind = len(m.group("i"))
             for prev in reversed(lines[:n]):
@@ -183,7 +195,6 @@ def _walk_root(root: Path, walk, onerror) -> list[tuple[str, Path]]:
 def _scan(argv, env, out, err, read_bytes, readlink, walk, run) -> int:
     parser = Parser(add_help=False, allow_abbrev=False, exit_on_error=False)
     parser.add_argument("--root")
-    parser.add_argument("--require-secret", action="store_true")
     parser.add_argument("--show-paths", action="store_true")
     parser.add_argument("--help", action="store_true")
     try:
@@ -199,11 +210,6 @@ def _scan(argv, env, out, err, read_bytes, readlink, walk, run) -> int:
         return 2
 
     hosts = forbidden_hosts(env)
-    if not _dash_entries(env):
-        if args.require_secret:
-            err.write(f"error[missing-secret] {SECRET_TEXT}\n")
-            return 2
-        err.write(f"warning[missing-secret] {SECRET_TEXT}\n")
 
     status2 = False
     if args.root is not None:

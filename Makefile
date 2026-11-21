@@ -120,7 +120,8 @@ go-licenses:
 	server/scripts/check-go-licenses-fixture.sh
 
 # ci:no-pulsusdb-host: the checker's self-test, then the scan of every tracked file. A present
-# DEV_ENV_FILE adds its PulsusDB host to the forbidden list. ARGS=--show-paths names the files.
+# DEV_ENV_FILE adds its PulsusDB host (and any DASH_FORBIDDEN_HOSTS) to the forbidden list; CI has
+# neither. ARGS=--show-paths names the files.
 no-pulsusdb-host:
 	if [ -f $(DEV_ENV_FILE) ]; then $(LOAD_ENV); fi && \
 	  python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py' && \
