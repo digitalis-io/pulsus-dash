@@ -5,7 +5,8 @@ The web client in `client/`: TypeScript, React and Vite
 data mode ([ADR-0017](../../designs/adr/0017-react-router.md)), accessible components from React Aria
 Components, server state in TanStack Query. This page covers the application shell of milestone
 M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and tokens, and the
-checks that guard them. Charts (roadmap step 2, issue #58) are in [Charts](charts.md). Build and CI
+checks that guard them. Charts (roadmap step 2, issue #58) are in [Charts](charts.md); the Explore
+metrics data and rules (issue #63) in [Explore](explore.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
 [JavaScript supply chain](supply-chain.md).
 
@@ -85,6 +86,7 @@ zone) are passed by closure.
 | `/t/:tenant` | `AppShell`. Loader: the session; a tenant the user has no binding for → 404 (standalone Not found); a non-canonical search → `replace()` to the canonical one |
 | `/t/:tenant` (index) | `replace()` to `/t/:tenant/boards`, keeping the (canonical) search |
 | `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too |
+| `/t/:tenant/explore/metrics` (loader) | A non-canonical `q`, `vis` or `rate` → `replace()` to the canonical search ([Explore](explore.md#url-keys-ia-022)) |
 | `/t/:tenant/dev/gallery` | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
 | `/t/:tenant/*` | Not found inside the shell |
 | `*` | Standalone Not found |

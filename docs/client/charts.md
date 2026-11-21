@@ -161,7 +161,10 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   interval (its start to the next start; the last one by the previous step) overlaps the window is
   kept and clipped to it, and buckets wholly outside the window are dropped, never merged into the
   edge columns.
-- **Heatmap.** Cells per column and bucket, merged per pixel column like bars.
+- **Heatmap.** Cells per column and bucket, merged per pixel column like bars, except that a
+  merged cell is missing (no fill) when any merged bucket's count is missing (NaN); hover and the
+  a11y summary read the raw buckets. A NaN cell is never filled and has no hover row (#63,
+  [T02 §4.4](../../designs/technical/T02-vis-engine.md#44-lod-decimation-and-precision) gaps rule).
 - **Stat.** The formatted value, centred, in 32 px semibold.
 
 ## Interaction (INT-033, IA-020 subset)
