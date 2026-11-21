@@ -801,6 +801,20 @@ func TestLogDecode(t *testing.T) {
 	if v, err := d.Nanos(); err != nil || v != 9223372036854775807 {
 		t.Errorf("Nanos(max int64) = %d %v", v, err)
 	}
+	for _, tok := range []string{`"01"`, `"00"`, `"-1"`, `"9223372036854775808"`, `"1e3"`, `""`, `1`} {
+		d := newUpstreamDecoder(strings.NewReader(tok), redactor{})
+		if _, err := d.Next(); err != nil {
+			t.Fatal(err)
+		}
+		if v, err := d.Nanos(); kindOf(err) != KindProtocol {
+			t.Errorf("Nanos(%s) = %d %v, want KindProtocol", tok, v, err)
+		}
+	}
+	d = newUpstreamDecoder(strings.NewReader(`"0"`), redactor{})
+	_, _ = d.Next()
+	if v, err := d.Nanos(); err != nil || v != 0 {
+		t.Errorf(`Nanos("0") = %d %v`, v, err)
+	}
 	for name, raw := range map[string]string{
 		"ts 01":             streamDoc(`["01","l"]`),
 		"ts -1":             streamDoc(`["-1","l"]`),
