@@ -17,6 +17,8 @@ declare global {
 
 test.describe('e2e:csp-violations', () => {
   test('no CSP or Trusted Types violation on any page or overlay', async ({ page }) => {
+    // Every page and overlay, then Explore with the editor, its popup and the picker.
+    test.setTimeout(60_000);
     await page.addInitScript(() => {
       window.__cspViolations = [];
       document.addEventListener('securitypolicyviolation', (e) => {
