@@ -537,7 +537,9 @@ describe('camera', () => {
       expect(CHAR_WIDTH * '1.5e+22'.length).toBe(49);
       for (const x of chips) inside(x, r.s);
       // The chip itself stays inside the plot too.
-      for (const o of h.layer().ops.filter((x) => x.fillStyle === CHIP && x.op !== 'fill')) {
+      for (const o of h
+        .layer()
+        .ops.filter((x) => x.fillStyle === CHIP && ['moveTo', 'lineTo', 'arc'].includes(x.op))) {
         const xs =
           o.op === 'arc'
             ? [Number(o.args[0]) - Number(o.args[2]), Number(o.args[0]) + Number(o.args[2])]
@@ -549,10 +551,10 @@ describe('camera', () => {
       }
     });
   });
-  // T02-011 (amended by #93, code review r3): "When a plot is narrower than both the full and the
-  // compact form of a value label, that tick's label is omitted. A label is never drawn partially or
-  // outside the plot. The value remains available through the crosshair readout and the chart's
-  // summary label." No chip is drawn, and nothing is drawn in the plot but the marks.
+  // T02-011 (amended by #93, code review r3 and r4): "When a plot is narrower than both the full and
+  // the compact form of a value label, that tick's label is omitted; its gridline remains. A label
+  // is never drawn partially or outside the plot." No chip is drawn, and nothing is drawn in the
+  // plot but the marks and gridlines.
   describe('non-fitting label on a plot narrower than both forms', () => {
     /** 86 px wide: a 24 px plot, 16 px of room inside the chip padding. */
     const TINY = [86, 240] as const;

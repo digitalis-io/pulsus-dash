@@ -148,8 +148,8 @@ interface HeldLabel {
 
 /**
  * Per tick: the full label when it fits `band`, else the compact one; else a chip inside the plot,
- * whose text is the full label when it fits `room` (the plot width less the chip padding), else
- * the compact one; else no label at all (never past the plot's edge, never partial: T02-011).
+ * whose text is the full label when it fits `room` (the plot width), else the compact one; else
+ * the label is omitted (never past the plot's edge, never partial: T02-011).
  */
 function heldLabels(
   ctx: Ctx2D,
@@ -168,8 +168,7 @@ function heldLabels(
     if (compactW <= band) return { text: compact, chip: false };
     if (fullW <= room) return { text: full, chip: true };
     if (compactW <= room) return { text: compact, chip: true };
-    // No form fits even the plot: T02-011 never draws a partial label, so this tick has none (its
-    // value stays in the crosshair readout and the summary).
+    // No form fits even the plot: T02-011 omits the label (its gridline remains).
     return { text: '', chip: false };
   });
 }
@@ -196,7 +195,7 @@ function axisTexts(
   extra: readonly string[] = [],
 ): { texts: HeldLabel[]; width: number; held: boolean } {
   if (i.band !== null) {
-    const room = layoutPlot(i.spec.kind, i.cssW, i.cssH, i.band).width - 2 * space['1'];
+    const room = layoutPlot(i.spec.kind, i.cssW, i.cssH, i.band).width;
     const texts = heldLabels(i.ctx, ticks, unit, i.band, room);
     for (const e of extra) texts.push({ text: e, chip: false });
     return { texts, width: i.band, held: true };
@@ -249,15 +248,17 @@ export function drawAxes(
  */
 function drawChips(i: LayerInput, plot: PlotRect, values: readonly AxisLabel[]): void {
   const { ctx } = i;
-  const pad = space['1'];
   const h = LABEL_HEIGHT;
-  const r = Math.min(radius.default, h / 2);
   ctx.font = AXIS_FONT;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   for (const v of values) {
     if (!v.chip) continue;
-    const w = ctx.measureText(v.label).width + 2 * pad;
+    const textW = ctx.measureText(v.label).width;
+    // The padding shrinks, down to zero, so the chip stays inside the plot (the label fits it).
+    const pad = Math.max(0, Math.min(space['1'], (plot.width - textW) / 2));
+    const w = textW + 2 * pad;
+    const r = Math.min(radius.default, h / 2, w / 2);
     const x0 = plot.x;
     const y0 = v.y - h / 2;
     ctx.fillStyle = i.colours.chip;

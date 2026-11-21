@@ -80,8 +80,9 @@ Point at a chart's plot (the area with the lines or bars) and:
 - **No browser menu on a plot.** Right-clicking or right-dragging on a plot opens no browser menu;
   elsewhere right-click works as usual.
 - **Short labels while you zoom.** While you work a chart, a value label that would not fit is shown
-  in short form (`15µ`, `-1.23k`), and a very long one inside the chart on a small background; the
-  full labels return when the pointer leaves the chart.
+  in short form (`15µ`, `-1.23k`), and a very long one inside the chart on a small background. On a
+  chart too narrow for either form, that label is left out (its gridline stays). The full labels
+  return when the pointer leaves the chart.
 - A trackpad pinch zooms time only, and **Ctrl** or **⌘** + wheel zooms both axes. A mouse whose
   wheel moves in fractional steps acts like a pinch.
 

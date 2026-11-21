@@ -157,12 +157,13 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 - **Held band** (#93). While the camera is worked the band keeps its width (below, "The band
   hold"). Each tick label is then drawn in full when it fits, else in compact form
   (`formatCompact`), else whole inside the plot: left edge at `plot.x + 4 px`, over the marks, on a
-  chip in the tooltip surface colour with the corner radius and 4 px padding. The chip shows the
-  full label when it fits the plot width (less the padding), else the compact form. When neither
-  fits (a plot only a few pixels wide), that tick's label is omitted: a label is never drawn
-  partially or outside the plot, and its value is still read from the crosshair slider and the
-  summary label ([T02-011](../../designs/technical/T02-vis-engine.md#t02-011--axis-bands-do-not-jitter),
-  as amended by #93).
+  chip in the tooltip surface colour with the corner radius and up to 4 px padding. The chip shows
+  the full label when it fits the plot width, else the compact form; its padding shrinks, down to
+  zero, so the chip stays inside the plot. When neither form fits the plot (a plot only a few
+  pixels wide), that tick's label is omitted and its gridline remains: a label is never drawn
+  partially or outside the plot
+  ([T02-011](../../designs/technical/T02-vis-engine.md#t02-011--axis-bands-do-not-jitter), as
+  amended by #93).
 - **Value axis** (line, bars). Auto: the domain includes 0 and the data (bars: the stacked totals).
   Steps are 1, 2 or 5 × 10^k in units of 1 000^p (1 024^p for bytes), widened until labels are at
   least label height + 2 px apart. Grid lines are hairlines. Manual (`valueRange` set): the domain is
