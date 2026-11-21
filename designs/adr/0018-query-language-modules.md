@@ -54,7 +54,8 @@ language.
 ## Consequences
 
 - Adding a language means adding one server module and one `lang/<id>/` directory. No new transport,
-  tenant, retry or decoder code is written, and Explore and panel code is untouched.
+  tenant or retry code is written. The module reuses the core's decoder infrastructure and adds only
+  the language-specific decoder code its responses need. Explore and panel code is untouched.
 - Tenant decoration, deadlines, retry budgets and redaction are tested once, in the core. Each module
   tests only its shapes and decoders against its fixtures.
 - When R1 ships, it changes only the core's decoder seam and each module's Arrow decoder. Routes and

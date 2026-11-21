@@ -487,8 +487,12 @@ export interface LanguageDeps { /* fields fixed by the implementing issue */ }
 export const LANGUAGES: Readonly<Record<LangId, () => Promise<QueryLanguage>>>;
 ```
 
-`validate`, `format` and `visHint` are added to this interface when they ship (M-UI2). There is no
-second interface.
+Auto-vis (SRF-030, VIZ-065, §4.6) ships in M-UI1 through `shape`: the language returns a
+`QueryShape`, and the Explore planner applies the Table 5-13 rows to that shape, the metric metadata
+and the result (#63). Only the interface methods are later. `validate` and `format` are added with
+the WASM parser crates in M-UI2 (SRF-078, T09-011). `visHint`, which derives the hint in the editor
+worker before results arrive, is added with that worker in M-UI2. Until then the `shape` path
+delivers the hint. There is no second interface.
 
 | Interface | Consumers |
 |---|---|
@@ -660,4 +664,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: T09-009 has one fallback for every error without a position (whole-query underline, "position unknown"; no recovery-point placement), aligned in T09-002 and the §9 failure table; formatting moves out of M-UI1 to the WASM crates in M-UI2, optionally earlier through a confirmed PulsusDB format route (§0, §4.5, §11, Q5) |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
-| 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; T09-001 isolation sentence |
+| 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; auto-vis stays M-UI1 through `shape`, and only the `validate`, `format` and `visHint` methods are added in M-UI2; T09-001 isolation sentence |
