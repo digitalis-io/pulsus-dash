@@ -233,3 +233,60 @@ func TestInstantShapes(t *testing.T) {
 		t.Errorf("trailing zero fraction: %v", err)
 	}
 }
+
+// A series carrying native histograms instead of values is skipped with a completeness warning;
+// the response does not fail. Histogram samples next to values are dropped the same way.
+func TestNativeHistogramsSkipped(t *testing.T) {
+	hist := `{"count":"2","sum":"3","buckets":[[1,"0","1","2"]]}`
+	body := `{"status":"success","data":{"resultType":"matrix","result":[` +
+		`{"metric":{"job":"a"},"values":[[1767225600,"1"]]},` +
+		`{"metric":{"job":"h"},"histograms":[[1767225600,` + hist + `]]},` +
+		`{"histograms":[[1767225605,` + hist + `]],"values":[[1767225600,"4"]],"metric":{"job":"both"}},` +
+		`{"metric":{"job":"z"},"values":[[1767225605,"5"]]}]}}`
+	rs, err := rangeOf(t, body, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss, err := drain(rs)
+	var jobs []string
+	for _, s := range ss {
+		jobs = append(jobs, s.Labels[0].Value)
+	}
+	c := rs.Completeness()
+	if err != nil || !slices.Equal(jobs, []string{"a", "both", "z"}) || c.Truncated ||
+		!slices.Equal(c.Warnings, []string{"pulsus-dash: native histogram samples skipped in 2 series"}) {
+		t.Errorf("range: jobs %v err %v completeness %+v; want [a both z] and the histogram warning", jobs, err, c)
+	}
+
+	run := func(body string) (*ResultStream, error) {
+		up := newUpstream(t, answer(200, body))
+		return New(Options{}).Query(ctxWithin(t, 10*time.Second), rcFor(testBinding(up.URL)),
+			InstantQuery{Query: "q", At: time.UnixMilli(1767229200000), Timeout: 30 * time.Second})
+	}
+	rs, err = run(`{"status":"success","data":{"resultType":"vector","result":[` +
+		`{"metric":{"job":"h"},"histogram":[1767229200,` + hist + `]},{"metric":{"job":"a"},"value":[1767229200,"1"]}]}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss, err = drain(rs)
+	c = rs.Completeness()
+	if err != nil || rs.Type() != ResultVector || len(ss) != 1 || ss[0].Labels[0].Value != "a" ||
+		!slices.Equal(c.Warnings, []string{"pulsus-dash: native histogram samples skipped in 1 series"}) {
+		t.Errorf("vector: type %q %d series err %v completeness %+v", rs.Type(), len(ss), err, c)
+	}
+	rs, err = run(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"histogram":[1767229200,` + hist + `]}]}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ss, err := drain(rs); err != nil || rs.Type() != ResultVector || len(ss) != 0 {
+		t.Errorf("histogram-only vector: type %q %d series err %v", rs.Type(), len(ss), err)
+	}
+	rs, err = run(`{"status":"success","data":{"resultType":"matrix","result":[` +
+		`{"metric":{"job":"h"},"histograms":[[1767229200,` + hist + `]]},{"metric":{"job":"a"},"values":[[1767229200,"1"]]}]}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ss, err := drain(rs); err != nil || rs.Type() != ResultMatrix || len(ss) != 1 {
+		t.Errorf("instant matrix: type %q %d series err %v", rs.Type(), len(ss), err)
+	}
+}

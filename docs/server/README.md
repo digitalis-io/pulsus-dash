@@ -433,7 +433,7 @@ header was written is logged with `status=499`. PulsusDB calls add one `msg=puls
 Lint rules (`server/.golangci.yml`) keep `pgx`, `goose` and the sqlc output inside
 `internal/store` (T11-023), `chi` and the generated server inside `internal/gateway` (T06-001),
 outbound HTTP inside `internal/pulsusdb` (`pulsusdb-only`, T06-005), and upstream body decoding
-inside its tokenizer (`pulsusdb-decoder`). A self-test with failing fixtures proves these rules are
+to decoders that yield strings only through the redactor (`pulsusdb-decoder`). A self-test with failing fixtures proves these rules are
 enforced
 ([build and CI](../development/build-and-ci.md#make-targets)).
 

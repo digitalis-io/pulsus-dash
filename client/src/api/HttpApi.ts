@@ -139,7 +139,7 @@ function queryError(status: number, error: unknown): ApiError {
   return new ApiError('unknown', message);
 }
 
-/** Runs a request: an abort is re-thrown unchanged, any other rejection is `network`. */
+/** Runs a query request: an abort is re-thrown unchanged, any other rejection is `network`. */
 async function send<T>(f: () => Promise<T>): Promise<T> {
   try {
     return await f();
@@ -148,53 +148,6 @@ async function send<T>(f: () => Promise<T>): Promise<T> {
     throw new ApiError('network', 'the BFF could not be reached');
   }
 }
-
-/** The field errors of an error envelope. */
-function fieldsOf(error: unknown) {
-  const fields = (error as Partial<ErrorEnvelope> | undefined)?.error?.fields ?? [];
-  return fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key }));
-}
-
-interface Result<T> {
-  data?: T;
-  error?: unknown;
-  response: Response;
-}
-
-/**
- * Runs one request: a thrown fetch error is `network` (an abort is re-thrown), 404 `notFound`,
- * 400 `invalid` with the envelope's fields, 409 `BoardConflictError`; any other status without a
- * body of the success type is `unknown` with the envelope's message.
- */
-async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T | undefined> {
-  let r: Result<T>;
-  try {
-    r = await request();
-  } catch (e) {
-    if (isAbort(e)) throw e;
-    throw new ApiError('network', 'the BFF could not be reached');
-  }
-  const status = r.response.status;
-  if (status === ok) return r.data;
-  if (status === 404) throw new ApiError('notFound', messageOf(r.error, status));
-  if (status === 400)
-    throw new ApiError('invalid', messageOf(r.error, status), {
-      fields: fieldsOf(r.error),
-    });
-  if (status === 409) {
-    const current = (r.error as Partial<WireConflict> | undefined)?.current;
-    if (current !== undefined)
-      throw new BoardConflictError(toBoard(current), messageOf(r.error, status));
-  }
-  throw new ApiError('unknown', messageOf(r.error, status));
-}
-
-function required<T>(v: T | undefined): T {
-  if (v === undefined) throw new ApiError('unknown', 'the BFF sent no body');
-  return v;
-}
-
-const ifMatch = (etag: string) => ({ 'If-Match': `"${etag}"` });
 
 /** Decodes a 200 body; a body the decoder refuses is `badResponse`. */
 function decoded<T>(decode: (b: unknown) => T, body: unknown): T {
@@ -229,6 +182,52 @@ const DATA_SOURCE_STATES = {
   unauthorised: 'unauthorised',
   error: 'error',
 } as const;
+
+/** The field errors of an error envelope. */
+function fieldsOf(error: unknown) {
+  const fields = (error as Partial<ErrorEnvelope> | undefined)?.error?.fields ?? [];
+  return fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key }));
+}
+
+interface Result<T> {
+  data?: T;
+  error?: unknown;
+  response: Response;
+}
+
+/**
+ * Runs one boards request: a thrown fetch error is `network` (an abort is re-thrown), 404
+ * `notFound`, 400 `invalid` with the envelope's fields, 409 `BoardConflictError`; any other status
+ * without a body of the success type is `unknown` with the envelope's message.
+ */
+async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T | undefined> {
+  let r: Result<T>;
+  try {
+    r = await request();
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    throw new ApiError('network', 'the BFF could not be reached');
+  }
+  const status = r.response.status;
+  if (status === ok) return r.data;
+  if (status === 404) throw new ApiError('notFound', messageOf(r.error, status));
+  if (status === 400) {
+    throw new ApiError('invalid', messageOf(r.error, status), { fields: fieldsOf(r.error) });
+  }
+  if (status === 409) {
+    const current = (r.error as Partial<WireConflict> | undefined)?.current;
+    if (current !== undefined)
+      throw new BoardConflictError(toBoard(current), messageOf(r.error, status));
+  }
+  throw new ApiError('unknown', messageOf(r.error, status));
+}
+
+function required<T>(v: T | undefined): T {
+  if (v === undefined) throw new ApiError('unknown', 'the BFF sent no body');
+  return v;
+}
+
+const ifMatch = (etag: string) => ({ 'If-Match': `"${etag}"` });
 
 export class HttpApi implements Api {
   /** The session's tenant slugs, once `getSession` has answered. */

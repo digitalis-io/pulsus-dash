@@ -66,7 +66,8 @@ Every request also carries `Accept: application/json` and `User-Agent: pulsus-da
 environment. The secret must be `user:password` with a non-empty user, and the password must be
 **at least 8 bytes and not a number**: neither it nor its space-trimmed form may parse with Go's
 `strconv.ParseFloat`, which covers signs, decimals, exponents, hex floats, `Inf`, `NaN` and
-underscores (`core.WeakPassword`). A credential that is missing, malformed or weak is refused
+underscores. A number outside the float64 range (`1e999`, which ParseFloat answers with `ErrRange`)
+counts as a number too (`core.WeakPassword`). A credential that is missing, malformed or weak is refused
 before any request: 503 `unavailable` with `hint.reason: datasource_config`, and one log record
 `msg=pulsusdb_credentials_weak tenant=<slug>` without the value.
 
@@ -86,11 +87,17 @@ A Postgres constraint cannot check this: `tenant_bindings` stores the reference,
 |---|---|---|
 | range | `POST /api/v1/query_range` (form) | `query` (byte for byte, T07-002), `start`, `end` (seconds, `.mmm` only when not whole), `step` (whole seconds), `timeout` |
 | instant | `POST /api/v1/query` (form) | `query`, `time`, `timeout` |
-| series | `POST /api/v1/series` (form) | `match[]` in order, `start`, `end`, `limit` |
-| labels | `GET /api/v1/labels` | `match[]`, `start`, `end`, `limit` |
-| label values | `GET /api/v1/label/<name, path-escaped>/values` | as labels |
+| series | `POST /api/v1/series` (form) | `match[]` in order, `start`, `end` (whole seconds: start floored, end raised), `limit` |
+| labels | `POST /api/v1/labels` (form); on a 405 or a 400, the same request once as `GET` | `match[]`, `start`, `end` (whole seconds snapped to the minute: start floored, end raised, at least one minute apart), `limit` |
+| label values | `GET /api/v1/label/<name>/values` | as labels; a name that is not a legacy label name (`[a-zA-Z_][a-zA-Z0-9_]*`) is sent in its `U__` form |
 | metadata | `GET /api/v1/metadata` | `metric` (if set), `limit` |
 | check | `GET /api/v1/status/runtimeinfo` | — |
+
+These are the request shapes that the clients PulsusDB has been tested with send: the method of
+`labels`, whole-second completion windows and the label-name escaping follow them. The `U__` form
+writes `U__`, then each character as itself when it is a letter, a digit after the first position,
+`__` for `_`, and `_<hex code point>_` otherwise (`_FFFD_` for invalid UTF-8): `http.status` is
+`U__http_2e_status` and `μs` is `U___3bc_s`. The path therefore never holds a percent escape.
 
 ### Deadlines and the `timeout` parameter
 
@@ -143,8 +150,11 @@ The browser sends the range and its chart width; the BFF picks the grid (T07-003
 One hour at 1 200 px is a 5 s step. The cases are in `wire/fixtures/json/promql-step.json`, which
 both `pulsusdb.PromGrid` and the client's `promGrid` are tested against.
 
-Each upstream series is placed on that grid. A point whose timestamp is off the grid, before
-`start` or after `end` makes the response a protocol error. A grid point without an upstream point
+Each upstream point is placed on that grid by `ResultStream` as soon as the body decoder reads it,
+so every decoder shares the placement and the points limit and no series is buffered: a series
+holds at most one value per grid point. A point whose timestamp is off the grid, before `start`,
+after `end` or already present in its series makes the response a protocol error, and decoding
+stops there. A grid point without an upstream point
 stays **absent**: `null` in the frame, never filled or interpolated
 ([T04-005](../../designs/technical/T04-wire-format-and-data-plane.md)).
 
@@ -197,6 +207,13 @@ is one frame per sample with one point, a matrix keeps its points as given, a sc
 
 The completion routes carry the same block (without `data_age_ms`); more than 10 000 values,
 series or metrics are cut and marked `truncated`.
+
+**Native histograms.** A range or instant series that carries native histogram samples
+(`histograms` in a matrix, `histogram` in a vector) instead of `values` or `value` is skipped; the
+rest of the response is kept. Histogram samples next to float samples are dropped and the floats
+kept. A skipped series takes no grid space and does not count towards the points limit. Either
+way the completeness gets one warning,
+`pulsus-dash: native histogram samples skipped in N series`. `truncated` is not set.
 
 ## Errors ([T06 §5.2](../../designs/technical/T06-bff-architecture.md))
 
@@ -260,10 +277,13 @@ a documented limit of v1.
 Every string the BFF obtains from PulsusDB, from any body or from an accepted header, is redacted
 before it can reach a response or a log:
 
-- **One decoder.** Upstream bodies are read only by `internal/pulsusdb/updec.go`, a streaming JSON
-  tokenizer without reflection. Every key and string token is returned through the redactor. The
-  lint rule `pulsusdb-decoder` forbids `encoding/json` decoding anywhere else in
-  `internal/pulsusdb` (tests excepted), with a self-test fixture.
+- **Every decoder yields strings through the redactor.** A success body is decoded by the
+  source its `Content-Type` selects (`source.go`); today the only one is `application/json`, read
+  by `internal/pulsusdb/updec.go`, a streaming JSON tokenizer without reflection, and any other
+  type is a protocol error. The `Accept` header is chosen in the same place. Every key and string
+  token is returned through the redactor, and a later Arrow decoder must do the same. The lint
+  rule `pulsusdb-decoder` forbids `encoding/json` decoding in `internal/pulsusdb` (tests
+  excepted), with a self-test fixture.
 - **Redaction** replaces the credential `user:password`, the password (at any length), the Basic
   token, the datasource URL, its `scheme://host[:port]` and its `host[:port]` with `<redacted>`,
   after JSON escapes are resolved. Label keys are hashed from the redacted labels.
@@ -358,7 +378,9 @@ run in CI, and committed with the change that moves it.
 client against a real PulsusDB, read-only, when `DASH_CONTRACT_PULSUSDB_URL` is set
 (`DASH_CONTRACT_PULSUSDB_ORG` and `DASH_CONTRACT_PULSUSDB_CREDENTIALS_REF=env:NAME` are optional).
 It is skipped in CI. It checks every method, and compares the client's labels and values with a
-generic decode of the same bodies. Never commit the URL.
+generic decode of the same bodies. Two cases pin request shapes the reference clients do not send:
+`timeout=<n>ms` on the range and instant routes, and a range whose end lies after now. Never commit
+the URL.
 
 ## Code layout
 
@@ -368,7 +390,8 @@ generic decode of the same bodies. Never commit the URL.
 | `internal/keyhash` | the series key |
 | `internal/pulsusdb/client.go` | options, transport, decoration, attempts, logs |
 | `internal/pulsusdb/promql.go` | the seven methods and the completion decoders |
-| `internal/pulsusdb/stream.go` | `ResultStream`: range streaming onto the grid, instant results, completeness |
+| `internal/pulsusdb/stream.go` | `ResultStream`: range streaming, grid placement point by point (the sources' `seriesSink`), instant results, completeness |
+| `internal/pulsusdb/source.go`, `source_json.go` | the decoder seam: `Accept`, the `Content-Type` dispatch, and the JSON source (both member orders, native histograms skipped) |
 | `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rule, errors, retry budget and tenant slots |
 | `internal/gateway/query.go`, `frames.go`, `prom.go`, `datasource.go`, `tenant.go` | the routes, the frame encoder, tenant resolution and the error mapping |
 | `internal/pulsusfake`, `cmd/pulsus-fake` | the PulsusDB stand-in ([testing against PulsusDB](../development/testing-pulsusdb.md)) |

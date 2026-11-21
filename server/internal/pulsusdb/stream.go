@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
@@ -53,6 +52,7 @@ type compBuilder struct {
 	lim                Limits
 	omittedW, omittedI int
 	pointsCut          bool
+	histSkipped        int // series whose native histogram samples were skipped
 }
 
 func newComp(h upstreamHeaders, lim Limits) *compBuilder {
@@ -116,32 +116,24 @@ func (b *compBuilder) finish() Completeness {
 	if b.omittedI > 0 {
 		b.c.Infos = append(b.c.Infos, fmt.Sprintf("pulsus-dash: %d more infos omitted", b.omittedI))
 	}
+	if b.histSkipped > 0 {
+		b.c.Warnings = append(b.c.Warnings, fmt.Sprintf("pulsus-dash: native histogram samples skipped in %d series", b.histSkipped))
+	}
 	if b.pointsCut {
 		b.c.Truncated = true
 		b.c.Warnings = append(b.c.Warnings, fmt.Sprintf("pulsus-dash: response truncated at %d points", b.lim.MaxPoints))
 	}
-	b.omittedW, b.omittedI, b.pointsCut = 0, 0, false
+	b.omittedW, b.omittedI, b.pointsCut, b.histSkipped = 0, 0, false, 0
 	return b.c
 }
 
-// instantForm is the shape of an instant result element.
-type instantForm uint8
-
-const (
-	formNone   instantForm = iota // empty result
-	formVector                    // series with "value"
-	formMatrix                    // series with "values"
-	formPair                      // [t, "v"]: scalar or string
-)
-
-// errPointsCut stops decoding when the next series would exceed Limits.MaxPoints.
-var errPointsCut = errors.New("pulsusdb: points limit")
-
-// ResultStream yields the series of one range or instant response. It is owned by one goroutine;
-// Close is idempotent and frees the body and the tenant slot.
+// ResultStream yields the series of one range or instant response. Its body is decoded by a
+// seriesSource chosen from the response's Content-Type; ResultStream places range series on the
+// grid after decoding, so every source shares the placement. It is owned by one goroutine; Close
+// is idempotent and frees the body and the tenant slot.
 type ResultStream struct {
 	ctx  context.Context
-	dec  *upstreamDecoder
+	src  seriesSource
 	resp *response
 	lim  Limits
 	comp *compBuilder
@@ -150,19 +142,12 @@ type ResultStream struct {
 	grid    Grid
 	ts      []int64 // the grid's timestamps, shared
 	emitted int     // grid points handed out
+	cur     *Series // the series being decoded (seriesSink)
 
-	started, inData, resultSeen, badStatus bool
-	seenType                               ResultType
-	typ                                    ResultType
-
-	series  []*Series // instant
-	idx     int
-	form    instantForm
-	points  int
-	pairT   int64
-	scalarV float64
-	scalarO bool
-	strV    string
+	typ    ResultType
+	series []*Series // instant
+	idx    int
+	inst   instantResult
 
 	final  Completeness
 	done   bool
@@ -170,17 +155,37 @@ type ResultStream struct {
 	closed bool
 }
 
+// newRangeStream returns the range stream of src on grid g; src has read up to the first series.
+func newRangeStream(ctx context.Context, src seriesSource, resp *response, lim Limits, comp *compBuilder, g Grid) *ResultStream {
+	rs := &ResultStream{ctx: ctx, src: src, resp: resp, lim: lim, comp: comp, stream: true, grid: g, typ: ResultMatrix}
+	rs.ts = make([]int64, g.points())
+	for i := range rs.ts {
+		rs.ts[i] = g.Start + int64(i)*g.Step
+	}
+	return rs
+}
+
+// newInstantStream returns the stream of a decoded instant result; the body is released.
+func newInstantStream(ctx context.Context, src seriesSource, resp *response, lim Limits, comp *compBuilder, res instantResult) *ResultStream {
+	rs := &ResultStream{ctx: ctx, src: src, resp: resp, lim: lim, comp: comp, typ: res.typ, series: res.series, inst: res}
+	if res.cut {
+		comp.pointsCut = true
+	}
+	rs.finish()
+	return rs
+}
+
 // Type is the result type.
 func (s *ResultStream) Type() ResultType { return s.typ }
 
 // Scalar is the scalar result (Type() == scalar).
 func (s *ResultStream) Scalar() (tsMs int64, v float64, ok bool) {
-	return s.pairT, s.scalarV, s.typ == ResultScalar
+	return s.inst.t, s.inst.scalar, s.typ == ResultScalar
 }
 
 // StringValue is the string result (Type() == string), redacted and cut.
 func (s *ResultStream) StringValue() (tsMs int64, v string, ok bool) {
-	return s.pairT, s.strV, s.typ == ResultString
+	return s.inst.t, s.inst.str, s.typ == ResultString
 }
 
 // Completeness is final once Next returned io.EOF.
@@ -205,7 +210,7 @@ func (s *ResultStream) Next() (*Series, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	if s.done && !s.stream {
+	if !s.stream {
 		if s.idx < len(s.series) {
 			s.idx++
 			return s.series[s.idx-1], nil
@@ -215,43 +220,56 @@ func (s *ResultStream) Next() (*Series, error) {
 	if s.done {
 		return nil, io.EOF
 	}
-	k, err := s.dec.Next()
-	if err != nil {
-		return nil, s.fail(err)
-	}
-	switch k {
-	case tokArrEnd:
-		s.inData = true
-		if at, err := s.walk(); err != nil || at {
-			return nil, s.fail(orProtocol(err))
-		}
-		if err := s.endCheck(); err != nil {
-			return nil, s.fail(err)
-		}
+	labels, err := s.src.nextRange(s)
+	switch {
+	case err == io.EOF:
 		s.finish()
 		return nil, io.EOF
-	case tokObjStart:
-		n := s.grid.points()
-		if s.emitted+n > s.lim.MaxPoints {
-			s.comp.pointsCut = true
-			s.finish()
-			return nil, io.EOF
-		}
-		ser, err := s.rangeSeries()
-		if err != nil {
-			return nil, s.fail(err)
-		}
-		s.emitted += n
-		return ser, nil
+	case errors.Is(err, errPointsCut):
+		s.comp.pointsCut = true
+		s.finish()
+		return nil, io.EOF
+	case err != nil:
+		return nil, s.fail(err)
 	}
-	return nil, s.fail(protocolError())
+	ser := s.cur
+	s.cur = nil
+	if labels == nil {
+		labels = []Label{}
+	}
+	ser.Labels, ser.Key = labels, keyhash.Labels(labels)
+	s.emitted += s.grid.points()
+	return ser, nil
 }
 
-func orProtocol(err error) error {
-	if err == nil {
+// begin starts a series on the grid (seriesSink): a series that would pass Limits.MaxPoints ends
+// the stream, truncated; else its values are allocated once, at the grid's size.
+func (s *ResultStream) begin() error {
+	n := s.grid.points()
+	if s.emitted+n > s.lim.MaxPoints {
+		return errPointsCut
+	}
+	s.cur = &Series{Timestamps: s.ts, Values: make([]float64, n), Present: make([]bool, n)}
+	return nil
+}
+
+// add places one point as it is decoded (seriesSink). A timestamp off the grid, before its start,
+// after its end or already present is KindProtocol, so a series never holds more points than the
+// grid and decoding stops at the first bad point. Absent points stay absent (T04-005).
+func (s *ResultStream) add(ms int64, v float64) error {
+	g := s.grid
+	if ms < g.Start || ms > g.End || (ms-g.Start)%g.Step != 0 {
 		return protocolError()
 	}
-	return err
+	j := (ms - g.Start) / g.Step
+	if s.cur.Present[j] {
+		return protocolError()
+	}
+	s.cur.Values[j], s.cur.Present[j] = v, true
+	if ms > s.comp.c.NewestSampleMs {
+		s.comp.c.NewestSampleMs = ms
+	}
+	return nil
 }
 
 func (s *ResultStream) fail(err error) error {
@@ -265,460 +283,4 @@ func (s *ResultStream) finish() {
 	s.final = s.comp.finish()
 	s.done = true
 	s.resp.close()
-}
-
-// walk reads top-level members (and those of data) until data.result begins on a range stream
-// (true), or the document ends (false). It resumes where it stopped.
-func (s *ResultStream) walk() (bool, error) {
-	d := s.dec
-	if !s.started {
-		k, err := d.Next()
-		if err != nil {
-			return false, err
-		}
-		if k != tokObjStart {
-			return false, protocolError()
-		}
-		s.started = true
-	}
-	for {
-		if s.inData {
-			at, err := s.walkData()
-			if err != nil || at {
-				return at, err
-			}
-			s.inData = false
-			continue
-		}
-		k, err := d.Next()
-		if err != nil {
-			return false, err
-		}
-		if k == tokObjEnd {
-			if k, err := d.Next(); err != nil || k != tokEOF {
-				return false, orProtocol(err)
-			}
-			return false, nil
-		}
-		switch key := d.String(); key {
-		case "data":
-			if k, err := d.Next(); err != nil || k != tokObjStart {
-				return false, orProtocol(err)
-			}
-			s.inData = true
-		case "status":
-			if err := s.status(); err != nil {
-				return false, err
-			}
-		case "warnings", "infos":
-			if err := s.comp.messages(d, key == "warnings"); err != nil {
-				return false, err
-			}
-		case "truncated":
-			if err := s.comp.flag(d); err != nil {
-				return false, err
-			}
-		default:
-			if err := skipValue(d); err != nil {
-				return false, err
-			}
-		}
-	}
-}
-
-func (s *ResultStream) walkData() (bool, error) {
-	d := s.dec
-	for {
-		k, err := d.Next()
-		if err != nil {
-			return false, err
-		}
-		if k == tokObjEnd {
-			return false, nil
-		}
-		switch d.String() {
-		case "resultType":
-			if k, err := d.Next(); err != nil || k != tokString {
-				return false, orProtocol(err)
-			}
-			s.seenType = ResultType(d.String())
-			if s.stream && s.seenType != ResultMatrix {
-				return false, protocolError()
-			}
-		case "result":
-			if s.resultSeen {
-				return false, protocolError()
-			}
-			s.resultSeen = true
-			if s.stream {
-				if k, err := d.Next(); err != nil || k != tokArrStart {
-					return false, orProtocol(err)
-				}
-				return true, nil
-			}
-			if err := s.instantResult(); err != nil {
-				return false, err
-			}
-		case "truncated":
-			if err := s.comp.flag(d); err != nil {
-				return false, err
-			}
-		default:
-			if err := skipValue(d); err != nil {
-				return false, err
-			}
-		}
-	}
-}
-
-// status checks a status member: anything but success fails, at once before the result, else at
-// the end.
-func (s *ResultStream) status() error {
-	if k, err := s.dec.Next(); err != nil || k != tokString {
-		return orProtocol(err)
-	}
-	if s.dec.String() != "success" {
-		if !s.resultSeen {
-			return protocolError()
-		}
-		s.badStatus = true
-	}
-	return nil
-}
-
-// endCheck validates the whole document once it ended.
-func (s *ResultStream) endCheck() error {
-	if s.badStatus || !s.resultSeen {
-		return protocolError()
-	}
-	if s.stream {
-		if s.seenType != ResultMatrix {
-			return protocolError()
-		}
-		return nil
-	}
-	ok := false
-	switch s.seenType {
-	case ResultVector:
-		ok = s.form == formVector || s.form == formNone
-	case ResultMatrix:
-		ok = s.form == formMatrix || s.form == formNone
-	case ResultScalar:
-		ok = s.form == formPair && s.scalarO
-	case ResultString:
-		ok = s.form == formPair
-	}
-	if !ok {
-		return protocolError()
-	}
-	s.typ = s.seenType
-	return nil
-}
-
-func skipValue(d *upstreamDecoder) error {
-	if _, err := d.Next(); err != nil {
-		return err
-	}
-	return d.Skip()
-}
-
-// labels reads a metric object; names and values are redacted and cut, the result sorted.
-func (s *ResultStream) labels() ([]Label, error) {
-	return readLabels(s.dec)
-}
-
-func readLabels(d *upstreamDecoder) ([]Label, error) {
-	if k, err := d.Next(); err != nil || k != tokObjStart {
-		return nil, orProtocol(err)
-	}
-	return readLabelBody(d)
-}
-
-// readLabelBody reads the members of a label object whose '{' was read.
-func readLabelBody(d *upstreamDecoder) ([]Label, error) {
-	var ls []Label
-	for {
-		k, err := d.Next()
-		if err != nil {
-			return nil, err
-		}
-		if k == tokObjEnd {
-			break
-		}
-		name := cutData(d.String())
-		if k, err := d.Next(); err != nil || k != tokString {
-			return nil, orProtocol(err)
-		}
-		ls = append(ls, Label{Name: name, Value: cutData(d.String())})
-	}
-	slices.SortFunc(ls, func(a, b Label) int {
-		if c := strings.Compare(a.Name, b.Name); c != 0 {
-			return c
-		}
-		return strings.Compare(a.Value, b.Value)
-	})
-	if ls == nil {
-		ls = []Label{}
-	}
-	return ls, nil
-}
-
-// point reads [t, "v"] after its opening bracket was read.
-func (s *ResultStream) point() (int64, float64, error) {
-	d := s.dec
-	if k, err := d.Next(); err != nil || k != tokNumber {
-		return 0, 0, orProtocol(err)
-	}
-	n, _ := d.numberBytes()
-	ms, ok := secondsToMs(n)
-	if !ok {
-		return 0, 0, protocolError()
-	}
-	if k, err := d.Next(); err != nil || k != tokString {
-		return 0, 0, orProtocol(err)
-	}
-	v, err := d.Sample()
-	if err != nil {
-		return 0, 0, err
-	}
-	if k, err := d.Next(); err != nil || k != tokArrEnd {
-		return 0, 0, orProtocol(err)
-	}
-	return ms, v, nil
-}
-
-// rangeSeries reads one matrix series (its '{' was read) onto the grid.
-func (s *ResultStream) rangeSeries() (*Series, error) {
-	d := s.dec
-	n := s.grid.points()
-	ser := &Series{Timestamps: s.ts, Values: make([]float64, n), Present: make([]bool, n)}
-	gotMetric, gotValues := false, false
-	for {
-		k, err := d.Next()
-		if err != nil {
-			return nil, err
-		}
-		if k == tokObjEnd {
-			break
-		}
-		switch d.String() {
-		case "metric":
-			if ser.Labels, err = s.labels(); err != nil {
-				return nil, err
-			}
-			gotMetric = true
-		case "values":
-			if err := s.gridPoints(ser); err != nil {
-				return nil, err
-			}
-			gotValues = true
-		case "value":
-			return nil, protocolError()
-		default:
-			if err := skipValue(d); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if !gotMetric || !gotValues {
-		return nil, protocolError()
-	}
-	ser.Key = keyhash.Labels(ser.Labels)
-	return ser, nil
-}
-
-// gridPoints places a values array on the grid; an off-grid timestamp is KindProtocol.
-func (s *ResultStream) gridPoints(ser *Series) error {
-	d := s.dec
-	if k, err := d.Next(); err != nil || k != tokArrStart {
-		return orProtocol(err)
-	}
-	g := s.grid
-	for {
-		k, err := d.Next()
-		if err != nil {
-			return err
-		}
-		if k == tokArrEnd {
-			return nil
-		}
-		if k != tokArrStart {
-			return protocolError()
-		}
-		ms, v, err := s.point()
-		if err != nil {
-			return err
-		}
-		if ms < g.Start || ms > g.End || (ms-g.Start)%g.Step != 0 {
-			return protocolError()
-		}
-		i := (ms - g.Start) / g.Step
-		ser.Values[i], ser.Present[i] = v, true
-		if ms > s.comp.c.NewestSampleMs {
-			s.comp.c.NewestSampleMs = ms
-		}
-	}
-}
-
-// instantResult reads a whole instant result array: a [t, "v"] pair or series objects.
-func (s *ResultStream) instantResult() error {
-	d := s.dec
-	if k, err := d.Next(); err != nil || k != tokArrStart {
-		return orProtocol(err)
-	}
-	k, err := d.Next()
-	if err != nil {
-		return err
-	}
-	switch k {
-	case tokArrEnd:
-		return nil
-	case tokNumber:
-		n, _ := d.numberBytes()
-		ms, ok := secondsToMs(n)
-		if !ok {
-			return protocolError()
-		}
-		if k, err := d.Next(); err != nil || k != tokString {
-			return orProtocol(err)
-		}
-		v, ferr := d.Sample()
-		s.form, s.pairT, s.scalarV, s.scalarO, s.strV = formPair, ms, v, ferr == nil, cutData(d.String())
-		if k, err := d.Next(); err != nil || k != tokArrEnd {
-			return orProtocol(err)
-		}
-		return nil
-	case tokObjStart:
-		for {
-			if err := s.instantSeries(); err != nil {
-				return err
-			}
-			k, err := d.Next()
-			if err != nil {
-				return err
-			}
-			if k == tokArrEnd {
-				return nil
-			}
-			if k != tokObjStart {
-				return protocolError()
-			}
-		}
-	}
-	return protocolError()
-}
-
-// instantSeries reads one vector sample or matrix series (its '{' was read), points as given.
-func (s *ResultStream) instantSeries() error {
-	d := s.dec
-	ser := &Series{}
-	var form instantForm
-	gotMetric := false
-	for {
-		k, err := d.Next()
-		if err != nil {
-			return err
-		}
-		if k == tokObjEnd {
-			break
-		}
-		switch key := d.String(); key {
-		case "metric":
-			if ser.Labels, err = s.labels(); err != nil {
-				return err
-			}
-			gotMetric = true
-		case "value", "values":
-			if form != formNone {
-				return protocolError()
-			}
-			if k, err := d.Next(); err != nil || k != tokArrStart {
-				return orProtocol(err)
-			}
-			if key == "value" {
-				form = formVector
-				ms, v, err := s.point()
-				if err != nil {
-					return err
-				}
-				ser.add(ms, v)
-				continue
-			}
-			form = formMatrix
-			for {
-				k, err := d.Next()
-				if err != nil {
-					return err
-				}
-				if k == tokArrEnd {
-					break
-				}
-				if k != tokArrStart {
-					return protocolError()
-				}
-				ms, v, err := s.point()
-				if err != nil {
-					return err
-				}
-				ser.add(ms, v)
-			}
-		default:
-			if err := skipValue(d); err != nil {
-				return err
-			}
-		}
-	}
-	if !gotMetric || form == formNone || (s.form != formNone && s.form != form) {
-		return protocolError()
-	}
-	s.form = form
-	if s.points+len(ser.Values) > s.lim.MaxPoints {
-		return errPointsCut
-	}
-	s.points += len(ser.Values)
-	ser.Key = keyhash.Labels(ser.Labels)
-	s.series = append(s.series, ser)
-	return nil
-}
-
-func (ser *Series) add(ms int64, v float64) {
-	ser.Timestamps = append(ser.Timestamps, ms)
-	ser.Values = append(ser.Values, v)
-	ser.Present = append(ser.Present, true)
-}
-
-// secondsToMs converts a JSON number of seconds to integer ms without floats: 1 to 15 digits,
-// then at most 3 fraction digits (more only if all zero). A sign or an exponent is refused.
-func secondsToMs(s []byte) (int64, bool) {
-	var sec int64
-	i := 0
-	for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
-		sec = sec*10 + int64(s[i]-'0')
-	}
-	if i == 0 || i > 15 {
-		return 0, false
-	}
-	ms := sec * 1000
-	if i == len(s) {
-		return ms, true
-	}
-	if s[i] != '.' || i+1 == len(s) {
-		return 0, false
-	}
-	scale := int64(100)
-	for j := i + 1; j < len(s); j++ {
-		c := s[j]
-		if c < '0' || c > '9' {
-			return 0, false
-		}
-		if j-i > 3 {
-			if c != '0' {
-				return 0, false
-			}
-			continue
-		}
-		ms += int64(c-'0') * scale
-		scale /= 10
-	}
-	return ms, true
 }

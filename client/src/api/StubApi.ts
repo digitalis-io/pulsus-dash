@@ -31,7 +31,6 @@ import {
   STUB_PROM_METADATA,
   STUB_PROM_METRIC_NAMES,
 } from './stubData';
-import { stubPanelData } from './stubPanels';
 import type {
   Completeness,
   InstantResult,
@@ -44,6 +43,7 @@ import type { SeriesFrame } from '../data/frames';
 import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
+import { stubPanelData } from './stubPanels';
 import {
   ApiError,
   BoardConflictError,

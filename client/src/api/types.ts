@@ -1,7 +1,7 @@
 /**
  * The client's API types (§3.2 of plan #57, §3.1 of plan #61 Part B). `StubApi` serves `npm run dev`
  * and the tests; `HttpApi` is the BFF client over the types generated from the OpenAPI document
- * (ADR-0015, #59, #62).
+ * (ADR-0015, #59, #61, #62).
  */
 import type { components } from './gen/schema';
 import type { FrameData, TimeWindow, VisSpec } from '../engine/api';
@@ -136,14 +136,20 @@ export type PanelData =
 
 export type { TimeWindow };
 
+/**
+ * The kinds of `ApiError`. Common: `notFound`, `unauthorised`, `network`, `notImplemented`,
+ * `unknown`. Boards (#61): `conflict` (a stale etag) and `invalid` (spec problems in `fields`).
+ * Queries (#62 §4.5): `queryInvalid`, `tooBroad`, `timeout`, `unavailable`, `busy` and
+ * `badResponse`, with what the BFF said in `detail`.
+ */
 export type ApiErrorKind =
   | 'notFound'
   | 'unauthorised'
   | 'network'
   | 'notImplemented'
+  | 'unknown'
   | 'conflict'
   | 'invalid'
-  | 'unknown'
   | 'queryInvalid'
   | 'tooBroad'
   | 'timeout'
