@@ -76,6 +76,69 @@ test.describe('e2e:a11y-rooms axe', () => {
   });
 });
 
+/**
+ * The board states of plan #61 Part B §5.3; `check` runs in each. Each state is entered afresh:
+ * Firefox's page crashes on a pointer click after an axe run in the same page.
+ */
+async function boardStates(page: Page, check: (state: string) => Promise<void>): Promise<void> {
+  await open(page, '/t/demo/boards');
+  await page.getByRole('button', { name: 'New board' }).click();
+  await page.getByRole('dialog', { name: 'New board' }).waitFor();
+  await check('boards, New board dialog');
+
+  await open(page, '/t/demo/board/b-1');
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  await check('b-1 view');
+
+  const editor = page.getByRole('complementary', { name: 'Panel editor' });
+  const edit = async (): Promise<void> => {
+    await open(page, '/t/demo/board/b-1');
+    await page.getByRole('button', { name: 'Edit board' }).click();
+    // The Edit grid is a lazy chunk; its panels replace the View grid's once it has loaded.
+    await expect(page.locator('.react-grid-item')).toHaveCount(4);
+    await page.getByRole('button', { name: 'Panel menu: Request rate' }).click();
+    await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+    await editor.waitFor();
+  };
+  await edit();
+  await check('b-1 edit, editor open');
+
+  await edit();
+  await editor.getByRole('button', { name: /Visualisation$/ }).click();
+  await page.getByRole('listbox').waitFor();
+  await check('b-1 edit, select open');
+
+  await edit();
+  await page.getByRole('button', { name: 'Add panel' }).click();
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Boards', exact: true })
+    .click();
+  await page.getByRole('dialog', { name: 'Discard unsaved changes?' }).waitFor();
+  await check('b-1 guard dialog');
+}
+
+test.describe('e2e:a11y-rooms boards', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} board list and board states`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.addInitScript((t) => {
+        localStorage.setItem('pulsus-dash.theme', t);
+      }, theme);
+      await boardStates(page, async (state) => {
+        expect(await seriousViolations(page), state).toEqual([]);
+      });
+    });
+  }
+
+  test('board targets are at least 24 × 24 px', async ({ page }) => {
+    test.setTimeout(120_000);
+    await boardStates(page, async (state) => {
+      expect(await smallTargets(page), state).toEqual([]);
+    });
+  });
+});
+
 test.describe('e2e:a11y-rooms target size', () => {
   test('every visible target is at least 24 × 24 px', async ({ page }) => {
     for (const url of ALL_PAGES) {

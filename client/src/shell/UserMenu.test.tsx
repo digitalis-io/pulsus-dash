@@ -25,7 +25,8 @@ describe('user menu', () => {
     const signOut = vi.spyOn(api, 'signOut');
     const { router, user } = renderApp('/t/demo/boards', { api });
     await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
-    expect(await screen.findByText('Ada Admin')).toBeInTheDocument();
+    // The board list shows the name too (Updated by); the menu's identity is a paragraph.
+    expect(await screen.findByText('Ada Admin', { selector: 'p' })).toBeInTheDocument();
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
     expect(screen.getByText('Admin', { selector: 'p' })).toBeInTheDocument();
 

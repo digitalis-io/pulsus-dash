@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-20 |
+| **Version** | 1.6-rc · 2026-11-20 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -314,6 +314,16 @@ pixel at the same viewport size.
 | **Restricted placeholder** | Replaces any object the principal cannot read: neutral shape, no title, "Request access" button that calls the T06 action API to notify the owning team (ENT-010). Disabled controls for missing permissions carry the same link (ENT-003) | `region` + `button` |
 | **Progress shimmer** | Thin edge shimmer on a viewport or list, shown only after a load has taken > 300 ms; there is no spinner component for data (VL-015) | `aria-busy` on the region |
 | **Basics** | Button, icon button (24×24 minimum target, WCAG 2.5.8), tabs, menu, switch, slider, splitter, badge, entity chip, state glyph (shape + colour + text, VIZ-067), pill, skeleton, empty-state, kbd hint, banner | standard patterns |
+
+**M-UI1 board editor (#61 Part B).** The panel editor is a non-modal sheet (`complementary`
+"Panel editor", 360 px) at the right of the board grid in Edit mode: Title, Query language, Query
+and Visualisation, every change applied to the draft at once, field errors from a save under their
+controls (T08-008); focus is never trapped (T08-017). The keyboard path for grid moves is a
+per-panel **Move or resize** button: arrows move the panel one cell, `Shift`+arrows resize it; the
+result, or "blocked", is announced through a polite live region (T08-018). Pointer drag and resize
+follow the same rule: no panel pushes another and no gap closes. The board keys are `Shift+E` (Edit
+mode on; in Edit, Done; not in text fields, dialogs or menus) and `Mod+S` (save, in Edit mode, from
+any target); neither collides with the window keys (T08-024).
 
 #### T08-007 — Kit components are tokenised, keyboard-complete and labelled
 **MUST** — Every `dash-kit` component MUST take colours, sizes, radii and durations only from
@@ -809,11 +819,11 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 
 | Milestone | Ships |
 |---|---|
-| M-UI1 | *(2026-11-19: delivered by the TS application in the order of [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19); the Leptos risk check is withdrawn.)* Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48) |
+| M-UI1 | *(2026-11-19: delivered by the TS application in the order of [12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19); the Leptos risk check is withdrawn.)* Store, router, tokens, keymap (03 §4.2 M-UI1 rows, conflict check, overlay, F6), i18n infrastructure. Shell chrome. Kit core: table (core cell kinds, row selection, CSV), forms, select, date range with copy-link, dialog, toast, restricted placeholder, ⌘K (rooms, actions, queries), Inspector shell, tooltips. `Shift+T` table view. Metrics workbench chrome. Board panel editor (query, language picker, vis) and a minimal board list room (#48); the board editor of #61: the non-modal right-hand panel editor, the per-panel Move or resize button as the keyboard path for grid moves (§4.4), and the board keys `Shift+E` and `Mod+S` |
 | M-UI2 | JSON, Markdown, image, link and pill cells. Tree. Logs/traces inspector content. Viewport a11y mirror for time-series. Dock host. ⌘K entities |
 | M-UI3 | Explorer (tree + table). Atlas mirror. Pivot-chip and entity-chip cells |
 | M-UI4 | Alert, Investigation and contact-point rooms. Action buttons. ⌘K alerts and investigations |
-| M-UI5 | Full Boards editor forms, field-config UI, `Shift+E`. Light theme. Translations. Keymap room with presets |
+| M-UI5 | Full Boards editor forms, field-config UI. Light theme. Translations. Keymap room with presets |
 | M-UI6 | Admin rooms for datasource binding and OIDC, with authentication (D12; until then the fixed local principal). Wall density and high-contrast theme. External AA audit and fixes. Forced-colours polish. Screen-reader summaries everywhere (VIZ-068) |
 
 ## 12. Alternatives considered
@@ -850,3 +860,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §1 and §2 rewritten for the React application; §4.1 Rust crate tree marked superseded; §4.2 rewritten (the TS store on the main thread owns semantic state; the engine holds render-local state and reports events through `ChartFrame`); T08-004, §4.6, §4.8 "Where it runs", §5.1, §5.2 T03 row, §7, §8 tenant switch, §9 engine restart and Q1 aligned; Leptos and the ui↔core rings removed; §4.6 `⌘⇧F` waits for T09 formatting |
 | 1.4-rc | 2026-11-20 | [ADR-0017](../adr/0017-react-router.md): `dash-route` row is `app/router.tsx` on React Router (data mode) with the typed search module `state/contextSearch.ts` |
 | 1.5-rc | 2026-11-20 | Decision D12 (authentication deferred): the SRF-063 gate `e2e:admin-oidc-bind-datasource` runs from M-UI6 with SRF-063; §4 Admin rooms and §11 rollout move the datasource-binding and OIDC rooms from M-UI1 to M-UI6, with the fixed local principal until then |
+| 1.6-rc | 2026-11-20 | #61 Part B: §4.4 and §11 M-UI1 add the board editor: the non-modal right-hand panel editor, the per-panel Move or resize button (arrows, `Shift`+arrows) as the keyboard path for grid moves, and the board keys `Shift+E` and `Mod+S` (`Shift+E` moves from M-UI5 to M-UI1) |

@@ -13,6 +13,11 @@
   height: var(--size-chart-stat);
 }
 
+/* Fills its parent (board panels, full screen) instead of the fixed heights above. */
+.fill {
+  height: 100%;
+}
+
 .canvas {
   position: absolute;
   inset: 0;

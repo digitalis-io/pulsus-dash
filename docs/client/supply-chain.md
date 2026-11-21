@@ -41,8 +41,8 @@ from `https://registry.npmjs.org/` (`non-registry-resolved`) or without an `sha5
 | Field | Meaning |
 |---|---|
 | `forbiddenCategories` | `charting`, `mapping`, `3d`, `graph-diagram`, `css-in-js` (ADR-0014 §7; charts are drawn by our own renderer, ADR-0007) |
-| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1) |
-| `runtimeClosure` | every package of the runtime closure (23 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper` |
+| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board Edit grid, [below](#react-grid-layout)) |
+| `runtimeClosure` | every package of the runtime closure (33 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds) |
 | `licenceAllowlist` | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, MPL-2.0 (ADR-0014 §7, unchanged) |
 | `licenceExceptionAllowlist` | exact `"<licence> WITH <exception>"` pairs; empty. Adding one needs an ADR |
 | `buildUrlAllowlist` | the exact URL strings the production bundle may contain as plain text, each with a reason (namespace URIs, the URL-parsing base, error-help links) |
@@ -67,6 +67,55 @@ operators must be upper case; `X+` counts as `X`; `X WITH E` holds only if the e
 **Adding a runtime dependency** is a reviewed change to `runtimeAllowlist` and to `runtimeClosure`,
 where every new transitive package gets a category; a forbidden category cannot be listed. Dev
 dependencies are not on the runtime allowlist; check their licences when adding them.
+
+## react-grid-layout
+
+The board's Edit mode drags and resizes panels with `react-grid-layout` **2.3.0** (MIT, published
+2026-10-05; plan #61 Part B §0). Category `board-layout`, not a forbidden one. It was resolved with
+the 7-day cut-off:
+
+```sh
+npm install --ignore-scripts --before=2026-11-13 react-grid-layout@2.3.0
+```
+
+and adds these runtime packages to the closure (23 → 33), all MIT, none with an install script:
+
+| Package | Version | Published | Note |
+|---|---|---|---|
+| `react-grid-layout` | 2.3.0 | 2026-10-05 | the grid; renders with `nodeRef` (no `findDOMNode`), peer `react >= 16.3` |
+| `react-draggable` | 4.7.2 | 2026-09-16 | drag |
+| `react-resizable` | 3.2.0 | 2026-05-11 | resize handles |
+| `fast-equals` | 4.0.3 | 2022-08-25 | layout comparison |
+| `prop-types` | 15.8.1 | 2022-01-05 | of react-draggable and react-resizable; a shim in production |
+| `object-assign` | 4.1.1 | 2017-01-16 | of prop-types |
+| `loose-envify` | 1.4.0 | 2018-07-10 | of prop-types |
+| `js-tokens` | 4.0.0 | 2018-01-28 | of loose-envify; already locked as a dev package, now also runtime |
+| `react-is` | 16.13.1 | 2020-03-19 | of prop-types (nested under `prop-types/node_modules`) |
+| `resize-observer-polyfill` | 1.5.1 | 2018-12-09 | of react-grid-layout |
+
+`clsx`, which it also uses, was already in the closure (`accessible-components`). React 19
+compatibility is checked by the component test `mounts under React 19 without errors`
+(`BoardGridEditor.test.tsx`: no `console.error` while it mounts, drags and unmounts).
+
+**Bundle.** Only the Edit-mode chunk loads the library: `src/pages/board/BoardGridEditor.tsx` is a
+lazy module of its own (`required.lazyModules` in `bundle-budgets.json`), so View mode and every
+other page carry none of it until the pointer or the focus reaches Edit board (the chunk is
+preloaded then). Measured by `npm run size` (brotli, stub build) at the time of adoption:
+
+| Chunk | Brotli bytes | Budget |
+|---|---|---|
+| `BoardGridEditor` (with react-grid-layout, react-draggable, react-resizable) | 17 991 | 120 000 (`lazyChunk`) |
+| `BoardPage` (the board route) | 9 978 | 120 000 (`lazyChunk`) |
+| Initial JS (163 369 before the board pages) | 169 819 | 200 000 (`initialJs`) |
+
+**Build text.** The production chunk contains two help URLs as plain text, both on
+`buildUrlAllowlist`: react-draggable's `https://github.com/react-grid-layout/react-draggable#noderef`
+(a warning) and the prop-types shim's `http://fb.me/use-check-prop-types` (an error message).
+Neither is fetched.
+
+**Trusted Types.** react-draggable writes a `<style>` element through `innerHTML` at the first drag,
+which the CSP's Trusted Types requirement blocks; the client creates an inert marker element with
+the same id first, so the library skips it ([Client application](README.md#boards)).
 
 ## Advisories and signatures
 
@@ -113,7 +162,7 @@ They are copied in, not npm dependencies:
 |---|---|---|---|
 | `src/assets/fonts/inter-latin-wght-normal.woff2` | `@fontsource-variable/inter` 5.3.0 | OFL-1.1 (`OFL-Inter.txt`) | `src/assets/fonts/SOURCES.md` (full SHA-256) |
 | `src/assets/fonts/jetbrains-mono-latin-wght-normal.woff2` | `@fontsource-variable/jetbrains-mono` 5.3.0 | OFL-1.1 (`OFL-JetBrainsMono.txt`) | same |
-| `src/icons/*.svg` (18 line icons) | `lucide-static` 1.72.0 | ISC (`LICENSE-lucide.txt`) | the `@license` comment in each file |
+| `src/icons/*.svg` (25 line icons) | `lucide-static` 1.72.0 | ISC (`LICENSE-lucide.txt`) | the `@license` comment in each file |
 
 Fonts are self-hosted and hashed by the build (VL-010); icons are drawn as CSS masks, so no SVG
 markup is injected at run time.

@@ -5,7 +5,9 @@ The web client in `client/`: TypeScript, React and Vite
 data mode ([ADR-0017](../../designs/adr/0017-react-router.md)), accessible components from React Aria
 Components, server state in TanStack Query. This page covers the application shell of milestone
 M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and tokens, and the
-checks that guard them. Charts (roadmap step 2, issue #58) are in [Charts](charts.md). Build and CI
+checks that guard them, and the board list and board page (roadmap step 5, issue #61; how to use
+them is in [Boards](../user/boards.md)). Charts (roadmap step 2, issue #58) are in
+[Charts](charts.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
 [JavaScript supply chain](supply-chain.md).
 
@@ -62,9 +64,9 @@ sign-out clears the query cache and opens `/signed-out`; if the
 API rejects it, the session, the cache and the page stay as they were and an alert ("Could not sign
 out. You are still signed in.") offers Retry (focused) and Dismiss (focus returns to the user menu).
 
-**Pages.** Boards lists the tenant's boards (title link, "Updated `<date>, <time>`"; empty: "No
-boards yet"). A board shows its title, the Context summary and an empty "Panels" region, and records
-itself in Recent; an unknown board shows "Board not found" and "Back to boards". Explore › Metrics
+**Pages.** Boards lists the organisation's boards in a table with New board, Rename and Delete; a
+board shows its panels in View or Edit mode and records itself in Recent; an unknown board shows
+"Board not found" and "Back to boards" (both: [Boards](#boards) below). Explore › Metrics
 and Logs show the Context summary and an empty state. Admin shows the "Data sources" and "Identity"
 cards. Not found and Signed out pages have no shell; after Sign out, focus moves to the Signed out
 page's content (the menu item that had focus is gone, and some engines would otherwise start the
@@ -99,7 +101,9 @@ zone) are passed by closure.
   (sidebar and board links call it on pointer enter and focus), and the route's `lazy` reports a
   failed load.
 - **Query keys:** `['session']`, `['boards', tenant]`, `['board', tenant, uid]`,
-  `['starred', tenant]`; `refreshNow()` invalidates `['data']` (the chart queries of later issues).
+  `['starred', tenant]`, `['panel', tenant, panelId, canonicalJson(query), visKind, window]`;
+  `refreshNow()` invalidates `['data']` (the chart queries of later issues); a refresh moves the
+  window, so the panel queries follow it.
 
 ## Time Context (IA-020, IA-022, IA-023, INT-032, T03-014, T03-017, T08-005)
 
@@ -199,9 +203,10 @@ The generated token files and tests are not linted.
 
 ## Keyboard coverage
 
-`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L22) through
-`e2e/keyboardCoverage.ts`; ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in
-that file. After every keystroke the harness collects each interactive control (links, buttons,
+`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L28) through
+`e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
+text, `drain`, `shellAfter`) and the board loops L23–L28 in `e2e/keyboardBoards.ts`, run inside the
+one test. ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in all three files. After every keystroke the harness collects each interactive control (links, buttons,
 fields, menu items, options; a grid counts as one control) from the accessibility snapshot, keyed by
 state: the route pattern plus the open overlay (with an overlay open, only the overlay is read).
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
@@ -211,7 +216,15 @@ the session error, and the chart gallery `/t/:tenant/dev/gallery`) was never vis
 the missing keys. L20 operates the header and sidebar on the gallery too (the time dialog's Keep
 relative and Copy link exist only on pages with a view URL pattern, so not there); L22 operates the
 six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
-and the value text. Two names are normalised: the time range trigger is one control whatever range
+and the value text. L23–L28 cover the board list and its dialogs, the board in View and Edit mode,
+the panel tools, Share, the layout buttons, the panel editor and its selects, the guard and the
+conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
+per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
+(`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
+Space for checkboxes; End then Escape for sliders; End for text fields), until none is left; when
+an operation opens a dialog, menu or list box, that overlay is drained next (two levels deep). An
+action that adds sidebar or table links (create, rename) is followed in the same page session by
+`shellAfter`, which operates each new link. Two names are normalised: the time range trigger is one control whatever range
 it shows, and the calendar grid one control whatever month. React Aria's screen-reader-only buttons
 are not counted: an empty button with `tabindex="-1"` whose parent is React Aria's VisuallyHidden
 wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons and the calendar's
@@ -225,11 +238,22 @@ itself.
 
 ## API clients
 
-`src/api/` defines `Api` (session, boards, board, starred boards, sign-out) and `ApiError` kinds
-`notFound`, `unauthorised`, `network`, `notImplemented`, `unknown`. `createApi()` returns
-`HttpApi` when `VITE_API_MODE` is `http`, else `StubApi`.
+`src/api/` defines `Api` and `ApiError` kinds `notFound`, `unauthorised`, `network`,
+`notImplemented`, `conflict`, `invalid` and `unknown`; an `invalid` error carries `fields`
+(`{pointer, messageKey}`), and a stale etag is a `BoardConflictError` carrying the `current` board.
+`createApi()` returns `HttpApi` when `VITE_API_MODE` is `http`, else `StubApi`.
 
-The session is `{user, org, tenants, defaultTenant, server, canSignOut}`. Each tenant may carry
+| Method | Result |
+|---|---|
+| `getSession()` | `{user, org, tenants, defaultTenant, server, canSignOut}` |
+| `listBoards(tenant)` | `{items, truncated}`; an item is `{uid, title, version, updatedAt, updatedBy}` |
+| `getBoard(tenant, uid)` | `Board`: the item plus `etag` and `spec` (generated `BoardSpec`) |
+| `createBoard(tenant, spec)`, `saveBoard(tenant, uid, etag, spec)`, `deleteBoard(tenant, uid, etag)` | `Board`, `{board, changed}`, nothing |
+| `panelData(tenant, panel, window)` | `{kind: 'frame', spec, data}`, `{kind: 'noRoute', lang}` or `{kind: 'noVis'}` |
+| `listStarred(tenant)`, `setStarred(…)`, `signOut()` | as before |
+
+Boards belong to the organisation: `tenant` is checked against the session's tenants (unknown →
+`notFound`) and otherwise only selects the data source of `panelData`. Each tenant may carry
 `dataSource: {state: 'notChecked'}`. `server` is `{version, commit}` from the BFF, or `null` in
 stub mode; `canSignOut` is false under the fixed local principal.
 
@@ -238,31 +262,101 @@ stub mode; `canSignOut` is false under the fixed local principal.
 `HttpApi` is `openapi-fetch` 0.17.0 over `paths` from `src/api/gen/schema.d.ts`, which is generated
 from `api/openapi.yaml` (ADR-0014 §1, ADR-0015); requests go to the page's origin.
 
-| Method | Behaviour |
-|---|---|
-| `getSession` | `GET /api/dash/v1/bootstrap`, mapped to the session: `principal` → `user`, `org.name`, tenants with `dataSource.state` `notChecked`, `default_tenant`, `server`, `can_sign_out` → `canSignOut` |
-| `listBoards`, `listStarred` | resolve `[]`: there is no boards API until #61, so Boards and the sidebar show their empty states |
-| `getBoard` | rejects `ApiError('notFound')` |
-| `setStarred` | rejects `ApiError('notImplemented')` |
-| `signOut` | resolves; never offered, because `canSignOut` is false |
+| Method | Request | Mapping |
+|---|---|---|
+| `getSession` | `GET /api/dash/v1/bootstrap` | `principal` → `user`, `org.name`, tenants with `dataSource.state` `notChecked`, `default_tenant`, `server`, `can_sign_out` → `canSignOut` |
+| `listBoards` | `GET /api/dash/v1/boards` | `updated_at` → `updatedAt`, `updated_by.name` → `updatedBy`, `truncated` |
+| `getBoard` | `GET /api/dash/v1/boards/{uid}` | 404 → `notFound` |
+| `createBoard` | `POST /api/dash/v1/boards` `{spec}` | 201 → `Board`; 400 → `invalid` with the envelope's `fields` |
+| `saveBoard` | `PUT /api/dash/v1/boards/{uid}` `{spec}`, `If-Match: "<etag>"` | 200 → `{board, changed}`; 409 → `BoardConflictError(current)`; 400 → `invalid`; 404 → `notFound` |
+| `deleteBoard` | `DELETE /api/dash/v1/boards/{uid}`, `If-Match: "<etag>"` | 204; 409 → `BoardConflictError`; 404 → `notFound` |
+| `panelData` | none | `{kind: 'noVis'}` for visualisation `logs`, else `{kind: 'noRoute', lang}`: the BFF has no query route yet (#64, #67) |
+| `listStarred`, `setStarred` | none | `[]`; `notImplemented` (Part C of #61) |
+| `signOut` | none | resolves; never offered, because `canSignOut` is false |
 
 Errors: an `AbortError` from `fetch` is re-thrown unchanged; any other `fetch` rejection becomes
-`ApiError('network')`; 404 becomes `notFound`; any other non-2xx status becomes
-`ApiError('unknown')` with the error envelope's `message`. A failed session shows the session
-error page with Retry.
+`ApiError('network')`; any other status without its success body becomes `ApiError('unknown')`
+with the error envelope's `message`. A failed session shows the session error page with Retry.
 
 ### StubApi
 
-`StubApi` resolves on the next
-microtask, rejects with `AbortError` when the signal is aborted, returns copies, and serves the
-seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org, tenants Demo and Sandbox
-(both with the data-source state "not checked"), `server: null`, `canSignOut: true`, three Demo
-boards (the third has a long title) and none in Sandbox. Starred boards are kept in
-`localStorage['pulsus-dash.stub.starred.<tenant>']` (Demo starts with `b-1`); unknown uids are kept
-there and dropped by the sidebar. Test hook: a positive integer in
-`localStorage['pulsus-dash.stub.failSession']` makes that many session calls fail with
-`ApiError('network')`, and `localStorage['pulsus-dash.stub.failSignOut']` does the same for
-sign-out (the keyboard script's L21 uses it).
+`StubApi` resolves on the next microtask, rejects with `AbortError` when the signal is aborted,
+returns copies, and serves the seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org,
+tenants Demo and Sandbox (both "not checked"), `server: null`, `canSignOut: true`, and three
+organisation boards (`b-1` Service overview with three panels and a section, `b-2` empty, `b-3` with
+a long title and three panels), the same in both tenants. Boards are kept in memory for the page's
+lifetime and behave as the boards API does: version and etag start at `1` and grow by one per
+changed save; a save of the same canonical spec is `changed: false`; a stale etag is a
+`BoardConflictError`; an invalid spec is `invalid` with the fields of `checkBoardSpec`; new uids are
+`b-<n>`; the list is most recently updated first. `panelData` is seeded synthetic data
+(`stubPanels.ts`: a pure function of the panel id, the query text and the window). Starred boards
+are kept in `localStorage['pulsus-dash.stub.starred.<tenant>']` (Demo starts with `b-1`).
+
+Test hooks, each a positive integer n in `localStorage` that makes the next n calls fail and counts
+down:
+
+| Key | Effect |
+|---|---|
+| `pulsus-dash.stub.failSession` | `getSession` rejects `network` |
+| `pulsus-dash.stub.failSignOut` | `signOut` rejects `network` (keyboard L21) |
+| `pulsus-dash.stub.failSave` | `saveBoard` rejects `network` |
+| `pulsus-dash.stub.conflictSave` | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
+
+## Boards
+
+The board list is `src/pages/boards/` (`BoardsPage.tsx`, `BoardDialogs.tsx`); the board page is
+`src/pages/board/`; the logic they share is `src/boards/`:
+
+| Module | Contents |
+|---|---|
+| `spec.ts` | `checkBoardSpec(value)`: the server's validator (`server/internal/spec`) ported to parsed JSON, same message keys, pointers and order, at most 50 errors; `canonicalJson` (keys sorted); `nextPanelId` (`p-<n+1>`). The six fixture cases that only exist as raw JSON text (not JSON, trailing data, empty body, duplicate key, `6.5` and `1e2` as integers) are the server's alone |
+| `layout.ts` | `COLS` 12, `ROW` 40, `GAP` 16; `GRID_LIMITS` (the server's: x + w ≤ 12, y ≤ 9 999, h ≤ 100); `fits`, `firstFree(panels, w, h)` (first free slot in row-then-column order, or `null`), `applyOp(panels, id, op)` (one cell of move or resize; blocked when it leaves the grid or overlaps), `cellPx(width)` |
+| `editorState.ts` | The page reducer: the head (`Board`), the draft spec, the mode, the selected panel, the save status and field errors, the conflict and remote heads, the live-region text. Dirty = the draft's canonical JSON differs from the head's. No edit is taken while saving; a later read of the board replaces the draft only when it is clean |
+| `boardKeys.ts` | `Shift+E` (toggle Edit, not while typing or in a dialog or menu) and `⌘S` / `Ctrl+S` (save in Edit mode, from any target) |
+| `fieldMessages.ts` | `message_key` → the catalogue text `field.<key>` |
+
+**View and Edit grids.** View mode (`BoardGridView`) places each panel absolutely from custom
+properties `--gx --gy --gw --gh` set in CSSOM (T08-023) and sizes the container from `--gbottom`;
+the arithmetic is the 12-column, 40 px, 16 px grid, so any layout the server accepts (rows up to
+10 099) renders, which a CSS grid's track limit would not allow in every engine. DOM order is
+`(y, x)`. Edit mode loads `BoardGridEditor` lazily: `react-grid-layout` 2.3.0 with the same numbers
+(`margin` 16, `containerPadding` 0, `rowHeight` 40, `maxRows` 10 099), no compaction and
+`preventCollision`, so panels never push each other and gaps stay. A pointer drop is taken only if
+the moved panel fits and overlaps nothing; otherwise the grid is reset and the refusal announced.
+While it loads, the View grid is the fallback, so nothing moves. react-draggable fills a `<style>`
+element through `innerHTML` when a drag starts, which Trusted Types blocks; `BoardGridEditor`
+creates an empty marker element with that id first (an inert `<meta>`, since even an empty
+`<style>` is an inline style under the CSP), and `Board.module.css` holds the same selection rules.
+
+**Chunks.** The board page is the lazy chunk of `src/pages/board/BoardPage.tsx`; the Edit grid,
+with `react-grid-layout` and its stylesheet, is the separate lazy chunk of
+`src/pages/board/BoardGridEditor.tsx`, preloaded when the pointer or the focus reaches Edit board. Both are listed in `bundle-budgets.json` and checked against
+the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-chain.md#react-grid-layout)).
+
+**Saving.** Save checks the draft with `checkBoardSpec` first (field errors open the editor on the
+first panel they point into), then calls `saveBoard` with the head's etag. A 409 opens the conflict
+dialog (save again with the other version's etag, or load it); `invalid` shows the field errors;
+`notFound` and network failures keep the draft and leave Save enabled. The query cache entry of the
+board is set from the response and the board list is invalidated. **Discard** reads the head
+again with `staleTime: 0`; until that read settles, Edit is read-only exactly as while saving
+(toolbar, layout buttons, grid and editor fields disabled; `⌘S`/`Ctrl+S` and `Shift+E` ignored), so
+the response's `loaded` and `exitEdit` cannot replace an edit or race a save.
+
+**Failed reads.** Only a failed first read replaces the page (`Board not found` or the generic
+error). A failed later read (an invalidation or refetch with the board already loaded) keeps
+`BoardEditor` mounted, so the draft and the unsaved-changes guard stay; a notice says the board was
+deleted elsewhere (`notFound`) or could not be reloaded (anything else), and clears on the next
+successful read.
+
+**Panel ids.** New panel ids are `p-<n>` above the largest `p-<n>` among panel and section ids
+(ids are unique across both), computed with `BigInt`; when that does not fit the 40-character id,
+the lowest free `p-<n>` is used.
+
+**Saved time and the guard.** Board links pass `BOARD_LINK_STATE` (`{applySavedTime: true}`,
+`SidebarBoards.tsx`); on the first load with that state the board's `spec.time` is applied with a
+`replace`, and the history entry's state is cleared, so a reload or a deep link keeps the URL's time
+(IA-022). `useBlocker` asks before in-app navigation to another path while the draft is dirty (time
+and refresh changes keep the path, so they never ask); `beforeunload` is registered while dirty.
 
 ## Text and formatting (T08-027)
 
@@ -299,10 +393,10 @@ every request, fonts included, stays on the app origin.
 
 ## Limits
 
-- No sign-in (the BFF serves a fixed local principal, D12), real boards (`http` mode lists none
-  until #61), chart queries, command palette, alert count or AI dock yet (charts draw only the
-  gallery's synthetic data until the BFF serves frames, #62); starred boards are kept by the stub
-  in the browser until the BFF stores them (#61).
+- No sign-in (the BFF serves a fixed local principal, D12), panel queries (`http` mode shows "Runs
+  when PromQL support lands"; #64, #67), command palette, alert count or AI dock yet; starred boards
+  are kept by the stub in the browser until the BFF stores them (Part C of #61).
+- Boards: no undo or history, no section collapse or editing, no variables, no permissions (D12).
 - The data-source line always reads "Not checked" until the data-source check exists (#62).
 - Recent boards are per browser, not per user.
 - Day and week units are fixed 24 h and 7 × 24 h durations; only `now/d` and the calendar follow DST.
@@ -314,8 +408,9 @@ D9 ([designs README](../../designs/README.md)), [ADR-0014](../../designs/adr/001
 [ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md),
 [ADR-0017](../../designs/adr/0017-react-router.md);
 [ADR-0015](../../designs/adr/0015-go-bff.md);
-[02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-015,
-IA-016, IA-020, IA-021, IA-022, IA-023),
+[02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-003,
+IA-006, IA-015, IA-016, IA-020, IA-021, IA-022, IA-023),
+[04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014, SRF-020),
 [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-032),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-001, VL-010, VL-017, VL-021),
 [09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-008, PRF-033);
@@ -323,4 +418,5 @@ IA-016, IA-020, IA-021, IA-022, IA-023),
 [T02](../../designs/technical/T02-vis-engine.md) (T02-004),
 [T03](../../designs/technical/T03-browser-runtime.md) (T03-013, T03-014, T03-017),
 [T08](../../designs/technical/T08-dom-component-kit.md) (T08-005, T08-007, T08-008, T08-010, T08-022,
-T08-023, T08-027), [T18](../../designs/technical/T18-security.md) (T18-001, T18-004).
+T08-015, T08-017, T08-021, T08-023, T08-024, T08-027), [T18](../../designs/technical/T18-security.md)
+(T18-001, T18-004).

@@ -1,0 +1,97 @@
+/* The board list (plan #61 Part B §4.5). */
+.header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.notice:empty {
+  display: none;
+}
+
+.table {
+  width: 100%;
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface-1);
+  table-layout: fixed;
+}
+
+.table th {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--border-hairline) solid var(--hairline);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: start;
+}
+
+.table td {
+  height: var(--space-12);
+  padding: 0 var(--space-4);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.table tbody tr + tr td {
+  border-top: var(--border-hairline) solid var(--hairline);
+}
+
+.name {
+  width: 50%;
+}
+
+.meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  width: calc(var(--size-control) + var(--space-8));
+  text-align: end;
+}
+
+.hidden {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.body {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-md);
+}
+
+.failure {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.failure:empty {
+  display: none;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
