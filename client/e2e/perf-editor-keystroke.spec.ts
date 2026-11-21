@@ -16,7 +16,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { longTasks, type TraceEvent } from '../scripts/longTasks.ts';
-import { open } from './helpers.ts';
+import { waitReady } from './helpers.ts';
 
 const enforce = process.env['EDITOR_BENCH_GATE'] === 'enforce';
 const P95_MS = 2.0;
@@ -70,10 +70,10 @@ test('bench:editor-keystroke', async ({ page }, info) => {
       window.__editorUpdates.push([ms, docChanged]);
     };
   });
-  await open(
-    page,
-    `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=${encodeURIComponent(Q1K)}`,
-  );
+  // No fake clock (helpers' `open` installs one): it would also replace `performance.now`.
+  const url = `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=${encodeURIComponent(Q1K)}`;
+  await page.goto(url);
+  await waitReady(page, url);
   const editor = page.getByRole('textbox', { name: 'PromQL query' });
   await expect(editor).toBeVisible();
   await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toBeVisible();

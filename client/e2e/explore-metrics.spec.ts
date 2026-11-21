@@ -8,7 +8,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { fakeRequests, sec } from './fake.ts';
-import { EXPLORE_RESULT, open, searchOf, timeTrigger, waitReady } from './helpers.ts';
+import { open, searchOf, timeTrigger, waitReady } from './helpers.ts';
 
 const W0 = Date.UTC(2026, 0, 1);
 const HOUR = 3_600_000;
@@ -264,26 +264,33 @@ test.describe('e2e:lazy-load explore', () => {
 });
 
 test.describe('e2e:explore-picker-inert', () => {
+  // On the http BFF, so a Run is a request the page makes (the stub answers in the page).
+  test.skip(PREVIEW, NEEDS_BFF);
+  test.use({ baseURL: HTTP_BFF });
+
   test('the page is inert while the metric list is open', async ({ page }) => {
     const ranges: string[] = [];
     page.on('request', (r) => {
-      if (r.url().includes('query_range')) ranges.push(r.url());
+      if (r.url().includes('/api/dash/v1/query/promql/range')) ranges.push(r.url());
     });
-    await open(page, EXPLORE_RESULT);
-    await expect(page.getByRole('table').getByRole('row')).toHaveCount(4);
+    await open(page, exploreUrl('http_requests_total'));
+    // The fake's counter-rate transcript: two series.
+    await expect(page.getByRole('table').getByRole('row')).toHaveCount(3);
     const run = page.getByRole('button', { name: 'Run' });
     await expect(run).toBeEnabled();
     const inert = page.locator('[inert]');
     await expect(inert).toHaveCount(0);
     const picker = page.getByRole('combobox', { name: 'Metric' });
     const list = page.getByRole('listbox');
+    // Taken before the list opens: while it is open React Aria hides Run from role queries.
+    const runEl = await run.elementHandle();
     const underInert = (l: typeof run) => l.evaluate((e) => e.closest('[inert]') !== null);
 
     // P1: open on focus; everything else is inert.
     await picker.focus();
     await expect(list).toBeVisible();
     await expect.poll(() => inert.count()).toBeGreaterThanOrEqual(1);
-    expect(await underInert(run)).toBe(true);
+    expect(await runEl.evaluate((e) => e.closest('[inert]') !== null)).toBe(true);
     expect(await underInert(picker)).toBe(false);
     expect(await underInert(list)).toBe(false);
 
@@ -320,7 +327,7 @@ test.describe('e2e:explore-picker-inert', () => {
     });
     await picker.focus();
     await expect(list).toBeVisible();
-    const b = await run.boundingBox();
+    const b = await runEl.boundingBox();
     if (b === null) throw new Error('no Run box');
     const press = async () => {
       await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
