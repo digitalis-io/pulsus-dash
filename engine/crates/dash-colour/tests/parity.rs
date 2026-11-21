@@ -14,9 +14,17 @@ fn series_colour_index_matches_ts() {
         let hash = u64::from_str_radix(key, 16).unwrap_or(u64::MAX);
         let labels: Vec<(String, String)> = r["labels"]
             .as_object()
-            .map(|o| o.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_owned())).collect())
+            .map(|o| {
+                o.iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_owned()))
+                    .collect()
+            })
             .unwrap_or_default();
         let want = r["index"].as_u64().unwrap_or(99);
-        assert_eq!(u64::from(series_colour_index(hash, &labels)), want, "{key} {labels:?}");
+        assert_eq!(
+            u64::from(series_colour_index(hash, &labels)),
+            want,
+            "{key} {labels:?}"
+        );
     }
 }

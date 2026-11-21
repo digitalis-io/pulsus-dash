@@ -6,7 +6,9 @@
 use serde_json::Value;
 
 pub fn path(name: &str) -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(name)
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures")
+        .join(name)
 }
 
 pub fn load(name: &str) -> Vec<Value> {
@@ -30,7 +32,9 @@ pub fn num(v: &Value) -> f64 {
 }
 
 pub fn nums(v: &Value) -> Vec<f64> {
-    v.as_array().map(|a| a.iter().map(num).collect()).unwrap_or_default()
+    v.as_array()
+        .map(|a| a.iter().map(num).collect())
+        .unwrap_or_default()
 }
 
 /// Bit equality with NaN == NaN.

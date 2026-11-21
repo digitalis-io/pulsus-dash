@@ -22,7 +22,12 @@ fn format_value_matches_ts() {
             bad.push(format!("{v:e} {unit:?}: {got:?} != {want:?}"));
         }
     }
-    assert!(bad.is_empty(), "{} mismatches, first: {:?}", bad.len(), &bad[..bad.len().min(10)]);
+    assert!(
+        bad.is_empty(),
+        "{} mismatches, first: {:?}",
+        bad.len(),
+        &bad[..bad.len().min(10)]
+    );
 }
 
 #[test]
