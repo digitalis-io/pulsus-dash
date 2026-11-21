@@ -75,19 +75,25 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   [the client page](../client/README.md#keyboard-coverage).
 - **`bench:inp-rooms`** (`e2e/perf-inp-rooms.spec.ts`, Chromium only, PRF-033, T05 §4.3): scripted
   pointer and keyboard interactions on the board room (Appendix C-A §A.6 of plan #61 Part C), in
-  four documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
+  five documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
   times both ways), `/t/demo/board/b-3` (a variable chip, typing and Apply; `+ Filter`, Add and
   Remove filter; three times each), `/t/demo/board/b-1` again (Edit board, Add section, Done
   and Discard changes, three times), and `/t/demo/board/b-1` a third time with the panel editor
   scenario of #90 (`e2e/boardEditorScenario.ts`, 43 clicks and key presses: Edit board, then three
   rounds of opening the editor from the Panel menu, typing in Title, picking a query language,
-  typing in Query, picking a visualisation, and Done). An init script observes the Event Timing entries (`event`,
+  typing in Query, picking a visualisation, and Done), and `/t/demo/board/b-1` a fourth time with
+  the chart gestures of #93 (`e2e/chartGestureScenario.ts`, at most 14 interactions, all on
+  `Request rate`: three rounds of ten wheels, eight pinch wheels with `Control`, eight `Shift`
+  wheels until **Reset Y axis** shows, a click on it, three left drags of 150 px, three right drags
+  of 120 px and a double-click; each commit is awaited through the URL; wheels are not Event Timing
+  interactions). An init script observes the Event Timing entries (`event`,
   `durationThreshold` 16) in every document the page loads and flushes them before each
   navigation; `scripts/inp.ts` (`aggregateInp`, `gateFailures`) computes **INP per document**
   (each interaction once, at its longest entry; the durations padded with zeros to the
   document's scripted count, then the `floor(n / 50)`-th largest, so one outlier per 50
   interactions of that document is ignored), never pooled across documents. The test always
-  checks four documents, each with its scripted count, and no page error. The 200 ms limit
+  checks five documents, each with its scripted count (document 5's count is an upper bound,
+  `CHART_SCENARIO_N`), and no page error. The 200 ms limit
   applies per document; 100 ms is the target. On CI's shared runners the check is **report only**
   until the reference lab exists (#68, T05-006): a document above 200 ms adds a `warning`
   annotation. With `INP_GATE=enforce` (the reference lab, and local gate proofs) any document above
@@ -98,24 +104,28 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   (`INP_GATE=enforce npx playwright test perf-inp-rooms --project=chromium` for the blocking form).
 - **`bench:rooms-long-tasks`** (`e2e/perf-rooms-long-tasks.spec.ts`, Chromium only, PRF-005, T05
   §4.3, T08 §7; #90): main-thread long tasks during scripted room interactions, from a Chromium
-  trace. Its first scenario is the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
-  `bench:inp-rooms`) on `/t/demo/board/b-1`, with no fake clock. Around the scenario it records a
+  trace. Its scenarios are the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
+  `bench:inp-rooms`) and, in a second test, the chart gestures (`e2e/chartGestureScenario.ts`, as
+  document 5, #93), each on `/t/demo/board/b-1` with no fake clock. Around the scenario it records a
   trace with the categories `devtools.timeline`, `disabled-by-default-devtools.timeline` and
   `blink.user_timing`; each step leaves a `step:<label>` mark. `scripts/longTasks.ts` reads it:
 
   | Rule | Definition |
   |---|---|
   | Main thread | the `CrRendererMain` thread with the most `EventDispatch` events; none → error `no renderer main thread` |
-  | Inputs | its `EventDispatch` events of type `click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup` or `input`; none → error `no input` |
+  | Inputs | its `EventDispatch` events of the `inputs` option's types: by default `DEFAULT_INPUTS` (`click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup`, `input`); the chart test passes `CHART_INPUTS`, which adds `wheel`, `pointermove`, `mousemove`, `contextmenu` and `dblclick`; none → error `no input` |
+  | Counts | `counts`: the number of input `EventDispatch` events per type in the window |
   | Window | from the first input's start to the last input's end |
   | Long task | a `RunTask` on the main thread that overlaps the window and lasts over 16 ms wall |
   | Thread time | the task's `tdur`; when no task in the window has one, error `no thread time` (the CI check cannot be judged); a single task without it counts as failing when over 50 ms wall |
   | Label | the last `step:` mark at or before the task, else `unlabelled` |
 
-  It writes `test-results/bench-rooms-long-tasks.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
-  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `mode`, `unit`) and a
-  `bench:rooms-long-tasks` annotation. It always asserts at least 28 clicks and 15 key presses, no
-  page error, and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
+  The editor test writes `test-results/bench-rooms-long-tasks.json` and the chart test
+  `test-results/bench-rooms-long-tasks-chart.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
+  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `counts`,
+  `scenario`, `mode`, `unit`), each with a `bench:rooms-long-tasks` annotation naming its scenario.
+  The editor test asserts at least 28 clicks and 15 key presses; the chart test at least 40 wheels,
+  8 pointer downs and 3 context menus. Both assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
   interim trace check. That check **blocks merge** on CI, in the `e2e` job's Chromium leg (the
   spec is Chromium only, so no workflow change). With `LONG_TASK_GATE=enforce` (the reference lab,
   #68, and local gate proofs) it also asserts `over16` 0: no task over 16 ms wall. Without it, each
@@ -143,9 +153,32 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     rerun with `PW_UPDATE_GOLDENS=1`, the Chromium job writes new baselines and uploads them as the
     `e2e-screenshots` artefact; download it, review the images and commit them to
     `client/e2e/__screenshots__/`, then remove the label.
-  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a drag on `line-1` from 0.1–0.4 brush units
-    inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
-    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it.
+  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a right drag on `line-1` from 0.1–0.4 brush
+    units inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
+    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it; an
+    `Alt`+left drag over the same span gives the same window (#93; a left drag now pans).
+  - **`e2e:chart-zoom`** (`e2e/chart-zoom.spec.ts`, Chromium, Firefox and WebKit; #93). Charts below
+    the fold are scrolled into view without a wheel first.
+    - Z1: ten wheels at 30 % of `line-1`'s plot keep the time under the pointer within 1 px in the
+      committed URL window; Back restores 12:00–13:00 (one entry per gesture; when a loaded runner
+      delivers two wheels more than 300 ms apart, Back walks each entry).
+    - Z2: a wheel over the intro and one over the value-axis band scroll the page and leave the URL;
+      400 ms later a wheel over the plot zooms and does not scroll.
+    - Z3: a wheel over the plot within the scroll latch of a page wheel scrolls the page; 400 ms
+      later it zooms (an attempt whose wheels arrive 250 ms or more apart is repeated).
+    - Z4: `Control` + fractional wheels zoom time only; `Control` + whole steps pins the value axis;
+      the page never zooms (WebKit's driver delivers whole steps: the accepted misclassification).
+    - Z5: `Shift` + wheel pins the value axis without a URL change; a wheel then changes the URL;
+      **Reset Y axis** unpins it.
+    - Z6: a 200 px left drag moves the window by 200 px of time, width 1 h.
+    - Z7: a right drag gives 12:20–12:25; the `contextmenu` events on the plot (drag, click) are
+      prevented and the one on the value-axis band is not.
+    - Z8: a drag on the time-axis band moves the window; a drag on the value-axis band pins the value
+      axis; a double-click there unpins it.
+    - Z9: on `/t/demo/board/b-3` a wheel over `Edge p99` moves every panel's window to the URL; a
+      `Shift` wheel pins only `Edge p99`; Back restores every slider's window.
+    - Z10: five wheels on `bars` leave its `data-plot` unchanged through each preview, the commit and
+      the refetch, and the time under the pointer within 1 px.
   - **`e2e:chart-hover`** (`e2e/chart-hover.spec.ts`): the `line-gaps` tooltip lists the time and the
     three series with the values the generator gives; on `line-50` a pointer sweep down the plot
     shows every one of the 50 series; on `bars` all five levels at every height.

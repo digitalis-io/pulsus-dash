@@ -1,12 +1,14 @@
 # Charts
 
 Every chart in the client is one `<ChartFrame>` on one `<canvas>`, drawn by a chart engine behind the
-seam of [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3. Until the Rust/WASM
+seam of [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3 (amended by
+[ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md) and
+[ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md)). Until the Rust/WASM
 engine lands (#68), the engine is the in-house **interim Canvas 2D renderer** in
 `client/src/engine/canvas2d/` (ADR-0014 §4; no charting library, VIZ-001, T01-002). It draws four
 kinds: line, stacked bars, heatmap and stat. This page covers the seam, the frame data and its
-validation, number formatting, colours, axes, interactions, accessibility, limits and the chart
-gallery.
+validation, number formatting, colours, axes, interactions (including zoom and pan), accessibility,
+limits and the chart gallery.
 
 ## The seam
 
@@ -15,11 +17,11 @@ application code.
 
 | Type | Meaning |
 |---|---|
-| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Data, never code |
+| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Data, never code |
 | `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`) or `scalar` (`ScalarFrame`), from `src/data/frames.ts` |
 | `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); `null` for stat |
 | `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine) |
+| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, and `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -29,9 +31,10 @@ through the context (`src/test/fakeEngine.ts`).
 
 | Concern | Owner |
 |---|---|
-| Context window and URL | The application. `ChartFrame` turns a `brush` event into a `setRange` (drag; absolute times, pushed) or `zoom out` (double-click) action of `useTimeContext().dispatch`. The engine only proposes windows |
-| Validation, notices, tooltip, summary label, crosshair slider | `ChartFrame` (`src/charts/`) |
-| Scales, ticks, marks, picking, brush gesture, layer cache | The engine frame; discarded on `dispose()` |
+| Context window and URL | The application. `ChartFrame` turns a `brush` event into a `setRange` (box zoom; absolute times, pushed) or `zoom out` (double-click) action of `useTimeContext().dispatch`, and a `commit` with a `window` into the same `setRange` push. The engine only proposes windows |
+| Value-axis pin | The `ChartFrame` instance (`useState`), keyed by the spec's kind and unit. It is passed back to the engine as `valueRange` in the spec. It is not in the URL or the Context, and is lost on unmount, reload, or a kind or unit change |
+| Validation, notices, tooltip, summary label, crosshair slider, Reset Y axis button | `ChartFrame` (`src/charts/`) |
+| Scales, ticks, marks, picking, the camera (view, gesture, changed axes, band hold), layer cache | The engine frame; discarded on `dispose()` |
 
 ### Frame lifecycle
 
@@ -106,6 +109,23 @@ A value that rounds up to the next unit is carried (`999.6 ms` → `1 s`, `59.99
 `1048575 B` → `1 MiB`). `NaN` is `—`, infinities `+Inf` and `-Inf`. `formatHourMinute` and
 `formatDayMonth` are the axis label formats (`14:05`, `19 Nov`).
 
+`formatCompact(v, unit)` (#93) is the form of a value label under a held band: the sign, at most
+four significant characters (three significant digits), an SI prefix (p, n, µ, m, k, M, G, T, P, E)
+and the unit's tail. It never truncates.
+
+| Unit | Converted value | Tail | Examples |
+|---|---|---|---|
+| `none` | v | (none) | `0.000015` → `15µ`; `-1234` → `-1.23k`; `999600` → `1M` |
+| `suffix` | v | ` <suffix>` | `-0.00002` rps → `-20µ rps` |
+| `percent` / `percentunit` | v / v · 100 | ` %` | `1234567` → `1.23M %` |
+| `bytes` | v | ` B` | `1536` → `1.54k B` (SI, exact in value) |
+| `time` | v in seconds | ` s` | ms `-3590000` → `-3.59k s` |
+
+Zero is `0` plus the tail; `NaN` and infinities are as `formatValue`. Outside
+`1e-12 ≤ |converted| < 1e21` there is no prefix: the plain three-digit form is used (`1e-13`,
+`1e+21`), which can be wider than the band (the label is then chipped). `compactSamples(unit)` lists
+the widest compact label per prefix, `-88.8<prefix><tail>`.
+
 ## Colours (VL-002, VL-006, T01-010, T02-004, T02-005)
 
 All chart colours come from `src/styles/tokens.ts`, generated from `design/tokens.toml`:
@@ -128,12 +148,22 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 
 ## Axes
 
-- **Layout.** The plot starts after the widest value label, 8 px and the 4 px tick; 8 px from the
+- **Layout.** The plot starts after the value-label band, 8 px and the 4 px tick; 8 px from the
   top and right; the time axis takes 4 px of tick, 2 × 4 px of padding and one 14 px label line at
-  the bottom. Stat has no axes.
-- **Value axis** (line, bars). The domain includes 0 and the data (bars: the stacked totals). Steps
-  are 1, 2 or 5 × 10^k in units of 1 000^p (1 024^p for bytes), widened until labels are at least
-  label height + 2 px apart. Grid lines are hairlines.
+  the bottom. Stat has no axes. The band is the widest value label, but never narrower than the
+  widest **compact** label of the unit (`minValueBand`: the 11 samples `-88.8p` … `-88.8E` plus the
+  unit's tail, measured in the axis font; 42 px for plain numbers, 56 px for durations
+  (`-88.8µ s`); T02-011 as amended by #93). Heatmaps use the same minimum for their bucket labels.
+- **Held band** (#93). While the camera is worked the band keeps its width (below, "The band
+  hold"). Each tick label is then drawn in full when it fits, else in compact form
+  (`formatCompact`), else whole inside the plot: left edge at `plot.x + 4 px`, over the marks, on a
+  chip in the tooltip surface colour with the corner radius and 4 px padding. A label is never cut.
+- **Value axis** (line, bars). Auto: the domain includes 0 and the data (bars: the stacked totals).
+  Steps are 1, 2 or 5 × 10^k in units of 1 000^p (1 024^p for bytes), widened until labels are at
+  least label height + 2 px apart. Grid lines are hairlines. Manual (`valueRange` set): the domain is
+  exactly the range, the ticks are those of the range inside it (1e-9 relative tolerance), and the
+  marks are clipped to the plot (`save`, `rect`, `clip`, `restore`); hover dots outside the plot are
+  not drawn.
 - **Time axis.** Steps from 1 s to 12 h and 1, 2, 7 and 14 days; the smallest step whose labels fit
   is used. Sub-day candidates are generated on the local wall clock in the browser zone and converted
   with `'compatible'` disambiguation; a candidate that does not move forward in time (the repeated
@@ -171,8 +201,7 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 | Input | Effect |
 |---|---|
 | Pointer over the plot | Line: the crosshair snaps to the nearest sample of the first series; every series whose nearest sample is within half its own step is listed. Bars and heatmap: the bucket under the pointer. Heatmap pointer: the bucket row under the pointer (`≤ 0.5 s`, or `> 10 s` for the `+Inf` band) |
-| Drag (primary button) across at least 4 px | A brush band; on release the window is the dragged range, both ends snapped to the nearest multiple of the brush unit, the smallest of 1 s, 5 s, 10 s, 15 s, 30 s, 1 min, 5 min, 15 min, 30 min, 1 h and 1 d that is at least 4 px of time. The new absolute window is pushed to the URL. Escape (on the slider) or a cancelled pointer drops the band |
-| Double-click on the plot | Zoom out: twice the window, around the centre (as `-`) |
+| Zoom and pan | The 2D camera, below |
 | Focus the crosshair slider, then `→` / `Home` or `←` / `End` | The crosshair starts at the first or last sample (bucket). Then `←` `→` move by one, `PageUp` / `PageDown` by ten, `Home` / `End` to the ends; `Escape` or leaving the slider hides it. Ctrl, Meta and Alt combinations are left to the browser |
 | `↑` / `↓` on the slider | Selects the previous or next row of the tooltip; the slider's value text reads it |
 
@@ -181,6 +210,127 @@ CSSOM (`style.translate`, allowed by the CSP, T18-004). It shows the time and th
 (descending, then name), 20 at a time with "Rows a–b of n". With the pointer, the 20-row window
 follows the pointer's height over the plot: the top of the plot shows rows 1–20, the bottom the last
 20, so every series can be reached. With the keyboard, the window is centred on the selected row.
+
+## Zoom and pan: the 2D camera (#93)
+
+The Canvas 2D frame holds an orthographic 2D camera (T02 §4.6) as render-local state: a **view**,
+the time window and the value range it draws. Every wheel, pinch, swipe or drag event changes the
+view and redraws the frame from the data it already holds, with no request (T01-005). When the
+gesture ends (300 ms with no wheel, or the pointer is released) the frame emits one `commit` event,
+and `ChartFrame` applies it: the window becomes the Context window (one `setRange` push, so one
+history entry and on a board every panel follows), and a value range becomes the chart's pin. The
+code is in `src/engine/canvas2d/camera.ts` (the math), `input.ts` (input classification) and
+`Canvas2DEngine.ts` (the gesture state machine).
+
+### Inputs (line, bars, heatmap; stat has none)
+
+| Input (where) | Action | Commit |
+|---|---|---|
+| Wheel (plot) | Zoom time about the pointer | `{ window, gesture: 'wheel' }` after 300 ms idle |
+| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot) | Zoom time about the pointer | As wheel |
+| Safari `gesturestart` / `gesturechange` / `gestureend` (plot) | Zoom time about the pointer by `lastScale / scale`; `Ctrl` wheels between start and end are ignored | As wheel |
+| `Shift`+wheel (plot) | Zoom values about the pointer (line, bars); heatmap: consumed, no change | `{ value, gesture: 'wheel' }` |
+| `Ctrl`/`⌘`+wheel with whole-number steps, or `⌘` (plot) | Zoom time and values about the pointer (heatmap: time only) | `{ window, value }` |
+| Horizontal two-finger swipe, `|deltaX| > |deltaY|` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
+| Wheel anywhere else | Not consumed: the page scrolls | — |
+| Left or middle drag of 4 px or more (plot, x-axis band) | Pan time; the content follows the pointer | `{ window, gesture: 'pan' }` (plot) or `'axis'` (band) on release |
+| Left drag of 4 px or more (y-axis band; line, bars) | Pan values, from the auto domain when unpinned | `{ value, gesture: 'axis' }` on release |
+| Right drag, or `Alt`+left drag, of 4 px or more (plot) | Box zoom: on release the dragged span, both ends snapped to the brush unit (the smallest of 1 s … 1 d that is at least 4 px of time), at least 1 s | `brush { gesture: 'drag' }` |
+| A press that moves less than 4 px | Nothing (a click) | — |
+| Double-click (plot) | Zoom out: twice the window, around its centre | `brush { gesture: 'zoomOut' }` |
+| Double-click (y-axis band; line, bars) | Value axis back to auto, when pinned | `{ value: 'auto', gesture: 'fit' }` |
+| Reset Y axis button | Value axis back to auto; focus moves to the crosshair slider | None (`ChartFrame` state) |
+| `Escape` on the slider, `pointercancel`, `lostpointercapture` during a press | Cancel: the view and value range are restored, no commit, no box | — |
+| Left press with `Ctrl` and not `⌘` (macOS secondary click), touch pointers | Ignored | — |
+
+The pinch test is a heuristic (owner-delegated decision of 2026-11-21): a mouse that reports
+fractional `Ctrl`+wheel steps zooms time only, and a pinch with whole-number steps zooms both axes.
+Both outcomes are accepted and pinned by `input.test.ts`. Every consumed wheel and handled press
+calls `preventDefault()` (no page scroll, browser zoom, text selection or middle-button
+autoscroll); a wheel during a press is consumed and ignored.
+
+| Constant (`input.ts`) | Value |
+|---|---|
+| `WHEEL_IDLE_MS` | 300 ms: a wheel gesture commits after this long without a consumed wheel |
+| `WHEEL_ZOOM_PER_PX`, `PINCH_ZOOM_PER_PX` | factor = exp(px · k), k = 0.002 (a 100 px notch zooms × 1.221) or 0.01 for a pinch |
+| `WHEEL_LINE_PX`, `WHEEL_MAX_PX` | `deltaMode` 1 is 16 px a line, `deltaMode` 2 is one plot height; \|px\| is clamped to 400 per event |
+| `DRAG_MIN_PX` | 4 px (`size.chart-brush-min`) |
+| `PAGE_WHEEL_LATCH_MS` | 300 ms (the scroll latch) |
+
+Zones: the **plot** (edges included), the **x-axis band** below the plot within its x range, the
+**y-axis band** left of the plot within its y range (line and bars only). The canvas carries the
+zone under the pointer in `data-zone` and the press in progress in `data-gesture` (`pan`, `box`,
+`axis-x`, `axis-y`); the cursors follow them (`grab`, `ew-resize`, `ns-resize`, `grabbing`,
+`crosshair`).
+
+### Wheel and page scroll
+
+A wheel over a plot is consumed unless the page saw an unconsumed wheel in the last 300 ms: then a
+scroll already in progress keeps scrolling as it passes over a chart. One passive `wheel` listener
+per page (`windowWheelLatch`, created with the first frame) records the `timeStamp` of every wheel
+no listener prevented. A wheel over an axis band, a margin, the title, the Reset Y axis button or
+outside charts is never consumed, so the page scrolls, and `Ctrl`+wheel outside plots zooms the page
+as before.
+
+### Context menu
+
+On the plot, neither a right drag nor a right click opens the browser's menu: a right press in the
+plot sets a flag that the next `contextmenu` consumes (`preventDefault`), and that a 0 ms timer
+after the release, or the next press, clears. This covers both event orders (menu on press, menu
+after release). A `contextmenu` with no right press in the plot (the menu key, `Shift+F10`, a right
+click on an axis band or elsewhere) is not touched. The application has no context menu of its own.
+
+### The gesture and its commit
+
+| State | Meaning |
+|---|---|
+| idle | The view is the base window (the last `setTimeWindow`, or the last committed view) |
+| wheel | Entered by a consumed wheel, swipe or pinch; every further one re-arms the 300 ms timer; a handled press commits it at once |
+| press | Entered by a handled press; it moves the view once it has moved 4 px (box: horizontally); ends on release (commit or box), or on cancel |
+
+The preview is f64 and is not rounded, except that time pans of a view narrower than the minimum
+span move by whole ms (decided from the preview's own span). Each step records which axes it moved;
+a commit carries only those axes:
+
+- `window` is the whole-ms view (`Math.round` of both ends) when the gesture moved time and that
+  differs from the base window; else `null`.
+- `value` is the preview value range when the gesture moved values and that differs from the spec's
+  `valueRange`; else `null`. Nothing is emitted when both are `null`.
+- After a commit the frame adopts the whole-ms view as its base, so it never shows the old window
+  while the URL catches up. A `setTimeWindow` during a gesture that has moved time changes only the
+  base (the user's move wins); during one that has not, it is applied at once.
+
+Limits: the time span stays between `max(1 s, ceil(plot width) ms)` and 3 650 days, inside
+`0 … 9999-12-31T23:59:59.999Z`; the value span between `1e-9 · max(1, |anchor|)` and `1e300`, inside
+`±1e300`. A zoom-in on a window already below the minimum changes nothing; a zoom-out goes to at
+least the minimum. The point under the pointer stays under it while the width changes; the view is
+shifted only when it would leave the bounds. Because the minimum is about 1 ms per CSS px, the one
+rounding at the commit moves the time under the pointer by at most `0.5 · plot width / (span − 1)`
+px, under 0.51 px on any width, and every window the camera emits is one the Context accepts.
+
+### The band hold
+
+The plot's `x` and `width` depend only on the canvas width, the kind and the value-label band, so
+the frame holds the band from the first camera move: the plot does not move under the pointer
+during the gesture, at its commit, or when the refetched data arrives (T02-021). Wider labels are
+compacted or chipped (see Axes).
+
+| Event | Band |
+|---|---|
+| A preview step | Held at the width of the frame on screen |
+| Gesture end, commit, `setData`, `setSpec` with the same kind and unit and a set `valueRange`, the echoed `setTimeWindow` equal to the base window, any `setTimeWindow` during a gesture | Kept |
+| `resize` to another size; `setSpec` with another kind or unit; `setSpec` whose `valueRange` goes from set to absent (Reset Y axis, the fit commit); an idle `setTimeWindow` to another window (picker, keys, Back, auto-refresh, another panel's commit); the pointer leaving the canvas while idle | Released: the next draw measures the labels again, and full labels return |
+
+### The value-axis pin in `ChartFrame`
+
+A `commit` with a value range stores a pin (`{ key: kind|unit, range }`) and the spec passed to the
+engine gains `valueRange`. While pinned, a **Reset Y axis** button (accessible name
+`Reset Y axis: <title>`) sits over the plot's top-left corner, placed through CSSOM. Pressing it, or
+a `'auto'` commit, clears the pin. A kind or unit change clears it during render, so returning to
+the old kind or unit starts unpinned. On a board, a panel whose window alone changed keeps its
+previous result until the new one arrives (`usePanelData`'s `placeholderData` with
+`sameExceptWindow`), so a commit does not unmount the chart or drop its pin; a query, language or
+visualisation change still shows `Loading`.
 
 ## Accessibility (T01-007)
 
@@ -193,6 +343,8 @@ follows the pointer's height over the plot: the top of the plot shows rows 1–2
   (`aria-valuemin`/`max` = the window, `aria-valuenow` = the crosshair time, `aria-valuetext` =
   `<time>: <name> <value>, <i> of <n>` or "Use the arrow keys to read values"). Pointer input passes
   through it to the canvas.
+- While the value axis is pinned, the summary label ends `Y axis fixed at <min> to <max>.` and the
+  Reset Y axis button (at least 24 × 24 px) is in the tab order after the slider.
 - When more than 500 series arrive, a status notice says "Showing 500 of <n> series".
 - A browser without a 2D canvas context shows "This browser cannot draw charts." instead.
 
@@ -203,6 +355,10 @@ follows the pointer's height over the plot: the top of the plot shows rows 1–2
 - Drawing is on the main thread (T01-003 interim exception) with a cached layer; there is no worker,
   GPU decimation or level of detail until #68.
 - No legend, cursor sync, click to select, Inspector, Δ vs baseline or keyboard brushing yet.
+- Camera (#93): no inertia after a flick, no wheel zoom on an axis band (the page scrolls), no value
+  zoom on heatmaps, no touch gestures, no keyboard value zoom, and no live following by other
+  panels during a gesture (they follow at the commit). The band does not shrink after a 500 ms
+  delay yet (T02-011's hysteresis arrives with the engine).
 
 ## The chart gallery
 
@@ -225,6 +381,8 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
 The same window always gives the same pixels; the gallery is the corpus of
 `golden:interim-gallery` and `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
+The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
+baselines were re-baselined once under the `golden-update` label; stat is unchanged.
 
 ## Replacing the engine (#68)
 
@@ -237,15 +395,19 @@ form in #68/#62).
 ## Design references
 
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3, §4;
+[ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md) (`commit`, `valueRange`,
+`valueAxis`);
 [ADR-0007](../../designs/adr/0007-in-house-vis-engine.md);
 [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-001 library
 clause, VIZ-010 gaps and stacking, VIZ-013, VIZ-069);
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-002 and Table 8-1a, VL-006,
-VL-012); [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-033);
+VL-012); [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-001 and INT-002
+for 2D charts, INT-007, INT-008 subset, INT-025, INT-033, and the §4.1 note of 2026-11-21);
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-020 subset);
 [T01](../../designs/technical/T01-frontend-architecture.md) (T01-002, T01-003, T01-009, T01-010),
-[T02](../../designs/technical/T02-vis-engine.md) (T02-004, T02-005),
-[T03](../../designs/technical/T03-browser-runtime.md) (T03-013),
+[T02](../../designs/technical/T02-vis-engine.md) (T02-004, T02-005, T02-011 as amended, T02-021,
+§4.6),
+[T03](../../designs/technical/T03-browser-runtime.md) (T03-009, T03-013, T03-016 subset, §4.4),
 [T05](../../designs/technical/T05-testing-and-performance.md) (T05-002),
 [T08](../../designs/technical/T08-dom-component-kit.md) (T08-027),
 [T18](../../designs/technical/T18-security.md) (T18-004).
