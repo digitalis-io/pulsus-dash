@@ -11,8 +11,8 @@ Rules (docs/development/build-and-ci.md#ci-no-pulsusdb-host):
   and fixtures included. CI sets neither; no host name is stored in the repository or its secrets;
 - forbidden-host-in-path: the same entries in the file's relative path;
 - non-local-pulsusdb-url: a URL whose host contains "pulsusdb", or the value of a PulsusDB
-  datasource key (a URL, or a bare host with a dot or a port), whose host is not local. Text files
-  only; not symlinks; in repository mode not under URL_RULE_EXEMPT.
+  datasource key (a URL, or a bare host[:port] without a scheme), whose host is not local. Text
+  files only; not symlinks; in repository mode not under URL_RULE_EXEMPT.
 
 Output rule: no path, host, line text, argument or subprocess message is ever printed. A file is
 F<i>, its 1-based index in the sorted scanned list; --show-paths (refused when CI is set) prints
@@ -47,30 +47,66 @@ URL = (
     r"(?:\[[0-9A-Fa-f:.]+(?:%(?:25)?[0-9A-Za-z._~-]+)?\]|[^" + _DELIMS + r":@]+)"
     r"(?::[0-9]{1,5})?)"
 )
-# (c) A bare datasource value: a host with at least one dot or a port, no scheme, then a delimiter.
+# (c) A bare datasource value: a host without a scheme, [:port], then an optional path. It counts
+# when it is quoted, when it is the whole value up to the end of the line or a comment, or (after the
+# env and YAML keys only) when it has a dot or a port and is followed by a delimiter.
 _LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
-BARE = (
+_HOST = r"(?P<a>" + _LABEL + r"(?:\." + _LABEL + r")*\.?(?::[0-9]{1,5})?)"
+_PATH = r"(?:/[^\s\"'`]*)?"
+_END = r"(?=[ \t]*\r?$|[ \t]+(?:#|//))"
+BARE_QUOTED = r"(?P<q>[\"'`])" + _HOST + _PATH + r"(?P=q)"
+BARE_WHOLE = _HOST + _PATH + _END
+BARE_SHAPED = (
     r"(?P<a>" + _LABEL + r"(?:(?:\." + _LABEL + r")+\.?(?::[0-9]{1,5})?|:[0-9]{1,5}))"
     r"(?=[\s/\"'#,]|$)"
 )
+# Single words that are type names or common identifiers, never taken for a bare host.
+NOT_HOSTS = frozenset({
+    "string", "str", "text", "number", "int", "integer", "bool", "boolean", "url", "uri",
+    "null", "nil", "none", "undefined", "any", "unknown", "true", "false", "object",
+})
 URL_RE = re.compile(URL)
 _B1 = r"(?P<i>\s*)url\s*:\s*"
-B1_RES = (re.compile(_B1 + r"[\"']?" + URL), re.compile(_B1 + r"[\"']?" + BARE))
+_B1_BARE = r"(?P<i>[ \t]*)url[ \t]*:[ \t]*"
+B1_RES = (
+    (re.compile(_B1 + r"[\"']?" + URL), False),
+    (re.compile(_B1_BARE + BARE_QUOTED), True),
+    (re.compile(_B1_BARE + BARE_WHOLE), True),
+    (re.compile(_B1_BARE + BARE_SHAPED), True),
+)
 B1_PARENT_RE = re.compile(r"\s*datasource\s*:\s*")
 _B2 = r"(?<![A-Za-z0-9_.])datasource\.url\s*[:=]\s*"
 _B3 = r"(?<![A-Za-z0-9_])PULSUS_DASH_DATASOURCE_URL\s*[:=]\s*"
 _B4 = r"(?<![A-Za-z0-9_])(?:datasource_url|DatasourceURL)[\"']?\s*[:=]\s*"
+_B2_BARE = r"(?<![A-Za-z0-9_.])datasource\.url[ \t]*[:=][ \t]*"
+_B3_BARE = r"(?<![A-Za-z0-9_])PULSUS_DASH_DATASOURCE_URL[ \t]*[:=][ \t]*"
+_B4_BARE_QUOTED = r"(?<![A-Za-z0-9_])(?:datasource_url|DatasourceURL)[\"']?[ \t]*[:=][ \t]*"
+_B4_BARE_WHOLE = r"(?<![A-Za-z0-9_.])(?:datasource_url|DatasourceURL)[ \t]*[:=][ \t]*"
+# (rule, kind): "url" is a URL value; "bare" a bare value; "code" an unquoted bare value after a
+# dotted or code-style key, which is not a host if it has an upper-case letter (`d.URL`).
 KEY_RES = (
-    re.compile(_B2 + r"[\"']?" + URL),  # b2
-    re.compile(_B3 + r"[\"']?" + URL),  # b3
-    re.compile(_B4 + r"[\"']?" + URL),  # b4
-    # (c): bare values. The env key (b3) and the YAML key (b1) may be unquoted; the dotted and
-    # code-style keys (b2, b4) only quoted, so code such as `DatasourceURL: d.URL` is not a value.
-    re.compile(_B2 + r"[\"']" + BARE),
-    re.compile(_B3 + r"[\"']?" + BARE),
-    re.compile(_B4 + r"[\"']" + BARE),
+    (re.compile(_B2 + r"[\"']?" + URL), "url"),  # b2
+    (re.compile(_B3 + r"[\"']?" + URL), "url"),  # b3
+    (re.compile(_B4 + r"[\"']?" + URL), "url"),  # b4
+    (re.compile(_B2_BARE + BARE_QUOTED, re.M), "bare"),  # (c) after b2
+    (re.compile(_B2_BARE + BARE_WHOLE, re.M), "code"),
+    (re.compile(_B3_BARE + BARE_QUOTED, re.M), "bare"),  # (c) after b3
+    (re.compile(_B3_BARE + BARE_WHOLE, re.M), "bare"),
+    (re.compile(_B3_BARE + BARE_SHAPED, re.M), "bare"),
+    (re.compile(_B4_BARE_QUOTED + BARE_QUOTED, re.M), "bare"),  # (c) after b4
+    (re.compile(_B4_BARE_WHOLE + BARE_WHOLE, re.M), "code"),
 )
 
+
+def _bare_host(m: re.Match, kind: str) -> str | None:
+    """The host of a bare-value match, or None if the value is a type name or a code expression."""
+    token = m.group("a")
+    if kind == "code" and token != token.lower():
+        return None
+    h = url_host(token)
+    if ":" not in token and h in NOT_HOSTS:
+        return None
+    return h
 
 class UsageError(Exception):
     """Any argument problem; its message is never printed."""
@@ -154,15 +190,24 @@ def _url_findings(text: str) -> list[int]:
         h = url_host(m.group("a"))
         if "pulsusdb" in h and not is_local(h):
             starts.append(m.start())
-    for rx in KEY_RES:  # (b2)-(b4)
+    for rx, kind in KEY_RES:  # (b2)-(b4), and (c) after them
         for m in rx.finditer(text):
-            if not is_local(url_host(m.group("a"))):
+            h = url_host(m.group("a")) if kind == "url" else _bare_host(m, kind)
+            if h is not None and not is_local(h):
                 starts.append(m.start("a"))
     lines = text.split("\n")
     found = {text.count("\n", 0, s) + 1 for s in starts}
     for n, line in enumerate(lines):  # (b1), and (c) under b1
-        m = B1_RES[0].match(line) or B1_RES[1].match(line)
-        if m and not is_local(url_host(m.group("a"))):
+        m, h = None, None
+        for rx, bare in B1_RES:
+            m = rx.match(line)
+            if m:
+                h = _bare_host(m, "bare") if bare else url_host(m.group("a"))
+                if h is not None and not is_local(h):
+                    break
+        else:
+            m = None
+        if m:
             ind = len(m.group("i"))
             for prev in reversed(lines[:n]):
                 if not prev.strip() or prev.lstrip().startswith("#"):
