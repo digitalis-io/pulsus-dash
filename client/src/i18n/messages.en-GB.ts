@@ -55,6 +55,9 @@ export const messages = {
   'board.updatedAt': 'Updated at {time}',
   'board.remote':
     'This board was saved elsewhere (version {version}). Saving will ask which version to keep.',
+  'board.reloadFailed': 'Could not reload this board. Your changes are kept.',
+  'board.reloadGone':
+    'This board was deleted elsewhere. Your changes are kept here but cannot be saved.',
   'board.saveStatus': 'Save status',
   'board.saved': 'Saved',
   'board.saving': 'Saving',

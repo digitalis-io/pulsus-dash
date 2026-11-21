@@ -76,6 +76,9 @@ function firstPanelOf(spec: BoardSpec, fields: readonly FieldError[]): string | 
   return null;
 }
 
+/** Why a later read of a loaded board failed: it was deleted, or the read did not complete. */
+type ReloadError = 'gone' | 'failed';
+
 function PageTitle({ title }: { title: string }) {
   usePageTitle(title);
   return null;
@@ -104,7 +107,9 @@ export function BoardPage() {
       </p>
     );
   }
-  if (board.isError) {
+  // Only a first read that failed replaces the page; a failed later read keeps the editor and its
+  // draft mounted and shows a notice.
+  if (board.data === undefined) {
     return (
       <div className={cx(pages['page'])}>
         <PageTitle title={notFound ? t('board.notFound') : t('error.generic')} />
@@ -120,10 +125,29 @@ export function BoardPage() {
       </div>
     );
   }
-  return <BoardEditor key={`${tenant}/${uid}`} tenant={tenant} uid={uid} latest={board.data} />;
+  const reload: ReloadError | null = !board.isRefetchError ? null : notFound ? 'gone' : 'failed';
+  return (
+    <BoardEditor
+      key={`${tenant}/${uid}`}
+      tenant={tenant}
+      uid={uid}
+      latest={board.data}
+      reload={reload}
+    />
+  );
 }
 
-function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; latest: Board }) {
+function BoardEditor({
+  tenant,
+  uid,
+  latest,
+  reload,
+}: {
+  tenant: string;
+  uid: string;
+  latest: Board;
+  reload: ReloadError | null;
+}) {
   const api = useApi();
   const queryClient = useQueryClient();
   const time = useTimeContext();
@@ -132,8 +156,12 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
   const [s, dispatch] = useReducer(boardReducer, latest, initialState);
   const [gone, setGone] = useState(false);
   const [doneGuard, setDoneGuard] = useState(false);
+  // Discard's read of the head is in flight: Edit is read-only, as while saving, so no edit or
+  // save can be made that the read's response would then replace.
+  const [discarding, setDiscarding] = useState(false);
   const dirty = isDirty(s);
   const saving = s.save.status === 'saving';
+  const busy = saving || discarding;
   const edit = s.mode === 'edit';
 
   usePageTitle(edit ? t('board.editingTitle', { title: s.head.title }) : s.head.title);
@@ -182,7 +210,7 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
   }, [dirty]);
 
   const save = (etag: string = s.head.etag): void => {
-    if (saving) return;
+    if (busy) return;
     const draft = s.draft;
     const fields = checkBoardSpec(draft);
     if (fields.length > 0) {
@@ -217,6 +245,8 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
 
   /** Discard: read the head again, load it and leave Edit mode. */
   const discard = (): void => {
+    if (busy) return;
+    setDiscarding(true);
     queryClient
       .query({
         queryKey: ['board', tenant, uid],
@@ -226,10 +256,12 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
       .then(
         (b) => {
           seen.current = b;
+          setDiscarding(false);
           dispatch({ type: 'loaded', board: b });
           dispatch({ type: 'exitEdit' });
         },
         () => {
+          setDiscarding(false);
           dispatch({ type: 'saveFailed' });
         },
       );
@@ -241,9 +273,9 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
   };
 
   // Shift+E and ⌘S / Ctrl+S (T08-024), on the latest state.
-  const keys = useRef({ edit, done, save, busy: false });
+  const keys = useRef({ edit, done, save, busy: false, discarding: false });
   useEffect(() => {
-    keys.current = { edit, done, save, busy: saving || s.conflict !== null };
+    keys.current = { edit, done, save, busy: busy || s.conflict !== null, discarding };
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -253,7 +285,8 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
       e.preventDefault();
       if (action === 'save') {
         if (!k.busy) k.save();
-      } else if (k.edit) k.done();
+      } else if (k.discarding) return;
+      else if (k.edit) k.done();
       else dispatch({ type: 'enterEdit' });
     };
     window.addEventListener('keydown', onKeyDown);
@@ -281,7 +314,7 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
     panel: p,
     tenant,
     mode: s.mode,
-    readOnly: saving,
+    readOnly: busy,
     selected: edit && s.selected === p.id,
     onEdit: (id: string) => {
       dispatch({ type: 'enterEdit' });
@@ -306,7 +339,7 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
       <Suspense fallback={viewGrid(panels)}>
         <BoardGridEditor
           panels={panels}
-          readOnly={saving}
+          readOnly={busy}
           onLayout={(items) => {
             dispatch({ type: 'layout', grid: ref, items });
           }}
@@ -329,7 +362,7 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
         {edit ? (
           <BoardToolbar
             mode="edit"
-            saving={saving}
+            busy={busy}
             dirty={dirty}
             savesTime={s.draft.time !== undefined}
             onAdd={() => {
@@ -370,6 +403,11 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
       <p aria-live="polite" className={cx(styles['live'])} data-board-live="">
         {s.announce}
       </p>
+      {reload !== null && (
+        <p className={cx(styles['notice'])}>
+          {reload === 'gone' ? t('board.reloadGone') : t('board.reloadFailed')}
+        </p>
+      )}
       {s.remote !== null && (
         <p className={cx(styles['notice'])}>{t('board.remote', { version: s.remote.version })}</p>
       )}
@@ -395,7 +433,7 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
             panel={selected.panel}
             pointer={panelPointer(selected.grid, selected.index)}
             fields={s.save.status === 'invalid' ? s.save.fields : []}
-            readOnly={saving}
+            readOnly={busy}
             onChange={(patch) => {
               dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
             }}

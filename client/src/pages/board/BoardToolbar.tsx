@@ -50,7 +50,8 @@ export type BoardToolbarProps =
   | { mode: 'view'; onEdit: () => void; onPreloadEdit: () => void }
   | {
       mode: 'edit';
-      saving: boolean;
+      /** A save or Discard's reload is in flight: every edit control is disabled. */
+      busy: boolean;
       dirty: boolean;
       savesTime: boolean;
       onAdd: () => void;
@@ -77,23 +78,23 @@ export function BoardToolbar(props: BoardToolbarProps) {
       </div>
     );
   }
-  const { saving, dirty } = props;
+  const { busy, dirty } = props;
   return (
     <div role="group" aria-label={t('board.actions')} className={cx(styles['toolbar'])}>
-      <Button onPress={props.onAdd} isDisabled={saving}>
+      <Button onPress={props.onAdd} isDisabled={busy}>
         <Icon name="plus" />
         {t('board.addPanel')}
       </Button>
-      <Checkbox isSelected={props.savesTime} onChange={props.onSaveTime} isDisabled={saving}>
+      <Checkbox isSelected={props.savesTime} onChange={props.onSaveTime} isDisabled={busy}>
         {t('board.saveTime')}
       </Checkbox>
-      <Button onPress={props.onDiscard} isDisabled={saving || !dirty}>
+      <Button onPress={props.onDiscard} isDisabled={busy || !dirty}>
         {t('board.discard')}
       </Button>
-      <Button variant="primary" onPress={props.onSave} isDisabled={saving || !dirty}>
+      <Button variant="primary" onPress={props.onSave} isDisabled={busy || !dirty}>
         {t('board.save')}
       </Button>
-      <Button onPress={props.onDone} isDisabled={saving}>
+      <Button onPress={props.onDone} isDisabled={busy}>
         {t('board.done')}
       </Button>
     </div>
