@@ -8,9 +8,9 @@ use common::*;
 use dash_gpu::Tier;
 use dash_marks::MarkItem;
 use dash_marks::line::{Renderer, RendererOptions};
+use dash_scales::Range64;
 use dash_scales::column_ranges;
 use dash_scales::decimate::{DecimateInput, decimate};
-use dash_scales::Range64;
 use dash_wire::{Chunk, ChunkBuilder, ChunkId, SeriesMeta};
 use pulsus_synth::hash01;
 
@@ -27,12 +27,24 @@ fn data(seed: u32) -> Chunk {
         let vs: Vec<f64> = (0..len)
             .map(|k| {
                 let h = hash01(&[i64::from(seed), s as i64, i64::from(k)]);
-                if h < nan { f64::NAN } else { (h - 0.5) * 1e3 + s as f64 }
+                if h < nan {
+                    f64::NAN
+                } else {
+                    (h - 0.5) * 1e3 + s as f64
+                }
             })
             .collect();
-        let ts: Vec<f64> = (0..len).map(|k| f64::from(k) * 100.0 + 50.0 * hash01(&[7, i64::from(k)])).collect();
-        let meta = SeriesMeta { key_hash: s as u64, labels: Vec::new() };
-        ok(b.push_series(meta, explicit.then_some(&ts[..]), &vs), "series");
+        let ts: Vec<f64> = (0..len)
+            .map(|k| f64::from(k) * 100.0 + 50.0 * hash01(&[7, i64::from(k)]))
+            .collect();
+        let meta = SeriesMeta {
+            key_hash: s as u64,
+            labels: Vec::new(),
+        };
+        ok(
+            b.push_series(meta, explicit.then_some(&ts[..]), &vs),
+            "series",
+        );
     }
     b.finish()
 }
@@ -40,7 +52,11 @@ fn data(seed: u32) -> Chunk {
 #[test]
 fn compute_equals_cpu() {
     let ctx = ctx(Tier::T1);
-    let mut r = Renderer::new(&ctx, wgpu::TextureFormat::Rgba8Unorm, RendererOptions::default());
+    let mut r = Renderer::new(
+        &ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
     let mut overflow_columns = 0;
     for seed in 0..20u32 {
         let chunk = Arc::new(data(seed));
@@ -48,13 +64,30 @@ fn compute_equals_cpu() {
         let plot = [40.0, 8.0, f64::from(width), 400.0];
         let window = (0.0, 1_000_000.0);
         let (lo, hi) = chunk.finite.unwrap_or((0.0, 1.0));
-        let list = line_list(chunk.clone(), (f64::from(width) + 48.0, 440.0), 1.0, plot, window, Range64 { lo, hi }, false);
-        let Some(MarkItem::Line { encoding, colour_slots, n, far, .. }) = list.items.first() else {
+        let list = line_list(
+            chunk.clone(),
+            (f64::from(width) + 48.0, 440.0),
+            1.0,
+            plot,
+            window,
+            Range64 { lo, hi },
+            false,
+        );
+        let Some(MarkItem::Line {
+            encoding,
+            colour_slots,
+            n,
+            far,
+            ..
+        }) = list.items.first()
+        else {
             panic!("seed {seed}: no line item");
         };
         assert!(!far);
         let _ = render(&ctx, &mut r, &list);
-        let Some(gpu) = r.read_decimation(&ctx) else { panic!("seed {seed}: no read back") };
+        let Some(gpu) = r.read_decimation(&ctx) else {
+            panic!("seed {seed}: no read back")
+        };
         let bits: Vec<u32> = chunk.values.iter().map(|v| encoding.encode(*v)).collect();
         let ranges = column_ranges(&chunk, 0..64, window.0, window.1, *n);
         let lanes = vec![0u16; 64];
@@ -70,7 +103,11 @@ fn compute_equals_cpu() {
             far: None,
         });
         overflow_columns += cpu.cols.iter().filter(|c| c.n_runs >= 5).count();
-        assert_eq!(bytemuck::cast_slice::<_, u8>(&gpu.cols), bytemuck::cast_slice::<_, u8>(&cpu.cols), "seed {seed}: cols");
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&gpu.cols),
+            bytemuck::cast_slice::<_, u8>(&cpu.cols),
+            "seed {seed}: cols"
+        );
         assert_eq!(gpu.counts, cpu.counts, "seed {seed}: counts");
         assert_eq!(gpu.starts, cpu.starts, "seed {seed}: starts");
         assert_eq!(gpu.total, cpu.total, "seed {seed}: total");

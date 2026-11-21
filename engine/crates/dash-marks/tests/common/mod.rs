@@ -29,10 +29,17 @@ pub const WHITE: Rgba8 = Rgba8([255, 255, 255, 255]);
 pub const BLACK: Rgba8 = Rgba8([0, 0, 0, 255]);
 
 pub fn device_size(css: (f64, f64), dpr: f32) -> (u32, u32) {
-    ((css.0 * f64::from(dpr)).round() as u32, (css.1 * f64::from(dpr)).round() as u32)
+    (
+        (css.0 * f64::from(dpr)).round() as u32,
+        (css.1 * f64::from(dpr)).round() as u32,
+    )
 }
 
-pub fn render(ctx: &GpuContext, r: &mut Renderer, list: &DrawList) -> (Vec<u8>, Option<DrawnEvent>) {
+pub fn render(
+    ctx: &GpuContext,
+    r: &mut Renderer,
+    list: &DrawList,
+) -> (Vec<u8>, Option<DrawnEvent>) {
     let (w, h) = device_size(list.css, list.dpr);
     let mut t = HeadlessTarget::new(ctx, w, h);
     let ev = r.render(ctx, list, &mut t);
@@ -54,7 +61,11 @@ pub fn line_list(
     axis: Range64,
     clip: bool,
 ) -> DrawList {
-    let enc = choose_encoding(chunk.finite.map(Range64::from), axis, plot[3] * f64::from(dpr));
+    let enc = choose_encoding(
+        chunk.finite.map(Range64::from),
+        axis,
+        plot[3] * f64::from(dpr),
+    );
     let mut items = Vec::new();
     if let Some(enc) = enc {
         let m = axis_map(&enc, axis, plot[3]);
@@ -73,7 +84,10 @@ pub fn line_list(
             chunk,
         });
     }
-    let cam = Camera::Plot2D(PlotCamera { x: Range64::from(window), y: YRange::Manual(axis) });
+    let cam = Camera::Plot2D(PlotCamera {
+        x: Range64::from(window),
+        y: YRange::Manual(axis),
+    });
     DrawList {
         clear: BLACK,
         css,

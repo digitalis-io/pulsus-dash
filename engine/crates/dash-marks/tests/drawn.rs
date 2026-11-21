@@ -18,7 +18,10 @@ fn drawn_only_for_complete_frames() {
     let mut v = Viewport {
         id: 0,
         frame_id: None,
-        css: Size64 { w: 1118.0, h: 240.0 },
+        css: Size64 {
+            w: 1118.0,
+            h: 240.0,
+        },
         dpr: 2.0,
         theme: Theme::Dark,
         camera: Camera::Plot2D(PlotCamera::idle(Range64::from(GALLERY_WINDOW), &spec)),
@@ -26,9 +29,20 @@ fn drawn_only_for_complete_frames() {
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
     };
-    let mut r = Renderer::new(&ctx, wgpu::TextureFormat::Rgba8Unorm, RendererOptions::default());
+    let mut r = Renderer::new(
+        &ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
     let (a, ev) = render(&ctx, &mut r, &build(&v).0);
-    assert_eq!(ev, Some(DrawnEvent { css_width: 1118.0, css_height: 240.0, dpr: 2.0 }));
+    assert_eq!(
+        ev,
+        Some(DrawnEvent {
+            css_width: 1118.0,
+            css_height: 240.0,
+            dpr: 2.0
+        })
+    );
     v.frame_id = Some("panel-7".into());
     let (b, ev2) = render(&ctx, &mut r, &build(&v).0);
     assert_eq!(ev2, ev);
