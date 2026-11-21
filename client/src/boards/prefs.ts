@@ -66,9 +66,15 @@ export interface BoardPrefs {
   recordView(tenant: string, uid: string): void;
   /** After a star change settled (success or failure): invalidate ['starred'] here, post to other tabs. */
   starredChanged(): Promise<void>;
-  /** Opens the channel (if any) and returns its close; idempotent per call pair (StrictMode safe). */
+  /**
+   * (Re)activates the prefs after a `dispose()`, opens the channel (if any) and returns its close;
+   * idempotent per call pair, so a StrictMode setup, cleanup, setup replay leaves them working.
+   */
   connect(): () => void;
-  /** Clears the reconciliation timer and closes any channel (Providers' unmount). */
+  /**
+   * Clears the reconciliation timer, closes any channel and stops the invalidations until the next
+   * `connect()` (Providers' effect cleanup).
+   */
   dispose(): void;
 }
 
@@ -148,7 +154,8 @@ export function createBoardPrefs(
     },
 
     connect() {
-      const ch = disposed ? null : open();
+      disposed = false;
+      const ch = open();
       if (ch === null) return () => undefined;
       channel = ch;
       ch.onMessage((m) => {

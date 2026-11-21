@@ -421,7 +421,8 @@ reproduces variables, filters and overrides, and refuses a hand-made link over 4
 
 **Starred and Recent** (`src/boards/prefs.ts`, `SidebarBoards.tsx`, `StarToggle.tsx`; IA-021).
 `Providers` creates one `BoardPrefs` per app (`createBoardPrefs(api, queryClient)`), connects its
-channel in an effect and disposes it on unmount; `useBoardPrefs()` reads it.
+channel in an effect whose cleanup closes and disposes it; a later `connect()` reactivates it, so
+the StrictMode replay (setup, cleanup, setup) leaves it working. `useBoardPrefs()` reads it.
 
 - **Views.** The board page calls `recordView(tenant, uid)` once per opening. Each view is stamped
   `at = max(floor(now), last + 1)`, strictly increasing within the app even if the clock steps

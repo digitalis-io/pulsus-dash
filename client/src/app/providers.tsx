@@ -67,13 +67,14 @@ export function useBoardPrefs(): BoardPrefs {
 export function Providers({ deps, children }: { deps: RouterDeps; children: ReactNode }) {
   const [focus] = useState(createShellFocusRequest);
   const [prefs] = useState(() => createBoardPrefs(deps.api, deps.queryClient));
-  useEffect(() => prefs.connect(), [prefs]);
-  useEffect(
-    () => () => {
+  // One effect, so a StrictMode replay (setup, cleanup, setup) reconnects what it disposed.
+  useEffect(() => {
+    const close = prefs.connect();
+    return () => {
+      close();
       prefs.dispose();
-    },
-    [prefs],
-  );
+    };
+  }, [prefs]);
   return (
     <I18nProvider locale="en-GB">
       <QueryClientProvider client={deps.queryClient}>
