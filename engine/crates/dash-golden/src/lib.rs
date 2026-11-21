@@ -58,7 +58,11 @@ impl Image {
         })
     }
 
+    /// Writes an 8-bit RGBA PNG, creating the parent directory.
     pub fn write_png(&self, path: &Path) -> Result<(), String> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
         let file = std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut enc = png::Encoder::new(std::io::BufWriter::new(file), self.w, self.h);
         enc.set_color(png::ColorType::Rgba);
