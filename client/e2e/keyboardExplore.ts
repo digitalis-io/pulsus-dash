@@ -62,6 +62,12 @@ export async function exploreLoops(s: Script): Promise<void> {
       for (let k = 0; k <= i; k++) await press('ArrowDown');
       await press('Enter');
     }
+    // Tab from the open list releases the inert page and moves on to Run (C.11.1).
+    await s.focus('combobox "Metric"');
+    await press('Tab');
+    await expect(page.getByRole('button', { name: 'Run' })).toBeFocused();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    await expect(page.locator('[inert]')).toHaveCount(0);
 
     await s.goto('/t/demo/explore/metrics');
   });

@@ -8,7 +8,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { fakeRequests, sec } from './fake.ts';
-import { open, searchOf, timeTrigger, waitReady } from './helpers.ts';
+import { EXPLORE_RESULT, open, searchOf, timeTrigger, waitReady } from './helpers.ts';
 
 const W0 = Date.UTC(2026, 0, 1);
 const HOUR = 3_600_000;
@@ -260,5 +260,88 @@ test.describe('e2e:lazy-load explore', () => {
     await expect(editor(page)).toBeVisible();
     expect(editorUrls.length).toBeGreaterThanOrEqual(1);
     expect(new Set(editorUrls).size).toBe(editorUrls.length);
+  });
+});
+
+test.describe('e2e:explore-picker-inert', () => {
+  test('the page is inert while the metric list is open', async ({ page }) => {
+    const ranges: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('query_range')) ranges.push(r.url());
+    });
+    await open(page, EXPLORE_RESULT);
+    await expect(page.getByRole('table').getByRole('row')).toHaveCount(4);
+    const run = page.getByRole('button', { name: 'Run' });
+    await expect(run).toBeEnabled();
+    const inert = page.locator('[inert]');
+    await expect(inert).toHaveCount(0);
+    const picker = page.getByRole('combobox', { name: 'Metric' });
+    const list = page.getByRole('listbox');
+    const underInert = (l: typeof run) => l.evaluate((e) => e.closest('[inert]') !== null);
+
+    // P1: open on focus; everything else is inert.
+    await picker.focus();
+    await expect(list).toBeVisible();
+    await expect.poll(() => inert.count()).toBeGreaterThanOrEqual(1);
+    expect(await underInert(run)).toBe(true);
+    expect(await underInert(picker)).toBe(false);
+    expect(await underInert(list)).toBe(false);
+
+    // P2: Tab releases and moves on to Run.
+    await page.keyboard.press('Tab');
+    await expect(run).toBeFocused();
+    await expect(list).toHaveCount(0);
+    await expect(inert).toHaveCount(0);
+
+    // P3: Shift+Tab releases and moves back.
+    await picker.focus();
+    await expect(list).toBeVisible();
+    await page.keyboard.press('Shift+Tab');
+    await expect(list).toHaveCount(0);
+    await expect(inert).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () =>
+          document.activeElement !== document.body &&
+          document.activeElement?.closest('[inert]') === null,
+      ),
+    ).toBe(true);
+
+    // P4: Escape closes; focus stays on the picker.
+    await picker.focus();
+    await expect(list).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeFocused();
+    await expect(inert).toHaveCount(0);
+
+    // P5: a press on the inert Run only closes the list; a second press runs.
+    await picker.evaluate((e) => {
+      (e as HTMLElement).blur();
+    });
+    await picker.focus();
+    await expect(list).toBeVisible();
+    const b = await run.boundingBox();
+    if (b === null) throw new Error('no Run box');
+    const press = async () => {
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down();
+      await page.mouse.up();
+    };
+    const before = ranges.length;
+    await press();
+    await expect(list).toHaveCount(0);
+    await expect(inert).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(ranges.length).toBe(before);
+    await press();
+    await expect.poll(() => ranges.length).toBe(before + 1);
+
+    // P6: picking a name releases before the editor takes the focus.
+    await picker.focus();
+    await expect(list).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('textbox', { name: 'PromQL query' })).toBeFocused();
+    await expect(inert).toHaveCount(0);
   });
 });

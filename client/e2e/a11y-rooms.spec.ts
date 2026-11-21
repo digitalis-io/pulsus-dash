@@ -246,6 +246,7 @@ test.describe('e2e:a11y-rooms explore', () => {
     await exploreResult(page);
     await page.getByRole('combobox', { name: 'Metric' }).focus();
     await page.getByRole('listbox').waitFor();
+    await expect.poll(() => page.locator('[inert]').count()).toBeGreaterThanOrEqual(1);
     expect(await seriousViolations(page)).toEqual([]);
   });
 

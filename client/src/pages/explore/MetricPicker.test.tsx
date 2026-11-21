@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -45,5 +45,66 @@ describe('MetricPicker', () => {
     await user.click(screen.getByRole('combobox', { name: 'Metric' }));
     await user.keyboard('zzz');
     expect(await screen.findByText('No metric matches')).toBeVisible();
+  });
+
+  it('MetricPicker inert: the page is inert while the list is open', async () => {
+    const names = vi.fn(() => Promise.resolve(['a_metric', 'b_metric', 'c_metric']));
+    const seen: (Element | null)[] = [];
+    const onPick = vi.fn(() => {
+      seen.push(document.querySelector('[inert]'));
+    });
+    const { unmount } = render(
+      wrap(
+        <>
+          <button type="button">Outside</button>
+          <MetricPicker tenant="demo" names={names} meta={{}} onPick={onPick} />
+        </>,
+      ),
+    );
+    const user = userEvent.setup();
+    const box = screen.getByRole('combobox', { name: 'Metric' });
+    const outside = screen.getByText('Outside');
+    const anyInert = () => document.querySelector('[inert]');
+
+    await user.click(box);
+    await screen.findByRole('listbox');
+    await waitFor(() => {
+      expect(outside).toHaveAttribute('inert');
+    });
+    expect(box.closest('[inert]')).toBeNull();
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(anyInert()).toBeNull();
+    });
+
+    await user.click(document.body);
+    await user.click(box);
+    await screen.findByRole('option', { name: 'a_metric' });
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([null]);
+    await waitFor(() => {
+      expect(anyInert()).toBeNull();
+    });
+
+    await user.click(document.body);
+    await user.click(box);
+    await screen.findByRole('listbox');
+    await waitFor(() => {
+      expect(anyInert()).not.toBeNull();
+    });
+    await user.keyboard('{Tab}');
+    expect(anyInert()).toBeNull();
+
+    await user.click(document.body);
+    await user.click(box);
+    await screen.findByRole('listbox');
+    await waitFor(() => {
+      expect(anyInert()).not.toBeNull();
+    });
+    act(() => {
+      unmount();
+    });
+    expect(anyInert()).toBeNull();
   });
 });
