@@ -211,7 +211,9 @@ func TestRoutesAndParameters(t *testing.T) {
 	}
 }
 
-// failing is an upstream that resets the first n connections before headers, then answers.
+// failing is an upstream that resets the first n connections before headers, then answers. A
+// request leaves inFlight just before its reset or answer becomes visible to the client: a deferred
+// decrement could run after the client has already sent its retry, and count one request twice.
 type failing struct {
 	n         atomic.Int32
 	inFlight  atomic.Int32
@@ -222,7 +224,6 @@ type failing struct {
 
 func (f *failing) handler(w http.ResponseWriter, r *http.Request) {
 	cur := f.inFlight.Add(1)
-	defer f.inFlight.Add(-1)
 	for {
 		m := f.maxFlight.Load()
 		if cur <= m || f.maxFlight.CompareAndSwap(m, cur) {
@@ -231,6 +232,7 @@ func (f *failing) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if f.n.Add(-1) >= 0 {
 		conn, _, err := http.NewResponseController(w).Hijack()
+		f.inFlight.Add(-1)
 		if err == nil {
 			_ = conn.(*net.TCPConn).SetLinger(0)
 			_ = conn.Close()
@@ -241,6 +243,7 @@ func (f *failing) handler(w http.ResponseWriter, r *http.Request) {
 	if status == 0 {
 		status, body = 200, okEmpty
 	}
+	f.inFlight.Add(-1) // before the first byte of the answer is written
 	answer(status, body)(w, r)
 }
 
