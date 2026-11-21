@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/spec"
@@ -665,32 +664,19 @@ func TestRecentEqualTimestampsConcurrent(t *testing.T) {
 			}
 
 			for _, order := range [][2]string{{"A", "B"}, {"B", "A"}, {"A", "B"}} {
-				holder, err := pgx.Connect(ctx, e.db.SuperURL)
-				if err != nil {
-					t.Fatal(err)
-				}
-				tx, err := holder.Begin(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1::uuid::text || ':' || $2::uuid::text))",
-					uuid.UUID(e.org), core.LocalPrincipalID); err != nil {
-					t.Fatal(err)
-				}
+				release := storetest.InTx(t, e.db.SuperURL, "SELECT pg_advisory_xact_lock(hashtext($1::uuid::text || ':' || $2::uuid::text))",
+					uuid.UUID(e.org), core.LocalPrincipalID)
 				errs := make(chan error, 2)
 				for i, name := range order {
 					go func() { errs <- e.svc.RecordView(ctx, rc, uids[name], &ts) }()
 					waitLockWaiters(t, e, int64(i+1))
 				}
-				if err := tx.Commit(ctx); err != nil {
-					t.Fatal(err)
-				}
+				release()
 				for range 2 {
 					if err := <-errs; err != nil {
 						t.Fatal(err)
 					}
 				}
-				_ = holder.Close(ctx)
 				if got, want := recentNames(t, e, ctx, rc), order[1]+","+order[0]; got != want {
 					t.Errorf("%s then %s queued on the lock: %s, want %s", order[0], order[1], got, want)
 				}
