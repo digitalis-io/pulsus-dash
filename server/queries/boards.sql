@@ -66,8 +66,16 @@ WHERE s.org_id = $1 AND s.user_id = $2 AND s.kind = 'board' AND b.deleted_at IS 
 SELECT pg_advisory_xact_lock(hashtext(sqlc.arg(org_id)::uuid::text || ':' || sqlc.arg(user_id)::uuid::text));
 
 -- name: UpsertRecent :exec
-INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at) VALUES ($1, $2, 'board', $3, now())
-ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = excluded.viewed_at;
+-- viewed_at is the client's navigation time clamped to [now() - 1 day, now() + 5 minutes], or now();
+-- the greater time wins, so a view that commits late never moves a board above a later view.
+-- Tie: if another of the user's rows is in [v, v + 1 ms), v becomes its max + 1 µs, so the later
+-- write (the later holder of the per-user advisory lock) sorts first.
+WITH c AS (SELECT LEAST(GREATEST(COALESCE(sqlc.narg(at)::timestamptz, now()), now() - interval '1 day'), now() + interval '5 minutes') AS v)
+INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at)
+SELECT sqlc.arg(org_id), sqlc.arg(user_id), 'board', sqlc.arg(id), GREATEST(c.v, (SELECT max(r.viewed_at) + interval '1 microsecond'
+  FROM recent_views r WHERE r.org_id = sqlc.arg(org_id) AND r.user_id = sqlc.arg(user_id) AND r.kind = 'board'
+  AND r.id <> sqlc.arg(id) AND r.viewed_at >= c.v AND r.viewed_at < c.v + interval '1 millisecond')) FROM c
+ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = GREATEST(recent_views.viewed_at, excluded.viewed_at);
 
 -- name: TrimRecent :exec
 DELETE FROM recent_views d WHERE d.org_id = $1 AND d.user_id = $2 AND d.kind = 'board' AND d.id NOT IN (

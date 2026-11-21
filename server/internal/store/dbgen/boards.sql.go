@@ -488,17 +488,31 @@ func (q *Queries) UpsertAuditChainHead(ctx context.Context, arg UpsertAuditChain
 }
 
 const upsertRecent = `-- name: UpsertRecent :exec
-INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at) VALUES ($1, $2, 'board', $3, now())
-ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = excluded.viewed_at
+WITH c AS (SELECT LEAST(GREATEST(COALESCE($4::timestamptz, now()), now() - interval '1 day'), now() + interval '5 minutes') AS v)
+INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at)
+SELECT $1, $2, 'board', $3, GREATEST(c.v, (SELECT max(r.viewed_at) + interval '1 microsecond'
+  FROM recent_views r WHERE r.org_id = $1 AND r.user_id = $2 AND r.kind = 'board'
+  AND r.id <> $3 AND r.viewed_at >= c.v AND r.viewed_at < c.v + interval '1 millisecond')) FROM c
+ON CONFLICT (org_id, user_id, kind, id) DO UPDATE SET viewed_at = GREATEST(recent_views.viewed_at, excluded.viewed_at)
 `
 
 type UpsertRecentParams struct {
 	OrgID  pgtype.UUID
 	UserID pgtype.UUID
 	ID     pgtype.UUID
+	At     pgtype.Timestamptz
 }
 
+// viewed_at is the client's navigation time clamped to [now() - 1 day, now() + 5 minutes], or now();
+// the greater time wins, so a view that commits late never moves a board above a later view.
+// Tie: if another of the user's rows is in [v, v + 1 ms), v becomes its max + 1 µs, so the later
+// write (the later holder of the per-user advisory lock) sorts first.
 func (q *Queries) UpsertRecent(ctx context.Context, arg UpsertRecentParams) error {
-	_, err := q.db.Exec(ctx, upsertRecent, arg.OrgID, arg.UserID, arg.ID)
+	_, err := q.db.Exec(ctx, upsertRecent,
+		arg.OrgID,
+		arg.UserID,
+		arg.ID,
+		arg.At,
+	)
 	return err
 }

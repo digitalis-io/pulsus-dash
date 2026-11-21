@@ -201,15 +201,21 @@ func (t *OrgTx) ListStarred(ctx context.Context, user uuid.UUID) ([]core.BoardRe
 	return refs("list starred", uids, titles, err)
 }
 
-// RecordView records that user viewed the board now and keeps the user's 200 most recent views
-// (T11 §4.3). A transaction-scoped advisory lock on (org, user) serialises concurrent views, so
-// that each trim sees the other's insert and the limit holds.
+// RecordView records that user viewed the board at `at` (the client's navigation time, clamped to
+// now() − 1 day … now() + 5 min; nil: now()), keeping the greater of the stored and the new time,
+// and keeps the user's 200 most recent views (T11 §4.3, plan #61 Part C §3.9). A
+// transaction-scoped advisory lock on (org, user) serialises concurrent views, so that each trim
+// sees the other's insert and the limit holds, and a view whose time equals another's sorts after
+// the write it follows.
 func (t *OrgTx) RecordView(ctx context.Context, user, board uuid.UUID, at *time.Time) error {
-	_ = at
 	if err := t.q.RecentLock(ctx, dbgen.RecentLockParams{OrgID: pgUUID(t.org), UserID: pgUUID(user)}); err != nil {
 		return fmt.Errorf("store: recent lock: %w", err)
 	}
-	if err := t.q.UpsertRecent(ctx, dbgen.UpsertRecentParams{OrgID: pgUUID(t.org), UserID: pgUUID(user), ID: pgUUID(board)}); err != nil {
+	var stamp pgtype.Timestamptz
+	if at != nil {
+		stamp = pgtype.Timestamptz{Time: *at, Valid: true}
+	}
+	if err := t.q.UpsertRecent(ctx, dbgen.UpsertRecentParams{OrgID: pgUUID(t.org), UserID: pgUUID(user), ID: pgUUID(board), At: stamp}); err != nil {
 		return fmt.Errorf("store: record view: %w", err)
 	}
 	if err := t.q.TrimRecent(ctx, dbgen.TrimRecentParams{OrgID: pgUUID(t.org), UserID: pgUUID(user)}); err != nil {

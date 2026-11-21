@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
@@ -32,8 +33,10 @@ const (
 	msgTooNew         = "board saved by a newer server version"
 	msgInvalidBoard   = "invalid board"
 	msgInvalidRequest = "invalid request"
-	msgIfMatchNeeded  = "If-Match is required"
-	msgIfMatchBad     = "If-Match must be an ETag from this API"
+	// maxViewAtMs is 9999-12-31T23:59:59.999Z, the largest `at` of PUT /me/recent-boards/{uid}.
+	maxViewAtMs      = 253402300799999
+	msgIfMatchNeeded = "If-Match is required"
+	msgIfMatchBad    = "If-Match must be an ETag from this API"
 )
 
 // boards implements the board, starred and recent routes over Deps.Boards.
@@ -368,6 +371,8 @@ func (b *boards) ListRecentBoards(ctx context.Context, req api.ListRecentBoardsR
 	return api.ListRecentBoards200JSONResponse(toAPIRefs(refs)), nil
 }
 
+// RecordBoardView records a view, at the client's navigation time `at` when given (0 …
+// 253402300799999 ms; else 400 invalid before any store call).
 func (b *boards) RecordBoardView(ctx context.Context, req api.RecordBoardViewRequestObject) (api.RecordBoardViewResponseObject, error) {
 	if !b.available() {
 		return errUnavailable, nil
@@ -375,7 +380,17 @@ func (b *boards) RecordBoardView(ctx context.Context, req api.RecordBoardViewReq
 	if !uidPattern.MatchString(req.Uid) {
 		return errNotFound, nil
 	}
-	if err := b.deps.Boards.RecordView(ctx, rcFrom(ctx), req.Uid, nil); err != nil {
+	// `at`: the client's navigation time in ms since the Unix epoch (plan #61 Part C §3.9).
+	var at *time.Time
+	if req.Params.At != nil {
+		ms := *req.Params.At
+		if ms < 0 || ms > maxViewAtMs {
+			return envelope(http.StatusBadRequest, api.Invalid, msgInvalidRequest), nil
+		}
+		t := time.UnixMilli(ms).UTC()
+		at = &t
+	}
+	if err := b.deps.Boards.RecordView(ctx, rcFrom(ctx), req.Uid, at); err != nil {
 		return b.fail(ctx, "record_view", err, nil), nil
 	}
 	return api.RecordBoardView204Response{}, nil
