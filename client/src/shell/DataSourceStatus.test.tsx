@@ -6,16 +6,35 @@ import { renderApp } from '../test/renderApp';
 import { seedWith } from '../test/seeds';
 import { SIDEBAR_KEY } from './sidebarState';
 
-/** A StubApi whose data-source check resolves (or rejects) when the test says so. */
+/**
+ * A StubApi whose data-source check resolves (or rejects) when the test says so. `resolve` and
+ * `reject` first wait until the shell has called `checkDataSource`: the line shows "Not checked"
+ * before the query starts, so settling earlier would be lost on a slow runner.
+ */
 class ControlledApi extends StubApi {
-  resolve: (s: DataSourceStatus) => void = () => undefined;
-  reject: (e: unknown) => void = () => undefined;
+  private settle: ((s: DataSourceStatus) => void) | undefined;
+  private fail: ((e: unknown) => void) | undefined;
+  private markCalled: () => void = () => undefined;
+  private readonly called = new Promise<void>((resolve) => {
+    this.markCalled = resolve;
+  });
 
   override checkDataSource(): Promise<DataSourceStatus> {
     return new Promise((resolve, reject) => {
-      this.resolve = resolve;
-      this.reject = reject;
+      this.settle = resolve;
+      this.fail = reject;
+      this.markCalled();
     });
+  }
+
+  async resolve(s: DataSourceStatus): Promise<void> {
+    await this.called;
+    this.settle?.(s);
+  }
+
+  async reject(e: unknown): Promise<void> {
+    await this.called;
+    this.fail?.(e);
   }
 }
 
@@ -30,7 +49,7 @@ describe('data-source status line (IA-021, plan #62 §4.6)', () => {
     renderApp('/t/demo/boards', { api });
     const aside = await sidebar();
     expect(within(aside).getByText('Data source: demo · Not checked')).toBeInTheDocument();
-    api.resolve({ state: 'ok', checkedAtMs: 1 });
+    await api.resolve({ state: 'ok', checkedAtMs: 1 });
     expect(await within(aside).findByText('Data source: demo · Connected')).toBeInTheDocument();
   });
 
@@ -47,7 +66,7 @@ describe('data-source status line (IA-021, plan #62 §4.6)', () => {
       renderApp('/t/demo/boards', { api });
       const aside = await sidebar();
       await within(aside).findByText('Data source: demo · Not checked');
-      api.resolve({ state, checkedAtMs: 1 });
+      await api.resolve({ state, checkedAtMs: 1 });
       expect(await within(aside).findByText(`Data source: demo · ${text}`)).toBeInTheDocument();
     });
   }
@@ -56,7 +75,7 @@ describe('data-source status line (IA-021, plan #62 §4.6)', () => {
     const api = new ControlledApi(seedWith());
     renderApp('/t/demo/boards', { api });
     const aside = await sidebar();
-    api.reject(new ApiError('network', 'down'));
+    await api.reject(new ApiError('network', 'down'));
     await new Promise((r) => setTimeout(r, 50));
     expect(within(aside).getByText('Data source: demo · Not checked')).toBeInTheDocument();
   });
