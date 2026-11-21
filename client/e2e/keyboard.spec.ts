@@ -579,7 +579,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       }
     });
 
-    // L23–L28 (plan #61 Part B): the board list and the board page.
+    // L23–L31 (plan #61 Parts B and C): the board list and the board page.
     await boardLoops(s);
 
     await test.step('Coverage', () => {

@@ -410,7 +410,7 @@ export async function boardLoops(s: Script): Promise<void> {
     await s.on('button "Edit board"');
     await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
     await s.on('button "Add section"');
-    await expect(page.getByRole('button', { name: 'Untitled section' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Untitled section', exact: true })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Section 2 title' })).toBeVisible();
     await s.replaceText('textbox "Section 2 title"', 'Keyboard section');
     await expect(page.getByRole('button', { name: 'Keyboard section', exact: true })).toBeVisible();
