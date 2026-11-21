@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { emptyFrameData, validateFrameData } from '../data/frames';
 import type {
@@ -35,11 +36,20 @@ import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
 import { crosshairText, issueText, summaryLabel, valueUnit } from './chartText';
 
+export interface FrameSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface ChartFrameProps {
   readonly spec: VisSpec;
   readonly data: FrameData;
   /** Fill the parent's height (board panels, full screen) instead of the fixed chart height. */
   readonly fill?: boolean;
+  /** Shown over the frame until the engine has drawn it at its current size (#90). */
+  readonly pending?: ReactNode;
+  /** The host's last non-empty observed size, kept by the caller across unmounts (#90). */
+  readonly sizeMemo?: { current: FrameSize | null };
 }
 
 interface HoverState {

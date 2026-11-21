@@ -110,3 +110,9 @@ export function PanelEditor({
     </aside>
   );
 }
+
+/** After the dialog closes: the panel's Panel menu button, else the toolbar's Add panel. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub until the implementation
+export function focusAfterEditor(root: ParentNode, panelId: string): void {
+  // Stub (#90, tests first).
+}

@@ -82,6 +82,8 @@ export const STUB_FAIL_SIGN_OUT_KEY = 'pulsus-dash.stub.failSignOut';
 export const STUB_FAIL_SAVE_KEY = 'pulsus-dash.stub.failSave';
 export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
 export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
+export const STUB_PANEL_DELAY_KEY = 'pulsus-dash.stub.panelDelayMs';
+export const STUB_FAIL_PANEL_DATA_KEY = 'pulsus-dash.stub.failPanelData';
 
 /** Consumes one failure from a test-hook counter; true when the call should fail. */
 function failOnce(key: string): boolean {
