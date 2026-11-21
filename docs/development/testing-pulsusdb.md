@@ -150,7 +150,9 @@ reference's entries at `T` in both directions (for up to 6 tie groups); property
 limited answer (`limit` 1, 7 and 50, both directions) holds exactly the reference's entries before
 its last timestamp; that LogQL errors are 400 `text/plain` with `at byte N`, and `limit=5001` is 400;
 and that `LogQueryRange` with `limit` 5 000 and with `limit` 3 gives the same entries, every page
-in page order. It logs, without asserting, whether `resultType` precedes `result`, and whether a
+in page order. Its raw requests send `categorize-labels`, as page requests do; the `categorised`
+case asserts that PulsusDB answers with `data.encodingFlags` naming it and an object third element
+on every entry, and that the same request without the flag gets the plain shape. It logs, without asserting, whether `resultType` precedes `result`, and whether a
 GET with a query over 8 KiB is accepted; the client's POST fallback for such a query must succeed.
 
 ### Probe evidence
@@ -172,6 +174,7 @@ with the `captured`, `pulsusdb`, `method` and `sanitised` header, and run the `l
 | `unit:log-paging`, `unit:log-window`, `unit:log-decode` | `internal/pulsusdb/logpage_test.go` |
 | `unit:log-member-order` | `internal/pulsusdb/memberorder_test.go`, `updec_test.go` |
 | `unit:log-level`, `unit:logql-calls`, `unit:volume-compose`, `unit:volume-buffered` | `internal/pulsusdb/logql_test.go` |
+| `unit:log-categorized`, `unit:log-level` (entry level) | `internal/pulsusdb/categorized_test.go` |
 | `unit:text-errors` | `internal/pulsusdb/errors_test.go` |
 | `unit:query-hash` | `internal/keyhash/keyhash_test.go` |
 | `unit:contract-window` | `internal/pulsusdb/contract_window_test.go` |

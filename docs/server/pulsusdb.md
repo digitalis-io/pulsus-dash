@@ -410,7 +410,8 @@ strictly before its last timestamp. The pager builds on these only:
   The main request asks for `limit + 1` entries (at most 5 000), so a page never exceeds `limit` and
   a group is never split unless it alone exceeds `limit`.
 - **Group fetch.** A group that fills a response is read whole on the one-nanosecond window
-  `(T − 1, T]` with `limit` 5 000, sorted by stream key then line bytes, and sub-paged by offset.
+  `(T − 1, T]` with `limit` 5 000, sorted by stream key, then line bytes, then structured metadata,
+  then parsed fields, and sub-paged by offset.
 - **Cursor.** A page ends with `Next` = `(ts, skip)`: every entry beyond `ts` in direction order has
   been delivered, and so have the first `skip` entries of the group at `ts`. Nothing depends on the
   order or subset in which PulsusDB returns equal timestamps.
@@ -435,11 +436,28 @@ so another body format can feed it unchanged.
 
 ### Streams and levels
 
-Each stream object of a response may list `stream` and `values` in either order. A value is
-`[ts, line]` or `[ts, line, <any>]` (the third element is skipped). `ts` must be a decimal string
-without a leading zero that fits in int64; lines and labels are redacted, labels cut at 4 096 bytes.
-Stream objects with the same label set are merged. A page lists only the streams it delivers, by
-key ascending, and each carries its level (T04 §4.3 `log_lines/1`):
+Every page request (the main fetch, a re-issue and a group fetch) sends
+`X-Loki-Response-Encoding-Flags: categorize-labels`, as the clients PulsusDB has been tested with
+do (owner decision, 2026-11-21; a deviation from the #65 Part A plan, which skipped the third
+element and left structured metadata out of scope). PulsusDB then answers in the categorised shape:
+`data.encodingFlags` lists `categorize-labels`, `stream` holds the indexed stream labels only, and
+each value is `[ts, line, {"structuredMetadata": {…}, "parsed": {…}}]`. Streams are therefore not
+split by metadata or parsed values; `detected_level`, for example, arrives as structured metadata.
+No other call sends the flag; the volume matrix is the same with or without it.
+
+The plain shape is still accepted. Each stream object may list `stream` and `values` in either
+order. A value is `[ts, line]` or `[ts, line, <third>]`: an object third element is read as the
+categorised entry (its `structuredMetadata` and `parsed` members must be string maps, each at most
+once; other members are skipped), and any other third element is skipped. `ts` must be a decimal
+string without a leading zero that fits in int64. Lines, labels, metadata and parsed fields are
+redacted; label, metadata and parsed names and values are cut at 4 096 bytes, and metadata and
+parsed fields count towards the 64 MiB page bound. Stream objects with the same label set are
+merged. A page lists only the streams it delivers, by key ascending.
+
+`LogEntry` carries `Metadata` and `Parsed` (sorted by name, `nil` if none) and its `Level`
+(T04 §4.3 `log_lines/1`). The level comes from the stream labels if they have a recognised one,
+else from the structured metadata, else from the parsed fields, else `unknown`. Within each set,
+`detected_level` comes before `level`. `LogStream.Level` is the level of the stream labels alone.
 
 | Level | Values (ASCII case-insensitive) |
 |---|---|
@@ -450,8 +468,7 @@ key ascending, and each carries its level (T04 §4.3 `log_lines/1`):
 | debug | `debug` |
 | trace | `trace` |
 
-The value of `detected_level` is used if the table knows it, else that of `level`, else `unknown`.
-Any other value, `unknown` included, falls through to the next label.
+Any other value, `unknown` included, falls through to the next label, then to the next set.
 
 ### Volume
 
