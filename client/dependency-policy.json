@@ -7,7 +7,8 @@
     "@tanstack/react-query",
     "react-aria-components",
     "@internationalized/date",
-    "openapi-fetch"
+    "openapi-fetch",
+    "react-grid-layout"
   ],
   "runtimeClosure": {
     "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
@@ -27,7 +28,6 @@
     "runtime-helper": ["@swc/helpers", "tslib"],
     "board-layout": [
       "react-grid-layout",
-      "react-draggable",
       "react-resizable",
       "fast-equals",
       "prop-types",
