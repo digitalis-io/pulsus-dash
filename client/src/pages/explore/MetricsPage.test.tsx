@@ -854,8 +854,9 @@ describe('unit:explore-run-size', () => {
   it('R4 the rewrite expansion is counted', async () => {
     const api = new StubApi();
     const spies = spyBoth(api);
-    openExplore(url(), { api });
+    const { router } = openExplore(url(), { api });
     await ready();
+    const at = locationOf(router);
     setDraft(R4);
     runKey();
     await waitFor(() => {
@@ -863,6 +864,8 @@ describe('unit:explore-run-size', () => {
     });
     await flush();
     noCall(spies);
+    // QC1: a refused Run leaves the URL unchanged.
+    expect(locationOf(router)).toBe(at);
   });
 
   it('R5 no rewrite with rate=off', async () => {
