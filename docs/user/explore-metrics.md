@@ -50,6 +50,9 @@ A failed query shows its message in the status line, and the previous result sta
 - **Busy** ("Too many queries are running for this tenant"), **unavailable** ("PulsusDB is
   unavailable: …"), a network error ("The server could not be reached.") and an unknown tenant are
   shown as such. Try again later, or check the data source.
+- A query with a variable (`$name` or `${name}`), such as a board panel's query opened in
+  Explore, fails with "The query failed: no value for variable $name": Explore has no variables.
+  Replace the variable with a value and run it again.
 
 ## How the result is drawn
 
