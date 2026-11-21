@@ -437,9 +437,11 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.on('button "Edit board"');
       await s.on('button "Add section"');
     });
+    // Done from a clean Edit state: no guard opens (L28 covers the guard).
+    await s.goto(url);
+    await s.on('button "Edit board"');
+    await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
     await s.on('button "Done"');
-    const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
-    if (await guard.isVisible()) await s.on('button "Discard changes"');
     await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
   });
 
