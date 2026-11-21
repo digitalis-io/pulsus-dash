@@ -98,11 +98,10 @@ export class SuggestCache {
     const c = this.current.get(p.kind);
     if (c !== undefined && this.pending.has(c)) {
       if (c.key !== k) this.drop(c);
-      else {
-        if (this.entries.get(k) !== c) {
-          this.entries.set(k, c);
-          this.evict();
-        }
+      else if (this.entries.get(k) !== c) {
+        // Evicted while in flight: re-joined by its own key, as the most recent.
+        this.entries.set(k, c);
+        this.evict();
         return c.promise as Promise<T>;
       }
     }

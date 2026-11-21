@@ -136,6 +136,19 @@ describe('unit:suggest-cache', () => {
     expect(await p2).toBe(5);
   });
 
+  it('a hit on an in-flight lookup makes it the most recent', async () => {
+    const c = make(2);
+    const g = c.retainTenant('demo');
+    const h = controlled<number>();
+    void c.get(g, P(0, 'values'), h.load);
+    await c.get(g, P(1), resolving().of(1));
+    void c.get(g, P(0, 'values'), h.load);
+    await c.get(g, P(2), resolving().of(2));
+    expect(c.has(P(0, 'values'))).toBe(true);
+    expect(c.has(P(1))).toBe(false);
+    h.at(0).resolve(0);
+  });
+
   it('C5: a superseded lookup of the same kind is aborted, another kind is not', async () => {
     const c = make();
     const g = c.retainTenant('demo');
