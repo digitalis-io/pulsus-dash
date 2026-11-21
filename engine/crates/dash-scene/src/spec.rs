@@ -14,7 +14,10 @@ pub struct ValueRange {
 impl ValueRange {
     /// Some(self) when both ends are finite and min < max.
     pub fn validated(self) -> Option<Range64> {
-        None
+        (self.min.is_finite() && self.max.is_finite() && self.min < self.max).then_some(Range64 {
+            lo: self.min,
+            hi: self.max,
+        })
     }
 }
 
@@ -36,7 +39,11 @@ pub struct LineSpec {
 
 impl LineSpec {
     pub fn new(unit: Unit) -> Self {
-        Self { unit, value_range: None, max_series: max_series_default() }
+        Self {
+            unit,
+            value_range: None,
+            max_series: max_series_default(),
+        }
     }
 }
 

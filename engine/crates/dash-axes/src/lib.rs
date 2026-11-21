@@ -51,30 +51,130 @@ pub struct ValueAxis {
 }
 
 impl ValueAxis {
-    /// y in CSS px of value `v`.
+    /// y in CSS px of value `v`: `plot.y + (1 − (v − lo)/(hi − lo))·plot.height` (draw.ts), the
+    /// halved form when `hi − lo` overflows.
     pub fn y(&self, v: f64) -> f64 {
-        v
+        let d = self.domain;
+        let q = if (d.hi - d.lo).is_finite() {
+            (v - d.lo) / (d.hi - d.lo)
+        } else {
+            (v / 2.0 - d.lo / 2.0) / (d.hi / 2.0 - d.lo / 2.0)
+        };
+        self.plot.y + (1.0 - q) * self.plot.height
     }
 }
 
-/// ceil(font.size.xs · line_height.tight).
+/// A token as the f64 it was authored as: `tokens.rs` holds f32, and `0.6f32 as f64` is
+/// 0.6000000238…, which would change `ceil` results; the shortest decimal round-trips exactly.
+fn tok(x: f32) -> f64 {
+    x.to_string().parse().unwrap_or(f64::from(x))
+}
+
+/// ceil(font.size.xs · line_height.tight) = 14 (layout.ts `LABEL_HEIGHT`).
 pub fn label_height() -> f64 {
-    0.0
+    (tok(dash_tokens::font::size::XS) * tok(dash_tokens::line_height::TIGHT)).ceil()
 }
 
-/// ceil(max chars × font.advance.mono × font.size.xs); chars = Unicode scalar values.
+/// ceil(max chars × font.advance.mono × font.size.xs); chars = Unicode scalar values. JetBrains
+/// Mono is monospaced, so this equals the interim renderer's `measureText` once the font is loaded.
 pub fn label_width(labels: &[String]) -> f64 {
-    let _ = labels;
-    0.0
+    let advance = tok(dash_tokens::font::advance::MONO);
+    let size = tok(dash_tokens::font::size::XS);
+    let w = labels
+        .iter()
+        .map(|l| l.chars().count() as f64 * advance * size)
+        .fold(0.0, f64::max);
+    w.ceil()
 }
 
-/// Port of `layoutPlot`.
+/// Port of `canvas2d/layout.ts` `layoutPlot`: stat fills the frame; the other kinds leave room for
+/// the value labels and the time axis.
 pub fn layout_plot(kind: VisKind, css_w: f64, css_h: f64, value_label_w: f64) -> PlotRect {
-    let _ = (kind, value_label_w);
-    PlotRect { x: 0.0, y: 0.0, width: css_w, height: css_h }
+    if kind == VisKind::Stat {
+        return PlotRect {
+            x: 0.0,
+            y: 0.0,
+            width: css_w,
+            height: css_h,
+        };
+    }
+    let space1 = tok(dash_tokens::space::S_1);
+    let space2 = tok(dash_tokens::space::S_2);
+    let tick = tok(dash_tokens::size::CHART_TICK);
+    let bottom = tick + 2.0 * space1 + label_height();
+    let x = value_label_w + space2 + tick;
+    let y = space2;
+    PlotRect {
+        x,
+        y,
+        width: css_w - x - space2,
+        height: css_h - y - bottom,
+    }
 }
 
-/// The value axis, auto (`manual = None`) or manual.
+fn base_of(unit: &Unit) -> u32 {
+    if *unit == Unit::Bytes { 1024 } else { 1000 }
+}
+
+/// Ticks and domain: auto = draw.ts `valueAxis` over [min(0, data_min), data_max]; manual =
+/// `value_ticks(r)` filtered to r with a 1e-9 relative tolerance, domain r (#93's plan §3.5).
+/// Both fall back to `extreme_ticks` when `value_ticks` returns None.
+fn ticks_of(
+    kind: VisKind,
+    css_w: f64,
+    css_h: f64,
+    data_min: f64,
+    data_max: f64,
+    manual: Option<Range64>,
+    unit: &Unit,
+) -> (Range64, Vec<f64>) {
+    let height = layout_plot(kind, css_w, css_h, 0.0).height;
+    let base = base_of(unit);
+    match manual {
+        None => {
+            let lo = data_min.min(0.0);
+            match dash_scales::value_ticks(lo, data_max, height, label_height(), base) {
+                Some(vt) => (
+                    Range64 {
+                        lo: vt.min,
+                        hi: vt.max,
+                    },
+                    vt.ticks,
+                ),
+                None => {
+                    let vt = dash_scales::extreme_ticks(lo, data_max);
+                    (
+                        Range64 {
+                            lo: vt.min,
+                            hi: vt.max,
+                        },
+                        vt.ticks,
+                    )
+                }
+            }
+        }
+        Some(r) => {
+            let ticks = match dash_scales::value_ticks(r.lo, r.hi, height, label_height(), base) {
+                Some(vt) => {
+                    let span = r.hi / 2.0 - r.lo / 2.0;
+                    let tol = 2e-9 * span;
+                    vt.ticks
+                        .into_iter()
+                        .filter(|t| *t >= r.lo - tol && *t <= r.hi + tol)
+                        .collect()
+                }
+                None => dash_scales::extreme_ticks(r.lo, r.hi).ticks,
+            };
+            (r, ticks)
+        }
+    }
+}
+
+/// The value axis. Auto (`manual = None`): port of draw.ts `valueAxis`: the height from
+/// `layout_plot(.., 0)`, ticks over [min(0, data_min), data_max], base 1024 for bytes else 1000,
+/// labels by `format_value`, domain (vt.min, vt.max). Manual (`Some(r)`): ticks inside r, domain
+/// r. Then `layout_plot` with the band: `Measure` = the labels' width; `Fixed(w)` never changes
+/// with the labels, and a label wider than `w` has `fits = false` (#69 draws it on a chip).
 #[allow(clippy::too_many_arguments)]
 pub fn value_axis(
     kind: VisKind,
@@ -86,18 +186,41 @@ pub fn value_axis(
     unit: &Unit,
     band: Band,
 ) -> ValueAxis {
-    let _ = (kind, data_min, data_max, unit, band);
-    ValueAxis {
-        plot: PlotRect { x: 0.0, y: 0.0, width: css_w, height: css_h },
-        domain: manual.unwrap_or(Range64 { lo: 0.0, hi: 1.0 }),
-        ticks: Vec::new(),
+    let (domain, ticks) = ticks_of(kind, css_w, css_h, data_min, data_max, manual, unit);
+    let texts: Vec<String> = ticks
+        .iter()
+        .map(|t| dash_units::format_value(*t, unit))
+        .collect();
+    let band_w = match band {
+        Band::Measure => label_width(&texts),
+        Band::Fixed(w) => w,
+    };
+    let plot = layout_plot(kind, css_w, css_h, band_w);
+    let mut axis = ValueAxis {
+        plot,
+        domain,
+        ticks,
         labels: Vec::new(),
-        manual: false,
-        band_w: 0.0,
-    }
+        manual: manual.is_some(),
+        band_w,
+    };
+    axis.labels = axis
+        .ticks
+        .iter()
+        .zip(texts)
+        .map(|(t, text)| {
+            let fits = label_width(std::slice::from_ref(&text)) <= band_w;
+            AxisLabel {
+                y_css: axis.y(*t),
+                text,
+                fits,
+            }
+        })
+        .collect();
+    axis
 }
 
-/// The band `value_axis(.., Band::Measure)` would use.
+/// The band `value_axis(.., Band::Measure)` would use, without building the axis.
 pub fn measure_value_band(
     kind: VisKind,
     css_w: f64,
@@ -107,6 +230,10 @@ pub fn measure_value_band(
     manual: Option<Range64>,
     unit: &Unit,
 ) -> f64 {
-    let _ = (kind, css_w, css_h, data_min, data_max, manual, unit);
-    0.0
+    let (_, ticks) = ticks_of(kind, css_w, css_h, data_min, data_max, manual, unit);
+    let texts: Vec<String> = ticks
+        .iter()
+        .map(|t| dash_units::format_value(*t, unit))
+        .collect();
+    label_width(&texts)
 }

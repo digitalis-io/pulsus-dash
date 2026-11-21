@@ -11,7 +11,7 @@ pub struct TimeWindow {
     pub to_ms: f64,
 }
 
-/// A new manual value range, or `"auto"`.
+/// A new manual value range, or `"auto"` (ADR-0020's `value`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ValueCommit {
     Range(ValueRange),
@@ -20,8 +20,10 @@ pub enum ValueCommit {
 
 impl serde::Serialize for ValueCommit {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let _ = self;
-        s.serialize_unit()
+        match self {
+            ValueCommit::Range(r) => serde::Serialize::serialize(r, s),
+            ValueCommit::Auto => s.serialize_str("auto"),
+        }
     }
 }
 

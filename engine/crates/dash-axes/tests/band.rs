@@ -10,7 +10,14 @@ pub fn cases() -> Vec<(f64, f64, Option<Range64>)> {
     for (lo, hi) in data {
         out.push((lo, hi, None));
         for c in [0.0, 1.0, 1234.5, 1e6] {
-            out.push((lo, hi, Some(Range64 { lo: c, hi: c + 1e-5 })));
+            out.push((
+                lo,
+                hi,
+                Some(Range64 {
+                    lo: c,
+                    hi: c + 1e-5,
+                }),
+            ));
         }
     }
     out
@@ -22,14 +29,46 @@ fn fixed_band_holds_the_plot() {
     assert_eq!(cases.len(), 20);
     let mut plots = Vec::new();
     let (mut below, mut above, mut moved) = (0, 0, false);
-    let first_measured = value_axis(VisKind::Line, 1118.0, 240.0, cases[0].0, cases[0].1, cases[0].2, &Unit::None, Band::Measure);
+    let first_measured = value_axis(
+        VisKind::Line,
+        1118.0,
+        240.0,
+        cases[0].0,
+        cases[0].1,
+        cases[0].2,
+        &Unit::None,
+        Band::Measure,
+    );
     for (lo, hi, manual) in &cases {
-        let ax = value_axis(VisKind::Line, 1118.0, 240.0, *lo, *hi, *manual, &Unit::None, Band::Fixed(42.0));
+        let ax = value_axis(
+            VisKind::Line,
+            1118.0,
+            240.0,
+            *lo,
+            *hi,
+            *manual,
+            &Unit::None,
+            Band::Fixed(42.0),
+        );
         plots.push(ax.plot);
         for l in &ax.labels {
-            assert_eq!(l.fits, label_width(std::slice::from_ref(&l.text)) <= 42.0, "{:?}", l.text);
+            assert_eq!(
+                l.fits,
+                label_width(std::slice::from_ref(&l.text)) <= 42.0,
+                "{:?}",
+                l.text
+            );
         }
-        let measured = value_axis(VisKind::Line, 1118.0, 240.0, *lo, *hi, *manual, &Unit::None, Band::Measure);
+        let measured = value_axis(
+            VisKind::Line,
+            1118.0,
+            240.0,
+            *lo,
+            *hi,
+            *manual,
+            &Unit::None,
+            Band::Measure,
+        );
         if measured.band_w < 42.0 {
             below += 1;
         } else if measured.band_w > 42.0 {
@@ -39,7 +78,10 @@ fn fixed_band_holds_the_plot() {
             moved = true;
         }
     }
-    assert!(below > 0 && above > 0, "measured bands {below} below and {above} above 42 px");
+    assert!(
+        below > 0 && above > 0,
+        "measured bands {below} below and {above} above 42 px"
+    );
     assert!(moved, "Band::Measure never moved plot.x (precondition)");
     for p in &plots {
         assert_eq!(p.x.to_bits(), plots[0].x.to_bits());

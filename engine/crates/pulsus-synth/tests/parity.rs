@@ -16,26 +16,47 @@ fn gallery_lines_match_ts() {
             panic!("unknown entry {id}");
         };
         let (chunk, _) = gallery_line(which, GALLERY_WINDOW);
-        let keys: Vec<String> = chunk.series.iter().map(|s| format!("{:016x}", s.key_hash)).collect();
+        let keys: Vec<String> = chunk
+            .series
+            .iter()
+            .map(|s| format!("{:016x}", s.key_hash))
+            .collect();
         let want: Vec<String> = r["keys"]
             .as_array()
-            .map(|a| a.iter().map(|k| k.as_str().unwrap_or_default().to_owned()).collect())
+            .map(|a| {
+                a.iter()
+                    .map(|k| k.as_str().unwrap_or_default().to_owned())
+                    .collect()
+            })
             .unwrap_or_default();
         assert_eq!(keys, want, "{id}: keys");
         let samples = r["samples"].as_array().cloned().unwrap_or_default();
         assert_eq!(samples.len(), 64, "{id}");
         for s in &samples {
-            let (j, k) = (s["j"].as_u64().unwrap_or(0) as usize, s["k"].as_u64().unwrap_or(0) as usize);
+            let (j, k) = (
+                s["j"].as_u64().unwrap_or(0) as usize,
+                s["k"].as_u64().unwrap_or(0) as usize,
+            );
             let (t, v) = (fixture::num(&s["t"]), fixture::num(&s["v"]));
-            let TimeAxis::Grid { start_ms, step_ms, .. } = chunk.time else {
+            let TimeAxis::Grid {
+                start_ms, step_ms, ..
+            } = chunk.time
+            else {
                 panic!("{id}: not a grid chunk");
             };
-            assert_eq!((start_ms + step_ms * k as i64) as f64, t, "{id} j{j} k{k}: t");
+            assert_eq!(
+                (start_ms + step_ms * k as i64) as f64,
+                t,
+                "{id} j{j} k{k}: t"
+            );
             let got = chunk.values[chunk.offsets[j] as usize + k];
             if v.is_nan() {
                 assert!(got.is_nan(), "{id} j{j} k{k}: {got} is not NaN");
             } else {
-                assert!(((got - v) / v).abs() <= 1e-9, "{id} j{j} k{k}: {got} vs {v}");
+                assert!(
+                    ((got - v) / v).abs() <= 1e-9,
+                    "{id} j{j} k{k}: {got} vs {v}"
+                );
             }
         }
     }

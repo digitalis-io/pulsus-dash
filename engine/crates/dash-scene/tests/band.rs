@@ -10,7 +10,10 @@ use dash_units::Unit;
 #[test]
 fn fixed_band_holds_the_built_plot() {
     let data = [(0.0, 30.0), (0.0, 2e-5), (-1e-13, 0.0), (0.0, 1e21)];
-    let window = Range64 { lo: T0, hi: T0 + 10_000.0 };
+    let window = Range64 {
+        lo: T0,
+        hi: T0 + 10_000.0,
+    };
     let mut plots = Vec::new();
     let mut moved = false;
     let mut first_measured = None;
@@ -18,12 +21,17 @@ fn fixed_band_holds_the_built_plot() {
         let manuals = [None, Some(0.0), Some(1.0), Some(1234.5), Some(1e6)];
         for m in manuals {
             let mut spec = LineSpec::new(Unit::None);
-            spec.value_range = m.map(|c| ValueRange { min: c, max: c + 1e-5 });
+            spec.value_range = m.map(|c| ValueRange {
+                min: c,
+                max: c + 1e-5,
+            });
             for band in [Band::Fixed(42.0), Band::Measure] {
                 let mut v = viewport(chunk_of(&[lo, hi, lo]), spec.clone(), window, band);
                 v.camera = Camera::Plot2D(PlotCamera::idle(window, &VisSpec::Line(spec.clone())));
                 let (list, summary) = build(&v);
-                let Some(summary) = summary else { panic!("no summary for {lo}..{hi} {m:?}") };
+                let Some(summary) = summary else {
+                    panic!("no summary for {lo}..{hi} {m:?}")
+                };
                 if band == Band::Measure {
                     let x = summary.plot.x;
                     if *first_measured.get_or_insert(x) != x {

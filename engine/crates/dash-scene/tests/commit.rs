@@ -17,20 +17,43 @@ fn to_window_rounds_like_ecmascript() {
 #[test]
 fn commit_json_is_the_ts_shape() {
     let window = CommitEvent {
-        window: Some(TimeWindow { from_ms: 1000.0, to_ms: 61001.0 }),
+        window: Some(TimeWindow {
+            from_ms: 1000.0,
+            to_ms: 61001.0,
+        }),
         value: None,
         gesture: Gesture::Wheel,
     };
     let value = CommitEvent {
         window: None,
-        value: Some(ValueCommit::Range(ValueRange { min: 0.25, max: 0.75 })),
+        value: Some(ValueCommit::Range(ValueRange {
+            min: 0.25,
+            max: 0.75,
+        })),
         gesture: Gesture::Axis,
     };
-    let auto = CommitEvent { window: None, value: Some(ValueCommit::Auto), gesture: Gesture::Fit };
+    let auto = CommitEvent {
+        window: None,
+        value: Some(ValueCommit::Auto),
+        gesture: Gesture::Fit,
+    };
     let j = |e: &CommitEvent| serde_json::to_value(e).unwrap_or_default();
-    assert_eq!(j(&window), json!({"window": {"fromMs": 1000.0, "toMs": 61001.0}, "value": null, "gesture": "wheel"}));
-    assert_eq!(j(&value), json!({"window": null, "value": {"min": 0.25, "max": 0.75}, "gesture": "axis"}));
-    assert_eq!(j(&auto), json!({"window": null, "value": "auto", "gesture": "fit"}));
-    let pan = CommitEvent { window: None, value: None, gesture: Gesture::Pan };
+    assert_eq!(
+        j(&window),
+        json!({"window": {"fromMs": 1000.0, "toMs": 61001.0}, "value": null, "gesture": "wheel"})
+    );
+    assert_eq!(
+        j(&value),
+        json!({"window": null, "value": {"min": 0.25, "max": 0.75}, "gesture": "axis"})
+    );
+    assert_eq!(
+        j(&auto),
+        json!({"window": null, "value": "auto", "gesture": "fit"})
+    );
+    let pan = CommitEvent {
+        window: None,
+        value: None,
+        gesture: Gesture::Pan,
+    };
     assert_eq!(j(&pan)["gesture"], json!("pan"));
 }

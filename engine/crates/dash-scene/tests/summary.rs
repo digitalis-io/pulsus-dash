@@ -34,7 +34,10 @@ fn summaries_match_ts() {
         let v = Viewport {
             id: 0,
             frame_id: None,
-            css: Size64 { w: 1118.0, h: 240.0 },
+            css: Size64 {
+                w: 1118.0,
+                h: 240.0,
+            },
             dpr: 1.0,
             theme: Theme::Dark,
             camera: Camera::Plot2D(PlotCamera::idle(window, &spec)),
@@ -42,10 +45,17 @@ fn summaries_match_ts() {
             data: Some(Arc::new(chunk)),
             band: Band::Measure,
         };
-        let got = build(&v).1.map(|s| serde_json::to_value(s).unwrap_or_default());
+        let got = build(&v)
+            .1
+            .map(|s| serde_json::to_value(s).unwrap_or_default());
         assert_eq!(got.as_ref().map(norm), Some(norm(&r["summary"])), "{id}");
     }
-    let line600 = rows.iter().find(|r| r["id"] == "line-600").map(|r| &r["summary"]);
-    assert_eq!(line600.map(|s| (s["seriesTotal"].clone(), s["seriesShown"].clone())),
-        Some((serde_json::json!(600), serde_json::json!(500))));
+    let line600 = rows
+        .iter()
+        .find(|r| r["id"] == "line-600")
+        .map(|r| &r["summary"]);
+    assert_eq!(
+        line600.map(|s| (s["seriesTotal"].clone(), s["seriesShown"].clone())),
+        Some((serde_json::json!(600), serde_json::json!(500)))
+    );
 }

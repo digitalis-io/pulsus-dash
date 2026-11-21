@@ -16,19 +16,46 @@ fn bits(x: Range64) -> (u64, u64) {
 
 /// #93 `timeLimits` at plot.width 3 950.
 fn time_limits() -> SpanLimits {
-    SpanLimits { min_span: 1000f64.max(3950f64.ceil()), max_span: 3650.0 * DAY, lo: 0.0, hi: 253_402_300_799_999.0 }
+    SpanLimits {
+        min_span: 1000f64.max(3950f64.ceil()),
+        max_span: 3650.0 * DAY,
+        lo: 0.0,
+        hi: 253_402_300_799_999.0,
+    }
 }
 
 #[test]
 fn hand_computed_vectors() {
     let l = time_limits();
-    assert_eq!(bits(zoom_about(r(0.0, 2000.0), 0.3, 0.8, &l)), bits(r(0.0, 2000.0)));
-    let l2 = SpanLimits { min_span: 1000.0, max_span: 3650.0 * DAY, lo: 0.0, hi: 1e15 };
-    assert_eq!(zoom_about(r(0.0, 10000.0), 0.25, 0.5, &l2), r(1250.0, 6250.0));
-    assert_eq!(pan_by(r(T, T + 2000.0), 37.0 / 3950.0, &l, Some(1.0)), r(T + 19.0, T + 2019.0));
+    assert_eq!(
+        bits(zoom_about(r(0.0, 2000.0), 0.3, 0.8, &l)),
+        bits(r(0.0, 2000.0))
+    );
+    let l2 = SpanLimits {
+        min_span: 1000.0,
+        max_span: 3650.0 * DAY,
+        lo: 0.0,
+        hi: 1e15,
+    };
+    assert_eq!(
+        zoom_about(r(0.0, 10000.0), 0.25, 0.5, &l2),
+        r(1250.0, 6250.0)
+    );
+    assert_eq!(
+        pan_by(r(T, T + 2000.0), 37.0 / 3950.0, &l, Some(1.0)),
+        r(T + 19.0, T + 2019.0)
+    );
     let p = pan_by(r(T, T + 2000.0), 37.0 / 3950.0, &l, None);
-    assert!(p.lo.fract() != 0.0 && (p.lo - T - 18.734).abs() < 1e-3, "{p:?}");
-    let l3 = SpanLimits { min_span: 1.0, max_span: 1e12, lo: 0.0, hi: 1000.0 };
+    assert!(
+        p.lo.fract() != 0.0 && (p.lo - T - 18.734).abs() < 1e-3,
+        "{p:?}"
+    );
+    let l3 = SpanLimits {
+        min_span: 1.0,
+        max_span: 1e12,
+        lo: 0.0,
+        hi: 1000.0,
+    };
     assert_eq!(contain(r(-5.0, 95.0), &l3), r(0.0, 100.0));
     assert_eq!(contain(r(990.0, 1090.0), &l3), r(900.0, 1000.0));
     let w = to_window(r(-2.5, 2.5));
@@ -55,9 +82,18 @@ fn zoom_keeps_the_anchor() {
         let s2 = zoom_about(s, f, factor, &l);
         let a2 = s2.lo + f * (s2.hi - s2.lo);
         let w = s.hi - s.lo;
-        let floor = if factor < 1.0 { w.min(l.min_span) } else { l.min_span };
+        let floor = if factor < 1.0 {
+            w.min(l.min_span)
+        } else {
+            l.min_span
+        };
         let w2 = (w * factor).max(floor).min(l.max_span);
-        assert_eq!(s2.hi - s2.lo, w2, "step {i}: span");
+        // The span is w2 up to the rounding of the ends (ulp(T) ≈ 2.4e-4 ms).
+        assert!(
+            ((s2.hi - s2.lo) - w2).abs() <= 1e-3,
+            "step {i}: span {} vs {w2}",
+            s2.hi - s2.lo
+        );
         let px = (a2 - a).abs() / (s2.hi - s2.lo) * 3950.0;
         assert!(px < 1.0, "step {i}: anchor moved {px} px ({s:?} → {s2:?})");
         assert!(s2.hi > s2.lo);
@@ -76,7 +112,10 @@ fn f1_primitives() {
     }
     assert_eq!(v2.hi - v2.lo, 2000.0);
     let frac = pan_by(pan_by(v, 37.0 / 3950.0, &l, None), 13.0 / 3950.0, &l, None);
-    assert!(frac.lo.fract() != 0.0, "precondition: an unquantised pan is fractional");
+    assert!(
+        frac.lo.fract() != 0.0,
+        "precondition: an unquantised pan is fractional"
+    );
     let z = zoom_about(zoom_about(v2, 0.3, 0.8, &l), 0.3, 0.8, &l);
     assert_eq!(bits(z), bits(v2));
     let wide = r(T - l.max_span, T);
