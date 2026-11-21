@@ -408,9 +408,11 @@ shadow root, a mount `<div>` in it; `destroyViews()` after each test. Keys go th
 `startCompletion`, wait for `completionStatus === 'active'`, then 100 ms (CodeMirror ignores
 accept keys for 75 ms after a popup opens). `fakePromSource(F)` (`src/test/fakePromSource.ts`)
 returns fixed data and records each call (`'labelValues job up'`). Compositions are synthetic
-`CompositionEvent`s on `view.contentDOM` with `input.type.compose` transactions. jsdom has no
-`execCommand`, which CodeMirror's selection read in a shadow root falls back to on focus; the host
-test defines it. Vitest resolves `@prometheus-io/codemirror-promql` to its ES module build (it has
+`CompositionEvent`s on `view.contentDOM` with `input.type.compose` transactions.
+`src/test/editorDom.ts` (imported by `viewIn` and the host test) defines what jsdom lacks: text
+ranges without layout (`getClientRects`, `getBoundingClientRect`), which CodeMirror measures when it
+scrolls the caret into view, and `execCommand`, which its selection read in a shadow root falls back
+to on focus. Vitest resolves `@prometheus-io/codemirror-promql` to its ES module build (it has
 no `exports` map, and its CommonJS build would load a second `@codemirror/state`), as the browser
 build does.
 
