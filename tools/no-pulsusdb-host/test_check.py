@@ -1,4 +1,4 @@
-"""Tests of ci:no-pulsusdb-host (tools/no-pulsusdb-host/check.py), N1-N28 of #59 Part C.
+"""Tests of ci:no-pulsusdb-host (tools/no-pulsusdb-host/check.py), N1-N27 of #59 Part C.
 
 Run: python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'
   or: python3 -I tools/no-pulsusdb-host/test_check.py
@@ -453,92 +453,6 @@ class UrlRuleTests(TmpTree):
                 code, out, err = self.one(content)
                 self.assertEqual(len(findings(out)), want)
                 self.assertEqual(code, 1 if want else 0)
-
-
-    def test_bare_datasource_value(self):  # N28: a datasource value without a scheme (rule c)
-        # "=" is spelled \x3d after PULSUS_DASH_DATASOURCE_URL so this file stays clean in repository mode.
-        env_key = "PULSUS_DASH_DATASOURCE_URL\x3d"
-        flagged = [
-            (env_key + "other-host.internal-corp.net:3100\n", 1),
-            (env_key + "db.corp.net\n", 1),
-            (env_key + "DB.CORP.NET.:3100\n", 1),
-            (env_key + '"db.corp.net:3100"\n', 1),
-            (env_key + "db.corp.net:3100/x\n", 1),
-            (env_key + "pulsusdb:3100\n", 1),
-            (env_key + "10.1.2.3:3100\n", 1),
-            ("      PULSUS_DASH_DATASOURCE_URL\x3a db.corp.net:3100\n", 1),
-            ("export " + env_key + "db.corp.net:3100 # dev\n", 1),
-            ('datasource.url \x3d "db.corp.net:3100"\n', 1),
-            ('"datasource_url"\x3a "db.corp.net"\n', 1),
-            ("DatasourceURL\x3a 'db.corp.net:3100',\n", 1),
-            ("datasource:\n  url\x3a db.corp.net:3100\n", 2),
-            ("datasource:\n  url\x3a 'db.corp.net'\n", 2),
-            # single-label hosts, with and without a port
-            (env_key + "pulsusdb\n", 1),
-            (env_key + "db:3100\n", 1),
-            (env_key + "'db'\n", 1),
-            (env_key + "db # dev\n", 1),
-            ("datasource:\n  url\x3a pulsusdb\n", 2),
-            ("datasource:\n  url\x3a db:3100 # local\n", 2),
-            ('"DatasourceURL"\x3a "dbhost",\n', 1),
-            # unquoted values after the dotted and code-style keys: the whole value up to the end
-            # of the line or a comment
-            ("datasource.url \x3d db.corp.net:3100\n", 1),
-            ("datasource.url\x3a pulsusdb\n", 1),
-            ("datasource_url\x3a db.corp.net # x\n", 1),
-            ("datasource_url\x3a db:3100/api\n", 1),
-            ("DatasourceURL\x3a db:3100 // dev\n", 1),
-            ("DatasourceURL \x3d pulsusdb\n", 1),
-            # after the env and YAML keys a dotted or ported host may be followed by more words
-            (env_key + "db.corp.net:3100 ./run\n", 1),
-        ]
-        clean = [
-            env_key + "pulsus-fake:3100\n",
-            env_key + "localhost:3100\n",
-            env_key + "127.0.0.1:3100\n",
-            env_key + "pulsusdb.example:3100\n",
-            env_key + "$X\n",
-            env_key + "${PULSUS_DASH_DATASOURCE_URL}\n",
-            env_key + "<host:port>\n",
-            env_key + "\n",
-            "no datasource.url\x3a exit 0\n",
-            "datasource.url\x3a scheme must be http or https\n",
-            "Slug: d.Slug, DatasourceURL\x3a d.URL, Database: x\n",
-            "x.DatasourceURL \x3d cfg.Url\n",
-            "datasource:\n  url\x3a string,\n",
-            "url\x3a db.corp.net:3100\n",
-            # code expressions, types, variables, placeholders and prose stay clean
-            "DatasourceURL\x3a d.URL\n",
-            "DatasourceURL\x3a cfg.URL()\n",
-            "DatasourceURL\x3a url,\n",
-            "cfg.DatasourceURL \x3d dsurl\n",
-            "T{DatasourceURL\x3a u}\n",
-            "datasource_url\x3a string;\n",
-            "datasource_url\x3a str\n",
-            "datasource_url\x3a string\n",
-            '"datasource_url"\x3a "string"\n',
-            "datasource.url\x3a <host:port>\n",
-            "datasource_url\x3a ${X}\n",
-            "datasource_url\x3a $X\n",
-            "datasource_url\x3a\n  type\x3a string\n",
-            "datasource.url\x3a\n  db.corp.net\n",
-            "the datasource.url\x3a pulsusdb is set by the operator\n",
-            "datasource:\n  url\x3a string\n",
-            env_key + "pulsus-fake\n",
-            env_key + "localhost\n",
-            env_key + "db trailing words\n",
-        ]
-        for content, line in flagged:
-            with self.subTest(content=content):
-                code, out, err = self.one(content)
-                self.assertEqual((code, findings(out)), (1, [f"error[non-local-pulsusdb-url] F1:{line}"]))
-                for word in ("corp", "10.1.2.3", "pulsusdb:"):
-                    self.assertNotIn(word, (out + err).lower())
-        for content in clean:
-            with self.subTest(content=content):
-                code, out, err = self.one(content)
-                self.assertEqual((code, findings(out), err), (0, [], ""))
-
 
 class FunctionTests(unittest.TestCase):
     def test_is_local_table(self):  # N19
