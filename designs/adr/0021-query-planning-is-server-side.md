@@ -50,7 +50,8 @@ Two problems follow:
    - the time window;
    - the rate toggle.
 
-   The server resolves the metric types itself, from PulsusDB metadata cached per tenant.
+   The server resolves the metric types itself, from PulsusDB metadata cached per tenant binding (one
+   entry, with its own singleflight, per binding).
 3. **The server returns what it planned,** on success and on every error raised after planning.
    This carries:
    - the planned text, for "Sent query";

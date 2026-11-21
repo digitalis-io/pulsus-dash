@@ -47,9 +47,10 @@ PulsusDB byte-for-byte as planned (after substitution by the language module, M-
 | Native operations (§4.12: R2, R4, R5, R6, R9; from M-UI2) | Built by text composition from structured inputs Dash holds (catalogue, Context, templates), never from parsing user text. An operation that would need a selector *extracted from* a user query is unavailable | Selector extraction |
 | Validation | PulsusDB's parse error, at the position PulsusDB returns or on the whole query, mapped to the error envelope ([T09](T09-query-editors.md) §0) | — |
 
-Test: `unit:planner-opaque-key`: the texts ``up # note`` + newline + ``+ up`` and ``up # note + up``
-get different `LogicalKey`s; byte-identical texts share one physical query; the `query` parameter
-sent to `pulsus-fake` equals the received text byte-for-byte; a restricted principal gets
+Test: `unit:planner-opaque-key`: the planned texts ``up # note`` + newline + ``+ up`` and
+``up # note + up`` get different `LogicalKey`s; byte-identical planned texts share one physical
+query; the `query` parameter sent to `pulsus-fake` equals the planned text (`planned.query`)
+byte-for-byte; a restricted principal gets
 `scope_denied` and no request.
 
 The **later parser design** is decided before the first milestone that needs one of the features
@@ -154,10 +155,11 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
  browser (scene state, cameras)                              BFF dash-planner
  ─────────────────────────────                              ──────────────────────────────────────────────────────────
- ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1 Bind       templates/{{entity}}/$vars → concrete queries (catalogue)
- Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Lower      → LogicalQuery (v1: OpaqueQuery, exact-text hash, §0;
- Cancel{viewport|plan}                                                   classify PulsusDB | Virtual | Mixed, §4.11)
- ApproachHint{entity, level, dist, dwell}                  3 Resolve    step from px, level prediction, grid alignment (§4.3)
+ ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1 Resolve    step from px, level prediction, grid alignment (§4.3)
+ Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Bind       templates/{{entity}}/$vars → concrete queries (catalogue);
+ Cancel{viewport|plan}                                                   language module Plan with the resolved step → planned text
+ ApproachHint{entity, level, dist, dwell}                  3 Lower      planned text → LogicalQuery (v1: OpaqueQuery, exact-text hash
+                                                                         of the planned text, §0; classify PulsusDB | Virtual | Mixed, §4.11)
  Pressure{level}                                           4 Merge      session-local dedupe, range-union, derivation, fusion (§4.4)
                                                            5 Place⚡     local answerability per logical query (§4.5)
                                                            6 Physicalise→ PhysicalQuery[] + VirtualQuery[] + Combine DAG (§4.11, §4.12)
@@ -168,9 +170,15 @@ JSON form and is held to the same semantics by shared fixtures (§0).
  ◄── frames{plan, viewport, pass, gen, exactness} ─────────11 Stream     per pass; Completeness trailer per viewport
 ```
 
+- **Resolve** runs first. It reads only the viewport's range, width and pass (§4.3, and the §0 table:
+  step, level and alignment do not depend on the text), so the step is known before any text is
+  planned. Exactness that depends on the query's functions (from the parser design) is attached at
+  Lower.
 - **Bind** reads the scene's `Context` (entity set, window, filters, baseline; IA-002) and the
-  Board's variable values. `$vars` and macros are substituted by the language module's `Plan`
-  (ADR-0021). It keeps a **dependency index** `(context member | $var) →
+  Board's variable values. It then calls the language module's `Plan` (ADR-0021) with the step from
+  Resolve, which substitutes `$vars` and macros (`$__interval`, `$__rate_interval`) and applies the
+  rate rewrites and the rate window. **Lower** builds the `LogicalQuery` from the planned text, and
+  `LogicalKey` hashes those bytes. Bind keeps a **dependency index** `(context member | $var) →
   Vec<ViewportId>`, so a change re-binds only the viewports that read it (T07-013).
 - The baseline (comparison ghost, A/B) is bound as a second `TimeRange` on the `LogicalQuery`
   (`baseline: Some(..)`), which physicalises to a shifted query with the same step grid.
@@ -559,7 +567,7 @@ through the same query interface as telemetry. The planner owns the semantics; `
 | `{source="pulsus-dash"}` | LogQL | `alert_transitions`, `notification_attempts`, `entity_change_events` | Stream labels `source`, `kind` (`alert_transition`, `notification_attempt`; `change_event` from M-UI3 with [T12](T12-entity-catalogue.md)), `alertname`, `severity`, `entity_ref`; line = the row as JSON; structured fields for every column |
 
 #### T07-020 — Reserved selectors resolve to Postgres, never to PulsusDB
-**MUST** — *(v1: the refusal of §0 applies and nothing resolves to Postgres.)* From the parser design, at step 2 the planner MUST classify every selector whose metric name equals `ALERTS`,
+**MUST** — *(v1: the refusal of §0 applies and nothing resolves to Postgres.)* From the parser design, at step 3 (Lower) the planner MUST classify every selector whose metric name equals `ALERTS`,
 `ALERTS_FOR_STATE` or `pulsus_anomaly_score`, and every LogQL stream selector with the equality
 matcher `source="pulsus-dash"`, as virtual. A query containing a virtual selector MUST NOT be sent to
 PulsusDB; `pulsusdb-client`'s `VirtualGuardLayer` refuses any request text that still contains one.
@@ -569,7 +577,7 @@ against Postgres and never matches virtual series.
 
 #### 4.11.2 Classification and evaluation
 
-Step 2 classifies each `LogicalQuery`:
+Step 3 (Lower) classifies each `LogicalQuery`:
 
 | Class | Example | Execution |
 |---|---|---|
@@ -1039,3 +1047,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
 | 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): PromQL is parsed in `internal/pulsusdb/prom` for the planning shape only (§0 table); v1 queries are opaque except for ADR-0021's closed list of planning rewrites, and `LogicalKey` hashes the planned text; new §0 row "Planning rewrites"; §4.1 Bind substitutes through the language module's `Plan`; T07-002 revised; open question 10 |
+| 1.5-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: §4.1 pipeline runs Resolve before Bind, so `Plan` gets the width-dependent step, and Lower keys the planned text (classification is now step 3); `unit:planner-opaque-key` compares the upstream query with the planned text |
