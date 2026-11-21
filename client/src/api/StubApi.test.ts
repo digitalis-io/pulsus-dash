@@ -182,6 +182,15 @@ describe('stub starred and recent', () => {
     ]);
   });
 
+  it('fails a star change as many times as the test hook says', async () => {
+    const api = new StubApi();
+    localStorage.setItem('pulsus-dash.stub.failStar', '1');
+    expect(await kindOf(api.setStarred('demo', 'b-2', true))).toBe('network');
+    expect((await api.listStarred('demo')).map((r) => r.uid)).toEqual(['b-1']);
+    await api.setStarred('demo', 'b-2', true);
+    expect((await api.listStarred('demo')).map((r) => r.uid)).toEqual(['b-2', 'b-1']);
+  });
+
   it('ignores invalid and old stored values', async () => {
     const api = new StubApi();
     localStorage.setItem('pulsus-dash.stub.recent', 'not json');

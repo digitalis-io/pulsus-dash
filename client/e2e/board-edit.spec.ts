@@ -357,7 +357,9 @@ test.describe('e2e:board-sections', () => {
       // 4. Copy link reproduces the view in a fresh context.
       await page.getByRole('button', { name: 'Share' }).click();
       const share = page.getByRole('dialog', { name: 'Share board' });
-      await share.getByRole('checkbox', { name: 'Keep relative' }).click();
+      // The checkbox's input is visually hidden: press its label.
+      await share.getByText('Keep relative', { exact: true }).click();
+      await expect(share.getByRole('checkbox', { name: 'Keep relative' })).toBeChecked();
       await share.getByRole('button', { name: 'Copy link' }).click();
       await expect.poll(() => page.evaluate(() => window.__copied.length)).toBe(1);
       const copied = await page.evaluate(() => window.__copied.at(-1) ?? '');

@@ -15,7 +15,8 @@
  *
  * Test hooks: if `localStorage['pulsus-dash.stub.failSession']` is a positive integer n,
  * `getSession` rejects with `ApiError('network')` and stores n − 1. `pulsus-dash.stub.failSignOut`
- * does the same for `signOut`, `pulsus-dash.stub.failSave` for `saveBoard`, and
+ * does the same for `signOut`, `pulsus-dash.stub.failSave` for `saveBoard`,
+ * `pulsus-dash.stub.failStar` for `setStarred` (nothing is changed), and
  * `pulsus-dash.stub.conflictSave` makes `saveBoard` reject with `BoardConflictError` after moving
  * the head on by one version, as if another user had saved the same spec.
  */
@@ -80,6 +81,7 @@ export const STUB_FAIL_SESSION_KEY = 'pulsus-dash.stub.failSession';
 export const STUB_FAIL_SIGN_OUT_KEY = 'pulsus-dash.stub.failSignOut';
 export const STUB_FAIL_SAVE_KEY = 'pulsus-dash.stub.failSave';
 export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
+export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
 
 /** Consumes one failure from a test-hook counter; true when the call should fail. */
 function failOnce(key: string): boolean {
@@ -247,6 +249,7 @@ export class StubApi implements Api {
   setStarred(tenant: string, uid: string, starred: boolean): Promise<void> {
     return settle(() => {
       this.checkTenant(tenant);
+      if (failOnce(STUB_FAIL_STAR_KEY)) throw new ApiError('network', 'stub: star failed');
       const current = this.starred();
       if (!starred) {
         write(STUB_STARRED_KEY, JSON.stringify(current.filter((x) => x !== uid)));

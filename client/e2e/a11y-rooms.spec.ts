@@ -1,6 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { HTTP_BFF, PREVIEW } from './bff.ts';
+import { expect, test, type Page } from '@playwright/test';
 import {
   ALL_PAGES,
   frame,
@@ -81,11 +80,7 @@ test.describe('e2e:a11y-rooms axe', () => {
  * The board states of plan #61 Part B §5.3; `check` runs in each. Each state is entered afresh:
  * Firefox's page crashes on a pointer click after an axe run in the same page.
  */
-async function boardStates(
-  page: Page,
-  request: APIRequestContext,
-  check: (state: string) => Promise<void>,
-): Promise<void> {
+async function boardStates(page: Page, check: (state: string) => Promise<void>): Promise<void> {
   await open(page, '/t/demo/boards');
   await page.getByRole('button', { name: 'New board' }).click();
   await page.getByRole('dialog', { name: 'New board' }).waitFor();
@@ -158,44 +153,32 @@ async function boardStates(
   await page.getByRole('button', { name: 'Filter service: checkout' }).waitFor();
   await check('b-3 chips set');
 
-  // A failed star needs the BFF (the stub makes no request to fail): a board of its own there.
-  if (!PREVIEW) {
-    const created = await request.post(`${HTTP_BFF}/api/dash/v1/boards`, {
-      data: { spec: { title: `A11y star ${crypto.randomUUID()}`, panels: [], sections: [] } },
-    });
-    expect(created.status()).toBe(201);
-    const { uid, etag } = (await created.json()) as { uid: string; etag: string };
-    try {
-      await page.route('**/api/dash/v1/me/starred-boards/*', (r) => r.fulfill({ status: 503 }));
-      await open(page, `${HTTP_BFF}/t/demo/board/${uid}`);
-      await page.getByRole('button', { name: 'Star board' }).click();
-      await page.getByText('Could not update Starred. Try again.').waitFor();
-      await check('b-1 star failed');
-    } finally {
-      await page.unroute('**/api/dash/v1/me/starred-boards/*');
-      await request.delete(`${HTTP_BFF}/api/dash/v1/boards/${uid}`, {
-        headers: { 'If-Match': `"${etag}"` },
-      });
-    }
-  }
+  // A failed star: the stub's test hook fails the next star change (`pulsus-dash.stub.failStar`).
+  await open(page, '/t/demo/board/b-1');
+  await page.evaluate(() => {
+    localStorage.setItem('pulsus-dash.stub.failStar', '1');
+  });
+  await page.getByRole('button', { name: 'Star board' }).click();
+  await page.getByText('Could not update Starred. Try again.').waitFor();
+  await check('b-1 star failed');
 }
 
 test.describe('e2e:a11y-rooms boards', () => {
   for (const theme of ['dark', 'light'] as const) {
-    test(`${theme} board list and board states`, async ({ page, request }) => {
+    test(`${theme} board list and board states`, async ({ page }) => {
       test.setTimeout(120_000);
       await page.addInitScript((t) => {
         localStorage.setItem('pulsus-dash.theme', t);
       }, theme);
-      await boardStates(page, request, async (state) => {
+      await boardStates(page, async (state) => {
         expect(await seriousViolations(page), state).toEqual([]);
       });
     });
   }
 
-  test('board targets are at least 24 × 24 px', async ({ page, request }) => {
+  test('board targets are at least 24 × 24 px', async ({ page }) => {
     test.setTimeout(120_000);
-    await boardStates(page, request, async (state) => {
+    await boardStates(page, async (state) => {
       expect(await smallTargets(page), state).toEqual([]);
     });
   });
