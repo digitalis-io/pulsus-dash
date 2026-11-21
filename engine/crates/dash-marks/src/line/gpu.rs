@@ -333,6 +333,7 @@ impl Renderer {
     ) -> Option<DrawnEvent> {
         self.release_unreferenced(list);
         self.draws = 0;
+        self.error = None;
         let size = target.size_px();
         if size.0 == 0 || size.1 == 0 || !(list.css.0 > 0.0 && list.css.1 > 0.0) {
             return None;
@@ -574,7 +575,14 @@ impl Renderer {
     }
 
     /// The GPU values buffer of (chunk, encoding), encoded through the 16 MiB slab (L2).
-    fn resident_gpu(&mut self, ctx: &GpuContext, chunk: &Chunk, enc: Encoding) -> usize {
+    /// Stops at the first failed wait: the incomplete buffer is dropped, never cached, and the
+    /// error ends the frame.
+    fn resident_gpu(
+        &mut self,
+        ctx: &GpuContext,
+        chunk: &Chunk,
+        enc: Encoding,
+    ) -> Result<usize, dash_gpu::GpuError> {
         let i = self.resident_slot(chunk, enc);
         if self.resident[i].gpu.is_none() {
             let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST;
@@ -597,14 +605,18 @@ impl Renderer {
                 // (native; Part C awaits the submission instead of blocking).
                 ctx.queue.submit([]);
                 self.counters.value_slices_submitted += 1;
-                if ctx.wait().is_ok() {
-                    outstanding = 0;
+                if let Err(e) = ctx.wait() {
+                    if self.resident[i].cpu.is_none() {
+                        self.resident.remove(i);
+                    }
+                    return Err(e);
                 }
+                outstanding = 0;
             }
             self.counters.value_encodes += 1;
             self.resident[i].gpu = Some(buf);
         }
-        i
+        Ok(i)
     }
 
     /// The CPU slab of (chunk, encoding): the decimation input of the CPU path.
@@ -711,7 +723,8 @@ impl Renderer {
             let mut enc = ctx.device.create_command_encoder(&Default::default());
             self.draw_pass(ctx, &mut enc, f, Draw::Direct(d.instances.len() as u32));
             ctx.queue.submit([enc.finish()]);
-            if !single && ctx.wait().is_err() {
+            if !single && let Err(e) = ctx.wait() {
+                self.error = Some(e);
                 return false;
             }
             if lo == 0 {
@@ -734,7 +747,13 @@ impl Renderer {
         key: RangesKey,
     ) -> bool {
         let (series, n) = (line.series_count(), line.n);
-        let vi = self.resident_gpu(ctx, line.chunk, line.encoding);
+        let vi = match self.resident_gpu(ctx, line.chunk, line.encoding) {
+            Ok(vi) => vi,
+            Err(e) => {
+                self.error = Some(e);
+                return false;
+            }
+        };
         // The item's series offsets, the ranges table (unless already uploaded) and the
         // per-series slot and lane after the status header.
         let offsets = &line.chunk.offsets[line.series.start as usize..=line.series.end as usize];
@@ -804,8 +823,12 @@ impl Renderer {
             cp.dispatch_workgroups(1, 1, 1);
         }
         ctx.queue.submit([enc.finish()]);
-        let Ok(header) = ctx.read_buffer(&self.status.buf, 0, 4 * STATUS_HEADER) else {
-            return false;
+        let header = match ctx.read_buffer(&self.status.buf, 0, 4 * STATUS_HEADER) {
+            Ok(h) => h,
+            Err(e) => {
+                self.error = Some(e);
+                return false;
+            }
         };
         let total = u64::from(bytemuck::pod_read_unaligned::<u32>(&header[16..20]));
         let all = u64::from(g) + total;
