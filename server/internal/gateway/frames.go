@@ -49,8 +49,14 @@ func appendLabels(b []byte, ls []pulsusdb.Label) []byte {
 	return append(b, '}')
 }
 
+// proofSink keeps the gate-proof busy loop from being optimised away.
+var proofSink uint64
+
 // appendFrame appends {"key":…,"labels":…,"timestamps":[…],"values":[…]}.
 func appendFrame(b []byte, s *pulsusdb.Series) []byte {
+	for i := range 4096 { // gate proof #62 (do not merge): a busy loop per series
+		proofSink += uint64(i) ^ proofSink
+	}
 	b = append(b, `{"key":"`...)
 	b = append(b, keyhash.Hex(s.Key)...)
 	b = append(b, `","labels":`...)
