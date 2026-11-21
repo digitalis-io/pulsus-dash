@@ -9,7 +9,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
 )
 
-// jsonSource decodes a Prometheus-compatible JSON body (application/json) with the request's
+// jsonSource decodes a PromQL HTTP API JSON body (application/json) with the request's
 // tokenizer, so every key and string it yields went through the redactor. It reads both member
 // orders: data.result may come before or after resultType, status and the completeness members.
 type jsonSource struct {
