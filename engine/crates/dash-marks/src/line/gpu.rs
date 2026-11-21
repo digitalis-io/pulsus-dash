@@ -47,6 +47,10 @@ pub struct DebugCounters {
     pub value_encodes: u64,
     /// The largest staging slice written (T1); 0 on T2, where the slab is the input.
     pub staging_bytes_max: u64,
+    /// Peak value-upload bytes queued and not yet completed (L2: one slice, ≤ 16 MiB).
+    pub staging_outstanding_max: u64,
+    /// Peak bytes of CPU-path instance batches held at once (T2 and far items).
+    pub cpu_instance_bytes_peak: u64,
 }
 
 /// The P1–P5 uniform.
@@ -571,6 +575,8 @@ impl Renderer {
             let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST;
             let buf = create(ctx, "values", usage, 4 * chunk.values.len() as u64);
             self.staging.reserve(STAGING_WORDS.min(chunk.values.len()));
+            // Queued uploads stay outstanding until a submission completes.
+            let mut outstanding = 0u64;
             for (k, slice) in chunk.values.chunks(STAGING_WORDS).enumerate() {
                 self.staging.clear();
                 self.staging.extend(slice.iter().map(|v| enc.encode(*v)));
@@ -579,6 +585,9 @@ impl Renderer {
                     .write_buffer(&buf, (k * STAGING_WORDS * 4) as u64, bytes);
                 let max = &mut self.counters.staging_bytes_max;
                 *max = (*max).max(bytes.len() as u64);
+                outstanding += bytes.len() as u64;
+                let peak = &mut self.counters.staging_outstanding_max;
+                *peak = (*peak).max(outstanding);
             }
             self.counters.value_encodes += 1;
             self.resident[i].gpu = Some(buf);
@@ -656,6 +665,10 @@ impl Renderer {
         for (lo, hi) in self.batches(ctx, all).into_iter().skip(1) {
             parts.push((lo, run(lo..hi).instances));
         }
+        let held: u64 =
+            parts.iter().map(|(_, p)| p.len() as u64).sum::<u64>() + d0.instances.len() as u64;
+        let peak = &mut self.counters.cpu_instance_bytes_peak;
+        *peak = (*peak).max(INSTANCE_BYTES * held);
         self.size_instances(ctx, all);
         for (lo, mut inst) in parts {
             for (k, gi) in guides.iter().enumerate().skip(lo as usize) {

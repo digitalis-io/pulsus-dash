@@ -142,3 +142,93 @@ fn ranges_and_values_have_their_own_lifetimes() {
         );
     }
 }
+
+/// L2 (A.15.1, T04 §5.7): value uploads keep at most one 16 MiB slice queued, so the driver's
+/// copies never exceed the ≤ 32 MiB transient staging budget.
+#[test]
+fn value_upload_keeps_one_slice_outstanding() {
+    let ctx = ctx(Tier::T1);
+    let len = 10_000_000u32; // 40 MB encoded: three slices
+    let mut b = dash_wire::ChunkBuilder::grid(dash_wire::ChunkId(77), 0, 1, len);
+    let vs: Vec<f64> = (0..len).map(|k| (f64::from(k) * 1e-3).sin()).collect();
+    ok(
+        b.push_series(
+            dash_wire::SeriesMeta {
+                key_hash: 1,
+                labels: Vec::new(),
+            },
+            None,
+            &vs,
+        ),
+        "series",
+    );
+    let chunk = Arc::new(b.finish());
+    let axis = Range64 { lo: -1.0, hi: 1.0 };
+    let list = line_list(
+        chunk,
+        (1048.0, 440.0),
+        1.0,
+        [40.0, 8.0, 1000.0, 400.0],
+        (0.0, f64::from(len)),
+        axis,
+        false,
+    );
+    let mut r = Renderer::new(
+        &ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
+    let _ = render(&ctx, &mut r, &list);
+    let c = r.debug_counters();
+    assert_eq!(c.value_encodes, 1, "{c:?}");
+    assert!(
+        c.staging_outstanding_max > 0 && c.staging_outstanding_max <= 16 << 20,
+        "{c:?}"
+    );
+    assert!(
+        c.staging_bytes_max + c.staging_outstanding_max <= 32 << 20,
+        "{c:?}"
+    );
+}
+
+/// The CPU path (T2, far items) draws batch by batch: at most one bounded batch of instances is
+/// held at a time, however many batches the frame needs.
+#[test]
+fn cpu_batches_hold_one_batch() {
+    let fx = ok(f2(100, 10_000), "F2");
+    let ctx = ctx(Tier::T2);
+    let spec = VisSpec::Line(LineSpec::new(Unit::None));
+    let v = Viewport {
+        id: 0,
+        frame_id: None,
+        css: Size64 {
+            w: 1000.0,
+            h: 400.0,
+        },
+        dpr: 1.0,
+        theme: Theme::Dark,
+        camera: Camera::Plot2D(PlotCamera::idle(Range64::from(WINDOW), &spec)),
+        spec,
+        data: Some(Arc::new(fx.chunk.clone())),
+        band: Band::Measure,
+    };
+    let max = 1000u64;
+    let mut r = Renderer::new(
+        &ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions {
+            max_instances: Some(max),
+        },
+    );
+    let _ = render(&ctx, &mut r, &build(&v).0);
+    assert!(
+        r.last_draws() > 3,
+        "precondition: {} batches",
+        r.last_draws()
+    );
+    let c = r.debug_counters();
+    assert!(
+        c.cpu_instance_bytes_peak > 0 && c.cpu_instance_bytes_peak <= max * 16,
+        "{c:?}"
+    );
+}
