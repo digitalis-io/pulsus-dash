@@ -1,7 +1,25 @@
 import type { PromMetricMetadata } from '../data/decode';
 import type { StubSeed } from './StubApi';
+import type { PanelSpec } from './types';
 
-/** The seed `npm run dev` and the tests use (generic names only). */
+function panel(
+  id: string,
+  title: string,
+  lang: PanelSpec['query']['lang'],
+  text: string,
+  kind: PanelSpec['vis']['kind'],
+  [x, y, w, h]: readonly [number, number, number, number],
+): PanelSpec {
+  return { id, title, grid: { x, y, w, h }, query: { lang, text }, vis: { kind } };
+}
+
+const EDGE_TITLE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
+
+/**
+ * The seed `npm run dev` and the tests use (generic names only; plan #61 Part B Appendix B-A §A.1).
+ * b-3's queries reference the variables `region` and `env` (Part C Appendix C-A §A.2).
+ * Boards belong to the organisation, so every tenant shows the same list.
+ */
 export const defaultSeed: StubSeed = {
   session: {
     user: { id: 'u-ada', name: 'Ada Admin', email: 'ada@example.com', role: 'admin' },
@@ -14,22 +32,98 @@ export const defaultSeed: StubSeed = {
     server: null,
     canSignOut: true,
   },
-  boards: {
-    demo: [
-      { uid: 'b-1', title: 'Service overview', updatedAt: '2026-11-18T09:30:00.000Z' },
-      { uid: 'b-2', title: 'Checkout latency', updatedAt: '2026-11-17T16:05:00.000Z' },
-      {
-        uid: 'b-3',
-        title: 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy',
-        updatedAt: '2026-11-16T08:00:00.000Z',
+  boards: [
+    {
+      uid: 'b-1',
+      title: 'Service overview',
+      updatedAt: '2026-11-18T09:30:00.000Z',
+      spec: {
+        title: 'Service overview',
+        time: { from: 'now-6h', to: 'now' },
+        panels: [
+          panel(
+            'p-1',
+            'Request rate',
+            'promql',
+            'sum(rate(http_requests_total[5m]))',
+            'line',
+            [0, 0, 6, 8],
+          ),
+          panel(
+            'p-2',
+            'Error ratio',
+            'promql',
+            'sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
+            'stat',
+            [6, 0, 6, 8],
+          ),
+          panel('p-3', 'Errors', 'logql', '{app="api"} |= "error"', 'logs', [0, 8, 12, 10]),
+        ],
+        sections: [
+          {
+            id: 's-1',
+            title: 'Latency',
+            collapsed: false,
+            panels: [
+              panel(
+                'p-4',
+                'Request latency',
+                'promql',
+                'sum(rate(http_request_duration_seconds_bucket[5m])) by (le)',
+                'heatmap',
+                [0, 0, 12, 8],
+              ),
+            ],
+          },
+        ],
       },
-    ],
-    sandbox: [],
-  },
+    },
+    {
+      uid: 'b-2',
+      title: 'Checkout latency',
+      updatedAt: '2026-11-17T16:05:00.000Z',
+      spec: { title: 'Checkout latency', panels: [], sections: [] },
+    },
+    {
+      uid: 'b-3',
+      title: EDGE_TITLE,
+      updatedAt: '2026-11-16T08:00:00.000Z',
+      spec: {
+        title: EDGE_TITLE,
+        panels: [
+          panel(
+            'p-1',
+            'Edge p99',
+            'promql',
+            'histogram_quantile(0.99, sum(rate(edge_request_seconds_bucket{region=~"${region}"}[5m])) by (le))',
+            'line',
+            [0, 0, 6, 8],
+          ),
+          panel(
+            'p-2',
+            'Edge errors',
+            'logql',
+            'sum by (level) (count_over_time({app="edge"}[1m]))',
+            'auto',
+            [6, 0, 6, 8],
+          ),
+          panel(
+            'p-3',
+            'Pods',
+            'promql',
+            'sum(kube_pod_status_ready{env="$env"}) by (pod)',
+            'heatmap',
+            [0, 8, 6, 8],
+          ),
+        ],
+        sections: [],
+      },
+    },
+  ],
 };
 
-/** Starred boards seeded for a tenant when its stub key is absent. */
-export const defaultStarred: Readonly<Record<string, readonly string[]>> = { demo: ['b-1'] };
+/** Starred boards seeded when the stub key is absent (organisation-level, as on the BFF). */
+export const defaultStarred: readonly string[] = ['b-1'];
 
 /** Completion metadata: the body of the e2e `metadata` transcript (plan #63 A.1, A.3). */
 export const STUB_PROM_METADATA: Readonly<Record<string, readonly PromMetricMetadata[]>> = {

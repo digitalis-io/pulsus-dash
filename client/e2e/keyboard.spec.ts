@@ -1,11 +1,14 @@
 /**
- * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22):
- * loops L1–L22, keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
+ * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
+ * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3): loops L1–L31,
+ * keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
  * (ESLint bans other input here); the coverage check at the end fails on any control never operated
  * and any state never visited.
  */
-import { expect, test, type Page } from '@playwright/test';
-import { keyboardHarness, type KeyboardHarness } from './keyboardCoverage.ts';
+import { expect, test } from '@playwright/test';
+import { boardLoops } from './keyboardBoards.ts';
+import { keyboardHarness } from './keyboardCoverage.ts';
+import { script, TRIGGER, type Script } from './keyboardScript.ts';
 import { enc, GALLERY_FROM, GALLERY_TO, GALLERY_URL, ORIGIN, T, timeTrigger } from './helpers.ts';
 
 const QUICK = [
@@ -41,7 +44,6 @@ const REQUIRED_STATES = [
   'not-found',
   'session-error',
 ];
-const TRIGGER = 'button "<time range>"';
 const NOV_18 = `from=${enc('2026-11-18T09:00:00.000Z')}&to=${enc('2026-11-18T10:00:00.000Z')}`;
 const AT_10_11 = `from=${enc('2026-11-19T10:00:00.000Z')}&to=${enc('2026-11-19T11:00:00.000Z')}&refresh=off`;
 
@@ -51,131 +53,9 @@ declare global {
   }
 }
 
-type Target = string | RegExp;
-
-function matches(focus: string, target: Target): boolean {
-  return typeof target === 'string' ? focus === target : target.test(focus);
-}
-
-/** The script's steps over one page and harness. Input only through the harness's press and type. */
-function script(page: Page, h: KeyboardHarness) {
-  const { press, type } = h;
-
-  /** Navigates (not input): the state the next rows start from. */
-  async function goto(url: string): Promise<void> {
-    await page.goto(url);
-    await ready();
-  }
-
-  async function ready(): Promise<void> {
-    const path = new URL(page.url()).pathname;
-    if (path.startsWith('/t/')) await page.locator('html[data-shell-ready="true"]').waitFor();
-    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('');
-    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText(/^Loading/);
-  }
-
-  /** Tabs (forwards, or backwards with `back`) until the focused control matches. */
-  async function focus(target: Target, o: { back?: boolean; max?: number } = {}): Promise<void> {
-    const max = o.max ?? 45;
-    for (let i = 0; i <= max; i++) {
-      const f = await h.focusName();
-      if (matches(f, target)) return;
-      await press(o.back === true ? 'Shift+Tab' : 'Tab');
-    }
-    throw new Error(
-      `cannot reach ${String(target)} by keyboard; focus is on ${await h.focusName()}`,
-    );
-  }
-
-  /** Focuses `target` and presses `key` on it. */
-  async function on(target: Target, key = 'Enter', o: { back?: boolean } = {}): Promise<void> {
-    await focus(target, o);
-    await press(key);
-  }
-
-  function path(): string {
-    return new URL(page.url()).pathname;
-  }
-
-  function search(): Record<string, string> {
-    return Object.fromEntries(new URL(page.url()).searchParams);
-  }
-
-  function dialog() {
-    return page.getByRole('dialog', { name: 'Time range' });
-  }
-
-  /** Opens the time range dialog; focus lands in the Quick ranges list box. */
-  async function openPicker(): Promise<void> {
-    await on(TRIGGER);
-    const list = dialog().getByRole('listbox', { name: 'Quick ranges' });
-    await expect
-      .poll(() => list.evaluate((l) => l.contains(document.activeElement)).catch(() => false))
-      .toBe(true);
-  }
-
-  /** Operates, with Enter, every link of the current page not yet operated here (Back after each). */
-  async function everyLink(
-    url: string,
-    filter: (key: string) => boolean = () => true,
-  ): Promise<void> {
-    for (let guard = 0; guard < 40; guard++) {
-      await goto(url);
-      await press('Tab');
-      const link = (await h.pendingHere()).find((k) => k.startsWith('link ') && filter(k));
-      if (link === undefined) return;
-      await on(link);
-      await ready();
-    }
-    throw new Error(`links on ${url} keep changing`);
-  }
-
-  async function quickRange(i: number): Promise<void> {
-    await openPicker();
-    await press('Home');
-    for (let k = 0; k < i; k++) await press('ArrowDown');
-    await press('Enter');
-    await expect(dialog()).toBeHidden();
-  }
-
-  /** Opens a menu from its button and chooses the item `steps` below the first. */
-  async function menuItem(button: Target, steps: number): Promise<void> {
-    await on(button);
-    await expect(page.getByRole('menu')).toBeVisible();
-    await press('Home');
-    for (let k = 0; k < steps; k++) await press('ArrowDown');
-    await press('Enter');
-  }
-
-  /** Replaces a field's text by keyboard: select all, then type. */
-  async function replaceText(target: Target, text: string): Promise<void> {
-    await focus(target);
-    await press('ControlOrMeta+A');
-    await type(text);
-  }
-  return {
-    page,
-    h,
-    goto,
-    ready,
-    focus,
-    on,
-    path,
-    search,
-    dialog,
-    openPicker,
-    everyLink,
-    quickRange,
-    menuItem,
-    replaceText,
-  };
-}
-
-type Script = ReturnType<typeof script>;
-
 test.describe('e2e:a11y-rooms keyboard', () => {
-  test('every control and state by keyboard (L1–L22)', async ({ page }) => {
-    test.setTimeout(900_000);
+  test('every control and state by keyboard (L1–L31)', async ({ page }) => {
+    test.setTimeout(3_600_000);
     await page.addInitScript(() => {
       window.__copied = [];
       const writeText = (s: string): Promise<void> => {
@@ -213,6 +93,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         'button "Refresh now"',
         'button "Auto-refresh interval: Off"',
         'button "User menu: Ada Admin"',
+        'button "New board"',
         'link "Service overview" #2',
       ];
       for (const [i, name] of want.entries()) {
@@ -567,8 +448,15 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       expect(s.search()).toEqual({ from: 'now-6h', to: 'now', refresh: '30s' });
       const trigger = page.getByRole('button', { name: 'Switch tenant, current: Sandbox' });
       await expect(trigger).toBeFocused();
-      await expect(nav.getByText('No starred boards')).toBeVisible();
-      await expect(nav.getByText('No recent boards')).toBeVisible();
+      // Starred and Recent belong to the organisation and user, not the tenant (plan #61 Part C).
+      await expect(
+        nav
+          .getByRole('heading', { name: 'Starred' })
+          .locator('xpath=following-sibling::*[1]')
+          .getByRole('link')
+          .first(),
+      ).toHaveText(/Service overview/);
+      await expect(nav.getByText('No recent boards')).toHaveCount(0);
       await s.menuItem('button "Switch tenant, current: Sandbox"', 0);
       await expect.poll(() => s.path()).toBe('/t/demo/boards');
       await expect(
@@ -690,6 +578,9 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         await expect(slider).toHaveAttribute('aria-valuetext', 'Use the arrow keys to read values');
       }
     });
+
+    // L23–L31 (plan #61 Parts B and C): the board list and the board page.
+    await boardLoops(s);
 
     await test.step('Coverage', () => {
       const uncovered = h.uncovered();

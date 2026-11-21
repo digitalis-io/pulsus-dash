@@ -8,7 +8,8 @@
       "src/pages/explore/LogsPage.tsx",
       "src/pages/admin/AdminPage.tsx",
       "src/pages/SignedOutPage.tsx",
-      "src/shell/TimeRangeDialog.tsx"
+      "src/shell/TimeRangeDialog.tsx",
+      "src/pages/board/BoardGridEditor.tsx"
     ],
     "fonts": ["inter-latin-wght-normal", "jetbrains-mono-latin-wght-normal"],
     "initialCss": true

@@ -38,6 +38,8 @@ import { crosshairText, issueText, summaryLabel, valueUnit } from './chartText';
 export interface ChartFrameProps {
   readonly spec: VisSpec;
   readonly data: FrameData;
+  /** Fill the parent's height (board panels, full screen) instead of the fixed chart height. */
+  readonly fill?: boolean;
 }
 
 interface HoverState {
@@ -48,7 +50,7 @@ interface HoverState {
 
 const px = (n: number): string => `${String(n)}px`;
 
-export function ChartFrame({ spec, data }: ChartFrameProps) {
+export function ChartFrame({ spec, data, fill = false }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
   const tz = useTimeZone();
@@ -211,6 +213,12 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
   }, [summary]);
 
   const onSliderKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // Escape clears an active crosshair (the engine does that) and goes no further, so a dialog
+    // around the chart closes only on the next Escape.
+    if (e.key === 'Escape') {
+      if (hover !== null) e.stopPropagation();
+      return;
+    }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
     const n = hover?.rows.length ?? 0;
@@ -225,7 +233,10 @@ export function ChartFrame({ spec, data }: ChartFrameProps) {
   return (
     <div
       ref={hostRef}
-      className={cx(styles['frame'], isStat ? styles['stat'] : styles['chart'])}
+      className={cx(
+        styles['frame'],
+        fill ? styles['fill'] : isStat ? styles['stat'] : styles['chart'],
+      )}
       data-chart-frame=""
       data-frame-ready={summary === null ? 'false' : 'true'}
       data-plot={plot === null ? undefined : [plot.x, plot.y, plot.width, plot.height].join(',')}

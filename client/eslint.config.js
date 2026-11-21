@@ -132,7 +132,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['e2e/keyboard.spec.ts'],
+    files: ['e2e/keyboard.spec.ts', 'e2e/keyboardScript.ts', 'e2e/keyboardBoards.ts'],
     rules: {
       'no-restricted-syntax': [
         'error',

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-20 |
+| **Version** | 1.5-rc · 2026-11-21 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -301,6 +301,17 @@ each with its own canvas, all drawn by one shared chart engine with one GPU devi
 | Header | Board name with "(editing)", Undo, History, Discard, Save (`⌘S`) |
 | Canvas | Viewports on the layout grid; the selected one shows drag and resize handles; a "+ add" slot |
 | Viewport editor (right) | **Data:** entity binding (e.g. `{{service}}`), signal, query with language picker; **Vis:** auto or explicit vis ([05](05-visualisation-catalogue.md)); **Axes, thresholds, overlays**; **Links / pivots** |
+
+*Note (M-UI1, #61 Part B):* the first edit mode has a toolbar under the page header with Add
+panel, Save current time range, Discard, Save (`⌘S`/`Ctrl+S`) and Done; the board name shows
+"(editing)"; the right-hand panel editor has title, query language, query and visualisation. Undo
+and History stay M-UI5 with the rest of SRF-020.
+
+*Note (M-UI1, #61 Part C):* the toolbar's left side has a chip per variable referenced in the
+queries and `+ Filter` (`label=value`), values in the URL only and not applied to queries until #64;
+sections are collapsible with a panel count, collapsed sections neither render nor query, the
+Edit-mode collapsed state is saved with the board and View-mode toggles are URL overrides
+(`collapse`/`expand`), not saved; the anomaly strip stays M-UI5.
 
 #### SRF-014 — Board layout
 **MUST** · M-UI5 · Engineer, SRE, NOC
@@ -1121,6 +1132,8 @@ release and in the team channel.
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): definitions (Surface, Time range picker, Time Ribbon) and a layout paragraph under Table 4-1; SRF-001 (application layout), SRF-014 (one canvas per viewport, one shared engine) and SRF-019 (200 viewports on one page) revised in place; Atlas region "Top bar" becomes "Page header"; SRF-027 errors come from the PulsusDB parser through the BFF until the browser parser lands; R15 |
 | 1.2-rc | 2026-11-19 | Code review of #56: §4.3 Boards introduction describes per-viewport canvases and one shared engine (was "a single GPU scene"); SRF-027 revised to errors from PulsusDB on run, positioned where PulsusDB returns a position; the pre-run byte-offset criterion split out as new SRF-078 (M-UI2), accepted by the owner (12 D11) |
 | 1.3-rc | 2026-11-20 | Decision D12 (authentication deferred): SRF-063 Admin rooms moves M-UI1 → M-UI6 (its OIDC login and data-source binding clause and acceptance follow authentication); SRF-065 Kiosk tokens moves M-UI5 → M-UI6 with ENT-015 and ENT-016; R10 updated |
+| 1.4-rc | 2026-11-20 | #61 Part B: §4.3 note on the M-UI1 edit-mode regions (toolbar with Add panel, Save current time range, Discard, Save and Done; panel editor at the right); Undo and History stay M-UI5 (SRF-020) |
+| 1.5-rc | 2026-11-21 | #61 Part C: §4.3 note on the M-UI1 filter bar (variable chips and `+ Filter`, URL only) and collapsible sections (no render, no query; Edit state saved, View toggles as URL overrides); the anomaly strip stays M-UI5 (SRF-016) |
 
 ## Resolved during formalisation
 

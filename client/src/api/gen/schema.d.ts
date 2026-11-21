@@ -1210,7 +1210,10 @@ export interface operations {
     };
     recordBoardView: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Navigation time in ms since the Unix epoch. Absent → the server's now(). */
+                at?: number;
+            };
             header?: never;
             path: {
                 uid: string;
