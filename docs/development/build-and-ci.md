@@ -223,8 +223,9 @@ T06-005) keep outbound HTTP and upstream decoding in place:
   `internal/notify`, `ai`, `auth` and `telemetry` get their exclusions with the issues that create
   them.
 - `pulsusdb-decoder` forbids `json.Unmarshal`, `json.NewDecoder`, `json.RawMessage` and
-  `(*json.Decoder).Decode` inside `internal/pulsusdb` (tests excepted), so its tokenizer `updec.go`
-  is the only decoder of PulsusDB bodies ([PulsusDB page](../server/pulsusdb.md#upstream-text-is-untrusted-t06-024)).
+  `(*json.Decoder).Decode` inside `internal/pulsusdb` (tests excepted). The invariant is that every
+  decoder of PulsusDB bodies yields strings only through the redactor; today the one decoder is the
+  tokenizer `updec.go`, and a later Arrow decoder joins it behind the same seam ([PulsusDB page](../server/pulsusdb.md#upstream-text-is-untrusted-t06-024)).
 
 **Depguard self-test.** `server/scripts/check-depguard-fixture.sh` proves that the rules are
 enforced (T05-002). For each fixture in `server/testdata/depguard/`, it copies `server/` into a
@@ -236,7 +237,7 @@ there. The lint must fail with the rule's message:
 | `pgx_outside_store.go.txt` | `core` | `github.com/jackc/pgx/v5` | `pgx is used only in internal/store (T11-023, ADR-0015)` |
 | `chi_outside_gateway.go.txt` | `core` | `github.com/go-chi/chi/v5` | `the router is used only in internal/gateway (T06-001)` |
 | `http_client_outside_pulsusdb.go.txt` | `core` | `http.DefaultClient` | `pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)` |
-| `json_outside_updec.go.txt` | `pulsusdb` | `json.Unmarshal` | `pulsusdb-decoder: upstream bodies are decoded only by updec.go, which redacts every string (§4.9)` |
+| `json_outside_updec.go.txt` | `pulsusdb` | `json.Unmarshal` | `pulsusdb-decoder: every upstream body decoder yields strings only through redact; encoding/json does not (§4.9)` |
 
 If a fixture passes, it prints `depguard fixture <name> passed; rule <rule> is not enforced` and
 exits 1. If the lint fails for another reason, it prints the output and `depguard fixture <name>

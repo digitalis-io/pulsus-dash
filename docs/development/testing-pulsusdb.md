@@ -41,9 +41,10 @@ identifies the deployment is kept: no host, URL or tenant. Query ids are `fake-<
 **Synthetic** transcripts cover what cannot be captured read-only (a timeout, a stall, the
 `truncated` flag, keys in reverse order) and say why in `provenance.synthetic`.
 
-The 17 transcripts cover a counter (with the NaN, ±Inf, −0 and subnormal edge values), a
+The 18 transcripts cover a counter (with the NaN, ±Inf, −0 and subnormal edge values), a
 histogram, a truncated result (warning and flag), reordered keys, a gauge vector, a scalar, two
-parse errors (with and without a position), a timeout, a hang, a too-broad selector, labels, label
+parse errors (with and without a position), a timeout, a hang, a too-broad selector, labels (the
+`GET` capture, and `labels-post`, the synthetic `POST` form the client sends first), label
 values, series, metadata and runtime info.
 
 ### Adding a transcript
