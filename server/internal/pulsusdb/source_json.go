@@ -58,36 +58,36 @@ func (s *jsonSource) openRange() error {
 	return err
 }
 
-func (s *jsonSource) nextRange(r *rawSeries) error {
+func (s *jsonSource) nextRange(sink seriesSink) ([]Label, error) {
 	for {
 		k, err := s.dec.Next()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		switch k {
 		case tokArrEnd:
 			if s.buffered {
 				// The tail of the document was walked before the capture was decoded.
 				if k, err := s.dec.Next(); err != nil || k != tokEOF {
-					return orProtocol(err)
+					return nil, orProtocol(err)
 				}
-				return io.EOF
+				return nil, io.EOF
 			}
 			s.inData = true
 			if at, err := s.walk(); err != nil || at {
-				return orProtocol(err)
+				return nil, orProtocol(err)
 			}
 			if err := s.endCheck(); err != nil {
-				return err
+				return nil, err
 			}
-			return io.EOF
+			return nil, io.EOF
 		case tokObjStart:
-			kept, err := s.rangeSeries(r)
+			labels, kept, err := s.rangeSeries(sink)
 			if err != nil || kept {
-				return err
+				return labels, err
 			}
 		default:
-			return protocolError()
+			return nil, protocolError()
 		}
 	}
 }
@@ -278,56 +278,65 @@ func (s *jsonSource) endCheck() error {
 	return nil
 }
 
-// rangeSeries reads one matrix series (its '{' was read) into r, its points as given. A series
-// with native histograms and no values is skipped (false); histogram samples next to values are
-// dropped. Both count towards the completeness warning.
-func (s *jsonSource) rangeSeries(r *rawSeries) (bool, error) {
+// rangeSeries reads one matrix series (its '{' was read), handing each point to sink as it is
+// read. The sink's series starts only at the series' values member, so a series with native
+// histograms and no values is skipped (false) without a grid series or the points limit;
+// histogram samples next to values are dropped. Both count towards the completeness warning.
+// A second values member is KindProtocol.
+func (s *jsonSource) rangeSeries(sink seriesSink) ([]Label, bool, error) {
 	d := s.dec
-	r.Labels, r.T, r.V = nil, r.T[:0], r.V[:0]
+	var labels []Label
 	gotMetric, gotValues, hist := false, false, false
 	for {
 		k, err := d.Next()
 		if err != nil {
-			return false, err
+			return nil, false, err
 		}
 		if k == tokObjEnd {
 			break
 		}
 		switch d.String() {
 		case "metric":
-			if r.Labels, err = readLabels(d); err != nil {
-				return false, err
+			if labels, err = readLabels(d); err != nil {
+				return nil, false, err
 			}
 			gotMetric = true
 		case "values":
-			if err := s.rawPoints(r); err != nil {
-				return false, err
+			if gotValues {
+				return nil, false, protocolError()
+			}
+			if err := sink.begin(); err != nil {
+				return nil, false, err
+			}
+			if err := s.sinkPoints(sink); err != nil {
+				return nil, false, err
 			}
 			gotValues = true
 		case "value":
-			return false, protocolError()
+			return nil, false, protocolError()
 		case "histograms":
 			if err := skipValue(d); err != nil {
-				return false, err
+				return nil, false, err
 			}
 			hist = true
 		default:
 			if err := skipValue(d); err != nil {
-				return false, err
+				return nil, false, err
 			}
 		}
 	}
 	if !gotMetric || (!gotValues && !hist) {
-		return false, protocolError()
+		return nil, false, protocolError()
 	}
 	if hist {
 		s.comp.histSkipped++
 	}
-	return gotValues, nil
+	return labels, gotValues, nil
 }
 
-// rawPoints reads a values array of [t, "v"] pairs into r (the range hot path: no callback).
-func (s *jsonSource) rawPoints(r *rawSeries) error {
+// sinkPoints reads a values array of [t, "v"] pairs, handing each to sink as soon as it is read;
+// the first point sink refuses stops decoding.
+func (s *jsonSource) sinkPoints(sink seriesSink) error {
 	d := s.dec
 	if k, err := d.Next(); err != nil || k != tokArrStart {
 		return orProtocol(err)
@@ -347,7 +356,9 @@ func (s *jsonSource) rawPoints(r *rawSeries) error {
 		if err != nil {
 			return err
 		}
-		r.T, r.V = append(r.T, ms), append(r.V, v)
+		if err := sink.add(ms, v); err != nil {
+			return err
+		}
 	}
 }
 

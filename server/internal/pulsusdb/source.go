@@ -31,12 +31,15 @@ func formatOf(contentType string) (bodyFormat, bool) {
 	return 0, false
 }
 
-// rawSeries is one decoded series before grid placement: labels (redacted, sorted) and the
-// points as the body gave them.
-type rawSeries struct {
-	Labels []Label
-	T      []int64 // ms
-	V      []float64
+// seriesSink receives a range series as it is decoded, so a source never buffers points: the
+// sink places and checks each one at once (grid, duplicates, the points limit) and an error stops
+// decoding (review r3 #1).
+type seriesSink interface {
+	// begin is called when a series is known to carry float samples (its values member), before
+	// its first point; errPointsCut ends the stream there.
+	begin() error
+	// add places one point; an off-grid or repeated timestamp is KindProtocol.
+	add(ms int64, v float64) error
 }
 
 // instantResult is a decoded instant body.
@@ -55,9 +58,9 @@ type instantResult struct {
 type seriesSource interface {
 	// openRange reads a range (matrix) body up to its first series.
 	openRange() error
-	// nextRange decodes the next series into r, reusing r's slices; io.EOF once the body ended
-	// and was validated.
-	nextRange(r *rawSeries) error
+	// nextRange decodes the next series into sink and returns its labels (redacted, sorted);
+	// io.EOF once the body ended and was validated.
+	nextRange(sink seriesSink) ([]Label, error)
 	// readInstant decodes a whole instant body.
 	readInstant() (instantResult, error)
 }
