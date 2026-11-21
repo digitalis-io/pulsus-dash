@@ -1,0 +1,2 @@
+datasource:
+  url: http://[::1%25lo]:3100
