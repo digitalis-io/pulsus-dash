@@ -33,7 +33,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_TAR: ${{ github.workspace }}/../engine-ci-image.tar
+  # Inside the workspace: actions/cache rejects paths with `..`.
+  IMAGE_TAR: ${{ github.workspace }}/.engine-ci-image.tar
 
 jobs:
   image:
