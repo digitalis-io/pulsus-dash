@@ -139,7 +139,7 @@ pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
             axis: (m.ku as f32, m.ou as f32),
             colour_slots,
             lanes: None,
-            width_css: dash_tokens::size::CHART_LINE,
+            width_css: 2.0, // gate proof: golden:gallery must fail
             far: is_far(&enc, chunk.finite),
         });
     }
