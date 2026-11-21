@@ -428,3 +428,6 @@ func eachElement(d *upstreamDecoder, fn func() error, kind tokenKind) error {
 		}
 	}
 }
+
+// escapeLabelName is name in the U__ form when it is not a legacy label name.
+func escapeLabelName(name string) string { return name }

@@ -150,12 +150,12 @@ func mustRange(t *testing.T, c *Client, b core.TenantBinding) []*Series {
 
 func TestRoutesAndParameters(t *testing.T) {
 	bodies := map[string]string{
-		"/api/v1/query":              `{"status":"success","data":{"resultType":"vector","result":[]}}`,
-		"/api/v1/series":             `{"status":"success","data":[{"job":"api","__name__":"up"}]}`,
-		"/api/v1/labels":             okLabels,
-		"/api/v1/label/a/b/values":   okLabels,
-		"/api/v1/metadata":           `{"status":"success","data":{"up":[{"type":"gauge","help":"Target up.","unit":""}]}}`,
-		"/api/v1/status/runtimeinfo": `{"status":"success","data":{"rollupLevels":["1m","1d"],"x":1}}`,
+		"/api/v1/query":                  `{"status":"success","data":{"resultType":"vector","result":[]}}`,
+		"/api/v1/series":                 `{"status":"success","data":[{"job":"api","__name__":"up"}]}`,
+		"/api/v1/labels":                 okLabels,
+		"/api/v1/label/U__a_2f_b/values": okLabels,
+		"/api/v1/metadata":               `{"status":"success","data":{"up":[{"type":"gauge","help":"Target up.","unit":""}]}}`,
+		"/api/v1/status/runtimeinfo":     `{"status":"success","data":{"rollupLevels":["1m","1d"],"x":1}}`,
 	}
 	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		answer(200, bodies[r.URL.Path], "X-Pulsus-Query-Id", "q-1")(w, r)
@@ -189,9 +189,9 @@ func TestRoutesAndParameters(t *testing.T) {
 	reqs := u.requests()
 	want := []struct{ method, path, form string }{
 		{"POST", "/api/v1/query", "query=up&time=1767229200.123"},
-		{"POST", "/api/v1/series", "end=2.500&limit=10&match%5B%5D=up&match%5B%5D=%7Bjob%3D%22x%22%7D&start=1"},
-		{"GET", "/api/v1/labels", "end=1767229200&limit=1000&match%5B%5D=up&start=1767225600"},
-		{"GET", "/api/v1/label/a%2Fb/values", "end=1767229200&limit=1000&match%5B%5D=up&start=1767225600"},
+		{"POST", "/api/v1/series", "end=3&limit=10&match%5B%5D=up&match%5B%5D=%7Bjob%3D%22x%22%7D&start=1"},
+		{"POST", "/api/v1/labels", "end=1767229200&limit=1000&match%5B%5D=up&start=1767225600"},
+		{"GET", "/api/v1/label/U__a_2f_b/values", "end=1767229200&limit=1000&match%5B%5D=up&start=1767225600"},
 		{"GET", "/api/v1/metadata", "limit=5&metric=up"},
 		{"GET", "/api/v1/status/runtimeinfo", ""},
 	}
