@@ -2,7 +2,8 @@
  * Main-thread long tasks of a scripted interaction, from a Chromium trace (#90, plan Appendix B
  * §B.1; PRF-005, T05 §4.3). `bench:rooms-long-tasks` runs it over the room scenarios: every task
  * over 16 ms wall is reported, and CI's interim trace check counts those over 50 ms wall with over
- * 16 ms thread time (a task without thread time counts: the check fails closed).
+ * 16 ms thread time (a task without thread time counts: the check fails closed). The `inputs` option
+ * and the per-type `counts` serve the chart-gesture scenario (#93).
  */
 export interface TraceEvent {
   name: string;
@@ -54,30 +55,28 @@ export const DEFAULT_INPUTS = [
   'mouseup',
   'input',
 ] as const;
-/** STUB (#93 tests first). */
-export const CHART_INPUTS = [...DEFAULT_INPUTS] as const;
+/** Chart gestures (#93): #90's list plus wheel, moves, context menu and double-click. */
+export const CHART_INPUTS = [
+  ...DEFAULT_INPUTS,
+  'wheel',
+  'pointermove',
+  'mousemove',
+  'contextmenu',
+  'dblclick',
+] as const;
 
-const INPUTS = new Set([
-  'click',
-  'keydown',
-  'keyup',
-  'keypress',
-  'pointerdown',
-  'pointerup',
-  'mousedown',
-  'mouseup',
-  'input',
-]);
 const LONG_US = 16_000;
 const CI_WALL_MS = 50;
 const CI_THREAD_MS = 16;
 
 const threadKey = (e: { pid: number; tid: number }): string => `${String(e.pid)}:${String(e.tid)}`;
 
+/** `inputs`: the `EventDispatch` types that open and close the window (default `DEFAULT_INPUTS`). */
 export function longTasks(
   events: readonly TraceEvent[],
-  _o: { inputs?: readonly string[] } = {},
+  o: { inputs?: readonly string[] } = {},
 ): LongTaskResult {
+  const types = new Set<string>(o.inputs ?? DEFAULT_INPUTS);
   const renderers = new Set(
     events
       .filter((e) => e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')
@@ -103,13 +102,18 @@ export function longTasks(
   const onMain = events.filter((e) => threadKey(e) === main);
 
   const inputs = onMain
-    .filter((e) => e.name === 'EventDispatch' && INPUTS.has(e.args?.data?.type ?? ''))
+    .filter((e) => e.name === 'EventDispatch' && types.has(e.args?.data?.type ?? ''))
     .sort((a, b) => a.ts - b.ts);
   const first = inputs[0];
   if (first === undefined) throw new Error('no input');
   const start = first.ts;
   const end = Math.max(...inputs.map((e) => e.ts + (e.dur ?? 0)));
-  const typeCount = (t: string): number => inputs.filter((e) => e.args?.data?.type === t).length;
+  const counts: Record<string, number> = {};
+  for (const e of inputs) {
+    const t = e.args?.data?.type ?? '';
+    counts[t] = (counts[t] ?? 0) + 1;
+  }
+  const typeCount = (t: string): number => counts[t] ?? 0;
 
   const inWindow = onMain.filter(
     (e) => e.ph === 'X' && e.name === 'RunTask' && e.ts < end && e.ts + (e.dur ?? 0) > start,
@@ -143,6 +147,6 @@ export function longTasks(
     over16: tasks.length,
     ciOver,
     worstMs: tasks.reduce((m, x) => Math.max(m, x.durMs), 0),
-    counts: {},
+    counts,
   };
 }
