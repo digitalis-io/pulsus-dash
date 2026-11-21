@@ -6,6 +6,7 @@ import type { EditorView } from '@codemirror/view';
 import { vi } from 'vitest';
 import type { PromSource } from '../editor/lang/types';
 import { createPromQLView } from '../editor/view';
+import './editorDom';
 import { F, fakePromSource } from './fakePromSource';
 
 export interface ViewInOptions {
