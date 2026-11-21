@@ -9,7 +9,9 @@
       "src/pages/admin/AdminPage.tsx",
       "src/pages/SignedOutPage.tsx",
       "src/shell/TimeRangeDialog.tsx",
-      "src/pages/board/BoardGridEditor.tsx"
+      "src/pages/board/BoardGridEditor.tsx",
+      "src/editor/editor.ts",
+      "src/editor/lang/promql/promql.ts"
     ],
     "fonts": ["inter-latin-wght-normal", "jetbrains-mono-latin-wght-normal"],
     "initialCss": true
@@ -22,5 +24,5 @@
     "fonts": 150000,
     "totalExceptEngine": 1000000
   },
-  "editorModules": []
+  "editorModules": ["src/editor/editor.ts", "src/editor/lang/promql/promql.ts"]
 }
