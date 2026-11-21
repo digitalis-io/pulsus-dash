@@ -1,6 +1,6 @@
 /**
  * A board (IA-022, plan #61 Part B §4, Part C §4.2–§4.4): the filter bar and the toolbar, the
- * grids and their collapsible sections in View or Edit mode, the panel editor, saving with the
+ * grids and their collapsible sections in View or Edit mode, the panel editor dialog, saving with the
  * head's etag and the conflict dialog, and the guard against leaving with unsaved changes. The page
  * holds the loaded head and the draft in one reducer (`editorState.ts`); variables, filters and
  * View-mode section overrides live in the URL (`useBoardParams`).
@@ -52,7 +52,7 @@ import { BoardGridView } from './BoardGridView';
 import { BoardGuard } from './BoardGuard';
 import { BoardSection } from './BoardSection';
 import { BoardToolbar } from './BoardToolbar';
-import { PanelEditor } from './PanelEditor';
+import { focusAfterEditor, PanelEditor } from './PanelEditor';
 import { PanelFrame, type PanelFrameProps } from './PanelFrame';
 
 // The Edit-mode chunk: react-grid-layout loads only when a board is edited (ADR-0014 §8). It is
@@ -318,6 +318,22 @@ function BoardEditor({
     };
   }, []);
 
+  // #90: when the panel editor closes in Edit mode, focus goes to the edited panel's Panel menu
+  // (its Edit control), or to Add panel if the panel is gone. Scheduled one frame later, so it runs
+  // after the overlay's own focus restore.
+  const editedId = useRef<string | null>(null);
+  useEffect(() => {
+    const was = editedId.current;
+    editedId.current = s.selected;
+    if (was === null || s.selected !== null || !edit) return;
+    const raf = requestAnimationFrame(() => {
+      focusAfterEditor(document, was);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [s.selected, edit]);
+
   const selected =
     s.selected === null ? undefined : allPanels(s.draft).find((x) => x.panel.id === s.selected);
   const full = [t('board.full'), t('board.fullPanels'), t('board.sectionsFull')].includes(
@@ -506,9 +522,11 @@ function BoardEditor({
           <PanelEditor
             key={selected.panel.id}
             panel={selected.panel}
+            tenant={tenant}
             pointer={panelPointer(selected.grid, selected.index)}
             fields={s.save.status === 'invalid' ? s.save.fields : []}
             readOnly={busy}
+            statusText={statusText}
             onChange={(patch) => {
               dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
             }}

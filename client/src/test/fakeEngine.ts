@@ -14,6 +14,11 @@ export interface FakeFrame extends ChartFrame {
   disposed: number;
   emit<E extends keyof FrameEvents>(e: E, ev: FrameEvents[E]): void;
   last(method: string): readonly unknown[] | undefined;
+  /**
+   * A completed draw (#90): emits `drawn` with the last `resize` arguments; nothing until a
+   * non-empty `resize`.
+   */
+  draw(): void;
 }
 
 export interface FakeEngine extends ChartEngine {
@@ -68,6 +73,11 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
         },
         last(method) {
           return calls.filter((c) => c.method === method).at(-1)?.args;
+        },
+        draw() {
+          const r = frame.last('resize') as readonly [number, number, number] | undefined;
+          if (r === undefined || !(r[0] > 0) || !(r[1] > 0)) return;
+          frame.emit('drawn', { cssWidth: r[0], cssHeight: r[1], dpr: r[2] });
         },
       };
       frames.push(frame);

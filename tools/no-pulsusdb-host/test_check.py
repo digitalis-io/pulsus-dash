@@ -132,10 +132,9 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual((code, findings(out), err), (0, [], ""))
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (5 files)")
 
-    def test_missing_secret_warning(self):  # N17
+    def test_no_forbidden_hosts_is_silent(self):  # N17: DASH_FORBIDDEN_HOSTS is optional, local only
         code, out, err = scan(["--root", str(GOOD)])
-        self.assertEqual(code, 0)
-        self.assertTrue(err.startswith("warning[missing-secret] DASH_FORBIDDEN_HOSTS is not set"), err)
+        self.assertEqual((code, err), (0, ""))
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (5 files)")
 
 
@@ -196,7 +195,7 @@ class ForbiddenHostTests(TmpTree):
         code, out, err = scan(["--root", str(self.root)])
         self.assertEqual(code, 0)
         self.assertEqual(findings(out), [])
-        self.assertTrue(err.startswith("warning[missing-secret]"), err)
+        self.assertEqual(err, "")
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (1 files)")
 
     def test_datasource_env_host(self):  # N18
@@ -308,8 +307,8 @@ class ErrorPathTests(TmpTree):
         self.assertIn("error[forbidden-host] a\\x1bb.md:1 (entry 1)", findings(out))
         self.assertNotIn("\x1b", out)
 
-    def test_missing_secret_required(self):  # N16
-        for env in ({}, {"DASH_FORBIDDEN_HOSTS": " , \n"}):
+    def test_require_secret_removed(self):  # N16: there is no CI secret; the option is gone
+        for env in ({}, {"DASH_FORBIDDEN_HOSTS": " , \n"}, SECRET):
             with self.subTest(env=env):
                 calls = []
 
@@ -322,15 +321,7 @@ class ErrorPathTests(TmpTree):
                     return b""
 
                 code, out, err = scan(["--require-secret"], env, run=run, read_bytes=read_bytes)
-                self.assertEqual(code, 2)
-                self.assertTrue(
-                    err.startswith(
-                        "error[missing-secret] DASH_FORBIDDEN_HOSTS is not set: "
-                        "a repository owner must create"
-                    ),
-                    err,
-                )
-                self.assertIn("docs/development/build-and-ci.md#ci-no-pulsusdb-host", err)
+                self.assertEqual((code, out, err), (2, "", "error[usage] invalid arguments\n"))
                 self.assertEqual(calls, [])
 
     def test_bad_root(self):
@@ -344,7 +335,7 @@ class ErrorPathTests(TmpTree):
         self.assertEqual(
             out,
             "usage: python3 -I tools/no-pulsusdb-host/check.py "
-            "[--root DIR] [--require-secret] [--show-paths]\n",
+            "[--root DIR] [--show-paths]\n",
         )
 
 
@@ -462,7 +453,6 @@ class UrlRuleTests(TmpTree):
                 code, out, err = self.one(content)
                 self.assertEqual(len(findings(out)), want)
                 self.assertEqual(code, 1 if want else 0)
-
 
 class FunctionTests(unittest.TestCase):
     def test_is_local_table(self):  # N19

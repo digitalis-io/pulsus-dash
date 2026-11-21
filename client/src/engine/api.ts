@@ -1,6 +1,6 @@
 /**
- * The chart frame seam (ADR-0014 §3). Every chart is drawn by a `ChartEngine` through this
- * interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019). Every chart is drawn by a `ChartEngine`
+ * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
  */
@@ -43,6 +43,8 @@ export interface FrameInit {
   readonly timeZone: string;
   /** Keydown source for the crosshair; null for stat. */
   readonly keyTarget: HTMLElement | null;
+  /** Diagnostic identity of the frame: tags its `chart-draw` measures (#90, ADR-0019). */
+  readonly id?: string;
 }
 
 /** CSS px, relative to the canvas. */
@@ -96,11 +98,19 @@ export interface FrameSummary {
   readonly plot: PlotRect;
 }
 
+/** The visible canvas was drawn completely at this size (#90, ADR-0019). */
+export interface DrawnEvent {
+  readonly cssWidth: number;
+  readonly cssHeight: number;
+  readonly dpr: number;
+}
+
 export interface FrameEvents {
   hover: HoverEvent | null;
   brush: BrushEvent;
   select: SelectEvent;
   a11y: FrameSummary;
+  drawn: DrawnEvent;
 }
 
 export interface ChartEngine {

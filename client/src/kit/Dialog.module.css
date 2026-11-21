@@ -40,6 +40,20 @@
   height: 90vh;
 }
 
+/* `editor` (#90): a fixed-size editing window, capped to the viewport less 24 px a side. */
+.editorModal {
+  display: flex;
+  width: min(var(--size-dialog-editor-width), calc(100vw - var(--space-12)));
+  height: min(var(--size-dialog-editor-height), calc(100vh - var(--space-12)));
+}
+
+.editor {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .plain {
   outline: none;
 }

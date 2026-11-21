@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-21 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -300,11 +300,12 @@ each with its own canvas, all drawn by one shared chart engine with one GPU devi
 |---|---|
 | Header | Board name with "(editing)", Undo, History, Discard, Save (`⌘S`) |
 | Canvas | Viewports on the layout grid; the selected one shows drag and resize handles; a "+ add" slot |
-| Viewport editor (right) | **Data:** entity binding (e.g. `{{service}}`), signal, query with language picker; **Vis:** auto or explicit vis ([05](05-visualisation-catalogue.md)); **Axes, thresholds, overlays**; **Links / pivots** |
+| Viewport editor (modal window) | **Data:** entity binding (e.g. `{{service}}`), signal, query with language picker; **Vis:** auto or explicit vis ([05](05-visualisation-catalogue.md)); **Axes, thresholds, overlays**; **Links / pivots** |
 
 *Note (M-UI1, #61 Part B):* the first edit mode has a toolbar under the page header with Add
 panel, Save current time range, Discard, Save (`⌘S`/`Ctrl+S`) and Done; the board name shows
-"(editing)"; the right-hand panel editor has title, query language, query and visualisation. Undo
+"(editing)"; the panel editor is a centred modal window with a live preview at the top and title,
+query language, query and visualisation below (#90). Undo
 and History stay M-UI5 with the rest of SRF-020.
 
 *Note (M-UI1, #61 Part C):* the toolbar's left side has a chip per variable referenced in the
@@ -1134,6 +1135,7 @@ release and in the team channel.
 | 1.3-rc | 2026-11-20 | Decision D12 (authentication deferred): SRF-063 Admin rooms moves M-UI1 → M-UI6 (its OIDC login and data-source binding clause and acceptance follow authentication); SRF-065 Kiosk tokens moves M-UI5 → M-UI6 with ENT-015 and ENT-016; R10 updated |
 | 1.4-rc | 2026-11-20 | #61 Part B: §4.3 note on the M-UI1 edit-mode regions (toolbar with Add panel, Save current time range, Discard, Save and Done; panel editor at the right); Undo and History stay M-UI5 (SRF-020) |
 | 1.5-rc | 2026-11-21 | #61 Part C: §4.3 note on the M-UI1 filter bar (variable chips and `+ Filter`, URL only) and collapsible sections (no render, no query; Edit state saved, View toggles as URL overrides); the anomaly strip stays M-UI5 (SRF-016) |
+| 1.6-rc | 2026-11-21 | #90: §4.3 the M-UI1 panel editor is a centred modal window with a live preview (owner decision 2026-11-21); the region table's viewport editor is a modal window |
 
 ## Resolved during formalisation
 
