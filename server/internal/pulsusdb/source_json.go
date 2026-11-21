@@ -266,9 +266,7 @@ func (s *jsonSource) rangeSeries(r *rawSeries) (bool, error) {
 			}
 			gotMetric = true
 		case "values":
-			if err := s.points(func(ms int64, v float64) {
-				r.T, r.V = append(r.T, ms), append(r.V, v)
-			}); err != nil {
+			if err := s.rawPoints(r); err != nil {
 				return false, err
 			}
 			gotValues = true
@@ -292,6 +290,31 @@ func (s *jsonSource) rangeSeries(r *rawSeries) (bool, error) {
 		s.comp.histSkipped++
 	}
 	return gotValues, nil
+}
+
+// rawPoints reads a values array of [t, "v"] pairs into r (the range hot path: no callback).
+func (s *jsonSource) rawPoints(r *rawSeries) error {
+	d := s.dec
+	if k, err := d.Next(); err != nil || k != tokArrStart {
+		return orProtocol(err)
+	}
+	for {
+		k, err := d.Next()
+		if err != nil {
+			return err
+		}
+		if k == tokArrEnd {
+			return nil
+		}
+		if k != tokArrStart {
+			return protocolError()
+		}
+		ms, v, err := s.point()
+		if err != nil {
+			return err
+		}
+		r.T, r.V = append(r.T, ms), append(r.V, v)
+	}
 }
 
 // points reads a values array of [t, "v"] pairs and hands each to add.
