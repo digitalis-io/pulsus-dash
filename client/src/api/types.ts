@@ -159,23 +159,27 @@ export interface ApiErrorDetail {
   hint?: Readonly<Record<string, unknown>>;
 }
 
+/** The optional parts of an `ApiError`. */
+export interface ApiErrorExtra {
+  /** The spec problems of an `invalid` error. */
+  fields?: readonly FieldError[];
+  /** The BFF's answer to a failed query or check. */
+  detail?: ApiErrorDetail;
+}
+
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
-  readonly detail: ApiErrorDetail;
   /** The spec problems; empty unless `kind` is `invalid`. */
   readonly fields: readonly FieldError[];
+  /** `{}` unless a query or check failed with something to say. */
+  readonly detail: ApiErrorDetail;
 
-  constructor(
-    kind: ApiErrorKind,
-    message: string,
-    detail: ApiErrorDetail = {},
-    fields: readonly FieldError[] = [],
-  ) {
+  constructor(kind: ApiErrorKind, message: string, extra: ApiErrorExtra = {}) {
     super(message);
     this.name = 'ApiError';
     this.kind = kind;
-    this.detail = detail;
-    this.fields = fields;
+    this.fields = extra.fields ?? [];
+    this.detail = extra.detail ?? {};
   }
 }
 

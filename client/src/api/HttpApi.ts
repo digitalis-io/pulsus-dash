@@ -114,25 +114,25 @@ function queryError(status: number, error: unknown): ApiError {
   const hint = isRecord(body.hint) ? body.hint : undefined;
   const withHint: ApiErrorDetail = hint === undefined ? {} : { hint };
   if (status === 400 && body.code === 'virtual_unsupported') {
-    return new ApiError('queryInvalid', message, withHint);
+    return new ApiError('queryInvalid', message, { detail: withHint });
   }
   if (status === 400 && body.fields?.[0]?.pointer === '/query') {
     const detail: ApiErrorDetail = {};
     const position = isRecord(hint?.['position']) ? hint['position']['offset'] : undefined;
     if (typeof position === 'number') detail.position = position;
     if (typeof body.query_id === 'string') detail.queryId = body.query_id;
-    return new ApiError('queryInvalid', message, detail);
+    return new ApiError('queryInvalid', message, { detail });
   }
   switch (status) {
     case 404:
       return new ApiError('notFound', message);
     case 422:
-      return new ApiError('tooBroad', message, withHint);
+      return new ApiError('tooBroad', message, { detail: withHint });
     case 429:
       return new ApiError('busy', message);
     case 502:
     case 503:
-      return new ApiError('unavailable', message, withHint);
+      return new ApiError('unavailable', message, { detail: withHint });
     case 504:
       return new ApiError('timeout', message);
   }
@@ -178,7 +178,9 @@ async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T
   if (status === ok) return r.data;
   if (status === 404) throw new ApiError('notFound', messageOf(r.error, status));
   if (status === 400)
-    throw new ApiError('invalid', messageOf(r.error, status), {}, fieldsOf(r.error));
+    throw new ApiError('invalid', messageOf(r.error, status), {
+      fields: fieldsOf(r.error),
+    });
   if (status === 409) {
     const current = (r.error as Partial<WireConflict> | undefined)?.current;
     if (current !== undefined)

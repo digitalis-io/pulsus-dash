@@ -423,7 +423,7 @@ export class StubApi implements Api {
 
   private check(spec: BoardSpec): void {
     const fields = checkBoardSpec(spec);
-    if (fields.length > 0) throw new ApiError('invalid', 'invalid board', {}, fields);
+    if (fields.length > 0) throw new ApiError('invalid', 'invalid board', { fields });
   }
 
   private stamp(): string {
