@@ -18,6 +18,7 @@ use dash_scales::encode::Encoding;
 use dash_scales::{ColumnRanges, column_ranges};
 use dash_wire::{Chunk, ChunkId};
 
+use super::pipeline::{Pipelines, pipelines};
 use crate::desc::{DrawList, DrawnEvent, MarkItem};
 
 /// The L2 staging slab: 16 MiB of encoded values.
@@ -26,7 +27,7 @@ const STAGING_WORDS: usize = (16 << 20) / 4;
 const MIN_INSTANCES: u64 = 1 << 20;
 /// u32 words of `status` before the per-series base metas: draw-indirect args, total, padding.
 const STATUS_HEADER: u64 = 8;
-const INSTANCE_BYTES: u64 = 16;
+pub(super) const INSTANCE_BYTES: u64 = 16;
 const COL_BYTES: u64 = 40;
 /// The guide colour slot.
 const GRID_SLOT: u32 = 8;
@@ -148,19 +149,6 @@ enum LastLine {
     Cpu(Decimated),
 }
 
-#[derive(Debug)]
-struct Pipelines {
-    pass_bgl: wgpu::BindGroupLayout,
-    data_bgl: wgpu::BindGroupLayout,
-    view_bgl: wgpu::BindGroupLayout,
-    reduce: wgpu::ComputePipeline,
-    count: wgpu::ComputePipeline,
-    scan: wgpu::ComputePipeline,
-    emit: wgpu::ComputePipeline,
-    spill: wgpu::ComputePipeline,
-    line: wgpu::RenderPipeline,
-}
-
 /// How a render pass draws its instances.
 #[derive(Clone, Copy, Debug)]
 enum Draw {
@@ -199,124 +187,6 @@ pub struct Renderer {
     counters: DebugCounters,
     draws: u32,
     last: Option<LastLine>,
-}
-
-fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::COMPUTE,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage { read_only },
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
-    }
-}
-
-fn uniform_entry(visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding: 0,
-        visibility,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Uniform,
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
-    }
-}
-
-fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipelines {
-    let d = &ctx.device;
-    let module = |label: &str, src: &str| {
-        d.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(label),
-            source: wgpu::ShaderSource::Wgsl(src.into()),
-        })
-    };
-    let decimate_m = module("decimate.wgsl", include_str!("decimate.wgsl"));
-    let link_m = module("link.wgsl", include_str!("link.wgsl"));
-    let scan_m = module("scan.wgsl", include_str!("scan.wgsl"));
-    let line_m = module("line.wgsl", include_str!("line.wgsl"));
-    let pass_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("pass"),
-        entries: &[uniform_entry(wgpu::ShaderStages::COMPUTE)],
-    });
-    let mut entries: Vec<wgpu::BindGroupLayoutEntry> =
-        (0..3).map(|b| storage_entry(b, true)).collect();
-    entries.extend((3..8).map(|b| storage_entry(b, false)));
-    let data_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("data"),
-        entries: &entries,
-    });
-    let view_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("view"),
-        entries: &[uniform_entry(
-            wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-        )],
-    });
-    let compute_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("decimation"),
-        bind_group_layouts: &[Some(&pass_bgl), Some(&data_bgl)],
-        immediate_size: 0,
-    });
-    let compute = |m: &wgpu::ShaderModule, entry: &str| {
-        d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some(entry),
-            layout: Some(&compute_layout),
-            module: m,
-            entry_point: Some(entry),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        })
-    };
-    let render_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("line"),
-        bind_group_layouts: &[Some(&view_bgl)],
-        immediate_size: 0,
-    });
-    let attributes = wgpu::vertex_attr_array![0 => Uint32, 1 => Float32, 2 => Float32, 3 => Uint32];
-    let line = d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("line"),
-        layout: Some(&render_layout),
-        vertex: wgpu::VertexState {
-            module: &line_m,
-            entry_point: Some("vs"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: INSTANCE_BYTES,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &attributes,
-            })],
-        },
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &line_m,
-            entry_point: Some("fs"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview_mask: None,
-        cache: None,
-    });
-    Pipelines {
-        reduce: compute(&decimate_m, "reduce"),
-        spill: compute(&decimate_m, "spill"),
-        count: compute(&link_m, "count"),
-        emit: compute(&link_m, "emit"),
-        scan: compute(&scan_m, "scan"),
-        line,
-        pass_bgl,
-        data_bgl,
-        view_bgl,
-    }
 }
 
 /// The fields of a `MarkItem::Line`.
