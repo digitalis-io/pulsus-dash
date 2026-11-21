@@ -80,13 +80,13 @@ func streamsResult(d *upstreamDecoder, lim Limits) (*logResponse, error) {
 				if gotStream {
 					return nil, protocolError()
 				}
-				if labels, err = readLabels(d); err != nil {
+				if labels, err = readBoundedLabels(d, lim, &bytes); err != nil {
 					return nil, err
 				}
-				gotStream = true
-				for _, l := range labels {
-					bytes += int64(len(l.Name) + len(l.Value))
+				if labels == nil {
+					labels = []Label{}
 				}
+				gotStream = true
 			case "values":
 				if gotValues {
 					return nil, protocolError()
@@ -220,8 +220,9 @@ func readCategorised(d *upstreamDecoder, lim Limits, e *decodedEntry, bytes *int
 	}
 }
 
-// readBoundedLabels reads a string map like readLabels, adding each name and value to bytes as it
-// is decoded and stopping with errPageTooLarge at the first pair that crosses Limits.PageBytes.
+// readBoundedLabels reads a string map like readLabels (stream labels, structured metadata, parsed
+// fields), adding each name and value to bytes as it is decoded and stopping with errPageTooLarge
+// at the first pair that crosses Limits.PageBytes. An empty map gives nil.
 func readBoundedLabels(d *upstreamDecoder, lim Limits, bytes *int64) ([]Label, error) {
 	if k, err := d.Next(); err != nil || k != tokObjStart {
 		return nil, orProtocol(err)
