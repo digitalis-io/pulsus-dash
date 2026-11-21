@@ -1,4 +1,4 @@
-"""Tests of ci:no-pulsusdb-host (tools/no-pulsusdb-host/check.py), N1-N27 of #59 Part C.
+"""Tests of ci:no-pulsusdb-host (tools/no-pulsusdb-host/check.py), N1-N28 of #59 Part C.
 
 Run: python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'
   or: python3 -I tools/no-pulsusdb-host/test_check.py
@@ -132,10 +132,9 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual((code, findings(out), err), (0, [], ""))
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (5 files)")
 
-    def test_missing_secret_warning(self):  # N17
+    def test_no_forbidden_hosts_is_silent(self):  # N17: DASH_FORBIDDEN_HOSTS is optional, local only
         code, out, err = scan(["--root", str(GOOD)])
-        self.assertEqual(code, 0)
-        self.assertTrue(err.startswith("warning[missing-secret] DASH_FORBIDDEN_HOSTS is not set"), err)
+        self.assertEqual((code, err), (0, ""))
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (5 files)")
 
 
@@ -196,7 +195,7 @@ class ForbiddenHostTests(TmpTree):
         code, out, err = scan(["--root", str(self.root)])
         self.assertEqual(code, 0)
         self.assertEqual(findings(out), [])
-        self.assertTrue(err.startswith("warning[missing-secret]"), err)
+        self.assertEqual(err, "")
         self.assertEqual(summary(out), "no-pulsusdb-host: clean (1 files)")
 
     def test_datasource_env_host(self):  # N18
@@ -308,8 +307,8 @@ class ErrorPathTests(TmpTree):
         self.assertIn("error[forbidden-host] a\\x1bb.md:1 (entry 1)", findings(out))
         self.assertNotIn("\x1b", out)
 
-    def test_missing_secret_required(self):  # N16
-        for env in ({}, {"DASH_FORBIDDEN_HOSTS": " , \n"}):
+    def test_require_secret_removed(self):  # N16: there is no CI secret; the option is gone
+        for env in ({}, {"DASH_FORBIDDEN_HOSTS": " , \n"}, SECRET):
             with self.subTest(env=env):
                 calls = []
 
@@ -322,15 +321,7 @@ class ErrorPathTests(TmpTree):
                     return b""
 
                 code, out, err = scan(["--require-secret"], env, run=run, read_bytes=read_bytes)
-                self.assertEqual(code, 2)
-                self.assertTrue(
-                    err.startswith(
-                        "error[missing-secret] DASH_FORBIDDEN_HOSTS is not set: "
-                        "a repository owner must create"
-                    ),
-                    err,
-                )
-                self.assertIn("docs/development/build-and-ci.md#ci-no-pulsusdb-host", err)
+                self.assertEqual((code, out, err), (2, "", "error[usage] invalid arguments\n"))
                 self.assertEqual(calls, [])
 
     def test_bad_root(self):
@@ -344,7 +335,7 @@ class ErrorPathTests(TmpTree):
         self.assertEqual(
             out,
             "usage: python3 -I tools/no-pulsusdb-host/check.py "
-            "[--root DIR] [--require-secret] [--show-paths]\n",
+            "[--root DIR] [--show-paths]\n",
         )
 
 
@@ -462,6 +453,53 @@ class UrlRuleTests(TmpTree):
                 code, out, err = self.one(content)
                 self.assertEqual(len(findings(out)), want)
                 self.assertEqual(code, 1 if want else 0)
+
+
+    def test_bare_datasource_value(self):  # N28: a datasource value without a scheme (rule c)
+        # "=" is spelled \x3d after PULSUS_DASH_DATASOURCE_URL so this file stays clean in repository mode.
+        env_key = "PULSUS_DASH_DATASOURCE_URL\x3d"
+        flagged = [
+            (env_key + "other-host.internal-corp.net:3100\n", 1),
+            (env_key + "db.corp.net\n", 1),
+            (env_key + "DB.CORP.NET.:3100\n", 1),
+            (env_key + '"db.corp.net:3100"\n', 1),
+            (env_key + "db.corp.net:3100/x\n", 1),
+            (env_key + "pulsusdb:3100\n", 1),
+            (env_key + "10.1.2.3:3100\n", 1),
+            ("      PULSUS_DASH_DATASOURCE_URL\x3a db.corp.net:3100\n", 1),
+            ("export " + env_key + "db.corp.net:3100 # dev\n", 1),
+            ('datasource.url \x3d "db.corp.net:3100"\n', 1),
+            ('"datasource_url"\x3a "db.corp.net"\n', 1),
+            ("DatasourceURL\x3a 'db.corp.net:3100',\n", 1),
+            ("datasource:\n  url\x3a db.corp.net:3100\n", 2),
+            ("datasource:\n  url\x3a 'db.corp.net'\n", 2),
+        ]
+        clean = [
+            env_key + "pulsus-fake:3100\n",
+            env_key + "localhost:3100\n",
+            env_key + "127.0.0.1:3100\n",
+            env_key + "pulsusdb.example:3100\n",
+            env_key + "$X\n",
+            env_key + "${PULSUS_DASH_DATASOURCE_URL}\n",
+            env_key + "<host:port>\n",
+            env_key + "\n",
+            "no datasource.url\x3a exit 0\n",
+            "datasource.url\x3a scheme must be http or https\n",
+            "Slug: d.Slug, DatasourceURL\x3a d.URL, Database: x\n",
+            "x.DatasourceURL \x3d cfg.Url\n",
+            "datasource:\n  url\x3a string,\n",
+            "url\x3a db.corp.net:3100\n",
+        ]
+        for content, line in flagged:
+            with self.subTest(content=content):
+                code, out, err = self.one(content)
+                self.assertEqual((code, findings(out)), (1, [f"error[non-local-pulsusdb-url] F1:{line}"]))
+                for word in ("corp", "10.1.2.3", "pulsusdb:"):
+                    self.assertNotIn(word, (out + err).lower())
+        for content in clean:
+            with self.subTest(content=content):
+                code, out, err = self.one(content)
+                self.assertEqual((code, findings(out), err), (0, [], ""))
 
 
 class FunctionTests(unittest.TestCase):
