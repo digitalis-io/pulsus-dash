@@ -934,8 +934,10 @@ describe('refresh', () => {
       for (const h of api.held) h.release();
       await Promise.resolve();
     });
+    // The released data reaches every chart panel (its frame mounts; with #90 a chart panel keeps
+    // its Loading until the engine has drawn, which the fake engine never reports).
     await waitFor(() => {
-      expect(screen.queryByText('Loading')).toBeNull();
+      expect(document.querySelectorAll('canvas')).toHaveLength(3);
     });
   });
 });
