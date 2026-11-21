@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -360,7 +360,7 @@ colour and each series MUST show the matching ownership glyph in the legend.
 | Rollup → raw switch | When the visible step drops below the stored rollup resolution, the viewport asks the planner for raw data ([T07](T07-scene-query-planner.md)) and keeps drawing the rollup until raw arrives | source badge changes to raw/exact |
 | Band + outliers | When a viewport holds > 50 series of one metric: per pixel column min/max/avg across series (M2) plus every series that leaves the band (M1); legend "N in band" | none: outliers are always drawn |
 | Scatter | M4 sprites with density-based alpha; above the tier's sprite ceiling of visible points, M10 density field; below 10⁵ visible points, individually pickable sprites | "density view" |
-| Heatmap / status history | Re-bucket/re-bin to pixel width on GPU; worst state wins when merging states | "re-binned ×n" |
+| Heatmap / status history | Re-bucket/re-bin to pixel width on GPU; worst state wins when merging states; a re-binned cell with any missing constituent is missing (gaps rule below), never a partial sum | "re-binned ×n" |
 | Memory pressure | Raw chunks dropped for rollups ([T04](T04-wire-format-and-data-plane.md)) | "reduced resolution (memory)" |
 | Tier ceiling | T2 ceilings (§4.9) | "density view: WebGL2 tier" |
 
@@ -662,7 +662,7 @@ for retained, instanced 10⁷-mark scenes.
 | M2 band + M1 outliers | 10⁴ series | as above | as above | `bench:frame-series-1e4` |
 | M4 point (T1) / M10 density | 10⁷ | as above | as above | `bench:frame-scatter-1e7` |
 | M4 sprites (T2) | 2–3 × 10⁶ visible | as above | as above | `bench:frame-scatter-1e7` (T2 leg) |
-| M3 heatmap | 10k × 200 cells | as above | as above | `bench:frame-gallery` |
+| M3 heatmap | 10k × 200 cells | as above | as above | `bench:frame-gallery` (interim: `bench:frame-interim-heatmap`, report only until #68) |
 | M3 + M8 flame (M-UI2) | 10⁵ frames | as above | as above | `bench:frame-gallery` |
 | M8 log stream (M-UI2) | 10⁶ lines | as above | as above | `bench:frame-gallery` |
 | Atlas (M-UI3) | 10⁴ nodes / 5 × 10⁴ edges | as above | as above | `bench:frame-gallery` |
@@ -770,3 +770,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md) and the revised product text (roadmap Q13): new §0 (one canvas per chart frame with one engine and GPU device, interim renderer until #68/#69, Time Ribbon in Space scenes at M-UI3); Satisfies: IA-020 row replaced by IA-028, INT-025 adds `e2e:time-range-header` |
 | 1.2-rc | 2026-11-20 | #58, owner decision 2026-11-20: T02-005 gives a series with a log-level label ([08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a) that row's token; key hash for everything else |
+| 1.3-rc | 2026-11-21 | #63 Part A: §4.4 LOD table, Heatmap row: a re-binned cell with any missing constituent is missing, never a partial sum (the interim renderer's pixel-column merge does the same); §7 M3 heatmap row names the interim stand-in `bench:frame-interim-heatmap`, report only until #68 |
