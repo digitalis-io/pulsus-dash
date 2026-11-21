@@ -192,3 +192,59 @@ func TestLogCategorizedBound(t *testing.T) {
 		}
 	}
 }
+
+// unit:log-decode: stream labels are counted against the page bound pair by pair, so one
+// oversized stream-label map stops the decode at the crossing pair and the rest is never read.
+func TestLogStreamLabelsBound(t *testing.T) {
+	var pairs []string
+	for i := range 20 {
+		pairs = append(pairs, `"k`+strconv.Itoa(i)+`":"`+strings.Repeat("v", 20)+`"`)
+	}
+	pairs = append(pairs, `"bad":1`) // malformed past the bound
+	raw := `{"status":"success","data":{"resultType":"streams","result":[{"stream":{` + strings.Join(pairs, ",") +
+		`},"values":[[` + ts(1) + `,"l"]]}]}}`
+	_, err := logsOf(t, raw, Options{Limits: Limits{PageBytes: 100}})
+	if kindOf(err) != KindTooBroad {
+		t.Errorf("stream labels over PageBytes 100: %v, want KindTooBroad at the crossing pair", err)
+	}
+}
+
+// unit:log-categorized: entries equal but for their parsed fields are sub-paged in one order,
+// each exactly once, while the upstream reorders the group on every request.
+func TestLogParsedTieBreak(t *testing.T) {
+	e := func(v string) string { return `[` + ts(1) + `,"same",{"parsed":{"k":"` + v + `"}}]` }
+	answers := []string{
+		e("c") + "," + e("b"),                // main fetch (limit 2): the edge group fills it
+		e("c") + "," + e("b") + "," + e("a"), // group fetch, page 1
+		e("a") + "," + e("c") + "," + e("b"), // group fetch, page 2
+		e("b") + "," + e("a") + "," + e("c"), // group fetch, page 3
+	}
+	var n atomic.Int64
+	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		i := int(n.Add(1) - 1)
+		vs := ""
+		if i < len(answers) {
+			vs = answers[i]
+		}
+		answer(200, categorisedDoc(vs))(w, r)
+	})
+	c := New(Options{})
+	q := a1Query(1, Backward)
+	var got []string
+	for range 10 {
+		r, err := c.LogQueryRange(ctxWithin(t, 5*time.Second), rcFor(testBinding(u.URL)), q)
+		if err != nil || r.Page == nil {
+			t.Fatalf("page: %+v %v", r, err)
+		}
+		for _, e := range r.Page.Entries {
+			got = append(got, e.Parsed[0].Value)
+		}
+		if r.Page.Next == nil {
+			break
+		}
+		q.After = r.Page.Next
+	}
+	if !slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Errorf("delivered %v, want a b c, each once", got)
+	}
+}
