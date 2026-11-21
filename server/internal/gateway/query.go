@@ -16,11 +16,16 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
 )
 
-// Bounds of the query routes (plan #62 §3.4, A.2); the body limit is maxRequestBody (T06-021).
+// Bounds of the query routes (plan #62 §3.4, A.2; the query and its variables are checked by
+// prom.Prepare, plan #112 §3.1); the body limit is maxRequestBody (T06-021). maxQueryBytes is the
+// limit of a completion route's match value.
 const (
 	maxQueryBytes    = 65536
+	minStepMs        = 1_000
+	maxStepMs        = 86_400_000
 	maxTimeMs        = 253402300799999
 	minTimeoutMs     = 200
 	maxTimeoutMs     = 120_000
@@ -40,12 +45,9 @@ func (q *dataRoutes) now() time.Time {
 	return time.Now()
 }
 
-// dataRequestCtx is the RequestCtx of every data call: the request's (organisation, actor and
-// request ID) with the resolved tenant, the fixed local principal (D12) and the full-tenant scope.
-func dataRequestCtx(r *http.Request, t core.TenantCtx) *core.RequestCtx {
-	return dataRequestCtxFrom(r.Context(), t)
-}
-
+// dataRequestCtxFrom is the RequestCtx of every data call: the request's (organisation, actor
+// and request ID) with the resolved tenant, the fixed local principal (D12) and the full-tenant
+// scope.
 func dataRequestCtxFrom(ctx context.Context, t core.TenantCtx) *core.RequestCtx {
 	rc := *rcFrom(ctx)
 	rc.Tenant, rc.Principal, rc.Scope, rc.Priority = t, core.LocalPrincipal, core.FullTenantScope(), core.PriorityInteractive
@@ -57,18 +59,28 @@ func dataRequestCtxFrom(ctx context.Context, t core.TenantCtx) *core.RequestCtx 
 
 // rangeRequest and instantRequest have pointer fields so a missing field is detected.
 type rangeRequest struct {
-	Query     *string `json:"query"`
-	From      *int64  `json:"from"`
-	To        *int64  `json:"to"`
-	WidthPx   *int64  `json:"width_px"`
-	TimeoutMs *int64  `json:"timeout_ms"`
+	Query     *string           `json:"query"`
+	From      *int64            `json:"from"`
+	To        *int64            `json:"to"`
+	WidthPx   *int64            `json:"width_px"`
+	TimeoutMs *int64            `json:"timeout_ms"`
+	Vars      map[string]string `json:"vars"`
+	Rate      *bool             `json:"rate"`
 }
 
 type instantRequest struct {
-	Query     *string `json:"query"`
-	At        *int64  `json:"at"`
-	TimeoutMs *int64  `json:"timeout_ms"`
+	Query     *string           `json:"query"`
+	At        *int64            `json:"at"`
+	TimeoutMs *int64            `json:"timeout_ms"`
+	Vars      map[string]string `json:"vars"`
+	StepMs    *int64            `json:"step_ms"`
 }
+
+// queryHolder is a body with a query member, for readBody's UTF-8 pointer.
+type queryHolder interface{ rawQuery() *string }
+
+func (r *rangeRequest) rawQuery() *string   { return r.Query }
+func (r *instantRequest) rawQuery() *string { return r.Query }
 
 // readBody decodes one JSON object into dst (≤ 2 MiB, no unknown field, nothing after it).
 func readBody(w http.ResponseWriter, r *http.Request, dst any) *reqError {
@@ -89,7 +101,8 @@ func readBody(w http.ResponseWriter, r *http.Request, dst any) *reqError {
 	if err := dec.Decode(dst); err != nil {
 		var te *json.UnmarshalTypeError
 		if errors.As(err, &te) && te.Field != "" {
-			return fieldError("/"+te.Field, "field.type", "wrong type")
+			// The decoder's dotted path ("vars.a") as a JSON pointer ("/vars/a").
+			return fieldError("/"+strings.ReplaceAll(te.Field, ".", "/"), "field.type", "wrong type")
 		}
 		if name, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
 			if n, err := strconv.Unquote(name); err == nil {
@@ -101,7 +114,13 @@ func readBody(w http.ResponseWriter, r *http.Request, dst any) *reqError {
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return bodyInvalid
 	}
-	if !utf8.Valid(b) { // query is the only string field
+	if !utf8.Valid(b) {
+		// The decoder turned the bad bytes into U+FFFD: in the query, or else in a variable.
+		if qh, ok := dst.(queryHolder); ok {
+			if q := qh.rawQuery(); q == nil || !strings.ContainsRune(*q, utf8.RuneError) {
+				return fieldError("/vars", "field.range", "vars must be UTF-8")
+			}
+		}
 		return fieldError("/query", "field.range", "query must be UTF-8")
 	}
 	return nil
@@ -112,13 +131,6 @@ func required(name string, present bool) *reqError {
 		return nil
 	}
 	return fieldError("/"+name, "field.required", name+" is required")
-}
-
-func checkQuery(q string) *reqError {
-	if len(q) < 1 || len(q) > maxQueryBytes {
-		return fieldError("/query", "field.range", "query must be 1 to 65536 bytes")
-	}
-	return nil
 }
 
 // timeoutOf is timeout_ms (default 30 000) checked against 200..120 000.
@@ -156,17 +168,9 @@ func (q *dataRoutes) failure(ctx context.Context, err error) *reqError {
 	return &reqError{status: status, body: body, retryAfter: retryAfter}
 }
 
-// fail writes the response of a data-call error. A cancel by the browser writes nothing (the
-// access log records 499).
-func (q *dataRoutes) fail(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
-		return
-	}
-	writeReqError(w, q.failure(r.Context(), err))
-}
-
-// serveRange is POST /api/dash/v1/query/promql/range (plan #62 §4.1): the frames are written as
-// the upstream body is decoded, one series at a time.
+// serveRange is POST /api/dash/v1/query/promql/range (plan #62 §4.1, plan #112 §4.4): the raw
+// text is planned on the server and the planned text is sent; the frames are written as the
+// upstream body is decoded, one series at a time, after the planned member.
 func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 	tenant, e := tenantParam(r)
 	if e != nil {
@@ -185,47 +189,40 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 	}
 	from, to, width := *req.From, *req.To, *req.WidthPx
 	timeout, te := timeoutOf(req.TimeoutMs)
-	if e := firstError(checkQuery(*req.Query), rangeIf(from < 0, "/from", "from must be at least 0"),
+	if e := firstError(rangeIf(from < 0, "/from", "from must be at least 0"),
 		rangeIf(to > maxTimeMs, "/to", "to is out of range"), rangeIf(width < 1 || width > maxWidthPx, "/width_px", "width_px must be between 1 and 10000"),
 		rangeIf(from >= to, "/to", "to must be after from"), te); e != nil {
 		writeReqError(w, e)
 		return
 	}
-	// Reserved selectors are refused before any I/O, tenant resolution included (T07-020 v1).
-	if v := pulsusdb.CheckReserved("query", *req.Query); v != nil {
-		q.fail(w, r, v)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
-	tc, e := resolveTenant(ctx, q.d, tenant)
-	if e != nil {
-		writeReqError(w, e)
-		return
-	}
-	rc := dataRequestCtx(r, tc)
 	grid, err := pulsusdb.PromGrid(from, to, int(width))
 	if err != nil {
 		writeReqError(w, fieldError("/from", "range.too_long", err.Error()))
 		return
 	}
-	if q.d.PulsusDB == nil {
-		q.fail(w, r, &pulsusdb.Error{Kind: pulsusdb.KindConfig})
+	rate := req.Rate == nil || *req.Rate
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindRange, Rate: rate, StepMs: grid.Step})
+	if e != nil || pr == nil {
+		if e != nil {
+			writeReqError(w, e)
+		}
 		return
 	}
-	rs, err := q.d.PulsusDB.QueryRange(ctx, rc, pulsusdb.RangeQuery{Query: *req.Query,
+	rs, err := q.d.PulsusDB.QueryRange(ctx, pr.rc, pulsusdb.RangeQuery{Query: pr.planned.Query,
 		Start: time.UnixMilli(grid.Start), End: time.UnixMilli(grid.End), Step: time.Duration(grid.Step) * time.Millisecond, Timeout: timeout})
 	if err != nil {
-		q.fail(w, r, err)
+		q.failPlanned(w, r, err, pr.planned)
 		return
 	}
 	defer func() { _ = rs.Close() }()
 	first, err := rs.Next()
 	if err != nil && !errors.Is(err, io.EOF) {
-		q.fail(w, r, err)
+		q.failPlanned(w, r, err, pr.planned)
 		return
 	}
-	q.stream(w, r, rc, rs, grid, first)
+	q.stream(w, r, pr, rs, grid, first)
 }
 
 func rangeIf(bad bool, pointer, msg string) *reqError {
@@ -237,12 +234,15 @@ func rangeIf(bad bool, pointer, msg string) *reqError {
 
 // stream writes the range body from the first frame on (§4.1 steps 8-10). A failure after the
 // header was written resets the connection, so the browser never sees a truncated body as valid.
-func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.RequestCtx, rs *pulsusdb.ResultStream, g pulsusdb.Grid, first *pulsusdb.Series) {
+func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, pr *plannedReq, rs *pulsusdb.ResultStream, g pulsusdb.Grid, first *pulsusdb.Series) {
+	rc := pr.rc
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	bw := bufio.NewWriterSize(w, streamBuffer)
 	buf := make([]byte, 0, streamBuffer)
-	buf = append(buf, `{"start":`...)
+	buf = append(buf, `{"planned":`...)
+	buf = appendPlanned(buf, pr.planned.Wire())
+	buf = append(buf, `,"start":`...)
 	buf = strconv.AppendInt(buf, g.Start, 10)
 	buf = append(buf, `,"end":`...)
 	buf = strconv.AppendInt(buf, g.End, 10)
@@ -276,7 +276,7 @@ func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.Req
 			}
 		}
 	}
-	c := rs.Completeness()
+	c := withTypesWarning(rs.Completeness(), pr.typesWarning)
 	age := int64(-1)
 	if c.NewestSampleMs >= 0 {
 		age = max(0, q.now().UnixMilli()-c.NewestSampleMs)
@@ -304,8 +304,8 @@ func (q *dataRoutes) abort(r *http.Request, rc *core.RequestCtx, err error) {
 	panic(http.ErrAbortHandler)
 }
 
-// serveInstant is POST /api/dash/v1/query/promql/instant: the body is decoded completely, then
-// written in one go.
+// serveInstant is POST /api/dash/v1/query/promql/instant (plan #112 §4.4): planned as the range
+// route is; the body is decoded completely, then written in one go.
 func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 	tenant, e := tenantParam(r)
 	if e != nil {
@@ -322,32 +322,33 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	timeout, te := timeoutOf(req.TimeoutMs)
-	if e := firstError(checkQuery(*req.Query), rangeIf(*req.At < 0 || *req.At > maxTimeMs, "/at", "at is out of range"), te); e != nil {
-		writeReqError(w, e)
-		return
+	var stepMs int64
+	if req.StepMs != nil {
+		stepMs = *req.StepMs
 	}
-	if v := pulsusdb.CheckReserved("query", *req.Query); v != nil {
-		q.fail(w, r, v)
+	if e := firstError(rangeIf(*req.At < 0 || *req.At > maxTimeMs, "/at", "at is out of range"), te,
+		rangeIf(req.StepMs != nil && (stepMs < minStepMs || stepMs > maxStepMs), "/step_ms", "step_ms must be between 1000 and 86400000")); e != nil {
+		writeReqError(w, e)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	tc, e := resolveTenant(ctx, q.d, tenant)
-	if e != nil {
-		writeReqError(w, e)
+	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindInstant, Rate: true, StepMs: stepMs})
+	if e != nil || pr == nil {
+		if e != nil {
+			writeReqError(w, e)
+		}
 		return
 	}
-	if q.d.PulsusDB == nil {
-		q.fail(w, r, &pulsusdb.Error{Kind: pulsusdb.KindConfig})
-		return
-	}
-	rs, err := q.d.PulsusDB.Query(ctx, dataRequestCtx(r, tc), pulsusdb.InstantQuery{Query: *req.Query, At: time.UnixMilli(*req.At), Timeout: timeout})
+	rs, err := q.d.PulsusDB.Query(ctx, pr.rc, pulsusdb.InstantQuery{Query: pr.planned.Query, At: time.UnixMilli(*req.At), Timeout: timeout})
 	if err != nil {
-		q.fail(w, r, err)
+		q.failPlanned(w, r, err, pr.planned)
 		return
 	}
 	defer func() { _ = rs.Close() }()
-	b := append(make([]byte, 0, 4096), `{"result_type":`...)
+	b := append(make([]byte, 0, 4096), `{"planned":`...)
+	b = appendPlanned(b, pr.planned.Wire())
+	b = append(b, `,"result_type":`...)
 	b = appendString(b, string(rs.Type()))
 	b = append(b, `,"at":`...)
 	b = strconv.AppendInt(b, *req.At, 10)
@@ -358,7 +359,7 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			q.fail(w, r, err)
+			q.failPlanned(w, r, err, pr.planned)
 			return
 		}
 		if n > 0 {
@@ -382,7 +383,7 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 		b = append(b, '}')
 	}
 	b = append(b, `,"completeness":`...)
-	b = appendCompleteness(b, rs.Completeness(), -1)
+	b = appendCompleteness(b, withTypesWarning(rs.Completeness(), pr.typesWarning), -1)
 	b = append(b, '}')
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

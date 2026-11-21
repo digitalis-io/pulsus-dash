@@ -271,6 +271,7 @@ components:
         hint: { type: object, additionalProperties: true }
         query_id: { type: string }
         fields: { type: array, items: { $ref: '#/components/schemas/FieldError' } }
+        planned: { $ref: '#/components/schemas/PlannedQuery' }   # the PromQL routes: every error raised after planning (ADR-0021)
     ErrorEnvelope: { type: object, additionalProperties: false, required: [error], properties: { error: { $ref: '#/components/schemas/ErrorBody' } } }
     Health: { type: object, required: [status], properties: { status: { type: string, enum: [ok] } } }
     Ready: { type: object, required: [status, checks], properties: { status: { type: string, enum: [ready, not_ready] }, checks: { $ref: '#/components/schemas/ReadyChecks' } } }
@@ -291,19 +292,43 @@ components:
       additionalProperties: false
       required: [query, from, to, width_px]
       properties:
-        query: { type: string, minLength: 1, maxLength: 65536 }
+        query: { type: string, minLength: 1, maxLength: 131072 }   # raw text; the server checks UTF-8 bytes and plans it (ADR-0021)
         from: { type: integer, format: int64, minimum: 0 }                    # ms since the epoch
         to: { type: integer, format: int64, maximum: 253402300799999 }
         width_px: { type: integer, minimum: 1, maximum: 10000 }
         timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+        vars: { $ref: '#/components/schemas/QueryVars' }
+        rate: { type: boolean, default: true }   # the rate rewrite of a bare counter or histogram selector
     PromInstantRequest:
       type: object
       additionalProperties: false
       required: [query, at]
       properties:
-        query: { type: string, minLength: 1, maxLength: 65536 }
+        query: { type: string, minLength: 1, maxLength: 131072 }
         at: { type: integer, format: int64, minimum: 0, maximum: 253402300799999 }
         timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+        vars: { $ref: '#/components/schemas/QueryVars' }
+        step_ms: { type: integer, format: int64, minimum: 1000, maximum: 86400000 }   # macros and the rate rewrite apply only with it
+    QueryVars:
+      description: Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+      type: object
+      maxProperties: 64
+      additionalProperties: { type: string, maxLength: 4096 }
+    PlannedQuery:
+      description: What the server planned and sent (ADR-0021, T06-029).
+      type: object
+      additionalProperties: false
+      required: [query, expanded, bytes, value_type, rate_candidate, rate_applied, histogram]
+      properties:
+        query: { type: string }      # sent to PulsusDB
+        expanded: { type: string }   # substituted, before the rate rewrite (Open in Explore)
+        bytes: { type: integer }
+        value_type: { type: string, enum: [scalar, string, vector, matrix, unknown] }
+        rate_candidate: { type: boolean }
+        rate_applied: { type: boolean }
+        histogram: { type: boolean }
+        step_ms: { type: integer, format: int64 }
+        rate_window_ms: { type: integer, format: int64 }
     FrameValue:
       description: A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
       x-go-type: json.RawMessage   # generated gateway type for our own output; not upstream decoding (the generated file imports encoding/json)
@@ -332,8 +357,9 @@ components:
     PromRangeResponse:
       type: object
       additionalProperties: false
-      required: [start, end, step, frames, completeness]
+      required: [planned, start, end, step, frames, completeness]
       properties:
+        planned: { $ref: '#/components/schemas/PlannedQuery' }
         start: { type: integer, format: int64 }
         end: { type: integer, format: int64 }
         step: { type: integer, format: int64 }
@@ -352,8 +378,9 @@ components:
     PromInstantResponse:
       type: object
       additionalProperties: false
-      required: [result_type, at, frames, completeness]
+      required: [planned, result_type, at, frames, completeness]
       properties:
+        planned: { $ref: '#/components/schemas/PlannedQuery' }
         result_type: { type: string, enum: [vector, matrix, scalar, string] }
         at: { type: integer, format: int64 }
         frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }   # [] for scalar and string

@@ -12,7 +12,9 @@ linters:
         { pkg: github.com/digitalis-io/pulsus-dash/server/internal/store/dbgen, desc: "sqlc output is used only in internal/store (T11-023)" } ] },
       gateway-only: { files: ["$all", "!**/internal/gateway/**"], deny: [
         { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
-        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] } } }
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] },
+      promql-parser: { files: ["$all", "!**/internal/pulsusdb/prom/**"], deny: [
+        { pkg: github.com/prometheus/prometheus, desc: "the upstream PromQL parser is used only in internal/pulsusdb/prom (ADR-0021)" } ] } } }
     # T06-005 and plan #62 §4.9: outbound HTTP only in internal/pulsusdb (and the allowed callers
     # below); every upstream body decoder yields strings only through redact (updec.go today).
     forbidigo:

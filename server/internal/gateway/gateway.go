@@ -74,6 +74,9 @@ func New(d Deps) http.Handler {
 	a := assets{set: d.Assets}
 	r.NotFound(a.fallback)
 	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
+	if d.Types == nil && d.PulsusDB != nil {
+		d.Types = promplan.NewTypesCache(promplan.MetadataFetch(d.PulsusDB), promplan.CacheOptions{Now: d.Now, Logger: d.Logger})
+	}
 	q := &dataRoutes{d: d}
 	r.Post("/api/dash/v1/query/promql/range", q.serveRange)
 	r.Post("/api/dash/v1/query/promql/instant", q.serveInstant)
