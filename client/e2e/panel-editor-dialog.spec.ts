@@ -622,8 +622,10 @@ test.describe('panel editor dialog', () => {
       if (from === 'Logs') {
         await pick(page, 'Logs');
       } else {
+        // Two failures: the load, and the refetch of the failed key when the reopened preview
+        // mounts on it (TanStack retries an errored query on mount).
         await page.evaluate(() => {
-          localStorage.setItem('pulsus-dash.stub.failPanelData', '1');
+          localStorage.setItem('pulsus-dash.stub.failPanelData', '2');
         });
         await pick(page, 'Heatmap');
       }
