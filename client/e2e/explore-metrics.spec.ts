@@ -38,12 +38,17 @@ test.describe('e2e:explore (fake)', () => {
   test.use({ baseURL: HTTP_BFF });
 
   test('e2e:explore-completion', async ({ page }) => {
-    await open(page, exploreUrl(null));
+    // A running clock: CodeMirror accepts an option only once `Date.now()` is 75 ms past the
+    // popup's opening (`interactionDelay`), which a frozen clock never reaches. The window is
+    // absolute, so the page does not depend on the time.
+    await page.goto(exploreUrl(null));
+    await waitReady(page, exploreUrl(null));
     await editor(page).click();
     await page.keyboard.type('http_requests_tot');
     const option = popup(page).getByRole('option').filter({ hasText: 'http_requests_total' });
     await expect(option).toBeVisible();
     await expect(option.locator('.cm-completionDetail')).toHaveText('counter');
+    await page.waitForTimeout(150);
     await page.keyboard.press('Enter');
     await expect(editor(page)).toHaveText('http_requests_total');
   });
