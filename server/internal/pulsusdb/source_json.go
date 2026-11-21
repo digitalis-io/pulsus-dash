@@ -82,9 +82,6 @@ func (s *jsonSource) nextRange(sink seriesSink) ([]Label, error) {
 			}
 			return nil, io.EOF
 		case tokObjStart:
-			if err := sink.begin(); err != nil {
-				return nil, err
-			}
 			labels, kept, err := s.rangeSeries(sink)
 			if err != nil || kept {
 				return labels, err
@@ -282,8 +279,10 @@ func (s *jsonSource) endCheck() error {
 }
 
 // rangeSeries reads one matrix series (its '{' was read), handing each point to sink as it is
-// read. A series with native histograms and no values is skipped (false); histogram samples next
-// to values are dropped. Both count towards the completeness warning.
+// read. The sink's series starts only at the series' values member, so a series with native
+// histograms and no values is skipped (false) without a grid series or the points limit;
+// histogram samples next to values are dropped. Both count towards the completeness warning.
+// A second values member is KindProtocol.
 func (s *jsonSource) rangeSeries(sink seriesSink) ([]Label, bool, error) {
 	d := s.dec
 	var labels []Label
@@ -303,6 +302,12 @@ func (s *jsonSource) rangeSeries(sink seriesSink) ([]Label, bool, error) {
 			}
 			gotMetric = true
 		case "values":
+			if gotValues {
+				return nil, false, protocolError()
+			}
+			if err := sink.begin(); err != nil {
+				return nil, false, err
+			}
 			if err := s.sinkPoints(sink); err != nil {
 				return nil, false, err
 			}

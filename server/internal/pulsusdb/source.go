@@ -35,7 +35,8 @@ func formatOf(contentType string) (bodyFormat, bool) {
 // sink places and checks each one at once (grid, duplicates, the points limit) and an error stops
 // decoding (review r3 #1).
 type seriesSink interface {
-	// begin is called when a series object starts; errPointsCut ends the stream there.
+	// begin is called when a series is known to carry float samples (its values member), before
+	// its first point; errPointsCut ends the stream there.
 	begin() error
 	// add places one point; an off-grid or repeated timestamp is KindProtocol.
 	add(ms int64, v float64) error
