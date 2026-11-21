@@ -52,6 +52,12 @@ export interface LayerInput {
   readonly valueRange: ValueRange | null;
   /** Held value-label band width (#93); null = measure. */
   readonly band: number | null;
+  /**
+   * The narrowest value-label band, CSS px. The interim renderer passes T02-011's minimum,
+   * `minValueBand(ctx, unit)`; the engine-fixture generator passes 0, because the Rust layout
+   * (`dash-axes`) draws no text until #69 and has no minimum yet.
+   */
+  readonly minBand: number;
 }
 
 /** What picking and the overlay need from the last layer draw. */
@@ -193,7 +199,7 @@ function axisTexts(
     return { texts, width: i.band, held: true };
   }
   const plain = [...ticks.map((t) => formatValue(t, unit)), ...extra];
-  const width = Math.max(labelWidth(i.ctx, plain), minValueBand(i.ctx, unit));
+  const width = Math.max(labelWidth(i.ctx, plain), i.minBand);
   return { texts: plain.map((text) => ({ text, chip: false })), width, held: false };
 }
 
@@ -645,7 +651,7 @@ const seriesOf = (d: FrameData): readonly SeriesFrame[] => (d.kind === 'series' 
 
 /**
  * The band the layer would use for `i` ignoring `i.band`: max(widest full tick label,
- * `minValueBand`), computed as `drawLayer` computes it (bars run the same bucket merge). Paints
+ * `i.minBand`), computed as `drawLayer` computes it (bars run the same bucket merge). Paints
  * nothing; 0 for stat.
  */
 export function measureValueBand(i: LayerInput): number {

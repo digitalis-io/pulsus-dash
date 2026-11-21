@@ -33,6 +33,7 @@ import {
   drawLayer,
   drawOverlay,
   forgetValueBands,
+  minValueBand,
   MAX_SERIES,
   STAT_FONT,
   type LayerModel,
@@ -502,6 +503,8 @@ class Canvas2DFrame implements ChartFrame {
       colours,
       valueRange: valueAxis ? this.valueView : null,
       band: this.spec.kind === 'stat' ? null : this.bandHold,
+      // T02-011: the band is at least the widest compact label of the unit.
+      minBand: this.spec.kind === 'stat' ? 0 : minValueBand(ctx, this.spec.unit),
     });
   }
 

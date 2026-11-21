@@ -5,7 +5,7 @@
 import { expect } from 'vitest';
 import type { FrameData, FrameSummary, TimeWindow, ValueRange, VisSpec } from '../engine/api';
 import { Canvas2DEngine } from '../engine/canvas2d/Canvas2DEngine';
-import { measureValueBand } from '../engine/canvas2d/draw';
+import { measureValueBand, minValueBand } from '../engine/canvas2d/draw';
 import type { WheelLatch } from '../engine/canvas2d/input';
 import { themeColours } from '../engine/canvas2d/palette';
 import { formatCompact, formatValue, type Unit } from '../i18n/format';
@@ -171,8 +171,9 @@ export function measuredX(
   cssW = 800,
   cssH = 240,
 ): number {
+  const ctx = recordingContext();
   const band = measureValueBand({
-    ctx: recordingContext(),
+    ctx,
     spec,
     data,
     window,
@@ -182,6 +183,7 @@ export function measuredX(
     colours: themeColours('dark'),
     valueRange,
     band: null,
+    minBand: minValueBand(ctx, spec.unit),
   });
   return band + GAP_X;
 }
