@@ -347,6 +347,28 @@ func wantLevelSeries(t *testing.T, s *Series, level string, points map[int]float
 	}
 }
 
+// unit:volume-compose: a level whose input series have no present point is omitted (§4.4).
+func TestVolumeOmitsEmptyLevel(t *testing.T) {
+	ss := []matrixSeries{
+		{lbl("level", "critical"), nil},
+		{lbl("detected_level", "info"), [][2]string{{"1767225600", "3"}}},
+		{lbl("level", "trace"), [][2]string{}},
+	}
+	u := newUpstream(t, answer(200, body(typeFirst, "matrix", matrixJSON(typeFirst, ss))))
+	got, _, err := New(Options{}).LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var levels []string
+	for _, s := range got {
+		levels = append(levels, s.Labels[0].Value)
+	}
+	if !slices.Equal(levels, []string{"info"}) {
+		t.Fatalf("levels %v, want info only", levels)
+	}
+	wantLevelSeries(t, got[0], "info", map[int]float64{0: 3})
+}
+
 // unit:volume-compose (§4.4, T07-002).
 func TestVolumeCompose(t *testing.T) {
 	u := newUpstream(t, answer(200, body(typeFirst, "matrix", matrixJSON(typeFirst, volumeSeries))))
