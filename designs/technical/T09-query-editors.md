@@ -3,17 +3,17 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-21 |
+| **Version** | 1.10-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
-| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
 
 The editor is TypeScript on CodeMirror 6 ([ADR-0014](../adr/0014-typescript-react-web-client.md)
-§1), and the BFF is Go and parses no query in the first slice
-([ADR-0015](../adr/0015-go-bff.md), "Query validation"). PulsusDB's parser stays the only authority on
-validity (T09-002): it is reached **through the BFF** first and, later, **in the browser** as
+§1), and the BFF is Go ([ADR-0015](../adr/0015-go-bff.md)) and parses PromQL only to plan it
+([ADR-0021](../adr/0021-query-planning-is-server-side.md)); PulsusDB stays the authority on validity
+(T09-002). PulsusDB's parser is reached **through the BFF** first and, later, **in the browser** as
 PulsusDB's parser crates compiled to WASM. Requirements, rules and budgets stand except where
 revised below.
 
@@ -330,14 +330,18 @@ error that comes with no position MUST be underlined across the whole query and 
 unknown"; no other placement (such as a guessed recovery point) is allowed. The same rule applies to
 errors from PulsusDB through the BFF on run (SRF-027) and to the WASM validator before run (SRF-078).
 
+*Note (ADR-0021, 2026-11-21):* on run, the position arrives already mapped to the raw text; the
+client uses `toSource = identity`.
+
 **Board variables and macros** (`$var`, `${var}`, `$__rate_interval`, `$__interval`) are not PulsusDB
 syntax.
 
 #### T09-010 — Variables are substituted with an offset map
-**MUST** — Before validation, `dash-qctx` MUST substitute each variable or macro with a type-correct
-placeholder (a duration for `[$__rate_interval]`, a string inside quotes, a regex alternation for
-multi-value), keep an offset map, and map errors back to the original text. This mirrors what the BFF
-does before execution ([T07](T07-scene-query-planner.md) §4.1).
+**MUST** — *(Revised 1.7-rc, ADR-0021.)* Before execution, the language module's `Plan` (server)
+substitutes each variable and macro and maps PulsusDB's error position back into the raw text:
+inside an inserted value, to the reference's start; inside a rewrite prefix or suffix, to no
+position. Before validation in the browser (the WASM phase), `lang/context.ts` substitutes
+type-correct placeholders with its own offset map. The browser never substitutes the text it sends.
 
 - **Hover docs.**
   - **Functions and keywords:** from `dash-qdocs`, written by us. Prometheus docs (Apache-2.0) are
@@ -379,6 +383,10 @@ Table 5-13 top to bottom, for the rows decidable from the query and metadata; ro
 result (lines > 10k, single value, geo fields, state-like values, series count > 50, many columns)
 are confirmed or overridden by [T07](T07-scene-query-planner.md)/[T02](T02-vis-engine.md) on result
 shape (VIZ-065). A user override persists with the viewport and suppresses the hint.
+
+The **Rate applied** chip and auto-vis rules 5 and 6 read the server's `planned` facts
+([ADR-0021](../adr/0021-query-planning-is-server-side.md)). The Lezer `shape` gives the pre-run hint
+and the route choice.
 
 ```rust
 pub struct VisHint { pub primary: VisKind, pub alternatives: SmallVec<[VisKind; 4]>, pub rule: u8 /* Table 5-13 row */, pub reason: MsgKey, pub confidence: f32 }
@@ -590,7 +598,9 @@ These are measured with Playwright typing scripts (per-keystroke frame timing) a
 
 #### T09-015 — Query size cap
 **MUST** — The editor MUST allow editing of any length but MUST pause validation and completion above
-128 KB, with an explanation, and the run action MUST refuse such a query with the same message.
+128 KB, with an explanation, and the run action MUST refuse a query above 128 KB (131 072 bytes) with
+the same message. *(Revised 1.7-rc, ADR-0021.)* The BFF repeats this check and refuses a planned text
+above 65 536 bytes (413). The client's check is a hint.
 
 v1 (#63) measures UTF-8 bytes (`TextEncoder`) on every change: above 131 072 bytes the editor pauses
 completion, and the page explains and refuses Run.
@@ -698,6 +708,7 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
 | 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; auto-vis stays M-UI1 through `shape`, and only the `validate`, `format` and `visHint` methods are added in M-UI2; T09-001 isolation sentence |
-| 1.7-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
-| 1.8-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
-| 1.9-rc | 2026-11-21 | #63 Part B: §0 rows `dash-qlex` (PromQL v1 language and completion over `/prom/*`) and "Editor-worker suggest cache" (v1 key, TTL from settle, LRU, per-kind supersede, tenant generations); §4.3 v1 host (shadow root, composed-path window keys) and composition guard; §4.4 v1 limits and lookup windows; §4.8 v1 syntax tokens; §5.1 v1 `LanguageDeps` fields, `lang/promql/`, `LANGUAGES`, `detect` until INT-038, `PromQLEditor`; T09-015 v1 measurement |
+| 1.7-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §0 the BFF parses PromQL only to plan it; T09-009 note (positions arrive mapped to the raw text); T09-010 revised (the server's `Plan` substitutes and maps positions; the browser substitutes placeholders only for WASM validation); §4.6 rate chip and rules 5 and 6 read the server's `planned` facts; T09-015 revised (the BFF repeats the 128 KB check and refuses a planned text above 65 536 bytes) |
+| 1.8-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
+| 1.9-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
+| 1.10-rc | 2026-11-21 | #63 Part B: §0 rows `dash-qlex` (PromQL v1 language and completion over `/prom/*`) and "Editor-worker suggest cache" (v1 key, TTL from settle, LRU, per-kind supersede, tenant generations); §4.3 v1 host (shadow root, composed-path window keys) and composition guard; §4.4 v1 limits and lookup windows; §4.8 v1 syntax tokens; §5.1 v1 `LanguageDeps` fields, `lang/promql/`, `LANGUAGES`, `detect` until INT-038, `PromQLEditor`; T09-015 v1 measurement |

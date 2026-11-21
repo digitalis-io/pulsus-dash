@@ -18,7 +18,11 @@
  * does the same for `signOut`, `pulsus-dash.stub.failSave` for `saveBoard`,
  * `pulsus-dash.stub.failStar` for `setStarred` (nothing is changed), and
  * `pulsus-dash.stub.conflictSave` makes `saveBoard` reject with `BoardConflictError` after moving
- * the head on by one version, as if another user had saved the same spec.
+ * the head on by one version, as if another user had saved the same spec. For `panelData` (#90):
+ * `pulsus-dash.stub.panelDelayMs`, a positive integer n, resolves after n ms instead of the next
+ * microtask (an abort clears the timer and rejects with `AbortError`; read on every call, never
+ * consumed); `pulsus-dash.stub.failPanelData` fails the call as `failSave` does, after the delay;
+ * and every call leaves a `stub:panelData` performance mark with `{ id, lang, text, vis }`.
  */
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
@@ -105,6 +109,8 @@ export const STUB_FAIL_SIGN_OUT_KEY = 'pulsus-dash.stub.failSignOut';
 export const STUB_FAIL_SAVE_KEY = 'pulsus-dash.stub.failSave';
 export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
 export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
+export const STUB_PANEL_DELAY_KEY = 'pulsus-dash.stub.panelDelayMs';
+export const STUB_FAIL_PANEL_DATA_KEY = 'pulsus-dash.stub.failPanelData';
 
 /** Consumes one failure from a test-hook counter; true when the call should fail. */
 function failOnce(key: string): boolean {
@@ -112,6 +118,33 @@ function failOnce(key: string): boolean {
   if (!Number.isInteger(n) || n <= 0) return false;
   write(key, String(n - 1));
   return true;
+}
+
+/** The `panelData` delay of the test hook, in ms; null for none. */
+function panelDelayMs(): number | null {
+  const n = Number(read(STUB_PANEL_DELAY_KEY) ?? '');
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+const aborted = (): DOMException => new DOMException('The operation was aborted.', 'AbortError');
+
+/** Resolves after `ms`; an abort of `signal` clears the timer and rejects with `AbortError`. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted === true) {
+      reject(aborted());
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(aborted());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function storage(): Storage | null {
@@ -276,10 +309,37 @@ export class StubApi implements Api {
     window: TimeWindow,
     signal?: AbortSignal,
   ): Promise<PanelData> {
-    return settle(() => {
-      this.checkTenant(tenant);
+    try {
+      performance.mark('stub:panelData', {
+        detail: {
+          id: panel.id,
+          lang: panel.query.lang,
+          text: panel.query.text,
+          vis: panel.vis.kind,
+        },
+      });
+    } catch {
+      // The User Timing API is optional: the stub does not depend on it.
+    }
+    const result = (): PanelData => {
+      if (failOnce(STUB_FAIL_PANEL_DATA_KEY)) {
+        throw new ApiError('network', 'stub: panel data failed');
+      }
       return stubPanelData(panel, window);
-    }, signal);
+    };
+    const delay = panelDelayMs();
+    if (delay === null) {
+      return settle(() => {
+        this.checkTenant(tenant);
+        return result();
+      }, signal);
+    }
+    return Promise.resolve()
+      .then(() => {
+        this.checkTenant(tenant);
+        return sleep(delay, signal);
+      })
+      .then(result);
   }
 
   listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {

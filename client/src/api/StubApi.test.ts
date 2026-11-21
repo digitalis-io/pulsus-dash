@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
-import { StubApi, type StubBoard } from './StubApi';
+import { STUB_FAIL_PANEL_DATA_KEY, STUB_PANEL_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
 import { ApiError, BoardConflictError, type BoardSpec, type PanelSpec } from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
@@ -297,5 +297,79 @@ describe('stub starred and recent', () => {
     expect(await api.listRecent('demo')).toEqual([]);
     localStorage.setItem('pulsus-dash.stub.starred.demo', '[]');
     expect(await api.listStarred('demo')).toEqual([{ uid: 'b-1', title: 'Service overview' }]);
+  });
+});
+
+describe('stub panel data hooks (#90)', () => {
+  const window = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13) };
+  const p: PanelSpec = {
+    id: 'p-1',
+    title: 'Request rate',
+    grid: { x: 0, y: 0, w: 6, h: 8 },
+    query: { lang: 'promql', text: 'sum(rate(http_requests_total[5m]))' },
+    vis: { kind: 'line' },
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Whether `promise` has settled, after the microtasks queued so far. */
+  async function settled(promise: Promise<unknown>): Promise<boolean> {
+    let done = false;
+    promise.then(
+      () => {
+        done = true;
+      },
+      () => {
+        done = true;
+      },
+    );
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    return done;
+  }
+
+  it('panel delay hook', async () => {
+    expect(STUB_PANEL_DELAY_KEY).toBe('pulsus-dash.stub.panelDelayMs');
+    const api = new StubApi();
+    performance.clearMarks('stub:panelData');
+    // Absent: the next microtask, and one mark per call.
+    expect(await settled(api.panelData('demo', p, window))).toBe(true);
+    const marks = performance.getEntriesByName('stub:panelData') as PerformanceMark[];
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.detail).toEqual({
+      id: 'p-1',
+      lang: 'promql',
+      text: 'sum(rate(http_requests_total[5m]))',
+      vis: 'line',
+    });
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    localStorage.setItem(STUB_PANEL_DELAY_KEY, '50');
+    const delayed = api.panelData('demo', p, window);
+    await vi.advanceTimersByTimeAsync(49);
+    expect(await settled(delayed)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await settled(delayed)).toBe(true);
+    expect((await delayed).kind).toBe('frame');
+    expect(localStorage.getItem(STUB_PANEL_DELAY_KEY)).toBe('50');
+
+    const c = new AbortController();
+    const aborted = api.panelData('demo', p, window, c.signal);
+    await vi.advanceTimersByTimeAsync(10);
+    c.abort();
+    expect(await kindOf(aborted)).toBe('AbortError');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(performance.getEntriesByName('stub:panelData')).toHaveLength(3);
+  });
+
+  it('panel fail hook', async () => {
+    expect(STUB_FAIL_PANEL_DATA_KEY).toBe('pulsus-dash.stub.failPanelData');
+    const api = new StubApi();
+    localStorage.setItem(STUB_FAIL_PANEL_DATA_KEY, '1');
+    const first = api.panelData('demo', p, window);
+    expect(await kindOf(first)).toBe('network');
+    expect(localStorage.getItem(STUB_FAIL_PANEL_DATA_KEY)).toBe('0');
+    expect(await kindOf(api.panelData('demo', p, window))).toBe('resolved');
   });
 });

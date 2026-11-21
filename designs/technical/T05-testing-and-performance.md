@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-21 |
+| **Version** | 1.17-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -202,8 +202,17 @@ target volume; two runs with the same seed produce identical goldens.
   - fail if mean ꟻLIP > 0.005 on lavapipe (0.02 on real GPUs);
   - fail if any 8×8 block has ꟻLIP > 0.25 inside a *text region*. Text regions are the M8 instance
     bounds the renderer emits next to the PNG. This catches glyph regressions that the mean hides.
-- **Decimation reference** (`golden:decimation-ref`). 1 000 series × 100k points rendered decimated
-  and with every raw point; the line-coverage diff must be zero at the pixel level.
+- **Decimation references** (#68). `golden:decimation-raw` renders every raw sample through the
+  engine's own line pipeline (a capsule per pair of consecutive finite samples, a dot per isolated
+  one) and requires zero differing covered pixels against the decimated render, on T1 and T2 at
+  DPR 1 and 2; `golden:decimation-ref` checks the decimated render against an independent f64
+  reference written from the ADR-0014 §4 model (every sample covered, nothing outside the shapes
+  dilated by one pixel, gap bands empty, far crossings in place). PR fixtures hold 10⁴ points per
+  series; the nightly run takes 10⁸ points.
+- **Image pins** (#68). The lavapipe image is pinned in `engine/tools.toml`: base image digest, apt
+  snapshot, Mesa and LLVM versions, toolchain and tool versions; `engine/ci/lavapipe.Dockerfile`
+  must carry the same literals (`ci:spec-lint`), and the golden tests assert the adapter is llvmpipe
+  at that Mesa version. A change to any of them is one PR with regenerated goldens.
 - **Determinism prerequisites:** fonts and MSDF atlases pinned; no wall-clock time (the `Clock` trait
   is fixed at t = 0 or a stated transition t); layouts seeded (T14 (draft)); decimation and pool
   reductions deterministic ([T03 §5.6](T03-browser-runtime.md#56-wasm-bindgen-web-sys-and-threads)).
@@ -279,7 +288,10 @@ estate, §4.5):
 | — | Live tail | ingest timestamp → frame containing the line | < 2 s p95 (PRF-015) | M-UI2 |
 
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
-gain interactions.
+gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
+scripted room interactions, with the board editor first (#90). Until the reference lab exists, CI's
+`e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
+fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
 
 **Measurement methods**
 - **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
@@ -544,7 +556,7 @@ the merge train), nightly (release blocker).
 | `ci:lockfile` | `package-lock.json` committed and `npm ci` succeeds; exact versions only (no `^` or `~`); every `resolved` URL on `https://registry.npmjs.org/` with an `integrity` hash; `.npmrc` sets `save-exact`, `engine-strict` and `ignore-scripts` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7) | PR | yes |
 | `ci:npm-audit` | `npm audit --omit=dev --audit-level=high` and `npm audit --audit-level=critical` pass; `npm audit signatures` passes | PR | yes |
 | `ci:bundle-size` | `npm run size`: brotli size per chunk class against `client/bundle-budgets.json` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8): initial JS ≤ 200 KB, initial CSS ≤ 30 KB, each lazy route chunk ≤ 120 KB, editor chunk ≤ 175 KB, fonts ≤ 150 KB, all client assets except the engine ≤ 1 MB; from #68 the engine ≤ 1.9 MB ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); client core (initial JS + CSS + engine) < 3 MB (PRF-009). Over budget or a required artefact absent → fail. *Later:* the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
-| `ci:dep-audit` | Every runtime `dependencies` entry of `client/package.json` is on the allowlist in `client/dependency-policy.json` and in no forbidden category (charting, mapping, 3D, graph-diagram, CSS-in-JS); runtime licences on the AGPL-3.0-compatible allowlist; no third-party asset or font host in the build. From #68, for the engine crates: `web-sys` feature allowlist and no `std::sync::Mutex`/`RwLock` in render-worker crates (T03-008) | PR | yes |
+| `ci:dep-audit` | Every runtime `dependencies` entry of `client/package.json` is on the allowlist in `client/dependency-policy.json` and in no forbidden category (charting, mapping, 3D, graph-diagram, CSS-in-JS); runtime licences on the AGPL-3.0-compatible allowlist; no third-party asset or font host in the build. Engine leg from #68: `cargo deny check licenses advisories bans sources` with `engine/deny.toml` (the licence set of [T18](T18-security.md) §4.11, three exact-version exceptions; no unknown registry or git source; yanked crates denied); the `web-sys` feature allowlist arrives with the browser build (Part C); the lock lint is `ci:engine-lint` | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside the generated token outputs (`tokens.css`, `tokens.ts`, and the engine's Rust constants from #68); regenerating them leaves no diff; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:api-gen` | `oapi-codegen`, `openapi-typescript` and `sqlc generate` leave no diff against `api/openapi.yaml` and `server/queries/` ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
 | `ci:go-lint` | `golangci-lint run` (pinned; `depguard` package boundaries of ADR-0015, `forbidigo`, `gosec`, `errcheck`, `staticcheck`); the `ci:depguard` self-test proves the rules with failing fixtures (`server/testdata/depguard/`: `pgx` outside `internal/store`, `chi` outside `internal/gateway`, an HTTP client outside `internal/pulsusdb` (`pulsusdb-only`, T06-005), `encoding/json` decoding inside `internal/pulsusdb` (`pulsusdb-decoder`, #62)) | PR | yes |
@@ -553,13 +565,14 @@ the merge train), nightly (release blocker).
 | `ci:go-mod` | `go mod verify`; `go mod tidy` leaves no diff; `GOFLAGS=-mod=readonly` | PR | yes |
 | `ci:asset-integrity` | Binary-level start-up refusal ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [T19](T19-deployment.md) T19-005): `make build` once, then gate binaries with the same public key over an altered packed tree must exit 1 before opening a listener: one byte of the largest `assets/*.js` flipped (`hash_mismatch`), an unlisted `assets/extra.js` (`unlisted_file`), a listed `.br` variant deleted (`missing_file`), the manifest changed by one byte (`bad_signature`), no public key (`no_public_key`); the untouched tree verifies and stops only at Postgres; a `make server-build` binary refuses without `--api-only` | PR | yes |
 | `ci:go-licenses` | `go-licenses check` over every module linked into the `pulsus-dash` binary: each licence on the AGPL-3.0-compatible allowlist (MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1, LGPL-3.0; D3); writes the third-party notices file `build/THIRD_PARTY_NOTICES.txt`; proven by the failing GPL-2.0-only fixture `server/testdata/licences/gpl` ([T18](T18-security.md) T18-026) | PR | yes |
-| `ci:no-pulsusdb-host` | Every tracked file: no forbidden host from the `DASH_FORBIDDEN_HOSTS` repository secret, in content or path, and no non-local PulsusDB URL (a host containing `pulsusdb`, or the value of a PulsusDB datasource key); output names files only by opaque index; a missing secret fails ([T19](T19-deployment.md) T19-010) | PR | yes |
+| `ci:no-pulsusdb-host` | Every tracked file: no URL with a non-local host containing `pulsusdb`, and no non-local URL as a PulsusDB datasource key value (bare host names without a scheme are not scanned); no host name is stored in the repository or its secrets, and a local run also forbids the datasource host of the untracked dev environment file; output names files only by opaque index ([T19](T19-deployment.md) T19-010) | PR | yes |
 | `ci:fake-image` | The dev stack's PulsusDB fake image (`dev/pulsus-fake.Dockerfile` with its `.dockerignore`) builds, runs, and answers `GET /api/v1/status/runtimeinfo` within 10 s with `X-Pulsus-Query-Id: fake-runtimeinfo-1` and `rollupLevels` (#62) | PR | yes |
 | `ci:dev-stack` | The dev compose stack (`dev/compose.yaml`) starts, migrates and seeds, serves `/readyz` 200, stops cleanly, persists across `dev-down` and resets with `dev-reset`; nothing is left behind, also after an injected failure; then `itest` runs on its PostgreSQL 15 and 16 ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
 | `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013), proven by the failing fixture `server/testdata/squawk/create_index_not_concurrently.sql` (`require-concurrent-index-creation`), and an up-from-empty run on Postgres (`itest:migrations`); on pull requests, no merged migration is modified, deleted or renamed (append-only, T11-012) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
-| `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis | PR | yes |
+| `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis. Subset from #68 (`cargo xtask spec-lint`): `dash-scene` has no dependency, direct or transitive, on `wgpu`, `naga` or `dash-gpu` and its `dash-marks` edge enables no feature; `.wgsl` files only in `dash-marks`; the literals of `engine/ci/lavapipe.Dockerfile` and the toolchain channel equal `engine/tools.toml` | PR | yes |
+| `ci:engine-lint` | From #68: `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` on `engine/`, with `unwrap_used`, `expect_used` and `disallowed_types` (`std::sync::Mutex`, `RwLock`: T03-008) denied | PR | yes |
 | `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
 | `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh production build of the client (and, from #68, the engine), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
 
@@ -567,7 +580,27 @@ the merge train), nightly (release blocker).
 
 | Gate | Checks |
 |---|---|
-| `unit:decimation-prop` | Raw min and max appear in every pixel column; identical output across thread counts |
+| `unit:decimation-prop` | Raw min and max appear in every pixel column; every span is exactly one NaN-free run, every raw sample lies in its run's span, `total` counts the instances; identical output across rayon pools of 1, 2 and 7 threads |
+| `unit:columns-parity` | From #68: the CPU decimation reproduces the interim `lineColumns` per column (count class, first, last, every run in order including spilled ones, the break flag) on `engine/fixtures/columns.json` |
+| `unit:decimation-batches` | From #68: past `max_instances` a viewport is drawn in ⌈(G + total)/max⌉ ordered batches whose image is byte-equal to one draw, on T1 and T2 |
+| `unit:decimation-tier-parity` | From #68: the T1 compute passes and the CPU path give byte-equal `ColOut`, counts, starts, total and instances (20 seeds, grid and explicit chunks, columns with ≥ 5 runs) |
+| `unit:buffer-lifetime` | From #68: pan, zoom and resize rebuild the column ranges and never re-encode values; an encoding change encodes once; one resident encoding per chunk; staging ≤ 16 MiB on T1; a dropped chunk leaves no buffer (T02-014, T04 §5.7) |
+| `unit:value-encoding` | From #68: exact-span encoding on subnormal, constant, overflowing and far-from-zero ranges; every u finite and ≤ 2^24; the f32 y within 2^−8 device px of an f64 reference for plots of 240 and 8 192 px |
+| `unit:segment-clip` | From #68: f64 segment clipping against the clip box: crossings of a ±1e300 segment at t = 1/3; single cuts; halved form at ±MAX; `is_far` only beyond the box |
+| `unit:epoch-adjacency` | From #68: 1 ms apart at an epoch-scale timestamp → columns 0 and 10 of a 100 ms window in 1 000 columns, instances 10 CSS px apart |
+| `unit:extreme-ticks` | From #68: data spans that overflow (±MAX) get three finite ticks within 1 ms |
+| `unit:spike-visible` | From #68: one sample in 10⁶ is drawn at its value on T1 and T2 |
+| `unit:chunk-builder` | From #68: `ChunkBuilder` rejects unequal lengths, non-increasing and NaN timestamps; the finite range spans ±MAX and skips NaN |
+| `unit:layout-parity` | From #68: the engine's `value_ticks` and value axis equal the interim `valueTicks`, `layoutPlot` and labels bit for bit (`engine/fixtures/ticks.json`, `layout.json`, `pow.json`) |
+| `unit:manual-axis` | From #68: a manual value axis keeps its range as the domain and ticks inside it (1e−9 relative tolerance) |
+| `unit:held-band` | From #68: under a held label band the plot rect depends only on (kind, size, band); labels wider than the band are flagged |
+| `unit:camera-primitives` | From #68: `zoom_about`, `pan_by`, `contain` and `to_window` bit-equal to the client's camera arithmetic; the anchor moves < 1 px over 100 steps; whole-ms pans; exact no-op at the floor |
+| `unit:commit-shape` | From #68: `to_window` rounds like ECMAScript `Math.round`; the commit event's JSON is ADR-0020's TS shape |
+| `unit:spec-value-range` | From #68: an invalid `valueRange` is auto; the summary's `valueAxis` reports the drawn domain |
+| `unit:drawn` | From #68: `drawn` only for a complete frame at a non-zero size; `FrameInit.id` does not change pixels |
+| `unit:frame-summary-parity` | From #68: the engine's frame summary of each gallery line entry equals the interim `frameSummary` (`engine/fixtures/summary.json`) |
+| `unit:synth-parity` | From #68: `pulsus-synth` gallery lines equal the client's `synthLines` (keys equal, values within 1e−9) |
+| `unit:engine-fixtures` | From #68: `engine/fixtures/*.json` equal a fresh run of `client/scripts/engine-fixtures.ts` (part of `npm test`) |
 | `unit:ticks-prop` | Ticks never overlap, 40–8 000 px, all time zones including DST days |
 | `unit:axis-layout-prop` | No band overlap; no label collision across lanes; pan on A leaves B's marks pixel-identical; hysteresis (500 ms shrink) |
 | `unit:axis-patterns` | Table 5-2 triggers apply per milestone; `origin = User` disables auto; ≤ 2 axes per side auto; "consider stacking" hint |
@@ -646,9 +679,11 @@ the merge train), nightly (release blocker).
 
 | Gate | Checks |
 |---|---|
-| `golden:gallery` | Every gallery page × variants (§4.2), ꟻLIP rules; two seeded runs identical |
+| `golden:gallery` | Every gallery page × variants (§4.2), ꟻLIP rules; two seeded runs identical. From #68 it includes the engine line pages (line-1, line-50, line-gaps, line-600 × dark, light; line-50 dark at DPR 2 and with a manual value range) on lavapipe, T1 and T2 byte-equal |
 | `golden:interim-gallery` | Until #68: the seven interim Canvas 2D gallery charts × dark and light in the pinned Playwright Chromium against committed baselines (per-pixel threshold 0.1, ≤ 0.2 % differing pixels); two seeded runs identical; baselines written only by CI under the `golden-update` label |
-| `golden:decimation-ref` | Decimated vs every-raw-point render, zero line-coverage diff |
+| `golden:decimation-raw` | From #68: decimated vs every-raw-point render through the same pipeline, zero differing covered pixels (PR fixtures; nightly 10⁸ points) — the VIZ-006 gate |
+| `golden:decimation-ref` | From #68: the decimated render against the independent f64 reference of the ADR-0014 §4 model (A ⊆ B, B ⊆ R⁺, gap bands, interpolation, far crossing, in-range segment); PR 10⁴ points per series, nightly 10⁸ |
+| `golden:extreme-range` | From #68: data scaled to [−MAX, MAX] and [MAX/2, MAX] draws finite geometry, equal on both tiers, every sample's pixel covered |
 | `golden:greyscale` | State glyphs and axis-ownership glyphs distinguishable in greyscale |
 | `golden:inf-shape-grammar-greyscale` | Every class family's 3D shape and 2D glyph distinguishable by silhouette in greyscale ([INF-002](../product/16-infrastructure-model.md#inf-002--one-shape-grammar-per-class-family)) |
 | `golden:tier-parity` | WebGPU vs WebGL2 readback per spec (nightly) |
@@ -713,7 +748,7 @@ the merge train), nightly (release blocker).
 **Lab benchmarks (L5)** — defined in §4.3: `bench:frame-gallery`, `bench:frame-line-1e8`,
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
-`bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:lens-load`,
+`bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:lens-load`,
 `bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
 `bench:promql-decode` and `bench:bff-overhead` (#62, `REFERENCE_LAB=1 make bench-bff`: W1, a 1 000 × 1 000
 PulsusDB matrix decoded, gridded and encoded, ≤ 30 ms per 10⁶ points, median of 5; W2, 1 000 sequential
@@ -732,6 +767,7 @@ and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull
 | `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
 | `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
 | `bench:inp-rooms` | merge once the reference lab ((a), (b)) exists; until then CI's `e2e` Chromium leg runs it report-only (INP, count, slowest interaction) | INP ≤ 200 ms | yes once the lab exists (`INP_GATE=enforce`); until then not blocking |
+| `bench:rooms-long-tasks` (owner: [T08](T08-dom-component-kit.md) §7, PRF-005; `e2e/perf-rooms-long-tasks.spec.ts`; the board editor scenario first, #90) | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab ((a), (b)) exists | interim CI: `ciOver === 0`, no main-thread task over 50 ms wall with over 16 ms thread time (§4.3 trace check; a task without thread time counts); lab: no task over 16 ms wall between the first and last input (`LONG_TASK_GATE=enforce`) | interim CI check: yes, blocks merge now; 16 ms wall: yes once the lab exists (#68), pending until then |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
@@ -878,8 +914,11 @@ Meta-testing:
 | 1.7-rc | 2026-11-20 | #61 Part A: §7.1 adds `unit:board-spec`, `itest:board-crud`, `itest:board-prefs` and `itest:audit-append-only` (board subset; named by T06 and T11); `itest:rls-isolation` adds the audit partitions, unreachable as the app role (T11-026) |
 | 1.8-rc | 2026-11-20 | #61 Part B: §7.1 adds `e2e:board-edit-save` (BFF, PR); `unit:board-spec` names the client's side, held to the server by `api/fixtures/board-spec/` |
 | 1.9-rc | 2026-11-21 | #61 Part C: §4.3 `bench:inp-rooms` scenario is scripted room interactions in Chromium with INP per document from Event Timing (the board room first, #61); §7.1 lab gate row: merge once the reference lab exists, until then report-only in CI's `e2e` Chromium leg, as `bench:long-tasks` (D-INP-interim; T05-006 unchanged); §7.1 adds `e2e:board-prefs` and `e2e:board-sections` (BFF, PR) |
-| 1.10-rc | 2026-11-20 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures |
-| 1.11-rc | 2026-11-21 | #62: §7.1 adds `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`, `unit:decode-frames`, `unit:promql-step`, `unit:keyhash-corpus`, `unit:virtual-guard`, `unit:sanitise`, `unit:deadlines`, `unit:body-limits` and `ci:fake-image`; the lab gates `bench:promql-decode` and `bench:bff-overhead` (`REFERENCE_LAB=1`); `bench:cpu-instr` adds the BFF workloads W1 and W2 (cachegrind for Go); `ci:go-lint`'s `ci:depguard` self-test names `pulsusdb-only` and `pulsusdb-decoder` |
-| 1.12-rc | 2026-11-21 | #63 Part A: §7.1 adds `unit:explore-plan`, `unit:heatmap-buckets`, `unit:frame-plan`, `unit:series-rows`, `unit:explore-params` and the report-only `bench:frame-interim-heatmap`; `unit:autovis-table` states its v1 rows; `unit:columns` adds the missing merged heatmap cell; the `bench:frame-*` lab-gate row names the interim stand-ins and the before/after rule for interim draw-path changes |
-| 1.13-rc | 2026-11-21 | #63 Part A: `unit:explore-plan` states the rate window `max(4 × step, step + S, 4 × S)` (`S` the scrape interval, default 15 s, per binding later) in place of `4 × step`, with rows where 4 × S and 4 × step set the window |
-| 1.14-rc | 2026-11-21 | #63 Part B: §7.1 adds `unit:promql-shape`, `unit:promql-diagnostics`, `unit:suggest-cache`, `unit:prom-source`, `unit:prom-client`, `unit:editor-keys`, `unit:editor-completion`, `unit:editor-doc`, `unit:editor-diagnostics`, `unit:editor-no-linter`, `unit:editor-styles`, `unit:editor-host`, `unit:query-size`, `unit:editor-composition`, `unit:editor-size`, `unit:lang-table` and `unit:window-keys` |
+| 1.10-rc | 2026-11-21 | #90: §4.3 `bench:rooms-long-tasks` scenario and its interim CI check |
+| 1.11-rc | 2026-11-21 | #90 code review: §7.1 defines `bench:rooms-long-tasks` (owner T08 §7, PRF-005): interim CI check `ciOver === 0` blocking on PRs; 16 ms wall in the reference lab, pending #68 |
+| 1.12-rc | 2026-11-21 | #68 Part A: §4.2 decimation references (`golden:decimation-raw` replaces the old every-raw-point wording of `golden:decimation-ref`, which becomes the f64 structural reference) and the image pins in `engine/tools.toml`; §7.1 adds `ci:engine-lint`, the `ci:spec-lint` subset (crate graph, WGSL location, image literals), the `ci:dep-audit` engine leg (`cargo deny`), `unit:columns-parity`, `unit:decimation-batches`, `unit:decimation-tier-parity`, `unit:buffer-lifetime`, `unit:value-encoding`, `unit:segment-clip`, `unit:epoch-adjacency`, `unit:extreme-ticks`, `unit:spike-visible`, `unit:chunk-builder`, `unit:layout-parity`, `unit:manual-axis`, `unit:held-band`, `unit:camera-primitives`, `unit:commit-shape`, `unit:spec-value-range`, `unit:drawn`, `unit:frame-summary-parity`, `unit:synth-parity`, `unit:engine-fixtures`, `golden:decimation-raw` and `golden:extreme-range`; `golden:gallery` includes the engine line pages |
+| 1.13-rc | 2026-11-21 | #59 Part C: §7.1 adds `ci:go-licenses`, `ci:no-pulsusdb-host` and `ci:dev-stack`; `ci:go-lint` self-tests its depguard rules with failing fixtures; owner decision 2026-11-21: `ci:no-pulsusdb-host` uses no repository secret and needs no host name |
+| 1.14-rc | 2026-11-21 | #62: §7.1 adds `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`, `unit:decode-frames`, `unit:promql-step`, `unit:keyhash-corpus`, `unit:virtual-guard`, `unit:sanitise`, `unit:deadlines`, `unit:body-limits` and `ci:fake-image`; the lab gates `bench:promql-decode` and `bench:bff-overhead` (`REFERENCE_LAB=1`); `bench:cpu-instr` adds the BFF workloads W1 and W2 (cachegrind for Go); `ci:go-lint`'s `ci:depguard` self-test names `pulsusdb-only` and `pulsusdb-decoder` |
+| 1.15-rc | 2026-11-21 | #63 Part A: §7.1 adds `unit:explore-plan`, `unit:heatmap-buckets`, `unit:frame-plan`, `unit:series-rows`, `unit:explore-params` and the report-only `bench:frame-interim-heatmap`; `unit:autovis-table` states its v1 rows; `unit:columns` adds the missing merged heatmap cell; the `bench:frame-*` lab-gate row names the interim stand-ins and the before/after rule for interim draw-path changes |
+| 1.16-rc | 2026-11-21 | #63 Part A: `unit:explore-plan` states the rate window `max(4 × step, step + S, 4 × S)` (`S` the scrape interval, default 15 s, per binding later) in place of `4 × step`, with rows where 4 × S and 4 × step set the window |
+| 1.17-rc | 2026-11-21 | #63 Part B: §7.1 adds `unit:promql-shape`, `unit:promql-diagnostics`, `unit:suggest-cache`, `unit:prom-source`, `unit:prom-client`, `unit:editor-keys`, `unit:editor-completion`, `unit:editor-doc`, `unit:editor-diagnostics`, `unit:editor-no-linter`, `unit:editor-styles`, `unit:editor-host`, `unit:query-size`, `unit:editor-composition`, `unit:editor-size`, `unit:lang-table` and `unit:window-keys` |
