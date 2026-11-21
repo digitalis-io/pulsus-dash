@@ -3,8 +3,8 @@
  * `api/openapi.yaml`. The session comes from `GET /api/dash/v1/bootstrap`; boards from the boards
  * API (`docs/server/boards-api.md`, plan #61 Part B §3.3); Starred and Recent from the `/me/…`
  * routes (Part C §3.2). Panels have no query route yet (#64, #67): `panelData` answers without a
- * request. PromQL query responses are decoded at the one seam, `data/decode.ts`; failures map to
- * `ApiError` kinds (plan #62 §4.5).
+ * request. PromQL and LogQL query responses are decoded at the one seam, `data/decode.ts`; failures
+ * map to `ApiError` kinds (plan #62 §4.5, plan #65 Part B §4.4).
  */
 import createClient, { type Client } from 'openapi-fetch';
 import { RECENT_LIMIT } from '../boards/queries';
@@ -100,6 +100,8 @@ type ErrorBody = Partial<components['schemas']['ErrorBody']>;
 // default-non-nullable rule); the BFF applies the default, so the client omits it when unset.
 type RangeBody = components['schemas']['PromRangeRequest'];
 type InstantBody = components['schemas']['PromInstantRequest'];
+type LogsBody = components['schemas']['LogqlRangeRequest'];
+type VolumeBody = components['schemas']['LogqlVolumeRequest'];
 
 function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -414,13 +416,50 @@ export class HttpApi implements Api {
     return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
   }
 
-  /** Stub. */
-  queryLogs(_tenant: string, _req: LogsRequest, _signal?: AbortSignal): Promise<LogsResult> {
-    return Promise.resolve(decodeLogs(null));
+  /** POST …/query/logql/range: the optional members only when given (plan #65 Part B §4.4). */
+  async queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.limit === undefined ? {} : { limit: req.limit }),
+      ...(req.direction === undefined ? {} : { direction: req.direction }),
+      ...(req.cursor === undefined ? {} : { cursor: req.cursor }),
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as LogsBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/logql/range', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeLogs, data);
   }
 
-  /** Stub. */
-  queryVolume(_tenant: string, _req: VolumeRequest, _signal?: AbortSignal): Promise<RangeResult> {
-    return Promise.resolve(decodeVolume(null));
+  /** POST …/query/logql/volume. */
+  async queryVolume(
+    tenant: string,
+    req: VolumeRequest,
+    signal?: AbortSignal,
+  ): Promise<RangeResult> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as VolumeBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/logql/volume', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeVolume, data);
   }
 }

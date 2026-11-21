@@ -215,7 +215,10 @@ describe('unit:decode-logs (plan #65 Part B §3.5, T04-010)', () => {
       const want = streamsOf(body)
         .flatMap((s) => s.entries.map((e) => `${e.ts_ns} ${e.line}`))
         .sort();
-      const got = Array.from(r.frame.tsNs, (t, i) => `${String(t)} ${r.frame.lines[i] ?? ''}`).sort();
+      const got = Array.from(
+        r.frame.tsNs,
+        (t, i) => `${String(t)} ${r.frame.lines[i] ?? ''}`,
+      ).sort();
       expect(got, name).toEqual(want);
       for (const s of streamsOf(body)) {
         for (const e of s.entries) expect(r.frame.tsNs).toContain(BigInt(e.ts_ns));
@@ -265,14 +268,15 @@ describe('unit:decode-logs (plan #65 Part B §3.5, T04-010)', () => {
         const cur = ts[i] ?? 0n;
         expect(cur >= prev).toBe(true);
         if (cur === prev) {
-          expect(f.frame.streamIndex[i] ?? 0).toBeGreaterThanOrEqual(f.frame.streamIndex[i - 1] ?? 0);
+          expect(f.frame.streamIndex[i] ?? 0).toBeGreaterThanOrEqual(
+            f.frame.streamIndex[i - 1] ?? 0,
+          );
         }
       }
     }
-    expect(streamsResult(decodeLogs(logGolden('logql-streams-forward-3.json'))).frame.lines).toEqual([
-      'b4',
-      'a5',
-    ]);
+    expect(
+      streamsResult(decodeLogs(logGolden('logql-streams-forward-3.json'))).frame.lines,
+    ).toEqual(['b4', 'a5']);
   });
 
   it('merges streams k-way by ts, then stream, then entry', () => {

@@ -527,12 +527,20 @@ describe('HttpApi log queries (plan #65 Part B)', () => {
   });
 
   it('sends the volume request', async () => {
-    const empty = { start: 0, end: 1000, step: 1000, frames: [], completeness: LOG_PAGE.completeness };
+    const empty = {
+      start: 0,
+      end: 1000,
+      step: 1000,
+      frames: [],
+      completeness: LOG_PAGE.completeness,
+    };
     const { api: a, requests } = api(() => Promise.resolve(json(200, empty)));
     const r = await a.queryVolume('demo', { ...L, timeoutMs: 700 });
     expect(r.series).toHaveLength(0);
     const req = requests[0];
-    expect(req === undefined ? '' : new URL(req.url).pathname).toBe('/api/dash/v1/query/logql/volume');
+    expect(req === undefined ? '' : new URL(req.url).pathname).toBe(
+      '/api/dash/v1/query/logql/volume',
+    );
     expect(await req?.text()).toBe(
       '{"query":"{app=\\"x\\"}","from":1,"to":2,"width_px":3,"timeout_ms":700}',
     );

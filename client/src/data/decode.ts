@@ -2,10 +2,11 @@
  * The single decoder of query responses (ADR-0014 §5, T04-010): the BFF's JSON frames (plan #62
  * §3.4, T04 §0) into `SeriesFrame`s with `Float64Array` columns, NaN for an absent point. Every
  * field is validated; anything else is a `DecodeError` naming the JSON pointer of the first bad
- * element. Arrow arrives behind the same functions with the engine (#68).
+ * element. Log pages (plan #65 Part B §3.5) decode into a columnar `LogFrame` with exact
+ * `BigInt64Array` timestamps. Arrow arrives behind the same functions with the engine (#68).
  */
 import { KEY_PATTERN, type ScalarFrame, type SeriesFrame } from './frames';
-import type { LogFrame } from './logFrame';
+import { LOG_LEVELS, type LogFrame, type LogStreamInfo } from './logFrame';
 
 export interface Completeness {
   readonly truncated: boolean;
@@ -212,51 +213,153 @@ export function decodeInstant(body: unknown): InstantResult {
   }
 }
 
+/** A LogQL range result: a log page, or the frames of a LogQL metric query on the grid. */
 export type LogsResult =
   | {
       readonly kind: 'streams';
+      /** The request's window `(fromMs, toMs]`. */
       readonly fromMs: number;
       readonly toMs: number;
+      /** The grid step. */
       readonly stepMs: number;
       readonly frame: LogFrame;
+      /** The next page's cursor; null when no entry of the window is left. */
       readonly cursor: string | null;
       readonly completeness: Completeness;
     }
   | ({ readonly kind: 'series' } & RangeResult);
 
-const NO_COMPLETENESS: Completeness = {
-  truncated: false,
-  warnings: [],
-  infos: [],
-  queryId: null,
-  dataAgeMs: null,
-  readCache: null,
-  readCacheThroughMs: null,
-};
+const DIRECTIONS = ['backward', 'forward'] as const;
+const TS_PATTERN = /^(0|[1-9][0-9]{0,18})$/;
+const MAX_INT64 = 9223372036854775807n;
+const NS_PER_MS = 1000000n;
 
-/** Stub. */
-export function decodeLogs(_body: unknown): LogsResult {
+function stringMap(v: unknown, path: string): Record<string, string> {
+  const o = object(v, path);
+  const out: Record<string, string> = {};
+  for (const [k, x] of Object.entries(o)) out[k] = string(x, `${path}/${token(k)}`);
+  return out;
+}
+
+function optionalMap(e: Obj, name: string, path: string): Record<string, string> | null {
+  return e[name] === undefined ? null : stringMap(e[name], `${path}/${name}`);
+}
+
+interface DecodedStream {
+  readonly ts: bigint[];
+  readonly lines: string[];
+  readonly levels: number[];
+  readonly metadata: (Record<string, string> | null)[];
+  readonly parsed: (Record<string, string> | null)[];
+}
+
+/** Decodes a `LogqlRangeResponse` body (a log page or a metric result). */
+export function decodeLogs(body: unknown): LogsResult {
+  const b = object(body, '');
+  if (b['kind'] === 'series') return { kind: 'series', ...decodeRange(b) };
+  if (b['kind'] !== 'streams') throw new DecodeError('/kind', 'expected streams or series');
+  const direction = DIRECTIONS.find((d) => d === b['direction']);
+  const fromMs = integer(b['start'], '/start');
+  const toMs = integer(b['end'], '/end');
+  const stepMs = integer(b['step'], '/step');
+  if (direction === undefined) throw new DecodeError('/direction', 'expected backward or forward');
+  const lo = BigInt(fromMs) * NS_PER_MS;
+  const hi = BigInt(toMs) * NS_PER_MS;
+  const backward = direction === 'backward';
+  const streams: LogStreamInfo[] = [];
+  const decoded: DecodedStream[] = [];
+  array(b['streams'], '/streams').forEach((v, si) => {
+    const path = `/streams/${String(si)}`;
+    const s = object(v, path);
+    const key = string(s['key'], `${path}/key`);
+    if (!KEY_PATTERN.test(key)) throw new DecodeError(`${path}/key`, 'expected 16 hex digits');
+    streams.push({ key, labels: stringMap(s['labels'], `${path}/labels`) });
+    const d: DecodedStream = { ts: [], lines: [], levels: [], metadata: [], parsed: [] };
+    array(s['entries'], `${path}/entries`).forEach((x, ei) => {
+      const ep = `${path}/entries/${String(ei)}`;
+      const e = object(x, ep);
+      const text = e['ts_ns'];
+      if (typeof text !== 'string' || !TS_PATTERN.test(text)) {
+        throw new DecodeError(`${ep}/ts_ns`, 'expected a decimal ns timestamp');
+      }
+      const ts = BigInt(text);
+      if (ts > MAX_INT64 || ts <= lo || ts > hi) {
+        throw new DecodeError(`${ep}/ts_ns`, 'timestamp outside the window (start, end]');
+      }
+      const prev = d.ts[d.ts.length - 1];
+      if (prev !== undefined && (backward ? ts > prev : ts < prev)) {
+        throw new DecodeError(`${ep}/ts_ns`, `entries must be in ${direction} order`);
+      }
+      const line = string(e['line'], `${ep}/line`);
+      const level = LOG_LEVELS.indexOf(e['level'] as never);
+      if (level < 0) throw new DecodeError(`${ep}/level`, 'expected a log level');
+      d.ts.push(ts);
+      d.lines.push(line);
+      d.levels.push(level);
+      d.metadata.push(optionalMap(e, 'metadata', ep));
+      d.parsed.push(optionalMap(e, 'parsed', ep));
+    });
+    decoded.push(d);
+  });
+  const cursor = b['cursor'] === undefined ? null : string(b['cursor'], '/cursor');
+  if (cursor === '') throw new DecodeError('/cursor', 'expected a non-empty string');
+  const completeness = decodeCompleteness(b['completeness'], '/completeness');
   return {
     kind: 'streams',
-    fromMs: 0,
-    toMs: 0,
-    stepMs: 0,
-    cursor: null,
-    completeness: NO_COMPLETENESS,
-    frame: {
-      direction: 'backward',
-      streams: [],
-      tsNs: new BigInt64Array(0),
-      streamIndex: new Uint32Array(0),
-      lines: [],
-      levels: new Uint8Array(0),
-      metadata: [],
-      parsed: [],
-    },
+    fromMs,
+    toMs,
+    stepMs,
+    frame: merge(direction, streams, decoded),
+    cursor,
+    completeness,
   };
 }
 
-/** Stub. */
-export function decodeVolume(_body: unknown): RangeResult {
-  return { startMs: 0, endMs: 0, stepMs: 0, series: [], completeness: NO_COMPLETENESS };
+/**
+ * The k-way merge of the streams into rows: by ts in direction, then stream index ascending,
+ * then entry index. Streams arrive in key order and the BFF orders each timestamp group by
+ * (stream key, line), so this reproduces the BFF's page order. Each stream is already in
+ * direction order, so a stable sort by ts of the rows laid out stream by stream is that merge.
+ */
+function merge(
+  direction: 'backward' | 'forward',
+  streams: readonly LogStreamInfo[],
+  decoded: readonly DecodedStream[],
+): LogFrame {
+  const src: { ts: bigint; s: number; i: number }[] = [];
+  decoded.forEach((d, s) => {
+    d.ts.forEach((ts, i) => src.push({ ts, s, i }));
+  });
+  const sign = direction === 'backward' ? -1 : 1;
+  src.sort((a, b) => (a.ts === b.ts ? 0 : a.ts < b.ts ? -sign : sign)); // stable (ES2019)
+  const n = src.length;
+  const tsNs = new BigInt64Array(n);
+  const streamIndex = new Uint32Array(n);
+  const levels = new Uint8Array(n);
+  const lines: string[] = [];
+  const metadata: (Record<string, string> | null)[] = [];
+  const parsed: (Record<string, string> | null)[] = [];
+  src.forEach((r, row) => {
+    const d = decoded[r.s];
+    tsNs[row] = r.ts;
+    streamIndex[row] = r.s;
+    levels[row] = d?.levels[r.i] ?? 0;
+    lines.push(d?.lines[r.i] ?? '');
+    metadata.push(d?.metadata[r.i] ?? null);
+    parsed.push(d?.parsed[r.i] ?? null);
+  });
+  return { direction, streams, tsNs, streamIndex, lines, levels, metadata, parsed };
+}
+
+/** Decodes a log volume body: a `PromRangeResponse` whose frames are labelled exactly `{level}`. */
+export function decodeVolume(body: unknown): RangeResult {
+  const r = decodeRange(body);
+  r.series.forEach((s, i) => {
+    const names = Object.keys(s.labels);
+    const level = s.labels['level'];
+    if (names.length !== 1 || level === undefined || !LOG_LEVELS.includes(level as never)) {
+      throw new DecodeError(`/frames/${String(i)}/labels`, 'expected exactly {level: <log level>}');
+    }
+  });
+  return r;
 }

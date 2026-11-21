@@ -302,7 +302,11 @@ describe('stub log queries (plan #65 Part B §4.4)', () => {
     expect(r.frame.streams.map((x) => x.labels['pod'])).toEqual(['stub-0', 'stub-1', 'stub-2']);
     expect(r.frame.streams.map((x) => x.key)).toEqual(
       [0, 1, 2].map((j) =>
-        keyHash({ service_name: 'stub', pod: `stub-${String(j)}`, level: ['info', 'warn', 'error'][j] ?? '' }),
+        keyHash({
+          service_name: 'stub',
+          pod: `stub-${String(j)}`,
+          level: ['info', 'warn', 'error'][j] ?? '',
+        }),
       ),
     );
     expect(Array.from(r.frame.levels.slice(0, 3))).toEqual([3, 4, 5]);
@@ -325,7 +329,11 @@ describe('stub log queries (plan #65 Part B §4.4)', () => {
       Array.from((await streams(req(toMs, { direction }))).frame.tsNs);
     expect(await ts(F + 2000, 'backward')).toEqual([f + 2n * s, f + s]);
     expect(await ts(F + 2000, 'forward')).toEqual([f + s, f + 2n * s]);
-    expect(await ts(F + 2500, 'backward')).toEqual([f + 2500000000n, f + 1500000000n, f + 500000000n]);
+    expect(await ts(F + 2500, 'backward')).toEqual([
+      f + 2500000000n,
+      f + 1500000000n,
+      f + 500000000n,
+    ]);
     expect(await ts(F + 2500, 'forward')).toEqual([f + s, f + 2n * s]);
     const one = await streams(req(F + 1, { direction: 'backward' }));
     expect(Array.from(one.frame.tsNs)).toEqual([f + 1000000n]);
@@ -349,7 +357,11 @@ describe('stub log queries (plan #65 Part B §4.4)', () => {
       await kindOf(api.queryLogs('demo', { ...req(1262304000000), fromMs: 0, widthPx: 1 })),
     ).toBe('queryInvalid');
     const v = await api.queryVolume('demo', req(F + 3600000));
-    expect(v.series.map((x) => x.labels)).toEqual([{ level: 'error' }, { level: 'warn' }, { level: 'info' }]);
+    expect(v.series.map((x) => x.labels)).toEqual([
+      { level: 'error' },
+      { level: 'warn' },
+      { level: 'info' },
+    ]);
     expect(v.stepMs).toBe(5000);
     expect(v.series[0]?.timestamps).toHaveLength(721);
     expect(v.series[0]?.key).toBe(keyHash({ level: 'error' }));
