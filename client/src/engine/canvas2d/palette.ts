@@ -49,6 +49,8 @@ export interface ThemeColours {
   axisText: string;
   crosshair: string;
   brush: string;
+  /** Behind a value label drawn inside the plot under a band hold (#93): the tooltip surface. */
+  chip: string;
   text: string;
   series: readonly string[];
   ramp: readonly string[];
@@ -62,6 +64,7 @@ export function themeColours(t: ThemeName): ThemeColours {
     axisText: c['text-muted'],
     crosshair: c['text-muted'],
     brush: c.brush,
+    chip: c['surface-2'],
     text: c.text,
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
