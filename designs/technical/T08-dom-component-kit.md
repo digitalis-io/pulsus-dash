@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-20 |
+| **Version** | 1.7-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -80,7 +80,7 @@ This document fixes:
 | [IA-020](../product/02-information-architecture.md#ia-020--time-range-in-the-page-header) | §4.3 (time range picker and refresh control) | `e2e:time-range-header` |
 | [VL-017](../product/08-visual-language.md#vl-017--application-layout-dimensions) | §4.3, §4.7 (layout tokens) | `e2e:app-layout` (sidebar 240/56 px, header 56 px, padding 24 px, panel gap 16 px); `e2e:chrome-layout` (Ribbon 40 px and translucent in Space scenes, from M-UI3) |
 | [SRF-001](../product/04-surfaces.md#srf-001--every-surface-uses-the-application-layout) | §4.3 (layout always mounted; Wall exception) | `e2e:chrome-every-surface`: each surface of Table 4-1 available at the build shows the sidebar and page header (time range picker on time-dependent surfaces; Ribbon on Atlas and Lens); Wall mode shows none |
-| [IA-021](../product/02-information-architecture.md#ia-021--left-navigation-sidebar) | §4.3 (sidebar), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: the sidebar lists the build's destinations for the role and marks the current page; collapse persists; each destination opens from the sidebar, ⌘K and its `g` chord |
+| [IA-021](../product/02-information-architecture.md#ia-021--left-navigation-sidebar) | §4.3 (sidebar), §4.8 (`g` chords), §4.4.3 | `e2e:rooms-reachable`: the sidebar lists the build's destinations for the role and marks the current page; collapse persists; each destination opens from the sidebar, ⌘K and its `g` chord; `e2e:board-prefs`: Starred and Recent of one user appear in a fresh browser context, another tab hears a change at once and another context on its next visibility |
 | [IA-002](../product/02-information-architecture.md#ia-002--context-is-the-one-state-every-view-reads) | §4.2 (`AppState.context`) | `unit:reducer-context`: every Context member change emits `ContextChanged` to all subscribed slices |
 | [PRN-006](../product/01-vision-and-principles.md#prn-006--context-is-sticky) | §4.2, §4.3 (Context in `Route` and pivots) | `e2e:pivot-keeps-context` (T07/[T12](T12-entity-catalogue.md) co-own the translation) |
 | [IA-022](../product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view) | §4.3 (`Route` codec), T08-005 | `prop:route-roundtrip` (`parse(print(r)) == r`, fuzzed) and `e2e:deep-link-fresh-session` for each URL pattern |
@@ -123,7 +123,7 @@ This document fixes:
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2, §4.4.1, §7 | `bench:rooms-long-tasks`: 0 main-thread tasks > 16 ms during scripted room interactions |
 | [PRF-008](../product/09-performance-contract.md#prf-008--cold-load-to-interactive-shell) | §4.3 (shell first), §7 | `e2e:cold-load-shell` p75 < 1.0 s to `⌘K` accepted (T03 co-owns) |
 | [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.1, §4.3 (lazy route chunks) | `ci:bundle-size` per chunk class ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8); `e2e:lazy-load` (cold load fetches no room or workbench chunk) |
-| [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7 | `ci:bundle-size` and `ci:lighthouse-inp-rooms` (INP > 200 ms fails; target 100 ms) |
+| [PRF-033](../product/09-performance-contract.md#prf-033--bundle-size-and-dom-room-gates) | §7 | `ci:bundle-size` and `bench:inp-rooms` (a room above 200 ms fails the reference-lab gate; on shared CI runners the check reports a warning until the reference lab exists (#68); target 100 ms) |
 | [ENT-003](../product/11-enterprise.md#ent-003--built-in-roles) | §4.4 (permission-aware controls), §8 | `e2e:viewer-ack-disabled`: Viewer sees Ack disabled with "request access" |
 | [SRF-063](../product/04-surfaces.md#srf-063--admin-rooms) | §4.3 (Admin room satellite), §4.4 (forms) | `e2e:admin-oidc-bind-datasource`: at M-UI6 (D12) an Admin signs in via OIDC and binds a PulsusDB instance through the Admin room |
 | [ENT-010](../product/11-enterprise.md#ent-010--no-dead-access-denied-pages) | §4.4 (restricted placeholder), T08-028 | `e2e:restricted-board-link`: a link to an unreadable board shows the placeholder with "Request access" and no title |
@@ -268,6 +268,12 @@ pub enum Route {
 - The **sidebar** lists the destinations that exist at the build and that the user's role may open
   (Boards; Explore → Metrics, Logs; Alerts and Investigations when they exist; Admin for
   administrators) and marks the current route. Its collapsed state is a user preference (`Prefs`).
+  Starred and Recent come from `/api/dash/v1/me/starred-boards` and `/me/recent-boards` (five), per
+  user; each view is sent with the client's navigation time. Recent follows navigation order within
+  one app instance (stamps are monotonic per app); across browsers or app instances the order is
+  best effort and subject to clock skew; ties on an equal timestamp are broken by the later write;
+  clamped views use the server transaction start time (`now()`), best effort. A timed-out or
+  ambiguous view triggers one reconciling refetch 15 s after the send.
 - The **user menu** holds preferences (theme, density, time zone), the Perspective switcher once
   Perspectives exist, and sign-out.
 - **Space routes** (Atlas, Lens) render the scene in the page content, with the minimap and the
@@ -748,6 +754,7 @@ with an owner and a fix milestone and do not block.
 | Data | Where |
 |---|---|
 | Prefs, keymap overrides, dock layouts, per-board table column state | Postgres via BFF ([T11](T11-postgres-schema.md)), cached in memory |
+| Starred and recent boards | Postgres via BFF ([T11](T11-postgres-schema.md) `stars`, `recent_views`) |
 | Recent palette items, last-open room, unsent form drafts | IndexedDB (per device, convenience only, wiped on logout) |
 | Fluent bundles, ICU4X locale data, fonts | Static immutable assets, HTTP-cached, self-hosted |
 | Undo stack, ephemeral UI state | Memory only |
@@ -758,7 +765,7 @@ with an owner and a fix milestone and do not block.
 |---|---|---|
 | Main-thread long tasks during interaction | 0 > 16 ms | PRF-005 |
 | Hover tooltip | median ≤ 1 frame, p99 ≤ 2 frames (crosshair ≤ 1, GPU) | PRF-003, PRF-004, INT-033 |
-| INP in rooms | ≤ 100 ms p75 (CI fails above 200 ms) | PRF-033 |
+| INP in rooms | ≤ 100 ms p75 (a room above 200 ms fails the reference-lab gate; on shared CI runners a warning until the reference lab exists, #68) | PRF-033 |
 | Table: mount the visible window | ≤ 8 ms; scroll at 60 fps with ≤ 4 ms main per frame | §4.10 |
 | `reduce` + selector re-render, per action | ≤ 1 ms each; DOM intent → visible ≤ 1 frame | — |
 | ⌘K local results | same frame (≤ 4 ms); remote merged ≤ 150 ms p50 | — |
@@ -768,7 +775,7 @@ with an owner and a fix milestone and do not block.
 | Main-thread heap | ≤ 64 MB (no bulk data on main) | PRF-023 |
 
 These are measured by Playwright traces (frame IDs from the render worker correlated with rAF on
-main), Lighthouse INP on rooms, and a per-crate bundle-size gate ([T05](T05-testing-and-performance.md)).
+main), INP on rooms from Event Timing (`bench:inp-rooms`), and a per-crate bundle-size gate ([T05](T05-testing-and-performance.md)).
 
 ## 8. Security, tenancy & RBAC
 
@@ -861,3 +868,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.4-rc | 2026-11-20 | [ADR-0017](../adr/0017-react-router.md): `dash-route` row is `app/router.tsx` on React Router (data mode) with the typed search module `state/contextSearch.ts` |
 | 1.5-rc | 2026-11-20 | Decision D12 (authentication deferred): the SRF-063 gate `e2e:admin-oidc-bind-datasource` runs from M-UI6 with SRF-063; §4 Admin rooms and §11 rollout move the datasource-binding and OIDC rooms from M-UI1 to M-UI6, with the fixed local principal until then |
 | 1.6-rc | 2026-11-20 | #61 Part B: §4.4 and §11 M-UI1 add the board editor: the non-modal right-hand panel editor, the per-panel Move or resize button (arrows, `Shift`+arrows) as the keyboard path for grid moves, and the board keys `Shift+E` and `Mod+S` (`Shift+E` moves from M-UI5 to M-UI1) |
+| 1.7-rc | 2026-11-21 | #61 Part C: §4.3 sidebar: Starred and Recent from the BFF, per user, with the ordering guarantee of D-RECENT-window and one reconciling refetch after an ambiguous view; §6 row for starred and recent boards in Postgres; IA-021 Satisfies adds `e2e:board-prefs`; PRF-033 Satisfies and the §7 INP row name `bench:inp-rooms`, failing the reference-lab gate above 200 ms and reporting a warning on shared CI runners until the lab exists (#68, D-INP-interim) |
