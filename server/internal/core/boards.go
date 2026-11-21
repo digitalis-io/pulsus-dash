@@ -56,7 +56,8 @@ type Boards interface {
 	ListStarred(ctx context.Context, rc *RequestCtx) ([]BoardRef, error)
 	SetStarred(ctx context.Context, rc *RequestCtx, uid string, starred bool) error
 	ListRecent(ctx context.Context, rc *RequestCtx, limit int) ([]BoardRef, error)
-	RecordView(ctx context.Context, rc *RequestCtx, uid string) error
+	// RecordView records a view at the client's navigation time `at` (nil: the server's now()).
+	RecordView(ctx context.Context, rc *RequestCtx, uid string, at *time.Time) error
 }
 
 // AuditEvent is one row of audit_events (T11-017). Diff is canonical JSON (an RFC 6902 patch) or

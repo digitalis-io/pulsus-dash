@@ -1,0 +1,365 @@
+/* The board page (plan #61 Part B §4): toolbar, grids, panel chrome and the panel editor. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.updated {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: end;
+}
+
+.status:empty {
+  display: none;
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) dashed var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.live {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.workspace {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.grids {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* The filter bar (plan #61 Part C §4.3): variable and filter chips, then + Filter. */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.chip {
+  min-block-size: var(--size-control);
+  max-width: var(--size-crumb-max);
+  overflow: hidden;
+}
+
+.chipKey {
+  color: var(--text-muted);
+}
+
+.chipValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filterDialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--size-sidebar-expanded) + var(--space-16));
+  padding: var(--space-4);
+}
+
+/* Sections (plan #61 Part C §4.2): a disclosure heading, the panel count, Edit controls. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.sectionToggle {
+  min-block-size: var(--size-control);
+  padding-inline: var(--space-1) var(--space-2);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.sectionCount {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.sectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+/*
+ * View mode: each panel is placed from its grid cell through custom properties set in CSSOM
+ * (T08-023). 12 columns, 40 px rows, 16 px gaps; no CSS grid (track limits are below the server's
+ * 10 099 rows in some engines).
+ */
+.grid {
+  position: relative;
+  height: calc(var(--gbottom) * (var(--size-board-row) + var(--space-4)) - var(--space-4));
+  min-width: 0;
+}
+
+.placed {
+  position: absolute;
+  top: calc(var(--gy) * (var(--size-board-row) + var(--space-4)));
+  left: calc(var(--gx) * ((100% - 11 * var(--space-4)) / 12 + var(--space-4)));
+  width: calc(var(--gw) * (100% - 11 * var(--space-4)) / 12 + (var(--gw) - 1) * var(--space-4));
+  height: calc(var(--gh) * var(--size-board-row) + (var(--gh) - 1) * var(--space-4));
+}
+
+/* No text selection while a panel is dragged (react-draggable's rules; see BoardGridEditor). */
+:global(.react-draggable-transparent-selection) *::selection {
+  all: inherit;
+}
+
+/* Edit mode: react-grid-layout places the items with the same numbers. */
+.gridEditor {
+  min-width: 0;
+}
+
+.gridEditor :global(.react-grid-item) {
+  transition: none;
+}
+
+.gridEditor :global(.react-grid-item.react-grid-placeholder) {
+  border-radius: var(--radius);
+  background: var(--brush);
+  opacity: 1;
+}
+
+.gridEditor :global(.react-grid-item > .react-resizable-handle::after) {
+  border-color: var(--text-muted);
+}
+
+.item {
+  display: flex;
+}
+
+.item > .panel {
+  flex: 1 1 auto;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+
+.panel[data-selected] {
+  border-color: var(--accent);
+}
+
+.panelHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  height: var(--size-board-panel-header);
+  padding: 0 var(--space-1) 0 var(--space-3);
+}
+
+.panelHeader[data-drag-handle] {
+  cursor: grab;
+}
+
+.titles {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.untitled {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+.unit {
+  flex: none;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Tools stay in the tab order and the accessibility tree; they show on hover and focus. */
+.tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-easing-out);
+}
+
+.panel:hover .tools,
+.panel:focus-within .tools {
+  opacity: 1;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-control);
+  height: var(--size-control);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+
+.tool:hover {
+  color: var(--text);
+}
+
+.tool:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.body {
+  display: grid;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.body > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+.message {
+  align-self: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  text-align: center;
+}
+
+.fullBody {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.dialogBody {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-md);
+}
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--size-sidebar-expanded) + var(--space-16));
+  padding: var(--space-4);
+}
+
+.shareTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* The non-modal panel editor (T08-017): 360 px at the right of the grid. */
+.editor {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: var(--size-board-editor);
+  padding: var(--space-4);
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+
+.editorTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.editorActions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}

@@ -345,7 +345,7 @@ func seedBoard(t *testing.T, d *Db, org core.OrgID) {
 		if err := tx.Star(ctx, core.LocalPrincipalID, id); err != nil {
 			return err
 		}
-		return tx.RecordView(ctx, core.LocalPrincipalID, id)
+		return tx.RecordView(ctx, core.LocalPrincipalID, id, nil)
 	})
 	if err != nil {
 		t.Fatalf("seed board: %v", err)

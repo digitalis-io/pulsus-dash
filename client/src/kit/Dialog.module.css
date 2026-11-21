@@ -31,6 +31,15 @@
   font-weight: var(--font-weight-semibold);
 }
 
+.wideModal {
+  width: calc(100vw - var(--space-12));
+}
+
+.wide {
+  width: 100%;
+  height: 90vh;
+}
+
 .plain {
   outline: none;
 }

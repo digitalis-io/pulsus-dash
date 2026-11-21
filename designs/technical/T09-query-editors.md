@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-19 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
-| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
@@ -139,7 +139,9 @@ nice-to-have, relevant only if a non-AGPL Dash edition is ever planned.
 **MUST** — PulsusDB's parser, whether reached through the BFF or compiled to WASM, MUST be used only
 through the `QueryLanguage` interface in `client/src/editor/lang/` (§5.1). Every other module
 (editor, builder, ⌘K detection) MUST use the interface, so moving from the BFF to the WASM crates is a
-module swap, not a redesign.
+module swap, not a redesign. Each language implements `QueryLanguage` in `lang/<lang>/`. No language
+directory imports another (ESLint `no-restricted-imports`). Explore, the panel editor and board panels
+MUST reach a language only through `LANGUAGES` and the interface.
 
 ### 4.2 Architecture: three layers, two threads
 
@@ -467,15 +469,30 @@ unchanged. Toggling from the builder to text and back MUST restore an identical 
 ### 5.1 Defined here
 
 ```ts
-// client/src/editor/lang/types.ts — the only way to reach PulsusDB's parser (T09-001).
+// client/src/editor/lang/types.ts (type-only imports; no run-time imports)
+import type { Extension } from '@codemirror/state';
+export type LangId = 'promql' | 'logql' | 'traceql' | 'profile';
 export interface QueryLanguage {
-  readonly lang: 'promql' | 'logql' | 'traceql' | 'profile';
-  validate(text: string, signal: AbortSignal): Promise<Diagnostic[]>;  // authority: PulsusDB parser (BFF now, WASM later)
-  format(text: string, signal: AbortSignal): Promise<{ text: string } | { refused: string }>;
-  visHint(text: string, meta: MetaView): VisHint | null;
-  detect(prefix: string): number;                                      // ⌘K language detection score (INT-038)
+  readonly lang: LangId;
+  /** Highlighting (T09-003) and completion over this language's upstream lookups (T09-007, T09-014). */
+  editor(deps: LanguageDeps): readonly Extension[];
+  shape(text: string): QueryShape;                                   // auto-vis input (§4.6)
+  diagnosticsOf(text: string, error: unknown,
+    toSource: (sentIndex: number) => number | null, sent: string): Diagnostic[]; // T09-009
+  detect(prefix: string): number;                                    // ⌘K detection (INT-038)
 }
+/** The BFF client and the tenant/scope key of the suggest cache (T09-014). */
+export interface LanguageDeps { /* fields fixed by the implementing issue */ }
+// client/src/editor/lang/index.ts: a static table, not a registry
+export const LANGUAGES: Readonly<Record<LangId, () => Promise<QueryLanguage>>>;
 ```
+
+Auto-vis (SRF-030, VIZ-065, §4.6) ships in M-UI1 through `shape`: the language returns a
+`QueryShape`, and the Explore planner applies the Table 5-13 rows to that shape, the metric metadata
+and the result (#63). Only the interface methods are later. `validate` and `format` are added with
+the WASM parser crates in M-UI2 (SRF-078, T09-011). `visHint`, which derives the hint in the editor
+worker before results arrive, is added with that worker in M-UI2. Until then the `shape` path
+delivers the hint. There is no second interface.
 
 | Interface | Consumers |
 |---|---|
@@ -647,3 +664,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: T09-009 has one fallback for every error without a position (whole-query underline, "position unknown"; no recovery-point placement), aligned in T09-002 and the §9 failure table; formatting moves out of M-UI1 to the WASM crates in M-UI2, optionally earlier through a confirmed PulsusDB format route (§0, §4.5, §11, Q5) |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
+| 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; auto-vis stays M-UI1 through `shape`, and only the `validate`, `format` and `visHint` methods are added in M-UI2; T09-001 isolation sentence |

@@ -13,8 +13,23 @@ import {
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-async function seriousViolations(page: Page): Promise<string[]> {
-  const r = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+/**
+ * Rules not run in one engine and state, with the reason. Firefox's page crashes inside axe's
+ * `label` rule once a kit text field has been typed into or focused by the pointer (reproduced
+ * with the panel editor's Title and the filter dialog's Label as well); Chromium and WebKit run
+ * every rule in these states.
+ */
+const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  firefox: { 'b-1 edit with sections': ['label'], 'b-1 add filter with error': ['label'] },
+};
+
+async function seriousViolations(page: Page, state = ''): Promise<string[]> {
+  const engine = page.context().browser()?.browserType().name() ?? '';
+  const skip = ENGINE_SKIPS[engine]?.[state] ?? [];
+  const r = await new AxeBuilder({ page })
+    .withTags(TAGS)
+    .disableRules([...skip])
+    .analyze();
   return r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
@@ -73,6 +88,114 @@ test.describe('e2e:a11y-rooms axe', () => {
     await page.keyboard.press('Escape');
     await openUserMenu(page);
     expect(await seriousViolations(page)).toEqual([]);
+  });
+});
+
+/**
+ * The board states of plan #61 Part B §5.3; `check` runs in each. Each state is entered afresh:
+ * Firefox's page crashes on a pointer click after an axe run in the same page.
+ */
+async function boardStates(page: Page, check: (state: string) => Promise<void>): Promise<void> {
+  await open(page, '/t/demo/boards');
+  await page.getByRole('button', { name: 'New board' }).click();
+  await page.getByRole('dialog', { name: 'New board' }).waitFor();
+  await check('boards, New board dialog');
+
+  await open(page, '/t/demo/board/b-1');
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  await check('b-1 view');
+
+  const editor = page.getByRole('complementary', { name: 'Panel editor' });
+  const edit = async (): Promise<void> => {
+    await open(page, '/t/demo/board/b-1');
+    await page.getByRole('button', { name: 'Edit board' }).click();
+    // The Edit grid is a lazy chunk; its panels replace the View grid's once it has loaded.
+    await expect(page.locator('.react-grid-item')).toHaveCount(4);
+    await page.getByRole('button', { name: 'Panel menu: Request rate' }).click();
+    await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+    await editor.waitFor();
+  };
+  await edit();
+  await check('b-1 edit, editor open');
+
+  await edit();
+  await editor.getByRole('button', { name: /Visualisation$/ }).click();
+  await page.getByRole('listbox').waitFor();
+  await check('b-1 edit, select open');
+
+  await edit();
+  await page.getByRole('button', { name: 'Add panel', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Boards', exact: true })
+    .click();
+  await page.getByRole('dialog', { name: 'Discard unsaved changes?' }).waitFor();
+  await check('b-1 guard dialog');
+
+  // Plan #61 Part C, Appendix C-A §A.3.
+  await open(page, '/t/demo/board/b-1');
+  await page.getByRole('button', { name: 'Latency', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Latency', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  await check('b-1 section collapsed');
+
+  await open(page, '/t/demo/board/b-1');
+  await page.getByRole('button', { name: 'Edit board' }).click();
+  await expect(page.locator('.react-grid-item')).toHaveCount(4);
+  await page.getByRole('button', { name: 'Add section' }).click();
+  await page.getByRole('textbox', { name: 'Section 2 title' }).waitFor();
+  await check('b-1 edit with sections');
+
+  await open(page, '/t/demo/board/b-3');
+  await page.getByRole('button', { name: 'Variable region: not set' }).click();
+  await page.getByRole('dialog', { name: 'Variable region' }).waitFor();
+  await check('b-3 variable dialog');
+
+  await open(page, '/t/demo/board/b-1');
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  const add = page.getByRole('dialog', { name: 'Add filter' });
+  await add.getByRole('textbox', { name: 'Label' }).fill('9x');
+  await add.getByRole('button', { name: 'Add' }).click();
+  await add.getByText(/^Use a label name: /).waitFor();
+  await check('b-1 add filter with error');
+
+  await open(
+    page,
+    '/t/demo/board/b-3?from=now-1h&to=now&refresh=off&f=service%3Dcheckout&var-env=prod',
+  );
+  await page.getByRole('button', { name: 'Filter service: checkout' }).waitFor();
+  await check('b-3 chips set');
+
+  // A failed star: the stub's test hook fails the next star change (`pulsus-dash.stub.failStar`).
+  await open(page, '/t/demo/board/b-1');
+  await page.evaluate(() => {
+    localStorage.setItem('pulsus-dash.stub.failStar', '1');
+  });
+  await page.getByRole('button', { name: 'Star board' }).click();
+  await page.getByText('Could not update Starred. Try again.').waitFor();
+  await check('b-1 star failed');
+}
+
+test.describe('e2e:a11y-rooms boards', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} board list and board states`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.addInitScript((t) => {
+        localStorage.setItem('pulsus-dash.theme', t);
+      }, theme);
+      await boardStates(page, async (state) => {
+        expect(await seriousViolations(page, state), state).toEqual([]);
+      });
+    });
+  }
+
+  test('board targets are at least 24 × 24 px', async ({ page }) => {
+    test.setTimeout(120_000);
+    await boardStates(page, async (state) => {
+      expect(await smallTargets(page), state).toEqual([]);
+    });
   });
 });
 

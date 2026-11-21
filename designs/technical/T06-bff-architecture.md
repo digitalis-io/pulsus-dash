@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-20 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
 
 ## 0. Applicability under ADR-0015 (2026-11-19)
@@ -230,14 +230,35 @@ producer.
 
 ### 4.3 The PulsusDB client (`pulsusdb-client`)
 
-A typed client over `hyper` 1.x plus `hyper-util` pooling. Every endpoint Dash uses is a method:
-`prom_query_range`, `prom_query`, `prom_series`, `prom_label_values`, `prom_labels`, `prom_metadata`,
-`prom_tsdb_status`, `logs_query_range`, `logs_volume`, `logs_patterns`,
-`logs_detected_{labels,fields}`, `logs_tail` (WS relay), `traces_search`, `traces_fetch`,
-`traces_tags`, `traces_tag_values`, `traceql_metrics_range`, `service_graph`, `profiles_merge`,
-`profiles_select_series`, `profiles_diff`, `profiles_{types,labels,label_values}`, `rules_*`,
-`runtimeinfo`. Methods return `ResultStream` (Arrow `RecordBatch`es plus a `Completeness` trailer),
-never JSON.
+```
+server/internal/pulsusdb/            core: Client, decoration chain (T06-005), tenant header and slots
+                                     (T06-006), retry budget and deadlines (T06-009, T06-010), limits,
+                                     redaction, decoder seam (JSON; Arrow under r1_arrow_accept, T06-011)
+server/internal/pulsusdb/prom/       QueryRange, Query, Series, Labels, LabelValues, Metadata, TSDBStatus
+server/internal/pulsusdb/logs/       LogQueryRange, LogVolume, LogLabels, LogLabelValues, LogSeries, Patterns,
+                                     DetectedLabels, DetectedFields, Tail
+server/internal/pulsusdb/traces/     Search, Fetch, Tags, TagValues, MetricsRange, ServiceGraph
+server/internal/pulsusdb/profiles/   Merge, SelectSeries, Diff, Types, Labels, LabelValues
+```
+
+Each module has its routes, request shaping, decoders and `testdata/` fixtures. `rules_*` and
+`RuntimeInfo` stay in the core.
+
+Return contracts (T06-011). No method returns untyped JSON values.
+
+| Methods | Return |
+|---|---|
+| `prom` `QueryRange`, `Query`; the `resultType: matrix` branch of `LogQueryRange` (streamed when `resultType` precedes `result`) | `ResultStream` (streamed metric results) |
+| `LogQueryRange` | `*LogResult`: a `*LogPage` (`resultType: streams`, typed streams and entries) or a `ResultStream` (`resultType: matrix`). The matrix branch streams only when `resultType` precedes `result` in the response; when `result` comes first, the response is buffered |
+| `LogVolume` | `[]*Series` with its `Completeness`, one aggregated series per level |
+| `Series`, `LogSeries` | `*SeriesResult` |
+| `Labels`, `LabelValues`, `LogLabels`, `LogLabelValues` | `*ValuesResult` |
+| `Metadata` | `*MetadataResult` |
+| `RuntimeInfo` | `*RuntimeInfo` |
+
+The completion and metadata results are typed and fully decoded. Three cases are buffered: the log
+page, the log volume, and a `LogQueryRange` response whose `result` comes before `resultType`. T06-011
+sets the bounds for all three when the LogQL client lands (#65).
 
 #### T06-005 — One PulsusDB client
 **MUST** — Every request from Dash to PulsusDB MUST be made through `pulsusdb-client`. No other crate
@@ -250,6 +271,9 @@ depguard: constructing an HTTP client, transport or request outside `internal/pu
 proven by a failing fixture. The T19-002 public-URL self-check (`internal/gateway/selfcheck.go` and its
 client in `cmd/pulsus-dash`) is an allowed caller; the packages above get their exclusions with the
 issues that create them.)*
+
+*Note (ADR-0018, 2026-11-21):* "`internal/pulsusdb`" means the core package only; the language
+modules use no `net/http` client.
 
 **Request decoration (applied in one `tower` layer stack, in this order):**
 
@@ -337,6 +361,9 @@ serialises the batches as JSON frames for the TS client.)* *(2026-11-20, #62: un
 type is the Go-native `pulsusdb.Series`, the columns of `labels/1` + `metric_matrix.grid/1`, streamed one
 series at a time; Arrow Go builders arrive with the engine, #68.)* Until R1, the converter MUST stream: the first batch MUST leave
 the BFF ≤ 10 ms after PulsusDB's first byte, and batches MUST be flushed at ≤ 64k rows.
+*(2026-11-21, ADR-0018.)* The completion and metadata methods (series, label names, label values,
+metadata, runtime info) return typed, fully decoded results (§4.3), never untyped JSON values. They
+carry no record batches, so the streaming bounds above do not apply to them.
 
 **Completeness (R10 fallback).** Each typed method extracts what its endpoint offers into one struct:
 
@@ -354,6 +381,12 @@ pub struct Completeness {
     pub rows_read: Option<u64>,          // only when explain/R10 supplies it
 }
 ```
+
+#### T06-028 — Language modules are isolated
+**MUST** — A package under `internal/pulsusdb/<lang>` MUST NOT import another language module, and
+`internal/pulsusdb` MUST NOT import any of them. Only the core may construct an HTTP request to
+PulsusDB. A module MUST send the request shapes recorded in its fixtures. Enforced by `depguard`.
+Test: `unit:pulsusdb-shapes` per module.
 
 ### 4.4 Caching tiers
 
@@ -891,4 +924,5 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones, §2 goal, §4.11 (now the M-UI6 subset, with the fixed local principal until then) and §11 move OIDC auth from M-UI1 to M-UI6; §3 ENT-028 gate `e2e:helm-default-login` renamed `e2e:helm-default-shell`; §4.7 binds the tenant with `set_config('pulsus.org_id', …, true)` in `Db.Tx`; §4.9 lists the implemented Go keys; T06-019 revised: repeated keys rejected, client-tooling variables exempt; §5.2 adds the `not_found` and `internal` codes |
 | 1.3-rc | 2026-11-20 | #59 Part B: §5.1 adds `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` (fixed local principal until M-UI6, D12) and `POST /api/dash/v1/csp-report` |
 | 1.4-rc | 2026-11-20 | #61 Part A: §5.2 adds the `conflict` code (409 on an `If-Match` mismatch, body `{error, current, submitted}`, T11-005); T06-004 note: configuration-change audit rows are written in the save transaction (T11-006), the non-blocking sink applies outside a content transaction; T06-026 revised: `/readyz` reports Postgres reachability, migration level and audit partition health only (still never PulsusDB) |
-| 1.5-rc | 2026-11-20 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
+| 1.5-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §4.3 split into core and language modules, with the log completion methods and a return-contract table (streamed metric results, typed completion and metadata results, the log page and volume returns, and the buffered `LogQueryRange` response when `result` precedes `resultType`); T06-011 note on typed completion and metadata results; T06-028; T06-005 note |
+| 1.6-rc | 2026-11-21 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
