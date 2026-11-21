@@ -60,3 +60,30 @@ describe('unit:url-codec copy link', () => {
     ).toBe(`http://x${printViewUrl(a)}`);
   });
 });
+
+describe('unit:url-codec board params', () => {
+  it('share url keeps board params', () => {
+    const v: ViewUrl = {
+      route: { page: 'board', tenant: 'demo', uid: 'b-3' },
+      context: { from: 'now-1h', to: 'now', refresh: 'off' },
+    };
+    const rest = [
+      ['collapse', 's-1'],
+      ['f', 'env=prod'],
+      ['var-region', 'eu-west-1'],
+    ] as const;
+    const suffix = '&refresh=off&collapse=s-1&f=env%3Dprod&var-region=eu-west-1';
+    expect(
+      buildShareUrl('http://x', v, { keepRelative: true, anchorMs: T, timeZone: TZ, rest }),
+    ).toBe(`http://x/t/demo/board/b-3?from=now-1h&to=now${suffix}`);
+    expect(
+      buildShareUrl('http://x', v, { keepRelative: false, anchorMs: T, timeZone: TZ, rest }),
+    ).toBe(
+      `http://x/t/demo/board/b-3?from=2026-11-19T12%3A03%3A00.000Z&to=2026-11-19T13%3A03%3A00.000Z${suffix}`,
+    );
+    expect(printViewUrl(v, rest)).toBe(`/t/demo/board/b-3?from=now-1h&to=now${suffix}`);
+    expect(buildShareUrl('http://x', v, { keepRelative: true, anchorMs: T, timeZone: TZ })).toBe(
+      'http://x/t/demo/board/b-3?from=now-1h&to=now&refresh=off',
+    );
+  });
+});

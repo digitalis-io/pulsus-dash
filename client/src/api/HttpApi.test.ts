@@ -60,16 +60,6 @@ describe('HttpApi (A1)', () => {
     ]);
   });
 
-  it('has no starred boards API until Part C', async () => {
-    const { api: a, requests } = api(() => Promise.reject(new Error('no request expected')));
-    expect(await a.listStarred('demo')).toEqual([]);
-    expect(isApiError(await rejection(a.setStarred('demo', 'b-1', true)), 'notImplemented')).toBe(
-      true,
-    );
-    await expect(a.signOut()).resolves.toBeUndefined();
-    expect(requests).toEqual([]);
-  });
-
   it('maps transport and HTTP errors', async () => {
     const net = api(() => Promise.reject(new TypeError('Failed to fetch')));
     expect(isApiError(await rejection(net.api.getSession()), 'network')).toBe(true);
@@ -230,6 +220,79 @@ describe('http boards', () => {
     expect(await none.api.panelData('demo', { ...PANEL, vis: { kind: 'logs' } }, window)).toEqual({
       kind: 'noVis',
     });
+    expect(none.requests).toEqual([]);
+  });
+});
+
+describe('http starred and recent', () => {
+  /** An HttpApi whose fetch serves the bootstrap, then `fake` for every other request. */
+  async function signedIn(fake: (req: Request) => Promise<Response>) {
+    const r = api((req) =>
+      new URL(req.url).pathname === '/api/dash/v1/bootstrap'
+        ? Promise.resolve(json(200, BOOTSTRAP))
+        : fake(req),
+    );
+    await r.api.getSession();
+    r.requests.length = 0;
+    return r;
+  }
+  const line = (r: Request | undefined) =>
+    r === undefined ? '' : `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`;
+  const noContent = () => Promise.resolve(new Response(null, { status: 204 }));
+
+  it('http starred and recent', async () => {
+    const list = await signedIn(() =>
+      Promise.resolve(json(200, { items: [{ uid: 'a', title: 'A' }] })),
+    );
+    expect(await list.api.listStarred('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    expect(line(list.requests[0])).toBe('GET /api/dash/v1/me/starred-boards');
+    expect(await list.api.listRecent('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    expect(line(list.requests[1])).toBe('GET /api/dash/v1/me/recent-boards?limit=5');
+
+    const set = await signedIn(noContent);
+    await expect(set.api.setStarred('demo', 'a', true)).resolves.toBeUndefined();
+    await expect(set.api.setStarred('demo', 'a', false)).resolves.toBeUndefined();
+    expect(set.requests.map(line)).toEqual([
+      'PUT /api/dash/v1/me/starred-boards/a',
+      'DELETE /api/dash/v1/me/starred-boards/a',
+    ]);
+
+    const missing = await signedIn(() =>
+      Promise.resolve(json(404, { error: { code: 'not_found', message: 'board not found' } })),
+    );
+    expect(isApiError(await rejection(missing.api.setStarred('demo', 'a', true)), 'notFound')).toBe(
+      true,
+    );
+
+    const view = await signedIn(noContent);
+    const ctrl = new AbortController();
+    await expect(
+      view.api.recordView('demo', 'a', 1700000000000, ctrl.signal),
+    ).resolves.toBeUndefined();
+    expect(line(view.requests[0])).toBe('PUT /api/dash/v1/me/recent-boards/a?at=1700000000000');
+
+    const aborted = await signedIn((req) =>
+      req.signal.aborted
+        ? Promise.reject(new DOMException('The operation was aborted.', 'AbortError'))
+        : noContent(),
+    );
+    const gone = new AbortController();
+    gone.abort();
+    const e = await rejection(aborted.api.recordView('demo', 'a', 1, gone.signal));
+    expect((e as DOMException).name).toBe('AbortError');
+    expect(aborted.requests).toHaveLength(1);
+
+    const down = await signedIn(() =>
+      Promise.resolve(json(503, { error: { code: 'unavailable', message: 'store down' } })),
+    );
+    expect(isApiError(await rejection(down.api.recordView('demo', 'a', 1)), 'unknown')).toBe(true);
+    const net = await signedIn(() => Promise.reject(new TypeError('Failed to fetch')));
+    expect(isApiError(await rejection(net.api.listRecent('demo')), 'network')).toBe(true);
+
+    const none = await signedIn(() => Promise.reject(new Error('no request expected')));
+    expect(isApiError(await rejection(none.api.listStarred('x')), 'notFound')).toBe(true);
+    expect(isApiError(await rejection(none.api.recordView('x', 'a', 1)), 'notFound')).toBe(true);
+    await expect(none.api.signOut()).resolves.toBeUndefined();
     expect(none.requests).toEqual([]);
   });
 });

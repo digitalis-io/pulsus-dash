@@ -1,6 +1,7 @@
 /**
  * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
- * plan #61 Part B L23–L28, Appendix B-A §A.5): loops L1–L28, keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
+ * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3): loops L1–L31,
+ * keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
  * (ESLint bans other input here); the coverage check at the end fails on any control never operated
  * and any state never visited.
  */
@@ -53,7 +54,7 @@ declare global {
 }
 
 test.describe('e2e:a11y-rooms keyboard', () => {
-  test('every control and state by keyboard (L1–L28)', async ({ page }) => {
+  test('every control and state by keyboard (L1–L31)', async ({ page }) => {
     test.setTimeout(3_600_000);
     await page.addInitScript(() => {
       window.__copied = [];
@@ -447,8 +448,15 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       expect(s.search()).toEqual({ from: 'now-6h', to: 'now', refresh: '30s' });
       const trigger = page.getByRole('button', { name: 'Switch tenant, current: Sandbox' });
       await expect(trigger).toBeFocused();
-      await expect(nav.getByText('No starred boards')).toBeVisible();
-      await expect(nav.getByText('No recent boards')).toBeVisible();
+      // Starred and Recent belong to the organisation and user, not the tenant (plan #61 Part C).
+      await expect(
+        nav
+          .getByRole('heading', { name: 'Starred' })
+          .locator('xpath=following-sibling::*[1]')
+          .getByRole('link')
+          .first(),
+      ).toHaveText(/Service overview/);
+      await expect(nav.getByText('No recent boards')).toHaveCount(0);
       await s.menuItem('button "Switch tenant, current: Sandbox"', 0);
       await expect.poll(() => s.path()).toBe('/t/demo/boards');
       await expect(
@@ -571,7 +579,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       }
     });
 
-    // L23–L28 (plan #61 Part B): the board list and the board page.
+    // L23–L31 (plan #61 Parts B and C): the board list and the board page.
     await boardLoops(s);
 
     await test.step('Coverage', () => {

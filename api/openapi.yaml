@@ -143,6 +143,11 @@ paths:
       tags: [boards]
       parameters:
         - { name: uid, in: path, required: true, schema: { type: string } }
+        - name: at
+          in: query
+          required: false
+          description: Navigation time in ms since the Unix epoch. Absent → the server's now().
+          schema: { type: integer, format: int64, minimum: 0, maximum: 253402300799999 }
       responses:
         '204': { description: Recorded }
         '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }

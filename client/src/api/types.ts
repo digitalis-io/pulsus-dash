@@ -68,6 +68,12 @@ export interface BoardSummary {
   updatedBy: string;
 }
 
+/** A board in the principal's Starred or Recent list (`BoardRef` of the boards API). */
+export interface BoardRef {
+  uid: string;
+  title: string;
+}
+
 export interface BoardList {
   items: BoardSummary[];
   /** True when the list stops at the 1 000 most recently updated boards. */

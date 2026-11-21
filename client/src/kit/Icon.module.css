@@ -49,6 +49,10 @@
   mask-image: url('../icons/chevron-down.svg');
 }
 
+.chevronRight {
+  mask-image: url('../icons/chevron-right.svg');
+}
+
 .sun {
   mask-image: url('../icons/sun.svg');
 }

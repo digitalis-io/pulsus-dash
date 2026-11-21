@@ -1,7 +1,7 @@
 /**
  * The board toolbar (plan #61 Part B §4.4), under the page header and right-aligned. View: the
- * time since the last refresh, Share and Edit board. Edit: Add panel, Save current time range,
- * Discard, Save and Done.
+ * time since the last refresh, Share and Edit board. Edit: Add panel, Add section (Part C), Save
+ * current time range, Discard, Save and Done.
  */
 import { useEffect, useState } from 'react';
 import { formatHourMinute } from '../../i18n/format';
@@ -55,6 +55,7 @@ export type BoardToolbarProps =
       dirty: boolean;
       savesTime: boolean;
       onAdd: () => void;
+      onAddSection: () => void;
       onSaveTime: (on: boolean) => void;
       onDiscard: () => void;
       onSave: () => void;
@@ -84,6 +85,10 @@ export function BoardToolbar(props: BoardToolbarProps) {
       <Button onPress={props.onAdd} isDisabled={busy}>
         <Icon name="plus" />
         {t('board.addPanel')}
+      </Button>
+      <Button onPress={props.onAddSection} isDisabled={busy}>
+        <Icon name="plus" />
+        {t('board.addSection')}
       </Button>
       <Checkbox isSelected={props.savesTime} onChange={props.onSaveTime} isDisabled={busy}>
         {t('board.saveTime')}

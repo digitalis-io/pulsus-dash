@@ -72,16 +72,78 @@
   min-width: 0;
 }
 
+/* The filter bar (plan #61 Part C §4.3): variable and filter chips, then + Filter. */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.chip {
+  min-block-size: var(--size-control);
+  max-width: var(--size-crumb-max);
+  overflow: hidden;
+}
+
+.chipKey {
+  color: var(--text-muted);
+}
+
+.chipValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filterDialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--size-sidebar-expanded) + var(--space-16));
+  padding: var(--space-4);
+}
+
+/* Sections (plan #61 Part C §4.2): a disclosure heading, the panel count, Edit controls. */
 .section {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
 .sectionTitle {
   margin: 0;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
+}
+
+.sectionToggle {
+  min-block-size: var(--size-control);
+  padding-inline: var(--space-1) var(--space-2);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.sectionCount {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.sectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-inline-start: auto;
 }
 
 /*

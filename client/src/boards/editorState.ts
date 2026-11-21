@@ -1,14 +1,24 @@
 /**
  * The board page state (plan #61 Part B §4.1): the loaded head (spec and etag) and the draft the
  * user edits. The draft is dirty when its canonical JSON differs from the head's. A later read of
- * the board never replaces a dirty draft, and no edit is taken while a save is in flight.
+ * the board never replaces a dirty draft, and no edit is taken while a save is in flight. Part C
+ * (§4.1) adds sections: add, rename, remove and, in Edit mode, collapse (saved with the board); a
+ * View-mode collapse is a URL override (`isCollapsed`), not state here.
  */
-import type { Board, BoardSpec, FieldError, PanelSpec, TimeRangeSpec } from '../api/types';
+import type {
+  Board,
+  BoardSpec,
+  FieldError,
+  PanelSpec,
+  SectionSpec,
+  TimeRangeSpec,
+} from '../api/types';
+import type { SectionOverrides } from '../state/boardParams';
 import { t } from '../i18n/t';
 import { applyOp, firstFree, fits, type LayoutOp, overlaps } from './layout';
-import { canonicalJson, MAX_PANELS, nextPanelId } from './spec';
+import { canonicalJson, MAX_PANELS, MAX_SECTIONS, nextPanelId, nextSectionId } from './spec';
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed' | 'invalid';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed' | 'invalid' | 'discardFailed';
 
 export interface BoardPageState {
   mode: 'view' | 'edit';
@@ -42,7 +52,12 @@ export type BoardAction =
   | { type: 'remoteHead'; board: Board }
   | { type: 'enterEdit' }
   | { type: 'exitEdit' }
-  | { type: 'addPanel' }
+  | { type: 'addPanel'; grid?: GridRef }
+  | { type: 'addSection' }
+  | { type: 'updateSection'; id: string; title: string }
+  | { type: 'removeSection'; id: string }
+  | { type: 'toggleSection'; id: string }
+  | { type: 'discardFailed' }
   | {
       type: 'updatePanel';
       id: string;
@@ -135,9 +150,36 @@ const EDITS: ReadonlySet<BoardAction['type']> = new Set([
   'layout',
   'keyOp',
   'setTime',
+  'addSection',
+  'updateSection',
+  'removeSection',
+  'toggleSection',
 ]);
 
-/** An edit leaves "Saved" behind; failures and field errors stay until the next save. */
+/** The draft with section `id` replaced by `f(section)`. */
+function withSection(spec: BoardSpec, id: string, f: (s: SectionSpec) => SectionSpec): BoardSpec {
+  return { ...spec, sections: spec.sections.map((x) => (x.id === id ? f(x) : x)) };
+}
+
+/**
+ * Whether a section shows collapsed. View: a URL override (`collapse` / `expand`), else the saved
+ * state. Edit: the draft's state, which is saved.
+ */
+export function isCollapsed(
+  mode: 'view' | 'edit',
+  section: SectionSpec,
+  o: SectionOverrides,
+): boolean {
+  if (mode === 'edit') return section.collapsed;
+  if (o.collapse.has(section.id)) return true;
+  if (o.expand.has(section.id)) return false;
+  return section.collapsed;
+}
+
+/**
+ * An edit leaves "Saved" behind; failures (a save's or Discard's) and field errors stay until the
+ * next save.
+ */
 function edited(s: BoardPageState, draft: BoardSpec): BoardPageState {
   return {
     ...s,
@@ -169,9 +211,11 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
     case 'exitEdit':
       return { ...s, mode: 'view', selected: null };
     case 'addPanel': {
+      const grid = a.grid ?? 'top';
       const total = allPanels(s.draft).length;
       if (total >= MAX_PANELS) return { ...s, announce: t('board.fullPanels') };
-      const free = firstFree(s.draft.panels, NEW_PANEL.w, NEW_PANEL.h);
+      if (grid !== 'top' && s.draft.sections[grid] === undefined) return s;
+      const free = firstFree(panelsOf(s.draft, grid), NEW_PANEL.w, NEW_PANEL.h);
       if (free === null) return { ...s, announce: t('board.full') };
       const panel: PanelSpec = {
         id: nextPanelId(s.draft),
@@ -180,12 +224,54 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
         query: { lang: 'promql', text: '' },
         vis: { kind: 'auto' },
       };
+      let draft = withPanels(s.draft, grid, [...panelsOf(s.draft, grid), panel]);
+      // A panel added to a collapsed section opens it, so the new panel shows.
+      if (grid !== 'top') {
+        draft = {
+          ...draft,
+          sections: draft.sections.map((x, j) => (j === grid ? { ...x, collapsed: false } : x)),
+        };
+      }
+      return { ...edited(s, draft), selected: panel.id, announce: '' };
+    }
+    case 'addSection': {
+      if (s.draft.sections.length >= MAX_SECTIONS)
+        return { ...s, announce: t('board.sectionsFull') };
+      const section: SectionSpec = {
+        id: nextSectionId(s.draft),
+        title: '',
+        collapsed: false,
+        panels: [],
+      };
       return {
-        ...edited(s, { ...s.draft, panels: [...s.draft.panels, panel] }),
-        selected: panel.id,
+        ...edited(s, { ...s.draft, sections: [...s.draft.sections, section] }),
         announce: '',
       };
     }
+    case 'updateSection':
+      if (!s.draft.sections.some((x) => x.id === a.id)) return s;
+      return edited(
+        s,
+        withSection(s.draft, a.id, (x) => ({ ...x, title: a.title })),
+      );
+    case 'removeSection': {
+      const gone = s.draft.sections.find((x) => x.id === a.id);
+      if (gone === undefined) return s;
+      const selectedGone = gone.panels.some((p) => p.id === s.selected);
+      return {
+        ...edited(s, { ...s.draft, sections: s.draft.sections.filter((x) => x.id !== a.id) }),
+        selected: selectedGone ? null : s.selected,
+      };
+    }
+    case 'toggleSection':
+      // View-mode toggles are URL state (`useBoardParams`), not the draft.
+      if (s.mode === 'view' || !s.draft.sections.some((x) => x.id === a.id)) return s;
+      return edited(
+        s,
+        withSection(s.draft, a.id, (x) => ({ ...x, collapsed: !x.collapsed })),
+      );
+    case 'discardFailed':
+      return { ...s, save: { status: 'discardFailed', fields: [] } };
     case 'updatePanel': {
       const grid = gridOf(s.draft, a.id);
       if (grid === null) return s;

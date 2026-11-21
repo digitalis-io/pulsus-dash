@@ -181,7 +181,7 @@ match `^[a-z0-9-]{1,40}$`, an unknown or deleted board, or a board of another or
 | `PUT /api/dash/v1/me/starred-boards/{uid}` | — | 204; starring twice is a no-op | 404, 503 |
 | `DELETE /api/dash/v1/me/starred-boards/{uid}` | — | 204; also for a board that is not starred, unknown or deleted | 503 |
 | `GET /api/dash/v1/me/recent-boards?limit=n` | `limit` 1–50, default 5 (0 or less counts as 1, over 50 as 50) | 200 `{"items":[{"uid","title"}…]}`, most recent first | 503 |
-| `PUT /api/dash/v1/me/recent-boards/{uid}` | — | 204; records a view now | 404, 503 |
+| `PUT /api/dash/v1/me/recent-boards/{uid}?at=ms` | `at` optional: the client's navigation time in ms since the Unix epoch, 0–253402300799999 (else 400 `invalid`, "invalid request"; not an integer: 400) | 204; records a view at `at` clamped to now − 1 day … now + 5 min (absent: now); the greater of the stored and the new time wins | 400, 404, 503 |
 
 `BoardSummary` is `{uid, title, version, updated_at, updated_by}`, and `Board` adds `etag`,
 `schema_version` and `spec`. `updated_at` is the time of the head version and `updated_by` its
@@ -214,6 +214,8 @@ curl -si -X PUT "$B/me/starred-boards/k3v9x0q2m7a1zp"
 curl -si -X DELETE "$B/me/starred-boards/k3v9x0q2m7a1zp"
 curl -s "$B/me/starred-boards"
 curl -si -X PUT "$B/me/recent-boards/k3v9x0q2m7a1zp"
+# A view at the client's navigation time (ms since the epoch), as the web client sends it.
+curl -si -X PUT "$B/me/recent-boards/k3v9x0q2m7a1zp?at=$(date +%s%3N)"
 curl -s "$B/me/recent-boards?limit=10"
 ```
 
@@ -225,10 +227,29 @@ events stay. A deleted board answers 404 and leaves the list, the starred list a
 ### Starred and recent boards
 
 The starred and recent lists belong to the principal, in its organisation. Each view recorded with
-`PUT /me/recent-boards/{uid}` moves the board to the front. The server keeps the 200 most recent
-views per principal and drops older ones; concurrent views of one principal are serialised by a
-transaction-scoped advisory lock on the organisation and user, so the limit also holds under
-concurrency. A list returns at most 50.
+`PUT /me/recent-boards/{uid}` stores a view time for the board, and the recent list is ordered by
+it, newest first:
+
+- With `at`, the view time is the client's navigation time, clamped to [now − 1 day, now + 5 min]
+  (now is the transaction's start, `now()`); without `at`, it is now. A fast client clock can
+  therefore not pin a board at the top for more than 5 minutes.
+- The greater of the stored and the new time wins, so a view whose request commits late (for
+  example after the client gave up waiting) never moves a board above a later view of the same
+  app instance, as long as both times are inside the window. Clamped views (and views without
+  `at`) order by the transaction start, best effort, which is not commit order; views from other
+  browsers or app instances order by their clocks, best effort.
+- On an equal time, the later write sorts first: when the new time falls in the same millisecond
+  as other boards' times, those keep their order a microsecond apart below it and the new view
+  takes the millisecond's last microsecond. A tie never moves a view into a later millisecond.
+
+**Ordering guarantee:** Recent follows navigation order within one app instance (stamps are
+monotonic per app); across browsers or app instances the order is best effort and subject to clock
+skew; ties on an equal timestamp are broken by the later write; clamped views use the server
+transaction start time (`now()`), best effort.
+
+The server keeps the 200 most recent views per principal and drops older ones; concurrent views of
+one principal are serialised by a transaction-scoped advisory lock on the organisation and user, so
+the limit and the tie-break also hold under concurrency. A list returns at most 50.
 
 ## Audit events
 
@@ -275,10 +296,12 @@ A request whose client went away is rolled back and writes nothing.
 
 ## Designs
 
-IA-001, IA-002 (the saved time range), IA-003, IA-006 and ENT-022 (subsets) in
+IA-001, IA-002 (the saved time range), IA-003, IA-006, IA-021 (Starred and Recent, the ordering
+guarantee) and ENT-022 (subsets) in
 [02](../../designs/product/02-information-architecture.md) and
 [11](../../designs/product/11-enterprise.md); T06-021 (body limit) and §5.2 (`conflict`) in
-[T06](../../designs/technical/T06-bff-architecture.md); T11-005, T11-006, T11-016 and T11-017 in
+[T06](../../designs/technical/T06-bff-architecture.md); T11-005, T11-006, T11-016, T11-017 and §4.3
+(`recent_views.viewed_at`) in
 [T11](../../designs/technical/T11-postgres-schema.md); gates `unit:board-spec`, `itest:board-crud`
 and `itest:board-prefs` in [T05](../../designs/technical/T05-testing-and-performance.md) §7.1;
 [ADR-0012](../../designs/adr/0012-derived-state-in-postgres.md),

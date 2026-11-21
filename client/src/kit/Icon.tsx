@@ -15,6 +15,7 @@ export type IconName =
   | 'clock'
   | 'refresh-cw'
   | 'chevron-down'
+  | 'chevron-right'
   | 'sun'
   | 'moon'
   | 'monitor'
@@ -42,6 +43,7 @@ const CLASS: Readonly<Record<IconName, string | undefined>> = {
   clock: styles['clock'],
   'refresh-cw': styles['refreshCw'],
   'chevron-down': styles['chevronDown'],
+  'chevron-right': styles['chevronRight'],
   sun: styles['sun'],
   moon: styles['moon'],
   monitor: styles['monitor'],

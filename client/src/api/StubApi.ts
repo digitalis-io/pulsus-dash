@@ -1,17 +1,28 @@
 /**
  * In-repo stub of the BFF API (ADR-0014 §6): seeded data, no network. Boards are kept in memory for
  * the page's lifetime and behave as the boards API does (plan #61 Part B §3.4): one organisation
- * list for every tenant, etags, conflicts, no-op saves and field errors. Starred boards stand in for
- * the per-user preference and are kept in `localStorage` until Part C.
+ * list for every tenant, etags, conflicts, no-op saves and field errors. Starred and Recent mirror the
+ * BFF's per-user lists (plan #61 Part C §3.3, Appendix C-A §A.13): one list for every tenant, kept in
+ * `localStorage`:
+ *
+ * - `pulsus-dash.stub.starred`: a JSON array of uids in starring order; absent → `["b-1"]`, not a
+ *   string array → `[]`. Listed by title (case-folded), then uid.
+ * - `pulsus-dash.stub.recent`: a JSON array of `{"uid", "at"}`, newest first, at most 200; any
+ *   element of another shape → `[]`. A view keeps the greater `at` (no clamp); on an equal `at` the
+ *   later write comes first. Listed in stored order, the first `RECENT_LIMIT`.
+ *
+ * Both lists drop uids that are no longer boards, as the server's join does.
  *
  * Test hooks: if `localStorage['pulsus-dash.stub.failSession']` is a positive integer n,
  * `getSession` rejects with `ApiError('network')` and stores n − 1. `pulsus-dash.stub.failSignOut`
- * does the same for `signOut`, `pulsus-dash.stub.failSave` for `saveBoard`, and
+ * does the same for `signOut`, `pulsus-dash.stub.failSave` for `saveBoard`,
+ * `pulsus-dash.stub.failStar` for `setStarred` (nothing is changed), and
  * `pulsus-dash.stub.conflictSave` makes `saveBoard` reject with `BoardConflictError` after moving
  * the head on by one version, as if another user had saved the same spec.
  */
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
+import { RECENT_LIMIT } from '../boards/queries';
 import { defaultSeed, defaultStarred } from './stubData';
 import { stubPanelData } from './stubPanels';
 import {
@@ -19,6 +30,7 @@ import {
   BoardConflictError,
   type Board,
   type BoardList,
+  type BoardRef,
   type BoardSpec,
   type PanelData,
   type PanelSpec,
@@ -41,11 +53,35 @@ export interface StubSeed {
   boards: StubBoard[];
 }
 
-export const STUB_STARRED_KEY = (tenant: string): string => `pulsus-dash.stub.starred.${tenant}`;
+export const STUB_STARRED_KEY = 'pulsus-dash.stub.starred';
+export const STUB_RECENT_KEY = 'pulsus-dash.stub.recent';
+/** The most views the stub keeps, as the server does. */
+const RECENT_KEEP = 200;
+
+interface RecentEntry {
+  uid: string;
+  at: number;
+}
+
+function isRecentEntry(x: unknown): x is RecentEntry {
+  if (typeof x !== 'object' || x === null) return false;
+  const e = x as Record<string, unknown>;
+  return typeof e['uid'] === 'string' && typeof e['at'] === 'number';
+}
+
+function parseJson(raw: string | null): unknown {
+  if (raw === null) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 export const STUB_FAIL_SESSION_KEY = 'pulsus-dash.stub.failSession';
 export const STUB_FAIL_SIGN_OUT_KEY = 'pulsus-dash.stub.failSignOut';
 export const STUB_FAIL_SAVE_KEY = 'pulsus-dash.stub.failSave';
 export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
+export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
 
 /** Consumes one failure from a test-hook counter; true when the call should fail. */
 function failOnce(key: string): boolean {
@@ -199,21 +235,53 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  listStarred(tenant: string, signal?: AbortSignal): Promise<string[]> {
+  listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
     return settle(() => {
       this.checkTenant(tenant);
-      return this.starredOf(tenant);
+      return this.refs(this.starred()).sort((a, b) => {
+        const x = a.title.toLowerCase();
+        const y = b.title.toLowerCase();
+        return x < y ? -1 : x > y ? 1 : a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0;
+      });
     }, signal);
   }
 
-  setStarred(tenant: string, uid: string, starred: boolean): Promise<string[]> {
+  setStarred(tenant: string, uid: string, starred: boolean): Promise<void> {
     return settle(() => {
       this.checkTenant(tenant);
-      const current = this.starredOf(tenant).filter((x) => x !== uid);
-      const next = starred ? [...current, uid] : current;
-      write(STUB_STARRED_KEY(tenant), JSON.stringify(next));
-      return [...next];
+      if (failOnce(STUB_FAIL_STAR_KEY)) throw new ApiError('network', 'stub: star failed');
+      const current = this.starred();
+      if (!starred) {
+        write(STUB_STARRED_KEY, JSON.stringify(current.filter((x) => x !== uid)));
+        return;
+      }
+      if (!this.boards.some((b) => b.uid === uid)) {
+        throw new ApiError('notFound', `board ${uid} not found`);
+      }
+      if (!current.includes(uid)) write(STUB_STARRED_KEY, JSON.stringify([...current, uid]));
     });
+  }
+
+  listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return this.refs(this.recent().map((e) => e.uid)).slice(0, RECENT_LIMIT);
+    }, signal);
+  }
+
+  recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void> {
+    return settle(() => {
+      this.find(tenant, uid);
+      const entries = this.recent();
+      const stored = entries.find((e) => e.uid === uid)?.at ?? -Infinity;
+      // The later write first on an equal time: it goes before the entries it ties with.
+      const entry = { uid, at: Math.max(stored, at) };
+      const others = entries.filter((e) => e.uid !== uid);
+      const i = others.findIndex((e) => e.at <= entry.at);
+      const next =
+        i === -1 ? [...others, entry] : [...others.slice(0, i), entry, ...others.slice(i)];
+      write(STUB_RECENT_KEY, JSON.stringify(next.slice(0, RECENT_KEEP)));
+    }, signal);
   }
 
   signOut(): Promise<void> {
@@ -254,17 +322,27 @@ export class StubApi implements Api {
     b.spec = spec;
   }
 
-  private starredOf(tenant: string): string[] {
-    const raw = read(STUB_STARRED_KEY(tenant));
-    if (raw === null) return [...(defaultStarred[tenant] ?? [])];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.every((x): x is string => typeof x === 'string')) {
-        return parsed;
-      }
-    } catch {
-      // Invalid stored value: fall through to empty.
-    }
-    return [];
+  /** The stored starred uids: absent → the seed's default, invalid → none. */
+  private starred(): string[] {
+    const raw = read(STUB_STARRED_KEY);
+    if (raw === null) return [...defaultStarred];
+    const parsed = parseJson(raw);
+    return Array.isArray(parsed) && parsed.every((x): x is string => typeof x === 'string')
+      ? parsed
+      : [];
+  }
+
+  /** The stored recent views, newest first; any invalid element → none. */
+  private recent(): RecentEntry[] {
+    const parsed = parseJson(read(STUB_RECENT_KEY));
+    return Array.isArray(parsed) && parsed.every(isRecentEntry) ? parsed : [];
+  }
+
+  /** `{uid, title}` of each uid that is still a board, in the given order. */
+  private refs(uids: readonly string[]): BoardRef[] {
+    return uids.flatMap((uid) => {
+      const b = this.boards.find((x) => x.uid === uid);
+      return b === undefined ? [] : [{ uid, title: b.title }];
+    });
   }
 }

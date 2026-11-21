@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { StubApi } from './StubApi';
+import { seedWith } from '../test/seeds';
+import { StubApi, type StubBoard } from './StubApi';
 import { ApiError, BoardConflictError, type BoardSpec, type PanelSpec } from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
@@ -33,13 +34,6 @@ describe('stub api', () => {
     const c = new AbortController();
     c.abort();
     expect(await kindOf(api.listBoards('demo', c.signal))).toBe('AbortError');
-  });
-
-  it('keeps starred boards per tenant in localStorage', async () => {
-    const api = new StubApi();
-    expect(await api.listStarred('demo')).toEqual(['b-1']);
-    expect(await api.setStarred('demo', 'b-2', true)).toEqual(['b-1', 'b-2']);
-    expect(localStorage.getItem('pulsus-dash.stub.starred.demo')).toBe('["b-1","b-2"]');
   });
 
   it('fails sign-out as many times as the test hook says', async () => {
@@ -132,5 +126,78 @@ describe('stub boards', () => {
     expect((await api.panelData('demo', { ...p, vis: { kind: 'logs' } }, window)).kind).toBe(
       'noVis',
     );
+  });
+});
+
+const EDGE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
+
+describe('stub starred and recent', () => {
+  it('stub starred and recent', async () => {
+    const api = new StubApi();
+    const b1 = { uid: 'b-1', title: 'Service overview' };
+    expect(await api.listStarred('demo')).toEqual([b1]);
+    expect(await api.listStarred('sandbox')).toEqual([b1]);
+    await api.setStarred('demo', 'b-3', true);
+    await api.setStarred('demo', 'b-3', true);
+    expect(await api.listStarred('demo')).toEqual([{ uid: 'b-3', title: EDGE }, b1]);
+    expect(localStorage.getItem('pulsus-dash.stub.starred')).toBe('["b-1","b-3"]');
+    expect(await kindOf(api.setStarred('demo', 'zzz', true))).toBe('notFound');
+    expect(await kindOf(api.setStarred('demo', 'zzz', false))).toBe('resolved');
+
+    await api.recordView('demo', 'b-1', 1);
+    await api.recordView('demo', 'b-2', 2);
+    await api.recordView('demo', 'b-3', 3);
+    await api.recordView('demo', 'b-1', 4);
+    const recentUids = async () => (await api.listRecent('demo')).map((r) => r.uid);
+    expect(await recentUids()).toEqual(['b-1', 'b-3', 'b-2']);
+    // A late, older view does not move the board.
+    await api.recordView('demo', 'b-3', 2);
+    expect(await recentUids()).toEqual(['b-1', 'b-3', 'b-2']);
+    expect(await kindOf(api.recordView('demo', 'zzz', 5))).toBe('notFound');
+    const c = new AbortController();
+    c.abort();
+    expect(await kindOf(api.recordView('demo', 'b-2', 9, c.signal))).toBe('AbortError');
+    expect(await recentUids()).toEqual(['b-1', 'b-3', 'b-2']);
+
+    await api.deleteBoard('demo', 'b-3', '1');
+    expect(await api.listStarred('demo')).toEqual([b1]);
+    expect(await recentUids()).toEqual(['b-1', 'b-2']);
+  });
+
+  it('keeps five recent boards of many', async () => {
+    const boards: StubBoard[] = Array.from({ length: 7 }, (_, i) => ({
+      uid: `b-${String(i + 1)}`,
+      title: `Board ${String(i + 1)}`,
+      updatedAt: '2026-11-19T12:00:00.000Z',
+      spec: { title: `Board ${String(i + 1)}`, panels: [], sections: [] },
+    }));
+    const api = new StubApi(seedWith({ boards }));
+    for (const [i, b] of boards.entries()) await api.recordView('demo', b.uid, i + 1);
+    expect((await api.listRecent('demo')).map((r) => r.uid)).toEqual([
+      'b-7',
+      'b-6',
+      'b-5',
+      'b-4',
+      'b-3',
+    ]);
+  });
+
+  it('fails a star change as many times as the test hook says', async () => {
+    const api = new StubApi();
+    localStorage.setItem('pulsus-dash.stub.failStar', '1');
+    expect(await kindOf(api.setStarred('demo', 'b-2', true))).toBe('network');
+    expect((await api.listStarred('demo')).map((r) => r.uid)).toEqual(['b-1']);
+    await api.setStarred('demo', 'b-2', true);
+    expect((await api.listStarred('demo')).map((r) => r.uid)).toEqual(['b-2', 'b-1']);
+  });
+
+  it('ignores invalid and old stored values', async () => {
+    const api = new StubApi();
+    localStorage.setItem('pulsus-dash.stub.recent', 'not json');
+    expect(await api.listRecent('demo')).toEqual([]);
+    localStorage.setItem('pulsus-dash.stub.recent', '["b-1"]');
+    expect(await api.listRecent('demo')).toEqual([]);
+    localStorage.setItem('pulsus-dash.stub.starred.demo', '[]');
+    expect(await api.listStarred('demo')).toEqual([{ uid: 'b-1', title: 'Service overview' }]);
   });
 });

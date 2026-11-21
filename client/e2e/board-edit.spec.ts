@@ -84,7 +84,7 @@ test.describe('e2e:board-edit-save', () => {
         ['B', 'Stat'],
         ['C', 'Heatmap'],
       ] as const) {
-        await page.getByRole('button', { name: 'Add panel' }).click();
+        await page.getByRole('button', { name: 'Add panel', exact: true }).click();
         await editor.getByRole('textbox', { name: 'Title' }).fill(name);
         await editor.getByRole('button', { name: /Visualisation$/ }).click();
         await page.getByRole('option', { name: vis, exact: true }).click();
@@ -154,7 +154,7 @@ test.describe('e2e:board-edit-save', () => {
       // 7. The guard keeps unsaved work.
       const nav = page.getByRole('navigation', { name: 'Main' });
       await page.getByRole('button', { name: 'Edit board' }).click();
-      await page.getByRole('button', { name: 'Add panel' }).click();
+      await page.getByRole('button', { name: 'Add panel', exact: true }).click();
       const url = page.url();
       await nav.getByRole('link', { name: 'Boards', exact: true }).click();
       const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
@@ -221,6 +221,181 @@ test.describe('e2e:board-tall', () => {
       if (header === null) throw new Error('no header');
       await dragBy(page, header, 0, 56);
       await expect(far).toHaveAttribute('data-grid', '0,9999,6,100');
+    } finally {
+      await remove(request, uid);
+    }
+  });
+});
+
+declare global {
+  interface Window {
+    __copied: string[];
+  }
+}
+
+test.describe('e2e:board-sections', () => {
+  test.skip(PREVIEW, NEEDS_BFF);
+  test.use({ baseURL: HTTP_BFF });
+
+  test('collapsed sections, URL overrides and saved state', async ({
+    page,
+    request,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    const errors = errorsOf(page);
+    const title = `E2E sections ${testInfo.project.name} w${String(testInfo.workerIndex)} ${crypto.randomUUID()}`;
+    const p = (id: string, name: string, x: number) => ({
+      id,
+      title: name,
+      grid: { x, y: 0, w: 6, h: 8 },
+      query: { lang: 'promql', text: 'up' },
+      vis: { kind: 'line' },
+    });
+    const created = await request.post(API, {
+      data: {
+        spec: {
+          title,
+          panels: [p('p-1', 'Top', 0)],
+          sections: [
+            {
+              id: 's-1',
+              title: 'Collapsed group',
+              collapsed: true,
+              panels: [p('p-2', 'Hidden', 0), p('p-3', 'Hidden too', 6)],
+            },
+            { id: 's-2', title: 'Open group', collapsed: false, panels: [p('p-4', 'Shown', 0)] },
+          ],
+        },
+      },
+    });
+    expect(created.status()).toBe(201);
+    const { uid } = (await created.json()) as { uid: string };
+    const url = `/t/demo/board/${uid}`;
+    const promql = 'Runs when PromQL support lands';
+    const toggle = (pg: Page, name: string) =>
+      pg.getByRole('button', { name, exact: true }).and(pg.locator('[aria-expanded]'));
+    const stored = async () =>
+      (
+        (await (await request.get(`${API}/${uid}`)).json()) as {
+          spec: {
+            sections: {
+              id: string;
+              title: string;
+              collapsed: boolean;
+              panels: { grid: Record<string, number> }[];
+            }[];
+          };
+        }
+      ).spec.sections;
+    /** Opens `target` in a new context (empty storage), runs `check`, closes the context. */
+    const fresh = async (target: string, check: (pg: Page) => Promise<void>): Promise<void> => {
+      const c = await browser.newContext({
+        baseURL: HTTP_BFF,
+        viewport: { width: 1440, height: 900 },
+      });
+      try {
+        const pg = await c.newPage();
+        await pg.goto(target);
+        await pg.locator('html[data-shell-ready="true"]').waitFor();
+        await check(pg);
+      } finally {
+        await c.close();
+      }
+    };
+    const expanded = async (pg: Page) => {
+      await expect(toggle(pg, 'Collapsed group')).toHaveAttribute('aria-expanded', 'true');
+      await expect(panel(pg, 'Hidden')).toBeVisible();
+      await expect(toggle(pg, 'Open group')).toHaveAttribute('aria-expanded', 'false');
+      await expect(panel(pg, 'Shown')).toHaveCount(0);
+    };
+    const saved = async (pg: Page) => {
+      await expect(toggle(pg, 'Collapsed group')).toHaveAttribute('aria-expanded', 'false');
+      await expect(panel(pg, 'Hidden')).toHaveCount(0);
+      await expect(toggle(pg, 'Open group')).toHaveAttribute('aria-expanded', 'true');
+      await expect(panel(pg, 'Shown')).toBeVisible();
+    };
+    await page.addInitScript(() => {
+      window.__copied = [];
+      const writeText = (s: string): Promise<void> => {
+        window.__copied.push(s);
+        return Promise.resolve();
+      };
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    });
+    try {
+      // 1. The saved state: the collapsed section renders no panels.
+      await page.goto(url);
+      await page.locator('html[data-shell-ready="true"]').waitFor();
+      await expect(panel(page, 'Top')).toBeVisible();
+      await expect(panel(page, 'Shown')).toBeVisible();
+      await expect(panel(page, 'Hidden')).toHaveCount(0);
+      await expect(page.locator('[data-section="s-1"]').getByText('2 panels')).toBeVisible();
+      await expect(toggle(page, 'Collapsed group')).toHaveAttribute('aria-expanded', 'false');
+
+      // 2. View toggles: URL overrides.
+      await toggle(page, 'Collapsed group').click();
+      await toggle(page, 'Open group').click();
+      await expect(panel(page, 'Hidden')).toBeVisible();
+      await expect(panel(page, 'Hidden too')).toBeVisible();
+      await expect(panel(page, 'Hidden').getByText(promql)).toBeVisible();
+      await expect(panel(page, 'Hidden too').getByText(promql)).toBeVisible();
+      await expect(panel(page, 'Shown')).toHaveCount(0);
+      await expect
+        .poll(() => {
+          const q = new URL(page.url()).searchParams;
+          return [q.getAll('collapse'), q.getAll('expand')];
+        })
+        .toEqual([['s-2'], ['s-1']]);
+
+      // 3. Reload: the same, and nothing was saved.
+      await page.reload();
+      await page.locator('html[data-shell-ready="true"]').waitFor();
+      await expanded(page);
+      expect((await stored()).map((s) => s.collapsed)).toEqual([true, false]);
+
+      // 4. Copy link reproduces the view in a fresh context.
+      await page.getByRole('button', { name: 'Share' }).click();
+      const share = page.getByRole('dialog', { name: 'Share board' });
+      // The checkbox's input is visually hidden: press its label.
+      await share.getByText('Keep relative', { exact: true }).click();
+      await expect(share.getByRole('checkbox', { name: 'Keep relative' })).toBeChecked();
+      await share.getByRole('button', { name: 'Copy link' }).click();
+      await expect.poll(() => page.evaluate(() => window.__copied.length)).toBe(1);
+      const copied = await page.evaluate(() => window.__copied.at(-1) ?? '');
+      await page.keyboard.press('Escape');
+      await fresh(copied, expanded);
+
+      // 5. The plain URL in a fresh context: the saved state.
+      await fresh(url, saved);
+
+      // 6. Edit drops the overrides and shows the saved state.
+      await page.getByRole('button', { name: 'Edit board' }).click();
+      await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+      await expect.poll(() => new URL(page.url()).search).not.toMatch(/collapse=|expand=/);
+      await expect(toggle(page, 'Collapsed group')).toHaveAttribute('aria-expanded', 'false');
+      await expect(toggle(page, 'Open group')).toHaveAttribute('aria-expanded', 'true');
+
+      // 7. An Edit collapse and a new section are saved.
+      await toggle(page, 'Collapsed group').click();
+      await page.getByRole('button', { name: 'Add section' }).click();
+      await page.getByRole('textbox', { name: 'Section 3 title' }).fill('Second');
+      await page.getByRole('button', { name: 'Add panel to Second' }).click();
+      await page.keyboard.press('ControlOrMeta+S');
+      await expect(page.getByRole('status', { name: 'Save status' })).toHaveText('Saved');
+
+      // 8. Reload: View mode shows what was saved, and the server agrees.
+      await page.reload();
+      await page.locator('html[data-shell-ready="true"]').waitFor();
+      await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
+      await expect(toggle(page, 'Collapsed group')).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('[data-section="s-1"] [data-panel]')).toHaveCount(2);
+      await expect(page.locator('[data-section="s-3"]').getByText('1 panel')).toBeVisible();
+      const sections = await stored();
+      expect(sections[0]?.collapsed).toBe(false);
+      expect(sections[2]).toMatchObject({ id: 's-3', title: 'Second', collapsed: false });
+      expect(sections[2]?.panels.map((x) => x.grid)).toEqual([{ x: 0, y: 0, w: 6, h: 8 }]);
+      expect(errors).toEqual([]);
     } finally {
       await remove(request, uid);
     }
