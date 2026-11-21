@@ -3,6 +3,7 @@ package pulsusdb
 import (
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -170,5 +171,24 @@ func TestLogCategorized(t *testing.T) {
 	}
 	if e := res.Page.Entries[0]; len(e.Metadata) != 1 || e.Metadata[0].Value != "<redacted>" || len(e.Parsed) != 1 || e.Parsed[0].Value != "<redacted>" {
 		t.Errorf("redaction: metadata %v parsed %v", e.Metadata, e.Parsed)
+	}
+}
+
+// unit:log-categorized: the page bound is enforced pair by pair inside one metadata or parsed
+// map, so the decode stops at the pair that crosses it and never reads the rest of the map.
+func TestLogCategorizedBound(t *testing.T) {
+	for _, member := range []string{"structuredMetadata", "parsed"} {
+		var pairs []string
+		for i := range 20 {
+			pairs = append(pairs, `"k`+strconv.Itoa(i)+`":"`+strings.Repeat("v", 20)+`"`)
+		}
+		// Past the bound the map turns malformed: a decoder that reads the whole map first
+		// reports a protocol error instead of stopping at the bound.
+		pairs = append(pairs, `"bad":1`)
+		raw := categorisedDoc(`[` + ts(1) + `,"l",{"` + member + `":{` + strings.Join(pairs, ",") + `}}]`)
+		_, err := logsOf(t, raw, Options{Limits: Limits{PageBytes: 100}})
+		if kindOf(err) != KindTooBroad {
+			t.Errorf("%s over PageBytes 100: %v, want KindTooBroad at the crossing pair", member, err)
+		}
 	}
 }
