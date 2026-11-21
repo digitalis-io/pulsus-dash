@@ -17,6 +17,16 @@ function open(url: string, o: RenderAppOptions = {}) {
   return renderApp(url, { wrapper: EngineWrapper, ...o });
 }
 
+/** Add panel, then close the editor it opens (#90, Appendix A R1). */
+async function addPanel(user: ReturnType<typeof open>['user'], name = 'Add panel') {
+  await user.click(await screen.findByRole('button', { name }));
+  const d = await screen.findByRole('dialog', { name: 'Edit panel' });
+  await user.click(within(d).getByRole('button', { name: 'Done' }));
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+  });
+}
+
 type User = ReturnType<typeof open>['user'];
 
 const BASE = 'from=now-1h&to=now&refresh=off';
@@ -188,9 +198,13 @@ describe('filter bar', () => {
     // Edit panel from the View-mode menu enters Edit with the editor on the panel.
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
-    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    const editor = await screen.findByRole('dialog', { name: 'Edit panel' });
     const query = within(editor).getByRole('textbox', { name: 'Query' });
     await setText(user, query, 'rate(x{app="$app"}[5m])');
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+    });
     expect(await screen.findByRole('button', { name: 'Variable app: not set' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Discard' }));
     await screen.findByRole('button', { name: 'Edit board' });
@@ -200,7 +214,7 @@ describe('filter bar', () => {
   it('filter changes never guard', async () => {
     const { user } = open('/t/demo/board/b-1');
     await user.click(await screen.findByRole('button', { name: 'Edit board' }));
-    await user.click(await screen.findByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await addFilter(user, 'a', 'b');
     await screen.findByRole('button', { name: 'Filter a: b' });
     expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).toBeNull();

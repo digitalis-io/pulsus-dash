@@ -4,6 +4,7 @@
  */
 import type {
   BrushEvent,
+  DrawnEvent,
   FrameData,
   FrameSummary,
   HoverEvent,
@@ -25,11 +26,12 @@ export interface Harness {
   readonly a11y: FrameSummary[];
   readonly hover: (HoverEvent | null)[];
   readonly brush: BrushEvent[];
+  readonly drawn: DrawnEvent[];
 }
 
 export function harness(
   Engine: typeof EngineClass,
-  o: { keyTarget?: HTMLElement | null; timeZone?: string } = {},
+  o: { keyTarget?: HTMLElement | null; timeZone?: string; id?: string } = {},
 ): Harness {
   const queue = new Map<number, () => void>();
   let next = 0;
@@ -61,6 +63,7 @@ export function harness(
   const frame = engine.createFrame(canvas, {
     timeZone: o.timeZone ?? 'Europe/London',
     keyTarget: o.keyTarget ?? null,
+    ...(o.id === undefined ? {} : { id: o.id }),
   });
   const a11y: FrameSummary[] = [];
   const hover: (HoverEvent | null)[] = [];
@@ -68,6 +71,8 @@ export function harness(
   frame.on('a11y', (s) => a11y.push(s));
   frame.on('hover', (h) => hover.push(h));
   frame.on('brush', (b) => brush.push(b));
+  const drawn: DrawnEvent[] = [];
+  frame.on('drawn', (d) => drawn.push(d));
   const ctxOf = (c: HTMLCanvasElement | undefined): RecordingContext => {
     const r = c === undefined ? undefined : contexts.get(c);
     if (r === undefined) throw new Error('no recording context');
@@ -89,6 +94,7 @@ export function harness(
     a11y,
     hover,
     brush,
+    drawn,
   };
 }
 

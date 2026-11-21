@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.4-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -21,7 +21,8 @@ budgets stand, with these readings:
 | Canvases | One canvas per chart frame (panel), all driven by one engine instance and one GPU device per page; the Atlas and a Lens are one scene on one canvas ([05](../product/05-visualisation-catalogue.md) VIZ-001, [04](../product/04-surfaces.md) SRF-014) |
 | "Browser JavaScript only proxies bytes and events" (§1) | Now: semantic state, layout and DOM are TS (ADR-0014 §2); the engine adapter moves bytes and events and is bound by T01-001. The library ban stands (VIZ-001) |
 | §11 M-UI1 row | Delivered on the interim renderer in M-UI1; the GPU versions land with #68 and #69 (M-UI0 milestone, delivered after the first M-UI1 slice). The Time Ribbon moves to M-UI3 with the Space scenes ([02](../product/02-information-architecture.md) IA-028) |
-| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`; ADR-0014 §3) |
+| Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`, `drawn`; ADR-0014 §3, amended by [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md)) |
+| Interim cap | The engine line keeps the interim 500-series cap (ADR-0014 §4) until band + outliers (§4.4) lands |
 
 ## 1. Context & problem
 
@@ -74,7 +75,7 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 | [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | §4.6 | `replay:universal-interactions` |
 | [VIZ-004](../product/05-visualisation-catalogue.md#viz-004--scale-targets-per-vis) | §4.2, §4.9, §7 | `bench:frame-gallery` (every page at its scale target, (b)) |
 | [VIZ-005](../product/05-visualisation-catalogue.md#viz-005--lod-never-hides-signal-silently) | §4.4 | `unit:decimation-prop`; `golden:gallery` (density page shows the coverage reduction) |
-| [VIZ-006](../product/05-visualisation-catalogue.md#viz-006--line-decimation-is-visually-lossless) | §4.4 | `golden:decimation-ref`; `replay:progressive` (rollup → raw switch) |
+| [VIZ-006](../product/05-visualisation-catalogue.md#viz-006--line-decimation-is-visually-lossless) | §4.4 | `golden:decimation-raw` (decimated coverage = every raw point, CPU and GPU paths); `golden:decimation-ref`; `replay:progressive` (rollup → raw switch) |
 | [VIZ-007](../product/05-visualisation-catalogue.md#viz-007--band-collapses-the-crowd-and-keeps-outliers) | §4.4 | `golden:gallery` (band page, 800 series, 3 outliers, "797 in band") |
 | [VIZ-008](../product/05-visualisation-catalogue.md#viz-008--scatter-density-and-point-modes) | §4.4, §4.9 | `bench:frame-scatter-1e7`; `replay:universal-interactions` (point click at < 10⁵ visible) |
 | [VIZ-010](../product/05-visualisation-catalogue.md#viz-010--line-area-and-bar-style-options) | §4.5 | `golden:gallery` (style-option pages vs reference renders from the source tool) |
@@ -180,6 +181,9 @@ chunk arena or render staging slabs ([T04 §5.7](T04-wire-format-and-data-plane.
 Within one viewport, marks of one type MUST be drawn in one draw call per pipeline state,
 independent of how many series or axes they belong to (§4.3).
 
+*Note (#68):* a viewport whose instances exceed one buffer binding is drawn in ordered batches, one
+draw each, in instance order (so the pixels equal one draw); no instance is dropped.
+
 ### 4.2 Mark primitives (L1)
 
 Every pixel of every vis comes from one of these pipelines.
@@ -210,7 +214,9 @@ Cross-cutting mark features, implemented once in L0/L1:
   attributes shared by all marks, so semantic state looks identical everywhere (T02-003).
 - **Dash patterns and hatching** (Unknown, NoData, maintenance, victim) are made in the fragment
   shader, not textures.
-- **Colour.** All blending is in linear space. Every colour comes from the generated tokens
+- **Colour.** All blending is in sRGB-encoded space, so token alphas composite as in CSS and
+  Canvas 2D: render targets are `Rgba8Unorm`/`Bgra8Unorm` (never `*Srgb`) and token colours are
+  written as their sRGB values *(revised 2026-11-21, #68)*. Every colour comes from the generated tokens
   ([T01 §4.5](T01-frontend-architecture.md#45-one-token-source-for-canvas-and-dom)), which the DOM
   shares.
 
@@ -290,8 +296,9 @@ transform from data space to plot space. The transforms are packed into a per-vi
 of at most 16 axes. Every mark instance carries an 8-bit axis-pair index, so series on different
 axes share a draw call, and no re-upload happens when one axis pans: only its uniform changes.
 Discontinuous time uses a piecewise-linear table (≤ 64 segments) in a small storage buffer (a
-texture on T2). Data offsets are relative to the chunk origin (T02-014), and each axis transform is
-computed in f64 on the CPU before it is written to the f32 uniform.
+texture on T2). Values are offsets from the draw's encoding origin and time is reduced to columns on
+the CPU (T02-014), and each axis transform is computed in f64 on the CPU before it is written to the
+f32 uniform.
 
 **Layout solver.** Each frame, axis bands are measured. Tick labels are shaped in the layout
 worker, and the widest label is kept across the hysteresis window. The plot rect is the remainder
@@ -364,15 +371,36 @@ colour and each series MUST show the matching ownership glyph in the legend.
 | Memory pressure | Raw chunks dropped for rollups ([T04](T04-wire-format-and-data-plane.md)) | "reduced resolution (memory)" |
 | Tier ceiling | T2 ceilings (§4.9) | "density view: WebGL2 tier" |
 
+**Line decimation (M1, #68).** Column ranges (u32 sample index ranges per CSS px column, the
+interim `lineColumns` formula) are found in f64 on the CPU from the timestamps; no timestamp is
+uploaded. Values are uploaded as f32 `u = (v − v_ref)·2^−exp`, with the origin and power-of-two
+scale taken from the exact f64 span of an encoding chosen per draw (the data's when it is adequate
+for the axis and keeps the axis inside its clip box |u| ≤ 2^24, else the axis's). Five passes run
+in (series, column) order: P1 reduces each column to its first, last and the exact number of
+NaN-free runs (two inline); P2 counts and P4 emits instances; P3 is the prefix over series; P5
+re-scans columns with more than two runs and writes their spans in run order. Every NaN-free run is
+its own round-capped vertical capsule from its max to its min (a one-sample run no segment reaches
+is a dot), and the segment into a column joins the previous drawn column's last sample to this
+column's first, so the coverage equals a drawing of every raw point. The passes run as compute on
+T1; on T2, and for a line whose data lies beyond the clip box of its encoding (a far item, any
+tier), `dash-scales::decimate` runs them on the CPU with the same bits and clips far segments in
+f64 before encoding. Values are compared as order-preserving integer keys of their f32 bits, so
+both paths give identical instances (T02-029).
+
 **Gaps.** A null in the validity bitmap breaks M1 and M2 strips. The default null handling is
 "gaps": absent samples are drawn as gaps and never interpolated. "Connect under a threshold" and
 "zero" are explicit options (§4.5).
 
-#### T02-014 — Precision: f32 relative to a per-chunk origin
-**MUST** — Values and timestamps MUST be uploaded as f32 relative to a per-chunk origin (`t_rel`,
-`v_rel`), and every camera and axis transform MUST be composed in f64 on the CPU before it is reduced
-to f32. Adjacent 1 ms samples at epoch-scale timestamps MUST render at distinct x positions at the
-deepest zoom.
+#### T02-014 — Precision: f64 on the CPU, f32 relative to an encoding origin
+**MUST** — Timestamps MUST NOT be uploaded as absolute values: column ranges and column positions
+MUST be computed from the f64 timestamps on the CPU, and a mark uploads either u32 column indices
+and ranges (the line, M1) or f32 time offsets relative to a per-chunk origin. Values MUST be
+uploaded as f32 `u = (v − v_ref)·2^−exp`, with an origin `v_ref` and a power-of-two scale `exp`
+taken from the exact f64 span of an encoding chosen per draw from the chunk's finite range and
+the value axis; a segment whose data lies outside the encoding's clip box MUST be clipped in f64
+before it is encoded. Every camera and axis transform MUST be composed in f64 on the CPU before it
+is reduced to f32. Adjacent 1 ms samples at epoch-scale timestamps MUST render at distinct x
+positions at the deepest zoom.
 
 #### T02-015 — Decimation is visually lossless and deterministic
 **MUST** — Line decimation MUST keep min, max, first and last per pixel column per series, so that
@@ -434,6 +462,15 @@ borders, in CSS px multiplied by `dpr`. Off-screen viewports neither render nor 
 **Space residency.** The scene stack is resident: the previous scene's buffers, camera and chunks
 stay in memory, so "back" and `Esc` show the previous scene in the first frame with no query. Under
 memory pressure at least the immediate parent scene is kept.
+
+**Cameras** *(#68)*. `dash-scene::Camera` is an enum whose only variant now is `Plot2D` (an x range
+in unrounded f64 ms and an auto or manual y range). Every mark maps (plot x, plot y, lane z)
+through one per-viewport `view_proj: mat4` composed in f64 and reduced once per frame; instances
+carry a 16-bit lane and the vertex shader extrudes widths in device px after the perspective
+divide, so a 3D variant (`Orbit3D`, #94) changes only `view_proj`, a depth-tested pipeline variant
+and the lane depth. The engine has camera primitives only (`zoom_about`, `pan_by` with a caller-chosen
+step, `contain`, `to_window`, bit-equal to the client's `camera.ts`); the gesture policy (steps,
+held label band, commits) is the application's controller, which sets the camera and the band.
 
 **Camera controllers** (`dash-scene::camera`):
 - **Zoom anchor.** Zoom is computed in f64 data space about the data coordinate under the pointer,
@@ -770,3 +807,6 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): §11 M-UI1 adds text flow for the log stream (subset); waterfall and flame layouts stay M-UI2; PRF-020 traced (moved to M-UI1) |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md) and the revised product text (roadmap Q13): new §0 (one canvas per chart frame with one engine and GPU device, interim renderer until #68/#69, Time Ribbon in Space scenes at M-UI3); Satisfies: IA-020 row replaced by IA-028, INT-025 adds `e2e:time-range-header` |
 | 1.2-rc | 2026-11-20 | #58, owner decision 2026-11-20: T02-005 gives a series with a log-level label ([08](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) Table 8-1a) that row's token; key hash for everything else |
+| 1.3-rc | 2026-11-21 | #90: `drawn` event and frame id (ADR-0019): §0 Shell overlays row; Related ADRs |
+| 1.4-rc | 2026-11-21 | #68 Part A: §0 interim 500-series cap row; T02-002 note (ordered batches past one buffer binding, no instance dropped); §4.2 blending in sRGB-encoded space (replaces linear space; no ADR stated it; made with T08 §4.7 and T01 §4.5 under the owner's standing authorisation for pipeline design changes); §4.4 line decimation (f64 column ranges on the CPU, per-draw value encoding from the exact span, one capsule per NaN-free run with a spill pass, first/last joins, deterministic five-pass compaction, CPU path for T2 and far items with f64 segment clipping); §4.6 `Camera` enum, `view_proj` contract and camera primitives only (gesture policy in the application); VIZ-006 trace adds `golden:decimation-raw` |
+| 1.4-rc | 2026-11-21 | T02-014 restated: time as CPU-computed columns, values as a per-draw scaled encoding with f64 segment clipping (#68); §4.3 coordinate-transform sentence follows |

@@ -186,9 +186,12 @@ refused and announced ("… blocked at column …"), and the panel stays where i
 
 ### The panel editor
 
-**Edit panel** in a panel's menu, or **Add panel**, opens the **Panel editor** at the right of the
-grid. It is not a dialog: Tab moves freely between it and the board. Every change shows on the
-board at once.
+**Edit panel** in a panel's menu, or **Add panel**, opens the **Edit panel** window: a centred
+window of fixed size (800 × 720 px, smaller on a smaller screen) over the dimmed board. It cannot
+be moved or resized, and Tab stays inside it while it is open.
+
+At the top, a live **Preview** draws the panel as the board will: the same chart, from the same
+query and the current time range. Under it are the fields:
 
 | Field | Values |
 |---|---|
@@ -197,7 +200,22 @@ board at once.
 | **Query** | the query text, at most 16 384 bytes |
 | **Visualisation** | Auto (a line chart for PromQL, bars for LogQL), Line, Bars, Heatmap, Stat or Logs |
 
-**Remove panel** removes the panel from the board; **Close editor** closes the editor.
+Every change applies to the board draft at once, and the preview follows it:
+
+- a title change shows at once;
+- a visualisation, query or language change shows the result at once if it was loaded before in
+  this page (for example, switching back to a visualisation you had already picked). Otherwise
+  the preview shows **Loading** until the result arrives, and "Something went wrong" if the load
+  fails. When you change it again before a result arrives, only the latest change is shown.
+
+The panel on the board behind follows the same draft, so it shows the same chart or message.
+
+**Remove panel** removes the panel from the board. **Done**, Escape or a click outside the window
+closes it; focus returns to the panel's menu button (to **Add panel** if the panel was removed).
+Closing never undoes anything: your changes stay in the board draft until you save or discard.
+**⌘S** / **Ctrl+S** saves from inside the editor, and the save status shows at its foot. After a
+save with problems, the editor opens on the first panel with one, and each error shows under its
+field.
 
 ### Unsaved changes
 
