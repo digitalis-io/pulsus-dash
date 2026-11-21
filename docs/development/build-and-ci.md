@@ -367,13 +367,32 @@ target path, which is what Git stores.
 
 A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
 `PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
-Its value is caught either as an `http` or `https` URL, or as a bare host without a scheme:
-`<host>[:<port>]` where the host has at least one dot or a port is given, followed by a space, a
-quote, `/`, `#`, `,` or the end of the line (for example `db.corp.net:3100`). A bare value may be
-unquoted after `PULSUS_DASH_DATASOURCE_URL` and the YAML `url:` key; after `datasource.url`,
-`datasource_url` and `DatasourceURL` it is caught only in quotes, so code such as
-`DatasourceURL: d.URL` is not taken for a host. A single label without a port (`pulsusdb`) is not
-caught as a bare value; neither is a variable (`$X`, `${...}`) or a placeholder (`<host:port>`).
+Its value is caught either as an `http` or `https` URL, or as a bare host without a scheme,
+`<host>[:<port>][/<path>]`, single-label names included (`pulsusdb`, `db:3100`). A bare value is
+caught when it is:
+
+- in quotes (`"`, `'` or a backtick), after any datasource key;
+- the whole value up to the end of the line or a comment (`#` or `//` after a space), after any
+  datasource key;
+- after `PULSUS_DASH_DATASOURCE_URL` or the YAML `url:` key only: a host with a dot or a port,
+  followed by a space, a quote, `/`, `#`, `,` or the end of the line
+  (`PULSUS_DASH_DATASOURCE_URL=<host>.<domain>:<port> ./run`).
+
+These stay clean, so code and prose are not taken for hosts:
+
+- after `datasource.url`, `datasource_url` and `DatasourceURL`, an unquoted value with an
+  upper-case letter (`DatasourceURL: d.URL`), and a key reached through a selector
+  (`cfg.DatasourceURL = dsurl`);
+- a value followed by more code or words (`d.URL,`, `cfg.URL()`, `u}`, `string;`,
+  `datasource.url: scheme must be http`);
+- type names and common identifiers as single words (`string`, `str`, `text`, `number`, `int`,
+  `integer`, `bool`, `boolean`, `url`, `uri`, `null`, `nil`, `none`, `undefined`, `any`,
+  `unknown`, `true`, `false`, `object`);
+- a variable (`$X`, `${...}`), a placeholder (`<host:port>`), and an empty value whose next line
+  holds the rest.
+
+An unquoted lower-case dotted value after a code-style key, such as `datasource.url = cfg.url`, is
+read as a host; write the host in quotes, or the code over two lines, to avoid it.
 
 **Forbidden hosts** apply only to local runs. They are the entries of the optional
 `DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
