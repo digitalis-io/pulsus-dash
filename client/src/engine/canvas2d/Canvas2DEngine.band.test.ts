@@ -516,8 +516,10 @@ describe('camera', () => {
       for (const x of chips) inside(x, r.s);
     });
   });
-  // Code review r2: on a plot narrower than both forms of a label, no chip is drawn (T02-011:
-  // never a partial label); nothing is drawn outside the plot rectangle but the value band's labels.
+  // T02-011 (amended by #93, code review r3): "When a plot is narrower than both the full and the
+  // compact form of a value label, that tick's label is omitted. A label is never drawn partially or
+  // outside the plot. The value remains available through the crosshair readout and the chart's
+  // summary label." No chip is drawn, and nothing is drawn in the plot but the marks.
   describe('non-fitting label on a plot narrower than both forms', () => {
     /** 86 px wide: a 24 px plot, 16 px of room inside the chip padding. */
     const TINY = [86, 240] as const;

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-21 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -354,9 +354,12 @@ pointer leaves the chart or the layout changes (resize, kind or unit, axis reset
 not made by the gesture); during it the band keeps its width, T02-021 takes precedence over
 growth, and every tick label wider than the band MUST be drawn in its compact form. A tick
 label MUST NOT be truncated or clipped. Under a hold, a label with no compact form that fits is
-drawn whole inside the plot on a background chip until the hold is released. After a hold the
-band re-measures and full labels return. Bands MUST NOT overlap, and tick labels MUST NOT collide,
-including across stacked lanes.
+drawn whole inside the plot on a background chip until the hold is released. When a plot is
+narrower than both the full and the compact form of a value label, that tick's label is omitted.
+A label is never drawn partially or outside the plot. The value remains available through the
+crosshair readout and the chart's summary label. After a hold the band re-measures and full
+labels return. Bands MUST NOT overlap, and tick labels MUST NOT collide, including across stacked
+lanes.
 
 #### T02-012 — Per-axis interaction is undoable and visible
 **MUST** — Drag, wheel and double-click on an axis band MUST affect only that axis, MUST go through
@@ -821,3 +824,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.4-rc | 2026-11-21 | #68 Part A: §0 interim 500-series cap row; T02-002 note (ordered batches past one buffer binding, no instance dropped); §4.2 blending in sRGB-encoded space (replaces linear space; no ADR stated it; made with T08 §4.7 and T01 §4.5 under the owner's standing authorisation for pipeline design changes); §4.4 line decimation (f64 column ranges on the CPU, per-draw value encoding from the exact span, one capsule per NaN-free run with a spill pass, first/last joins, deterministic five-pass compaction, CPU path for T2 and far items with f64 segment clipping); §4.6 `Camera` enum, `view_proj` contract and camera primitives only (gesture policy in the application); VIZ-006 trace adds `golden:decimation-raw` |
 | 1.4-rc | 2026-11-21 | T02-014 restated: time as CPU-computed columns, values as a per-draw scaled encoding with f64 segment clipping (#68); §4.3 coordinate-transform sentence follows |
 | 1.5-rc | 2026-11-21 | #93 (owner-delegated decision 2026-11-21): T02-011 amended (minimum band of the widest compact label; compact tick labels during a camera hold, where T02-021 takes precedence; no truncation; under a hold, a label with no fitting compact form is drawn whole inside the plot on a chip, plan review r5); §0 interim 2D camera row; Satisfies INT-001 (2D) and `e2e:chart-zoom`; `commit` in the shell event list (ADR-0020) |
+| 1.6-rc | 2026-11-21 | #93 code review r3 (decision under the escalation rule): T02-011 adds the omission rule. A value label whose full and compact forms are both wider than the plot is omitted, never drawn partially or outside the plot; the value stays in the crosshair readout and the summary label |
