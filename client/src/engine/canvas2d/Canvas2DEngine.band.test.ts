@@ -31,7 +31,6 @@ import {
   labels,
   tickValues,
   CHIP,
-  CHIP_PAD,
   heldText,
   step,
   measuredX,
@@ -459,18 +458,18 @@ describe('camera', () => {
   });
   // Code review r1 #1: a chip on a narrow plot stays whole inside it, the plot unmoved.
   describe('non-fitting label on a narrow plot', () => {
-    /** 126 px wide: a 64 px plot, too narrow for `15000000P` (63 px and its padding). */
-    const NARROW = [126, 240] as const;
+    /** 122 px wide: a 60 px plot, too narrow for `15000000P` (63 px). */
+    const NARROW = [122, 240] as const;
     const inside = (x: Label, s: FrameSummary): void => {
       expect(x.chip).toBe(true);
-      expect(x.left - CHIP_PAD).toBeGreaterThanOrEqual(s.plot.x);
-      expect(x.right + CHIP_PAD).toBeLessThanOrEqual(s.plot.x + s.plot.width);
+      expect(x.left).toBeGreaterThanOrEqual(s.plot.x);
+      expect(x.right).toBeLessThanOrEqual(s.plot.x + s.plot.width);
     };
 
     it('during a Y zoom', () => {
       const h = setup({ size: NARROW });
       const s0 = last(h);
-      expect(s0.plot.width).toBe(64);
+      expect(s0.plot.width).toBe(60);
       const band = s0.plot.x - GAP_X;
       const p = at(s0, 0.5, 0.9);
       const frames: { s: FrameSummary; l: Label[] }[] = [];
@@ -482,7 +481,7 @@ describe('camera', () => {
         frames.push(f);
         const ticks = f.l.length > 1 ? tickValues(f.s, f.l) : [];
         narrowed += f.l.filter(
-          (x, k) => x.chip && CHAR_WIDTH * formatValue(ticks[k] ?? NaN, NONE).length + 8 > 64,
+          (x, k) => x.chip && CHAR_WIDTH * formatValue(ticks[k] ?? NaN, NONE).length > 60,
         ).length;
       }
       // Some chipped tick's full form is wider than the plot.
@@ -514,6 +513,40 @@ describe('camera', () => {
       const chips = r.l.filter((x) => x.chip);
       expect(chips.map((x) => x.text)).toEqual(['1.5e+22']);
       for (const x of chips) inside(x, r.s);
+    });
+
+    // Code review r4 #4: fit is tested against the plot width itself; the chip padding shrinks
+    // (to zero if need be) so a label that fits the plot is drawn whole inside it.
+    it('boundary: a 49 px label on a 50 px plot with a 42 px band is drawn whole', () => {
+      const h = setup({ size: [112, 240] });
+      const s0 = last(h);
+      expect(s0.plot.width).toBe(50);
+      expect(s0.plot.x - GAP_X).toBe(42);
+      const p = at(s0, 0.3);
+      for (let i = 0; i < 4; i++) wheel(h.canvas, p.x, p.y, { deltaY: -300 });
+      h.flush();
+      h.advance(300);
+      const c = present(h.commit[0]?.window, 'commit');
+      h.frame.setTimeWindow(c);
+      const r = step(h, () => {
+        h.frame.setData(lineData(0, 2e22));
+      });
+      expect(r.s.plot).toEqual(s0.plot);
+      const chips = r.l.filter((x) => x.chip);
+      expect(chips.map((x) => x.text)).toEqual(['1.5e+22']);
+      expect(CHAR_WIDTH * '1.5e+22'.length).toBe(49);
+      for (const x of chips) inside(x, r.s);
+      // The chip itself stays inside the plot too.
+      for (const o of h.layer().ops.filter((x) => x.fillStyle === CHIP && x.op !== 'fill')) {
+        const xs =
+          o.op === 'arc'
+            ? [Number(o.args[0]) - Number(o.args[2]), Number(o.args[0]) + Number(o.args[2])]
+            : [Number(o.args[0])];
+        for (const x of xs) {
+          expect(x).toBeGreaterThanOrEqual(r.s.plot.x - 1e-9);
+          expect(x).toBeLessThanOrEqual(r.s.plot.x + r.s.plot.width + 1e-9);
+        }
+      }
     });
   });
   // T02-011 (amended by #93, code review r3): "When a plot is narrower than both the full and the

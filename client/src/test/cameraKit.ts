@@ -143,16 +143,13 @@ export function heldText(
   if (CHAR_WIDTH * full.length <= band) return { text: full, chip: false };
   const compact = formatCompact(t, unit);
   if (CHAR_WIDTH * compact.length <= band) return { text: compact, chip: false };
-  // A chip holds the label and 4 px of padding a side inside the plot: the full form when it fits,
-  // else the compact one, else none (nothing is drawn).
-  const room = plotWidth - 2 * CHIP_PAD;
+  // A chip holds the label inside the plot (its padding shrinks to fit): the full form when it fits
+  // the plot width, else the compact one, else none (T02-011: omitted, never partial).
+  const room = plotWidth;
   if (CHAR_WIDTH * full.length <= room) return { text: full, chip: true };
   if (CHAR_WIDTH * compact.length <= room) return { text: compact, chip: true };
   return { text: '', chip: false };
 }
-
-/** The chip's padding a side (`space.1`). */
-export const CHIP_PAD = 4;
 
 /** Clears the layer ops, runs `act`, flushes; returns the summary and the drawn value labels. */
 export function step(h: Harness, act: () => void): { s: FrameSummary; l: Label[] } {
