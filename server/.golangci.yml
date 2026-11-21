@@ -14,7 +14,7 @@ linters:
         { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
         { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] } } }
     # T06-005 and plan #62 §4.9: outbound HTTP only in internal/pulsusdb (and the allowed callers
-    # below); upstream bodies decoded only by internal/pulsusdb/updec.go.
+    # below); every upstream body decoder yields strings only through redact (updec.go today).
     forbidigo:
       analyze-types: true
       forbid:
@@ -23,7 +23,7 @@ linters:
           msg: 'pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)'
         - pattern: '^json\.(Unmarshal|NewDecoder|RawMessage)$|^\(\*json\.Decoder\)\.Decode$'
           pkg: '^encoding/json$'
-          msg: 'pulsusdb-decoder: upstream bodies are decoded only by updec.go, which redacts every string (§4.9)'
+          msg: 'pulsusdb-decoder: every upstream body decoder yields strings only through redact; encoding/json does not (§4.9)'
   exclusions:
     rules:
       - { path: 'internal/pulsusdb/', text: 'pulsusdb-only', linters: [forbidigo] }

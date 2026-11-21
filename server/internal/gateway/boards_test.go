@@ -26,6 +26,7 @@ type fakeBoards struct {
 	saved core.SaveResult
 	limit int
 	rc    *core.RequestCtx
+	at    []*time.Time
 }
 
 func (f *fakeBoards) record(call string, rc *core.RequestCtx) {
@@ -82,8 +83,11 @@ func (f *fakeBoards) ListRecent(_ context.Context, rc *core.RequestCtx, limit in
 	return []core.BoardRef{}, f.err
 }
 
-func (f *fakeBoards) RecordView(_ context.Context, rc *core.RequestCtx, uid string) error {
+func (f *fakeBoards) RecordView(_ context.Context, rc *core.RequestCtx, uid string, at *time.Time) error {
 	f.record("view "+uid, rc)
+	f.mu.Lock()
+	f.at = append(f.at, at)
+	f.mu.Unlock()
 	return f.err
 }
 
@@ -320,6 +324,39 @@ func TestBoardRoutes(t *testing.T) {
 			t.Errorf("calls = %s, want %s", got, want)
 		}
 	})
+}
+
+// Plan #61 Part C §3.9: the optional `at` (ms since the Unix epoch) of PUT /me/recent-boards/{uid}.
+func TestRecordViewAt(t *testing.T) {
+	newH := func(f *fakeBoards) http.Handler {
+		return New(Deps{Probe: &fakeProbe{version: 1}, SchemaLatest: 1, Boards: f, Org: testOrg})
+	}
+	const path = "/api/dash/v1/me/recent-boards/u1"
+	f := &fakeBoards{}
+	h := newH(f)
+	if r := call(t, h, http.MethodPut, path+"?at=1700000000000", nil); r.code != 204 {
+		t.Fatalf("at=1700000000000: %d %s", r.code, r.raw)
+	}
+	if r := call(t, h, http.MethodPut, path, nil); r.code != 204 {
+		t.Fatalf("no at: %d %s", r.code, r.raw)
+	}
+	want := time.UnixMilli(1700000000000).UTC()
+	if len(f.at) != 2 || f.at[0] == nil || !f.at[0].Equal(want) || f.at[0].Location() != time.UTC || f.at[1] != nil {
+		t.Errorf("at = %v, want [%v <nil>]", f.at, want)
+	}
+	for _, q := range []string{"?at=-1", "?at=253402300800000", "?at=x"} {
+		f := &fakeBoards{}
+		r := call(t, newH(f), http.MethodPut, path+q, nil)
+		if r.code != 400 || errCode(r) != "invalid" || len(f.calls) != 0 {
+			t.Errorf("%s = %d %s, calls %v; want 400 invalid and no store call", q, r.code, r.raw, f.calls)
+		}
+	}
+	if r := call(t, newH(&fakeBoards{}), http.MethodPut, path+"?at=-1", nil); errMessage(r) != "invalid request" {
+		t.Errorf("at=-1 message = %q, want %q", errMessage(r), "invalid request")
+	}
+	if r := call(t, newH(&fakeBoards{}), http.MethodPut, path+"?at=253402300799999", nil); r.code != 204 {
+		t.Errorf("at=253402300799999 = %d %s, want 204", r.code, r.raw)
+	}
 }
 
 func TestIfMatch(t *testing.T) {

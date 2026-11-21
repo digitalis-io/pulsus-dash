@@ -1,8 +1,8 @@
 /**
  * The time range dialog (IA-020, IA-023, T08-008), loaded lazily by `TimeRangePicker`. In DOM order:
  * quick ranges, From and To fields, a range calendar in the browser zone, the zone, Apply, and the
- * share controls. Apply validates both fields and focuses the first invalid one; Copy link pins
- * relative times to the clock anchor unless "Keep relative" is checked (T03-017).
+ * share controls (`ShareLinkControls`). Apply validates both fields and focuses the first invalid
+ * one.
  */
 import {
   fromAbsolute,
@@ -11,7 +11,7 @@ import {
   type CalendarDate,
   type DateValue,
 } from '@internationalized/date';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Button as AriaButton,
   CalendarCell,
@@ -24,11 +24,9 @@ import {
   type RangeValue,
   type Selection,
 } from 'react-aria-components';
-import { useLocation } from 'react-router';
 import { formatZone, QUICK_RANGES, quickRangeLabel, quickRangeOf } from '../i18n/format';
 import { t } from '../i18n/t';
 import { Button } from '../kit/Button';
-import { Checkbox } from '../kit/Checkbox';
 import { Icon } from '../kit/Icon';
 import { TextField } from '../kit/TextField';
 import {
@@ -38,11 +36,9 @@ import {
   timeExprErrorMessage,
 } from '../state/timeExpr';
 import type { TimeContext } from '../state/useTimeContext';
-import { buildShareUrl, parseViewUrl } from '../state/viewUrl';
+import { ShareLinkControls } from './ShareLinkControls';
 import styles from './TimeRangeDialog.module.css';
 import { cx } from '../kit/cx';
-
-type CopyStatus = 'idle' | 'copied' | 'failed';
 
 function startOfDayIso(d: CalendarDate, timeZone: string): string {
   return printTimeExpr({ kind: 'absolute', ms: toZoned(d, timeZone).toDate().getTime() });
@@ -61,26 +57,15 @@ export interface TimeRangeDialogProps {
 
 export function TimeRangeDialog({ time, onClose }: TimeRangeDialogProps) {
   const { search, window, timeZone, anchorMs, dispatch } = time;
-  const { pathname } = useLocation();
   const [from, setFrom] = useState(search.from);
   const [to, setTo] = useState(search.to);
   const [fromError, setFromError] = useState<string | null>(null);
   const [toError, setToError] = useState<string | null>(null);
   const [range, setRange] = useState(() => calendarRange(window.fromMs, window.toMs, timeZone));
-  const [keepRelative, setKeepRelative] = useState(false);
-  const [copy, setCopy] = useState<CopyStatus>('idle');
-  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const fromRef = useRef<HTMLInputElement>(null);
   const toRef = useRef<HTMLInputElement>(null);
-  const shareRef = useRef<HTMLInputElement>(null);
 
   const quick = quickRangeOf(search);
-
-  useEffect(() => {
-    if (fallbackUrl === null) return;
-    shareRef.current?.focus();
-    shareRef.current?.select();
-  }, [fallbackUrl]);
 
   const onQuick = (keys: Selection): void => {
     if (keys !== 'all') {
@@ -123,28 +108,6 @@ export function TimeRangeDialog({ time, onClose }: TimeRangeDialogProps) {
     }
     dispatch({ type: 'setRange', from: printTimeExpr(f.expr), to: printTimeExpr(tt.expr) });
     onClose();
-  };
-
-  const view = parseViewUrl(pathname, anchorMs, timeZone);
-  const copyLink = (): void => {
-    if (view === null) return;
-    const url = buildShareUrl(
-      globalThis.location.origin,
-      { route: view.route, context: search },
-      { keepRelative, anchorMs, timeZone },
-    );
-    setFallbackUrl(null);
-    Promise.resolve()
-      .then(() => navigator.clipboard.writeText(url))
-      .then(
-        () => {
-          setCopy('copied');
-        },
-        () => {
-          setCopy('failed');
-          setFallbackUrl(url);
-        },
-      );
   };
 
   const selected: Key[] = quick === null ? [] : [quick];
@@ -221,31 +184,7 @@ export function TimeRangeDialog({ time, onClose }: TimeRangeDialogProps) {
             {t('time.apply')}
           </Button>
         </div>
-        {view !== null && (
-          <div className={cx(styles['share'])}>
-            <Checkbox isSelected={keepRelative} onChange={setKeepRelative}>
-              {t('time.keepRelative')}
-            </Checkbox>
-            <Button onPress={copyLink}>
-              <Icon name="link" />
-              {t('time.copyLink')}
-            </Button>
-          </div>
-        )}
-        <p role="status" className={cx(styles['status'])}>
-          {copy === 'copied' ? t('time.linkCopied') : copy === 'failed' ? t('time.copyFailed') : ''}
-        </p>
-        {fallbackUrl !== null && (
-          <label className={cx(styles['fallback'])}>
-            <span className={cx(styles['fallbackLabel'])}>{t('time.shareLink')}</span>
-            <input
-              ref={shareRef}
-              readOnly
-              value={fallbackUrl}
-              className={cx(styles['fallbackInput'])}
-            />
-          </label>
-        )}
+        <ShareLinkControls />
       </div>
     </div>
   );

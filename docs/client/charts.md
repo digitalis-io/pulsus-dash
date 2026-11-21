@@ -56,7 +56,9 @@ and the backing store is `round(css × dpr)`.
 Render `<ChartFrame spec={…} data={…} />` inside the shell (it needs the time Context and the time
 zone). Give the spec a title (it names the crosshair slider and starts the summary label) and a
 unit. The frame takes the full width of its container; line, bars and heatmap are
-`--size-chart` (240 px) high and stat `--size-chart-stat` (120 px).
+`--size-chart` (240 px) high and stat `--size-chart-stat` (120 px). With `fill` (board panels and
+their full-screen view) the frame has class `fill` (`height: 100%`) instead, and takes the height of
+its container, which must have a definite height; the canvas follows through the `ResizeObserver`.
 
 ## Frame data and validation
 

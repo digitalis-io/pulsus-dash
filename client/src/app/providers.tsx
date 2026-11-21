@@ -1,13 +1,15 @@
 /**
  * Application-wide providers and the hooks that read them: the API, the clock, the time zone, the
- * query cache and React Aria's locale.
+ * query cache, the board preferences (Starred and Recent, plan #61 Part C §3.8) and React Aria's
+ * locale.
  */
 import { QueryClientProvider, useSuspenseQuery } from '@tanstack/react-query';
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { I18nProvider } from 'react-aria-components';
 import type { Api } from '../api/Api';
 import { StubApi } from '../api/StubApi';
 import type { Session } from '../api/types';
+import { createBoardPrefs, type BoardPrefs } from '../boards/prefs';
 import { TimeZoneContext } from '../state/timeZone';
 import { ClockContext } from '../state/useTimeContext';
 import { sessionQuery, type RouterDeps } from './router';
@@ -53,15 +55,35 @@ export function useShellFocusRequest(): ShellFocusRequest {
   return useContext(ShellFocusContext);
 }
 
+const BoardPrefsContext = createContext<BoardPrefs | null>(null);
+
+/** The app's one `BoardPrefs` (stamped views, the cross-tab channel). */
+export function useBoardPrefs(): BoardPrefs {
+  const prefs = useContext(BoardPrefsContext);
+  if (prefs === null) throw new Error('useBoardPrefs outside Providers');
+  return prefs;
+}
+
 export function Providers({ deps, children }: { deps: RouterDeps; children: ReactNode }) {
   const [focus] = useState(createShellFocusRequest);
+  const [prefs] = useState(() => createBoardPrefs(deps.api, deps.queryClient));
+  // One effect, so a StrictMode replay (setup, cleanup, setup) reconnects what it disposed.
+  useEffect(() => {
+    const close = prefs.connect();
+    return () => {
+      close();
+      prefs.dispose();
+    };
+  }, [prefs]);
   return (
     <I18nProvider locale="en-GB">
       <QueryClientProvider client={deps.queryClient}>
         <ApiContext.Provider value={deps.api}>
           <ClockContext.Provider value={deps.clock}>
             <TimeZoneContext.Provider value={deps.timeZone}>
-              <ShellFocusContext.Provider value={focus}>{children}</ShellFocusContext.Provider>
+              <ShellFocusContext.Provider value={focus}>
+                <BoardPrefsContext.Provider value={prefs}>{children}</BoardPrefsContext.Provider>
+              </ShellFocusContext.Provider>
             </TimeZoneContext.Provider>
           </ClockContext.Provider>
         </ApiContext.Provider>

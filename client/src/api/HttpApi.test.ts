@@ -5,7 +5,13 @@ import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw'
 import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
-import { ApiError, isApiError, type RangeRequest } from './types';
+import {
+  ApiError,
+  BoardConflictError,
+  isApiError,
+  type PanelSpec,
+  type RangeRequest,
+} from './types';
 
 /** The bootstrap body of plan #59 §3.5 for the e2e database (one binding, `demo`). */
 const BOOTSTRAP = {
@@ -60,18 +66,6 @@ describe('HttpApi (A1)', () => {
     expect(requests.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
       'GET /api/dash/v1/bootstrap',
     ]);
-  });
-
-  it('has no boards API until #61', async () => {
-    const { api: a, requests } = api(() => Promise.reject(new Error('no request expected')));
-    expect(await a.listBoards('demo')).toEqual([]);
-    expect(await a.listStarred('demo')).toEqual([]);
-    expect(isApiError(await rejection(a.getBoard('demo', 'b-1')), 'notFound')).toBe(true);
-    expect(isApiError(await rejection(a.setStarred('demo', 'b-1', true)), 'notImplemented')).toBe(
-      true,
-    );
-    await expect(a.signOut()).resolves.toBeUndefined();
-    expect(requests).toEqual([]);
   });
 
   it('maps transport and HTTP errors', async () => {
@@ -311,5 +305,211 @@ describe('HttpApi prom routes', () => {
     await expect(
       ab.api.promLabelValues('demo', 'job', { fromMs: 1, toMs: 2 }, ctrl.signal),
     ).rejects.toBe(abort);
+  });
+});
+
+const AUTHOR = { kind: 'local', name: 'Local user' };
+const SPEC = { title: 'Board', panels: [], sections: [] };
+
+function boardBody(etag: string) {
+  return {
+    uid: 'k3v9x0q2m7a1zp',
+    title: 'Board',
+    version: Number(etag),
+    updated_at: '2026-11-19T12:00:00Z',
+    updated_by: AUTHOR,
+    etag,
+    schema_version: 1,
+    spec: SPEC,
+  };
+}
+
+const PANEL: PanelSpec = {
+  id: 'p-1',
+  title: 'P',
+  grid: { x: 0, y: 0, w: 6, h: 8 },
+  query: { lang: 'promql', text: 'up' },
+  vis: { kind: 'line' },
+};
+
+describe('http boards', () => {
+  it('http boards', async () => {
+    const list = api(() =>
+      Promise.resolve(
+        json(200, {
+          items: [
+            {
+              uid: 'u1',
+              title: 'One',
+              version: 3,
+              updated_at: '2026-11-19T12:00:00Z',
+              updated_by: AUTHOR,
+            },
+          ],
+          truncated: true,
+        }),
+      ),
+    );
+    expect(await list.api.listBoards('demo')).toEqual({
+      items: [
+        {
+          uid: 'u1',
+          title: 'One',
+          version: 3,
+          updatedAt: '2026-11-19T12:00:00Z',
+          updatedBy: 'Local user',
+        },
+      ],
+      truncated: true,
+    });
+    expect(list.requests.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
+      'GET /api/dash/v1/boards',
+    ]);
+
+    const save = api(() => Promise.resolve(json(200, { board: boardBody('4'), changed: true })));
+    const saved = await save.api.saveBoard('demo', 'k3v9x0q2m7a1zp', '3', SPEC);
+    expect(saved.changed).toBe(true);
+    expect(saved.board.etag).toBe('4');
+    const put = save.requests[0];
+    expect(put?.method).toBe('PUT');
+    expect(put?.headers.get('If-Match')).toBe('"3"');
+    expect(await put?.clone().text()).toBe(JSON.stringify({ spec: SPEC }));
+
+    const conflict = api(() =>
+      Promise.resolve(
+        json(409, {
+          error: { code: 'conflict', message: 'board changed since it was read' },
+          current: boardBody('4'),
+        }),
+      ),
+    );
+    const c = await rejection(conflict.api.saveBoard('demo', 'k3v9x0q2m7a1zp', '3', SPEC));
+    expect(c).toBeInstanceOf(BoardConflictError);
+    expect((c as BoardConflictError).current.etag).toBe('4');
+
+    const invalid = api(() =>
+      Promise.resolve(
+        json(400, {
+          error: {
+            code: 'invalid',
+            message: 'invalid board',
+            fields: [{ pointer: '/title', message_key: 'board.title.required' }],
+          },
+        }),
+      ),
+    );
+    const i = await rejection(invalid.api.createBoard('demo', SPEC));
+    expect(isApiError(i, 'invalid')).toBe(true);
+    expect((i as ApiError).fields[0]?.messageKey).toBe('board.title.required');
+
+    const missing = api(() =>
+      Promise.resolve(json(404, { error: { code: 'not_found', message: 'board not found' } })),
+    );
+    expect(isApiError(await rejection(missing.api.getBoard('demo', 'x')), 'notFound')).toBe(true);
+    expect(isApiError(await rejection(missing.api.deleteBoard('demo', 'x', '1')), 'notFound')).toBe(
+      true,
+    );
+
+    const net = api(() => Promise.reject(new TypeError('Failed to fetch')));
+    expect(isApiError(await rejection(net.api.listBoards('demo')), 'network')).toBe(true);
+
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const aborted = api(() =>
+      Promise.reject(new DOMException('The operation was aborted.', 'AbortError')),
+    );
+    const e = await rejection(aborted.api.getBoard('demo', 'x', ctrl.signal));
+    expect((e as DOMException).name).toBe('AbortError');
+
+    const none = api(() => Promise.reject(new Error('no request expected')));
+    const window = { fromMs: 0, toMs: 1 };
+    expect(await none.api.panelData('demo', PANEL, window)).toEqual({
+      kind: 'noRoute',
+      lang: 'promql',
+    });
+    expect(
+      await none.api.panelData(
+        'demo',
+        { ...PANEL, query: { lang: 'logql', text: '{a="b"}' }, vis: { kind: 'auto' } },
+        window,
+      ),
+    ).toEqual({ kind: 'noRoute', lang: 'logql' });
+    expect(await none.api.panelData('demo', { ...PANEL, vis: { kind: 'logs' } }, window)).toEqual({
+      kind: 'noVis',
+    });
+    expect(none.requests).toEqual([]);
+  });
+});
+
+describe('http starred and recent', () => {
+  /** An HttpApi whose fetch serves the bootstrap, then `fake` for every other request. */
+  async function signedIn(fake: (req: Request) => Promise<Response>) {
+    const r = api((req) =>
+      new URL(req.url).pathname === '/api/dash/v1/bootstrap'
+        ? Promise.resolve(json(200, BOOTSTRAP))
+        : fake(req),
+    );
+    await r.api.getSession();
+    r.requests.length = 0;
+    return r;
+  }
+  const line = (r: Request | undefined) =>
+    r === undefined ? '' : `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`;
+  const noContent = () => Promise.resolve(new Response(null, { status: 204 }));
+
+  it('http starred and recent', async () => {
+    const list = await signedIn(() =>
+      Promise.resolve(json(200, { items: [{ uid: 'a', title: 'A' }] })),
+    );
+    expect(await list.api.listStarred('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    expect(line(list.requests[0])).toBe('GET /api/dash/v1/me/starred-boards');
+    expect(await list.api.listRecent('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    expect(line(list.requests[1])).toBe('GET /api/dash/v1/me/recent-boards?limit=5');
+
+    const set = await signedIn(noContent);
+    await expect(set.api.setStarred('demo', 'a', true)).resolves.toBeUndefined();
+    await expect(set.api.setStarred('demo', 'a', false)).resolves.toBeUndefined();
+    expect(set.requests.map(line)).toEqual([
+      'PUT /api/dash/v1/me/starred-boards/a',
+      'DELETE /api/dash/v1/me/starred-boards/a',
+    ]);
+
+    const missing = await signedIn(() =>
+      Promise.resolve(json(404, { error: { code: 'not_found', message: 'board not found' } })),
+    );
+    expect(isApiError(await rejection(missing.api.setStarred('demo', 'a', true)), 'notFound')).toBe(
+      true,
+    );
+
+    const view = await signedIn(noContent);
+    const ctrl = new AbortController();
+    await expect(
+      view.api.recordView('demo', 'a', 1700000000000, ctrl.signal),
+    ).resolves.toBeUndefined();
+    expect(line(view.requests[0])).toBe('PUT /api/dash/v1/me/recent-boards/a?at=1700000000000');
+
+    const aborted = await signedIn((req) =>
+      req.signal.aborted
+        ? Promise.reject(new DOMException('The operation was aborted.', 'AbortError'))
+        : noContent(),
+    );
+    const gone = new AbortController();
+    gone.abort();
+    const e = await rejection(aborted.api.recordView('demo', 'a', 1, gone.signal));
+    expect((e as DOMException).name).toBe('AbortError');
+    expect(aborted.requests).toHaveLength(1);
+
+    const down = await signedIn(() =>
+      Promise.resolve(json(503, { error: { code: 'unavailable', message: 'store down' } })),
+    );
+    expect(isApiError(await rejection(down.api.recordView('demo', 'a', 1)), 'unknown')).toBe(true);
+    const net = await signedIn(() => Promise.reject(new TypeError('Failed to fetch')));
+    expect(isApiError(await rejection(net.api.listRecent('demo')), 'network')).toBe(true);
+
+    const none = await signedIn(() => Promise.reject(new Error('no request expected')));
+    expect(isApiError(await rejection(none.api.listStarred('x')), 'notFound')).toBe(true);
+    expect(isApiError(await rejection(none.api.recordView('x', 'a', 1)), 'notFound')).toBe(true);
+    await expect(none.api.signOut()).resolves.toBeUndefined();
+    expect(none.requests).toEqual([]);
   });
 });

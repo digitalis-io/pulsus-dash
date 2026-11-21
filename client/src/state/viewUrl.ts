@@ -1,7 +1,12 @@
 /**
  * View URLs: route plus time Context (02 §4 patterns, time subset; T08-005, IA-023).
  */
-import { contextSearchString, readContextSearch, type ContextSearch } from './contextSearch';
+import {
+  contextSearchString,
+  readContextSearch,
+  type ContextSearch,
+  type SearchParamPair,
+} from './contextSearch';
 import { parseTimeExpr, printTimeExpr, resolveTimeExpr } from './timeExpr';
 
 export type AppRoute =
@@ -32,8 +37,9 @@ export function routePath(route: AppRoute): string {
   }
 }
 
-export function printViewUrl(v: ViewUrl): string {
-  return routePath(v.route) + contextSearchString(v.context);
+/** The route and the Context, then `rest` (the page's own parameters, e.g. a board's filters). */
+export function printViewUrl(v: ViewUrl, rest: readonly SearchParamPair[] = []): string {
+  return routePath(v.route) + contextSearchString(v.context, rest);
 }
 
 function parseRoute(path: string): AppRoute | null {
@@ -81,18 +87,25 @@ function pinned(s: string, anchorMs: number, timeZone: string): string {
 /**
  * The link "Copy link" puts on the clipboard. Unless `keepRelative`, relative expressions are pinned
  * to the instant the view resolves them against (`anchorMs`, the clock anchor), so the link shows
- * the same window as the page (T03-017).
+ * the same window as the page (T03-017). `rest` carries the page's own parameters (a board's
+ * variables, filters and section overrides; IA-022, IA-023).
  */
 export function buildShareUrl(
   origin: string,
   v: ViewUrl,
-  o: { keepRelative: boolean; anchorMs: number; timeZone: string },
+  o: {
+    keepRelative: boolean;
+    anchorMs: number;
+    timeZone: string;
+    rest?: readonly SearchParamPair[];
+  },
 ): string {
-  if (o.keepRelative) return origin + printViewUrl(v);
+  const rest = o.rest ?? [];
+  if (o.keepRelative) return origin + printViewUrl(v, rest);
   const context: ContextSearch = {
     ...v.context,
     from: pinned(v.context.from, o.anchorMs, o.timeZone),
     to: pinned(v.context.to, o.anchorMs, o.timeZone),
   };
-  return origin + printViewUrl({ route: v.route, context });
+  return origin + printViewUrl({ route: v.route, context }, rest);
 }

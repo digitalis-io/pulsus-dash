@@ -700,6 +700,12 @@ type ListRecentBoardsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// RecordBoardViewParams defines parameters for RecordBoardView.
+type RecordBoardViewParams struct {
+	// At Navigation time in ms since the Unix epoch. Absent → the server's now().
+	At *int64 `form:"at,omitempty" json:"at,omitempty"`
+}
+
 // GetPromLabelValuesParams defines parameters for GetPromLabelValues.
 type GetPromLabelValuesParams struct {
 	Tenant Tenant `form:"tenant" json:"tenant"`
@@ -780,7 +786,7 @@ type ServerInterface interface {
 	ListRecentBoards(w http.ResponseWriter, r *http.Request, params ListRecentBoardsParams)
 
 	// (PUT /api/dash/v1/me/recent-boards/{uid})
-	RecordBoardView(w http.ResponseWriter, r *http.Request, uid string)
+	RecordBoardView(w http.ResponseWriter, r *http.Request, uid string, params RecordBoardViewParams)
 
 	// (GET /api/dash/v1/me/starred-boards)
 	ListStarredBoards(w http.ResponseWriter, r *http.Request)
@@ -861,7 +867,7 @@ func (_ Unimplemented) ListRecentBoards(w http.ResponseWriter, r *http.Request, 
 }
 
 // (PUT /api/dash/v1/me/recent-boards/{uid})
-func (_ Unimplemented) RecordBoardView(w http.ResponseWriter, r *http.Request, uid string) {
+func (_ Unimplemented) RecordBoardView(w http.ResponseWriter, r *http.Request, uid string, params RecordBoardViewParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1178,8 +1184,24 @@ func (siw *ServerInterfaceWrapper) RecordBoardView(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RecordBoardViewParams
+
+	// ------------- Optional query parameter "at" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "at", r.URL.Query(), &params.At, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "at"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "at", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RecordBoardView(w, r, uid)
+		siw.Handler.RecordBoardView(w, r, uid, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2348,7 +2370,8 @@ func (response ListRecentBoards503JSONResponse) VisitListRecentBoardsResponse(w 
 }
 
 type RecordBoardViewRequestObject struct {
-	Uid string `json:"uid"`
+	Uid    string `json:"uid"`
+	Params RecordBoardViewParams
 }
 
 type RecordBoardViewResponseObject interface {
@@ -3162,10 +3185,11 @@ func (sh *strictHandler) ListRecentBoards(w http.ResponseWriter, r *http.Request
 }
 
 // RecordBoardView operation middleware
-func (sh *strictHandler) RecordBoardView(w http.ResponseWriter, r *http.Request, uid string) {
+func (sh *strictHandler) RecordBoardView(w http.ResponseWriter, r *http.Request, uid string, params RecordBoardViewParams) {
 	var request RecordBoardViewRequestObject
 
 	request.Uid = uid
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.RecordBoardView(ctx, request.(RecordBoardViewRequestObject))

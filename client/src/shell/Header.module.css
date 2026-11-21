@@ -112,3 +112,11 @@
   outline: var(--size-focus-ring) solid var(--focus);
   outline-offset: var(--size-focus-offset);
 }
+
+/* A failed star change (plan #61 Part C §4.6): visible, after the star; the title shrinks first. */
+.starStatus {
+  flex: none;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: var(--text);
+}
