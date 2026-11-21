@@ -82,7 +82,7 @@ export function BoardToolbar(props: BoardToolbarProps) {
   const { busy, dirty } = props;
   return (
     <div role="group" aria-label={t('board.actions')} className={cx(styles['toolbar'])}>
-      <Button onPress={props.onAdd} isDisabled={busy}>
+      <Button onPress={props.onAdd} isDisabled={busy} data-board-add="">
         <Icon name="plus" />
         {t('board.addPanel')}
       </Button>

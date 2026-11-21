@@ -70,6 +70,20 @@ function statusLine(): HTMLElement {
   return screen.getByRole('status', { name: 'Save status' });
 }
 
+async function editorDialog(): Promise<HTMLElement> {
+  return screen.findByRole('dialog', { name: 'Edit panel' });
+}
+
+/** Add panel, then close the editor it opens (#90, Appendix A R1). */
+async function addPanel(user: ReturnType<typeof open>['user'], name = 'Add panel') {
+  await user.click(screen.getByRole('button', { name }));
+  const d = await editorDialog();
+  await user.click(within(d).getByRole('button', { name: 'Done' }));
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+  });
+}
+
 const B1 = ['Request rate', 'Error ratio', 'Errors', 'Request latency'];
 
 /** Links between a sidebar group heading and the next heading. */
@@ -153,7 +167,7 @@ describe('star toggle', () => {
     const before = Date.now();
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
       expect(statusLine()).toHaveTextContent('Saved');
@@ -339,13 +353,15 @@ describe('edit mode', () => {
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
     await user.click(screen.getByRole('button', { name: 'Add panel' }));
-    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    const editor = await editorDialog();
     await user.type(within(editor).getByRole('textbox', { name: 'Title' }), 'A');
     await user.click(within(editor).getByRole('button', { name: /Visualisation$/ }));
     await user.click(await screen.findByRole('option', { name: 'Stat' }));
     await user.keyboard('{Control>}s{/Control}');
     await waitFor(() => {
-      expect(statusLine()).toHaveTextContent('Saved');
+      expect(within(editor).getByRole('status', { name: 'Save status' })).toHaveTextContent(
+        'Saved',
+      );
     });
     expect(save).toHaveBeenCalledTimes(1);
     const [tenant, uid, etag, draft] = save.mock.calls[0] ?? [];
@@ -356,7 +372,7 @@ describe('edit mode', () => {
       grid: { x: 0, y: 18, w: 6, h: 8 },
       vis: { kind: 'stat' },
     });
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save', hidden: true })).toBeDisabled();
   });
 
   it('Shift+E enters and leaves edit', async () => {
@@ -415,7 +431,7 @@ describe('edit mode', () => {
     const get = vi.spyOn(api, 'getBoard');
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     expect(panelTitles()).toHaveLength(5);
     const before = get.mock.calls.length;
     await user.click(screen.getByRole('button', { name: 'Discard' }));
@@ -429,8 +445,7 @@ describe('edit mode', () => {
     const save = vi.spyOn(api, 'saveBoard');
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
-    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Discard' }));
     for (const name of ['Save', 'Add panel', 'Discard', 'Done']) {
       expect(screen.getByRole('button', { name }), name).toBeDisabled();
@@ -438,6 +453,10 @@ describe('edit mode', () => {
     for (const b of screen.getAllByRole('button', { name: /^Move or resize: / })) {
       expect(b).toBeDisabled();
     }
+    // The added panel, so the Title assertions below stay as they were (an empty title).
+    await user.click(screen.getByRole('button', { name: 'Panel menu: Untitled panel' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
+    const editor = await editorDialog();
     const title = within(editor).getByRole('textbox', { name: 'Title' });
     expect(title).toHaveAttribute('readonly');
     await user.type(title, 'x');
@@ -458,8 +477,7 @@ describe('edit mode', () => {
     const save = vi.spyOn(api, 'saveBoard');
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
-    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Discard' }));
     await act(async () => {
       api.next.resolve(undefined);
@@ -472,10 +490,17 @@ describe('edit mode', () => {
     });
     expect(screen.getByRole('button', { name: 'Save' })).toBeVisible();
     expect(panelTitles()).toHaveLength(5);
+    await user.click(screen.getByRole('button', { name: 'Panel menu: Untitled panel' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
+    const editor = await editorDialog();
     const title = within(editor).getByRole('textbox', { name: 'Title' });
     expect(title).not.toHaveAttribute('readonly');
     await user.type(title, 'A');
     expect(title).toHaveValue('A');
+    await user.click(within(editor).getByRole('button', { name: 'Done' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+    });
     for (const name of ['Discard', 'Add panel', 'Done', 'Save']) {
       expect(screen.getByRole('button', { name }), name).toBeEnabled();
     }
@@ -490,7 +515,7 @@ describe('edit mode', () => {
     const api = new GatedReadApi();
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Discard' }));
     (document.activeElement as HTMLElement).blur();
     await user.keyboard('{Shift>}E{/Shift}');
@@ -512,18 +537,24 @@ describe('edit mode', () => {
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
     await user.click(screen.getByRole('button', { name: 'Add panel' }));
-    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    const editor = await editorDialog();
+    await user.keyboard('{Control>}s{/Control}');
+    const title = within(editor).getByRole('textbox', { name: 'Title' });
+    expect(title).toHaveAttribute('readonly');
+    await user.type(title, 'x');
+    expect(title).toHaveValue('');
+    expect(within(editor).getByRole('button', { name: 'Remove panel' })).toBeDisabled();
+    expect(within(editor).getByRole('button', { name: 'Done' })).toBeEnabled();
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+    });
     for (const name of ['Save', 'Add panel', 'Discard', 'Done']) {
       expect(screen.getByRole('button', { name }), name).toBeDisabled();
     }
     for (const b of screen.getAllByRole('button', { name: /^Move or resize: / })) {
       expect(b).toBeDisabled();
     }
-    const title = within(editor).getByRole('textbox', { name: 'Title' });
-    expect(title).toHaveAttribute('readonly');
-    await user.type(title, 'x');
-    expect(title).toHaveValue('');
 
     const head = await api.getBoard('demo', 'b-1');
     const spec = { ...head.spec, title: 'Saved by the server' };
@@ -546,7 +577,7 @@ describe('navigation and time', () => {
   it('guard on navigation', async () => {
     const { user, router } = open('/t/demo/board/b-1');
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     const nav = screen.getByRole('navigation', { name: 'Main' });
     await user.click(within(nav).getByRole('link', { name: 'Boards' }));
     const guard = await screen.findByRole('dialog', { name: 'Discard unsaved changes?' });
@@ -565,7 +596,7 @@ describe('navigation and time', () => {
   it('guard ignores time changes', async () => {
     const { user, router } = open('/t/demo/board/b-1');
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(
       within(screen.getByRole('banner')).getByRole('button', { name: /^Last 1 hour/ }),
     );
@@ -659,7 +690,7 @@ describe('saving', () => {
     const save = vi.spyOn(api, 'saveBoard');
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Save' }));
     const d = await screen.findByRole('dialog', { name: 'This board was changed' });
     expect(d).toHaveTextContent('Someone saved version 2 after you opened it.');
@@ -682,7 +713,7 @@ describe('saving', () => {
     localStorage.setItem('pulsus-dash.stub.conflictSave', '1');
     const { user } = open('/t/demo/board/b-1');
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Save' }));
     const d = await screen.findByRole('dialog', { name: 'This board was changed' });
     await user.click(within(d).getByRole('button', { name: 'Discard mine and load theirs' }));
@@ -697,7 +728,7 @@ describe('saving', () => {
     const api = new RemoteSaveApi();
     const { user, queryClient } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     void queryClient.invalidateQueries({ queryKey: ['board'] });
     await act(async () => {
       api.next.resolve(undefined);
@@ -739,7 +770,7 @@ describe('saving', () => {
     const api = new GatedReadApi(error);
     const { user, queryClient } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     void queryClient.invalidateQueries({ queryKey: ['board'] });
     await act(async () => {
       api.next.resolve(undefined);
@@ -769,16 +800,18 @@ describe('saving', () => {
     );
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Save' }));
+    const editor = await editorDialog();
     await waitFor(() => {
-      expect(statusLine()).toHaveTextContent('Problems to fix before saving: 1');
+      expect(within(editor).getByRole('status', { name: 'Save status' })).toHaveTextContent(
+        'Problems to fix before saving: 1',
+      );
     });
-    const editor = screen.getByRole('complementary', { name: 'Panel editor' });
     const title = within(editor).getByRole('textbox', { name: 'Title' });
     expect(title).toHaveValue('Request rate');
     expect(title).toHaveAccessibleDescription('Use at most 200 characters');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save', hidden: true })).toBeEnabled();
   });
 
   it('save after delete elsewhere', async () => {
@@ -787,7 +820,7 @@ describe('saving', () => {
     );
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
       expect(statusLine()).toHaveTextContent(
@@ -804,13 +837,15 @@ describe('saving', () => {
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
     await user.click(screen.getByRole('button', { name: 'Add panel' }));
-    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    const editor = await editorDialog();
     const title = within(editor).getByRole('textbox', { name: 'Title' });
     await user.click(title);
     await user.paste('x'.repeat(201));
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.keyboard('{Control>}s{/Control}');
     await waitFor(() => {
-      expect(statusLine()).toHaveTextContent('Problems to fix before saving: 1');
+      expect(within(editor).getByRole('status', { name: 'Save status' })).toHaveTextContent(
+        'Problems to fix before saving: 1',
+      );
     });
     expect(title).toHaveAccessibleDescription('Use at most 200 characters');
     expect(save).not.toHaveBeenCalled();
@@ -822,7 +857,7 @@ describe('saving', () => {
     const save = vi.spyOn(api, 'saveBoard');
     const { user } = open('/t/demo/board/b-1', { api });
     await editMode(user);
-    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    await addPanel(user);
     const button = screen.getByRole('button', { name: 'Save' });
     await user.click(button);
     await waitFor(() => {

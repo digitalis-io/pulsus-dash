@@ -96,7 +96,6 @@
   --radius: 6px;
   --size-avatar: 28px;
   --size-board-cols: 12px;
-  --size-board-editor: 360px;
   --size-board-panel-header: 40px;
   --size-board-row: 40px;
   --size-chart: 240px;
@@ -106,6 +105,8 @@
   --size-chart-tick: 4px;
   --size-control: 32px;
   --size-crumb-max: 160px;
+  --size-dialog-editor-height: 720px;
+  --size-dialog-editor-width: 800px;
   --size-focus-offset: 2px;
   --size-focus-ring: 2px;
   --size-header: 56px;
