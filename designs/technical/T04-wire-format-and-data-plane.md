@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-20 |
+| **Version** | 1.3-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -233,11 +233,25 @@ fallback span-duration heatmap.
 | `ts` | `Timestamp(ns)` | from the string `ts_ns` (API §2.1) |
 | `stream_id` | `UInt32` | → `labels/1` (indexed stream labels) |
 | `line` | `Utf8` | batch ≤ 4 MiB, so 32-bit offsets suffice |
-| `level` | `UInt8` | detected level: 0 unknown, 1 trace, 2 debug, 3 info, 4 warn, 5 error, 6 fatal |
+| `level` | `UInt8` | detected level: 0 unknown, 1 trace, 2 debug, 3 info, 4 warn, 5 error, 6 critical |
 | `entry_key` | `UInt64` | `xxh3_64(ts, stream key_hash, line)`: dedupe across pages, tail resume |
 | `metadata` | `List(Struct{k: Dictionary(UInt16,Utf8), v: Utf8})` nullable | structured metadata (needs `categorize-labels`, API §2.1) |
 | `parsed` | same as `metadata` | pipeline-extracted fields |
 | `trace_id` | `FixedSizeBinary(16)` nullable | extracted by the BFF from metadata/parsed when present (pivot link) |
+
+*(2026-11-21, #65.)* A stream's `level` is the value of its `detected_level` label if the table
+below knows it, else that of its `level` label if the table knows it, else 0 `unknown`. Values are
+matched ASCII case-insensitively; any other value, `unknown` included, falls through to the next
+label.
+
+| Code | Level | Values |
+|---|---|---|
+| 6 | critical | `critical`, `crit`, `fatal`, `alert`, `emergency` |
+| 5 | error | `error`, `err` |
+| 4 | warn | `warn`, `warning` |
+| 3 | info | `info`, `informational`, `notice` |
+| 2 | debug | `debug` |
+| 1 | trace | `trace` |
 
 **`log_patterns/1`**. Used by `/patterns` and the R9 baseline diff.
 
@@ -488,7 +502,7 @@ BFF parses it.
 | `promql_exemplars` | `/api/v1/query_exemplars` | `metric_matrix.sparse` | — |
 | `logql_streams` | `/api/logs/v1/query_range` + `categorize-labels` | `log_lines` | — |
 | `logql_metric` | `/api/logs/v1/query_range` (matrix) | `metric_matrix.grid` | R1 |
-| `log_volume` | `/api/logs/v1/volume` (top-N vector) or `count_over_time` matrix | `metric_matrix.grid` (over time) or `compare/1` single side (top-N) | — |
+| `log_volume` | v1 (#65): `sum by (level, detected_level) (count_over_time(<text>` newline `\| drop __error__ [<step>s]))` on `/api/logs/v1/query_range`, normalised to one series per level (a point at `t` counts `(t − step, t]`); `/api/logs/v1/volume` (bytes, top-N vector) is for later top-N use | `metric_matrix.grid` (over time) or `compare/1` single side (top-N) | — |
 | `log_patterns` | `/api/logs/v1/patterns` × 2 | `log_patterns` | R9 |
 | `log_fields` | `/api/logs/v1/detected_fields` | `compare/1` (single side) | R6 |
 | `trace_fetch` | `/api/traces/v1/trace/{id}` (protobuf) | `trace_tree` + parts | — |
@@ -869,3 +883,4 @@ support in the BFF for one release.
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |
 | 1.2-rc | 2026-11-20 | #62: §0 gives the JSON image of `labels/1` + `metric_matrix.grid/1` (`SeriesFrame`, value encoding, absent points as `null`), the hand-written Go tokenizer and the key-hash canonical bytes with their corpus |
+| 1.3-rc | 2026-11-21 | #65 Part A: §4.3 `log_lines/1` `level` code 6 is `critical`, with the value table and the precedence `detected_level`, then `level`, then `unknown`; §5.2 `log_volume` row gives the v1 composition on `query_range` |

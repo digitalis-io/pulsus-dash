@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-19 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -318,6 +318,8 @@ parser gives: the structured span for LogQL and TraceQL; for PromQL, the positio
 error that comes with no position MUST be underlined across the whole query and labelled "position
 unknown"; no other placement (such as a guessed recovery point) is allowed. The same rule applies to
 errors from PulsusDB through the BFF on run (SRF-027) and to the WASM validator before run (SRF-078).
+*(2026-11-21, #65.)* LogQL positions: PulsusDB's LogQL errors are text that reads `at byte N`, with
+`N` a 0-based byte offset; the BFF reads `N` as the offset, kept only within the text.
 
 **Board variables and macros** (`$var`, `${var}`, `$__rate_interval`, `$__interval`) are not PulsusDB
 syntax.
@@ -647,3 +649,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: T09-009 has one fallback for every error without a position (whole-query underline, "position unknown"; no recovery-point placement), aligned in T09-002 and the §9 failure table; formatting moves out of M-UI1 to the WASM crates in M-UI2, optionally earlier through a confirmed PulsusDB format route (§0, §4.5, §11, Q5) |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
+| 1.6-rc | 2026-11-21 | #65 Part A: T09-009 reads LogQL's `at byte N` (0-based) as the offset |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-20 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -40,6 +40,7 @@ Board-variable substitution, which replaces `$name` and `${name}` tokens textual
 | Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so. The v1 guard also screens the editor-completion inputs (`match[]`, `metric`) with the same byte match (#62) | Virtual resolution |
 | Fusion (§4.4, T07-006), virtual sources and joins (§4.11, T07-021 to T07-023), selector-based estimates (§4.8), metrics-family scopes (T07-015) | Not available | All of these |
 | Expressions (§4.14, T07-030) | v1 form in §4.14: the client sends the expanded expression as one query text | Operand reuse (T07-030) |
+| Log volume (#65) | The BFF wraps the text byte for byte as the single operand of a fixed template, `sum by (level, detected_level) (count_over_time(` + text + newline + `\| drop __error__ [<step>s]))`, with a newline before the suffix as in §4.14. Nothing is parsed or rewritten inside the text; error positions in the composed text map back into it | — |
 | Scope rewrite (§4.7, T07-014) | The v1 `ScopeRewriter` returns the text unchanged with a full-tenant `ScopeProof` for an unrestricted principal and refuses every restricted principal with `scope_denied` (T07-002) | T10 (draft), M-UI6 |
 | Native operations (§4.12: R2, R4, R5, R6, R9; from M-UI2) | Built by text composition from structured inputs Dash holds (catalogue, Context, templates), never from parsing user text. An operation that would need a selector *extracted from* a user query is unavailable | Selector extraction |
 | Validation | PulsusDB's parse error, at the position PulsusDB returns or on the whole query, mapped to the error envelope ([T09](T09-query-editors.md) §0) | — |
@@ -188,7 +189,9 @@ redundant parentheses removed, comments dropped by the parser) and
 **MUST** — *(Revised 1.3-rc.)* Query text the planner does not hold in parsed form (in v1, every
 query) MUST be sent to PulsusDB byte-for-byte, keyed on its exact bytes, with no fusion, no
 virtual-source resolution and no rewrite. Because its scope cannot be proven, it MUST be refused with
-`scope_denied` unless the principal's scope is unrestricted.
+`scope_denied` unless the principal's scope is unrestricted. *(2026-11-21, #65.)* The log volume
+template of §0 embeds the text as its single operand, byte for byte; it is composition around the
+text, not a rewrite of it, and the reserved-name guard runs on the user's text first.
 
 ### 4.3 Resolution: step from pixel width, and rollup level selection
 
@@ -1034,3 +1037,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
 | 1.5-rc | 2026-11-20 | #62: §0 v1 reserved-name refusal also screens the completion inputs (`match[]`, `metric`) |
+| 1.6-rc | 2026-11-21 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |
