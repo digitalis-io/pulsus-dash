@@ -112,6 +112,9 @@ test.describe('e2e:explore (fake)', () => {
     await expect(ready(page)).toBeVisible();
     await editor(page).click();
     await page.keyboard.press('ControlOrMeta+A');
+    // Clear first: in Firefox, text inserted right after a click and select-all can land before the
+    // selection CodeMirror has not read yet.
+    await page.keyboard.press('Backspace');
     await page.keyboard.insertText('rate(http_server_duration_bucket{service="checkout"[5m])');
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('.cm-lintRange-error')).toHaveText('[');
@@ -121,6 +124,9 @@ test.describe('e2e:explore (fake)', () => {
     expect(await label(page)).toContain('3 series');
     await editor(page).click();
     await page.keyboard.press('ControlOrMeta+A');
+    // Clear first: in Firefox, text inserted right after a click and select-all can land before the
+    // selection CodeMirror has not read yet.
+    await page.keyboard.press('Backspace');
     await page.keyboard.insertText('sum(up');
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('.cm-lintRange-error')).toHaveText('sum(up');
