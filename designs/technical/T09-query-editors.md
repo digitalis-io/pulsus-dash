@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-21 |
+| **Version** | 1.8-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -21,7 +21,7 @@ revised below.
 |---|---|
 | `dash-lang` crate and `QueryLanguage` trait (T09-001) | `lang/` with a TS `QueryLanguage` interface (§5.1); implementations `RemoteValidator` (BFF → PulsusDB) now and `WasmValidator` (PulsusDB crates in an editor worker) later |
 | Textarea overlay (§4.3, T09-004) | CodeMirror 6 (§4.3, T09-004 revised) |
-| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail) |
+| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail). PromQL v1 (#63): `@prometheus-io/codemirror-promql` supplies the Lezer language with its completion and linter off; completion is our `CompleteStrategy` (`lang/promql/promClient.ts`) behind a guard, over the BFF `/prom/*` routes until `/suggest` exists; it leaves out only the matcher under the caret, copies kept matchers' source text and decodes the edited label name |
 | `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005) |
 | Validation in the `editor` worker | v1: on run (and on Explore's auto-run), the BFF forwards the query to PulsusDB and maps its error and position, if any, to a diagnostic. Later: `dash-editor.wasm` (PulsusDB crates) in an editor worker on every edit (§4.2 diagram), with no change to the editor |
 | `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
@@ -29,7 +29,7 @@ revised below.
 | `pulsus-re2` regex screen (T09-016) | T09-016 revised |
 | Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree with a TS printer and a token-sequence loss check (§4.9 and T09-013 rewritten); no PulsusDB AST or printer is needed |
 | Leptos `QueryEditor`, `QueryBuilder` | React components (§5.1) |
-| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014) |
+| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014). v1: `editor/suggestCache.ts`; key `(tenant, lang, kind, label, selector, bucket)` without `scope_fp` while data scopes are deferred (D12); TTL from settle; LRU by last get; eviction never aborts; the in-flight lookup per kind is tracked apart from the LRU, so an evicted one is still superseded; a tenant switch or clear ends a generation, aborting every tracked call (metadata included) and rejecting its callers at once; a source with an ended token sends nothing; metadata is one TanStack query per tenant |
 
 ## 1. Context & problem
 
@@ -224,6 +224,12 @@ Mechanics:
   a keyboard trap.
 - **Highlighting** is a CodeMirror language per query language (§0): the Lezer PromQL grammar, and
   in-house stream tokenizers for LogQL and TraceQL. Ghost-text completion is not used.
+- **Host (v1, #63).** The view mounts in an open shadow root, so CodeMirror's style modules are
+  adopted stylesheets, which `style-src 'self'` allows (ADR-0014 §9). Window-key exclusions read the
+  whole `composedPath()`, so keys typed in the editor do not step the window (INT-032).
+- **v1 composition guard (T09-005, #63).** An open or pending completion popup closes at
+  `compositionstart`; while composing nothing opens, is looked up or is accepted, and results that
+  arrive are held and dropped; completion re-evaluates once, 20 ms after the last `compositionend`.
 
 #### T09-005 — Composition is respected
 **MUST** — During composition (`compositionstart` → `compositionend`) the editor MUST keep
@@ -278,6 +284,9 @@ value lookups, so `{service="checkout", pod=~"|` only suggests checkout's pods.
   goes first), and the catalogue care score for entity labels. Cardinality appears as detail ("3.2k
   series"), as in the [04 §4.4](../product/04-surfaces.md) metric browser.
 - **Limits.** At most 200 items per remote response, with `complete: false` shown as "type to narrow".
+  v1 over `/prom/*` (#63): names up to 10 000 (filtered locally), the rest up to 1 000; lookups ask
+  for the window snapped to whole minutes (series: whole seconds). The 200-item limit and "type to
+  narrow" come with `/suggest`.
 - **Scope.** Families withheld by the principal's metrics scope (T07-015) are listed with "withheld
   by scope" and no series count.
 
@@ -428,6 +437,8 @@ without the query (AI-031).
   `--syn-number`, `--syn-duration`, `--syn-func`, `--syn-keyword`, `--syn-op`, `--syn-error`,
   `--syn-var`, `--syn-virtual`), designed for dark, light and high-contrast themes
   ([T08](T08-dom-component-kit.md) §4.7). Query text uses JetBrains Mono (VL-010).
+- **v1 tokens (#63):** `syn-keyword`, `syn-func`, `syn-string`, `syn-number` (durations too),
+  `syn-label`; metric names use `text`, operators and comments `text-muted`.
 - **Bracket matching:** the bracket pair at the caret, plus mismatched-bracket marks. **Occurrence
   highlighting:** the same label name everywhere in the query.
 - **Read-only snippets** (Inspector, ⌘K results, AI dock, Investigation evidence) use the same lexer
@@ -498,6 +509,13 @@ export interface LanguageDeps { /* fields fixed by the implementing issue */ }
 // client/src/editor/lang/index.ts: a static table, not a registry
 export const LANGUAGES: Readonly<Record<LangId, () => Promise<QueryLanguage>>>;
 ```
+
+v1 (#63): `LanguageDeps` is `{api, queryClient, tenant, window, cache?}` (the BFF client, the
+TanStack client, the tenant, the window shown now, and the suggest cache). A language's `editor(deps)`
+returns its language, highlight and completion source (as `autocomplete` language data, run by the
+host's completion guard). PromQL lives in `lang/promql/`; `LANGUAGES` resolves PromQL and rejects the
+three languages not built yet. `detect` returns 0 until ⌘K detection (INT-038) is built.
+`PromQLEditor` is the PromQL-only M-UI1 `QueryEditor`.
 
 Auto-vis (SRF-030, VIZ-065, §4.6) ships in M-UI1 through `shape`: the language returns a
 `QueryShape`, and the Explore planner applies the Table 5-13 rows to that shape, the metric metadata
@@ -573,6 +591,9 @@ These are measured with Playwright typing scripts (per-keystroke frame timing) a
 #### T09-015 — Query size cap
 **MUST** — The editor MUST allow editing of any length but MUST pause validation and completion above
 128 KB, with an explanation, and the run action MUST refuse such a query with the same message.
+
+v1 (#63) measures UTF-8 bytes (`TextEncoder`) on every change: above 131 072 bytes the editor pauses
+completion, and the page explains and refuses Run.
 
 ## 8. Security, tenancy & RBAC
 
@@ -679,3 +700,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.6-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
 | 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; auto-vis stays M-UI1 through `shape`, and only the `validate`, `format` and `visHint` methods are added in M-UI2; T09-001 isolation sentence |
 | 1.7-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
+| 1.8-rc | 2026-11-21 | #63 Part B: §0 rows `dash-qlex` (PromQL v1 language and completion over `/prom/*`) and "Editor-worker suggest cache" (v1 key, TTL from settle, LRU, per-kind supersede, tenant generations); §4.3 v1 host (shadow root, composed-path window keys) and composition guard; §4.4 v1 limits and lookup windows; §4.8 v1 syntax tokens; §5.1 v1 `LanguageDeps` fields, `lang/promql/`, `LANGUAGES`, `detect` until INT-038, `PromQLEditor`; T09-015 v1 measurement |

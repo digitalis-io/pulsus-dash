@@ -156,7 +156,12 @@ page summary and Copy link all resolve `now` to the same instant.
 | `-` / `=` | zoom out (twice as wide, around the centre) / in (half as wide) |
 
 The window keys use `KeyboardEvent.code` without modifiers and are ignored inside fields, dialogs,
-menus, list boxes and grids. Steps and zooms produce absolute times; a window narrower than 1 s or
+menus, list boxes and grids. The exclusions apply to every element on the event's
+`composedPath()`, falling back to `e.target` when the path is empty. So a key typed in an editor in
+a shadow root (whose events reach `window` with the host as their target) is excluded, as is a key
+from a shadow root whose host sits inside a dialog, menu, list box or grid. For light-DOM events
+the path is the target and its ancestors, so the result is the same as before. Steps and zooms
+produce absolute times; a window narrower than 1 s or
 wider than 3 650 days is not applied.
 
 **Auto-refresh** calls Refresh now at the chosen interval, skips ticks while the page is hidden, and
@@ -183,7 +188,10 @@ properties; reduced motion sets durations to `0ms`) and `src/styles/tokens.ts` (
 `sequentialRamp`). Both are committed; CI regenerates and compares. The chart tokens (#58) are
 `ramp-1`…`ramp-9` (the sequential heatmap ramp, one hue per theme) and `brush` in both themes,
 `size.chart` (240), `chart-stat` (120), `chart-tick` (4), `chart-line` (1.5), `chart-brush-min` (4)
-and `font.size.display` (32). `series-N` and `ramp-N` must be numbered contiguously from 1; the
+and `font.size.display` (32). The query syntax tokens (#63) are `syn-keyword`, `syn-func`,
+`syn-string`, `syn-number` and `syn-label` in both themes, each at least 4.5:1 on `surface-1` and
+`surface-2`; the editor's highlight style and theme use only tokens ([Explore: editor
+chunk](explore.md#editor-chunk)). `series-N` and `ramp-N` must be numbered contiguously from 1; the
 generator fails naming the first missing key.
 Components use CSS modules with `var(--…)` and, where a React Aria prop needs a number (popover
 offset, tooltip delay), the `tokens.ts` values; ESLint bans inline `style` and literal numbers in
