@@ -1,7 +1,7 @@
 {
   "name": "counter-rate",
-  "provenance": {"synthetic": "the rate the explore page writes for a bare counter at step 5 s"},
-  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "rate(http_requests_total[20s])"},
+  "provenance": {"synthetic": "the rate the explore page writes for a bare counter at step 5 s (window 1m: 4 × the 15 s scrape)"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "rate(http_requests_total[1m])"},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-counter-rate-1"},

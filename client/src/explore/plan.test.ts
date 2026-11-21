@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { UNKNOWN_SHAPE, type QueryShape } from '../editor/lang/types';
 import {
+  DEFAULT_SCRAPE_S,
   formatDuration,
   MAX_QUERY_BYTES,
   metricType,
   planRun,
+  rateWindowMs,
   toSourceIndex,
   utf8Length,
   type MetricTypes,
@@ -52,7 +54,7 @@ const ROWS: Row[] = [
     bare('http_requests_total', 0, 19),
     {},
     RATE,
-    ['range', 'rate(http_requests_total[20s])', true, true, false, 0, 19, 5],
+    ['range', 'rate(http_requests_total[1m])', true, true, false, 0, 19, 5],
   ],
   [
     2,
@@ -68,7 +70,7 @@ const ROWS: Row[] = [
     bare('requests', 0, 17),
     counter,
     RATE,
-    ['range', 'rate(requests{job="a"}[20s])', true, true, false, 0, 17, 5],
+    ['range', 'rate(requests{job="a"}[1m])', true, true, false, 0, 17, 5],
   ],
   [
     4,
@@ -94,7 +96,7 @@ const ROWS: Row[] = [
     RATE,
     [
       'range',
-      'sum by (le) (rate(http_request_duration_seconds_bucket[20s]))',
+      'sum by (le) (rate(http_request_duration_seconds_bucket[1m]))',
       true,
       true,
       true,
@@ -178,13 +180,14 @@ describe('unit:explore-plan', () => {
   const sized = (metric: string, text: string) =>
     vector([metric], { bareSelector: { metric, from: 0, to: text.length } });
   it.each([
-    ['x_total', `x_total{a="${'b'.repeat(65_512)}"}`, RATE, 65_536, false],
-    ['x_total', `x_total{a="${'b'.repeat(65_513)}"}`, RATE, 65_537, true],
-    ['h_bucket', `h_bucket{a="${'b'.repeat(65_497)}"}`, RATE, 65_536, false],
-    ['h_bucket', `h_bucket{a="${'b'.repeat(65_498)}"}`, RATE, 65_537, true],
-    ['x_total', `x_total{a="${'é'.repeat(32_756)}"}`, RATE, 65_536, false],
-    ['x_total', `x_total{a="${'é'.repeat(32_757)}"}`, RATE, 65_538, true],
-    ['x_total', `x_total{a="${'b'.repeat(65_513)}"}`, NO_RATE, 65_526, false],
+    // At step 5 s the window is `1m`: the rewrite adds 10 bytes (counter) or 24 (histogram).
+    ['x_total', `x_total{a="${'b'.repeat(65_513)}"}`, RATE, 65_536, false],
+    ['x_total', `x_total{a="${'b'.repeat(65_514)}"}`, RATE, 65_537, true],
+    ['h_bucket', `h_bucket{a="${'b'.repeat(65_498)}"}`, RATE, 65_536, false],
+    ['h_bucket', `h_bucket{a="${'b'.repeat(65_499)}"}`, RATE, 65_537, true],
+    ['x_total', `x_total{a="b${'é'.repeat(32_756)}"}`, RATE, 65_536, false],
+    ['x_total', `x_total{a="b${'é'.repeat(32_757)}"}`, RATE, 65_538, true],
+    ['x_total', `x_total{a="${'b'.repeat(65_514)}"}`, NO_RATE, 65_527, false],
   ] as const)('sent-size boundary: %s, %#', (metric, text, o, bytes, tooLong) => {
     const p = planRun(text, sized(metric, text), {}, o);
     expect([p.bytes, p.tooLong]).toEqual([bytes, tooLong]);
@@ -202,7 +205,34 @@ describe('unit:explore-plan', () => {
     expect(metricType('bar', { bar: [{ type: 'stateset' }] })).toBe('unknown');
     // isHistogram false and isCounter true: a counter's `_bucket` is rated, not bucketed.
     const p = planRun('c_bucket', bare('c_bucket', 0, 8), { c: [{ type: 'counter' }] }, RATE);
-    expect([p.query, p.histogram]).toEqual(['rate(c_bucket[20s])', false]);
+    expect([p.query, p.histogram]).toEqual(['rate(c_bucket[1m])', false]);
+  });
+
+  // w = max(4 × step, step + S, 4 × S), S = DEFAULT_SCRAPE_S (reference client behaviour).
+  it.each([
+    [1_000, '1m', '4 × S'],
+    [5_000, '1m', '4 × S'],
+    [15_000, '1m', '4 × S = 4 × step'],
+    [30_000, '2m', '4 × step'],
+    [60_000, '4m', '4 × step'],
+    [3_600_000, '4h', '4 × step'],
+  ] as const)('rate window at step %i ms: %s (%s)', (stepMs, w, _by) => {
+    expect(DEFAULT_SCRAPE_S).toBe(15);
+    expect(formatDuration(rateWindowMs(stepMs))).toBe(w);
+    const o = { rate: true, stepMs };
+    expect(planRun('x_total', bare('x_total', 0, 7), {}, o).query).toBe(`rate(x_total[${w}])`);
+    expect(planRun('h_bucket', bare('h_bucket', 0, 8), {}, o).query).toBe(
+      `sum by (le) (rate(h_bucket[${w}]))`,
+    );
+  });
+
+  it('rate window: step + S never exceeds both other terms', () => {
+    // step ≥ S/3 → 4 × step ≥ step + S; step < S/3 → 4 × S > step + S. So step + S sets no window.
+    const S = DEFAULT_SCRAPE_S * 1000;
+    for (const stepMs of [1, 4_999, 5_000, 5_001, 45_000, 86_400_000]) {
+      expect(rateWindowMs(stepMs)).toBe(Math.max(4 * stepMs, 4 * S));
+      expect(rateWindowMs(stepMs)).toBeGreaterThanOrEqual(stepMs + S);
+    }
   });
 
   it('durations', () => {

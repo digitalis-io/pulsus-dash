@@ -103,6 +103,17 @@ export function utf8Length(s: string): number {
   return n;
 }
 
+/**
+ * The scrape interval the rate window assumes, in seconds. A per-binding value comes later; until
+ * then every target is taken to be scraped every 15 s.
+ */
+export const DEFAULT_SCRAPE_S = 15;
+
+/** Stub: the rate window of a step. */
+export function rateWindowMs(stepMs: number): number {
+  return 4 * stepMs;
+}
+
 function sized(p: Omit<RunPlan, 'bytes' | 'tooLong'>): RunPlan {
   const bytes = utf8Length(p.query);
   return { ...p, bytes, tooLong: bytes > MAX_QUERY_BYTES };
