@@ -3,6 +3,7 @@ package pulsusdb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -30,14 +31,51 @@ type refEntry struct {
 	Line      string
 }
 
-// reduceRefWindow (stub).
+// reduceRefWindow finds a complete reference for the logql subtest: it fetches (lo, hi] with
+// limit 5 000 and, while the answer is full, keeps the half that holds the answer's newest
+// timestamp. At most refMaxAttempts requests are made, none on a window under refMinWidthNs.
 func reduceRefWindow(ctx context.Context, fetch func(ctx context.Context, lo, hi int64) ([]refEntry, error),
 	lo, hi int64) (wLo, wHi int64, ref []refEntry, out refOutcome, attempts int, err error) {
-	return 0, 0, nil, refOK, 0, nil
+	for {
+		a, err := fetch(ctx, lo, hi)
+		attempts++
+		switch {
+		case err != nil:
+			return lo, hi, nil, refOK, attempts, err
+		case len(a) > MaxLogLimit:
+			return lo, hi, nil, refOK, attempts, fmt.Errorf("limit 5000 returned %d entries", len(a))
+		case len(a) == 0 && attempts == 1:
+			return lo, hi, nil, refEmpty, attempts, nil
+		case len(a) < MaxLogLimit:
+			return lo, hi, a, refOK, attempts, nil
+		}
+		mid := lo + (hi-lo)/2
+		if attempts == refMaxAttempts || hi-mid < refMinWidthNs {
+			return lo, hi, nil, refTooDense, attempts, nil
+		}
+		newest := a[0].TsNs
+		for _, e := range a {
+			newest = max(newest, e.TsNs)
+		}
+		if newest > mid {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
 }
 
-// refSkipReason (stub).
-func refSkipReason(out refOutcome, attempts int, widthNs int64) string { return "" }
+// refSkipReason is the skip text of a setup outcome (A.3); "" for refOK.
+func refSkipReason(out refOutcome, attempts int, widthNs int64) string {
+	switch out {
+	case refEmpty:
+		return "logql contract: no entries for DASH_CONTRACT_LOGQL_SELECTOR in (now-15m, now-5m]; choose a selector with recent data"
+	case refTooDense:
+		return fmt.Sprintf("logql contract: selector too dense: 5000 entries in a %d ns window after %d requests; choose a narrower selector",
+			widthNs, attempts)
+	}
+	return ""
+}
 
 const (
 	cwL = int64(1767228300000000000)

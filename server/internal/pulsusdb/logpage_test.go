@@ -559,7 +559,7 @@ func TestLogPaging(t *testing.T) {
 				data[i] = tEntry{tss[prng.IntN(nts)], streams[prng.IntN(3)], "l" + strconv.Itoa(prng.IntN(4))}
 			}
 			limit := 1 + prng.IntN(8)
-			dir := Direction(prng.IntN(2))
+			dir := []Direction{Backward, Forward}[prng.IntN(2)]
 			u := logUpstream(t, func(r logReq) string {
 				return streamsBody(order(hrng.IntN(2) == 1), topLimit(data, r, hrng, nil))
 			})
@@ -833,10 +833,12 @@ func TestLogDecode(t *testing.T) {
 	}
 
 	// Redaction of lines and label values.
+	var base atomic.Value // the upstream's own URL, set once it listens
 	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		answer(200, `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"x","url":`+
-			jstr("http://"+r.Host)+`},"values":[[`+ts(1)+`,"login pw-secret-1 ok"]]}]}}`)(w, r)
+			jstr(base.Load().(string))+`},"values":[[`+ts(1)+`,"login pw-secret-1 ok"]]}]}}`)(w, r)
 	})
+	base.Store(u.URL)
 	b := testBinding(u.URL)
 	b.CredentialsRef = "env:C"
 	c := New(Options{Secrets: secretsOf(map[string]string{"env:C": "user:pw-secret-1"})})

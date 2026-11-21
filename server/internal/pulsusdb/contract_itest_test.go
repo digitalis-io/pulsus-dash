@@ -246,7 +246,7 @@ func rawLogQuery(ctx context.Context, c *Client, rc *core.RequestCtx, form url.V
 	if err != nil {
 		return rawLogs{}, err
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) // #nosec G704 -- the contract binding's configured URL, from the environment
 	if err != nil {
 		return rawLogs{}, err
 	}
@@ -335,6 +335,9 @@ func contractLogQL(t *testing.T, c *Client, rc *core.RequestCtx) {
 	}
 	if out != refOK {
 		t.Skip(refSkipReason(out, n, hi-lo))
+	}
+	if len(ref) == 0 {
+		t.Fatal("reference window: an empty answer after a non-empty one")
 	}
 	t.Logf("reference: %d entries in (%d, %d] after %d requests", len(ref), lo, hi, n)
 	T := slices.MaxFunc(ref, refCmp).TsNs
@@ -463,7 +466,7 @@ func contractLogQL(t *testing.T, c *Client, rc *core.RequestCtx) {
 		long.Query = sel + ` |= "` + strings.Repeat("z", maxGetQuery) + `"`
 		r, err := c.LogQueryRange(ctx(), rc, long)
 		var pe *Error
-		if err != nil && !(errors.As(err, &pe) && pe.Kind == KindTooBroad) {
+		if err != nil && (!errors.As(err, &pe) || pe.Kind != KindTooBroad) {
 			t.Errorf("POST fallback: %v", err)
 		} else if err == nil && r.Page == nil {
 			t.Error("POST fallback: no page")
