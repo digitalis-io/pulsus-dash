@@ -83,6 +83,31 @@ describe('unit:board-spec (TS)', () => {
     expect(nextPanelId(spec(['p-1', 'x', 'p-9']))).toBe('p-10');
   });
 
+  it('nextPanelId avoids section ids and large suffixes', () => {
+    const withSection: BoardSpec = {
+      title: 'B',
+      panels: [],
+      sections: [{ id: 'p-1', title: 'S', collapsed: false, panels: [] }],
+    };
+    expect(checkBoardSpec(withSection)).toEqual([]);
+    const id = nextPanelId(withSection);
+    expect(id).not.toBe('p-1');
+    expect(checkBoardSpec({ ...withSection, panels: [panel(id, [0, 0, 1, 1])] })).toEqual([]);
+
+    const big = (ids: string[]): BoardSpec => ({
+      title: 'B',
+      panels: ids.map((x, i) => panel(x, [0, i, 1, 1])),
+      sections: [],
+    });
+    // Past 2^53 a Number + 1 rounds back onto an id in use.
+    expect(nextPanelId(big(['p-9007199254740993']))).toBe('p-9007199254740994');
+    // One more than 38 nines does not fit the 40-character id: the lowest free id is used.
+    const nines = `p-${'9'.repeat(38)}`;
+    expect(checkBoardSpec(big([nines]))).toEqual([]);
+    expect(nextPanelId(big([nines]))).toBe('p-1');
+    expect(nextPanelId(big([nines, 'p-1', 'p-2']))).toBe('p-3');
+  });
+
   it('limits match the server', () => {
     expect(GRID_LIMITS).toEqual({ cols: 12, maxY: 9999, maxH: 100, maxBottom: 10099 });
     const out = cases.find((c) => c.name === 'grid-out-of-bounds');

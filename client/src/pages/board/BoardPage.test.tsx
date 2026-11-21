@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import type { GridLayoutProps, LayoutItem } from 'react-grid-layout';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
-import { BoardConflictError, type Board, type SaveResult } from '../../api/types';
+import { ApiError, BoardConflictError, type Board, type SaveResult } from '../../api/types';
 import { readRecent } from '../../shell/recentBoards';
 import {
   deferred,
@@ -293,6 +293,35 @@ describe('edit mode', () => {
     expect(panelTitles()).toEqual(B1);
   });
 
+  it('discard is exclusive while it reloads', async () => {
+    const api = new GatedReadApi();
+    const save = vi.spyOn(api, 'saveBoard');
+    const { user } = open('/t/demo/board/b-1', { api });
+    await editMode(user);
+    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    const editor = await screen.findByRole('complementary', { name: 'Panel editor' });
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    for (const name of ['Save', 'Add panel', 'Discard', 'Done']) {
+      expect(screen.getByRole('button', { name }), name).toBeDisabled();
+    }
+    for (const b of screen.getAllByRole('button', { name: /^Move or resize: / })) {
+      expect(b).toBeDisabled();
+    }
+    const title = within(editor).getByRole('textbox', { name: 'Title' });
+    expect(title).toHaveAttribute('readonly');
+    await user.type(title, 'x');
+    expect(title).toHaveValue('');
+    await user.keyboard('{Control>}s{/Control}');
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => {
+      api.next.resolve(undefined);
+      await api.next.promise;
+    });
+    expect(await screen.findByRole('button', { name: 'Edit board' })).toBeInTheDocument();
+    expect(panelTitles()).toEqual(B1);
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('read-only while saving', async () => {
     const api = new StubApi();
     const pending = deferred<SaveResult>();
@@ -515,6 +544,34 @@ describe('saving', () => {
     });
   });
 
+  it.each([
+    ['deleted elsewhere', new ApiError('notFound', 'board not found'), 'board.reloadGone'],
+    ['network failure', new ApiError('network', 'offline'), 'board.reloadFailed'],
+  ] as const)('failed refetch while dirty keeps the draft: %s', async (_, error, key) => {
+    const text = {
+      'board.reloadGone':
+        'This board was deleted elsewhere. Your changes are kept here but cannot be saved.',
+      'board.reloadFailed': 'Could not reload this board. Your changes are kept.',
+    }[key];
+    const api = new GatedReadApi(error);
+    const { user, queryClient } = open('/t/demo/board/b-1', { api });
+    await editMode(user);
+    await user.click(screen.getByRole('button', { name: 'Add panel' }));
+    void queryClient.invalidateQueries({ queryKey: ['board'] });
+    await act(async () => {
+      api.next.resolve(undefined);
+      await api.next.promise;
+    });
+    expect(await screen.findByText(text, {}, { timeout: 4000 })).toBeVisible();
+    expect(panelTitles()).toHaveLength(5);
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    await user.click(within(nav).getByRole('link', { name: 'Boards' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Discard unsaved changes?' }),
+    ).toBeInTheDocument();
+  });
+
   it('server invalid', async () => {
     const api = httpApi(() =>
       Promise.resolve(
@@ -632,3 +689,25 @@ describe('panel tools', () => {
     );
   });
 });
+
+/**
+ * A stub whose second and later `getBoard` of b-1 wait for `next`, then return the head again or,
+ * given `fail`, reject with it.
+ */
+class GatedReadApi extends StubApi {
+  readonly next = deferred<undefined>();
+  private reads = 0;
+
+  constructor(private readonly fail: ApiError | null = null) {
+    super();
+  }
+
+  override async getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<Board> {
+    const b = await super.getBoard(tenant, uid, signal);
+    this.reads += 1;
+    if (this.reads === 1 || uid !== 'b-1') return b;
+    await this.next.promise;
+    if (this.fail !== null) throw this.fail;
+    return b;
+  }
+}
