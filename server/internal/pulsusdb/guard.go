@@ -49,6 +49,15 @@ func reservedError(field, name string) *Error {
 		Message: name + " is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)"}
 }
 
+// CheckReserved is the guard for one input, for callers that must refuse before any I/O of
+// their own (the gateway, before tenant resolution): the KindVirtual refusal, or nil.
+func CheckReserved(field, text string) *Error {
+	if name, ok := reservedIn(text); ok {
+		return reservedError(field, name)
+	}
+	return nil
+}
+
 // guardInput is one text screened by the guard.
 type guardInput struct{ field, text string }
 

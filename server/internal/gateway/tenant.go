@@ -22,6 +22,10 @@ type reqError struct {
 	retryAfter string
 }
 
+// errCancelled is the answer to a request whose browser went away: nothing is written, and the
+// access log records 499.
+var errCancelled = &reqError{}
+
 // fieldError is a 400 invalid with one field (plan #62 §3.4).
 func fieldError(pointer, key, message string) *reqError {
 	return &reqError{status: http.StatusBadRequest, body: api.ErrorBody{Code: api.Invalid, Message: message,
@@ -47,6 +51,15 @@ func resolveTenant(ctx context.Context, d Deps, slug string) (core.TenantCtx, *r
 	}
 	view, err := d.Bootstrap(ctx)
 	if err != nil {
+		// The route deadline covers resolution: running out of time is a timeout, and a browser
+		// that went away is a cancel, not a store failure.
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			return core.TenantCtx{}, errCancelled
+		case ctx.Err() != nil:
+			status, body, _ := upstreamError(context.DeadlineExceeded)
+			return core.TenantCtx{}, &reqError{status: status, body: body}
+		}
 		d.Logger.WarnContext(ctx, "tenant_resolution", "error", err.Error())
 		return core.TenantCtx{}, unavailable
 	}
@@ -128,6 +141,9 @@ func WriteErrorBody(w http.ResponseWriter, status int, body api.ErrorBody) {
 }
 
 func writeReqError(w http.ResponseWriter, e *reqError) {
+	if e == errCancelled {
+		return
+	}
 	if e.retryAfter != "" {
 		w.Header().Set("Retry-After", e.retryAfter)
 	}

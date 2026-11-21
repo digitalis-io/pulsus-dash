@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
 	"math"
 	"math/rand/v2"
 	"net"
@@ -507,5 +508,88 @@ func TestWeakPasswordProperty(t *testing.T) {
 		if core.WeakPassword(ok) {
 			t.Errorf("%q is refused, want accepted", ok)
 		}
+	}
+}
+
+// review r1 #1: the 503 body is decoded with the request's redactor. With the (accepted)
+// password "unavailable", the redactor turns errorType into <redacted>, so the 503 is not the
+// retryable kind and no retry is made; an unredacted read would retry.
+func TestUnavailableBodyUsesRequestRedactor(t *testing.T) {
+	f := &failing{}
+	u := newUpstream(t, f.handler)
+	s := &sleeps{}
+	c := New(Options{Now: newFakeClock().Now, Sleep: s.sleep, Jitter: func() float64 { return 0.5 },
+		Secrets: secretsOf(map[string]string{"env:C": "user:unavailable"})})
+	rc := rcWith(testBinding(u.URL), "env:C", "")
+	for range 20 {
+		if _, err := c.Series(ctxWithin(t, 10*time.Second), rc, labelsQuery()); err != nil {
+			t.Fatalf("warm-up: %v", err)
+		}
+	}
+	f.status, f.body = 503, `{"status":"error","errorType":"unavailable","error":"x"}`
+	base := len(u.requests())
+	_, err := c.Series(ctxWithin(t, 10*time.Second), rc, labelsQuery())
+	if kindOf(err) != KindUnavailable || len(u.requests())-base != 1 {
+		t.Errorf("err %v after %d attempts; want KindUnavailable after 1 (errorType redacted)", err, len(u.requests())-base)
+	}
+}
+
+// review r1 #1: readErrorBody returns errorType and error redacted with the request's needles.
+func TestErrorBodyRedacted(t *testing.T) {
+	u := newUpstream(t, answer(503, ""))
+	cred := "user:Zq9-planted-SECRET" // #nosec G101 -- the planted test credential
+	red := newRedactor(testBinding(u.URL), cred)
+	token := base64.StdEncoding.EncodeToString([]byte(cred))
+	host := strings.TrimPrefix(u.URL, "http://")
+	body := `{"status":"error","errorType":"` + cred + ` ` + token + `","error":"` + u.URL + `/x ` + host + `"}`
+	c := New(Options{})
+	et, msg, err := c.readErrorBody(&http.Response{Body: io.NopCloser(strings.NewReader(body))}, red)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"Zq9-planted-SECRET", token, u.URL, host} {
+		if strings.Contains(et, n) || strings.Contains(msg, n) {
+			t.Errorf("errorType %q error %q contain %q", et, msg, n)
+		}
+	}
+	if et != "<redacted> <redacted>" || msg != "<redacted>/x <redacted>" {
+		t.Errorf("errorType %q error %q", et, msg)
+	}
+}
+
+// review r1 #2: 503 body-read failures are classified, never taken as "unavailable".
+func TestUnavailableBodyFailures(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	stall := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(503)
+		_, _ = io.WriteString(w, `{"status":"error",`)
+		_ = http.NewResponseController(w).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	})
+	c := New(Options{})
+	start := time.Now()
+	_, err := c.Series(ctxWithin(t, 300*time.Millisecond), rcFor(testBinding(stall.URL)), labelsQuery())
+	if kindOf(err) != KindTimeout || time.Since(start) > 2*time.Second {
+		t.Errorf("stalled 503 body: err %v after %v, want KindTimeout at the deadline", err, time.Since(start))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(100 * time.Millisecond); cancel() }()
+	if _, err := c.Series(ctx, rcFor(testBinding(stall.URL)), labelsQuery()); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled during a 503 body: err %v, want context.Canceled", err)
+	}
+
+	big := newUpstream(t, answer(503, `{"status":"error","errorType":"unavailable","error":"`+strings.Repeat("e", 1024)+`"}`))
+	small := New(Options{Limits: Limits{ErrorBody: 256}})
+	if _, err := small.Series(ctxWithin(t, 5*time.Second), rcFor(testBinding(big.URL)), labelsQuery()); kindOf(err) != KindProtocol || len(big.requests()) != 1 {
+		t.Errorf("oversized 503 body: err %v after %d attempts, want KindProtocol after 1", err, len(big.requests()))
+	}
+	bad := newUpstream(t, answer(503, `<html>`))
+	if _, err := c.Series(ctxWithin(t, 5*time.Second), rcFor(testBinding(bad.URL)), labelsQuery()); kindOf(err) != KindProtocol || len(bad.requests()) != 1 {
+		t.Errorf("malformed 503 body: err %v after %d attempts, want KindProtocol after 1", err, len(bad.requests()))
 	}
 }

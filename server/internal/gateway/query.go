@@ -145,6 +145,9 @@ func firstError(es ...*reqError) *reqError {
 // failure is the response of a data-call error (§4.4); a reserved selector is logged at info
 // with its field, never the text.
 func (q *dataRoutes) failure(ctx context.Context, err error) *reqError {
+	if errors.Is(err, context.Canceled) {
+		return errCancelled
+	}
 	status, body, retryAfter := upstreamError(err)
 	if body.Code == api.VirtualUnsupported && body.Fields != nil {
 		id, _ := ctx.Value(requestIDKey{}).(string)
@@ -186,6 +189,11 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		rangeIf(to > maxTimeMs, "/to", "to is out of range"), rangeIf(width < 1 || width > maxWidthPx, "/width_px", "width_px must be between 1 and 10000"),
 		rangeIf(from >= to, "/to", "to must be after from"), te); e != nil {
 		writeReqError(w, e)
+		return
+	}
+	// Reserved selectors are refused before any I/O, tenant resolution included (T07-020 v1).
+	if v := pulsusdb.CheckReserved("query", *req.Query); v != nil {
+		q.fail(w, r, v)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -316,6 +324,10 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 	timeout, te := timeoutOf(req.TimeoutMs)
 	if e := firstError(checkQuery(*req.Query), rangeIf(*req.At < 0 || *req.At > maxTimeMs, "/at", "at is out of range"), te); e != nil {
 		writeReqError(w, e)
+		return
+	}
+	if v := pulsusdb.CheckReserved("query", *req.Query); v != nil {
+		q.fail(w, r, v)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
