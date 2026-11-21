@@ -155,7 +155,8 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
  browser (scene state, cameras)                              BFF dash-planner
  ─────────────────────────────                              ──────────────────────────────────────────────────────────
- ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1 Resolve    step from px, level prediction, grid alignment (§4.3)
+ ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1a Classify  source and signal from the binding → SignalCaps, virtual floor (§4.3)
+                                                          1b Resolve   step from range, px, pass and floor; level prediction, grid alignment (§4.3)
  Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Bind       templates/{{entity}}/$vars → concrete queries (catalogue);
  Cancel{viewport|plan}                                                   language module Plan with the resolved step → planned text
  ApproachHint{entity, level, dist, dwell}                  3 Lower      planned text → LogicalQuery (v1: OpaqueQuery, exact-text hash
@@ -170,13 +171,18 @@ JSON form and is held to the same semantics by shared fixtures (§0).
  ◄── frames{plan, viewport, pass, gen, exactness} ─────────11 Stream     per pass; Completeness trailer per viewport
 ```
 
-- **Resolve** runs first. It reads only the viewport's range, width and pass (§4.3, and the §0 table:
-  step, level and alignment do not depend on the text), so the step is known before any text is
-  planned. Exactness that depends on the query's functions (from the parser design) is attached at
-  Lower.
+- **Classify** (1a) runs first. It is a cheap classification of the source and the signal, which
+  yields the signal's capabilities (`SignalCaps`) and any virtual-source floor (15 s for `ALERTS`
+  and `ALERTS_FOR_STATE`, 300 s for `pulsus_anomaly_score`; §4.3). It reads only the binding and the
+  query's source kind, never the planned text. In v1 every query is a PulsusDB query (§0), so it
+  yields the signal's capabilities alone.
+- **Resolve** (1b) computes the step from the viewport's range, width and pass and the floor from
+  Classify (§4.3; the §0 table: step, level and alignment do not depend on the text). The step is
+  therefore final before any text is planned. Exactness that depends on the query's functions (from
+  the parser design) is attached at Lower.
 - **Bind** reads the scene's `Context` (entity set, window, filters, baseline; IA-002) and the
-  Board's variable values. It then calls the language module's `Plan` (ADR-0021) with the step from
-  Resolve, which substitutes `$vars` and macros (`$__interval`, `$__rate_interval`) and applies the
+  Board's variable values. It then calls the language module's `Plan` (ADR-0021) with the final step
+  from Resolve, which substitutes `$vars` and macros (`$__interval`, `$__rate_interval`) and applies the
   rate rewrites and the rate window. **Lower** builds the `LogicalQuery` from the planned text, and
   `LogicalKey` hashes those bytes. Bind keeps a **dependency index** `(context member | $var) →
   Vec<ViewportId>`, so a change re-binds only the viewports that read it (T07-013).
@@ -218,7 +224,11 @@ With the default `PULSUS_ROLLUP_LEVELS=60,720,7200,86400` and
 
 PulsusDB documents that when `start` and `step` are whole buckets of the level, each point is
 evaluated at its own time. Otherwise points take their bucket's value. Range functions are rounded up
-to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes. So:
+to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes.
+
+`resolve` is pipeline step 1b. Its `sig` comes from step 1a (Classify), which reads only the binding
+and the query's source kind; for a virtual source, `sig.min_step` carries the virtual floor (below).
+Step 2 (Bind) passes the resulting `step` to the language module's `Plan`. So:
 
 ```rust
 pub fn resolve(range: TimeRange, px: u32, pass: Pass, sig: &SignalCaps, roll: &RollupTable) -> Resolved {
@@ -285,7 +295,9 @@ until a PulsusDB explain or R10 confirms it; it MUST NOT be shown as ✓ exact.
 - **Heatmaps** choose a y-bucket count of `px_h / 4`.
 - **Scatter** asks `max_points = px_w × px_h / 8` (cap 10⁷, PRF-017).
 - **Virtual sources** (§4.11): floor 15 s for `ALERTS`/`ALERTS_FOR_STATE` (the minimum evaluation
-  interval), 300 s for `pulsus_anomaly_score` (its stored resolution); no rollup level.
+  interval), 300 s for `pulsus_anomaly_score` (its stored resolution); no rollup level. Step 1a
+  (Classify) sets the floor, so Resolve (1b) applies it before `Plan` runs; Lower's full
+  classification (§4.11.2) follows.
 
 ### 4.4 Dedupe and merge across viewports
 
@@ -1048,3 +1060,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
 | 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): PromQL is parsed in `internal/pulsusdb/prom` for the planning shape only (§0 table); v1 queries are opaque except for ADR-0021's closed list of planning rewrites, and `LogicalKey` hashes the planned text; new §0 row "Planning rewrites"; §4.1 Bind substitutes through the language module's `Plan`; T07-002 revised; open question 10 |
 | 1.5-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: §4.1 pipeline runs Resolve before Bind, so `Plan` gets the width-dependent step, and Lower keys the planned text (classification is now step 3); `unit:planner-opaque-key` compares the upstream query with the planned text |
+| 1.5-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: §4.1 step 1 splits into 1a Classify (source and signal from the binding and the source kind: `SignalCaps` and the virtual-source floor, 15 s alerts, 300 s anomaly scores) and 1b Resolve (step from range, width, pass and that floor), so Bind calls `Plan` with the final step; §4.3 `resolve` and the virtual-source floor reference the stages |

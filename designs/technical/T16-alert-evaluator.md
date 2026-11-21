@@ -261,9 +261,17 @@ before interactive or AI classes; backtests use the interactive class `backtest`
 consume the `alerting` budget.
 
 Evaluation queries are planned by `prom.Plan`
-([ADR-0021](../adr/0021-query-planning-is-server-side.md)) with `step` = the rule interval and the
-rule's stored `vars` and `rate`. A rule created from a panel stores the panel's raw query and
-inputs, not its planned text.
+([ADR-0021](../adr/0021-query-planning-is-server-side.md)) with the rule's stored `vars` and `rate`
+and a planning step:
+- A rule created from a panel stores the panel's raw query, its inputs and the panel's planning
+  step (`plan_step_ms`), not its planned text. The evaluator plans with `plan_step_ms`, not with the
+  rule's evaluation interval.
+- The planning step sets the rate window and the macros (`$__interval`, `$__rate_interval`). The
+  evaluation interval only sets how often the rule runs.
+- A rule written by hand, with no stored step, plans with its evaluation interval as the step.
+
+Test: `unit:plan-parity` holds a panel-to-rule case: panel step 15 s, rule interval 60 s; the
+evaluator's planned text is byte-identical to the panel's.
 
 #### T16-011 — Missed evaluations are recorded and alerted
 **MUST** — A tick that cannot start within one interval MUST be recorded as a **missed
@@ -967,6 +975,7 @@ credentials.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft; history moved to Postgres per ADR-0012; aligned with formal 07; formal design rules; Satisfies table |
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md): new §0; T16-001 revised (one specification, Go and TS implementations, shared transition corpus); `Notifier` and endpoints in Go; templates parsed by Go's `text/template/parse` with an in-house executor; preview through the BFF; chart images from the separate Rust renderer |
 | 1.2-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.2 evaluation queries are planned by `prom.Plan` with the rule interval as step and the rule's stored `vars` and `rate`; a rule made from a panel stores the raw query and inputs |
+| 1.2-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: a rule created from a panel stores the panel's planning step (`plan_step_ms`) and is planned with it; the evaluation interval only sets the cadence; a hand-written rule plans with its interval; `unit:plan-parity` panel-to-rule case |
 
 **Changes versus the draft:**
 1. **§4.7 rewritten (ADR-0012).** The draft wrote transitions and notifications as OTLP logs to

@@ -43,6 +43,12 @@ Two problems follow:
    no I/O. The query routes and the alert evaluator call the same function, and so do the scene
    planner (T07 Bind and Lower) and later callers such as AI RCA. Board variables and the panel's
    step therefore give byte-identical text everywhere.
+
+   For alerting, a rule created from a panel stores the panel's raw query, its inputs and the
+   panel's planning step (`plan_step_ms`). The evaluator plans with that stored step, not with the
+   rule's evaluation interval: the step sets the rate window and the macros, and the evaluation
+   interval only sets how often the rule runs. A rule written by hand, with no stored step, plans
+   with its evaluation interval as the step (T16 §4.2).
 2. **The browser sends inputs, not a plan.** A query request carries:
    - the raw query text;
    - the variable values;
@@ -88,7 +94,9 @@ Two problems follow:
 6. **Golden parity.** `wire/fixtures/plan/promql.json`, and later `logql.json`, hold the cases as
    inputs (text, variables, step, rate toggle, metric types) and outputs (planned text, substituted
    text, facts, and position mappings). Every existing `plan.ts` and `substitute` test becomes a
-   case. The Go planner (`unit:plan-parity`) and the TS stub mirror both run the file. The Go shape
+   case. The cases include a panel-to-rule case: panel step 15 s, rule interval 60 s, and the
+   evaluator's planned text is byte-identical to the panel's. The Go planner (`unit:plan-parity`)
+   and the TS stub mirror both run the file. The Go shape
    and the Lezer `shape` are also checked case by case, on the `shape` member.
 7. **Security: the server is the authority on the final query.** The order is fixed:
    1. validate the inputs and their sizes;
