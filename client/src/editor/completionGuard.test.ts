@@ -230,6 +230,40 @@ describe('unit:editor-composition', () => {
     expect(source.calls.length).toBe(n + 1);
   });
 
+  it('K6 (a): a changed first composition still refreshes after an empty second', async () => {
+    const source = fakePromSource(F);
+    const { view } = viewIn({ doc: 'up{job="', caret: 8, source });
+    const n = source.calls.length;
+    compose(view, 'start');
+    typeComposed(view, 'a');
+    await flush();
+    compose(view, 'end');
+    compose(view, 'start');
+    compose(view, 'end');
+    await active(view);
+    expect(labels(view)).toContain('api');
+    expect(source.calls.length).toBe(n + 1);
+    await wait(300);
+    expect(source.calls.length).toBe(n + 1);
+  });
+
+  it('K6 (b): a popup closed by the first composition reopens after an empty second', async () => {
+    const source = fakePromSource(F);
+    const { view } = viewIn({ doc: 'up{job="', caret: 8, source });
+    startCompletion(view);
+    await active(view);
+    const n = source.calls.length;
+    compose(view, 'start');
+    expect(completionStatus(view.state)).toBeNull();
+    compose(view, 'end');
+    compose(view, 'start');
+    compose(view, 'end');
+    await active(view);
+    expect(source.calls.length).toBe(n + 1);
+    await wait(300);
+    expect(source.calls.length).toBe(n + 1);
+  });
+
   it('K5 (b): the first timer does nothing while a second composition is open', async () => {
     const source = fakePromSource(F);
     const { view } = viewIn({ doc: 'up{job="', caret: 8, source });

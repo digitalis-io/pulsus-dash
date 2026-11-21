@@ -88,7 +88,7 @@ describe('unit:promql-diagnostics bytes', () => {
 
 const Q = 'rate(http_server_duration_bucket{service="checkout"[5m])';
 const E = (m: string, p?: number) =>
-  new ApiError('queryInvalid', m, p === undefined ? {} : { position: p });
+  new ApiError('queryInvalid', m, p === undefined ? {} : { detail: { position: p } });
 const id = (i: number) => i;
 const D = (from: number, to: number, message: string, positionKnown: boolean) => ({
   from,
@@ -133,7 +133,12 @@ describe('unit:promql-diagnostics rewritten', () => {
     const toSource = (i: number) => toSourceIndex(plan, i);
     expect(sent).toBe('rate(requests{job="a"}[1m])');
     const at = (position: number) =>
-      diagnosticsOf(text, new ApiError('queryInvalid', 'm', { position }), toSource, sent);
+      diagnosticsOf(
+        text,
+        new ApiError('queryInvalid', 'm', { detail: { position } }),
+        toSource,
+        sent,
+      );
     expect(at(21)).toEqual([D(16, 17, 'm', true)]);
     expect(at(22)).toEqual([D(16, 17, 'm', true)]);
     expect(at(23)).toEqual([D(0, 17, 'm (position unknown)', false)]);
