@@ -105,7 +105,6 @@ pub mod space {
 pub mod size {
     pub const AVATAR: f32 = 28.0;
     pub const BOARD_COLS: f32 = 12.0;
-    pub const BOARD_EDITOR: f32 = 360.0;
     pub const BOARD_PANEL_HEADER: f32 = 40.0;
     pub const BOARD_ROW: f32 = 40.0;
     pub const CHART: f32 = 240.0;
@@ -115,6 +114,8 @@ pub mod size {
     pub const CHART_TICK: f32 = 4.0;
     pub const CONTROL: f32 = 32.0;
     pub const CRUMB_MAX: f32 = 160.0;
+    pub const DIALOG_EDITOR_HEIGHT: f32 = 720.0;
+    pub const DIALOG_EDITOR_WIDTH: f32 = 800.0;
     pub const FOCUS_OFFSET: f32 = 2.0;
     pub const FOCUS_RING: f32 = 2.0;
     pub const HEADER: f32 = 56.0;
