@@ -383,6 +383,19 @@ mode, `BoardEditor` calls `focusAfterEditor(document, id)` one animation frame l
 overlay's own restore), which focuses the panel's `[data-panel-menu]` button, else the toolbar's
 `[data-board-add]` Add panel.
 
+**Render scope** (#111; PRF-005, T05 §4.3). `PanelFrame` is memoised (`memo(forwardRef(…))`), and
+`BoardEditor` passes it stable `onEdit` and `onKeyOp` callbacks (`useCallback` over the reducer's
+`dispatch`). The reducer keeps the object of every panel an action does not touch, so opening,
+editing in and closing the panel editor render only the edited panel (its `selected` and `panel`
+props change); the other panels, their menus and their chart frames are not rendered again.
+Opening the editor from the Panel menu (Edit panel, which also enters Edit mode) and the toolbar's
+Edit board dispatch inside `startTransition`, so React renders the dialog, or the Edit grid, in
+slices that yield to the browser rather than in one long task after the click; what is committed
+is the same. Shift+E, Add panel and a board link's Edit state stay synchronous.
+`BoardRenders.test.tsx` counts each panel's renders (through its `PanelFullScreen`) and fails if
+opening, typing in or closing the editor renders another panel. The scenario's long tasks are
+measured by `bench:rooms-long-tasks` ([Build, test and CI](../development/build-and-ci.md)).
+
 `PanelPreview` (`PanelFrame.tsx`) renders the draft through the board panel's own path,
 `usePanelData` → `PanelBody` → `ChartFrame`. The two share one TanStack query key (`vis.kind` stays
 in it, because `panelData` is shaped per visualisation), so the preview adds no request: every
