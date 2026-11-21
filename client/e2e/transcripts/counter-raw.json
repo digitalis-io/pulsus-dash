@@ -1,0 +1,10 @@
+{
+  "name": "counter-raw",
+  "provenance": {"synthetic": "raw counter with the rate chip off"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "http_requests_total"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-counter-raw-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"http_requests_total","instance":"a:9090","job":"api"},"values":[[1767225600,"100"],[1767229200,"9100"]]},{"metric":{"__name__":"http_requests_total","instance":"b:9090","job":"api"},"values":[[1767225600,"50"],[1767229200,"2750"]]}]}}
+  }
+}

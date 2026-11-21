@@ -17,7 +17,7 @@ import (
 
 // Options configure a Fake. Generate answers an unmatched /api/v1/query_range or /api/v1/query
 // with one generated series instead of a 404 (dev stack only). MaxRecords > 0 keeps only the
-// newest MaxRecords records (stub: tests first, plan #63 §5).
+// newest MaxRecords records: the oldest is dropped when one is added (plan #63 §3.6).
 type Options struct {
 	Generate   bool
 	MaxRecords int
@@ -169,9 +169,15 @@ func (f *Fake) cancelled(rec *Recorded) {
 	f.update(rec, func(x *Recorded) { x.Cancelled, x.CancelledAt = true, at })
 }
 
+// add lists rec. A record dropped by MaxRecords is no longer listed; its request goroutine still
+// updates its own *Recorded under f.mu.
 func (f *Fake) add(rec *Recorded) {
 	f.mu.Lock()
 	f.recs = append(f.recs, rec)
+	for f.o.MaxRecords > 0 && len(f.recs) > f.o.MaxRecords {
+		f.recs[0] = nil
+		f.recs = f.recs[1:]
+	}
 	f.notifyLocked()
 	f.mu.Unlock()
 }

@@ -9,3 +9,4 @@ src/assets
 src/icons
 scripts/__fixtures__
 src/api/gen
+e2e/transcripts

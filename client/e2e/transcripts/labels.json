@@ -1,0 +1,10 @@
+{
+  "name": "labels",
+  "provenance": {"synthetic": "explore e2e label names"},
+  "match": {"method": "GET", "paths": ["/api/v1/labels"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-labels-1"},
+    "body": {"status":"success","data":["__name__","instance","job","le"]}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "counter-rate",
+  "provenance": {"synthetic": "the rate the explore page writes for a bare counter at step 5 s"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "rate(http_requests_total[20s])"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-counter-rate-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"instance":"a:9090","job":"api"},"values":[[1767225600,"1.5"],[1767227400,"2"],[1767229200,"2.5"]]},{"metric":{"instance":"b:9090","job":"api"},"values":[[1767225600,"0.5"],[1767229200,"0.75"]]}]}}
+  }
+}
