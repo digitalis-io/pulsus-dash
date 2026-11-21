@@ -1,0 +1,152 @@
+# Engine gates (plan #68 Part A; T05 §7.1): lint, dependency audit, unit and GPU tests, and the
+# lavapipe goldens, all inside the pinned image engine/ci/lavapipe.Dockerfile (T05-004). Actions are
+# pinned by commit SHA; no secrets are used.
+name: engine
+
+on:
+  pull_request:
+    # `labeled`: adding `golden-update` reruns the goldens with baseline writing on (T05-005).
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - 'engine/**'
+      - 'design/tokens.toml'
+      - 'client/scripts/gen-tokens.ts'
+      - 'client/scripts/engine-fixtures.ts'
+      - 'client/src/i18n/format.ts'
+      - 'client/src/engine/canvas2d/**'
+      - 'client/src/engine/api.ts'
+      - 'client/src/dev/synth.ts'
+      - 'client/src/dev/keyHash.ts'
+      - 'client/src/dev/gallery.ts'
+      - '.github/workflows/engine.yml'
+  push:
+    branches: [main]
+  schedule:
+    # Nightly: the 10⁸-point decimation volumes (golden:decimation-ref, golden:decimation-raw).
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Inside the workspace: actions/cache rejects paths with `..`.
+  IMAGE_TAR: ${{ github.workspace }}/.engine-ci-image.tar
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: key
+        name: image key (sha256 of the Dockerfile and tools.toml)
+        run: echo "key=engine-ci-$(cat engine/ci/lavapipe.Dockerfile engine/tools.toml | sha256sum | cut -c1-64)" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IMAGE_TAR }}
+          key: ${{ steps.key.outputs.key }}
+      - name: build the image
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker build -f engine/ci/lavapipe.Dockerfile -t "pulsus-engine-ci:${{ steps.key.outputs.key }}" engine/ci
+          docker save -o "$IMAGE_TAR" "pulsus-engine-ci:${{ steps.key.outputs.key }}"
+
+  lint:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IMAGE_TAR }}
+          key: ${{ needs.image.outputs.key }}
+          fail-on-cache-miss: true
+      - run: docker load -i "$IMAGE_TAR"
+      - name: 'ci:engine-lint (fmt, clippy), ci:spec-lint'
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/w -w /w/engine "pulsus-engine-ci:${{ needs.image.outputs.key }}" bash -euo pipefail -c '
+            cargo fmt --all --check
+            cargo clippy --workspace --all-targets --locked -- -D warnings
+            cargo xtask spec-lint'
+
+  deny:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IMAGE_TAR }}
+          key: ${{ needs.image.outputs.key }}
+          fail-on-cache-miss: true
+      - run: docker load -i "$IMAGE_TAR"
+      - name: 'ci:dep-audit (engine leg)'
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/w -w /w/engine "pulsus-engine-ci:${{ needs.image.outputs.key }}" \
+            cargo deny --locked check licenses advisories bans sources
+
+  test:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IMAGE_TAR }}
+          key: ${{ needs.image.outputs.key }}
+          fail-on-cache-miss: true
+      - run: docker load -i "$IMAGE_TAR"
+      - name: 'unit:* (parity, property and GPU tests on lavapipe)'
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/w -w /w/engine "pulsus-engine-ci:${{ needs.image.outputs.key }}" \
+            cargo nextest run --workspace --exclude dash-golden --locked
+
+  goldens:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOLDEN_UPDATE: ${{ contains(github.event.pull_request.labels.*.name, 'golden-update') && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IMAGE_TAR }}
+          key: ${{ needs.image.outputs.key }}
+          fail-on-cache-miss: true
+      - run: docker load -i "$IMAGE_TAR"
+      - name: 'golden:gallery, golden:decimation-ref, golden:decimation-raw, golden:extreme-range'
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/w -w /w/engine -e GOLDEN_UPDATE "pulsus-engine-ci:${{ needs.image.outputs.key }}" \
+            cargo test -p dash-golden --release --locked golden_
+      - name: nightly volumes (10⁸ points)
+        if: github.event_name == 'schedule'
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/w -w /w/engine "pulsus-engine-ci:${{ needs.image.outputs.key }}" \
+            cargo test -p dash-golden --release --locked -- --ignored golden_decimation_
+      - if: ${{ !cancelled() && env.GOLDEN_UPDATE == '1' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-goldens
+          path: engine/crates/dash-golden/goldens/
+          retention-days: 14

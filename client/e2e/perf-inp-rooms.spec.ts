@@ -1,5 +1,6 @@
 /**
- * `bench:inp-rooms`, board room (plan #61 Part C §5.3, Appendix C-A §A.6; PRF-033, T05 §4.3).
+ * `bench:inp-rooms`, board room (plan #61 Part C §5.3, Appendix C-A §A.6; #90 document 4; PRF-033,
+ * T05 §4.3).
  * Scripted pointer and keyboard interactions on the board page; INP per document from the Event
  * Timing entries of every document the script loads. Report only on CI's shared runners (T05-006,
  * D-INP-interim); `INP_GATE=enforce` (the reference lab, and the D13 local proofs) fails any
@@ -8,6 +9,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { aggregateInp, gateFailures, type InpEntry, type InpStep } from '../scripts/inp.ts';
+import { boardEditorScenario, EDITOR_SCENARIO_N } from './boardEditorScenario.ts';
 
 const LIMIT_MS = 200;
 const TARGET_MS = 100;
@@ -20,6 +22,9 @@ const PLANNED_N: Readonly<Record<number, number>> = {
   2: 36,
   // 3 × (Edit 1 + Add section 1 + Done 1 + Discard changes 1).
   3: 12,
+  // The panel editor dialog (#90): Edit board, then 3 × (open, title, language, query,
+  // visualisation, Done).
+  4: EDITOR_SCENARIO_N,
 };
 
 interface InpWindow {
@@ -183,10 +188,15 @@ test.describe('bench:inp-rooms', () => {
         await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
       });
     }
+
+    // Document 4: the panel editor dialog (#90, plan Appendix B §B.5).
+    await open('/t/demo/board/b-1');
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+    await boardEditorScenario(page, step);
     await flush();
 
     const r = aggregateInp(entries, steps);
-    expect(r.documents).toHaveLength(3);
+    expect(r.documents).toHaveLength(4);
     for (const d of r.documents) expect(d.n, `document ${String(d.doc)}`).toBe(PLANNED_N[d.doc]);
     expect(pageErrors).toEqual([]);
 

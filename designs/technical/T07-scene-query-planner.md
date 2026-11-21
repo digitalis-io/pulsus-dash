@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-21 |
+| **Version** | 1.7-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
 
 ## 0. Applicability under ADR-0015 and ADR-0014 (2026-11-19)
@@ -19,20 +19,23 @@ parsed query applies only from the later parser design (table below). Rust speci
 |---|---|
 | `dash-planner` crate | Go package `internal/planner` |
 | `pulsus-plan` IR shared with the browser (WASM) | **Not shared.** §5.2 is authoritative as a data shape (the **v1 IR** of §5.2 now; the parsed IR of §5.2 from the parser design), implemented as Go types in `internal/planner/ir` and used in-process by T15 and T16. T13 (draft), the browser's local engine, receives `LogicalQuery` in the JSON form published in `api/openapi.yaml` and is held to the same semantics by fixtures in `wire/fixtures/plan/`; T13 is revised before M-UI3 |
-| Parser crates in §4.2 | **No query parsing in the BFF in v1** ([ADR-0015](../adr/0015-go-bff.md), "Query validation"). PromQL, LogQL and TraceQL text is opaque to the planner (T07-002 and the v1 rules below); PulsusDB's answer is the validity check. Parsing in the planner waits for the later parser design (below) |
+| Parser crates in §4.2 | PromQL is parsed in `internal/pulsusdb/prom` with the upstream Go PromQL parser, **for the planning shape only** ([ADR-0021](../adr/0021-query-planning-is-server-side.md)). LogQL and TraceQL stay opaque |
 | `dash-vsrc`, `pulsus-colexec` (virtual sources, M-UI4) | Go packages `internal/vsrc` and `internal/colexec`; T07-021 stands |
 | Rust code blocks (§5) | Normative as data shapes; the wire form is the OpenAPI schema |
 | Frames to the browser | JSON frames until the engine (#68), then Arrow ([T04](T04-wire-format-and-data-plane.md) §0) |
 | Hidden tab via the shim | `document.visibilityState` in the TS application |
 
-**v1: queries are opaque in the BFF.** Until a later parser design is accepted, no part of the
-planner parses, lexes or rewrites query text. A query is the **v1 IR** of §5.2: an
-`OpaqueQuery{lang, kind, text}` whose `text` is sent to PulsusDB byte-for-byte as received (after
-Board-variable substitution, which replaces `$name` and `${name}` tokens textually, M-UI5).
+**v1: queries are opaque except for the planning rewrites.** No part of the planner normalises,
+fuses or re-prints query text. The only rewrites are the closed list of
+[ADR-0021](../adr/0021-query-planning-is-server-side.md): variable and macro substitution, and the
+PromQL counter and histogram rate wraps of the exact source bytes. `LogicalKey` hashes the planned
+text. A query is the **v1 IR** of §5.2: an `OpaqueQuery{lang, kind, text}` whose `text` is sent to
+PulsusDB byte-for-byte as planned (after substitution by the language module, M-UI1, ADR-0021).
 
 | Planner feature | v1 behaviour (no parse) | From the parser design |
 |---|---|---|
 | Identity (§4.2) | `LogicalKey = xxh3_128(signal, lang, kind, text bytes, shape)` on the **exact** text: no trimming, no whitespace or comment normalisation | Canonical printing (§4.2) |
+| Planning rewrites | `prom.Plan` / `logs.Plan` (ADR-0021) | unchanged |
 | Step, level, alignment (§4.3, T07-003, T07-004) | Unchanged: they depend on the viewport range and width, not on the text | — |
 | Exactness prediction (§4.3, T07-005) | `Predicted{level}` from the range→level rule alone (`predict_exactness(level)`); `RawExact` only when the level is `None` | Per-function rollup eligibility |
 | Dedupe (§4.4, T07-007) | Identity, range union and display derivation on the exact-text key | — |
@@ -45,9 +48,10 @@ Board-variable substitution, which replaces `$name` and `${name}` tokens textual
 | Native operations (§4.12: R2, R4, R5, R6, R9; from M-UI2) | Built by text composition from structured inputs Dash holds (catalogue, Context, templates), never from parsing user text. An operation that would need a selector *extracted from* a user query is unavailable | Selector extraction |
 | Validation | PulsusDB's parse error, at the position PulsusDB returns or on the whole query, mapped to the error envelope ([T09](T09-query-editors.md) §0) | — |
 
-Test: `unit:planner-opaque-key`: the texts ``up # note`` + newline + ``+ up`` and ``up # note + up``
-get different `LogicalKey`s; byte-identical texts share one physical query; the `query` parameter
-sent to `pulsus-fake` equals the received text byte-for-byte; a restricted principal gets
+Test: `unit:planner-opaque-key`: the planned texts ``up # note`` + newline + ``+ up`` and
+``up # note + up`` get different `LogicalKey`s; byte-identical planned texts share one physical
+query; the `query` parameter sent to `pulsus-fake` equals the planned text (`planned.query`)
+byte-for-byte; a restricted principal gets
 `scope_denied` and no request.
 
 The **later parser design** is decided before the first milestone that needs one of the features
@@ -152,10 +156,12 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
  browser (scene state, cameras)                              BFF dash-planner
  ─────────────────────────────                              ──────────────────────────────────────────────────────────
- ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1 Bind       templates/{{entity}}/$vars → concrete queries (catalogue)
- Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Lower      → LogicalQuery (v1: OpaqueQuery, exact-text hash, §0;
- Cancel{viewport|plan}                                                   classify PulsusDB | Virtual | Mixed, §4.11)
- ApproachHint{entity, level, dist, dwell}                  3 Resolve    step from px, level prediction, grid alignment (§4.3)
+ ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1a Classify  source, signal, selectors and floors from the substituted text (§4.3)
+                                                          1b Resolve   step from range, px, pass and floor; level prediction, grid alignment (§4.3)
+ Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Bind       templates/{{entity}}/$vars → concrete queries (catalogue);
+ Cancel{viewport|plan}                                                   language module Plan with the resolved step → planned text
+ ApproachHint{entity, level, dist, dwell}                  3 Lower      planned text → LogicalQuery (v1: OpaqueQuery, exact-text hash
+                                                                         of the planned text, §0; classify PulsusDB | Virtual | Mixed, §4.11)
  Pressure{level}                                           4 Merge      session-local dedupe, range-union, derivation, fusion (§4.4)
                                                            5 Place⚡     local answerability per logical query (§4.5)
                                                            6 Physicalise→ PhysicalQuery[] + VirtualQuery[] + Combine DAG (§4.11, §4.12)
@@ -166,8 +172,26 @@ JSON form and is held to the same semantics by shared fixtures (§0).
  ◄── frames{plan, viewport, pass, gen, exactness} ─────────11 Stream     per pass; Completeness trailer per viewport
 ```
 
+- **Classify** (1a) runs first. It is a cheap classification of the source and the signal, which
+  yields the signal's capabilities (`SignalCaps`) and every virtual-source floor (15 s for `ALERTS`
+  and `ALERTS_FOR_STATE`, 300 s for `pulsus_anomaly_score`; §4.3). It runs on the query after the
+  language module's variable substitution, with the step-dependent macros (`$__interval`,
+  `$__rate_interval`) left as placeholder durations. Macros never change selectors, so the step is
+  not needed to classify and there is no circularity; selectors that a variable value introduces are
+  seen. It reads the metric names and selectors from that text with the same upstream parser that
+  `prom.Plan` uses (ADR-0021), and finds every reserved or virtual selector and its floor. A text the
+  parser rejects is classified as a PulsusDB query; the `VirtualGuardLayer` byte match still applies
+  (T07-020). In v1 nothing resolves to a virtual source (§0), so Classify yields the signal's
+  capabilities alone.
+- **Resolve** (1b) computes the step from the viewport's range, width and pass and the floor from
+  Classify (§4.3; the §0 table: step, level and alignment do not depend on the text). The step is
+  therefore final before any text is planned. Exactness that depends on the query's functions (from
+  the parser design) is attached at Lower.
 - **Bind** reads the scene's `Context` (entity set, window, filters, baseline; IA-002) and the
-  Board's variable values. It keeps a **dependency index** `(context member | $var) →
+  Board's variable values. It then calls the language module's `Plan` (ADR-0021) with the final step
+  from Resolve, which substitutes `$vars` and macros (`$__interval`, `$__rate_interval`) and applies the
+  rate rewrites and the rate window. **Lower** builds the `LogicalQuery` from the planned text, and
+  `LogicalKey` hashes those bytes. Bind keeps a **dependency index** `(context member | $var) →
   Vec<ViewportId>`, so a change re-binds only the viewports that read it (T07-013).
 - The baseline (comparison ghost, A/B) is bound as a second `TimeRange` on the `LogicalQuery`
   (`baseline: Some(..)`), which physicalises to a shifted query with the same step grid.
@@ -186,9 +210,9 @@ redundant parentheses removed, comments dropped by the parser) and
 `LogicalKey = xxh3_128(signal, canonical_text, shape)`.
 
 #### T07-002 — Opaque text is sent unchanged and fails closed
-**MUST** — *(Revised 1.3-rc.)* Query text the planner does not hold in parsed form (in v1, every
-query) MUST be sent to PulsusDB byte-for-byte, keyed on its exact bytes, with no fusion, no
-virtual-source resolution and no rewrite. Because its scope cannot be proven, it MUST be refused with
+**MUST** — *(Revised 1.5-rc, ADR-0021.)* Query text the planner holds only in planned form MUST be
+sent to PulsusDB byte-for-byte as `Plan` returned it, keyed on those bytes, with no fusion, no
+virtual-source resolution and no rewrite beyond ADR-0021's list. Because its scope cannot be proven, it MUST be refused with
 `scope_denied` unless the principal's scope is unrestricted. *(2026-11-21, #65.)* The log volume
 template of §0 embeds the text as its single operand, byte for byte; it is composition around the
 text, not a rewrite of it, and the reserved-name guard runs on the user's text first.
@@ -209,19 +233,46 @@ With the default `PULSUS_ROLLUP_LEVELS=60,720,7200,86400` and
 
 PulsusDB documents that when `start` and `step` are whole buckets of the level, each point is
 evaluated at its own time. Otherwise points take their bucket's value. Range functions are rounded up
-to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes. So:
+to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes.
+
+`resolve` is pipeline step 1b. Its `sig` comes from step 1a (Classify), which reads the substituted
+text with macro placeholders (§4.1): `sig.source` is the source it found (`PulsusDb`, `Virtual` or
+`Mixed`), and `sig.min_step` is the largest of every operand's `min_step` and every virtual floor
+it found (below).
+Step 2 (Bind) passes the resulting `step` to the language module's `Plan`. Resolution depends on the
+source that Classify found:
+
+- **PulsusDB source:** predict the rollup level from the range (table above), then
+  `step = max(rollup-derived step, sig.min_step)`.
+- **Virtual source:** no rollup prediction at all; a virtual source has no rollup level.
+  `step = max(base step from range, width and pass, virtual floor)`.
+- **Mixed expression** (one logical query with PulsusDB and virtual operands, §4.11.2): the whole
+  logical query has one shared step, `step = max(PulsusDB rollup-derived step, every operand's
+  min_step, every virtual floor)`. Join operands always share that step.
+- **Mixed scenes:** each logical query resolves its own step from its own source. A PulsusDB
+  viewport and a virtual viewport in the same scene can therefore get different steps for the same
+  window.
+
+So:
 
 ```rust
 pub fn resolve(range: TimeRange, px: u32, pass: Pass, sig: &SignalCaps, roll: &RollupTable) -> Resolved {
     let px_per_point = match pass { Pass::Coarse => 4.0, _ => 1.0 };        // PRF-027: coarse ≈ width/4
     let raw_step     = range.len() / (px as f64 / px_per_point);            // CSS px, not device px
-    let level        = roll.predict(range.len());                           // table above; None = raw
-    let floor        = level.map(|l| l.width).unwrap_or(sig.min_step);      // scrape interval, 5 s logs, 10 s patterns
+    let level        = match sig.source {                                   // from step 1a (Classify)
+        Source::Virtual  => None,                                           // virtual sources have no rollup level
+        Source::PulsusDb | Source::Mixed => roll.predict(range.len()),      // table above; None = raw (the PulsusDB operands' level)
+    };
+    let floor        = level.map_or(sig.min_step, |l| l.width.max(sig.min_step)); // sig.min_step: max of operand floors and virtual floors
     let step         = NICE.ceil_multiple_of(raw_step.max(floor), floor);   // ladder below, multiple of floor
     let step         = step.max(range.len() / sig.max_intervals);           // 11 000 PromQL/LogQL, 10 000 TraceQL metrics
     let start        = range.start.floor_to(step);                          // grid alignment: PulsusDB read cache + our tiles
     let end          = range.end.ceil_to(step);
-    Resolved { start, end, step, level, exactness: predict_exactness(level, &expr_fns) } // v1: predict_exactness(level), §0
+    let exactness    = match sig.source {
+        Source::Virtual  => Exactness::RawExact,                            // with source: Virtual{table} (§4.11.2)
+        Source::PulsusDb | Source::Mixed => predict_exactness(level, &expr_fns), // v1: predict_exactness(level), §0; Mixed: weakest operand (§4.11.3)
+    };
+    Resolved { start, end, step, level, exactness }
 }
 // NICE = 1s 2s 5s 10s 15s 30s 1m 2m 5m 10m 12m 15m 30m 1h 2h 3h 6h 12h 1d 2d 7d
 ```
@@ -234,13 +285,32 @@ Examples (1 600 CSS-px viewport, fine pass):
 | 6 h | 13.5 s | 60 s | 60 s | 360 |
 | 2 d | 108 s | 720 s | 12 m | 240 |
 | 30 d | 27 min | 7200 s | 2 h | 360 |
+| 6 h, `pulsus_anomaly_score` (virtual) | 13.5 s | none (a PulsusDB query would read 60 s) | 5 m (virtual floor 300 s) | 72 |
+
+The last row is the case where the rollup width a PulsusDB query would get (60 s at 6 h) is below
+the virtual floor (300 s). The virtual source skips rollup prediction, so the 60 s width never
+applies: the step is `max(13.5 s, 300 s)` = 300 s, already on the `NICE` ladder (5 m).
+
+**Mixed worked case** (6 h, 1 600 CSS px, fine pass):
+`sum by (service) (rate(http_requests_total[$__rate_interval])) and on(service) pulsus_anomaly_score{signal="latency"} > 0.8`.
+Classify finds a PulsusDB operand (scrape floor 15 s) and a `pulsus_anomaly_score` operand (virtual
+floor 300 s), so `sig.source` is `Mixed` and `sig.min_step` = 300 s. The PulsusDB operand's
+predicted level is 60 s. The step is `max(13.5 s, 60 s, 15 s, 300 s)` = 300 s, applied to both
+operands (72 points); 300 s is a whole multiple of the 60 s level, so the PulsusDB operand stays on
+its grid. `Plan` receives 300 s, so `$__rate_interval` is planned from that step.
+
+**Exactness of virtual and mixed results.** `resolve` returns `RawExact` for a virtual source, and
+the result carries `Completeness{exactness: RawExact, source: Virtual{table}}` (§4.11.2). For a
+mixed join, the weakest-operand rule (§4.11.3) applies unchanged: in the case above, the join is
+`Predicted{60 s}` from its PulsusDB operand.
 
 For PRF-027's example (1 200 px, 1 h, coarse), `raw_step` = 12 s, raised to the 15 s scrape floor:
 within the ±1 level tolerance of the acceptance.
 
 #### T07-003 — Step from pixels, aligned to the level grid
 **MUST** — The coarse pass (P2) MUST use a step of about range / (CSS px / 4) and the fine pass (P3)
-about range / CSS px, each raised to the predicted level width (or the signal floor), rounded up to
+about range / CSS px, each raised to the larger of the predicted level width and the signal floor
+(a virtual source has no level and uses its virtual floor alone), rounded up to
 the `NICE` ladder as a multiple of that floor, and raised further to respect the signal's interval
 cap. `start` MUST be floored and `end` ceiled to the step.
 
@@ -276,7 +346,9 @@ until a PulsusDB explain or R10 confirms it; it MUST NOT be shown as ✓ exact.
 - **Heatmaps** choose a y-bucket count of `px_h / 4`.
 - **Scatter** asks `max_points = px_w × px_h / 8` (cap 10⁷, PRF-017).
 - **Virtual sources** (§4.11): floor 15 s for `ALERTS`/`ALERTS_FOR_STATE` (the minimum evaluation
-  interval), 300 s for `pulsus_anomaly_score` (its stored resolution); no rollup level.
+  interval), 300 s for `pulsus_anomaly_score` (its stored resolution); no rollup level. Step 1a
+  (Classify) sets the floor, so Resolve (1b) applies it before `Plan` runs; Lower's full
+  classification (§4.11.2) follows.
 
 ### 4.4 Dedupe and merge across viewports
 
@@ -558,7 +630,7 @@ through the same query interface as telemetry. The planner owns the semantics; `
 | `{source="pulsus-dash"}` | LogQL | `alert_transitions`, `notification_attempts`, `entity_change_events` | Stream labels `source`, `kind` (`alert_transition`, `notification_attempt`; `change_event` from M-UI3 with [T12](T12-entity-catalogue.md)), `alertname`, `severity`, `entity_ref`; line = the row as JSON; structured fields for every column |
 
 #### T07-020 — Reserved selectors resolve to Postgres, never to PulsusDB
-**MUST** — *(v1: the refusal of §0 applies and nothing resolves to Postgres.)* From the parser design, at step 2 the planner MUST classify every selector whose metric name equals `ALERTS`,
+**MUST** — *(v1: the refusal of §0 applies and nothing resolves to Postgres.)* From the parser design, at step 3 (Lower) the planner MUST classify every selector whose metric name equals `ALERTS`,
 `ALERTS_FOR_STATE` or `pulsus_anomaly_score`, and every LogQL stream selector with the equality
 matcher `source="pulsus-dash"`, as virtual. A query containing a virtual selector MUST NOT be sent to
 PulsusDB; `pulsusdb-client`'s `VirtualGuardLayer` refuses any request text that still contains one.
@@ -568,7 +640,7 @@ against Postgres and never matches virtual series.
 
 #### 4.11.2 Classification and evaluation
 
-Step 2 classifies each `LogicalQuery`:
+Step 3 (Lower) classifies each `LogicalQuery`:
 
 | Class | Example | Execution |
 |---|---|---|
@@ -1025,6 +1097,7 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 7. Reserved names shadow PulsusDB series named `ALERTS` (e.g. from Prometheus remote-write). Is an escape hatch needed (a per-tenant prefix for the virtual names)?
 8. Virtual PromQL: own `pulsus-colexec` lowering (chosen) vs `pulsus-promql`'s evaluator behind an adapter.
 9. O1: if the product owner picks an option other than B, §4.7 and T07-015 are revised.
+10. `S` per binding (scrape interval) for the rate window: from the catalogue or runtimeinfo.
 
 ## 14. Change log
 
@@ -1036,5 +1109,10 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.2-rc | 2026-11-19 | ADR-0015 "Query validation": the BFF parses no query language in v1. §0 gains the v1 opaque-planning table and the later parser design (decided before fusion in M-UI2; a server-side parser needs a new ADR); §4.2 no longer uses a Go PromQL parser; §4.14 v1 expression form (client-expanded text) with T07-030 deferred to the parser design; SRF-030 test and §11 updated |
 | 1.3-rc | 2026-11-19 | Code review r2 of #56: §0 v1 table made complete (no parse, lex or rewrite anywhere in v1; exact-text `LogicalKey` with `unit:planner-opaque-key`; v1 `ScopeRewriter`; byte-match reserved-name refusal; native operations built from structured inputs); T07-002 revised so it does not depend on parsing; §5.2 gains the v1 IR (`OpaqueQuery`, `LogicalOp::Text`) and marks the parsed IR as the later parser design; §4.2, §4.3, §4.4, §4.7, §4.8 (v1 estimate), §4.11, §4.12, T07-006, T07-015, T07-020 to T07-022 marked accordingly |
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.14 v1 expansion puts a newline before each generated closing parenthesis so an operand ending in a `#` comment cannot comment out the rest; test `unit:expr-expand-line-comment`; SRF-030 row updated; review r8: §4.1 pipeline steps 7 and 10 state v1 scope handling and JSON frames until the engine |
-| 1.5-rc | 2026-11-20 | #62: §0 v1 reserved-name refusal also screens the completion inputs (`match[]`, `metric`) |
-| 1.6-rc | 2026-11-21 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |
+| 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): PromQL is parsed in `internal/pulsusdb/prom` for the planning shape only (§0 table); v1 queries are opaque except for ADR-0021's closed list of planning rewrites, and `LogicalKey` hashes the planned text; new §0 row "Planning rewrites"; §4.1 Bind substitutes through the language module's `Plan`; T07-002 revised; open question 10 |
+| 1.5-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: §4.1 pipeline runs Resolve before Bind, so `Plan` gets the width-dependent step, and Lower keys the planned text (classification is now step 3); `unit:planner-opaque-key` compares the upstream query with the planned text |
+| 1.5-rc | 2026-11-21 | Design review r2 of the ADR-0021 PR: §4.1 step 1 splits into 1a Classify (source and signal from the binding and the source kind: `SignalCaps` and the virtual-source floor, 15 s alerts, 300 s anomaly scores) and 1b Resolve (step from range, width, pass and that floor), so Bind calls `Plan` with the final step; §4.3 `resolve` and the virtual-source floor reference the stages |
+| 1.5-rc | 2026-11-21 | Design review r3 of the ADR-0021 PR: §4.3 `resolve` branches on the source from Classify: a PulsusDB source predicts the rollup level and takes `max(level width, sig.min_step)`; a virtual source skips rollup prediction and takes `max(base step, virtual floor)`, with `Exactness::Virtual`; in a mixed scene each logical query resolves its own step; worked case 6 h anomaly score gives 300 s, not 60 s; T07-003 wording aligned |
+| 1.5-rc | 2026-11-21 | Design review r4 of the ADR-0021 PR: §4.1 Classify runs on the substituted text with step-dependent macros as placeholder durations, reading selectors with the upstream parser to find every reserved selector and floor; §4.3 a mixed expression has one shared step (max of the PulsusDB rollup-derived step, every operand's `min_step` and every virtual floor), with a worked case (anomaly score joined with a rate, 300 s for both operands); `Exactness::Virtual` removed: a virtual source resolves to `RawExact` with `source: Virtual{table}`, and the weakest-operand rule applies to mixed joins |
+| 1.6-rc | 2026-11-21 | #62: §0 v1 reserved-name refusal also screens the completion inputs (`match[]`, `metric`) |
+| 1.7-rc | 2026-11-21 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |

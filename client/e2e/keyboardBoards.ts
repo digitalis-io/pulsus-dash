@@ -1,7 +1,7 @@
 /**
  * Keyboard loops L23–L31 (plan #61 Part B, Appendix B-A §A.5; Part C, Appendix C-A §A.3): the board list and its dialogs, the
- * board in View and Edit mode, the panel tools, Share, the layout buttons, the panel editor and its
- * selects, the guard and the conflict dialog. Each loop asserts its behaviours, then drains its
+ * board in View and Edit mode, the panel tools, Share, the layout buttons, the panel editor dialog
+ * and its selects, the guard and the conflict dialog. Each loop asserts its behaviours, then drains its
  * states. Run inside the one keyboard test, so the final coverage check covers them.
  */
 import { expect, test } from '@playwright/test';
@@ -28,6 +28,12 @@ export async function boardLoops(s: Script): Promise<void> {
       : table.getByRole('rowgroup').last().getByRole('link').allTextContents();
   const status = page.getByRole('status', { name: 'Save status' });
   const panelCount = page.locator('[data-panel]');
+  // The panel editor dialog (#90): a modal; Escape closes it.
+  const editor = page.getByRole('dialog', { name: 'Edit panel' });
+  const closeEditor = async (): Promise<void> => {
+    await press('Escape');
+    await expect(editor).toBeHidden();
+  };
   const gridOf = (title: string) =>
     page
       .locator('[data-panel]')
@@ -154,8 +160,25 @@ export async function boardLoops(s: Script): Promise<void> {
         await s.menuItem(`button "Panel menu: ${title}"`, 1);
         await expect.poll(() => page.evaluate(() => window.__copied.at(-1) ?? '')).not.toBe('');
         await s.menuItem(`button "Panel menu: ${title}"`, 0);
-        await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeVisible();
+        await expect(editor).toBeVisible();
+        // The preview's crosshair (#90), named after the panel: End sets it, Escape clears it.
+        await editor.locator('[data-preview-host] > *').first().waitFor();
+        if ((await editor.getByRole('slider').count()) > 0) {
+          await s.focus(`slider "Crosshair: ${title}"`);
+          await press('End');
+          await press('Escape');
+          await expect(editor).toBeVisible();
+        }
+        await closeEditor();
+        await expect(page.getByRole('button', { name: `Panel menu: ${title}` })).toBeFocused();
       }
+      // #90: Add panel opens the modal editor, which a drain replays from its entry state. The View
+      // drain starts in View, so Edit board and Add panel are operated here, from Edit: the View
+      // drain then stays in View, and the Edit drains of L26 (entered in Edit) take the rest.
+      await s.goto(url);
+      await s.on('button "Edit board"');
+      await s.on('button "Add panel"');
+      await closeEditor();
       await s.drain(`${uid} view`, () => s.goto(url));
       for (const title of titles) {
         await s.drain(`${uid} full screen ${title}`, async () => {
@@ -207,7 +230,9 @@ export async function boardLoops(s: Script): Promise<void> {
     for (let i = 0; i < 2; i++) await press('Shift+ArrowDown');
     expect(await gridOf('Pods')).toBe('6,8,6,10');
     await s.on('button "Add panel"');
-    await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeVisible();
+    await expect(editor).toBeVisible();
+    await closeEditor();
+    await expect(page.getByRole('button', { name: 'Panel menu: Untitled panel' })).toBeFocused();
     await expect(panelCount).toHaveCount(4);
     for (const title of ['Edge p99', 'Edge errors', 'Untitled panel']) {
       await s.focus(`button "Move or resize: ${title}"`, { max: 160 });
@@ -229,6 +254,7 @@ export async function boardLoops(s: Script): Promise<void> {
     await press('ControlOrMeta+S');
     await expect(status).toHaveText('Saved');
     await s.on('button "Add panel"');
+    await closeEditor();
     await s.focus('button "Save"', { max: 160 });
     const state = await h.state();
     await press('Enter');
@@ -236,6 +262,7 @@ export async function boardLoops(s: Script): Promise<void> {
     expect([...h.operated()]).toContain(`${state} › button "Save"`);
     expect(state).toBe('/t/:tenant/board/:uid + none');
     await s.on('button "Add panel"');
+    await closeEditor();
     await s.on('button "Discard"');
     await expect(page.getByRole('button', { name: 'Edit board' })).toBeVisible();
     await expect(panelCount).toHaveCount(5);
@@ -250,9 +277,16 @@ export async function boardLoops(s: Script): Promise<void> {
         await s.on('button "Edit board"');
       };
       await s.drain(`${uid} edit`, edit);
+      // The dialog's controls.
       await s.drain(`${uid} edit, added`, async () => {
         await edit();
         await s.on('button "Add panel"');
+      });
+      // The new panel's tools, behind the closed dialog.
+      await s.drain(`${uid} edit, added, closed`, async () => {
+        await edit();
+        await s.on('button "Add panel"');
+        await closeEditor();
       });
       if (uid !== 'b-2') {
         await s.drain(`${uid} edit, editor`, async () => {
@@ -267,6 +301,7 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.on('button "Edit board"');
       for (let i = 0; i < 3; i++) {
         await s.on('button "Add panel"');
+        await closeEditor();
         if (i < 2) {
           await press('ControlOrMeta+S');
           await expect(status).toHaveText('Saved');
@@ -281,11 +316,11 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.goto(url);
       await s.on('button "Edit board"');
       await s.menuItem('button "Panel menu: Edge p99"', 0);
-      await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeVisible();
+      await expect(editor).toBeVisible();
     };
     await openEditor();
     await s.replaceText('textbox "Title"', 'Edge p99 by region');
-    await expect(page.getByRole('heading', { level: 3, name: 'Edge p99 by region' })).toBeVisible();
+    await expect(editor.locator('[data-preview-title]')).toHaveText('Edge p99 by region');
     for (const option of ['LogQL', 'PromQL']) {
       await s.on(/^button "\w+ Query language"$/);
       await expect(page.getByRole('listbox')).toBeVisible();
@@ -295,6 +330,11 @@ export async function boardLoops(s: Script): Promise<void> {
       await press('Enter');
       await expect(page.getByRole('button', { name: `${option} Query language` })).toBeVisible();
     }
+    // The preview's crosshair: End sets it, Escape clears it (the dialog stays open).
+    await s.focus('slider "Crosshair: Edge p99 by region"');
+    await press('End');
+    await press('Escape');
+    await expect(editor).toBeVisible();
     await s.focus('textbox "Query"');
     await press('End');
     await type(' by (region)');
@@ -310,16 +350,22 @@ export async function boardLoops(s: Script): Promise<void> {
     // The last trigger name is operated too: open it and close it.
     await s.on('button "Logs Visualisation"');
     await press('Escape');
-    await s.on('button "Close editor"');
-    await expect(page.getByRole('complementary', { name: 'Panel editor' })).toBeHidden();
+    await s.on('button "Done"');
+    await expect(editor).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: 'Panel menu: Edge p99 by region' }),
+    ).toBeFocused();
+    await expect(page.getByRole('heading', { level: 3, name: 'Edge p99 by region' })).toBeVisible();
     await s.menuItem('button "Panel menu: Edge errors"', 0);
     await s.on('button "Remove panel"');
+    await expect(page.getByRole('button', { name: 'Add panel', exact: true })).toBeFocused();
     await expect(panelCount).toHaveCount(2);
 
     // The renamed panel's tools are new keys.
     await s.drain('b-3 renamed panel', async () => {
       await openEditor();
       await s.replaceText('textbox "Title"', 'Edge p99 by region');
+      await closeEditor();
     });
     for (const which of ['Query language', 'Visualisation']) {
       await s.drain(`${which} list box`, async () => {
@@ -337,6 +383,7 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.goto(url);
       await s.on('button "Edit board"');
       await s.on('button "Add panel"');
+      await closeEditor();
       await expect(panelCount).toHaveCount(4);
     };
     await dirty();
@@ -366,11 +413,13 @@ export async function boardLoops(s: Script): Promise<void> {
     await conflicted();
     await expect(conflict).toContainText('Someone saved version 2 after you opened it.');
     await s.on('button "Save mine as a new version"');
-    await expect(status).toHaveText('Saved');
+    await expect(editor.getByRole('status', { name: 'Save status' })).toHaveText('Saved');
+    await closeEditor();
     await expect(panelCount).toHaveCount(4);
     await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
     await conflicted();
     await s.on('button "Discard mine and load theirs"');
+    await expect(editor).toBeHidden();
     await expect(panelCount).toHaveCount(3);
     await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 
@@ -415,9 +464,11 @@ export async function boardLoops(s: Script): Promise<void> {
     await s.replaceText('textbox "Section 2 title"', 'Keyboard section');
     await expect(page.getByRole('button', { name: 'Keyboard section', exact: true })).toBeVisible();
     await s.on('button "Add panel to Keyboard section"');
-    const editor = page.getByRole('complementary', { name: 'Panel editor' });
     await expect(editor).toBeVisible();
     await expect(editor.getByRole('textbox', { name: 'Title' })).toHaveValue('');
+    await closeEditor();
+    await expect(page.getByRole('button', { name: 'Panel menu: Untitled panel' })).toBeFocused();
+    // After the close: `section()` finds the section by its heading button, which the modal hides.
     await expect(section('Keyboard section').locator('[data-panel]')).toHaveCount(1);
     const kb = page.getByRole('button', { name: 'Keyboard section', exact: true });
     await s.on('button "Keyboard section"');
@@ -427,6 +478,8 @@ export async function boardLoops(s: Script): Promise<void> {
     await s.focus('textbox "Section 1 title"');
     await press('End');
     await s.on('button "Add panel to Latency"');
+    await expect(editor).toBeVisible();
+    await closeEditor();
     await expect(section('Latency').locator('[data-panel]')).toHaveCount(2);
     await s.on('button "Remove section Keyboard section"');
     await expect(section('Keyboard section')).toHaveCount(0);

@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-21 |
+| **Version** | 1.8-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
 
 ## 0. Applicability under ADR-0015 (2026-11-19)
@@ -100,7 +100,7 @@ and the external API surface. Two components get their own documents: the scene 
 | [ALR-084](../product/07-alerting.md#alr-084--alert-history-in-postgres) | §4.8, T06-017 | `itest:no-pulsusdb-writes` (as above) during the alerting suite |
 | [ALR-086](../product/07-alerting.md#alr-086--prometheus-compatible-read-api-for-history) | §5.1 (Prometheus-compatible read API) | `itest:prom-read-alerts`: Prometheus-API `query_range` for `ALERTS{alertstate="firing"}` equals the series a Dash viewport receives |
 | [ALR-087](../product/07-alerting.md#alr-087--alerting-survives-without-pulsusdb-ingest) | §4.8, T06-017 | `itest:alerting-no-ingest`: the alerting suite passes with the PulsusDB ingest endpoint returning `403` for Dash |
-| [ENT-006](../product/11-enterprise.md#ent-006--scoped-users-see-no-out-of-scope-data) | §4.1 (`RequestCtx.scope`), §8, T06-002 | `prop:scope-proof`: every outbound PulsusDB request in the fuzz corpus carries a `ScopeProof`; `itest:scope-paths` (T10 (draft) co-owns) |
+| [ENT-006](../product/11-enterprise.md#ent-006--scoped-users-see-no-out-of-scope-data) | §4.1 (`RequestCtx.scope`), §4.3 (the authority on the final query), §8, T06-002, T06-029 | `prop:scope-proof`: every outbound PulsusDB request in the fuzz corpus carries a `ScopeProof`; `itest:scope-paths` (T10 (draft) co-owns); `itest:plan-authority`: a request whose `query` is already the planned text of another request still goes through `Plan`, and the query sent upstream equals that request's own `planned.query` |
 | [AI-048](../product/06-ai-copilot.md#ai-048--mcp-server) | §5.1 (`/mcp` mount), §4.10 (ExternalAgent class), §8 | `itest:mcp-scoped-budgeted`: an MCP call with a team-scoped token returns only in-scope entities, is charged to the ExternalAgent budget and is audited |
 | [PRF-013](../product/09-performance-contract.md#prf-013--rca-stage-1-ready) | §4.6 (stage-1 job scheduling), §7 | `load:rca-stage1-lag`: `dash_job_lag_seconds{job="rca1"}` p99 ≤ 1 s on the replay corpus (T15 (draft) co-owns the 10 s target) |
 | [EST-046](../product/15-estate-navigation.md#est-046--entity-graph-cache-and-ephemeral-history) | §4.6 (catalogue refresh job, 60 s) | `itest:catalogue-refresh-60s`: a new seeded pod appears in the snapshot within 60 s ([T12](T12-entity-catalogue.md) co-owns) |
@@ -234,15 +234,22 @@ producer.
 server/internal/pulsusdb/            core: Client, decoration chain (T06-005), tenant header and slots
                                      (T06-006), retry budget and deadlines (T06-009, T06-010), limits,
                                      redaction, decoder seam (JSON; Arrow under r1_arrow_accept, T06-011)
-server/internal/pulsusdb/prom/       QueryRange, Query, Series, Labels, LabelValues, Metadata, TSDBStatus
+server/internal/pulsusdb/prom/       QueryRange, Query, Series, Labels, LabelValues, Metadata, TSDBStatus,
+                                     Plan (substitution, rate rewrite, size limits; ADR-0021)
 server/internal/pulsusdb/logs/       LogQueryRange, LogVolume, LogLabels, LogLabelValues, LogSeries, Patterns,
-                                     DetectedLabels, DetectedFields, Tail
+                                     DetectedLabels, DetectedFields, Tail,
+                                     Plan (substitution, size limits, volume template)
 server/internal/pulsusdb/traces/     Search, Fetch, Tags, TagValues, MetricsRange, ServiceGraph
 server/internal/pulsusdb/profiles/   Merge, SelectSeries, Diff, Types, Labels, LabelValues
 ```
 
 Each module has its routes, request shaping, decoders and `testdata/` fixtures. `rules_*` and
 `RuntimeInfo` stay in the core.
+
+Planning is part of the module ([ADR-0021](../adr/0021-query-planning-is-server-side.md)).
+`prom.Plan` and `logs.Plan` are pure functions over the inputs and the metric types. The gateway
+and the evaluator call them, then hand the planned text to the core. Fixtures:
+`wire/fixtures/plan/<lang>.json`.
 
 Return contracts (T06-011). No method returns untyped JSON values.
 
@@ -396,7 +403,7 @@ streams unchanged.
 ```rust
 pub struct Completeness {
     pub truncated: bool,                 // service_graph.truncated, "results truncated due to limit", 422s
-    pub exactness: Exactness,            // RawExact | Rollup{level_s} | Predicted{level_s} (T07 §4.3) | Sampled{ratio} | Windowed | Virtual
+    pub exactness: Exactness,            // RawExact | Rollup{level_s} | Predicted{level_s} (T07 §4.3) | Sampled{ratio} | Windowed
     pub source: SourceKind,              // PulsusDb{cluster} | Virtual{table} (T07 §4.11) | Cache{tier, age_ms}
     pub data_age_ms: Option<u64>,        // now − newest sample; drives the freshness indicator (AUD-041)
     pub warnings: Vec<String>,           // PromQL warnings/infos verbatim
@@ -414,6 +421,19 @@ pub struct Completeness {
 PulsusDB. A module MUST send the request shapes recorded in its fixtures. Enforced by `depguard`.
 Test: `unit:pulsusdb-shapes` per module.
 
+#### T06-029 — The server builds the final query
+**MUST** — This rule covers the language query paths ADR-0021 decides: the PromQL query routes
+and the evaluator's PromQL queries now, and the LogQL query routes once `logs.Plan` lands. On these
+paths, every query sent to PulsusDB MUST be built by the server from the request's raw inputs. The
+language module's `Plan` produces the **planned text** (`planned.query`). The only change after it is
+the scope rewrite (T07-014), which produces the **final text** that is sent. No such route accepts a
+pre-planned text. The order is: inputs checked, substitute, plan, reserved-name guard, scope, send.
+The scope rewrite therefore applies after every substitution and rewrite the user controls. In v1
+the scope rewrite is the identity for an unrestricted principal and refuses a restricted one
+(T07 §0), so the final text equals `planned.query`. Test: `itest:plan-authority` (a request whose
+`query` is already the planned text of another request still goes through `Plan`, and the query
+sent upstream equals that request's own `planned.query`).
+
 ### 4.4 Caching tiers
 
 ```
@@ -425,6 +445,7 @@ Test: `unit:pulsusdb-shapes` per module.
 | **Singleflight** | In-flight physical queries | `DashMap<ResultKey, Shared<…>>`. A second subscriber attaches to the running stream and replays the batches buffered so far | Lives as long as the query |
 | **L1 results** | Arrow tiles of query results (PulsusDB and virtual) | `moka::future::Cache` (W-TinyLFU), weighed by bytes | 512 MiB per replica by default |
 | **L1 metadata** | Label values, series counts, metric metadata, catalogue snapshot, runtimeinfo (`rollupLevels`), per-family label sets for scope checks | moka | 30–60 s TTL |
+| **L1 metric types** | prom metric types per tenant binding (a tenant with two PulsusDB bindings gets two entries); used by `prom.Plan` (ADR-0021) | moka, keyed by tenant binding; singleflight per tenant binding | 60 s TTL |
 | **L2 results** | The same tiles, shared across replicas | Redis 7 (or Valkey), `SET` with zstd-compressed Arrow IPC, `PX` TTL | Operator-sized. Off on small installs |
 | **L2 snapshots** | Catalogue graph and anomaly index published by workers | Redis key + Postgres `snapshots` row (`LISTEN/NOTIFY` on version bump) | Versioned |
 
@@ -951,5 +972,8 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.3-rc | 2026-11-20 | #59 Part B: §5.1 adds `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` (fixed local principal until M-UI6, D12) and `POST /api/dash/v1/csp-report` |
 | 1.4-rc | 2026-11-20 | #61 Part A: §5.2 adds the `conflict` code (409 on an `If-Match` mismatch, body `{error, current, submitted}`, T11-005); T06-004 note: configuration-change audit rows are written in the save transaction (T11-006), the non-blocking sink applies outside a content transaction; T06-026 revised: `/readyz` reports Postgres reachability, migration level and audit partition health only (still never PulsusDB) |
 | 1.5-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §4.3 split into core and language modules, with the log completion methods and a return-contract table (streamed metric results, typed completion and metadata results, the log page and volume returns, and the buffered `LogQueryRange` response when `result` precedes `resultType`); T06-011 note on typed completion and metadata results; T06-028; T06-005 note |
-| 1.6-rc | 2026-11-21 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
-| 1.7-rc | 2026-11-21 | #65 Part A: T06-011 states the typed `LogQueryRange` (`*LogResult`: a `*LogPage` or a `ResultStream`) and `LogVolume` (`[]*Series` with its `Completeness`) returns, as in the §4.3 table of ADR-0018, and the bounds of the three buffered cases; the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |
+| 1.6-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.3 `prom.Plan` and `logs.Plan` in the language modules, with fixtures under `wire/fixtures/plan/`; §4.4 L1 metric-types row; new rule T06-029 (the server builds the final query, `itest:plan-authority`); ENT-006 row |
+| 1.6-rc | 2026-11-21 | Design review r1 of the ADR-0021 PR: T06-029 scoped to the PromQL paths (LogQL once `logs.Plan` lands) and separates the planned text from the final scope-rewritten text; `itest:plan-authority` no longer requires the re-planned text to differ; §4.4 metric types keyed, with singleflight, by tenant binding |
+| 1.6-rc | 2026-11-21 | Final review of the ADR-0021 PR: §4.3 `Completeness.exactness` drops `Virtual`; virtual provenance lives only in `source` (`Virtual{table}`), as in T07 §4.3 and §4.11.2 |
+| 1.7-rc | 2026-11-21 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
+| 1.8-rc | 2026-11-21 | #65 Part A: T06-011 states the typed `LogQueryRange` (`*LogResult`: a `*LogPage` or a `ResultStream`) and `LogVolume` (`[]*Series` with its `Completeness`) returns, as in the §4.3 table of ADR-0018, and the bounds of the three buffered cases; the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |

@@ -93,7 +93,6 @@ export const space = {
 export const size = {
   "avatar": 28,
   "board-cols": 12,
-  "board-editor": 360,
   "board-panel-header": 40,
   "board-row": 40,
   "chart": 240,
@@ -103,6 +102,8 @@ export const size = {
   "chart-tick": 4,
   "control": 32,
   "crumb-max": 160,
+  "dialog-editor-height": 720,
+  "dialog-editor-width": 800,
   "focus-offset": 2,
   "focus-ring": 2,
   "header": 56,
@@ -123,6 +124,9 @@ export const border = {
 } as const;
 
 export const font = {
+  "advance": {
+    "mono": 0.6,
+  },
   "family": {
     "mono": "\"JetBrains Mono Variable\", ui-monospace, monospace",
     "ui": "\"Inter Variable\", system-ui, sans-serif",

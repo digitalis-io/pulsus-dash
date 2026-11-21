@@ -219,11 +219,15 @@ describe('sections', () => {
     await user.type(title, 'Errors');
     expect(screen.getByRole('button', { name: 'Errors' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add panel to Errors' }));
+    const editor = await screen.findByRole('dialog', { name: 'Edit panel' });
+    await user.click(within(editor).getByRole('button', { name: 'Done' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+    });
     const panel = within(sectionOf('Errors'))
       .getByRole('heading', { level: 3 })
       .closest('[data-panel]');
     expect(panel).toHaveAttribute('data-grid', '0,0,6,8');
-    expect(await screen.findByRole('complementary', { name: 'Panel editor' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
       expect(statusLine()).toHaveTextContent('Saved');
