@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-21 |
+| **Version** | 1.6-rc · 2026-11-21 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -171,7 +171,7 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
  │ engine adapter (engine/wasm/) │  spawn     │          frame loop on worker rAF              │
  │   boot, ChartFrame calls ─────┼──────────► │◄─── setSpec / setData / setTimeWindow / resize │
  │   input capture → input ring ─┼─ SAB ────► │          input ring consumer                   │
- │   engine events ◄─────────────┼────────────│──── hover, brush, select, commit, a11y events  │
+ │   engine events ◄─────────────┼────────────│──── hover, brush, select, commit, a11y, drawn  │
  └───────────────────────────────┘            ├───────────────────────────────────────────────┤
                                               │ data-0   coordinator: stream subscriptions,    │
             BFF (HTTP/2, WS)  ◄────────────── │          IndexedDB cache, request ids, cancel  │
@@ -185,6 +185,8 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
                                               └───────────────────────────────────────────────┘
    satellites (own memory): editor worker · geo worker · workbench satellites
 ```
+
+`drawn` and `FrameInit.id`: [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md).
 
 | Thread | Count | Blocks? | Owns | Wakes on |
 |---|---|---|---|---|
@@ -884,3 +886,4 @@ which forces a reload.
 | 1.3-rc | 2026-11-19 | ADR-0014 state ownership: §0 topology note; §2 goals, §4.1 artefacts (`dash-shell.wasm`, `dash-rooms-admin.wasm` withdrawn), §4.2 diagram and thread table, T03-003, §4.4 (the TS application owns the state store; the engine holds render-local state), §4.5–§4.6 TS keymap and URL codec, §5.3 marked superseded, §5.5, §6, §7.3, §11 and §12 rewritten; Leptos and the ui↔core rings removed |
 | 1.4-rc | 2026-11-20 | #59 Part B: T03-022 states the header split: every document carries COOP, COEP, CORP and the CSP; every asset carries CORP and `nosniff` (T18-002) |
 | 1.5-rc | 2026-11-21 | #61 Part C: §4.6 the board pattern in the codec list adds `&f=…` (02 §4) |
+| 1.6-rc | 2026-11-21 | #90: `drawn` event (ADR-0019): §4.2 the engine events add `drawn` |

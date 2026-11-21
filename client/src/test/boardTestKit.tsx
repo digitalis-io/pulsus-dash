@@ -7,15 +7,25 @@ import { HttpApi } from '../api/HttpApi';
 import { defaultSeed } from '../api/stubData';
 import type { Board, BoardSpec, PanelSpec } from '../api/types';
 import { ChartEngineContext } from '../engine/index';
-import { fakeEngine } from './fakeEngine';
+import { fakeEngine, type FakeEngine } from './fakeEngine';
 
 export function EngineWrapper({ children }: { children: ReactNode }) {
   return <ChartEngineContext.Provider value={fakeEngine()}>{children}</ChartEngineContext.Provider>;
 }
 
-/** The panel element (`data-panel`) whose `h3` is `title`. */
+/** A wrapper that provides `engine`, so a test can read its frames. */
+export function engineWrapper(engine: FakeEngine) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <ChartEngineContext.Provider value={engine}>{children}</ChartEngineContext.Provider>;
+  };
+}
+
+/**
+ * The panel element (`data-panel`) whose `h3` is `title`. Hidden content counts: the board stays
+ * mounted, `aria-hidden`, behind the panel editor dialog (#90).
+ */
 export function panelOf(title: string): HTMLElement {
-  const h = screen.getByRole('heading', { level: 3, name: title });
+  const h = screen.getByRole('heading', { level: 3, name: title, hidden: true });
   const p = h.closest<HTMLElement>('[data-panel]');
   if (p === null) throw new Error(`no panel for ${title}`);
   return p;
@@ -25,8 +35,9 @@ export function gridOf(title: string): string | null {
   return panelOf(title).getAttribute('data-grid');
 }
 
+/** The titles of the board's panels, behind an open dialog too (#90). */
 export function panelTitles(): string[] {
-  return screen.queryAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+  return screen.queryAllByRole('heading', { level: 3, hidden: true }).map((h) => h.textContent);
 }
 
 export function grid(

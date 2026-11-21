@@ -395,6 +395,70 @@ describe('engine', () => {
   });
 });
 
+describe('unit:drawn and frame id (#90, ADR-0019)', () => {
+  const data = seriesData(seriesFrame(K(1), [0, 1, 2], [1, 2, 3]));
+  const w = { fromMs: 0, toMs: 2 };
+
+  it('unit:drawn after each draw', () => {
+    const h = harness(Canvas2DEngine, { id: 'f9' });
+    show(h, LINE_NONE, data, w, [800, 240, 1]);
+    expect(h.drawn).toEqual([{ cssWidth: 800, cssHeight: 240, dpr: 1 }]);
+    const plot = plotOf(h);
+    pointer(h.canvas, 'pointermove', plot.x + plot.width / 2, plot.y + 10);
+    h.flush();
+    expect(h.drawn).toHaveLength(2);
+    h.frame.resize(0, 0, 1);
+    h.flush();
+    expect(h.drawn).toHaveLength(2);
+    h.frame.dispose();
+    h.frame.setData(data);
+    h.flush();
+    expect(h.drawn).toHaveLength(2);
+  });
+
+  it('unit:chart-draw carries the frame id', () => {
+    const measure = vi.spyOn(performance, 'measure');
+    try {
+      const h = harness(Canvas2DEngine, { id: 'f9' });
+      show(h, LINE_NONE, data, w);
+      const detailOf = () =>
+        (
+          measure.mock.calls.filter((c) => c[0] === 'chart-draw').at(-1)?.[1] as
+            { detail?: unknown } | undefined
+        )?.detail;
+      expect(detailOf()).toEqual({ kind: 'line', series: 1, frame: 'f9' });
+      const plain = harness(Canvas2DEngine);
+      show(plain, LINE_NONE, data, w);
+      expect(detailOf()).toEqual({ kind: 'line', series: 1, frame: null });
+    } finally {
+      measure.mockRestore();
+    }
+  });
+
+  it('unit:a kind change clears the canvas', () => {
+    const h = harness(Canvas2DEngine, { id: 'f9' });
+    show(h, LINE_NONE, data, w);
+    const clears = () =>
+      h
+        .visible()
+        .calls('clearRect')
+        .map((o) => o.args);
+    // The same kind (a title change) keeps the drawn image until the redraw.
+    h.frame.setSpec({ ...LINE_NONE, title: 'U' });
+    expect(clears()).toHaveLength(0);
+    h.flush();
+    h.frame.setSpec({
+      kind: 'bars',
+      title: 'U',
+      unit: { kind: 'none' },
+      stacking: 'normal',
+      categoryLabel: 'level',
+      categoryOrder: [],
+    });
+    expect(clears()).toEqual([[0, 0, 800, 240]]);
+  });
+});
+
 describe('large inputs', () => {
   // More buckets than the JavaScript engine's argument limit: extrema are computed without a spread.
   it('renders and summarises 200 000 bar buckets without throwing', () => {
