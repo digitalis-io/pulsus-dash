@@ -20,7 +20,7 @@
     "initialJs": 200000,
     "initialCss": 30000,
     "lazyChunk": 120000,
-    "editorChunk": 175000,
+    "editorChunk": 50000,
     "fonts": 150000,
     "totalExceptEngine": 1000000
   },
