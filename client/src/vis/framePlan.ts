@@ -7,7 +7,7 @@
 import type { FrameData, ScalarFrame, SeriesFrame } from '../data/frames';
 import type { Unit, VisKind, VisSpec } from '../engine/api';
 import type { ExploreResult } from './autovis';
-import { histogramBuckets, isolateBucket } from './histogram';
+import { histogramBuckets, isHistogram, isolateBucket } from './histogram';
 
 export type FramePlan =
   | { readonly spec: VisSpec; readonly data: FrameData; readonly notice: null }
@@ -28,12 +28,39 @@ export function scalarSeries(s: ScalarFrame): SeriesFrame {
 }
 
 /** Whether the series table offers row isolation (plan #63 D-ISO). */
+function sameTimestamps(a: Float64Array, b: Float64Array): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * `series` on one grid (`bars`, §4.3): unchanged when they already share their timestamps, else
+ * each on the sorted union of all timestamps with NaN where it has no sample.
+ */
+export function commonGrid(series: readonly SeriesFrame[]): readonly SeriesFrame[] {
+  const first = series[0];
+  if (first === undefined || series.every((s) => sameTimestamps(s.timestamps, first.timestamps))) {
+    return series;
+  }
+  const all = new Set<number>();
+  for (const s of series) for (const t of s.timestamps) all.add(t);
+  const grid = Float64Array.from(all).sort();
+  const at = new Map<number, number>();
+  grid.forEach((t, i) => at.set(t, i));
+  return series.map((s) => {
+    const values = new Float64Array(grid.length).fill(NaN);
+    s.timestamps.forEach((t, i) => {
+      const k = at.get(t);
+      if (k !== undefined) values[k] = s.values[i] ?? NaN;
+    });
+    return { ...s, timestamps: grid, values };
+  });
+}
+
 export function canIsolate(vis: VisKind | null, r: ExploreResult): boolean {
-  return (
-    r.kind === 'series' &&
-    vis !== null &&
-    (vis !== 'heatmap' || histogramBuckets(r.series) !== null)
-  );
+  return r.kind === 'series' && vis !== null && (vis !== 'heatmap' || isHistogram(r.series));
 }
 
 export function framePlan(
@@ -65,7 +92,8 @@ export function framePlan(
   const isolated =
     o.isolatedKey === null ? undefined : r.series.find((s) => s.key === o.isolatedKey);
   if (vis !== 'heatmap') {
-    const series = isolated === undefined ? r.series : [isolated];
+    const shown = isolated === undefined ? r.series : [isolated];
+    const series = vis === 'bars' ? commonGrid(shown) : shown;
     return { spec, data: { kind: 'series', series }, notice: null };
   }
   const heatmap =
