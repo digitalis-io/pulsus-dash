@@ -343,9 +343,12 @@ The private PulsusDB host must never appear in a tracked file
 ([T19-010](../../designs/technical/T19-deployment.md)). The real base URL lives only in the
 untracked `dev/local.env` ([dev stack page](dev-stack.md#devlocalenv)).
 `tools/no-pulsusdb-host/check.py` (Python standard library only) enforces this on every pull
-request. It needs no host name: CI rejects any non-local host containing `pulsusdb`, and any
-non-local datasource value, with or without a scheme. No host name is stored in the repository or
-in its secrets.
+request. It needs no host name. CI rejects:
+
+- any non-local host containing `pulsusdb` in a URL;
+- any non-local URL used as a datasource value.
+
+No host name is stored in the repository or in its secrets.
 
 ```bash
 make no-pulsusdb-host                      # self-test, then scan every tracked file
@@ -367,32 +370,7 @@ target path, which is what Git stores.
 
 A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
 `PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
-Its value is caught either as an `http` or `https` URL, or as a bare host without a scheme,
-`<host>[:<port>][/<path>]`, single-label names included (`pulsusdb`, `db:3100`). A bare value is
-caught when it is:
-
-- in quotes (`"`, `'` or a backtick), after any datasource key;
-- the whole value up to the end of the line or a comment (`#` or `//` after a space), after any
-  datasource key;
-- after `PULSUS_DASH_DATASOURCE_URL` or the YAML `url:` key only: a host with a dot or a port,
-  followed by a space, a quote, `/`, `#`, `,` or the end of the line
-  (`PULSUS_DASH_DATASOURCE_URL=<host>.<domain>:<port> ./run`).
-
-These stay clean, so code and prose are not taken for hosts:
-
-- after `datasource.url`, `datasource_url` and `DatasourceURL`, an unquoted value with an
-  upper-case letter (`DatasourceURL: d.URL`), and a key reached through a selector
-  (`cfg.DatasourceURL = dsurl`);
-- a value followed by more code or words (`d.URL,`, `cfg.URL()`, `u}`, `string;`,
-  `datasource.url: scheme must be http`);
-- type names and common identifiers as single words (`string`, `str`, `text`, `number`, `int`,
-  `integer`, `bool`, `boolean`, `url`, `uri`, `null`, `nil`, `none`, `undefined`, `any`,
-  `unknown`, `true`, `false`, `object`);
-- a variable (`$X`, `${...}`), a placeholder (`<host:port>`), and an empty value whose next line
-  holds the rest.
-
-An unquoted lower-case dotted value after a code-style key, such as `datasource.url = cfg.url`, is
-read as a host; write the host in quotes, or the code over two lines, to avoid it.
+Its value is checked only when it is an `http` or `https` URL.
 
 **Forbidden hosts** apply only to local runs. They are the entries of the optional
 `DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
@@ -448,10 +426,11 @@ An unknown option, including the removed `--require-secret`, is a usage error.
 
 ### Limits
 
-CI knows no host name, so it catches the private host only where it is recognisable: in a URL whose
-host contains `pulsusdb`, or as a datasource value. A private host without `pulsusdb` in its name,
-written outside a datasource key, is caught only by a local run with `dev/local.env`. Keep the real
-base URL in `dev/local.env` and nowhere else.
+Bare host names without a scheme are not scanned. CI knows no host name, so it misses a private
+host that has no `pulsusdb` in its name unless it is a datasource URL; only a local run with
+`dev/local.env` forbids it in any form.
+The rule for contributors is simple: never commit a real host name. Keep the real base URL in
+`dev/local.env` and nowhere else.
 
 ### Self-test
 
