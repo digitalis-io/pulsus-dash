@@ -342,7 +342,8 @@ described in [the server page](../server/README.md) and [the database page](../s
 | Tool | Version | Where it is fixed |
 |---|---|---|
 | Go | 1.27.4 | `server/go.mod` (`go 1.27.0`, `toolchain go1.27.4`). CI installs exactly 1.27.4 (`setup-go` `go-version`, because `go-version-file` reads only the `go` line), sets `GOTOOLCHAIN=local` and `GOFLAGS=-mod=readonly`, and fails if `go env GOVERSION` differs from the `toolchain` line. Change both together |
-| oapi-codegen, sqlc, govulncheck | v2.8.2, v1.31.1, v1.9.0 | `tool` directives in `server/go.mod`; run as `go -C server tool <name>` |
+| oapi-codegen, sqlc, govulncheck, go-licenses | v2.8.2, v1.31.1, v1.9.0, v2.0.1 | `tool` directives in `server/go.mod`; run as `go -C server tool <name>` (`make go-licenses` builds go-licenses into `build/bin`) |
+| Python | 3.12 or later, standard library only | the `ci:no-pulsusdb-host` checker; CI uses the runner's `python3` |
 | golangci-lint | 2.15.0 | `make tools-ci` downloads it into `build/bin` and verifies its sha256 |
 | squawk | 2.72.0 | `make tools-ci`, same |
 | openapi-typescript | 7.13.0 (with TypeScript 5.9.3) | `tools/api-gen/package.json` and its lockfile |
@@ -365,16 +366,68 @@ cgo.
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |
 | `make api-gen-check` | `server/scripts/api-gen-check.sh`, then its self-test `server/scripts/test-api-gen-check.sh` | `ci:api-gen` |
 | `make go-mod` | `go mod verify` and `go mod tidy -diff` | `ci:go-mod` |
-| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files) | `ci:go-lint` |
+| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files), then the depguard self-test `server/scripts/check-depguard-fixture.sh` | `ci:go-lint` |
 | `make go-test` | `go test -race ./...` | `ci:go-test` |
 | `make govulncheck` | `govulncheck ./...` | `ci:govulncheck` |
 | `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
 | `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations` |
+| `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
+| `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
+| `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)) | — |
+| `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
+| `make itest-local-selftest` | `dev/itest-local-selftest.sh`: a failed `up --wait` fails `itest-local`, runs no test and still cleans up (no containers) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
-| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build` | — |
+| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host itest-local-selftest` | — |
 
 The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
 `chi` and `internal/gateway/api` inside `internal/gateway`.
+
+**Depguard self-test.** `server/scripts/check-depguard-fixture.sh` proves that the rules are
+enforced (T05-002). For each fixture in `server/testdata/depguard/`, it copies `server/` into a
+temporary directory, adds the fixture as `internal/core/zz_fixture.go` and lints `internal/core`
+there. The lint must fail with the rule's message:
+
+| Fixture | Imports | Must fail with |
+|---|---|---|
+| `pgx_outside_store.go.txt` | `github.com/jackc/pgx/v5` | `pgx is used only in internal/store (T11-023, ADR-0015)` |
+| `chi_outside_gateway.go.txt` | `github.com/go-chi/chi/v5` | `the router is used only in internal/gateway (T06-001)` |
+
+If a fixture passes, it prints `depguard fixture <name> passed; rule <rule> is not enforced` and
+exits 1. If the lint fails for another reason, it prints the output and `depguard fixture <name>
+failed without "<desc>"`. It never writes inside the checkout and checks that `git status` is
+unchanged.
+
+### Licences (`ci:go-licenses`)
+
+The server is AGPL-3.0 (decision D3), so every module linked into it must carry a compatible
+licence ([T18-026](../../designs/technical/T18-security.md)). `server/scripts/go-licenses.sh` runs
+`go-licenses check ./cmd/pulsus-dash` with this allowlist:
+
+`MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1, LGPL-3.0`
+
+Anything else fails: GPL-2.0-only, source-available licences (BSL, SSPL, Elastic, Commons Clause)
+and any licence go-licenses cannot recognise. The project's own module is ignored. Only modules in
+the binary count: tools pinned in `go.mod` are not linked into it.
+
+It then saves the licence files of those modules into `build/licenses/` and writes
+**`build/THIRD_PARTY_NOTICES.txt`**: the lines `Pulsus Dash third-party notices` and
+`Generated by make go-licenses from the Go modules linked into pulsus-dash.`, then each `LICENSE`,
+`LICENCE`, `COPYING` or `NOTICE` file (any case, with an optional suffix such as `.txt`), in byte
+order of its path, under a `== <module path>/<file> ==` header. It fails with `notices file is
+empty` if no file was found. CI uploads the file as the artifact `third-party-notices` (14 days);
+release packaging that ships it comes later.
+
+The self-test `server/scripts/check-go-licenses-fixture.sh` runs the gate's own check,
+`go-licenses.sh --check DIR PATTERN IGNORE [EXTRA]`, on the fixture module
+`server/testdata/licences/gpl`. The allowlist exists only in `go-licenses.sh`, so a change to it is
+what the self-test sees: adding `GPL-2.0` to it makes `make go-licenses` fail. That module links
+`example.com/gpl-dep`, whose `LICENSE` is the SPDX GPL-2.0-only text. The check must fail and name
+`example.com/gpl-dep` and `GPL-2.0`. A control run that adds `GPL-2.0` on top of the allowlist
+(`EXTRA`) must pass, which shows the failure comes from the licence. Both scripts work from any directory in the
+repository.
+
+When a new dependency fails the check, do not widen the allowlist: replace the dependency, or
+raise it as a design question (D3).
 
 ### Generated code (`ci:api-gen`)
 
@@ -396,12 +449,14 @@ real checkout's `git status` and generated files are unchanged.
 
 `.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
 `tools/api-gen/`, `client/` (the client is embedded, and the packer is `client/scripts/`),
-`design/tokens.toml`, `tools/e2e/`, `Makefile` or the workflow, and on pushes to `main`. The
-token is read-only, actions are pinned by commit SHA and no secrets are used.
+`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `tools/no-pulsusdb-host/` or the
+workflow, and on pushes to `main`. The token is read-only, actions are pinned by commit SHA and no
+secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
-| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `npm --prefix client ci` and `make build`, then `build/pulsus-dash version` → `tools/e2e/integrity-gate.sh` (`ci:asset-integrity`) |
+| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `npm --prefix client ci` and `make build`, then `build/pulsus-dash version` → `tools/e2e/integrity-gate.sh` (`ci:asset-integrity`) → `make go-licenses` (`ci:go-licenses`) → upload `build/THIRD_PARTY_NOTICES.txt` as artifact `third-party-notices` (14 days) |
+| `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` and `make itest-local-selftest` (`ci:dev-stack`) → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
 | `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` → Node, `npm --prefix client ci`, `make build` → `smoke database` (roles and a `pulsus_smoke` database) → `tools/e2e/built-binary-smoke.sh` (F1) |
 
 ### `ci:asset-integrity`
@@ -433,3 +488,113 @@ tenant binding "default"`), starts `serve` on `localhost:18080`, and checks: `ms
 verified" files=<n>` on stderr; `/readyz` 200 within 30 s; `GET /` (HTML) 200 with the CSP and
 `Cross-Origin-Embedder-Policy: require-corp`; the first `assets/*.js` of `/asset-manifest.json`
 served `Content-Encoding: br`; and exit 0 on SIGTERM.
+
+<a id="ci-no-pulsusdb-host"></a>
+
+## ci:no-pulsusdb-host
+
+The private PulsusDB host must never appear in a tracked file
+([T19-010](../../designs/technical/T19-deployment.md)). The real base URL lives only in the
+untracked `dev/local.env` ([dev stack page](dev-stack.md#devlocalenv)).
+`tools/no-pulsusdb-host/check.py` (Python standard library only) enforces this on every pull
+request. It needs no host name. CI rejects:
+
+- any non-local host containing `pulsusdb` in a URL;
+- any non-local URL used as a datasource value.
+
+No host name is stored in the repository or in its secrets.
+
+```bash
+make no-pulsusdb-host                      # self-test, then scan every tracked file
+make no-pulsusdb-host ARGS=--show-paths    # the same, naming the files (local only)
+python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
+```
+
+By default it scans every file `git ls-files` lists; nothing is excluded. `--root DIR` scans a
+directory instead (the self-test uses it). Symlinks are never followed: a link is scanned as its
+target path, which is what Git stores.
+
+### Rules
+
+| Rule | Applies to | Finds |
+|---|---|---|
+| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word); local runs only |
+| `forbidden-host-in-path` | every file | a forbidden host in the file's path; local runs only |
+| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | a non-local host that is either (a) the host of an `http` or `https` URL containing `pulsusdb`, or (b) the value of a PulsusDB datasource key, see below |
+
+A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
+`PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
+Its value is checked only when it is an `http` or `https` URL.
+
+**Forbidden hosts** apply only to local runs. They are the entries of the optional
+`DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
+1 (an entry written as a URL is reduced to its host), then the host of `PULSUS_DASH_DATASOURCE_URL`
+if it is set and not local, as the last entry. `make no-pulsusdb-host` loads `dev/local.env` first,
+so a local run also forbids your real host in any form, even without `pulsusdb` in it. CI sets
+neither variable, and if neither is set the scan runs the URL rule alone, without a warning.
+
+**Local hosts**, which the URL rule accepts, are: `localhost` and names ending in `.localhost`;
+loopback addresses (`127.0.0.0/8` and `::1` in any spelling, with or without a zone); names ending in
+`.example`, `.test` or `.invalid`; `example.com`, `example.net`, `example.org` and their subdomains;
+and the compose service name `pulsus-fake`. A single-label name such as `pulsusdb` is not local.
+Documentation and examples should use `pulsusdb.example` or `localhost`.
+
+The URL rule reads the host from the authority: userinfo, port, brackets around IPv6, an IPv6 zone
+(`%25eth0` or `%eth0`) and a trailing dot are removed, and case is ignored. It never matches SQL by
+table name: a binding URL in SQL is caught only by the `pulsusdb` rule or the forbidden-host list.
+In YAML, blank and comment lines between `datasource:` and `url:` are skipped.
+
+### Output and identifiers
+
+The checker never prints a path, a host, the text of a line, an argument or a git message. A file is
+`F<i>`, its 1-based position in the sorted list of scanned files (`git ls-files` in byte order). For
+example:
+
+```text
+error[forbidden-host] F12:3 (entry 1)
+error[forbidden-host-in-path] F40 (entry 2)
+error[non-local-pulsusdb-url] F7:2
+no-pulsusdb-host: 3 finding(s) in 506 files; run make no-pulsusdb-host ARGS=--show-paths locally to see paths
+```
+
+`:3` is the line, and `entry 1` is the first forbidden host. To find the file, run
+`make no-pulsusdb-host ARGS=--show-paths` locally: it prints the relative path instead of `F<i>`,
+with control characters escaped as `\xNN` and `::` written as `: :`. `--show-paths` is refused
+when `CI` is set. A clean run ends with `no-pulsusdb-host: clean (<m> files)`.
+
+### Exit codes and errors
+
+| Exit | When | Message (stderr) |
+|---|---|---|
+| 0 | no finding | — |
+| 1 | findings (on stdout), and none of the errors below | — |
+| 2 | invalid arguments | `error[usage] invalid arguments` |
+| 2 | `--show-paths` with `CI` set | `error[usage] --show-paths is refused in CI` |
+| 2 | `git ls-files` failed | `error[git] ls-files failed` |
+| 2 | `--root` is not a directory | `error[bad-root] --root is not a directory` |
+| 2 | a file or link could not be read (the scan continues) | `error[unreadable] F<i> (<errno name>)` |
+| 2 | a directory under `--root` could not be listed (the scan continues) | `error[unreadable] a directory under --root could not be listed` |
+| 2 | any other error | `error[internal] <exception class>` |
+
+An unknown option, including the removed `--require-secret`, is a usage error.
+
+### Limits
+
+Bare host names without a scheme are not scanned. CI knows no host name, so it misses a private
+host that has no `pulsusdb` in its name unless it is a datasource URL; only a local run with
+`dev/local.env` forbids it in any form.
+The rule for contributors is simple: never commit a real host name. Keep the real base URL in
+`dev/local.env` and nowhere else.
+
+### Self-test
+
+The checker's tests use only fictional hosts (`.corp` names and reserved names). Its fixtures are in
+`tools/no-pulsusdb-host/testdata/`, where only the URL rule is switched off in repository mode.
+
+### CI (`hygiene.yml`)
+
+`.github/workflows/hygiene.yml` runs on every pull request and on pushes to `main`, with a read-only
+token. Its one job, `no-pulsusdb-host`, runs the checker's self-test
+(`python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'`), then
+`check.py` ([above](#ci-no-pulsusdb-host)). It reads no secret, so pull requests from forks run it
+too.

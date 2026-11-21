@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-20 |
+| **Version** | 1.8-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (binary + image + basic chart) → M-UI4 (worker roles, HA evaluator, self-observability, derived-state sizing) → M-UI6 (air-gapped, SaaS cells) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T19-deployment.md (not tracked) |
@@ -199,7 +199,7 @@ postgres:   { url: { secretRef: pulsus-dash-pg, key: url }, pool: 20, external: 
 redis:      { enabled: false }
 objectStore: { enabled: false, kind: s3, bucket: …, secretRef: … }
 kek:        { provider: awsKms, keyId: arn:… }       # awsKms|gcpKms|azureKv|vaultTransit|file
-pulsusdb:   [ { name: prod, url: https://pulsusdb.obs:3100, credentialsSecret: pdb-prod, tenants: [...] } ]
+pulsusdb:   [ { name: prod, url: https://pulsusdb.example:3100, credentialsSecret: pdb-prod, tenants: [...] } ]
 selfTelemetry: { enabled: true, binding: prod, tenant: pulsus-dash-self }
 auditExport:   { enabled: false }                   # syslog | otlp (may be a PulsusDB tenant)
 heartbeat:     { receiverSecret: pulsus-dash-heartbeat }   # deployment Watchdog receiver
@@ -408,7 +408,7 @@ secret MUST NOT be stored or logged.
 [kek]      provider = "file"   path = "/var/run/secrets/kek/key"
 [egress]   mode = "allowlist"  proxy = ""   allow_private = ["10.20.0.0/16"]
 [ai]       enabled = true      # provider configured per org in Admin
-[selftelemetry] otlp_endpoint = "https://pulsusdb.obs:3100"  tenant = "pulsus-dash-self"  sample_traces = 0.05
+[selftelemetry] otlp_endpoint = "https://pulsusdb.example:3100"  tenant = "pulsus-dash-self"  sample_traces = 0.05
 [audit_export]  enabled = false   # kind = "otlp" | "syslog"; endpoint = "…"; tenant = "…"
 [airgapped] enabled = false
 ```
@@ -695,3 +695,4 @@ all other Dash-derived state) is in Postgres, plus optional object storage for l
 | 1.5-rc | 2026-11-20 | #59 Part A: T19-010 revised (`*_ref` keys with `env:NAME` or `file:/absolute/path`, `vault://` later; the seeded binding in Postgres, with its credentials reference, is authoritative); §4.9 sources aligned with T06 §4.9 (YAML file, `PULSUS_DASH_<KEY_PATH>`, `config check` connects to nothing); D12: the ENT-028 Helm gate expects the application shell, not a login page |
 | 1.6-rc | 2026-11-20 | #59 Part B: T19-002 names the optional `server.public_url` and its one 2 s self-check request after the listener opens; T19-005: a binary built without embedded assets refuses to serve, and `serve --api-only` is a development-only mode that serves no client ([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md) unchanged) |
 | 1.7-rc | 2026-11-20 | #61 Part A: T19-006 `/readyz` lists `audit_partitions`; operators alert on `audit_partitions != ok`, and `error` answers 503; §4.10 names the `audit_partition_horizon_low` record as the observable alert until the self-telemetry exporter publishes the same state (T11-021) |
+| 1.8-rc | 2026-11-21 | #59 Part C: the example PulsusDB URLs in §4.4 and §4.9 use the reserved `pulsusdb.example` name, so `ci:no-pulsusdb-host` ([T05](T05-testing-and-performance.md) §7.1) passes on every tracked file |
