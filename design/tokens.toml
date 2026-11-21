@@ -1,6 +1,7 @@
 # Pulsus Dash design tokens: the single source of colour, spacing, size, type and motion values.
-# `client/scripts/gen-tokens.ts` generates `client/src/styles/tokens.css` and `tokens.ts` from this
-# file (VL-001, VL-021, T08-022). `series-1`…`series-8` (categorical, VL-002) and `ramp-1`…`ramp-9`
+# `client/scripts/gen-tokens.ts` generates `client/src/styles/tokens.css`, `tokens.ts` and the
+# engine's `engine/crates/dash-tokens/src/tokens.rs` from this file (VL-001, VL-021, T08-022,
+# T01-010). `series-1`…`series-8` (categorical, VL-002) and `ramp-1`…`ramp-9`
 # (sequential, single hue, VL-006) must be numbered contiguously from 1; they are also emitted as
 # ordered arrays (`seriesPalette`, `sequentialRamp`). Colours are uppercase #RRGGBB or #RRGGBBAA;
 # lengths are px; durations are ms. Light colours are designed, not inverted from dark (VL-001).
@@ -141,6 +142,10 @@ display = 32
 regular = 400
 medium = 500
 semibold = 600
+
+# Glyph advance (em): JetBrains Mono's 600/1000; the engine measures axis labels with it (#68).
+[font.advance]
+mono = 0.6
 
 [line-height]
 tight = 1.25
