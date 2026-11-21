@@ -1,8 +1,10 @@
 /**
- * Generates `src/styles/tokens.css` and `src/styles/tokens.ts` from `../design/tokens.toml`
- * (VL-001, VL-021, T08-022). `tokens.ts` also carries `seriesPalette` and `sequentialRamp`, the
- * `series-N` and `ramp-N` colours of each theme as ordered arrays for the chart engine (T01-010,
- * T02-004). `--check` compares in memory instead of writing (`ci:token-lint`).
+ * Generates `src/styles/tokens.css`, `src/styles/tokens.ts` and the engine's
+ * `engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml` (VL-001, VL-021, T08-022,
+ * T01-010). `tokens.ts` also carries `seriesPalette` and `sequentialRamp`, the `series-N` and
+ * `ramp-N` colours of each theme as ordered arrays for the chart engine (T02-004); `tokens.rs`
+ * carries every token, colours as sRGB-encoded `Rgba8` bytes equal to the CSS hex (T08 §4.7).
+ * `--check` compares in memory instead of writing (`ci:token-lint`).
  *
  * Exit: 0 written or up to date, 1 stale generated file, 2 unreadable or invalid tokens.
  */
@@ -40,6 +42,7 @@ const NUMERIC: readonly { path: string; prefix: string; unit: string }[] = [
   { path: 'border', prefix: 'border', unit: 'px' },
   { path: 'font.size', prefix: 'font-size', unit: 'px' },
   { path: 'font.weight', prefix: 'font-weight', unit: '' },
+  { path: 'font.advance', prefix: 'font-advance', unit: '' },
   { path: 'line-height', prefix: 'line-height', unit: '' },
 ];
 
@@ -53,6 +56,8 @@ export interface Tokens {
     family: Record<string, string>;
     size: Record<string, number>;
     weight: Record<string, number>;
+    /** Glyph advance in em (the monospace advance measures axis labels, T02 §4.5). */
+    advance: Record<string, number>;
     lineHeight: Record<string, number>;
   };
   motion: Record<string, number | string>;
@@ -187,6 +192,7 @@ export function parseTokens(tomlText: string): Tokens {
       family: texts(root, 'font.family'),
       size: numbers(root, 'font.size'),
       weight: numbers(root, 'font.weight'),
+      advance: numbers(root, 'font.advance'),
       lineHeight: numbers(root, 'line-height'),
     },
     motion,
@@ -261,10 +267,98 @@ export function generateTs(tk: Tokens): string {
   return out.join('\n');
 }
 
-/** Both generated files for the TOML text. Throws `InputError` on invalid tokens. */
+/** A Rust constant name: upper case, `-` → `_`, a leading digit prefixed with `S_`. */
+function rustName(key: string): string {
+  const n = key.toUpperCase().replace(/-/g, '_');
+  return /^\d/.test(n) ? `S_${n}` : n;
+}
+
+/** An f32 literal. */
+function rustNumber(v: number): string {
+  const s = String(v);
+  return /[.e]/.test(s) ? s : `${s}.0`;
+}
+
+/** `#RRGGBB[AA]` → `Rgba8([0xRR, 0xGG, 0xBB, 0xAA])`, alpha 0xFF when absent (sRGB-encoded). */
+function rustColour(hex: string): string {
+  const bytes = [1, 3, 5, 7].map((i) => (i < hex.length ? hex.slice(i, i + 2) : 'FF'));
+  return `Rgba8([${bytes.map((b) => `0x${b}`).join(', ')}])`;
+}
+
+/** A module of constants: one line for a single constant, else one constant per line. */
+function rustModule(name: string, consts: string[], indent: string): string {
+  if (consts.length === 1) return `${indent}pub mod ${name} { ${consts[0] ?? ''} }`;
+  return [
+    `${indent}pub mod ${name} {`,
+    ...consts.map((c) => `${indent}    ${c}`),
+    `${indent}}`,
+  ].join('\n');
+}
+
+function rustNumbers(v: Record<string, number>): string[] {
+  return Object.keys(v)
+    .sort()
+    .map((k) => `pub const ${rustName(k)}: f32 = ${rustNumber(v[k] ?? 0)};`);
+}
+
+function rustTexts(v: Record<string, string>): string[] {
+  return Object.keys(v)
+    .sort()
+    .map((k) => `pub const ${rustName(k)}: &str = ${JSON.stringify(v[k] ?? '')};`);
+}
+
+export function generateRs(tk: Tokens): string {
+  const out = [`// ${HEADER}`, '', 'use crate::Rgba8;', ''];
+  out.push('pub mod colour {');
+  for (const theme of ['dark', 'light'] as const) {
+    const c = tk.colour[theme];
+    out.push(`    pub mod ${theme} {`, '        use crate::Rgba8;');
+    for (const k of Object.keys(c).sort()) {
+      out.push(`        pub const ${rustName(k)}: Rgba8 = ${rustColour(c[k] ?? '')};`);
+    }
+    out.push('    }');
+  }
+  out.push('}', '');
+  for (const { prefix, name } of PALETTES) {
+    const constName = name === 'seriesPalette' ? 'SERIES_PALETTE' : 'SEQUENTIAL_RAMP';
+    const n = ordered(tk.colour.dark, prefix).length;
+    out.push(`pub const ${constName}: [[Rgba8; ${String(n)}]; 2] = [`);
+    for (const theme of ['dark', 'light'] as const) {
+      const keys = Array.from(
+        { length: n },
+        (_, i) => `colour::${theme}::${rustName(`${prefix}-${String(i + 1)}`)}`,
+      );
+      out.push(`    [${keys.join(', ')}],`);
+    }
+    out.push('];', '');
+  }
+  out.push(rustModule('space', rustNumbers(tk.space), ''), '');
+  out.push(rustModule('size', rustNumbers(tk.size), ''), '');
+  out.push(rustModule('radius', rustNumbers(tk.radius), ''), '');
+  out.push(rustModule('border', rustNumbers(tk.border), ''), '');
+  out.push('pub mod font {');
+  out.push(rustModule('family', rustTexts(tk.font.family), '    '));
+  out.push(rustModule('size', rustNumbers(tk.font.size), '    '));
+  out.push(rustModule('weight', rustNumbers(tk.font.weight), '    '));
+  out.push(rustModule('advance', rustNumbers(tk.font.advance), '    '));
+  out.push('}', '');
+  out.push(rustModule('line_height', rustNumbers(tk.font.lineHeight), ''), '');
+  const motion = Object.keys(tk.motion)
+    .sort()
+    .map((k) => {
+      const v = tk.motion[k];
+      return typeof v === 'number'
+        ? `pub const ${rustName(k)}: f32 = ${rustNumber(v)};`
+        : `pub const ${rustName(k)}: &str = ${JSON.stringify(v ?? '')};`;
+    });
+  out.push(rustModule('motion', motion, ''), '');
+  return out.join('\n');
+}
+
+/** The generated files for the TOML text. Throws `InputError` on invalid tokens. */
 export function generate(tomlText: string): { css: string; ts: string; rs: string } {
   const tk = parseTokens(tomlText);
-  return { css: generateCss(tk, parse(tomlText)), ts: generateTs(tk), rs: '' };
+  return { css: generateCss(tk, parse(tomlText)), ts: generateTs(tk), rs: generateRs(tk) };
 }
 
 function readText(path: string): string {
@@ -277,11 +371,12 @@ function readText(path: string): string {
 
 /** `--check`: findings for each generated file that differs from what the TOML produces. */
 export function checkGenerated(read: (path: string) => string = readText): Finding[] {
-  const { css, ts } = generate(readFileSync(TOKENS_TOML, 'utf8'));
+  const { css, ts, rs } = generate(readFileSync(TOKENS_TOML, 'utf8'));
   const findings: Finding[] = [];
   for (const [path, want, rel] of [
     [TOKENS_CSS, css, 'src/styles/tokens.css'],
     [TOKENS_TS, ts, 'src/styles/tokens.ts'],
+    [TOKENS_RS, rs, 'engine/crates/dash-tokens/src/tokens.rs'],
   ] as const) {
     if (read(path) !== want) {
       findings.push({
@@ -298,9 +393,10 @@ export function checkGenerated(read: (path: string) => string = readText): Findi
 export function main(argv: readonly string[]): number {
   try {
     if (argv.includes('--check')) return report(checkGenerated());
-    const { css, ts } = generate(readFileSync(TOKENS_TOML, 'utf8'));
+    const { css, ts, rs } = generate(readFileSync(TOKENS_TOML, 'utf8'));
     writeFileSync(TOKENS_CSS, css);
     writeFileSync(TOKENS_TS, ts);
+    writeFileSync(TOKENS_RS, rs);
     return 0;
   } catch (e) {
     console.error(`error[tokens] ${e instanceof Error ? e.message : String(e)}`);

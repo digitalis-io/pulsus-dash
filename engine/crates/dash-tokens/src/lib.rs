@@ -20,7 +20,7 @@ pub struct Rgba8(pub [u8; 4]);
 impl Rgba8 {
     /// Each channel / 255; the sRGB values are not linearised (D-BLEND).
     pub fn to_f32(self) -> [f32; 4] {
-        [0.0; 4]
+        self.0.map(|c| f32::from(c) / 255.0)
     }
 }
 
@@ -34,7 +34,27 @@ pub enum ColourRole {
     Text,
 }
 
+/// The token of `role` in `theme`.
 pub fn colour(theme: Theme, role: ColourRole) -> Rgba8 {
-    let _ = (theme, role);
-    Rgba8([0; 4])
+    use tokens::colour::{dark, light};
+    match (theme, role) {
+        (Theme::Dark, ColourRole::Surface1) => dark::SURFACE_1,
+        (Theme::Dark, ColourRole::Hairline) => dark::HAIRLINE,
+        (Theme::Dark, ColourRole::TextMuted) => dark::TEXT_MUTED,
+        (Theme::Dark, ColourRole::Brush) => dark::BRUSH,
+        (Theme::Dark, ColourRole::Text) => dark::TEXT,
+        (Theme::Light, ColourRole::Surface1) => light::SURFACE_1,
+        (Theme::Light, ColourRole::Hairline) => light::HAIRLINE,
+        (Theme::Light, ColourRole::TextMuted) => light::TEXT_MUTED,
+        (Theme::Light, ColourRole::Brush) => light::BRUSH,
+        (Theme::Light, ColourRole::Text) => light::TEXT,
+    }
+}
+
+/// The eight series colours of `theme` (slot = `series_colour_index`).
+pub fn series_palette(theme: Theme) -> [Rgba8; 8] {
+    SERIES_PALETTE[match theme {
+        Theme::Dark => 0,
+        Theme::Light => 1,
+    }]
 }

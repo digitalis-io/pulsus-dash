@@ -122,7 +122,11 @@ describe('ci:token-lint Rust output', () => {
 
   it('checkGenerated reports a stale tokens.rs', () => {
     const { css, ts } = generate(toml);
-    const files: Record<string, string> = { [TOKENS_CSS]: css, [TOKENS_TS]: ts, [TOKENS_RS]: '// stale\n' };
+    const files: Record<string, string> = {
+      [TOKENS_CSS]: css,
+      [TOKENS_TS]: ts,
+      [TOKENS_RS]: '// stale\n',
+    };
     const findings = checkGenerated((p) => files[p] ?? '');
     expect(findings.map((f) => f.rule)).toEqual([
       'stale-generated:engine/crates/dash-tokens/src/tokens.rs',

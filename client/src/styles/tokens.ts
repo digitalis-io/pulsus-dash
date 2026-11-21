@@ -123,6 +123,9 @@ export const border = {
 } as const;
 
 export const font = {
+  "advance": {
+    "mono": 0.6,
+  },
   "family": {
     "mono": "\"JetBrains Mono Variable\", ui-monospace, monospace",
     "ui": "\"Inter Variable\", system-ui, sans-serif",
