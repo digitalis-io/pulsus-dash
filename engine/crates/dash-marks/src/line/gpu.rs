@@ -588,6 +588,12 @@ impl Renderer {
                 outstanding += bytes.len() as u64;
                 let peak = &mut self.counters.staging_outstanding_max;
                 *peak = (*peak).max(outstanding);
+                // L2: flush this slice and wait for it, so one slice is queued at a time
+                // (native; Part C awaits the submission instead of blocking).
+                ctx.queue.submit([]);
+                if ctx.wait().is_ok() {
+                    outstanding = 0;
+                }
             }
             self.counters.value_encodes += 1;
             self.resident[i].gpu = Some(buf);
@@ -629,12 +635,29 @@ impl Renderer {
         guides: &[LineInstance],
     ) -> bool {
         let i = self.resident_cpu(line.chunk, line.encoding);
-        let Some(ranges) = self.ranges_cache.as_ref().map(|c| &c.ranges) else {
+        // Taken out of `self` while the batches draw, and put back below.
+        let (Some(bits), Some(cache)) = (self.resident[i].cpu.take(), self.ranges_cache.take())
+        else {
             return false;
         };
-        let Some(bits) = self.resident[i].cpu.as_deref() else {
-            return false;
-        };
+        let ok = self.draw_cpu_batches(ctx, f, line, guides, &bits, &cache.ranges);
+        self.resident[i].cpu = Some(bits);
+        self.ranges_cache = Some(cache);
+        ok
+    }
+
+    /// Decimates, uploads, draws and releases one batch at a time (§4.2), so at most one bounded
+    /// batch of instances is held and queued; batch 0 also yields `total` and is kept (without
+    /// its instances when there are more batches) for `read_decimation`.
+    fn draw_cpu_batches(
+        &mut self,
+        ctx: &GpuContext,
+        f: &mut Frame,
+        line: &LineRef,
+        guides: &[LineInstance],
+        bits: &[u32],
+        ranges: &ColumnRanges,
+    ) -> bool {
         let offsets = &line.chunk.offsets[line.series.start as usize..=line.series.end as usize];
         let lanes: Vec<u16> = match line.lanes {
             Some(l) => l.to_vec(),
@@ -659,30 +682,39 @@ impl Renderer {
                 far,
             })
         };
-        let d0 = run(0..max);
-        let all = g + d0.total;
-        let mut parts = vec![(0u64, d0.instances.clone())];
-        for (lo, hi) in self.batches(ctx, all).into_iter().skip(1) {
-            parts.push((lo, run(lo..hi).instances));
-        }
-        let held: u64 =
-            parts.iter().map(|(_, p)| p.len() as u64).sum::<u64>() + d0.instances.len() as u64;
-        let peak = &mut self.counters.cpu_instance_bytes_peak;
-        *peak = (*peak).max(INSTANCE_BYTES * held);
+        let mut first = Some(run(0..max));
+        let all = g + first.as_ref().map_or(0, |d| d.total);
         self.size_instances(ctx, all);
-        for (lo, mut inst) in parts {
+        let batches = self.batches(ctx, all);
+        let single = batches.len() == 1;
+        for (lo, hi) in batches {
+            let mut d = match first.take() {
+                Some(d) => d,
+                None => run(lo..hi),
+            };
+            let held = INSTANCE_BYTES * d.instances.len() as u64;
+            let peak = &mut self.counters.cpu_instance_bytes_peak;
+            *peak = (*peak).max(held);
             for (k, gi) in guides.iter().enumerate().skip(lo as usize) {
-                if let Some(slot) = inst.get_mut(k - lo as usize) {
+                if let Some(slot) = d.instances.get_mut(k - lo as usize) {
                     *slot = *gi;
                 }
             }
             ctx.queue
-                .write_buffer(&self.instances.buf, 0, bytemuck::cast_slice(&inst));
+                .write_buffer(&self.instances.buf, 0, bytemuck::cast_slice(&d.instances));
             let mut enc = ctx.device.create_command_encoder(&Default::default());
-            self.draw_pass(ctx, &mut enc, f, Draw::Direct(inst.len() as u32));
+            self.draw_pass(ctx, &mut enc, f, Draw::Direct(d.instances.len() as u32));
             ctx.queue.submit([enc.finish()]);
+            if !single && ctx.wait().is_err() {
+                return false;
+            }
+            if lo == 0 {
+                if !single {
+                    d.instances = Vec::new();
+                }
+                self.last = Some(LastLine::Cpu(d));
+            }
         }
-        self.last = Some(LastLine::Cpu(d0));
         true
     }
 

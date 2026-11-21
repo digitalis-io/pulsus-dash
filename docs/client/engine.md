@@ -132,8 +132,12 @@ so the pixels equal one draw (T02-002 note).
 
 Before allocating, `render` releases every encoded-value buffer its draw list does not reference,
 so a chunk has one resident encoding and a dropped chunk none after the next render. Values are
-encoded through one 16 MiB slab per slice (T1); on T2 the encoded slab in CPU memory is the
-decimation input. The test hooks `debug_counters`, `debug_resident`, `debug_ranges`,
+encoded through one 16 MiB slab per slice (T1); each slice is submitted and waited for before the
+next is written, so at most one slice is queued (≤ 32 MiB transient with the driver's copy). On T2
+the encoded slab in CPU memory is the decimation input, and the CPU path decimates, uploads, draws
+and releases one batch at a time, so at most one batch of instances (≤ `max_instances` × 16 B) is
+held. `debug_counters` reports both peaks (`staging_outstanding_max`, `cpu_instance_bytes_peak`).
+The test hooks `debug_counters`, `debug_resident`, `debug_ranges`,
 `read_decimation`, `last_draws` and `render_instances` exist for `unit:buffer-lifetime`,
 `unit:decimation-tier-parity`, `unit:decimation-batches` and `golden:decimation-raw`.
 
