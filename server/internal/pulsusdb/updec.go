@@ -105,6 +105,12 @@ func (d *upstreamDecoder) Sample() (float64, error) {
 	return v, nil
 }
 
+// Nanos parses the current string token as ns (stub).
+func (d *upstreamDecoder) Nanos() (int64, error) { return 0, protocolError() }
+
+// CaptureValue captures the current value (stub).
+func (d *upstreamDecoder) CaptureValue(max int) ([]byte, error) { return nil, protocolError() }
+
 // Bool is the current boolean token.
 func (d *upstreamDecoder) Bool() bool { return d.kind == tokBool && d.b }
 
@@ -473,6 +479,12 @@ func toValidUTF8(b []byte) string {
 	}
 	return string(out)
 }
+
+// readTextBody reads a text body (stub).
+func readTextBody(r io.Reader, limit int64, red redactor) (string, error) { return "", protocolError() }
+
+// maxGetQuery (stub).
+const maxGetQuery = 8 << 10
 
 // errTooLarge is returned by capReader past its limit.
 var errTooLarge = errors.New("pulsusdb: body over its limit")

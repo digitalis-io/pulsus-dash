@@ -48,10 +48,14 @@ type Limits struct {
 	MaxPoints                     int   // grid points per response
 	MaxValues                     int   // values or series per completion response
 	TextBytes, MaxMessages        int   // bytes per error/warning/info/help text; warnings and infos kept
+	LineBytes                     int
+	PageBytes                     int64
+	MaxEntries                    int
+	CaptureBytes                  int
 }
 
 // DefaultLimits are the production limits.
-var DefaultLimits = Limits{256 << 20, 32 << 20, 64 << 10, 5_000_000, 10_000, 1024, 20}
+var DefaultLimits = Limits{256 << 20, 32 << 20, 64 << 10, 5_000_000, 10_000, 1024, 20, 0, 0, 0, 0}
 
 // Timeouts apply when the caller's ctx has a later (or no) deadline; the earlier always wins.
 type Timeouts struct {

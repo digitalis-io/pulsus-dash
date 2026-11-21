@@ -32,18 +32,20 @@ type Provenance struct {
 // Match selects the requests a transcript answers: the method, one of the paths and, if set,
 // the form's query byte for byte.
 type Match struct {
-	Method string   `json:"method"`
-	Paths  []string `json:"paths"`
-	Query  *string  `json:"query,omitempty"`
+	Method string            `json:"method"`
+	Paths  []string          `json:"paths"`
+	Query  *string           `json:"query,omitempty"`
+	Form   map[string]string `json:"form,omitempty"`
 }
 
 // Response is what the fake answers. Body is served byte for byte as it appears in the file.
 type Response struct {
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers"`
-	Body    json.RawMessage   `json:"body"`
-	DelayMs int               `json:"delay_ms"`
-	Hang    bool              `json:"hang"`
+	Status   int               `json:"status"`
+	Headers  map[string]string `json:"headers"`
+	Body     json.RawMessage   `json:"body"`
+	DelayMs  int               `json:"delay_ms"`
+	Hang     bool              `json:"hang"`
+	BodyText *string           `json:"body_text,omitempty"`
 }
 
 //go:embed testdata/*.json
