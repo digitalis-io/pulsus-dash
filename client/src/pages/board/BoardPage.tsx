@@ -48,8 +48,15 @@ import { BoardToolbar } from './BoardToolbar';
 import { PanelEditor } from './PanelEditor';
 import { PanelFrame, type PanelFrameProps } from './PanelFrame';
 
-// The Edit-mode chunk: react-grid-layout loads only when a board is edited (ADR-0014 §8).
-const BoardGridEditor = lazy(() => import('./BoardGridEditor'));
+// The Edit-mode chunk: react-grid-layout loads only when a board is edited (ADR-0014 §8). It is
+// preloaded when the pointer or the focus reaches Edit board, so the grid seldom swaps under a
+// user who acts at once.
+const loadGridEditor = () => import('./BoardGridEditor');
+const BoardGridEditor = lazy(loadGridEditor);
+
+function preloadGridEditor(): void {
+  loadGridEditor().catch(() => undefined);
+}
 
 const PANEL_POINTER = /^(?:\/sections\/(\d+))?\/panels\/(\d+)(?:\/|$)/;
 
@@ -346,6 +353,7 @@ function BoardEditor({ tenant, uid, latest }: { tenant: string; uid: string; lat
             onEdit={() => {
               dispatch({ type: 'enterEdit' });
             }}
+            onPreloadEdit={preloadGridEditor}
           />
         )}
       </div>
