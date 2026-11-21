@@ -239,10 +239,12 @@ fallback span-duration heatmap.
 | `parsed` | same as `metadata` | pipeline-extracted fields |
 | `trace_id` | `FixedSizeBinary(16)` nullable | extracted by the BFF from metadata/parsed when present (pivot link) |
 
-*(2026-11-21, #65.)* A stream's `level` is the value of its `detected_level` label if the table
-below knows it, else that of its `level` label if the table knows it, else 0 `unknown`. Values are
-matched ASCII case-insensitively; any other value, `unknown` included, falls through to the next
-label.
+*(2026-11-21, #65.)* A row's `level` is read from its stream labels, then its structured metadata,
+then its parsed fields (log query pages send `categorize-labels`, so `detected_level` usually
+arrives as structured metadata; owner decision 2026-11-21). Within each set, the value of
+`detected_level` is used if the table below knows it, else that of `level` if the table knows it;
+if no set gives one, the level is 0 `unknown`. Values are matched ASCII case-insensitively; any
+other value, `unknown` included, falls through to the next label, then to the next set.
 
 | Code | Level | Values |
 |---|---|---|
@@ -883,4 +885,4 @@ support in the BFF for one release.
 | 1.0-rc | 2026-11-19 | Roadmap D5 ([12](../product/12-roadmap.md#21-delivery-order-2026-11-19) §2.1): SRF-033 traced (moved to M-UI1); §11 `log_lines` moves M-UI2 → M-UI1; `log_patterns`, `trace_tree`, `span_points`, `profile_flame(_diff)` and WS `tail` stay M-UI2; DSF v1 and `/query` + cancel land with #41/#42 |
 | 1.1-rc | 2026-11-19 | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md): new §0 (JSON frames to the browser until the engine, #68; schemas mirrored in `wire/schemas/` with fixtures in `wire/fixtures/`; Go conversion and key hash); T04-001 revised for JSON frames; §4.2, §5.2 and §5.6 name Go instead of Rust libraries; review r3: third-party product names replaced by generic wording; review r8: §1, §4.1, §8, T04-019 and §10 separate M-UI1 JSON frames from the Arrow path and state v1 scope handling |
 | 1.2-rc | 2026-11-20 | #62: §0 gives the JSON image of `labels/1` + `metric_matrix.grid/1` (`SeriesFrame`, value encoding, absent points as `null`), the hand-written Go tokenizer and the key-hash canonical bytes with their corpus |
-| 1.3-rc | 2026-11-21 | #65 Part A: §4.3 `log_lines/1` `level` code 6 is `critical`, with the value table and the precedence `detected_level`, then `level`, then `unknown`; §5.2 `log_volume` row gives the v1 composition on `query_range` |
+| 1.3-rc | 2026-11-21 | #65 Part A: §4.3 `log_lines/1` `level` code 6 is `critical`, with the value table and the precedence stream labels, structured metadata, parsed fields, and within each `detected_level`, then `level` (else `unknown`); §5.2 `log_volume` row gives the v1 composition on `query_range` |
