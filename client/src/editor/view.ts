@@ -18,6 +18,7 @@ import { setDiagnostics } from '@codemirror/lint';
 import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { completionGuard } from './completionGuard';
+import { probedDispatch } from './probe';
 import { promqlExtensions } from './lang/promql/extensions';
 import type { Diagnostic, PromSource } from './lang/types';
 import { promqlTheme } from './theme';
@@ -109,7 +110,7 @@ export function createPromQLView(o: PromQLViewOptions): EditorView {
       g.extension,
     ],
   });
-  return new EditorView({ parent: o.parent, root: o.root, state });
+  return new EditorView({ parent: o.parent, root: o.root, state, ...probedDispatch() });
 }
 
 /** Replaces the document (no-op when equal); caret at the end; its own undo event. */

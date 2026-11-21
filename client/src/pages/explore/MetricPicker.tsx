@@ -6,12 +6,13 @@
  * option highlighted picks the first match.
  */
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState, type JSX, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import { ComboBox, Input, ListBox, ListBoxItem, Text, type Key } from 'react-aria-components';
 import type { PromMetadata } from '../../data/decode';
 import { metricOptions, PICKER_OPTIONS } from '../../explore/metricOptions';
 import { t } from '../../i18n/t';
 import { cx } from '../../kit/cx';
+import { inertOutside } from '../../kit/inertOutside';
 import { Popover } from '../../kit/Popover';
 import styles from './Explore.module.css';
 
@@ -24,11 +25,28 @@ export interface MetricPickerProps {
 }
 
 const NO_NAMES: readonly string[] = [];
+/** The picker and its list: what stays reachable while the list is open (C.11.1). */
+export const PICKER_KEEP = '[data-metric-picker], [data-metric-picker-popover]';
 export const PICKER_NAMES_STALE_MS = 60_000;
 
 export function MetricPicker({ tenant, names, meta, onPick }: MetricPickerProps): JSX.Element {
   const [filter, setFilter] = useState('');
   const [opened, setOpened] = useState(false);
+  const [open, setOpen] = useState(false);
+  const release = useRef<(() => void) | null>(null);
+  const free = (): void => {
+    release.current?.();
+    release.current = null;
+  };
+  // While the list is open, the rest of the page is inert as well as aria-hidden (C.11.1).
+  useLayoutEffect(() => {
+    if (!open) return;
+    release.current = inertOutside(PICKER_KEEP);
+    return () => {
+      release.current?.();
+      release.current = null;
+    };
+  }, [open]);
   const list = useQuery({
     queryKey: ['prom', tenant, 'pickerNames'],
     queryFn: () => (names === null ? Promise.resolve(NO_NAMES) : names()),
@@ -39,10 +57,14 @@ export function MetricPicker({ tenant, names, meta, onPick }: MetricPickerProps)
   const { options, total } = useMemo(() => metricOptions(all, meta, filter), [all, meta, filter]);
 
   const pick = (name: string): void => {
+    // Before the page focuses the editor, which must not be inert.
+    free();
     setFilter('');
     onPick(name);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    // Focus moves in the key's default action, before React Aria's close reaches an effect.
+    if (e.key === 'Tab') free();
     const first = options[0];
     if (e.key !== 'Enter' || first === undefined) return;
     if (e.currentTarget.getAttribute('aria-activedescendant')) return;
@@ -63,9 +85,11 @@ export function MetricPicker({ tenant, names, meta, onPick }: MetricPickerProps)
       onChange={(k: Key | null) => {
         if (k !== null) pick(String(k));
       }}
-      onOpenChange={(open) => {
-        if (open) setOpened(true);
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) setOpened(true);
       }}
+      data-metric-picker=""
       className={cx(styles['picker'])}
     >
       <Input
@@ -73,7 +97,11 @@ export function MetricPicker({ tenant, names, meta, onPick }: MetricPickerProps)
         placeholder={t('explore.picker.placeholder')}
         onKeyDown={onKeyDown}
       />
-      <Popover className={cx(styles['pickerPopover'])} placement="bottom start">
+      <Popover
+        className={cx(styles['pickerPopover'])}
+        placement="bottom start"
+        data-metric-picker-popover=""
+      >
         <ListBox
           renderEmptyState={() => (
             <p className={cx(styles['pickerNote'])}>{t('explore.picker.none')}</p>

@@ -193,6 +193,7 @@ describe('unit:editor-probe', () => {
     const probe = vi.fn<(ms: number, docChanged: boolean) => void>();
     g[EDITOR_PROBE_GLOBAL] = probe;
     const { view } = viewIn({ doc: 'up', caret: 2 });
+    probe.mockClear(); // viewIn places the caret with its own dispatch
     insertAtSelection(view, 'x');
     expect(probe).toHaveBeenCalledTimes(1);
     const [ms, changed] = probe.mock.calls[0] ?? [];
