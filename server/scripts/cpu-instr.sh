@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # bench:cpu-instr (T05-006, T05 §7.1; plan #62 §8.1, A.11): PR-level CPU regressions of the BFF,
-# gated by instruction counts. Each workload test of internal/gateway (TestCPUInstrW1, ...W2) runs
-# once under cachegrind with GOMAXPROCS=1 GOGC=off; its total "I refs" minus that of
-# TestCPUInstrEmpty (the same harness with 0 series) is compared with the committed baseline
-# server/testdata/bench/cpu-instr.json.
+# gated by instruction counts. The upstream bodies are written first by the test binary without
+# valgrind (TestCPUInstrBodies), so building the 10⁶-point input is never counted. Each workload
+# test of internal/gateway (TestCPUInstrW1, ...W2) then runs once under cachegrind with
+# GOMAXPROCS=1 GOGC=off and reads its body from those files; its total "I refs" minus that of
+# TestCPUInstrEmpty (the same harness and the same file reads, a 0-series answer) is compared with
+# the committed baseline server/testdata/bench/cpu-instr.json. W1 − Empty is the A.11 boundary:
+# from the first read of the upstream body to the last byte of the response.
 #
 # Usage: cpu-instr.sh            check: a count above 1.03 x its baseline fails
 #        cpu-instr.sh --update   rewrite the baseline (run in CI; commit it with the change)
@@ -31,11 +34,18 @@ go -C "$ROOT/server" test -c -o "$ROOT/build/gateway.test" ./internal/gateway
 
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
+mkdir "$T/bodies"
+if ! out=$(CPU_INSTR_WRITE="$T/bodies" "$ROOT/build/gateway.test" -test.run '^TestCPUInstrBodies$' -test.count=1 -test.v 2>&1) ||
+  ! grep -q -- "--- PASS: TestCPUInstrBodies " <<<"$out"; then
+  echo "$out" | tail -20 >&2
+  echo "bench:cpu-instr: writing the workload bodies failed" >&2
+  exit 1
+fi
 
 # refs WORKLOAD prints the total instruction count of one test run.
 refs() {
   local out n
-  if ! out=$(CPU_INSTR=1 GOMAXPROCS=1 GOGC=off valgrind --tool=cachegrind --cache-sim=no \
+  if ! out=$(CPU_INSTR=1 CPU_INSTR_BODIES="$T/bodies" GOMAXPROCS=1 GOGC=off valgrind --tool=cachegrind --cache-sim=no \
     --cachegrind-out-file="$T/cachegrind.$1" "$ROOT/build/gateway.test" \
     -test.run "^TestCPUInstr$1\$" -test.count=1 -test.v 2>&1); then
     echo "$out" | tail -20 >&2

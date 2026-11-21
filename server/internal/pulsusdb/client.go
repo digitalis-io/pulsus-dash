@@ -239,7 +239,7 @@ func (c *Client) do(ctx context.Context, rc *core.RequestCtx, cl call) (*respons
 		}
 		return nil, err
 	}
-	resp, attempts, last, err := c.attempts(ctx, rc, cl, cred)
+	resp, attempts, last, err := c.attempts(ctx, rc, cl, cred, red)
 	if err != nil {
 		release()
 		r := &response{attempts: attempts}
@@ -327,7 +327,7 @@ func clusterKey(raw string) string {
 
 // attempts sends the request, retrying per §4.3. It returns a response that is not a retryable
 // 503, or the error of the last attempt with the headers of its response, if it had one.
-func (c *Client) attempts(ctx context.Context, rc *core.RequestCtx, cl call, cred string) (*http.Response, int, http.Header, error) {
+func (c *Client) attempts(ctx context.Context, rc *core.RequestCtx, cl call, cred string, red redactor) (*http.Response, int, http.Header, error) {
 	b := rc.Tenant.Binding
 	cluster := clusterKey(b.DatasourceURL)
 	limit := maxAttempts
@@ -359,10 +359,19 @@ func (c *Client) attempts(ctx context.Context, rc *core.RequestCtx, cl call, cre
 		case err != nil:
 			last = newError(KindUnreachable)
 		case resp.StatusCode == http.StatusServiceUnavailable:
-			// Only errorType is read here; it is compared, never returned.
-			et, _, _ := c.readErrorBody(resp, needleRedactor())
+			// errorType is read through the request's redactor, like every upstream string; it is
+			// compared, never returned. A body that stalls, is cut or is malformed is classified.
+			et, _, berr := c.readErrorBody(resp, red)
 			_ = resp.Body.Close()
 			hdr = resp.Header
+			if berr != nil {
+				if ctx.Err() != nil {
+					return nil, n, hdr, ctxError(ctx)
+				}
+				e := protocolError()
+				e.Status = resp.StatusCode
+				return nil, n, hdr, e
+			}
 			e := newError(KindUnavailable)
 			e.Status = resp.StatusCode
 			if et != "unavailable" {
@@ -429,23 +438,28 @@ func (c *Client) request(ctx context.Context, b core.TenantBinding, cl call, for
 }
 
 // readErrorBody reads a non-2xx body (≤ ErrorBody) and returns its errorType and error text,
-// redacted. ok is false when the body is not a JSON object or is over the limit.
-func (c *Client) readErrorBody(resp *http.Response, red redactor) (errorType, msg string, ok bool) {
+// redacted. err is the read error (a deadline, a cancel, a cut connection, errTooLarge) or a
+// protocol error when the body is not one JSON object.
+func (c *Client) readErrorBody(resp *http.Response, red redactor) (errorType, msg string, err error) {
 	d := newUpstreamDecoder(&capReader{r: resp.Body, left: c.o.Limits.ErrorBody}, red)
-	if k, err := d.Next(); err != nil || k != tokObjStart {
-		return "", "", false
+	k, err := d.Next()
+	if err != nil {
+		return "", "", err
+	}
+	if k != tokObjStart {
+		return "", "", protocolError()
 	}
 	for {
 		k, err := d.Next()
 		if err != nil {
-			return "", "", false
+			return "", "", err
 		}
 		if k == tokObjEnd {
 			break
 		}
 		key := d.String()
 		if k, err = d.Next(); err != nil {
-			return "", "", false
+			return "", "", err
 		}
 		switch {
 		case key == "errorType" && k == tokString:
@@ -454,26 +468,26 @@ func (c *Client) readErrorBody(resp *http.Response, red redactor) (errorType, ms
 			msg = d.String()
 		default:
 			if err := d.Skip(); err != nil {
-				return "", "", false
+				return "", "", err
 			}
 		}
 	}
 	if k, err := d.Next(); err != nil || k != tokEOF {
-		return "", "", false
+		return "", "", orProtocol(err)
 	}
-	return errorType, msg, true
+	return errorType, msg, nil
 }
 
 // statusError maps a non-2xx, non-retried status (§4.3, §4.4).
 func (c *Client) statusError(ctx context.Context, resp *http.Response, red redactor, hdr upstreamHeaders, cl call) error {
-	_, msg, ok := c.readErrorBody(resp, red)
+	_, msg, berr := c.readErrorBody(resp, red)
+	if berr != nil && ctx.Err() != nil {
+		return ctxError(ctx) // the deadline or the cancel arrived while the body was read
+	}
 	var e *Error
 	switch s := resp.StatusCode; {
-	case (s == http.StatusBadRequest || s == http.StatusUnprocessableEntity) && !ok:
+	case (s == http.StatusBadRequest || s == http.StatusUnprocessableEntity) && berr != nil:
 		e = protocolError()
-		if ctx.Err() != nil {
-			return ctxError(ctx)
-		}
 	case s == http.StatusBadRequest:
 		e = newError(KindQueryInvalid)
 		if msg != "" {
