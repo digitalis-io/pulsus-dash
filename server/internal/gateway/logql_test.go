@@ -3,6 +3,7 @@ package gateway
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -11,9 +12,11 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusfake/fakeharness"
@@ -452,5 +455,44 @@ func TestLogqlDefaults(t *testing.T) {
 	}
 	if !slices.Contains([]string{"backward"}, decodePage(t, rec.Body.Bytes()).Direction) {
 		t.Errorf("direction of the empty page: %s", rec.Body.String())
+	}
+}
+
+// unit:virtual-guard (route half): a reserved selector on a log route is refused before tenant
+// resolution, not only by the client's guard before the request (T07-020 v1).
+func TestLogReservedBeforeResolution(t *testing.T) {
+	var calls atomic.Int32
+	h, ct, _ := orderGateway(func(context.Context) (core.BootstrapView, error) {
+		calls.Add(1)
+		return core.BootstrapView{}, nil
+	})
+	sel := strings.NewReplacer("{", "%7B", "}", "%7D", `"`, "%22", "=", "%3D").Replace(`{source="pulsus-dash"}`)
+	for _, c := range []struct {
+		name, pointer string
+		rec           func() *httptest.ResponseRecorder
+	}{
+		{"range", "/query", func() *httptest.ResponseRecorder {
+			return postJSON(h, logRangePath, logBody(`{source="pulsus-dash"}`, ""))
+		}},
+		{"volume", "/query", func() *httptest.ResponseRecorder {
+			return postJSON(h, logVolumePath, logBody(`{source="pulsus-dash"}`, ""))
+		}},
+		{"labels", "/query", func() *httptest.ResponseRecorder {
+			return do(h, http.MethodGet, "/api/dash/v1/logs/labels?tenant=demo"+window+"&query="+sel)
+		}},
+		{"label values", "/query", func() *httptest.ResponseRecorder {
+			return do(h, http.MethodGet, "/api/dash/v1/logs/label/pod/values?tenant=demo"+window+"&query="+sel)
+		}},
+		{"series", "/match/0", func() *httptest.ResponseRecorder {
+			return do(h, http.MethodGet, "/api/dash/v1/logs/series?tenant=demo"+window+"&match="+sel)
+		}},
+	} {
+		wantError(t, c.name, c.rec(), 400, "virtual_unsupported", c.pointer, "query.reserved")
+		if n := calls.Load(); n != 0 {
+			t.Errorf("%s: bootstrap called %d times", c.name, n)
+		}
+		if n := ct.n.Load(); n != 0 {
+			t.Errorf("%s: %d upstream requests", c.name, n)
+		}
 	}
 }
