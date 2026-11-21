@@ -138,6 +138,23 @@ type LogEntry struct {
 	TsNs   int64
 	Stream int    // index into LogPage.Streams
 	Line   string // redacted; cut at Limits.LineBytes
+	// Level is EntryLevel(the stream's labels, Metadata, Parsed).
+	Level Level
+	// Metadata and Parsed are the entry's structured metadata and parsed fields from the
+	// categorised response (categorize-labels): sorted by name, redacted, each name and value
+	// cut at 4 096 bytes; nil if the entry has none.
+	Metadata []Label
+	Parsed   []Label
+}
+
+// categorizeHeader asks PulsusDB for the categorised streams response: indexed stream labels,
+// with structured metadata and parsed fields per entry (owner decision 2026-11-21).
+const categorizeHeader, categorizeValue = "X-Loki-Response-Encoding-Flags", "categorize-labels"
+
+// EntryLevel is the level of an entry: that of its stream labels if LevelOf finds one, else that
+// of its structured metadata, else that of its parsed fields, else LevelUnknown.
+func EntryLevel(stream, metadata, parsed []Label) Level {
+	return LevelUnknown // stub
 }
 
 // LogPage is one page of a log query (#65 §4.2).
