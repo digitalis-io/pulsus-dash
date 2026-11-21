@@ -1,6 +1,7 @@
 package pulsusdb
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +24,8 @@ const (
 	ResultVector ResultType = "vector"
 	ResultScalar ResultType = "scalar"
 	ResultString ResultType = "string"
+	// ResultStreams is a LogQL log result (#65); it never reaches a ResultStream's caller.
+	ResultStreams ResultType = "streams"
 )
 
 // Series is one series. For a range query it is placed on the request grid: Timestamps holds
@@ -155,6 +158,13 @@ type ResultStream struct {
 	seenType                               ResultType
 	typ                                    ResultType
 
+	// Logs mode (#65 §4.1): a log query_range response, whose member order is not fixed.
+	logs     bool
+	mode     logMode
+	raw      []byte       // the result value, captured because it came before resultType
+	logsRes  *logResponse // the decoded streams result
+	buffered bool         // matrix series are read from the captured value; the body has ended
+
 	series  []*Series // instant
 	idx     int
 	form    instantForm
@@ -221,6 +231,14 @@ func (s *ResultStream) Next() (*Series, error) {
 	}
 	switch k {
 	case tokArrEnd:
+		if s.buffered {
+			// The tail of the document was walked before the capture was decoded.
+			if k, err := s.dec.Next(); err != nil || k != tokEOF {
+				return nil, s.fail(orProtocol(err))
+			}
+			s.finish()
+			return nil, io.EOF
+		}
 		s.inData = true
 		if at, err := s.walk(); err != nil || at {
 			return nil, s.fail(orProtocol(err))
@@ -341,6 +359,12 @@ func (s *ResultStream) walkData() (bool, error) {
 			if k, err := d.Next(); err != nil || k != tokString {
 				return false, orProtocol(err)
 			}
+			if s.logs {
+				if err := s.logsType(ResultType(d.String())); err != nil {
+					return false, err
+				}
+				continue
+			}
 			s.seenType = ResultType(d.String())
 			if s.stream && s.seenType != ResultMatrix {
 				return false, protocolError()
@@ -350,6 +374,13 @@ func (s *ResultStream) walkData() (bool, error) {
 				return false, protocolError()
 			}
 			s.resultSeen = true
+			if s.logs {
+				at, err := s.logsResult()
+				if err != nil || at {
+					return at, err
+				}
+				continue
+			}
 			if s.stream {
 				if k, err := d.Next(); err != nil || k != tokArrStart {
 					return false, orProtocol(err)
@@ -390,6 +421,13 @@ func (s *ResultStream) status() error {
 func (s *ResultStream) endCheck() error {
 	if s.badStatus || !s.resultSeen {
 		return protocolError()
+	}
+	if s.logs {
+		if s.seenType == "" {
+			return protocolError()
+		}
+		s.typ = s.seenType
+		return nil
 	}
 	if s.stream {
 		if s.seenType != ResultMatrix {
@@ -721,4 +759,119 @@ func secondsToMs(s []byte) (int64, bool) {
 		scale /= 10
 	}
 	return ms, true
+}
+
+// logMode says which result types a log response may have (#65 §4.1).
+type logMode struct{ streams, matrix bool }
+
+func (m logMode) allows(t ResultType) bool {
+	return (t == ResultStreams && m.streams) || (t == ResultMatrix && m.matrix)
+}
+
+// logsType records a resultType in logs mode: the first must be allowed by the mode; a later
+// one must equal it.
+func (s *ResultStream) logsType(t ResultType) error {
+	switch {
+	case s.seenType != "" && t != s.seenType:
+		return protocolError()
+	case s.seenType == "" && !s.mode.allows(t):
+		return protocolError()
+	}
+	s.seenType = t
+	return nil
+}
+
+// logsResult reads the result member in logs mode. With resultType matrix already read it stops
+// at the array (true), so the series stream as in #62; with streams it decodes the entries; with
+// no resultType yet it captures the value, to be decoded once the type is known.
+func (s *ResultStream) logsResult() (bool, error) {
+	d := s.dec
+	k, err := d.Next()
+	if err != nil {
+		return false, err
+	}
+	switch s.seenType {
+	case ResultMatrix:
+		if k != tokArrStart {
+			return false, protocolError()
+		}
+		s.stream = true
+		return true, nil
+	case ResultStreams:
+		if k != tokArrStart {
+			return false, protocolError()
+		}
+		s.logsRes, err = streamsResult(d, s.lim)
+		return false, err
+	}
+	s.raw, err = d.CaptureValue(s.lim.CaptureBytes)
+	return false, err
+}
+
+// decodeCaptured decodes a result captured before its resultType, after the document ended:
+// streams are decoded whole; matrix series are then read by Next from the capture.
+func (s *ResultStream) decodeCaptured() error {
+	bd := newUpstreamDecoder(bytes.NewReader(s.raw), s.resp.red)
+	s.raw = nil
+	if k, err := bd.Next(); err != nil || k != tokArrStart {
+		return orProtocol(err)
+	}
+	if s.typ == ResultMatrix {
+		s.dec, s.buffered, s.stream = bd, true, true
+		return nil
+	}
+	var err error
+	if s.logsRes, err = streamsResult(bd, s.lim); err != nil {
+		return err
+	}
+	if k, err := bd.Next(); err != nil || k != tokEOF {
+		return orProtocol(err)
+	}
+	return nil
+}
+
+// gridTimestamps is every timestamp of g, in ms.
+func gridTimestamps(g Grid) []int64 {
+	ts := make([]int64, g.points())
+	for i := range ts {
+		ts[i] = g.Start + int64(i)*g.Step
+	}
+	return ts
+}
+
+// openLogs reads a 200 log query_range response in logs mode (#65 §4.1). It returns either a
+// decoded streams result (the body read and closed, the slot freed) or a matrix stream on g:
+// streaming when resultType came first, else read from the capture (the body already closed).
+func (c *Client) openLogs(ctx context.Context, resp *response, mode logMode, g Grid) (*ResultStream, *logResponse, error) {
+	rs := c.newStream(ctx, resp)
+	rs.logs, rs.mode = true, mode
+	if mode.matrix {
+		rs.grid, rs.ts = g, gridTimestamps(g)
+	}
+	at, err := rs.walk()
+	if err == nil && at {
+		rs.typ = ResultMatrix
+		return rs, nil, nil
+	}
+	if err == nil {
+		err = rs.endCheck()
+	}
+	if err == nil && rs.raw != nil {
+		err = rs.decodeCaptured()
+	}
+	if err != nil {
+		resp.close()
+		return nil, nil, readError(ctx, err)
+	}
+	if rs.typ == ResultMatrix {
+		resp.close() // the body has ended: free the slot before any series is handed out
+		return rs, nil, nil
+	}
+	rs.finish()
+	lr := rs.logsRes
+	if lr == nil {
+		return nil, nil, protocolError()
+	}
+	lr.comp = rs.final
+	return nil, lr, nil
 }
