@@ -1,5 +1,7 @@
 // Command pulsus-fake serves the PulsusDB transcripts of internal/pulsusfake for the dev stack
-// (plan #62 §4.7): pulsus-fake [--listen ADDR] [--transcripts DIR] [--generate=true|false].
+// (plan #62 §4.7): pulsus-fake [--listen ADDR] [--transcripts DIR] [--generate=true|false]
+// [--control]. --control serves GET /__fake/requests and POST /__fake/reset for the e2e rig and
+// keeps the newest 1 000 records (plan #63 §3.6).
 package main
 
 import (
@@ -8,10 +10,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,6 +32,7 @@ func run(args []string) int {
 	listen := fs.String("listen", "localhost:9091", "address to listen on")
 	dir := fs.String("transcripts", "", "directory of *.json transcripts (default: the embedded set)")
 	generate := fs.Bool("generate", true, "answer unmatched range and instant queries with a generated series")
+	control := fs.Bool("control", false, "serve /__fake/requests and /__fake/reset; keep records")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -38,15 +44,12 @@ func run(args []string) int {
 			return 2
 		}
 	}
-	f := pulsusfake.New(ts, pulsusfake.Options{Generate: *generate})
-	enc := json.NewEncoder(os.Stdout)
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sw := &statusWriter{ResponseWriter: w}
-		rec := f.Serve(sw, r)
-		_ = enc.Encode(map[string]any{"method": rec.Method, "path": rec.Path, "transcript": rec.Transcript,
-			"status": sw.status, "cancelled": rec.Cancelled})
-		f.Reset() // the dev fake keeps no history: memory stays bounded
-	})
+	o := pulsusfake.Options{Generate: *generate}
+	if *control {
+		o.MaxRecords = controlRecords
+	}
+	f := pulsusfake.New(ts, o)
+	h := newHandler(f, *control, os.Stdout)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var lc net.ListenConfig
@@ -72,6 +75,95 @@ func run(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// controlRecords bounds the records a --control fake keeps (the oldest are dropped).
+const controlRecords = 1000
+
+// requestSummary is one record as GET /__fake/requests lists it (plan #63 §3.6).
+type requestSummary struct {
+	Transcript   string `json:"transcript"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	Query        string `json:"query"` // Form.Get("query"): "" when absent
+	Start        string `json:"start"`
+	End          string `json:"end"`
+	Step         string `json:"step"`
+	Time         string `json:"time"`
+	State        string `json:"state"` // "inflight", "completed" or "cancelled"
+	ReceivedAtMs int64  `json:"receivedAtMs"`
+}
+
+func summarise(r pulsusfake.Recorded) requestSummary {
+	state := "inflight"
+	switch {
+	case r.Cancelled:
+		state = "cancelled"
+	case r.Completed:
+		state = "completed"
+	}
+	return requestSummary{
+		Transcript: r.Transcript, Method: r.Method, Path: r.Path,
+		Query: r.Form.Get("query"), Start: r.Form.Get("start"), End: r.Form.Get("end"),
+		Step: r.Form.Get("step"), Time: r.Form.Get("time"),
+		State: state, ReceivedAtMs: r.ReceivedAt.UnixMilli(),
+	}
+}
+
+const unknownControlRoute = `{"error":"pulsus-fake: unknown control route"}`
+
+// newHandler is run's handler. control=false: every request is served and logged, then the
+// records are reset (the dev fake keeps no history). control=true: /__fake/* is answered by the
+// control routes and not recorded; every other request is served and logged, and its record stays
+// listed from arrival (bounded by the fake's MaxRecords).
+func newHandler(f *pulsusfake.Fake, control bool, log io.Writer) http.Handler {
+	enc := json.NewEncoder(log)
+	var mu sync.Mutex // one log line at a time
+	serve := func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w}
+		rec := f.Serve(sw, r)
+		mu.Lock()
+		_ = enc.Encode(map[string]any{"method": rec.Method, "path": rec.Path, "transcript": rec.Transcript,
+			"status": sw.status, "cancelled": rec.Cancelled})
+		mu.Unlock()
+	}
+	if !control {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			serve(w, r)
+			f.Reset() // the dev fake keeps no history: memory stays bounded
+		})
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/__fake/requests":
+			if r.Method != http.MethodGet {
+				w.Header().Set("Allow", http.MethodGet)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			recs := f.Requests()
+			out := make([]requestSummary, 0, len(recs))
+			for _, rec := range recs {
+				out = append(out, summarise(rec))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(out)
+		case r.URL.Path == "/__fake/reset":
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", http.MethodPost)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			f.Reset()
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasPrefix(r.URL.Path, "/__fake/"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, unknownControlRoute)
+		default:
+			serve(w, r)
+		}
+	})
 }
 
 // statusWriter records the status for the log line.

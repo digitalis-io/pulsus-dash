@@ -7,7 +7,8 @@ Components, server state in TanStack Query. This page covers the application she
 M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and tokens, and the
 checks that guard them, and the board list and board page (roadmap step 5, issue #61; how to use
 them is in [Boards](../user/boards.md)). Charts (roadmap step 2, issue #58) are in
-[Charts](charts.md). Build and CI
+[Charts](charts.md); the Explore metrics data and rules (issue #63) in
+[Explore](explore.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
 [JavaScript supply chain](supply-chain.md).
 
@@ -87,6 +88,7 @@ zone) are passed by closure.
 | `/t/:tenant` | `AppShell`. Loader: the session; a tenant the user has no binding for → 404 (standalone Not found); a non-canonical search → `replace()` to the canonical one |
 | `/t/:tenant` (index) | `replace()` to `/t/:tenant/boards`, keeping the (canonical) search |
 | `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too |
+| `/t/:tenant/explore/metrics` (loader) | A non-canonical `q`, `vis` or `rate` → `replace()` to the canonical search ([Explore](explore.md#url-keys-ia-022)) |
 | `/t/:tenant/dev/gallery` | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
 | `/t/:tenant/*` | Not found inside the shell |
 | `*` | Standalone Not found |

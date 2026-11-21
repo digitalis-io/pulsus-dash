@@ -13,8 +13,14 @@ import type { components, paths } from './gen/schema';
 import {
   DecodeError,
   decodeInstant,
+  decodeMetadata,
   decodeRange,
+  decodeSeriesSet,
+  decodeValues,
   type InstantResult,
+  type PromMetadata,
+  type PromSeriesSet,
+  type PromValues,
   type RangeResult,
 } from '../data/decode';
 import {
@@ -29,6 +35,7 @@ import {
   type InstantRequest,
   type PanelData,
   type PanelSpec,
+  type PromMatchRequest,
   type RangeRequest,
   type SaveResult,
   type Session,
@@ -152,6 +159,20 @@ function decoded<T>(decode: (b: unknown) => T, body: unknown): T {
     }
     throw e;
   }
+}
+
+/** The query of a `/prom/*` read: `match` repeated in order and omitted when empty. */
+function matchQuery(
+  tenant: string,
+  req: PromMatchRequest,
+): { tenant: string; from: number; to: number; match?: string[]; limit?: number } {
+  return {
+    tenant,
+    from: req.fromMs,
+    to: req.toMs,
+    ...(req.match === undefined || req.match.length === 0 ? {} : { match: [...req.match] }),
+    ...(req.limit === undefined ? {} : { limit: req.limit }),
+  };
 }
 
 const DATA_SOURCE_STATES = {
@@ -407,5 +428,72 @@ export class HttpApi implements Api {
     if (data === undefined) throw queryError(response.status, error);
     const state = DATA_SOURCE_STATES[data.state];
     return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
+  }
+
+  async promLabels(
+    tenant: string,
+    req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/labels', {
+        params: { query: matchQuery(tenant, req) },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeValues, data);
+  }
+
+  async promLabelValues(
+    tenant: string,
+    name: string,
+    req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/label/{name}/values', {
+        params: { path: { name }, query: matchQuery(tenant, req) },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeValues, data);
+  }
+
+  async promSeries(
+    tenant: string,
+    req: PromMatchRequest & { readonly match: readonly [string, ...string[]] },
+    signal?: AbortSignal,
+  ): Promise<PromSeriesSet> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/series', {
+        params: { query: { ...matchQuery(tenant, req), match: [...req.match] } },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeSeriesSet, data);
+  }
+
+  async promMetadata(
+    tenant: string,
+    req: { readonly metric?: string; readonly limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PromMetadata> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/metadata', {
+        params: {
+          query: {
+            tenant,
+            ...(req.metric === undefined ? {} : { metric: req.metric }),
+            ...(req.limit === undefined ? {} : { limit: req.limit }),
+          },
+        },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeMetadata, data);
   }
 }

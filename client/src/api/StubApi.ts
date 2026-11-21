@@ -27,8 +27,22 @@
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
 import { RECENT_LIMIT } from '../boards/queries';
-import { defaultSeed, defaultStarred } from './stubData';
-import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import {
+  defaultSeed,
+  defaultStarred,
+  STUB_PROM_LABEL_VALUES,
+  STUB_PROM_LABELS,
+  STUB_PROM_METADATA,
+  STUB_PROM_METRIC_NAMES,
+} from './stubData';
+import type {
+  Completeness,
+  InstantResult,
+  PromMetadata,
+  PromSeriesSet,
+  PromValues,
+  RangeResult,
+} from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
@@ -45,6 +59,7 @@ import {
   type InstantRequest,
   type PanelData,
   type PanelSpec,
+  type PromMatchRequest,
   type RangeRequest,
   type SaveResult,
   type Session,
@@ -411,6 +426,44 @@ export class StubApi implements Api {
     return settle(() => {
       this.checkTenant(tenant);
       return { state: 'ok' as const, checkedAtMs: 0 };
+    }, signal);
+  }
+
+  promLabels(tenant: string, _req: PromMatchRequest, signal?: AbortSignal): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { values: [...STUB_PROM_LABELS], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  promLabelValues(
+    tenant: string,
+    name: string,
+    _req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const values = name === '__name__' ? STUB_PROM_METRIC_NAMES : STUB_PROM_LABEL_VALUES;
+      return { values: [...values], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  promSeries(tenant: string, _req: PromMatchRequest, signal?: AbortSignal): Promise<PromSeriesSet> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { series: [], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  promMetadata(
+    tenant: string,
+    _req: { readonly metric?: string; readonly limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PromMetadata> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { metrics: structuredClone(STUB_PROM_METADATA), completeness: EMPTY_COMPLETENESS };
     }, signal);
   }
 

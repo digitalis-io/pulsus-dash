@@ -107,6 +107,25 @@ describe('unit:columns', () => {
     expect(m.counts[0]).toBe((counts[0] ?? 0) + (counts[3] ?? 0));
   });
 
+  it('merge keeps missing: a merged heatmap cell with a missing constituent is missing', () => {
+    const ts = new Float64Array([0, 1000, 2000, 3000]);
+    const counts = new Float64Array([1, 2, NaN, 3, 4, NaN, 6, NaN]);
+    const w = { fromMs: 0, toMs: 4000 };
+    const plot = { x: 0, y: 0, width: 2, height: 10 };
+    const missing = mergeBuckets(ts, counts, 2, w, plot, 'missing');
+    expect(Array.from(missing.ts)).toEqual([0, 2000]);
+    expect(Array.from(missing.counts).map((c) => (Number.isNaN(c) ? 'NaN' : c))).toEqual([
+      'NaN',
+      5,
+      10,
+      'NaN',
+    ]);
+    expect(missing.endMs).toBe(4000);
+    const zero = mergeBuckets(ts, counts, 2, w, plot);
+    expect(Array.from(zero.counts)).toEqual([1, 5, 10, 0]);
+    expect(zero.endMs).toBe(4000);
+  });
+
   it('drops buckets outside the window instead of merging them into the edge columns', () => {
     // 30 buckets of 1 s from −10 s; window 0–9 999 ms over 5 px (2 s per column).
     const ts = new Float64Array(Array.from({ length: 30 }, (_, i) => (i - 10) * 1_000));

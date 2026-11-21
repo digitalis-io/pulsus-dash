@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-21 |
+| **Version** | 1.9-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -86,7 +86,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 | [SRF-031](../product/04-surfaces.md#srf-031--metric-browser-and-series-table) | §4.4 (metric browser source: names, type, cardinality, label value counts) | `itest:suggest-metric-browser`: `http_` lists matching metrics with type and series count; labels for the selection list value counts |
 | [SRF-032](../product/04-surfaces.md#srf-032--cardinality-explorer) | §4.4 (`kind: cardinality`) | `itest:suggest-cardinality`: a seeded metric with 3.2k series, 2.9k from `pod`, returns `pod` as the largest entry with its count |
 | [INT-038](../product/03-interaction-model.md#int-038--query-detection) | §5.1 (`QueryLanguage::detect`) | `unit:lang-detect`: `rate(`, `{app=`, `{ span.`, `process_cpu:` each score highest for PromQL, LogQL, TraceQL, profile selector; `e2e:palette-query-detect` (T08 co-owns) |
-| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:vishint-table-5-13`: one fixture query per row decidable from the query; T07/T02 confirm the remaining rows on result shape |
+| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:explore-plan` (the rewrite and hint rows decidable from the query and metadata) and `unit:autovis-table` (the rows confirmed on result shape); T07/T02 confirm the remaining rows |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2 (main-thread work bounded), §7 | `bench:editor-keystroke`: ≤ 2 ms main-thread work per keystroke on a 1 KB query; 0 long tasks during typing scripts |
 | [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.3 (lazy editor chunk), §0 | `ci:bundle-size`: editor chunk ≤ 175 KB and absent from initial JS; `e2e:lazy-load`: a cold load that opens no editor fetches no editor chunk |
 | [VL-010](../product/08-visual-language.md#vl-010--fonts) | §4.8 (JetBrains Mono for queries) | `golden:editor-fonts` |
@@ -397,6 +397,18 @@ pub struct VisHint { pub primary: VisKind, pub alternatives: SmallVec<[VisKind; 
 | TraceQL `histogram_over_time` / `quantile_over_time` / `rate` | 5 / 14 / 14 | heatmap / line / line |
 | `histogram_quantile(...)`, gauge, other time series | 14 | line |
 
+**v1 (#63).** The Explore metrics page computes the hint on the main thread from the Lezer tree and
+the metric metadata (`client/src/explore/plan.ts`); there is no editor worker yet. Behind the rate
+chip, a bare counter selector is sent as `rate(<sel>[w])` and a bare histogram bucket selector as
+`sum by (le) (rate(<sel>[w]))` (rows 6 and 5), with the rate window `w = max(4 × step, step + S,
+4 × S)`: `S` is the scrape interval, 15 s by default until a per-binding value exists, so a window
+always holds at least four scrapes. With the chip off the selector is sent as written and drawn as
+a line. A scalar- or string-typed query is sent as an instant query.
+The result confirms the hint: rows 5, 6, 7 and 14 apply in that order (`client/src/vis/autovis.ts`),
+and row 7 applies only to a scalar or an instant result of one series with one point. The BFF's
+size limit (64 KiB) applies to the **sent** text, rewrite included, and a position in the sent text
+maps back to the editor text (T09-009).
+
 ### 4.7 AI "explain / generate query" hook
 
 - **Explain** (the ✦ button in the editor toolbar, or the ⌘K action "Explain query"; the 03 `.` key
@@ -676,3 +688,5 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
 | 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; auto-vis stays M-UI1 through `shape`, and only the `validate`, `format` and `visHint` methods are added in M-UI2; T09-001 isolation sentence |
 | 1.7-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §0 the BFF parses PromQL only to plan it; T09-009 note (positions arrive mapped to the raw text); T09-010 revised (the server's `Plan` substitutes and maps positions; the browser substitutes placeholders only for WASM validation); §4.6 rate chip and rules 5 and 6 read the server's `planned` facts; T09-015 revised (the BFF repeats the 128 KB check and refuses a planned text above 65 536 bytes) |
+| 1.8-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
+| 1.9-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
