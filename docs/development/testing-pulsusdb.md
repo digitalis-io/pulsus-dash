@@ -49,6 +49,37 @@ parse errors (with and without a position), a timeout, a hang, a too-broad selec
 `GET` capture, and `labels-post`, the synthetic `POST` form the client sends first), label
 values, series, metadata and runtime info.
 
+### The log transcripts (`logs-*.json`, #65)
+
+Twenty transcripts answer the log routes. Every page request is a `GET` of
+`/api/logs/v1/query_range` with the query `{app="x"}` and `step` `5000ms`; each page transcript
+matches its `start`, `end`, `limit` and `direction` through `match.form`, so a request with
+another window or limit is unexpected. Their bodies are in the **categorised** shape that PulsusDB
+returns to the page requests (they send `categorize-labels`): `data.encodingFlags`, indexed stream
+labels only (`{app, pod}`), and per entry a third element with `structuredMetadata` and, for pods
+`b` and `c`, `parsed`. The data is the six entries of the #65 test window: `a5`, `b4`, and the
+group at `t0 + 300` (`a3` twice, `b3`, `c3`); the levels come from the metadata and parsed fields
+(pod `a` info, `b` warn, `c` error).
+
+| Transcripts | What | Provenance |
+|---|---|---|
+| `logs-page-backward-1`, `logs-page-forward-1` | a top-`limit` answer whose edge group at `t0 + 300` is a partial subset | captured shape, **synthetic subset**: the API does not document which subset of an edge group a limited answer holds, so these choose one other than the development deployment returned |
+| `logs-page-backward-2`, `logs-group-300`, `logs-page-forward-3` | the second backward page, the group fetch `(t0 + 299, t0 + 300]` with `limit` 5000, the last forward page | captured shape |
+| `logs-empty`, `logs-metric`, `logs-volume` | an empty page, a LogQL metric matrix, the volume template's matrix (with `| drop __error__`) | captured |
+| `logs-parse-error`, `logs-parse-error-nopos`, `logs-volume-parse-error`, `logs-too-broad`, `logs-wide-window` | `text/plain` errors with their messages verbatim (`at byte N`, none, the composed volume text's offset 57, 422, the 5-year window) | captured, 2026-11-21, PulsusDB 0.0.12 |
+| `logs-timeout`, `logs-hang`, `logs-hang-page`, `logs-hang-group` | a 504, a stall on the first request, and a page that needs a group fetch which stalls | synthetic: no timeout or stall can be provoked read-only |
+| `logs-labels`, `logs-label-values`, `logs-series` | the completion routes | captured |
+
+`logs-hang-group` sorts before `logs-hang-page` but requires `limit` `5000`, so the main request
+(`limit` `2`) is answered by `logs-hang-page`. The captured errors carry an `X-Pulsus-Query-Id`,
+as the development deployment's 400 and 422 answers do.
+
+**Adding a page transcript.** Work out the exact requests `LogQueryRange` sends for the page
+(`start` and `end` as `%019d` ns, the main fetch's `limit` is the request's `limit + 1` up to
+5 000, a group fetch is `(T − 1, T]` with `limit` 5000), write one transcript per request with those
+values in `match.form`, and keep the categorised shape. A page test with the strict harness then
+fails on any request you did not foresee.
+
 ### Adding a transcript
 
 1. Capture the response of a development PulsusDB, read-only. Keep the capture in a scratch
@@ -81,7 +112,7 @@ reset, a truncated body, a stall mid-body) use a named `httptest` handler instea
 | Method | Use |
 |---|---|
 | `Requests()` | a copy of the recorded requests, in arrival order: method, path, form, headers, `ReceivedAt`, `Completed`, `Cancelled`, `CancelledAt` |
-| `WaitCancelled(ctx, name)` | waits until a request answered by transcript `name` was cancelled; the itests use it with the `hang` transcript |
+| `WaitCancelled(ctx, name)` | waits until a request answered by transcript `name` was cancelled; the itests use it with the `hang`, `logs-hang` and `logs-hang-group` transcripts |
 | `Unexpected()` | the requests no transcript matched |
 | `Reset()` | forgets the records |
 
@@ -107,6 +138,7 @@ The image is `dev/pulsus-fake.Dockerfile`, a static binary on `scratch`; its
 | File | Written by | Read by |
 |---|---|---|
 | `json/promql-range-counter.json`, `promql-instant-gauge.json`, `promql-instant-scalar.json` | `go test ./internal/gateway -run Golden -update` (the gateway against the fake, at a fixed `Deps.Now`) | `unit:range-golden` (byte for byte) and the client's `unit:decode-frames` and `HttpApi` tests |
+| `json/logql-streams-backward-{1,2}.json`, `logql-streams-forward-{1,2,3}.json`, `logql-metric.json`, `logql-volume.json` | `go test ./internal/gateway -run 'TestLogqlGolden$' -args -update` (the log routes against the fake, `Deps.Now` 1767229300000) | `unit:logql-golden` (byte for byte) and the client's `unit:decode-logs` |
 | `json/promql-step.json` | by hand (the step cases) | `unit:promql-step` in Go (`PromGrid`) and TypeScript (`promGrid`) |
 | `keyhash/labels.json` | `go test ./internal/keyhash -run Corpus -update` (then frozen) | `unit:keyhash-corpus`; the empty set's key is the published XXH3-64 of empty input |
 
@@ -180,7 +212,12 @@ with the `captured`, `pulsusdb`, `method` and `sanitised` header, and run the `l
 | `unit:contract-window` | `internal/pulsusdb/contract_window_test.go` |
 | `unit:stream-decode`, `unit:updec`, `unit:decoration`, `unit:retry-budget`, `unit:tenant-limit`, `unit:timeout-budget`, `unit:credential-strength`, `unit:virtual-guard`, `unit:sanitise`, `unit:error-position`, `unit:promql-step` | `internal/pulsusdb/*_test.go` |
 | `unit:range-golden`, `unit:range-streams`, `unit:range-abort`, `unit:prom-routes`, `unit:body-validation`, `unit:upstream-errors`, `unit:deadlines`, `unit:body-limits`, `unit:redact-adversarial`, `unit:redact-prop`, `unit:permission-declared` | `internal/gateway/*_test.go` |
+| `unit:log-cursor` | `internal/gateway/cursor_test.go` |
+| `unit:logql-routes`, `unit:log-time-range`, `unit:logql-golden`, `unit:virtual-guard` (log routes) | `internal/gateway/logql_test.go` |
+| `unit:logs-completion`, `unit:log-time-range` (GET routes) | `internal/gateway/logs_test.go` |
+| `unit:sanitise` (log lines and text errors), `unit:deadlines` (log routes) | `internal/gateway/redact_test.go`, `deadline_test.go` |
 | `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check` | `cmd/pulsus-dash/query_itest_test.go` (`make itest`) |
+| `itest:logql-streams`, `itest:logql-metric`, `itest:logql-volume`, `itest:logql-errors`, `itest:logql-cancel` | `cmd/pulsus-dash/logql_itest_test.go` (`make itest`) |
 | `itest:pulsusdb-contract` | `internal/pulsusdb/contract_itest_test.go`, only with `DASH_CONTRACT_PULSUSDB_URL` (the `logql` subtest also with `DASH_CONTRACT_LOGQL_SELECTOR`) |
 
 ## Designs

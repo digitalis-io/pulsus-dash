@@ -189,7 +189,7 @@ Requests are matched in this order:
 | `GET /healthz`, `/startupz`, `/readyz`, `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` | the API routes below |
 | `/api/dash/v1/boards…`, `/api/dash/v1/me/starred-boards…`, `/api/dash/v1/me/recent-boards…` | the [boards API](boards-api.md) |
 | `POST /api/dash/v1/csp-report` | [CSP reports](#csp-reports) |
-| `POST /api/dash/v1/query/promql/{range,instant}`, `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}`, `GET /api/dash/v1/datasource/check` | [the PulsusDB routes](pulsusdb.md#routes) |
+| `POST /api/dash/v1/query/promql/{range,instant}`, `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}`, `POST /api/dash/v1/query/logql/{range,volume}`, `GET /api/dash/v1/logs/{labels,label/{name}/values,series}`, `GET /api/dash/v1/datasource/check` | [the PulsusDB routes](pulsusdb.md#routes) |
 | `GET`/`HEAD /assets/*` | the file from the verified set with the asset headers; not in the set, or no set → 404 envelope |
 | `/api` or any path under `/api/`, any method | 404 envelope |
 | any path under `/auth/`, any method | 404 envelope (there is no authentication yet, D12) |
@@ -215,7 +215,8 @@ Under `serve --api-only` there is no set, so every row that serves a file is a 4
 | `GET /api/dash/v1/bootstrap`, the store fails | 503 | `{"error":{"code":"unavailable","message":"configuration store unavailable"}}`, logged at `warn` as `msg=bootstrap` |
 | `GET /api/dash/v1/bootstrap`, the organisation has no binding | 503 | `{"error":{"code":"unavailable","message":"no tenant binding"}}` |
 | `POST …/query/promql/range`, `…/instant` | 200; 400, 404, 413, 422, 429, 502, 503, 504 | frames and completeness; the error envelope ([PulsusDB routes](pulsusdb.md#errors-t06-52)) |
-| `GET …/prom/labels`, `…/label/{name}/values`, `…/series`, `…/metadata` | 200; 400, 404, 422, 429 (with `Retry-After`), 502, 503, 504 | values, series or metadata with completeness; the error envelope |
+| `POST …/query/logql/range`, `…/volume` | 200; 400, 404, 413, 422, 429, 502, 503, 504 | a log page with its cursor, or frames, and completeness; the error envelope ([LogQL routes](pulsusdb.md#logql-routes)) |
+| `GET …/prom/labels`, `…/label/{name}/values`, `…/series`, `…/metadata`, `GET …/logs/labels`, `…/logs/label/{name}/values`, `…/logs/series` | 200; 400, 404, 422, 429 (with `Retry-After`), 502, 503, 504 | values, series or metadata with completeness; the error envelope |
 | `GET /api/dash/v1/datasource/check` | 200; 400, 404, 503, 504 | `{"state":"ok\|unreachable\|unauthorised\|error","checked_at":<ms>}` ([check](pulsusdb.md#data-source-check-t06-025)) |
 | known path, wrong method | 405 | `{"error":{"code":"invalid","message":"method not allowed"}}` |
 | handler panic | 500 | `{"error":{"code":"internal","message":"internal error"}}`, stack logged at `error` |

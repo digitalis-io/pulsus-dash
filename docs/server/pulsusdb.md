@@ -1,9 +1,9 @@
-# PulsusDB client, the PromQL routes and the LogQL calls
+# PulsusDB client and the query routes
 
 The BFF reads telemetry from PulsusDB through one package, `server/internal/pulsusdb`
 ([T06-005](../../designs/technical/T06-bff-architecture.md)). The gateway serves its results to
-the browser as JSON frames: the PromQL range and instant routes, the editor-completion routes and
-the data-source check. Every call runs for the active tenant binding under the fixed local
+the browser as JSON frames: the PromQL range and instant routes, the [LogQL routes](#logql-routes)
+(log pages, metric results and volume), the editor-completion routes and the data-source check. Every call runs for the active tenant binding under the fixed local
 principal (decision D12) with the full-tenant data scope ([T06-002](../../designs/technical/T06-bff-architecture.md)).
 
 ```
@@ -28,12 +28,17 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 | `GET /api/dash/v1/prom/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/prom/series` | as labels; at least one `match` | `PromSeriesResponse` | 10 s |
 | `GET /api/dash/v1/prom/metadata` | `tenant`, `metric` (optional), `limit` | `PromMetadataResponse` | 10 s |
+| `POST /api/dash/v1/query/logql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "limit"?, "direction"?, "cursor"?, "timeout_ms"?}` | `LogqlRangeResponse`: a log page (`kind: streams`) or frames streamed on the grid (`kind: series`) | `timeout_ms`, shared by every upstream request of the page |
+| `POST /api/dash/v1/query/logql/volume?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?}` | `PromRangeResponse`, one frame per level | `timeout_ms` |
+| `GET /api/dash/v1/logs/labels` | `tenant`, `from`, `to`, `query` (optional, at most 65 536 bytes), `limit` | `PromValuesResponse` | 10 s |
+| `GET /api/dash/v1/logs/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
+| `GET /api/dash/v1/logs/series` | `tenant`, `from`, `to`, `match` (repeatable, at least one), `limit` | `PromSeriesResponse` | 10 s |
 | `GET /api/dash/v1/datasource/check` | `tenant` | `DatasourceStatus` | 5 s |
 
 The schemas are in `api/openapi.yaml`. Every operation declares `x-permission: query.read`, the
 T06-023 declaration that M-UI6 will check, and the required `tenant` parameter
-(`^[a-z0-9-]{1,40}$`). The two POST routes are hand-written so that they can stream; the five GET
-routes are generated strict handlers. A parameter the generated code cannot bind (missing, or not
+(`^[a-z0-9-]{1,40}$`). The four POST routes are hand-written so that they can stream or write
+their own body; the eight GET routes are generated strict handlers. A parameter the generated code cannot bind (missing, or not
 an integer) is answered with its field error (`field.required` or `field.type`, `tenant.invalid`
 for the tenant) by the gateway's request error handler.
 
@@ -237,6 +242,8 @@ Every error is the envelope `{"error":{"code","message","hint"?,"query_id"?,"fie
 | anything unexpected (other status, not JSON, wrong `resultType`, off-grid point, a body over its limit) | 502 | `unavailable` | `PulsusDB returned an unexpected response` | `hint.reason: upstream_error` |
 | misconfigured binding (kind, credentials) | 503 | `unavailable` | `the datasource is misconfigured` | `hint.reason: datasource_config` |
 | data scope not the full tenant | 403 | `scope_denied` | `data scopes are not supported yet` | — |
+| a log route's `cursor` that does not decode, or whose position lies outside its own window | 400 | `invalid` | `cursor is not a cursor of this route` | `fields: [{pointer: "/cursor", message_key: "cursor.invalid"}]` |
+| a valid `cursor` of another query, direction, `from` or `to` | 400 | `invalid` | `cursor belongs to another query, direction or time range` | `fields: [{pointer: "/cursor", message_key: "cursor.mismatch"}]` |
 | reserved selector | 400 | `virtual_unsupported` | `<name> is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)` | `fields: [{pointer: "/query", "/match/<i>" or "/metric", message_key: "query.reserved"}]`; `hint.reserved` |
 
 `query_id` is set whenever PulsusDB returned an accepted query id. Other status texts of PulsusDB
@@ -273,6 +280,21 @@ and nothing after it. Errors are 400 `invalid` with one field:
 
 The GET routes apply the same rows to their parameters (`limit` 1 to 10 000, `name` 1 to 256
 bytes, each `match` at most 65 536 bytes, `/match/<i>` for a bad one).
+
+The log routes add their own rows ([supported time range](#supported-time-range), [cursor](#cursor)):
+
+| Condition | `pointer` | `message_key` (`message`) |
+|---|---|---|
+| `to` > 9223372036854, before alignment (all five log routes) | `/to` | `field.range` (`to is beyond the supported time range (at most 9223372036854)`) |
+| the grid end > 9223372036854 (range and volume) | `/to` | `field.range` (`to is too close to the end of the supported time range for this width`) |
+| `from` < 0 (the log GET routes) | `/from` | `field.range` |
+| `limit` outside 1 to 5 000 (range) | `/limit` | `field.range` (`limit must be between 1 and 5000`) |
+| `direction` not `backward` or `forward` | `/direction` | `field.range` |
+| `cursor` not 48 characters of `A-Z a-z 0-9 _ -` | `/cursor` | `field.range` |
+| `query` parameter over 65 536 bytes (labels, label values) | `/query` | `field.range` |
+
+Every check, the reserved-selector guard and the grid run before any I/O, tenant resolution
+included. The PromQL routes keep their own `to` bound (year 9999).
 
 ## Reserved selectors ([T07 §0](../../designs/technical/T07-scene-query-planner.md), T07-020 v1)
 
@@ -319,8 +341,25 @@ before it can reach a response or a log:
 
 The route's context is the browser's: when the browser aborts the fetch, the server cancels the
 upstream request, which closes the connection (HTTP/1.1) or resets the stream (HTTP/2), and frees
-the tenant slot. A request abandoned before any header is logged with `status=499`. The itests
-check that PulsusDB sees the cancel within 100 ms, before headers and mid-stream.
+the tenant slot. A request abandoned before any header is logged with `status=499`. On a log page
+that needs more than one upstream request, the cancel ends the current one and no further request
+starts.
+
+The budget is 50 ms from the browser's cancel to the upstream request dropped at the BFF
+([T04 §7](../../designs/technical/T04-wire-format-and-data-plane.md), T04-013), on the PromQL and
+the LogQL routes, which share the client's `do`. `itest:cancel` and `itest:logql-cancel` measure it
+the same way:
+
+- the test waits, polling every 1 ms for at most 5 s, until the in-process fake has recorded the
+  request that will hang (the fake records after reading the form, so the BFF has written its whole
+  request and waits for headers);
+- the start is `time.Now()` in the test immediately before it cancels the browser request's context;
+- the end is the fake's `CancelledAt`, set when its handler's request context is done. Both clocks
+  are the same process's monotonic clock, and nothing sleeps between the two, so the interval is an
+  upper bound of "cancel → upstream dropped".
+
+`itest:logql-cancel` covers the first request of a page and its group fetch (the second request);
+`itest:cancel-mid-stream` keeps its 100 ms bound for a cancel after the first frame.
 
 ## Logs
 
@@ -335,7 +374,10 @@ msg=pulsusdb route=<query_range|query|series|labels|label_values|metadata|runtim
 ```
 
 A log page writes one record per upstream request; `page_request` numbers them, so the record
-with `page_request=3` shows a page that took three.
+with `page_request=3` shows a page that took three. The range route adds, at `debug`,
+`msg=logql_page tenant=<slug> entries=<n> streams=<n> upstream_requests=<1..3> cursor=<bool>
+request_id=<id>`; a LogQL metric stream that fails after its header logs `msg=logql_stream_aborted`
+(the PromQL routes log `promql_stream_aborted`).
 
 `query_id_hash` is the first 8 hex digits of an HMAC-SHA256 of the raw query id under a key drawn
 once per process, so records of one query can be matched without logging the header. No upstream
@@ -354,8 +396,8 @@ PulsusDB. The sidebar's data-source line shows the result ([client](../client/RE
 ## LogQL in the PulsusDB client
 
 The client also calls PulsusDB's native LogQL routes under `/api/logs/v1/`
-([T06-005](../../designs/technical/T06-bff-architecture.md)). No route of the BFF uses them yet:
-the log routes come with #65 Part B. Every call goes through the same `do` as the PromQL methods,
+([T06-005](../../designs/technical/T06-bff-architecture.md)); the [LogQL routes](#logql-routes)
+of the BFF are their only callers. Every call goes through the same `do` as the PromQL methods,
 so it gets the same decoration, tenant slot, retries, deadline-derived `timeout`, redaction and log
 record (T06-006, T06-009).
 
@@ -505,6 +547,88 @@ Errors are mostly `text/plain` ([text bodies](#errors-t06-52)): a LogQL syntax e
 PulsusDB's own 400 (`query time range … outside the supported range`), returned with its message
 and no position. An error on the second or third request of a page fails the page as a whole.
 
+## LogQL routes
+
+The five log routes run Part A's calls (above) for the browser. Their wire names are snake_case
+(`ts_ns`, `width_px`), as on the PromQL routes.
+
+### Range: log pages and metric results
+
+`POST /api/dash/v1/query/logql/range` takes `query`, `from` and `to` (ms since the epoch),
+`width_px`, and optionally `limit` (1 to 5 000, default 1 000), `direction` (`backward`, the
+default, or `forward`), `cursor` (from the previous page) and `timeout_ms`. The route deadline
+covers every upstream request of the page.
+
+A log query answers one **page** of the window `(from, to]`: at most `limit` entries, complete
+timestamp groups only ([paging](#paging)). The page is written in one go after its last upstream
+response, because it is cut at whole timestamp groups across streams and is known only once the
+whole upstream response is decoded (at most 5 000 entries):
+
+```json
+{"kind":"streams","start":1767225600000,"end":1767229200000,"step":5000,"direction":"backward",
+ "streams":[{"key":"258d6e4033fa2fdb","labels":{"app":"x","pod":"a"},
+   "entries":[{"ts_ns":"1767229100000000500","line":"a5","level":"info","metadata":{"detected_level":"info"}}]},…],
+ "cursor":"AQBybb…","completeness":{"truncated":false,"warnings":[],"infos":[],"query_id":"…","data_age_ms":200000}}
+```
+
+- `start` and `end` are the request's `from` and `to` (the window), and `step` is the grid step.
+- `streams` are the page's streams by key ascending, each with its indexed stream labels; a
+  stream's `entries` are in page order (ts in direction, then the group order). The page order
+  across streams is ts in direction, then stream key, then line: what the client's merge rebuilds.
+- An entry is `ts_ns` (ns since the epoch as a decimal string: a double cannot hold it), `line`,
+  `level` (a T04 level name), and `metadata` and `parsed` (string maps) when the entry has any.
+- `cursor` continues the page and is omitted when no entry of the window is left.
+- `completeness` merges the page's requests: `query_id` is that of its last request; `data_age_ms`
+  comes from the newest delivered entry.
+
+A LogQL metric query (a `matrix` answer) is instead streamed series by series on the grid as on
+the PromQL range route, with `kind` first and no cursor:
+`{"kind":"series","start":…,"end":…,"step":…,"frames":[…],"completeness":…}`. Its upstream request
+is the first request of a page (on the grid, with `limit + 1` and the direction); only the
+`resultType` of the answer tells the two apart.
+
+### Volume
+
+`POST /api/dash/v1/query/logql/volume` takes `query`, `from`, `to`, `width_px` and `timeout_ms`
+and answers the [PromQL range body](#json-frames-t04-0-adr-0014-5) with one frame per level that
+has lines, labelled exactly `{"level": <name>}`, in the order critical, error, warn, info, debug,
+trace, unknown ([volume](#volume)). It is written after `LogVolume` has read the whole upstream
+matrix, so a failure mid-matrix is a 504 or 502 envelope, never a partial aggregate.
+
+### Completion
+
+`GET /api/dash/v1/logs/labels`, `…/logs/label/{name}/values` and `…/logs/series` answer as their
+PromQL counterparts (`PromValuesResponse`, `PromSeriesResponse`), with the same 10 s deadline,
+429 and default error responses. `from` and `to` are sent to PulsusDB as `from·10⁶` and `to·10⁶` ns.
+The labels routes take an optional `query` (a stream selector), the series route one or more
+`match`; the BFF cuts at `limit`.
+
+### Supported time range
+
+The log routes accept times up to `9223372036854` ms (2262-04-11T23:47:16.854Z), the last ms whose
+ns value fits in int64 (owner decision Q6). `to` is checked against it before alignment, and on the
+range and volume routes the aligned grid end too: with `from` 9223372036000, `to` 9223372036854 and
+`width_px` 1 the grid ends at 9223372037000, so the request is refused with
+`to is too close to the end of the supported time range for this width`. PulsusDB itself refuses a
+window wider than 5 years ([errors](#errors-from-pulsusdb-on-the-log-routes)).
+
+### Cursor
+
+The cursor is opaque, unsigned and 48 characters long: unpadded base64url of 36 bytes, big-endian,
+version 1, the direction, xxh3-64 of the query text, the request's `from` and `to`, and the page
+cursor `(ts, skip)`. It binds the page to the query, direction, `from` and `to` of the request; the
+width is not bound, since it does not change which entries a page holds. It carries no tenant and
+authorises nothing, so a forged cursor can only narrow the caller's own window inside its own
+tenant; it is not signed.
+
+- A cursor that does not decode (not base64url, not 36 bytes, another version, a direction other
+  than 0 or 1, a skip of 5 000 or more), or whose position is not in its own window, is 400
+  `/cursor` `cursor.invalid`.
+- A valid cursor of another query, direction, `from` or `to` is 400 `/cursor` `cursor.mismatch`.
+
+Paging returns every entry exactly once while fewer than 5 000 entries share one timestamp and the
+data does not change; beyond that is the [documented limit](#paging) (owner decision Q5).
+
 ## Configuration
 
 | Key | Default | Rule |
@@ -537,15 +661,17 @@ The binding itself (URL, scope, database, credentials reference) lives in Postgr
 
 | Gate | Where | Fails when |
 |---|---|---|
-| `bench:cpu-instr` | `.github/workflows/bench.yml`, every pull request and `main`: `make cpu-instr` | the instruction count of workload W1 (a 1 000 × 1 000 matrix decoded, gridded and encoded) or W2 (1 000 sequential 60-point range requests through the gateway), minus an empty run, is more than 3 % over `server/testdata/bench/cpu-instr.json`, or the Go or valgrind version differs from the baseline's (`rebaseline`) |
+| `bench:cpu-instr` | `.github/workflows/bench.yml`, every pull request and `main`: `make cpu-instr` | the instruction count of workload W1 (a 1 000 × 1 000 matrix decoded, gridded and encoded), W2 (1 000 sequential 60-point range requests through the gateway) or W3 (one 5 000-entry log page through `POST …/logql/range`: 50 streams of 100 entries, 120-byte lines, a tie every 10th entry), minus an empty run, is more than 3 % over `server/testdata/bench/cpu-instr.json`; the Go or valgrind version differs from the baseline's (`rebaseline`); or a workload has no baseline (`no baseline for W3: rebaseline`) |
 | `bench:promql-decode` | `REFERENCE_LAB=1 make bench-bff` (reference lab) | W1 takes more than 30 ms per 10⁶ points (median of 5) |
 | `bench:bff-overhead` | the same target | W2 with a 2 ms upstream adds more than 5 ms at p50 or 20 ms at p99 |
 
-**Counted boundary.** `cpu-instr.sh` first has the test binary write the W1 and W2 upstream bodies
-to files, without valgrind, so building the 10⁶-point input is never counted. Each counted run
-reads its body from those files; the empty run reads the same W1 file but is served a 0-series
-answer. W1 minus the empty run is therefore exactly the A.11 boundary: from the first read of the
-upstream body to the last byte of the response (decode, grid placement and encode).
+**Counted boundary.** `cpu-instr.sh` first has the test binary write the W1, W2 and W3 upstream
+bodies to files, without valgrind, so building the 10⁶-point input is never counted. Each counted
+run reads the W1, the empty and the W3 files, so the reads cancel out; the empty run is served a
+0-series answer. W1 minus the empty run is therefore exactly the A.11 boundary: from the first read
+of the upstream body to the last byte of the response (decode, grid placement and encode). W3 minus
+the empty run is one log page from handler start to the last byte written (decode, paging, sort and
+encode; `limit` 4 999, so the main fetch asks for 5 000 and one request makes the page).
 
 The two time budgets skip without `REFERENCE_LAB=1`: time is measured only on the reference
 machines, never on shared CI runners (T05-006). The baseline is written by `make cpu-instr-update`,
@@ -576,6 +702,7 @@ properties the pager relies on ([testing against PulsusDB](../development/testin
 | `internal/pulsusdb/logpage.go` | the decoded `logResponse`, `streamsResult`, `openLogs` and the pager |
 | `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rule, errors, retry budget and tenant slots |
 | `internal/gateway/query.go`, `frames.go`, `prom.go`, `datasource.go`, `tenant.go` | the routes, the frame encoder, tenant resolution and the error mapping |
+| `internal/gateway/logql.go`, `logframes.go`, `cursor.go`, `logs.go` | the LogQL range and volume routes, the log page encoder, the cursor, the log completion routes |
 | `internal/pulsusfake`, `cmd/pulsus-fake` | the PulsusDB stand-in ([testing against PulsusDB](../development/testing-pulsusdb.md)) |
 
 ## Designs
@@ -585,7 +712,8 @@ PRF-030 (transport half), PRF-031 (server half) in
 T06-008, T06-009, T06-010, T06-011, T06-023 (declaration), T06-024, T06-025 and T06-026 in
 [T06](../../designs/technical/T06-bff-architecture.md); T04-001, T04-004, T04-005 and T04-010 in
 [T04](../../designs/technical/T04-wire-format-and-data-plane.md) (with §4.3 `log_lines/1` levels and
-the §5.2 `log_volume` row); T07-002, T07-020 (v1) and the §0 log volume row in
+its JSON image, the §5.2 `log_volume` row, the §5.3 `truncated` row and the §7 cancel budget,
+T04-013); the log routes of T06 §5.1; T07-002, T07-020 (v1) and the §0 log volume row in
 [T07](../../designs/technical/T07-scene-query-planner.md); T09-009 (server half, with LogQL's
 `at byte N`) in
 [T09](../../designs/technical/T09-query-editors.md); T05-006 in
