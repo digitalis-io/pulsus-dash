@@ -579,7 +579,7 @@ whole upstream response is decoded (at most 5 000 entries):
 - An entry is `ts_ns` (ns since the epoch as a decimal string: a double cannot hold it), `line`,
   `level` (a T04 level name), and `metadata` and `parsed` (string maps) when the entry has any.
 - `cursor` continues the page and is omitted when no entry of the window is left.
-- `completeness` merges the page's requests: `query_id` is that of its last request; `data_age_ms`
+- `completeness` merges the page's requests: `query_id` is that of its last request (absent when that request returned none); `data_age_ms`
   comes from the newest delivered entry.
 
 A LogQL metric query (a `matrix` answer) is instead streamed series by series on the grid as on
