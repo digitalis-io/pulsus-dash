@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import counterRaw from '../../../wire/fixtures/json/promql-range-counter.json?raw';
 import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw';
 import scalarRaw from '../../../wire/fixtures/json/promql-instant-scalar.json?raw';
-import { DecodeError, decodeInstant, decodeRange, decodeValue } from './decode';
+import {
+  DecodeError,
+  decodeInstant,
+  decodeMetadata,
+  decodeRange,
+  decodeSeriesSet,
+  decodeValue,
+  decodeValues,
+} from './decode';
 
 type Json = Record<string, unknown>;
 
@@ -133,5 +141,57 @@ describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
 
     expect(decodeErrorOf(() => decodeRange(null)).path).toBe('');
     expect(decodeErrorOf(() => decodeInstant({ result_type: 'x' })).path).toBe('/result_type');
+  });
+});
+
+/** The DecodeError path of `f`, or null when it does not throw one. */
+function pathOf(f: () => unknown): string | null {
+  try {
+    f();
+  } catch (e) {
+    if (e instanceof DecodeError) return e.path;
+    throw e;
+  }
+  return null;
+}
+
+describe('unit:decode-frames prom', () => {
+  const C = {
+    truncated: true,
+    warnings: ['results truncated due to limit'],
+    infos: [],
+  };
+
+  it('decodes values, series and metadata bodies', () => {
+    const v = decodeValues({ values: ['a', 'b'], completeness: C });
+    expect(v.values).toEqual(['a', 'b']);
+    expect(v.completeness).toMatchObject({ truncated: true, queryId: null });
+    expect(v.completeness.warnings).toEqual(['results truncated due to limit']);
+    const s = decodeSeriesSet({
+      series: [{ key: '0123456789abcdef', labels: { job: 'api' } }],
+      completeness: C,
+    });
+    expect(s.series).toEqual([{ key: '0123456789abcdef', labels: { job: 'api' } }]);
+    expect(s.completeness.truncated).toBe(true);
+    const m = decodeMetadata({
+      metrics: { up: [{ type: 'gauge', help: 'Target up.', unit: '' }] },
+      completeness: C,
+    });
+    expect(m.metrics).toEqual({ up: [{ type: 'gauge', help: 'Target up.', unit: '' }] });
+  });
+
+  it('reports the JSON pointer of the first bad element', () => {
+    expect(pathOf(() => decodeValues({ values: ['a', 1], completeness: C }))).toBe('/values/1');
+    expect(
+      pathOf(() => decodeSeriesSet({ series: [{ key: 'xyz', labels: {} }], completeness: C })),
+    ).toBe('/series/0/key');
+    expect(
+      pathOf(() =>
+        decodeMetadata({
+          metrics: { up: [{ type: 'gauge', help: 1, unit: '' }] },
+          completeness: C,
+        }),
+      ),
+    ).toBe('/metrics/up/0/help');
   });
 });

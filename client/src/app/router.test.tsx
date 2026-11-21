@@ -33,6 +33,21 @@ describe('redirects and normalises', () => {
   });
 });
 
+describe('router explore canonical', () => {
+  it('the metrics route canonicalises q, vis and rate (REPLACE)', async () => {
+    const { router } = renderApp(
+      '/t/demo/explore/metrics?vis=pie&q=up&from=now-1h&to=now&refresh=off&q=x',
+    );
+    await settled(router, '/t/demo/explore/metrics');
+    await waitFor(() => {
+      expect(locationOf(router)).toBe(
+        '/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=up',
+      );
+    });
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+});
+
 describe('tenant index keeps Context', () => {
   it('redirects to Boards with the canonical search', async () => {
     const { router } = renderApp('/t/demo?from=now-6h');

@@ -186,3 +186,41 @@ func TestFakeFormAndBodyText(t *testing.T) {
 		t.Errorf("Load(body_text only) = %v %v", ts, err)
 	}
 }
+
+// ci:go-test max records: the oldest record is dropped, also while it is in flight.
+func TestMaxRecords(t *testing.T) {
+	q := func(s string) *string { return &s }
+	ts := []Transcript{
+		{Name: "hang", Provenance: Provenance{Synthetic: "test"}, Match: Match{Method: http.MethodPost, Paths: []string{"/api/v1/query_range"}, Query: q("hang")},
+			Response: Response{Status: 200, Hang: true}},
+		{Name: "ok", Provenance: Provenance{Synthetic: "test"}, Match: Match{Method: http.MethodPost, Paths: []string{"/api/v1/query_range"}, Query: q("ok")},
+			Response: Response{Status: 200, Body: json.RawMessage(`{}`)}},
+	}
+	f := New(ts, Options{MaxRecords: 2})
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/api/v1/query_range",
+		strings.NewReader(url.Values{"query": {"hang"}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for len(f.Requests()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	post(t, srv.URL, "/api/v1/query_range", url.Values{"query": {"ok"}, "start": {"1"}})
+	post(t, srv.URL, "/api/v1/query_range", url.Values{"query": {"ok"}, "start": {"2"}})
+	cancel()
+	<-done
+	time.Sleep(20 * time.Millisecond) // the dropped record's goroutine records the cancel
+	r := f.Requests()
+	if len(r) != 2 || r[0].Transcript != "ok" || r[1].Transcript != "ok" || r[0].Form.Get("start") != "1" || r[1].Form.Get("start") != "2" {
+		t.Errorf("Requests() = %+v, want the two ok records", r)
+	}
+}

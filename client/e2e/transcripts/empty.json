@@ -1,0 +1,10 @@
+{
+  "name": "empty",
+  "provenance": {"synthetic": "any window, for request counting"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "empty_metric"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-empty-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[]}}
+  }
+}

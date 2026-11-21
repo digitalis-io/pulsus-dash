@@ -263,6 +263,51 @@ describe('HttpApi queries (A.10)', () => {
   });
 });
 
+describe('HttpApi prom routes', () => {
+  const C = { truncated: false, warnings: [], infos: [] };
+  const target = (r: Request | undefined) =>
+    r === undefined ? '' : `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`;
+
+  it('sends the four GETs with repeated match', async () => {
+    const values = { values: ['a'], completeness: C };
+    const { api: a, requests } = api((req) => {
+      const p = new URL(req.url).pathname;
+      if (p.endsWith('/series')) return Promise.resolve(json(200, { series: [], completeness: C }));
+      if (p.endsWith('/metadata'))
+        return Promise.resolve(json(200, { metrics: {}, completeness: C }));
+      return Promise.resolve(json(200, values));
+    });
+    expect(
+      (await a.promLabels('demo', { fromMs: 1, toMs: 2, match: ['a', 'b'], limit: 1000 })).values,
+    ).toEqual(['a']);
+    expect(
+      (await a.promLabelValues('demo', '__name__', { fromMs: 1, toMs: 2, match: [] })).values,
+    ).toEqual(['a']);
+    expect((await a.promSeries('demo', { fromMs: 1, toMs: 2, match: ['up'] })).series).toEqual([]);
+    expect((await a.promMetadata('demo', { limit: 10000 })).metrics).toEqual({});
+    expect(requests.map(target)).toEqual([
+      'GET /api/dash/v1/prom/labels?tenant=demo&from=1&to=2&match=a&match=b&limit=1000',
+      'GET /api/dash/v1/prom/label/__name__/values?tenant=demo&from=1&to=2',
+      'GET /api/dash/v1/prom/series?tenant=demo&from=1&to=2&match=up',
+      'GET /api/dash/v1/prom/metadata?tenant=demo&limit=10000',
+    ]);
+  });
+
+  it('maps errors and re-throws aborts', async () => {
+    const broad = api(envelope(422, { code: 'too_broad', message: 'm' }));
+    await expect(broad.api.promLabels('demo', { fromMs: 1, toMs: 2 })).rejects.toSatisfy(
+      (e: unknown) => isApiError(e, 'tooBroad'),
+    );
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const abort = new DOMException('The operation was aborted.', 'AbortError');
+    const ab = api(() => Promise.reject(abort));
+    await expect(
+      ab.api.promLabelValues('demo', 'job', { fromMs: 1, toMs: 2 }, ctrl.signal),
+    ).rejects.toBe(abort);
+  });
+});
+
 const AUTHOR = { kind: 'local', name: 'Local user' };
 const SPEC = { title: 'Board', panels: [], sections: [] };
 

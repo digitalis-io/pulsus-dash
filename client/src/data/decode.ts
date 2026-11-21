@@ -210,3 +210,77 @@ export function decodeInstant(body: unknown): InstantResult {
     }
   }
 }
+
+export interface PromValues {
+  readonly values: readonly string[];
+  readonly completeness: Completeness;
+}
+
+export interface PromSeriesSet {
+  readonly series: readonly {
+    readonly key: string;
+    readonly labels: Readonly<Record<string, string>>;
+  }[];
+  readonly completeness: Completeness;
+}
+
+export interface PromMetricMetadata {
+  readonly type: string;
+  readonly help: string;
+  readonly unit: string;
+}
+
+export interface PromMetadata {
+  readonly metrics: Readonly<Record<string, readonly PromMetricMetadata[]>>;
+  readonly completeness: Completeness;
+}
+
+/** Decodes a `PromValuesResponse` body (label names or values). */
+export function decodeValues(body: unknown): PromValues {
+  const b = object(body, '');
+  return {
+    values: strings(b['values'], '/values'),
+    completeness: decodeCompleteness(b['completeness'], '/completeness'),
+  };
+}
+
+/** A JSON object of strings; `Object.fromEntries` keeps every name an own property. */
+function labelSet(v: unknown, path: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(object(v, path)).map(([k, x]) => [k, string(x, `${path}/${token(k)}`)]),
+  );
+}
+
+/** Decodes a `PromSeriesResponse` body; every key matches `KEY_PATTERN`. */
+export function decodeSeriesSet(body: unknown): PromSeriesSet {
+  const b = object(body, '');
+  const series = array(b['series'], '/series').map((v, i) => {
+    const path = `/series/${String(i)}`;
+    const s = object(v, path);
+    const key = string(s['key'], `${path}/key`);
+    if (!KEY_PATTERN.test(key)) throw new DecodeError(`${path}/key`, 'expected 16 hex digits');
+    return { key, labels: labelSet(s['labels'], `${path}/labels`) };
+  });
+  return { series, completeness: decodeCompleteness(b['completeness'], '/completeness') };
+}
+
+/** Decodes a `PromMetadataResponse` body. */
+export function decodeMetadata(body: unknown): PromMetadata {
+  const b = object(body, '');
+  const metrics = Object.fromEntries(
+    Object.entries(object(b['metrics'], '/metrics')).map(([name, entries]) => {
+      const path = `/metrics/${token(name)}`;
+      const list = array(entries, path).map((e, i): PromMetricMetadata => {
+        const p = `${path}/${String(i)}`;
+        const m = object(e, p);
+        return {
+          type: string(m['type'], `${p}/type`),
+          help: string(m['help'], `${p}/help`),
+          unit: string(m['unit'], `${p}/unit`),
+        };
+      });
+      return [name, list];
+    }),
+  );
+  return { metrics, completeness: decodeCompleteness(b['completeness'], '/completeness') };
+}

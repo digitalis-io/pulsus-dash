@@ -110,6 +110,39 @@ describe('stub api queries (plan #62 §4.5)', () => {
   });
 });
 
+describe('StubApi prom', () => {
+  it('serves the completion stub data (plan #63 A.3)', async () => {
+    const api = new StubApi();
+    const r = { fromMs: 0, toMs: 1 };
+    expect((await api.promMetadata('demo', {})).metrics).toEqual({
+      http_requests_total: [{ type: 'counter', help: 'Total HTTP requests.', unit: '' }],
+      http_request_duration_seconds: [
+        { type: 'histogram', help: 'HTTP request duration.', unit: 'seconds' },
+      ],
+      node_memory_free_bytes: [{ type: 'gauge', help: 'Free memory in bytes.', unit: 'bytes' }],
+      up: [{ type: 'gauge', help: 'Target up.', unit: '' }],
+    });
+    expect((await api.promLabelValues('demo', '__name__', r)).values).toEqual([
+      'http_request_duration_seconds_bucket',
+      'http_requests_total',
+      'node_memory_free_bytes',
+      'stub_metric',
+      'up',
+    ]);
+    expect((await api.promLabelValues('demo', 'job', r)).values).toEqual(['a', 'b']);
+    expect((await api.promLabels('demo', r)).values).toEqual([
+      '__name__',
+      'instance',
+      'job',
+      'le',
+      'series',
+    ]);
+    expect((await api.promSeries('demo', { ...r, match: ['up'] })).series).toEqual([]);
+    expect(await kindOf(api.promLabels('x', r))).toBe('notFound');
+    expect(await kindOf(api.promMetadata('x', {}))).toBe('notFound');
+  });
+});
+
 async function rejection(p: Promise<unknown>): Promise<unknown> {
   try {
     await p;

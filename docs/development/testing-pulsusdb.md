@@ -91,7 +91,7 @@ HTTP server notices that the client went away only once the body was read.
 ## In the dev stack: the generator
 
 `cmd/pulsus-fake` (`--listen`, default `localhost:9091`; `--transcripts DIR`, default the embedded
-set; `--generate`, default `true`) serves the fake for `make dev-up` ([dev stack](dev-stack.md)).
+set; `--generate`, default `true`; `--control`, default `false`, [below](#in-the-e2e-suite-control-mode)) serves the fake for `make dev-up` ([dev stack](dev-stack.md)).
 With the generator on, an unmatched `/api/v1/query_range` or `/api/v1/query` gets one series
 `{fake="generated"}` with the value `sin(t / 600)` (t in seconds) on the request's grid or at its
 time, and `X-Pulsus-Query-Id: fake-generated`, so any query draws a line. It writes one JSON log
@@ -101,6 +101,59 @@ The image is `dev/pulsus-fake.Dockerfile`, a static binary on `scratch`; its
 `dev/pulsus-fake.Dockerfile.dockerignore` sends only `server/` (without `server/build`). The CI gate
 `ci:fake-image` builds and runs it and checks that `runtimeinfo` answers with
 `X-Pulsus-Query-Id: fake-runtimeinfo-1` within 10 s.
+
+## In the e2e suite: control mode
+
+`tools/e2e/fake.sh PORT` runs `build/e2e-fake/pulsus-fake --listen localhost:PORT --transcripts
+client/e2e/transcripts --generate=false --control` (built by `make e2e-build`). The e2e suite
+starts it on port 4190 and both e2e BFFs use it as their data source
+([end-to-end tests](build-and-ci.md#end-to-end-tests)). `--control` adds two routes and keeps the
+records:
+
+| Route | Answer |
+|---|---|
+| `GET /__fake/requests` | `200 application/json`: every record, in arrival order, `[]` when none |
+| `POST /__fake/reset` | `204`; forgets the records (a request in flight at the reset is not listed again) |
+| either route with another method | `405`, with `Allow: GET` or `Allow: POST` |
+| any other `/__fake/…` path | `404 application/json` `{"error":"pulsus-fake: unknown control route"}` |
+
+Control calls are never recorded. Every other request is served and logged as without
+`--control`, but its record is listed from the moment it arrives and is not reset afterwards. A
+record has the fields `transcript`, `method`, `path`, `query`, `start`, `end`, `step`, `time` (the
+form values, `""` when absent), `state` and `receivedAtMs`:
+
+| `state` | When |
+|---|---|
+| `inflight` | the request arrived and is not answered yet (a `delay_ms` or `hang` transcript) |
+| `completed` | the response was written (also the 404 for an unmatched request, with `transcript` `""`) |
+| `cancelled` | the client went away first |
+
+A control-mode fake keeps the newest 1 000 records; the oldest is dropped when a new one arrives
+(`Options.MaxRecords`). Without `--control` nothing changes: `/__fake/*` is an unexpected request
+and the records are reset after every request.
+
+The e2e browsers run in parallel against the one fake, so a spec filters the records (by query,
+window or state) and **never** calls `POST /__fake/reset`, which would clear the records other
+workers are waiting for. Reset is for debugging with a single worker only.
+
+### e2e transcripts
+
+`client/e2e/transcripts/` holds the 15 transcripts of the Explore e2e suite (#63). Four are byte
+copies of `server/internal/pulsusfake/testdata/` (`runtimeinfo`, `histogram`, `scalar`,
+`too-broad`); the others are synthetic, with the reason in `provenance.synthetic` and query ids
+`fake-<name>-1`. Their range bodies are on the e2e window `2026-01-01T00:00:00Z`–`01:00:00Z` at a
+5 s step. The same provenance rules apply as above; Prettier does not touch the directory, so the
+copies stay byte-equal. `go test ./cmd/pulsus-fake` (`TestE2ETranscripts`) loads the directory,
+checks the 15 names and compares the copies byte for byte.
+
+### e2e helpers (`client/e2e/fake.ts`)
+
+| Helper | Use |
+|---|---|
+| `FAKE` | `http://localhost:4190` |
+| `fakeRequests(request, filter)` | `GET /__fake/requests` (expects 200), keeping the records whose every given field equals the filter's |
+| `resetFake(request)` | `POST /__fake/reset` (expects 204); single-worker debugging only |
+| `sec(ms)` | seconds as the BFF sends `start` and `end`: `String(ms / 1000)` |
 
 ## Shared fixtures (`wire/fixtures/`)
 
@@ -170,7 +223,7 @@ with the `captured`, `pulsusdb`, `method` and `sanitised` header, and run the `l
 
 | Gate | File |
 |---|---|
-| `unit:fake-transcripts` | `internal/pulsusfake/fake_test.go` |
+| `unit:fake-transcripts` | `internal/pulsusfake/fake_test.go` (with `TestMaxRecords`) |
 | `unit:log-paging`, `unit:log-window`, `unit:log-decode` | `internal/pulsusdb/logpage_test.go` |
 | `unit:log-member-order` | `internal/pulsusdb/memberorder_test.go`, `updec_test.go` |
 | `unit:log-level`, `unit:logql-calls`, `unit:volume-compose`, `unit:volume-buffered` | `internal/pulsusdb/logql_test.go` |
@@ -178,6 +231,7 @@ with the `captured`, `pulsusdb`, `method` and `sanitised` header, and run the `l
 | `unit:text-errors` | `internal/pulsusdb/errors_test.go` |
 | `unit:query-hash` | `internal/keyhash/keyhash_test.go` |
 | `unit:contract-window` | `internal/pulsusdb/contract_window_test.go` |
+| `ci:go-test` (control mode, e2e transcripts) | `cmd/pulsus-fake/control_test.go`, `cmd/pulsus-fake/transcripts_test.go` |
 | `unit:stream-decode`, `unit:updec`, `unit:decoration`, `unit:retry-budget`, `unit:tenant-limit`, `unit:timeout-budget`, `unit:credential-strength`, `unit:virtual-guard`, `unit:sanitise`, `unit:error-position`, `unit:promql-step` | `internal/pulsusdb/*_test.go` |
 | `unit:range-golden`, `unit:range-streams`, `unit:range-abort`, `unit:prom-routes`, `unit:body-validation`, `unit:upstream-errors`, `unit:deadlines`, `unit:body-limits`, `unit:redact-adversarial`, `unit:redact-prop`, `unit:permission-declared` | `internal/gateway/*_test.go` |
 | `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check` | `cmd/pulsus-dash/query_itest_test.go` (`make itest`) |

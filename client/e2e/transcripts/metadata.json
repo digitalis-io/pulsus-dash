@@ -1,0 +1,10 @@
+{
+  "name": "metadata",
+  "provenance": {"synthetic": "explore e2e metadata"},
+  "match": {"method": "GET", "paths": ["/api/v1/metadata"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-metadata-1"},
+    "body": {"status":"success","data":{"http_requests_total":[{"type":"counter","help":"Total HTTP requests.","unit":""}],"http_request_duration_seconds":[{"type":"histogram","help":"HTTP request duration.","unit":"seconds"}],"node_memory_free_bytes":[{"type":"gauge","help":"Free memory in bytes.","unit":"bytes"}],"up":[{"type":"gauge","help":"Target up.","unit":""}]}}
+  }
+}

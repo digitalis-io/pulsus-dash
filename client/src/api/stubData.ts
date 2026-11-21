@@ -1,3 +1,4 @@
+import type { PromMetricMetadata } from '../data/decode';
 import type { StubSeed } from './StubApi';
 import type { PanelSpec } from './types';
 
@@ -123,3 +124,27 @@ export const defaultSeed: StubSeed = {
 
 /** Starred boards seeded when the stub key is absent (organisation-level, as on the BFF). */
 export const defaultStarred: readonly string[] = ['b-1'];
+
+/** Completion metadata: the body of the e2e `metadata` transcript (plan #63 A.1, A.3). */
+export const STUB_PROM_METADATA: Readonly<Record<string, readonly PromMetricMetadata[]>> = {
+  http_requests_total: [{ type: 'counter', help: 'Total HTTP requests.', unit: '' }],
+  http_request_duration_seconds: [
+    { type: 'histogram', help: 'HTTP request duration.', unit: 'seconds' },
+  ],
+  node_memory_free_bytes: [{ type: 'gauge', help: 'Free memory in bytes.', unit: 'bytes' }],
+  up: [{ type: 'gauge', help: 'Target up.', unit: '' }],
+};
+
+/** The values of `__name__`. */
+export const STUB_PROM_METRIC_NAMES: readonly string[] = [
+  'http_request_duration_seconds_bucket',
+  'http_requests_total',
+  'node_memory_free_bytes',
+  'stub_metric',
+  'up',
+];
+
+/** The values of any other label. */
+export const STUB_PROM_LABEL_VALUES: readonly string[] = ['a', 'b'];
+
+export const STUB_PROM_LABELS: readonly string[] = ['__name__', 'instance', 'job', 'le', 'series'];

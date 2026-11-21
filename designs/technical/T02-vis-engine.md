@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-21 |
+| **Version** | 1.5-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -367,7 +367,7 @@ colour and each series MUST show the matching ownership glyph in the legend.
 | Rollup → raw switch | When the visible step drops below the stored rollup resolution, the viewport asks the planner for raw data ([T07](T07-scene-query-planner.md)) and keeps drawing the rollup until raw arrives | source badge changes to raw/exact |
 | Band + outliers | When a viewport holds > 50 series of one metric: per pixel column min/max/avg across series (M2) plus every series that leaves the band (M1); legend "N in band" | none: outliers are always drawn |
 | Scatter | M4 sprites with density-based alpha; above the tier's sprite ceiling of visible points, M10 density field; below 10⁵ visible points, individually pickable sprites | "density view" |
-| Heatmap / status history | Re-bucket/re-bin to pixel width on GPU; worst state wins when merging states | "re-binned ×n" |
+| Heatmap / status history | Re-bucket/re-bin to pixel width on GPU; worst state wins when merging states; a re-binned cell with any missing constituent is missing (gaps rule below), never a partial sum | "re-binned ×n" |
 | Memory pressure | Raw chunks dropped for rollups ([T04](T04-wire-format-and-data-plane.md)) | "reduced resolution (memory)" |
 | Tier ceiling | T2 ceilings (§4.9) | "density view: WebGL2 tier" |
 
@@ -699,7 +699,7 @@ for retained, instanced 10⁷-mark scenes.
 | M2 band + M1 outliers | 10⁴ series | as above | as above | `bench:frame-series-1e4` |
 | M4 point (T1) / M10 density | 10⁷ | as above | as above | `bench:frame-scatter-1e7` |
 | M4 sprites (T2) | 2–3 × 10⁶ visible | as above | as above | `bench:frame-scatter-1e7` (T2 leg) |
-| M3 heatmap | 10k × 200 cells | as above | as above | `bench:frame-gallery` |
+| M3 heatmap | 10k × 200 cells | as above | as above | `bench:frame-gallery` (interim: `bench:frame-interim-heatmap`, report only until #68) |
 | M3 + M8 flame (M-UI2) | 10⁵ frames | as above | as above | `bench:frame-gallery` |
 | M8 log stream (M-UI2) | 10⁶ lines | as above | as above | `bench:frame-gallery` |
 | Atlas (M-UI3) | 10⁴ nodes / 5 × 10⁴ edges | as above | as above | `bench:frame-gallery` |
@@ -810,3 +810,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.3-rc | 2026-11-21 | #90: `drawn` event and frame id (ADR-0019): §0 Shell overlays row; Related ADRs |
 | 1.4-rc | 2026-11-21 | #68 Part A: §0 interim 500-series cap row; T02-002 note (ordered batches past one buffer binding, no instance dropped); §4.2 blending in sRGB-encoded space (replaces linear space; no ADR stated it; made with T08 §4.7 and T01 §4.5 under the owner's standing authorisation for pipeline design changes); §4.4 line decimation (f64 column ranges on the CPU, per-draw value encoding from the exact span, one capsule per NaN-free run with a spill pass, first/last joins, deterministic five-pass compaction, CPU path for T2 and far items with f64 segment clipping); §4.6 `Camera` enum, `view_proj` contract and camera primitives only (gesture policy in the application); VIZ-006 trace adds `golden:decimation-raw` |
 | 1.4-rc | 2026-11-21 | T02-014 restated: time as CPU-computed columns, values as a per-draw scaled encoding with f64 segment clipping (#68); §4.3 coordinate-transform sentence follows |
+| 1.5-rc | 2026-11-21 | #63 Part A: §4.4 LOD table, Heatmap row: a re-binned cell with any missing constituent is missing, never a partial sum (the interim renderer's pixel-column merge does the same); §7 M3 heatmap row names the interim stand-in `bench:frame-interim-heatmap`, report only until #68 |
