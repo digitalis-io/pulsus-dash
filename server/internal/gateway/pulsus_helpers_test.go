@@ -15,6 +15,7 @@ import (
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
 )
 
 // goldenNow is Deps.Now of the query tests (A.5): 30 s after the counter's last sample.
@@ -42,6 +43,8 @@ func queryGateway(t *testing.T, url string, o pulsusdb.Options, mod ...func(*cor
 		Bootstrap: func(context.Context) (core.BootstrapView, error) { return view, nil },
 		Now:       func() time.Time { return goldenNow },
 		PulsusDB:  pulsusdb.New(o),
+		// No metadata I/O: request counts and transcripts stay as they were (plan #112 A.6).
+		Types: promplan.StaticTypes{},
 	}), logs
 }
 

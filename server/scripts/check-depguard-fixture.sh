@@ -35,6 +35,7 @@ check() {
 check pgx pgx_outside_store.go.txt store-only "pgx is used only in internal/store (T11-023, ADR-0015)"
 check chi chi_outside_gateway.go.txt gateway-only "the router is used only in internal/gateway (T06-001)"
 check httpclient http_client_outside_pulsusdb.go.txt pulsusdb-only "pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)"
+check promparser promql_parser_outside_prom.go.txt promql-parser "the upstream PromQL parser is used only in internal/pulsusdb/prom (ADR-0021)"
 check jsondecoder json_outside_updec.go.txt pulsusdb-decoder "pulsusdb-decoder: every upstream body decoder yields strings only through redact; encoding/json does not (§4.9)" pulsusdb
 
 if [ "$(git -C "$ROOT" status --porcelain)" != "$before" ]; then

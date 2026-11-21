@@ -1,0 +1,5147 @@
+{
+ "version": 1,
+ "plan": [
+  {
+   "name": "R01 bare counter by name",
+   "from": "plan.test.ts row 1",
+   "inputs": {
+    "query": "http_requests_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "http_requests_total",
+     "from": 0,
+     "to": 19
+    },
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "group": "typed-rate",
+   "planned": {
+    "query": "rate(http_requests_total[1m])",
+    "expanded": "http_requests_total",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     0
+    ],
+    [
+     23,
+     18
+    ],
+    [
+     24,
+     null
+    ],
+    [
+     25,
+     null
+    ],
+    [
+     0,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "R02 bare counter, rate off",
+   "from": "plan.test.ts row 2",
+   "inputs": {
+    "query": "http_requests_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": false
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "http_requests_total",
+     "from": 0,
+     "to": 19
+    },
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "http_requests_total",
+    "expanded": "http_requests_total",
+    "bytes": 19,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     0,
+     0
+    ],
+    [
+     19,
+     19
+    ],
+    [
+     20,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "R03 counter by metadata",
+   "from": "plan.test.ts row 3, source index",
+   "inputs": {
+    "query": "requests{job=\"a\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {
+    "requests": "counter"
+   },
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "requests",
+     "from": 0,
+     "to": 17
+    },
+    "metrics": [
+     "requests"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(requests{job=\"a\"}[1m])",
+    "expanded": "requests{job=\"a\"}",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     0
+    ],
+    [
+     21,
+     16
+    ],
+    [
+     22,
+     null
+    ],
+    [
+     23,
+     null
+    ],
+    [
+     0,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "R04 gauge",
+   "from": "plan.test.ts row 4",
+   "inputs": {
+    "query": "node_memory_free_bytes",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {
+    "node_memory_free_bytes": "gauge"
+   },
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "node_memory_free_bytes",
+     "from": 0,
+     "to": 22
+    },
+    "metrics": [
+     "node_memory_free_bytes"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "node_memory_free_bytes",
+    "expanded": "node_memory_free_bytes",
+    "bytes": 22,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R05 rate already",
+   "from": "plan.test.ts row 5",
+   "inputs": {
+    "query": "rate(x_total[5m])",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[5m])",
+    "expanded": "rate(x_total[5m])",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R06 bare histogram",
+   "from": "plan.test.ts row 6",
+   "inputs": {
+    "query": "http_request_duration_seconds_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "http_request_duration_seconds_bucket",
+     "from": 0,
+     "to": 36
+    },
+    "metrics": [
+     "http_request_duration_seconds_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(http_request_duration_seconds_bucket[1m]))",
+    "expanded": "http_request_duration_seconds_bucket",
+    "bytes": 60,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     18,
+     0
+    ],
+    [
+     53,
+     35
+    ],
+    [
+     54,
+     null
+    ],
+    [
+     55,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "R07 bare histogram, rate off",
+   "from": "plan.test.ts row 7",
+   "inputs": {
+    "query": "http_request_duration_seconds_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": false
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "http_request_duration_seconds_bucket",
+     "from": 0,
+     "to": 36
+    },
+    "metrics": [
+     "http_request_duration_seconds_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "http_request_duration_seconds_bucket",
+    "expanded": "http_request_duration_seconds_bucket",
+    "bytes": 36,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R08 histogram sum",
+   "from": "plan.test.ts row 8",
+   "inputs": {
+    "query": "sum by (le) (rate(h_bucket[5m]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[5m]))",
+    "expanded": "sum by (le) (rate(h_bucket[5m]))",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": true,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R09 histogram quantile",
+   "from": "plan.test.ts row 9",
+   "inputs": {
+    "query": "histogram_quantile(0.9, sum by (le) (rate(h_bucket[5m])))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": true,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "histogram_quantile(0.9, sum by (le) (rate(h_bucket[5m])))",
+    "expanded": "histogram_quantile(0.9, sum by (le) (rate(h_bucket[5m])))",
+    "bytes": 57,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R10 scalar",
+   "from": "plan.test.ts row 10",
+   "inputs": {
+    "query": "scalar(vector(1)) / 0",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "scalar"
+   },
+   "planned": {
+    "query": "scalar(vector(1)) / 0",
+    "expanded": "scalar(vector(1)) / 0",
+    "bytes": 21,
+    "value_type": "scalar",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R11 string",
+   "from": "plan.test.ts row 11",
+   "inputs": {
+    "query": "\"str\"",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "string"
+   },
+   "planned": {
+    "query": "\"str\"",
+    "expanded": "\"str\"",
+    "bytes": 5,
+    "value_type": "string",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R12 unparsable",
+   "from": "plan.test.ts row 12",
+   "inputs": {
+    "query": "up{",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "up{",
+    "expanded": "up{",
+    "bytes": 3,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R13 instant without step",
+   "from": "plan.test.ts row 13",
+   "inputs": {
+    "query": "http_requests_total",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 0,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "http_requests_total",
+     "from": 0,
+     "to": 19
+    },
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "http_requests_total",
+    "expanded": "http_requests_total",
+    "bytes": 19,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": false,
+    "histogram": false
+   }
+  },
+  {
+   "name": "I1 identity",
+   "from": "plan.test.ts source index",
+   "inputs": {
+    "query": "up",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 2
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up",
+    "expanded": "up",
+    "bytes": 2,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     0,
+     0
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     3,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "K7 counter bucket",
+   "from": "plan.test.ts metric types, last assertion",
+   "inputs": {
+    "query": "c_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {
+    "c": "counter"
+   },
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "c_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "c_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(c_bucket[1m])",
+    "expanded": "c_bucket",
+    "bytes": 18,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "B1 counter at the limit",
+   "from": "plan.test.ts row 14; explore R3; B.8 #12 (c)",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65513
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 65526
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "rate(x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65513
+      },
+      "\"}[1m])"
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65513
+      },
+      "\"}"
+     ]
+    },
+    "bytes": 65536,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "B2 counter over the limit",
+   "from": "plan.test.ts row 15; explore R4; B.8 #12 (d)",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65514
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 65527
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "rate(x_total{a=\"",
+       {
+        "repeat": "b",
+        "count": 65514
+       },
+       "\"}[1m])"
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "x_total{a=\"",
+       {
+        "repeat": "b",
+        "count": 65514
+       },
+       "\"}"
+      ]
+     },
+     "bytes": 65537,
+     "value_type": "vector",
+     "rate_candidate": true,
+     "rate_applied": true,
+     "histogram": false,
+     "step_ms": 5000,
+     "rate_window_ms": 60000
+    }
+   }
+  },
+  {
+   "name": "B3 histogram at the limit",
+   "from": "plan.test.ts row 16",
+   "inputs": {
+    "query": {
+     "concat": [
+      "h_bucket{a=\"",
+      {
+       "repeat": "b",
+       "count": 65498
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 65512
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "sum by (le) (rate(h_bucket{a=\"",
+      {
+       "repeat": "b",
+       "count": 65498
+      },
+      "\"}[1m]))"
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "h_bucket{a=\"",
+      {
+       "repeat": "b",
+       "count": 65498
+      },
+      "\"}"
+     ]
+    },
+    "bytes": 65536,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "B4 histogram over the limit",
+   "from": "plan.test.ts row 17",
+   "inputs": {
+    "query": {
+     "concat": [
+      "h_bucket{a=\"",
+      {
+       "repeat": "b",
+       "count": 65499
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 65513
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "sum by (le) (rate(h_bucket{a=\"",
+       {
+        "repeat": "b",
+        "count": 65499
+       },
+       "\"}[1m]))"
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "h_bucket{a=\"",
+       {
+        "repeat": "b",
+        "count": 65499
+       },
+       "\"}"
+      ]
+     },
+     "bytes": 65537,
+     "value_type": "vector",
+     "rate_candidate": true,
+     "rate_applied": true,
+     "histogram": true,
+     "step_ms": 5000,
+     "rate_window_ms": 60000
+    }
+   }
+  },
+  {
+   "name": "B5 multibyte at the limit",
+   "from": "plan.test.ts row 18",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_total{a=\"b",
+      {
+       "repeat": "é",
+       "count": 32756
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 65526
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "rate(x_total{a=\"b",
+      {
+       "repeat": "é",
+       "count": 32756
+      },
+      "\"}[1m])"
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "x_total{a=\"b",
+      {
+       "repeat": "é",
+       "count": 32756
+      },
+      "\"}"
+     ]
+    },
+    "bytes": 65536,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "B6 multibyte over the limit",
+   "from": "plan.test.ts row 19",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_total{a=\"b",
+      {
+       "repeat": "é",
+       "count": 32757
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 65528
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "rate(x_total{a=\"b",
+       {
+        "repeat": "é",
+        "count": 32757
+       },
+       "\"}[1m])"
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "x_total{a=\"b",
+       {
+        "repeat": "é",
+        "count": 32757
+       },
+       "\"}"
+      ]
+     },
+     "bytes": 65538,
+     "value_type": "vector",
+     "rate_candidate": true,
+     "rate_applied": true,
+     "histogram": false,
+     "step_ms": 5000,
+     "rate_window_ms": 60000
+    }
+   }
+  },
+  {
+   "name": "B7 over the limit, rate off",
+   "from": "plan.test.ts row 20; explore R5; B.8 #12 (e)",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65514
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": false
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 65527
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65514
+      },
+      "\"}"
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65514
+      },
+      "\"}"
+     ]
+    },
+    "bytes": 65527,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "WX-1000 counter window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 1000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[1m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 1000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "WH-1000 histogram window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "h_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 1000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[1m]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 1000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "WX-5000 counter window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[1m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "WH-5000 histogram window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "h_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[1m]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "WX-15000 counter window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[1m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 15000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "WH-15000 histogram window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "h_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[1m]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 15000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "WX-30000 counter window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 30000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[2m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 30000,
+    "rate_window_ms": 120000
+   }
+  },
+  {
+   "name": "WH-30000 histogram window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "h_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 30000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[2m]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 30000,
+    "rate_window_ms": 120000
+   }
+  },
+  {
+   "name": "WX-60000 counter window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[4m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 60000,
+    "rate_window_ms": 240000
+   }
+  },
+  {
+   "name": "WH-60000 histogram window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "h_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[4m]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 60000,
+    "rate_window_ms": 240000
+   }
+  },
+  {
+   "name": "WX-3600000 counter window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 3600000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[4h])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 3600000,
+    "rate_window_ms": 14400000
+   }
+  },
+  {
+   "name": "WH-3600000 histogram window",
+   "from": "plan.test.ts rate window rows",
+   "inputs": {
+    "query": "h_bucket",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 3600000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[4h]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 3600000,
+    "rate_window_ms": 14400000
+   }
+  },
+  {
+   "name": "C1 typed rate",
+   "from": "useExploreRun key test, typed rate",
+   "inputs": {
+    "query": "rate(http_requests_total[1m])",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "group": "typed-rate",
+   "planned": {
+    "query": "rate(http_requests_total[1m])",
+    "expanded": "rate(http_requests_total[1m])",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "C2 blank",
+   "from": "planFor two spaces",
+   "inputs": {
+    "query": "  ",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "  ",
+    "expanded": "  ",
+    "bytes": 2,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "C3 raw over 128 KB",
+   "from": "refusalOf 131 073; MetricsPage R1, R1b, Z",
+   "inputs": {
+    "query": {
+     "concat": [
+      "#",
+      {
+       "repeat": "a",
+       "count": 131063
+      },
+      "\nup{job=\""
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "query must be 1 to 131072 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "C4 raw at 128 KB",
+   "from": "MetricsPage R2; B.8 #12 (b)",
+   "inputs": {
+    "query": {
+     "concat": [
+      "#",
+      {
+       "repeat": "a",
+       "count": 131062
+      },
+      "\nup{job=\""
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "#",
+       {
+        "repeat": "a",
+        "count": 131062
+       },
+       "\nup{job=\""
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "#",
+       {
+        "repeat": "a",
+        "count": 131062
+       },
+       "\nup{job=\""
+      ]
+     },
+     "bytes": 131072,
+     "value_type": "unknown",
+     "rate_candidate": false,
+     "rate_applied": false,
+     "histogram": false,
+     "step_ms": 5000
+    }
+   }
+  },
+  {
+   "name": "C5 raw just under 128 KB",
+   "from": "MetricsPage R6",
+   "inputs": {
+    "query": {
+     "concat": [
+      "#",
+      {
+       "repeat": "a",
+       "count": 131061
+      },
+      "\nup{job=\""
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "#",
+       {
+        "repeat": "a",
+        "count": 131061
+       },
+       "\nup{job=\""
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "#",
+       {
+        "repeat": "a",
+        "count": 131061
+       },
+       "\nup{job=\""
+      ]
+     },
+     "bytes": 131071,
+     "value_type": "unknown",
+     "rate_candidate": false,
+     "rate_applied": false,
+     "histogram": false,
+     "step_ms": 5000
+    }
+   }
+  },
+  {
+   "name": "C6 long selector, rate off",
+   "from": "refusalOf up, long",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "a",
+       "count": 70000
+      }
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": false
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": {
+      "concat": [
+       {
+        "repeat": "a",
+        "count": 70000
+       }
+      ]
+     },
+     "from": 0,
+     "to": 70000
+    },
+    "metrics": [
+     {
+      "concat": [
+       {
+        "repeat": "a",
+        "count": 70000
+       }
+      ]
+     }
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       {
+        "repeat": "a",
+        "count": 70000
+       }
+      ]
+     },
+     "expanded": {
+      "concat": [
+       {
+        "repeat": "a",
+        "count": 70000
+       }
+      ]
+     },
+     "bytes": 70000,
+     "value_type": "vector",
+     "rate_candidate": false,
+     "rate_applied": false,
+     "histogram": false,
+     "step_ms": 5000
+    }
+   }
+  },
+  {
+   "name": "C7 counter by metadata over the limit",
+   "from": "MetricsPage R8 resolve",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_c{a=\"",
+      {
+       "repeat": "b",
+       "count": 65518
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {
+    "x_c": "counter"
+   },
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "x_c",
+     "from": 0,
+     "to": 65527
+    },
+    "metrics": [
+     "x_c"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "rate(x_c{a=\"",
+       {
+        "repeat": "b",
+        "count": 65518
+       },
+       "\"}[1m])"
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "x_c{a=\"",
+       {
+        "repeat": "b",
+        "count": 65518
+       },
+       "\"}"
+      ]
+     },
+     "bytes": 65537,
+     "value_type": "vector",
+     "rate_candidate": true,
+     "rate_applied": true,
+     "histogram": false,
+     "step_ms": 5000,
+     "rate_window_ms": 60000
+    }
+   }
+  },
+  {
+   "name": "C8 no metadata, sent as is",
+   "from": "MetricsPage R8 reject",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_c{a=\"",
+      {
+       "repeat": "b",
+       "count": 65518
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "x_c",
+     "from": 0,
+     "to": 65527
+    },
+    "metrics": [
+     "x_c"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "x_c{a=\"",
+      {
+       "repeat": "b",
+       "count": 65518
+      },
+      "\"}"
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "x_c{a=\"",
+      {
+       "repeat": "b",
+       "count": 65518
+      },
+      "\"}"
+     ]
+    },
+    "bytes": 65527,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "S1 no variables",
+   "from": "#64 S1",
+   "inputs": {
+    "query": "up",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 2
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up",
+    "expanded": "up",
+    "bytes": 2,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     0,
+     0
+    ],
+    [
+     2,
+     2
+    ]
+   ]
+  },
+  {
+   "name": "S2 variable in a string",
+   "from": "#64 S2",
+   "inputs": {
+    "query": "up{r=\"$r\"}",
+    "vars": {
+     "r": "eu"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 10
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up{r=\"eu\"}",
+    "expanded": "up{r=\"eu\"}",
+    "bytes": 10,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     7,
+     6
+    ],
+    [
+     8,
+     8
+    ],
+    [
+     10,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "S3 braced variable",
+   "from": "#64 S3",
+   "inputs": {
+    "query": "up{r=\"${r}x\"}",
+    "vars": {
+     "r": "eu"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 11
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up{r=\"eux\"}",
+    "expanded": "up{r=\"eux\"}",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     8,
+     10
+    ],
+    [
+     11,
+     13
+    ]
+   ]
+  },
+  {
+   "name": "S4 double-quote escaping",
+   "from": "#64 S4",
+   "inputs": {
+    "query": "up{r=\"$r\"}",
+    "vars": {
+     "r": "a\"b\\c"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 15
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up{r=\"a\\\"b\\\\c\"}",
+    "expanded": "up{r=\"a\\\"b\\\\c\"}",
+    "bytes": 15,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "S5 single-quote escaping",
+   "from": "#64 S5",
+   "inputs": {
+    "query": "up{r='$r'}",
+    "vars": {
+     "r": "a'b"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 12
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up{r='a\\'b'}",
+    "expanded": "up{r='a\\'b'}",
+    "bytes": 12,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "S6 backticks verbatim",
+   "from": "#64 S6",
+   "inputs": {
+    "query": "up{r=`$r`}",
+    "vars": {
+     "r": "a\"b"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 11
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up{r=`a\"b`}",
+    "expanded": "up{r=`a\"b`}",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "S7 missing variable",
+   "from": "#64 S7",
+   "inputs": {
+    "query": "up{r=\"$r\"} + $s",
+    "vars": {
+     "r": "eu"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "no value for variable $s",
+    "fields": [
+     {
+      "pointer": "/vars/s",
+      "message_key": "variable.missing"
+     }
+    ]
+   }
+  },
+  {
+   "name": "S8a rate interval macro",
+   "from": "#64 S8",
+   "inputs": {
+    "query": "rate(x[$__rate_interval])",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 30000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x[2m])",
+    "expanded": "rate(x[2m])",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 30000
+   },
+   "to_source": [
+    [
+     7,
+     7
+    ],
+    [
+     8,
+     7
+    ],
+    [
+     9,
+     23
+    ],
+    [
+     11,
+     25
+    ]
+   ]
+  },
+  {
+   "name": "S8b interval macro",
+   "from": "#64 S8",
+   "inputs": {
+    "query": "x[$__interval]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 30000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "matrix"
+   },
+   "planned": {
+    "query": "x[30s]",
+    "expanded": "x[30s]",
+    "bytes": 6,
+    "value_type": "matrix",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 30000
+   },
+   "to_source": [
+    [
+     2,
+     2
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     5,
+     13
+    ],
+    [
+     6,
+     14
+    ]
+   ]
+  },
+  {
+   "name": "S9 not variables",
+   "from": "#64 S9",
+   "inputs": {
+    "query": "$__range x $1 $",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "$__range x $1 $",
+    "expanded": "$__range x $1 $",
+    "bytes": 15,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     0,
+     0
+    ],
+    [
+     15,
+     15
+    ]
+   ]
+  },
+  {
+   "name": "S10 escaped quote before a variable",
+   "from": "#64 S10",
+   "inputs": {
+    "query": "\"\\\"$r\"",
+    "vars": {
+     "r": "v"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "string"
+   },
+   "planned": {
+    "query": "\"\\\"v\"",
+    "expanded": "\"\\\"v\"",
+    "bytes": 5,
+    "value_type": "string",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     3,
+     3
+    ],
+    [
+     4,
+     5
+    ],
+    [
+     5,
+     6
+    ]
+   ]
+  },
+  {
+   "name": "N1 missing variables in first-reference order",
+   "from": "new",
+   "inputs": {
+    "query": "$b + $a + $b",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "no value for variable $b, $a",
+    "fields": [
+     {
+      "pointer": "/vars/b",
+      "message_key": "variable.missing"
+     },
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.missing"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N2 unused variable",
+   "from": "new",
+   "inputs": {
+    "query": "up",
+    "vars": {
+     "zz": "1"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 2
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up",
+    "expanded": "up",
+    "bytes": 2,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N3 braced macro",
+   "from": "new",
+   "inputs": {
+    "query": "x[${__interval}]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "matrix"
+   },
+   "planned": {
+    "query": "x[1m]",
+    "expanded": "x[1m]",
+    "bytes": 5,
+    "value_type": "matrix",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 60000
+   }
+  },
+  {
+   "name": "N4 unknown macro",
+   "from": "new",
+   "inputs": {
+    "query": "x + $__foo",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "x + $__foo",
+    "expanded": "x + $__foo",
+    "bytes": 10,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N5 name over 64 characters",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x + $",
+      {
+       "repeat": "a",
+       "count": 65
+      }
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "x + $",
+      {
+       "repeat": "a",
+       "count": 65
+      }
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "x + $",
+      {
+       "repeat": "a",
+       "count": 65
+      }
+     ]
+    },
+    "bytes": 70,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N6b macro in a bare selector, instant without step",
+   "from": "new",
+   "inputs": {
+    "query": "x{a=\"$__interval\"}",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 0,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "step_ms is required for $__interval and $__rate_interval",
+    "fields": [
+     {
+      "pointer": "/step_ms",
+      "message_key": "field.required"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N6 macro, instant without step",
+   "from": "new",
+   "inputs": {
+    "query": "rate(x[$__rate_interval])",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 0,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "step_ms is required for $__interval and $__rate_interval",
+    "fields": [
+     {
+      "pointer": "/step_ms",
+      "message_key": "field.required"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N7 macro, instant with step",
+   "from": "new",
+   "inputs": {
+    "query": "rate(x[$__rate_interval])",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x[1m])",
+    "expanded": "rate(x[1m])",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "N9 too many variables",
+   "from": "new",
+   "inputs": {
+    "query": "up",
+    "vars": {
+     "v00": "1",
+     "v01": "1",
+     "v02": "1",
+     "v03": "1",
+     "v04": "1",
+     "v05": "1",
+     "v06": "1",
+     "v07": "1",
+     "v08": "1",
+     "v09": "1",
+     "v10": "1",
+     "v11": "1",
+     "v12": "1",
+     "v13": "1",
+     "v14": "1",
+     "v15": "1",
+     "v16": "1",
+     "v17": "1",
+     "v18": "1",
+     "v19": "1",
+     "v20": "1",
+     "v21": "1",
+     "v22": "1",
+     "v23": "1",
+     "v24": "1",
+     "v25": "1",
+     "v26": "1",
+     "v27": "1",
+     "v28": "1",
+     "v29": "1",
+     "v30": "1",
+     "v31": "1",
+     "v32": "1",
+     "v33": "1",
+     "v34": "1",
+     "v35": "1",
+     "v36": "1",
+     "v37": "1",
+     "v38": "1",
+     "v39": "1",
+     "v40": "1",
+     "v41": "1",
+     "v42": "1",
+     "v43": "1",
+     "v44": "1",
+     "v45": "1",
+     "v46": "1",
+     "v47": "1",
+     "v48": "1",
+     "v49": "1",
+     "v50": "1",
+     "v51": "1",
+     "v52": "1",
+     "v53": "1",
+     "v54": "1",
+     "v55": "1",
+     "v56": "1",
+     "v57": "1",
+     "v58": "1",
+     "v59": "1",
+     "v60": "1",
+     "v61": "1",
+     "v62": "1",
+     "v63": "1",
+     "v64": "1"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "vars must have at most 64 entries",
+    "fields": [
+     {
+      "pointer": "/vars",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N10a bad variable name",
+   "from": "new",
+   "inputs": {
+    "query": "up",
+    "vars": {
+     "a-b": "1"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+    "fields": [
+     {
+      "pointer": "/vars/a-b",
+      "message_key": "field.pattern"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N10b variable name with a slash",
+   "from": "new",
+   "inputs": {
+    "query": "up",
+    "vars": {
+     "a/b": "1"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+    "fields": [
+     {
+      "pointer": "/vars/a~1b",
+      "message_key": "field.pattern"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N11 variable value too long",
+   "from": "new",
+   "inputs": {
+    "query": "up{r=\"$r\"}",
+    "vars": {
+     "r": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "a variable value must be UTF-8 and at most 4096 bytes",
+    "fields": [
+     {
+      "pointer": "/vars/r",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N12 empty query",
+   "from": "new",
+   "inputs": {
+    "query": "",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "query must be 1 to 131072 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N13 comment before a counter",
+   "from": "new",
+   "inputs": {
+    "query": "# c\nhttp_requests_total ",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "http_requests_total",
+     "from": 4,
+     "to": 23
+    },
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(http_requests_total[1m])",
+    "expanded": "# c\nhttp_requests_total ",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     4
+    ],
+    [
+     23,
+     22
+    ],
+    [
+     24,
+     null
+    ],
+    [
+     25,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "N14 offset is not bare",
+   "from": "new",
+   "inputs": {
+    "query": "x offset 5m",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "x offset 5m",
+    "expanded": "x offset 5m",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N15 name matcher is not bare",
+   "from": "new",
+   "inputs": {
+    "query": "{__name__=\"x_total\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "{__name__=\"x_total\"}",
+    "expanded": "{__name__=\"x_total\"}",
+    "bytes": 20,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D1-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "sum by (le) (rate(h_bucket))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket))",
+    "expanded": "sum by (le) (rate(h_bucket))",
+    "bytes": 28,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D1-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "sum by (le) (rate(http_request_duration_seconds_bucket{job=\"api\"}))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(http_request_duration_seconds_bucket{job=\"api\"}))",
+    "expanded": "sum by (le) (rate(http_request_duration_seconds_bucket{job=\"api\"}))",
+    "bytes": 67,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D1-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "sum by (le, job) (rate(x_bucket{a=~\"b.*\"} offset 5m))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "sum by (le, job) (rate(x_bucket{a=~\"b.*\"} offset 5m))",
+    "expanded": "sum by (le, job) (rate(x_bucket{a=~\"b.*\"} offset 5m))",
+    "bytes": 53,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D1-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "histogram_quantile(0.9, sum by (le) (rate(h_bucket)))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "histogram_quantile(0.9, sum by (le) (rate(h_bucket)))",
+    "expanded": "histogram_quantile(0.9, sum by (le) (rate(h_bucket)))",
+    "bytes": 53,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D2-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "rate(x)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "rate(x)",
+    "expanded": "rate(x)",
+    "bytes": 7,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D2-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "rate(y)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "rate(y)",
+    "expanded": "rate(y)",
+    "bytes": 7,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D2-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "rate(http_requests_total{job=\"a\"})",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "rate(http_requests_total{job=\"a\"})",
+    "expanded": "rate(http_requests_total{job=\"a\"})",
+    "bytes": 34,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D2-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "increase(x_total{a=\"b\"} offset 1m)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "increase(x_total{a=\"b\"} offset 1m)",
+    "expanded": "increase(x_total{a=\"b\"} offset 1m)",
+    "bytes": 34,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D3-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "1 > 2",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "1 > 2",
+    "expanded": "1 > 2",
+    "bytes": 5,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D3-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "scalar(x) > 2",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "scalar(x) > 2",
+    "expanded": "scalar(x) > 2",
+    "bytes": 13,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D3-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "time() < pi()",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "time() < pi()",
+    "expanded": "time() < pi()",
+    "bytes": 13,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D3-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "1 == bool 2",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "scalar"
+   },
+   "planned": {
+    "query": "1 == bool 2",
+    "expanded": "1 == bool 2",
+    "bytes": 11,
+    "value_type": "scalar",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D4-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "x and 1",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "x and 1",
+    "expanded": "x and 1",
+    "bytes": 7,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D4-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "up or vector(1) and 2",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "up or vector(1) and 2",
+    "expanded": "up or vector(1) and 2",
+    "bytes": 21,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D4-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "rate(x[5m]) unless on(job) 3",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "rate(x[5m]) unless on(job) 3",
+    "expanded": "rate(x[5m]) unless on(job) 3",
+    "bytes": 28,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D4-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "x and on(job) y",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x",
+     "y"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "x and on(job) y",
+    "expanded": "x and on(job) y",
+    "bytes": 15,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D5-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "limitk(1, x)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "limitk(1, x)",
+    "expanded": "limitk(1, x)",
+    "bytes": 12,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D5-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "limit_ratio(0.5, y)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "limit_ratio(0.5, y)",
+    "expanded": "limit_ratio(0.5, y)",
+    "bytes": 19,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D5-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "limitk(5, rate(z[1m]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "limitk(5, rate(z[1m]))",
+    "expanded": "limitk(5, rate(z[1m]))",
+    "bytes": 22,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D5-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "topk(5, x)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "topk(5, x)",
+    "expanded": "topk(5, x)",
+    "bytes": 10,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D6-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "x[5m][10m:1m]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "x[5m][10m:1m]",
+    "expanded": "x[5m][10m:1m]",
+    "bytes": 13,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D6-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "y[1m][5m:1m]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "y[1m][5m:1m]",
+    "expanded": "y[1m][5m:1m]",
+    "bytes": 12,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D6-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "http_requests_total{a=\"b\"}[2m][30m:]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "http_requests_total{a=\"b\"}[2m][30m:]",
+    "expanded": "http_requests_total{a=\"b\"}[2m][30m:]",
+    "bytes": 36,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D6-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "rate(x[5m])[10m:]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "matrix"
+   },
+   "planned": {
+    "query": "rate(x[5m])[10m:]",
+    "expanded": "rate(x[5m])[10m:]",
+    "bytes": 17,
+    "value_type": "matrix",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D6-5 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "sum(x)[5m:1m]",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "matrix"
+   },
+   "planned": {
+    "query": "sum(x)[5m:1m]",
+    "expanded": "sum(x)[5m:1m]",
+    "bytes": 13,
+    "value_type": "matrix",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D7-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "(x) offset 5m",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "(x) offset 5m",
+    "expanded": "(x) offset 5m",
+    "bytes": 13,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D7-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "sum(x) offset 1m",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "sum(x) offset 1m",
+    "expanded": "sum(x) offset 1m",
+    "bytes": 16,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D7-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "rate(x[5m]) offset 1m",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "rate(x[5m]) offset 1m",
+    "expanded": "rate(x[5m]) offset 1m",
+    "bytes": 21,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D7-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "x offset 5m",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "x offset 5m",
+    "expanded": "x offset 5m",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D8-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "{job=\"\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "{job=\"\"}",
+    "expanded": "{job=\"\"}",
+    "bytes": 8,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D8-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "{a=~\".*\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "{a=~\".*\"}",
+    "expanded": "{a=~\".*\"}",
+    "bytes": 9,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D8-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "{a!=\"x\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "{a!=\"x\"}",
+    "expanded": "{a!=\"x\"}",
+    "bytes": 8,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D8-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "{a=\"b\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "{a=\"b\"}",
+    "expanded": "{a=\"b\"}",
+    "bytes": 7,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D9-1 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "topk(x, y)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "topk(x, y)",
+    "expanded": "topk(x, y)",
+    "bytes": 10,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D9-2 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "quantile(\"a\", x)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "quantile(\"a\", x)",
+    "expanded": "quantile(\"a\", x)",
+    "bytes": 16,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D9-3 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "count_values(1, x)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "count_values(1, x)",
+    "expanded": "count_values(1, x)",
+    "bytes": 18,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D9-4 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "clamp(x)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "clamp(x)",
+    "expanded": "clamp(x)",
+    "bytes": 8,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D9-5 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "vector()",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "vector()",
+    "expanded": "vector()",
+    "bytes": 8,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "D9-6 type check",
+   "from": "new (stub type check)",
+   "inputs": {
+    "query": "abs(x, y)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "abs(x, y)",
+    "expanded": "abs(x, y)",
+    "bytes": 9,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N17a panel query",
+   "from": "new (panel-to-rule)",
+   "inputs": {
+    "query": "sum(rate(http_requests_total{job=\"$job\"}[$__rate_interval]))",
+    "vars": {
+     "job": "api"
+    },
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "group": "panel-rule",
+   "planned": {
+    "query": "sum(rate(http_requests_total{job=\"api\"}[1m]))",
+    "expanded": "sum(rate(http_requests_total{job=\"api\"}[1m]))",
+    "bytes": 45,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "N17b rule with the panel's step",
+   "from": "new (panel-to-rule)",
+   "inputs": {
+    "query": "sum(rate(http_requests_total{job=\"$job\"}[$__rate_interval]))",
+    "vars": {
+     "job": "api"
+    },
+    "kind": "instant",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "group": "panel-rule",
+   "planned": {
+    "query": "sum(rate(http_requests_total{job=\"api\"}[1m]))",
+    "expanded": "sum(rate(http_requests_total{job=\"api\"}[1m]))",
+    "bytes": 45,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "N17c rule planned with its interval",
+   "from": "new (panel-to-rule)",
+   "inputs": {
+    "query": "sum(rate(http_requests_total{job=\"$job\"}[$__rate_interval]))",
+    "vars": {
+     "job": "api"
+    },
+    "kind": "instant",
+    "step_ms": 60000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(rate(http_requests_total{job=\"api\"}[4m]))",
+    "expanded": "sum(rate(http_requests_total{job=\"api\"}[4m]))",
+    "bytes": 45,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 60000
+   }
+  },
+  {
+   "name": "N18a large substituted comment, small plan",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "$c",
+       "count": 40
+      },
+      "\nx_total"
+     ]
+    },
+    "vars": {
+     "c": "#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 163841,
+     "to": 163848
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[1m])",
+    "expanded": {
+     "concat": [
+      {
+       "repeat": {
+        "concat": [
+         "#",
+         {
+          "repeat": "a",
+          "count": 4095
+         }
+        ]
+       },
+       "count": 40
+      },
+      "\nx_total"
+     ]
+    },
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     81
+    ],
+    [
+     11,
+     87
+    ],
+    [
+     12,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "N18b over the processing cap",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "$c",
+       "count": 600
+      },
+      "\nx_total"
+     ]
+    },
+    "vars": {
+     "c": "#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 413,
+    "message": "the substituted query is over 2097152 bytes, the most the server processes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.too_large_to_plan"
+     }
+    ],
+    "hint": {
+     "reason": "processing_cap"
+    }
+   }
+  },
+  {
+   "name": "N19 the itest's over-limit counter",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      "x_total{a=\"",
+      {
+       "repeat": "b",
+       "count": 65517
+      },
+      "\"}"
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 65530
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "rate(x_total{a=\"",
+       {
+        "repeat": "b",
+        "count": 65517
+       },
+       "\"}[1m])"
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "x_total{a=\"",
+       {
+        "repeat": "b",
+        "count": 65517
+       },
+       "\"}"
+      ]
+     },
+     "bytes": 65540,
+     "value_type": "vector",
+     "rate_candidate": true,
+     "rate_applied": true,
+     "histogram": false,
+     "step_ms": 5000,
+     "rate_window_ms": 60000
+    }
+   }
+  },
+  {
+   "name": "N20 rate interval at the default step",
+   "from": "new",
+   "inputs": {
+    "query": "rate(x[$__rate_interval])",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x[1m])",
+    "expanded": "rate(x[1m])",
+    "bytes": 11,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N21a total, rate on",
+   "from": "new",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[1m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "N21b total, rate off",
+   "from": "new",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": false
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "x_total",
+    "expanded": "x_total",
+    "bytes": 7,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N22 multibyte value",
+   "from": "new",
+   "inputs": {
+    "query": "up{r=\"$r\"}",
+    "vars": {
+     "r": "é"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "up",
+     "from": 0,
+     "to": 10
+    },
+    "metrics": [
+     "up"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "up{r=\"é\"}",
+    "expanded": "up{r=\"é\"}",
+    "bytes": 10,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     7,
+     6
+    ],
+    [
+     8,
+     8
+    ]
+   ]
+  },
+  {
+   "name": "N23 comments are not recognised",
+   "from": "new",
+   "inputs": {
+    "query": "up # $r",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "no value for variable $r",
+    "fields": [
+     {
+      "pointer": "/vars/r",
+      "message_key": "variable.missing"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N25 the _total rule wins over a gauge type",
+   "from": "new",
+   "inputs": {
+    "query": "x_total",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {
+    "x_total": "gauge"
+   },
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 7
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total[1m])",
+    "expanded": "x_total",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   }
+  },
+  {
+   "name": "N26 variable that is the whole selector",
+   "from": "new",
+   "inputs": {
+    "query": "$m",
+    "vars": {
+     "m": "h_bucket"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 8
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket[1m]))",
+    "expanded": "h_bucket",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     18,
+     0
+    ],
+    [
+     25,
+     0
+    ],
+    [
+     26,
+     null
+    ],
+    [
+     27,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "V1 virtual through a variable",
+   "from": "new (classify)",
+   "inputs": {
+    "query": "$metric > 0.8",
+    "vars": {
+     "metric": "pulsus_anomaly_score"
+    },
+    "kind": "range",
+    "step_ms": 300000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "pulsus_anomaly_score"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "classify": {
+    "source": "virtual",
+    "reserved": [
+     "pulsus_anomaly_score"
+    ],
+    "floor_ms": 300000
+   },
+   "resolve": {
+    "grid_step_ms": 5000,
+    "step_ms": 300000
+   },
+   "planned": {
+    "query": "pulsus_anomaly_score > 0.8",
+    "expanded": "pulsus_anomaly_score > 0.8",
+    "bytes": 26,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 300000
+   }
+  },
+  {
+   "name": "V2 mixed through a variable",
+   "from": "new (classify)",
+   "inputs": {
+    "query": "sum(rate(http_requests_total[$__rate_interval])) and on() $a",
+    "vars": {
+     "a": "ALERTS"
+    },
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "http_requests_total",
+     "ALERTS"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "classify": {
+    "source": "mixed",
+    "reserved": [
+     "ALERTS"
+    ],
+    "floor_ms": 15000
+   },
+   "resolve": {
+    "grid_step_ms": 5000,
+    "step_ms": 15000
+   },
+   "planned": {
+    "query": "sum(rate(http_requests_total[1m])) and on() ALERTS",
+    "expanded": "sum(rate(http_requests_total[1m])) and on() ALERTS",
+    "bytes": 50,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "V3 T07 worked mixed case",
+   "from": "new (classify, T07 §4.3)",
+   "inputs": {
+    "query": "sum by (service) (rate(http_requests_total[$__rate_interval])) and on(service) $s{signal=\"latency\"} > 0.8",
+    "vars": {
+     "s": "pulsus_anomaly_score"
+    },
+    "kind": "range",
+    "step_ms": 300000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "http_requests_total",
+     "pulsus_anomaly_score"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "classify": {
+    "source": "mixed",
+    "reserved": [
+     "pulsus_anomaly_score"
+    ],
+    "floor_ms": 300000
+   },
+   "resolve": {
+    "grid_step_ms": 60000,
+    "step_ms": 300000
+   },
+   "planned": {
+    "query": "sum by (service) (rate(http_requests_total[20m])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
+    "expanded": "sum by (service) (rate(http_requests_total[20m])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
+    "bytes": 110,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 300000
+   }
+  },
+  {
+   "name": "V4 virtual bare selector",
+   "from": "new (classify)",
+   "inputs": {
+    "query": "$m",
+    "vars": {
+     "m": "ALERTS_FOR_STATE{alertname=\"x\"}"
+    },
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "ALERTS_FOR_STATE",
+     "from": 0,
+     "to": 31
+    },
+    "metrics": [
+     "ALERTS_FOR_STATE"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "classify": {
+    "source": "virtual",
+    "reserved": [
+     "ALERTS_FOR_STATE"
+    ],
+    "floor_ms": 15000
+   },
+   "resolve": {
+    "grid_step_ms": 5000,
+    "step_ms": 15000
+   },
+   "planned": {
+    "query": "ALERTS_FOR_STATE{alertname=\"x\"}",
+    "expanded": "ALERTS_FOR_STATE{alertname=\"x\"}",
+    "bytes": 31,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "V5 unparsable reserved name",
+   "from": "new (classify; route A6)",
+   "inputs": {
+    "query": "ALERTS{",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "classify": {
+    "source": "pulsus_db",
+    "reserved": [],
+    "floor_ms": 0
+   },
+   "planned": {
+    "query": "ALERTS{",
+    "expanded": "ALERTS{",
+    "bytes": 7,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  }
+ ],
+ "kind_of": [
+  {
+   "name": "http_requests_total",
+   "types": {
+    "http_requests_total": "counter"
+   },
+   "want": "counter"
+  },
+  {
+   "name": "foo_bucket",
+   "types": {
+    "foo": "histogram"
+   },
+   "want": "histogram"
+  },
+  {
+   "name": "foo_count",
+   "types": {
+    "foo": "summary"
+   },
+   "want": "counter"
+  },
+  {
+   "name": "c_bucket",
+   "types": {
+    "c": "counter"
+   },
+   "want": "counter"
+  },
+  {
+   "name": "bar",
+   "types": {},
+   "want": "unknown"
+  },
+  {
+   "name": "bar",
+   "types": {
+    "bar": "unknown"
+   },
+   "want": "unknown"
+  }
+ ],
+ "from_metadata": [
+  {
+   "metadata": {
+    "bar": [
+     {
+      "type": "stateset",
+      "help": "",
+      "unit": ""
+     }
+    ]
+   },
+   "types": {
+    "bar": "unknown"
+   }
+  },
+  {
+   "metadata": {
+    "x": [
+     {
+      "type": "counter",
+      "help": "",
+      "unit": ""
+     }
+    ]
+   },
+   "types": {
+    "x": "counter"
+   }
+  },
+  {
+   "metadata": {
+    "x": [
+     {
+      "type": "gauge",
+      "help": "",
+      "unit": ""
+     },
+     {
+      "type": "counter",
+      "help": "",
+      "unit": ""
+     }
+    ]
+   },
+   "types": {
+    "x": "gauge"
+   }
+  },
+  {
+   "metadata": {
+    "x": []
+   },
+   "types": {}
+  },
+  {
+   "metadata": {
+    "x": [
+     {
+      "type": "",
+      "help": "",
+      "unit": ""
+     }
+    ]
+   },
+   "types": {
+    "x": "unknown"
+   }
+  }
+ ],
+ "rate_window": [
+  {
+   "step_ms": 1000,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 5000,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 15000,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 30000,
+   "window_ms": 120000,
+   "text": "2m"
+  },
+  {
+   "step_ms": 60000,
+   "window_ms": 240000,
+   "text": "4m"
+  },
+  {
+   "step_ms": 3600000,
+   "window_ms": 14400000,
+   "text": "4h"
+  },
+  {
+   "step_ms": 1,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 4999,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 5001,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 45000,
+   "window_ms": 180000,
+   "text": "3m"
+  },
+  {
+   "step_ms": 86400000,
+   "window_ms": 345600000,
+   "text": "4d"
+  }
+ ],
+ "durations": [
+  {
+   "ms": 4000,
+   "text": "4s"
+  },
+  {
+   "ms": 20000,
+   "text": "20s"
+  },
+  {
+   "ms": 60000,
+   "text": "1m"
+  },
+  {
+   "ms": 240000,
+   "text": "4m"
+  },
+  {
+   "ms": 3600000,
+   "text": "1h"
+  },
+  {
+   "ms": 14400000,
+   "text": "4h"
+  },
+  {
+   "ms": 86400000,
+   "text": "1d"
+  },
+  {
+   "ms": 345600000,
+   "text": "4d"
+  },
+  {
+   "ms": 1500,
+   "text": "1500ms"
+  },
+  {
+   "ms": 0,
+   "text": "0ms"
+  }
+ ],
+ "bytes": [
+  {
+   "text": {
+    "concat": [
+     {
+      "repeat": "é",
+      "count": 32768
+     }
+    ]
+   },
+   "bytes": 65536
+  },
+  {
+   "text": {
+    "concat": [
+     {
+      "repeat": "a",
+      "count": 65536
+     }
+    ]
+   },
+   "bytes": 65536
+  },
+  {
+   "text": "😀",
+   "bytes": 4
+  },
+  {
+   "text": "\ud800",
+   "bytes": 3
+  }
+ ],
+ "reserved": [
+  {
+   "text": "ALERTS{",
+   "want": "ALERTS"
+  },
+  {
+   "text": "up{note=\"ALERTS\"}",
+   "want": "ALERTS"
+  },
+  {
+   "text": "ALERTS_FOR_STATE{a=\"b\"}",
+   "want": "ALERTS_FOR_STATE"
+  },
+  {
+   "text": "x_ALERTS",
+   "want": null
+  },
+  {
+   "text": "ALERTSX",
+   "want": null
+  },
+  {
+   "text": "a:ALERTS",
+   "want": null
+  },
+  {
+   "text": "{source=\"pulsus-dash\"}",
+   "want": "source=\"pulsus-dash\""
+  },
+  {
+   "text": "{source=\"pulsus-dash2\"}",
+   "want": null
+  }
+ ],
+ "functions": []
+}

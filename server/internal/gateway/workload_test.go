@@ -16,6 +16,7 @@ import (
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
 )
 
 // The budget workloads of plan #62 A.11. W1: a 1 000 × 1 000 matrix decoded, placed on the grid
@@ -102,7 +103,8 @@ func workloadGateway(m *memTransport) http.Handler {
 	return New(Deps{Logger: logger, Probe: &fakeProbe{version: 1}, SchemaLatest: 1,
 		Bootstrap: func(context.Context) (core.BootstrapView, error) { return view, nil },
 		PulsusDB: pulsusdb.New(pulsusdb.Options{Logger: logger, Transport: m,
-			Secrets: func(string) (string, error) { return "bench:pw-secret-bench", nil }})})
+			Secrets: func(string) (string, error) { return "bench:pw-secret-bench", nil }}),
+		Types: promplan.StaticTypes{}})
 }
 
 // rangeOnce runs one range request of points grid points and reports its status.

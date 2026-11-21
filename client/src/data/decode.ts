@@ -4,6 +4,7 @@
  * field is validated; anything else is a `DecodeError` naming the JSON pointer of the first bad
  * element. Arrow arrives behind the same functions with the engine (#68).
  */
+import type { ValueType } from '../editor/lang/types';
 import { KEY_PATTERN, type ScalarFrame, type SeriesFrame } from './frames';
 
 export interface Completeness {
@@ -16,7 +17,23 @@ export interface Completeness {
   readonly readCacheThroughMs: number | null;
 }
 
+/** What the server planned and sent (plan #112 §3.8, OpenAPI `PlannedQuery`). */
+export interface PlannedQuery {
+  /** The text sent to PulsusDB. */
+  readonly query: string;
+  /** The substituted text before the rate rewrite. */
+  readonly expanded: string;
+  readonly bytes: number;
+  readonly valueType: ValueType;
+  readonly rateCandidate: boolean;
+  readonly rateApplied: boolean;
+  readonly histogram: boolean;
+  readonly stepMs?: number;
+  readonly rateWindowMs?: number;
+}
+
 export interface RangeResult {
+  readonly planned: PlannedQuery;
   readonly startMs: number;
   readonly endMs: number;
   readonly stepMs: number;
@@ -24,7 +41,11 @@ export interface RangeResult {
   readonly completeness: Completeness;
 }
 
-export type InstantResult = { readonly atMs: number; readonly completeness: Completeness } & (
+export type InstantResult = {
+  readonly planned: PlannedQuery;
+  readonly atMs: number;
+  readonly completeness: Completeness;
+} & (
   | {
       readonly kind: 'series';
       readonly resultType: 'vector' | 'matrix';
@@ -160,6 +181,11 @@ function decodeCompleteness(v: unknown, path: string): Completeness {
     }),
     readCacheThroughMs: optional(c, 'read_cache_through_ms', path, nonNegative),
   };
+}
+
+/** Decodes a `PlannedQuery` at `path`. */
+export function decodePlanned(_v: unknown, _path: string): PlannedQuery {
+  throw new Error('not implemented');
 }
 
 /** Decodes a `PromRangeResponse` body. */

@@ -19,6 +19,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
 )
 
 // Probe is the readiness view of Postgres; *store.Db implements it.
@@ -44,6 +45,9 @@ type Deps struct {
 	// PulsusDB is the only PulsusDB client (T06-005); nil answers every data route 503
 	// datasource_config.
 	PulsusDB *pulsusdb.Client
+	// Types are the metric types the PromQL planner reads (plan #112 §4.5); nil with a PulsusDB
+	// client is the per-binding cache over its metadata route.
+	Types promplan.TypesSource
 	// Boards is the boards service; nil (or a zero Org) answers every board route with 503.
 	Boards core.Boards
 	// Org is the organisation of every request until authentication lands (D12).
