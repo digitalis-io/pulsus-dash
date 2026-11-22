@@ -11,7 +11,8 @@
       "src/shell/TimeRangeDialog.tsx",
       "src/pages/board/BoardGridEditor.tsx",
       "src/editor/editor.ts",
-      "src/editor/lang/promql/promql.ts"
+      "src/editor/lang/promql/promql.ts",
+      "src/editor/lang/logql/logql.ts"
     ],
     "fonts": ["inter-latin-wght-normal", "jetbrains-mono-latin-wght-normal"],
     "initialCss": true
@@ -24,5 +25,10 @@
     "fonts": 150000,
     "totalExceptEngine": 1000000
   },
-  "editorModules": ["src/editor/editor.ts", "src/editor/lang/promql/promql.ts"]
+  "editorModules": [
+    "src/editor/editor.ts",
+    "src/editor/lang/promql/promql.ts",
+    "src/editor/lang/logql/logql.ts",
+    "src/editor/logqlEditor.ts"
+  ]
 }

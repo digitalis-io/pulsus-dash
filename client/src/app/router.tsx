@@ -135,7 +135,7 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
               path: 'admin',
               lazy: () => routeModules.admin().then((m) => ({ Component: m.AdminPage })),
             },
-            // The chart gallery: dev and stub builds only. The condition is inline, so Vite's
+            // The chart gallery and the LogQL editor harness: dev and stub builds only. The condition is inline, so Vite's
             // static replacement lets Rollup drop the branch and its chunk from `http` builds.
             ...(import.meta.env.DEV || import.meta.env.VITE_API_MODE !== 'http'
               ? [
@@ -144,6 +144,15 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
                     path: 'dev/gallery',
                     lazy: () =>
                       import('../dev/GalleryPage').then((m) => ({ Component: m.GalleryPage })),
+                  },
+                  // The LogQL editor harness of the editor benches (plan #66 Part A §3.12).
+                  {
+                    id: 'logqlBench',
+                    path: 'dev/logql-editor',
+                    lazy: () =>
+                      import('../dev/LogQLEditorBenchPage').then((m) => ({
+                        Component: m.LogQLEditorBenchPage,
+                      })),
                   },
                 ]
               : []),
