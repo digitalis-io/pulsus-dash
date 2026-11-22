@@ -251,6 +251,14 @@ export async function boardLoops(s: Script): Promise<void> {
             await expect(
               page.getByRole('heading', { level: 3, name: `${title} (copy)` }),
             ).toBeVisible();
+            // Duplicate enters Edit: the lazy Edit grid replaces the View grid's panels, and only
+            // its panels have Move or resize. Wait for it, or a drain round that starts on the
+            // fallback finds the copy's Edit tools missing and ends with them uncollected.
+            await expect(
+              page
+                .locator('.react-grid-item')
+                .filter({ has: page.getByRole('heading', { level: 3, name: `${title} (copy)` }) }),
+            ).toHaveCount(1);
             await settledPanel(`${title} (copy)`);
           },
           0,
