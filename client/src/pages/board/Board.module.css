@@ -554,6 +554,19 @@
   gap: var(--space-1);
 }
 
+/* Fixed rows: without thresholds the stat stack holds the chart alone, which must still fill. */
+.statStack > .statChip {
+  grid-row: 1;
+}
+
+.statStack > .chartCell {
+  grid-row: 2;
+}
+
+.statStack > .statThreshold {
+  grid-row: 3;
+}
+
 .chartCell {
   display: grid;
   min-height: 0;

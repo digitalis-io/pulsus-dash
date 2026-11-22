@@ -15,12 +15,14 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ForwardedRef,
   type ReactNode,
   type RefCallback,
+  type RefObject,
 } from 'react';
 import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-components';
 import { Link, useHref, useNavigate } from 'react-router';
@@ -146,10 +148,12 @@ function StatStack({
   t,
   view,
   chart,
+  cellRef,
 }: {
   t: Thresholds | null;
   view: FrameView;
   chart: ReactNode;
+  cellRef: RefObject<HTMLDivElement | null>;
 }) {
   const s = t === null ? null : statState(t, view);
   return (
@@ -159,7 +163,9 @@ function StatStack({
           <StateGlyph state={s.chip} />
         </div>
       )}
-      <div className={cx(styles['chartCell'])}>{chart}</div>
+      <div ref={cellRef} className={cx(styles['chartCell'])}>
+        {chart}
+      </div>
       {t !== null && s?.step != null && (
         <p
           className={cx(
@@ -194,8 +200,23 @@ function PanelChart({
 }) {
   const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
-  const [stackRef, layout] = useLegendLayout();
+  const [stackRef, layout, measured] = useLegendLayout();
+  const cellRef = useRef<HTMLDivElement>(null);
   const rows = legendRows(view.result);
+  const legend = view.legend === 'table' && rows.length > 0;
+  // The chart cell is smaller than the body by the legend or the stat's chip and text: its size
+  // goes into the memo in the commit, before the chart's mount effect pre-sizes from it, so a
+  // re-created chart is sized once and draws in its first frame (#90, ADR-0019).
+  const structure = `${view.vis}|${String(legend)}|${layout}|${String(measured)}|${String(view.thresholds !== null)}`;
+  const ownMemo = useRef<FrameSize | null>(null);
+  const memo = sizeMemo ?? ownMemo;
+  // eslint-disable-next-line react-hooks/immutability -- the memo is the caller's ref, kept for the chart's pre-size (#90)
+  useLayoutEffect(() => {
+    const el = cellRef.current;
+    if (el === null) return;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) memo.current = { width: r.width, height: r.height };
+  }, [structure, memo]);
   // A new result without the isolated series shows all again.
   const isolation =
     isolatedKey !== null && rows.some((r) => r.key === isolatedKey) ? isolatedKey : null;
@@ -208,11 +229,13 @@ function PanelChart({
       spec={spec}
       data={frame.data}
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
-      {...(sizeMemo === undefined ? {} : { sizeMemo })}
+      sizeMemo={memo}
     />
   );
   if (view.vis === 'heatmap') return chart;
-  if (view.vis === 'stat') return <StatStack t={view.thresholds} view={view} chart={chart} />;
+  if (view.vis === 'stat') {
+    return <StatStack t={view.thresholds} view={view} chart={chart} cellRef={cellRef} />;
+  }
   const th = view.thresholds;
   const table: SeriesTableProps = {
     caption: t('panel.legend.caption'),
@@ -232,10 +255,12 @@ function PanelChart({
     total: rows.length,
     isolatedKey: isolation,
   };
-  const legend = view.legend === 'table' && rows.length > 0;
   return (
     <div ref={stackRef} className={cx(styles['frameStack'])} data-legend={view.legend}>
-      <div className={cx(styles['chartCell'])}>{chart}</div>
+      {/* The chart mounts once the stack is measured, so the legend layout is final (see above). */}
+      <div ref={cellRef} className={cx(styles['chartCell'])}>
+        {measured ? chart : null}
+      </div>
       {legend &&
         (layout === 'table' ? (
           <div className={cx(styles['legend'])} data-panel-legend="table">
