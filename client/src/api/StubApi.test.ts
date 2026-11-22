@@ -468,6 +468,20 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     }
   });
 
+  it('the resolved-step cap comes before the metadata read (review r2)', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const query = '$c'.repeat(510) + '$__interval'.repeat(3000) + '\nx';
+    const e = await errorOf(
+      api.queryInstant('demo', { query, vars: { c }, atMs: 1, stepMs: 1500 }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+  });
+
   it('G5: over the processing cap is queryTooLong without a plan', async () => {
     const api = new StubApi();
     const meta = vi.spyOn(api, 'promMetadata');

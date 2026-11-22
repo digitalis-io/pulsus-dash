@@ -418,3 +418,20 @@ func TestPlanMacroCap(t *testing.T) {
 		t.Errorf("%d upstream requests", n)
 	}
 }
+
+// Review r2: the resolved-step cap is checked before tenant resolution and any metadata read. A
+// bare selector after the comment needs metric types, yet the 413 comes with no upstream request.
+func TestPlanMacroCapBeforeTypes(t *testing.T) {
+	fake, url := fakeharness.Start(t)
+	h := plannedGateway(t, url, fixedNow)
+	c := "#" + strings.Repeat("a", 4095)
+	q := strings.Repeat("$c", 510) + strings.Repeat("$__interval", 3000) + "\nx"
+	rec := postJSON(h, instantPath, instantBody(q, `"vars":{"c":`+jsonString(c)+`}`, `"step_ms":1500`))
+	e := wantError(t, "macro cap, bare selector", rec, 413, "invalid", "/query", "query.too_large_to_plan")
+	if e.Error.Hint["reason"] != "processing_cap" || planBodyOf(t, rec).Error.Planned != nil {
+		t.Errorf("%.300s", rec.Body.String())
+	}
+	if n := len(fake.Requests()); n != 0 {
+		t.Errorf("%d upstream requests (metadata included), want 0", n)
+	}
+}
