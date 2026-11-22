@@ -24,7 +24,7 @@ func isASCII(s string) bool {
 // valueSeeds are the seeds of both fuzz tests (plan #118 §5.1): the listed values and every
 // fixture value.
 func valueSeeds() []string {
-	out := []string{"\n", "\r", "\x00\x7f", "  ", "�", "ü€😀", "`", "'\"", `x"y\`}
+	out := []string{"\n", "\r", "\x00\x7f", "\u00a0\u2028", "\ufffd", "ü€😀", "`", "'\"", `x"y\`}
 	fx := fixture{}
 	if b, err := os.ReadFile(fixturePath); err == nil {
 		_ = json.Unmarshal(b, &fx)
