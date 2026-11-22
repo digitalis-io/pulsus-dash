@@ -141,6 +141,9 @@ type TypesCache struct {
 	mu      sync.Mutex
 	entries map[string]entry
 	sf      singleflight.Group
+	// afterMiss runs after a caller found no fresh entry and before it joins the singleflight;
+	// tests only (nil otherwise).
+	afterMiss func()
 }
 
 // NewTypesCache returns a cache over fetch.
@@ -179,6 +182,9 @@ func (c *TypesCache) Types(ctx context.Context, rc *core.RequestCtx) (MetricType
 	c.mu.Unlock()
 	if ok && c.o.Now().Before(e.expires) {
 		return e.types, e.err
+	}
+	if c.afterMiss != nil {
+		c.afterMiss()
 	}
 	ch := c.sf.DoChan(key, func() (any, error) {
 		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.o.FetchTimeout)

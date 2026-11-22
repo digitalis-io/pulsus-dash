@@ -90,8 +90,12 @@ describe('unit:plan-parity (TS)', () => {
       }
       const step = floorStep(c.inputs.step_ms, cls.floorMs);
       const e = p.expandedAt(step);
-      if (isPlanError(e)) throw new Error(`${c.name}: expandedAt refused`);
-      expect(p.needsTypes(stubShape(e)), 'needsTypes').toBe(c.needs_types);
+      if (isPlanError(e)) {
+        // The step macros at the resolved step crossed the processing cap (N18c): the shape is
+        // the placeholder text's.
+        expect(c.error?.hint?.reason).toBe('processing_cap');
+        expect(p.needsTypes(stubShape(p.substituted)), 'needsTypes').toBe(c.needs_types);
+      } else expect(p.needsTypes(stubShape(e)), 'needsTypes').toBe(c.needs_types);
       const outcome = (x: StubPlanned | StubPlanError) => (isPlanError(x) ? x : x.planned);
       if (!c.needs_types) expect(outcome(run(c, {}))).toEqual(outcome(r));
     });

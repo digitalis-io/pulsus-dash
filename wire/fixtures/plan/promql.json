@@ -4309,6 +4309,45 @@
    }
   },
   {
+   "name": "N18c macro expansion over the processing cap",
+   "from": "new (code review r1)",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "$c",
+       "count": 510
+      },
+      {
+       "repeat": "$__interval",
+       "count": 3000
+      }
+     ]
+    },
+    "vars": {
+     "c": "#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "kind": "range",
+    "step_ms": 1500,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "error": {
+    "status": 413,
+    "message": "the substituted query is over 2097152 bytes, the most the server processes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.too_large_to_plan"
+     }
+    ],
+    "hint": {
+     "reason": "processing_cap"
+    }
+   }
+  },
+  {
    "name": "N19 the itest's over-limit counter",
    "from": "new",
    "inputs": {
@@ -5144,78 +5183,602 @@
   }
  ],
  "functions": [
-  {"name":"abs","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"absent","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"absent_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"acos","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"acosh","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"asin","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"asinh","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"atan","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"atanh","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"avg_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"ceil","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"changes","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"clamp","arg_types":["vector","scalar","scalar"],"variadic":0,"return":"vector"},
-  {"name":"clamp_max","arg_types":["vector","scalar"],"variadic":0,"return":"vector"},
-  {"name":"clamp_min","arg_types":["vector","scalar"],"variadic":0,"return":"vector"},
-  {"name":"cos","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"cosh","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"count_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"day_of_month","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"day_of_week","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"day_of_year","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"days_in_month","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"deg","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"delta","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"deriv","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"exp","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"first_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"floor","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_avg","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_count","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_fraction","arg_types":["scalar","scalar","vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_quantile","arg_types":["scalar","vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_stddev","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_stdvar","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"histogram_sum","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"hour","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"idelta","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"increase","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"irate","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"label_join","arg_types":["vector","string","string","string"],"variadic":-1,"return":"vector"},
-  {"name":"label_replace","arg_types":["vector","string","string","string","string"],"variadic":0,"return":"vector"},
-  {"name":"last_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"ln","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"log10","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"log2","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"max_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"min_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"minute","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"month","arg_types":["vector"],"variadic":1,"return":"vector"},
-  {"name":"pi","arg_types":[],"variadic":0,"return":"scalar"},
-  {"name":"predict_linear","arg_types":["matrix","scalar"],"variadic":0,"return":"vector"},
-  {"name":"present_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"quantile_over_time","arg_types":["scalar","matrix"],"variadic":0,"return":"vector"},
-  {"name":"rad","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"rate","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"resets","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"round","arg_types":["vector","scalar"],"variadic":1,"return":"vector"},
-  {"name":"scalar","arg_types":["vector"],"variadic":0,"return":"scalar"},
-  {"name":"sgn","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"sin","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"sinh","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"sort","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"sort_desc","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"sqrt","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"stddev_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"stdvar_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"sum_over_time","arg_types":["matrix"],"variadic":0,"return":"vector"},
-  {"name":"tan","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"tanh","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"time","arg_types":[],"variadic":0,"return":"scalar"},
-  {"name":"timestamp","arg_types":["vector"],"variadic":0,"return":"vector"},
-  {"name":"vector","arg_types":["scalar"],"variadic":0,"return":"vector"},
-  {"name":"year","arg_types":["vector"],"variadic":1,"return":"vector"}
+  {
+   "name": "abs",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "absent",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "absent_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "acos",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "acosh",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "asin",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "asinh",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "atan",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "atanh",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "avg_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "ceil",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "changes",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "clamp",
+   "arg_types": [
+    "vector",
+    "scalar",
+    "scalar"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "clamp_max",
+   "arg_types": [
+    "vector",
+    "scalar"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "clamp_min",
+   "arg_types": [
+    "vector",
+    "scalar"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "cos",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "cosh",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "count_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "day_of_month",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "day_of_week",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "day_of_year",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "days_in_month",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "deg",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "delta",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "deriv",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "exp",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "first_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "floor",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_avg",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_count",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_fraction",
+   "arg_types": [
+    "scalar",
+    "scalar",
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_quantile",
+   "arg_types": [
+    "scalar",
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_stddev",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_stdvar",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "histogram_sum",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "hour",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "idelta",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "increase",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "irate",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "label_join",
+   "arg_types": [
+    "vector",
+    "string",
+    "string",
+    "string"
+   ],
+   "variadic": -1,
+   "return": "vector"
+  },
+  {
+   "name": "label_replace",
+   "arg_types": [
+    "vector",
+    "string",
+    "string",
+    "string",
+    "string"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "last_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "ln",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "log10",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "log2",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "max_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "min_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "minute",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "month",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "pi",
+   "arg_types": [],
+   "variadic": 0,
+   "return": "scalar"
+  },
+  {
+   "name": "predict_linear",
+   "arg_types": [
+    "matrix",
+    "scalar"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "present_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "quantile_over_time",
+   "arg_types": [
+    "scalar",
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "rad",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "rate",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "resets",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "round",
+   "arg_types": [
+    "vector",
+    "scalar"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  },
+  {
+   "name": "scalar",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "scalar"
+  },
+  {
+   "name": "sgn",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "sin",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "sinh",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "sort",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "sort_desc",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "sqrt",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "stddev_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "stdvar_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "sum_over_time",
+   "arg_types": [
+    "matrix"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "tan",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "tanh",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "time",
+   "arg_types": [],
+   "variadic": 0,
+   "return": "scalar"
+  },
+  {
+   "name": "timestamp",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "vector",
+   "arg_types": [
+    "scalar"
+   ],
+   "variadic": 0,
+   "return": "vector"
+  },
+  {
+   "name": "year",
+   "arg_types": [
+    "vector"
+   ],
+   "variadic": 1,
+   "return": "vector"
+  }
  ]
 }

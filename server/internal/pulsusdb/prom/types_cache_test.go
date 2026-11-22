@@ -186,3 +186,34 @@ func TestTypesCacheSingleflight(t *testing.T) {
 		}
 	})
 }
+
+// A caller that saw no fresh entry, then joins the singleflight only after another caller's fetch
+// filled the entry and left it, takes that entry: no second fetch (code review r1).
+func TestTypesCacheLateJoiner(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := &counting{fn: func(context.Context) (MetricTypes, error) { return xCounter, nil }}
+		c := NewTypesCache(f.fetch, CacheOptions{})
+		gate := make(chan struct{})
+		var paused atomic.Bool
+		c.afterMiss = func() {
+			if paused.CompareAndSwap(false, true) {
+				<-gate
+			}
+		}
+		rc := rcFor(binding1, "demo")
+		var gotA MetricTypes
+		var errA error
+		done := make(chan struct{})
+		go func() { defer close(done); gotA, errA = c.Types(t.Context(), rc) }()
+		synctest.Wait() // A missed and is paused before the singleflight
+		gotB, errB := c.Types(t.Context(), rc)
+		close(gate)
+		<-done
+		if errA != nil || errB != nil || !reflect.DeepEqual(gotA, xCounter) || !reflect.DeepEqual(gotB, xCounter) {
+			t.Fatalf("A %v %v; B %v %v", gotA, errA, gotB, errB)
+		}
+		if n := f.n.Load(); n != 1 {
+			t.Errorf("%d fetches, want 1", n)
+		}
+	})
+}

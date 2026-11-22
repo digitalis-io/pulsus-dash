@@ -400,3 +400,21 @@ func TestMetricTypesCacheRoute(t *testing.T) {
 		t.Errorf("M4: %d metadata requests", n)
 	}
 }
+
+// itest:plan-sizes (code review r1): the step macros at the resolved step count against the
+// processing cap. 510 × a 4 096-byte value and 3 000 × $__interval fit the cap with the "1s"
+// placeholders but not as "1500ms": 413 processing_cap, no planned, no upstream request.
+func TestPlanMacroCap(t *testing.T) {
+	fake, url := fakeharness.Start(t)
+	h := plannedGateway(t, url, fixedNow)
+	c := "#" + strings.Repeat("a", 4095)
+	q := strings.Repeat("$c", 510) + strings.Repeat("$__interval", 3000)
+	rec := postJSON(h, instantPath, instantBody(q, `"vars":{"c":`+jsonString(c)+`}`, `"step_ms":1500`))
+	e := wantError(t, "macro cap", rec, 413, "invalid", "/query", "query.too_large_to_plan")
+	if e.Error.Hint["reason"] != "processing_cap" || planBodyOf(t, rec).Error.Planned != nil {
+		t.Errorf("macro cap: %.300s", rec.Body.String())
+	}
+	if n := len(fake.Requests()); n != 0 {
+		t.Errorf("%d upstream requests", n)
+	}
+}
