@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-21 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -131,14 +131,19 @@ field instead of points, then its coverage meter states the reduction.
 **MUST** · M-UI0 · SRE, Engineer
 
 The Line vis MUST decimate on the GPU per pixel column, keeping min, max, first and last of each
-column, so that the drawn result is visually identical to drawing every raw point. When the visible
+column, so that the drawn result is visually identical to drawing every raw point. A line whose
+values lie beyond the clip box of its draw's value encoding ([T02-014](../technical/T02-vis-engine.md#t02-014--precision-f64-on-the-cpu-f32-relative-to-an-encoding-origin))
+MAY be decimated on the CPU, with f64 segment clipping; this fallback MUST keep the same first, last,
+min and max per column, and is covered by the same acceptance test. The T2 tier decimates on the
+CPU by the same rule ([T02](../technical/T02-vis-engine.md) §4.4). When the visible
 range is finer than the stored rollup resolution, the line MUST switch from the rollup to the raw
 source without user action.
 
 *Acceptance:* Given 1 000 series × 100k points, when the decimated render is compared with a
 reference render of every raw point, then the golden-image diff is zero at the pixel level for
-line coverage; and when the user zooms past the rollup step, then the data source badge changes to
-raw and new points appear without the user changing the query.
+line coverage; the reference draws every raw point at its pixel column's centre; the comparison
+runs on both CPU paths; and when the user zooms past the rollup step, then the data source badge
+changes to raw and new points appear without the user changing the query.
 
 #### VIZ-007 — Band collapses the crowd and keeps outliers
 **MUST** · M-UI1 · SRE, Platform
@@ -1389,6 +1394,7 @@ board.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 intro, Table 5-4 rows (Graph, City, Globe, Heat grid, 3D surface; Floors added), VIZ-031 and VIZ-032 edited in place; VIZ-073 to VIZ-077 added; §3.1 3D signal views (Table 5-4a, VIZ-078 to VIZ-085, incl. the fleet line stack) added (R11–R13) |
 | 1.1-rc | 2026-11-19 | Decisions D7 and D8 (roadmap Q13): GPU vis and DOM vis definitions; VIZ-001 revised in place (one shared engine and GPU device, one canvas per viewport, DOM vis in React, interim-renderer note); VIZ-057 parity by shared fixtures instead of one shared Rust implementation (the BFF is Go); VIZ-063 rationale no longer cites the JS shim (R14) |
+| 1.2-rc | 2026-11-21 | VIZ-006: CPU fallback for lines beyond the value encoding's clip box (same first/last/min/max, same acceptance test); reference placement stated (#68) |
 
 ## Resolved during formalisation
 

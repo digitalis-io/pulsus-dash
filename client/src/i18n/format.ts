@@ -170,6 +170,79 @@ export function formatValue(v: number, unit: Unit): string {
   }
 }
 
+/** SI prefixes of `formatCompact`, by power of 1000. */
+const PREFIX: Readonly<Record<number, string>> = {
+  [-4]: 'p',
+  [-3]: 'n',
+  [-2]: 'µ',
+  [-1]: 'm',
+  0: '',
+  1: 'k',
+  2: 'M',
+  3: 'G',
+  4: 'T',
+  5: 'P',
+  6: 'E',
+};
+const PREFIX_MIN = -4;
+const PREFIX_MAX = 6;
+
+/** The compact magnitude and tail of a non-negative `v` in `unit`. */
+function compactParts(v: number, unit: Unit): { n: number; tail: string } {
+  switch (unit.kind) {
+    case 'none':
+      return { n: v, tail: '' };
+    case 'suffix':
+      return { n: v, tail: ` ${unit.suffix}` };
+    case 'percent':
+      return { n: v, tail: ' %' };
+    case 'percentunit':
+      return { n: v * 100, tail: ' %' };
+    case 'bytes':
+      return { n: v, tail: ' B' };
+    case 'time':
+      return { n: v * TIME_BASE[unit.base], tail: ' s' };
+  }
+}
+
+/**
+ * A value in at most four significant characters, an SI prefix and the unit's tail (T02-011, the
+ * labels of a held value band, #93). Never truncates: the sign is kept and the value is |v| to
+ * three significant digits. Bytes use SI prefixes (exact in value); time is in seconds. Outside
+ * 1e-12 ≤ |v| < 1e21 (in the converted unit) it falls back to the plain three-digit form.
+ */
+export function formatCompact(v: number, unit: Unit): string {
+  if (Number.isNaN(v) || v === Infinity || v === -Infinity) return formatValue(v, unit);
+  if (v < 0) return `-${formatCompact(-v, unit)}`;
+  const { n, tail } = compactParts(v, unit);
+  if (n === 0) return `0${tail}`;
+  let e = Math.min(PREFIX_MAX, Math.max(PREFIX_MIN, Math.floor(Math.log10(n) / 3)));
+  let m = n / 1000 ** e;
+  // One fix-up for `log10` rounding at a power of 1000.
+  if (m >= 1000 && e < PREFIX_MAX) {
+    e += 1;
+    m /= 1000;
+  } else if (m < 1 && e > PREFIX_MIN) {
+    e -= 1;
+    m *= 1000;
+  }
+  if (m < 1 || m >= 1000) return `${sig(n)}${tail}`;
+  let d = sig(m);
+  if (d === '1000' && e < PREFIX_MAX) {
+    e += 1;
+    d = '1';
+  }
+  return `${d}${PREFIX[e] ?? ''}${tail}`;
+}
+
+/** The widest compact labels of `unit`: `-88.8${p}${tail}` for each prefix p (11 strings). */
+export function compactSamples(unit: Unit): readonly string[] {
+  const { tail } = compactParts(1, unit);
+  const out: string[] = [];
+  for (let e = PREFIX_MIN; e <= PREFIX_MAX; e++) out.push(`-88.8${PREFIX[e] ?? ''}${tail}`);
+  return out;
+}
+
 /** `14:05` in `tz`. */
 export function formatHourMinute(ms: number, tz: string): string {
   return formatter('hourMinute', tz).format(ms);

@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-21 |
+| **Version** | 1.5-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (tenancy, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (identity, Git sync, Terraform) |
-| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
 
 ## 1. Context & problem
@@ -514,9 +514,12 @@ CREATE INDEX ON alert_rules (shard, org_id);  -- shard owner loads its rules via
 CREATE TABLE alert_rule_versions (org_id uuid, rule_id uuid, version int, spec jsonb, schema_version int,
   content_hash bytea, author_kind text, author_id uuid, source text, created_at timestamptz,
   PRIMARY KEY (org_id, rule_id, version));
--- spec: {kind, tenant_binding, queries:[{ref,signal,expr}], condition, for, keep_firing_for,
---        nodata_policy, error_policy, severity, notify, damping, labels, annotations,
+-- spec: {kind, tenant_binding, queries:[{ref,signal,expr,vars,rate,plan_step_ms?}], condition, for,
+--        keep_firing_for, nodata_policy, error_policy, severity, notify, damping, labels, annotations,
 --        entity_template?, slo_ref?, composite?}
+-- queries[].expr is the raw query and vars, rate, plan_step_ms its planning inputs (ADR-0021,
+-- T16 §4.2): a rule created from a panel stores the panel's planning step in plan_step_ms; a rule
+-- written by hand omits it and plans with its evaluation interval.
 CREATE TABLE rule_routes (org_id uuid, rule_id uuid, route_id text, contact_point_id uuid,
   PRIMARY KEY (org_id, rule_id, route_id, contact_point_id));      -- derived; drives "Used by"
 CREATE INDEX ON rule_routes (org_id, contact_point_id);
@@ -1362,3 +1365,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 | 1.2-rc | 2026-11-20 | #59 Part A and D12 (authentication deferred to M-UI6): header milestones and §11 move the identity tables from M-UI1 to M-UI6; §4.2 notes that `orgs` and `tenant_bindings` ship first; §3 ENT-020 row marks the #59 subset (ENT-020 stays M-UI1); `tenant_bindings.credentials_ref` becomes `text`, a secret reference (`env:NAME` or `file:/path`; `secret:<uuid>` with the `secrets` table) under a CHECK, never a value; §4.1 adds the roles script and the non-tenant `install_state`; T11-002 note on the root table `orgs` |
 | 1.3-rc | 2026-11-20 | #61 Part A (migration 2): §3 ENT-020 row adds the board tables, `audit_events` and its partitions; §4.3 notes the boards subset (no `tags`, `search`, `managed_by`, `incident_open_count`; `bigint` columns; no `lz4`), the `stars` and `recent_views` DDL and the root folder; §4.7 adds `audit_chain_heads` (the chain head outside the retention floor) and T11-017 reads the previous hash from it; T11-008, T11-021 and T11-026 note the audit partition function owned by `pulsus_owner` until the worker job exists (3 months ahead, drop after 13 months, leaf validation, `REVOKE CREATE ON SCHEMA public`), and the `/readyz` check `audit_partitions` as the low-horizon alert |
 | 1.4-rc | 2026-11-21 | #61 Part C: §4.3 `recent_views.viewed_at` is the client's navigation time when given (clamped to now − 1 day … now + 5 min), else `now()`; an upsert keeps the greater time; the ordering guarantee of D-RECENT-window (no schema change) |
+| 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.6 `alert_rule_versions.spec` query entries gain `vars`, `rate` and an optional `plan_step_ms` (the panel's planning step for a rule created from a panel; T16 §4.2); `expr` is the raw query |

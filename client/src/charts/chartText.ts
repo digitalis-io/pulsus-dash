@@ -39,11 +39,14 @@ export function pointerWindowStart(n: number, yCss: number, plot: PlotRect): num
   return Math.round(f * Math.max(0, n - TOOLTIP_ROWS));
 }
 
-/** `{title}: {kind}, {count} {noun}, {range}. Min {min}, max {max}, last {last}.` */
+/**
+ * `{title}: {kind}, {count} {noun}, {range}. Min {min}, max {max}, last {last}.`, then
+ * `Y axis fixed at {min} to {max}.` while the value axis is pinned (#93).
+ */
 export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string {
   const unit = valueUnit(spec);
   const v = (x: number | null): string => (x === null ? '—' : formatValue(x, unit));
-  return t('chart.summary', {
+  const text = t('chart.summary', {
     title: spec.title,
     kind: t(KIND[spec.kind]),
     count: s.seriesTotal,
@@ -53,6 +56,9 @@ export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string
     max: v(s.max),
     last: v(s.last),
   });
+  const a = s.valueAxis;
+  if (a?.manual !== true) return text;
+  return `${text} ${t('chart.valueAxis.pinned', { min: v(a.min), max: v(a.max) })}`;
 }
 
 /** The slider's value text: the selected row of `sortedRows` at the crosshair, or the idle hint. */

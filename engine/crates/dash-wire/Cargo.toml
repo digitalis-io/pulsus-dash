@@ -1,0 +1,14 @@
+[package]
+name = "dash-wire"
+description = "Engine data chunks; Part B adds the DSF and Arrow decoders"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true

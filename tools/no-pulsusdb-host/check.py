@@ -3,20 +3,21 @@
 
 Python 3.12 standard library only. Usage:
 
-    python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]
+    python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
 
 Rules (docs/development/build-and-ci.md#ci-no-pulsusdb-host):
-- forbidden-host: each DASH_FORBIDDEN_HOSTS entry (and the host of PULSUS_DASH_DATASOURCE_URL, if
-  set and not local) in the bytes of every file, binaries, symlinks and fixtures included;
+- forbidden-host: each entry of the optional local DASH_FORBIDDEN_HOSTS variable (and the host of
+  PULSUS_DASH_DATASOURCE_URL, if set and not local) in the bytes of every file, binaries, symlinks
+  and fixtures included. CI sets neither; no host name is stored in the repository or its secrets;
 - forbidden-host-in-path: the same entries in the file's relative path;
 - non-local-pulsusdb-url: a URL whose host contains "pulsusdb", or the value of a PulsusDB
-  datasource key, whose host is not local. Text files only; not symlinks; in repository mode not
-  under URL_RULE_EXEMPT.
+  datasource key, whose host is not local. Bare host names without a scheme are not scanned. Text
+  files only; not symlinks; in repository mode not under URL_RULE_EXEMPT.
 
 Output rule: no path, host, line text, argument or subprocess message is ever printed. A file is
 F<i>, its 1-based index in the sorted scanned list; --show-paths (refused when CI is set) prints
-the path instead, for local use. Exit: 0 clean, 1 findings, 2 usage, git, bad root, unreadable,
-missing secret with --require-secret, or an internal error.
+the path instead, for local use. Exit: 0 clean, 1 findings, 2 usage, git, bad root, unreadable or
+an internal error.
 """
 
 from __future__ import annotations
@@ -37,11 +38,7 @@ COMPOSE_HOSTS = frozenset({"pulsus-fake"})
 URL_RULE_EXEMPT = "tools/no-pulsusdb-host/testdata/"  # repository mode; exempts ONLY the URL rule
 REPO = Path(__file__).resolve().parents[2]
 
-USAGE = "usage: python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]"
-SECRET_TEXT = (
-    "DASH_FORBIDDEN_HOSTS is not set: a repository owner must create this repository secret "
-    "(see docs/development/build-and-ci.md#ci-no-pulsusdb-host); pull requests from forks cannot read it"
-)
+USAGE = "usage: python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]"
 TEXT_PROBE = 8192
 
 _DELIMS = "\\s/?#\"'<>()\\[\\]{}\\\\`"
@@ -183,7 +180,6 @@ def _walk_root(root: Path, walk, onerror) -> list[tuple[str, Path]]:
 def _scan(argv, env, out, err, read_bytes, readlink, walk, run) -> int:
     parser = Parser(add_help=False, allow_abbrev=False, exit_on_error=False)
     parser.add_argument("--root")
-    parser.add_argument("--require-secret", action="store_true")
     parser.add_argument("--show-paths", action="store_true")
     parser.add_argument("--help", action="store_true")
     try:
@@ -199,11 +195,6 @@ def _scan(argv, env, out, err, read_bytes, readlink, walk, run) -> int:
         return 2
 
     hosts = forbidden_hosts(env)
-    if not _dash_entries(env):
-        if args.require_secret:
-            err.write(f"error[missing-secret] {SECRET_TEXT}\n")
-            return 2
-        err.write(f"warning[missing-secret] {SECRET_TEXT}\n")
 
     status2 = False
     if args.root is not None:

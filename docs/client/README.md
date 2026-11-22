@@ -388,13 +388,13 @@ are no longer read.
 Test hooks, each a positive integer n in `localStorage` that makes the next n calls fail and counts
 down:
 
-| Key                             | Effect                                                                                                                             |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `pulsus-dash.stub.failSession`  | `getSession` rejects `network`                                                                                                     |
-| `pulsus-dash.stub.failSignOut`  | `signOut` rejects `network` (keyboard L21)                                                                                         |
-| `pulsus-dash.stub.failSave`     | `saveBoard` rejects `network`                                                                                                      |
-| `pulsus-dash.stub.conflictSave` | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
-| `pulsus-dash.stub.failStar`     | `setStarred` rejects `network` and changes nothing (`e2e:a11y-rooms` state `b-1 star failed`)                                      |
+| Key                              | Effect                                                                                                                             |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `pulsus-dash.stub.failSession`   | `getSession` rejects `network`                                                                                                     |
+| `pulsus-dash.stub.failSignOut`   | `signOut` rejects `network` (keyboard L21)                                                                                         |
+| `pulsus-dash.stub.failSave`      | `saveBoard` rejects `network`                                                                                                      |
+| `pulsus-dash.stub.conflictSave`  | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
+| `pulsus-dash.stub.failStar`      | `setStarred` rejects `network` and changes nothing (`e2e:a11y-rooms` state `b-1 star failed`)                                      |
 | `pulsus-dash.stub.failPanelData` | `panelData` rejects `network` ("stub: panel data failed") after the delay below (#90, `panel-editor-dialog.spec.ts` E11, E13, E15) |
 
 `pulsus-dash.stub.panelDelayMs` (#90), a positive integer n, makes every `panelData` call resolve

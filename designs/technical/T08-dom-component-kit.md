@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-21 |
+| **Version** | 1.10-rc · 2026-11-21 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -572,13 +572,16 @@ elements.
 ### 4.7 Theming tokens shared with the GPU
 
 ```
-design/tokens.toml ──► dash-tokens/build.rs ──┬──► tokens.css      (CSS custom properties per theme × density)
-                                              └──► tokens.rs       (pub const DARK: Theme { surface0: Lin([..]), … })
+design/tokens.toml ──► client/scripts/gen-tokens.ts ──┬──► tokens.css  (CSS custom properties per theme × density)
+                                                      ├──► tokens.ts   (typed constants for the TS application)
+                                                      └──► tokens.rs   (engine/crates/dash-tokens: pub const SURFACE_1: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xFF]), …)
 ```
 
-- **One source** ([08 §9](../product/08-visual-language.md)). Colours are authored in OKLCH and
-  emitted as sRGB hex for CSS and as linear-space `[f32; 4]` for wgpu ([T02](T02-vis-engine.md)
-  HDR-safe colour). Spacing (4 px grid), radius (6 px), hairline (1 px at 8 % contrast), type scale
+- **One source** ([08 §9](../product/08-visual-language.md)). *(Revised 2026-11-21, #68.)* Colours
+  are authored as sRGB hex and emitted to `tokens.rs` as sRGB-encoded `Rgba8([u8; 4])`, the same
+  bytes as the CSS; the engine blends in sRGB-encoded space ([T02](T02-vis-engine.md) §4.2), so token
+  alphas composite as in CSS and Canvas 2D. `tokens.rs` is committed, and `checkGenerated`
+  (`ci:token-lint`) fails when it is stale. Spacing (4 px grid), radius (6 px), hairline (1 px at 8 % contrast), type scale
   and motion durations are emitted to both (VL-019).
 - **Themes:** `dark` (default, M-UI1), `light` (M-UI5, its own token values, never an inversion) and
   `wall-high-contrast` (M-UI6), × density `compact | comfortable | wall (×1.6, M-UI6)`. Compact is
@@ -768,7 +771,7 @@ with an owner and a fix milestone and do not block.
 
 | Metric | Target | Source |
 |---|---|---|
-| Main-thread long tasks during interaction | 0 > 16 ms (`bench:rooms-long-tasks`, scripted room interactions in Chromium from a trace; until the reference lab exists, #68, CI's `e2e` gates thread > 16 ms and wall > 50 ms as T05 §4.3's interim trace check; the board editor is its first scenario, #90) | PRF-005 |
+| Main-thread long tasks during interaction | 0 > 16 ms (`bench:rooms-long-tasks`, scripted room interactions in Chromium from a trace; until the reference lab exists, #68, CI's `e2e` gates thread > 16 ms and wall > 50 ms as T05 §4.3's interim trace check; the board editor (#90) and chart gestures (#93) are its scenarios) | PRF-005 |
 | Hover tooltip | median ≤ 1 frame, p99 ≤ 2 frames (crosshair ≤ 1, GPU) | PRF-003, PRF-004, INT-033 |
 | INP in rooms | ≤ 100 ms p75 (a room above 200 ms fails the reference-lab gate; on shared CI runners a warning until the reference lab exists, #68) | PRF-033 |
 | Table: mount the visible window | ≤ 8 ms; scroll at 60 fps with ≤ 4 ms main per frame | §4.10 |
@@ -875,3 +878,5 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.6-rc | 2026-11-20 | #61 Part B: §4.4 and §11 M-UI1 add the board editor: the non-modal right-hand panel editor, the per-panel Move or resize button (arrows, `Shift`+arrows) as the keyboard path for grid moves, and the board keys `Shift+E` and `Mod+S` (`Shift+E` moves from M-UI5 to M-UI1) |
 | 1.7-rc | 2026-11-21 | #61 Part C: §4.3 sidebar: Starred and Recent from the BFF, per user, with the ordering guarantee of D-RECENT-window and one reconciling refetch after an ambiguous view; §6 row for starred and recent boards in Postgres; IA-021 Satisfies adds `e2e:board-prefs`; PRF-033 Satisfies and the §7 INP row name `bench:inp-rooms`, failing the reference-lab gate above 200 ms and reporting a warning on shared CI runners until the lab exists (#68, D-INP-interim) |
 | 1.8-rc | 2026-11-21 | #90: §4.4 and §11 M-UI1: the panel editor is a centred, fixed-size modal dialog with a live preview (owner decision 2026-11-21); it replaces the non-modal right-hand sheet. §7: `bench:rooms-long-tasks` and its interim CI check |
+| 1.9-rc | 2026-11-21 | #68: §4.7 token contract: the generator is `client/scripts/gen-tokens.ts` → `tokens.css`, `tokens.ts`, `tokens.rs`; colours authored as sRGB hex and emitted to `tokens.rs` as sRGB-encoded `Rgba8([u8; 4])`, the same bytes as CSS; the engine blends in sRGB-encoded space (T02 §4.2). Replaces linear-space `[f32; 4]` and `Lin([..])` |
+| 1.10-rc | 2026-11-21 | #93: §7 `bench:rooms-long-tasks` scenarios include chart gestures |
