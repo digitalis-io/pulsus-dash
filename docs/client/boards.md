@@ -245,6 +245,11 @@ nothing invalid is sent. The text is re-seeded only when the value changes from 
 does not already read as it. Rows are memoised by index, so a keystroke renders one row
 (`bench:rooms-long-tasks` "board editor, 8 thresholds").
 
+To keep opening the editor out of one long task, the Thresholds and Legend fields mount in the
+animation frame after the dialog, and the threshold rows then appear two per frame; a row added
+after that renders at once. `PanelChart` is memoised, so an edit to one panel, or opening the
+editor, does not render the other panels' charts and legends again.
+
 ## Open in Explore
 
 `exploreHref(tenant, panel, search, run.expanded)`: for PromQL,
