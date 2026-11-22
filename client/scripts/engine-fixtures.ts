@@ -18,8 +18,26 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const FIXTURE_DIR = join(CLIENT_ROOT, '..', 'engine', 'fixtures');
 
-/** Stub. */
+/**
+ * The gallery entries of the Rust parity fixtures (`layout.json`, `synth.json`, `summary.json`), in
+ * today's order (`synthRows` hashes by position). Later gallery entries (`line-thresholds`, #64
+ * Part B) are not parity fixtures, so the committed fixtures stay byte-identical.
+ */
 export const PARITY_LINE_IDS = ['line-1', 'line-50', 'line-gaps', 'line-600'] as const;
+
+/** The `FrameSummary` fields of the parity contract (`thresholdLabels` is TS-only, ADR-0022). */
+const SUMMARY_FIELDS = [
+  'kind',
+  'seriesTotal',
+  'seriesShown',
+  'fromMs',
+  'toMs',
+  'min',
+  'max',
+  'last',
+  'plot',
+  'valueAxis',
+] as const;
 
 type Unit =
   | { kind: 'none' }
@@ -100,11 +118,22 @@ interface Sources {
 }
 
 /**
- * Node: resolve the client's extensionless relative imports to their `.ts` files. Also used by
- * `threshold-draw-probe.ts`.
+ * Node: resolve the client's extensionless relative imports to their `.ts` files, and load a CSS
+ * module (`*.module.css`, e.g. `theme/stateEncoding.module.css`) as a proxy whose every class name
+ * is its key, so `StateEncoding` loads outside Vite. Also used by `threshold-draw-probe.ts`.
  */
 export function registerClientHooks(): void {
   registerHooks({
+    load(url, context, next) {
+      if (url.endsWith('.module.css')) {
+        return {
+          format: 'module',
+          shortCircuit: true,
+          source: 'export default new Proxy({}, { get: (_, k) => String(k) });',
+        };
+      }
+      return next(url, context);
+    },
     resolve(specifier, context, next) {
       if (/^\.\.?\//.test(specifier) && !/\.[cm]?[jt]sx?$/.test(specifier)) {
         try {
@@ -316,8 +345,7 @@ function layoutRows(s: Sources, entries: readonly Entry[]): unknown[] {
     ticks: l.ticks,
     labels: l.labels,
   });
-  for (const e of entries) {
-    if (e.spec.kind !== 'line') continue;
+  for (const e of parityEntries(entries)) {
     rows.push(
       row(lineLayout(s, 1118, 240, e.data.series ?? [], e.spec.unit), 1118, 240, e.spec.unit, e.id),
     );
@@ -428,33 +456,41 @@ function paletteRows(s: Sources): unknown[] {
   return rows;
 }
 
+/** The parity entries, in `PARITY_LINE_IDS` order. */
+function parityEntries(entries: readonly Entry[]): Entry[] {
+  return PARITY_LINE_IDS.map((id) => {
+    const e = entries.find((x) => x.id === id);
+    if (e === undefined) throw new Error(`gallery entry ${id} is missing`);
+    return e;
+  });
+}
+
 function synthRows(s: Sources, entries: readonly Entry[]): unknown[] {
-  return entries
-    .filter((e) => e.spec.kind === 'line')
-    .map((e, i) => {
-      const series = e.data.series ?? [];
-      const samples = Array.from({ length: 64 }, (_, m) => {
-        const j = Math.floor(s.hash01(6, i, m) * series.length);
-        const sr = series[j];
-        const k = Math.floor(s.hash01(6, i, m, 1) * (sr?.values.length ?? 1));
-        return { j, k, t: sr?.timestamps[k] ?? NaN, v: sr?.values[k] ?? NaN };
-      });
-      return { id: e.id, keys: series.map((x) => x.key), samples };
+  return parityEntries(entries).map((e, i) => {
+    const series = e.data.series ?? [];
+    const samples = Array.from({ length: 64 }, (_, m) => {
+      const j = Math.floor(s.hash01(6, i, m) * series.length);
+      const sr = series[j];
+      const k = Math.floor(s.hash01(6, i, m, 1) * (sr?.values.length ?? 1));
+      return { j, k, t: sr?.timestamps[k] ?? NaN, v: sr?.values[k] ?? NaN };
     });
+    return { id: e.id, keys: series.map((x) => x.key), samples };
+  });
 }
 
 function summaryRows(s: Sources, entries: readonly Entry[]): unknown[] {
-  return entries
-    .filter((e) => e.spec.kind === 'line')
-    .map((e) => {
-      const l = lineLayout(s, 1118, 240, e.data.series ?? [], e.spec.unit);
-      const height = s.layoutPlot('line', 1118, 240, 0).height;
-      const base = e.spec.unit.kind === 'bytes' ? 1024 : 1000;
-      const vt = s.valueTicks(Math.min(0, l.min), l.max, height, s.LABEL_HEIGHT, base);
-      // Until #93 adds `FrameSummary.valueAxis` in TS, the same valueTicks call derives it.
-      const valueAxis = l.summary.valueAxis ?? { min: vt.min, max: vt.max, manual: false };
-      return { id: e.id, summary: { ...l.summary, valueAxis } };
-    });
+  return parityEntries(entries).map((e) => {
+    const l = lineLayout(s, 1118, 240, e.data.series ?? [], e.spec.unit);
+    const height = s.layoutPlot('line', 1118, 240, 0).height;
+    const base = e.spec.unit.kind === 'bytes' ? 1024 : 1000;
+    const vt = s.valueTicks(Math.min(0, l.min), l.max, height, s.LABEL_HEIGHT, base);
+    // Until #93 adds `FrameSummary.valueAxis` in TS, the same valueTicks call derives it.
+    const valueAxis = l.summary.valueAxis ?? { min: vt.min, max: vt.max, manual: false };
+    const summary = Object.fromEntries(
+      SUMMARY_FIELDS.map((k) => [k, k === 'valueAxis' ? valueAxis : l.summary[k]]),
+    );
+    return { id: e.id, summary };
+  });
 }
 
 /** Every fixture file name → its JSON text. */

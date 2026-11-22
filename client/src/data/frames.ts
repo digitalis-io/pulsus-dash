@@ -153,3 +153,15 @@ export function seriesName(labels: Readonly<Record<string, string>>): string {
     .map((k) => `${k}=${quoted(labels[k] ?? '')}`);
   return `${name}{${pairs.join(', ')}}`;
 }
+
+/** The value a stat shows: the scalar, or the last finite value of the first series. */
+export function statValue(data: FrameData): number {
+  if (data.kind === 'scalar') return data.scalar.value;
+  if (data.kind !== 'series') return NaN;
+  const vs = data.series[0]?.values ?? new Float64Array(0);
+  for (let i = vs.length - 1; i >= 0; i--) {
+    const v = vs[i] ?? NaN;
+    if (Number.isFinite(v)) return v;
+  }
+  return NaN;
+}

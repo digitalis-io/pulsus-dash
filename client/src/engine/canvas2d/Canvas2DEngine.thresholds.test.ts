@@ -43,6 +43,11 @@ function last(h: Harness): FrameSummary {
   return s;
 }
 
+/** The y of a threshold line: `Math.round(y) + 0.5` of the value (§4.2), within 1 px of it. */
+function lineAt(s: FrameSummary, v: number): number {
+  return Math.round(yOf(s, v)) + 0.5;
+}
+
 /** The value axis mapping of the summary. */
 function yOf(s: FrameSummary, v: number): number {
   const a = s.valueAxis;
@@ -135,7 +140,7 @@ describe('unit:threshold-mark (#64 Part B §4.2)', () => {
     expect(path.points).toHaveLength(2);
     expect(path.points[0]?.[0]).toBe(s.plot.x);
     expect(path.points[1]?.[0]).toBe(s.plot.x + s.plot.width);
-    expect(Math.abs((path.points[0]?.[1] ?? NaN) - yOf(s, 20))).toBeLessThanOrEqual(0.5);
+    expect(path.points[0]?.[1]).toBe(lineAt(s, 20));
     expect(
       h
         .layer()
@@ -301,18 +306,14 @@ describe('unit:threshold-mark (#64 Part B §4.2)', () => {
     expect(sFive.valueAxis).toEqual(sNone.valueAxis);
     expect(sFive.max).toBe(6);
     expect(dashed(five)).toHaveLength(1);
-    expect(Math.abs((dashed(five)[0]?.points[0]?.[1] ?? NaN) - yOf(sFive, 5))).toBeLessThanOrEqual(
-      0.5,
-    );
+    expect(dashed(five)[0]?.points[0]?.[1]).toBe(lineAt(sFive, 5));
 
     const nine = show(bars([{ value: 9, state: 'failing', label: '' }]), data);
     const sNine = last(nine);
     expect(sNine.valueAxis?.max).toBeGreaterThanOrEqual(9);
     expect(sNine.max).toBe(6);
     expect(dashed(nine)).toHaveLength(1);
-    expect(Math.abs((dashed(nine)[0]?.points[0]?.[1] ?? NaN) - yOf(sNine, 9))).toBeLessThanOrEqual(
-      0.5,
-    );
+    expect(dashed(nine)[0]?.points[0]?.[1]).toBe(lineAt(sNine, 9));
   });
 });
 

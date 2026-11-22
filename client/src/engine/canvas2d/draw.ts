@@ -5,19 +5,24 @@
  * and the camera (#93) need: the value-label band width, the value domain and whether the band
  * was held.
  *
+ * Threshold lines (ADR-0022, #64 Part B §4.2): on line and bars, dashed lines in their state colour
+ * (from `StateEncoding`, T02-004) after the series, with labels that are stacked, truncated or
+ * gathered into an overflow chip but never dropped; the auto value domain includes them. A stat
+ * with series data draws a sparkline of its first series under the value (§4.3).
+ *
  * Value labels (T02-011 as amended by #93): the band is at least as wide as the widest compact
  * label of the unit (`minValueBand`). Under a held band (`LayerInput.band`), each tick label is
  * drawn in full when it fits, else in compact form, else whole inside the plot on a chip; the plot
  * rectangle then depends only on the held width.
  */
 import { font, radius, size, space } from '../../styles/tokens';
-import type { FrameData, HeatmapFrame, SeriesFrame } from '../../data/frames';
+import { statValue, type FrameData, type HeatmapFrame, type SeriesFrame } from '../../data/frames';
 import { compactSamples, formatCompact, formatValue, type Unit } from '../../i18n/format';
 import type { FrameSummary, HoverEvent, PlotRect, TimeWindow, ValueRange, VisSpec } from '../api';
 import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
-import { LABEL_HEIGHT, layoutPlot } from './layout';
+import { AXIS_FONT, LABEL_HEIGHT, layoutPlot, STAT_FONT } from './layout';
 import { rampIndex, seriesColourIndex, type ThemeColours } from './palette';
 import {
   barStats,
@@ -26,18 +31,22 @@ import {
   heatmapStats,
   lineStats,
   stackedTotals,
-  statValue,
   type Stats,
 } from './summary';
+import { drawThresholds, thresholdsOf, withThresholds } from './thresholdMark';
 import { timeTicks } from './timeTicks';
 import { valueTicks } from './valueTicks';
 
-/** Canvas fonts (plan #58 Appendix A §A.3). */
-export const AXIS_FONT = `${String(font.size.xs)}px ${font.family.mono}`;
-export const STAT_FONT = `${String(font.weight.semibold)} ${String(font.size.display)}px ${font.family.ui}`;
+/** Canvas fonts (plan #58 Appendix A §A.3), defined in `layout.ts`. */
+export { AXIS_FONT, STAT_FONT };
+/** The threshold domain and label layout (ADR-0022), defined in `thresholdMark.ts`. */
+export { layoutThresholdLabels, withThresholds } from './thresholdMark';
 
 /** The most series a frame draws (ADR-0014 §4). */
 export const MAX_SERIES = 500;
+
+/** The smallest stat frame that draws a sparkline under its value (ADR-0022): 104 CSS px. */
+export const SPARK_MIN_H = size['chart-sparkline'] + 2 * font.size.display + space['2'];
 
 export interface LayerInput {
   readonly ctx: Ctx2D;
@@ -386,14 +395,16 @@ const axisSummary = (i: LayerInput, a: ValueAxis): FrameSummary['valueAxis'] => 
 function lineModel(i: LayerInput, series: readonly SeriesFrame[]) {
   const shown = series.slice(0, MAX_SERIES);
   const stats = lineStats(shown);
-  const axis = valueAxis(i, stats.min ?? 0, stats.max ?? 0, i.spec.unit);
+  // The auto domain includes every finite threshold (§4.2); a pin (`valueRange`) wins.
+  const w = withThresholds(stats.min, stats.max, thresholdsOf(i.spec));
+  const axis = valueAxis(i, w.min, w.max, i.spec.unit);
   return { shown, stats, axis };
 }
 
 function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
   const { shown, stats, axis } = lineModel(i, series);
   const { plot, y, labels } = axis;
-  const summary = frameSummary(
+  const base = frameSummary(
     'line',
     i.window,
     plot,
@@ -408,14 +419,14 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
     series: shown,
     y,
   };
-  const model = {
+  const model = (summary: FrameSummary): LayerModel => ({
     summary,
     pick,
     labelW: axis.labelW,
     valueDomain: axis.domain,
     bandHeld: axis.held,
-  };
-  if (isPlotEmpty(plot)) return model;
+  });
+  if (isPlotEmpty(plot)) return model(base);
   drawAxes(i, plot, labels, true);
   clipped(i, plot, () => {
     for (const s of shown) {
@@ -430,8 +441,9 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
       );
     }
   });
+  const thresholdLabels = drawThresholds(i, plot, y, thresholdsOf(i.spec));
   drawChips(i, plot, labels);
-  return model;
+  return model({ ...base, thresholdLabels });
 }
 
 /**
@@ -513,7 +525,13 @@ function barsModel(
     values: Float64Array.from({ length: ts.length }, (_, t) => grid[t * c + k] ?? 0),
   }));
   const range = extent(stackedTotals(merged));
-  const axis = valueAxis(i, Math.min(range?.min ?? 0, 0), Math.max(range?.max ?? 0, 0), spec.unit);
+  // The post-merge stacked totals with 0, widened to every finite threshold (§4.2).
+  const w = withThresholds(
+    Math.min(range?.min ?? 0, 0),
+    Math.max(range?.max ?? 0, 0),
+    thresholdsOf(spec),
+  );
+  const axis = valueAxis(i, w.min, w.max, spec.unit);
   return { shown, ref, stats, ts, merged, lastEnd, axis };
 }
 
@@ -524,7 +542,7 @@ function drawBars(
 ): LayerModel {
   const { shown, ref, stats, ts, merged, lastEnd, axis } = barsModel(i, spec, series);
   const { plot, y, labels } = axis;
-  const summary = frameSummary(
+  const base = frameSummary(
     'bars',
     i.window,
     plot,
@@ -534,14 +552,14 @@ function drawBars(
     axisSummary(i, axis),
   );
   const pick: PickModel = { kind: 'bars', ref, series: shown, categoryLabel: spec.categoryLabel };
-  const model = {
+  const model = (summary: FrameSummary): LayerModel => ({
     summary,
     pick,
     labelW: axis.labelW,
     valueDomain: axis.domain,
     bandHeld: axis.held,
-  };
-  if (isPlotEmpty(plot)) return model;
+  });
+  if (isPlotEmpty(plot)) return model(base);
   drawAxes(i, plot, labels, true);
   clipped(i, plot, () => {
     for (let t = 0; t < ts.length; t++) {
@@ -558,8 +576,9 @@ function drawBars(
       });
     }
   });
+  const thresholdLabels = drawThresholds(i, plot, y, thresholdsOf(spec));
   drawChips(i, plot, labels);
-  return model;
+  return model({ ...base, thresholdLabels });
 }
 
 /** The heatmap's bucket-axis labels and the band they need (`+Inf` last when there is one). */
@@ -643,12 +662,65 @@ function drawStat(i: LayerInput): LayerModel {
     null,
   );
   const { ctx } = i;
+  const first = i.data.kind === 'series' ? i.data.series[0] : undefined;
+  const spark =
+    first !== undefined && i.cssH >= SPARK_MIN_H && finiteInWindow(first, i.window) >= 2
+      ? first
+      : null;
   ctx.font = STAT_FONT;
   ctx.fillStyle = i.colours.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(formatValue(v, i.spec.unit), i.cssW / 2, i.cssH / 2);
+  const valueY = spark === null ? i.cssH / 2 : (i.cssH - size['chart-sparkline'] - space['2']) / 2;
+  ctx.fillText(formatValue(v, i.spec.unit), i.cssW / 2, valueY);
+  if (spark !== null) {
+    drawSparkline(i, spark, {
+      x: space['3'],
+      y: i.cssH - space['2'] - size['chart-sparkline'],
+      width: i.cssW - 2 * space['3'],
+      height: size['chart-sparkline'],
+    });
+  }
   return { summary, pick: null, labelW: 0, valueDomain: null, bandHeld: false };
+}
+
+/** The finite values of `s` at times inside the window. */
+function finiteInWindow(s: SeriesFrame, w: TimeWindow): number {
+  let n = 0;
+  s.timestamps.forEach((t, k) => {
+    if (t >= w.fromMs && t <= w.toMs && Number.isFinite(s.values[k] ?? NaN)) n += 1;
+  });
+  return n;
+}
+
+/**
+ * The stat sparkline (§4.3): the series over the window in `r`, its finite min..max from the rect's
+ * bottom to its top (mid-height when they are equal), in the series colour; a non-finite value or
+ * a point outside the window breaks the path.
+ */
+function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
+  const e = extent(s.values);
+  if (e === null) return;
+  const { ctx, window: w } = i;
+  const x = (t: number): number => r.x + ((t - w.fromMs) / (w.toMs - w.fromMs)) * r.width;
+  const y = (v: number): number =>
+    e.max === e.min ? r.y + r.height / 2 : r.y + (1 - (v - e.min) / (e.max - e.min)) * r.height;
+  ctx.strokeStyle = i.colours.series[seriesColourIndex(s)] ?? '';
+  ctx.lineWidth = size['chart-line'];
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  let open = false;
+  s.timestamps.forEach((t, k) => {
+    const v = s.values[k] ?? NaN;
+    if (!Number.isFinite(v) || t < w.fromMs || t > w.toMs) {
+      open = false;
+      return;
+    }
+    if (open) ctx.lineTo(x(t), y(v));
+    else ctx.moveTo(x(t), y(v));
+    open = true;
+  });
+  ctx.stroke();
 }
 
 const seriesOf = (d: FrameData): readonly SeriesFrame[] => (d.kind === 'series' ? d.series : []);

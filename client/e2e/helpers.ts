@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/draw.ts';
+import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/layout.ts';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the suite. */
 export const T = Date.UTC(2026, 10, 19, 13, 3);

@@ -1,9 +1,11 @@
 /**
  * Chart colours from the generated tokens only (T01-010, T02-004). A series' colour is a function
  * of its own labels and key (VL-002, T02-005 as amended by #58): the Table 8-1a level colour for a
- * log-level series, else `key_hash mod 8`. State colours are never used for series (VL-003).
+ * log-level series, else `key_hash mod 8`. State colours are never used for series (VL-003): they
+ * reach the marks only through `StateEncoding` (threshold lines and labels, T02-004).
  */
 import { colour, sequentialRamp, seriesPalette } from '../../styles/tokens';
+import { StateEncoding, type State } from '../../theme/stateEncoding';
 import type { ThemeName } from '../api';
 
 /** Labels that carry a log level, in precedence order. */
@@ -54,8 +56,8 @@ export interface ThemeColours {
   text: string;
   series: readonly string[];
   ramp: readonly string[];
-  /** Threshold marks (stub). */
-  state: Readonly<Record<'ok' | 'watch' | 'degraded' | 'failing' | 'unknown', string>>;
+  /** Threshold lines and labels only: `StateEncoding[s].colour[t]` (T02-004, VL-003). */
+  state: Readonly<Record<State, string>>;
 }
 
 export function themeColours(t: ThemeName): ThemeColours {
@@ -70,7 +72,13 @@ export function themeColours(t: ThemeName): ThemeColours {
     text: c.text,
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
-    state: { ok: '', watch: '', degraded: '', failing: '', unknown: '' },
+    state: {
+      ok: StateEncoding.ok.colour[t],
+      watch: StateEncoding.watch.colour[t],
+      degraded: StateEncoding.degraded.colour[t],
+      failing: StateEncoding.failing.colour[t],
+      unknown: StateEncoding.unknown.colour[t],
+    },
   };
 }
 

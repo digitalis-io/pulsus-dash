@@ -107,11 +107,15 @@
   --radius: 6px;
   --size-avatar: 28px;
   --size-board-cols: 12px;
+  --size-board-legend-table-min: 240px;
   --size-board-panel-header: 40px;
   --size-board-row: 40px;
   --size-chart: 240px;
   --size-chart-brush-min: 4px;
+  --size-chart-dash: 5px;
+  --size-chart-dash-gap: 4px;
   --size-chart-line: 1.5px;
+  --size-chart-sparkline: 32px;
   --size-chart-stat: 120px;
   --size-chart-tick: 4px;
   --size-control: 32px;
