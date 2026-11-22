@@ -8,6 +8,7 @@
  */
 import { promMetadataQuery } from '../../../explore/promMetadata';
 import { suggestCache, windowBucket, type SuggestKind } from '../../suggestCache';
+import { minuteWindow, secondWindow, type LookupWindow } from '../lookupWindow';
 import type { LanguageDeps, PromSource } from '../types';
 
 /** All names: the prefix is filtered locally (T09-007). */
@@ -15,21 +16,9 @@ export const PROM_NAMES_LIMIT = 10_000;
 /** The BFF's default. */
 export const PROM_LOOKUP_LIMIT = 1_000;
 
-const MINUTE_MS = 60_000;
-const SECOND_MS = 1_000;
-
 export type PromSourceDeps = LanguageDeps;
 
-interface Window {
-  readonly fromMs: number;
-  readonly toMs: number;
-}
-
-function snapped(w: Window, unit: number, widen: boolean): Window {
-  const fromMs = Math.floor(w.fromMs / unit) * unit;
-  const toMs = Math.ceil(w.toMs / unit) * unit;
-  return { fromMs, toMs: widen && toMs <= fromMs ? fromMs + unit : toMs };
-}
+type Window = LookupWindow;
 
 const matchOf = (m: string | null) => (m === null ? {} : { match: [m] });
 
@@ -60,8 +49,8 @@ export function createPromSource(d: PromSourceDeps): PromSource {
     };
     return cache.get(g, parts, (signal) => load(w, signal)).catch(() => empty);
   }
-  const minutes = (w: Window) => snapped(w, MINUTE_MS, true);
-  const seconds = (w: Window) => snapped(w, SECOND_MS, false);
+  const minutes = minuteWindow;
+  const seconds = secondWindow;
   const none: readonly string[] = [];
 
   return {

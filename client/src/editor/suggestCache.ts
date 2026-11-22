@@ -6,6 +6,10 @@
  * Eviction never aborts. A generation counter, ended by a tenant switch or `clear()`, drops every
  * tracked call at once (callers reject `AbortError`, stuck requests included), and a call with an
  * ended token runs no `load`. Main-thread state only: every mutation is synchronous.
+ *
+ * By language (plan #66 Part A §3.9): the key holds the language. Supersession by kind is PromQL's
+ * only; a LogQL entry is never superseded by another key. A caller may pass a `signal`: an entry in
+ * flight is aborted when its last signalled caller aborts and no unsignalled caller holds it.
  */
 
 export const SUGGEST_MAX_KEYS = 2_000;
@@ -25,9 +29,9 @@ export interface SuggestKeyParts {
   readonly bucket: number;
 }
 
-/** `JSON.stringify([tenant, 'promql', kind, label, selector, bucket])`. */
+/** `JSON.stringify([tenant, lang, kind, label, selector, bucket])`. */
 export function suggestKey(p: SuggestKeyParts): string {
-  return JSON.stringify([p.tenant, 'promql', p.kind, p.label, p.selector, p.bucket]);
+  return JSON.stringify([p.tenant, p.lang, p.kind, p.label, p.selector, p.bucket]);
 }
 
 export function windowBucket(toMs: number): number {
@@ -54,6 +58,10 @@ interface Entry {
   readonly controller: AbortController;
   settledAt: number | null;
   dropped: boolean;
+  /** Signalled callers whose signal has not aborted (while in flight). */
+  holders: number;
+  /** An unsignalled caller holds it: no release aborts it. */
+  pinned: boolean;
 }
 
 const abortError = (): DOMException => new DOMException('Aborted', 'AbortError');
@@ -72,7 +80,7 @@ export class SuggestCache {
   private readonly entries = new Map<string, Entry>();
   /** Every unsettled, undropped call: held, evicted or tracked. */
   private readonly pending = new Set<Entry>();
-  /** The last lookup started per kind; not pruned by eviction. */
+  /** The last PromQL lookup started per kind; not pruned by eviction. */
   private readonly current = new Map<SuggestKind, Entry>();
   private retained: string | null = null;
   private gen: SuggestGeneration = 0;
@@ -85,26 +93,37 @@ export class SuggestCache {
 
   /**
    * The cached or in-flight promise for `p`, else `load(signal)`. Rejects as `load` does, or
-   * `AbortError` at once when the entry is dropped (superseded, generation ended), or at once
-   * without calling `load` when `g` is not the current generation or `p.tenant` not its tenant.
+   * `AbortError` at once when the entry is dropped (superseded, released, generation ended), or at
+   * once without calling `load` when `g` is not the current generation, `p.tenant` not its tenant
+   * or `signal` already aborted. `signal` is this caller's interest (see `hold`).
    */
   get<T>(
     g: SuggestGeneration,
     p: SuggestKeyParts,
     load: (signal: AbortSignal) => Promise<T>,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<T> {
-    if (g !== this.gen || p.tenant !== this.retained) return rejected<T>();
+    if (g !== this.gen || p.tenant !== this.retained || signal?.aborted === true) {
+      return rejected<T>();
+    }
+    const en = this.entryFor(p, load);
+    this.hold(en, signal);
+    return en.promise as Promise<T>;
+  }
+
+  private entryFor<T>(p: SuggestKeyParts, load: (signal: AbortSignal) => Promise<T>): Entry {
     const k = suggestKey(p);
     const t = this.now();
-    const c = this.current.get(p.kind);
+    // Supersession by kind is PromQL's (#63); a LogQL entry is released by its callers only.
+    const byKind = p.lang === 'promql';
+    const c = byKind ? this.current.get(p.kind) : undefined;
     if (c !== undefined && this.pending.has(c)) {
       if (c.key !== k) this.drop(c);
       else if (this.entries.get(k) !== c) {
         // Evicted while in flight: re-joined by its own key, as the most recent.
         this.entries.set(k, c);
         this.evict();
-        return c.promise as Promise<T>;
+        return c;
       }
     }
     const e = this.entries.get(k);
@@ -112,15 +131,38 @@ export class SuggestCache {
       if (this.pending.has(e) || (e.settledAt !== null && t - e.settledAt < this.ttlMs)) {
         this.entries.delete(k);
         this.entries.set(k, e);
-        return e.promise as Promise<T>;
+        return e;
       }
       this.entries.delete(k);
     }
     const en = this.start(k, p.kind, load);
     this.entries.set(k, en);
-    this.current.set(p.kind, en);
+    if (byKind) this.current.set(p.kind, en);
     this.evict();
-    return en.promise as Promise<T>;
+    return en;
+  }
+
+  /**
+   * A caller's interest in an entry in flight: no signal pins it; a signal holds it until it
+   * aborts, and the last holder's abort drops an unpinned entry (its request is aborted and its key
+   * removed, so nothing aborted is cached). A settled entry ignores signals.
+   */
+  private hold(en: Entry, signal: AbortSignal | undefined): void {
+    if (!this.pending.has(en)) return;
+    if (signal === undefined) {
+      en.pinned = true;
+      return;
+    }
+    en.holders += 1;
+    signal.addEventListener(
+      'abort',
+      () => {
+        if (!this.pending.has(en)) return;
+        en.holders -= 1;
+        if (en.holders === 0 && !en.pinned) this.drop(en);
+      },
+      { once: true },
+    );
   }
 
   /** An uncached call tracked like an in-flight entry: never shared or evicted; dropped when its generation ends. */
@@ -177,6 +219,8 @@ export class SuggestCache {
       controller: new AbortController(),
       settledAt: null,
       dropped: false,
+      holders: 0,
+      pinned: false,
     };
     this.pending.add(en);
     let raw: Promise<T>;
