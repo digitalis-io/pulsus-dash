@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-21 |
+| **Version** | 1.18-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -289,7 +289,8 @@ estate, §4.5):
 
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
 gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
-scripted room interactions, with the board editor first (#90). Until the reference lab exists, CI's
+scripted room interactions, with the board editor (#90) and chart gestures, wheel and drag on a
+board panel (#93) as its scenarios. Until the reference lab exists, CI's
 `e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
 fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
 
@@ -763,7 +764,7 @@ and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull
 | `bench:startup`, `bench:camera-transition`, `bench:memory-pressure` | merge | §4.3 | yes, from M-UI1 |
 | `bench:memory-heaviest` | nightly | < 1.5 GB | release blocker |
 | `bench:inp-rooms` | merge once the reference lab ((a), (b)) exists; until then CI's `e2e` Chromium leg runs it report-only (INP, count, slowest interaction) | INP ≤ 200 ms | yes once the lab exists (`INP_GATE=enforce`); until then not blocking |
-| `bench:rooms-long-tasks` (owner: [T08](T08-dom-component-kit.md) §7, PRF-005; `e2e/perf-rooms-long-tasks.spec.ts`; the board editor scenario first, #90) | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab ((a), (b)) exists | interim CI: `ciOver === 0`, no main-thread task over 50 ms wall with over 16 ms thread time (§4.3 trace check; a task without thread time counts); lab: no task over 16 ms wall between the first and last input (`LONG_TASK_GATE=enforce`) | interim CI check: yes, blocks merge now; 16 ms wall: yes once the lab exists (#68), pending until then |
+| `bench:rooms-long-tasks` (owner: [T08](T08-dom-component-kit.md) §7, PRF-005; `e2e/perf-rooms-long-tasks.spec.ts`; the board editor scenario, #90, and chart gestures, #93) | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab ((a), (b)) exists | interim CI: `ciOver === 0`, no main-thread task over 50 ms wall with over 16 ms thread time (§4.3 trace check; a task without thread time counts); lab: no task over 16 ms wall between the first and last input (`LONG_TASK_GATE=enforce`) | interim CI check: yes, blocks merge now; 16 ms wall: yes once the lab exists (#68), pending until then |
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
@@ -917,4 +918,5 @@ Meta-testing:
 | 1.14-rc | 2026-11-21 | #62: §7.1 adds `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`, `unit:decode-frames`, `unit:promql-step`, `unit:keyhash-corpus`, `unit:virtual-guard`, `unit:sanitise`, `unit:deadlines`, `unit:body-limits` and `ci:fake-image`; the lab gates `bench:promql-decode` and `bench:bff-overhead` (`REFERENCE_LAB=1`); `bench:cpu-instr` adds the BFF workloads W1 and W2 (cachegrind for Go); `ci:go-lint`'s `ci:depguard` self-test names `pulsusdb-only` and `pulsusdb-decoder` |
 | 1.15-rc | 2026-11-21 | #63 Part A: §7.1 adds `unit:explore-plan`, `unit:heatmap-buckets`, `unit:frame-plan`, `unit:series-rows`, `unit:explore-params` and the report-only `bench:frame-interim-heatmap`; `unit:autovis-table` states its v1 rows; `unit:columns` adds the missing merged heatmap cell; the `bench:frame-*` lab-gate row names the interim stand-ins and the before/after rule for interim draw-path changes |
 | 1.16-rc | 2026-11-21 | #63 Part A: `unit:explore-plan` states the rate window `max(4 × step, step + S, 4 × S)` (`S` the scrape interval, default 15 s, per binding later) in place of `4 × step`, with rows where 4 × S and 4 × step set the window |
-| 1.17-rc | 2026-11-21 | #65 Part A: §7.1 adds `unit:log-paging`, `unit:log-window`, `unit:log-decode`, `unit:log-member-order`, `unit:log-level`, `unit:logql-calls`, `unit:volume-compose`, `unit:volume-buffered`, `unit:log-categorized`, `unit:text-errors`, `unit:query-hash`, `unit:contract-window` and `itest:pulsusdb-contract` (with its `logql` subtest); `unit:virtual-guard` covers the LogQL inputs |
+| 1.17-rc | 2026-11-21 | #93: §4.3 chart-gesture scenario |
+| 1.18-rc | 2026-11-21 | #65 Part A: §7.1 adds `unit:log-paging`, `unit:log-window`, `unit:log-decode`, `unit:log-member-order`, `unit:log-level`, `unit:logql-calls`, `unit:volume-compose`, `unit:volume-buffered`, `unit:log-categorized`, `unit:text-errors`, `unit:query-hash`, `unit:contract-window` and `itest:pulsusdb-contract` (with its `logql` subtest); `unit:virtual-guard` covers the LogQL inputs |

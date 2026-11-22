@@ -334,6 +334,9 @@ export const messages = {
   'chart.issue.grid': 'category {key} does not share the bar time buckets',
   'chart.bucket.le': '≤ {bound}',
   'chart.bucket.gt': '> {bound}',
+  'chart.valueAxis.reset': 'Reset Y axis',
+  'chart.valueAxis.resetLabel': 'Reset Y axis: {title}',
+  'chart.valueAxis.pinned': 'Y axis fixed at {min} to {max}.',
 
   'state.ok': 'OK',
   'state.watch': 'Watch',

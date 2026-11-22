@@ -292,7 +292,7 @@ describe('engine', () => {
     expect(h.hover.at(-1)).toBeNull();
   });
 
-  it('brush: snaps the dragged window, ignores short drags, zooms out on double-click', () => {
+  it('box zoom: right drag snaps the dragged window, ignores short drags, zooms out on double-click', () => {
     const h = harness(Canvas2DEngine);
     const from = Date.UTC(2026, 10, 19, 12);
     const to = Date.UTC(2026, 10, 19, 13);
@@ -308,15 +308,15 @@ describe('engine', () => {
     expect(brushSnapUnit(300)).toBe(5_000);
     const x = (ms: number): number => plot.x + ((ms - from) / (to - from)) * plot.width;
     const y = plot.y + plot.height / 2;
-    pointer(h.canvas, 'pointerdown', x(from + 20 * 60_000 + 1_200), y, { buttons: 1 });
-    pointer(h.canvas, 'pointermove', x(from + 22 * 60_000), y, { buttons: 1 });
-    pointer(h.canvas, 'pointerup', x(from + 24 * 60_000 + 58_900), y);
+    pointer(h.canvas, 'pointerdown', x(from + 20 * 60_000 + 1_200), y, { button: 2, buttons: 2 });
+    pointer(h.canvas, 'pointermove', x(from + 22 * 60_000), y, { button: 2, buttons: 2 });
+    pointer(h.canvas, 'pointerup', x(from + 24 * 60_000 + 58_900), y, { button: 2, buttons: 2 });
     h.flush();
     expect(h.brush).toEqual([
       { fromMs: from + 20 * 60_000, toMs: from + 25 * 60_000, gesture: 'drag' },
     ]);
-    pointer(h.canvas, 'pointerdown', 500, y, { buttons: 1 });
-    pointer(h.canvas, 'pointerup', 503, y);
+    pointer(h.canvas, 'pointerdown', 500, y, { button: 2, buttons: 2 });
+    pointer(h.canvas, 'pointerup', 503, y, { button: 2, buttons: 2 });
     h.flush();
     expect(h.brush).toHaveLength(1);
     pointer(h.canvas, 'dblclick', x(from + 30 * 60_000), y);
@@ -373,7 +373,7 @@ describe('engine', () => {
     expect(h.queued()).toBe(1);
     h.frame.dispose();
     expect(h.queued()).toBe(0);
-    expect(onCanvas).toHaveBeenCalledTimes(6);
+    expect(onCanvas).toHaveBeenCalledTimes(12);
     expect(onTarget).toHaveBeenCalledTimes(2);
     expect(h.canvas.width).toBe(0);
     h.layer().clearOps();
