@@ -425,21 +425,22 @@ export async function boardLoops(s: Script): Promise<void> {
     // The Query field (plan #64 §3.8, T09-004): the picker, the PromQL editor and its Run keys,
     // Run query, and Esc from the editor to Run query. The picker types the metric names (typed
     // identifiers would open the completion list, which Explore's loop covers).
-    const pick = async (): Promise<void> => {
-      // The list opens on focus; Escape closes it, ArrowDown reopens it, Enter picks.
+    /** Picks the picker's option `i` (0-based), as Explore's loop does (L32). */
+    const pick = async (i: number): Promise<void> => {
+      // The list opens on focus; Escape closes it, ArrowDown reopens it on its first option.
       await s.focus('combobox "Metric"');
       await press('Escape');
-      await press('ArrowDown');
+      for (let k = 0; k <= i; k++) await press('ArrowDown');
       await press('Enter');
       await expect(
         editor.getByText('Press Shift+Enter or Run query to update the preview.'),
       ).toBeVisible();
     };
-    await pick();
+    for (let i = 0; i < 5; i++) await pick(i);
     await s.focus('textbox "Query"');
     await press('Shift+Enter');
     await expect(editor.getByText('Press Shift+Enter or Run query')).toHaveCount(0);
-    await pick();
+    await pick(0);
     await s.on('button "Run query"');
     await expect(editor.getByText('Press Shift+Enter or Run query')).toHaveCount(0);
     await s.focus('textbox "Query"');
