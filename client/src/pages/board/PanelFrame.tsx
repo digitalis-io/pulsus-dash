@@ -5,6 +5,9 @@
  * handle in Edit mode. Tools stay in the tab order and show on hover and focus. The panel runs its
  * query through `usePanelRun` while it is in the viewport or at full screen (T07-012); a refetch
  * shows the shimmer after 300 ms (VL-015). `PanelPreview` is the panel editor's live preview (#90).
+ * A line or bars body has its legend below the chart (a table, or compact on short panels) with
+ * local isolation and the threshold highlights; a stat body has the state chip and the threshold
+ * text (plan #64 Part B §3.9, §4.4, §4.5).
  */
 import {
   forwardRef,
@@ -16,6 +19,7 @@ import {
   useRef,
   useState,
   type ForwardedRef,
+  type ReactNode,
   type RefCallback,
 } from 'react';
 import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-components';
@@ -24,11 +28,22 @@ import type { PanelSpec } from '../../api/types';
 import { BoardRunContext } from '../../boards/boardRunContext';
 import { exploreHref } from '../../boards/exploreLink';
 import type { LayoutOp } from '../../boards/layout';
-import { panelView, type PanelView } from '../../boards/panelRun';
+import {
+  LEGEND_ROWS,
+  legendRows,
+  panelFrame,
+  panelView,
+  type PanelView,
+} from '../../boards/panelRun';
+import { useLegendLayout } from '../../boards/useLegendLayout';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
 import { ChartFrame, type FrameSize } from '../../charts/ChartFrame';
-import type { Unit } from '../../engine/api';
+import type { SeriesTableProps } from '../../charts/SeriesTable';
+import { SeriesTable } from '../../charts/SeriesTable';
+import { statValue } from '../../data/frames';
+import type { ThresholdState, Unit } from '../../engine/api';
+import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { useElementWidth } from '../../explore/useElementWidth';
 import { t } from '../../i18n/t';
@@ -39,8 +54,18 @@ import { Icon } from '../../kit/Icon';
 import { IconButton } from '../../kit/IconButton';
 import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
+import { StateGlyph } from '../../kit/StateGlyph';
 import { useTimeContext } from '../../state/useTimeContext';
+import { StateEncoding } from '../../theme/stateEncoding';
+import {
+  crossed,
+  displayText,
+  nextStep,
+  stateOf as thresholdState,
+  type Thresholds,
+} from '../../vis/thresholds';
 import styles from './Board.module.css';
+import { LegendCompact } from './LegendCompact';
 import { PanelFullScreen } from './PanelFullScreen';
 import { PanelNotices } from './PanelNotices';
 
@@ -96,9 +121,67 @@ function stateOf(v: PanelView): string {
 /** The host's last non-empty size, held above `ChartFrame` across its unmounts (#90). */
 export type SizeMemo = { current: FrameSize | null };
 
+type FrameView = Extract<PanelView, { kind: 'frame' }>;
+
+/** A legend cell's highlight: watch, degraded or failing; ok, unknown and none show none (§4.5). */
+function legendState(t: Thresholds, v: number | null): ThresholdState | null {
+  const s = thresholdState(t, v);
+  return s === 'watch' || s === 'degraded' || s === 'failing' ? s : null;
+}
+
+/** The stat tile's chip state and the step its threshold text shows (§4.4). */
+function statState(t: Thresholds, view: FrameView) {
+  const raw = statValue(view.data);
+  const v = Number.isFinite(raw) ? raw : null;
+  const hit = v === null ? null : crossed(t, v);
+  return {
+    chip: v === null ? 'unknown' : (hit?.state ?? 'ok'),
+    hit,
+    step: hit ?? nextStep(t, v),
+  } as const;
+}
+
+/** The stat tile (§3.9, §4.4): the state chip, the chart and the threshold text. */
+function StatStack({
+  t,
+  view,
+  chart,
+}: {
+  t: Thresholds | null;
+  view: FrameView;
+  chart: ReactNode;
+}) {
+  const s = t === null ? null : statState(t, view);
+  return (
+    <div className={cx(styles['statStack'])} data-stat-stack="">
+      {s !== null && (
+        <div className={cx(styles['statChip'])} data-stat-chip="" data-state={s.chip}>
+          <StateGlyph state={s.chip} />
+        </div>
+      )}
+      <div className={cx(styles['chartCell'])}>{chart}</div>
+      {t !== null && s?.step != null && (
+        <p
+          className={cx(
+            styles['statThreshold'],
+            s.hit === null ? undefined : StateEncoding[s.hit.state].className,
+          )}
+          data-stat-threshold=""
+          data-crossed={s.hit === null ? undefined : ''}
+        >
+          <span aria-hidden="true">{StateEncoding[s.step.state].glyph}</span>{' '}
+          {displayText(t, s.step, view.spec.unit)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * A chart frame titled with the panel's current title (a rename shows at once). It shows the
  * panel's Loading until the engine has drawn it, and a new frame is sized from `sizeMemo` (#90).
+ * Line and bars stack the legend under the chart; stat stacks the chip, the chart and the
+ * threshold text (§3.9). The isolation and the legend sort are this instance's own, never saved.
  */
 function PanelChart({
   title,
@@ -106,18 +189,62 @@ function PanelChart({
   sizeMemo,
 }: {
   title: string;
-  view: Extract<PanelView, { kind: 'frame' }>;
+  view: FrameView;
   sizeMemo: SizeMemo | undefined;
 }) {
-  const spec = useMemo(() => ({ ...view.spec, title }), [view.spec, title]);
-  return (
+  const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [stackRef, layout] = useLegendLayout();
+  const rows = legendRows(view.result);
+  // A new result without the isolated series shows all again.
+  const isolation =
+    isolatedKey !== null && rows.some((r) => r.key === isolatedKey) ? isolatedKey : null;
+  const frame = useMemo(() => panelFrame(view, isolation), [view, isolation]);
+  const spec = useMemo(() => ({ ...frame.spec, title }), [frame.spec, title]);
+  const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
+  const chart = (
     <ChartFrame
       fill
       spec={spec}
-      data={view.data}
+      data={frame.data}
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
       {...(sizeMemo === undefined ? {} : { sizeMemo })}
     />
+  );
+  if (view.vis === 'heatmap') return chart;
+  if (view.vis === 'stat') return <StatStack t={view.thresholds} view={view} chart={chart} />;
+  const th = view.thresholds;
+  const table: SeriesTableProps = {
+    caption: t('panel.legend.caption'),
+    columns: ['mean', 'max', 'last'],
+    maxRows: LEGEND_ROWS,
+    swatches: true,
+    onIsolate: (key) => {
+      setIsolatedKey(toggleIsolation(isolation, key));
+    },
+    ...(th === null ? {} : { cellState: (v: number | null) => legendState(th, v) }),
+    sort,
+    onSort: (c) => {
+      setSort((s) => nextSort(s, c));
+    },
+    unit: spec.unit,
+    rows: sorted,
+    total: rows.length,
+    isolatedKey: isolation,
+  };
+  const legend = view.legend === 'table' && rows.length > 0;
+  return (
+    <div ref={stackRef} className={cx(styles['frameStack'])} data-legend={view.legend}>
+      <div className={cx(styles['chartCell'])}>{chart}</div>
+      {legend &&
+        (layout === 'table' ? (
+          <div className={cx(styles['legend'])} data-panel-legend="table">
+            <SeriesTable {...table} />
+          </div>
+        ) : (
+          <LegendCompact table={table} />
+        ))}
+    </div>
   );
 }
 

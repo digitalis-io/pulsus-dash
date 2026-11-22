@@ -2,16 +2,20 @@
  * The board panel run's query key and what a panel shows (plan #64 §3.1, §4.2). The key carries the
  * inputs the panel sends (ADR-0021: never a planned text) and, outside its head, the step and the
  * resolved window, so a time change, a zoom or a relative refresh is a new key whose placeholder is
- * the previous result (§4.3).
+ * the previous result (§4.3). A frame view carries the panel's thresholds (as seam lines on line and
+ * bars, ADR-0022) and legend mode, and its result for the legend rows and local isolation (plan
+ * #64 Part B §3.8).
  */
 import type { PanelSpec } from '../api/types';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
 import type { VisKind, VisSpec } from '../engine/api';
+import { seriesRows, type SeriesRow } from '../explore/seriesRows';
 import { errorView, refusalText } from '../explore/statusText';
 import { t } from '../i18n/t';
 import { autoVis, chooseVis, type ExploreResult } from '../vis/autovis';
 import { framePlan, type FramePlan } from '../vis/framePlan';
+import { thresholdLines, type Thresholds } from '../vis/thresholds';
 import type { PanelRun } from './usePanelRun';
 
 export interface Resolved {
@@ -32,10 +36,21 @@ export type PanelView =
     }
   | {
       readonly kind: 'frame';
+      /** Line and bars: with `thresholds` = `thresholdLines(…, spec.unit)` when the panel has them. */
       readonly spec: VisSpec;
       readonly data: FrameData;
       readonly vis: VisKind;
+      /** For the legend rows and local isolation. */
+      readonly result: ExploreResult;
+      readonly rateApplied: boolean;
+      /** `panel.vis.thresholds ?? null`. */
+      readonly thresholds: Thresholds | null;
+      /** `panel.vis.legend?.mode ?? 'table'`. */
+      readonly legend: 'table' | 'hidden';
     };
+
+/** The most rows a panel legend shows (plan #64 Part B §4.5). */
+export const LEGEND_ROWS = 50;
 
 export type PanelState =
   | 'empty'
@@ -97,9 +112,9 @@ export function positionText(text: string, diagnostics: readonly Diagnostic[]): 
 }
 
 /**
- * `framePlan` per result, vis and rate (a heatmap's buckets are not cheap): a panel's remounts
- * (the Edit grid, full screen) and the preview reuse the plan of the same result. The title is the
- * spec's only per-call part.
+ * `framePlan` per result, vis, rate and isolated series (a heatmap's buckets are not cheap): a
+ * panel's remounts (the Edit grid, full screen) and the preview reuse the plan of the same result.
+ * The title is the spec's only per-call part.
  */
 const plans = new WeakMap<ExploreResult, Map<string, FramePlan>>();
 
@@ -108,19 +123,54 @@ function cachedPlan(
   r: ExploreResult,
   rateApplied: boolean,
   title: string,
+  isolatedKey: string | null = null,
 ): FramePlan {
   let byVis = plans.get(r);
   if (byVis === undefined) {
     byVis = new Map();
     plans.set(r, byVis);
   }
-  const k = `${vis}|${String(rateApplied)}`;
+  const k = `${vis}|${String(rateApplied)}|${isolatedKey ?? ''}`;
   let plan = byVis.get(k);
   if (plan === undefined) {
-    plan = framePlan(vis, r, { isolatedKey: null, title: '', rateApplied });
+    plan = framePlan(vis, r, { isolatedKey, title: '', rateApplied });
     byVis.set(k, plan);
   }
   return plan.spec === null ? plan : { ...plan, spec: { ...plan.spec, title } };
+}
+
+/** The panel's threshold lines on a line or bars spec (ADR-0022); other specs as they are. */
+function withThresholds(spec: VisSpec, t: Thresholds | null): VisSpec {
+  if (t === null || (spec.kind !== 'line' && spec.kind !== 'bars')) return spec;
+  return { ...spec, thresholds: thresholdLines(t, spec.unit) };
+}
+
+type FrameView = Extract<PanelView, { kind: 'frame' }>;
+
+/**
+ * The frame with `key` isolated (framePlan's isolation, cached per result, vis, rate and key);
+ * `view` itself when key is null. Thresholds are carried over.
+ */
+export function panelFrame(
+  v: FrameView,
+  key: string | null,
+): { readonly spec: VisSpec; readonly data: FrameData } {
+  if (key === null) return v;
+  const plan = cachedPlan(v.vis, v.result, v.rateApplied, v.spec.title, key);
+  if (plan.spec === null || plan.data === null) return v;
+  return { spec: withThresholds(plan.spec, v.thresholds), data: plan.data };
+}
+
+const rowsOf = new WeakMap<ExploreResult, readonly SeriesRow[]>();
+
+/** seriesRows(result), cached per result (WeakMap). */
+export function legendRows(r: ExploreResult): readonly SeriesRow[] {
+  let rows = rowsOf.get(r);
+  if (rows === undefined) {
+    rows = seriesRows(r);
+    rowsOf.set(r, rows);
+  }
+  return rows;
 }
 
 const message = (state: PanelState, text: string): PanelView => ({
@@ -129,7 +179,10 @@ const message = (state: PanelState, text: string): PanelView => ({
   text,
 });
 
-/** Pure: §4.2's table, first match. `title` is the panel title (`panelTitle`). */
+/**
+ * Pure: §4.2's table, first match. `panelVis` is the panel's `vis` (its kind, thresholds and
+ * legend); `title` is the panel title (`panelTitle`).
+ */
 export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: string): PanelView {
   const vis = panelVis.kind;
   switch (run.blocked) {
@@ -177,5 +230,15 @@ export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: stri
     return message('tooManyTimestamps', t('explore.vis.tooManyTimestamps'));
   }
   if (plan.notice === 'string') return message('string', t('explore.result.string', { value: '' }));
-  return { kind: 'frame', spec: plan.spec, data: plan.data, vis: chosen };
+  const thresholds = panelVis.thresholds ?? null;
+  return {
+    kind: 'frame',
+    spec: withThresholds(plan.spec, thresholds),
+    data: plan.data,
+    vis: chosen,
+    result: r,
+    rateApplied: o.planned.rateApplied,
+    thresholds,
+    legend: panelVis.legend?.mode ?? 'table',
+  };
 }

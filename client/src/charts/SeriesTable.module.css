@@ -1,0 +1,203 @@
+/* The series table (plan #63 Part C C.2), moved from Explore for the board legend (#64 Part B
+   B.2): Explore's results and board panel legends. */
+.tableWrap {
+  max-height: calc(var(--space-16) * 5);
+  overflow: auto;
+}
+
+.tableWrap:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table caption {
+  padding: var(--space-1) 0;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-1);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+}
+
+.table th.numeric,
+.num {
+  text-align: right;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: inherit;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--size-target-min);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: inherit;
+}
+
+.th {
+  text-align: left;
+}
+
+.sortButton:focus-visible,
+.rowButton:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(0px - var(--size-focus-ring));
+}
+
+.ascending {
+  rotate: 180deg;
+}
+
+.unsorted {
+  visibility: hidden;
+}
+
+.table tr {
+  position: relative;
+  height: var(--space-8);
+}
+
+.table tr + tr {
+  border-top: var(--border-hairline) solid var(--hairline);
+}
+
+.table tr[data-dimmed] {
+  color: var(--text-muted);
+}
+
+.table td {
+  padding: 0 var(--space-2);
+}
+
+.seriesCell {
+  max-width: 0;
+  width: 100%;
+}
+
+.rowButton,
+.rowText {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--size-target-min);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rowButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+}
+
+.rowButton::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+}
+
+.rowButton[aria-pressed='true'] {
+  font-weight: var(--font-weight-medium);
+}
+
+.rowName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.swatch1,
+.swatch2,
+.swatch3,
+.swatch4,
+.swatch5,
+.swatch6,
+.swatch7,
+.swatch8 {
+  flex: none;
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: var(--radius);
+}
+
+.swatch1 {
+  background: var(--series-1);
+}
+
+.swatch2 {
+  background: var(--series-2);
+}
+
+.swatch3 {
+  background: var(--series-3);
+}
+
+.swatch4 {
+  background: var(--series-4);
+}
+
+.swatch5 {
+  background: var(--series-5);
+}
+
+.swatch6 {
+  background: var(--series-6);
+}
+
+.swatch7 {
+  background: var(--series-7);
+}
+
+.swatch8 {
+  background: var(--series-8);
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.footer {
+  margin: 0;
+  padding: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* A cell beyond a panel threshold (#64 Part B §3.6): its state colour, with the glyph and the
+   hidden state name beside the value (VIZ-067). */
+.stateCell {
+  color: var(--state-colour);
+}
+
+.srOnly {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

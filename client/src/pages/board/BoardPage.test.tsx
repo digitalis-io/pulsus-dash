@@ -1128,11 +1128,18 @@ describe('panel editor dialog', () => {
           .map((c) => (c.args[0] as { kind: string }).kind),
       );
     const pendingShown = (): boolean => preview().querySelector('[data-chart-pending]') !== null;
-    /** The preview shows a chart and no `PanelBody` message. */
+    /**
+     * The preview shows a chart and no `PanelBody` message: the frame, or the stack of the chart
+     * with its legend (line, bars) or its state chip and threshold text (stat; #64 Part B §3.9).
+     */
     const chartOnly = (): void => {
       const kids = [...previewHost().children];
       expect(kids).toHaveLength(1);
-      expect(kids[0]?.matches('[data-chart-frame]')).toBe(true);
+      const host = kids[0];
+      const chart = host?.matches('[data-legend], [data-stat-stack]')
+        ? host.querySelector(':scope > div > [data-chart-frame]')
+        : host;
+      expect(chart?.matches('[data-chart-frame]')).toBe(true);
     };
     /** Request rate's data drawn as `kind`, from its first call (a vis change is a redraw). */
     const firstCallData = async (kind: VisKind): Promise<FrameData> => {

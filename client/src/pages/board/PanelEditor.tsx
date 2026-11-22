@@ -8,14 +8,17 @@
  * the save status is mirrored at its foot. For PromQL the Query field is the PromQL editor with the
  * metric picker (plan #64 §3.8, A.10): the text goes to the draft on every change and runs on Run,
  * the Run keys or leaving the field; the dialog owns the preview's run, which shares the board
- * panel's key (the run text and the panel's width).
+ * panel's key (the run text and the panel's width). After Visualisation come Thresholds and Legend
+ * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
+ * them. They change the spec, not the query key: the preview reruns nothing.
  */
 import { useMemo } from 'react';
 import type { FieldError, PanelSpec, PanelVisKind, QueryLang } from '../../api/types';
+import { panelView } from '../../boards/panelRun';
 import { fieldMessage } from '../../boards/fieldMessages';
 import { usePanelWidth } from '../../boards/panelWidths';
 import { usePanelRun } from '../../boards/usePanelRun';
-import type { VisKind } from '../../engine/api';
+import type { Unit, VisKind } from '../../engine/api';
 import { useElementWidth } from '../../explore/useElementWidth';
 import { t, type MessageId } from '../../i18n/t';
 import { Button } from '../../kit/Button';
@@ -28,6 +31,7 @@ import { autoVis } from '../../vis/autovis';
 import styles from './Board.module.css';
 import { PanelPreview } from './PanelFrame';
 import { PanelQueryField } from './PanelQueryField';
+import { ThresholdsField } from './ThresholdsField';
 
 const LANGS: readonly { id: QueryLang; label: MessageId }[] = [
   { id: 'promql', label: 'editor.lang.promql' },
@@ -40,6 +44,18 @@ const VIS_LABELS: Readonly<Record<VisKind, MessageId>> = {
   heatmap: 'editor.vis.heatmap',
   stat: 'editor.vis.stat',
 };
+
+const LEGENDS: readonly { id: 'table' | 'hidden'; label: MessageId }[] = [
+  { id: 'table', label: 'editor.legend.table' },
+  { id: 'hidden', label: 'editor.legend.hidden' },
+];
+
+const NO_UNIT: Unit = { kind: 'none' };
+
+/** `vis` without the member `key` (absent, not undefined: the saved spec has no such key). */
+function without(vis: PanelSpec['vis'], key: 'thresholds' | 'legend'): PanelSpec['vis'] {
+  return Object.fromEntries(Object.entries(vis).filter(([k]) => k !== key)) as PanelSpec['vis'];
+}
 
 const KINDS: readonly { id: PanelVisKind; label: MessageId }[] = [
   { id: 'auto', label: 'editor.vis.auto' },
@@ -97,6 +113,15 @@ export function PanelEditor({
     widthPx: shared ?? ownWidth,
   });
   const outcome = run.outcome;
+  // The preview frame's unit, for the threshold label placeholders.
+  const unit = useMemo(() => {
+    const v = panelView(run, panel.vis, '');
+    return v.kind === 'frame' ? v.spec.unit : NO_UNIT;
+  }, [run, panel.vis]);
+  // Every vis edit: the next vis, built from `panel.vis` by spread.
+  const patchVis = (next: PanelSpec['vis']): void => {
+    onChange({ vis: next });
+  };
   const autoLabel = useMemo(() => {
     const vis =
       outcome === null
@@ -178,11 +203,42 @@ export function PanelEditor({
               label: k.id === 'auto' ? autoLabel : t(k.label),
             }))}
             onChange={(kind) => {
-              onChange({ vis: { kind } });
+              patchVis({ ...panel.vis, kind });
             }}
             error={errorAt('/vis/kind')}
             isDisabled={readOnly}
           />
+          <div className={cx(styles['editorWide'])}>
+            <ThresholdsField
+              value={panel.vis.thresholds}
+              onChange={(thresholds) => {
+                patchVis(
+                  thresholds === undefined
+                    ? without(panel.vis, 'thresholds')
+                    : { ...panel.vis, thresholds },
+                );
+              }}
+              errorAt={(suffix) => errorAt(`/vis/thresholds${suffix}`)}
+              unit={unit}
+              readOnly={readOnly}
+            />
+          </div>
+          <div className={cx(styles['editorWide'])}>
+            <Select
+              label={t('editor.legend')}
+              value={panel.vis.legend?.mode ?? 'table'}
+              options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
+              onChange={(mode) => {
+                patchVis(
+                  mode === 'hidden'
+                    ? { ...panel.vis, legend: { mode } }
+                    : without(panel.vis, 'legend'),
+                );
+              }}
+              error={errorAt('/vis/legend/mode')}
+              isDisabled={readOnly}
+            />
+          </div>
         </div>
         <div className={cx(styles['editorActions'])}>
           <Button onPress={onRemove} isDisabled={readOnly}>

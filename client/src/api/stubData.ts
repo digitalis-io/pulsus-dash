@@ -9,8 +9,10 @@ function panel(
   text: string,
   kind: PanelSpec['vis']['kind'],
   [x, y, w, h]: readonly [number, number, number, number],
+  /** More of the panel's `vis` (thresholds, legend; #64 Part B B.9). */
+  vis: Omit<PanelSpec['vis'], 'kind'> = {},
 ): PanelSpec {
-  return { id, title, grid: { x, y, w, h }, query: { lang, text }, vis: { kind } };
+  return { id, title, grid: { x, y, w, h }, query: { lang, text }, vis: { kind, ...vis } };
 }
 
 const EDGE_TITLE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
@@ -48,6 +50,15 @@ export const defaultSeed: StubSeed = {
             'sum(rate(http_requests_total[5m]))',
             'line',
             [0, 0, 6, 8],
+            {
+              thresholds: {
+                direction: 'above',
+                steps: [
+                  { value: 1500, state: 'watch', label: '' },
+                  { value: 2500, state: 'degraded', label: 'Capacity' },
+                ],
+              },
+            },
           ),
           panel(
             'p-2',
@@ -56,6 +67,15 @@ export const defaultSeed: StubSeed = {
             'sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
             'stat',
             [6, 0, 6, 8],
+            {
+              thresholds: {
+                direction: 'above',
+                steps: [
+                  { value: 0.01, state: 'degraded', label: '' },
+                  { value: 0.05, state: 'failing', label: 'SLO breach' },
+                ],
+              },
+            },
           ),
           panel('p-3', 'Errors', 'logql', '{app="api"} |= "error"', 'logs', [0, 8, 12, 10]),
         ],

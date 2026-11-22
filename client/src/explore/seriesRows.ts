@@ -1,6 +1,7 @@
 /**
  * The series table's rows (plan #63 §4.3; SRF-031 subset): one row per series in response order,
- * with its colour, last and max; sorting and the isolation toggle. The page renders them (Part C).
+ * with its colour, mean, last and max (mean by #64 Part B for the board legend); sorting and the
+ * isolation toggle. Explore and the board legend render them (`charts/SeriesTable`).
  */
 import { seriesName } from '../data/frames';
 import { MAX_SERIES } from '../engine/canvas2d/Canvas2DEngine';
@@ -16,7 +17,7 @@ export interface SeriesRow {
   readonly last: number | null;
   /** The largest non-NaN value (±Inf included); `null` when none. */
   readonly max: number | null;
-  /** Stub. */
+  /** The mean of the non-NaN values (±Inf included); `null` when none or when it is NaN. */
   readonly mean: number | null;
 }
 
@@ -43,7 +44,7 @@ export function seriesRows(r: ExploreResult): SeriesRow[] {
           colourIndex: seriesColourIndex(scalarSeries(r.scalar)),
           last: v,
           max: v,
-          mean: null,
+          mean: v,
         },
       ];
     }
@@ -51,18 +52,23 @@ export function seriesRows(r: ExploreResult): SeriesRow[] {
       return r.series.map((s) => {
         let last: number | null = null;
         let max: number | null = null;
+        let sum = 0;
+        let n = 0;
         for (const v of s.values) {
           if (Number.isNaN(v)) continue;
           last = v;
           if (max === null || v > max) max = v;
+          sum += v;
+          n += 1;
         }
+        const mean = n === 0 || Number.isNaN(sum / n) ? null : sum / n;
         return {
           key: s.key,
           name: seriesName(s.labels),
           colourIndex: seriesColourIndex(s),
           last,
           max,
-          mean: null,
+          mean,
         };
       });
   }
@@ -87,7 +93,7 @@ export function sortRows(rows: readonly SeriesRow[], s: SortState | null): Serie
   );
 }
 
-/** A new column sorts `series` ascending and `last`, `max` descending; the same one flips. */
+/** A new column sorts `series` ascending and `mean`, `last`, `max` descending; the same one flips. */
 export function nextSort(current: SortState | null, column: SortColumn): SortState {
   if (current?.column === column) {
     return {

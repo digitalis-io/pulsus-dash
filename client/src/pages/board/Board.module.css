@@ -533,3 +533,148 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Legends, thresholds and stat tiles (#64 Part B B.2). A line or bars body is the chart over its
+   legend; a stat body is the state chip, the chart and the threshold text. */
+.frameStack,
+.statStack {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+}
+
+.frameStack {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  container-type: size;
+}
+
+.statStack {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--space-1);
+}
+
+.chartCell {
+  display: grid;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* From 240 px of stack: the table, at most 40 % of the stack, scrolling. */
+.legend {
+  max-height: 40%;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* Below 240 px: swatch, name and last per series, at most two target rows, and the full table in
+   a popover. */
+.legendCompact {
+  display: flex;
+  gap: var(--space-2);
+  align-items: start;
+  min-height: 0;
+}
+
+.legendList {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(calc(2 * var(--size-target-min)), 40cqh);
+  overflow-y: auto;
+}
+
+.legendItem {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  min-height: var(--size-target-min);
+  max-width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-xs);
+}
+
+.legendItem[aria-pressed='true'] {
+  font-weight: var(--font-weight-medium);
+}
+
+.legendItem:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.legendName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: calc(var(--space-16) * 3);
+}
+
+/* The compact legend's full table. */
+.legendPopover {
+  max-width: min(calc(var(--space-16) * 10), calc(100vw - 2 * var(--space-3)));
+}
+
+.statChip {
+  justify-self: end;
+}
+
+.statThreshold {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.statThreshold[data-crossed] {
+  color: var(--state-colour);
+}
+
+/* The panel editor's Thresholds (#64 Part B §3.10): one row per step. */
+.thresholds {
+  grid-column: 1 / -1;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.thresholdRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.thresholdsTitle {
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.thresholdsActions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.thresholdsNote,
+.thresholdsError {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.thresholdsError {
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}

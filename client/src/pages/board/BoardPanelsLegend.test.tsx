@@ -167,7 +167,10 @@ describe('board legend (#64 Part B §4.5)', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
-    expect(button).toHaveFocus();
+    // React Aria returns focus to the trigger in the next animation frame.
+    await waitFor(() => {
+      expect(button).toHaveFocus();
+    });
   });
 
   it('table layout from 240 px', async () => {
