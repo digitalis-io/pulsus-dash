@@ -210,6 +210,9 @@ export const messages = {
   'explore.logs.title': 'Logs',
   'explore.logs.empty': 'No logs query yet',
   'explore.logs.emptyDetail': 'The LogQL query editor arrives in a later release.',
+  'explore.error.positionUnknown': ' (position unknown)',
+  'explore.error.queryTooLarge':
+    'This query is over 128 KB. Completion is paused, and it cannot be run until it is shorter.',
 
   'admin.title': 'Admin',
   'admin.dataSources': 'Data sources',
