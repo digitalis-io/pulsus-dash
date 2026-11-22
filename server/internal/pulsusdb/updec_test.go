@@ -1,6 +1,7 @@
 package pulsusdb
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -289,4 +290,60 @@ func TestUpdecSample(t *testing.T) {
 	}
 	_, err = sample(`1.5`)
 	wantProtocol(t, "Sample(number token)", err)
+}
+
+// tokens lists the token kinds and decoded texts of a document.
+func tokens(t *testing.T, doc []byte) []string {
+	t.Helper()
+	d := newUpstreamDecoder(bytes.NewReader(doc), redactor{})
+	var out []string
+	for {
+		k, err := d.Next()
+		if err != nil {
+			t.Fatalf("decode %q: %v", doc, err)
+		}
+		if k == tokEOF {
+			return out
+		}
+		n, _ := d.Number()
+		out = append(out, fmt.Sprintf("%d|%s|%s|%v", k, d.String(), n, d.Bool()))
+	}
+}
+
+// unit:log-member-order row 7: CaptureValue re-encodes a value compactly, so a second decoder
+// sees the same tokens.
+func TestCaptureValueRoundTrip(t *testing.T) {
+	doc := []byte("{ \"a\" : \"q\\\"b\\\\c\\u0001d\u2028e\\ud83d\\ude00f\xffg\" ,\n \"n\" : -1.5e3, \"t\": true, \"f\": false,\t\"z\": null," +
+		" \"arr\": [ [1, [2, []]], {\"x\": {}} ], \"\\u0041\": \"\\/\" }")
+	d := newUpstreamDecoder(bytes.NewReader(doc), plantedRedactor())
+	if _, err := d.Next(); err != nil {
+		t.Fatal(err)
+	}
+	img, err := d.CaptureValue(1 << 20)
+	if err != nil {
+		t.Fatalf("CaptureValue: %v", err)
+	}
+	if k, err := d.Next(); err != nil || k != tokEOF {
+		t.Errorf("after the capture: %v %v, want the end of the document", k, err)
+	}
+	if want, got := tokens(t, doc), tokens(t, img); !reflect.DeepEqual(want, got) {
+		t.Errorf("re-decoded tokens differ:\n got %q\nwant %q\nimage %q", got, want, img)
+	}
+	if bytes.ContainsAny(img, " \t\r\n") {
+		t.Errorf("the image is not compact: %q", img)
+	}
+	// Scalars are captured as one token.
+	for _, s := range []string{`"x"`, `12`, `true`, `null`} {
+		d := newUpstreamDecoder(strings.NewReader(s), redactor{})
+		_, _ = d.Next()
+		if img, err := d.CaptureValue(64); err != nil || string(img) != s {
+			t.Errorf("CaptureValue(%s) = %q %v", s, img, err)
+		}
+	}
+	// The bound.
+	d = newUpstreamDecoder(strings.NewReader(`["`+strings.Repeat("a", 100)+`"]`), redactor{})
+	_, _ = d.Next()
+	if _, err := d.CaptureValue(50); kindOf(err) != KindTooBroad {
+		t.Errorf("CaptureValue over its bound: %v, want KindTooBroad", err)
+	}
 }

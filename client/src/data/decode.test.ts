@@ -5,12 +5,18 @@ import scalarRaw from '../../../wire/fixtures/json/promql-instant-scalar.json?ra
 import {
   DecodeError,
   decodeInstant,
+  decodeLogs,
   decodeMetadata,
   decodeRange,
+  decodeRangeFrame,
   decodeSeriesSet,
   decodeValue,
   decodeValues,
+  decodeVolume,
+  type LogsResult,
 } from './decode';
+import { keyHash } from '../dev/keyHash';
+import { LOG_LEVELS } from './logFrame';
 
 type Json = Record<string, unknown>;
 
@@ -153,6 +159,287 @@ describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
   });
 });
 
+/** The log goldens of plan #65 Part B B.3 (written by the BFF's `unit:logql-golden`). */
+const LOG_GOLDENS = import.meta.glob<string>('../../../wire/fixtures/json/logql-*.json', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+function logGolden(name: string): Json {
+  const raw = LOG_GOLDENS[`../../../wire/fixtures/json/${name}`];
+  expect(raw, `golden ${name}`).toBeTypeOf('string');
+  return JSON.parse(raw ?? '{}') as Json;
+}
+
+interface WireEntry {
+  ts_ns: string;
+  line: string;
+  level: string;
+}
+interface WireStream {
+  key: string;
+  labels: Record<string, string>;
+  entries: WireEntry[];
+}
+
+/** A one-entry streams body to mutate. */
+function streamsBody(): Json {
+  return {
+    kind: 'streams',
+    start: 1767225600000,
+    end: 1767229200000,
+    step: 5000,
+    direction: 'backward',
+    streams: [
+      {
+        key: '0123456789abcdef',
+        labels: { app: 'x', pod: 'a' },
+        entries: [{ ts_ns: '1767229100000000500', line: 'a5', level: 'info' }],
+      },
+    ],
+    completeness: { truncated: false, warnings: [], infos: [] },
+  };
+}
+
+function streamsOf(b: Json): WireStream[] {
+  return b['streams'] as WireStream[];
+}
+
+function streamsResult(r: LogsResult): Extract<LogsResult, { kind: 'streams' }> {
+  expect(r.kind).toBe('streams');
+  if (r.kind !== 'streams') throw new Error('not a streams result');
+  return r;
+}
+
+describe('unit:decode-logs (plan #65 Part B §3.5, T04-010)', () => {
+  it('keeps every timestamp exact as BigInt nanoseconds', () => {
+    // A double cannot hold it: the exactness below is meaningful.
+    expect(BigInt(Number('1767229100000000300')) !== 1767229100000000300n).toBe(true);
+    for (const name of [
+      'logql-streams-backward-1.json',
+      'logql-streams-backward-2.json',
+      'logql-streams-forward-1.json',
+      'logql-streams-forward-2.json',
+      'logql-streams-forward-3.json',
+    ]) {
+      const body = logGolden(name);
+      const r = streamsResult(decodeLogs(body));
+      expect(r.frame.tsNs).toBeInstanceOf(BigInt64Array);
+      const want = streamsOf(body)
+        .flatMap((s) => s.entries.map((e) => `${e.ts_ns} ${e.line}`))
+        .sort();
+      const got = Array.from(
+        r.frame.tsNs,
+        (t, i) => `${String(t)} ${r.frame.lines[i] ?? ''}`,
+      ).sort();
+      expect(got, name).toEqual(want);
+      for (const s of streamsOf(body)) {
+        for (const e of s.entries) expect(r.frame.tsNs).toContain(BigInt(e.ts_ns));
+      }
+    }
+    const page2 = streamsResult(decodeLogs(logGolden('logql-streams-backward-2.json')));
+    expect(Array.from(page2.frame.tsNs)).toEqual([
+      1767229100000000300n,
+      1767229100000000300n,
+      1767229100000000300n,
+      1767229100000000300n,
+    ]);
+  });
+
+  it('merges the rows in page order and reads the levels and the cursor', () => {
+    const p1 = streamsResult(decodeLogs(logGolden('logql-streams-backward-1.json')));
+    expect(p1.frame.direction).toBe('backward');
+    expect(p1.frame.lines).toEqual(['a5', 'b4']);
+    expect(Array.from(p1.frame.tsNs)).toEqual([1767229100000000500n, 1767229100000000400n]);
+    expect(typeof p1.cursor).toBe('string');
+    expect(p1.fromMs).toBe(1767225600000);
+    expect(p1.toMs).toBe(1767229200000);
+    expect(p1.stepMs).toBe(5000);
+    expect(p1.completeness.queryId).toBe('fake-logs-page-b1-1');
+
+    const p2 = streamsResult(decodeLogs(logGolden('logql-streams-backward-2.json')));
+    expect(p2.cursor).toBeNull();
+    // One timestamp: rows follow the stream order, then each stream's entries.
+    const idx = Array.from(p2.frame.streamIndex);
+    expect(idx).toEqual([...idx].sort((a, b) => a - b));
+    expect(p2.frame.streams).toHaveLength(3);
+    const pods = idx.map((i) => p2.frame.streams[i]?.labels['pod']);
+    const levelOf: Record<string, number> = { a: 3, b: 4, c: 5 };
+    Array.from(p2.frame.levels).forEach((lv, i) => {
+      expect(lv).toBe(levelOf[pods[i] ?? '']);
+    });
+    expect(LOG_LEVELS[3]).toBe('info');
+    expect(pods.filter((p) => p === 'a')).toHaveLength(2);
+
+    // Forward pages ascend; ties keep the stream order.
+    for (const name of ['logql-streams-forward-1.json', 'logql-streams-forward-3.json']) {
+      const f = streamsResult(decodeLogs(logGolden(name)));
+      expect(f.frame.direction).toBe('forward');
+      const ts = Array.from(f.frame.tsNs);
+      for (let i = 1; i < ts.length; i++) {
+        const prev = ts[i - 1] ?? 0n;
+        const cur = ts[i] ?? 0n;
+        expect(cur >= prev).toBe(true);
+        if (cur === prev) {
+          expect(f.frame.streamIndex[i] ?? 0).toBeGreaterThanOrEqual(
+            f.frame.streamIndex[i - 1] ?? 0,
+          );
+        }
+      }
+    }
+    expect(
+      streamsResult(decodeLogs(logGolden('logql-streams-forward-3.json'))).frame.lines,
+    ).toEqual(['b4', 'a5']);
+  });
+
+  it('merges streams k-way by ts, then stream, then entry', () => {
+    const b = streamsBody();
+    streamsOf(b)[0] = {
+      key: '0000000000000001',
+      labels: { pod: 'a' },
+      entries: [
+        { ts_ns: '1767229100000000500', line: 'a5', level: 'info' },
+        { ts_ns: '1767229100000000300', line: 'a3', level: 'info' },
+        { ts_ns: '1767229100000000300', line: 'a3b', level: 'info' },
+      ],
+    };
+    streamsOf(b)[1] = {
+      key: '0000000000000002',
+      labels: { pod: 'b' },
+      entries: [
+        { ts_ns: '1767229100000000400', line: 'b4', level: 'warn' },
+        { ts_ns: '1767229100000000300', line: 'b3', level: 'warn' },
+      ],
+    };
+    const r = streamsResult(decodeLogs(b));
+    expect(r.frame.lines).toEqual(['a5', 'b4', 'a3', 'a3b', 'b3']);
+    expect(Array.from(r.frame.streamIndex)).toEqual([0, 1, 0, 0, 1]);
+    expect(Array.from(r.frame.levels)).toEqual([3, 4, 3, 3, 4]);
+  });
+
+  it('reads structured metadata and parsed fields per row', () => {
+    const p1 = streamsResult(decodeLogs(logGolden('logql-streams-backward-1.json')));
+    expect(p1.frame.metadata[0]).toEqual({ detected_level: 'info' });
+    expect(p1.frame.parsed[0]).toBeNull();
+    expect(p1.frame.metadata[1]).toEqual({ detected_level: 'unknown' });
+    expect(p1.frame.parsed[1]).toEqual({ level: 'WARNING' });
+  });
+
+  it('decodes a metric result as decodeRangeFrame does and the volume as five level frames', () => {
+    const metric = logGolden('logql-metric.json');
+    const r = decodeLogs(metric);
+    expect(r.kind).toBe('series');
+    const rest: Json = { ...metric };
+    delete rest['kind'];
+    expect(r).toEqual({ kind: 'series', ...decodeRangeFrame(rest) });
+    const v = decodeVolume(logGolden('logql-volume.json'));
+    expect(v.series.map((s) => s.labels['level'])).toEqual([
+      'error',
+      'warn',
+      'info',
+      'debug',
+      'unknown',
+    ]);
+  });
+
+  it('refuses bad bodies at the JSON pointer of the first bad element', () => {
+    const at = (mutate: (b: Json) => void): string => {
+      const b = streamsBody();
+      mutate(b);
+      return decodeErrorOf(() => decodeLogs(b)).path;
+    };
+    const entry = (b: Json): WireEntry => streamsOf(b)[0]?.entries[0] as WireEntry;
+    const ts = '/streams/0/entries/0/ts_ns';
+    expect(
+      at((b) => {
+        entry(b).ts_ns = '9223372036854775808';
+      }),
+    ).toBe(ts);
+    expect(
+      at((b) => {
+        entry(b).ts_ns = '01';
+      }),
+    ).toBe(ts);
+    expect(
+      at((b) => {
+        entry(b).ts_ns = '1767225600000000000';
+      }),
+    ).toBe(ts);
+    expect(
+      at((b) => {
+        entry(b).ts_ns = '1767229200000000001';
+      }),
+    ).toBe(ts);
+    expect(
+      at((b) => {
+        (entry(b) as unknown as Json)['ts_ns'] = 1767229100000;
+      }),
+    ).toBe(ts);
+    expect(
+      at((b) => {
+        entry(b).level = 'fatal';
+      }),
+    ).toBe('/streams/0/entries/0/level');
+    expect(
+      at((b) => {
+        streamsOf(b)[0]?.entries.push({ ts_ns: '1767229100000000600', line: 'up', level: 'info' });
+      }),
+    ).toBe('/streams/0/entries/1/ts_ns');
+    expect(
+      at((b) => {
+        b['direction'] = 'sideways';
+      }),
+    ).toBe('/direction');
+    expect(
+      at((b) => {
+        b['kind'] = 'other';
+      }),
+    ).toBe('/kind');
+    expect(
+      at((b) => {
+        b['start'] = 1.5;
+      }),
+    ).toBe('/start');
+    expect(
+      at((b) => {
+        b['cursor'] = '';
+      }),
+    ).toBe('/cursor');
+    expect(
+      at((b) => {
+        const s = streamsOf(b)[0];
+        if (s !== undefined) s.key = 'ABC';
+      }),
+    ).toBe('/streams/0/key');
+    expect(
+      at((b) => {
+        (streamsOf(b)[0]?.labels as unknown as Json)['pod'] = 1;
+      }),
+    ).toBe('/streams/0/labels/pod');
+    expect(
+      at((b) => {
+        (entry(b) as unknown as Json)['metadata'] = { k: 1 };
+      }),
+    ).toBe('/streams/0/entries/0/metadata/k');
+    expect(
+      at((b) => {
+        b['completeness'] = {};
+      }),
+    ).toBe('/completeness/truncated');
+
+    const vol = (labels: Record<string, string>): string => {
+      const v = logGolden('logql-volume.json');
+      const f = (v['frames'] as Json[])[0];
+      if (f !== undefined) f['labels'] = labels;
+      return decodeErrorOf(() => decodeVolume(v)).path;
+    };
+    expect(vol({ level: 'x' })).toBe('/frames/0/labels');
+    expect(vol({ level: 'error', pod: 'a' })).toBe('/frames/0/labels');
+    expect(vol({})).toBe('/frames/0/labels');
+  });
+});
+
 /** The DecodeError path of `f`, or null when it does not throw one. */
 function pathOf(f: () => unknown): string | null {
   try {
@@ -233,5 +520,32 @@ describe('decode planned (plan #112 §3.8)', () => {
     const missing = counter();
     delete missing['planned'];
     expect(decodeErrorOf(() => decodeRange(missing)).path).toBe('/planned');
+  });
+});
+
+describe('planned is PromQL-only until logs.Plan (#116, T06-029 note)', () => {
+  const frame = {
+    key: keyHash({ level: 'error' }),
+    labels: { level: 'error' },
+    timestamps: [0, 1000],
+    values: [1, null],
+  };
+  const completeness = { truncated: false, warnings: [], infos: [] };
+  const grid = { start: 0, end: 1000, step: 1000, frames: [frame], completeness };
+
+  it('decodes a LogQL series body without planned, and adds none', () => {
+    const r = decodeLogs({ kind: 'series', ...grid });
+    expect(r.kind).toBe('series');
+    expect('planned' in r).toBe(false);
+  });
+
+  it('decodes a log volume body without planned, and adds none', () => {
+    const r = decodeVolume(grid);
+    expect(r.series).toHaveLength(1);
+    expect('planned' in r).toBe(false);
+  });
+
+  it('still requires planned on a PromQL range body', () => {
+    expect(decodeErrorOf(() => decodeRange(grid)).path).toBe('/planned');
   });
 });

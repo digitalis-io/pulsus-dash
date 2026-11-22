@@ -253,8 +253,7 @@ test.describe('e2e:board-promql (fake)', () => {
       // The second step starts from B once the page is on it (as e2e:explore-cancel waits).
       await expect
         .poll(
-          async () =>
-            (await queries(request, B)).filter((r) => r.query === 'slow_metric').length,
+          async () => (await queries(request, B)).filter((r) => r.query === 'slow_metric').length,
           { intervals: [10], timeout: 150 },
         )
         .toBeGreaterThan(0);

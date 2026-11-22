@@ -2,8 +2,9 @@
  * The BFF client (ADR-0014 §1, ADR-0015): `openapi-fetch` over the types generated from
  * `api/openapi.yaml`. The session comes from `GET /api/dash/v1/bootstrap`; boards from the boards
  * API (`docs/server/boards-api.md`, plan #61 Part B §3.3); Starred and Recent from the `/me/…`
- * routes (Part C §3.2). Board panels and Explore use the same query routes (plan #64). Query responses are decoded at the one seam, `data/decode.ts`; failures map to
- * `ApiError` kinds (plan #62 §4.5).
+ * routes (Part C §3.2). Board panels and Explore use the same query routes (plan #64). PromQL and
+ * LogQL query responses are decoded at the one seam, `data/decode.ts`; failures map to `ApiError`
+ * kinds (plan #62 §4.5, plan #65 Part B §4.4).
  */
 import createClient, { type Client } from 'openapi-fetch';
 import { RECENT_LIMIT } from '../boards/queries';
@@ -12,16 +13,20 @@ import type { components, paths } from './gen/schema';
 import {
   DecodeError,
   decodeInstant,
+  decodeLogs,
   decodeMetadata,
   decodePlanned,
   decodeRange,
   decodeSeriesSet,
   decodeValues,
+  decodeVolume,
   type InstantResult,
+  type LogsResult,
   type PlannedQuery,
   type PromMetadata,
   type PromSeriesSet,
   type PromValues,
+  type RangeFrame,
   type RangeResult,
 } from '../data/decode';
 import {
@@ -34,10 +39,12 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogsRequest,
   type PromMatchRequest,
   type RangeRequest,
   type SaveResult,
   type Session,
+  type VolumeRequest,
 } from './types';
 
 type Bootstrap = components['schemas']['Bootstrap'];
@@ -101,6 +108,8 @@ type ErrorBody = Partial<components['schemas']['ErrorBody']>;
 // default-non-nullable rule); the BFF applies the default, so the client omits it when unset.
 type RangeBody = components['schemas']['PromRangeRequest'];
 type InstantBody = components['schemas']['PromInstantRequest'];
+type LogsBody = components['schemas']['LogqlRangeRequest'];
+type VolumeBody = components['schemas']['LogqlVolumeRequest'];
 
 function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -467,6 +476,49 @@ export class HttpApi implements Api {
     if (data === undefined) throw queryError(response.status, error);
     const state = DATA_SOURCE_STATES[data.state];
     return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
+  }
+
+  /** POST …/query/logql/range: the optional members only when given (plan #65 Part B §4.4). */
+  async queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.limit === undefined ? {} : { limit: req.limit }),
+      ...(req.direction === undefined ? {} : { direction: req.direction }),
+      ...(req.cursor === undefined ? {} : { cursor: req.cursor }),
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as LogsBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/logql/range', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeLogs, data);
+  }
+
+  /** POST …/query/logql/volume. */
+  async queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as VolumeBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/logql/volume', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeVolume, data);
   }
 
   async promLabels(

@@ -1,0 +1,10 @@
+{
+  "name": "logs-parse-error",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/query_range", "sanitised": "labels, lines, values, timestamps and query ids replaced; key order and message text verbatim; message verbatim"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"x\""},
+  "response": {
+    "status": 400,
+    "headers": {"Content-Type": "text/plain; charset=utf-8", "X-Pulsus-Query-Id": "fake-logs-parse-error-1"},
+    "body_text": "unexpected end of query at byte 8: expected '}'"
+  }
+}

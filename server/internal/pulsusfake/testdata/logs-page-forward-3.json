@@ -1,0 +1,10 @@
+{
+  "name": "logs-page-forward-3",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/query_range", "sanitised": "categorised shape (categorize-labels) as captured; labels, lines, structured metadata, parsed fields, timestamps and query ids replaced"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"x\"}", "form": {"step": "5000ms", "start": "1767229100000000300", "end": "1767229200000000000", "limit": "3", "direction": "forward"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-page-f3-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"x","pod":"b"},"values":[["1767229100000000400","b4",{"structuredMetadata":{"detected_level":"unknown"},"parsed":{"level":"WARNING"}}]]},{"stream":{"app":"x","pod":"a"},"values":[["1767229100000000500","a5",{"structuredMetadata":{"detected_level":"info"}}]]}],"stats":{"streams":2,"entries":2,"bytes":4}}}
+  }
+}

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-22 |
+| **Version** | 1.13-rc · 2026-11-22 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -110,8 +110,10 @@ the rest of the metrics workbench keep their milestones.
 
 **PulsusDB routes.** The slice uses PulsusDB's native routes: PromQL under `/api/v1/` (`query`,
 `query_range`, `series`, `labels`, `label/{name}/values`, `metadata`, `status/{runtimeinfo, tsdb}`)
-and LogQL under `/api/logs/v1/` (`query_range`, `volume`, `labels`, `label/{name}/values`,
-`series`). Later work uses `/api/logs/v1/{patterns, detected_labels, detected_fields, tail}`,
+and LogQL under `/api/logs/v1/` (`query_range`, `labels`, `label/{name}/values`, `series`). The
+M-UI1 log volume uses `query_range` with `count_over_time` by level (#65; `/volume` answers bytes per
+label at one instant, so it cannot give counts per bucket). Later work uses
+`/api/logs/v1/{volume, patterns, detected_labels, detected_fields, tail}`,
 `/api/traces/v1/{search, trace/{id}, metrics/query_range, metrics/query, tags, tag/{tag}/values}`,
 the service graph at `/api/traces/v1/service_graph?start=<t>&end=<t>` (confirmed by the PulsusDB
 owner on 2026-11-19; the edge cap remains assumption A1), and the profiles Connect API under
@@ -218,4 +220,5 @@ product owner can confirm them at sign-off.
 | 1.9-rc | 2026-11-20 | #61 Part A: Table 2.1c ENT-020 subset adds `folders`, `boards`, `board_versions`, `audit_events` (partitioned by class and month), `stars` and `recent_views` (step 5) |
 | 1.10-rc | 2026-11-21 | #61 Part C: Table 2.1c adds the M-UI1 subsets of SRF-016 (collapsible sections that do not query), SRF-017 (filter bar with URL values) and SRF-026 (starred and recently viewed boards); milestones unchanged (D6) |
 | 1.11-rc | 2026-11-21 | #63 Part C: Table 2.1c SRF-030 subset names #63; adds the M-UI1 subsets of SRF-027 (highlighting, completion, errors on run; hover docs remain) and SRF-031 (series table, metric picker; cardinality, label value counts and anomaly ratio remain); milestones unchanged (D6) |
-| 1.12-rc | 2026-11-22 | #64 Part A: Table 2.1c SRF-030 subset adds auto-vis on board panels (step 8); SRF-017 subset adds the URL values substituting into PromQL panels and re-querying only their panels (definitions, values from Context and crossfade remain); milestones unchanged (D6) |
+| 1.12-rc | 2026-11-22 | #65 Part B: §2.1 "PulsusDB routes": the M-UI1 log volume uses `query_range` (`count_over_time` by level); `/api/logs/v1/volume` moves to the later list |
+| 1.13-rc | 2026-11-22 | #64 Part A: Table 2.1c SRF-030 subset adds auto-vis on board panels (step 8); SRF-017 subset adds the URL values substituting into PromQL panels and re-querying only their panels (definitions, values from Context and crossfade remain); milestones unchanged (D6) |

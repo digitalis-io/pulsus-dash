@@ -1,0 +1,178 @@
+{
+ "captured": "2026-11-21",
+ "pulsusdb": "0.0.12",
+ "method": "POST /api/logs/v1/query_range, form",
+ "sanitised": "selectors replaced by S1..S4; no labels, lines or timestamps; counts and booleans only",
+ "selectors": [
+  {
+   "selector": "S1",
+   "reference_entries": 2744,
+   "reference_forward_equal": true,
+   "tie_group_sizes": [
+    4,
+    4,
+    4,
+    4,
+    4,
+    4
+   ],
+   "P1_group_fetch": {
+    "requests": 60,
+    "complete": 60
+   },
+   "P2_order": {
+    "groups": 6,
+    "one_order_per_direction": true,
+    "backward_equals_forward": true
+   },
+   "P3_limited_subsets": {
+    "cases": 36,
+    "requests": 288,
+    "cases_with_one_subset": 36
+   },
+   "P4_property_b": {
+    "requests": 32,
+    "holds": 32
+   }
+  },
+  {
+   "selector": "S2",
+   "reference_entries": 630,
+   "reference_forward_equal": true,
+   "tie_group_sizes": [
+    4,
+    4,
+    4,
+    4,
+    4,
+    4
+   ],
+   "P1_group_fetch": {
+    "requests": 60,
+    "complete": 60
+   },
+   "P2_order": {
+    "groups": 6,
+    "one_order_per_direction": true,
+    "backward_equals_forward": true
+   },
+   "P3_limited_subsets": {
+    "cases": 36,
+    "requests": 288,
+    "cases_with_one_subset": 36
+   },
+   "P4_property_b": {
+    "requests": 32,
+    "holds": 32
+   }
+  },
+  {
+   "selector": "S3",
+   "reference_entries": 360,
+   "reference_forward_equal": true,
+   "tie_group_sizes": [
+    4,
+    4,
+    4,
+    4,
+    4,
+    4
+   ],
+   "P1_group_fetch": {
+    "requests": 60,
+    "complete": 60
+   },
+   "P2_order": {
+    "groups": 6,
+    "one_order_per_direction": true,
+    "backward_equals_forward": true
+   },
+   "P3_limited_subsets": {
+    "cases": 36,
+    "requests": 288,
+    "cases_with_one_subset": 36
+   },
+   "P4_property_b": {
+    "requests": 32,
+    "holds": 32
+   }
+  },
+  {
+   "selector": "S4",
+   "reference_entries": 1538,
+   "reference_forward_equal": true,
+   "tie_group_sizes": [
+    31,
+    5,
+    5,
+    4,
+    4,
+    3
+   ],
+   "P1_group_fetch": {
+    "requests": 60,
+    "complete": 60
+   },
+   "P2_order": {
+    "groups": 6,
+    "one_order_per_direction": true,
+    "backward_equals_forward": false
+   },
+   "P3_limited_subsets": {
+    "cases": 92,
+    "requests": 736,
+    "cases_with_one_subset": 92
+   },
+   "P4_property_b": {
+    "requests": 32,
+    "holds": 32
+   }
+  }
+ ],
+ "P5_window": {
+  "end=T": true,
+  "end=T-1": false,
+  "start=T-1": true,
+  "start=T": false
+ },
+ "P6_encoding": {
+  "padded_equals_unpadded": true,
+  "pad20_status": 200,
+  "pad_small_status": 200,
+  "neg_pad_status": 200,
+  "neg_status": 200
+ },
+ "P7_int64_overflow": {
+  "status": 400,
+  "message": "invalid timestamp \"9223372036854775808\": expected unix seconds (<= 10 characters), unix nanoseconds, a fractional-second value, or RFC3339"
+ },
+ "P8_window_width": {
+  "status": 400,
+  "message_shape": "query time range of <n> ns is outside the supported range (0 to 157680000000000000 ns)"
+ },
+ "P9_metric_anchor": {
+  "start_ns": "1795250000000000000",
+  "first_point": 1795250000.0
+ },
+ "tie_scan": {
+  "services": 20,
+  "window_minutes": 30,
+  "largest_group": 31,
+  "largest_identical": 3,
+  "note": "largest group from the S4 probe window"
+ },
+ "totals": {
+  "P1": [
+   240,
+   240
+  ],
+  "P3": [
+   200,
+   200
+  ],
+  "P4": [
+   128,
+   128
+  ]
+ }
+}

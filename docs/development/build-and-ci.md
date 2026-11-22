@@ -462,7 +462,7 @@ cgo.
 | `make govulncheck` | `govulncheck ./...` | `ci:govulncheck` |
 | `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
 | `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)), with the PulsusDB fake in-process ([testing against PulsusDB](testing-pulsusdb.md)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`; `itest:pulsusdb-contract` runs only with `DASH_CONTRACT_PULSUSDB_URL` and is skipped in CI |
-| `make cpu-instr` | `server/scripts/cpu-instr.sh`: writes the workload bodies first (outside valgrind, so the input is not counted), then runs the BFF workloads W1 and W2 under cachegrind, minus an empty run that reads the same input, against `server/testdata/bench/cpu-instr.json`; more than +3 % fails, and so does a Go or valgrind version other than the baseline's (`rebaseline`). Needs valgrind | `bench:cpu-instr` |
+| `make cpu-instr` | `server/scripts/cpu-instr.sh`: writes the workload bodies first (outside valgrind, so the input is not counted), then runs the BFF workloads W1, W2 and W3 under cachegrind, minus an empty run that reads the same input, against `server/testdata/bench/cpu-instr.json`; more than +3 % fails, and so does a Go or valgrind version other than the baseline's (`rebaseline`). Needs valgrind | `bench:cpu-instr` |
 | `make cpu-instr-update` | rewrites the baseline; run it in CI and commit the result with the change that moves it | — |
 | `make bench-bff` | the two time budgets `TestBudgetPromqlDecode` and `TestBudgetBffOverhead`: with `REFERENCE_LAB=1` they fail over 30 ms per 10⁶ points, or over 5 ms (p50) and 20 ms (p99) of BFF overhead; without it they skip ([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)) | `bench:promql-decode`, `bench:bff-overhead` (reference lab) |
 | `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
@@ -574,6 +574,20 @@ PR-level CPU regressions by instruction counts) and on pushes to `main`. Its one
 1.27.4 and the Ubuntu 24.04 `valgrind` package and runs `make cpu-instr`. Instruction counts are
 stable across runners, unlike time; the time budgets run only on the reference machines
 ([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)).
+
+| Workload | What one run counts |
+|---|---|
+| W1 | a 1 000 × 1 000 matrix decoded, placed on the grid and encoded (`POST …/promql/range`) |
+| W2 | 1 000 sequential range requests for a 1-series, 60-point matrix |
+| W3 | one 5 000-entry log page (50 streams of 100 entries, 120-byte lines, a tie every 10th entry) decoded, paged and encoded by `POST …/logql/range` with `limit` 4 999 |
+
+Each count is the workload's run minus an empty run with the same file reads. The baseline
+`server/testdata/bench/cpu-instr.json` holds one count per workload with the Go and valgrind
+versions. A workload missing from it fails with `no baseline for W3: rebaseline`, and a new Go or
+valgrind version fails with `rebaseline`. To rebaseline, run `make cpu-instr-update` in CI (a
+branch whose workflow runs it, as the `bench:cpu-instr` baseline runs of #62 and #65 did) and
+commit the file it writes with the change that moves it; a count more than 10 % below its
+baseline prints a hint to do so.
 
 ### `ci:asset-integrity`
 

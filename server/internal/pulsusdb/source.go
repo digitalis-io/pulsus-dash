@@ -65,6 +65,30 @@ type seriesSource interface {
 	readInstant() (instantResult, error)
 }
 
+// logSource is a seriesSource that also decodes LogQL log bodies (#65 §4.1). The pager reads
+// only the logResponse it yields, so a second body format implements this and nothing else.
+type logSource interface {
+	seriesSource
+	// openLogs reads a log query_range body whose result type mode allows: either a decoded
+	// streams result, or a matrix whose series nextRange then yields.
+	openLogs(mode logMode) (logOpen, error)
+}
+
+// logMode says which result types a log body may have.
+type logMode struct{ streams, matrix bool }
+
+func (m logMode) allows(t ResultType) bool {
+	return (t == ResultStreams && m.streams) || (t == ResultMatrix && m.matrix)
+}
+
+// logOpen is how a log body opened: a decoded streams result (logs), or a matrix (matrix) whose
+// body has already ended when ended is set (it was captured before its resultType).
+type logOpen struct {
+	logs   *logResponse
+	matrix bool
+	ended  bool
+}
+
 // newSource returns the decoder of resp's body.
 func newSource(resp *response, comp *compBuilder, lim Limits) (seriesSource, error) {
 	switch resp.format {

@@ -82,12 +82,24 @@ func protocolError() *Error { return newError(KindProtocol) }
 // positionPrefix is the PromQL-compatible "<line>:<column>: " prefix (1-based, byte column).
 var positionPrefix = regexp.MustCompile(`^(\d{1,9}):(\d{1,9}): `)
 
-// positionOf extracts the byte offset of a "<line>:<col>: " message prefix in query (T09-009):
-// the start of that line plus column − 1, kept only if it lies within the text.
+// atByte is PulsusDB's LogQL position, "at byte N" with N a 0-based byte offset (#65 §4.5).
+var atByte = regexp.MustCompile(`\bat byte (\d{1,9})\b`)
+
+// positionOf extracts the byte offset of an error in query (T09-009): a "<line>:<col>: "
+// message prefix gives the start of that line plus column − 1; without one, the first
+// "at byte N" gives N. Either is kept only if it lies within the text.
 func positionOf(msg, query string) *Position {
 	m := positionPrefix.FindStringSubmatch(msg)
 	if m == nil {
-		return nil
+		b := atByte.FindStringSubmatch(msg)
+		if b == nil {
+			return nil
+		}
+		n, _ := strconv.Atoi(b[1])
+		if n > len(query) {
+			return nil
+		}
+		return &Position{Offset: n}
 	}
 	line, _ := strconv.Atoi(m[1])
 	col, _ := strconv.Atoi(m[2])

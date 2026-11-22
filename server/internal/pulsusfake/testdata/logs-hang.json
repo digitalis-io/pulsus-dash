@@ -1,0 +1,10 @@
+{
+  "name": "logs-hang",
+  "provenance": {"synthetic": "stall: tests cancellation on the first request of a page"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"hang\"}"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json"},
+    "hang": true
+  }
+}

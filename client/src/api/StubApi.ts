@@ -39,13 +39,16 @@ import {
 import type {
   Completeness,
   InstantResult,
+  LogsResult,
   PlannedQuery,
   PromMetadata,
   PromSeriesSet,
   PromValues,
+  RangeFrame,
   RangeResult,
 } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
+import { LOG_LEVELS, type LogFrame } from '../data/logFrame';
 import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
@@ -69,10 +72,12 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogsRequest,
   type PromMatchRequest,
   type RangeRequest,
   type SaveResult,
   type Session,
+  type VolumeRequest,
 } from './types';
 
 /** A seeded board; the stub serves it as version 1, etag `"1"`. */
@@ -179,6 +184,9 @@ function write(key: string, value: string): void {
     // Storage unavailable: the stub keeps working without persistence.
   }
 }
+
+/** The levels of the stub log streams `stub-0`, `stub-1` and `stub-2`. */
+const STUB_LEVELS = ['info', 'warn', 'error'] as const;
 
 /** Stub frames have no upstream, so nothing is truncated or cached. */
 const EMPTY_COMPLETENESS: Completeness = {
@@ -691,5 +699,79 @@ export class StubApi implements Api {
       const b = this.boards.find((x) => x.uid === uid);
       return b === undefined ? [] : [{ uid, title: b.title }];
     });
+  }
+
+  /**
+   * A synthetic page of at most 30 entries, every one within `(fromMs, toMs]` (plan #65 Part B
+   * §4.4): 1 s apart from `toMs` down (backward) or from `fromMs` up (forward), over three streams.
+   */
+  queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const direction = req.direction ?? 'backward';
+      const fromNs = BigInt(req.fromMs) * 1000000n;
+      const toNs = BigInt(req.toMs) * 1000000n;
+      const n = Math.min(req.limit ?? 1000, 30);
+      const ts: bigint[] = [];
+      for (let i = 0; ts.length < n; i++) {
+        const t =
+          direction === 'backward'
+            ? toNs - BigInt(i) * 1000000000n
+            : fromNs + BigInt(i + 1) * 1000000000n;
+        if (t <= fromNs || t > toNs) break;
+        ts.push(t);
+      }
+      const used = [0, 1, 2].filter((j) => ts.some((_, i) => i % 3 === j));
+      const streams = used.map((j) => {
+        const labels = {
+          service_name: 'stub',
+          pod: `stub-${String(j)}`,
+          level: STUB_LEVELS[j] ?? 'info',
+        };
+        return { key: keyHash(labels), labels };
+      });
+      const frame: LogFrame = {
+        direction,
+        streams,
+        tsNs: BigInt64Array.from(ts),
+        streamIndex: Uint32Array.from(ts, (_, i) => used.indexOf(i % 3)),
+        lines: ts.map((_, i) => `stub line ${String(i)}`),
+        levels: Uint8Array.from(ts, (_, i) => LOG_LEVELS.indexOf(STUB_LEVELS[i % 3] ?? 'info')),
+        metadata: ts.map(() => null),
+        parsed: ts.map(() => null),
+      };
+      return {
+        kind: 'streams' as const,
+        fromMs: req.fromMs,
+        toMs: req.toMs,
+        stepMs: g.stepMs,
+        frame,
+        cursor: null,
+        completeness: EMPTY_COMPLETENESS,
+      };
+    }, signal);
+  }
+
+  /** Three level frames (`error`, `warn`, `info`) of synthetic counts on the grid. */
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const n = (g.endMs - g.startMs) / g.stepMs + 1;
+      const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
+      const series = ['error', 'warn', 'info'].map((level, j) => {
+        const labels = { level };
+        return {
+          key: keyHash(labels),
+          labels,
+          timestamps,
+          values: timestamps.map((t) => Math.round(Math.abs(synthLineValue(65, j, t, 20, 10)))),
+        };
+      });
+      return { ...g, series, completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 }

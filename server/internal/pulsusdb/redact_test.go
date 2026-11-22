@@ -102,3 +102,17 @@ func TestReadHeaders(t *testing.T) {
 		}
 	}
 }
+
+// readTextBody (§4.5): capped, valid UTF-8, redacted.
+func TestReadTextBody(t *testing.T) {
+	red := needleRedactor("pw-secret-1")
+	if s, err := readTextBody(strings.NewReader("a pw-secret-1 \xff b"), 64, red); err != nil || s != "a <redacted> � b" {
+		t.Errorf("readTextBody = %q %v", s, err)
+	}
+	if _, err := readTextBody(strings.NewReader(strings.Repeat("x", 65)), 64, red); err == nil {
+		t.Error("readTextBody accepted 65 bytes over a 64-byte cap")
+	}
+	if s, err := readTextBody(strings.NewReader(strings.Repeat("x", 64)), 64, red); err != nil || len(s) != 64 {
+		t.Errorf("readTextBody at the cap = %d bytes %v", len(s), err)
+	}
+}

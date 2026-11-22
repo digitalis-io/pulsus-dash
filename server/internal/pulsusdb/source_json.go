@@ -1,6 +1,7 @@
 package pulsusdb
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"slices"
@@ -19,6 +20,13 @@ type jsonSource struct {
 
 	rangeMode, started, inData, resultSeen, badStatus bool
 	seenType                                          ResultType
+
+	// Logs mode (#65 §4.1): a log query_range body, whose member order is not fixed either.
+	logs     bool
+	mode     logMode
+	raw      []byte       // the result value, captured because it came before resultType
+	logsRes  *logResponse // the decoded streams result
+	buffered bool         // matrix series are read from the captured value; the body has ended
 
 	res     instantResult // instant
 	form    instantForm
@@ -58,6 +66,13 @@ func (s *jsonSource) nextRange(sink seriesSink) ([]Label, error) {
 		}
 		switch k {
 		case tokArrEnd:
+			if s.buffered {
+				// The tail of the document was walked before the capture was decoded.
+				if k, err := s.dec.Next(); err != nil || k != tokEOF {
+					return nil, orProtocol(err)
+				}
+				return nil, io.EOF
+			}
 			s.inData = true
 			if at, err := s.walk(); err != nil || at {
 				return nil, orProtocol(err)
@@ -170,6 +185,12 @@ func (s *jsonSource) walkData() (bool, error) {
 			if k, err := d.Next(); err != nil || k != tokString {
 				return false, orProtocol(err)
 			}
+			if s.logs {
+				if err := s.logsType(ResultType(d.String())); err != nil {
+					return false, err
+				}
+				continue
+			}
 			s.seenType = ResultType(d.String())
 			if s.rangeMode && s.seenType != ResultMatrix {
 				return false, protocolError()
@@ -179,6 +200,13 @@ func (s *jsonSource) walkData() (bool, error) {
 				return false, protocolError()
 			}
 			s.resultSeen = true
+			if s.logs {
+				at, err := s.logsResult()
+				if err != nil || at {
+					return at, err
+				}
+				continue
+			}
 			if s.rangeMode {
 				if k, err := d.Next(); err != nil || k != tokArrStart {
 					return false, orProtocol(err)
@@ -219,6 +247,12 @@ func (s *jsonSource) status() error {
 func (s *jsonSource) endCheck() error {
 	if s.badStatus || !s.resultSeen {
 		return protocolError()
+	}
+	if s.logs {
+		if s.seenType == "" {
+			return protocolError()
+		}
+		return nil
 	}
 	if s.rangeMode {
 		if s.seenType != ResultMatrix {
@@ -592,4 +626,95 @@ func secondsToMs(s []byte) (int64, bool) {
 		scale /= 10
 	}
 	return ms, true
+}
+
+// openLogs reads a log body in logs mode. With resultType before result, a matrix streams as a
+// range body does and a streams result is decoded as it is read; with result first, the value
+// is captured and decoded once the document ended.
+func (s *jsonSource) openLogs(mode logMode) (logOpen, error) {
+	s.logs, s.mode = true, mode
+	at, err := s.walk()
+	if err != nil {
+		return logOpen{}, err
+	}
+	if at {
+		s.rangeMode = true
+		return logOpen{matrix: true}, nil
+	}
+	if err := s.endCheck(); err != nil {
+		return logOpen{}, err
+	}
+	if s.raw != nil {
+		if err := s.decodeCaptured(); err != nil {
+			return logOpen{}, err
+		}
+	}
+	if s.seenType == ResultMatrix {
+		return logOpen{matrix: true, ended: true}, nil
+	}
+	if s.logsRes == nil {
+		return logOpen{}, protocolError()
+	}
+	return logOpen{logs: s.logsRes}, nil
+}
+
+// logsType records a resultType in logs mode: the first must be allowed by the mode; a later one
+// must equal it.
+func (s *jsonSource) logsType(t ResultType) error {
+	switch {
+	case s.seenType != "" && t != s.seenType:
+		return protocolError()
+	case s.seenType == "" && !s.mode.allows(t):
+		return protocolError()
+	}
+	s.seenType = t
+	return nil
+}
+
+// logsResult reads the result member in logs mode: with resultType matrix already read it stops
+// at the array (true); with streams it decodes the entries; with no resultType yet it captures
+// the value.
+func (s *jsonSource) logsResult() (bool, error) {
+	d := s.dec
+	k, err := d.Next()
+	if err != nil {
+		return false, err
+	}
+	switch s.seenType {
+	case ResultMatrix:
+		if k != tokArrStart {
+			return false, protocolError()
+		}
+		return true, nil
+	case ResultStreams:
+		if k != tokArrStart {
+			return false, protocolError()
+		}
+		s.logsRes, err = streamsResult(d, s.lim)
+		return false, err
+	}
+	s.raw, err = d.CaptureValue(s.lim.CaptureBytes)
+	return false, err
+}
+
+// decodeCaptured decodes a result captured before its resultType with a second tokenizer, which
+// redacts as the first: streams whole; for a matrix, nextRange then reads the capture.
+func (s *jsonSource) decodeCaptured() error {
+	bd := newUpstreamDecoder(bytes.NewReader(s.raw), s.dec.red)
+	s.raw = nil
+	if k, err := bd.Next(); err != nil || k != tokArrStart {
+		return orProtocol(err)
+	}
+	if s.seenType == ResultMatrix {
+		s.dec, s.buffered, s.rangeMode = bd, true, true
+		return nil
+	}
+	var err error
+	if s.logsRes, err = streamsResult(bd, s.lim); err != nil {
+		return err
+	}
+	if k, err := bd.Next(); err != nil || k != tokEOF {
+		return orProtocol(err)
+	}
+	return nil
 }

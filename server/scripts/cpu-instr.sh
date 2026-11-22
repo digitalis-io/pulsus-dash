@@ -2,17 +2,18 @@
 # bench:cpu-instr (T05-006, T05 §7.1; plan #62 §8.1, A.11): PR-level CPU regressions of the BFF,
 # gated by instruction counts. The upstream bodies are written first by the test binary without
 # valgrind (TestCPUInstrBodies), so building the 10⁶-point input is never counted. Each workload
-# test of internal/gateway (TestCPUInstrW1, ...W2) then runs once under cachegrind with
+# test of internal/gateway (TestCPUInstrW1, ...W2, ...W3) then runs once under cachegrind with
 # GOMAXPROCS=1 GOGC=off and reads its body from those files; its total "I refs" minus that of
 # TestCPUInstrEmpty (the same harness and the same file reads, a 0-series answer) is compared with
 # the committed baseline server/testdata/bench/cpu-instr.json. W1 − Empty is the A.11 boundary:
-# from the first read of the upstream body to the last byte of the response.
+# from the first read of the upstream body to the last byte of the response. W3 − Empty is one
+# 5 000-entry log page through POST …/logql/range (plan #65 Part B §8.1).
 #
 # Usage: cpu-instr.sh            check: a count above 1.03 x its baseline fails
 #        cpu-instr.sh --update   rewrite the baseline (run in CI; commit it with the change)
 # Exit: 0 within budget (or baseline written), 1 over budget, a Go or valgrind version other
-#       than the baseline's ("rebaseline"), no baseline, or a workload failed; 2 usage or no
-#       valgrind.
+#       than the baseline's ("rebaseline"), no baseline, a workload missing from the baseline
+#       ("no baseline for W3: rebaseline"), or a workload failed; 2 usage or no valgrind.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -68,11 +69,12 @@ refs() {
 empty=$(refs Empty)
 w1=$(( $(refs W1) - empty ))
 w2=$(( $(refs W2) - empty ))
-echo "bench:cpu-instr: W1 $w1, W2 $w2 instructions (empty run $empty; $go_version, valgrind $vg_version)"
+w3=$(( $(refs W3) - empty ))
+echo "bench:cpu-instr: W1 $w1, W2 $w2, W3 $w3 instructions (empty run $empty; $go_version, valgrind $vg_version)"
 
 if [ "$update" = 1 ]; then
   mkdir -p "$(dirname "$BASELINE")"
-  printf '{"W1": %s, "W2": %s, "go": "%s", "valgrind": "%s"}\n' "$w1" "$w2" "$go_version" "$vg_version" >"$BASELINE"
+  printf '{"W1": %s, "W2": %s, "W3": %s, "go": "%s", "valgrind": "%s"}\n' "$w1" "$w2" "$w3" "$go_version" "$vg_version" >"$BASELINE"
   echo "bench:cpu-instr: wrote server/testdata/bench/cpu-instr.json"
   cat "$BASELINE"
   exit 0
@@ -82,16 +84,20 @@ if [ ! -f "$BASELINE" ]; then
   exit 1
 fi
 
-python3 -I - "$BASELINE" "$w1" "$w2" "$go_version" "$vg_version" <<'PY'
+python3 -I - "$BASELINE" "$w1" "$w2" "$w3" "$go_version" "$vg_version" <<'PY'
 import json, sys
-path, w1, w2, go, vg = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5]
+path, w1, w2, w3, go, vg = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6]
 base = json.load(open(path))
 if base.get("go") != go or base.get("valgrind") != vg:
     print(f"bench:cpu-instr: the baseline is for {base.get('go')} and valgrind {base.get('valgrind')}, "
           f"this run {go} and valgrind {vg}: rebaseline (make cpu-instr-update in CI)")
     sys.exit(1)
 failed = False
-for name, got in (("W1", w1), ("W2", w2)):
+for name, got in (("W1", w1), ("W2", w2), ("W3", w3)):
+    if name not in base:
+        print(f"bench:cpu-instr: no baseline for {name}: rebaseline (make cpu-instr-update in CI)")
+        failed = True
+        continue
     want = int(base[name])
     if got > 1.03 * want:
         print(f"bench:cpu-instr: {name} {got} instructions, baseline {want}: more than +3 %")

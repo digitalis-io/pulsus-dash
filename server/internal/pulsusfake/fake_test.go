@@ -26,8 +26,8 @@ func post(t *testing.T, base, path string, form url.Values) (*http.Response, str
 
 // unit:fake-transcripts (test infrastructure).
 func TestFakeTranscripts(t *testing.T) {
-	if n := len(Default()); n != 26 {
-		t.Fatalf("Default() has %d transcripts, want 26", n)
+	if n := len(Default()); n != 46 {
+		t.Fatalf("Default() has %d transcripts, want 46", n)
 	}
 	for _, tr := range Default() {
 		if tr.Provenance.Captured == "" && tr.Provenance.Synthetic == "" {
@@ -138,6 +138,52 @@ func TestLoadRefuses(t *testing.T) {
 		if _, err := Load(fsys); err == nil {
 			t.Errorf("Load(%s) succeeded", name)
 		}
+	}
+}
+
+// unit:fake-transcripts (extended, #65 §3.3): match.form and response.body_text.
+func TestFakeFormAndBodyText(t *testing.T) {
+	text := "unexpected end of query at byte 8: expected '}'"
+	ts := []Transcript{
+		{Name: "form", Provenance: Provenance{Synthetic: "test"}, Match: Match{Method: "GET", Paths: []string{"/api/logs/v1/query_range"},
+			Form: map[string]string{"limit": "11", "direction": "backward"}},
+			Response: Response{Status: 200, Headers: map[string]string{"Content-Type": "application/json"}, Body: json.RawMessage(`{"ok":1}`)}},
+		{Name: "text", Provenance: Provenance{Synthetic: "test"}, Match: Match{Method: "POST", Paths: []string{"/api/logs/v1/query_range"}},
+			Response: Response{Status: 400, Headers: map[string]string{"Content-Type": "text/plain; charset=utf-8"}, BodyText: &text}},
+	}
+	f := New(ts, Options{})
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	get := func(q url.Values) (*http.Response, string) {
+		resp, err := http.Get(srv.URL + "/api/logs/v1/query_range?" + q.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, string(b)
+	}
+	if resp, body := get(url.Values{"limit": {"11"}, "direction": {"backward"}, "query": {"{a=\"b\"}"}}); resp.StatusCode != 200 || body != `{"ok":1}` {
+		t.Errorf("form equal: %d %s", resp.StatusCode, body)
+	}
+	if resp, _ := get(url.Values{"limit": {"12"}, "direction": {"backward"}}); resp.StatusCode != 404 {
+		t.Errorf("form differs: %d, want unexpected", resp.StatusCode)
+	}
+	if resp, _ := get(url.Values{"direction": {"backward"}}); resp.StatusCode != 404 {
+		t.Errorf("form key missing: %d, want unexpected", resp.StatusCode)
+	}
+	resp, body := post(t, srv.URL, "/api/logs/v1/query_range", url.Values{"query": {"{a"}})
+	if resp.StatusCode != 400 || body != text || resp.Header.Get("Content-Type") != "text/plain; charset=utf-8" {
+		t.Errorf("body_text: %d %q %q", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	}
+	both := `{"name":"a","provenance":{"synthetic":"x"},"match":{"method":"GET","paths":["/a"]},` +
+		`"response":{"status":200,"headers":{},"body":{},"body_text":"x"}}`
+	if _, err := Load(fstest.MapFS{"a.json": {Data: []byte(both)}}); err == nil {
+		t.Error("Load accepted a transcript with both body and body_text")
+	}
+	textOnly := strings.Replace(both, `"body":{},`, ``, 1)
+	if ts, err := Load(fstest.MapFS{"a.json": {Data: []byte(textOnly)}}); err != nil || len(ts) != 1 || ts[0].Response.BodyText == nil {
+		t.Errorf("Load(body_text only) = %v %v", ts, err)
 	}
 }
 

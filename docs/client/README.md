@@ -291,6 +291,8 @@ PromQL queries, data-source check and `/prom/*` reads of #62) and one
 | `recordView(tenant, uid, at, signal)` | nothing; `at` is the navigation time (integer ms since the epoch), the greater of the stored and the new time wins; unknown → `notFound`; an abort is rethrown |
 | `signOut()` | as before |
 | `queryRange(tenant, req, signal)`, `queryInstant(tenant, req, signal)` | the PromQL range and instant results of #62 (below) |
+| `queryLogs(tenant, req, signal)` | `LogsResult` (#65): a log page `{kind: 'streams', fromMs, toMs, stepMs, frame, cursor, completeness}` or a metric result `{kind: 'series', …RangeFrame}` (no `planned`); `req` is `{query, fromMs, toMs, widthPx, limit?, direction?, cursor?, timeoutMs?}` |
+| `queryVolume(tenant, req, signal)` | `RangeFrame` (no `planned`) with one series per level, labelled `{level}`; `req` is `{query, fromMs, toMs, widthPx, timeoutMs?}` |
 | `checkDataSource(tenant, signal)` | `{state, checkedAtMs?}` (T06-025) |
 | `promLabels`, `promLabelValues`, `promSeries`, `promMetadata` | the `/prom/*` reads of #62, used by the editor's completion ([Explore](explore.md)) |
 
@@ -319,6 +321,8 @@ from `api/openapi.yaml` (ADR-0014 §1, ADR-0015); requests go to the page's orig
 | `signOut` | none | resolves; never offered, because `canSignOut` is false |
 | `queryRange` | `POST /api/dash/v1/query/promql/range?tenant=…` `{query, from, to, width_px}` (`timeout_ms` only when given) | decoded by `data/decode.ts` into `{startMs, endMs, stepMs, series, completeness}`; errors below |
 | `queryInstant` | `POST …/query/promql/instant?tenant=…` `{query, at}` | a `series` (vector or matrix), `scalar` or `string` result; errors below |
+| `queryLogs` | `POST …/query/logql/range?tenant=…` `{query, from, to, width_px}`, plus `limit`, `direction`, `cursor` and `timeout_ms` only when given, with the signal | decoded by `decodeLogs`; errors below (a 400 on `/cursor`, `/limit` or `/direction` is `unknown`) |
+| `queryVolume` | `POST …/query/logql/volume?tenant=…` `{query, from, to, width_px}` (`timeout_ms` only when given) | decoded by `decodeVolume`; errors below |
 | `checkDataSource` | `GET /api/dash/v1/datasource/check?tenant=…` | `{state, checkedAtMs?}` (`not_checked` → `notChecked`); errors below |
 
 Errors: an `AbortError` from `fetch` is re-thrown unchanged; any other `fetch` rejection becomes
@@ -352,6 +356,29 @@ become `null`. Anything else throws `DecodeError` with the JSON pointer of the f
 for example `/frames/0/values/3`. The output is fresh `Float64Array`s in `SeriesFrame`
 (`data/frames.ts`).
 
+`decodeLogs` decodes the log range body (plan #65 Part B §3.5). A `kind: 'series'` body is a LogQL
+metric result and is decoded by `decodeRangeFrame`: the grid, frames and completeness of
+`decodeRange` without `planned`, which is PromQL-only until `logs.Plan` lands (T06-029, #116).
+`decodeRange` is `decodeRangeFrame` plus the required `planned`. A `kind: 'streams'` body becomes a columnar
+`LogFrame` (`data/logFrame.ts`):
+
+| Column | Type | Content |
+|---|---|---|
+| `tsNs` | `BigInt64Array` | ns since the epoch, exact: a double cannot hold a nanosecond epoch (`BigInt(Number('1767229100000000300'))` is not `1767229100000000300n`) |
+| `streamIndex` | `Uint32Array` | an index into `streams` (`{key, labels}`, in the BFF's key order) |
+| `lines` | `string[]` | the line |
+| `levels` | `Uint8Array` | an index into `LOG_LEVELS` (`unknown`, `trace`, `debug`, `info`, `warn`, `error`, `critical`: the T04 level codes) |
+| `metadata`, `parsed` | `(Record<string, string> \| null)[]` | the row's structured metadata and parsed fields, `null` if none |
+
+Rows are in request direction (`frame.direction`), merged across streams by ts in direction, then
+stream index, then entry index; this rebuilds the BFF's page order. The checks: `direction` is
+`backward` or `forward`; `start`, `end` and `step` are integers; every `key` matches the key
+pattern and every label, metadata and parsed value is a string; `ts_ns` is a decimal string without
+a leading zero, at most 2⁶³ − 1, and inside the window `start·10⁶ < ts ≤ end·10⁶`; a stream's
+entries do not go back against the direction; `level` is one of `LOG_LEVELS`; `cursor` is absent
+(`null`: no further page) or a non-empty string. `decodeVolume` is `decodeRangeFrame` plus one rule: every
+frame's labels are exactly `{level: <LogLevel>}` (else a `DecodeError` at `/frames/<i>/labels`).
+
 ### StubApi
 
 `StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
@@ -365,6 +392,15 @@ truncated due to limit" (plan #64 §3.10, A.3). `queryInstant` answers a scalar
 (`synthLineValue(62, 0, atMs, 100, 40)` at `atMs`) when the planned `valueType` is `scalar`, else
 the same three series as a vector at `atMs`; `checkDataSource` resolves
 `{state: 'ok', checkedAtMs: 0}`.
+
+`queryLogs` serves a synthetic page whose entries all lie in the window `(fromMs, toMs]`:
+`min(limit ?? 1000, 30)` entries 1 s apart, from `toMs` down (backward) or from `fromMs + 1 s` up
+(forward), stopping at the window's edge, so a short window gets fewer (`(F, F + 1]` backward has
+one entry at `to`, forward none). Entry `i` is `stub line <i>` in stream `i % 3`,
+`{service_name: 'stub', pod: 'stub-<j>', level: info|warn|error}`; only streams with an entry are
+listed; `cursor` is `null`. `queryVolume` returns three frames, `{level: error}`, `{level: warn}` and
+`{level: info}`, on the `promGrid` grid with counts `Math.round(|synthLineValue(65, j, t, 20, 10)|)`.
+Both reject `queryInvalid` for a range too long for the width.
 
 `StubApi` resolves on the next microtask, rejects with `AbortError` when the signal is aborted,
 returns copies, and serves the seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org,
@@ -657,6 +693,6 @@ client half, PRF-033);
 [T08](../../designs/technical/T08-dom-component-kit.md) (T08-005, T08-007, T08-008, T08-010, T08-022,
 T08-015, T08-017, T08-018, T08-021, T08-023, T08-024, T08-027), [T18](../../designs/technical/T18-security.md)
 (T18-001, T18-004),
-[T04](../../designs/technical/T04-wire-format-and-data-plane.md) (T04-005, T04-010),
+[T04](../../designs/technical/T04-wire-format-and-data-plane.md) (T04-005, T04-010; §4.3 `log_lines/1` for `LogFrame`),
 [T06](../../designs/technical/T06-bff-architecture.md) (T06-025),
 [T09](../../designs/technical/T09-query-editors.md) (T09-009).

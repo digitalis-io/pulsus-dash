@@ -5,7 +5,13 @@ import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw'
 import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
-import { ApiError, BoardConflictError, isApiError, type RangeRequest } from './types';
+import {
+  ApiError,
+  BoardConflictError,
+  isApiError,
+  type LogsRequest,
+  type RangeRequest,
+} from './types';
 
 /** The bootstrap body of plan #59 §3.5 for the e2e database (one binding, `demo`). */
 const BOOTSTRAP = {
@@ -479,6 +485,148 @@ describe('http starred and recent', () => {
     expect(isApiError(await rejection(none.api.recordView('x', 'a', 1)), 'notFound')).toBe(true);
     await expect(none.api.signOut()).resolves.toBeUndefined();
     expect(none.requests).toEqual([]);
+  });
+});
+
+/** Plan #65 Part B §4.4: the LogQL query methods. */
+const L: LogsRequest = { query: '{app="x"}', fromMs: 1, toMs: 2, widthPx: 3 };
+
+const LOG_PAGE = {
+  kind: 'streams',
+  start: 1,
+  end: 2,
+  step: 1000,
+  direction: 'backward',
+  streams: [
+    {
+      key: '0123456789abcdef',
+      labels: { pod: 'a' },
+      entries: [{ ts_ns: '1500000', line: 'x', level: 'info' }],
+    },
+  ],
+  cursor: 'c'.repeat(48),
+  completeness: { truncated: false, warnings: [], infos: [] },
+};
+
+describe('HttpApi log queries (plan #65 Part B)', () => {
+  it('sends the range request with only the given options and decodes the page', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, LOG_PAGE)));
+    const r = await a.queryLogs('demo', L);
+    expect(r.kind).toBe('streams');
+    if (r.kind === 'streams') {
+      expect(Array.from(r.frame.tsNs)).toEqual([1500000n]);
+      expect(r.cursor).toBe('c'.repeat(48));
+    }
+    const req = requests[0];
+    expect(req?.method).toBe('POST');
+    expect(req === undefined ? '' : new URL(req.url).pathname + new URL(req.url).search).toBe(
+      '/api/dash/v1/query/logql/range?tenant=demo',
+    );
+    expect(await req?.text()).toBe('{"query":"{app=\\"x\\"}","from":1,"to":2,"width_px":3}');
+
+    const all = api(() => Promise.resolve(json(200, LOG_PAGE)));
+    await all.api.queryLogs('demo', {
+      ...L,
+      limit: 5,
+      direction: 'forward',
+      cursor: 'k'.repeat(48),
+      timeoutMs: 500,
+    });
+    expect(JSON.parse((await all.requests[0]?.text()) ?? '{}')).toEqual({
+      query: '{app="x"}',
+      from: 1,
+      to: 2,
+      width_px: 3,
+      limit: 5,
+      direction: 'forward',
+      cursor: 'k'.repeat(48),
+      timeout_ms: 500,
+    });
+  });
+
+  it('sends the volume request', async () => {
+    const empty = {
+      start: 0,
+      end: 1000,
+      step: 1000,
+      frames: [],
+      completeness: LOG_PAGE.completeness,
+    };
+    const { api: a, requests } = api(() => Promise.resolve(json(200, empty)));
+    const r = await a.queryVolume('demo', { ...L, timeoutMs: 700 });
+    expect(r.series).toHaveLength(0);
+    const req = requests[0];
+    expect(req === undefined ? '' : new URL(req.url).pathname).toBe(
+      '/api/dash/v1/query/logql/volume',
+    );
+    expect(await req?.text()).toBe(
+      '{"query":"{app=\\"x\\"}","from":1,"to":2,"width_px":3,"timeout_ms":700}',
+    );
+  });
+
+  it('passes the signal and re-throws an abort', async () => {
+    const seen: (AbortSignal | null)[] = [];
+    const ctrl = new AbortController();
+    const { api: a } = api((req) => {
+      seen.push(req.signal);
+      return Promise.resolve(json(200, LOG_PAGE));
+    });
+    await a.queryLogs('demo', L, ctrl.signal);
+    expect(seen[0]?.aborted).toBe(false);
+    ctrl.abort();
+    expect(seen[0]?.aborted).toBe(true);
+    const abort = new DOMException('The operation was aborted.', 'AbortError');
+    const ab = api(() => Promise.reject(abort));
+    expect(await rejection(ab.api.queryLogs('demo', L, ctrl.signal))).toBe(abort);
+    expect(await rejection(ab.api.queryVolume('demo', L, ctrl.signal))).toBe(abort);
+  });
+
+  const logCases: [string, () => Promise<Response>, string, object][] = [
+    [
+      'a position',
+      envelope(400, {
+        code: 'invalid',
+        message: "unexpected end of query at byte 8: expected '}'",
+        fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+        hint: { position: { offset: 8 } },
+      }),
+      'queryInvalid',
+      { position: 8 },
+    ],
+    [
+      'a cursor error',
+      envelope(400, {
+        code: 'invalid',
+        message: 'm',
+        fields: [{ pointer: '/cursor', message_key: 'cursor.mismatch' }],
+      }),
+      'unknown',
+      {},
+    ],
+    ['too broad', envelope(422, { code: 'too_broad', message: 'm' }), 'tooBroad', {}],
+    ['a timeout', envelope(504, { code: 'unavailable', message: 'm' }), 'timeout', {}],
+  ];
+  for (const [what, response, kind, detail] of logCases) {
+    it(`maps ${what} to ${kind}`, async () => {
+      for (const call of [
+        (x: Api) => x.queryLogs('demo', L),
+        (x: Api) => x.queryVolume('demo', L),
+      ]) {
+        const e = await rejection(call(api(response).api));
+        expect(e).toBeInstanceOf(ApiError);
+        expect((e as ApiError).kind).toBe(kind);
+        expect((e as ApiError).detail).toEqual(detail);
+      }
+    });
+  }
+
+  it('refuses a 200 body the decoder refuses', async () => {
+    const { api: a } = api(() => Promise.resolve(json(200, { ...LOG_PAGE, direction: 'up' })));
+    const e = await rejection(a.queryLogs('demo', L));
+    expect((e as ApiError).kind).toBe('badResponse');
+    expect((e as ApiError).message).toContain('/direction');
+    const v = api(() => Promise.resolve(json(200, { start: 1, end: 2, step: 1, frames: 3 })));
+    expect(((await rejection(v.api.queryVolume('demo', L))) as ApiError).kind).toBe('badResponse');
   });
 });
 
