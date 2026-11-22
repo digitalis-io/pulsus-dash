@@ -10,7 +10,7 @@ import { useTimeContext } from './useTimeContext';
 
 export function useExploreParams(): {
   readonly params: ExploreParams;
-  set(p: Partial<ExploreParams>, o: { readonly replace: boolean }): void;
+  readonly set: (p: Partial<ExploreParams>, o: { readonly replace: boolean }) => void;
 } {
   const { search, rest } = useTimeContext();
   const navigate = useNavigate();

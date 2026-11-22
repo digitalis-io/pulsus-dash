@@ -1,7 +1,13 @@
 import { fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { installResizeObserver } from '../test/fakeResizeObserver';
 import { renderApp } from '../test/renderApp';
 import { useWindowKeys, windowKeyAction } from './useWindowKeys';
+
+// Explore › Metrics measures its chart host (plan #63 Part C).
+beforeEach(() => {
+  installResizeObserver();
+});
 
 const URL_10_11 =
   '/t/demo/explore/metrics?from=2026-11-19T10%3A00%3A00.000Z&to=2026-11-19T11%3A00%3A00.000Z&refresh=off';

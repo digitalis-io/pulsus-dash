@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.19-rc · 2026-11-21 |
+| **Version** | 1.21-rc · 2026-11-21 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -290,9 +290,11 @@ estate, §4.5):
 The board room is the first room `bench:inp-rooms` scripts (#61); the other DOM rooms join as they
 gain interactions. `bench:rooms-long-tasks` (T08 §7) applies the long-task method below to the
 scripted room interactions, with the board editor (#90) and chart gestures, wheel and drag on a
-board panel (#93) as its scenarios. Until the reference lab exists, CI's
-`e2e` Chromium leg runs it with the interim trace check's thresholds (thread > 16 ms and wall > 50 ms
-fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchanged.
+board panel (#93) as its scenarios, and `bench:editor-keystroke` to the 100 measured keys of the
+Explore editor (#63). Until the reference lab exists, CI's `e2e` Chromium leg runs both with the
+interim trace check's thresholds (thread > 16 ms and wall > 50 ms fails) as a merge gate; PRF-005's
+limit, no main-thread task over 16 ms, is the reference lab's gate (`over16`, enforce mode), pending
+#68. `bench:long-tasks` is unchanged.
 
 **Measurement methods**
 - **Frame time** is the interval between presented frames, from worker `requestAnimationFrame`
@@ -303,8 +305,11 @@ fails) as a merge gate; the lab applies 16 ms wall. `bench:long-tasks` is unchan
   headed), on the reference machines. A weekly headed run checks the two agree within 5 %.
 - **Long tasks on main**: top-level `RunTask` on the page's `CrRendererMain` between first and last
   input `EventDispatch` in a Chrome trace, judged on wall `dur` (`dash-lab::trace`); LoAF serves
-  RUM. CI's `e2e` runs it (thread > 16 ms, wall > 50 ms) as PRF-005's merge gate until the
-  reference lab exists (§7.1).
+  RUM. **Interim CI check** (`ciOver`, until the reference lab exists, §7.1): CI's `e2e` fails a task
+  only when it exceeds **both** thresholds, over 50 ms wall **and** over 16 ms thread time, or when
+  the trace has no thread time for it (the check fails closed). This is deliberately looser than
+  PRF-005 for shared runners, whose wall times are noisy. **PRF-005's limit** (no main-thread task over
+  16 ms wall) is enforced by the reference-lab check (`over16`, enforce mode), pending #68.
 - **Shim per-event time** (T03-003): CI's `e2e` reports listener times and asserts only
   deterministic queue checks; `bench:shim-input-cost` gates the times.
 - **Input → photon** is estimated in CI as event `t_ms` → `queue.submit` of the frame that consumed
@@ -556,7 +561,7 @@ the merge train), nightly (release blocker).
 | `ci:typecheck` | `npm run typecheck` (`tsc --noEmit`, `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) | PR | yes |
 | `ci:lockfile` | `package-lock.json` committed and `npm ci` succeeds; exact versions only (no `^` or `~`); every `resolved` URL on `https://registry.npmjs.org/` with an `integrity` hash; `.npmrc` sets `save-exact`, `engine-strict` and `ignore-scripts` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §7) | PR | yes |
 | `ci:npm-audit` | `npm audit --omit=dev --audit-level=high` and `npm audit --audit-level=critical` pass; `npm audit signatures` passes | PR | yes |
-| `ci:bundle-size` | `npm run size`: brotli size per chunk class against `client/bundle-budgets.json` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8): initial JS ≤ 200 KB, initial CSS ≤ 30 KB, each lazy route chunk ≤ 120 KB, editor chunk ≤ 175 KB, fonts ≤ 150 KB, all client assets except the engine ≤ 1 MB; from #68 the engine ≤ 1.9 MB ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); client core (initial JS + CSS + engine) < 3 MB (PRF-009). Over budget or a required artefact absent → fail. *Later:* the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
+| `ci:bundle-size` | `npm run size`: brotli size per chunk class against `client/bundle-budgets.json` ([ADR-0014](../adr/0014-typescript-react-web-client.md) §8): initial JS ≤ 200 KB, initial CSS ≤ 30 KB, each lazy route chunk ≤ 120 KB, editor chunk ≤ 175 KB, fonts ≤ 150 KB, all client assets except the engine ≤ 1 MB; from #68 the engine ≤ 1.9 MB ([T03 §7.3](T03-browser-runtime.md#73-wasm-size-budget)); client core (initial JS + CSS + engine) < 3 MB (PRF-009). The editor budget applies to the editor entries and the `editor-*` files statically reachable from them, walking only through `editor-*` files (other imported chunks keep their own rows); none of them may be in the initial JS (#63). Over budget or a required artefact absent → fail. *Later:* the +2 %-per-PR growth check once `main` has a size baseline | PR | yes |
 | `ci:dep-audit` | Every runtime `dependencies` entry of `client/package.json` is on the allowlist in `client/dependency-policy.json` and in no forbidden category (charting, mapping, 3D, graph-diagram, CSS-in-JS); runtime licences on the AGPL-3.0-compatible allowlist; no third-party asset or font host in the build. Engine leg from #68: `cargo deny check licenses advisories bans sources` with `engine/deny.toml` (the licence set of [T18](T18-security.md) §4.11, three exact-version exceptions; no unknown registry or git source; yanked crates denied); the `web-sys` feature allowlist arrives with the browser build (Part C); the lock lint is `ci:engine-lint` | PR | yes |
 | `ci:token-lint` | T01-010: no colour, size or duration literal outside the generated token outputs (`tokens.css`, `tokens.ts`, and the engine's Rust constants from #68); regenerating them leaves no diff; state tokens referenced only through `StateEncoding` (T02-004) | PR | yes |
 | `ci:api-gen` | `oapi-codegen`, `openapi-typescript` and `sqlc generate` leave no diff against `api/openapi.yaml` and `server/queries/` ([ADR-0015](../adr/0015-go-bff.md)) | PR | yes |
@@ -628,6 +633,7 @@ the merge train), nightly (release blocker).
 | `unit:query-size` | The query size is the UTF-8 byte length; above 131 072 bytes (not at it) the query is over the limit, multi-byte text included (T09-015) |
 | `unit:editor-composition` | During IME composition the editor closes an open popup, opens none, makes no lookup, accepts nothing and holds arriving results; it re-evaluates completion once after the last `compositionend` (T09-005) |
 | `unit:editor-size` | Above 128 KB of UTF-8, measured on every change, completion and lookups pause and an open popup closes, while editing, undo and run keys go on; shortening the query resumes completion; at and below the limit a long document completes (T09-015) |
+| `unit:explore-run-size` | Explore Run refusal (#63, T09-015): above 128 KB of UTF-8 in the draft or the URL query, Run (button, Shift+Enter, Mod+Enter, URL load) sends nothing and shows the size message, which also shows while editing; between 64 KiB on the **sent** text (rewrite included) and 128 KB completion works and Run is refused with the 64 KiB message; Run is not accepted until the metric metadata and the chart width are known, so the check always uses the plan that would be sent |
 | `unit:lang-table` | `LANGUAGES` resolves each built language to its `QueryLanguage` and rejects the languages not built yet (T09-001, [ADR-0018](../adr/0018-query-language-modules.md)) |
 | `unit:window-keys` | Window keys ignore events with an editable element or a dialog, menu, listbox or grid anywhere on the composed path, shadow trees included; without a path, the target decides (INT-032) |
 | `unit:number-format` | `2.84 s`, `1.2k rps`, `€38k/h`, `since 12:22 (40 min)`; byte-identical output browser vs native |
@@ -709,9 +715,17 @@ the merge train), nightly (release blocker).
 |---|---|
 | `e2e:shim-fuzz` | From #68, on engine canvases: 10⁴ random DOM events decoded identically by the engine, in order, loss only as counted overflow |
 | `e2e:mode-matrix` | Smoke suite per mode (Full, T2, ST, MT-R, Static) via `?mode=`; until #68 only the interim Canvas 2D mode |
-| `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench chunk; with no chart frame on screen it fetches no engine |
+| `e2e:lazy-load` | Cold load that opens no workbench fetches no workbench chunk; with no chart frame on screen it fetches no engine; and opening Boards fetches no `editor-*` chunk; opening Explore fetches each once (#63) |
 | `e2e:no-dom-vis` | With the engine active, every non-DOM vis is drawn by the engine into its viewport canvas: no chart SVG and no interim Canvas 2D frames; one GPU device for the page |
 | `e2e:csp-violations` | The production build served with the [ADR-0014](../adr/0014-typescript-react-web-client.md) §9 headers reports no CSP or Trusted Types violation during the PR smoke suite |
+| `e2e:explore-completion` | Against `pulsus-fake` through the `http` BFF: typing a metric prefix in Explore offers the metric with its metadata type; Enter accepts it (SRF-027) |
+| `e2e:metrics-autovis` | Against `pulsus-fake`: a bare counter runs as `rate(…[1m])` at step 5 s, drawn as a line with the "Rate applied" chip, and the chip off runs the raw counter; the histogram transcript draws a heatmap; the scalar transcript a stat (SRF-030, VIZ-065) |
+| `e2e:editor-error-on-run` | Against `pulsus-fake`: the SRF-027 query underlines PulsusDB's reported position and shows its message; an error without a position underlines the whole query with "position unknown"; the previous result stays drawn (SRF-027, T09-009) |
+| `e2e:series-table` | Sorting the Explore series table by max puts the largest series first; choosing it isolates it; choosing it again restores all (SRF-031) |
+| `e2e:explore-cancel` | Two time changes within 200 ms leave exactly one completed request and one cancelled request at `pulsus-fake`, and the last window drawn (PRF-030) |
+| `e2e:explore-truncation` | A truncated result shows the partial-data badge with its text and Narrow, which re-issues the middle half; a `422` shows PulsusDB's message with Narrow (PRF-031) |
+| `e2e:explore-refresh` | The header Refresh now reruns the Explore query (IA-020) |
+| `e2e:editor-ime` | Chromium, CDP composition in the editor: no completion popup during the composition, one after it commits (T09-005) |
 | `e2e:bff-headers` | Against the BFF-served stub build: `GET /` carries a `Content-Security-Policy` equal to the client's `CSP` constant and every other document header of [T18](T18-security.md) T18-002; an `/assets/*.js` file requested with `Accept-Encoding: br` is served `br` and `immutable`; a deep link returns `index.html`; an unknown `/api/` path is the 404 envelope |
 | `e2e:bff-http-shell` | Against the BFF-served `http` build, and through the Vite dev server proxied to the BFF: the shell bootstraps from `GET /api/dash/v1/bootstrap`, About shows the server version, Sign out is absent under the fixed local principal (D12), and the sidebar shows the data-source line (IA-021) |
 | `e2e:board-edit-save` | Against the BFF-served `http` build and its database, in Chromium, Firefox and WebKit (plan #61 Part B): create a board, add three panels, move one with the pointer to column 7 and resize it to 6 × 10, set titles and visualisations, save with `⌘S`/`Ctrl+S`, reload: the same grid positions, titles and visualisations in View mode, and `GET /api/dash/v1/boards/<uid>` agrees; each panel shows the PromQL empty state; with unsaved changes, in-app navigation asks first (Keep editing stays, Discard changes leaves). A board at the last row (y 9 999, h 100) renders at the same box in View and Edit mode. Each run uses its own uniquely named board and deletes it |
@@ -763,7 +777,7 @@ the merge train), nightly (release blocker).
 `bench:frame-series-1e4`, `bench:frame-scatter-1e7`, `bench:frame-high-hz`, `bench:input-photon`,
 `bench:long-tasks`, `bench:offline-interaction`, `bench:startup`, `bench:camera-transition`,
 `bench:memory-heaviest`, `bench:memory-pressure`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:lens-load`,
-`bench:decode-r1`, `bench:shim-input-cost`; `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
+`bench:decode-r1`, `bench:shim-input-cost`, `bench:editor-keystroke` (Chromium, stub BFF: 100 keys typed at the end of a 1 KB PromQL query; the editor's update time per key (each CodeMirror transaction's state and view update, highlighting and DOM sync included, timed in the page) minus the idle overhead, p95 ≤ 2 ms (T09-003); a trace of the measured keys, read by the `bench:rooms-long-tasks` parser, with no main-thread task over 50 ms wall and 16 ms thread time, blocking in CI's `e2e` Chromium leg now (PRF-005, §4.3 interim); p95 ≤ 2 ms and no task over 16 ms wall in the lab (`EDITOR_BENCH_GATE=enforce`, #68); #63); `bench:frame-interim-line` (report only, until #68: the interim Canvas 2D layer redraw of the 50 × 1 440 line chart over 40 theme changes, p50 and p95 reported, no threshold); `bench:frame-interim-heatmap` (report only, until #68: the interim Canvas 2D layer draw of a 10k × 200 heatmap with missing cells, 50 timed draws, p50 and p95 reported, no threshold; #63);
 `bench:promql-decode` and `bench:bff-overhead` (#62, `REFERENCE_LAB=1 make bench-bff`: W1, a 1 000 × 1 000
 PulsusDB matrix decoded, gridded and encoded, ≤ 30 ms per 10⁶ points, median of 5; W2, 1 000 sequential
 range requests with a 2 ms upstream, BFF overhead p50 ≤ 5 ms and p99 ≤ 20 ms ([T06](T06-bff-architecture.md)
@@ -785,6 +799,7 @@ and W2 via cachegrind for Go, run by `.github/workflows/bench.yml` on every pull
 | `bench:lens-load` | nightly | PRF-010/011 | release blocker, from M-UI2 |
 | `bench:decode-r1` | merge | < 50 ms p95 | yes |
 | `bench:shim-input-cost` (engine adapter, from #68) | merge | T03-003 (§4.3) | as `bench:long-tasks`: yes once the lab exists; until then CI's `e2e` reports the times only |
+| `bench:editor-keystroke` | PR: CI's `e2e` Chromium leg, interim; merge once the reference lab exists (`EDITOR_BENCH_GATE=enforce`, #68) | interim CI: `ciOver === 0` (§4.3); lab: editor update p95 ≤ 2 ms, 0 main-thread tasks > 16 ms | the CI check blocks now; the lab thresholds once the lab exists, report only until then |
 | `bench:frame-interim-line` (interim renderer, until #68) | PR | none (reports p50, p95) | no |
 | RUM field p95 per `hw_class` | weekly review | within 20 % of the lab | tracked, not blocking |
 
@@ -937,4 +952,6 @@ Meta-testing:
 | 1.16-rc | 2026-11-21 | #63 Part A: `unit:explore-plan` states the rate window `max(4 × step, step + S, 4 × S)` (`S` the scrape interval, default 15 s, per binding later) in place of `4 × step`, with rows where 4 × S and 4 × step set the window |
 | 1.17-rc | 2026-11-21 | #93: §4.3 chart-gesture scenario |
 | 1.18-rc | 2026-11-21 | #63 Part B: §7.1 adds `unit:promql-shape`, `unit:promql-diagnostics`, `unit:suggest-cache`, `unit:prom-source`, `unit:prom-client`, `unit:editor-keys`, `unit:editor-completion`, `unit:editor-doc`, `unit:editor-diagnostics`, `unit:editor-no-linter`, `unit:editor-styles`, `unit:editor-host`, `unit:query-size`, `unit:editor-composition`, `unit:editor-size`, `unit:lang-table` and `unit:window-keys` |
-| 1.19-rc | 2026-11-21 | #65 Part A: §7.1 adds `unit:log-paging`, `unit:log-window`, `unit:log-decode`, `unit:log-member-order`, `unit:log-level`, `unit:logql-calls`, `unit:volume-compose`, `unit:volume-buffered`, `unit:log-categorized`, `unit:text-errors`, `unit:query-hash`, `unit:contract-window` and `itest:pulsusdb-contract` (with its `logql` subtest); `unit:virtual-guard` covers the LogQL inputs |
+| 1.19-rc | 2026-11-21 | #63 Part C: §7.1 adds `unit:explore-run-size`, `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:editor-ime` and the lab benchmark `bench:editor-keystroke` (lab-gate row: merge once the lab exists, report-only on shared CI until then); `e2e:lazy-load` and `ci:bundle-size` name the editor closure |
+| 1.20-rc | 2026-11-21 | #63 Part C (orchestrator decision on plan C.12): §4.3 states the interim CI long-task check as AND: a task fails CI only over 50 ms wall **and** over 16 ms thread time, or without thread time; PRF-005's 16 ms limit is the reference-lab gate (`over16`, enforce mode), pending #68; `bench:editor-keystroke` uses the same check. §7.1 `bench:editor-keystroke`: the editor update per key (probe) p95 ≤ 2 ms and the traced tasks |
+| 1.21-rc | 2026-11-21 | #65 Part A: §7.1 adds `unit:log-paging`, `unit:log-window`, `unit:log-decode`, `unit:log-member-order`, `unit:log-level`, `unit:logql-calls`, `unit:volume-compose`, `unit:volume-buffered`, `unit:log-categorized`, `unit:text-errors`, `unit:query-hash`, `unit:contract-window` and `itest:pulsusdb-contract` (with its `logql` subtest); `unit:virtual-guard` covers the LogQL inputs |

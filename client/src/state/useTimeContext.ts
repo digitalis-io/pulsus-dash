@@ -68,8 +68,13 @@ export function useTimeContext(): TimeContext {
     [search, rest, clock, timeZone, navigate, pathname],
   );
 
+  // Refresh reruns every `['data']` query, a first fetch in flight included: `invalidateQueries`
+  // alone refetches with `cancelRefetch`, which reuses a first fetch, so the requests in flight are
+  // cancelled first. `cancelQueries` aborts synchronously (fetchStatus 'idle'), so no `await` is
+  // needed before the new fetch (plan #63 Part C §4.4). Board panels are `['panel', …]`: untouched.
   const refreshNow = useCallback(() => {
     clock.tick();
+    void queryClient.cancelQueries({ queryKey: ['data'] });
     void queryClient.invalidateQueries({ queryKey: ['data'] });
   }, [clock, queryClient]);
 
