@@ -32,10 +32,11 @@ the **Run** button, then the query editor and a status line.
   flight and starts it again.
 - **Running an empty query** clears the result and shows "Run a query to see a chart".
 
-Run is disabled, with the note "Run is available once the metric types have loaded and the chart
-has a size.", until the editor, the metric types and the chart's width are known. This takes a
-moment after the page opens; it ensures that the size check below always applies to the query that
-would really be sent.
+Run is disabled, with the note "Run is available once the chart has a size.", until the editor and
+the chart's width are known. This takes a moment after the page opens.
+
+The server builds the query it sends: it applies the rate, fills in `$__interval` and
+`$__rate_interval`, and checks the size.
 
 ## Errors
 
@@ -49,6 +50,9 @@ A failed query shows its message in the status line, and the previous result sta
 - **Busy** ("Too many queries are running for this tenant"), **unavailable** ("PulsusDB is
   unavailable: …"), a network error ("The server could not be reached.") and an unknown tenant are
   shown as such. Try again later, or check the data source.
+- A query with a variable (`$name` or `${name}`), such as a board panel's query opened in
+  Explore, fails with "The query failed: no value for variable $name": Explore has no variables.
+  Replace the variable with a value and run it again.
 
 ## How the result is drawn
 
@@ -77,7 +81,9 @@ the query sent differs from the one typed, **Sent query: …** shows it in the r
 
 The rate window holds at least four 15 s scrapes: it is `1m` up to a 15 s step and `4 × step`
 above (the step depends on the time range and the chart's width). Targets scraped less often than
-every 15 s may show gaps.
+every 15 s may show gaps. Whether a name is a counter or a histogram comes from the data source's
+metric types; when they cannot be read, only names ending in `_total` are rated and a warning says
+so under **Warnings**.
 
 ## The series table
 
@@ -111,7 +117,7 @@ notes show under **Notes**. At most five of each are listed.
 | Limit | What happens |
 |---|---|
 | 128 KB of query text (UTF-8) | Completion pauses and a note says so; Run sends nothing and shows the message |
-| 64 KiB of query **sent** (with any rate applied) | Run sends nothing: "The query to send, with any rate applied, is over 64 KiB, the most the server accepts. Shorten it." |
+| 64 KiB of query **sent** (with any rate applied) | The server refuses it with the same message: "The query to send, with any rate applied, is over 64 KiB, the most the server accepts. Shorten it." |
 | 500 series | The chart and the table show the first 500 |
 | 10 000 metric names | Completion and the picker use the first 10 000 names the data source returns |
 | 100 picker options | Keep typing to narrow the list |
@@ -122,4 +128,5 @@ Requirements: [SRF-027](../../designs/product/04-surfaces.md#srf-027--promql-edi
 [VIZ-065](../../designs/product/05-visualisation-catalogue.md#viz-065--auto-vis-rules),
 [IA-020](../../designs/product/02-information-architecture.md#ia-020--time-range-in-the-page-header),
 [IA-022](../../designs/product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view);
-design rules [T09](../../designs/technical/T09-query-editors.md) (query editors).
+design rules [T09](../../designs/technical/T09-query-editors.md) (query editors) and
+[ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (the server plans the query).

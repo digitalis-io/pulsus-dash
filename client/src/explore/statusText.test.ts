@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, type ApiErrorKind } from '../api/types';
-import { promql } from '../editor/lang/promql/promql';
+import { plannedAs } from '../test/exploreTestKit';
 import { EMPTY_COMPLETENESS, fixture } from '../test/histogramFixtures';
 import type { ExploreResult } from '../vis/autovis';
-import { planRun } from './plan';
 import { errorView, outcomeText, refusalText } from './statusText';
 import type { RunOutcome } from './useExploreRun';
 
-const plan = planRun('up', promql.shape('up'), {}, { rate: true, stepMs: 5000 });
 const outcome = (result: ExploreResult): RunOutcome => ({
   text: 'up',
-  plan,
+  planned: plannedAs('up'),
   result,
   durationMs: 120,
 });
@@ -42,6 +40,13 @@ describe('statusText', () => {
     ['unknown', 'odd', { text: 'The query failed: odd', narrow: false }],
   ] as [ApiErrorKind, string, unknown][])('%s', (kind, message, view) => {
     expect(errorView(new ApiError(kind, message), [])).toEqual(view);
+  });
+
+  it('queryTooLong is the 64 KiB text, without Narrow', () => {
+    expect(errorView(new ApiError('queryTooLong', 'm'), [])).toEqual({
+      text: refusalText('tooLong'),
+      narrow: false,
+    });
   });
 
   it('queryInvalid takes the diagnostic, else the message', () => {

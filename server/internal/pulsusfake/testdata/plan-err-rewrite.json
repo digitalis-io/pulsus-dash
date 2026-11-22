@@ -1,0 +1,21 @@
+{
+  "name": "plan-err-rewrite",
+  "provenance": {
+    "synthetic": "plan #112"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "rate(x_total{job=\"a\"}[1m])"
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-plan-err-rewrite"
+    },
+    "body": {"status":"error","errorType":"bad_data","error":"1:20: parse error: synthetic"}
+  }
+}

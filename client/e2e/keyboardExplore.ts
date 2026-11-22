@@ -1,7 +1,7 @@
 /**
  * Keyboard loop L32 (plan #63 Part C Appendix C.7): the Explore metrics page with a result — the
  * editor's Run keys and Escape, the crosshair, the rate chip, the table's sort buttons, rows and
- * region, the vis options and the metric picker. Run inside the one keyboard test, so the final
+ * region, the vis options and the metric picker — and with a query the server refuses (plan #112). Run inside the one keyboard test, so the final
  * coverage check covers it.
  */
 import { expect, test } from '@playwright/test';
@@ -68,6 +68,15 @@ export async function exploreLoops(s: Script): Promise<void> {
     await expect(page.getByRole('button', { name: 'Run' })).toBeFocused();
     await expect(page.getByRole('listbox')).toHaveCount(0);
     await expect(page.locator('[inert]')).toHaveCount(0);
+
+    // A query refused before it runs (Explore has no variables, plan #112 §10 Q1; a templated
+    // panel opened in Explore, L24, gives the same): the error, and the vis options without a
+    // result.
+    await s.goto(
+      `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=${encodeURIComponent('up{r="$r"}')}`,
+    );
+    await expect(page.getByRole('alert')).toContainText('no value for variable $r');
+    await s.on('radio "Auto"', 'Space');
 
     await s.goto('/t/demo/explore/metrics');
   });

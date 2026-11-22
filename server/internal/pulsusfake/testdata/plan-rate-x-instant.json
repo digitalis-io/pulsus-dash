@@ -1,0 +1,21 @@
+{
+  "name": "plan-rate-x-instant",
+  "provenance": {
+    "synthetic": "plan #112"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query"
+    ],
+    "query": "rate(x[1m])"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-plan-rate-x-instant"
+    },
+    "body": {"status":"success","data":{"resultType":"vector","result":[{"metric":{"job":"a"},"value":[1767229200,"1"]}]}}
+  }
+}

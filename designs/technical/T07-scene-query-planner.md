@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-21 |
+| **Version** | 1.9-rc · 2026-11-22 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -156,10 +156,12 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 ```
  browser (scene state, cameras)                              BFF dash-planner
  ─────────────────────────────                              ──────────────────────────────────────────────────────────
- ScenePlanRequest{gen, viewports, context, hints} ─WS──►  1a Classify  source, signal, selectors and floors from the substituted text (§4.3)
+ ScenePlanRequest{gen, viewports, context, hints} ─WS──►  0 Bind       templates/{{entity}} → raw text + $vars (catalogue); language module
+                                                                         Prepare: $vars substituted, step macros as placeholder durations
+                                                          1a Classify  source, signal, selectors and floors from the substituted text (§4.3)
                                                           1b Resolve   step from range, px, pass and floor; level prediction, grid alignment (§4.3)
- Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Bind       templates/{{entity}}/$vars → concrete queries (catalogue);
- Cancel{viewport|plan}                                                   language module Plan with the resolved step → planned text
+ Replan{viewport deltas}  (≤ 1 per frame, coalesced)       2 Plan       language module Plan with the resolved step: step macros, rate rewrites
+ Cancel{viewport|plan}                                                   and the rate window → planned text
  ApproachHint{entity, level, dist, dwell}                  3 Lower      planned text → LogicalQuery (v1: OpaqueQuery, exact-text hash
                                                                          of the planned text, §0; classify PulsusDB | Virtual | Mixed, §4.11)
  Pressure{level}                                           4 Merge      session-local dedupe, range-union, derivation, fusion (§4.4)
@@ -172,7 +174,15 @@ JSON form and is held to the same semantics by shared fixtures (§0).
  ◄── frames{plan, viewport, pass, gen, exactness} ─────────11 Stream     per pass; Completeness trailer per viewport
 ```
 
-- **Classify** (1a) runs first. It is a cheap classification of the source and the signal, which
+- **Bind** (0) runs first. It reads the scene's `Context` (entity set, window, filters, baseline;
+  IA-002) and the Board's variable values, expands templates and `{{entity}}` bindings from the
+  catalogue into raw text plus variable values, and hands them to the language module's `Prepare`
+  (ADR-0021), which substitutes the `$vars`. Only the step-dependent macros (`$__interval`,
+  `$__rate_interval`) wait: they stay placeholder durations until Resolve has the step. So any
+  selector that a template, an `{{entity}}` binding or a variable introduces reaches Classify, and
+  its floor reaches Resolve (plan #112 §4.8). Bind keeps a **dependency index** `(context member |
+  $var) → Vec<ViewportId>`, so a change re-binds only the viewports that read it (T07-013).
+- **Classify** (1a) is a cheap classification of the source and the signal, which
   yields the signal's capabilities (`SignalCaps`) and every virtual-source floor (15 s for `ALERTS`
   and `ALERTS_FOR_STATE`, 300 s for `pulsus_anomaly_score`; §4.3). It runs on the query after the
   language module's variable substitution, with the step-dependent macros (`$__interval`,
@@ -182,17 +192,28 @@ JSON form and is held to the same semantics by shared fixtures (§0).
   `prom.Plan` uses (ADR-0021), and finds every reserved or virtual selector and its floor. A text the
   parser rejects is classified as a PulsusDB query; the `VirtualGuardLayer` byte match still applies
   (T07-020). In v1 nothing resolves to a virtual source (§0), so Classify yields the signal's
-  capabilities alone.
+  capabilities alone. PromQL Classify is `prom.Prepare` (#112); LogQL Classify lands with
+  `logs.Plan`, until then the LogQL routes use the T07-020 byte guard. Its contract (follow-up
+  issue "Move LogQL planning to the Go service", before #66 Part C): `logs.Prepare` substitutes,
+  then classifies stream selectors with a LogQL selector reader before the step is resolved; only
+  the equality matcher `source="pulsus-dash"` is reserved; the cases L1–L5 and the gates
+  `unit:logql-classify` and `itest:logql-virtual-refused` are in
+  [PulsusDB client and the PromQL routes](../../docs/server/pulsusdb.md) ("Classify and the binding order").
 - **Resolve** (1b) computes the step from the viewport's range, width and pass and the floor from
   Classify (§4.3; the §0 table: step, level and alignment do not depend on the text). The step is
   therefore final before any text is planned. Exactness that depends on the query's functions (from
   the parser design) is attached at Lower.
-- **Bind** reads the scene's `Context` (entity set, window, filters, baseline; IA-002) and the
-  Board's variable values. It then calls the language module's `Plan` (ADR-0021) with the final step
-  from Resolve, which substitutes `$vars` and macros (`$__interval`, `$__rate_interval`) and applies the
-  rate rewrites and the rate window. **Lower** builds the `LogicalQuery` from the planned text, and
-  `LogicalKey` hashes those bytes. Bind keeps a **dependency index** `(context member | $var) →
-  Vec<ViewportId>`, so a change re-binds only the viewports that read it (T07-013).
+- **Plan** (2) calls the prepared query's `Plan` (ADR-0021) with the final step from Resolve, which
+  substitutes the step macros (`$__interval`, `$__rate_interval`) at that step and applies the rate
+  rewrites and the rate window. **Lower** builds the `LogicalQuery` from the planned text, and
+  `LogicalKey` hashes those bytes.
+- **Follow-up gate `unit:bind-classify-template`** (required of the issue that implements scene Bind
+  and templates; #112 has no templates and covers the order with variables, `unit:plan-classify`
+  V1–V5): a template whose `{{entity}}` binding expands to
+  `pulsus_anomaly_score{service="checkout",signal="latency"}`, in a 6 h window at 1 600 CSS px (fine
+  pass), gives Classify `virtual`, reserved `[pulsus_anomaly_score]`, floor 300 000 ms; no rollup
+  level; final step 300 000 ms (§4.3's virtual row, `max(13.5 s, 300 s)`); and `Plan` is called
+  with 300 000 ms.
 - The baseline (comparison ghost, A/B) is bound as a second `TimeRange` on the `LogicalQuery`
   (`baseline: Some(..)`), which physicalises to a shifted query with the same step grid.
 
@@ -239,7 +260,7 @@ to whole buckets, with at least 5 buckets for `rate`/`increase` below 12 minutes
 text with macro placeholders (§4.1): `sig.source` is the source it found (`PulsusDb`, `Virtual` or
 `Mixed`), and `sig.min_step` is the largest of every operand's `min_step` and every virtual floor
 it found (below).
-Step 2 (Bind) passes the resulting `step` to the language module's `Plan`. Resolution depends on the
+Step 2 (Plan) passes the resulting `step` to the language module's `Plan`. Resolution depends on the
 source that Classify found:
 
 - **PulsusDB source:** predict the rollup level from the range (table above), then
@@ -1115,4 +1136,6 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.5-rc | 2026-11-21 | Design review r3 of the ADR-0021 PR: §4.3 `resolve` branches on the source from Classify: a PulsusDB source predicts the rollup level and takes `max(level width, sig.min_step)`; a virtual source skips rollup prediction and takes `max(base step, virtual floor)`, with `Exactness::Virtual`; in a mixed scene each logical query resolves its own step; worked case 6 h anomaly score gives 300 s, not 60 s; T07-003 wording aligned |
 | 1.5-rc | 2026-11-21 | Design review r4 of the ADR-0021 PR: §4.1 Classify runs on the substituted text with step-dependent macros as placeholder durations, reading selectors with the upstream parser to find every reserved selector and floor; §4.3 a mixed expression has one shared step (max of the PulsusDB rollup-derived step, every operand's `min_step` and every virtual floor), with a worked case (anomaly score joined with a rate, 300 s for both operands); `Exactness::Virtual` removed: a virtual source resolves to `RawExact` with `source: Virtual{table}`, and the weakest-operand rule applies to mixed joins |
 | 1.6-rc | 2026-11-21 | #62: §0 v1 reserved-name refusal also screens the completion inputs (`match[]`, `metric`) |
-| 1.7-rc | 2026-11-21 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |
+| 1.7-rc | 2026-11-21 | #112: §4.1 Classify names its PromQL implementation (`prom.Prepare`) and the LogQL interim (the T07-020 byte guard until `logs.Plan`) |
+| 1.8-rc | 2026-11-22 | #112 code review r1: §4.1 pipeline puts Bind (templates, `{{entity}}`, `$vars` through the language module's `Prepare`) before Classify and leaves only the step macros to Plan (step 2) after Resolve (plan #112 §4.8); the follow-up gate `unit:bind-classify-template` and its assertions; the LogQL Classify contract pointer |
+| 1.9-rc | 2026-11-22 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |

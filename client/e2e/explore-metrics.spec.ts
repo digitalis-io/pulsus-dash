@@ -54,8 +54,28 @@ test.describe('e2e:explore (fake)', () => {
   });
 
   test('e2e:metrics-autovis counter', async ({ page, request }) => {
+    // e2e:explore-sends-inputs (plan #112, T06-029): the page sends the raw text and the rate
+    // chip; the server plans the rewrite and sends it to PulsusDB.
+    const sent = page.waitForRequest(
+      (r) => r.method() === 'POST' && r.url().includes('/api/dash/v1/query/promql/range'),
+    );
     await open(page, exploreUrl('http_requests_total'));
+    const body = (await sent).postDataJSON() as { query?: unknown; rate?: unknown };
+    expect(body.query).toBe('http_requests_total');
+    expect(body.rate).toBe(true);
     await expect(ready(page)).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          (
+            await fakeRequests(request, {
+              path: '/api/v1/query_range',
+              query: 'rate(http_requests_total[1m])',
+              state: 'completed',
+            })
+          ).length,
+      )
+      .toBeGreaterThanOrEqual(1);
     const width = await page
       .locator('[data-chart-frame]')
       .locator('..')

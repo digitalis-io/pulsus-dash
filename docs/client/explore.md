@@ -10,23 +10,27 @@ Requirements: [SRF-030](../../designs/product/04-surfaces.md#srf-030--metrics-au
 (auto-vis subset), [SRF-031](../../designs/product/04-surfaces.md#srf-031--metric-browser-and-series-table)
 (series rows and sort), [SRF-027](../../designs/product/04-surfaces.md#srf-027--promql-editor)
 (completion data), [VIZ-065](../../designs/product/05-visualisation-catalogue.md#viz-065--auto-vis-rules)
-(Table 5-13 rows 5, 6, 7 and 14) and [IA-022](../../designs/product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view)
+(Table 5-13 rows 5, 6, 7 and 14, from the server's `planned` facts) and [IA-022](../../designs/product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view)
 (the `q`, `vis` and `rate` keys); for the editor, SRF-027 (highlighting, completion, the run error
 underlined) and [INT-032](../../designs/product/03-interaction-model.md#int-032--window-step-and-zoom-keys)
 (window keys are not taken from the editor). Design rules: [T09-009](../../designs/technical/T09-query-editors.md)
-(client half: sent-to-source index mapping), [T04-010](../../designs/technical/T04-wire-format-and-data-plane.md)
+(client half: positions arrive in raw bytes), T09-010 and T09-015 (the server plans and checks the
+sent size), [T06-029](../../designs/technical/T06-bff-architecture.md) (the server builds the final
+query), [T04-010](../../designs/technical/T04-wire-format-and-data-plane.md)
 (the decoder seam), [T06-025](../../designs/technical/T06-bff-architecture.md) (the e2e data source
 reads `Connected`); [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),
 [ADR-0015](../../designs/adr/0015-go-bff.md) ("Query validation": PulsusDB validates),
 [ADR-0017](../../designs/adr/0017-react-router.md) and
-[ADR-0018](../../designs/adr/0018-query-language-modules.md) (one `QueryLanguage` per language).
+[ADR-0018](../../designs/adr/0018-query-language-modules.md) (one `QueryLanguage` per language) and
+[ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning is
+server-side).
 
 ## Modules
 
 | Module                                              | What it does                                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/editor/lang/types.ts`                          | Types shared with the editor: `QueryShape` (the bare selector and its source slice, the metric names, `histogram_quantile`, the value type), `UNKNOWN_SHAPE`, `Diagnostic`, `LangId`, `LanguageDeps`, `QueryLanguage` (T09 §5.1), `PromSource`. No run-time imports, so the route chunk can use it without the editor chunk |
-| `src/explore/plan.ts`                               | The run planner: `planRun`, `metricType`, `formatDuration`, `toSourceIndex`, `utf8Length`, `MAX_QUERY_BYTES`                                                                                                                                                                                                                |
+| `src/explore/metricKind.ts`                         | `MetricKind`, `kindOfType`, `metricKind(name, own)`: the suffix rules of a metric's type, for the picker's descriptions and the StubApi mirror. Nothing here decides the text sent                                                                                                                                          |
 | `src/explore/seriesRows.ts`                         | The series table's rows: `seriesRows`, `sortRows`, `nextSort`, `toggleIsolation`, `TABLE_ROWS` (500, the engine's series cap)                                                                                                                                                                                               |
 | `src/vis/autovis.ts`                                | `ExploreResult` and its adapters `fromRange`, `fromInstant`; `autoVis`, `chooseVis`                                                                                                                                                                                                                                         |
 | `src/vis/histogram.ts`                              | `isHistogram`, `histogramBuckets`, `isolateBucket`: Prometheus buckets as heatmap counts                                                                                                                                                                                                                                    |
@@ -34,52 +38,34 @@ reads `Connected`); [ADR-0014](../../designs/adr/0014-typescript-react-web-clien
 | `src/state/exploreParams.ts`, `useExploreParams.ts` | The URL codec of `q`, `vis`, `rate` and its hook                                                                                                                                                                                                                                                                            |
 | `src/api/*`, `src/data/decode.ts`                   | The four `/prom/*` reads and their decoders                                                                                                                                                                                                                                                                                 |
 
-## The run planner
+## The run path
 
-`planRun(text, shape, meta, {rate, stepMs})` returns the request (`RunPlan`). The first matching
-row wins; "bare" is `shape.bareSelector` (a top-level selector with a metric name) and `sel` its
-exact source text; `w` is `formatDuration(rateWindowMs(stepMs))` (below); "rate" means the chip is
-on and the step is known:
+The server plans every PromQL run ([query planning](../server/pulsusdb.md#query-planning-adr-0021),
+ADR-0021): the page sends the text the user wrote and the inputs, and reads every fact about what
+was sent from the result's `planned`.
 
-| Condition                      | Sent query                     | Chip shown | Rate applied | Heatmap rule may apply                         | Kind                                                  |
-| ------------------------------ | ------------------------------ | ---------- | ------------ | ---------------------------------------------- | ----------------------------------------------------- |
-| bare histogram bucket, rate    | `sum by (le) (rate(<sel>[w]))` | yes        | yes          | yes                                            | range                                                 |
-| bare histogram bucket, no rate | the text                       | yes        | no           | no                                             | range                                                 |
-| bare counter, rate             | `rate(<sel>[w])`               | yes        | yes          | no                                             | range                                                 |
-| bare counter, no rate          | the text                       | yes        | no           | no                                             | range                                                 |
-| otherwise                      | the text                       | no         | no           | a `_bucket` metric and no `histogram_quantile` | instant for a scalar or string value type, else range |
+| The page sends | Range | Instant (a scalar or string value type) |
+|---|---|---|
+| `query` | the URL query `q`, as is | as is |
+| the rate chip | `rate` (`true` unless `rate=off`) | — |
+| the width and step | `widthPx` (the server derives the step) | `stepMs` (the grid step of the window at the chart's width) |
 
-- **Metric types.** `metricType(name, meta)` reads the first metadata entry of the name, else of
-  the base name without one of `_bucket`, `_count`, `_sum`, `_total`; a `_count` or `_sum` of a
-  histogram or summary is a counter; a type outside counter, gauge, histogram, summary is
-  `unknown`. A name is a counter when its type is `counter` or it ends in `_total`; a histogram
-  bucket when it ends in `_bucket` and its type is `histogram` or `unknown`.
-- **Window.** `rateWindowMs(step) = max(4 × step, step + S, 4 × S)`, with `S` =
-  `DEFAULT_SCRAPE_S` = 15 s, the scrape interval assumed for every target until a per-binding
-  value exists. The window therefore never holds fewer than four scrapes: at a step of 15 s or
-  less it is `1m` (a 1 h range at 1 200 px has a 5 s step and gets `1m`, not `20s`, which would be
-  gappy at a 15 s scrape and empty at 30–60 s); above that it is 4 × step (30 s → `2m`). The
-  `step + S` term never sets the window on its own while the `4 × step` term is present (it is
-  below 4 × step for a step of S/3 or more, and below 4 × S under it); it is kept so the formula
-  matches the reference client's once `S` is per binding. `formatDuration` writes the largest of
-  `d`, `h`, `m`, `s` that divides the window (60 000 ms → `1m`, 240 000 ms → `4m`). The step is
-  the client's mirror of the BFF grid (`data/step.ts`); the BFF re-grids, so only the window text
-  depends on it.
-- **Deviation from the posted plan: rate window floor from the reference client behaviour.**
-  Plan #63 §3.3 wrote the window as `4 × step`. The study of the clients PulsusDB was tested with
-  found that window too short at small steps; the floor of `max(step + S, 4 × S)` is that
-  client's. Both rewrites (counter and histogram) use it.
-- **Size limit.** The limit applies to the **sent** text: `bytes = utf8Length(query)` and
-  `tooLong = bytes > 65 536` (the BFF's limit, #62). The rewrite adds 8 bytes plus the window text
-  (counter) or 22 plus it (histogram): 10 or 24 at `1m`, so a source text that fits can still be
-  refused. `utf8Length` counts a lone
-  surrogate as 3 bytes, as the BFF sees it after JSON decoding. Part C sends nothing when
-  `tooLong`.
-- **Source index (T09-009).** A rewritten plan keeps the source slice at `sentStart` (5 for a
-  counter, 18 for a histogram). `toSourceIndex(plan, i)` maps an index of the sent text back to
-  the editor text, or `null` outside the slice (the error is then in the rewrite).
-- **Validation.** Nothing here parses PromQL. The shape comes from Part B's analyser; PulsusDB
-  validates the query ([ADR-0015](../../designs/adr/0015-go-bff.md)).
+`runKind(q, lang)` picks the route from the Lezer shape: instant for a scalar or string value
+type, else range; it never changes the text sent. The server rewrites a bare counter to
+`rate(<selector>[w])` and a bare histogram bucket to `sum by (le) (rate(<selector>[w]))` behind the
+chip, substitutes `$__interval` and `$__rate_interval` at the step, and refuses a planned text over
+64 KiB with 413. The page reads:
+
+| Fact | Used for |
+|---|---|
+| `planned.rateCandidate` | the Rate applied chip is shown |
+| `planned.rateApplied` | auto-vis rules 5 and 6, the `/s` unit, the frame plan's rate flag |
+| `planned.histogram` | auto-vis rule 5 (heatmap) |
+| `planned.query` | "Sent query: …" when it differs from the text that ran |
+
+The metric types are the server's (a per-binding cache; without them only names ending in
+`_total` are rated, with a completeness warning): the page no longer waits for the metadata, which
+it still reads for the picker and completion.
 
 ## Auto-vis (VIZ-065)
 
@@ -177,6 +163,22 @@ the keys and `set(partial, {replace})`, which keeps the time Context.
 
 ## API
 
+`queryRange(tenant, {query, fromMs, toMs, widthPx, timeoutMs?, vars?, rate?})` and
+`queryInstant(tenant, {query, atMs, timeoutMs?, vars?, stepMs?})` send the raw text; `vars`, `rate`
+and `step_ms` are in the body only when given. Both results carry `planned: PlannedQuery`
+(`query`, `expanded`, `bytes`, `valueType`, `rateCandidate`, `rateApplied`, `histogram`, and
+`stepMs`, `rateWindowMs` when set), decoded by `decodePlanned`. Errors map, first match:
+
+| Status and body | `ApiError` |
+|---|---|
+| 413 with `query.sent_too_large` or `query.too_large_to_plan` | `queryTooLong`, `detail {planned?, hint?, queryId?}` (`planned` absent only with `hint.reason` `processing_cap`) |
+| 400 with `variable.missing`, `/step_ms` or a `/vars…` pointer | `invalid`, `fields` camel-cased |
+| 400 `virtual_unsupported`; 400 on `/query` | `queryInvalid` (`detail.position` a byte offset into the **raw** query) |
+| 404, 422, 429, 502, 503, 504, other | as before |
+
+Every `detail` carries `planned` when the server sent one (every error raised after planning); a
+malformed `planned` is left out.
+
 Four `Api` methods read the #62 `/prom/*` routes of the BFF ([PulsusDB client and the PromQL
 routes](../server/pulsusdb.md)); each takes the tenant, an unknown tenant is `ApiError('notFound')`
 and other errors map as for `queryRange`. Responses are decoded by `data/decode.ts` (T04-010).
@@ -190,6 +192,36 @@ and other errors map as for `queryRange`. Responses are decoded by `data/decode.
 
 The stub API serves fixed completion data: the metadata of the e2e `metadata` transcript, five
 metric names, `["a","b"]` for any other label, and no series.
+
+### The StubApi planner mirror
+
+`StubApi` plans as the server does, so `npm run dev` and the tests see the same `planned` facts
+and refusals. `src/api/stub/plan.ts` mirrors `prom.Plan` on the UTF-8 bytes of the text
+(`prepare`, `classify`, `floorStep`, `expandedAt`, `plan`, the byte guard `reservedIn`, the metric
+kinds and the window); `src/api/stub/promShape.ts` (loaded with `await import`, so Lezer stays out
+of the initial chunk) gives `stubShape(text)`: the Lezer shape when `typeCheck` passes, else the
+unknown shape. `typeCheck` mirrors the server parser's type rules on the Lezer tree: function
+argument types and arity from `src/api/stub/promFunctions.ts` (`STABLE_FUNCTIONS`, the parser's
+stable functions), scalar comparisons without `bool`, set operators and vector matching on
+non-vectors, experimental aggregators, subqueries of a matrix, the target of `offset` and `@`,
+selectors whose matchers all match the empty string, and aggregation parameters. Its known
+limitations, stub mode only: regular-expression dialects (the empty string is tested with
+JavaScript's engine and no pattern is refused), string escapes and number lexing, and a Lezer
+grammar that lags or leads the server's parser.
+
+The stub's private `plan` follows the route order: `prepare`; Classify and the byte guard on the
+substituted text (a refusal never reads metadata); the step; `promMetadata` only when the plan
+needs types, raced against 2 s (a failure or the timeout plans without types and adds
+`WARN_TYPES_UNAVAILABLE`); `plan`; the guard on the planned text. Each refusal is the `ApiError`
+HttpApi gives for the gateway's body.
+
+`src/api/stub/plan.test.ts` and `promShape.test.ts` run every case of the shared fixture
+`wire/fixtures/plan/promql.json` (the Go planner runs the same file) and require the server's
+results, shapes and function table exactly. The ESLint block `eslint/stub-plan-boundary.ts`
+(`@typescript-eslint/no-restricted-imports`) refuses an import of `stub/plan`, `stub/promShape` or
+`stub/promFunctions` outside `src/api/StubApi.ts` and `src/api/stub/`, with the message
+`api/stub/plan is the StubApi planner mirror: only StubApi imports it (ADR-0021 §4).`; tests
+outside the directory use literal texts instead (`unit:stub-plan-boundary` checks the rule).
 
 ## Editor chunk
 
@@ -379,9 +411,10 @@ URL change, never per keystroke (about 0.4 ms for 1 KB).
 ### Run diagnostics
 
 `diagnosticsOf(text, error, toSource, sent)` underlines PulsusDB's `queryInvalid` error (T09-009).
-The error's `position` is a byte offset into the sent text: `utf8ToIndex` maps it to the UTF-16
-index of the code point that holds that byte, and Part A's `toSourceIndex` maps that to the editor
-text (the rate rewrite adds text around it). At the end of the text the last code point is marked;
+The server maps PulsusDB's position to the raw text (ADR-0021 §3), so the page passes the identity
+mapping and the text itself as `sent`: `utf8ToIndex` maps the byte offset to the UTF-16 index of the
+code point that holds that byte. A position the server could not map (inside a rate rewrite) does
+not arrive. At the end of the text the last code point is marked;
 a surrogate pair is marked whole. With no position, one out of range or one inside text the
 planner added, the whole query is marked and the message gets " (position unknown)". The message
 stays PulsusDB's text, its `1:52:` prefix included. Any other error places nothing.
@@ -431,30 +464,31 @@ server, wire or database change.
 | `QueryCard.tsx` | `PromQL` tag, `MetricPicker`, Run hint, **Run** (disabled until `runReady`, described by the status row), the editor or its placeholder (`Loading the editor…`, or an alert when the chunk failed to load), the status row |
 | `QueryStatus.tsx` | `statusView` and its rendering: `refused` and `error` as `role="alert"` (Narrow for `tooBroad` and `timeout`), `limit`, `waiting` and `ok` as `role="status"`, else nothing |
 | `MetricPicker.tsx` | React Aria `ComboBox` (`Metric`), opens on focus; while its list is open the rest of the page is `inert` as well as `aria-hidden` (`src/kit/inertOutside.ts`), released on close, on Tab and before a pick moves focus to the editor; names are `['prom', tenant, 'pickerNames']` (60 s stale), asked only after the first open; options from `metricOptions` (at most 100, type and help); Enter with no option highlighted picks the first match |
-| `ResultCard.tsx` | Toolbar (`SegmentedControl` *Visualisation*, the **Rate applied** chip, **Sent query** when the planner rewrote it), `CompletenessNotice`, the chart host (always mounted, so its width is known before the first Run; the 2 px shimmer after 300 ms, `aria-busy`), `<ChartFrame>` or the notice text, `SeriesTable` |
+| `ResultCard.tsx` | Toolbar (`SegmentedControl` *Visualisation*, the **Rate applied** chip, **Sent query** when the server rewrote it (`planned.query`)), `CompletenessNotice`, the chart host (always mounted, so its width is known before the first Run; the 2 px shimmer after 300 ms, `aria-busy`), `<ChartFrame>` or the notice text, `SeriesTable` |
 | `CompletenessNotice.tsx` | `Partial data` badge with its warnings and Narrow when truncated; `Warnings` badge without truncation; `Notes` for infos; five items each, then `and n more` |
 | `SeriesTable.tsx` | Sortable table (Series, Last, Max) in a focusable scrolling region; row buttons isolate (`aria-pressed`) when the vis can isolate; others dimmed; first 500 rows |
 | `src/kit/inertOutside.ts` | `inertOutside(keep)`: `inert` on everything outside `keep` (and React Aria's live announcer), new nodes included; an idempotent release removes only its own. React Aria's ComboBox hides the page with `aria-hidden` only, which leaves its controls focusable (axe `aria-hidden-focus`) |
 | `src/kit/SegmentedControl.tsx` | React Aria `ToggleButtonGroup`, single selection: a `radiogroup` whose arrow keys move the one tab stop; the selected option cannot be deselected |
-| `src/explore/useExploreRun.ts` | The run: `plannable`, `planFor`, `refusalOf`, `exploreRunKey`, `useExploreRun` (below) |
+| `src/explore/useExploreRun.ts` | The run: `runnable`, `runKind`, `refusalOf`, `exploreRunKey`, `useExploreRun` (below) |
 | `src/explore/useEditorModules.ts` | Starts `LANGUAGES.promql()` and `import('../editor/editor')` on mount; a rejection sets `failed` |
 | `src/explore/useDelayedFlag.ts`, `useElementWidth.ts` | True once a flag has been on for a delay; the chart host's content width in whole CSS px through one `ResizeObserver` (`0` is `null`) |
 | `src/explore/statusText.ts`, `metricOptions.ts` | Error, outcome and refusal texts; the picker filter and descriptions |
 
 ### The run hook and D-RUN
 
-`useExploreRun({tenant, q, inputs, widthPx, window})`:
+`useExploreRun({tenant, q, inputs, widthPx, window})`, `inputs = {lang, stepMs, rate}`:
 
-- `plan = planFor(q, inputs)`: null for blank text, or while the language, the metadata or the step
-  is unknown (`plannable`). The metadata is `null` while its query is pending and `{}` after its
-  error; the step is `promGrid(fromMs, toMs, widthPx).stepMs`.
-- `refusal = refusalOf(q, plan)`: `queryTooLarge` above 128 KB of UTF-8 (T09-015), else `tooLong`
-  when the **sent** text is over 64 KiB (the BFF's limit). A refused or unplanned query is not sent.
-- The query key is `['data', 'explore', tenant, q, sent, kind, histogram, fromMs, toMs, step]`
-  (`step` null for an instant query). `q` is in the key as well as the sent text, so a rewritten
-  `http_requests_total` and a typed `rate(http_requests_total[1m])` never share an outcome. A new
-  key aborts the old request (TanStack Query aborts the signal of a query that loses its observer;
-  PRF-030). `widthPx` is read through a ref, so a width change within one step does not refetch.
+- `kind = runKind(q, lang)`: null for blank text or before the language loads.
+  `runnable(inputs)`: the language and the step are known (the step is
+  `promGrid(fromMs, toMs, widthPx).stepMs`).
+- `refusal = refusalOf(q)`: `queryTooLarge` above 128 KB of UTF-8 (T09-015); nothing else is
+  refused here, the server checks the planned size.
+- The query key is `['data', 'explore', tenant, q, kind, rate, fromMs, toMs, step]`; the request
+  is enabled when `kind` is known, the inputs are runnable and there is no refusal. A rate toggle is
+  a new key and one request. A new key aborts the old request (TanStack Query aborts the signal of a
+  query that loses its observer; PRF-030). `widthPx` is read through a ref, so a width change
+  within one step does not refetch.
+- The outcome is `{text: q, planned, result, durationMs}`, `planned` from the response.
 - `placeholderData` keeps the previous key's outcome only from the same tenant, so a window-only
   change keeps the chart frame and its data (the frame is not remounted).
 - **D-RUN:** the last success that is not a placeholder is kept in hook state with its tenant.
@@ -468,24 +502,24 @@ server, wire or database change.
 
 ### Run order and refusals
 
-`runReady` = the editor chunk loaded and `plannable(inputs)`. Until then **Run** is disabled and the
-status reads `Run is available once the metric types have loaded and the chart has a size.` Run
-never plans with stand-in inputs, so a draft that grows past 64 KiB once the rate rewrite applies is
-refused before it reaches the URL.
+`runReady` = the editor chunk loaded and `runnable(inputs)`. Until then **Run** is disabled and the
+status reads `Run is available once the chart has a size.` The page does not wait for metric types.
 
 Run (button, Shift+Enter, Mod+Enter), first match, on the draft `d`:
 
 | Case | Effect |
 |---|---|
 | `d` blank | `q` removed (push): the empty state, no request |
-| `overQueryLimit(d)` | `queryTooLarge` alert; no navigation, no request |
+| `overQueryLimit(d)` | `queryTooLarge` alert; no navigation, no request (QC1) |
 | not `runReady` (only a key reaches this) | nothing |
-| `planFor(d, inputs).tooLong` | `tooLong` alert; no navigation, no request |
 | `d ≠ q` | `q = d` (push): a new key |
 | `d = q` | `rerun()` |
 
-While the draft is over 128 KB the same text shows as a status (the T09-015 explanation). A URL
-query over either limit (a shared link) shows the refusal as an alert and sends nothing.
+A draft between 64 KiB and 128 KB is run: `q` is written, the server answers 413 and the status
+shows `explore.error.tooLong` (ADR-0021 consequences; QC1 now holds only for the 128 KB
+pre-check). While the draft is over 128 KB the same text shows as a status (the T09-015
+explanation). A URL query over 128 KB (a shared link) shows the refusal as an alert and sends
+nothing.
 
 The status line, first match: a refused Run; the draft over 128 KB; the URL query refused; not
 ready; the run error ([below](#errors-and-status)); the outcome (`3 series · step 5 s · 120 ms`,
@@ -502,12 +536,14 @@ ready; the run error ([below](#errors-and-status)); the outcome (`3 series · st
 | `unavailable` | `PulsusDB is unavailable: <message>` | — |
 | `network` | `The server could not be reached.` | — |
 | `notFound` | `This tenant no longer exists.` | — |
+| `queryTooLong` | `The query to send, with any rate applied, is over 64 KiB, the most the server accepts. Shorten it.` | — |
 | any other | `The query failed: <message>` | — |
 | `AbortError` | not shown | — |
 
 Narrow dispatches the Context `zoom in` (the middle half of the window). Diagnostics are
-`lang.diagnosticsOf(q, error, toSourceIndex(plan, ·), plan.query)` while the draft equals `q`, else
-`[]`; the editor sees a new array only when those inputs change.
+`lang.diagnosticsOf(q, error, (i) => i, q)` while the draft equals `q`, else `[]`; the editor sees
+a new array only when those inputs change. A missing variable (Explore has no variables) is the
+generic `The query failed: no value for variable $name`.
 
 ### Empty query, string results and isolation
 
@@ -571,7 +607,9 @@ reported through `onChange`), with the Run keys, Escape, `focus()`, `insert()` a
 diagnostics in `data-diagnostics`. `createPromSource` returns a `fakePromSource` of
 `fakeEditorSource.data` (default `F`, which a test may replace); `promql` and `LANGUAGES` are the
 real modules. `src/test/exploreTestKit.tsx` renders the app with a fake engine and has spies that
-answer, reject or hold `queryRange` and `queryInstant`. The chart host has no width until a test
+answer, reject or hold `queryRange` and `queryInstant`; their results carry
+`plannedAs(query, facts?, stepMs?)`, the `planned` of a text sent as is (a test of histogram or
+rate behaviour passes the facts the server would give). The chart host has no width until a test
 calls `resizeAll` (a browser's `ResizeObserver` reports on observe), so tests that render the page
 install the fake `ResizeObserver`.
 
@@ -579,7 +617,8 @@ install the fake `ResizeObserver`.
 
 | Gate                                                                                                                                      | File                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `unit:explore-plan`                                                                                                                       | `src/explore/plan.test.ts`: the planner rows, the sent-size boundary (at the `1m` window), the rate window rows (set by 4 × S, by 4 × step, and the proof that step + S never sets it), metric types, durations, the source index, byte length                                                                                                                                                                         |
+| `unit:plan-parity` (TS), `unit:plan-shape` (stub) | `src/api/stub/plan.test.ts`, `promShape.test.ts`: every case of `wire/fixtures/plan/promql.json` through the stub path (plan or refusal, `to_source`, `needsTypes`, Classify, the window, metric kinds, bytes, the byte guard), and the stub shape and function table equal to the Go parser's |
+| `unit:stub-plan-boundary` | `scripts/stub-plan-boundary.test.ts`: the mirror import refused at `src/explore/x.ts`, allowed at `src/api/StubApi.ts` |
 | `unit:autovis-table`                                                                                                                      | `src/vis/autovis.test.ts`: one fixture per rule, rule order, range never stat, the override                                                                                                                                                                                                                                                                                                                            |
 | `unit:heatmap-buckets`                                                                                                                    | `src/vis/histogram.test.ts`: complete, missing single and grouped samples, groups with differing bounds, row isolation, and many-group, many-bound allocation checks: Float64 elements allocated stay within the output plus the axis, eligibility allocates none, and doubling the groups doubles the allocation (`src/test/allocations.ts` counts them). Wall-clock times are printed only, never asserted (T05-006) |
 | `unit:frame-plan`                                                                                                                         | `src/vis/framePlan.test.ts`: every vis × result valid, bars over instant series with unequal timestamps, the bars grid bound (500 series × 1 000 disjoint timestamps gives the notice with allocation linear in the input; exactly `MAX_GRID_CELLS` draws, one more timestamp gives the notice), scalar overrides, heatmap row isolation and restore                                                                   |
@@ -589,7 +628,7 @@ install the fake `ResizeObserver`.
 | `unit:columns` (merge keeps missing)                                                                                                      | `src/engine/canvas2d/columns.test.ts`                                                                                                                                                                                                                                                                                                                                                                                  |
 | `bench:frame-interim-heatmap`                                                                                                             | `e2e/perf-heatmap-draw.spec.ts` ([Build, test and CI](../development/build-and-ci.md#tests))                                                                                                                                                                                                                                                                                                                           |
 | `unit:promql-shape`                                                                                                                       | `src/editor/lang/promql/promql.test.ts`: the 23 shape rows (comments, value types, `histogram_quantile`, error nodes)                                                                                                                                                                                                                                                                                                  |
-| `unit:promql-diagnostics`                                                                                                                 | `src/editor/lang/promql/promql.test.ts`: bytes to UTF-16 (multi-byte, pairs, lone surrogates), positions D1–D9, and a position inside the rate rewrite through Part A's planner                                                                                                                                                                                                                                        |
+| `unit:promql-diagnostics`                                                                                                                 | `src/editor/lang/promql/promql.test.ts`: bytes to UTF-16 (multi-byte, pairs, lone surrogates), positions D1–D9, and a raw-byte position placed by the identity mapping                                                                                                                                                                                                                                        |
 | `unit:suggest-cache`                                                                                                                      | `src/editor/suggestCache.test.ts`: C1–C18, with no unhandled rejection in any case                                                                                                                                                                                                                                                                                                                                     |
 | `unit:prom-source`                                                                                                                        | `src/editor/lang/promql/promSource.test.ts`: S1–S14 (requests, buckets, supersede, failures, series, tenant switches, metadata, ended tokens, the minute and second windows)                                                                                                                                                                                                                                           |
 | `unit:prom-client`                                                                                                                        | `src/editor/lang/promql/promClient.test.ts`: `selectorOf`, `decodeLabelName`, `matcherContextAt` and `toPrometheusClient` rows                                                                                                                                                                                                                                                                                         |
@@ -599,9 +638,10 @@ install the fake `ResizeObserver`.
 | `unit:editor-host`                                                                                                                        | `src/editor/PromQLEditor.test.tsx`                                                                                                                                                                                                                                                                                                                                                                                     |
 | `unit:lang-table`                                                                                                                         | `src/editor/lang/index.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        |
 | `unit:window-keys`                                                                                                                        | `src/state/useWindowKeys.test.tsx`: an editable element in a shadow root, a shadow host in a dialog, and an event without a path                                                                                                                                                                                                                                                                                       |
-| `unit:explore-run-size` | `src/pages/explore/MetricsPage.test.tsx`: R1–R8 (128 KB of draft or URL query, 64 KiB sent with the rewrite counted, `rate=off`, the width and the metadata arriving after the draft) |
-| Page component tests | `src/pages/explore/MetricsPage.test.tsx` (run on load, metadata, scalar, histogram, string, supersede, frame kept, refresh, interval refresh, refresh and rerun during the first fetch, shimmer, errors, partial data, warnings, rate and vis, run keys, escape, picker, away and back, empty query, isolation, tenant switch, heatmap isolation), `SeriesTable`, `MetricPicker`, `CompletenessNotice`, `src/kit/SegmentedControl.test.tsx`, `src/pages/board/BoardPage.test.tsx` (Refresh leaves panel queries) |
+| `unit:explore-run-size` | `src/pages/explore/MetricsPage.test.tsx`: R1–R8 (128 KB of draft or URL query refused before sending; drafts whose plan is over 64 KiB sent and answered 413 by the stub; `rate=off`; the width arriving after the draft; metric types the stub's, not a gate) |
+| Page component tests | `src/pages/explore/MetricsPage.test.tsx` (run on load, no metadata wait, scalar, histogram, string, supersede, frame kept, refresh, interval refresh, refresh and rerun during the first fetch, shimmer, errors, partial data, warnings, rate and vis, run keys, escape, picker, away and back, empty query, isolation, tenant switch, heatmap isolation), `SeriesTable`, `MetricPicker`, `CompletenessNotice`, `src/kit/SegmentedControl.test.tsx`, `src/pages/board/BoardPage.test.tsx` (Refresh leaves panel queries) |
 | Hook and helper tests | `src/explore/useExploreRun.test.tsx`, `useDelayedFlag.test.tsx`, `useElementWidth.test.tsx`, `statusText.test.ts`, `metricOptions.test.ts` |
+| `e2e:explore-sends-inputs` | `e2e/explore-metrics.spec.ts` (in `e2e:metrics-autovis counter`): the request body holds the raw `http_requests_total` and `rate: true`; the fake records `rate(http_requests_total[1m])` |
 | `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:lazy-load` (explore) | `e2e/explore-metrics.spec.ts` (against `pulsus-fake` through the http-mode BFF; lazy-load on the stub build) |
 | `e2e:explore-picker-inert` | `e2e/explore-metrics.spec.ts` (http BFF, three engines): P1–P6, the page inert while the list is open; Tab, Shift+Tab, Escape, a pointer press outside and a pick each release it |
 | `inertOutside`, `MetricPicker inert`, `unit:editor-probe` | `src/kit/inertOutside.test.ts`, `src/pages/explore/MetricPicker.test.tsx`, `src/editor/view.test.ts` |

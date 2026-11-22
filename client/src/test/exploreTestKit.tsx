@@ -9,10 +9,11 @@ import { expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { StubApi } from '../api/StubApi';
 import type { InstantRequest, RangeRequest } from '../api/types';
-import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import type { Completeness, InstantResult, PlannedQuery, RangeResult } from '../data/decode';
 import type { FrameData, SeriesFrame } from '../data/frames';
 import type { VisSpec } from '../engine/api';
 import { ChartEngineContext } from '../engine/index';
+import { queryBytes } from '../explore/querySize';
 import { fakeEngine } from './fakeEngine';
 import { resizeAll } from './fakeResizeObserver';
 import { EMPTY_COMPLETENESS, fkey } from './histogramFixtures';
@@ -37,12 +38,36 @@ export function ser(n: number, labels: Record<string, string>, values: number[])
   };
 }
 
+/**
+ * The `planned` of a result the server sent `query` as is (plan #112 A.7); `facts` overrides, and
+ * `stepMs` is left out when null (an instant query without a step). The stub mirror is not
+ * importable here: only StubApi plans.
+ */
+export function plannedAs(
+  query: string,
+  facts: Partial<Omit<PlannedQuery, 'stepMs'>> = {},
+  stepMs: number | null = 5000,
+): PlannedQuery {
+  return {
+    query,
+    expanded: query,
+    bytes: queryBytes(query),
+    valueType: 'vector',
+    rateCandidate: false,
+    rateApplied: false,
+    histogram: false,
+    ...facts,
+    ...(stepMs === null ? {} : { stepMs }),
+  };
+}
+
 /** C.3 `range`: the window of ABS at step 5 s. */
 export function range(
   series: readonly SeriesFrame[],
   completeness: Completeness = EMPTY_COMPLETENESS,
+  planned: PlannedQuery = plannedAs('up'),
 ): RangeResult {
-  return { startMs: W0, endMs: W0 + HOUR, stepMs: 5000, series, completeness };
+  return { planned, startMs: W0, endMs: W0 + HOUR, stepMs: 5000, series, completeness };
 }
 
 export const S1 = range([ser(1, { __name__: 'up', job: 'a' }, [1, 2])]);

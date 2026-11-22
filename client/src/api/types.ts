@@ -5,6 +5,9 @@
  */
 import type { components } from './gen/schema';
 import type { FrameData, TimeWindow, VisSpec } from '../engine/api';
+import type { PlannedQuery } from '../data/decode';
+
+export type { PlannedQuery };
 
 export type Role = 'admin' | 'editor' | 'viewer';
 
@@ -24,18 +27,25 @@ export interface DataSourceStatus {
   checkedAtMs?: number;
 }
 
+/** A range query: the raw text and the inputs the server plans it with (ADR-0021). */
 export interface RangeRequest {
   query: string;
   fromMs: number;
   toMs: number;
   widthPx: number;
   timeoutMs?: number;
+  vars?: Readonly<Record<string, string>>;
+  /** The rate chip; omitted = on. */
+  rate?: boolean;
 }
 
 export interface InstantRequest {
   query: string;
   atMs: number;
   timeoutMs?: number;
+  vars?: Readonly<Record<string, string>>;
+  /** The step of `$__interval`, `$__rate_interval` and the rate rewrite; omitted = none. */
+  stepMs?: number;
 }
 
 /** The window and selectors of a `/prom/*` metadata read (plan #63 §3.1). */
@@ -155,14 +165,17 @@ export type ApiErrorKind =
   | 'timeout'
   | 'unavailable'
   | 'busy'
-  | 'badResponse';
+  | 'badResponse'
+  | 'queryTooLong';
 
 /** What the BFF said about a failed query (§4.5 of plan #62). */
 export interface ApiErrorDetail {
   queryId?: string;
-  /** Byte offset into the query text (T09-009). */
+  /** Byte offset into the raw query text (T09-009; the server maps it, ADR-0021 §3). */
   position?: number;
   hint?: Readonly<Record<string, unknown>>;
+  /** What the server planned, on every error raised after planning. */
+  planned?: PlannedQuery;
 }
 
 /** The optional parts of an `ApiError`. */

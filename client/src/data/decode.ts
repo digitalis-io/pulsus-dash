@@ -4,6 +4,7 @@
  * field is validated; anything else is a `DecodeError` naming the JSON pointer of the first bad
  * element. Arrow arrives behind the same functions with the engine (#68).
  */
+import type { ValueType } from '../editor/lang/types';
 import { KEY_PATTERN, type ScalarFrame, type SeriesFrame } from './frames';
 
 export interface Completeness {
@@ -16,7 +17,23 @@ export interface Completeness {
   readonly readCacheThroughMs: number | null;
 }
 
+/** What the server planned and sent (plan #112 §3.8, OpenAPI `PlannedQuery`). */
+export interface PlannedQuery {
+  /** The text sent to PulsusDB. */
+  readonly query: string;
+  /** The substituted text before the rate rewrite. */
+  readonly expanded: string;
+  readonly bytes: number;
+  readonly valueType: ValueType;
+  readonly rateCandidate: boolean;
+  readonly rateApplied: boolean;
+  readonly histogram: boolean;
+  readonly stepMs?: number;
+  readonly rateWindowMs?: number;
+}
+
 export interface RangeResult {
+  readonly planned: PlannedQuery;
   readonly startMs: number;
   readonly endMs: number;
   readonly stepMs: number;
@@ -24,7 +41,11 @@ export interface RangeResult {
   readonly completeness: Completeness;
 }
 
-export type InstantResult = { readonly atMs: number; readonly completeness: Completeness } & (
+export type InstantResult = {
+  readonly planned: PlannedQuery;
+  readonly atMs: number;
+  readonly completeness: Completeness;
+} & (
   | {
       readonly kind: 'series';
       readonly resultType: 'vector' | 'matrix';
@@ -162,10 +183,43 @@ function decodeCompleteness(v: unknown, path: string): Completeness {
   };
 }
 
+const VALUE_TYPES = ['scalar', 'string', 'vector', 'matrix', 'unknown'] as const;
+
+function boolean(v: unknown, path: string): boolean {
+  if (typeof v !== 'boolean') throw new DecodeError(path, 'expected a boolean');
+  return v;
+}
+
+/** Decodes a `PlannedQuery` at `path` (plan #112 §3.8). */
+export function decodePlanned(v: unknown, path: string): PlannedQuery {
+  const p = object(v, path);
+  const valueType = VALUE_TYPES.find((t) => t === p['value_type']);
+  if (valueType === undefined) {
+    throw new DecodeError(
+      `${path}/value_type`,
+      'expected scalar, string, vector, matrix or unknown',
+    );
+  }
+  const stepMs = optional(p, 'step_ms', path, nonNegative);
+  const rateWindowMs = optional(p, 'rate_window_ms', path, nonNegative);
+  return {
+    query: string(p['query'], `${path}/query`),
+    expanded: string(p['expanded'], `${path}/expanded`),
+    bytes: nonNegative(p['bytes'], `${path}/bytes`),
+    valueType,
+    rateCandidate: boolean(p['rate_candidate'], `${path}/rate_candidate`),
+    rateApplied: boolean(p['rate_applied'], `${path}/rate_applied`),
+    histogram: boolean(p['histogram'], `${path}/histogram`),
+    ...(stepMs === null ? {} : { stepMs }),
+    ...(rateWindowMs === null ? {} : { rateWindowMs }),
+  };
+}
+
 /** Decodes a `PromRangeResponse` body. */
 export function decodeRange(body: unknown): RangeResult {
   const b = object(body, '');
   return {
+    planned: decodePlanned(b['planned'], '/planned'),
     startMs: integer(b['start'], '/start'),
     endMs: integer(b['end'], '/end'),
     stepMs: integer(b['step'], '/step'),
@@ -183,20 +237,21 @@ export function decodeInstant(body: unknown): InstantResult {
   if (resultType === undefined) {
     throw new DecodeError('/result_type', 'expected vector, matrix, scalar or string');
   }
+  const planned = decodePlanned(b['planned'], '/planned');
   const atMs = integer(b['at'], '/at');
   const series = frames(b['frames'], '/frames');
   const completeness = decodeCompleteness(b['completeness'], '/completeness');
   switch (resultType) {
     case 'vector':
     case 'matrix':
-      return { kind: 'series', resultType, series, atMs, completeness };
+      return { kind: 'series', resultType, series, atMs, completeness, planned };
     case 'scalar': {
       const s = object(b['scalar'], '/scalar');
       const scalar = {
         value: decodeValue(s['value'], '/scalar/value'),
         timestampMs: integer(s['timestamp'], '/scalar/timestamp'),
       };
-      return { kind: 'scalar', scalar, atMs, completeness };
+      return { kind: 'scalar', scalar, atMs, completeness, planned };
     }
     case 'string': {
       const s = object(b['string'], '/string');
@@ -206,6 +261,7 @@ export function decodeInstant(body: unknown): InstantResult {
         timestampMs: integer(s['timestamp'], '/string/timestamp'),
         atMs,
         completeness,
+        planned,
       };
     }
   }
