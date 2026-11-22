@@ -281,6 +281,21 @@ test.describe('e2e:lazy-load explore', () => {
     expect(editorUrls.length).toBeGreaterThanOrEqual(1);
     expect(new Set(editorUrls).size).toBe(editorUrls.length);
   });
+
+  test('a board loads the editor chunk for its PromQL panels, once', async ({ page }) => {
+    // Board panels read the query shape through the language module (plan #64 R4).
+    const editorUrls: string[] = [];
+    page.on('request', (r) => {
+      if (/\/assets\/editor-[^/]+\.js$/.test(new URL(r.url()).pathname)) editorUrls.push(r.url());
+    });
+    await open(page, '/t/demo/boards');
+    expect(editorUrls).toEqual([]);
+    await open(page, '/t/demo/board/b-1');
+    // Request rate and Error ratio: Request latency, below the fold, does not query (T07-012).
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
+    expect(editorUrls.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(editorUrls).size).toBe(editorUrls.length);
+  });
 });
 
 test.describe('e2e:explore-picker-inert', () => {

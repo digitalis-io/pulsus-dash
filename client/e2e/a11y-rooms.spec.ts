@@ -107,7 +107,8 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await check('boards, New board dialog');
 
   await open(page, '/t/demo/board/b-1');
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  // On screen: Request rate and Error ratio; Request latency, below the fold, does not query (T07-012).
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
   await check('b-1 view');
 
   const editor = page.getByRole('dialog', { name: 'Edit panel' });
@@ -122,6 +123,41 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   };
   await edit();
   await check('b-1 edit, editor open');
+
+  // Plan #64 A.3: the PromQL editor and the metric picker in the dialog.
+  await edit();
+  await editor.getByRole('textbox', { name: 'Query' }).waitFor();
+  await check('b-1 edit, PromQL editor');
+
+  await edit();
+  await editor.getByRole('combobox', { name: 'Metric' }).focus();
+  await page.getByRole('listbox').waitFor();
+  await check('b-1 edit, metric picker open');
+
+  // A panel with partial data: its badge's popover.
+  await open(page, '/t/demo/board/b-1');
+  await page.getByRole('button', { name: 'Edit board' }).click();
+  await expect(page.locator('.react-grid-item')).toHaveCount(4);
+  await page.getByRole('button', { name: 'Add panel', exact: true }).click();
+  await editor.getByRole('textbox', { name: 'Query' }).click();
+  await page.keyboard.insertText('topk(1000, up)');
+  await page.keyboard.press('Shift+Enter');
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(editor).toBeHidden();
+  await page.getByRole('button', { name: 'Partial data: Untitled panel' }).click();
+  await page.getByRole('status', { name: 'Query notices' }).waitFor();
+  await check('b-1 edit, partial data popover');
+
+  // A panel whose query failed: the error view.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('a11y-failQuery') === null) {
+      sessionStorage.setItem('a11y-failQuery', '1');
+      localStorage.setItem('pulsus-dash.stub.failQuery', '1');
+    }
+  });
+  await open(page, '/t/demo/board/b-1');
+  await page.getByText('Something went wrong').first().waitFor();
+  await check('b-1 view, panel error');
 
   await edit();
   await editor.getByRole('button', { name: /Visualisation$/ }).click();
@@ -201,7 +237,8 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
 /** b-1 in View mode with `Request rate`'s value axis pinned by `Shift`+wheel (#93). */
 async function valueAxisPinned(page: Page): Promise<void> {
   await open(page, '/t/demo/board/b-1');
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  // On screen: Request rate and Error ratio; Request latency, below the fold, does not query (T07-012).
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
   const f = page.locator('[data-chart-frame]', {
     has: page.getByRole('slider', { name: 'Crosshair: Request rate', exact: true }),
   });

@@ -377,10 +377,13 @@ test('Z8: axis drags pan each axis; double-click on the value axis fits it', asy
 test('Z9: on a board every panel follows a commit; the value pin stays on its chart', async ({
   page,
 }) => {
-  await open(page, '/t/demo/board/b-3');
+  // b-1 on a tall viewport, so every panel is on screen and queries (T07-012): a line, a stat and a
+  // heatmap; the stat has no crosshair (plan #64: b-3's panels need variables or LogQL).
+  await page.setViewportSize({ width: 1440, height: 1600 });
+  await open(page, '/t/demo/board/b-1');
   await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
   const sliders = page.getByRole('slider', { name: /^Crosshair: / });
-  await expect(sliders).toHaveCount(3);
+  await expect(sliders).toHaveCount(2);
   const ranges = () =>
     sliders.evaluateAll((els) =>
       els.map((e) => [
@@ -393,7 +396,7 @@ test('Z9: on a board every panel follows a commit; the value pin stays on its ch
     page.locator('[data-chart-frame]', {
       has: page.getByRole('slider', { name: `Crosshair: ${title}`, exact: true }),
     });
-  const p99 = frameOf('Edge p99');
+  const p99 = frameOf('Request rate');
   const plot = await plotOf(p99);
   const box = await boxOf(p99);
   const p = point(box, plot, 0.5);
@@ -411,9 +414,9 @@ test('Z9: on a board every panel follows a commit; the value pin stays on its ch
   await page.keyboard.down('Shift');
   await page.mouse.wheel(0, -200);
   await page.keyboard.up('Shift');
-  await expect(p99.getByRole('button', { name: 'Reset Y axis: Edge p99' })).toBeVisible();
+  await expect(p99.getByRole('button', { name: 'Reset Y axis: Request rate' })).toBeVisible();
   expect(await pinned(p99)).toBe(true);
-  expect(await pinned(frameOf('Edge errors'))).toBe(false);
+  expect(await pinned(frameOf('Request latency'))).toBe(false);
   expect(page.url()).toBe(url);
   await page.goBack();
   await expect.poll(ranges).toEqual(r0);

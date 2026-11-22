@@ -7,6 +7,8 @@ import { cellPx } from '../src/boards/layout.ts';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 
 const API = '/api/dash/v1/boards';
+/** The window the fake's data transcripts were recorded on (Explore's `W0`). */
+const W0_TIME = 'from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-01T01%3A00%3A00.000Z&refresh=off';
 
 /** Collects console errors and page errors. */
 function errorsOf(page: Page): string[] {
@@ -62,7 +64,8 @@ test.describe('e2e:board-edit-save', () => {
     let uid: string | null = null;
     // Tall enough that C's resize handle is clear of the bottom edge, where react-grid-layout
     // scrolls the page during a drag and so adds to the pointer's travel.
-    await page.setViewportSize({ width: 1440, height: 1600 });
+    // Wide enough that a 6-column panel gets the 5 s step the fake's histogram transcript is on.
+    await page.setViewportSize({ width: 1920, height: 1600 });
     try {
       // 1. Create.
       await page.goto('/t/demo/boards');
@@ -76,16 +79,24 @@ test.describe('e2e:board-edit-save', () => {
       expect(uid).toMatch(/^[0-9a-z]{14}$/);
       await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(`${title} (editing)`);
+      // On the window of the fake's data transcripts (plan #64 A.5), so the panels' queries draw.
+      await page.goto(`${new URL(page.url()).pathname}?${W0_TIME}`);
+      await page.getByRole('button', { name: 'Edit board' }).click();
+      await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
 
       // 2. Three panels.
       const editor = page.getByRole('dialog', { name: 'Edit panel' });
-      for (const [name, vis] of [
-        ['A', 'Line'],
-        ['B', 'Stat'],
-        ['C', 'Heatmap'],
+      // Each with a query the fake answers (plan #64 A.5), so the panels draw after the reload.
+      for (const [name, vis, text] of [
+        ['A', 'Line', 'node_memory_free_bytes'],
+        ['B', 'Stat', 'node_memory_free_bytes'],
+        ['C', 'Heatmap', 'sum by (le) (rate(http_request_duration_seconds_bucket[5m]))'],
       ] as const) {
         await page.getByRole('button', { name: 'Add panel', exact: true }).click();
         await editor.getByRole('textbox', { name: 'Title' }).fill(name);
+        await editor.getByRole('textbox', { name: 'Query' }).click();
+        await page.keyboard.insertText(text);
+        await page.keyboard.press('Shift+Enter');
         await editor.getByRole('button', { name: /Visualisation$/ }).click();
         await page.getByRole('option', { name: vis, exact: true }).click();
         await editor.getByRole('button', { name: 'Done' }).click();
@@ -136,7 +147,7 @@ test.describe('e2e:board-edit-save', () => {
       for (const [name, [g, vis]] of Object.entries(want)) {
         await expect(panel(page, name)).toHaveAttribute('data-grid', g);
         await expect(panel(page, name)).toHaveAttribute('data-vis', vis);
-        await expect(panel(page, name).getByText('Runs when PromQL support lands')).toBeVisible();
+        await expect(panel(page, name)).toHaveAttribute('data-panel-state', 'frame');
       }
       const stored = (await (await request.get(`${API}/${uid ?? ''}`)).json()) as {
         spec: {
@@ -190,7 +201,7 @@ test.describe('e2e:board-tall', () => {
       id,
       title: name,
       grid: { x: 0, y, w: 6, h },
-      query: { lang: 'promql', text: 'up' },
+      query: { lang: 'promql', text: 'node_memory_free_bytes' },
       vis: { kind: 'line' },
     });
     const created = await request.post(API, {
@@ -251,7 +262,7 @@ test.describe('e2e:board-sections', () => {
       id,
       title: name,
       grid: { x, y: 0, w: 6, h: 8 },
-      query: { lang: 'promql', text: 'up' },
+      query: { lang: 'promql', text: 'node_memory_free_bytes' },
       vis: { kind: 'line' },
     });
     const created = await request.post(API, {
@@ -273,8 +284,7 @@ test.describe('e2e:board-sections', () => {
     });
     expect(created.status()).toBe(201);
     const { uid } = (await created.json()) as { uid: string };
-    const url = `/t/demo/board/${uid}`;
-    const promql = 'Runs when PromQL support lands';
+    const url = `/t/demo/board/${uid}?${W0_TIME}`;
     const toggle = (pg: Page, name: string) =>
       pg.getByRole('button', { name, exact: true }).and(pg.locator('[aria-expanded]'));
     const stored = async () =>
@@ -340,8 +350,8 @@ test.describe('e2e:board-sections', () => {
       await toggle(page, 'Open group').click();
       await expect(panel(page, 'Hidden')).toBeVisible();
       await expect(panel(page, 'Hidden too')).toBeVisible();
-      await expect(panel(page, 'Hidden').getByText(promql)).toBeVisible();
-      await expect(panel(page, 'Hidden too').getByText(promql)).toBeVisible();
+      await expect(panel(page, 'Hidden')).toHaveAttribute('data-panel-state', 'frame');
+      await expect(panel(page, 'Hidden too')).toHaveAttribute('data-panel-state', 'frame');
       await expect(panel(page, 'Shown')).toHaveCount(0);
       await expect
         .poll(() => {

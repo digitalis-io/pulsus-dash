@@ -42,6 +42,9 @@ export interface SnapshotEntry {
   name: string;
 }
 
+/** A panel copy's title ends in " (copy)" (`panel.copyTitle`). */
+const COPY_NAME = / \(copy\)(?:$|[ :,])/;
+
 /** `role "name"` keys of an ARIA snapshot; duplicates get `#2`, `#3`; grid cells count as the grid. */
 export function parseSnapshot(yaml: string): string[] {
   const keys: string[] = [];
@@ -71,6 +74,9 @@ export function parseSnapshot(yaml: string): string[] {
     }
     // The time range trigger is named by the current range; every range is the same control.
     if (role === 'button' && TIME_RANGE_NAME.test(name)) name = '<time range>';
+    // A duplicated panel's controls are its source's (Duplicate, plan #64 §3.6): not collected,
+    // or each copy would bring a menu with its own Duplicate, without end.
+    if (COPY_NAME.test(name)) continue;
     const base = `${role} "${name}"`;
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);

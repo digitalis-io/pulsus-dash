@@ -230,12 +230,16 @@ export function script(page: Page, h: KeyboardHarness) {
       await reach(name, key);
     }
     if (['link', 'button', 'menuitem', 'option'].includes(role)) await press('Enter');
-    else if (['checkbox', 'switch'].includes(role)) await press('Space');
+    else if (['checkbox', 'switch', 'radio'].includes(role)) await press('Space');
     else if (role === 'slider') {
       await press('End');
       await press('Escape');
     } else if (role === 'textbox') await press('End');
-    else throw new Error(`drain ${name}: no operation for ${key}`);
+    else if (role === 'combobox') {
+      // The metric picker (plan #64): its list opens on focus; ArrowDown moves in it, Escape closes.
+      await press('ArrowDown');
+      await press('Escape');
+    } else throw new Error(`drain ${name}: no operation for ${key}`);
   }
 
   /** The first pending control inside the current state's region, if any. */
