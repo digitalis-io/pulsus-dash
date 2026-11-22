@@ -513,3 +513,137 @@ describe('http starred and recent', () => {
     expect(none.requests).toEqual([]);
   });
 });
+
+describe('HttpApi planning (plan #112 A.7, A.11)', () => {
+  const PLANNED = {
+    query: 'rate(x_total{job="a"}[1m])',
+    expanded: 'x_total{job="a"}',
+    bytes: 26,
+    value_type: 'vector',
+    rate_candidate: true,
+    rate_applied: true,
+    histogram: false,
+    step_ms: 5000,
+    rate_window_ms: 60000,
+  };
+  const PLANNED_TS = {
+    query: 'rate(x_total{job="a"}[1m])',
+    expanded: 'x_total{job="a"}',
+    bytes: 26,
+    valueType: 'vector',
+    rateCandidate: true,
+    rateApplied: true,
+    histogram: false,
+    stepMs: 5000,
+    rateWindowMs: 60000,
+  };
+
+  it('H1: the range body carries vars and rate only when given', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, counterRaw)));
+    await a.queryRange('demo', {
+      query: 'x_total',
+      fromMs: 1,
+      toMs: 2,
+      widthPx: 1200,
+      rate: false,
+      vars: { a: '1' },
+    });
+    expect(await requests[0]?.text()).toBe(
+      '{"query":"x_total","from":1,"to":2,"width_px":1200,"vars":{"a":"1"},"rate":false}',
+    );
+    const b = api(() => Promise.resolve(json(200, counterRaw)));
+    await b.api.queryRange('demo', { query: 'x_total', fromMs: 1, toMs: 2, widthPx: 1200 });
+    expect(await b.requests[0]?.text()).toBe('{"query":"x_total","from":1,"to":2,"width_px":1200}');
+  });
+
+  it('H2: the instant body carries step_ms', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, gaugeRaw)));
+    await a.queryInstant('demo', { query: 'q', atMs: 5, stepMs: 15000 });
+    expect(await requests[0]?.text()).toBe('{"query":"q","at":5,"step_ms":15000}');
+  });
+
+  it('H3: the range golden decodes planned', async () => {
+    const { api: a } = api(() => Promise.resolve(json(200, counterRaw)));
+    const r = await a.queryRange('demo', R);
+    expect(r.planned.query).toBe('sum by (job, instance) (rate(http_requests_total[5m]))');
+    expect(r.planned.bytes).toBe(54);
+    expect(r.planned.stepMs).toBe(5000);
+    expect(r.planned.rateWindowMs).toBeUndefined();
+  });
+
+  it('H4: 413 sent_too_large is queryTooLong with the plan', async () => {
+    const { api: a } = api(
+      envelope(413, {
+        code: 'invalid',
+        message: 'the planned query is over 65536 bytes',
+        fields: [{ pointer: '/query', message_key: 'query.sent_too_large' }],
+        planned: { ...PLANNED, bytes: 65540 },
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65540);
+  });
+
+  it('H5: 400 variable.missing is invalid with the fields', async () => {
+    const { api: a } = api(
+      envelope(400, {
+        code: 'invalid',
+        message: 'no value for variable $r',
+        fields: [{ pointer: '/vars/r', message_key: 'variable.missing' }],
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/r', messageKey: 'variable.missing' }]);
+    expect(e.detail.planned).toBeUndefined();
+  });
+
+  it('H6: 502 with planned is unavailable with the plan and the hint', async () => {
+    const { api: a } = api(
+      envelope(502, {
+        code: 'unavailable',
+        message: 'm',
+        hint: { reason: 'upstream_unreachable' },
+        planned: PLANNED,
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('unavailable');
+    expect(e.detail).toEqual({ hint: { reason: 'upstream_unreachable' }, planned: PLANNED_TS });
+  });
+
+  it('H7: a raw-byte position and the plan; a bad plan is left out', async () => {
+    const body = {
+      code: 'invalid',
+      message: 'bad',
+      fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+      hint: { position: { offset: 14 } },
+      planned: PLANNED,
+    };
+    const e = (await rejection(api(envelope(400, body)).api.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryInvalid');
+    expect(e.detail.position).toBe(14);
+    expect(e.detail.planned).toEqual(PLANNED_TS);
+    const bad = { ...body, planned: { ...PLANNED, bytes: 'x' } };
+    const e2 = (await rejection(api(envelope(400, bad)).api.queryRange('demo', R))) as ApiError;
+    expect(e2.kind).toBe('queryInvalid');
+    expect(e2.detail.position).toBe(14);
+    expect(e2.detail.planned).toBeUndefined();
+  });
+
+  it('H8: 413 processing_cap is queryTooLong without a plan', async () => {
+    const { api: a } = api(
+      envelope(413, {
+        code: 'invalid',
+        message: 'm',
+        fields: [{ pointer: '/query', message_key: 'query.too_large_to_plan' }],
+        hint: { reason: 'processing_cap' },
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+  });
+});

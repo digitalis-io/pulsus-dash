@@ -1,0 +1,21 @@
+{
+  "name": "plan-x-total",
+  "provenance": {
+    "synthetic": "plan #112"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "x_total"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-plan-x-total"
+    },
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"a"},"values":[[1767225600,"1"],[1767225605,"2"]]}]}}
+  }
+}

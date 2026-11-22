@@ -14,10 +14,12 @@ import {
   DecodeError,
   decodeInstant,
   decodeMetadata,
+  decodePlanned,
   decodeRange,
   decodeSeriesSet,
   decodeValues,
   type InstantResult,
+  type PlannedQuery,
   type PromMetadata,
   type PromSeriesSet,
   type PromValues,
@@ -107,36 +109,81 @@ function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** The `ApiError` of a failed query or check (plan #62 §4.5). */
+/** The error body's `planned`, decoded; absent when missing or malformed (plan #112 §3.8). */
+function plannedOf(body: ErrorBody): PlannedQuery | undefined {
+  if (body.planned === undefined) return undefined;
+  try {
+    return decodePlanned(body.planned, '/planned');
+  } catch (e) {
+    if (e instanceof DecodeError) return undefined;
+    throw e;
+  }
+}
+
+const TOO_LONG_KEYS = new Set(['query.sent_too_large', 'query.too_large_to_plan']);
+
+/**
+ * The `ApiError` of a failed query or check (plan #62 §4.5, plan #112 §3.8): every `detail` carries
+ * the server's `planned` when the body has one (errors raised after planning).
+ */
 function queryError(status: number, error: unknown): ApiError {
   const body: ErrorBody = (error as Partial<ErrorEnvelope> | undefined)?.error ?? {};
   const message = messageOf(error, status);
   const hint = isRecord(body.hint) ? body.hint : undefined;
-  const withHint: ApiErrorDetail = hint === undefined ? {} : { hint };
+  const planned = plannedOf(body);
+  const fields = body.fields ?? [];
+  const queryId = typeof body.query_id === 'string' ? body.query_id : undefined;
+  const detail = (extra: ApiErrorDetail = {}): ApiErrorDetail => ({
+    ...extra,
+    ...(planned === undefined ? {} : { planned }),
+  });
+  const withHint = detail(hint === undefined ? {} : { hint });
+  if (status === 413 && fields.some((f) => TOO_LONG_KEYS.has(f.message_key))) {
+    return new ApiError('queryTooLong', message, {
+      detail: detail({
+        ...(hint === undefined ? {} : { hint }),
+        ...(queryId === undefined ? {} : { queryId }),
+      }),
+    });
+  }
+  if (
+    status === 400 &&
+    fields.some(
+      (f) =>
+        f.message_key === 'variable.missing' ||
+        f.pointer === '/step_ms' ||
+        f.pointer.startsWith('/vars'),
+    )
+  ) {
+    return new ApiError('invalid', message, {
+      fields: fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      detail: detail(),
+    });
+  }
   if (status === 400 && body.code === 'virtual_unsupported') {
     return new ApiError('queryInvalid', message, { detail: withHint });
   }
-  if (status === 400 && body.fields?.[0]?.pointer === '/query') {
-    const detail: ApiErrorDetail = {};
+  if (status === 400 && fields[0]?.pointer === '/query') {
+    const d: ApiErrorDetail = {};
     const position = isRecord(hint?.['position']) ? hint['position']['offset'] : undefined;
-    if (typeof position === 'number') detail.position = position;
-    if (typeof body.query_id === 'string') detail.queryId = body.query_id;
-    return new ApiError('queryInvalid', message, { detail });
+    if (typeof position === 'number') d.position = position;
+    if (queryId !== undefined) d.queryId = queryId;
+    return new ApiError('queryInvalid', message, { detail: detail(d) });
   }
   switch (status) {
     case 404:
-      return new ApiError('notFound', message);
+      return new ApiError('notFound', message, { detail: detail() });
     case 422:
       return new ApiError('tooBroad', message, { detail: withHint });
     case 429:
-      return new ApiError('busy', message);
+      return new ApiError('busy', message, { detail: withHint });
     case 502:
     case 503:
       return new ApiError('unavailable', message, { detail: withHint });
     case 504:
-      return new ApiError('timeout', message);
+      return new ApiError('timeout', message, { detail: detail() });
   }
-  return new ApiError('unknown', message);
+  return new ApiError('unknown', message, { detail: detail() });
 }
 
 /** Runs a query request: an abort is re-thrown unchanged, any other rejection is `network`. */
@@ -385,6 +432,8 @@ export class HttpApi implements Api {
       to: req.toMs,
       width_px: req.widthPx,
       ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
+      ...(req.rate === undefined ? {} : { rate: req.rate }),
     } as RangeBody;
     const { data, error, response } = await send(() =>
       this.client.POST('/api/dash/v1/query/promql/range', {
@@ -406,6 +455,8 @@ export class HttpApi implements Api {
       query: req.query,
       at: req.atMs,
       ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
+      ...(req.stepMs === undefined ? {} : { step_ms: req.stepMs }),
     } as InstantBody;
     const { data, error, response } = await send(() =>
       this.client.POST('/api/dash/v1/query/promql/instant', {

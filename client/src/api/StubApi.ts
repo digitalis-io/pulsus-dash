@@ -38,6 +38,7 @@ import {
 import type {
   Completeness,
   InstantResult,
+  PlannedQuery,
   PromMetadata,
   PromSeriesSet,
   PromValues,
@@ -48,6 +49,17 @@ import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import { stubPanelData } from './stubPanels';
+import {
+  floorStep,
+  isPlanError,
+  prepare,
+  reservedIn,
+  typesFromMetadata,
+  WARN_TYPES_UNAVAILABLE,
+  type MetricTypes,
+  type PlanInputs,
+  type StubPlanError,
+} from './stub/plan';
 import {
   ApiError,
   BoardConflictError,
@@ -196,6 +208,52 @@ function stubSeries(timestamps: Float64Array): SeriesFrame[] {
 }
 
 /** Resolves on the next microtask; rejects with `AbortError` if `signal` is aborted by then. */
+/** The server's metadata read: the route's maximum (plan #112 §3.2). */
+const METADATA_LIMIT = 10_000;
+/** How long a plan waits for metric types before it degrades (plan #112 §4.5). */
+const TYPES_WAIT_MS = 2_000;
+
+function completeness(warn: boolean): Completeness {
+  return warn ? { ...EMPTY_COMPLETENESS, warnings: [WARN_TYPES_UNAVAILABLE] } : EMPTY_COMPLETENESS;
+}
+
+/** `p`, or a rejection after `ms`. */
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('stub: metric types not ready'));
+    }, ms);
+  });
+  return Promise.race([p, late]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+/** The gateway's 400 virtual_unsupported, as HttpApi maps it (A.11). */
+function reservedRefusal(name: string, planned?: PlannedQuery): ApiError {
+  return new ApiError(
+    'queryInvalid',
+    `${name} is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)`,
+    { detail: { hint: { reserved: name }, ...(planned === undefined ? {} : { planned }) } },
+  );
+}
+
+/** What HttpApi's `queryError` gives for the gateway's body of a planning refusal (A.11). */
+function toApiError(e: StubPlanError): ApiError {
+  if (e.status === 413) {
+    return new ApiError('queryTooLong', e.message, {
+      detail: {
+        ...(e.hint === undefined ? {} : { hint: e.hint }),
+        ...(e.planned === undefined ? {} : { planned: e.planned }),
+      },
+    });
+  }
+  const pointer = e.fields[0]?.pointer ?? '';
+  if (pointer === '/query') return new ApiError('queryInvalid', e.message, { detail: {} });
+  return new ApiError('invalid', e.message, { fields: e.fields });
+}
+
 function settle<T>(value: () => T, signal?: AbortSignal): Promise<T> {
   return Promise.resolve().then(() => {
     if (signal?.aborted === true)
@@ -397,28 +455,110 @@ export class StubApi implements Api {
     });
   }
 
-  queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
-    return settle(() => {
+  /** Plans as the server does (plan #112 §3.9), then serves the synthetic series on the grid. */
+  async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    const g = await settle(() => {
       this.checkTenant(tenant);
-      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
-      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const grid = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (grid === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      return grid;
+    }, signal);
+    const { planned, warn } = await this.plan(
+      tenant,
+      {
+        query: req.query,
+        vars: req.vars ?? {},
+        kind: 'range',
+        stepMs: g.stepMs,
+        rate: req.rate ?? true,
+      },
+      signal,
+    );
+    return settle(() => {
       const n = (g.endMs - g.startMs) / g.stepMs + 1;
       const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
-      return { ...g, series: stubSeries(timestamps), completeness: EMPTY_COMPLETENESS };
+      return { planned, ...g, series: stubSeries(timestamps), completeness: completeness(warn) };
     }, signal);
   }
 
-  queryInstant(tenant: string, req: InstantRequest, signal?: AbortSignal): Promise<InstantResult> {
-    return settle(() => {
+  async queryInstant(
+    tenant: string,
+    req: InstantRequest,
+    signal?: AbortSignal,
+  ): Promise<InstantResult> {
+    await settle(() => {
       this.checkTenant(tenant);
-      return {
+    }, signal);
+    const { planned, warn } = await this.plan(
+      tenant,
+      {
+        query: req.query,
+        vars: req.vars ?? {},
+        kind: 'instant',
+        stepMs: req.stepMs ?? 0,
+        rate: true,
+      },
+      signal,
+    );
+    return settle(
+      () => ({
+        planned,
         kind: 'series' as const,
         resultType: 'vector' as const,
         series: stubSeries(Float64Array.of(req.atMs)),
         atMs: req.atMs,
-        completeness: EMPTY_COMPLETENESS,
-      };
-    }, signal);
+        completeness: completeness(warn),
+      }),
+      signal,
+    );
+  }
+
+  /**
+   * The server's route order (plan #112 §4.4, A.11), step for step: Prepare; Classify and the byte
+   * guard on the substituted text (before any metadata read); the step; the metric types only when
+   * the plan needs them (`promMetadata` stands in for the server's own read: 2 s, then degraded);
+   * Plan; the guard on the planned text. Every refusal is the `ApiError` HttpApi maps from the
+   * gateway's body.
+   */
+  private async plan(
+    tenant: string,
+    inputs: PlanInputs,
+    signal?: AbortSignal,
+  ): Promise<{ planned: PlannedQuery; warn: boolean }> {
+    const p = prepare(inputs);
+    if (isPlanError(p)) throw toApiError(p);
+    const { stubShape } = await import('./stub/promShape');
+    const c = p.classify(stubShape(p.substituted));
+    const first = c.reserved[0];
+    if (c.source !== 'pulsus_db' && first !== undefined) throw reservedRefusal(first);
+    const guarded = reservedIn(p.substituted);
+    if (guarded !== null) throw reservedRefusal(guarded);
+    const step = floorStep(inputs.stepMs, c.floorMs);
+    const e = p.expandedAt(step);
+    if (isPlanError(e)) throw toApiError(e);
+    const shape = stubShape(e);
+    let types: MetricTypes = {};
+    let warn = false;
+    if (p.needsTypes(shape)) {
+      try {
+        types = typesFromMetadata(
+          (
+            await within(
+              this.promMetadata(tenant, { limit: METADATA_LIMIT }, signal),
+              TYPES_WAIT_MS,
+            )
+          ).metrics,
+        );
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        warn = true;
+      }
+    }
+    const r = p.plan(step, shape, types);
+    if (isPlanError(r)) throw toApiError(r);
+    const sent = reservedIn(r.planned.query);
+    if (sent !== null) throw reservedRefusal(sent, r.planned);
+    return { planned: r.planned, warn };
   }
 
   /** Deterministic: always `ok`, checked at 0. */

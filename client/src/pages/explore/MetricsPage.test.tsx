@@ -2,11 +2,11 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
-import { STUB_PROM_METADATA, STUB_PROM_METRIC_NAMES } from '../../api/stubData';
+import { STUB_PROM_METRIC_NAMES } from '../../api/stubData';
 import { ApiError } from '../../api/types';
-import type { InstantResult, PromMetadata } from '../../data/decode';
+import type { InstantResult, PromMetadata, RangeResult } from '../../data/decode';
 import { seriesName } from '../../data/frames';
-import { utf8Length } from '../../explore/plan';
+import { queryBytes } from '../../explore/querySize';
 import {
   ABS,
   alertText,
@@ -23,6 +23,7 @@ import {
   P1,
   P2,
   P3,
+  plannedAs,
   range,
   ready,
   runButton,
@@ -63,10 +64,11 @@ const QUERY_TOO_LARGE =
   'This query is over 128 KB. Completion is paused, and it cannot be run until it is shorter.';
 const TOO_LONG =
   'The query to send, with any rate applied, is over 64 KiB, the most the server accepts. Shorten it.';
-const WAITING = 'Run is available once the metric types have loaded and the chart has a size.';
+const WAITING = 'Run is available once the chart has a size.';
+/** `prom.WarnTypesUnavailable`, the server's text (only StubApi may import the mirror). */
+const WARN_TYPES_UNAVAILABLE =
+  'pulsus-dash: metric types unavailable, so only names ending in _total are rated (metric_types_unavailable)';
 const NARROW = 'Narrow the time range';
-
-const META: PromMetadata = { metrics: STUB_PROM_METADATA, completeness: EMPTY_COMPLETENESS };
 
 /** A promise the test settles. */
 function deferred<T>() {
@@ -89,8 +91,7 @@ describe('MetricsPage runs', () => {
       expect(spy).toHaveBeenCalledTimes(1);
     });
     const req = spy.mock.calls[0]?.[1];
-    expect(req?.query).toBe('rate(http_requests_total[1m])');
-    expect(req?.widthPx).toBe(1000);
+    expect(req).toMatchObject({ query: 'http_requests_total', rate: true, widthPx: 1000 });
     expect(await screen.findByRole('radio', { name: 'Auto (Line)' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Rate applied' })).toHaveAttribute(
       'aria-pressed',
@@ -99,28 +100,18 @@ describe('MetricsPage runs', () => {
     expect(screen.getByText('Sent query: rate(http_requests_total[1m])')).toBeInTheDocument();
   });
 
-  it('MetricsPage waits for metadata', async () => {
-    for (const outcome of ['resolve', 'reject'] as const) {
-      const api = new StubApi();
-      const meta = deferred<PromMetadata>();
-      vi.spyOn(api, 'promMetadata').mockReturnValue(meta.promise);
-      const spy = vi.spyOn(api, 'queryRange');
-      openExplore(url('http_requests_total'), { api });
-      await sized();
-      await screen.findByRole('textbox', { name: 'PromQL query' });
-      await flush();
-      expect(spy).not.toHaveBeenCalled();
-      await act(async () => {
-        if (outcome === 'resolve') meta.resolve(META);
-        else meta.reject(new ApiError('unavailable', 'down'));
-        await Promise.resolve();
-      });
-      await waitFor(() => {
-        expect(spy).toHaveBeenCalledTimes(1);
-      });
-      expect(spy.mock.calls[0]?.[1].query).toBe('rate(http_requests_total[1m])');
-      cleanup();
-    }
+  it('MetricsPage does not wait for metadata', async () => {
+    const api = new StubApi();
+    vi.spyOn(api, 'promMetadata').mockReturnValue(new Promise<PromMetadata>(() => undefined));
+    const spy = vi.spyOn(api, 'queryRange');
+    openExplore(url('http_requests_total'), { api });
+    await ready();
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+    expect(spy.mock.calls[0]?.[1].query).toBe('http_requests_total');
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('MetricsPage scalar', async () => {
@@ -130,6 +121,7 @@ describe('MetricsPage runs', () => {
       scalar: { value: Infinity, timestampMs: W0 + HOUR },
       atMs: W0 + HOUR,
       completeness: EMPTY_COMPLETENESS,
+      planned: plannedAs('scalar(vector(1)) / 0', { valueType: 'scalar' }, null),
     };
     const inst = spyInstant(api, [scalar]);
     const rng = spyRange(api, [S1]);
@@ -138,18 +130,16 @@ describe('MetricsPage runs', () => {
     await waitFor(() => {
       expect(inst).toHaveLength(1);
     });
-    expect(inst[0]?.req.atMs).toBe(W0 + HOUR);
+    expect(inst[0]?.req).toEqual({ query: 'scalar(vector(1)) / 0', atMs: W0 + HOUR, stepMs: 5000 });
     expect(rng).toHaveLength(0);
     expect(await screen.findByRole('radio', { name: 'Auto (Stat)' })).toBeChecked();
   });
 
   it('MetricsPage histogram', async () => {
     const api = new StubApi();
-    spyRange(api, [range(H1())]);
-    const { engine } = openExplore(
-      url('sum by (le) (rate(http_request_duration_seconds_bucket[5m]))'),
-      { api },
-    );
+    const q = 'sum by (le) (rate(http_request_duration_seconds_bucket[5m]))';
+    spyRange(api, [range(H1(), EMPTY_COMPLETENESS, plannedAs(q, { histogram: true }))]);
+    const { engine } = openExplore(url(q), { api });
     await ready();
     expect(await screen.findByRole('radio', { name: 'Auto (Heatmap)' })).toBeChecked();
     await waitFor(() => {
@@ -168,6 +158,7 @@ describe('MetricsPage runs', () => {
         timestampMs: W0 + HOUR,
         atMs: W0 + HOUR,
         completeness: EMPTY_COMPLETENESS,
+        planned: plannedAs('"hello"', { valueType: 'string' }, null),
       };
       const inst = spyInstant(api, [str]);
       const rng = spyRange(api, [S1]);
@@ -501,7 +492,8 @@ describe('MetricsPage keys and controls', () => {
     await waitFor(() => {
       expect(spy).toHaveBeenCalledTimes(2);
     });
-    expect(spy.mock.calls[1]?.[1].query).toBe('http_requests_total');
+    expect(spy.mock.calls[1]?.[1]).toMatchObject({ query: 'http_requests_total', rate: false });
+    expect(spy.mock.calls[0]?.[1]).toMatchObject({ query: 'http_requests_total', rate: true });
     await waitFor(() => {
       expect(engine.frames.length).toBeGreaterThan(0);
     });
@@ -822,7 +814,6 @@ describe('unit:explore-run-size', () => {
     const spies = spyBoth(api);
     const { router } = openExplore(url(), { api });
     const run = await ready();
-    const at = locationOf(router);
     setDraft(docOf(131_072));
     expect(screen.queryByText(QUERY_TOO_LARGE)).toBeNull();
     fireEvent.click(run);
@@ -830,8 +821,9 @@ describe('unit:explore-run-size', () => {
       expect(alertText()).toBe(TOO_LONG);
     });
     await flush();
-    noCall(spies);
-    expect(locationOf(router)).toBe(at);
+    expect(spies.range).toHaveBeenCalledTimes(1);
+    expect(spies.range.mock.calls[0]?.[1].query).toBe(docOf(131_072));
+    expect(router.state.location.search).toContain('q=');
   });
 
   it('R3 the rewrite fits at 64 KiB', async () => {
@@ -839,15 +831,20 @@ describe('unit:explore-run-size', () => {
     const spy = vi.spyOn(api, 'queryRange');
     openExplore(url(), { api });
     await ready();
-    setDraft('x_total{a="' + 'b'.repeat(65_513) + '"}');
+    const raw = 'x_total{a="' + 'b'.repeat(65_513) + '"}';
+    setDraft(raw);
     runKey();
     await waitFor(() => {
       expect(spy).toHaveBeenCalledTimes(1);
     });
-    const q = spy.mock.calls[0]?.[1].query ?? '';
-    expect(utf8Length(q)).toBe(65_536);
-    expect(q.startsWith('rate(x_total{a="')).toBe(true);
-    expect(q.endsWith('"}[1m])')).toBe(true);
+    expect(spy.mock.calls[0]?.[1].query).toBe(raw);
+    expect(queryBytes(raw)).toBe(65_526);
+    const result = (await spy.mock.results[0]?.value) as RangeResult | undefined;
+    const planned = result?.planned;
+    expect(planned?.bytes).toBe(65_536);
+    expect(planned?.query.startsWith('rate(x_total{a="')).toBe(true);
+    expect(planned?.query.endsWith('"}[1m])')).toBe(true);
+    await flush();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
@@ -856,16 +853,16 @@ describe('unit:explore-run-size', () => {
     const spies = spyBoth(api);
     const { router } = openExplore(url(), { api });
     await ready();
-    const at = locationOf(router);
     setDraft(R4);
     runKey();
     await waitFor(() => {
       expect(alertText()).toBe(TOO_LONG);
     });
     await flush();
-    noCall(spies);
-    // QC1: a refused Run leaves the URL unchanged.
-    expect(locationOf(router)).toBe(at);
+    expect(spies.range).toHaveBeenCalledTimes(1);
+    expect(spies.range.mock.calls[0]?.[1].query).toBe(R4);
+    // The server refuses the planned text: QC1 now holds only for the 128 KB pre-check.
+    expect(router.state.location.search).toContain('q=');
   });
 
   it('R5 no rewrite with rate=off', async () => {
@@ -878,7 +875,9 @@ describe('unit:explore-run-size', () => {
     await waitFor(() => {
       expect(spy).toHaveBeenCalledTimes(1);
     });
-    expect(spy.mock.calls[0]?.[1].query).toBe(R4);
+    expect(spy.mock.calls[0]?.[1]).toMatchObject({ query: R4, rate: false });
+    await flush();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('R6 the size status clears when the draft shrinks', async () => {
@@ -895,7 +894,7 @@ describe('unit:explore-run-size', () => {
       expect(alertText()).toBe(TOO_LONG);
     });
     await flush();
-    noCall(spies);
+    expect(spies.range).toHaveBeenCalledTimes(1);
   });
 
   it('R7 the width arrives after the draft', async () => {
@@ -905,7 +904,6 @@ describe('unit:explore-run-size', () => {
     await screen.findByRole('heading', { level: 2, name: 'Result' });
     await screen.findByRole('textbox', { name: 'PromQL query' });
     await flush();
-    const action = router.state.historyAction;
     setDraft(R4);
     expect(runButton()).toBeDisabled();
     expect(screen.getByText(WAITING).closest('[role]')).toHaveAttribute('role', 'status');
@@ -926,31 +924,28 @@ describe('unit:explore-run-size', () => {
       expect(alertText()).toBe(TOO_LONG);
     });
     await flush();
-    noCall(spies);
-    expect(router.state.location.search).not.toContain('q=');
-    expect(router.state.historyAction).toBe(action);
+    expect(spies.range).toHaveBeenCalledTimes(1);
+    expect(router.state.location.search).toContain('q=');
+    expect(router.state.historyAction).toBe('PUSH');
   });
 
-  it('R8 the metadata arrives after the draft', async () => {
+  it("R8 metric types are the stub's, not a gate", async () => {
     const XC = 'x_c{a="' + 'b'.repeat(65_518) + '"}';
-    expect(utf8Length(XC)).toBe(65_527);
+    expect(queryBytes(XC)).toBe(65_527);
     for (const outcome of ['resolve', 'reject'] as const) {
       const api = new StubApi();
       const meta = deferred<PromMetadata>();
       vi.spyOn(api, 'promMetadata').mockReturnValue(meta.promise);
-      const spies = spyBoth(api);
-      const spy = spies.range;
-      const { router } = openExplore(url(), { api });
-      await sized();
-      await screen.findByRole('textbox', { name: 'PromQL query' });
-      await flush();
+      const spy = vi.spyOn(api, 'queryRange');
+      openExplore(url(), { api });
+      const run = await ready();
+      expect(run).toBeEnabled();
       setDraft(XC);
-      expect(runButton()).toBeDisabled();
-      expect(screen.getByText(WAITING)).toBeInTheDocument();
       runKey();
-      await flush();
-      noCall(spies);
-      expect(router.state.location.search).not.toContain('q=');
+      await waitFor(() => {
+        expect(spy).toHaveBeenCalledTimes(1);
+      });
+      expect(spy.mock.calls[0]?.[1].query).toBe(XC);
       await act(async () => {
         if (outcome === 'resolve') {
           meta.resolve({
@@ -960,23 +955,14 @@ describe('unit:explore-run-size', () => {
         } else meta.reject(new ApiError('unavailable', 'down'));
         await Promise.resolve();
       });
-      await waitFor(() => {
-        expect(runButton()).toBeEnabled();
-      });
-      runKey();
       if (outcome === 'resolve') {
         await waitFor(() => {
           expect(alertText()).toBe(TOO_LONG);
         });
-        await flush();
-        noCall(spies);
-        expect(router.state.location.search).not.toContain('q=');
       } else {
-        await waitFor(() => {
-          expect(spy).toHaveBeenCalledTimes(1);
-        });
-        expect(spy.mock.calls[0]?.[1].query).toBe(XC);
-        expect(router.state.location.search).toContain('q=');
+        const box = await screen.findByRole('status', { name: 'Query notices' });
+        expect(box).toHaveTextContent(WARN_TYPES_UNAVAILABLE);
+        expect(screen.queryByRole('alert')).toBeNull();
       }
       cleanup();
     }

@@ -1,58 +1,44 @@
 import { describe, expect, it } from 'vitest';
 import { promql } from '../editor/lang/promql/promql';
-import { planRun } from './plan';
-import { exploreRunKey, planFor, plannable, refusalOf, type PlanInputs } from './useExploreRun';
+import { exploreRunKey, refusalOf, runKind, runnable } from './useExploreRun';
 
 const W = { fromMs: 0, toMs: 3_600_000 };
-const ALL: PlanInputs = { lang: promql, meta: {}, stepMs: 5000, rate: true };
+/** `docOf(n)` is `n` UTF-8 bytes (Part B). */
+const docOf = (n: number): string => '#' + 'a'.repeat(n - 10) + '\nup{job="';
 
 describe('useExploreRun key', () => {
-  it('keys of a rewritten and a typed rate differ', () => {
-    const bare = planFor('http_requests_total', ALL);
-    const typed = planFor('rate(http_requests_total[1m])', ALL);
-    expect(bare?.query).toBe('rate(http_requests_total[1m])');
-    expect(typed?.query).toBe('rate(http_requests_total[1m])');
-    if (bare === null || typed === null) throw new Error('no plan');
-    const a = exploreRunKey('demo', 'http_requests_total', bare, W, 5000);
-    const b = exploreRunKey('demo', 'rate(http_requests_total[1m])', typed, W, 5000);
-    expect(a).not.toEqual(b);
-    expect(a.slice(0, 3)).toEqual(['data', 'explore', 'demo']);
-    expect(a).toEqual([
+  it('U1: the key holds the raw text, the kind and the rate', () => {
+    const on = exploreRunKey('demo', 'http_requests_total', 'range', true, W, 5000);
+    expect(on).toEqual([
       'data',
       'explore',
       'demo',
       'http_requests_total',
-      'rate(http_requests_total[1m])',
       'range',
-      false,
+      true,
       0,
       3_600_000,
       5000,
     ]);
+    const off = exploreRunKey('demo', 'http_requests_total', 'range', false, W, 5000);
+    expect(off.map((v, i) => (v === on[i] ? null : i)).filter((i) => i !== null)).toEqual([5]);
   });
 
-  it('an instant key has no step', () => {
-    const p = planFor('scalar(vector(1)) / 0', ALL);
-    if (p === null) throw new Error('no plan');
-    expect(exploreRunKey('demo', 'scalar(vector(1)) / 0', p, W, 5000).at(-1)).toBeNull();
+  it('U2: runKind', () => {
+    expect(runKind('scalar(vector(1)) / 0', promql)).toBe('instant');
+    expect(runKind('up', promql)).toBe('range');
+    expect(runKind('  ', promql)).toBeNull();
+    expect(runKind('up', null)).toBeNull();
   });
 
-  it('refusalOf', () => {
-    expect(refusalOf('a'.repeat(131_073), null)).toBe('queryTooLarge');
-    const long = planRun('a'.repeat(70_000), promql.shape('up'), {}, { rate: false, stepMs: 5000 });
-    expect(long.tooLong).toBe(true);
-    expect(refusalOf('up', long)).toBe('tooLong');
-    expect(refusalOf('up', planFor('up', ALL))).toBeNull();
-    expect(refusalOf('up', null)).toBeNull();
+  it('U3: refusalOf', () => {
+    expect(refusalOf(docOf(131_073))).toBe('queryTooLarge');
+    expect(refusalOf('a'.repeat(70_000))).toBeNull();
   });
 
-  it('planFor needs every input', () => {
-    expect(planFor('x_total', { ...ALL, meta: null })).toBeNull();
-    expect(planFor('x_total', { ...ALL, stepMs: null })).toBeNull();
-    expect(planFor('x_total', { ...ALL, lang: null })).toBeNull();
-    expect(planFor('x_total', ALL)?.query).toBe('rate(x_total[1m])');
-    expect(planFor('  ', ALL)).toBeNull();
-    expect(plannable(ALL)).toBe(true);
-    expect(plannable({ ...ALL, meta: null })).toBe(false);
+  it('U4: runnable needs the language and the step', () => {
+    expect(runnable({ lang: promql, stepMs: 5000, rate: true })).toBe(true);
+    expect(runnable({ lang: promql, stepMs: null, rate: true })).toBe(false);
+    expect(runnable({ lang: null, stepMs: 5000, rate: true })).toBe(false);
   });
 });

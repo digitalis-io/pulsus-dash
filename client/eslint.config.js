@@ -4,6 +4,7 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { stubPlanBoundary } from './eslint/stub-plan-boundary.ts';
 import tokens from './eslint/tokens-plugin.ts';
 
 const LAYOUT_PROPS = ['offset', 'crossOffset', 'containerPadding', 'delay', 'closeDelay'];
@@ -156,6 +157,7 @@ export default tseslint.config(
     },
   },
   ...languageIsolation,
+  stubPlanBoundary,
   {
     files: ['e2e/keyboard.spec.ts', 'e2e/keyboardScript.ts', 'e2e/keyboardBoards.ts'],
     rules: {

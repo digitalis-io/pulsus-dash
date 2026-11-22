@@ -89,6 +89,15 @@ describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
 
   it('decodes a string result', () => {
     const r = decodeInstant({
+      planned: {
+        query: '"hello"',
+        expanded: '"hello"',
+        bytes: 7,
+        value_type: 'string',
+        rate_candidate: false,
+        rate_applied: false,
+        histogram: false,
+      },
       result_type: 'string',
       at: 5,
       frames: [],
@@ -193,5 +202,36 @@ describe('unit:decode-frames prom', () => {
         }),
       ),
     ).toBe('/metrics/up/0/help');
+  });
+});
+
+describe('decode planned (plan #112 §3.8)', () => {
+  it('decodes planned from the regenerated goldens', () => {
+    expect(decodeRange(counter()).planned).toEqual({
+      query: 'sum by (job, instance) (rate(http_requests_total[5m]))',
+      expanded: 'sum by (job, instance) (rate(http_requests_total[5m]))',
+      bytes: 54,
+      valueType: 'vector',
+      rateCandidate: false,
+      rateApplied: false,
+      histogram: false,
+      stepMs: 5000,
+    });
+    const gauge = decodeInstant(JSON.parse(gaugeRaw));
+    expect(gauge.planned.query).toBe('node_memory_free_bytes');
+    expect(gauge.planned.stepMs).toBeUndefined();
+    expect(decodeInstant(JSON.parse(scalarRaw)).planned.valueType).toBe('scalar');
+  });
+
+  it('reports the pointer of a bad planned member', () => {
+    const body = counter();
+    (body['planned'] as Json)['bytes'] = '1';
+    expect(decodeErrorOf(() => decodeRange(body)).path).toBe('/planned/bytes');
+    const vt = counter();
+    (vt['planned'] as Json)['value_type'] = 'histogram';
+    expect(decodeErrorOf(() => decodeRange(vt)).path).toBe('/planned/value_type');
+    const missing = counter();
+    delete missing['planned'];
+    expect(decodeErrorOf(() => decodeRange(missing)).path).toBe('/planned');
   });
 });

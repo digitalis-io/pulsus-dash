@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/types';
-import { planRun, toSourceIndex } from '../../../explore/plan';
 import { UNKNOWN_SHAPE, type QueryShape, type ValueType } from '../types';
 import { analysePromQL, diagnosticsOf, utf8ToIndex } from './promql';
 
@@ -120,27 +119,16 @@ describe('unit:promql-diagnostics positions', () => {
   }
 });
 
-describe('unit:promql-diagnostics rewritten', () => {
-  it('maps a position in the rate rewrite back to the editor text', () => {
-    const text = 'requests{job="a"}';
-    const plan = planRun(
-      text,
-      analysePromQL(text),
-      { requests: [{ type: 'counter' }] },
-      { rate: true, stepMs: 5000 },
-    );
-    const sent = plan.query;
-    const toSource = (i: number) => toSourceIndex(plan, i);
-    expect(sent).toBe('rate(requests{job="a"}[1m])');
-    const at = (position: number) =>
+describe('unit:promql-diagnostics identity', () => {
+  it('a position arrives in raw bytes: the identity mapping places it (plan #112, T09-009)', () => {
+    const text = 'x_total{job="a"}';
+    expect(
       diagnosticsOf(
         text,
-        new ApiError('queryInvalid', 'm', { detail: { position } }),
-        toSource,
-        sent,
-      );
-    expect(at(21)).toEqual([D(16, 17, 'm', true)]);
-    expect(at(22)).toEqual([D(16, 17, 'm', true)]);
-    expect(at(23)).toEqual([D(0, 17, 'm (position unknown)', false)]);
+        new ApiError('queryInvalid', 'm', { detail: { position: 14 } }),
+        (i) => i,
+        text,
+      ),
+    ).toEqual([D(14, 15, 'm', true)]);
   });
 });

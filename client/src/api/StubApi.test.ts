@@ -373,3 +373,125 @@ describe('stub panel data hooks (#90)', () => {
     expect(await kindOf(api.panelData('demo', p, window))).toBe('resolved');
   });
 });
+
+describe('StubApi planning (plan #112 A.7, A.11)', () => {
+  const W = { fromMs: 0, toMs: 3_600_000, widthPx: 1000 };
+  /** `prom.WarnTypesUnavailable`, the server's text (only StubApi may import the mirror). */
+  const WARN_TYPES_UNAVAILABLE =
+    'pulsus-dash: metric types unavailable, so only names ending in _total are rated (metric_types_unavailable)';
+
+  async function errorOf(p: Promise<unknown>): Promise<ApiError> {
+    try {
+      await p;
+    } catch (e) {
+      if (e instanceof ApiError) return e;
+      throw e;
+    }
+    throw new Error('the query resolved');
+  }
+
+  it('T1: a bare counter is rated without metadata', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const r = await api.queryRange('demo', { query: 'http_requests_total', ...W });
+    expect(r.planned.query).toBe('rate(http_requests_total[1m])');
+    expect(r.planned.rateWindowMs).toBe(60000);
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('T2: a selector that needs types reads the metadata once', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const r = await api.queryRange('demo', { query: 'up', ...W });
+    expect(meta).toHaveBeenCalledTimes(1);
+    expect(meta.mock.calls[0]?.[1]).toEqual({ limit: 10000 });
+    expect(r.planned.query).toBe('up');
+  });
+
+  it('T3: a planned text over 64 KiB is queryTooLong', async () => {
+    const n19 = 'x_total{a="' + 'b'.repeat(65_517) + '"}';
+    const e = await errorOf(new StubApi().queryRange('demo', { query: n19, ...W }));
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65540);
+  });
+
+  it('T4: variables', async () => {
+    const api = new StubApi();
+    const e = await errorOf(api.queryRange('demo', { query: 'up{r="$r"}', ...W }));
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/r', messageKey: 'variable.missing' }]);
+    const r = await api.queryRange('demo', { query: 'up{r="$r"}', vars: { r: 'eu' }, ...W });
+    expect(r.planned.query).toBe('up{r="eu"}');
+  });
+
+  it('T5: a metadata failure plans without types and warns', async () => {
+    const api = new StubApi();
+    vi.spyOn(api, 'promMetadata').mockRejectedValue(new ApiError('unavailable', 'down'));
+    const r = await api.queryRange('demo', { query: 'up', ...W });
+    expect(r.completeness.warnings).toEqual([WARN_TYPES_UNAVAILABLE]);
+    const i = await errorOf(
+      api.queryInstant('demo', { query: 'rate(x[$__rate_interval])', atMs: 1 }),
+    );
+    expect(i.kind).toBe('invalid');
+    expect(i.fields).toEqual([{ pointer: '/step_ms', messageKey: 'field.required' }]);
+    const ok = await api.queryInstant('demo', {
+      query: 'rate(x[$__rate_interval])',
+      atMs: 1,
+      stepMs: 15000,
+    });
+    expect(ok.planned.query).toBe('rate(x[1m])');
+  });
+
+  it('T6: a variable that names a virtual source is refused before metadata', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const e = await errorOf(
+      api.queryRange('demo', { query: '$m', vars: { m: 'pulsus_anomaly_score' }, ...W }),
+    );
+    expect(e.kind).toBe('queryInvalid');
+    expect(e.detail.hint?.['reserved']).toBe('pulsus_anomaly_score');
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G1–G3: reserved names are refused before metadata', async () => {
+    for (const [query, vars] of [
+      ['ALERTS{', {}],
+      ['up{note="ALERTS"}', {}],
+      ['$m', { m: 'ALERTS' }],
+    ] as const) {
+      const api = new StubApi();
+      const meta = vi.spyOn(api, 'promMetadata');
+      const e = await errorOf(api.queryRange('demo', { query, vars, ...W }));
+      expect(e.kind, query).toBe('queryInvalid');
+      expect(e.detail.hint?.['reserved'], query).toBe('ALERTS');
+      expect(meta, query).not.toHaveBeenCalled();
+    }
+  });
+
+  it('the resolved-step cap comes before the metadata read (review r2)', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const query = '$c'.repeat(510) + '$__interval'.repeat(3000) + '\nx';
+    const e = await errorOf(
+      api.queryInstant('demo', { query, vars: { c }, atMs: 1, stepMs: 1500 }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G5: over the processing cap is queryTooLong without a plan', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const e = await errorOf(
+      api.queryRange('demo', { query: '$c'.repeat(600) + '\nx_total', vars: { c }, ...W }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+  });
+});
