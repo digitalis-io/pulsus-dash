@@ -286,7 +286,8 @@ export function script(page: Page, h: KeyboardHarness) {
         const after = await h.state();
         if (after !== before || page.url() !== url) {
           const sameRoute = before.split(' + ')[0] === after.split(' + ')[0];
-          if (depth < 2 && sameRoute && !after.endsWith(' + none')) {
+          const overlay = sameRoute && !after.endsWith(' + none');
+          if (depth < 2 && overlay) {
             await drain(
               `${name} › ${key}`,
               async () => {
@@ -295,6 +296,15 @@ export function script(page: Page, h: KeyboardHarness) {
               },
               depth + 1,
             );
+          } else if (overlay && page.url() === url) {
+            // An overlay past the depth limit is not drained: close it, and go on from here when
+            // that restores the state (a select's list box in the panel editor, #64 Part B), so
+            // it costs no replay.
+            await press('Escape');
+            if ((await h.state()) === before) {
+              next = await nextPending(only);
+              continue;
+            }
           }
           break;
         }

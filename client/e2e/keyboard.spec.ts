@@ -555,6 +555,13 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         ['Pod memory, 600 series', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 500],
         ['Request latency distribution', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 12],
         ['Log volume by level', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 5],
+        // #64 Part B: the line chart with threshold lines (the stat sparkline has no crosshair).
+        [
+          'Request latency with an SLO threshold',
+          GALLERY_FROM + 1_439 * lineStep,
+          GALLERY_FROM + lineStep,
+          3,
+        ],
       ];
       for (const [title, last, second, n] of charts) {
         const name = `Crosshair: ${title}`;
