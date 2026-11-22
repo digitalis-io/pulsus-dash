@@ -10,7 +10,7 @@ import {
   seriesFrame,
   type Harness,
 } from '../../test/engineHarness';
-import { colour, seriesPalette, sequentialRamp } from '../../styles/tokens';
+import { colour, seriesPalette, sequentialRamp, size } from '../../styles/tokens';
 import { bucketScale } from './bucketScale';
 import { barStats } from './summary';
 import { brushSnapUnit } from './columns';
@@ -287,6 +287,44 @@ describe('engine', () => {
     );
     const value = h.layer().calls('fillText')[0];
     expect(value?.args).toEqual(['2', 150, 60]);
+  });
+
+  it('stat sparkline joins its finite points across absent ones', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const ts = [0, 15, 30, 45, 60].map((m) => W0 + m * MIN);
+    const s = seriesFrame(K(3), ts, [1, NaN, 3, NaN, 2]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke', 'arc'].includes(o.op));
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
+      ['moveTo', 12, 152],
+      ['lineTo', 150, 120],
+      ['lineTo', 288, 136],
+      ['stroke'],
+    ]);
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+  });
+
+  it('stat sparkline of one finite point is a dot', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const s = seriesFrame(K(3), [W0, W0 + 30 * MIN, W0 + 60 * MIN], [NaN, 3, NaN]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const layer = h.layer();
+    expect(layer.calls('lineTo')).toHaveLength(0);
+    expect(layer.calls('arc').map((o) => o.args)).toEqual([
+      [150, 136, size['chart-line'], 0, 2 * Math.PI],
+    ]);
+    const fill = layer.ops.filter((o) => o.op === 'fill');
+    expect(fill).toHaveLength(1);
+    expect(fill[0]?.fillStyle).toBe(
+      colour.dark[`series-${String(seriesColourIndex(s) + 1)}` as keyof typeof colour.dark],
+    );
+    expect(layer.calls('fillText')[0]?.args).toEqual(['3', 150, 60]);
   });
 
   it('stat without sparkline: scalar; short frame', () => {
