@@ -101,7 +101,7 @@ export function wireBoard(uid: string, etag = '1') {
     updated_at: b.updatedAt,
     updated_by: { kind: 'local', name: 'Local user' },
     etag,
-    schema_version: 1,
+    schema_version: 2,
     spec: b.spec,
   };
 }

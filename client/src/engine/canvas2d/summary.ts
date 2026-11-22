@@ -122,5 +122,6 @@ export function frameSummary(
     last: stats.last,
     plot,
     valueAxis,
+    thresholdLabels: [],
   };
 }

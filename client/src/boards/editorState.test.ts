@@ -222,6 +222,20 @@ describe('duplicatePanel', () => {
     expect(d.announce).toBe('Panel duplicated: Untitled panel');
   });
 
+  it('duplicate copies thresholds', () => {
+    const vis = {
+      kind: 'line' as const,
+      thresholds: {
+        direction: 'above' as const,
+        steps: [{ value: 2, state: 'degraded' as const, label: 'SLO' }],
+      },
+      legend: { mode: 'hidden' as const },
+    };
+    const one = edit({ ...MINIMAL, panels: [{ ...p('p-1', 'Requests'), vis }] });
+    const s = run(one, { type: 'duplicatePanel', id: 'p-1' });
+    expect(s.draft.panels[1]?.vis).toEqual(vis);
+  });
+
   it('full boards and the title cut', () => {
     const many = edit({
       ...MINIMAL,

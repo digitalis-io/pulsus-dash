@@ -4,18 +4,13 @@
  * choice restores all. At most `TABLE_ROWS` rows are drawn.
  */
 import type { JSX } from 'react';
-import type { Unit } from '../../engine/api';
-import {
-  TABLE_ROWS,
-  type SeriesRow,
-  type SortColumn,
-  type SortState,
-} from '../../explore/seriesRows';
-import { formatValue } from '../../i18n/format';
-import { t } from '../../i18n/t';
-import { cx } from '../../kit/cx';
-import { Icon } from '../../kit/Icon';
-import styles from './Explore.module.css';
+import type { ThresholdState, Unit } from '../engine/api';
+import { TABLE_ROWS, type SeriesRow, type SortColumn, type SortState } from '../explore/seriesRows';
+import { formatValue } from '../i18n/format';
+import { t } from '../i18n/t';
+import { cx } from '../kit/cx';
+import { Icon } from '../kit/Icon';
+import styles from '../pages/explore/Explore.module.css';
 
 export interface SeriesTableProps {
   /** Sorted; the first `TABLE_ROWS` are drawn. */
@@ -30,6 +25,11 @@ export interface SeriesTableProps {
   readonly swatches: boolean;
   /** The frame's value unit. */
   readonly unit: Unit;
+  /** Stub. */
+  readonly caption: string;
+  readonly columns: readonly ('mean' | 'last' | 'max')[];
+  readonly maxRows: number;
+  readonly cellState?: (v: number | null) => ThresholdState | null;
 }
 
 const COLUMNS: readonly { readonly id: SortColumn; readonly numeric: boolean }[] = [

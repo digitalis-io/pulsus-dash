@@ -18,6 +18,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const FIXTURE_DIR = join(CLIENT_ROOT, '..', 'engine', 'fixtures');
 
+/** Stub. */
+export const PARITY_LINE_IDS = ['line-1', 'line-50', 'line-gaps', 'line-600'] as const;
+
 type Unit =
   | { kind: 'none' }
   | { kind: 'time'; base: 'ns' | 'us' | 'ms' | 's' }
@@ -96,8 +99,11 @@ interface Sources {
   font: { size: { xs: number }; advance: { mono: number } };
 }
 
-/** Node: resolve the client's extensionless relative imports to their `.ts` files. */
-function resolveTs(): void {
+/**
+ * Node: resolve the client's extensionless relative imports to their `.ts` files. Also used by
+ * `threshold-draw-probe.ts`.
+ */
+export function registerClientHooks(): void {
   registerHooks({
     resolve(specifier, context, next) {
       if (/^\.\.?\//.test(specifier) && !/\.[cm]?[jt]sx?$/.test(specifier)) {
@@ -133,7 +139,7 @@ async function load(): Promise<Sources> {
 }
 
 /** 2026-11-19 12:00–13:00 UTC, the gallery's e2e window. */
-const GALLERY_WINDOW: Window = { fromMs: 1_795_089_600_000, toMs: 1_795_093_200_000 };
+export const GALLERY_WINDOW: Window = { fromMs: 1_795_089_600_000, toMs: 1_795_093_200_000 };
 
 function num(v: number): number | string {
   if (Number.isNaN(v)) return 'NaN';
@@ -468,7 +474,7 @@ export async function fixtures(): Promise<Record<string, string>> {
 }
 
 export async function main(argv: readonly string[]): Promise<number> {
-  resolveTs();
+  registerClientHooks();
   const files = await fixtures();
   let stale = 0;
   for (const [name, text] of Object.entries(files)) {

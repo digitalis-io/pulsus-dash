@@ -4,7 +4,7 @@
  * resolved window, so a time change, a zoom or a relative refresh is a new key whose placeholder is
  * the previous result (§4.3).
  */
-import type { PanelVisKind } from '../api/types';
+import type { PanelSpec } from '../api/types';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
 import type { VisKind, VisSpec } from '../engine/api';
@@ -130,7 +130,8 @@ const message = (state: PanelState, text: string): PanelView => ({
 });
 
 /** Pure: §4.2's table, first match. `title` is the panel title (`panelTitle`). */
-export function panelView(run: PanelRun, vis: PanelVisKind, title: string): PanelView {
+export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: string): PanelView {
+  const vis = panelVis.kind;
   switch (run.blocked) {
     case 'unsupported':
       return message('unsupported', t('panel.noRoute.logql'));

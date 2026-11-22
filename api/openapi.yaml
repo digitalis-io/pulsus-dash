@@ -635,7 +635,32 @@ components:
         w: { type: integer, minimum: 1, maximum: 12 }
         h: { type: integer, minimum: 1, maximum: 100 }
     Query: { type: object, additionalProperties: false, required: [lang, text], properties: { lang: { type: string, enum: [promql, logql] }, text: { type: string, maxLength: 16384 } } }
-    Vis: { type: object, additionalProperties: false, required: [kind], properties: { kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs] } } }
+    Vis:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs] }
+        thresholds: { $ref: '#/components/schemas/Thresholds' }
+        legend: { $ref: '#/components/schemas/Legend' }
+    # Board spec v2 (#64 Part B, ADR-0022): absolute threshold steps and the legend mode. A value is
+    # 0, or 1e-9 <= |value| <= 1e15; values are distinct; validated by the server (board.thresholds.*).
+    Thresholds:
+      type: object
+      additionalProperties: false
+      required: [direction, steps]
+      properties:
+        direction: { type: string, enum: [above, below] }
+        steps: { type: array, minItems: 1, maxItems: 8, items: { $ref: '#/components/schemas/ThresholdStep' } }
+    ThresholdStep:
+      type: object
+      additionalProperties: false
+      required: [value, state, label]
+      properties:
+        value: { type: number, format: double }
+        state: { type: string, enum: [watch, degraded, failing] }
+        label: { type: string, maxLength: 200 }
+    Legend: { type: object, additionalProperties: false, required: [mode], properties: { mode: { type: string, enum: [table, hidden] } } }
     Author: { type: object, additionalProperties: false, required: [kind, name], properties: { kind: { type: string, enum: [local] }, name: { type: string } } }
     BoardSummary:
       type: object

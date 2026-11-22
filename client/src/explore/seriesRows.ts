@@ -16,9 +16,11 @@ export interface SeriesRow {
   readonly last: number | null;
   /** The largest non-NaN value (±Inf included); `null` when none. */
   readonly max: number | null;
+  /** Stub. */
+  readonly mean: number | null;
 }
 
-export type SortColumn = 'series' | 'last' | 'max';
+export type SortColumn = 'series' | 'mean' | 'last' | 'max';
 
 export interface SortState {
   readonly column: SortColumn;
@@ -41,6 +43,7 @@ export function seriesRows(r: ExploreResult): SeriesRow[] {
           colourIndex: seriesColourIndex(scalarSeries(r.scalar)),
           last: v,
           max: v,
+          mean: null,
         },
       ];
     }
@@ -59,6 +62,7 @@ export function seriesRows(r: ExploreResult): SeriesRow[] {
           colourIndex: seriesColourIndex(s),
           last,
           max,
+          mean: null,
         };
       });
   }

@@ -716,6 +716,24 @@ export interface components {
         Vis: {
             /** @enum {string} */
             kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs";
+            thresholds?: components["schemas"]["Thresholds"];
+            legend?: components["schemas"]["Legend"];
+        };
+        Thresholds: {
+            /** @enum {string} */
+            direction: "above" | "below";
+            steps: components["schemas"]["ThresholdStep"][];
+        };
+        ThresholdStep: {
+            /** Format: double */
+            value: number;
+            /** @enum {string} */
+            state: "watch" | "degraded" | "failing";
+            label: string;
+        };
+        Legend: {
+            /** @enum {string} */
+            mode: "table" | "hidden";
         };
         Author: {
             /** @enum {string} */

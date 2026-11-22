@@ -15,6 +15,7 @@ import { bucketScale } from './bucketScale';
 import { barStats } from './summary';
 import { brushSnapUnit } from './columns';
 import { Canvas2DEngine, ChartUnsupportedError, MAX_SERIES } from './Canvas2DEngine';
+import { seriesColourIndex } from './palette';
 
 const K = (i: number): string => `00000000000000${i.toString(16).padStart(2, '0')}`;
 const STATE = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
@@ -264,6 +265,47 @@ describe('engine', () => {
         .calls('fillText')
         .map((o) => o.args[0]),
     ).toEqual(['—']);
+  });
+
+  it('stat sparkline from series', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const s = seriesFrame(K(3), [W0, W0 + 30 * MIN, W0 + 60 * MIN], [1, 3, 2]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke'].includes(o.op));
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
+      ['moveTo', 12, 152],
+      ['lineTo', 150, 120],
+      ['lineTo', 288, 136],
+      ['stroke'],
+    ]);
+    const stroke = h.layer().calls('stroke')[0];
+    expect(stroke?.strokeStyle).toBe(
+      colour.dark[`series-${String(seriesColourIndex(s) + 1)}` as keyof typeof colour.dark],
+    );
+    const value = h.layer().calls('fillText')[0];
+    expect(value?.args).toEqual(['2', 150, 60]);
+  });
+
+  it('stat without sparkline: scalar; short frame', () => {
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    const scalar = harness(Canvas2DEngine);
+    show(
+      scalar,
+      spec,
+      { kind: 'scalar', scalar: { value: 7, timestampMs: 0 } },
+      { fromMs: 0, toMs: 1 },
+      [300, 160, 1],
+    );
+    expect(scalar.layer().calls('stroke')).toHaveLength(0);
+    expect(scalar.layer().calls('fillText')[0]?.args).toEqual(['7', 150, 80]);
+    const short = harness(Canvas2DEngine);
+    const s = seriesFrame(K(3), [0, 1_000, 2_000], [1, 3, 2]);
+    show(short, spec, seriesData(s), { fromMs: 0, toMs: 2_000 }, [300, 100, 1]);
+    expect(short.layer().calls('stroke')).toHaveLength(0);
+    expect(short.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 50]);
   });
 
   it('hover: snaps to the nearest sample and reports every series', () => {

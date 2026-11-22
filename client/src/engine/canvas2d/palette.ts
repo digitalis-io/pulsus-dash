@@ -54,6 +54,8 @@ export interface ThemeColours {
   text: string;
   series: readonly string[];
   ramp: readonly string[];
+  /** Threshold marks (stub). */
+  state: Readonly<Record<'ok' | 'watch' | 'degraded' | 'failing' | 'unknown', string>>;
 }
 
 export function themeColours(t: ThemeName): ThemeColours {
@@ -68,6 +70,7 @@ export function themeColours(t: ThemeName): ThemeColours {
     text: c.text,
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
+    state: { ok: '', watch: '', degraded: '', failing: '', unknown: '' },
   };
 }
 

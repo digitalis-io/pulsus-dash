@@ -7,8 +7,14 @@
 import type { JSX, RefCallback } from 'react';
 import { ToggleButton } from 'react-aria-components';
 import { ChartFrame } from '../../charts/ChartFrame';
+import { SeriesTable } from '../../charts/SeriesTable';
 import type { VisKind } from '../../engine/api';
-import type { SeriesRow, SortColumn, SortState } from '../../explore/seriesRows';
+import {
+  TABLE_ROWS,
+  type SeriesRow,
+  type SortColumn,
+  type SortState,
+} from '../../explore/seriesRows';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import type { ExploreRun } from '../../explore/useExploreRun';
 import { t } from '../../i18n/t';
@@ -23,7 +29,9 @@ import type { FramePlan } from '../../vis/framePlan';
 import pageStyles from '../pages.module.css';
 import { CompletenessNotice } from './CompletenessNotice';
 import styles from './Explore.module.css';
-import { SeriesTable } from './SeriesTable';
+
+/** Explore's table columns (plan #64 Part B §3.6). */
+const TABLE_COLUMNS = ['last', 'max'] as const;
 
 export interface ResultCardProps {
   readonly q: string;
@@ -140,6 +148,9 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
           onIsolate={p.onIsolate}
           swatches={p.vis !== 'heatmap'}
           unit={unitOf}
+          caption={t('explore.table.caption')}
+          columns={TABLE_COLUMNS}
+          maxRows={TABLE_ROWS}
         />
       )}
     </Card>

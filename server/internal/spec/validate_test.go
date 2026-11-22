@@ -178,3 +178,67 @@ func TestCheckEnvelope(t *testing.T) {
 		}
 	}
 }
+
+// v2-full's p-1 holds a 1e15 step (steps[2]); each case replaces its text (plan #64 Part B §5).
+func TestThresholdValueRange(t *testing.T) {
+	raw := string(fixture(t, "v2-full.json"))
+	const step = "1000000000000000"
+	if strings.Count(raw, step) != 1 {
+		t.Fatalf("v2-full.json holds %d copies of %s, want 1", strings.Count(raw, step), step)
+	}
+	want := []FieldError{{"/panels/0/vis/thresholds/steps/2/value", "board.thresholds.value.range"}}
+	cases := []struct {
+		value string
+		valid bool
+	}{
+		{"1.7976931348623157e308", false},
+		{"-1.7976931348623157e308", false},
+		{"1.0000001e15", false},
+		{"5e-324", false},
+		{"-5e-324", false},
+		{"1e-10", false},
+		{"-1e-10", false},
+		{"1000000000000000", true},
+		{"1e-9", true},
+		{"-1e-9", true},
+		{"0", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.value, func(t *testing.T) {
+			_, err := ParseBoard([]byte(strings.Replace(raw, step, tc.value, 1)))
+			if tc.valid {
+				if err != nil {
+					t.Fatalf("ParseBoard = %v, want ok", err)
+				}
+				return
+			}
+			if got := fieldsOf(t, err); !reflect.DeepEqual(got, want) {
+				t.Errorf("fields = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestNumberShape(t *testing.T) {
+	spec := func(value string) []byte {
+		return []byte(`{"title":"B","panels":[{"id":"p-1","title":"A","grid":{"x":0,"y":0,"w":6,"h":8},` +
+			`"query":{"lang":"promql","text":"up"},"vis":{"kind":"line","thresholds":{"direction":"above",` +
+			`"steps":[{"value":` + value + `,"state":"watch","label":""}]}}}],"sections":[]}`)
+	}
+	for _, tc := range []struct {
+		value string
+		ok    bool
+	}{{"1.5", true}, {"-0", true}, {"1e3", true}, {`"1"`, false}, {"true", false}, {"1e400", false}} {
+		_, err := ParseBoard(spec(tc.value))
+		if tc.ok {
+			if err != nil {
+				t.Errorf("value %s: %v, want ok", tc.value, err)
+			}
+			continue
+		}
+		want := []FieldError{{"/panels/0/vis/thresholds/steps/0/value", keyType}}
+		if got := fieldsOf(t, err); !reflect.DeepEqual(got, want) {
+			t.Errorf("value %s: fields %v, want %v", tc.value, got, want)
+		}
+	}
+}

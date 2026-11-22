@@ -33,6 +33,8 @@ type Service struct {
 	db     *store.Db
 	now    func() time.Time
 	newUID func() (string, error)
+	// schemaMax is the newest board schema version the service reads (stub).
+	schemaMax int64
 }
 
 var _ core.Boards = (*Service)(nil)

@@ -357,7 +357,7 @@ func TestNewerSchemaVersion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			storetest.Exec(t, e.db.SuperURL, "UPDATE board_versions SET schema_version = 2")
+			storetest.Exec(t, e.db.SuperURL, "UPDATE board_versions SET schema_version = 3")
 			if _, err := e.svc.GetBoard(ctx, rc, b.UID); !errors.Is(err, spec.ErrSchemaTooNew) {
 				t.Errorf("GetBoard = %v, want ErrSchemaTooNew", err)
 			}
@@ -366,6 +366,79 @@ func TestNewerSchemaVersion(t *testing.T) {
 			}
 			if n := e.count(t, "board_versions"); n != 1 {
 				t.Errorf("%d versions, want 1", n)
+			}
+		})
+	}
+}
+
+// The previous release (schema 1) meets a row this release wrote (plan #64 Part B §4.7, R1).
+func TestPreviousServerRefusesV2Row(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := newEnv(t, c)
+			ctx, rc := itestCtx(t), e.rc(e.org)
+			b, err := e.svc.CreateBoard(ctx, rc, fixture(t, "v2-full.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 2 {
+				t.Fatalf("schema_version = %d, want 2", v)
+			}
+			hash := func() string {
+				rows := storetest.QueryRows(t, e.db.SuperURL, "SELECT encode(content_hash, 'hex') FROM board_versions ORDER BY version DESC LIMIT 1")
+				return rows[0][0]
+			}
+			before := hash()
+			old := newServiceWithSchemaMax(e.svc.db, 1)
+			if _, err := old.GetBoard(ctx, rc, b.UID); !errors.Is(err, spec.ErrSchemaTooNew) {
+				t.Errorf("GetBoard = %v, want ErrSchemaTooNew", err)
+			}
+			if _, err := old.SaveBoard(ctx, rc, b.UID, 1, fixture(t, "v1-minimal.json"), ""); !errors.Is(err, spec.ErrSchemaTooNew) {
+				t.Errorf("SaveBoard = %v, want ErrSchemaTooNew", err)
+			}
+			if n := e.count(t, "board_versions"); n != 1 {
+				t.Errorf("%d versions, want 1", n)
+			}
+			if after := hash(); after != before {
+				t.Errorf("head content_hash = %s, want %s (unchanged)", after, before)
+			}
+		})
+	}
+}
+
+func TestSaveWritesSchemaV2(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := newEnv(t, c)
+			ctx, rc := itestCtx(t), e.rc(e.org)
+			b, err := e.svc.CreateBoard(ctx, rc, titled(t, "A"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw := fixture(t, "v2-full.json")
+			res, err := e.svc.SaveBoard(ctx, rc, b.UID, 1, raw, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !res.Changed {
+				t.Errorf("Changed = false, want true")
+			}
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != 2 {
+				t.Errorf("stored schema_version = %d, want 2", v)
+			}
+			got, err := e.svc.GetBoard(ctx, rc, b.UID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := spec.Canonical(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got.Spec) != string(want) {
+				t.Errorf("GET spec = %s, want %s", got.Spec, want)
+			}
+			if got.SchemaVersion != 2 {
+				t.Errorf("GET schema_version = %d, want 2", got.SchemaVersion)
 			}
 		})
 	}

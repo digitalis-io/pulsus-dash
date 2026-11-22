@@ -74,6 +74,8 @@ export const GALLERY_IDS = [
   'heatmap',
   'bars',
   'stat',
+  'line-thresholds',
+  'stat-sparkline',
 ] as const;
 
 /** The chart frame of a gallery entry. */
@@ -107,9 +109,11 @@ export function timeAt(boxX: number, plot: Plot, x: number, fromMs: number, toMs
   return fromMs + ((x - boxX - plot.x) / plot.width) * (toMs - fromMs);
 }
 
-/** Waits until all seven gallery charts have drawn with their fonts loaded. */
+/** Waits until every gallery chart has drawn with its fonts loaded. */
 export async function galleryReady(page: Page): Promise<void> {
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(7);
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(
+    GALLERY_IDS.length,
+  );
   await page.waitForFunction(
     (fonts) => fonts.every((f) => document.fonts.check(f)),
     [AXIS_FONT, STAT_FONT],

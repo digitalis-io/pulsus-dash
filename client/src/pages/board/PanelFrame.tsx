@@ -180,7 +180,7 @@ export function PanelPreview({
 }) {
   const { dispatch } = useTimeContext();
   const title = panelTitle(panel);
-  const view = useMemo(() => panelView(run, panel.vis.kind, title), [run, panel.vis.kind, title]);
+  const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
   // The preview host's size, across message states (Appendix C §C.2).
   const frameSize = useRef<FrameSize | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -292,7 +292,7 @@ export const PanelFrame = forwardRef<HTMLElement, PanelFrameProps>(function Pane
     widthPx,
   });
   const title = panelTitle(panel);
-  const view = useMemo(() => panelView(run, panel.vis.kind, title), [run, panel.vis.kind, title]);
+  const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
   const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
   const notices = noticesOf(run, view);
   // The body's size, across message states and remounts of its chart (#90); full screen holds its own.

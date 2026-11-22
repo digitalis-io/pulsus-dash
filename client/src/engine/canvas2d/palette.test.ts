@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SeriesFrame, VisSpec } from '../api';
 import { keyHash } from '../../dev/keyHash';
 import { harness, LINE_NONE, seriesData, seriesFrame } from '../../test/engineHarness';
-import { seriesPalette } from '../../styles/tokens';
+import { colour, seriesPalette } from '../../styles/tokens';
+import { StateEncoding } from '../../theme/stateEncoding';
 import { Canvas2DEngine } from './Canvas2DEngine';
-import { seriesColourIndex } from './palette';
+import { seriesColourIndex, themeColours } from './palette';
 
 const TS = [0, 1_000, 2_000];
 const W = { fromMs: 0, toMs: 2_000 };
@@ -94,5 +95,14 @@ describe('unit:colour-hash', () => {
     expect(seriesColourIndex({ key: 'ffffffffffffffa5', labels: { level: 'notice' } })).toBe(0);
     expect(seriesColourIndex({ key: 'ffffffffffffffac', labels: { level: 'verbose' } })).toBe(4);
     expect(seriesColourIndex({ key: 'ffffffffffffffac', labels: { severity: 'error' } })).toBe(4);
+  });
+});
+
+describe('unit:state-colours (T02-004)', () => {
+  it('marks take state colours from StateEncoding', () => {
+    const c = themeColours('light');
+    expect(c.state.failing).toBe(StateEncoding.failing.colour.light);
+    expect(c.state.failing).toBe(colour.light.failing);
+    expect(themeColours('dark').state.degraded).toBe(colour.dark.degraded);
   });
 });

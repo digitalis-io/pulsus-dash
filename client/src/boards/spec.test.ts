@@ -24,6 +24,20 @@ interface Case {
 
 const cases = fixture('invalid.json') as Case[];
 
+type Step = NonNullable<PanelSpec['vis']['thresholds']>['steps'][number];
+const STEP: Step = { value: 1, state: 'watch', label: '' };
+
+function v2Full(): BoardSpec {
+  return fixture('v2-full.json') as BoardSpec;
+}
+
+/** The (mutable) threshold steps of top-level panel `i`. */
+function stepsOf(spec: BoardSpec, i: number): Step[] {
+  const steps = spec.panels[i]?.vis.thresholds?.steps;
+  if (steps === undefined) throw new Error(`panel ${String(i)} has no thresholds`);
+  return steps;
+}
+
 function panel(id: string, [x, y, w, h]: readonly number[]): PanelSpec {
   return {
     id,
@@ -58,8 +72,69 @@ describe('unit:board-spec (TS)', () => {
       );
     }
     expect(raw.sort()).toEqual(
-      ['not-json', 'trailing-data', 'empty-body', 'duplicate-key', 'float-grid', 'exp-grid'].sort(),
+      [
+        'not-json',
+        'trailing-data',
+        'empty-body',
+        'duplicate-key',
+        'float-grid',
+        'exp-grid',
+        'threshold-value-range',
+      ].sort(),
     );
+  });
+
+  it('v2 fixture is valid; invalid rows match', () => {
+    expect(checkBoardSpec(fixture('v2-full.json'))).toEqual([]);
+    const names = new Set(cases.map((c) => c.name));
+    for (const n of [
+      'threshold-direction',
+      'threshold-value-tiny',
+      'legend-mode',
+      'vis-unknown-key',
+    ])
+      expect(names.has(n), n).toBe(true);
+    // A raw row: `JSON.parse` reads 1e400 as Infinity, which is not a JSON number either.
+    const big = cases.find((c) => c.name === 'threshold-value-range');
+    expect(checkBoardSpec(JSON.parse(big?.raw ?? 'null'))).toEqual([
+      { pointer: '/panels/0/vis/thresholds/steps/0/value', messageKey: 'board.json.type' },
+    ]);
+  });
+
+  it('v2-threshold-bounds fixture is valid', () => {
+    const x = fixture('v2-threshold-bounds.json');
+    expect(checkBoardSpec(x)).toEqual([]);
+    expect(canonicalJson(x)).toBe(canonicalJson(JSON.parse(canonicalJson(x))));
+  });
+
+  it('a NaN threshold value is board.json.type', () => {
+    const spec = v2Full();
+    stepsOf(spec, 0)[0] = { ...(stepsOf(spec, 0)[0] ?? STEP), value: NaN };
+    expect(checkBoardSpec(spec)).toEqual([
+      { pointer: '/panels/0/vis/thresholds/steps/0/value', messageKey: 'board.json.type' },
+    ]);
+  });
+
+  it('threshold values outside the range', () => {
+    const out = [Number.MAX_VALUE, -Number.MAX_VALUE, 1.0000001e15, 5e-324, -5e-324, 1e-10, -1e-10];
+    const kept = [1e15, 1e-9, -1e-9, 0];
+    // v2-full's p-1 holds a 1e15 step: each case replaces it (steps[2]).
+    expect(stepsOf(v2Full(), 0)[2]?.value).toBe(1e15);
+    const at = (value: number) => {
+      const spec = v2Full();
+      const steps = stepsOf(spec, 0);
+      steps[2] = { ...(steps[2] ?? STEP), value };
+      return checkBoardSpec(spec);
+    };
+    for (const v of out) {
+      expect(at(v), String(v)).toEqual([
+        {
+          pointer: '/panels/0/vis/thresholds/steps/2/value',
+          messageKey: 'board.thresholds.value.range',
+        },
+      ]);
+    }
+    for (const v of kept) expect(at(v), String(v)).toEqual([]);
   });
 
   it('every message key has text', () => {

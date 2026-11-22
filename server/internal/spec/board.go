@@ -60,7 +60,27 @@ type Query struct {
 
 // Vis is a panel's visualisation: auto, line, bars, heatmap, stat or logs.
 type Vis struct {
-	Kind string `json:"kind"`
+	Kind       string      `json:"kind"`
+	Thresholds *Thresholds `json:"thresholds,omitempty"`
+	Legend     *Legend     `json:"legend,omitempty"`
+}
+
+// Thresholds are a panel's absolute threshold steps; Direction is above or below.
+type Thresholds struct {
+	Direction string          `json:"direction"`
+	Steps     []ThresholdStep `json:"steps"`
+}
+
+// ThresholdStep is one threshold: a value, a state (watch, degraded or failing) and a label.
+type ThresholdStep struct {
+	Value float64 `json:"value"`
+	State string  `json:"state"`
+	Label string  `json:"label"`
+}
+
+// Legend is a panel's legend; Mode is table or hidden.
+type Legend struct {
+	Mode string `json:"mode"`
 }
 
 // ErrSchemaTooNew is returned for a spec written by a newer server (rolling upgrade, N+1).
@@ -114,4 +134,10 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 		return Board{}, fmt.Errorf("spec: stored board: %w", err)
 	}
 	return b, nil
+}
+
+// DecodeBoardUpTo is DecodeBoard with schemaMax as the newest readable version (stub).
+func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {
+	_ = schemaMax
+	return DecodeBoard(raw, schemaVersion)
 }
