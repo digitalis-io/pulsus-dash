@@ -5,7 +5,7 @@ import { StubApi, type StubBoard } from '../../api/StubApi';
 import { defaultSeed } from '../../api/stubData';
 import type { BoardSpec, PanelSpec, SaveResult, SectionSpec } from '../../api/types';
 import { deferred, EngineWrapper, panelTitles, stubBoard } from '../../test/boardTestKit';
-import { installResizeObserver } from '../../test/fakeResizeObserver';
+import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
 import { renderApp, type RenderAppOptions } from '../../test/renderApp';
 import { seedWith } from '../../test/seeds';
 
@@ -355,5 +355,44 @@ describe('sections', () => {
     expect(statusLine()).toHaveTextContent('A board can have at most 50 sections');
     expect(document.querySelectorAll('[data-section]')).toHaveLength(50);
     expect(panelTitles()).toEqual([]);
+  });
+});
+
+describe('section panel queries (plan #64 §5.1)', () => {
+  it('collapsed section panels do not query', async () => {
+    const section: SectionSpec = {
+      id: 's-1',
+      title: 'Hidden',
+      collapsed: true,
+      panels: [{ ...p('p-2', 'Inside', [0, 0, 6, 8]), query: { lang: 'promql', text: 'inside' } }],
+    };
+    const seed = seedWith({
+      boards: [
+        stubBoard('b-1', {
+          title: 'Board',
+          panels: [{ ...p('p-1', 'Top', [0, 0, 6, 8]), query: { lang: 'promql', text: 'top' } }],
+          sections: [section],
+        }),
+      ],
+    });
+    const api = new StubApi(seed);
+    const range = vi.spyOn(api, 'queryRange');
+    const { user } = open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off', { api });
+    await screen.findByRole('heading', { level: 3, name: 'Top' });
+    act(() => {
+      resizeAll(1000, 240);
+    });
+    const texts = () => range.mock.calls.map((c) => c[1].query);
+    await waitFor(() => {
+      expect(texts()).toEqual(['top']);
+    });
+    await user.click(screen.getByRole('button', { name: 'Hidden' }));
+    await screen.findByRole('heading', { level: 3, name: 'Inside' });
+    act(() => {
+      resizeAll(1000, 240);
+    });
+    await waitFor(() => {
+      expect(texts()).toEqual(['top', 'inside']);
+    });
   });
 });

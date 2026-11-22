@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
-import { STUB_FAIL_PANEL_DATA_KEY, STUB_PANEL_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
+import {
+  STUB_FAIL_PANEL_DATA_KEY,
+  STUB_FAIL_QUERY_KEY,
+  STUB_PANEL_DELAY_KEY,
+  STUB_QUERY_DELAY_KEY,
+  StubApi,
+  type StubBoard,
+} from './StubApi';
 import { ApiError, BoardConflictError, type BoardSpec, type PanelSpec } from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
@@ -493,5 +500,122 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     expect(e.detail.hint?.['reason']).toBe('processing_cap');
     expect(e.detail.planned).toBeUndefined();
     expect(meta).not.toHaveBeenCalled();
+  });
+});
+
+describe('stub query hooks and buckets (plan #64 §3.10)', () => {
+  const W = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13), widthPx: 1000 };
+  const req = { ...W, query: 'node_memory_free_bytes' };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Whether `promise` has settled after `n` macrotask turns. */
+  async function settledAfter(promise: Promise<unknown>): Promise<boolean> {
+    let done = false;
+    promise.then(
+      () => {
+        done = true;
+      },
+      () => {
+        done = true;
+      },
+    );
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    return done;
+  }
+
+  it('stub query hooks and buckets: delay', async () => {
+    expect(STUB_QUERY_DELAY_KEY).toBe('pulsus-dash.stub.queryDelayMs');
+    const api = new StubApi();
+    performance.clearMarks('stub:query');
+    await api.queryRange('demo', req);
+    await api.queryInstant('demo', { query: 'scalar(vector(1))', atMs: W.toMs, stepMs: 5000 });
+    const marks = performance.getEntriesByName('stub:query') as PerformanceMark[];
+    expect(marks.map((m) => m.detail as unknown)).toEqual([
+      { kind: 'range', query: 'node_memory_free_bytes' },
+      { kind: 'instant', query: 'scalar(vector(1))' },
+    ]);
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    localStorage.setItem(STUB_QUERY_DELAY_KEY, '400');
+    const delayed = api.queryRange('demo', req);
+    await vi.advanceTimersByTimeAsync(399);
+    expect(await settledAfter(delayed)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await kindOf(delayed)).toBe('resolved');
+    expect(localStorage.getItem(STUB_QUERY_DELAY_KEY)).toBe('400');
+
+    const c = new AbortController();
+    const aborted = api.queryRange('demo', req, c.signal);
+    await vi.advanceTimersByTimeAsync(10);
+    c.abort();
+    expect(await kindOf(aborted)).toBe('AbortError');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(performance.getEntriesByName('stub:query')).toHaveLength(4);
+  });
+
+  it('stub query hooks and buckets: fail', async () => {
+    expect(STUB_FAIL_QUERY_KEY).toBe('pulsus-dash.stub.failQuery');
+    const api = new StubApi();
+    localStorage.setItem(STUB_FAIL_QUERY_KEY, '1');
+    const first = api.queryRange('demo', req);
+    await expect(first).rejects.toThrow('stub: query failed');
+    expect(await kindOf(api.queryRange('demo', req))).toBe('resolved');
+    expect(localStorage.getItem(STUB_FAIL_QUERY_KEY)).toBe('0');
+    localStorage.setItem(STUB_FAIL_QUERY_KEY, '1');
+    expect(await kindOf(api.queryInstant('demo', { query: 'up', atMs: W.toMs }))).toBe('network');
+  });
+
+  it('stub query hooks and buckets: buckets, scalar and truncation', async () => {
+    const api = new StubApi();
+    const r = await api.queryRange('demo', {
+      ...W,
+      query: 'sum by (le) (rate(http_request_duration_seconds_bucket[5m]))',
+    });
+    const les = [
+      '0.005',
+      '0.01',
+      '0.025',
+      '0.05',
+      '0.1',
+      '0.25',
+      '0.5',
+      '1',
+      '2.5',
+      '5',
+      '10',
+      '+Inf',
+    ];
+    expect(r.series.map((s) => s.labels)).toEqual(
+      les.map((le) => ({ __name__: 'stub_bucket', le })),
+    );
+    for (let i = 0; i < r.series[0]!.values.length; i += 97) {
+      const col = r.series.map((s) => s.values[i] ?? NaN);
+      for (let k = 1; k < col.length; k++) expect(col[k]).toBeGreaterThanOrEqual(col[k - 1] ?? 0);
+      const t = r.series[0]!.timestamps[i] ?? 0;
+      expect(col[11]).toBeCloseTo((12 * synthLineValue(62, 0, t, 100, 40)) / 12);
+    }
+    const plain = await api.queryRange('demo', req);
+    expect(plain.series.map((s) => s.labels['__name__'])).toEqual([
+      'stub_metric',
+      'stub_metric',
+      'stub_metric',
+    ]);
+
+    const s = await api.queryInstant('demo', { query: 'scalar(vector(1)) / 0', atMs: W.toMs });
+    expect(s.kind).toBe('scalar');
+    if (s.kind !== 'scalar') throw new Error('not a scalar');
+    expect(s.scalar).toEqual({
+      value: synthLineValue(62, 0, W.toMs, 100, 40),
+      timestampMs: W.toMs,
+    });
+    expect((await api.queryInstant('demo', { query: 'up', atMs: W.toMs })).kind).toBe('series');
+
+    const top = await api.queryRange('demo', { ...W, query: 'topk(1000, up)' });
+    expect(top.completeness.truncated).toBe(true);
+    expect(top.completeness.warnings).toEqual(['results truncated due to limit']);
+    expect(plain.completeness.truncated).toBe(false);
   });
 });

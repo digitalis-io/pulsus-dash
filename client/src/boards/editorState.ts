@@ -64,6 +64,7 @@ export type BoardAction =
       patch: Partial<Pick<PanelSpec, 'title' | 'query' | 'vis'>>;
     }
   | { type: 'removePanel'; id: string }
+  | { type: 'duplicatePanel'; id: string }
   | { type: 'select'; id: string | null }
   | { type: 'layout'; grid: GridRef; items: LayoutItem[] }
   | { type: 'keyOp'; id: string; op: LayoutOp }
@@ -287,6 +288,8 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
         selected: s.selected === a.id ? null : s.selected,
       };
     }
+    case 'duplicatePanel':
+      return s;
     case 'select':
       return { ...s, selected: a.id };
     case 'layout': {

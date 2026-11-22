@@ -5,9 +5,18 @@ import createClient from 'openapi-fetch';
 import type { paths } from '../api/gen/schema';
 import { HttpApi } from '../api/HttpApi';
 import { defaultSeed } from '../api/stubData';
-import type { Board, BoardSpec, PanelSpec } from '../api/types';
+import type { StubSeed } from '../api/StubApi';
+import type {
+  Board,
+  BoardSpec,
+  PanelSpec,
+  PanelVisKind,
+  SectionSpec,
+  TimeRangeSpec,
+} from '../api/types';
 import { ChartEngineContext } from '../engine/index';
 import { fakeEngine, type FakeEngine } from './fakeEngine';
+import { seedWith } from './seeds';
 
 export function EngineWrapper({ children }: { children: ReactNode }) {
   return <ChartEngineContext.Provider value={fakeEngine()}>{children}</ChartEngineContext.Provider>;
@@ -142,3 +151,35 @@ export function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } 
 }
 
 export type { Board };
+
+/** A PromQL panel (plan #64 A.7); `grid` defaults to a 6 × 8 cell placed by the id's number. */
+export function panel(
+  id: string,
+  title: string,
+  text: string,
+  kind: PanelVisKind = 'auto',
+  g?: readonly [number, number, number, number],
+): PanelSpec {
+  const n = Math.max(1, Number(/\d+$/.exec(id)?.[0] ?? '1'));
+  const [x, y, w, h] = g ?? [6 * ((n - 1) % 2), 8 * Math.floor((n - 1) / 2), 6, 8];
+  return { id, title, grid: { x, y, w, h }, query: { lang: 'promql', text }, vis: { kind } };
+}
+
+/** A seed whose only board, `b-1` "Board", holds `panels` (and `sections`, `time`). */
+export function boardWith(
+  panels: readonly PanelSpec[],
+  o: { sections?: SectionSpec[]; time?: TimeRangeSpec } = {},
+): StubSeed {
+  const spec: BoardSpec = {
+    title: 'Board',
+    ...(o.time === undefined ? {} : { time: o.time }),
+    panels: [...panels],
+    sections: o.sections ?? [],
+  };
+  return seedWith({ boards: [stubBoard('b-1', spec)] });
+}
+
+/** The panel's `data-panel-state`. */
+export function panelState(title: string): string | undefined {
+  return panelOf(title).dataset['panelState'];
+}
