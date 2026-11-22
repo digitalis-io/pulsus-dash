@@ -11,7 +11,7 @@ import type { SuggestCache } from '../suggestCache';
 /** The PromQL value type of a whole query; `unknown` when it does not parse. */
 export type ValueType = 'scalar' | 'string' | 'vector' | 'matrix' | 'unknown';
 
-/** What the planner needs to know about a query's text (`explore/plan.ts`). */
+/** A query's shape from the Lezer tree: the run route (`runKind`) and the StubApi mirror read it. */
 export interface QueryShape {
   /** Top-level VectorSelector with a metric-name Identifier, and its exact source slice. */
   readonly bareSelector: {
