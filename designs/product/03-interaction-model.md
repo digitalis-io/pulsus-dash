@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-21 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -126,7 +126,7 @@ through each pose in reverse; `Alt+→` replays forward.
 | Click | Select point/series → Inspector | Select entity → Inspector |
 | `Shift`+click on a pivot chip | Replace the current view with the pivot target | Same |
 | `⌘`/`Ctrl`+click on a pivot chip | Open the pivot target in a new browser tab | Same |
-| Double-click | Zoom to fit the clicked series/region | **Dive**: fly into entity, one level down the ladder (L0 → L5) and finally its Lens; on empty space in a 3D signal view, reset the camera |
+| Double-click | Zoom the time window out ×2 around its centre | **Dive**: fly into entity, one level down the ladder (L0 → L5) and finally its Lens; on empty space in a 3D signal view, reset the camera |
 | Two-finger swipe (trackpad) | Pan | Pan |
 | Mouse back / forward button | Camera history back / forward | Same |
 | Drag on an axis | Pan **that axis only**. On a comparison time axis, slides B against A ([05](05-visualisation-catalogue.md) §1.1) | — |
@@ -134,6 +134,19 @@ through each pose in reverse; `Alt+→` replays forward.
 | Double-click on an axis | Fit that axis (clears its manual-range pin) | — |
 
 [mockup](../mockups/06-metrics-workbench.svg)
+
+> **Note (2026-11-21, #93, owner decisions):** In 2D charts, time zoom and pan change the
+> Context time window (on a board, the board's shared range, so every panel follows); they are
+> committed at the end of the gesture (wheel idle 300 ms, pointer release), one history entry
+> each. Value-axis zoom and pan stay local to the chart until it is reset (a Reset Y axis
+> control, or double-click on the value axis) and are not in the URL. The wheel zooms a chart
+> only while the pointer is over its plot; elsewhere the page scrolls, and a scroll already in
+> progress keeps scrolling over a plot. A trackpad pinch arrives as `Ctrl`+wheel with
+> fractional deltas and zooms time only; `Ctrl`/`⌘`+wheel with whole-number steps zooms both
+> axes (a heuristic; a mouse with fractional deltas or a pinch with whole steps maps the other
+> way, which is accepted). Right drag (and `Alt`+left drag) box-zooms the time span, replacing
+> the earlier left-drag brush; on the plot, neither a right drag nor a right click opens the
+> browser menu, and outside the plot right click is unchanged.
 
 #### INT-007 — Mouse and trackpad bindings
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -483,8 +496,9 @@ overview strip with the active window as a brush.
 #### INT-025 — Window brush
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business
 
-Dragging horizontally across the plot area of any time chart MUST brush a window that becomes the
-Context time window on release, shown in the header picker as an absolute range. On the Time Ribbon
+Right-dragging, or `Alt`+left-dragging, horizontally across the plot area of any time chart MUST
+brush a window that becomes the Context time window on release, shown in the header picker as an
+absolute range. On the Time Ribbon
 in Space scenes (from M-UI3), dragging a window edge MUST resize the active window, dragging its body
 MUST move it, and the wheel over the ribbon MUST zoom the overview strip.
 
@@ -772,3 +786,4 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 | 1.0-rc | 2026-11-18 | Promoted from plans/ draft |
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 camera table and INT-001 edited (Orbit default everywhere, Map on request); §4.1 wheel and double-click rows for 3D scenes and 3D signal views; §5 continuous infrastructure flight; §5.1 INT-042 to INT-044 added; resolutions 13–15 |
 | 1.1-rc | 2026-11-19 | Application layout (D9, roadmap Q13): the time window lives in the page header ([02](02-information-architecture.md) IA-020) and the Time Ribbon only in Space scenes (IA-028); §6 intro, INT-015 (F6 regions), INT-017, INT-025 (brush on any time chart), INT-029 and INT-031 revised in place; key table `F6` row |
+| 1.2-rc | 2026-11-21 | #93, owner decisions 2026-11-21: §4.1 2D double-click zooms the window out; note on time commits, the local value axis, wheel over the plot only, pinch heuristic, right click on the plot; INT-025 brushes by right drag or Alt+left drag (left drag pans) |

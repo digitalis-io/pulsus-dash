@@ -100,19 +100,25 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   [the client page](../client/README.md#keyboard-coverage).
 - **`bench:inp-rooms`** (`e2e/perf-inp-rooms.spec.ts`, Chromium only, PRF-033, T05 §4.3): scripted
   pointer and keyboard interactions on the board room (Appendix C-A §A.6 of plan #61 Part C), in
-  four documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
+  five documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
   times both ways), `/t/demo/board/b-3` (a variable chip, typing and Apply; `+ Filter`, Add and
   Remove filter; three times each), `/t/demo/board/b-1` again (Edit board, Add section, Done
   and Discard changes, three times), and `/t/demo/board/b-1` a third time with the panel editor
   scenario of #90 (`e2e/boardEditorScenario.ts`, 43 clicks and key presses: Edit board, then three
   rounds of opening the editor from the Panel menu, typing in Title, picking a query language,
-  typing in Query, picking a visualisation, and Done). An init script observes the Event Timing entries (`event`,
+  typing in Query, picking a visualisation, and Done), and `/t/demo/board/b-1` a fourth time with
+  the chart gestures of #93 (`e2e/chartGestureScenario.ts`, at most 14 interactions, all on
+  `Request rate`: three rounds of ten wheels, eight pinch wheels with `Control`, eight `Shift`
+  wheels until **Reset Y axis** shows, a click on it, three left drags of 150 px, three right drags
+  of 120 px and a double-click; each commit is awaited through the URL; wheels are not Event Timing
+  interactions). An init script observes the Event Timing entries (`event`,
   `durationThreshold` 16) in every document the page loads and flushes them before each
   navigation; `scripts/inp.ts` (`aggregateInp`, `gateFailures`) computes **INP per document**
   (each interaction once, at its longest entry; the durations padded with zeros to the
   document's scripted count, then the `floor(n / 50)`-th largest, so one outlier per 50
   interactions of that document is ignored), never pooled across documents. The test always
-  checks four documents, each with its scripted count, and no page error. The 200 ms limit
+  checks five documents, each with its scripted count (document 5's count is an upper bound,
+  `CHART_SCENARIO_N`), and no page error. The 200 ms limit
   applies per document; 100 ms is the target. On CI's shared runners the check is **report only**
   until the reference lab exists (#68, T05-006): a document above 200 ms adds a `warning`
   annotation. With `INP_GATE=enforce` (the reference lab, and local gate proofs) any document above
@@ -123,24 +129,28 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   (`INP_GATE=enforce npx playwright test perf-inp-rooms --project=chromium` for the blocking form).
 - **`bench:rooms-long-tasks`** (`e2e/perf-rooms-long-tasks.spec.ts`, Chromium only, PRF-005, T05
   §4.3, T08 §7; #90): main-thread long tasks during scripted room interactions, from a Chromium
-  trace. Its first scenario is the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
-  `bench:inp-rooms`) on `/t/demo/board/b-1`, with no fake clock. Around the scenario it records a
+  trace. Its scenarios are the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
+  `bench:inp-rooms`) and, in a second test, the chart gestures (`e2e/chartGestureScenario.ts`, as
+  document 5, #93), each on `/t/demo/board/b-1` with no fake clock. Around the scenario it records a
   trace with the categories `devtools.timeline`, `disabled-by-default-devtools.timeline` and
   `blink.user_timing`; each step leaves a `step:<label>` mark. `scripts/longTasks.ts` reads it:
 
   | Rule | Definition |
   |---|---|
   | Main thread | the `CrRendererMain` thread with the most `EventDispatch` events; none → error `no renderer main thread` |
-  | Inputs | its `EventDispatch` events of type `click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup` or `input`; none → error `no input` |
+  | Inputs | its `EventDispatch` events of the `inputs` option's types: by default `DEFAULT_INPUTS` (`click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup`, `input`); the chart test passes `CHART_INPUTS`, which adds `wheel`, `pointermove`, `mousemove`, `contextmenu` and `dblclick`; none → error `no input` |
+  | Counts | `counts`: the number of input `EventDispatch` events per type in the window |
   | Window | from the first input's start to the last input's end |
   | Long task | a `RunTask` on the main thread that overlaps the window and lasts over 16 ms wall |
   | Thread time | the task's `tdur`; when no task in the window has one, error `no thread time` (the CI check cannot be judged); a single task without it counts as failing when over 50 ms wall |
   | Label | the last `step:` mark at or before the task, else `unlabelled` |
 
-  It writes `test-results/bench-rooms-long-tasks.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
-  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `mode`, `unit`) and a
-  `bench:rooms-long-tasks` annotation. It always asserts at least 28 clicks and 15 key presses, no
-  page error, and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
+  The editor test writes `test-results/bench-rooms-long-tasks.json` and the chart test
+  `test-results/bench-rooms-long-tasks-chart.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
+  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `counts`,
+  `scenario`, `mode`, `unit`), each with a `bench:rooms-long-tasks` annotation naming its scenario.
+  The editor test asserts at least 28 clicks and 15 key presses; the chart test at least 40 wheels,
+  8 pointer downs and 3 context menus. Both assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
   interim trace check. That check **blocks merge** on CI, in the `e2e` job's Chromium leg (the
   spec is Chromium only, so no workflow change). With `LONG_TASK_GATE=enforce` (the reference lab,
   #68, and local gate proofs) it also asserts `over16` 0: no task over 16 ms wall. Without it, each
@@ -168,9 +178,32 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     rerun with `PW_UPDATE_GOLDENS=1`, the Chromium job writes new baselines and uploads them as the
     `e2e-screenshots` artefact; download it, review the images and commit them to
     `client/e2e/__screenshots__/`, then remove the label.
-  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a drag on `line-1` from 0.1–0.4 brush units
-    inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
-    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it.
+  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a right drag on `line-1` from 0.1–0.4 brush
+    units inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
+    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it; an
+    `Alt`+left drag over the same span gives the same window (#93; a left drag now pans).
+  - **`e2e:chart-zoom`** (`e2e/chart-zoom.spec.ts`, Chromium, Firefox and WebKit; #93). Charts below
+    the fold are scrolled into view without a wheel first.
+    - Z1: ten wheels at 30 % of `line-1`'s plot keep the time under the pointer within 1 px in the
+      committed URL window; Back restores 12:00–13:00 (one entry per gesture; when a loaded runner
+      delivers two wheels more than 300 ms apart, Back walks each entry).
+    - Z2: a wheel over the intro and one over the value-axis band scroll the page and leave the URL;
+      400 ms later a wheel over the plot zooms and does not scroll.
+    - Z3: a wheel over the plot within the scroll latch of a page wheel scrolls the page; 400 ms
+      later it zooms (an attempt whose wheels arrive 250 ms or more apart is repeated).
+    - Z4: `Control` + fractional wheels zoom time only; `Control` + whole steps pins the value axis;
+      the page never zooms (WebKit's driver delivers whole steps: the accepted misclassification).
+    - Z5: `Shift` + wheel pins the value axis without a URL change; a wheel then changes the URL;
+      **Reset Y axis** unpins it.
+    - Z6: a 200 px left drag moves the window by 200 px of time, width 1 h.
+    - Z7: a right drag gives 12:20–12:25; the `contextmenu` events on the plot (drag, click) are
+      prevented and the one on the value-axis band is not.
+    - Z8: a drag on the time-axis band moves the window; a drag on the value-axis band pins the value
+      axis; a double-click there unpins it.
+    - Z9: on `/t/demo/board/b-3` a wheel over `Edge p99` moves every panel's window to the URL; a
+      `Shift` wheel pins only `Edge p99`; Back restores every slider's window.
+    - Z10: five wheels on `bars` leave its `data-plot` unchanged through each preview, the commit and
+      the refetch, and the time under the pointer within 1 px.
   - **`e2e:chart-hover`** (`e2e/chart-hover.spec.ts`): the `line-gaps` tooltip lists the time and the
     three series with the values the generator gives; on `line-50` a pointer sweep down the plot
     shows every one of the 50 series; on `bars` all five levels at every height.
@@ -277,8 +310,7 @@ and use one time window per browser, so parallel projects never count each other
 
 `.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml`,
 `engine/fixtures/`, `engine/crates/dash-tokens/src/tokens.rs` (both checked by `npm test` and
-`tokens -- --check`), `server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`,
-`Makefile` or the workflow (opened, synchronised, reopened, and
+`tokens -- --check`), `server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`, `Makefile` or the workflow (opened, synchronised, reopened, and
 labelled, so adding `golden-update` reruns it), and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
@@ -502,9 +534,9 @@ real checkout's `git status` and generated files are unchanged.
 
 `.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
 `tools/api-gen/`, `client/` (the client is embedded, and the packer is `client/scripts/`),
-`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `wire/` (the shared fixtures),
-`tools/no-pulsusdb-host/` or the workflow, and on pushes to `main`. The token is read-only, actions
-are pinned by commit SHA and no secrets are used.
+`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `wire/` (the shared fixtures), `tools/no-pulsusdb-host/` or the
+workflow, and on pushes to `main`. The token is read-only, actions are pinned by commit SHA and no
+secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
@@ -558,12 +590,17 @@ The private PulsusDB host must never appear in a tracked file
 ([T19-010](../../designs/technical/T19-deployment.md)). The real base URL lives only in the
 untracked `dev/local.env` ([dev stack page](dev-stack.md#devlocalenv)).
 `tools/no-pulsusdb-host/check.py` (Python standard library only) enforces this on every pull
-request.
+request. It needs no host name. CI rejects:
+
+- any non-local host containing `pulsusdb` in a URL;
+- any non-local URL used as a datasource value.
+
+No host name is stored in the repository or in its secrets.
 
 ```bash
 make no-pulsusdb-host                      # self-test, then scan every tracked file
 make no-pulsusdb-host ARGS=--show-paths    # the same, naming the files (local only)
-python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--require-secret] [--show-paths]
+python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
 ```
 
 By default it scans every file `git ls-files` lists; nothing is excluded. `--root DIR` scans a
@@ -574,15 +611,20 @@ target path, which is what Git stores.
 
 | Rule | Applies to | Finds |
 |---|---|---|
-| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word) |
-| `forbidden-host-in-path` | every file | a forbidden host in the file's path |
-| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | an `http` or `https` URL whose host is not local and either contains `pulsusdb`, or is the value of a PulsusDB datasource key: YAML `url:` directly under a `datasource:` key; `datasource.url`; `PULSUS_DASH_DATASOURCE_URL`; `datasource_url` or `DatasourceURL`, followed by `:` or `=` |
+| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word); local runs only |
+| `forbidden-host-in-path` | every file | a forbidden host in the file's path; local runs only |
+| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | a non-local host that is either (a) the host of an `http` or `https` URL containing `pulsusdb`, or (b) the value of a PulsusDB datasource key, see below |
 
-**Forbidden hosts** are the entries of `DASH_FORBIDDEN_HOSTS`: comma- or newline-separated,
-trimmed, lower-cased, numbered from 1. An entry written as a URL is reduced to its host. If
-`PULSUS_DASH_DATASOURCE_URL` is set and its host is not local, that host is added as the last
-entry. `make no-pulsusdb-host` loads `dev/local.env` first, so a local run also forbids your real
-host.
+A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
+`PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
+Its value is checked only when it is an `http` or `https` URL.
+
+**Forbidden hosts** apply only to local runs. They are the entries of the optional
+`DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
+1 (an entry written as a URL is reduced to its host), then the host of `PULSUS_DASH_DATASOURCE_URL`
+if it is set and not local, as the last entry. `make no-pulsusdb-host` loads `dev/local.env` first,
+so a local run also forbids your real host in any form, even without `pulsusdb` in it. CI sets
+neither variable, and if neither is set the scan runs the URL rule alone, without a warning.
 
 **Local hosts**, which the URL rule accepts, are: `localhost` and names ending in `.localhost`;
 loopback addresses (`127.0.0.0/8` and `::1` in any spelling, with or without a zone); names ending in
@@ -625,20 +667,19 @@ when `CI` is set. A clean run ends with `no-pulsusdb-host: clean (<m> files)`.
 | 2 | `--root` is not a directory | `error[bad-root] --root is not a directory` |
 | 2 | a file or link could not be read (the scan continues) | `error[unreadable] F<i> (<errno name>)` |
 | 2 | a directory under `--root` could not be listed (the scan continues) | `error[unreadable] a directory under --root could not be listed` |
-| 2 | no `DASH_FORBIDDEN_HOSTS` entry and `--require-secret` | `error[missing-secret] DASH_FORBIDDEN_HOSTS is not set: …` |
 | 2 | any other error | `error[internal] <exception class>` |
 
-Without `--require-secret`, a missing secret prints `warning[missing-secret] …` and the scan
-continues with the URL rule and the datasource host only.
+An unknown option, including the removed `--require-secret`, is a usage error.
 
-### The `DASH_FORBIDDEN_HOSTS` secret
+### Limits
 
-CI reads the forbidden hosts from the repository secret `DASH_FORBIDDEN_HOSTS`. A repository owner
-creates it once, in the repository's Actions secrets, holding the private PulsusDB host or hosts,
-comma-separated. Until it exists, the `hygiene` workflow fails on every pull request with the
-missing-secret message: the gate never passes silently. Pull requests from forks cannot read
-repository secrets, so their run fails the same way; a maintainer runs the check from a branch in
-the repository instead.
+Bare host names without a scheme are not scanned. CI knows no host name, so it misses a private
+host that has no `pulsusdb` in its name unless it is a datasource URL; only a local run with
+`dev/local.env` forbids it in any form.
+The rule for contributors is simple: never commit a real host name. Keep the real base URL in
+`dev/local.env` and nowhere else.
+
+### Self-test
 
 The checker's tests use only fictional hosts (`.corp` names and reserved names). Its fixtures are in
 `tools/no-pulsusdb-host/testdata/`, where only the URL rule is switched off in repository mode.
@@ -648,5 +689,5 @@ The checker's tests use only fictional hosts (`.corp` names and reserved names).
 `.github/workflows/hygiene.yml` runs on every pull request and on pushes to `main`, with a read-only
 token. Its one job, `no-pulsusdb-host`, runs the checker's self-test
 (`python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'`), then
-`check.py --require-secret` with the `DASH_FORBIDDEN_HOSTS` secret
-([above](#ci-no-pulsusdb-host)). It is the only workflow that reads a secret.
+`check.py` ([above](#ci-no-pulsusdb-host)). It reads no secret, so pull requests from forks run it
+too.

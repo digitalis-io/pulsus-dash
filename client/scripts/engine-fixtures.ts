@@ -270,6 +270,11 @@ function lineLayout(
     cssH: h,
     timeZone: 'UTC',
     colours: s.themeColours('dark'),
+    // Auto axis, no camera hold, and no minimum value band: the Rust layout (`dash-axes`) draws no
+    // text until #69, and T02-011's minimum compact band (#93) applies to it when #69 adds labels.
+    valueRange: null,
+    band: null,
+    minBand: 0,
   });
   const stats = s.lineStats(series.slice(0, s.MAX_SERIES));
   const [min, max] = [stats.min ?? 0, stats.max ?? 0];

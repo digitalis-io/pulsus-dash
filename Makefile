@@ -15,10 +15,10 @@ GOLANGCI_SHA256 := 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9eb
 SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
-.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci \
+.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
+	engine-goldens engine-goldens-update \
 	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local dev-smoke \
-	itest-local-selftest bench-bff cpu-instr cpu-instr-update \
-	engine-image engine-test engine-lint engine-goldens engine-goldens-update
+	itest-local-selftest bench-bff cpu-instr cpu-instr-update
 
 # Dev stack (dev/compose.yaml, docs/development/dev-stack.md). COMPOSE may be any Docker Compose v2
 # compatible command. DEV_ENV_FILE is untracked: it holds the local settings and the PulsusDB URL.
@@ -127,7 +127,8 @@ go-licenses:
 	server/scripts/check-go-licenses-fixture.sh
 
 # ci:no-pulsusdb-host: the checker's self-test, then the scan of every tracked file. A present
-# DEV_ENV_FILE adds its PulsusDB host to the forbidden list. ARGS=--show-paths names the files.
+# DEV_ENV_FILE adds its PulsusDB host (and any DASH_FORBIDDEN_HOSTS) to the forbidden list; CI has
+# neither. ARGS=--show-paths names the files.
 no-pulsusdb-host:
 	if [ -f $(DEV_ENV_FILE) ]; then $(LOAD_ENV); fi && \
 	  python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py' && \
