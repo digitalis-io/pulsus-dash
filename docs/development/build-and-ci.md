@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
@@ -63,7 +63,7 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 |---|---|---|
 | `initialJs` | the entry and the initial route module with their static imports | 200 000 |
 | `initialCss` | the CSS of those chunks | 30 000 |
-| `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
+| `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts`, `src/editor/logqlEditor.ts`; an entry missing from the manifest is skipped, so `logqlEditor.ts`, which only the stub and dev builds' LogQL harness route imports until the Logs page does, counts where it is built) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
 | `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
 | `fonts`, `totalExceptEngine` | the fonts; every file | 150 000; 1 000 000 |
 
@@ -224,8 +224,16 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     and without NaN cells; the median after-p95 is at most 1.10 × the median before-p95.
 
 - **`bench:editor-keystroke`** (`e2e/perf-editor-keystroke.spec.ts`, Chromium only, PRF-005,
-  T09-003): on the stub build, 100 keys (` or up`, cycled, after 20 warm-up keys) typed at the end
-  of a 1 KB PromQL query in Explore, with no fake clock (it would replace `performance.now`).
+  T09-003): on the stub build, with no fake clock (it would replace `performance.now`), two cases
+  through one body (`keystrokeBench`):
+  - **PromQL** (`bench:editor-keystroke`): 100 keys (` or up`, cycled, after 20 warm-up keys) typed
+    at the end of a 1 KB PromQL query in Explore › Metrics; report
+    `test-results/bench-editor-keystroke.json`.
+  - **LogQL** (`bench:editor-keystroke logql`, #66): 100 keys (`error `, cycled, after 20 warm-up
+    keys) typed before the final `"` of the last line filter of a 1 024-byte, one-line LogQL query
+    (`{app="checkout",env="prod"} | json`, 20 label filters, `|= "xxx…"`) on the dev-only harness
+    `/t/demo/dev/logql-editor` (the caret context is `none`, so both completion slots run and return
+    nothing); report `test-results/bench-editor-keystroke-logql.json`.
   - **Editor update (T09-003).** Before the page loads, the spec installs
     `window.__pulsusEditorProbe`; the editor (`src/editor/probe.ts`, `probedDispatch`) then times
     each `view.update(trs)`. A key's work is the sum of its doc-changing updates minus the median of
@@ -240,8 +248,23 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   - **`EDITOR_BENCH_GATE=enforce`** (the reference lab, #68, and the local D13 proofs) also fails on
     an editor-update p95 over 2 ms or any task over 16 ms wall (`over16`); otherwise each breach is a
     `warning` annotation.
-  - Report: `test-results/bench-editor-keystroke.json` (`samples`, `overheadMs`, `p50`, `p95`,
-    `max`, `longestTaskMs`, `longTasks`, `ciOver`, `windowMs`, `mode`).
+  - Report (each case): `samples`, `overheadMs`, `p50`, `p95`, `max`, `longestTaskMs`,
+    `longTasks`, `ciOver`, `windowMs`, `mode`.
+- **`bench:logql-completion-latency`** (`e2e/perf-logql-completion.spec.ts`, Chromium only,
+  T09-007, T09 §7, #66): on the stub build's LogQL harness, whose in-memory source answers at once,
+  so the client alone is timed: keydown `timeStamp` to the completion popup's insertion in the
+  editor's shadow root (a `MutationObserver`). 30 local trials (`|` after `{app="web"} ` opens the
+  stage list from the synchronous slot; then Escape, Backspace and two frames) and 30 remote trials
+  (`w` inside `{app=""}` opens the label values after the 120 ms debounce; then Escape, Backspace
+  and 200 ms).
+  - **Always:** 30 + 30 samples and remote min ≥ 120 ms (the debounce is never skipped, and its
+    timer never fires early).
+  - **`EDITOR_BENCH_GATE=enforce`:** local p95 ≤ 16 ms and remote p95 ≤ 136 ms (the debounce plus
+    one frame); otherwise each breach is a `warning` annotation. A lab-gate row: report-only on
+    shared CI until the reference lab exists. Chromium runs a timer queued by a key only after the
+    frame that follows the key, and the two frames between local trials put each key just after a
+    frame, so a local sample is about one frame (16–17 ms at 60 Hz) on a workstation.
+  - Report: `test-results/bench-logql-completion.json` (`{local: {p50, p95, max}, remote: {…}}`).
 - **`e2e:editor-ime`** (`e2e/editor-ime.spec.ts`, Chromium only, T09-005): a CDP IME composition in
   the Explore editor opens no completion popup while it lasts; the popup follows once it commits.
 
@@ -282,7 +305,8 @@ pulsus_owner;`). CI creates `pulsus_e2e` per job.
 
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
-`bff-http`, `dev-proxy`, `editor-ime` and `perf-editor-keystroke` run on Chromium only. The Explore
+`bff-http`, `dev-proxy`, `editor-ime`, `perf-editor-keystroke` and `perf-logql-completion` run on
+Chromium only. The Explore
 specs that read the fake's request records (`e2e/explore-metrics.spec.ts`) run on the http-mode BFF
 and use one time window per browser, so parallel projects never count each other's requests.
 

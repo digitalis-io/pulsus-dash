@@ -90,6 +90,7 @@ zone) are passed by closure.
 | `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too                                                                                                                                                                                     |
 | `/t/:tenant/explore/metrics` (loader)                                         | A non-canonical `q`, `vis` or `rate` → `replace()` to the canonical search ([Explore](explore.md#url-keys-ia-022))                                                                                                            |
 | `/t/:tenant/dev/gallery`                                                      | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
+| `/t/:tenant/dev/logql-editor?q=…`                                             | Lazy `LogQLEditorBenchPage`, the LogQL editor harness of the editor benches ([Explore](explore.md#the-logql-editor-harness-devlogql-editor)). The same condition as the gallery |
 | `/t/:tenant/*`                                                                | Not found inside the shell                                                                                                                                                                                                    |
 | `*`                                                                           | Standalone Not found                                                                                                                                                                                                          |
 
@@ -302,6 +303,7 @@ PromQL queries, data-source check and `/prom/*` reads of #62) and one
 | `queryVolume(tenant, req, signal)` | `RangeFrame` (no `planned`) with one series per level, labelled `{level}`; `req` is `{query, fromMs, toMs, widthPx, timeoutMs?}` |
 | `checkDataSource(tenant, signal)` | `{state, checkedAtMs?}` (T06-025) |
 | `promLabels`, `promLabelValues`, `promSeries`, `promMetadata` | the `/prom/*` reads of #62, used by the editor's completion ([Explore](explore.md)) |
+| `logLabels(tenant, req, signal)`, `logLabelValues(tenant, name, req, signal)` | `PromValues` (`{values, completeness}`): the log label names and the values of one label, used by the LogQL editor's completion (#66, [LogQL](explore.md#logql-langlogql)); `req` is `LogMatchRequest` `{fromMs, toMs, query?, limit?}`, `query` one stream selector as written, `limit` 1..10 000 (the BFF's default 1 000) |
 
 Boards belong to the organisation: `tenant` is checked against the session's tenants (unknown →
 `notFound`) and otherwise only selects the data source of the queries. Each tenant
@@ -331,6 +333,8 @@ from `api/openapi.yaml` (ADR-0014 §1, ADR-0015); requests go to the page's orig
 | `queryLogs` | `POST …/query/logql/range?tenant=…` `{query, from, to, width_px}`, plus `limit`, `direction`, `cursor` and `timeout_ms` only when given, with the signal | decoded by `decodeLogs`; errors below (a 400 on `/cursor`, `/limit` or `/direction` is `unknown`) |
 | `queryVolume` | `POST …/query/logql/volume?tenant=…` `{query, from, to, width_px}` (`timeout_ms` only when given) | decoded by `decodeVolume`; errors below |
 | `checkDataSource` | `GET /api/dash/v1/datasource/check?tenant=…` | `{state, checkedAtMs?}` (`not_checked` → `notChecked`); errors below |
+| `logLabels` | `GET /api/dash/v1/logs/labels?tenant=…&from=…&to=…`, plus `query` only when it is a non-empty string and `limit` only when given, with the signal | decoded by `decodeValues`; errors below (no `planned`: completion bodies carry none), so a scope the server's reserved-selector screen refuses (400 `virtual_unsupported`) is `queryInvalid`, as on the `/prom/*` reads |
+| `logLabelValues` | `GET /api/dash/v1/logs/label/{name}/values?…` (the same query; openapi-fetch percent-encodes `name`) | as `logLabels` |
 
 Errors: an `AbortError` from `fetch` is re-thrown unchanged; any other `fetch` rejection becomes
 `ApiError('network')`; any other status without its success body becomes `ApiError('unknown')`
@@ -409,6 +413,12 @@ one entry at `to`, forward none). Entry `i` is `stub line <i>` in stream `i % 3`
 listed; `cursor` is `null`. `queryVolume` returns three frames, `{level: error}`, `{level: warn}` and
 `{level: info}`, on the `promGrid` grid with counts `Math.round(|synthLineValue(65, j, t, 20, 10)|)`.
 Both reject `queryInvalid` for a range too long for the width.
+
+`logLabels` returns the labels of those streams, `level`, `pod` and `service_name`, and
+`logLabelValues(name)` their values (`level`: `error`, `info`, `warn`; `pod`: `stub-0`, `stub-1`,
+`stub-2`; `service_name`: `stub`; any other label none), with an empty completeness
+(`STUB_LOG_LABELS`, `STUB_LOG_LABEL_VALUES` in `stubData.ts`). The stub plans no completion scope,
+as the server plans none; an unknown tenant is `notFound`.
 
 `StubApi` resolves on the next microtask, rejects with `AbortError` when the signal is aborted,
 returns copies, and serves the seed in `stubData.ts`: user Ada Admin (administrator), org Demo Org,
