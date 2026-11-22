@@ -12,19 +12,16 @@ import type {
   BoardSpec,
   DataSourceStatus,
   InstantRequest,
-  PanelData,
-  PanelSpec,
   PromMatchRequest,
   RangeRequest,
   SaveResult,
   Session,
-  TimeWindow,
 } from './types';
 
 /**
  * The API seam. Boards belong to the organisation: `tenant` is checked against the session's
- * tenants (unknown → `ApiError('notFound')`) and otherwise only selects the data source of
- * `panelData`.
+ * tenants (unknown → `ApiError('notFound')`) and otherwise only selects the data source of the
+ * queries.
  */
 export interface Api {
   getSession(signal?: AbortSignal): Promise<Session>;
@@ -37,13 +34,6 @@ export interface Api {
   saveBoard(tenant: string, uid: string, etag: string, spec: BoardSpec): Promise<SaveResult>;
   /** `notFound`, or `BoardConflictError` when `etag` is not the head's. */
   deleteBoard(tenant: string, uid: string, etag: string): Promise<void>;
-  /** What one panel shows over `window`. */
-  panelData(
-    tenant: string,
-    panel: PanelSpec,
-    window: TimeWindow,
-    signal?: AbortSignal,
-  ): Promise<PanelData>;
   /** Starred boards of the principal, in the server's order (title, then uid). */
   listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]>;
   /** Star: unknown or deleted board → `notFound`. Unstar: idempotent, never `notFound`. */

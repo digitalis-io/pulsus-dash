@@ -139,6 +139,12 @@ function position(id: 'panel.moved' | 'panel.blocked', p: PanelSpec): string {
   });
 }
 
+/** A copy's title (plan #64 A.9): `{title} (copy)`, cut to the 200 code points a title may have. */
+function copyTitle(title: string): string {
+  if (title === '') return '';
+  return Array.from(t('panel.copyTitle', { title })).slice(0, 200).join('');
+}
+
 /** The live-region text of a refused pointer drop or keyboard step. */
 export function blockedText(p: PanelSpec): string {
   return position('panel.blocked', p);
@@ -148,6 +154,7 @@ const EDITS: ReadonlySet<BoardAction['type']> = new Set([
   'addPanel',
   'updatePanel',
   'removePanel',
+  'duplicatePanel',
   'layout',
   'keyOp',
   'setTime',
@@ -288,8 +295,26 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
         selected: s.selected === a.id ? null : s.selected,
       };
     }
-    case 'duplicatePanel':
-      return s;
+    case 'duplicatePanel': {
+      const grid = gridOf(s.draft, a.id);
+      const p = allPanels(s.draft).find((x) => x.panel.id === a.id)?.panel;
+      if (grid === null || p === undefined) return s;
+      if (allPanels(s.draft).length >= MAX_PANELS) return { ...s, announce: t('board.fullPanels') };
+      const free = firstFree(panelsOf(s.draft, grid), p.grid.w, p.grid.h);
+      if (free === null) return { ...s, announce: t('board.full') };
+      const copy: PanelSpec = {
+        ...p,
+        id: nextPanelId(s.draft),
+        title: copyTitle(p.title),
+        grid: free,
+      };
+      return {
+        ...edited(s, withPanels(s.draft, grid, [...panelsOf(s.draft, grid), copy])),
+        announce: t('panel.duplicated', {
+          title: copy.title === '' ? t('panel.untitled') : copy.title,
+        }),
+      };
+    }
     case 'select':
       return { ...s, selected: a.id };
     case 'layout': {

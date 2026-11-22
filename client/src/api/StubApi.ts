@@ -18,11 +18,12 @@
  * does the same for `signOut`, `pulsus-dash.stub.failSave` for `saveBoard`,
  * `pulsus-dash.stub.failStar` for `setStarred` (nothing is changed), and
  * `pulsus-dash.stub.conflictSave` makes `saveBoard` reject with `BoardConflictError` after moving
- * the head on by one version, as if another user had saved the same spec. For `panelData` (#90):
- * `pulsus-dash.stub.panelDelayMs`, a positive integer n, resolves after n ms instead of the next
- * microtask (an abort clears the timer and rejects with `AbortError`; read on every call, never
- * consumed); `pulsus-dash.stub.failPanelData` fails the call as `failSave` does, after the delay;
- * and every call leaves a `stub:panelData` performance mark with `{ id, lang, text, vis }`.
+ * the head on by one version, as if another user had saved the same spec. For `queryRange` and
+ * `queryInstant` (#90, plan #64 §3.10): `pulsus-dash.stub.queryDelayMs`, a positive integer n,
+ * waits n ms before the call is planned (an abort clears the timer and rejects with `AbortError`;
+ * read on every call, never consumed); `pulsus-dash.stub.failQuery` fails the call as `failSave`
+ * does, after the delay; and every call leaves a `stub:query` performance mark with
+ * `{ kind: 'range' | 'instant', query }` (the raw request text).
  */
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
@@ -48,7 +49,6 @@ import type { SeriesFrame } from '../data/frames';
 import { promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
-import { stubPanelData } from './stubPanels';
 import {
   floorStep,
   isPlanError,
@@ -69,13 +69,10 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
-  type PanelData,
-  type PanelSpec,
   type PromMatchRequest,
   type RangeRequest,
   type SaveResult,
   type Session,
-  type TimeWindow,
 } from './types';
 
 /** A seeded board; the stub serves it as version 1, etag `"1"`. */
@@ -121,10 +118,8 @@ export const STUB_FAIL_SIGN_OUT_KEY = 'pulsus-dash.stub.failSignOut';
 export const STUB_FAIL_SAVE_KEY = 'pulsus-dash.stub.failSave';
 export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
 export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
-export const STUB_PANEL_DELAY_KEY = 'pulsus-dash.stub.panelDelayMs';
-export const STUB_FAIL_PANEL_DATA_KEY = 'pulsus-dash.stub.failPanelData';
-export const STUB_QUERY_DELAY_KEY = '';
-export const STUB_FAIL_QUERY_KEY = '';
+export const STUB_QUERY_DELAY_KEY = 'pulsus-dash.stub.queryDelayMs';
+export const STUB_FAIL_QUERY_KEY = 'pulsus-dash.stub.failQuery';
 
 /** Consumes one failure from a test-hook counter; true when the call should fail. */
 function failOnce(key: string): boolean {
@@ -134,9 +129,9 @@ function failOnce(key: string): boolean {
   return true;
 }
 
-/** The `panelData` delay of the test hook, in ms; null for none. */
-function panelDelayMs(): number | null {
-  const n = Number(read(STUB_PANEL_DELAY_KEY) ?? '');
+/** The query delay of the test hook, in ms; null for none. */
+function queryDelayMs(): number | null {
+  const n = Number(read(STUB_QUERY_DELAY_KEY) ?? '');
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
@@ -209,7 +204,57 @@ function stubSeries(timestamps: Float64Array): SeriesFrame[] {
   });
 }
 
-/** Resolves on the next microtask; rejects with `AbortError` if `signal` is aborted by then. */
+/** The `le` bounds of `stubBuckets`. */
+const BUCKET_BOUNDS = [
+  '0.005',
+  '0.01',
+  '0.025',
+  '0.05',
+  '0.1',
+  '0.25',
+  '0.5',
+  '1',
+  '2.5',
+  '5',
+  '10',
+  '+Inf',
+];
+
+/**
+ * Twelve cumulative buckets `stub_bucket{le}` (plan #64 §3.10): bucket `k` at `t` is
+ * `(k + 1) × synthLineValue(62, 0, t, 100, 40) / 12`, non-decreasing in `le`.
+ */
+function stubBuckets(timestamps: Float64Array): SeriesFrame[] {
+  return BUCKET_BOUNDS.map((le, k) => {
+    const labels = { __name__: 'stub_bucket', le };
+    return {
+      key: keyHash(labels),
+      labels,
+      timestamps,
+      values: timestamps.map((t) => ((k + 1) * synthLineValue(62, 0, t, 100, 40)) / 12),
+    };
+  });
+}
+
+/** The truncation warning the stub gives a `topk(1000` query (plan #64 A.3). */
+const TRUNCATED_WARNING = 'results truncated due to limit';
+
+/** Leaves the `stub:query` mark, waits the hook's delay, then fails the call if the hook says so. */
+async function queryHooks(
+  kind: 'range' | 'instant',
+  query: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    performance.mark('stub:query', { detail: { kind, query } });
+  } catch {
+    // The User Timing API is optional: the stub does not depend on it.
+  }
+  const delay = queryDelayMs();
+  if (delay !== null) await sleep(delay, signal);
+  if (failOnce(STUB_FAIL_QUERY_KEY)) throw new ApiError('network', 'stub: query failed');
+}
+
 /** The server's metadata read: the route's maximum (plan #112 §3.2). */
 const METADATA_LIMIT = 10_000;
 /** How long a plan waits for metric types before it degrades (plan #112 §4.5). */
@@ -363,45 +408,6 @@ export class StubApi implements Api {
     });
   }
 
-  panelData(
-    tenant: string,
-    panel: PanelSpec,
-    window: TimeWindow,
-    signal?: AbortSignal,
-  ): Promise<PanelData> {
-    try {
-      performance.mark('stub:panelData', {
-        detail: {
-          id: panel.id,
-          lang: panel.query.lang,
-          text: panel.query.text,
-          vis: panel.vis.kind,
-        },
-      });
-    } catch {
-      // The User Timing API is optional: the stub does not depend on it.
-    }
-    const result = (): PanelData => {
-      if (failOnce(STUB_FAIL_PANEL_DATA_KEY)) {
-        throw new ApiError('network', 'stub: panel data failed');
-      }
-      return stubPanelData(panel, window);
-    };
-    const delay = panelDelayMs();
-    if (delay === null) {
-      return settle(() => {
-        this.checkTenant(tenant);
-        return result();
-      }, signal);
-    }
-    return Promise.resolve()
-      .then(() => {
-        this.checkTenant(tenant);
-        return sleep(delay, signal);
-      })
-      .then(result);
-  }
-
   listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
     return settle(() => {
       this.checkTenant(tenant);
@@ -459,6 +465,7 @@ export class StubApi implements Api {
 
   /** Plans as the server does (plan #112 §3.9), then serves the synthetic series on the grid. */
   async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    await queryHooks('range', req.query, signal);
     const g = await settle(() => {
       this.checkTenant(tenant);
       const grid = promGrid(req.fromMs, req.toMs, req.widthPx);
@@ -479,7 +486,18 @@ export class StubApi implements Api {
     return settle(() => {
       const n = (g.endMs - g.startMs) / g.stepMs + 1;
       const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
-      return { planned, ...g, series: stubSeries(timestamps), completeness: completeness(warn) };
+      const series = /_bucket\b/.test(planned.query)
+        ? stubBuckets(timestamps)
+        : stubSeries(timestamps);
+      const c = completeness(warn);
+      return {
+        planned,
+        ...g,
+        series,
+        completeness: req.query.includes('topk(1000')
+          ? { ...c, truncated: true, warnings: [...c.warnings, TRUNCATED_WARNING] }
+          : c,
+      };
     }, signal);
   }
 
@@ -488,6 +506,7 @@ export class StubApi implements Api {
     req: InstantRequest,
     signal?: AbortSignal,
   ): Promise<InstantResult> {
+    await queryHooks('instant', req.query, signal);
     await settle(() => {
       this.checkTenant(tenant);
     }, signal);
@@ -502,17 +521,26 @@ export class StubApi implements Api {
       },
       signal,
     );
-    return settle(
-      () => ({
+    return settle((): InstantResult => {
+      if (planned.valueType === 'scalar') {
+        const value = synthLineValue(62, 0, req.atMs, 100, 40);
+        return {
+          planned,
+          kind: 'scalar',
+          scalar: { value, timestampMs: req.atMs },
+          atMs: req.atMs,
+          completeness: completeness(warn),
+        };
+      }
+      return {
         planned,
-        kind: 'series' as const,
-        resultType: 'vector' as const,
+        kind: 'series',
+        resultType: 'vector',
         series: stubSeries(Float64Array.of(req.atMs)),
         atMs: req.atMs,
         completeness: completeness(warn),
-      }),
-      signal,
-    );
+      };
+    }, signal);
   }
 
   /**
