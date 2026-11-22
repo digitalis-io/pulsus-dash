@@ -122,7 +122,16 @@ describe('unit:logql-lex', () => {
   });
 
   it('property: any text lexes without throwing into contiguous tokens', () => {
-    const alphabet = [...'{}()[],|=!~<>+-*/%^"\\`#', '\n', '\t', ' ', ...'abz09_.µ', '😀', '$'];
+    // A.2 P1: one entry per symbol (the emoji is one entry of two code units).
+    const alphabet = [
+      ...Array.from('{}()[],|=!~<>+-*/%^"\\`#'),
+      '\n',
+      '\t',
+      ' ',
+      ...Array.from('abz09_.µ'),
+      '😀',
+      '$',
+    ];
     const rnd = mulberry32(66);
     for (let n = 0; n < 1000; n++) {
       const len = Math.floor(rnd() * 65);

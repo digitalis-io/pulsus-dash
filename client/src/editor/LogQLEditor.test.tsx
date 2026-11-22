@@ -63,10 +63,13 @@ describe('unit:logql-editor', () => {
     const onEscape = vi.fn();
     const first = fakeLogSource(FL);
     const p: Props = { value: '{a="b"}', source: first, onRun, onEscape };
+    // jsdom has no `ShadowRoot.delegatesFocus`: the host's request is read from the call.
+    const attach = vi.spyOn(Element.prototype, 'attachShadow');
     const { container, rerender, unmount } = render(logEditor(p));
     const { view, inner, root } = viewOf(container);
     expect((inner as HTMLElement).tabIndex).toBe(0);
-    expect(root.delegatesFocus).toBe(true);
+    expect(attach.mock.calls.at(-1)?.[0]).toEqual({ mode: 'open', delegatesFocus: true });
+    attach.mockRestore();
     const content = root.querySelector('.cm-content');
     expect(content?.getAttribute('aria-label')).toBe('LogQL query');
     expect(content?.getAttribute('role')).toBe('textbox');
