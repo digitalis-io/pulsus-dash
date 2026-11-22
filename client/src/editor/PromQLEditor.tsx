@@ -8,7 +8,13 @@
 import type { EditorView } from '@codemirror/view';
 import { useEffect, useImperativeHandle, useRef, type JSX, type Ref } from 'react';
 import type { Diagnostic, PromSource } from './lang/types';
-import { createPromQLView, insertAtSelection, setDocument, showDiagnostics } from './view';
+import {
+  createPromQLView,
+  insertAtSelection,
+  setDocument,
+  setReadOnly,
+  showDiagnostics,
+} from './view';
 
 export interface PromQLEditorHandle {
   /** No-op before mount. */
@@ -82,6 +88,7 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
       onEscape: () => {
         latest.current.onEscape();
       },
+      readOnly: latest.current.readOnly === true,
     });
     view.current = v;
     // Focus delegated to the host lands on the view's first focusable element, its scroller
@@ -107,6 +114,11 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
     const v = view.current;
     if (v !== null) showDiagnostics(v, p.diagnostics);
   }, [p.diagnostics]);
+
+  useEffect(() => {
+    const v = view.current;
+    if (v !== null) setReadOnly(v, p.readOnly === true);
+  }, [p.readOnly]);
 
   useImperativeHandle(
     ref,

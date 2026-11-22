@@ -77,10 +77,13 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
   const valueRef = useRef(p.value);
   const runTextRef = useRef(p.runText);
   const onRunRef = useRef(onRun);
+  // While the board saves or discards nothing is edited or run (review r1 #2).
+  const readOnlyRef = useRef(p.readOnly);
   useLayoutEffect(() => {
     valueRef.current = p.value;
     runTextRef.current = p.runText;
     onRunRef.current = onRun;
+    readOnlyRef.current = p.readOnly;
   });
   const editorRef = useRef<PromQLEditorHandle>(null);
   const runButtonRef = useRef<HTMLButtonElement>(null);
@@ -96,6 +99,7 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
   // The Run keys come from the editor's own (native) key handler: render the run in this task, so
   // the preview shows it in the next frame (#90 AC2), as the Run button's press does.
   const run = useCallback(() => {
+    if (readOnlyRef.current) return;
     flushSync(() => {
       onRun(valueRef.current);
     });
@@ -115,6 +119,7 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
       const next = e.relatedTarget;
       if (next instanceof Node && field.contains(next)) return;
       if (next instanceof Element && next.closest(PICKER_KEEP) !== null) return;
+      if (readOnlyRef.current) return;
       if (valueRef.current !== runTextRef.current) onRunRef.current(valueRef.current);
     };
     // Escape the editor handled (T09-004: it closed the completion popup, or moved to Run query)
@@ -150,7 +155,12 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
   return (
     <div ref={fieldRef} className={cx(styles['queryField'])}>
       <div className={cx(styles['queryHeader'])}>
-        <MetricPicker tenant={tenant} names={names} meta={meta} onPick={onPick} />
+        <MetricPicker
+          tenant={tenant}
+          names={p.readOnly ? null : names}
+          meta={meta}
+          onPick={onPick}
+        />
         <span className={cx(styles['querySpacer'])} />
         <span className={cx(styles['queryHint'])} aria-hidden="true">
           {t('explore.query.runHint')}
@@ -175,6 +185,7 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
           onEscape={onEscape}
           source={source}
           diagnostics={unrun ? NO_DIAGNOSTICS : p.diagnostics}
+          readOnly={p.readOnly}
           label={t('editor.query')}
           placeholder={t('explore.query.placeholder')}
         />

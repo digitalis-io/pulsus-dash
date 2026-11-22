@@ -7,7 +7,7 @@ import { F, fakePromSource, type FakePromSource } from '../test/fakePromSource';
 import { destroyViews, key, viewIn, wait } from '../test/viewIn';
 import { EDITOR_PROBE_GLOBAL } from './probe';
 import { promqlHighlight } from './theme';
-import { insertAtSelection, setDocument, showDiagnostics } from './view';
+import { insertAtSelection, setDocument, setReadOnly, showDiagnostics } from './view';
 
 afterEach(() => {
   destroyViews();
@@ -210,5 +210,18 @@ describe('unit:editor-probe', () => {
     g[EDITOR_PROBE_GLOBAL] = probe;
     insertAtSelection(view, 'x');
     expect(probe).not.toHaveBeenCalled();
+  });
+});
+
+describe('unit:editor-read-only (plan #64 review r1)', () => {
+  it('setReadOnly blocks user edits and says so', () => {
+    const { view } = viewIn({ doc: 'up', source: fakePromSource(F) });
+    expect(view.state.readOnly).toBe(false);
+    setReadOnly(view, true);
+    expect(view.state.readOnly).toBe(true);
+    expect(view.contentDOM.getAttribute('aria-readonly')).toBe('true');
+    setReadOnly(view, false);
+    expect(view.state.readOnly).toBe(false);
+    expect(view.contentDOM.getAttribute('aria-readonly')).toBe('false');
   });
 });

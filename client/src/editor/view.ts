@@ -15,7 +15,7 @@ import {
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands';
 import { bracketMatching, forceParsing, syntaxTree } from '@codemirror/language';
 import { setDiagnostics } from '@codemirror/lint';
-import { EditorState, Prec } from '@codemirror/state';
+import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { completionGuard } from './completionGuard';
 import { probedDispatch } from './probe';
@@ -33,6 +33,24 @@ export interface PromQLViewOptions {
   readonly onChange: (text: string) => void;
   readonly onRun: () => void;
   readonly onEscape: () => void;
+  /** No edits by the user (default false); `setReadOnly` changes it. */
+  readonly readOnly?: boolean;
+}
+
+/** The read-only state of a view (plan #64 review r1: the board is saving or discarding). */
+const readOnlyCompartment = new Compartment();
+
+function readOnlyExtension(on: boolean): Extension {
+  return [
+    EditorState.readOnly.of(on),
+    EditorView.contentAttributes.of({ 'aria-readonly': on ? 'true' : 'false' }),
+  ];
+}
+
+/** Makes the view read-only, or editable again. */
+export function setReadOnly(view: EditorView, on: boolean): void {
+  if (view.state.readOnly === on) return;
+  view.dispatch({ effects: readOnlyCompartment.reconfigure(readOnlyExtension(on)) });
 }
 
 /**
@@ -108,6 +126,7 @@ export function createPromQLView(o: PromQLViewOptions): EditorView {
         if (u.docChanged) o.onChange(u.state.doc.toString());
       }),
       g.extension,
+      readOnlyCompartment.of(readOnlyExtension(o.readOnly === true)),
     ],
   });
   return new EditorView({ parent: o.parent, root: o.root, state, ...probedDispatch() });
