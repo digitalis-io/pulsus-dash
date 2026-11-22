@@ -1,0 +1,10 @@
+{
+  "name": "logs-metric",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/query_range", "sanitised": "labels, lines, values, timestamps and query ids replaced; key order and message text verbatim"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level) (count_over_time({app=\"x\"}[1m]))", "form": {"step": "5000ms", "start": "1767225600000000000", "end": "1767229200000000000", "limit": "1001"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-metric-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"level":"error"},"values":[[1767225600.000,"3"],[1767225605.000,"1"]]},{"metric":{"level":"info"},"values":[[1767225600.000,"10"],[1767229200.000,"7"]]}],"stats":{"series":2}}}
+  }
+}

@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { keyHash } from '../dev/keyHash';
+import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
 import { STUB_FAIL_PANEL_DATA_KEY, STUB_PANEL_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
-import { ApiError, BoardConflictError, type BoardSpec, type PanelSpec } from './types';
+import {
+  ApiError,
+  BoardConflictError,
+  type BoardSpec,
+  type LogsRequest,
+  type PanelSpec,
+} from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
   try {
@@ -42,6 +50,102 @@ describe('stub api', () => {
     expect(await kindOf(api.signOut())).toBe('network');
     expect(localStorage.getItem('pulsus-dash.stub.failSignOut')).toBe('0');
     expect(await kindOf(api.signOut())).toBe('resolved');
+  });
+});
+
+describe('stub api queries (plan #62 §4.5)', () => {
+  it('serves three synthetic series on the BFF grid', async () => {
+    const r = await new StubApi().queryRange('demo', {
+      query: 'x',
+      fromMs: 0,
+      toMs: 3600000,
+      widthPx: 1200,
+    });
+    expect(r.stepMs).toBe(5000);
+    expect(r.startMs).toBe(0);
+    expect(r.endMs).toBe(3600000);
+    expect(r.series).toHaveLength(3);
+    r.series.forEach((s, j) => {
+      const labels = { __name__: 'stub_metric', series: String(j) };
+      expect(s.labels).toEqual(labels);
+      expect(s.key).toBe(keyHash(labels));
+      expect(s.timestamps).toHaveLength(721);
+      s.timestamps.forEach((t, i) => {
+        expect(t).toBe(i * 5000);
+        expect(s.values[i]).toBe(synthLineValue(62, j, t, 100, 40));
+      });
+    });
+    expect(r.completeness).toEqual({
+      truncated: false,
+      warnings: [],
+      infos: [],
+      queryId: null,
+      dataAgeMs: null,
+      readCache: null,
+      readCacheThroughMs: null,
+    });
+  });
+
+  it('refuses a range too long for the width', async () => {
+    const e = await new StubApi()
+      .queryRange('demo', { query: 'x', fromMs: 0, toMs: 1262304000000, widthPx: 1 })
+      .catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).kind).toBe('queryInvalid');
+  });
+
+  it('serves an instant vector of the same series', async () => {
+    const r = await new StubApi().queryInstant('demo', { query: 'x', atMs: 1000 });
+    expect(r.kind).toBe('series');
+    if (r.kind !== 'series') return;
+    expect(r.resultType).toBe('vector');
+    expect(r.series).toHaveLength(3);
+    for (const s of r.series) expect(Array.from(s.timestamps)).toEqual([1000]);
+  });
+
+  it('rejects unknown tenants and aborted requests, and checks the data source', async () => {
+    const api = new StubApi();
+    const R = { query: 'x', fromMs: 0, toMs: 3600000, widthPx: 1200 };
+    expect(await kindOf(api.queryRange('nope', R))).toBe('notFound');
+    expect(await kindOf(api.queryInstant('nope', { query: 'x', atMs: 1 }))).toBe('notFound');
+    const c = new AbortController();
+    c.abort();
+    expect(await kindOf(api.queryRange('demo', R, c.signal))).toBe('AbortError');
+    expect(await api.checkDataSource('demo')).toEqual({ state: 'ok', checkedAtMs: 0 });
+    expect(await kindOf(api.checkDataSource('nope'))).toBe('notFound');
+  });
+});
+
+describe('StubApi prom', () => {
+  it('serves the completion stub data (plan #63 A.3)', async () => {
+    const api = new StubApi();
+    const r = { fromMs: 0, toMs: 1 };
+    expect((await api.promMetadata('demo', {})).metrics).toEqual({
+      http_requests_total: [{ type: 'counter', help: 'Total HTTP requests.', unit: '' }],
+      http_request_duration_seconds: [
+        { type: 'histogram', help: 'HTTP request duration.', unit: 'seconds' },
+      ],
+      node_memory_free_bytes: [{ type: 'gauge', help: 'Free memory in bytes.', unit: 'bytes' }],
+      up: [{ type: 'gauge', help: 'Target up.', unit: '' }],
+    });
+    expect((await api.promLabelValues('demo', '__name__', r)).values).toEqual([
+      'http_request_duration_seconds_bucket',
+      'http_requests_total',
+      'node_memory_free_bytes',
+      'stub_metric',
+      'up',
+    ]);
+    expect((await api.promLabelValues('demo', 'job', r)).values).toEqual(['a', 'b']);
+    expect((await api.promLabels('demo', r)).values).toEqual([
+      '__name__',
+      'instance',
+      'job',
+      'le',
+      'series',
+    ]);
+    expect((await api.promSeries('demo', { ...r, match: ['up'] })).series).toEqual([]);
+    expect(await kindOf(api.promLabels('x', r))).toBe('notFound');
+    expect(await kindOf(api.promMetadata('x', {}))).toBe('notFound');
   });
 });
 
@@ -202,6 +306,103 @@ describe('stub starred and recent', () => {
   });
 });
 
+describe('stub log queries (plan #65 Part B §4.4)', () => {
+  const F = 1767225600000;
+  const f = BigInt(F) * 1000000n;
+  const s = 1000000000n;
+  const req = (toMs: number, extra: Partial<LogsRequest> = {}): LogsRequest => ({
+    query: '{app="x"}',
+    fromMs: F,
+    toMs,
+    widthPx: 1200,
+    ...extra,
+  });
+  async function streams(r: LogsRequest) {
+    const out = await new StubApi().queryLogs('demo', r);
+    expect(out.kind).toBe('streams');
+    if (out.kind !== 'streams') throw new Error('not a streams result');
+    const toNs = BigInt(r.toMs) * 1000000n;
+    for (const t of out.frame.tsNs) {
+      expect(t > BigInt(r.fromMs) * 1000000n && t <= toNs, `${String(t)} in the window`).toBe(true);
+    }
+    return out;
+  }
+
+  it('serves a synthetic page within the window', async () => {
+    const r = await streams(req(F + 3600000));
+    expect(r.frame.tsNs).toHaveLength(30);
+    expect(r.frame.direction).toBe('backward');
+    expect(r.frame.streams.map((x) => x.labels['pod'])).toEqual(['stub-0', 'stub-1', 'stub-2']);
+    expect(r.frame.streams.map((x) => x.key)).toEqual(
+      [0, 1, 2].map((j) =>
+        keyHash({
+          service_name: 'stub',
+          pod: `stub-${String(j)}`,
+          level: ['info', 'warn', 'error'][j] ?? '',
+        }),
+      ),
+    );
+    expect(Array.from(r.frame.levels.slice(0, 3))).toEqual([3, 4, 5]);
+    expect(r.frame.tsNs[0]).toBe(BigInt(F + 3600000) * 1000000n);
+    expect(r.frame.lines[0]).toBe('stub line 0');
+    expect(r.cursor).toBeNull();
+    expect(r.fromMs).toBe(F);
+    expect(r.toMs).toBe(F + 3600000);
+    expect(r.stepMs).toBe(5000);
+
+    expect((await streams(req(F + 3600000, { limit: 5 }))).frame.tsNs).toHaveLength(5);
+    const fw = await streams(req(F + 3600000, { direction: 'forward' }));
+    expect(fw.frame.tsNs[0]).toBe(f + s);
+    const ts = Array.from(fw.frame.tsNs);
+    expect(ts).toEqual([...ts].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+  });
+
+  it('keeps short windows to (from, to]', async () => {
+    const ts = async (toMs: number, direction: 'backward' | 'forward') =>
+      Array.from((await streams(req(toMs, { direction }))).frame.tsNs);
+    expect(await ts(F + 2000, 'backward')).toEqual([f + 2n * s, f + s]);
+    expect(await ts(F + 2000, 'forward')).toEqual([f + s, f + 2n * s]);
+    expect(await ts(F + 2500, 'backward')).toEqual([
+      f + 2500000000n,
+      f + 1500000000n,
+      f + 500000000n,
+    ]);
+    expect(await ts(F + 2500, 'forward')).toEqual([f + s, f + 2n * s]);
+    const one = await streams(req(F + 1, { direction: 'backward' }));
+    expect(Array.from(one.frame.tsNs)).toEqual([f + 1000000n]);
+    expect(one.frame.streams.map((x) => x.labels['pod'])).toEqual(['stub-0']);
+    const none = await streams(req(F + 1, { direction: 'forward' }));
+    expect(none.frame.tsNs).toHaveLength(0);
+    expect(none.frame.streams).toEqual([]);
+    expect(await ts(F + 999, 'forward')).toEqual([]);
+    expect(await ts(F, 'backward')).toEqual([]);
+    expect(await ts(F, 'forward')).toEqual([]);
+  });
+
+  it('rejects unknown tenants, aborts and a range too long, and serves the volume', async () => {
+    const api = new StubApi();
+    expect(await kindOf(api.queryLogs('nope', req(F + 1000)))).toBe('notFound');
+    const c = new AbortController();
+    c.abort();
+    expect(await kindOf(api.queryLogs('demo', req(F + 1000), c.signal))).toBe('AbortError');
+    expect(await kindOf(api.queryVolume('demo', req(F + 1000), c.signal))).toBe('AbortError');
+    expect(
+      await kindOf(api.queryLogs('demo', { ...req(1262304000000), fromMs: 0, widthPx: 1 })),
+    ).toBe('queryInvalid');
+    const v = await api.queryVolume('demo', req(F + 3600000));
+    expect(v.series.map((x) => x.labels)).toEqual([
+      { level: 'error' },
+      { level: 'warn' },
+      { level: 'info' },
+    ]);
+    expect(v.stepMs).toBe(5000);
+    expect(v.series[0]?.timestamps).toHaveLength(721);
+    expect(v.series[0]?.key).toBe(keyHash({ level: 'error' }));
+    const t1 = v.series[1]?.timestamps[1] ?? 0;
+    expect(v.series[1]?.values[1]).toBe(Math.round(Math.abs(synthLineValue(65, 1, t1, 20, 10))));
+  });
+});
+
 describe('stub panel data hooks (#90)', () => {
   const window = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13) };
   const p: PanelSpec = {
@@ -273,5 +474,127 @@ describe('stub panel data hooks (#90)', () => {
     expect(await kindOf(first)).toBe('network');
     expect(localStorage.getItem(STUB_FAIL_PANEL_DATA_KEY)).toBe('0');
     expect(await kindOf(api.panelData('demo', p, window))).toBe('resolved');
+  });
+});
+
+describe('StubApi planning (plan #112 A.7, A.11)', () => {
+  const W = { fromMs: 0, toMs: 3_600_000, widthPx: 1000 };
+  /** `prom.WarnTypesUnavailable`, the server's text (only StubApi may import the mirror). */
+  const WARN_TYPES_UNAVAILABLE =
+    'pulsus-dash: metric types unavailable, so only names ending in _total are rated (metric_types_unavailable)';
+
+  async function errorOf(p: Promise<unknown>): Promise<ApiError> {
+    try {
+      await p;
+    } catch (e) {
+      if (e instanceof ApiError) return e;
+      throw e;
+    }
+    throw new Error('the query resolved');
+  }
+
+  it('T1: a bare counter is rated without metadata', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const r = await api.queryRange('demo', { query: 'http_requests_total', ...W });
+    expect(r.planned.query).toBe('rate(http_requests_total[1m])');
+    expect(r.planned.rateWindowMs).toBe(60000);
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('T2: a selector that needs types reads the metadata once', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const r = await api.queryRange('demo', { query: 'up', ...W });
+    expect(meta).toHaveBeenCalledTimes(1);
+    expect(meta.mock.calls[0]?.[1]).toEqual({ limit: 10000 });
+    expect(r.planned.query).toBe('up');
+  });
+
+  it('T3: a planned text over 64 KiB is queryTooLong', async () => {
+    const n19 = 'x_total{a="' + 'b'.repeat(65_517) + '"}';
+    const e = await errorOf(new StubApi().queryRange('demo', { query: n19, ...W }));
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65540);
+  });
+
+  it('T4: variables', async () => {
+    const api = new StubApi();
+    const e = await errorOf(api.queryRange('demo', { query: 'up{r="$r"}', ...W }));
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/r', messageKey: 'variable.missing' }]);
+    const r = await api.queryRange('demo', { query: 'up{r="$r"}', vars: { r: 'eu' }, ...W });
+    expect(r.planned.query).toBe('up{r="eu"}');
+  });
+
+  it('T5: a metadata failure plans without types and warns', async () => {
+    const api = new StubApi();
+    vi.spyOn(api, 'promMetadata').mockRejectedValue(new ApiError('unavailable', 'down'));
+    const r = await api.queryRange('demo', { query: 'up', ...W });
+    expect(r.completeness.warnings).toEqual([WARN_TYPES_UNAVAILABLE]);
+    const i = await errorOf(
+      api.queryInstant('demo', { query: 'rate(x[$__rate_interval])', atMs: 1 }),
+    );
+    expect(i.kind).toBe('invalid');
+    expect(i.fields).toEqual([{ pointer: '/step_ms', messageKey: 'field.required' }]);
+    const ok = await api.queryInstant('demo', {
+      query: 'rate(x[$__rate_interval])',
+      atMs: 1,
+      stepMs: 15000,
+    });
+    expect(ok.planned.query).toBe('rate(x[1m])');
+  });
+
+  it('T6: a variable that names a virtual source is refused before metadata', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const e = await errorOf(
+      api.queryRange('demo', { query: '$m', vars: { m: 'pulsus_anomaly_score' }, ...W }),
+    );
+    expect(e.kind).toBe('queryInvalid');
+    expect(e.detail.hint?.['reserved']).toBe('pulsus_anomaly_score');
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G1–G3: reserved names are refused before metadata', async () => {
+    for (const [query, vars] of [
+      ['ALERTS{', {}],
+      ['up{note="ALERTS"}', {}],
+      ['$m', { m: 'ALERTS' }],
+    ] as const) {
+      const api = new StubApi();
+      const meta = vi.spyOn(api, 'promMetadata');
+      const e = await errorOf(api.queryRange('demo', { query, vars, ...W }));
+      expect(e.kind, query).toBe('queryInvalid');
+      expect(e.detail.hint?.['reserved'], query).toBe('ALERTS');
+      expect(meta, query).not.toHaveBeenCalled();
+    }
+  });
+
+  it('the resolved-step cap comes before the metadata read (review r2)', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const query = '$c'.repeat(510) + '$__interval'.repeat(3000) + '\nx';
+    const e = await errorOf(
+      api.queryInstant('demo', { query, vars: { c }, atMs: 1, stepMs: 1500 }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G5: over the processing cap is queryTooLong without a plan', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const e = await errorOf(
+      api.queryRange('demo', { query: '$c'.repeat(600) + '\nx_total', vars: { c }, ...W }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
   });
 });

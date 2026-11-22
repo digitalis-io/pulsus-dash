@@ -20,7 +20,8 @@ fi
 
 export PULSUS_DASH_POSTGRES_APP_URL_REF=env:E2E_PG_APP_URL
 export PULSUS_DASH_POSTGRES_OWNER_URL_REF=env:E2E_PG_OWNER_URL
-export PULSUS_DASH_DATASOURCE_URL=http://localhost:9
+# The e2e PulsusDB fake (tools/e2e/fake.sh 4190), so the data source reads Connected.
+export PULSUS_DASH_DATASOURCE_URL=http://localhost:4190
 export PULSUS_DASH_DATASOURCE_SLUG=demo
 export PULSUS_DASH_SERVER_LISTEN=localhost:$port
 export PULSUS_DASH_LOG_FORMAT=text

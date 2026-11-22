@@ -109,6 +109,7 @@ export function frameSummary(
   total: number,
   shown: number,
   stats: Stats,
+  valueAxis: FrameSummary['valueAxis'],
 ): FrameSummary {
   return {
     kind,
@@ -120,5 +121,6 @@ export function frameSummary(
     max: stats.max,
     last: stats.last,
     plot,
+    valueAxis,
   };
 }

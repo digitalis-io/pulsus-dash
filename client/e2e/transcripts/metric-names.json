@@ -1,0 +1,10 @@
+{
+  "name": "metric-names",
+  "provenance": {"synthetic": "explore e2e metric list"},
+  "match": {"method": "GET", "paths": ["/api/v1/label/__name__/values"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-metric-names-1"},
+    "body": {"status":"success","data":["http_request_duration_seconds_bucket","http_requests_total","node_memory_free_bytes","slow_metric","up"]}
+  }
+}

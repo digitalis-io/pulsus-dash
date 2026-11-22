@@ -152,7 +152,182 @@ paths:
         '204': { description: Recorded }
         '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/promql/range:
+    post:
+      operationId: postPromqlRange
+      tags: [query]
+      description: PromQL range query on the aligned grid, as JSON frames streamed series by series (T06-011). Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromRangeRequest' } } } }
+      responses:
+        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromRangeResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/promql/instant:
+    post:
+      operationId: postPromqlInstant
+      tags: [query]
+      description: PromQL instant query. Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromInstantRequest' } } } }
+      responses:
+        '200': { description: Frames, scalar or string, and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromInstantResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/labels:
+    get:
+      operationId: getPromLabels
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { $ref: '#/components/parameters/Match' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Label names, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/label/{name}/values:
+    get:
+      operationId: getPromLabelValues
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { $ref: '#/components/parameters/Match' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Label values, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/series:
+    get:
+      operationId: getPromSeries
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { name: match, in: query, required: true, style: form, explode: true, schema: { type: array, minItems: 1, items: { type: string, maxLength: 65536 } } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Label sets, content: { application/json: { schema: { $ref: '#/components/schemas/PromSeriesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/prom/metadata:
+    get:
+      operationId: getPromMetadata
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { name: metric, in: query, required: false, schema: { type: string, maxLength: 65536 } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Metric metadata, content: { application/json: { schema: { $ref: '#/components/schemas/PromMetadataResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/logql/range:
+    post:
+      operationId: postLogqlRange
+      tags: [query]
+      description: LogQL range query. A log query answers one page of the window (from, to] with a continuation cursor; a LogQL metric query answers JSON frames on the aligned grid, streamed series by series (T06-011). Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlRangeRequest' } } } }
+      responses:
+        '200': { description: A log page (kind streams) or frames on the grid (kind series), content: { application/json: { schema: { $ref: '#/components/schemas/LogqlRangeResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/query/logql/volume:
+    post:
+      operationId: postLogqlVolume
+      tags: [query]
+      description: Log volume by level on the aligned grid, one frame per level with lines (labels exactly {level}). Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlVolumeRequest' } } } }
+      responses:
+        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/RangeFrameResponse' } } } }
+        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/logs/labels:
+    get:
+      operationId: getLogsLabels
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/LogFrom' }
+        - { $ref: '#/components/parameters/LogTo' }
+        - { name: query, in: query, required: false, schema: { type: string, maxLength: 65536 } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Log label names, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/logs/label/{name}/values:
+    get:
+      operationId: getLogsLabelValues
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/LogFrom' }
+        - { $ref: '#/components/parameters/LogTo' }
+        - { name: query, in: query, required: false, schema: { type: string, maxLength: 65536 } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Log label values, content: { application/json: { schema: { $ref: '#/components/schemas/PromValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/logs/series:
+    get:
+      operationId: getLogsSeries
+      tags: [query]
+      x-permission: query.read
+      parameters:
+        - { $ref: '#/components/parameters/Tenant' }
+        - { $ref: '#/components/parameters/LogFrom' }
+        - { $ref: '#/components/parameters/LogTo' }
+        - { name: match, in: query, required: true, style: form, explode: true, schema: { type: array, minItems: 1, items: { type: string, maxLength: 65536 } } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Stream label sets, content: { application/json: { schema: { $ref: '#/components/schemas/PromSeriesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/datasource/check:
+    get:
+      operationId: getDatasourceCheck
+      tags: [query]
+      description: The data-source check of the tenant's binding (T06-025); never part of readiness (T06-026).
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      responses:
+        '200': { description: Check result, content: { application/json: { schema: { $ref: '#/components/schemas/DatasourceStatus' } } } }
+        '400': { description: Tenant missing or malformed, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: Unknown tenant, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '504': { description: The check's deadline passed while the tenant was resolved, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
+  parameters:
+    Tenant: { name: tenant, in: query, required: true, schema: { type: string, pattern: '^[a-z0-9-]{1,40}$' } }
+    From: { name: from, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64 } }
+    To: { name: to, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64 } }
+    Match: { name: match, in: query, required: false, style: form, explode: true, schema: { type: array, items: { type: string, maxLength: 65536 } } }
+    Limit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 10000, default: 1000 } }
+    LogFrom: { name: from, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854 } }
+    LogTo: { name: to, in: query, required: true, description: ms since the epoch; at most 9223372036854 (2262-04-11), schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854 } }
+  responses:
+    RateLimited:
+      description: Too many queries in flight, or PulsusDB is rate limiting the tenant
+      headers: { Retry-After: { schema: { type: string } } }
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
   schemas:
     ErrorCode: { type: string, enum: [scope_denied, budget_exhausted, too_broad, unavailable, invalid, forbidden, virtual_unsupported, not_found, conflict, internal] }
     FieldError: { type: object, additionalProperties: false, required: [pointer, message_key], properties: { pointer: { type: string }, message_key: { type: string } } }
@@ -166,6 +341,7 @@ components:
         hint: { type: object, additionalProperties: true }
         query_id: { type: string }
         fields: { type: array, items: { $ref: '#/components/schemas/FieldError' } }
+        planned: { $ref: '#/components/schemas/PlannedQuery' }   # the PromQL routes: every error raised after planning (ADR-0021)
     ErrorEnvelope: { type: object, additionalProperties: false, required: [error], properties: { error: { $ref: '#/components/schemas/ErrorBody' } } }
     Health: { type: object, required: [status], properties: { status: { type: string, enum: [ok] } } }
     Ready: { type: object, required: [status, checks], properties: { status: { type: string, enum: [ready, not_ready] }, checks: { $ref: '#/components/schemas/ReadyChecks' } } }
@@ -181,7 +357,226 @@ components:
         email: { type: string }
         role: { type: string, enum: [admin, editor, viewer] }
     OrgInfo: { type: object, additionalProperties: false, required: [slug, name], properties: { slug: { type: string }, name: { type: string } } }
-    DatasourceStatus: { type: object, additionalProperties: false, required: [state], properties: { state: { type: string, enum: [not_checked] } } }
+    PromRangeRequest:
+      type: object
+      additionalProperties: false
+      required: [query, from, to, width_px]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 131072 }   # raw text; the server checks UTF-8 bytes and plans it (ADR-0021)
+        from: { type: integer, format: int64, minimum: 0 }                    # ms since the epoch
+        to: { type: integer, format: int64, maximum: 253402300799999 }
+        width_px: { type: integer, minimum: 1, maximum: 10000 }
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+        vars: { $ref: '#/components/schemas/QueryVars' }
+        rate: { type: boolean, default: true }   # the rate rewrite of a bare counter or histogram selector
+    PromInstantRequest:
+      type: object
+      additionalProperties: false
+      required: [query, at]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 131072 }
+        at: { type: integer, format: int64, minimum: 0, maximum: 253402300799999 }
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+        vars: { $ref: '#/components/schemas/QueryVars' }
+        step_ms: { type: integer, format: int64, minimum: 1000, maximum: 86400000 }   # macros and the rate rewrite apply only with it
+    QueryVars:
+      description: Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+      type: object
+      maxProperties: 64
+      additionalProperties: { type: string, maxLength: 4096 }
+    PlannedQuery:
+      description: What the server planned and sent (ADR-0021, T06-029).
+      type: object
+      additionalProperties: false
+      required: [query, expanded, bytes, value_type, rate_candidate, rate_applied, histogram]
+      properties:
+        query: { type: string }      # sent to PulsusDB
+        expanded: { type: string }   # substituted, before the rate rewrite (Open in Explore)
+        bytes: { type: integer }
+        value_type: { type: string, enum: [scalar, string, vector, matrix, unknown] }
+        rate_candidate: { type: boolean }
+        rate_applied: { type: boolean }
+        histogram: { type: boolean }
+        step_ms: { type: integer, format: int64 }
+        rate_window_ms: { type: integer, format: int64 }
+    FrameValue:
+      description: A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
+      x-go-type: json.RawMessage   # generated gateway type for our own output; not upstream decoding (the generated file imports encoding/json)
+    SeriesFrame:
+      description: JSON image of labels/1 + metric_matrix.grid/1 (T04 §0).
+      type: object
+      additionalProperties: false
+      required: [key, labels, timestamps, values]
+      properties:
+        key: { type: string, pattern: '^[0-9a-f]{16}$' }
+        labels: { type: object, additionalProperties: { type: string } }
+        timestamps: { type: array, items: { type: integer, format: int64 } }
+        values: { type: array, items: { $ref: '#/components/schemas/FrameValue' } }
+    Completeness:
+      type: object
+      additionalProperties: false
+      required: [truncated, warnings, infos]
+      properties:
+        truncated: { type: boolean }
+        warnings: { type: array, items: { type: string } }
+        infos: { type: array, items: { type: string } }
+        query_id: { type: string }
+        data_age_ms: { type: integer, format: int64, minimum: 0 }
+        read_cache: { type: string, enum: [hit, miss, bypass, other] }
+        read_cache_through_ms: { type: integer, format: int64, minimum: 0 }
+    PromRangeResponse:
+      type: object
+      additionalProperties: false
+      required: [planned, start, end, step, frames, completeness]
+      properties:
+        planned: { $ref: '#/components/schemas/PlannedQuery' }
+        start: { type: integer, format: int64 }
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    RangeFrameResponse:                     # frames on the grid without planned: the LogQL volume body (planned is PromQL-only until logs.Plan, T06-029, #116)
+      type: object
+      additionalProperties: false
+      required: [start, end, step, frames, completeness]
+      properties:
+        start: { type: integer, format: int64 }
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    TimedValue:
+      type: object
+      additionalProperties: false
+      required: [timestamp, value]
+      properties: { timestamp: { type: integer, format: int64 }, value: { $ref: '#/components/schemas/FrameValue' } }
+    TimedString:
+      type: object
+      additionalProperties: false
+      required: [timestamp, value]
+      properties: { timestamp: { type: integer, format: int64 }, value: { type: string } }
+    PromInstantResponse:
+      type: object
+      additionalProperties: false
+      required: [planned, result_type, at, frames, completeness]
+      properties:
+        planned: { $ref: '#/components/schemas/PlannedQuery' }
+        result_type: { type: string, enum: [vector, matrix, scalar, string] }
+        at: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }   # [] for scalar and string
+        scalar: { $ref: '#/components/schemas/TimedValue' }                             # scalar results only
+        string: { $ref: '#/components/schemas/TimedString' }                            # string results only
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    PromValuesResponse:
+      type: object
+      additionalProperties: false
+      required: [values, completeness]
+      properties:
+        values: { type: array, items: { type: string } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    SeriesLabels:
+      type: object
+      additionalProperties: false
+      required: [key, labels]
+      properties: { key: { type: string, pattern: '^[0-9a-f]{16}$' }, labels: { type: object, additionalProperties: { type: string } } }
+    PromSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [series, completeness]
+      properties:
+        series: { type: array, items: { $ref: '#/components/schemas/SeriesLabels' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    MetricMetadata:
+      type: object
+      additionalProperties: false
+      required: [type, help, unit]
+      properties: { type: { type: string }, help: { type: string }, unit: { type: string } }
+    PromMetadataResponse:
+      type: object
+      additionalProperties: false
+      required: [metrics, completeness]
+      properties:
+        metrics: { type: object, additionalProperties: { type: array, items: { $ref: '#/components/schemas/MetricMetadata' } } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    LogDirection: { type: string, enum: [backward, forward] }
+    LogLevel: { type: string, enum: [critical, error, warn, info, debug, trace, unknown] }
+    LogqlRangeRequest:
+      type: object
+      additionalProperties: false
+      required: [query, from, to, width_px]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 65536 }
+        from: { type: integer, format: int64, minimum: 0 }                    # ms since the epoch
+        to: { type: integer, format: int64, maximum: 9223372036854 }          # and the aligned grid end must not pass it
+        width_px: { type: integer, minimum: 1, maximum: 10000 }
+        limit: { type: integer, minimum: 1, maximum: 5000, default: 1000 }
+        direction: { $ref: '#/components/schemas/LogDirection' }             # default backward
+        cursor: { type: string, pattern: '^[A-Za-z0-9_-]{48}$' }             # from the previous page of the same request
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+    LogqlVolumeRequest:
+      type: object
+      additionalProperties: false
+      required: [query, from, to, width_px]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 65536 }
+        from: { type: integer, format: int64, minimum: 0 }
+        to: { type: integer, format: int64, maximum: 9223372036854 }
+        width_px: { type: integer, minimum: 1, maximum: 10000 }
+        timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
+    LogEntry:
+      type: object
+      additionalProperties: false
+      required: [ts_ns, line, level]
+      properties:
+        ts_ns: { type: string, pattern: '^(0|[1-9][0-9]{0,18})$' }          # ns since the epoch, decimal
+        line: { type: string }
+        level: { $ref: '#/components/schemas/LogLevel' }
+        metadata: { type: object, additionalProperties: { type: string } }   # structured metadata; absent if none
+        parsed: { type: object, additionalProperties: { type: string } }     # parsed fields; absent if none
+    LogStream:
+      type: object
+      additionalProperties: false
+      required: [key, labels, entries]
+      properties:
+        key: { type: string, pattern: '^[0-9a-f]{16}$' }
+        labels: { type: object, additionalProperties: { type: string } }     # the indexed stream labels
+        entries: { type: array, items: { $ref: '#/components/schemas/LogEntry' } }
+    LogqlStreamsResponse:
+      type: object
+      additionalProperties: false
+      required: [kind, start, end, step, direction, streams, completeness]
+      properties:
+        kind: { type: string, enum: [streams] }
+        start: { type: integer, format: int64 }                              # the request's from: the window is (start, end] in ms
+        end: { type: integer, format: int64 }                                # the request's to
+        step: { type: integer, format: int64 }                               # the grid step
+        direction: { $ref: '#/components/schemas/LogDirection' }
+        streams: { type: array, items: { $ref: '#/components/schemas/LogStream' } }
+        cursor: { type: string }                                             # absent: no further entry in the window
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    LogqlSeriesResponse:                    # the range frame without planned: PromQL-only until logs.Plan (T06-029, #116)
+      type: object
+      additionalProperties: false
+      required: [kind, start, end, step, frames, completeness]
+      properties:
+        kind: { type: string, enum: [series] }
+        start: { type: integer, format: int64 }                              # the grid
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    LogqlRangeResponse:
+      oneOf:
+        - { $ref: '#/components/schemas/LogqlStreamsResponse' }
+        - { $ref: '#/components/schemas/LogqlSeriesResponse' }
+      discriminator: { propertyName: kind, mapping: { streams: '#/components/schemas/LogqlStreamsResponse', series: '#/components/schemas/LogqlSeriesResponse' } }
+    DatasourceStatus:                         # bootstrap still returns not_checked
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: { type: string, enum: [not_checked, ok, unreachable, unauthorised, error] }
+        checked_at: { type: integer, format: int64 }                          # ms; absent for not_checked
     TenantInfo:
       type: object
       additionalProperties: false

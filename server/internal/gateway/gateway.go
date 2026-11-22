@@ -5,7 +5,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -19,6 +18,8 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
 )
 
 // Probe is the readiness view of Postgres; *store.Db implements it.
@@ -41,6 +42,12 @@ type Deps struct {
 	Now func() time.Time
 	// CSPReadTimeout is the csp-report body deadline; 0 means 5 s.
 	CSPReadTimeout time.Duration
+	// PulsusDB is the only PulsusDB client (T06-005); nil answers every data route 503
+	// datasource_config.
+	PulsusDB *pulsusdb.Client
+	// Types are the metric types the PromQL planner reads (plan #112 §4.5); nil with a PulsusDB
+	// client is the per-binding cache over its metadata route.
+	Types promplan.TypesSource
 	// Boards is the boards service; nil (or a zero Org) answers every board route with 503.
 	Boards core.Boards
 	// Org is the organisation of every request until authentication lands (D12).
@@ -51,8 +58,13 @@ type Deps struct {
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 
+// statusClientClosed is the access log's status of a request the client abandoned before any
+// header was written.
+const statusClientClosed = 499
+
 // New returns the HTTP handler of every route: the generated operations, POST csp-report, the
-// verified client assets and the document fallback (plan #59 §3.4).
+// PulsusDB data routes (plans #62 and #65), the verified client assets and the document fallback (plan
+// #59 §3.4).
 func New(d Deps) http.Handler {
 	if d.Logger == nil {
 		d.Logger = slog.New(slog.DiscardHandler)
@@ -62,6 +74,14 @@ func New(d Deps) http.Handler {
 	a := assets{set: d.Assets}
 	r.NotFound(a.fallback)
 	r.Handle("/assets/*", http.HandlerFunc(a.serveAsset))
+	if d.Types == nil && d.PulsusDB != nil {
+		d.Types = promplan.NewTypesCache(promplan.MetadataFetch(d.PulsusDB), promplan.CacheOptions{Now: d.Now, Logger: d.Logger})
+	}
+	q := &dataRoutes{d: d}
+	r.Post("/api/dash/v1/query/promql/range", q.serveRange)
+	r.Post("/api/dash/v1/query/promql/instant", q.serveInstant)
+	r.Post("/api/dash/v1/query/logql/range", q.serveLogsRange)
+	r.Post("/api/dash/v1/query/logql/volume", q.serveLogsVolume)
 	r.Method(http.MethodPost, cspReportPath, newCSPReport(d))
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusMethodNotAllowed, api.Invalid, "method not allowed")
@@ -72,9 +92,13 @@ func New(d Deps) http.Handler {
 			WriteError(w, http.StatusRequestEntityTooLarge, api.Invalid, "request body too large")
 			return
 		}
+		if e := paramError(err); e != nil { // a query parameter the generated wrapper could not bind
+			writeReqError(w, e)
+			return
+		}
 		WriteError(w, http.StatusBadRequest, api.Invalid, "bad request")
 	}
-	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}, boards: boards{deps: d}}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&routes{health: health{deps: d}, meta: meta{deps: d}, boards: boards{deps: d}, prom: prom{deps: d}, logs: logs{deps: d}, datasource: datasource{deps: d}}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: badRequest,
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			d.Logger.ErrorContext(r.Context(), "response error", "error", err.Error())
@@ -84,18 +108,20 @@ func New(d Deps) http.Handler {
 	return api.HandlerWithOptions(strict, api.ChiServerOptions{BaseRouter: r, ErrorHandlerFunc: badRequest})
 }
 
-// routes implements every generated operation: the probes, the meta routes and the boards.
+// routes implements every generated operation: the probes, the meta routes, the boards, the
+// PulsusDB completion routes (PromQL and LogQL) and the data-source check.
 type routes struct {
 	health
 	meta
 	boards
+	prom
+	logs
+	datasource
 }
 
 // WriteError writes the error envelope {"error":{"code":…,"message":…}} (T06 §5.2).
 func WriteError(w http.ResponseWriter, status int, code api.ErrorCode, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(api.ErrorEnvelope{Error: api.ErrorBody{Code: code, Message: message}})
+	WriteErrorBody(w, status, api.ErrorBody{Code: code, Message: message})
 }
 
 // commonHeaders sets the headers every gateway response carries, and the request ID.
@@ -166,7 +192,8 @@ func (s *statusWriter) Write(b []byte) (int, error) {
 }
 
 // accessLog writes one msg=http record per request: method, route (the chi pattern, never the
-// raw path or query), status, duration_ms and request_id.
+// raw path or query), status, duration_ms and request_id. A request whose client went away
+// before a header was written is logged with status 499.
 func accessLog(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +205,11 @@ func accessLog(log *slog.Logger) func(http.Handler) http.Handler {
 				route = rc.RoutePattern()
 			}
 			id, _ := r.Context().Value(requestIDKey{}).(string)
-			log.InfoContext(r.Context(), "http", "method", r.Method, "route", route, "status", sw.status,
+			status := sw.status
+			if status == 0 && r.Context().Err() != nil {
+				status = statusClientClosed
+			}
+			log.InfoContext(r.Context(), "http", "method", r.Method, "route", route, "status", status,
 				"duration_ms", time.Since(start).Milliseconds(), "request_id", id)
 		})
 	}

@@ -4,9 +4,40 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { stubPlanBoundary } from './eslint/stub-plan-boundary.ts';
 import tokens from './eslint/tokens-plugin.ts';
 
 const LAYOUT_PROPS = ['offset', 'crossOffset', 'containerPadding', 'delay', 'closeDelay'];
+
+const URL_SEARCH_IMPORTS = {
+  name: 'react-router',
+  importNames: ['useSearchParams', 'createSearchParams'],
+  message: 'Read and write the URL search only through src/state/ (contextSearch.ts).',
+};
+
+// The query languages of T09 §5.1: no `src/editor/lang/<id>/` imports another (ADR-0018).
+const LANG_IDS = ['promql', 'logql', 'traceql', 'profile'];
+
+const languageIsolation = LANG_IDS.map((lang) => {
+  const others = LANG_IDS.filter((o) => o !== lang).join('|');
+  return {
+    files: [`src/editor/lang/${lang}/**/*.{ts,tsx}`],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [URL_SEARCH_IMPORTS],
+          patterns: [
+            {
+              regex: `^(\\.\\./)+(${others})(/|$)|(^|/)lang/(${others})(/|$)`,
+              message: `lang/${lang} imports no other language directory (ADR-0018, T09-001).`,
+            },
+          ],
+        },
+      ],
+    },
+  };
+});
 
 const bannedSyntax = [
   {
@@ -120,17 +151,13 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            {
-              name: 'react-router',
-              importNames: ['useSearchParams', 'createSearchParams'],
-              message: 'Read and write the URL search only through src/state/ (contextSearch.ts).',
-            },
-          ],
+          paths: [URL_SEARCH_IMPORTS],
         },
       ],
     },
   },
+  ...languageIsolation,
+  stubPlanBoundary,
   {
     files: ['e2e/keyboard.spec.ts', 'e2e/keyboardScript.ts', 'e2e/keyboardBoards.ts'],
     rules: {

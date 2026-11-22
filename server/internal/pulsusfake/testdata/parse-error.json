@@ -1,0 +1,10 @@
+{
+  "name": "parse-error",
+  "provenance": {"synthetic": "the captured message for up{ is 'unexpected end of input inside braces' with no position; the 1:4: prefix is the PromQL-compatible form T09-009 reads, not yet observed"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range", "/api/v1/query"], "query": "up{"},
+  "response": {
+    "status": 400,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-parse-1"},
+    "body": {"status":"error","errorType":"bad_data","error":"1:4: parse error: unexpected end of input inside braces"}
+  }
+}

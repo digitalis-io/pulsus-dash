@@ -1,0 +1,10 @@
+{
+  "name": "flagged",
+  "provenance": {"synthetic": "no PromQL capture carries the flag; it exercises the service_graph-style truncated flag (T06 §4.3) with no warning"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "topk(5, up)"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-flagged-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","truncated":true,"result":[{"metric":{"job":"api"},"values":[[1767225600,"1"]]}]}}
+  }
+}

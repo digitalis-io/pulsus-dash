@@ -1,9 +1,18 @@
 import createClient from 'openapi-fetch';
 import { describe, expect, it } from 'vitest';
+import counterRaw from '../../../wire/fixtures/json/promql-range-counter.json?raw';
+import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw';
 import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
-import { ApiError, BoardConflictError, isApiError, type PanelSpec } from './types';
+import {
+  ApiError,
+  BoardConflictError,
+  isApiError,
+  type LogsRequest,
+  type PanelSpec,
+  type RangeRequest,
+} from './types';
 
 /** The bootstrap body of plan #59 §3.5 for the e2e database (one binding, `demo`). */
 const BOOTSTRAP = {
@@ -16,7 +25,7 @@ const BOOTSTRAP = {
 };
 
 function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
+  return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -88,6 +97,215 @@ describe('HttpApi (A1)', () => {
     const e = await rejection(a.getSession(ctrl.signal));
     expect(e).toBeInstanceOf(DOMException);
     expect((e as DOMException).name).toBe('AbortError');
+  });
+});
+
+/** A.10 of plan #62: the query and check methods of HttpApi. */
+const R: RangeRequest = { query: 'up', fromMs: 1, toMs: 2, widthPx: 3 };
+
+function envelope(status: number, error: Record<string, unknown>): () => Promise<Response> {
+  return () => Promise.resolve(json(status, { error }));
+}
+
+describe('HttpApi queries (A.10)', () => {
+  it('1-2: sends the range request and decodes the body', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, counterRaw)));
+    const r = await a.queryRange('demo', R);
+    expect(r.stepMs).toBe(5000);
+    expect(r.series).toHaveLength(2);
+    const req = requests[0];
+    expect(req?.method).toBe('POST');
+    expect(req === undefined ? '' : new URL(req.url).pathname + new URL(req.url).search).toBe(
+      '/api/dash/v1/query/promql/range?tenant=demo',
+    );
+    expect(await req?.text()).toBe('{"query":"up","from":1,"to":2,"width_px":3}');
+
+    const t = api(() => Promise.resolve(json(200, counterRaw)));
+    await t.api.queryRange('demo', { ...R, timeoutMs: 500 });
+    expect(await t.requests[0]?.text()).toBe(
+      '{"query":"up","from":1,"to":2,"width_px":3,"timeout_ms":500}',
+    );
+  });
+
+  const cases: [number, () => Promise<Response>, string, string | null, object][] = [
+    [
+      3,
+      envelope(400, {
+        code: 'invalid',
+        message: '1:4: parse error: x',
+        fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+        hint: { position: { offset: 3 } },
+        query_id: 'q1',
+      }),
+      'queryInvalid',
+      '1:4: parse error: x',
+      { position: 3, queryId: 'q1' },
+    ],
+    [
+      4,
+      envelope(400, {
+        code: 'invalid',
+        message: '1:4: parse error: x',
+        fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+      }),
+      'queryInvalid',
+      '1:4: parse error: x',
+      {},
+    ],
+    [
+      5,
+      envelope(400, {
+        code: 'virtual_unsupported',
+        message: 'm',
+        fields: [{ pointer: '/query', message_key: 'query.reserved' }],
+        hint: { reserved: 'ALERTS' },
+      }),
+      'queryInvalid',
+      null,
+      { hint: { reserved: 'ALERTS' } },
+    ],
+    [
+      6,
+      envelope(400, {
+        code: 'invalid',
+        message: 'bad',
+        fields: [{ pointer: '/to', message_key: 'field.range' }],
+      }),
+      'unknown',
+      'bad',
+      {},
+    ],
+    [
+      7,
+      envelope(413, { code: 'invalid', message: 'body too large' }),
+      'unknown',
+      'body too large',
+      {},
+    ],
+    [8, envelope(404, { code: 'not_found', message: 'unknown tenant' }), 'notFound', null, {}],
+    [
+      9,
+      envelope(422, { code: 'too_broad', message: 'm', hint: { action: 'narrow' } }),
+      'tooBroad',
+      null,
+      { hint: { action: 'narrow' } },
+    ],
+    [10, envelope(429, { code: 'budget_exhausted', message: 'm' }), 'busy', null, {}],
+    [
+      11,
+      envelope(502, {
+        code: 'unavailable',
+        message: 'm',
+        hint: { reason: 'upstream_unreachable' },
+      }),
+      'unavailable',
+      null,
+      { hint: { reason: 'upstream_unreachable' } },
+    ],
+    [12, envelope(503, { code: 'unavailable', message: 'm' }), 'unavailable', null, {}],
+    [13, envelope(504, { code: 'unavailable', message: 'm' }), 'timeout', null, {}],
+  ];
+  for (const [n, response, kind, message, detail] of cases) {
+    it(`${String(n)}: maps the envelope to ${kind}`, async () => {
+      const { api: a } = api(response);
+      const e = await rejection(a.queryRange('demo', R));
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).kind).toBe(kind);
+      if (message !== null) expect((e as ApiError).message).toBe(message);
+      expect((e as ApiError).detail).toEqual(detail);
+    });
+  }
+
+  it('14: rejects a body the decoder refuses', async () => {
+    const body = JSON.parse(counterRaw) as { frames: { key: string }[] };
+    const f = body.frames[0];
+    if (f !== undefined) f.key = 'ABC';
+    const { api: a } = api(() => Promise.resolve(json(200, body)));
+    const e = await rejection(a.queryRange('demo', R));
+    expect((e as ApiError).kind).toBe('badResponse');
+    expect((e as ApiError).message).toContain('/frames/0/key');
+  });
+
+  it('15-16: maps transport failures and re-throws aborts', async () => {
+    const net = api(() => Promise.reject(new TypeError('Failed to fetch')));
+    expect(((await rejection(net.api.queryRange('demo', R))) as ApiError).kind).toBe('network');
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const abort = new DOMException('The operation was aborted.', 'AbortError');
+    const ab = api(() => Promise.reject(abort));
+    expect(await rejection(ab.api.queryRange('demo', R, ctrl.signal))).toBe(abort);
+  });
+
+  it('17: sends the instant request', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, gaugeRaw)));
+    const r = await a.queryInstant('demo', { query: 'q', atMs: 5 });
+    expect(r.kind).toBe('series');
+    expect(r.kind === 'series' ? r.series : []).toHaveLength(2);
+    const req = requests[0];
+    expect(req === undefined ? '' : new URL(req.url).pathname + new URL(req.url).search).toBe(
+      '/api/dash/v1/query/promql/instant?tenant=demo',
+    );
+    expect(await req?.text()).toBe('{"query":"q","at":5}');
+  });
+
+  it('18-19: checks the data source', async () => {
+    const { api: a, requests } = api(() =>
+      Promise.resolve(json(200, { state: 'unreachable', checked_at: 7 })),
+    );
+    expect(await a.checkDataSource('demo')).toEqual({ state: 'unreachable', checkedAtMs: 7 });
+    const req = requests[0];
+    expect(
+      req === undefined
+        ? ''
+        : `${req.method} ${new URL(req.url).pathname}${new URL(req.url).search}`,
+    ).toBe('GET /api/dash/v1/datasource/check?tenant=demo');
+    const nc = api(() => Promise.resolve(json(200, { state: 'not_checked' })));
+    expect(await nc.api.checkDataSource('demo')).toEqual({ state: 'notChecked' });
+  });
+});
+
+describe('HttpApi prom routes', () => {
+  const C = { truncated: false, warnings: [], infos: [] };
+  const target = (r: Request | undefined) =>
+    r === undefined ? '' : `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`;
+
+  it('sends the four GETs with repeated match', async () => {
+    const values = { values: ['a'], completeness: C };
+    const { api: a, requests } = api((req) => {
+      const p = new URL(req.url).pathname;
+      if (p.endsWith('/series')) return Promise.resolve(json(200, { series: [], completeness: C }));
+      if (p.endsWith('/metadata'))
+        return Promise.resolve(json(200, { metrics: {}, completeness: C }));
+      return Promise.resolve(json(200, values));
+    });
+    expect(
+      (await a.promLabels('demo', { fromMs: 1, toMs: 2, match: ['a', 'b'], limit: 1000 })).values,
+    ).toEqual(['a']);
+    expect(
+      (await a.promLabelValues('demo', '__name__', { fromMs: 1, toMs: 2, match: [] })).values,
+    ).toEqual(['a']);
+    expect((await a.promSeries('demo', { fromMs: 1, toMs: 2, match: ['up'] })).series).toEqual([]);
+    expect((await a.promMetadata('demo', { limit: 10000 })).metrics).toEqual({});
+    expect(requests.map(target)).toEqual([
+      'GET /api/dash/v1/prom/labels?tenant=demo&from=1&to=2&match=a&match=b&limit=1000',
+      'GET /api/dash/v1/prom/label/__name__/values?tenant=demo&from=1&to=2',
+      'GET /api/dash/v1/prom/series?tenant=demo&from=1&to=2&match=up',
+      'GET /api/dash/v1/prom/metadata?tenant=demo&limit=10000',
+    ]);
+  });
+
+  it('maps errors and re-throws aborts', async () => {
+    const broad = api(envelope(422, { code: 'too_broad', message: 'm' }));
+    await expect(broad.api.promLabels('demo', { fromMs: 1, toMs: 2 })).rejects.toSatisfy(
+      (e: unknown) => isApiError(e, 'tooBroad'),
+    );
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const abort = new DOMException('The operation was aborted.', 'AbortError');
+    const ab = api(() => Promise.reject(abort));
+    await expect(
+      ab.api.promLabelValues('demo', 'job', { fromMs: 1, toMs: 2 }, ctrl.signal),
+    ).rejects.toBe(abort);
   });
 });
 
@@ -294,5 +512,281 @@ describe('http starred and recent', () => {
     expect(isApiError(await rejection(none.api.recordView('x', 'a', 1)), 'notFound')).toBe(true);
     await expect(none.api.signOut()).resolves.toBeUndefined();
     expect(none.requests).toEqual([]);
+  });
+});
+
+/** Plan #65 Part B §4.4: the LogQL query methods. */
+const L: LogsRequest = { query: '{app="x"}', fromMs: 1, toMs: 2, widthPx: 3 };
+
+const LOG_PAGE = {
+  kind: 'streams',
+  start: 1,
+  end: 2,
+  step: 1000,
+  direction: 'backward',
+  streams: [
+    {
+      key: '0123456789abcdef',
+      labels: { pod: 'a' },
+      entries: [{ ts_ns: '1500000', line: 'x', level: 'info' }],
+    },
+  ],
+  cursor: 'c'.repeat(48),
+  completeness: { truncated: false, warnings: [], infos: [] },
+};
+
+describe('HttpApi log queries (plan #65 Part B)', () => {
+  it('sends the range request with only the given options and decodes the page', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, LOG_PAGE)));
+    const r = await a.queryLogs('demo', L);
+    expect(r.kind).toBe('streams');
+    if (r.kind === 'streams') {
+      expect(Array.from(r.frame.tsNs)).toEqual([1500000n]);
+      expect(r.cursor).toBe('c'.repeat(48));
+    }
+    const req = requests[0];
+    expect(req?.method).toBe('POST');
+    expect(req === undefined ? '' : new URL(req.url).pathname + new URL(req.url).search).toBe(
+      '/api/dash/v1/query/logql/range?tenant=demo',
+    );
+    expect(await req?.text()).toBe('{"query":"{app=\\"x\\"}","from":1,"to":2,"width_px":3}');
+
+    const all = api(() => Promise.resolve(json(200, LOG_PAGE)));
+    await all.api.queryLogs('demo', {
+      ...L,
+      limit: 5,
+      direction: 'forward',
+      cursor: 'k'.repeat(48),
+      timeoutMs: 500,
+    });
+    expect(JSON.parse((await all.requests[0]?.text()) ?? '{}')).toEqual({
+      query: '{app="x"}',
+      from: 1,
+      to: 2,
+      width_px: 3,
+      limit: 5,
+      direction: 'forward',
+      cursor: 'k'.repeat(48),
+      timeout_ms: 500,
+    });
+  });
+
+  it('sends the volume request', async () => {
+    const empty = {
+      start: 0,
+      end: 1000,
+      step: 1000,
+      frames: [],
+      completeness: LOG_PAGE.completeness,
+    };
+    const { api: a, requests } = api(() => Promise.resolve(json(200, empty)));
+    const r = await a.queryVolume('demo', { ...L, timeoutMs: 700 });
+    expect(r.series).toHaveLength(0);
+    const req = requests[0];
+    expect(req === undefined ? '' : new URL(req.url).pathname).toBe(
+      '/api/dash/v1/query/logql/volume',
+    );
+    expect(await req?.text()).toBe(
+      '{"query":"{app=\\"x\\"}","from":1,"to":2,"width_px":3,"timeout_ms":700}',
+    );
+  });
+
+  it('passes the signal and re-throws an abort', async () => {
+    const seen: (AbortSignal | null)[] = [];
+    const ctrl = new AbortController();
+    const { api: a } = api((req) => {
+      seen.push(req.signal);
+      return Promise.resolve(json(200, LOG_PAGE));
+    });
+    await a.queryLogs('demo', L, ctrl.signal);
+    expect(seen[0]?.aborted).toBe(false);
+    ctrl.abort();
+    expect(seen[0]?.aborted).toBe(true);
+    const abort = new DOMException('The operation was aborted.', 'AbortError');
+    const ab = api(() => Promise.reject(abort));
+    expect(await rejection(ab.api.queryLogs('demo', L, ctrl.signal))).toBe(abort);
+    expect(await rejection(ab.api.queryVolume('demo', L, ctrl.signal))).toBe(abort);
+  });
+
+  const logCases: [string, () => Promise<Response>, string, object][] = [
+    [
+      'a position',
+      envelope(400, {
+        code: 'invalid',
+        message: "unexpected end of query at byte 8: expected '}'",
+        fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+        hint: { position: { offset: 8 } },
+      }),
+      'queryInvalid',
+      { position: 8 },
+    ],
+    [
+      'a cursor error',
+      envelope(400, {
+        code: 'invalid',
+        message: 'm',
+        fields: [{ pointer: '/cursor', message_key: 'cursor.mismatch' }],
+      }),
+      'unknown',
+      {},
+    ],
+    ['too broad', envelope(422, { code: 'too_broad', message: 'm' }), 'tooBroad', {}],
+    ['a timeout', envelope(504, { code: 'unavailable', message: 'm' }), 'timeout', {}],
+  ];
+  for (const [what, response, kind, detail] of logCases) {
+    it(`maps ${what} to ${kind}`, async () => {
+      for (const call of [
+        (x: Api) => x.queryLogs('demo', L),
+        (x: Api) => x.queryVolume('demo', L),
+      ]) {
+        const e = await rejection(call(api(response).api));
+        expect(e).toBeInstanceOf(ApiError);
+        expect((e as ApiError).kind).toBe(kind);
+        expect((e as ApiError).detail).toEqual(detail);
+      }
+    });
+  }
+
+  it('refuses a 200 body the decoder refuses', async () => {
+    const { api: a } = api(() => Promise.resolve(json(200, { ...LOG_PAGE, direction: 'up' })));
+    const e = await rejection(a.queryLogs('demo', L));
+    expect((e as ApiError).kind).toBe('badResponse');
+    expect((e as ApiError).message).toContain('/direction');
+    const v = api(() => Promise.resolve(json(200, { start: 1, end: 2, step: 1, frames: 3 })));
+    expect(((await rejection(v.api.queryVolume('demo', L))) as ApiError).kind).toBe('badResponse');
+  });
+});
+
+describe('HttpApi planning (plan #112 A.7, A.11)', () => {
+  const PLANNED = {
+    query: 'rate(x_total{job="a"}[1m])',
+    expanded: 'x_total{job="a"}',
+    bytes: 26,
+    value_type: 'vector',
+    rate_candidate: true,
+    rate_applied: true,
+    histogram: false,
+    step_ms: 5000,
+    rate_window_ms: 60000,
+  };
+  const PLANNED_TS = {
+    query: 'rate(x_total{job="a"}[1m])',
+    expanded: 'x_total{job="a"}',
+    bytes: 26,
+    valueType: 'vector',
+    rateCandidate: true,
+    rateApplied: true,
+    histogram: false,
+    stepMs: 5000,
+    rateWindowMs: 60000,
+  };
+
+  it('H1: the range body carries vars and rate only when given', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, counterRaw)));
+    await a.queryRange('demo', {
+      query: 'x_total',
+      fromMs: 1,
+      toMs: 2,
+      widthPx: 1200,
+      rate: false,
+      vars: { a: '1' },
+    });
+    expect(await requests[0]?.text()).toBe(
+      '{"query":"x_total","from":1,"to":2,"width_px":1200,"vars":{"a":"1"},"rate":false}',
+    );
+    const b = api(() => Promise.resolve(json(200, counterRaw)));
+    await b.api.queryRange('demo', { query: 'x_total', fromMs: 1, toMs: 2, widthPx: 1200 });
+    expect(await b.requests[0]?.text()).toBe('{"query":"x_total","from":1,"to":2,"width_px":1200}');
+  });
+
+  it('H2: the instant body carries step_ms', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, gaugeRaw)));
+    await a.queryInstant('demo', { query: 'q', atMs: 5, stepMs: 15000 });
+    expect(await requests[0]?.text()).toBe('{"query":"q","at":5,"step_ms":15000}');
+  });
+
+  it('H3: the range golden decodes planned', async () => {
+    const { api: a } = api(() => Promise.resolve(json(200, counterRaw)));
+    const r = await a.queryRange('demo', R);
+    expect(r.planned.query).toBe('sum by (job, instance) (rate(http_requests_total[5m]))');
+    expect(r.planned.bytes).toBe(54);
+    expect(r.planned.stepMs).toBe(5000);
+    expect(r.planned.rateWindowMs).toBeUndefined();
+  });
+
+  it('H4: 413 sent_too_large is queryTooLong with the plan', async () => {
+    const { api: a } = api(
+      envelope(413, {
+        code: 'invalid',
+        message: 'the planned query is over 65536 bytes',
+        fields: [{ pointer: '/query', message_key: 'query.sent_too_large' }],
+        planned: { ...PLANNED, bytes: 65540 },
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65540);
+  });
+
+  it('H5: 400 variable.missing is invalid with the fields', async () => {
+    const { api: a } = api(
+      envelope(400, {
+        code: 'invalid',
+        message: 'no value for variable $r',
+        fields: [{ pointer: '/vars/r', message_key: 'variable.missing' }],
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/r', messageKey: 'variable.missing' }]);
+    expect(e.detail.planned).toBeUndefined();
+  });
+
+  it('H6: 502 with planned is unavailable with the plan and the hint', async () => {
+    const { api: a } = api(
+      envelope(502, {
+        code: 'unavailable',
+        message: 'm',
+        hint: { reason: 'upstream_unreachable' },
+        planned: PLANNED,
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('unavailable');
+    expect(e.detail).toEqual({ hint: { reason: 'upstream_unreachable' }, planned: PLANNED_TS });
+  });
+
+  it('H7: a raw-byte position and the plan; a bad plan is left out', async () => {
+    const body = {
+      code: 'invalid',
+      message: 'bad',
+      fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+      hint: { position: { offset: 14 } },
+      planned: PLANNED,
+    };
+    const e = (await rejection(api(envelope(400, body)).api.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryInvalid');
+    expect(e.detail.position).toBe(14);
+    expect(e.detail.planned).toEqual(PLANNED_TS);
+    const bad = { ...body, planned: { ...PLANNED, bytes: 'x' } };
+    const e2 = (await rejection(api(envelope(400, bad)).api.queryRange('demo', R))) as ApiError;
+    expect(e2.kind).toBe('queryInvalid');
+    expect(e2.detail.position).toBe(14);
+    expect(e2.detail.planned).toBeUndefined();
+  });
+
+  it('H8: 413 processing_cap is queryTooLong without a plan', async () => {
+    const { api: a } = api(
+      envelope(413, {
+        code: 'invalid',
+        message: 'm',
+        fields: [{ pointer: '/query', message_key: 'query.too_large_to_plan' }],
+        hint: { reason: 'processing_cap' },
+      }),
+    );
+    const e = (await rejection(a.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
   });
 });

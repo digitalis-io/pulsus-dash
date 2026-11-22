@@ -1,0 +1,10 @@
+{
+  "name": "logs-hang-group",
+  "provenance": {"synthetic": "stall: the group fetch of logs-hang-page"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"hang2\"}", "form": {"step": "5000ms", "start": "1767229100000000299", "end": "1767229100000000300", "limit": "5000"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json"},
+    "hang": true
+  }
+}

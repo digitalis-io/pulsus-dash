@@ -3,17 +3,17 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-21 |
+| **Version** | 1.15-rc · 2026-11-22 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
-| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
 
 The editor is TypeScript on CodeMirror 6 ([ADR-0014](../adr/0014-typescript-react-web-client.md)
-§1), and the BFF is Go and parses no query in the first slice
-([ADR-0015](../adr/0015-go-bff.md), "Query validation"). PulsusDB's parser stays the only authority on
-validity (T09-002): it is reached **through the BFF** first and, later, **in the browser** as
+§1), and the BFF is Go ([ADR-0015](../adr/0015-go-bff.md)) and parses PromQL only to plan it
+([ADR-0021](../adr/0021-query-planning-is-server-side.md)); PulsusDB stays the authority on validity
+(T09-002). PulsusDB's parser is reached **through the BFF** first and, later, **in the browser** as
 PulsusDB's parser crates compiled to WASM. Requirements, rules and budgets stand except where
 revised below.
 
@@ -21,7 +21,7 @@ revised below.
 |---|---|
 | `dash-lang` crate and `QueryLanguage` trait (T09-001) | `lang/` with a TS `QueryLanguage` interface (§5.1); implementations `RemoteValidator` (BFF → PulsusDB) now and `WasmValidator` (PulsusDB crates in an editor worker) later |
 | Textarea overlay (§4.3, T09-004) | CodeMirror 6 (§4.3, T09-004 revised) |
-| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail) |
+| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail). PromQL v1 (#63): `@prometheus-io/codemirror-promql` supplies the Lezer language with its completion and linter off; completion is our `CompleteStrategy` (`lang/promql/promClient.ts`) behind a guard, over the BFF `/prom/*` routes until `/suggest` exists; it leaves out only the matcher under the caret, copies kept matchers' source text and decodes the edited label name |
 | `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005) |
 | Validation in the `editor` worker | v1: on run (and on Explore's auto-run), the BFF forwards the query to PulsusDB and maps its error and position, if any, to a diagnostic. Later: `dash-editor.wasm` (PulsusDB crates) in an editor worker on every edit (§4.2 diagram), with no change to the editor |
 | `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
@@ -29,7 +29,7 @@ revised below.
 | `pulsus-re2` regex screen (T09-016) | T09-016 revised |
 | Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree with a TS printer and a token-sequence loss check (§4.9 and T09-013 rewritten); no PulsusDB AST or printer is needed |
 | Leptos `QueryEditor`, `QueryBuilder` | React components (§5.1) |
-| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014) |
+| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014). v1: `editor/suggestCache.ts`; key `(tenant, lang, kind, label, selector, bucket)` without `scope_fp` while data scopes are deferred (D12); TTL from settle; LRU by last get; eviction never aborts; the in-flight lookup per kind is tracked apart from the LRU, so an evicted one is still superseded; a tenant switch or clear ends a generation, aborting every tracked call (metadata included) and rejecting its callers at once; a source with an ended token sends nothing; metadata is one TanStack query per tenant |
 
 ## 1. Context & problem
 
@@ -86,7 +86,7 @@ licence-compatible, and R17 (permissive syntax crates) drops to *nice-to-have*.
 | [SRF-031](../product/04-surfaces.md#srf-031--metric-browser-and-series-table) | §4.4 (metric browser source: names, type, cardinality, label value counts) | `itest:suggest-metric-browser`: `http_` lists matching metrics with type and series count; labels for the selection list value counts |
 | [SRF-032](../product/04-surfaces.md#srf-032--cardinality-explorer) | §4.4 (`kind: cardinality`) | `itest:suggest-cardinality`: a seeded metric with 3.2k series, 2.9k from `pod`, returns `pod` as the largest entry with its count |
 | [INT-038](../product/03-interaction-model.md#int-038--query-detection) | §5.1 (`QueryLanguage::detect`) | `unit:lang-detect`: `rate(`, `{app=`, `{ span.`, `process_cpu:` each score highest for PromQL, LogQL, TraceQL, profile selector; `e2e:palette-query-detect` (T08 co-owns) |
-| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:vishint-table-5-13`: one fixture query per row decidable from the query; T07/T02 confirm the remaining rows on result shape |
+| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.6 (hint follows Table 5-13 order) | `unit:plan-parity` (the rewrite and hint rows decidable from the query and metric types; #112) and `unit:autovis-table` (the rows confirmed on result shape); T07/T02 confirm the remaining rows |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | §4.2 (main-thread work bounded), §7 | `bench:editor-keystroke`: ≤ 2 ms main-thread work per keystroke on a 1 KB query; 0 long tasks during typing scripts |
 | [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) | §4.3 (lazy editor chunk), §0 | `ci:bundle-size`: editor chunk ≤ 175 KB and absent from initial JS; `e2e:lazy-load`: a cold load that opens no editor fetches no editor chunk |
 | [VL-010](../product/08-visual-language.md#vl-010--fonts) | §4.8 (JetBrains Mono for queries) | `golden:editor-fonts` |
@@ -224,6 +224,14 @@ Mechanics:
   a keyboard trap.
 - **Highlighting** is a CodeMirror language per query language (§0): the Lezer PromQL grammar, and
   in-house stream tokenizers for LogQL and TraceQL. Ghost-text completion is not used.
+- **Host (v1, #63).** The view mounts in an open shadow root, so CodeMirror's style modules are
+  adopted stylesheets, which `style-src 'self'` allows (ADR-0014 §9). Window-key exclusions read the
+  whole `composedPath()`, so keys typed in the editor do not step the window (INT-032).
+- **v1 Explore keys (#63 Part C).** `Esc` with no popup open moves the focus to the page's **Run**
+  button, so the editor never traps focus; Shift+Enter and Mod+Enter run from the editor.
+- **v1 composition guard (T09-005, #63).** An open or pending completion popup closes at
+  `compositionstart`; while composing nothing opens, is looked up or is accepted, and results that
+  arrive are held and dropped; completion re-evaluates once, 20 ms after the last `compositionend`.
 
 #### T09-005 — Composition is respected
 **MUST** — During composition (`compositionstart` → `compositionend`) the editor MUST keep
@@ -278,6 +286,9 @@ value lookups, so `{service="checkout", pod=~"|` only suggests checkout's pods.
   goes first), and the catalogue care score for entity labels. Cardinality appears as detail ("3.2k
   series"), as in the [04 §4.4](../product/04-surfaces.md) metric browser.
 - **Limits.** At most 200 items per remote response, with `complete: false` shown as "type to narrow".
+  v1 over `/prom/*` (#63): names up to 10 000 (filtered locally), the rest up to 1 000; lookups ask
+  for the window snapped to whole minutes (series: whole seconds). The 200-item limit and "type to
+  narrow" come with `/suggest`.
 - **Scope.** Families withheld by the principal's metrics scope (T07-015) are listed with "withheld
   by scope" and no series count.
 
@@ -320,15 +331,21 @@ parser gives: the structured span for LogQL and TraceQL; for PromQL, the positio
 error that comes with no position MUST be underlined across the whole query and labelled "position
 unknown"; no other placement (such as a guessed recovery point) is allowed. The same rule applies to
 errors from PulsusDB through the BFF on run (SRF-027) and to the WASM validator before run (SRF-078).
+*(2026-11-21, #65.)* LogQL positions: PulsusDB's LogQL errors are text that reads `at byte N`, with
+`N` a 0-based byte offset; the BFF reads `N` as the offset, kept only within the text.
+
+*Note (ADR-0021, 2026-11-21):* on run, the position arrives already mapped to the raw text; the
+client uses `toSource = identity`.
 
 **Board variables and macros** (`$var`, `${var}`, `$__rate_interval`, `$__interval`) are not PulsusDB
 syntax.
 
 #### T09-010 — Variables are substituted with an offset map
-**MUST** — Before validation, `dash-qctx` MUST substitute each variable or macro with a type-correct
-placeholder (a duration for `[$__rate_interval]`, a string inside quotes, a regex alternation for
-multi-value), keep an offset map, and map errors back to the original text. This mirrors what the BFF
-does before execution ([T07](T07-scene-query-planner.md) §4.1).
+**MUST** — *(Revised 1.7-rc, ADR-0021.)* Before execution, the language module's `Plan` (server)
+substitutes each variable and macro and maps PulsusDB's error position back into the raw text:
+inside an inserted value, to the reference's start; inside a rewrite prefix or suffix, to no
+position. Before validation in the browser (the WASM phase), `lang/context.ts` substitutes
+type-correct placeholders with its own offset map. The browser never substitutes the text it sends.
 
 - **Hover docs.**
   - **Functions and keywords:** from `dash-qdocs`, written by us. Prometheus docs (Apache-2.0) are
@@ -371,6 +388,10 @@ result (lines > 10k, single value, geo fields, state-like values, series count >
 are confirmed or overridden by [T07](T07-scene-query-planner.md)/[T02](T02-vis-engine.md) on result
 shape (VIZ-065). A user override persists with the viewport and suppresses the hint.
 
+The **Rate applied** chip and auto-vis rules 5 and 6 read the server's `planned` facts
+([ADR-0021](../adr/0021-query-planning-is-server-side.md)). The Lezer `shape` gives the pre-run hint
+and the route choice.
+
 ```rust
 pub struct VisHint { pub primary: VisKind, pub alternatives: SmallVec<[VisKind; 4]>, pub rule: u8 /* Table 5-13 row */, pub reason: MsgKey, pub confidence: f32 }
 ```
@@ -388,6 +409,22 @@ pub struct VisHint { pub primary: VisKind, pub alternatives: SmallVec<[VisKind; 
 | LogQL metric query | 14 | bars over time when `count_over_time`, else line |
 | TraceQL `histogram_over_time` / `quantile_over_time` / `rate` | 5 / 14 / 14 | heatmap / line / line |
 | `histogram_quantile(...)`, gauge, other time series | 14 | line |
+
+**v1 (#63, planned on the server by #112).** The server plans the query (ADR-0021): the Explore
+metrics page sends the text as typed with the rate chip (`rate`) and, for an instant query, the
+step; the BFF's `prom.Plan` sends a bare counter selector as `rate(<sel>[w])` and a bare histogram
+bucket selector as `sum by (le) (rate(<sel>[w]))` behind the chip (rows 6 and 5), with the rate
+window `w = max(4 × step, step + S, 4 × S)`: `S` is the scrape interval, 15 s by default until a
+per-binding value exists, so a window always holds at least four scrapes. Whether a name is a
+counter or a histogram comes from the server's per-binding metric types. With the chip off the
+selector is sent as written and drawn as a line. The page reads every fact from the response's
+`planned`: the chip shows when `rate_candidate`, rule 6 and the `/s` unit apply when `rate_applied`,
+rule 5 may apply when `histogram`, and "Sent query" shows `planned.query`. A scalar- or
+string-typed query (the Lezer shape on the main thread; there is no editor worker yet) is sent as
+an instant query. The result confirms the hint: rows 5, 6, 7 and 14 apply in that order
+(`client/src/vis/autovis.ts`), and row 7 applies only to a scalar or an instant result of one series
+with one point. The server refuses a planned text over 64 KiB (413), and a position arrives mapped
+to the editor text (T09-009).
 
 ### 4.7 AI "explain / generate query" hook
 
@@ -416,6 +453,8 @@ without the query (AI-031).
   `--syn-number`, `--syn-duration`, `--syn-func`, `--syn-keyword`, `--syn-op`, `--syn-error`,
   `--syn-var`, `--syn-virtual`), designed for dark, light and high-contrast themes
   ([T08](T08-dom-component-kit.md) §4.7). Query text uses JetBrains Mono (VL-010).
+- **v1 tokens (#63):** `syn-keyword`, `syn-func`, `syn-string`, `syn-number` (durations too),
+  `syn-label`; metric names use `text`, operators and comments `text-muted`.
 - **Bracket matching:** the bracket pair at the caret, plus mismatched-bracket marks. **Occurrence
   highlighting:** the same label name everywhere in the query.
 - **Read-only snippets** (Inspector, ⌘K results, AI dock, Investigation evidence) use the same lexer
@@ -487,6 +526,13 @@ export interface LanguageDeps { /* fields fixed by the implementing issue */ }
 export const LANGUAGES: Readonly<Record<LangId, () => Promise<QueryLanguage>>>;
 ```
 
+v1 (#63): `LanguageDeps` is `{api, queryClient, tenant, window, cache?}` (the BFF client, the
+TanStack client, the tenant, the window shown now, and the suggest cache). A language's `editor(deps)`
+returns its language, highlight and completion source (as `autocomplete` language data, run by the
+host's completion guard). PromQL lives in `lang/promql/`; `LANGUAGES` resolves PromQL and rejects the
+three languages not built yet. `detect` returns 0 until ⌘K detection (INT-038) is built.
+`PromQLEditor` is the PromQL-only M-UI1 `QueryEditor`.
+
 Auto-vis (SRF-030, VIZ-065, §4.6) ships in M-UI1 through `shape`: the language returns a
 `QueryShape`, and the Explore planner applies the Table 5-13 rows to that shape, the metric metadata
 and the result (#63). Only the interface methods are later. `validate` and `format` are added with
@@ -546,13 +592,13 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 
 | Metric | Target | Notes |
 |---|---|---|
-| Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query | incremental CodeMirror parse (PRF-005) |
+| Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query: the editor's update (incremental parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` (#63) | incremental CodeMirror parse (PRF-005) |
 | Keystroke → diagnostics visible | ≤ 50 ms after a 30 ms idle, once the WASM crates land; until then on run | PromQL parse estimated ≤ 0.4 ms in wasm |
 | Local completions | ≤ 16 ms from keystroke | — |
 | Remote completions (cache miss) | ≤ 150 ms p50 / 400 ms p95 after the debounce | BFF L1 hit typical |
 | Builder toggle (project + loss check) | ≤ 16 ms for a 1 KB query | editor worker |
 | Editor-worker cold start (WASM phase: fetch + compile + LR init) | ≤ 300 ms on (b), overlapped with first focus | ~0.45–0.55 MB br estimated (PRF-009: not in core) |
-| Editor chunk (CodeMirror + languages + components) | ≤ 175 KB br, lazy with the Explore and panel-editor routes | [ADR-0014](../adr/0014-typescript-react-web-client.md) §8; not in the initial JS |
+| Editor chunk (CodeMirror + languages + components) | ≤ 175 KB br, lazy with the Explore and panel-editor routes; measured as `editor.ts`, `lang/promql/promql.ts` and the `editor-*` files statically reachable from them (the walk does not pass through other chunks; v1, #63) | [ADR-0014](../adr/0014-typescript-react-web-client.md) §8; not in the initial JS |
 | Max query size | 128 KB (LogQL cap applied to all three) | T09-015 |
 
 These are measured with Playwright typing scripts (per-keystroke frame timing) and a corpus replay of
@@ -560,7 +606,15 @@ These are measured with Playwright typing scripts (per-keystroke frame timing) a
 
 #### T09-015 — Query size cap
 **MUST** — The editor MUST allow editing of any length but MUST pause validation and completion above
-128 KB, with an explanation, and the run action MUST refuse such a query with the same message.
+128 KB, with an explanation, and the run action MUST refuse a query above 128 KB (131 072 bytes) with
+the same message. *(Revised 1.7-rc, ADR-0021.)* The BFF repeats this check and refuses a planned text
+above 65 536 bytes (413). The client's check is a hint.
+
+v1 (#63) measures UTF-8 bytes (`TextEncoder`) on every change: above 131 072 bytes the editor pauses
+completion, and the page explains and refuses Run. Run is also refused, with its own message, when
+the text to **send** (the rate rewrite included) is over the BFF's 64 KiB; the page plans the run only
+once the metric metadata and the chart width are known, so the check uses the text that would be
+sent (#63 Part C).
 
 ## 8. Security, tenancy & RBAC
 
@@ -665,3 +719,12 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.4-rc | 2026-11-19 | Code review r3 of #56: §4.9 and T09-013 rewritten for the M-UI1 builder on the Lezer PromQL tree (TS printer keeping written forms, token-sequence loss check, named refusals for syntax errors, comments and unrepresentable constructs; validity stays with PulsusDB); §0 row and SRF-029 test updated; product names removed from hover-docs guidance and the alternatives table |
 | 1.5-rc | 2026-11-19 | Code review r4 of #56: T09-017 phased by milestone; the formatter check starts when formatting ships (M-UI2 or a confirmed format route) and the WASM validator check in M-UI2; the M-UI1 checks are unchanged; review r8: milestone line separates the M-UI1 LogQL slice (validation on run, label/value completion) from M-UI2 |
 | 1.6-rc | 2026-11-21 | [ADR-0018](../adr/0018-query-language-modules.md): §5.1 QueryLanguage covers highlighting, completion and lookups; static LANGUAGES table; auto-vis stays M-UI1 through `shape`, and only the `validate`, `format` and `visHint` methods are added in M-UI2; T09-001 isolation sentence |
+| 1.7-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §0 the BFF parses PromQL only to plan it; T09-009 note (positions arrive mapped to the raw text); T09-010 revised (the server's `Plan` substitutes and maps positions; the browser substitutes placeholders only for WASM validation); §4.6 rate chip and rules 5 and 6 read the server's `planned` facts; T09-015 revised (the BFF repeats the 128 KB check and refuses a planned text above 65 536 bytes) |
+| 1.8-rc | 2026-11-21 | #63 Part A: §4.6 adds "v1 (#63)": the hint on the main thread from the Lezer tree and metadata, the rate-chip rewrites of bare counters and histograms, instant queries for scalar and string types, and the size limit on the sent text; the VIZ-065 Satisfies row names `unit:explore-plan` and `unit:autovis-table` (T05 §7.1) instead of `unit:vishint-table-5-13`, which T05 does not define |
+| 1.9-rc | 2026-11-21 | #63 Part A: §4.6 rate window of the rate-chip rewrites is `max(4 × step, step + S, 4 × S)` with `S` the scrape interval (default 15 s, per binding later), replacing `4 × step`, which held too few samples at small steps |
+| 1.10-rc | 2026-11-21 | #63 Part B: §0 rows `dash-qlex` (PromQL v1 language and completion over `/prom/*`) and "Editor-worker suggest cache" (v1 key, TTL from settle, LRU, per-kind supersede, tenant generations); §4.3 v1 host (shadow root, composed-path window keys) and composition guard; §4.4 v1 limits and lookup windows; §4.8 v1 syntax tokens; §5.1 v1 `LanguageDeps` fields, `lang/promql/`, `LANGUAGES`, `detect` until INT-038, `PromQLEditor`; T09-015 v1 measurement |
+| 1.11-rc | 2026-11-21 | #63 Part C: §4.3 v1 Explore keys (`Esc` moves the focus to Run); §7 Editor chunk row measures the editor entries and the `editor-*` files they statically reach; T09-015 v1: Run is also refused above the BFF's 64 KiB on the sent text, planned only with the definitive inputs |
+| 1.12-rc | 2026-11-21 | #63 Part C plan 7: §7 "Keystroke → highlighted repaint" row: the 2 ms is the editor's update (parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` |
+| 1.13-rc | 2026-11-21 | #112: the VIZ-065 Satisfies row names `unit:plan-parity`, which replaces `unit:explore-plan` (T05 §7.1) |
+| 1.14-rc | 2026-11-22 | #112: §4.6 "v1" paragraph: the server plans the rate-chip rewrites and checks the sent size (ADR-0021); the page sends the raw text and reads the chip, rules 5 and 6 and the sent query from `planned`; `client/src/explore/plan.ts` is gone |
+| 1.15-rc | 2026-11-22 | #65 Part A: T09-009 reads LogQL's `at byte N` (0-based) as the offset |

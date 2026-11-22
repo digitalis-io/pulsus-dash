@@ -1,0 +1,10 @@
+{
+  "name": "logs-series",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/series", "sanitised": "labels, lines, values, timestamps and query ids replaced; key order and message text verbatim"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/series"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-series-1"},
+    "body": {"status":"success","data":[{"app":"x","pod":"a"},{"app":"x","pod":"b"}]}
+  }
+}

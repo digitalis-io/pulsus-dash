@@ -1,0 +1,10 @@
+{
+  "name": "parse-error-nopos",
+  "provenance": {"synthetic": "PulsusDB's message for this error has no position"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range", "/api/v1/query"], "query": "sum(up"},
+  "response": {
+    "status": 400,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-parse-error-nopos-1"},
+    "body": {"status":"error","errorType":"bad_data","error":"unclosed left parenthesis"}
+  }
+}

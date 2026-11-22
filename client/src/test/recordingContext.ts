@@ -111,6 +111,8 @@ export function recordingContext(): RecordingContext {
     stroke: rec('stroke'),
     fillText: rec('fillText'),
     drawImage: rec('drawImage'),
+    rect: rec('rect'),
+    clip: rec('clip'),
     save() {
       stack.push({ ...state });
       rec('save')();

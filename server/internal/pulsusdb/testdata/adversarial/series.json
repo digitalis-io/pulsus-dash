@@ -1,0 +1,10 @@
+{
+  "name": "adv-series",
+  "provenance": {"synthetic": "adversarial: the binding's secret, Basic token, URL and host planted in every string field (unit:redact-adversarial)"},
+  "match": {"method": "POST", "paths": ["/api/v1/series"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "@SECRET@", "X-Pulsus-Read-Cache": "@SECRET@", "X-Pulsus-Read-Cache-Through": "@SECRET@", "Retry-After": "@SECRET@"},
+    "body": {"status":"success","data":[{"__name__":"up","@SECRET@":"v-@SECRET@"}]}
+  }
+}

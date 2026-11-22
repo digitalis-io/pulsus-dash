@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:inp-rooms`, `bench:rooms-long-tasks` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
@@ -48,12 +48,32 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 |---|---|---|---|---|---|
 | `check-lockfile.ts [dir]` | no findings | findings | unreadable input | `non-exact-version`, `lockfile-version`, `non-registry-resolved`, `missing-integrity` | `scripts/__fixtures__/lockfile/{caret,foreign,no-integrity,v2}` |
 | `check-deps.ts [dir]` | no findings | findings | unreadable input | `not-allowlisted`, `not-in-closure`, `stale-closure`, `forbidden-category`, `licence` | `scripts/__fixtures__/deps/*` |
-| `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>` | built in a temporary directory by `bundle-size.test.ts` |
+| `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>`, `editor-in-initial`, `editor-orphan` | built in a temporary directory by `bundle-size.test.ts` |
 | `token-lint.ts [root]` | no findings | findings | a file does not parse | `colour-literal`, `size-literal`, `duration-literal`, `state-token`, `computed-token-name`, `suppressed-token-rule` | `scripts/__fixtures__/token-lint/bad` (and `good`, which must pass) |
 | `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`, including `engine/crates/dash-tokens/src/tokens.rs`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`, a stale `tokens.rs`) |
 | `engine-fixtures.ts [--write]` | written / up to date | a fixture is stale (`error[engine-fixtures] engine/fixtures/<file> is stale`) | — | — | `engine-fixtures.test.ts` (a fresh run equals the committed files) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
+
+### Bundle budgets
+
+`bundle-size.ts` (`ci:bundle-size`, PRF-009, PRF-033) reports one row per budget class:
+
+| Class | Measured | Budget (brotli) |
+|---|---|---|
+| `initialJs` | the entry and the initial route module with their static imports | 200 000 |
+| `initialCss` | the CSS of those chunks | 30 000 |
+| `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
+| `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
+| `fonts`, `totalExceptEngine` | the fonts; every file | 150 000; 1 000 000 |
+
+Every chunk holding an editor module is named `editor-<hash>.js` by `vite.config.ts`, so the
+closure and `e2e:lazy-load` can name the editor's files. `editor-in-initial` fails when a closure
+file is in the initial JS; `editor-orphan` fails when an `assets/editor-*.js` file is outside the
+closure (named as editor code, but no editor entry reaches it). The editor entries are also
+`required.lazyModules`, so a build that drops them fails `missing-artefact`. The CI proof that the
+editor row fails over budget is the branch `gate-proof/63-editor-chunk` (budget `editorChunk`
+lowered to 50 000), run as a draft PR whose `check` job must fail on `over-budget:editorChunk`.
 
 `pack-assets.ts` is not a checker: it packs the build the BFF embeds
 ([Serving the client](../server/README.md#serving-the-client)).
@@ -64,6 +84,9 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 
 ## Tests
 
+- **Shared fixtures.** The decoder and step tests import `wire/fixtures/json/*.json` with `?raw`;
+  `vite.config.ts` allows `../wire` for that (`server.fs.allow`). See
+  [testing against PulsusDB](testing-pulsusdb.md#shared-fixtures-wirefixtures).
 - **Unit and component tests** (`npm test`) sit next to the code as `*.test.ts(x)`. Component tests
   render the whole app with `src/test/renderApp.tsx` (`renderApp(url, { api, now, timeZone,
   queryClient, wrapper })`; `wrapper` provides, for example, a fake chart engine) on a memory router, with the stub API and a fixed clock
@@ -77,19 +100,25 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   [the client page](../client/README.md#keyboard-coverage).
 - **`bench:inp-rooms`** (`e2e/perf-inp-rooms.spec.ts`, Chromium only, PRF-033, T05 §4.3): scripted
   pointer and keyboard interactions on the board room (Appendix C-A §A.6 of plan #61 Part C), in
-  four documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
+  five documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
   times both ways), `/t/demo/board/b-3` (a variable chip, typing and Apply; `+ Filter`, Add and
   Remove filter; three times each), `/t/demo/board/b-1` again (Edit board, Add section, Done
   and Discard changes, three times), and `/t/demo/board/b-1` a third time with the panel editor
   scenario of #90 (`e2e/boardEditorScenario.ts`, 43 clicks and key presses: Edit board, then three
   rounds of opening the editor from the Panel menu, typing in Title, picking a query language,
-  typing in Query, picking a visualisation, and Done). An init script observes the Event Timing entries (`event`,
+  typing in Query, picking a visualisation, and Done), and `/t/demo/board/b-1` a fourth time with
+  the chart gestures of #93 (`e2e/chartGestureScenario.ts`, at most 14 interactions, all on
+  `Request rate`: three rounds of ten wheels, eight pinch wheels with `Control`, eight `Shift`
+  wheels until **Reset Y axis** shows, a click on it, three left drags of 150 px, three right drags
+  of 120 px and a double-click; each commit is awaited through the URL; wheels are not Event Timing
+  interactions). An init script observes the Event Timing entries (`event`,
   `durationThreshold` 16) in every document the page loads and flushes them before each
   navigation; `scripts/inp.ts` (`aggregateInp`, `gateFailures`) computes **INP per document**
   (each interaction once, at its longest entry; the durations padded with zeros to the
   document's scripted count, then the `floor(n / 50)`-th largest, so one outlier per 50
   interactions of that document is ignored), never pooled across documents. The test always
-  checks four documents, each with its scripted count, and no page error. The 200 ms limit
+  checks five documents, each with its scripted count (document 5's count is an upper bound,
+  `CHART_SCENARIO_N`), and no page error. The 200 ms limit
   applies per document; 100 ms is the target. On CI's shared runners the check is **report only**
   until the reference lab exists (#68, T05-006): a document above 200 ms adds a `warning`
   annotation. With `INP_GATE=enforce` (the reference lab, and local gate proofs) any document above
@@ -100,24 +129,28 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   (`INP_GATE=enforce npx playwright test perf-inp-rooms --project=chromium` for the blocking form).
 - **`bench:rooms-long-tasks`** (`e2e/perf-rooms-long-tasks.spec.ts`, Chromium only, PRF-005, T05
   §4.3, T08 §7; #90): main-thread long tasks during scripted room interactions, from a Chromium
-  trace. Its first scenario is the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
-  `bench:inp-rooms`) on `/t/demo/board/b-1`, with no fake clock. Around the scenario it records a
+  trace. Its scenarios are the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
+  `bench:inp-rooms`) and, in a second test, the chart gestures (`e2e/chartGestureScenario.ts`, as
+  document 5, #93), each on `/t/demo/board/b-1` with no fake clock. Around the scenario it records a
   trace with the categories `devtools.timeline`, `disabled-by-default-devtools.timeline` and
   `blink.user_timing`; each step leaves a `step:<label>` mark. `scripts/longTasks.ts` reads it:
 
   | Rule | Definition |
   |---|---|
   | Main thread | the `CrRendererMain` thread with the most `EventDispatch` events; none → error `no renderer main thread` |
-  | Inputs | its `EventDispatch` events of type `click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup` or `input`; none → error `no input` |
+  | Inputs | its `EventDispatch` events of the `inputs` option's types: by default `DEFAULT_INPUTS` (`click`, `keydown`, `keyup`, `keypress`, `pointerdown`, `pointerup`, `mousedown`, `mouseup`, `input`); the chart test passes `CHART_INPUTS`, which adds `wheel`, `pointermove`, `mousemove`, `contextmenu` and `dblclick`; none → error `no input` |
+  | Counts | `counts`: the number of input `EventDispatch` events per type in the window |
   | Window | from the first input's start to the last input's end |
   | Long task | a `RunTask` on the main thread that overlaps the window and lasts over 16 ms wall |
   | Thread time | the task's `tdur`; when no task in the window has one, error `no thread time` (the CI check cannot be judged); a single task without it counts as failing when over 50 ms wall |
   | Label | the last `step:` mark at or before the task, else `unlabelled` |
 
-  It writes `test-results/bench-rooms-long-tasks.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
-  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `mode`, `unit`) and a
-  `bench:rooms-long-tasks` annotation. It always asserts at least 28 clicks and 15 key presses, no
-  page error, and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
+  The editor test writes `test-results/bench-rooms-long-tasks.json` and the chart test
+  `test-results/bench-rooms-long-tasks-chart.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
+  with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `counts`,
+  `scenario`, `mode`, `unit`), each with a `bench:rooms-long-tasks` annotation naming its scenario.
+  The editor test asserts at least 28 clicks and 15 key presses; the chart test at least 40 wheels,
+  8 pointer downs and 3 context menus. Both assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
   interim trace check. That check **blocks merge** on CI, in the `e2e` job's Chromium leg (the
   spec is Chromium only, so no workflow change). With `LONG_TASK_GATE=enforce` (the reference lab,
   #68, and local gate proofs) it also asserts `over16` 0: no task over 16 ms wall. Without it, each
@@ -145,9 +178,32 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     rerun with `PW_UPDATE_GOLDENS=1`, the Chromium job writes new baselines and uploads them as the
     `e2e-screenshots` artefact; download it, review the images and commit them to
     `client/e2e/__screenshots__/`, then remove the label.
-  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a drag on `line-1` from 0.1–0.4 brush units
-    inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
-    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it.
+  - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a right drag on `line-1` from 0.1–0.4 brush
+    units inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
+    `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it; an
+    `Alt`+left drag over the same span gives the same window (#93; a left drag now pans).
+  - **`e2e:chart-zoom`** (`e2e/chart-zoom.spec.ts`, Chromium, Firefox and WebKit; #93). Charts below
+    the fold are scrolled into view without a wheel first.
+    - Z1: ten wheels at 30 % of `line-1`'s plot keep the time under the pointer within 1 px in the
+      committed URL window; Back restores 12:00–13:00 (one entry per gesture; when a loaded runner
+      delivers two wheels more than 300 ms apart, Back walks each entry).
+    - Z2: a wheel over the intro and one over the value-axis band scroll the page and leave the URL;
+      400 ms later a wheel over the plot zooms and does not scroll.
+    - Z3: a wheel over the plot within the scroll latch of a page wheel scrolls the page; 400 ms
+      later it zooms (an attempt whose wheels arrive 250 ms or more apart is repeated).
+    - Z4: `Control` + fractional wheels zoom time only; `Control` + whole steps pins the value axis;
+      the page never zooms (WebKit's driver delivers whole steps: the accepted misclassification).
+    - Z5: `Shift` + wheel pins the value axis without a URL change; a wheel then changes the URL;
+      **Reset Y axis** unpins it.
+    - Z6: a 200 px left drag moves the window by 200 px of time, width 1 h.
+    - Z7: a right drag gives 12:20–12:25; the `contextmenu` events on the plot (drag, click) are
+      prevented and the one on the value-axis band is not.
+    - Z8: a drag on the time-axis band moves the window; a drag on the value-axis band pins the value
+      axis; a double-click there unpins it.
+    - Z9: on `/t/demo/board/b-3` a wheel over `Edge p99` moves every panel's window to the URL; a
+      `Shift` wheel pins only `Edge p99`; Back restores every slider's window.
+    - Z10: five wheels on `bars` leave its `data-plot` unchanged through each preview, the commit and
+      the refetch, and the time under the pointer within 1 px.
   - **`e2e:chart-hover`** (`e2e/chart-hover.spec.ts`): the `line-gaps` tooltip lists the time and the
     three series with the values the generator gives; on `line-50` a pointer sweep down the plot
     shows every one of the 50 series; on `bars` all five levels at every height.
@@ -156,21 +212,55 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     p50 and p95 are written to `test-results/bench-interim-line.json` and added as an annotation.
     There is no threshold. The page is opened without Playwright's fake clock, which replaces the
     User Timing methods.
+  - **`bench:frame-interim-heatmap`** (`e2e/perf-heatmap-draw.spec.ts`, Chromium only, report only
+    until #68, skipped under `E2E_SERVER=preview`): on the Vite dev server (5174) the page imports
+    the engine's `draw.ts`, `palette.ts` and `dev/synth.ts` and draws a 10 000 × 200 heatmap
+    (`synthHeatmap`, seed 20261120, every 97th cell NaN) into a 1 200 × 400 `OffscreenCanvas`: 10
+    warm-up draws, then 50 timed with `performance.now()`. It asserts 50 samples and a heatmap
+    summary, writes p50 and p95 to `test-results/bench-interim-heatmap.json` and adds an
+    annotation. There is no threshold on shared CI. `HEATMAP_BENCH_NAN=0` draws the same fixture
+    without NaN cells. A change to the interim heatmap draw path (`columns.ts`, `draw.ts`) records
+    a local before/after run in its PR: 3 runs each with the base's files and the branch's, with
+    and without NaN cells; the median after-p95 is at most 1.10 × the median before-p95.
+
+- **`bench:editor-keystroke`** (`e2e/perf-editor-keystroke.spec.ts`, Chromium only, PRF-005,
+  T09-003): on the stub build, 100 keys (` or up`, cycled, after 20 warm-up keys) typed at the end
+  of a 1 KB PromQL query in Explore, with no fake clock (it would replace `performance.now`).
+  - **Editor update (T09-003).** Before the page loads, the spec installs
+    `window.__pulsusEditorProbe`; the editor (`src/editor/probe.ts`, `probedDispatch`) then times
+    each `view.update(trs)`. A key's work is the sum of its doc-changing updates minus the median of
+    30 samples without a key. Without the probe, CodeMirror's own dispatch runs unchanged.
+  - **Long tasks (PRF-005).** A Chromium trace of the 100 measured keys is read by
+    `scripts/longTasks.ts` (the `bench:rooms-long-tasks` parser): the page's renderer main thread,
+    from the first to the last input.
+  - **Always (blocking in CI's `e2e` Chromium leg):** 100 samples, every key with an editor update,
+    at least 100 keydowns in the trace, the final text length, and `ciOver` 0 (T05 §4.3's interim
+    check: a task fails only over 50 ms wall **and** over 16 ms thread time, or without thread
+    time).
+  - **`EDITOR_BENCH_GATE=enforce`** (the reference lab, #68, and the local D13 proofs) also fails on
+    an editor-update p95 over 2 ms or any task over 16 ms wall (`over16`); otherwise each breach is a
+    `warning` annotation.
+  - Report: `test-results/bench-editor-keystroke.json` (`samples`, `overheadMs`, `p50`, `p95`,
+    `max`, `longestTaskMs`, `longTasks`, `ciOver`, `windowMs`, `mode`).
+- **`e2e:editor-ime`** (`e2e/editor-ime.spec.ts`, Chromium only, T09-005): a CDP IME composition in
+  the Explore editor opens no completion popup while it lasts; the popup follows once it commits.
 
 ### End-to-end tests
 
-`npm run e2e` (or `make e2e`) starts three servers (`client/playwright.config.ts`):
+`npm run e2e` (or `make e2e`) starts four servers (`client/playwright.config.ts`):
 
 | Server | Command | Used by |
 |---|---|---|
+| PulsusDB fake on `localhost:4190` (first; ready on `/__fake/requests`) | `tools/e2e/fake.sh 4190` | both BFFs' data source; the specs read its request records through `e2e/fake.ts` ([control mode](testing-pulsusdb.md#in-the-e2e-suite-control-mode)) |
 | stub-mode BFF on `localhost:4173` | `tools/e2e/serve.sh stub 4173` | every existing spec (`baseURL`): the stub's seeded boards and tenants, served with the real headers; and `e2e:bff-headers` |
 | http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap`; `e2e:board-edit-save`, `e2e:board-tall` and `e2e:board-sections` (`board-edit.spec.ts`): boards created, laid out, saved and reloaded through the boards API, and collapsed sections, their URL overrides and saved state; `e2e:board-prefs` (`board-prefs.spec.ts`): Starred and Recent across two tabs and a fresh browser context (each test creates its own uniquely named board and deletes it in `finally`) |
 | Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
 
 Before a run:
 
-1. `make e2e-build` builds the two binaries, `build/e2e-stub/pulsus-dash` and
-   `build/e2e-http/pulsus-dash` (version `0.1.0-e2e`), each with its client embedded.
+1. `make e2e-build` builds the two BFF binaries, `build/e2e-stub/pulsus-dash` and
+   `build/e2e-http/pulsus-dash` (version `0.1.0-e2e`), each with its client embedded, and the
+   fake, `build/e2e-fake/pulsus-fake`.
 2. Set `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` to the `pulsus_app` and `pulsus_owner` URLs of a
    `pulsus_e2e` database on any PostgreSQL 15 or 16 where `server/deploy/postgres-roles.sql` has
    been applied (Part C's development stack is one way to get one), for example
@@ -179,13 +269,22 @@ Before a run:
 `tools/e2e/serve.sh MODE PORT` runs from the repository root. It needs the binary (else `run make
 e2e-build first`) and both variables (else `E2E_PG_APP_URL and E2E_PG_OWNER_URL must be set`). It
 sets the `PULSUS_DASH_*` variables (Postgres references to those two variables, datasource
-`http://localhost:9` with slug `demo`, listen `localhost:PORT`, text logs), runs `migrate`
-(idempotent; the two BFFs serialise on its lock), then `serve`. Locally an already running server
-on a port is reused.
+`http://localhost:4190` (the fake) with slug `demo`, listen `localhost:PORT`, text logs), runs
+`migrate` (idempotent; the two BFFs serialise on its lock), then `serve`. Locally an already
+running server on a port is reused. `tools/e2e/fake.sh PORT` needs `build/e2e-fake/pulsus-fake`
+(else `run make e2e-build first`) and serves `client/e2e/transcripts` with `--generate=false
+--control`.
+
+The data-source binding is seeded once, when the database is first migrated. A local e2e database
+seeded before #63 still points at `http://localhost:9`, and the sidebar then reads `Unreachable`:
+drop and recreate it (`DROP DATABASE pulsus_e2e;` then `CREATE DATABASE pulsus_e2e OWNER
+pulsus_owner;`). CI creates `pulsus_e2e` per job.
 
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
-`bff-http` and `dev-proxy` run on Chromium only.
+`bff-http`, `dev-proxy`, `editor-ime` and `perf-editor-keystroke` run on Chromium only. The Explore
+specs that read the fake's request records (`e2e/explore-metrics.spec.ts`) run on the http-mode BFF
+and use one time window per browser, so parallel projects never count each other's requests.
 
 - **`e2e:bff-headers`** (`bff-headers.spec.ts`): `GET /` has `Content-Security-Policy` equal to
   `CSP` from `config/headers.ts` and every other document header; the first `/assets/*.js` the page
@@ -202,14 +301,16 @@ preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. 
   see [the client page](../client/README.md#stubapi).
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
-  shows `Data source: demo · Not checked`; no console errors. Through the dev server, About shows
+  shows `Data source: demo · Connected`, and the fake lists at least one completed
+  `/api/v1/status/runtimeinfo` request answered by the `runtimeinfo` transcript (T06-025); no
+  console errors. Through the dev server, About shows
   the same version.
 
 ## CI
 
 `.github/workflows/client.yml` runs on pull requests that touch `client/`, `design/tokens.toml`,
 `engine/fixtures/`, `engine/crates/dash-tokens/src/tokens.rs` (both checked by `npm test` and
-`tokens -- --check`), `server/`, `api/`, `tools/e2e/`, `Makefile` or the workflow (opened, synchronised, reopened, and
+`tokens -- --check`), `server/`, `api/`, `tools/e2e/`, `wire/` (the shared fixtures), `dev/pulsus-fake.*`, `Makefile` or the workflow (opened, synchronised, reopened, and
 labelled, so adding `golden-update` reruns it), and on pushes to `main`. Actions are pinned by commit SHA, the token is read-only and
 no secrets are used.
 
@@ -309,7 +410,8 @@ described in [the server page](../server/README.md) and [the database page](../s
 | Tool | Version | Where it is fixed |
 |---|---|---|
 | Go | 1.27.4 | `server/go.mod` (`go 1.27.0`, `toolchain go1.27.4`). CI installs exactly 1.27.4 (`setup-go` `go-version`, because `go-version-file` reads only the `go` line), sets `GOTOOLCHAIN=local` and `GOFLAGS=-mod=readonly`, and fails if `go env GOVERSION` differs from the `toolchain` line. Change both together |
-| oapi-codegen, sqlc, govulncheck | v2.8.2, v1.31.1, v1.9.0 | `tool` directives in `server/go.mod`; run as `go -C server tool <name>` |
+| oapi-codegen, sqlc, govulncheck, go-licenses | v2.8.2, v1.31.1, v1.9.0, v2.0.1 | `tool` directives in `server/go.mod`; run as `go -C server tool <name>` (`make go-licenses` builds go-licenses into `build/bin`) |
+| Python | 3.12 or later, standard library only | the `ci:no-pulsusdb-host` checker; CI uses the runner's `python3` |
 | golangci-lint | 2.15.0 | `make tools-ci` downloads it into `build/bin` and verifies its sha256 |
 | squawk | 2.72.0 | `make tools-ci`, same |
 | openapi-typescript | 7.13.0 (with TypeScript 5.9.3) | `tools/api-gen/package.json` and its lockfile |
@@ -326,22 +428,91 @@ cgo.
 | Target | What it does | Gate |
 |---|---|---|
 | `make build` | `client-build` (`VITE_API_MODE=$(API_MODE)`, `API_MODE ?= http`, `VITE_GIT_SHA=$(GIT_SHA)`), `assets-pack` (a new signing key in `build/keys/`, then `pack-assets.ts` into `server/internal/gateway/static/dist/`), then `go build -tags embedassets` with the public key into `$(OUT)` (`OUT ?= build/pulsus-dash`); see [Serving the client](../server/README.md#serving-the-client) | build |
-| `make e2e-build` | `make build` twice, `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e` | — |
+| `make e2e-build` | `make build` twice, `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e`; and the PulsusDB fake, `CGO_ENABLED=0 go build -trimpath` of `./cmd/pulsus-fake` into `build/e2e-fake/pulsus-fake` | — |
 | `make e2e` | `npm --prefix client run e2e` | `e2e:*` |
 | `make server-build` | builds `build/pulsus-dash` without the client (`VERSION ?= 0.1.0-dev`); its `serve` refuses to start unless `--api-only` | — |
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |
 | `make api-gen-check` | `server/scripts/api-gen-check.sh`, then its self-test `server/scripts/test-api-gen-check.sh` | `ci:api-gen` |
 | `make go-mod` | `go mod verify` and `go mod tidy -diff` | `ci:go-mod` |
-| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files) | `ci:go-lint` |
+| `make go-lint` | golangci-lint 2.15.0 with `server/.golangci.yml` (depguard, errcheck, forbidigo, gosec, govet, ineffassign, staticcheck, unused; also over `itest` files), then the depguard self-test `server/scripts/check-depguard-fixture.sh` | `ci:go-lint`, `ci:depguard` |
 | `make go-test` | `go test -race ./...` | `ci:go-test` |
 | `make govulncheck` | `govulncheck ./...` | `ci:govulncheck` |
 | `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
-| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations` |
+| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)), with the PulsusDB fake in-process ([testing against PulsusDB](testing-pulsusdb.md)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`; `itest:pulsusdb-contract` runs only with `DASH_CONTRACT_PULSUSDB_URL` and is skipped in CI |
+| `make cpu-instr` | `server/scripts/cpu-instr.sh`: writes the workload bodies first (outside valgrind, so the input is not counted), then runs the BFF workloads W1, W2 and W3 under cachegrind, minus an empty run that reads the same input, against `server/testdata/bench/cpu-instr.json`; more than +3 % fails, and so does a Go or valgrind version other than the baseline's (`rebaseline`). Needs valgrind | `bench:cpu-instr` |
+| `make cpu-instr-update` | rewrites the baseline; run it in CI and commit the result with the change that moves it | — |
+| `make bench-bff` | the two time budgets `TestBudgetPromqlDecode` and `TestBudgetBffOverhead`: with `REFERENCE_LAB=1` they fail over 30 ms per 10⁶ points, or over 5 ms (p50) and 20 ms (p99) of BFF overhead; without it they skip ([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)) | `bench:promql-decode`, `bench:bff-overhead` (reference lab) |
+| `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
+| `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
+| `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)) | — |
+| `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
+| `make itest-local-selftest` | `dev/itest-local-selftest.sh`: a failed `up --wait` fails `itest-local`, runs no test and still cleans up (no containers) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
-| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build` | — |
+| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host itest-local-selftest` | — |
 
 The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
-`chi` and `internal/gateway/api` inside `internal/gateway`.
+`chi` and `internal/gateway/api` inside `internal/gateway`. Two forbidigo rules (`ci:depguard`,
+T06-005) keep outbound HTTP and upstream decoding in place:
+
+- `pulsusdb-only` forbids constructing an HTTP client, transport or request (`http.Client`,
+  `http.Transport`, `http.DefaultClient`, `http.Get`, `http.NewRequestWithContext`, …) outside
+  `internal/pulsusdb`. Excluded: test files, the T19-002 self-check
+  (`internal/gateway/selfcheck.go`) and its client in `cmd/pulsus-dash/serve.go`.
+  `internal/notify`, `ai`, `auth` and `telemetry` get their exclusions with the issues that create
+  them.
+- `pulsusdb-decoder` forbids `json.Unmarshal`, `json.NewDecoder`, `json.RawMessage` and
+  `(*json.Decoder).Decode` inside `internal/pulsusdb` (tests excepted). The invariant is that every
+  decoder of PulsusDB bodies yields strings only through the redactor; today the one decoder is the
+  tokenizer `updec.go`, and a later Arrow decoder joins it behind the same seam ([PulsusDB page](../server/pulsusdb.md#upstream-text-is-untrusted-t06-024)).
+
+**Depguard self-test.** `server/scripts/check-depguard-fixture.sh` proves that the rules are
+enforced (T05-002). For each fixture in `server/testdata/depguard/`, it copies `server/` into a
+temporary directory, adds the fixture as `internal/<package>/zz_fixture.go` and lints that package
+there. The lint must fail with the rule's message:
+
+| Fixture | Package | Uses | Must fail with |
+|---|---|---|---|
+| `pgx_outside_store.go.txt` | `core` | `github.com/jackc/pgx/v5` | `pgx is used only in internal/store (T11-023, ADR-0015)` |
+| `chi_outside_gateway.go.txt` | `core` | `github.com/go-chi/chi/v5` | `the router is used only in internal/gateway (T06-001)` |
+| `http_client_outside_pulsusdb.go.txt` | `core` | `http.DefaultClient` | `pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)` |
+| `json_outside_updec.go.txt` | `pulsusdb` | `json.Unmarshal` | `pulsusdb-decoder: every upstream body decoder yields strings only through redact; encoding/json does not (§4.9)` |
+
+If a fixture passes, it prints `depguard fixture <name> passed; rule <rule> is not enforced` and
+exits 1. If the lint fails for another reason, it prints the output and `depguard fixture <name>
+failed without "<desc>"`. It never writes inside the checkout and checks that `git status` is
+unchanged.
+
+### Licences (`ci:go-licenses`)
+
+The server is AGPL-3.0 (decision D3), so every module linked into it must carry a compatible
+licence ([T18-026](../../designs/technical/T18-security.md)). `server/scripts/go-licenses.sh` runs
+`go-licenses check ./cmd/pulsus-dash` with this allowlist:
+
+`MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1, LGPL-3.0`
+
+Anything else fails: GPL-2.0-only, source-available licences (BSL, SSPL, Elastic, Commons Clause)
+and any licence go-licenses cannot recognise. The project's own module is ignored. Only modules in
+the binary count: tools pinned in `go.mod` are not linked into it.
+
+It then saves the licence files of those modules into `build/licenses/` and writes
+**`build/THIRD_PARTY_NOTICES.txt`**: the lines `Pulsus Dash third-party notices` and
+`Generated by make go-licenses from the Go modules linked into pulsus-dash.`, then each `LICENSE`,
+`LICENCE`, `COPYING` or `NOTICE` file (any case, with an optional suffix such as `.txt`), in byte
+order of its path, under a `== <module path>/<file> ==` header. It fails with `notices file is
+empty` if no file was found. CI uploads the file as the artifact `third-party-notices` (14 days);
+release packaging that ships it comes later.
+
+The self-test `server/scripts/check-go-licenses-fixture.sh` runs the gate's own check,
+`go-licenses.sh --check DIR PATTERN IGNORE [EXTRA]`, on the fixture module
+`server/testdata/licences/gpl`. The allowlist exists only in `go-licenses.sh`, so a change to it is
+what the self-test sees: adding `GPL-2.0` to it makes `make go-licenses` fail. That module links
+`example.com/gpl-dep`, whose `LICENSE` is the SPDX GPL-2.0-only text. The check must fail and name
+`example.com/gpl-dep` and `GPL-2.0`. A control run that adds `GPL-2.0` on top of the allowlist
+(`EXTRA`) must pass, which shows the failure comes from the licence. Both scripts work from any directory in the
+repository.
+
+When a new dependency fails the check, do not widen the allowlist: replace the dependency, or
+raise it as a design question (D3).
 
 ### Generated code (`ci:api-gen`)
 
@@ -363,13 +534,37 @@ real checkout's `git status` and generated files are unchanged.
 
 `.github/workflows/server.yml` runs on pull requests that touch `server/`, `api/`,
 `tools/api-gen/`, `client/` (the client is embedded, and the packer is `client/scripts/`),
-`design/tokens.toml`, `tools/e2e/`, `Makefile` or the workflow, and on pushes to `main`. The
-token is read-only, actions are pinned by commit SHA and no secrets are used.
+`design/tokens.toml`, `tools/e2e/`, `Makefile`, `dev/`, `wire/` (the shared fixtures), `tools/no-pulsusdb-host/` or the
+workflow, and on pushes to `main`. The token is read-only, actions are pinned by commit SHA and no
+secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
-| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `npm --prefix client ci` and `make build`, then `build/pulsus-dash version` → `tools/e2e/integrity-gate.sh` (`ci:asset-integrity`) |
+| `check` | `npm --prefix tools/api-gen ci` → `check-lockfile.ts tools/api-gen` (`ci:lockfile`) → `npm audit --audit-level=critical` and `npm audit signatures` for `tools/api-gen` → `make tools-ci` → `go-mod` → `api-gen-check` → `go-lint` → `go-test` → `govulncheck` → `migrations-lint` → on pull requests, the append-only check: `git diff --name-status --diff-filter=MDR origin/<base>... -- server/migrations` must print nothing, else `migrations are immutable once merged (T11-012)` (`ci:migrations`) → `npm --prefix client ci` and `make build`, then `build/pulsus-dash version` → `tools/e2e/integrity-gate.sh` (`ci:asset-integrity`) → `make go-licenses` (`ci:go-licenses`) → upload `build/THIRD_PARTY_NOTICES.txt` as artifact `third-party-notices` (14 days) |
+| `dev-stack` | the same Go setup and toolchain check → `make dev-smoke` and `make itest-local-selftest` (`ci:dev-stack`) → `ci:fake-image`: `docker build -f dev/pulsus-fake.Dockerfile`, run it on port 59091, and within 10 tries 1 s apart `GET /api/v1/status/runtimeinfo` must answer with `X-Pulsus-Query-Id: fake-runtimeinfo-1` and a body with `"rollupLevels"` → `make itest-local` (every itest on PostgreSQL 15 and 16 from `dev/compose.yaml`) → always: no container of project `pulsus-dash-itest` is left, else `itest-local left containers`. Docker Compose v2 comes with the runner image |
 | `itest` | PostgreSQL 16.16 and 15.20 service containers (pinned by digest, ports 55432 and 55433) → `make itest` → Node, `npm --prefix client ci`, `make build` → `smoke database` (roles and a `pulsus_smoke` database) → `tools/e2e/built-binary-smoke.sh` (F1) |
+
+### Bench CI (`bench:cpu-instr`)
+
+`.github/workflows/bench.yml` runs on **every** pull request (no `paths` filter: T05-006 gates
+PR-level CPU regressions by instruction counts) and on pushes to `main`. Its one job installs Go
+1.27.4 and the Ubuntu 24.04 `valgrind` package and runs `make cpu-instr`. Instruction counts are
+stable across runners, unlike time; the time budgets run only on the reference machines
+([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)).
+
+| Workload | What one run counts |
+|---|---|
+| W1 | a 1 000 × 1 000 matrix decoded, placed on the grid and encoded (`POST …/promql/range`) |
+| W2 | 1 000 sequential range requests for a 1-series, 60-point matrix |
+| W3 | one 5 000-entry log page (50 streams of 100 entries, 120-byte lines, a tie every 10th entry) decoded, paged and encoded by `POST …/logql/range` with `limit` 4 999 |
+
+Each count is the workload's run minus an empty run with the same file reads. The baseline
+`server/testdata/bench/cpu-instr.json` holds one count per workload with the Go and valgrind
+versions. A workload missing from it fails with `no baseline for W3: rebaseline`, and a new Go or
+valgrind version fails with `rebaseline`. To rebaseline, run `make cpu-instr-update` in CI (a
+branch whose workflow runs it, as the `bench:cpu-instr` baseline runs of #62 and #65 did) and
+commit the file it writes with the change that moves it; a count more than 10 % below its
+baseline prints a hint to do so.
 
 ### `ci:asset-integrity`
 
@@ -400,3 +595,113 @@ tenant binding "default"`), starts `serve` on `localhost:18080`, and checks: `ms
 verified" files=<n>` on stderr; `/readyz` 200 within 30 s; `GET /` (HTML) 200 with the CSP and
 `Cross-Origin-Embedder-Policy: require-corp`; the first `assets/*.js` of `/asset-manifest.json`
 served `Content-Encoding: br`; and exit 0 on SIGTERM.
+
+<a id="ci-no-pulsusdb-host"></a>
+
+## ci:no-pulsusdb-host
+
+The private PulsusDB host must never appear in a tracked file
+([T19-010](../../designs/technical/T19-deployment.md)). The real base URL lives only in the
+untracked `dev/local.env` ([dev stack page](dev-stack.md#devlocalenv)).
+`tools/no-pulsusdb-host/check.py` (Python standard library only) enforces this on every pull
+request. It needs no host name. CI rejects:
+
+- any non-local host containing `pulsusdb` in a URL;
+- any non-local URL used as a datasource value.
+
+No host name is stored in the repository or in its secrets.
+
+```bash
+make no-pulsusdb-host                      # self-test, then scan every tracked file
+make no-pulsusdb-host ARGS=--show-paths    # the same, naming the files (local only)
+python3 -I tools/no-pulsusdb-host/check.py [--root DIR] [--show-paths]
+```
+
+By default it scans every file `git ls-files` lists; nothing is excluded. `--root DIR` scans a
+directory instead (the self-test uses it). Symlinks are never followed: a link is scanned as its
+target path, which is what Git stores.
+
+### Rules
+
+| Rule | Applies to | Finds |
+|---|---|---|
+| `forbidden-host` | every file: text, binary, symlinks and the checker's own fixtures | a forbidden host anywhere in the bytes, ignoring ASCII case, in any form (URL, bare name, inside a word); local runs only |
+| `forbidden-host-in-path` | every file | a forbidden host in the file's path; local runs only |
+| `non-local-pulsusdb-url` | text files (no NUL byte in the first 8 KiB), not symlinks, not under `tools/no-pulsusdb-host/testdata/` | a non-local host that is either (a) the host of an `http` or `https` URL containing `pulsusdb`, or (b) the value of a PulsusDB datasource key, see below |
+
+A **datasource key** is YAML `url:` directly under a `datasource:` key; `datasource.url`;
+`PULSUS_DASH_DATASOURCE_URL`; or `datasource_url` or `DatasourceURL`, each followed by `:` or `=`.
+Its value is checked only when it is an `http` or `https` URL.
+
+**Forbidden hosts** apply only to local runs. They are the entries of the optional
+`DASH_FORBIDDEN_HOSTS` variable, comma- or newline-separated, trimmed, lower-cased, numbered from
+1 (an entry written as a URL is reduced to its host), then the host of `PULSUS_DASH_DATASOURCE_URL`
+if it is set and not local, as the last entry. `make no-pulsusdb-host` loads `dev/local.env` first,
+so a local run also forbids your real host in any form, even without `pulsusdb` in it. CI sets
+neither variable, and if neither is set the scan runs the URL rule alone, without a warning.
+
+**Local hosts**, which the URL rule accepts, are: `localhost` and names ending in `.localhost`;
+loopback addresses (`127.0.0.0/8` and `::1` in any spelling, with or without a zone); names ending in
+`.example`, `.test` or `.invalid`; `example.com`, `example.net`, `example.org` and their subdomains;
+and the compose service name `pulsus-fake`. A single-label name such as `pulsusdb` is not local.
+Documentation and examples should use `pulsusdb.example` or `localhost`.
+
+The URL rule reads the host from the authority: userinfo, port, brackets around IPv6, an IPv6 zone
+(`%25eth0` or `%eth0`) and a trailing dot are removed, and case is ignored. It never matches SQL by
+table name: a binding URL in SQL is caught only by the `pulsusdb` rule or the forbidden-host list.
+In YAML, blank and comment lines between `datasource:` and `url:` are skipped.
+
+### Output and identifiers
+
+The checker never prints a path, a host, the text of a line, an argument or a git message. A file is
+`F<i>`, its 1-based position in the sorted list of scanned files (`git ls-files` in byte order). For
+example:
+
+```text
+error[forbidden-host] F12:3 (entry 1)
+error[forbidden-host-in-path] F40 (entry 2)
+error[non-local-pulsusdb-url] F7:2
+no-pulsusdb-host: 3 finding(s) in 506 files; run make no-pulsusdb-host ARGS=--show-paths locally to see paths
+```
+
+`:3` is the line, and `entry 1` is the first forbidden host. To find the file, run
+`make no-pulsusdb-host ARGS=--show-paths` locally: it prints the relative path instead of `F<i>`,
+with control characters escaped as `\xNN` and `::` written as `: :`. `--show-paths` is refused
+when `CI` is set. A clean run ends with `no-pulsusdb-host: clean (<m> files)`.
+
+### Exit codes and errors
+
+| Exit | When | Message (stderr) |
+|---|---|---|
+| 0 | no finding | — |
+| 1 | findings (on stdout), and none of the errors below | — |
+| 2 | invalid arguments | `error[usage] invalid arguments` |
+| 2 | `--show-paths` with `CI` set | `error[usage] --show-paths is refused in CI` |
+| 2 | `git ls-files` failed | `error[git] ls-files failed` |
+| 2 | `--root` is not a directory | `error[bad-root] --root is not a directory` |
+| 2 | a file or link could not be read (the scan continues) | `error[unreadable] F<i> (<errno name>)` |
+| 2 | a directory under `--root` could not be listed (the scan continues) | `error[unreadable] a directory under --root could not be listed` |
+| 2 | any other error | `error[internal] <exception class>` |
+
+An unknown option, including the removed `--require-secret`, is a usage error.
+
+### Limits
+
+Bare host names without a scheme are not scanned. CI knows no host name, so it misses a private
+host that has no `pulsusdb` in its name unless it is a datasource URL; only a local run with
+`dev/local.env` forbids it in any form.
+The rule for contributors is simple: never commit a real host name. Keep the real base URL in
+`dev/local.env` and nowhere else.
+
+### Self-test
+
+The checker's tests use only fictional hosts (`.corp` names and reserved names). Its fixtures are in
+`tools/no-pulsusdb-host/testdata/`, where only the URL rule is switched off in repository mode.
+
+### CI (`hygiene.yml`)
+
+`.github/workflows/hygiene.yml` runs on every pull request and on pushes to `main`, with a read-only
+token. Its one job, `no-pulsusdb-host`, runs the checker's self-test
+(`python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py'`), then
+`check.py` ([above](#ci-no-pulsusdb-host)). It reads no secret, so pull requests from forks run it
+too.

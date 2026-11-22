@@ -908,6 +908,57 @@ describe('panel tools', () => {
   });
 });
 
+describe('refresh', () => {
+  it('BoardPage refresh leaves panel queries', async () => {
+    const api = new HeldPanelApi();
+    const { user } = open(
+      '/t/demo/board/b-1?from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z&refresh=off',
+      { api },
+    );
+    await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    await waitFor(() => {
+      expect(api.held.length).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(api.held).toHaveLength(B1.length);
+    });
+    await user.click(screen.getByRole('button', { name: 'Refresh now' }));
+    await act(async () => {
+      await new Promise((r) => {
+        setTimeout(r, 0);
+      });
+    });
+    expect(api.held.map((h) => h.signal?.aborted ?? false)).toEqual(B1.map(() => false));
+    expect(api.held).toHaveLength(B1.length);
+    await act(async () => {
+      for (const h of api.held) h.release();
+      await Promise.resolve();
+    });
+    // The released data reaches every chart panel (its frame mounts; with #90 a chart panel keeps
+    // its Loading until the engine has drawn, which the fake engine never reports).
+    await waitFor(() => {
+      expect(document.querySelectorAll('canvas')).toHaveLength(3);
+    });
+  });
+});
+
+/** A stub whose `panelData` calls wait until the test releases them; each keeps its signal. */
+class HeldPanelApi extends StubApi {
+  readonly held: { signal: AbortSignal | undefined; release: () => void }[] = [];
+
+  override panelData(...a: Parameters<StubApi['panelData']>): ReturnType<StubApi['panelData']> {
+    const [tenant, panel, window, signal] = a;
+    const gate = deferred<undefined>();
+    this.held.push({
+      signal,
+      release: () => {
+        gate.resolve(undefined);
+      },
+    });
+    return gate.promise.then(() => super.panelData(tenant, panel, window));
+  }
+}
+
 /**
  * A stub whose second and later `getBoard` of b-1 wait for `next`, then return the head again or,
  * given `fail`, reject with it.
@@ -1673,5 +1724,105 @@ describe('panel editor dialog', () => {
       f.draw();
     });
     expect(t.pendingShown()).toBe(false);
+  });
+});
+
+describe('usePanelData across a window change (#93)', () => {
+  /** b-1 in View mode with a gate on `panelData` once `hold()` is called. */
+  async function board() {
+    const api = new StubApi();
+    const spy = vi.spyOn(api, 'panelData');
+    const engine = fakeEngine();
+    const r = open('/t/demo/board/b-1', { api, wrapper: engineWrapper(engine) });
+    const host = await waitFor(() => {
+      const el = panelOf('Request rate').querySelector<HTMLElement>('[data-chart-frame]');
+      if (el === null) throw new Error('no chart');
+      return el;
+    });
+    const f = engine.frames.findLast((x) => x.disposed === 0 && host.contains(x.canvas));
+    if (f === undefined) throw new Error('no frame');
+    act(() => {
+      resizeOf(host, 400, 200);
+    });
+    act(() => {
+      f.draw();
+    });
+    const held: Held[] = [];
+    const hold = (): void => {
+      spy.mockImplementation(
+        (_tenant, panel, window, signal) =>
+          new Promise<PanelData>((res, rej) => {
+            held.push({
+              panel,
+              window,
+              signal,
+              resolve: () => {
+                res(stubPanelData(panel, window));
+              },
+              reject: (e) => {
+                rej(e);
+              },
+            });
+          }),
+      );
+    };
+    return { ...r, engine, host, f, held, hold };
+  }
+
+  it("window change keeps the panel's chart", async () => {
+    const t = await board();
+    const frames = t.engine.frames.length;
+    const before = t.router.state.location.search;
+    t.hold();
+    await t.user.keyboard(']');
+    await waitFor(() => {
+      expect(t.router.state.location.search).not.toBe(before);
+    });
+    await waitFor(() => {
+      expect(t.held.some((x) => x.panel.title === 'Request rate')).toBe(true);
+    });
+    expect(within(panelOf('Request rate')).queryByText('Loading')).toBeNull();
+    expect(t.f.disposed).toBe(0);
+    expect(t.engine.frames).toHaveLength(frames);
+    const n = t.f.calls.filter((c) => c.method === 'setData').length;
+    const h = t.held.find((x) => x.panel.title === 'Request rate');
+    await act(async () => {
+      h?.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(t.f.calls.filter((c) => c.method === 'setData').length).toBeGreaterThan(n);
+    });
+    expect(t.f.disposed).toBe(0);
+  });
+
+  it('query change still shows Loading', async () => {
+    const t = await board();
+    await editMode(t.user);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.react-grid-item')).toHaveLength(4);
+    });
+    await t.user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
+    await t.user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
+    const d = await editorDialog();
+    t.hold();
+    await t.user.click(within(d).getByRole('textbox', { name: 'Query' }));
+    await t.user.keyboard('{End}x');
+    const preview = within(d).getByRole('region', { name: 'Preview' });
+    await waitFor(() => {
+      expect(within(preview).getByText('Loading')).toBeInTheDocument();
+    });
+    const h = await waitFor(() => {
+      const x = t.held.at(-1);
+      if (x === undefined) throw new Error('no held call');
+      return x;
+    });
+    await act(async () => {
+      h.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(preview.querySelector('[data-chart-frame]')).not.toBeNull();
+    });
   });
 });

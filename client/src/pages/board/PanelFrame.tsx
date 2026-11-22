@@ -4,7 +4,7 @@
  * drawn through `<ChartFrame>`. The header is the drag handle in Edit mode. Tools stay in the tab
  * order and show on hover and focus. `PanelPreview` is the panel editor's live preview (#90).
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryKey } from '@tanstack/react-query';
 import { forwardRef, memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MenuTrigger, type ButtonProps } from 'react-aria-components';
 import { Link } from 'react-router';
@@ -68,13 +68,31 @@ export function keyOp(e: {
   return ops === undefined ? null : ops[e.shiftKey ? 1 : 0];
 }
 
-/** The panel's data, shared by the panel body and its full-screen view (one query per key). */
+/** The panel query key without its window (indices 0–4). */
+const keyHead = (k: QueryKey): readonly unknown[] => k.slice(0, 5);
+
+/** Two panel keys that differ only in the window (index 5). */
+export function sameExceptWindow(a: QueryKey, b: QueryKey): boolean {
+  const ha = keyHead(a);
+  const hb = keyHead(b);
+  return a.length === b.length && ha.length === hb.length && ha.every((x, i) => x === hb[i]);
+}
+
+/**
+ * The panel's data, shared by the panel body and its full-screen view (one query per key). A
+ * window-only change (a chart commit, the picker, auto-refresh) keeps the previous result until
+ * the new one arrives, so the chart stays mounted with its value-axis pin (#93); any other change
+ * shows `Loading`.
+ */
 export function usePanelData(tenant: string, panel: PanelSpec) {
   const api = useApi();
   const { window } = useTimeContext();
+  const key = ['panel', tenant, panel.id, canonicalJson(panel.query), panel.vis.kind, window];
   return useQuery({
-    queryKey: ['panel', tenant, panel.id, canonicalJson(panel.query), panel.vis.kind, window],
+    queryKey: key,
     queryFn: ({ signal }) => api.panelData(tenant, panel, window, signal),
+    placeholderData: (prev, prevQuery) =>
+      prevQuery !== undefined && sameExceptWindow(prevQuery.queryKey, key) ? prev : undefined,
     structuralSharing: false,
     retry: false,
   });

@@ -1,13 +1,28 @@
 import type {
+  InstantResult,
+  LogsResult,
+  PromMetadata,
+  PromSeriesSet,
+  PromValues,
+  RangeFrame,
+  RangeResult,
+} from '../data/decode';
+import type {
   Board,
   BoardList,
   BoardRef,
   BoardSpec,
+  DataSourceStatus,
+  InstantRequest,
+  LogsRequest,
   PanelData,
   PanelSpec,
+  PromMatchRequest,
+  RangeRequest,
   SaveResult,
   Session,
   TimeWindow,
+  VolumeRequest,
 } from './types';
 
 /**
@@ -45,4 +60,35 @@ export interface Api {
    */
   recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void>;
   signOut(): Promise<void>;
+  /** A PromQL range query on the BFF's grid (plan #62 §4.5). */
+  queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult>;
+  /** A PromQL instant query. */
+  queryInstant(tenant: string, req: InstantRequest, signal?: AbortSignal): Promise<InstantResult>;
+  /** One page of a LogQL log query, or the frames of a LogQL metric query (plan #65 Part B §4.4). */
+  queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult>;
+  /** Log volume by level on the BFF's grid. */
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame>;
+  /** The data-source check of the tenant's binding (T06-025). */
+  checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus>;
+  /** Label names (`GET /prom/labels`). Unknown tenant → `ApiError('notFound')`; errors as `queryRange`. */
+  promLabels(tenant: string, req: PromMatchRequest, signal?: AbortSignal): Promise<PromValues>;
+  /** The values of label `name` (`GET /prom/label/{name}/values`). */
+  promLabelValues(
+    tenant: string,
+    name: string,
+    req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues>;
+  /** The label sets matching at least one selector (`GET /prom/series`). */
+  promSeries(
+    tenant: string,
+    req: PromMatchRequest & { readonly match: readonly [string, ...string[]] },
+    signal?: AbortSignal,
+  ): Promise<PromSeriesSet>;
+  /** Metric metadata (`GET /prom/metadata`). */
+  promMetadata(
+    tenant: string,
+    req: { readonly metric?: string; readonly limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PromMetadata>;
 }

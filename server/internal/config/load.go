@@ -35,6 +35,9 @@ func leaves() []leaf {
 	walk = func(t reflect.Type, prefix string, index []int) {
 		for i := range t.NumField() {
 			f := t.Field(i)
+			if !f.IsExported() {
+				continue // Config.src: where the file came from, not a key
+			}
 			tag := strings.Split(f.Tag.Get("yaml"), ",")[0]
 			path := tag
 			if prefix != "" {
@@ -78,6 +81,7 @@ func Load(src Sources) (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
+	cfg.src = src
 	return cfg, nil
 }
 

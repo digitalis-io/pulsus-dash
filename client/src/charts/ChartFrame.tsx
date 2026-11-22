@@ -5,6 +5,11 @@
  * owns scales, marks, picking and the brush gesture. The canvas is created for the frame's lifetime,
  * so a later `transferControlToOffscreen()` (#68) survives StrictMode re-mounts.
  *
+ * Camera (#93, ADR-0020): the engine previews zoom and pan and reports one `commit` per gesture. A
+ * committed window becomes the Context window (one history entry, as the brush); a committed value
+ * range is this component's pin, passed back to the engine in the spec (`valueRange`) until it is
+ * reset (Reset Y axis, a fit commit), the kind or unit changes, or the chart unmounts.
+ *
  * Readiness (#90, ADR-0019): the caller's `pending` shows over the frame until the engine reports,
  * with `drawn`, a complete draw at the size last applied; every resize, kind change and new frame
  * resets it. A new `fill` frame is sized at once from the caller's `sizeMemo` (the host's last
@@ -27,11 +32,13 @@ import type {
   FrameData,
   FrameSummary,
   HoverEvent,
+  ValueRange,
   VisSpec,
 } from '../engine/api';
 import { ChartUnsupportedError } from '../engine/canvas2d/Canvas2DEngine';
 import { ChartEngineContext } from '../engine/index';
 import { t } from '../i18n/t';
+import { Button } from '../kit/Button';
 import { cx } from '../kit/cx';
 import { printTimeExpr } from '../state/timeExpr';
 import { useTimeZone } from '../state/timeZone';
@@ -64,6 +71,12 @@ interface HoverState {
   readonly selected: number;
 }
 
+/** The value-axis pin (#93) and the kind and unit it was made for. */
+interface Pin {
+  readonly key: string;
+  readonly range: ValueRange;
+}
+
 const px = (n: number): string => `${String(n)}px`;
 
 /** Diagnostic frame ids (`f1`, `f2`, …): `data-frame-id` and the `chart-draw` measures' `frame`. */
@@ -82,15 +95,31 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
   const { fromMs, toMs } = win;
   const isStat = spec.kind === 'stat';
 
+  // The value-axis pin (#93): a kind or unit change drops it. Clearing it during render (React's
+  // "adjust state during render") re-runs the render with no pin before any effect or paint, so a
+  // later return to the old kind or unit starts unpinned.
+  const pinKey = `${spec.kind}|${JSON.stringify(spec.unit)}`;
+  const [pin, setPin] = useState<Pin | null>(null);
+  if (pin !== null && pin.key !== pinKey) setPin(null);
+  const valueRange = pin !== null && pin.key === pinKey ? pin.range : null;
+  const engineSpec = useMemo<VisSpec>(
+    () =>
+      valueRange !== null && (spec.kind === 'line' || spec.kind === 'bars')
+        ? { ...spec, valueRange }
+        : spec,
+    [spec, valueRange],
+  );
+
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const resetRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<EngineFrame | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // The latest inputs, for the mount effect and the event callbacks (not effect dependencies).
-  const latest = useRef({ spec, frameData, fromMs, toMs, theme, dispatch, tz });
+  const latest = useRef({ spec, engineSpec, pinKey, frameData, fromMs, toMs, theme, dispatch, tz });
   useLayoutEffect(() => {
-    latest.current = { spec, frameData, fromMs, toMs, theme, dispatch, tz };
+    latest.current = { spec, engineSpec, pinKey, frameData, fromMs, toMs, theme, dispatch, tz };
   });
 
   const [summary, setSummary] = useState<FrameSummary | null>(null);
@@ -174,6 +203,19 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
           to: printTimeExpr({ kind: 'absolute', ms: b.toMs }),
         });
       }),
+      frame.on('commit', (c) => {
+        const l = latest.current;
+        // A time move is one push, as the brush (T03-016); every chart on the page follows it.
+        if (c.window !== null) {
+          l.dispatch({
+            type: 'setRange',
+            from: printTimeExpr({ kind: 'absolute', ms: c.window.fromMs }),
+            to: printTimeExpr({ kind: 'absolute', ms: c.window.toMs }),
+          });
+        }
+        // A time-only commit (`value === null`) leaves the pin as it is.
+        if (c.value !== null) setPin(c.value === 'auto' ? null : { key: l.pinKey, range: c.value });
+      }),
       frame.on('drawn', (d) => {
         // A draw at a superseded size leaves the progress up.
         if (d.cssWidth !== size.width || d.cssHeight !== size.height) return;
@@ -182,7 +224,7 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
       }),
     ];
     const l = latest.current;
-    frame.setSpec(l.spec);
+    frame.setSpec(l.engineSpec);
     frame.setData(l.frameData);
     frame.setTimeWindow({ fromMs: l.fromMs, toMs: l.toMs });
     frame.setTheme(l.theme);
@@ -236,13 +278,13 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
 
   useEffect(() => {
     // A kind change on a kept frame clears its canvas (the engine), so it is not drawn.
-    if (kindRef.current !== spec.kind) {
+    if (kindRef.current !== engineSpec.kind) {
       drawnRef.current = false;
       setDrawn(false);
     }
-    kindRef.current = spec.kind;
-    frameRef.current?.setSpec(spec);
-  }, [spec]);
+    kindRef.current = engineSpec.kind;
+    frameRef.current?.setSpec(engineSpec);
+  }, [engineSpec]);
   useEffect(() => {
     frameRef.current?.setData(frameData);
   }, [frameData]);
@@ -283,6 +325,13 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
     s.style.width = px(Math.max(0, p.width));
     s.style.height = px(Math.max(0, p.height));
   }, [summary]);
+
+  // The Reset Y axis button over the plot's top-left corner (CSSOM, T08-023).
+  useLayoutEffect(() => {
+    const b = resetRef.current;
+    if (b === null || summary === null) return;
+    b.style.translate = `${px(summary.plot.x + space['1'])} ${px(summary.plot.y + space['1'])}`;
+  }, [summary, valueRange]);
 
   const onSliderKey = (e: KeyboardEvent<HTMLDivElement>): void => {
     // Escape clears an active crosshair (the engine does that) and goes no further, so a dialog
@@ -336,6 +385,21 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
           unit={valueUnit(spec)}
           timeZone={tz}
         />
+      )}
+      {valueRange !== null && (
+        // The kit Button takes no ref, so its wrapper is the placed element.
+        <div ref={resetRef} className={cx(styles['resetValue'])}>
+          <Button
+            variant="secondary"
+            aria-label={t('chart.valueAxis.resetLabel', { title: spec.title })}
+            onPress={() => {
+              setPin(null);
+              sliderRef.current?.focus();
+            }}
+          >
+            {t('chart.valueAxis.reset')}
+          </Button>
+        </div>
       )}
       {summary !== null && summary.seriesShown < summary.seriesTotal && (
         <p className={cx(styles['notice'])} role="status">

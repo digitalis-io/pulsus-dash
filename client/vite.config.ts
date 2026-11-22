@@ -6,6 +6,15 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { devHeaders, productionHeaders } from './config/headers.ts';
 
+/**
+ * Modules of the editor chunk (plan #63 Part C §3.6): `src/editor/` except `lang/index.ts` and
+ * `lang/types.ts` (the route imports them), and the 17 packages of `dependency-policy.json`
+ * `runtimeClosure.query-editor`. Every chunk holding one is named `editor-*`, so `ci:bundle-size`
+ * measures the editor as one closure and `e2e:lazy-load` can name its files.
+ */
+const EDITOR_MODULE =
+  /\/src\/editor\/(?!lang\/(?:index|types)\.ts$)|\/node_modules\/(?:@codemirror|@lezer|@marijn|@prometheus-io|crelt|lru-cache|style-mod|w3c-keyname)\//;
+
 const root = fileURLToPath(new URL('.', import.meta.url));
 const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version: string };
 
@@ -21,12 +30,22 @@ export default defineConfig({
     assetsInlineLimit: 0,
     manifest: true,
     modulePreload: { polyfill: false },
+    rolldownOptions: {
+      output: {
+        chunkFileNames: (c) =>
+          c.moduleIds.some((id) => EDITOR_MODULE.test(id))
+            ? 'assets/editor-[hash].js'
+            : 'assets/[name]-[hash].js',
+      },
+    },
   },
   server: {
     port: 5173,
     strictPort: true,
     headers: devHeaders,
     proxy: { '/api': bff, '/auth': bff },
+    // The tests import the shared wire fixtures (plan #62: golden frames, step cases) with ?raw.
+    fs: { allow: [root, `${root}../wire`] },
   },
   preview: {
     port: 4173,
@@ -34,6 +53,13 @@ export default defineConfig({
     headers: { ...productionHeaders },
   },
   test: {
+    // The PromQL language package has no `exports` map, so the test runner would load its
+    // CommonJS `main` with a second copy of @codemirror/state. The tests use its `module` (ESM)
+    // build, as the browser build does, and inline it so Vite transforms it (plan #63 Part B).
+    alias: {
+      '@prometheus-io/codemirror-promql': `${root}node_modules/@prometheus-io/codemirror-promql/dist/esm/index.js`,
+    },
+    server: { deps: { inline: [/@prometheus-io\/codemirror-promql/] } },
     projects: [
       {
         extends: true,

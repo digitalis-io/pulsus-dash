@@ -3,23 +3,50 @@
  * `api/openapi.yaml`. The session comes from `GET /api/dash/v1/bootstrap`; boards from the boards
  * API (`docs/server/boards-api.md`, plan #61 Part B §3.3); Starred and Recent from the `/me/…`
  * routes (Part C §3.2). Panels have no query route yet (#64, #67): `panelData` answers without a
- * request.
+ * request. PromQL and LogQL query responses are decoded at the one seam, `data/decode.ts`; failures
+ * map to `ApiError` kinds (plan #62 §4.5, plan #65 Part B §4.4).
  */
 import createClient, { type Client } from 'openapi-fetch';
 import { RECENT_LIMIT } from '../boards/queries';
 import type { Api } from './Api';
 import type { components, paths } from './gen/schema';
 import {
+  DecodeError,
+  decodeInstant,
+  decodeLogs,
+  decodeMetadata,
+  decodePlanned,
+  decodeRange,
+  decodeSeriesSet,
+  decodeValues,
+  decodeVolume,
+  type InstantResult,
+  type LogsResult,
+  type PlannedQuery,
+  type PromMetadata,
+  type PromSeriesSet,
+  type PromValues,
+  type RangeFrame,
+  type RangeResult,
+} from '../data/decode';
+import {
   ApiError,
   BoardConflictError,
+  type ApiErrorDetail,
   type Board,
   type BoardList,
   type BoardRef,
   type BoardSpec,
+  type DataSourceStatus,
+  type InstantRequest,
+  type LogsRequest,
   type PanelData,
   type PanelSpec,
+  type PromMatchRequest,
+  type RangeRequest,
   type SaveResult,
   type Session,
+  type VolumeRequest,
 } from './types';
 
 type Bootstrap = components['schemas']['Bootstrap'];
@@ -78,6 +105,139 @@ function messageOf(error: unknown, status: number): string {
   return typeof msg === 'string' && msg !== '' ? msg : `HTTP ${String(status)}`;
 }
 
+type ErrorBody = Partial<components['schemas']['ErrorBody']>;
+// The generated request types make timeout_ms required because it has a default (the generator's
+// default-non-nullable rule); the BFF applies the default, so the client omits it when unset.
+type RangeBody = components['schemas']['PromRangeRequest'];
+type InstantBody = components['schemas']['PromInstantRequest'];
+type LogsBody = components['schemas']['LogqlRangeRequest'];
+type VolumeBody = components['schemas']['LogqlVolumeRequest'];
+
+function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** The error body's `planned`, decoded; absent when missing or malformed (plan #112 §3.8). */
+function plannedOf(body: ErrorBody): PlannedQuery | undefined {
+  if (body.planned === undefined) return undefined;
+  try {
+    return decodePlanned(body.planned, '/planned');
+  } catch (e) {
+    if (e instanceof DecodeError) return undefined;
+    throw e;
+  }
+}
+
+const TOO_LONG_KEYS = new Set(['query.sent_too_large', 'query.too_large_to_plan']);
+
+/**
+ * The `ApiError` of a failed query or check (plan #62 §4.5, plan #112 §3.8): every `detail` carries
+ * the server's `planned` when the body has one (errors raised after planning).
+ */
+function queryError(status: number, error: unknown): ApiError {
+  const body: ErrorBody = (error as Partial<ErrorEnvelope> | undefined)?.error ?? {};
+  const message = messageOf(error, status);
+  const hint = isRecord(body.hint) ? body.hint : undefined;
+  const planned = plannedOf(body);
+  const fields = body.fields ?? [];
+  const queryId = typeof body.query_id === 'string' ? body.query_id : undefined;
+  const detail = (extra: ApiErrorDetail = {}): ApiErrorDetail => ({
+    ...extra,
+    ...(planned === undefined ? {} : { planned }),
+  });
+  const withHint = detail(hint === undefined ? {} : { hint });
+  if (status === 413 && fields.some((f) => TOO_LONG_KEYS.has(f.message_key))) {
+    return new ApiError('queryTooLong', message, {
+      detail: detail({
+        ...(hint === undefined ? {} : { hint }),
+        ...(queryId === undefined ? {} : { queryId }),
+      }),
+    });
+  }
+  if (
+    status === 400 &&
+    fields.some(
+      (f) =>
+        f.message_key === 'variable.missing' ||
+        f.pointer === '/step_ms' ||
+        f.pointer.startsWith('/vars'),
+    )
+  ) {
+    return new ApiError('invalid', message, {
+      fields: fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      detail: detail(),
+    });
+  }
+  if (status === 400 && body.code === 'virtual_unsupported') {
+    return new ApiError('queryInvalid', message, { detail: withHint });
+  }
+  if (status === 400 && fields[0]?.pointer === '/query') {
+    const d: ApiErrorDetail = {};
+    const position = isRecord(hint?.['position']) ? hint['position']['offset'] : undefined;
+    if (typeof position === 'number') d.position = position;
+    if (queryId !== undefined) d.queryId = queryId;
+    return new ApiError('queryInvalid', message, { detail: detail(d) });
+  }
+  switch (status) {
+    case 404:
+      return new ApiError('notFound', message, { detail: detail() });
+    case 422:
+      return new ApiError('tooBroad', message, { detail: withHint });
+    case 429:
+      return new ApiError('busy', message, { detail: withHint });
+    case 502:
+    case 503:
+      return new ApiError('unavailable', message, { detail: withHint });
+    case 504:
+      return new ApiError('timeout', message, { detail: detail() });
+  }
+  return new ApiError('unknown', message, { detail: detail() });
+}
+
+/** Runs a query request: an abort is re-thrown unchanged, any other rejection is `network`. */
+async function send<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    throw new ApiError('network', 'the BFF could not be reached');
+  }
+}
+
+/** Decodes a 200 body; a body the decoder refuses is `badResponse`. */
+function decoded<T>(decode: (b: unknown) => T, body: unknown): T {
+  try {
+    return decode(body);
+  } catch (e) {
+    if (e instanceof DecodeError) {
+      throw new ApiError('badResponse', `${e.message} at ${e.path === '' ? '/' : e.path}`);
+    }
+    throw e;
+  }
+}
+
+/** The query of a `/prom/*` read: `match` repeated in order and omitted when empty. */
+function matchQuery(
+  tenant: string,
+  req: PromMatchRequest,
+): { tenant: string; from: number; to: number; match?: string[]; limit?: number } {
+  return {
+    tenant,
+    from: req.fromMs,
+    to: req.toMs,
+    ...(req.match === undefined || req.match.length === 0 ? {} : { match: [...req.match] }),
+    ...(req.limit === undefined ? {} : { limit: req.limit }),
+  };
+}
+
+const DATA_SOURCE_STATES = {
+  not_checked: 'notChecked',
+  ok: 'ok',
+  unreachable: 'unreachable',
+  unauthorised: 'unauthorised',
+  error: 'error',
+} as const;
+
 /** The field errors of an error envelope. */
 function fieldsOf(error: unknown) {
   const fields = (error as Partial<ErrorEnvelope> | undefined)?.error?.fields ?? [];
@@ -91,9 +251,9 @@ interface Result<T> {
 }
 
 /**
- * Runs one request: a thrown fetch error is `network` (an abort is re-thrown), 404 `notFound`,
- * 400 `invalid` with the envelope's fields, 409 `BoardConflictError`; any other status without a
- * body of the success type is `unknown` with the envelope's message.
+ * Runs one boards request: a thrown fetch error is `network` (an abort is re-thrown), 404
+ * `notFound`, 400 `invalid` with the envelope's fields, 409 `BoardConflictError`; any other status
+ * without a body of the success type is `unknown` with the envelope's message.
  */
 async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T | undefined> {
   let r: Result<T>;
@@ -106,7 +266,9 @@ async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T
   const status = r.response.status;
   if (status === ok) return r.data;
   if (status === 404) throw new ApiError('notFound', messageOf(r.error, status));
-  if (status === 400) throw new ApiError('invalid', messageOf(r.error, status), fieldsOf(r.error));
+  if (status === 400) {
+    throw new ApiError('invalid', messageOf(r.error, status), { fields: fieldsOf(r.error) });
+  }
   if (status === 409) {
     const current = (r.error as Partial<WireConflict> | undefined)?.current;
     if (current !== undefined)
@@ -269,5 +431,171 @@ export class HttpApi implements Api {
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */
   signOut(): Promise<void> {
     return Promise.resolve();
+  }
+
+  async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
+      ...(req.rate === undefined ? {} : { rate: req.rate }),
+    } as RangeBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/promql/range', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeRange, data);
+  }
+
+  async queryInstant(
+    tenant: string,
+    req: InstantRequest,
+    signal?: AbortSignal,
+  ): Promise<InstantResult> {
+    const body = {
+      query: req.query,
+      at: req.atMs,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
+      ...(req.stepMs === undefined ? {} : { step_ms: req.stepMs }),
+    } as InstantBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/promql/instant', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeInstant, data);
+  }
+
+  async checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/datasource/check', {
+        params: { query: { tenant } },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    const state = DATA_SOURCE_STATES[data.state];
+    return data.checked_at === undefined ? { state } : { state, checkedAtMs: data.checked_at };
+  }
+
+  /** POST …/query/logql/range: the optional members only when given (plan #65 Part B §4.4). */
+  async queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.limit === undefined ? {} : { limit: req.limit }),
+      ...(req.direction === undefined ? {} : { direction: req.direction }),
+      ...(req.cursor === undefined ? {} : { cursor: req.cursor }),
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as LogsBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/logql/range', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeLogs, data);
+  }
+
+  /** POST …/query/logql/volume. */
+  async queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
+    const body = {
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      width_px: req.widthPx,
+      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    } as VolumeBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/query/logql/volume', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeVolume, data);
+  }
+
+  async promLabels(
+    tenant: string,
+    req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/labels', {
+        params: { query: matchQuery(tenant, req) },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeValues, data);
+  }
+
+  async promLabelValues(
+    tenant: string,
+    name: string,
+    req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/label/{name}/values', {
+        params: { path: { name }, query: matchQuery(tenant, req) },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeValues, data);
+  }
+
+  async promSeries(
+    tenant: string,
+    req: PromMatchRequest & { readonly match: readonly [string, ...string[]] },
+    signal?: AbortSignal,
+  ): Promise<PromSeriesSet> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/series', {
+        params: { query: { ...matchQuery(tenant, req), match: [...req.match] } },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeSeriesSet, data);
+  }
+
+  async promMetadata(
+    tenant: string,
+    req: { readonly metric?: string; readonly limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PromMetadata> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/prom/metadata', {
+        params: {
+          query: {
+            tenant,
+            ...(req.metric === undefined ? {} : { metric: req.metric }),
+            ...(req.limit === undefined ? {} : { limit: req.limit }),
+          },
+        },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeMetadata, data);
   }
 }

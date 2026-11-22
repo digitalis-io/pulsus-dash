@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient } from '@tanstack/react-query';
 import { StrictMode, useState, type ReactNode } from 'react';
@@ -102,6 +102,7 @@ function summary(
     max,
     last,
     plot: PLOT,
+    valueAxis: kind === 'line' || kind === 'bars' ? { min, max, manual: false } : null,
   };
 }
 
@@ -717,5 +718,169 @@ describe('component pre-size and pending (#90)', () => {
     renderSwitchable(engine, { fill: true, pending: LOADING });
     expect(await screen.findByText('This browser cannot draw charts.')).toBeInTheDocument();
     expect(pendingEl()).toBeNull();
+  });
+});
+
+describe('component camera commit (#93)', () => {
+  /** A `ChartFrame` whose spec a test can change, inside the router (URL0). */
+  function switchable(engine: FakeEngine, first: VisSpec) {
+    let setSpec: (s: VisSpec) => void = () => undefined;
+    function Switchable() {
+      const [spec, set] = useState<VisSpec>(first);
+      setSpec = set;
+      return <ChartFrame spec={spec} data={DATA} />;
+    }
+    const deps: RouterDeps = {
+      api: new StubApi(),
+      queryClient: new QueryClient(),
+      clock: createClock(() => T),
+      timeZone: TZ,
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/t/:tenant/x',
+          element: (
+            <ChartEngineContext.Provider value={engine}>
+              <Switchable />
+            </ChartEngineContext.Provider>
+          ),
+        },
+      ],
+      { initialEntries: [URL0] },
+    );
+    render(
+      <Providers deps={deps}>
+        <RouterProvider router={router} />
+      </Providers>,
+    );
+    return {
+      router,
+      setSpec: (s: VisSpec) => {
+        act(() => {
+          setSpec(s);
+        });
+      },
+    };
+  }
+
+  async function ready(spec: VisSpec = LINE) {
+    const engine = fakeEngine();
+    const r = switchable(engine, spec);
+    await waitFor(() => {
+      expect(engine.frames).toHaveLength(1);
+    });
+    const f = lastFrame(engine);
+    act(() => {
+      f.emit('a11y', summary(spec.kind, 1, 24, 336, 200));
+    });
+    return { ...r, engine, f };
+  }
+
+  const lastSpec = (f: FakeFrame): VisSpec => f.last('setSpec')?.[0] as VisSpec;
+  const resetButton = () => screen.queryByRole('button', { name: 'Reset Y axis: T' });
+  const pin = (f: FakeFrame, min = 1, max = 2): void => {
+    act(() => {
+      f.emit('commit', { window: null, value: { min, max }, gesture: 'wheel' });
+    });
+  };
+
+  it('commit sets the window (push)', async () => {
+    const { router, f } = await ready();
+    act(() => {
+      f.emit('commit', {
+        window: { fromMs: FROM + 20 * 60_000, toMs: FROM + 25 * 60_000 },
+        value: null,
+        gesture: 'wheel',
+      });
+    });
+    await waitFor(() => {
+      expect(Object.fromEntries(new URLSearchParams(router.state.location.search))).toMatchObject({
+        from: '2026-11-19T12:20:00.000Z',
+        to: '2026-11-19T12:25:00.000Z',
+      });
+    });
+    expect(router.state.historyAction).toBe('PUSH');
+  });
+
+  it('commit pins the value axis', async () => {
+    const { router, f } = await ready();
+    const before = router.state.location.search;
+    pin(f);
+    expect(lastSpec(f)).toMatchObject({ valueRange: { min: 1, max: 2 } });
+    expect(resetButton()).toBeInTheDocument();
+    expect(resetButton()).toHaveTextContent('Reset Y axis');
+    expect(router.state.location.search).toBe(before);
+  });
+
+  it('reset returns to auto', async () => {
+    const user = userEvent.setup();
+    const { f } = await ready();
+    pin(f);
+    const b = resetButton();
+    expect(b).toBeInTheDocument();
+    if (b === null) return;
+    act(() => {
+      b.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(lastSpec(f)).not.toHaveProperty('valueRange');
+    expect(resetButton()).toBeNull();
+    expect(screen.getByRole('slider')).toHaveFocus();
+  });
+
+  it("'auto' commit clears the pin", async () => {
+    const { f } = await ready();
+    pin(f);
+    expect(resetButton()).toBeInTheDocument();
+    act(() => {
+      f.emit('commit', { window: null, value: 'auto', gesture: 'fit' });
+    });
+    expect(lastSpec(f)).not.toHaveProperty('valueRange');
+    expect(resetButton()).toBeNull();
+  });
+
+  it('pin dropped on kind or unit change', async () => {
+    for (const next of [BARS30, { ...LINE, unit: { kind: 'time', base: 's' } } as VisSpec]) {
+      const { f, setSpec } = await ready();
+      pin(f);
+      expect(resetButton()).toBeInTheDocument();
+      setSpec(next);
+      expect(lastSpec(f)).not.toHaveProperty('valueRange');
+      expect(resetButton()).toBeNull();
+      cleanup();
+    }
+  });
+
+  it.each<[string, VisSpec]>([
+    ['line → bars → line', { ...BARS30, unit: { kind: 'time', base: 'ms' } }],
+    ['unit round trip', { ...LINE, unit: { kind: 'time', base: 's' } }],
+  ])('pin does not return: %s', async (_name, middle) => {
+    const { f, setSpec } = await ready();
+    pin(f);
+    expect(lastSpec(f)).toMatchObject({ valueRange: { min: 1, max: 2 } });
+    setSpec(middle);
+    setSpec(LINE);
+    expect(lastSpec(f)).not.toHaveProperty('valueRange');
+    expect(resetButton()).toBeNull();
+    act(() => {
+      f.emit('a11y', summary('line', 1, 24, 336, 200));
+    });
+    expect(document.querySelector('canvas')?.getAttribute('aria-label')).not.toContain(
+      'Y axis fixed at',
+    );
+  });
+
+  it('pinned summary label', async () => {
+    const { f } = await ready();
+    act(() => {
+      f.emit('a11y', {
+        ...summary('line', 50, 24, 336, 200),
+        valueAxis: { min: 1, max: 2, manual: true },
+      });
+    });
+    expect(document.querySelector('canvas')?.getAttribute('aria-label')).toMatch(
+      /Min 24 ms, max 336 ms, last 200 ms\. Y axis fixed at 1 ms to 2 ms\.$/,
+    );
   });
 });

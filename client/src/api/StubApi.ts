@@ -27,8 +27,42 @@
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
 import { RECENT_LIMIT } from '../boards/queries';
-import { defaultSeed, defaultStarred } from './stubData';
+import {
+  defaultSeed,
+  defaultStarred,
+  STUB_PROM_LABEL_VALUES,
+  STUB_PROM_LABELS,
+  STUB_PROM_METADATA,
+  STUB_PROM_METRIC_NAMES,
+} from './stubData';
+import type {
+  Completeness,
+  InstantResult,
+  LogsResult,
+  PlannedQuery,
+  PromMetadata,
+  PromSeriesSet,
+  PromValues,
+  RangeFrame,
+  RangeResult,
+} from '../data/decode';
+import type { SeriesFrame } from '../data/frames';
+import { LOG_LEVELS, type LogFrame } from '../data/logFrame';
+import { promGrid } from '../data/step';
+import { keyHash } from '../dev/keyHash';
+import { synthLineValue } from '../dev/synth';
 import { stubPanelData } from './stubPanels';
+import {
+  floorStep,
+  isPlanError,
+  prepare,
+  reservedIn,
+  typesFromMetadata,
+  WARN_TYPES_UNAVAILABLE,
+  type MetricTypes,
+  type PlanInputs,
+  type StubPlanError,
+} from './stub/plan';
 import {
   ApiError,
   BoardConflictError,
@@ -36,11 +70,17 @@ import {
   type BoardList,
   type BoardRef,
   type BoardSpec,
+  type DataSourceStatus,
+  type InstantRequest,
+  type LogsRequest,
   type PanelData,
   type PanelSpec,
+  type PromMatchRequest,
+  type RangeRequest,
   type SaveResult,
   type Session,
   type TimeWindow,
+  type VolumeRequest,
 } from './types';
 
 /** A seeded board; the stub serves it as version 1, etag `"1"`. */
@@ -148,7 +188,80 @@ function write(key: string, value: string): void {
   }
 }
 
+/** The levels of the stub log streams `stub-0`, `stub-1` and `stub-2`. */
+const STUB_LEVELS = ['info', 'warn', 'error'] as const;
+
+/** Stub frames have no upstream, so nothing is truncated or cached. */
+const EMPTY_COMPLETENESS: Completeness = {
+  truncated: false,
+  warnings: [],
+  infos: [],
+  queryId: null,
+  dataAgeMs: null,
+  readCache: null,
+  readCacheThroughMs: null,
+};
+
+/** Three synthetic series `stub_metric{series="0|1|2"}` at the given timestamps. */
+function stubSeries(timestamps: Float64Array): SeriesFrame[] {
+  return [0, 1, 2].map((j) => {
+    const labels = { __name__: 'stub_metric', series: String(j) };
+    return {
+      key: keyHash(labels),
+      labels,
+      timestamps,
+      values: timestamps.map((t) => synthLineValue(62, j, t, 100, 40)),
+    };
+  });
+}
+
 /** Resolves on the next microtask; rejects with `AbortError` if `signal` is aborted by then. */
+/** The server's metadata read: the route's maximum (plan #112 §3.2). */
+const METADATA_LIMIT = 10_000;
+/** How long a plan waits for metric types before it degrades (plan #112 §4.5). */
+const TYPES_WAIT_MS = 2_000;
+
+function completeness(warn: boolean): Completeness {
+  return warn ? { ...EMPTY_COMPLETENESS, warnings: [WARN_TYPES_UNAVAILABLE] } : EMPTY_COMPLETENESS;
+}
+
+/** `p`, or a rejection after `ms`. */
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('stub: metric types not ready'));
+    }, ms);
+  });
+  return Promise.race([p, late]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+/** The gateway's 400 virtual_unsupported, as HttpApi maps it (A.11). */
+function reservedRefusal(name: string, planned?: PlannedQuery): ApiError {
+  return new ApiError(
+    'queryInvalid',
+    `${name} is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)`,
+    { detail: { hint: { reserved: name }, ...(planned === undefined ? {} : { planned }) } },
+  );
+}
+
+/** What HttpApi's `queryError` gives for the gateway's body of a planning refusal (A.11). */
+function toApiError(e: StubPlanError): ApiError {
+  if (e.status === 413) {
+    return new ApiError('queryTooLong', e.message, {
+      detail: {
+        ...(e.hint === undefined ? {} : { hint: e.hint }),
+        ...(e.planned === undefined ? {} : { planned: e.planned }),
+      },
+    });
+  }
+  const pointer = e.fields[0]?.pointer ?? '';
+  if (pointer === '/query') return new ApiError('queryInvalid', e.message, { detail: {} });
+  return new ApiError('invalid', e.message, { fields: e.fields });
+}
+
 function settle<T>(value: () => T, signal?: AbortSignal): Promise<T> {
   return Promise.resolve().then(() => {
     if (signal?.aborted === true)
@@ -350,6 +463,158 @@ export class StubApi implements Api {
     });
   }
 
+  /** Plans as the server does (plan #112 §3.9), then serves the synthetic series on the grid. */
+  async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    const g = await settle(() => {
+      this.checkTenant(tenant);
+      const grid = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (grid === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      return grid;
+    }, signal);
+    const { planned, warn } = await this.plan(
+      tenant,
+      {
+        query: req.query,
+        vars: req.vars ?? {},
+        kind: 'range',
+        stepMs: g.stepMs,
+        rate: req.rate ?? true,
+      },
+      signal,
+    );
+    return settle(() => {
+      const n = (g.endMs - g.startMs) / g.stepMs + 1;
+      const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
+      return { planned, ...g, series: stubSeries(timestamps), completeness: completeness(warn) };
+    }, signal);
+  }
+
+  async queryInstant(
+    tenant: string,
+    req: InstantRequest,
+    signal?: AbortSignal,
+  ): Promise<InstantResult> {
+    await settle(() => {
+      this.checkTenant(tenant);
+    }, signal);
+    const { planned, warn } = await this.plan(
+      tenant,
+      {
+        query: req.query,
+        vars: req.vars ?? {},
+        kind: 'instant',
+        stepMs: req.stepMs ?? 0,
+        rate: true,
+      },
+      signal,
+    );
+    return settle(
+      () => ({
+        planned,
+        kind: 'series' as const,
+        resultType: 'vector' as const,
+        series: stubSeries(Float64Array.of(req.atMs)),
+        atMs: req.atMs,
+        completeness: completeness(warn),
+      }),
+      signal,
+    );
+  }
+
+  /**
+   * The server's route order (plan #112 §4.4, A.11), step for step: Prepare; Classify and the byte
+   * guard on the substituted text (before any metadata read); the step; the metric types only when
+   * the plan needs them (`promMetadata` stands in for the server's own read: 2 s, then degraded);
+   * Plan; the guard on the planned text. Every refusal is the `ApiError` HttpApi maps from the
+   * gateway's body.
+   */
+  private async plan(
+    tenant: string,
+    inputs: PlanInputs,
+    signal?: AbortSignal,
+  ): Promise<{ planned: PlannedQuery; warn: boolean }> {
+    const p = prepare(inputs);
+    if (isPlanError(p)) throw toApiError(p);
+    const { stubShape } = await import('./stub/promShape');
+    const c = p.classify(stubShape(p.substituted));
+    const first = c.reserved[0];
+    if (c.source !== 'pulsus_db' && first !== undefined) throw reservedRefusal(first);
+    const guarded = reservedIn(p.substituted);
+    if (guarded !== null) throw reservedRefusal(guarded);
+    const step = floorStep(inputs.stepMs, c.floorMs);
+    const e = p.expandedAt(step);
+    if (isPlanError(e)) throw toApiError(e);
+    const shape = stubShape(e);
+    let types: MetricTypes = {};
+    let warn = false;
+    if (p.needsTypes(shape)) {
+      try {
+        types = typesFromMetadata(
+          (
+            await within(
+              this.promMetadata(tenant, { limit: METADATA_LIMIT }, signal),
+              TYPES_WAIT_MS,
+            )
+          ).metrics,
+        );
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        warn = true;
+      }
+    }
+    const r = p.plan(step, shape, types);
+    if (isPlanError(r)) throw toApiError(r);
+    const sent = reservedIn(r.planned.query);
+    if (sent !== null) throw reservedRefusal(sent, r.planned);
+    return { planned: r.planned, warn };
+  }
+
+  /** Deterministic: always `ok`, checked at 0. */
+  checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { state: 'ok' as const, checkedAtMs: 0 };
+    }, signal);
+  }
+
+  promLabels(tenant: string, _req: PromMatchRequest, signal?: AbortSignal): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { values: [...STUB_PROM_LABELS], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  promLabelValues(
+    tenant: string,
+    name: string,
+    _req: PromMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const values = name === '__name__' ? STUB_PROM_METRIC_NAMES : STUB_PROM_LABEL_VALUES;
+      return { values: [...values], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  promSeries(tenant: string, _req: PromMatchRequest, signal?: AbortSignal): Promise<PromSeriesSet> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { series: [], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  promMetadata(
+    tenant: string,
+    _req: { readonly metric?: string; readonly limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PromMetadata> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { metrics: structuredClone(STUB_PROM_METADATA), completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
   /** Unknown tenant → `notFound`; boards belong to the organisation, so it selects nothing else. */
   private checkTenant(tenant: string): void {
     if (!this.seed.session.tenants.some((t) => t.slug === tenant)) {
@@ -366,7 +631,7 @@ export class StubApi implements Api {
 
   private check(spec: BoardSpec): void {
     const fields = checkBoardSpec(spec);
-    if (fields.length > 0) throw new ApiError('invalid', 'invalid board', fields);
+    if (fields.length > 0) throw new ApiError('invalid', 'invalid board', { fields });
   }
 
   private stamp(): string {
@@ -404,5 +669,79 @@ export class StubApi implements Api {
       const b = this.boards.find((x) => x.uid === uid);
       return b === undefined ? [] : [{ uid, title: b.title }];
     });
+  }
+
+  /**
+   * A synthetic page of at most 30 entries, every one within `(fromMs, toMs]` (plan #65 Part B
+   * §4.4): 1 s apart from `toMs` down (backward) or from `fromMs` up (forward), over three streams.
+   */
+  queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const direction = req.direction ?? 'backward';
+      const fromNs = BigInt(req.fromMs) * 1000000n;
+      const toNs = BigInt(req.toMs) * 1000000n;
+      const n = Math.min(req.limit ?? 1000, 30);
+      const ts: bigint[] = [];
+      for (let i = 0; ts.length < n; i++) {
+        const t =
+          direction === 'backward'
+            ? toNs - BigInt(i) * 1000000000n
+            : fromNs + BigInt(i + 1) * 1000000000n;
+        if (t <= fromNs || t > toNs) break;
+        ts.push(t);
+      }
+      const used = [0, 1, 2].filter((j) => ts.some((_, i) => i % 3 === j));
+      const streams = used.map((j) => {
+        const labels = {
+          service_name: 'stub',
+          pod: `stub-${String(j)}`,
+          level: STUB_LEVELS[j] ?? 'info',
+        };
+        return { key: keyHash(labels), labels };
+      });
+      const frame: LogFrame = {
+        direction,
+        streams,
+        tsNs: BigInt64Array.from(ts),
+        streamIndex: Uint32Array.from(ts, (_, i) => used.indexOf(i % 3)),
+        lines: ts.map((_, i) => `stub line ${String(i)}`),
+        levels: Uint8Array.from(ts, (_, i) => LOG_LEVELS.indexOf(STUB_LEVELS[i % 3] ?? 'info')),
+        metadata: ts.map(() => null),
+        parsed: ts.map(() => null),
+      };
+      return {
+        kind: 'streams' as const,
+        fromMs: req.fromMs,
+        toMs: req.toMs,
+        stepMs: g.stepMs,
+        frame,
+        cursor: null,
+        completeness: EMPTY_COMPLETENESS,
+      };
+    }, signal);
+  }
+
+  /** Three level frames (`error`, `warn`, `info`) of synthetic counts on the grid. */
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const n = (g.endMs - g.startMs) / g.stepMs + 1;
+      const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
+      const series = ['error', 'warn', 'info'].map((level, j) => {
+        const labels = { level };
+        return {
+          key: keyHash(labels),
+          labels,
+          timestamps,
+          values: timestamps.map((t) => Math.round(Math.abs(synthLineValue(65, j, t, 20, 10)))),
+        };
+      });
+      return { ...g, series, completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 }

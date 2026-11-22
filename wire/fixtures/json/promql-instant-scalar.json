@@ -1,0 +1,1 @@
+{"planned":{"query":"scalar(vector(1)) / 0","expanded":"scalar(vector(1)) / 0","bytes":21,"value_type":"scalar","rate_candidate":false,"rate_applied":false,"histogram":false},"result_type":"scalar","at":1767229200000,"frames":[],"scalar":{"timestamp":1767229200000,"value":"+Inf"},"completeness":{"truncated":false,"warnings":[],"infos":[],"query_id":"fake-scalar-1"}}

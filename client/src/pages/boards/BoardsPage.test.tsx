@@ -155,9 +155,9 @@ describe('list flow failures', () => {
   it('New: invalid and network', async () => {
     const api = failingApi({
       createBoard: [
-        new ApiError('invalid', 'invalid board', [
-          { pointer: '/title', messageKey: 'board.title.required' },
-        ]),
+        new ApiError('invalid', 'invalid board', {
+          fields: [{ pointer: '/title', messageKey: 'board.title.required' }],
+        }),
         new ApiError('network', 'down'),
       ],
     });

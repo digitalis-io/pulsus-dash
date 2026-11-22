@@ -1,0 +1,10 @@
+{
+  "name": "label-values",
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/label/job/values", "sanitised": "labels, values, timestamps and query id replaced; captured with limit=2"},
+  "match": {"method": "GET", "paths": ["/api/v1/label/job/values"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-label-values-1"},
+    "body": {"status":"success","data":["api","db"],"warnings":["results truncated due to limit"]}
+  }
+}

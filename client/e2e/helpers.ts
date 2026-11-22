@@ -16,6 +16,10 @@ export const SHELL_PAGES = [
   '/t/demo/admin',
   '/t/demo/dev/gallery',
 ] as const;
+/** Explore with a result on the stub (rate applied, three `stub_metric` series; plan #63 C.7). */
+export const EXPLORE_RESULT =
+  '/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=http_requests_total';
+
 export const STANDALONE_PAGES = ['/nope', '/signed-out'] as const;
 export const ALL_PAGES = [...SHELL_PAGES, ...STANDALONE_PAGES] as const;
 

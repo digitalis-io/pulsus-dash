@@ -1,4 +1,5 @@
-# Server (Go BFF) gates (ADR-0015, T05 §7.1). Actions are pinned by commit SHA; no secrets are used.
+# Server (Go BFF) gates and the dev stack (ADR-0015, T05 §7.1). Actions are pinned by commit SHA; no
+# secrets are used.
 name: server
 
 on:
@@ -14,6 +15,9 @@ on:
       - 'design/tokens.toml'
       - 'tools/e2e/**'
       - 'Makefile'
+      - 'dev/**'
+      - 'wire/**'
+      - 'tools/no-pulsusdb-host/**'
       - '.github/workflows/server.yml'
   push:
     branches: [main]
@@ -93,6 +97,62 @@ jobs:
           build/pulsus-dash version
       - name: 'ci:asset-integrity'
         run: tools/e2e/integrity-gate.sh
+      - name: 'ci:go-licenses'
+        run: make go-licenses
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: third-party-notices
+          path: build/THIRD_PARTY_NOTICES.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  dev-stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Exactly the toolchain line of server/go.mod: go-version-file reads only the go line
+          # (1.27.0), and GOTOOLCHAIN=local would then keep that older release.
+          go-version: '1.27.4'
+          cache-dependency-path: server/go.sum
+      - name: Go matches the server/go.mod toolchain
+        run: |
+          want=$(sed -n 's/^toolchain //p' server/go.mod)
+          got=$(go env GOVERSION)
+          [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
+      - name: 'ci:dev-stack'
+        run: make dev-smoke
+      - name: 'ci:dev-stack (itest-local self-test)'
+        run: make itest-local-selftest
+      # ci:fake-image (plan #62 §4.7): the dev stack's PulsusDB fake builds from its Dockerfile and
+      # .dockerignore, runs, and answers its runtimeinfo transcript within 10 s.
+      - name: 'ci:fake-image'
+        run: |
+          docker build -f dev/pulsus-fake.Dockerfile -t pulsus-fake:ci .
+          docker run -d --rm --name pulsus-fake-ci -p 59091:9091 pulsus-fake:ci
+          ok=""
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS -D headers.txt -o body.json http://localhost:59091/api/v1/status/runtimeinfo; then ok=1; break; fi
+            sleep 1
+          done
+          docker stop pulsus-fake-ci >/dev/null || true
+          [ -n "$ok" ] || { echo "::error::pulsus-fake did not answer within 10 s"; exit 1; }
+          grep -qi '^x-pulsus-query-id: fake-runtimeinfo-1' headers.txt || { echo "::error::no fake-runtimeinfo-1 query id"; exit 1; }
+          grep -q '"rollupLevels"' body.json || { echo "::error::no rollupLevels in the body"; exit 1; }
+      - name: itest on the dev compose stack
+        run: make itest-local
+      - name: itest-local left nothing behind
+        if: always()
+        run: |
+          left=$(docker ps -aq --filter label=com.docker.compose.project=pulsus-dash-itest)
+          if [ -n "$left" ]; then
+            echo "::error::itest-local left containers"
+            exit 1
+          fi
 
   itest:
     runs-on: ubuntu-24.04

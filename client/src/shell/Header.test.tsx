@@ -1,9 +1,15 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { installResizeObserver } from '../test/fakeResizeObserver';
 import { StubApi } from '../api/StubApi';
 import { ApiError } from '../api/types';
 import { createQueryClient } from '../app/queryClient';
 import { renderApp } from '../test/renderApp';
+
+// Explore › Metrics measures its chart host (plan #63 Part C).
+beforeEach(() => {
+  installResizeObserver();
+});
 
 function noSearchControl(): void {
   expect(screen.queryByRole('searchbox')).toBeNull();

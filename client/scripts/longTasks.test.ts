@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { longTasks, type TraceEvent } from './longTasks.ts';
+import { CHART_INPUTS, DEFAULT_INPUTS, longTasks, type TraceEvent } from './longTasks.ts';
 
 const MAIN = { pid: 1, tid: 2 };
 const OTHER = { pid: 3, tid: 4 };
@@ -87,5 +87,37 @@ describe('longTasks', () => {
       return rest;
     });
     expect(() => longTasks(bare)).toThrow('no thread time');
+  });
+});
+
+describe('longTasks options (#93)', () => {
+  // Wheels and moves before the first click: only the chart inputs open the window there.
+  const CHART: TraceEvent[] = [
+    ...TRACE,
+    input('wheel', 100_000),
+    input('wheel', 120_000),
+    input('pointermove', 150_000),
+    task(110_000, 30, 25),
+  ];
+
+  it('the default inputs start the window at the first click', () => {
+    const r = longTasks(CHART);
+    expect(r.windowMs).toBe(401);
+    expect(r.over16).toBe(4);
+    expect(r.counts['click']).toBe(3);
+    expect(r.counts['wheel']).toBeUndefined();
+    expect(longTasks(CHART, { inputs: DEFAULT_INPUTS })).toEqual(r);
+  });
+
+  it('the chart inputs start it at the first wheel and count each type', () => {
+    expect(CHART_INPUTS).toEqual(
+      expect.arrayContaining(['wheel', 'pointermove', 'mousemove', 'contextmenu', 'dblclick']),
+    );
+    const r = longTasks(CHART, { inputs: CHART_INPUTS });
+    expect(r.windowMs).toBe(501);
+    expect(r.over16).toBe(5);
+    expect(r.tasks[0]?.label).toBe('unlabelled');
+    expect(r.counts).toMatchObject({ wheel: 2, pointermove: 1, click: 3, keydown: 1 });
+    expect(r.clicks).toBe(3);
   });
 });

@@ -1,0 +1,2 @@
+datasource:
+  url: http://[2001:db8::7]:3100

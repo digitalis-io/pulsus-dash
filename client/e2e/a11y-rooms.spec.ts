@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import {
   ALL_PAGES,
+  EXPLORE_RESULT,
   frame,
   GALLERY_URL,
   galleryReady,
@@ -192,6 +193,29 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await page.getByRole('button', { name: 'Star board' }).click();
   await page.getByText('Could not update Starred. Try again.').waitFor();
   await check('b-1 star failed');
+
+  await valueAxisPinned(page);
+  await check('b-1 view, value axis pinned');
+}
+
+/** b-1 in View mode with `Request rate`'s value axis pinned by `Shift`+wheel (#93). */
+async function valueAxisPinned(page: Page): Promise<void> {
+  await open(page, '/t/demo/board/b-1');
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  const f = page.locator('[data-chart-frame]', {
+    has: page.getByRole('slider', { name: 'Crosshair: Request rate', exact: true }),
+  });
+  await expect(f).toHaveAttribute('data-plot', /,/);
+  const [x = 0, y = 0, w = 0, h = 0] = ((await f.getAttribute('data-plot')) ?? '')
+    .split(',')
+    .map(Number);
+  const box = await f.boundingBox();
+  if (box === null) throw new Error('Request rate has no box');
+  await page.mouse.move(box.x + x + w / 2, box.y + y + h / 2);
+  await page.keyboard.down('Shift');
+  await page.mouse.wheel(0, -200);
+  await page.keyboard.up('Shift');
+  await page.getByRole('button', { name: 'Reset Y axis: Request rate' }).waitFor();
 }
 
 test.describe('e2e:a11y-rooms boards', () => {
@@ -212,6 +236,46 @@ test.describe('e2e:a11y-rooms boards', () => {
     await boardStates(page, async (state) => {
       expect(await smallTargets(page), state).toEqual([]);
     });
+  });
+});
+
+/** Explore with a result: the page, the editor, its completion popup and the metric picker (C.7). */
+async function exploreResult(page: Page): Promise<void> {
+  await open(page, EXPLORE_RESULT);
+  await expect(page.getByRole('table').getByRole('row')).toHaveCount(4);
+}
+
+test.describe('e2e:a11y-rooms explore', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} explore with a result`, async ({ page }) => {
+      await page.addInitScript((t) => {
+        localStorage.setItem('pulsus-dash.theme', t);
+      }, theme);
+      await exploreResult(page);
+      expect(await seriousViolations(page)).toEqual([]);
+    });
+  }
+
+  test('dark, completion popup open', async ({ page }) => {
+    await exploreResult(page);
+    await page.getByRole('textbox', { name: 'PromQL query' }).click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+Space');
+    await page.locator('.cm-tooltip-autocomplete').waitFor();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('dark, metric picker open', async ({ page }) => {
+    await exploreResult(page);
+    await page.getByRole('combobox', { name: 'Metric' }).focus();
+    await page.getByRole('listbox').waitFor();
+    await expect.poll(() => page.locator('[inert]').count()).toBeGreaterThanOrEqual(1);
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('explore targets are at least 24 × 24 px', async ({ page }) => {
+    await exploreResult(page);
+    expect(await smallTargets(page)).toEqual([]);
   });
 });
 
@@ -236,6 +300,8 @@ test.describe('e2e:a11y-rooms target size', () => {
         await page.keyboard.press('Escape');
       }
     }
+    await valueAxisPinned(page);
+    expect(await smallTargets(page), 'b-1 view, value axis pinned').toEqual([]);
   });
 });
 

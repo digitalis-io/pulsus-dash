@@ -152,6 +152,29 @@ func TestConfigCheckErrors(t *testing.T) {
 	}
 }
 
+// unit:credential-strength (config check half, §4.10).
+func TestConfigCheckCredentialStrength(t *testing.T) {
+	cfg := writeConfig(t, "postgres:\n  app_url_ref: env:PG_APP\n  owner_url_ref: env:PG_OWNER\n"+
+		"datasource:\n  url: http://localhost:9\n  credentials_ref: env:PW\n")
+	env := []string{"PG_APP=postgres://a@localhost/x", "PG_OWNER=postgres://o@localhost/x"}
+	const msg = "config: datasource.credentials_ref: the PulsusDB password must be at least 8 characters and must not be a number"
+	for _, pw := range []string{"u:1234567", "u:-1234567", "u:  12345678  ", ":abcdefgh"} {
+		r := runCLI(t, context.Background(), append(env, "PW="+pw), "config", "check", "--config", cfg)
+		if r.code != 2 || r.stderr != "pulsus-dash: "+msg+"\n" {
+			t.Errorf("serve, %q: exit %d stderr %q", pw, r.code, r.stderr)
+		}
+		r = runCLI(t, context.Background(), append(env, "PW="+pw), "config", "check", "--for", "migrate", "--config", cfg)
+		if r.code != 0 || r.stdout != "warning: "+msg+" (used only to seed a new database)\nconfig ok (for migrate)\n" {
+			t.Errorf("migrate, %q: exit %d stdout %q", pw, r.code, r.stdout)
+		}
+	}
+	for _, e := range [][]string{append(env, "PW=u:abcd1234"), env} {
+		if r := runCLI(t, context.Background(), e, "config", "check", "--config", cfg); r.code != 0 {
+			t.Errorf("strong or unset: exit %d stderr %q", r.code, r.stderr)
+		}
+	}
+}
+
 func TestUsage(t *testing.T) {
 	const usage = "pulsus-dash: usage: pulsus-dash <serve|migrate|config check|version> [flags]\n"
 	for _, args := range [][]string{nil, {"frobnicate"}} {
