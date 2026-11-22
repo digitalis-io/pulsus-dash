@@ -243,10 +243,15 @@ export function script(page: Page, h: KeyboardHarness) {
   }
 
   /** The first pending control inside the current state's region, if any. */
-  async function nextPending(): Promise<string | undefined> {
-    const { scope, region } = await scopes();
+  /** The first pending control of the region; `only` narrows the page's region (no overlay). */
+  async function nextPending(only?: Locator): Promise<string | undefined> {
+    const s0 = await scopes();
+    const region =
+      only !== undefined && (await s0.region.evaluate((r) => r.tagName === 'MAIN'))
+        ? only
+        : s0.region;
     for (const key of await h.pendingHere()) {
-      if (await inside(region, resolve(scope, key))) return key;
+      if (await inside(region, resolve(s0.scope, key))) return key;
     }
     return undefined;
   }
@@ -259,10 +264,16 @@ export function script(page: Page, h: KeyboardHarness) {
    * When an operation opens an overlay on the same route (a dialog, menu or list box), that overlay
    * is drained next, entered by the same replay plus that operation (two levels deep at most).
    */
-  async function drain(name: string, enter: () => Promise<void>, depth = 0): Promise<void> {
+  async function drain(
+    name: string,
+    enter: () => Promise<void>,
+    depth = 0,
+    /** At the top level, only this part of the page (a panel copy, plan #64). */
+    only?: Locator,
+  ): Promise<void> {
     for (let round = 0; round < 80; round++) {
       await enter();
-      let next = await nextPending();
+      let next = await nextPending(only);
       if (next === undefined) return;
       while (next !== undefined) {
         const before = await h.state();
@@ -284,7 +295,7 @@ export function script(page: Page, h: KeyboardHarness) {
           }
           break;
         }
-        next = await nextPending();
+        next = await nextPending(only);
       }
     }
     throw new Error(`drain ${name}: still pending ${(await h.pendingHere()).join(', ')}`);

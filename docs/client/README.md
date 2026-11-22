@@ -252,9 +252,13 @@ Escape for a combobox, the metric picker), until none is left; when
 an operation opens a dialog, menu or list box, that overlay is drained next (two levels deep). An
 action that adds sidebar or table links (create, rename) is followed in the same page session by
 `shellAfter`, which operates each new link. Two names are normalised: the time range trigger is one control whatever range
-it shows, and the calendar grid one control whatever month. A panel copy's controls (a name with
-" (copy)", from Duplicate, plan #64) are not collected: they are their source's controls, and each
-copy's menu has a Duplicate of its own, so covering copies would never end. React Aria's screen-reader-only buttons
+it shows, and the calendar grid one control whatever month. Panel copies are bounded by identity
+(plan #64): when a Duplicate is operated, the panels it adds (new `data-panel` ids) are recorded as
+copies one level below the panel it acted on (the focused control's, or the one whose menu is
+open). A first copy is collected and operated like any panel; the controls of a copy of a copy are
+not collected, so the traversal ends there. A page load (a fresh stub board) forgets the copies. A
+control is never skipped for its name. `drain` can be narrowed to one part of the page (a copy's
+panel) at its top level. React Aria's screen-reader-only buttons
 are not counted: an empty button with `tabindex="-1"` whose parent is React Aria's VisuallyHidden
 wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons and the calendar's
 second "Next"; Escape and the visible buttons are their keyboard equivalents. Any other control, including a visible empty icon button

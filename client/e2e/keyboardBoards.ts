@@ -58,6 +58,20 @@ export async function boardLoops(s: Script): Promise<void> {
       .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) })
       .scrollIntoViewIfNeeded();
   };
+  /** The panel titled `title`. */
+  const panelNamed = (title: string) =>
+    page
+      .locator('[data-panel]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) });
+  /** The panel has its answer (or its message), and a chart has drawn: its controls are all there. */
+  const settledPanel = async (title: string): Promise<void> => {
+    const p = panelNamed(title);
+    await p.scrollIntoViewIfNeeded();
+    await expect(p).not.toHaveAttribute('data-panel-state', 'loading');
+    if ((await p.getAttribute('data-panel-state')) === 'frame') {
+      await p.locator('[data-chart-frame][data-frame-ready="true"]').waitFor();
+    }
+  };
   const gridOf = (title: string) =>
     page
       .locator('[data-panel]')
@@ -222,6 +236,21 @@ export async function boardLoops(s: Script): Promise<void> {
           page.getByRole('heading', { level: 3, name: `${title} (copy)` }),
         ).toBeVisible();
         await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+        // The copy is a panel of its own: its controls are operated once (the harness does not
+        // traverse a copy of the copy).
+        await s.drain(
+          `${uid} copy of ${title}`,
+          async () => {
+            await s.goto(url);
+            await s.menuItem(`button "Panel menu: ${title}"`, 1);
+            await expect(
+              page.getByRole('heading', { level: 3, name: `${title} (copy)` }),
+            ).toBeVisible();
+            await settledPanel(`${title} (copy)`);
+          },
+          0,
+          panelNamed(`${title} (copy)`),
+        );
         await s.goto(url);
         await s.menuItem(`button "Panel menu: ${title}"`, 2);
         await expect(page.getByRole('button', { name: 'Add panel', exact: true })).toBeFocused();
@@ -473,6 +502,30 @@ export async function boardLoops(s: Script): Promise<void> {
     await expect(page.getByRole('button', { name: 'Add panel', exact: true })).toBeFocused();
     await expect(panelCount).toHaveCount(2);
 
+    // The Auto option names the auto vis of the panel's result, or none without one (plan #64
+    // §3.8): a heatmap panel's and a LogQL panel's.
+    for (const title of ['Request latency', 'Errors']) {
+      await s.goto('/t/demo/board/b-1');
+      await s.on('button "Edit board"');
+      await showPanel(title);
+      await s.menuItem(`button "Panel menu: ${title}"`, 0);
+      await expect(editor).toBeVisible();
+      if (title === 'Request latency') {
+        await editor.locator('[data-chart-frame][data-frame-ready="true"]').waitFor();
+      }
+      await s.on(/^button "\w+ Visualisation"$/);
+      await expect(page.getByRole('listbox')).toBeVisible();
+      await press('Home');
+      await press('Enter');
+      await expect(
+        editor.getByRole('button', { name: /^Auto( \(\w+\))? Visualisation$/ }),
+      ).toBeVisible();
+      // The trigger is named by the option now: open it and close it.
+      await s.on(/^button "Auto( \(\w+\))? Visualisation"$/);
+      await expect(page.getByRole('listbox')).toBeVisible();
+      await press('Escape');
+    }
+
     // Esc in the editor moves to Run query; a second Esc closes the dialog.
     await openEditor();
     await s.focus('textbox "Query"');
@@ -487,6 +540,21 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.replaceText('textbox "Title"', 'Edge p99 by region');
       await closeEditor();
     });
+    // The renamed panel's menu has a Duplicate too: its copy's controls, once.
+    await s.drain(
+      'b-3 copy of the renamed panel',
+      async () => {
+        await openEditor();
+        await s.replaceText('textbox "Title"', 'Edge p99 by region');
+        await closeEditor();
+        await s.menuItem('button "Panel menu: Edge p99 by region"', 1);
+        await expect(
+          page.getByRole('heading', { level: 3, name: 'Edge p99 by region (copy)' }),
+        ).toBeVisible();
+      },
+      0,
+      panelNamed('Edge p99 by region (copy)'),
+    );
     for (const which of ['Query language', 'Visualisation']) {
       await s.drain(`${which} list box`, async () => {
         await openEditor();

@@ -117,7 +117,9 @@ its request in flight (it fills the cache) and starts no new one.
 
 `PanelFrame` writes its body width into the board's width store (`panelWidths.ts`); the dialog's
 run reads it (`usePanelWidth`), so the preview sends the panel's width and shares its key. The last
-known width stays in the store when the panel remounts (the Edit grid replaces the View grid).
+known width stays in the store when the panel remounts (the Edit grid replaces the View grid);
+the provider reconciles the store with the board's live panel ids (`livePanels`), so a deleted
+panel's width goes and a new panel that reuses its id starts without it.
 
 ## Panel states (`panelView`)
 
@@ -200,6 +202,10 @@ its shadow root and on to the text: the dialog's focus containment walks the lig
 without it Tab would skip the editor. If the editor chunk fails to load, the field is a plain text area with "The
 query editor could not be loaded. Reload the page to try again." A LogQL panel keeps #90's text
 area.
+
+While the board saves or discards (read-only), the editor is read-only (`EditorState.readOnly`
+through a compartment, `aria-readonly`), the metric picker is disabled, and Run query, the Run keys
+and the run on leaving the field do nothing, so nothing typed can be lost or run.
 
 ## The stub
 
