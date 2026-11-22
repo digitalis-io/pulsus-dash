@@ -84,7 +84,7 @@ func TestLogMemberOrder(t *testing.T) {
 		var vol [2][]*Series
 		for i, o := range []order{typeFirst, resultFirst} {
 			u := newUpstream(t, answer(200, body(o, "matrix", matrixJSON(o, twoSeries))))
-			ss, _, err := New(Options{}).LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+			ss, _, err := New(Options{}).LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: volumeText(`{app="x"}`), Grid: a1Grid()})
 			if err != nil {
 				t.Fatalf("volume order %v: %v", o, err)
 			}

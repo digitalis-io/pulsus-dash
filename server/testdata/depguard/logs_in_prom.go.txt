@@ -1,0 +1,3 @@
+package prom
+
+import _ "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/logs"

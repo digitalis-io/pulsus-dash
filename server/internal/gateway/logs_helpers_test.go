@@ -189,7 +189,13 @@ func a1Metric() []any {
 
 // logPage is a decoded streams body.
 type logPage struct {
-	Kind      string `json:"kind"`
+	Kind    string `json:"kind"`
+	Planned struct {
+		Query    string `json:"query"`
+		Expanded string `json:"expanded"`
+		Bytes    int    `json:"bytes"`
+		StepMs   int64  `json:"step_ms"`
+	} `json:"planned"`
 	Start     int64  `json:"start"`
 	End       int64  `json:"end"`
 	Step      int64  `json:"step"`

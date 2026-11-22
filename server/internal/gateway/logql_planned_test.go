@@ -15,9 +15,9 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// T06-029 note (#65 Part B): `planned` is PromQL-only until logs.Plan lands (#116). The LogQL
-// range and volume bodies, success and error, carry no planned member.
-func TestLogqlBodiesCarryNoPlanned(t *testing.T) {
+// T06-029 (plan #116): the LogQL range and volume bodies, success and error, carry planned:
+// after kind on the range route, first on the volume route.
+func TestLogqlBodiesCarryPlanned(t *testing.T) {
 	up := newLogUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		q := r.Form.Get("query")
 		switch {
@@ -35,11 +35,12 @@ func TestLogqlBodiesCarryNoPlanned(t *testing.T) {
 	for _, c := range []struct {
 		name, path, body string
 		status           int
+		prefix           string
 	}{
-		{"metric", logRangePath, logBody(`sum by (level) (count_over_time({app="x"}[1m]))`, ""), 200},
-		{"streams", logRangePath, logBody(`{app="x"}`, ""), 200},
-		{"volume", logVolumePath, logBody(`{app="x"}`, ""), 200},
-		{"upstream error", logRangePath, logBody(`{app="fail_upstream"}`, ""), 400},
+		{"metric", logRangePath, logBody(`sum by (level) (count_over_time({app="x"}[1m]))`, ""), 200, `{"kind":"series","planned":{`},
+		{"streams", logRangePath, logBody(`{app="x"}`, ""), 200, `{"kind":"streams","planned":{"query":`},
+		{"volume", logVolumePath, logBody(`{app="x"}`, ""), 200, `{"planned":{"query":"sum by (level`},
+		{"upstream error", logRangePath, logBody(`{app="fail_upstream"}`, ""), 400, `{"error":`},
 	} {
 		rec := postJSON(h, c.path, c.body)
 		var top map[string]json.RawMessage
@@ -47,8 +48,8 @@ func TestLogqlBodiesCarryNoPlanned(t *testing.T) {
 			t.Errorf("%s: %d %v %.300s", c.name, rec.Code, err, rec.Body.String())
 			continue
 		}
-		if _, ok := top["planned"]; ok {
-			t.Errorf("%s: the LogQL body has a planned member: %.300s", c.name, rec.Body.String())
+		if !strings.HasPrefix(rec.Body.String(), c.prefix) {
+			t.Errorf("%s: body %.120s, want prefix %s", c.name, rec.Body.String(), c.prefix)
 		}
 		if c.status == 400 {
 			var e struct {
@@ -57,9 +58,11 @@ func TestLogqlBodiesCarryNoPlanned(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := e.Error["planned"]; ok {
-				t.Errorf("%s: the LogQL error has a planned member: %s", c.name, rec.Body.String())
+			if _, ok := e.Error["planned"]; !ok {
+				t.Errorf("%s: the LogQL error has no planned member: %s", c.name, rec.Body.String())
 			}
+		} else if _, ok := top["planned"]; !ok {
+			t.Errorf("%s: the LogQL body has no planned member: %.300s", c.name, rec.Body.String())
 		}
 	}
 }
@@ -82,9 +85,9 @@ func TestPromRangeKeepsPlanned(t *testing.T) {
 	}
 }
 
-// The volume operation's 200 schema is the planned-free range frame, and a volume body validates
-// against it: every required member present, none outside its properties (additionalProperties
-// false), and no planned (T06-029 note, #116).
+// The volume operation's 200 schema is LogqlVolumeResponse, planned first (plan #116 §3.3), the
+// planned-free RangeFrameResponse is gone, and a volume body validates against it: every required
+// member present, none outside its properties (additionalProperties false).
 func TestLogqlVolumeMatchesSpec(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "openapi.yaml"))
 	if err != nil {
@@ -117,15 +120,18 @@ func TestLogqlVolumeMatchesSpec(t *testing.T) {
 		t.Fatal("no postLogqlVolume operation")
 	}
 	ref := op.Responses["200"].Content["application/json"].Schema.Ref
-	if ref != "#/components/schemas/RangeFrameResponse" {
-		t.Fatalf("postLogqlVolume 200 schema %q, want the planned-free RangeFrameResponse", ref)
+	if ref != "#/components/schemas/LogqlVolumeResponse" {
+		t.Fatalf("postLogqlVolume 200 schema %q, want LogqlVolumeResponse", ref)
+	}
+	if _, ok := doc.Components.Schemas["RangeFrameResponse"]; ok {
+		t.Error("RangeFrameResponse is still in components.schemas")
 	}
 	s := doc.Components.Schemas[strings.TrimPrefix(ref, "#/components/schemas/")]
-	if !slices.Equal(s.Required, []string{"start", "end", "step", "frames", "completeness"}) {
-		t.Errorf("RangeFrameResponse required = %v", s.Required)
+	if !slices.Equal(s.Required, []string{"planned", "start", "end", "step", "frames", "completeness"}) {
+		t.Errorf("LogqlVolumeResponse required = %v", s.Required)
 	}
-	if _, ok := s.Properties["planned"]; ok || s.AdditionalProperties.Value != "false" {
-		t.Errorf("RangeFrameResponse must have no planned and additionalProperties false")
+	if _, ok := s.Properties["planned"]; !ok || s.AdditionalProperties.Value != "false" {
+		t.Errorf("LogqlVolumeResponse must have planned and additionalProperties false")
 	}
 
 	up := newLogUpstream(t, func(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +150,7 @@ func TestLogqlVolumeMatchesSpec(t *testing.T) {
 	}
 	for k := range top {
 		if _, ok := s.Properties[k]; !ok {
-			t.Errorf("volume body member %q is not in RangeFrameResponse", k)
+			t.Errorf("volume body member %q is not in LogqlVolumeResponse", k)
 		}
 	}
 }

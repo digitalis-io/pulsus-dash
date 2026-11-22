@@ -34,6 +34,19 @@ export interface PlannedQuery {
   readonly rateWindowMs?: number;
 }
 
+/** What the server planned and sent for a LogQL query (plan #116 §3.8). Stub. */
+export interface LogqlPlannedQuery {
+  readonly query: string;
+  readonly expanded: string;
+  readonly bytes: number;
+  readonly stepMs: number;
+}
+
+/** Stub (plan #116 §3.8). */
+export function decodeLogqlPlanned(_v: unknown, _path: string): LogqlPlannedQuery {
+  throw new Error('not implemented');
+}
+
 /**
  * Frames on a range grid. The LogQL bodies are this alone: `planned` is PromQL-only until
  * `logs.Plan` lands (T06-029, #116).

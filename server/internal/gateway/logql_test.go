@@ -82,8 +82,12 @@ func TestLogqlRoutes(t *testing.T) {
 		{"from negative", logRangePath, `{` + q + `,"from":-1,"to":2,"width_px":3}`, "/from", "field.range", ""},
 		{"width 0", logRangePath, `{` + q + `,"from":1,"to":2,"width_px":0}`, "/width_px", "field.range", ""},
 		{"from = to", logRangePath, `{` + q + `,"from":2,"to":2,"width_px":3}`, "/to", "field.range", ""},
-		{"empty query", logRangePath, `{"query":"",` + logWin + `}`, "/query", "field.range", ""},
+		{"empty query", logRangePath, `{"query":"",` + logWin + `}`, "/query", "field.range", "query must be 1 to 131072 bytes"},
 		{"query not utf-8", logRangePath, "{\"query\":\"a\xffb\"," + logWin + "}", "/query", "field.range", ""},
+		{"vars wrong type", logRangePath, `{` + ok + `,"vars":{"a":1}}`, "/vars/a", "field.type", ""},
+		{"rate is not a LogQL member", logRangePath, `{` + ok + `,"rate":true}`, "/rate", "field.unknown", ""},
+		{"bad UTF-8 only in a value", logRangePath, "{" + ok + ",\"vars\":{\"a\":\"\xff\"}}", "/vars", "field.range", ""},
+		{"volume vars wrong type", logVolumePath, `{` + ok + `,"vars":{"a":1}}`, "/vars/a", "field.type", ""},
 		{"timeout 199", logRangePath, `{` + ok + `,"timeout_ms":199}`, "/timeout_ms", "field.range", ""},
 		{"to beyond the supported range", logRangePath, `{` + q + `,"from":1,"to":9223372036855,"width_px":3}`, "/to", "field.range",
 			"to is beyond the supported time range (at most 9223372036854)"},
@@ -120,6 +124,13 @@ func TestLogqlRoutes(t *testing.T) {
 	}
 	if n := len(up.requests()); n != 0 {
 		t.Errorf("%d upstream requests for refused bodies", n)
+	}
+	// The raw limit is 131 072 bytes: a text that long is planned, then refused at the 64 KiB
+	// planned limit (413, not 400).
+	rec = postJSON(h, logRangePath, logBody(strings.Repeat("a", 131_072), ""))
+	wantError(t, "a 131 072-byte query", rec, 413, "invalid", "/query", "query.sent_too_large")
+	if n := len(up.requests()); n != 0 {
+		t.Errorf("%d upstream requests for the planned-size refusal", n)
 	}
 
 	// #62's PromQL routes keep their own bound.
@@ -169,7 +180,8 @@ func TestLogqlMetricStreams(t *testing.T) {
 	}()
 	select {
 	case b := <-got:
-		if resp.StatusCode != 200 || !strings.HasPrefix(b, `{"kind":"series","start":1767225600000,"end":1767229200000,"step":5000,"frames":[{"key":`) {
+		if resp.StatusCode != 200 || !strings.HasPrefix(b, `{"kind":"series","planned":{"query":"sum by (level) (count_over_time({app=\"x\"}[1m]))",`) ||
+			!strings.Contains(b, `,"step_ms":5000},"start":1767225600000,"end":1767229200000,"step":5000,"frames":[{"key":`) {
 			t.Errorf("%d first bytes %q", resp.StatusCode, b)
 		}
 	case <-time.After(3 * time.Second):
@@ -214,7 +226,8 @@ func TestLogqlMetricAbort(t *testing.T) {
 }
 
 // unit:logql-routes, member order through the route (T06-011): result before resultType gives the
-// same bytes as resultType first, for a page and for a metric result.
+// same bytes as resultType first, for a page and for a metric result; and the members are in the
+// order kind, planned, start… (range) and planned, start… (volume, plan #116 §3.4).
 func TestLogqlMemberOrder(t *testing.T) {
 	bodies := map[bool][2]string{}
 	for _, reverse := range []bool{false, true} {
@@ -232,9 +245,43 @@ func TestLogqlMemberOrder(t *testing.T) {
 			t.Errorf("%s: result first gives another body:\n type first   %.300s\n result first %.300s", what, a, b)
 		}
 	}
-	if !strings.HasPrefix(bodies[false][0], `{"kind":"streams",`) || !strings.HasPrefix(bodies[false][1], `{"kind":"series",`) {
-		t.Errorf("bodies %.80s / %.80s", bodies[false][0], bodies[false][1])
+	up := planUpstream(t)
+	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
+	volume := postJSON(h, logVolumePath, logBody(`{app="x"}`, "")).Body.String()
+	for _, c := range []struct {
+		what, body string
+		order      []string
+	}{
+		{"streams", bodies[false][0], []string{"kind", "planned", "start", "end", "step", "direction", "streams", "cursor", "completeness"}},
+		{"series", bodies[false][1], []string{"kind", "planned", "start", "end", "step", "frames", "completeness"}},
+		{"volume", volume, []string{"planned", "start", "end", "step", "frames", "completeness"}},
+	} {
+		if got := topKeys(t, c.body); !slices.Equal(got, c.order) {
+			t.Errorf("%s: members %v, want %v", c.what, got, c.order)
+		}
 	}
+}
+
+// topKeys is the member names of a JSON object, in order.
+func topKeys(t *testing.T, body string) []string {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(body))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		t.Fatalf("not an object: %.100s", body)
+	}
+	var keys []string
+	for dec.More() {
+		k, err := dec.Token()
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, k.(string))
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return keys
 }
 
 // unit:log-time-range (§3.3, Q6): the log routes end at maxLogTimeMs, before and after alignment.
@@ -359,7 +406,7 @@ func TestLogqlGoldenShape(t *testing.T) {
 	b := rec.Body.String()
 	keyA := keyhash.Hex(keyhash.Labels([]keyhash.Label{{Name: "app", Value: "x"}, {Name: "pod", Value: "a"}}))
 	for _, want := range []string{
-		`{"kind":"streams","start":1767225600000,"end":1767229200000,"step":5000,"direction":"backward","streams":[`,
+		`{"kind":"streams","planned":{"query":"{app=\"x\"}","expanded":"{app=\"x\"}","bytes":9,"step_ms":5000},"start":1767225600000,"end":1767229200000,"step":5000,"direction":"backward","streams":[`,
 		`{"key":"` + keyA + `","labels":{"app":"x","pod":"a"},"entries":[{"ts_ns":"1767229100000000500","line":"a5","level":"info","metadata":{"detected_level":"info"}}]}`,
 		`"labels":{"app":"x","pod":"b"},"entries":[{"ts_ns":"1767229100000000400","line":"b4","level":"warn","metadata":{"detected_level":"unknown"},"parsed":{"level":"WARNING"}}]}`,
 		`],"cursor":"`,
@@ -380,12 +427,12 @@ func TestLogqlGoldenShape(t *testing.T) {
 	}
 
 	rec = postJSON(h, logRangePath, logBody(`sum by (level) (count_over_time({app="x"}[1m]))`, ""))
-	if b := rec.Body.String(); rec.Code != 200 || !strings.HasPrefix(b, `{"kind":"series","start":1767225600000,"end":1767229200000,"step":5000,"frames":[`) ||
+	if b := rec.Body.String(); rec.Code != 200 || !strings.HasPrefix(b, `{"kind":"series","planned":{"query":"sum by (level) (count_over_time({app=\"x\"}[1m]))","expanded":"sum by (level) (count_over_time({app=\"x\"}[1m]))","bytes":47,"step_ms":5000},"start":1767225600000,"end":1767229200000,"step":5000,"frames":[`) ||
 		strings.Contains(b, `"cursor"`) || strings.Count(b, `"key"`) != 2 {
 		t.Errorf("metric: %d %.300s", rec.Code, b)
 	}
 	rec = postJSON(h, logVolumePath, logBody(`{app="x"}`, ""))
-	if b := rec.Body.String(); rec.Code != 200 || !strings.HasPrefix(b, `{"start":1767225600000,"end":1767229200000,"step":5000,"frames":[`) || strings.Count(b, `"key"`) != 5 {
+	if b := rec.Body.String(); rec.Code != 200 || !strings.HasPrefix(b, `{"planned":{"query":"sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))","expanded":"{app=\"x\"}","bytes":81,"step_ms":5000},"start":1767225600000,"end":1767229200000,"step":5000,"frames":[`) || strings.Count(b, `"key"`) != 5 {
 		t.Errorf("volume: %d %.300s", rec.Code, b)
 	}
 }

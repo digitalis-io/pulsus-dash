@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ci:go-lint depguard self-test (T05-002): each fixture uses a package outside the directory its
 # depguard or forbidigo rule allows, so the lint must fail with that rule's message (T11-023,
-# T06-001, T06-005, plan #62 §4.9). The lint runs on a copy of server/ in a temporary directory;
+# T06-001, T06-005, plan #62 §4.9; the language-module isolation of T06-028, plan #116 §3.6). The lint runs on a copy of server/ in a temporary directory;
 # the checkout is never written.
 #
 # Usage: check-depguard-fixture.sh   (from any directory inside the repository)
@@ -37,6 +37,10 @@ check chi chi_outside_gateway.go.txt gateway-only "the router is used only in in
 check httpclient http_client_outside_pulsusdb.go.txt pulsusdb-only "pulsusdb-only: outbound HTTP is made only in internal/pulsusdb and the allowed packages (T06-005)"
 check promparser promql_parser_outside_prom.go.txt promql-parser "the upstream PromQL parser is used only in internal/pulsusdb/prom (ADR-0021)"
 check jsondecoder json_outside_updec.go.txt pulsusdb-decoder "pulsusdb-decoder: every upstream body decoder yields strings only through redact; encoding/json does not (§4.9)" pulsusdb
+check promInLogs prom_in_logs.go.txt logs-isolation "a language module imports no other language module (T06-028, ADR-0018 §3)" pulsusdb/logs
+check logsInProm logs_in_prom.go.txt prom-isolation "a language module imports no other language module (T06-028, ADR-0018 §3)" pulsusdb/prom
+check logsInCore logs_in_core.go.txt modules-from-callers "only the language modules' callers import a language module: internal/gateway today (T06-028, ADR-0018 §3, §4)" pulsusdb
+check promInStore prom_in_store.go.txt modules-from-callers "only the language modules' callers import a language module: internal/gateway today (T06-028, ADR-0018 §3, §4)" store
 
 if [ "$(git -C "$ROOT" status --porcelain)" != "$before" ]; then
   echo "the depguard self-test changed the checkout"

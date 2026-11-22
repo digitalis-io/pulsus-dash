@@ -38,11 +38,12 @@ type logEntry struct {
 }
 
 type logPageResp struct {
-	Kind      string `json:"kind"`
-	Start     int64  `json:"start"`
-	End       int64  `json:"end"`
-	Step      int64  `json:"step"`
-	Direction string `json:"direction"`
+	Kind      string         `json:"kind"`
+	Planned   map[string]any `json:"planned"` // the LogqlPlannedQuery (plan #116)
+	Start     int64          `json:"start"`
+	End       int64          `json:"end"`
+	Step      int64          `json:"step"`
+	Direction string         `json:"direction"`
 	Streams   []struct {
 		Key     string            `json:"key"`
 		Labels  map[string]string `json:"labels"`

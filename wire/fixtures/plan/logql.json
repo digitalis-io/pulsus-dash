@@ -1,0 +1,2038 @@
+{
+ "version": 1,
+ "classify": [
+  {
+   "name": "L1 equality matcher",
+   "text": "{source=\"pulsus-dash\"}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L2 reserved with another matcher",
+   "text": "{source=\"pulsus-dash\", kind=\"alert_transition\"} |= \"x\"",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\", kind=\"alert_transition\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L3 regex matcher",
+   "text": "{source=~\"pulsus-dash\"}",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{source=~\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L4 variable in the value",
+   "text": "{source=\"$s\"}",
+   "vars": {
+    "s": "pulsus-dash"
+   },
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L5 mixed",
+   "text": "sum(count_over_time({source=\"pulsus-dash\"}[$__interval])) + sum(count_over_time({job=\"a\"}[$__interval]))",
+   "want": {
+    "class": "mixed",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\"}"
+     },
+     {
+      "reserved": false,
+      "text": "{job=\"a\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L6 spaces between tokens",
+   "text": "{ source = \"pulsus-dash\" }",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{ source = \"pulsus-dash\" }"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L7 backtick value",
+   "text": "{source=`pulsus-dash`}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=`pulsus-dash`}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L8 escaped value",
+   "text": "{source=\"pulsus\\x2ddash\"}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus\\x2ddash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L9 another value",
+   "text": "{source=\"pulsus-dash2\"}",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{source=\"pulsus-dash2\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L10 label filter",
+   "text": "{app=\"x\"} | source=\"pulsus-dash\"",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{app=\"x\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L11 selector inside a line filter string",
+   "text": "{app=\"x\"} |= \"{source=\\\"pulsus-dash\\\"}\"",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{app=\"x\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L12 selector inside a comment",
+   "text": "# {source=\"pulsus-dash\"}\n{app=\"x\"}",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{app=\"x\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L13 unclosed selector",
+   "text": "{source=\"pulsus-dash\"",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\""
+     }
+    ]
+   }
+  },
+  {
+   "name": "L14 negative matcher",
+   "text": "count_over_time({app=\"x\", source!=\"pulsus-dash\"}[1m])",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{app=\"x\", source!=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L15 quoted label name",
+   "text": "{\"source\"=\"pulsus-dash\"}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{\"source\"=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L16 variable that is the whole query",
+   "text": "$q",
+   "vars": {
+    "q": "{source=\"pulsus-dash\"}"
+   },
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L17 backtick value with a CR",
+   "text": "{source=`pulsus-\rdash`}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=`pulsus-\rdash`}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L18 invalid escape",
+   "text": "{source=\"pulsus-dash\\q\"}",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{source=\"pulsus-dash\\q\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L19 brace inside a value",
+   "text": "{app=\"a}b\", source=\"pulsus-dash\"}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{app=\"a}b\", source=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L20 missing comma",
+   "text": "{app=\"x\" source=\"pulsus-dash\"}",
+   "want": {
+    "class": "virtual",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": true,
+      "text": "{app=\"x\" source=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L21 quote inside a comment",
+   "text": "{app=\"x\"} # \"\n{source=\"pulsus-dash\"}",
+   "want": {
+    "class": "mixed",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{app=\"x\"}"
+     },
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\"}"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L22 selector inside a backtick line filter",
+   "text": "{app=\"x\"} |= `{source=\"pulsus-dash\"}`",
+   "want": {
+    "class": "pulsus_db",
+    "reserved": [],
+    "selectors": [
+     {
+      "reserved": false,
+      "text": "{app=\"x\"}"
+     }
+    ]
+   }
+  }
+ ],
+ "plan": [
+  {
+   "name": "L4 variable in a value",
+   "from": "issue #116",
+   "inputs": {
+    "query": "{source=\"$s\"}",
+    "vars": {
+     "s": "pulsus-dash"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{source=\"pulsus-dash\"}",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "virtual",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    },
+    "planned": {
+     "class": "virtual",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 0,
+     "to": 22,
+     "reserved": true
+    },
+    {
+     "text": "planned",
+     "from": 0,
+     "to": 22,
+     "reserved": true
+    }
+   ],
+   "planned": {
+    "query": "{source=\"pulsus-dash\"}",
+    "expanded": "{source=\"pulsus-dash\"}",
+    "bytes": 22,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     9,
+     9
+    ],
+    [
+     19,
+     9
+    ],
+    [
+     20,
+     11
+    ],
+    [
+     21,
+     12
+    ],
+    [
+     22,
+     13
+    ]
+   ]
+  },
+  {
+   "name": "L5 mixed query",
+   "from": "issue #116",
+   "inputs": {
+    "query": "sum(count_over_time({source=\"pulsus-dash\"}[$__interval])) + sum(count_over_time({job=\"a\"}[$__interval]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "sum(count_over_time({source=\"pulsus-dash\"}[1s])) + sum(count_over_time({job=\"a\"}[1s]))",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "mixed",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    },
+    "planned": {
+     "class": "mixed",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 20,
+     "to": 42,
+     "reserved": true
+    },
+    {
+     "text": "prepared",
+     "from": 71,
+     "to": 80,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 20,
+     "to": 42,
+     "reserved": true
+    },
+    {
+     "text": "planned",
+     "from": 71,
+     "to": 80,
+     "reserved": false
+    }
+   ],
+   "planned": {
+    "query": "sum(count_over_time({source=\"pulsus-dash\"}[5s])) + sum(count_over_time({job=\"a\"}[5s]))",
+    "expanded": "sum(count_over_time({source=\"pulsus-dash\"}[5s])) + sum(count_over_time({job=\"a\"}[5s]))",
+    "bytes": 86,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     43,
+     43
+    ],
+    [
+     85,
+     103
+    ],
+    [
+     86,
+     104
+    ]
+   ]
+  },
+  {
+   "name": "L16 variable that is the whole query",
+   "from": "new",
+   "inputs": {
+    "query": "$q",
+    "vars": {
+     "q": "{source=\"pulsus-dash\"}"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{source=\"pulsus-dash\"}",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "virtual",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    },
+    "planned": {
+     "class": "virtual",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 0,
+     "to": 22,
+     "reserved": true
+    },
+    {
+     "text": "planned",
+     "from": 0,
+     "to": 22,
+     "reserved": true
+    }
+   ],
+   "planned": {
+    "query": "{source=\"pulsus-dash\"}",
+    "expanded": "{source=\"pulsus-dash\"}",
+    "bytes": 22,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     0,
+     0
+    ],
+    [
+     21,
+     0
+    ],
+    [
+     22,
+     2
+    ]
+   ]
+  },
+  {
+   "name": "P1 variable in a value",
+   "from": "issue #116",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"}",
+   "planned": {
+    "query": "{app=\"x\"}",
+    "expanded": "{app=\"x\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     7,
+     8
+    ],
+    [
+     8,
+     9
+    ],
+    [
+     9,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "P2 quote and backslash in a value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x\"y\\"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\\\"y\\\\\"}",
+   "planned": {
+    "query": "{app=\"x\\\"y\\\\\"}",
+    "expanded": "{app=\"x\\\"y\\\\\"}",
+    "bytes": 14,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     10,
+     6
+    ],
+    [
+     11,
+     6
+    ],
+    [
+     13,
+     9
+    ],
+    [
+     14,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "P3 one value in a backtick and a quoted string",
+   "from": "new",
+   "inputs": {
+    "query": "{app=`$a`} |= \"$a\"",
+    "vars": {
+     "a": "x\"y"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=`x\"y`} |= \"x\\\"y\"",
+   "planned": {
+    "query": "{app=`x\"y`} |= \"x\\\"y\"",
+    "expanded": "{app=`x\"y`} |= \"x\\\"y\"",
+    "bytes": 21,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     21,
+     18
+    ]
+   ]
+  },
+  {
+   "name": "P4 rate interval",
+   "from": "new",
+   "inputs": {
+    "query": "sum(rate({app=\"x\"}[$__rate_interval]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "sum(rate({app=\"x\"}[1s]))",
+   "planned": {
+    "query": "sum(rate({app=\"x\"}[1m]))",
+    "expanded": "sum(rate({app=\"x\"}[1m]))",
+    "bytes": 24,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     19,
+     19
+    ],
+    [
+     20,
+     19
+    ],
+    [
+     21,
+     35
+    ],
+    [
+     24,
+     38
+    ]
+   ]
+  },
+  {
+   "name": "P5 interval at 30 s",
+   "from": "new",
+   "inputs": {
+    "query": "sum(count_over_time({app=\"x\"}[$__interval]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 30000
+   },
+   "substituted": "sum(count_over_time({app=\"x\"}[1s]))",
+   "planned": {
+    "query": "sum(count_over_time({app=\"x\"}[30s]))",
+    "expanded": "sum(count_over_time({app=\"x\"}[30s]))",
+    "bytes": 36,
+    "step_ms": 30000
+   },
+   "to_source": [
+    [
+     30,
+     30
+    ],
+    [
+     31,
+     30
+    ],
+    [
+     33,
+     41
+    ],
+    [
+     36,
+     44
+    ]
+   ]
+  },
+  {
+   "name": "P6 reference in a comment",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"} # $a",
+    "vars": {
+     "a": "z"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} # z",
+   "planned": {
+    "query": "{app=\"x\"} # z",
+    "expanded": "{app=\"x\"} # z",
+    "bytes": 13,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     12,
+     12
+    ],
+    [
+     13,
+     14
+    ]
+   ]
+  },
+  {
+   "name": "P7 other macros stay as typed",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$__auto\"",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"$__auto\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"$__auto\"",
+    "expanded": "{app=\"x\"} |= \"$__auto\"",
+    "bytes": 22,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     22,
+     22
+    ]
+   ]
+  },
+  {
+   "name": "P8 values are not rescanned",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$a\"",
+    "vars": {
+     "a": "$__interval"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"$__interval\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"$__interval\"",
+    "expanded": "{app=\"x\"} |= \"$__interval\"",
+    "bytes": 26,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     14,
+     14
+    ],
+    [
+     25,
+     16
+    ],
+    [
+     26,
+     17
+    ]
+   ]
+  },
+  {
+   "name": "V1 volume template",
+   "from": "#65 TestVolumeCompose",
+   "inputs": {
+    "query": "{app=\"x\"}",
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"}",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "pulsus_db",
+     "reserved": []
+    },
+    "planned": {
+     "class": "pulsus_db",
+     "reserved": []
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 0,
+     "to": 9,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 48,
+     "to": 57,
+     "reserved": false
+    }
+   ],
+   "planned": {
+    "query": "sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))",
+    "expanded": "{app=\"x\"}",
+    "bytes": 81,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     0,
+     null
+    ],
+    [
+     47,
+     null
+    ],
+    [
+     48,
+     0
+    ],
+    [
+     56,
+     8
+    ],
+    [
+     57,
+     null
+    ],
+    [
+     80,
+     null
+    ],
+    [
+     81,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "V2 volume positions",
+   "from": "#65 TestVolumeCompose",
+   "inputs": {
+    "query": "{app=\"x\"",
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"",
+   "planned": {
+    "query": "sum by (level, detected_level) (count_over_time({app=\"x\"\n| drop __error__ [5s]))",
+    "expanded": "{app=\"x\"",
+    "bytes": 80,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     47,
+     null
+    ],
+    [
+     48,
+     0
+    ],
+    [
+     50,
+     2
+    ],
+    [
+     55,
+     7
+    ],
+    [
+     56,
+     null
+    ],
+    [
+     57,
+     null
+    ],
+    [
+     80,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "V3 volume with a comment at 60 s",
+   "from": "#65 TestVolumeCompose",
+   "inputs": {
+    "query": "{app=\"$a\"} # c",
+    "vars": {
+     "a": "x"
+    },
+    "kind": "volume",
+    "step_ms": 60000
+   },
+   "substituted": "{app=\"x\"} # c",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "pulsus_db",
+     "reserved": []
+    },
+    "planned": {
+     "class": "pulsus_db",
+     "reserved": []
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 0,
+     "to": 9,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 48,
+     "to": 57,
+     "reserved": false
+    }
+   ],
+   "planned": {
+    "query": "sum by (level, detected_level) (count_over_time({app=\"x\"} # c\n| drop __error__ [60s]))",
+    "expanded": "{app=\"x\"} # c",
+    "bytes": 86,
+    "step_ms": 60000
+   },
+   "to_source": [
+    [
+     48,
+     0
+    ],
+    [
+     54,
+     6
+    ],
+    [
+     57,
+     10
+    ],
+    [
+     60,
+     13
+    ],
+    [
+     61,
+     null
+    ],
+    [
+     86,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "V4 volume at a step of 1500 ms",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"}",
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 1500
+   },
+   "substituted": "{app=\"x\"}",
+   "planned": {
+    "query": "sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [1500ms]))",
+    "expanded": "{app=\"x\"}",
+    "bytes": 85,
+    "step_ms": 1500
+   }
+  },
+  {
+   "name": "L5v mixed volume",
+   "from": "new",
+   "inputs": {
+    "query": "sum(count_over_time({source=\"pulsus-dash\"}[$__interval])) + sum(count_over_time({job=\"a\"}[$__interval]))",
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 5000
+   },
+   "substituted": "sum(count_over_time({source=\"pulsus-dash\"}[1s])) + sum(count_over_time({job=\"a\"}[1s]))",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "mixed",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    },
+    "planned": {
+     "class": "mixed",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 20,
+     "to": 42,
+     "reserved": true
+    },
+    {
+     "text": "prepared",
+     "from": 71,
+     "to": 80,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 68,
+     "to": 90,
+     "reserved": true
+    },
+    {
+     "text": "planned",
+     "from": 119,
+     "to": 128,
+     "reserved": false
+    }
+   ],
+   "planned": {
+    "query": "sum by (level, detected_level) (count_over_time(sum(count_over_time({source=\"pulsus-dash\"}[5s])) + sum(count_over_time({job=\"a\"}[5s]))\n| drop __error__ [5s]))",
+    "expanded": "sum(count_over_time({source=\"pulsus-dash\"}[5s])) + sum(count_over_time({job=\"a\"}[5s]))",
+    "bytes": 158,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "P9 later selector after a longer macro",
+   "from": "new",
+   "inputs": {
+    "query": "sum(count_over_time({app=\"x\"}[$__interval])) / sum(count_over_time({app=\"y\"}[$__interval]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 30000
+   },
+   "substituted": "sum(count_over_time({app=\"x\"}[1s])) / sum(count_over_time({app=\"y\"}[1s]))",
+   "want": {
+    "same_class": true,
+    "prepared": {
+     "class": "pulsus_db",
+     "reserved": []
+    },
+    "planned": {
+     "class": "pulsus_db",
+     "reserved": []
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 20,
+     "to": 29,
+     "reserved": false
+    },
+    {
+     "text": "prepared",
+     "from": 58,
+     "to": 67,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 20,
+     "to": 29,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 59,
+     "to": 68,
+     "reserved": false
+    }
+   ],
+   "planned": {
+    "query": "sum(count_over_time({app=\"x\"}[30s])) / sum(count_over_time({app=\"y\"}[30s]))",
+    "expanded": "sum(count_over_time({app=\"x\"}[30s])) / sum(count_over_time({app=\"y\"}[30s]))",
+    "bytes": 75,
+    "step_ms": 30000
+   }
+  },
+  {
+   "name": "M1 a macro changes a decoded value",
+   "from": "new",
+   "inputs": {
+    "query": "{source=\"pulsus\\x${__interval}dash\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 172800000
+   },
+   "substituted": "{source=\"pulsus\\x1sdash\"}",
+   "want": {
+    "same_class": false,
+    "prepared": {
+     "class": "pulsus_db",
+     "reserved": []
+    },
+    "planned": {
+     "class": "virtual",
+     "reserved": [
+      "source=\"pulsus-dash\""
+     ]
+    }
+   },
+   "selectors": [
+    {
+     "text": "prepared",
+     "from": 0,
+     "to": 25,
+     "reserved": false
+    },
+    {
+     "text": "planned",
+     "from": 0,
+     "to": 25,
+     "reserved": true
+    }
+   ],
+   "planned": {
+    "query": "{source=\"pulsus\\x2ddash\"}",
+    "expanded": "{source=\"pulsus\\x2ddash\"}",
+    "bytes": 25,
+    "step_ms": 172800000
+   }
+  },
+  {
+   "name": "N1 missing variables in first-reference order",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$b\", x=\"$c$b\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "no value for variable $b, $c",
+    "fields": [
+     {
+      "pointer": "/vars/b",
+      "message_key": "variable.missing"
+     },
+     {
+      "pointer": "/vars/c",
+      "message_key": "variable.missing"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N2 too many variables",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"}",
+    "vars": {
+     "v00": "x",
+     "v01": "x",
+     "v02": "x",
+     "v03": "x",
+     "v04": "x",
+     "v05": "x",
+     "v06": "x",
+     "v07": "x",
+     "v08": "x",
+     "v09": "x",
+     "v10": "x",
+     "v11": "x",
+     "v12": "x",
+     "v13": "x",
+     "v14": "x",
+     "v15": "x",
+     "v16": "x",
+     "v17": "x",
+     "v18": "x",
+     "v19": "x",
+     "v20": "x",
+     "v21": "x",
+     "v22": "x",
+     "v23": "x",
+     "v24": "x",
+     "v25": "x",
+     "v26": "x",
+     "v27": "x",
+     "v28": "x",
+     "v29": "x",
+     "v30": "x",
+     "v31": "x",
+     "v32": "x",
+     "v33": "x",
+     "v34": "x",
+     "v35": "x",
+     "v36": "x",
+     "v37": "x",
+     "v38": "x",
+     "v39": "x",
+     "v40": "x",
+     "v41": "x",
+     "v42": "x",
+     "v43": "x",
+     "v44": "x",
+     "v45": "x",
+     "v46": "x",
+     "v47": "x",
+     "v48": "x",
+     "v49": "x",
+     "v50": "x",
+     "v51": "x",
+     "v52": "x",
+     "v53": "x",
+     "v54": "x",
+     "v55": "x",
+     "v56": "x",
+     "v57": "x",
+     "v58": "x",
+     "v59": "x",
+     "v60": "x",
+     "v61": "x",
+     "v62": "x",
+     "v63": "x",
+     "v64": "x"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "vars must have at most 64 entries",
+    "fields": [
+     {
+      "pointer": "/vars",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N3 bad variable name",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"}",
+    "vars": {
+     "1a": "x"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+    "fields": [
+     {
+      "pointer": "/vars/1a",
+      "message_key": "field.pattern"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N4 variable value too long",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "a variable value must be UTF-8 and at most 4096 bytes",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N5 empty query",
+   "from": "new",
+   "inputs": {
+    "query": "",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "query must be 1 to 131072 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N6 query over the raw limit",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "a",
+       "count": 131073
+      }
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "query must be 1 to 131072 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "field.range"
+     }
+    ]
+   }
+  },
+  {
+   "name": "N7 over the processing cap",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "$r",
+       "count": 600
+      }
+     ]
+    },
+    "vars": {
+     "r": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 413,
+    "message": "the substituted query is over 2097152 bytes, the most the server processes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.too_large_to_plan"
+     }
+    ],
+    "hint": {
+     "reason": "processing_cap"
+    }
+   }
+  },
+  {
+   "name": "N7b macros at the step over the processing cap",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      {
+       "repeat": "$r",
+       "count": 511
+      },
+      {
+       "repeat": "$__interval",
+       "count": 2000
+      }
+     ]
+    },
+    "vars": {
+     "r": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "kind": "range",
+    "step_ms": 1500
+   },
+   "substituted": {
+    "concat": [
+     {
+      "repeat": "a",
+      "count": 2093056
+     },
+     {
+      "repeat": "1s",
+      "count": 2000
+     }
+    ]
+   },
+   "error": {
+    "status": 413,
+    "message": "the substituted query is over 2097152 bytes, the most the server processes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.too_large_to_plan"
+     }
+    ],
+    "hint": {
+     "reason": "processing_cap"
+    }
+   }
+  },
+  {
+   "name": "N8 planned text over the limit",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      "{app=\"x\"} # ",
+      {
+       "repeat": "a",
+       "count": 65530
+      }
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": {
+    "concat": [
+     "{app=\"x\"} # ",
+     {
+      "repeat": "a",
+      "count": 65530
+     }
+    ]
+   },
+   "want": {
+    "planned": {
+     "class": "pulsus_db",
+     "reserved": []
+    }
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "{app=\"x\"} # ",
+       {
+        "repeat": "a",
+        "count": 65530
+       }
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "{app=\"x\"} # ",
+       {
+        "repeat": "a",
+        "count": 65530
+       }
+      ]
+     },
+     "bytes": 65542,
+     "step_ms": 5000
+    }
+   }
+  },
+  {
+   "name": "N9 range under the limit",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      "{app=\"x\"} # ",
+      {
+       "repeat": "a",
+       "count": 65488
+      }
+     ]
+    },
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": {
+    "concat": [
+     "{app=\"x\"} # ",
+     {
+      "repeat": "a",
+      "count": 65488
+     }
+    ]
+   },
+   "planned": {
+    "query": {
+     "concat": [
+      "{app=\"x\"} # ",
+      {
+       "repeat": "a",
+       "count": 65488
+      }
+     ]
+    },
+    "expanded": {
+     "concat": [
+      "{app=\"x\"} # ",
+      {
+       "repeat": "a",
+       "count": 65488
+      }
+     ]
+    },
+    "bytes": 65500,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "N10 volume over the limit with the template",
+   "from": "new",
+   "inputs": {
+    "query": {
+     "concat": [
+      "{app=\"x\"} # ",
+      {
+       "repeat": "a",
+       "count": 65488
+      }
+     ]
+    },
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 5000
+   },
+   "substituted": {
+    "concat": [
+     "{app=\"x\"} # ",
+     {
+      "repeat": "a",
+      "count": 65488
+     }
+    ]
+   },
+   "want": {
+    "planned": {
+     "class": "pulsus_db",
+     "reserved": []
+    }
+   },
+   "error": {
+    "status": 413,
+    "message": "the planned query is over 65536 bytes",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.sent_too_large"
+     }
+    ],
+    "planned": {
+     "query": {
+      "concat": [
+       "sum by (level, detected_level) (count_over_time(",
+       "{app=\"x\"} # ",
+       {
+        "repeat": "a",
+        "count": 65488
+       },
+       "\n| drop __error__ [5s]))"
+      ]
+     },
+     "expanded": {
+      "concat": [
+       "{app=\"x\"} # ",
+       {
+        "repeat": "a",
+        "count": 65488
+       }
+      ]
+     },
+     "bytes": 65572,
+     "step_ms": 5000
+    }
+   }
+  },
+  {
+   "name": "Q1 LF in a quoted value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x\ny"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\\ny\"}",
+   "planned": {
+    "query": "{app=\"x\\ny\"}",
+    "expanded": "{app=\"x\\ny\"}",
+    "bytes": 12,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q2 tab in a quoted value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x\ty"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\\ty\"}",
+   "planned": {
+    "query": "{app=\"x\\ty\"}",
+    "expanded": "{app=\"x\\ty\"}",
+    "bytes": 12,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q3 control byte in a quoted value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x\u0001y"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\\x01y\"}",
+   "planned": {
+    "query": "{app=\"x\\x01y\"}",
+    "expanded": "{app=\"x\\x01y\"}",
+    "bytes": 14,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q4 DEL in a quoted value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "\u007f"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"\\x7f\"}",
+   "planned": {
+    "query": "{app=\"\\x7f\"}",
+    "expanded": "{app=\"\\x7f\"}",
+    "bytes": 12,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q5 multibyte value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "\u00fc\u20ac\ud83d\ude00"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"\u00fc\u20ac\ud83d\ude00\"}",
+   "planned": {
+    "query": "{app=\"\u00fc\u20ac\ud83d\ude00\"}",
+    "expanded": "{app=\"\u00fc\u20ac\ud83d\ude00\"}",
+    "bytes": 17,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     14,
+     6
+    ],
+    [
+     15,
+     8
+    ],
+    [
+     17,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "Q6 backtick in a backtick value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=`$a`}",
+    "vars": {
+     "a": "x`y"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q7 backtick in a quoted value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x`y"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x`y\"}",
+   "planned": {
+    "query": "{app=\"x`y\"}",
+    "expanded": "{app=\"x`y\"}",
+    "bytes": 11,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q8 no-break space in a quoted value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "\u00a0"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"\u00a0\"}",
+   "planned": {
+    "query": "{app=\"\u00a0\"}",
+    "expanded": "{app=\"\u00a0\"}",
+    "bytes": 10,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q9 CR in a backtick value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=`$a`}",
+    "vars": {
+     "a": "x\ry"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q10 LF in a comment value",
+   "from": "new",
+   "inputs": {
+    "query": "{app=\"x\"} # $a",
+    "vars": {
+     "a": "z\n{source=\"pulsus-dash\"}"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q11 value at the top level",
+   "from": "new",
+   "inputs": {
+    "query": "$q",
+    "vars": {
+     "q": "{app=\"x\"}\n|= \"y\""
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"}\n|= \"y\"",
+   "planned": {
+    "query": "{app=\"x\"}\n|= \"y\"",
+    "expanded": "{app=\"x\"}\n|= \"y\"",
+    "bytes": 16,
+    "step_ms": 5000
+   }
+  }
+ ],
+ "reserved": [
+  {
+   "text": "{app=\"x\"} | source=\"pulsus-dash\"",
+   "want": "source=\"pulsus-dash\""
+  },
+  {
+   "text": "# {source=\"pulsus-dash\"}\n{app=\"x\"}",
+   "want": "source=\"pulsus-dash\""
+  },
+  {
+   "text": "{app=\"x\"} |= `{source=\"pulsus-dash\"}`",
+   "want": "source=\"pulsus-dash\""
+  },
+  {
+   "text": "{source=\"pulsus-dash\"}",
+   "want": "source=\"pulsus-dash\""
+  },
+  {
+   "text": "{source=~\"pulsus-dash\"}",
+   "want": null
+  },
+  {
+   "text": "{ source = \"pulsus-dash\" }",
+   "want": null
+  },
+  {
+   "text": "{source=`pulsus-dash`}",
+   "want": null
+  },
+  {
+   "text": "{source=\"pulsus-dash2\"}",
+   "want": null
+  },
+  {
+   "text": "{app=\"x\"} |= \"{source=\\\"pulsus-dash\\\"}\"",
+   "want": null
+  },
+  {
+   "text": "count_over_time({app=\"x\", source!=\"pulsus-dash\"}[1m])",
+   "want": null
+  },
+  {
+   "text": "{app=\"x\"} |= \"ALERTS\"",
+   "want": "ALERTS"
+  }
+ ],
+ "rate_window": [
+  {
+   "step_ms": 1000,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 5000,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 15000,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 30000,
+   "window_ms": 120000,
+   "text": "2m"
+  },
+  {
+   "step_ms": 60000,
+   "window_ms": 240000,
+   "text": "4m"
+  },
+  {
+   "step_ms": 3600000,
+   "window_ms": 14400000,
+   "text": "4h"
+  },
+  {
+   "step_ms": 1,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 4999,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 5001,
+   "window_ms": 60000,
+   "text": "1m"
+  },
+  {
+   "step_ms": 45000,
+   "window_ms": 180000,
+   "text": "3m"
+  },
+  {
+   "step_ms": 86400000,
+   "window_ms": 345600000,
+   "text": "4d"
+  }
+ ],
+ "durations": [
+  {
+   "ms": 4000,
+   "text": "4s"
+  },
+  {
+   "ms": 20000,
+   "text": "20s"
+  },
+  {
+   "ms": 60000,
+   "text": "1m"
+  },
+  {
+   "ms": 240000,
+   "text": "4m"
+  },
+  {
+   "ms": 3600000,
+   "text": "1h"
+  },
+  {
+   "ms": 14400000,
+   "text": "4h"
+  },
+  {
+   "ms": 86400000,
+   "text": "1d"
+  },
+  {
+   "ms": 345600000,
+   "text": "4d"
+  },
+  {
+   "ms": 1500,
+   "text": "1500ms"
+  },
+  {
+   "ms": 0,
+   "text": "0ms"
+  }
+ ],
+ "volume_range": [
+  {
+   "step_ms": 5000,
+   "text": "5s"
+  },
+  {
+   "step_ms": 60000,
+   "text": "60s"
+  },
+  {
+   "step_ms": 1500,
+   "text": "1500ms"
+  }
+ ]
+}

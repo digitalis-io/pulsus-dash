@@ -85,6 +85,10 @@ func logsAPI(w http.ResponseWriter, r *http.Request) {
 
 const volumeTestPrefix = "sum by (level, detected_level) (count_over_time("
 
+// volumeText is the planned volume text of q at the 5 s step: the template logs.Plan applies
+// (plan #116 §4.1); LogVolume sends it as is.
+func volumeText(q string) string { return volumeTestPrefix + q + "\n| drop __error__ [5s]))" }
+
 func formKeys(s seen) []string {
 	var ks []string
 	for k := range s.Form {
@@ -148,10 +152,10 @@ func TestLogQLCalls(t *testing.T) {
 		}, []string{"direction", "end", "limit", "query", "start", "step", "timeout"},
 			map[string]string{"query": `{app="x"}`, "start": "1767225600000000000", "end": "1767229200000000000", "step": "5000ms", "limit": "11", "direction": "forward"}},
 		{"LogVolume", "GET", "/api/logs/v1/query_range", func() error {
-			_, _, err := c.LogVolume(ctx(), rc, VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+			_, _, err := c.LogVolume(ctx(), rc, VolumeQuery{Query: volumeText(`{app="x"}`), Grid: a1Grid()})
 			return err
 		}, []string{"end", "query", "start", "step", "timeout"},
-			map[string]string{"query": volumeTestPrefix + `{app="x"}` + "\n| drop __error__ [5s]))", "start": "1767225600000000000", "end": "1767229200000000000", "step": "5000ms"}},
+			map[string]string{"query": volumeText(`{app="x"}`), "start": "1767225600000000000", "end": "1767229200000000000", "step": "5000ms"}},
 		{"LogLabels", "GET", "/api/logs/v1/labels", func() error {
 			r, err := c.LogLabels(ctx(), rc, mq)
 			if err == nil && (!slices.Equal(r.Values, []string{"a", "b"}) || !r.Completeness.Truncated) {
@@ -355,7 +359,7 @@ func TestVolumeOmitsEmptyLevel(t *testing.T) {
 		{lbl("level", "trace"), [][2]string{}},
 	}
 	u := newUpstream(t, answer(200, body(typeFirst, "matrix", matrixJSON(typeFirst, ss))))
-	got, _, err := New(Options{}).LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+	got, _, err := New(Options{}).LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: volumeText(`{app="x"}`), Grid: a1Grid()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,17 +373,20 @@ func TestVolumeOmitsEmptyLevel(t *testing.T) {
 	wantLevelSeries(t, got[0], "info", map[int]float64{0: 3})
 }
 
-// unit:volume-compose (§4.4, T07-002).
-func TestVolumeCompose(t *testing.T) {
+// unit:volume-compose (core half, plan #116 §5.1): LogVolume sends the planned volume text byte
+// for byte (logs.Plan applied the template, T07-002), and an error position stays an offset into
+// it: the gateway maps it to the raw text.
+func TestVolumeSendsPlannedText(t *testing.T) {
+	const planned = "sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))"
 	u := newUpstream(t, answer(200, body(typeFirst, "matrix", matrixJSON(typeFirst, volumeSeries))))
 	c := New(Options{})
 	rc := rcFor(testBinding(u.URL))
-	ss, _, err := c.LogVolume(ctxWithin(t, 5*time.Second), rc, VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+	ss, _, err := c.LogVolume(ctxWithin(t, 5*time.Second), rc, VolumeQuery{Query: planned, Grid: a1Grid()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q := u.requests()[0].Form.Get("query"); q != "sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))" {
-		t.Errorf("composed %q", q)
+	if f := u.requests()[0].Form; f.Get("query") != planned || f.Get("step") != "5000ms" {
+		t.Errorf("sent %q step %q, want the planned text byte for byte", f.Get("query"), f.Get("step"))
 	}
 	var levels []string
 	for _, s := range ss {
@@ -394,42 +401,20 @@ func TestVolumeCompose(t *testing.T) {
 	wantLevelSeries(t, ss[3], "debug", map[int]float64{0: 6})
 	wantLevelSeries(t, ss[4], "unknown", map[int]float64{1: 7})
 
-	g := Grid{Start: 1767225600000, End: 1767229200000, Step: 60000}
-	_, _, _ = c.LogVolume(ctxWithin(t, 5*time.Second), rc, VolumeQuery{Query: `{app="x"}`, Grid: g})
-	if q := u.requests()[1].Form.Get("query"); !strings.HasSuffix(q, "\n| drop __error__ [60s]))") || u.requests()[1].Form.Get("step") != "60000ms" {
-		t.Errorf("step 60 000: %q step %q", q, u.requests()[1].Form.Get("step"))
-	}
-
-	// Positions map back into the user's text.
-	for _, c2 := range []struct {
-		at      int
-		wantPos int // -1 = none
-		wantMsg string
-	}{
-		{57, 8, "unexpected '[' at byte 8: x"},
-		{50, 2, "unexpected '[' at byte 2: x"},
-		{47, -1, "unexpected '[' at byte 47: x"},
-	} {
-		msg := "unexpected '[' at byte " + strconv.Itoa(c2.at) + ": x"
-		ue := newUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.WriteHeader(400)
-			_, _ = io.WriteString(w, msg)
-		})
-		_, _, err := c.LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(ue.URL)), VolumeQuery{Query: `{app="x"`, Grid: a1Grid()})
-		e, ok := err.(*Error)
-		switch {
-		case !ok || e.Kind != KindQueryInvalid:
-			t.Errorf("at byte %d: %v, want KindQueryInvalid", c2.at, err)
-		case c2.wantPos < 0 && e.Position != nil, c2.wantPos >= 0 && (e.Position == nil || e.Position.Offset != c2.wantPos):
-			t.Errorf("at byte %d: position %v, want %d", c2.at, e.Position, c2.wantPos)
-		case e.Message != c2.wantMsg:
-			t.Errorf("at byte %d: message %q, want %q", c2.at, e.Message, c2.wantMsg)
-		}
+	// A position is PulsusDB's offset into the sent text, unmapped.
+	ue := newUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(400)
+		_, _ = io.WriteString(w, "unexpected '[' at byte 57: x")
+	})
+	_, _, err = c.LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(ue.URL)), VolumeQuery{Query: planned, Grid: a1Grid()})
+	if e, ok := err.(*Error); !ok || e.Kind != KindQueryInvalid || e.Position == nil || e.Position.Offset != 57 ||
+		e.Message != "unexpected '[' at byte 57: x" {
+		t.Errorf("at byte 57: %v, want KindQueryInvalid at offset 57, message unchanged", err)
 	}
 
 	us := newUpstream(t, answer(200, streamsBody(typeFirst, a1Data())))
-	_, _, err = c.LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(us.URL)), VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+	_, _, err = c.LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(us.URL)), VolumeQuery{Query: planned, Grid: a1Grid()})
 	wantProtocol(t, "volume answered with streams", err)
 }
 
@@ -494,7 +479,7 @@ func TestVolumeBuffered(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		ss, _, err := c.LogVolume(ctxWithin(t, 10*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+		ss, _, err := c.LogVolume(ctxWithin(t, 10*time.Second), rcFor(testBinding(u.URL)), VolumeQuery{Query: volumeText(`{app="x"}`), Grid: a1Grid()})
 		done <- result{ss, err}
 	}()
 	defer func() {

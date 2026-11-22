@@ -49,6 +49,7 @@ export interface LogsRequest {
   direction?: 'backward' | 'forward';
   cursor?: string;
   timeoutMs?: number;
+  vars?: Readonly<Record<string, string>>;
 }
 
 /** A log volume request. */
@@ -58,6 +59,7 @@ export interface VolumeRequest {
   toMs: number;
   widthPx: number;
   timeoutMs?: number;
+  vars?: Readonly<Record<string, string>>;
 }
 
 export interface InstantRequest {
