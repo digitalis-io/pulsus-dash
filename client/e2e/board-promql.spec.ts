@@ -6,7 +6,7 @@
  */
 import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
-import { fakeRequests, sec, type FakeRequest } from './fake.ts';
+import { fakeRequests, runShift, sec, type FakeRequest } from './fake.ts';
 import { searchOf, timeTrigger } from './helpers.ts';
 
 const API = '/api/dash/v1/boards';
@@ -178,7 +178,7 @@ test.describe('e2e:board-promql (fake)', () => {
   test('e2e:board-visible-only', async ({ page, request }, info) => {
     test.setTimeout(90_000);
     // Day 6: days 1–3 of February are Explore's `empty_metric` windows (e2e:explore-refresh).
-    const from = day(info, 6);
+    const from = day(info, 6) + runShift(info);
     const panels = Array.from({ length: 30 }, (_, k) => {
       const i = k + 1;
       return {
@@ -226,10 +226,11 @@ test.describe('e2e:board-promql (fake)', () => {
   });
 
   test('e2e:board-cancel', async ({ page, request }, info) => {
-    // Each run (a repeat or a retry) has its own three hours from day 7, as the fake keeps every
-    // run's records (with one retry, 10 repeats reach into day 9 of the browser's 20).
-    const run = info.repeatEachIndex * 2 + info.retry;
-    const A = day(info, 7) + run * 3 * HOUR;
+    // C has its own transcript (slow-final-<browser>.json, matched on its start): a series that A
+    // and B never answer. The windows are fixed for it, so each run reads only the records it made
+    // (after t0): a repeat or a retry is independent, two copies running at once are not (repeat
+    // this test with --workers=1).
+    const A = day(info, 2);
     const B = A + HOUR;
     const C = B + HOUR;
     const panels = [0, 4, 8].map((x, i) => ({
@@ -240,16 +241,17 @@ test.describe('e2e:board-promql (fake)', () => {
     }));
     let uid: string | null = null;
     try {
+      const t0 = Date.now();
+      const slow = async (start: number) =>
+        (await queries(request, start)).filter(
+          (r) => r.query === 'slow_metric' && r.receivedAtMs >= t0,
+        );
       uid = await createBoard(request, `E3 ${info.project.name} ${crypto.randomUUID()}`, panels);
       await page.goto(boardUrl(uid, A));
       await expect
-        .poll(
-          async () =>
-            (await queries(request, A)).filter(
-              (r) => r.query === 'slow_metric' && r.state === 'inflight',
-            ).length,
-          { intervals: [50] },
-        )
+        .poll(async () => (await slow(A)).filter((r) => r.state === 'inflight').length, {
+          intervals: [50],
+        })
         .toBe(3);
       // Both steps happen in the page, 100 ms apart (under the 200 ms of E3), so neither waits on
       // the runner or on reading the fake back. A's queries are held (2 s) and in flight.
@@ -274,16 +276,14 @@ test.describe('e2e:board-promql (fake)', () => {
       expect(steps.ms).toBeLessThan(200);
       // The outcomes, read back with time to spare: every superseded query (A's three, and any of
       // B's that left before the second step) was cancelled, and only C's three completed.
-      const states = async (start: number) =>
-        (await queries(request, start))
-          .filter((r) => r.query === 'slow_metric')
-          .map((r) => r.state);
+      const states = async (start: number) => (await slow(start)).map((r) => r.state);
       await expect
         .poll(
           async () => ({
             a: await states(A),
             bCancelled: (await states(B)).every((st) => st === 'cancelled'),
             c: await states(C),
+            cFrom: [...new Set((await slow(C)).map((r) => r.transcript))],
           }),
           { timeout: 10_000 },
         )
@@ -291,12 +291,17 @@ test.describe('e2e:board-promql (fake)', () => {
           a: ['cancelled', 'cancelled', 'cancelled'],
           bCancelled: true,
           c: ['completed', 'completed', 'completed'],
+          cFrom: [`slow-final-${info.project.name}`],
         });
-      // The panels draw C's answer (the transcript's empty matrix: a chart with no series).
+      // Each panel drew C's answer: the engine's summary (the chart's label, set from the frame it
+      // drew) has C's one series, 7 then 42, which A and B's transcript does not have.
       for (const p of panels) {
-        await expect(panel(page, p.title)).toHaveAttribute('data-panel-state', 'frame', {
-          timeout: 10_000,
-        });
+        const chart = panel(page, p.title).locator('[data-chart-frame]');
+        await expect(chart).toHaveAttribute('data-frame-ready', 'true', { timeout: 10_000 });
+        await expect(chart.locator('canvas')).toHaveAttribute(
+          'aria-label',
+          new RegExp(`^${p.title}: .*, 1 series, .*\\. Min 7, max 42, last 42\\.$`),
+        );
       }
       expect(searchOf(page)['from']).toBe(iso(C));
       await expect(timeTrigger(page)).toBeVisible();
@@ -349,7 +354,7 @@ test.describe('e2e:board-promql (fake)', () => {
   });
 
   test('e2e:board-refresh', async ({ page, request }, info) => {
-    const R = day(info, 4);
+    const R = day(info, 4) + runShift(info);
     let uid: string | null = null;
     const done = async () =>
       (
@@ -374,7 +379,7 @@ test.describe('e2e:board-promql (fake)', () => {
   });
 
   test('e2e:board-states', async ({ page, request }, info) => {
-    const from = day(info, 5);
+    const from = day(info, 5) + runShift(info);
     let uid: string | null = null;
     try {
       uid = await createBoard(request, `E6 ${info.project.name} ${crypto.randomUUID()}`, [

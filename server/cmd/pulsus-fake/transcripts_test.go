@@ -25,8 +25,9 @@ func TestE2ETranscripts(t *testing.T) {
 	// Load sorts by file name.
 	want := []string{
 		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram", "labels", "metadata",
-		"metric-names", "parse-error-nopos", "parse-error-position", "runtimeinfo", "scalar", "slow",
-		"too-broad", "truncated",
+		"metric-names", "parse-error-nopos", "parse-error-position", "runtimeinfo", "scalar",
+		"slow-final-chromium", "slow-final-firefox", "slow-final-webkit", "slow", "too-broad",
+		"truncated",
 	}
 	if !slices.Equal(names, want) {
 		t.Errorf("transcripts %v, want %v", names, want)

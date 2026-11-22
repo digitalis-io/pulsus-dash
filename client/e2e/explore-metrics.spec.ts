@@ -7,7 +7,7 @@
  */
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
-import { fakeRequests, sec } from './fake.ts';
+import { fakeRequests, runShift, sec } from './fake.ts';
 import { open, searchOf, timeTrigger, waitReady } from './helpers.ts';
 
 const W0 = Date.UTC(2026, 0, 1);
@@ -169,7 +169,7 @@ test.describe('e2e:explore (fake)', () => {
   });
 
   test('e2e:explore-cancel', async ({ page, request }, info) => {
-    const A = Date.UTC(2026, 0, 2 + idx(info));
+    const A = Date.UTC(2026, 0, 2 + idx(info)) + runShift(info);
     const B = A + HOUR;
     const C = B + HOUR;
     await open(page, exploreUrl('slow_metric', A, A + HOUR));
@@ -206,7 +206,7 @@ test.describe('e2e:explore (fake)', () => {
         { timeout: 6_000 },
       )
       .toEqual({ b: ['cancelled'], c: ['completed'] });
-    await expect(timeTrigger(page)).toContainText('02:00');
+    await expect(timeTrigger(page)).toContainText(new Date(C).toISOString().slice(11, 16));
     await expect(statusLine(page)).toHaveText(/^0 series/);
   });
 
@@ -245,7 +245,7 @@ test.describe('e2e:explore (fake)', () => {
   });
 
   test('e2e:explore-refresh', async ({ page, request }, info) => {
-    const R = Date.UTC(2026, 1, 1 + idx(info));
+    const R = Date.UTC(2026, 1, 1 + idx(info)) + runShift(info);
     await open(page, exploreUrl('empty_metric', R, R + HOUR));
     await expect(statusLine(page)).toHaveText(/^0 series/);
     await page.getByRole('button', { name: 'Refresh now' }).click();

@@ -169,13 +169,15 @@ workers are waiting for. Reset is for debugging with a single worker only.
 
 ### e2e transcripts
 
-`client/e2e/transcripts/` holds the 15 transcripts of the Explore e2e suite (#63). Four are byte
+`client/e2e/transcripts/` holds the 18 transcripts of the Explore and board e2e suites (#63, #64). Four are byte
 copies of `server/internal/pulsusfake/testdata/` (`runtimeinfo`, `histogram`, `scalar`,
 `too-broad`); the others are synthetic, with the reason in `provenance.synthetic` and query ids
 `fake-<name>-1`. Their range bodies are on the e2e window `2026-01-01T00:00:00Z`–`01:00:00Z` at a
-5 s step. The same provenance rules apply as above; Prettier does not touch the directory, so the
+5 s step, except `slow-final-<browser>`: `e2e:board-cancel`'s final window (each browser's day 2
+plus 2 h), matched on its `start` form value ahead of `slow`, so the window the board ends on
+answers with a series (7, then 42) that the windows it skipped never do. The same provenance rules apply as above; Prettier does not touch the directory, so the
 copies stay byte-equal. `go test ./cmd/pulsus-fake` (`TestE2ETranscripts`) loads the directory,
-checks the 15 names and compares the copies byte for byte.
+checks the 18 names and compares the copies byte for byte.
 
 ### e2e helpers (`client/e2e/fake.ts`)
 
@@ -185,6 +187,7 @@ checks the 15 names and compares the copies byte for byte.
 | `fakeRequests(request, filter)` | `GET /__fake/requests` (expects 200), keeping the records whose every given field equals the filter's |
 | `resetFake(request)` | `POST /__fake/reset` (expects 204); single-worker debugging only |
 | `sec(ms)` | seconds as the BFF sends `start` and `end`: `String(ms / 1000)` |
+| `runShift(info)` | whole minutes to add to a test's windows, from its repeat and retry index, so each run counts only its own records (the fake keeps every request since it started) |
 
 ## Shared fixtures (`wire/fixtures/`)
 
