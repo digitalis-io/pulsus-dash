@@ -15,6 +15,11 @@ describe('unit:lookup-window', () => {
       fromMs: at(12, 0),
       toMs: at(12, 1),
     });
+    // On a whole minute, floor and ceil meet: only the widening gives the minute.
+    expect(minuteWindow({ fromMs: at(12, 0), toMs: at(12, 0) })).toEqual({
+      fromMs: at(12, 0),
+      toMs: at(12, 1),
+    });
   });
 
   it('seconds: snapped without widening', () => {
