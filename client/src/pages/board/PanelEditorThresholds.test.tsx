@@ -94,7 +94,7 @@ describe('panel editor thresholds (#64 Part B §4.6)', () => {
   it('add, remove, direction, state, label', async () => {
     const e = await editor({ kind: 'line' });
     const { t, d, save } = e;
-    const add = within(d).getByRole('button', { name: 'Add threshold' });
+    const add = await within(d).findByRole('button', { name: 'Add threshold' });
     await t.user.click(add);
     await within(d).findByRole('textbox', { name: 'Value' });
     expect(values(d)).toEqual(['0']);
@@ -164,7 +164,8 @@ describe('panel editor thresholds (#64 Part B §4.6)', () => {
   it('legend select stores only hidden', async () => {
     const e = await editor({ kind: 'line' });
     const { t, d, save } = e;
-    await choose(t, within(d).getByRole('button', { name: /Legend$/ }), 'Hidden');
+    // The Thresholds and Legend fields mount a frame after the editor.
+    await choose(t, await within(d).findByRole('button', { name: /Legend$/ }), 'Hidden');
     await saveNow(e, 1);
     expect(save().at(-1)).toEqual({ kind: 'line', legend: { mode: 'hidden' } });
     await choose(t, within(d).getByRole('button', { name: /Legend$/ }), 'Table');

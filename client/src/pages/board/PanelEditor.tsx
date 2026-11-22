@@ -12,7 +12,7 @@
  * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
  * them. They change the spec, not the query key: the preview reruns nothing.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FieldError, PanelSpec, PanelVisKind, QueryLang } from '../../api/types';
 import { panelView } from '../../boards/panelRun';
 import { fieldMessage } from '../../boards/fieldMessages';
@@ -51,6 +51,24 @@ const LEGENDS: readonly { id: 'table' | 'hidden'; label: MessageId }[] = [
 ];
 
 const NO_UNIT: Unit = { kind: 'none' };
+
+/**
+ * False in the task that mounts the editor, true from the next animation frame: the Thresholds and
+ * Legend fields mount then, so opening the editor is not one long task (`bench:rooms-long-tasks`;
+ * the threshold rows then follow over the next frames).
+ */
+function useAfterFirstFrame(): boolean {
+  const [after, setAfter] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setAfter(true);
+    });
+    return () => {
+      cancelAnimationFrame(id);
+    };
+  }, []);
+  return after;
+}
 
 /** `vis` without the member `key` (absent, not undefined: the saved spec has no such key). */
 function without(vis: PanelSpec['vis'], key: 'thresholds' | 'legend'): PanelSpec['vis'] {
@@ -113,6 +131,7 @@ export function PanelEditor({
     widthPx: shared ?? ownWidth,
   });
   const outcome = run.outcome;
+  const visFields = useAfterFirstFrame();
   // The preview frame's unit, for the threshold label placeholders.
   const unit = useMemo(() => {
     const v = panelView(run, panel.vis, '');
@@ -208,37 +227,41 @@ export function PanelEditor({
             error={errorAt('/vis/kind')}
             isDisabled={readOnly}
           />
-          <div className={cx(styles['editorWide'])}>
-            <ThresholdsField
-              value={panel.vis.thresholds}
-              onChange={(thresholds) => {
-                patchVis(
-                  thresholds === undefined
-                    ? without(panel.vis, 'thresholds')
-                    : { ...panel.vis, thresholds },
-                );
-              }}
-              errorAt={(suffix) => errorAt(`/vis/thresholds${suffix}`)}
-              unit={unit}
-              readOnly={readOnly}
-            />
-          </div>
-          <div className={cx(styles['editorWide'])}>
-            <Select
-              label={t('editor.legend')}
-              value={panel.vis.legend?.mode ?? 'table'}
-              options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
-              onChange={(mode) => {
-                patchVis(
-                  mode === 'hidden'
-                    ? { ...panel.vis, legend: { mode } }
-                    : without(panel.vis, 'legend'),
-                );
-              }}
-              error={errorAt('/vis/legend/mode')}
-              isDisabled={readOnly}
-            />
-          </div>
+          {visFields && (
+            <div className={cx(styles['editorWide'])}>
+              <ThresholdsField
+                value={panel.vis.thresholds}
+                onChange={(thresholds) => {
+                  patchVis(
+                    thresholds === undefined
+                      ? without(panel.vis, 'thresholds')
+                      : { ...panel.vis, thresholds },
+                  );
+                }}
+                errorAt={(suffix) => errorAt(`/vis/thresholds${suffix}`)}
+                unit={unit}
+                readOnly={readOnly}
+              />
+            </div>
+          )}
+          {visFields && (
+            <div className={cx(styles['editorWide'])}>
+              <Select
+                label={t('editor.legend')}
+                value={panel.vis.legend?.mode ?? 'table'}
+                options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
+                onChange={(mode) => {
+                  patchVis(
+                    mode === 'hidden'
+                      ? { ...panel.vis, legend: { mode } }
+                      : without(panel.vis, 'legend'),
+                  );
+                }}
+                error={errorAt('/vis/legend/mode')}
+                isDisabled={readOnly}
+              />
+            </div>
+          )}
         </div>
         <div className={cx(styles['editorActions'])}>
           <Button onPress={onRemove} isDisabled={readOnly}>
