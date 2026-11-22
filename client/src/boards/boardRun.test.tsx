@@ -1,9 +1,10 @@
 import { act, screen } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderRouted } from '../test/routedHarness';
-import { BoardRunProvider } from './boardRun';
+import { BoardRunContext, BoardRunProvider } from './boardRun';
+import type { WidthStore } from './panelWidths';
 
 describe('epoch mark', () => {
   it('epoch mark', async () => {
@@ -53,5 +54,41 @@ describe('epoch mark', () => {
       );
     });
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('panel widths (review r1 #3)', () => {
+  it("a reused panel id does not inherit a deleted panel's width", async () => {
+    let widths: WidthStore | null = null;
+    let setLive: (ids: string[]) => void = () => undefined;
+    function Probe() {
+      widths = useContext(BoardRunContext).widths;
+      return <p>probe</p>;
+    }
+    function Host() {
+      const [live, set] = useState<string[]>(['p-1', 'p-2']);
+      setLive = set;
+      return (
+        <BoardRunProvider tenant="demo" vars={new Map()} timeReady livePanels={live}>
+          <Probe />
+        </BoardRunProvider>
+      );
+    }
+    renderRouted(<Host />, { url: '/?from=now-1h&to=now&refresh=off' });
+    await screen.findByText('probe');
+    act(() => {
+      widths?.set('p-1', 400);
+      widths?.set('p-2', 700);
+    });
+    // p-2 is deleted, then a new panel takes its id.
+    act(() => {
+      setLive(['p-1']);
+    });
+    act(() => {
+      setLive(['p-1', 'p-2']);
+    });
+    const w = widths as WidthStore | null;
+    expect(w?.get('p-2')).toBeNull();
+    expect(w?.get('p-1')).toBe(400);
   });
 });

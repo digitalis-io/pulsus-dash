@@ -77,6 +77,7 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
         aria-label={p.label}
         placeholder={p.placeholder}
         defaultValue={p.value}
+        readOnly={p.readOnly === true}
         data-diagnostics={JSON.stringify(p.diagnostics)}
         onChange={(e) => {
           latest.current.onChange(e.target.value);

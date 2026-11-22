@@ -33,6 +33,8 @@ export interface PromQLEditorProps {
   readonly label: string;
   /** Read at mount. */
   readonly placeholder: string;
+  /** No edits while true (the board is saving or discarding). */
+  readonly readOnly?: boolean;
   /** On the outer `<div data-editor-host>`. */
   readonly className?: string;
   readonly ref?: Ref<PromQLEditorHandle>;

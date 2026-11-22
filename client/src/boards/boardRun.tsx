@@ -29,6 +29,8 @@ export function BoardRunProvider({
   tenant: string;
   vars: ReadonlyMap<string, string>;
   timeReady: boolean;
+  /** The ids of the board's panels now. */
+  livePanels?: readonly string[];
   children: ReactNode;
 }) {
   const queryClient = useQueryClient();

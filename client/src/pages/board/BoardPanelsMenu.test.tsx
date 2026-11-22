@@ -36,7 +36,7 @@ import {
   typeQuery,
   type Board,
 } from '../../test/boardPanelKit';
-import { panel, panelOf, panelState, stubBoard } from '../../test/boardTestKit';
+import { deferred, panel, panelOf, panelState, stubBoard } from '../../test/boardTestKit';
 import { fakeEditorSource } from '../../test/fakeEditor';
 import {
   installIntersectionObserver,
@@ -682,5 +682,82 @@ describe('board time on open', () => {
     await calls(t, 2);
     for (const r of reqs(t)) expect(r.toMs - r.fromMs).toBe(HOUR);
     for (const s of seen) expect(s).toBe('?from=now-1h&to=now&refresh=off');
+  });
+});
+
+describe('query field while the board is busy (review r1 #2)', () => {
+  /** b-1's Requests in the dialog with an unrun draft `up`. */
+  async function dialogWithDraft() {
+    const t = openBoard([panel('p-1', 'Requests', 'http_requests_total')]);
+    await ready('Requests');
+    show('Requests');
+    await settled(t, 'Requests');
+    const d = await editorOn(t, 'Requests');
+    typeQuery(d, 'up');
+    await flush();
+    return { t, d };
+  }
+
+  /** Typing, the picker, the Run keys and button, and leaving the field change and run nothing. */
+  async function nothingRuns(t: Board, d: HTMLElement): Promise<void> {
+    const box = within(d).getByRole<HTMLTextAreaElement>('textbox', { name: 'Query' });
+    const n = t.range.mock.calls.length;
+    await t.user.type(box, 'zz');
+    expect(box).toHaveValue('up');
+    expect(within(d).getByRole('combobox', { name: 'Metric' })).toBeDisabled();
+    runKeys(d);
+    const run = within(d).getByRole('button', { name: 'Run query' });
+    expect(run).toBeDisabled();
+    fireEvent.click(run);
+    act(() => {
+      box.focus();
+    });
+    await t.user.tab();
+    await flush();
+    expect(t.range).toHaveBeenCalledTimes(n);
+    expect(box).toHaveValue('up');
+  }
+
+  it('with a save held', async () => {
+    const { t, d } = await dialogWithDraft();
+    const gate = deferred<undefined>();
+    const save = vi
+      .spyOn(t.api, 'saveBoard')
+      .mockImplementationOnce(() =>
+        gate.promise.then(() => Promise.reject(new ApiError('network', 'held'))),
+      );
+    await t.user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => {
+      expect(within(d).getByRole('status', { name: 'Save status' })).toHaveTextContent('Saving');
+    });
+    await nothingRuns(t, d);
+    await act(async () => {
+      gate.resolve(undefined);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(within(d).getByRole('status', { name: 'Save status' })).not.toHaveTextContent(
+        'Saving',
+      );
+    });
+    // The draft is the text before the save, unchanged by anything tried while it was held.
+    await t.user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(2);
+    });
+    expect(save.mock.calls[0]?.[3].panels[0]?.query.text).toBe('up');
+    expect(save.mock.calls[1]?.[3].panels[0]?.query.text).toBe('up');
+  });
+
+  it('with a discard held', async () => {
+    const { t, d } = await dialogWithDraft();
+    await t.user.click(within(d).getByRole('button', { name: 'Done' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
+    });
+    vi.spyOn(t.api, 'getBoard').mockImplementation(() => new Promise(() => undefined));
+    await t.user.click(screen.getByRole('button', { name: 'Discard' }));
+    const again = await editorOn(t, 'Requests');
+    await nothingRuns(t, again);
   });
 });
