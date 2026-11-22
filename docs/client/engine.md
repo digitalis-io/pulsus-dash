@@ -245,7 +245,9 @@ Each Rust port is held to its TypeScript source by a JSON fixture in `engine/fix
 A change to any of those TS files (or `drawLineSeries`, `keyHash.ts`, the tokens) must regenerate
 the fixtures (`npm run engine-fixtures -- --write`) and keep the Rust port equal: `npm test` fails on
 a stale fixture (`unit:engine-fixtures`), and `engine.yml` runs on those paths to check Rust against
-the new fixtures. Label widths are `ceil(chars × font.advance.mono × font.size.xs)`, which equals
+the new fixtures. `layout.json` is written with no minimum value band (`minBand: 0`) and no held
+band: the interim renderer's T02-011 minimum (the widest compact label of the unit, #93) applies to
+the engine when #69 adds labels, and the fixtures are regenerated with it then. Label widths are `ceil(chars × font.advance.mono × font.size.xs)`, which equals
 `measureText` for JetBrains Mono once the font is loaded (Part C checks that in Chromium).
 
 ## Goldens

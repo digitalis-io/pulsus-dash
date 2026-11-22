@@ -192,6 +192,29 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await page.getByRole('button', { name: 'Star board' }).click();
   await page.getByText('Could not update Starred. Try again.').waitFor();
   await check('b-1 star failed');
+
+  await valueAxisPinned(page);
+  await check('b-1 view, value axis pinned');
+}
+
+/** b-1 in View mode with `Request rate`'s value axis pinned by `Shift`+wheel (#93). */
+async function valueAxisPinned(page: Page): Promise<void> {
+  await open(page, '/t/demo/board/b-1');
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  const f = page.locator('[data-chart-frame]', {
+    has: page.getByRole('slider', { name: 'Crosshair: Request rate', exact: true }),
+  });
+  await expect(f).toHaveAttribute('data-plot', /,/);
+  const [x = 0, y = 0, w = 0, h = 0] = ((await f.getAttribute('data-plot')) ?? '')
+    .split(',')
+    .map(Number);
+  const box = await f.boundingBox();
+  if (box === null) throw new Error('Request rate has no box');
+  await page.mouse.move(box.x + x + w / 2, box.y + y + h / 2);
+  await page.keyboard.down('Shift');
+  await page.mouse.wheel(0, -200);
+  await page.keyboard.up('Shift');
+  await page.getByRole('button', { name: 'Reset Y axis: Request rate' }).waitFor();
 }
 
 test.describe('e2e:a11y-rooms boards', () => {
@@ -236,6 +259,8 @@ test.describe('e2e:a11y-rooms target size', () => {
         await page.keyboard.press('Escape');
       }
     }
+    await valueAxisPinned(page);
+    expect(await smallTargets(page), 'b-1 view, value axis pinned').toEqual([]);
   });
 });
 
