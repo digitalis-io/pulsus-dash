@@ -2,8 +2,10 @@
  * Window keys of INT-032: `[` and `]` step the window back and forward by its width, `-` zooms out
  * (×2 around the centre) and `=` zooms in (×½). Keys are matched by `KeyboardEvent.code`, without
  * modifiers. They are ignored when another handler already used the event, while typing, and inside
- * dialogs, menus, list boxes and grids, which own their arrow and typeahead keys. A handled key is
- * `preventDefault()`ed synchronously (T03-013).
+ * dialogs, menus, list boxes and grids, which own their arrow and typeahead keys. Every element on
+ * the event's composed path counts, so an editor in a shadow root (whose events reach `window` with
+ * the host as target) and a shadow host inside a dialog are excluded too; without a path, the
+ * target decides. A handled key is `preventDefault()`ed synchronously (T03-013).
  */
 import { useEffect, useRef } from 'react';
 import type { ContextAction } from './contextReducer';
@@ -24,11 +26,19 @@ export function isWindowKeyTargetExcluded(target: EventTarget | null): boolean {
   return target.closest(EDITABLE) !== null || target.closest(COMPOSITE) !== null;
 }
 
+/** True when any Element on the path matches EDITABLE or COMPOSITE (INT-032). */
+export function isWindowKeyPathExcluded(path: readonly EventTarget[]): boolean {
+  return path.some((n) => n instanceof Element && (n.matches(EDITABLE) || n.matches(COMPOSITE)));
+}
+
 export function windowKeyAction(e: KeyboardEvent): ContextAction | null {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return null;
   const action = KEY_ACTIONS[e.code];
   if (action === undefined) return null;
-  if (isWindowKeyTargetExcluded(e.target)) return null;
+  const path = e.composedPath();
+  if (path.length > 0 ? isWindowKeyPathExcluded(path) : isWindowKeyTargetExcluded(e.target)) {
+    return null;
+  }
   return action;
 }
 

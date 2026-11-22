@@ -36,6 +36,13 @@ export default defineConfig({
     headers: { ...productionHeaders },
   },
   test: {
+    // The PromQL language package has no `exports` map, so the test runner would load its
+    // CommonJS `main` with a second copy of @codemirror/state. The tests use its `module` (ESM)
+    // build, as the browser build does, and inline it so Vite transforms it (plan #63 Part B).
+    alias: {
+      '@prometheus-io/codemirror-promql': `${root}node_modules/@prometheus-io/codemirror-promql/dist/esm/index.js`,
+    },
+    server: { deps: { inline: [/@prometheus-io\/codemirror-promql/] } },
     projects: [
       {
         extends: true,

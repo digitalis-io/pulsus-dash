@@ -41,8 +41,8 @@ from `https://registry.npmjs.org/` (`non-registry-resolved`) or without an `sha5
 | Field | Meaning |
 |---|---|
 | `forbiddenCategories` | `charting`, `mapping`, `3d`, `graph-diagram`, `css-in-js` (ADR-0014 §7; charts are drawn by our own renderer, ADR-0007) |
-| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board Edit grid, [below](#react-grid-layout)) |
-| `runtimeClosure` | every package of the runtime closure (33 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds) |
+| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board Edit grid, [below](#react-grid-layout)), and the ten query-editor packages ([below](#query-editor)) |
+| `runtimeClosure` | every package of the runtime closure (50 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds), `query-editor` (the 17 packages of the PromQL editor) |
 | `licenceAllowlist` | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, MPL-2.0 (ADR-0014 §7, unchanged) |
 | `licenceExceptionAllowlist` | exact `"<licence> WITH <exception>"` pairs; empty. Adding one needs an ADR |
 | `buildUrlAllowlist` | the exact URL strings the production bundle may contain as plain text, each with a reason (namespace URIs, the URL-parsing base, error-help links) |
@@ -125,6 +125,57 @@ Neither is fetched.
 **Trusted Types.** react-draggable writes a `<style>` element through `innerHTML` at the first drag,
 which the CSP's Trusted Types requirement blocks; the client creates an inert marker element with
 the same id first, so the library skips it ([Client application](README.md#boards)).
+
+## Query editor
+
+The PromQL editor chunk ([Explore](explore.md#editor-chunk), issue #63 Part B; ADR-0014 §1) adds ten
+runtime dependencies, category `query-editor`, resolved with the 7-day cut-off:
+
+```sh
+npm install --ignore-scripts --before=2026-11-14 @codemirror/autocomplete@6.20.4 \
+  @codemirror/commands@6.11.1 @codemirror/language@6.13.1 @codemirror/lint@6.9.8 \
+  @codemirror/state@6.7.6 @codemirror/view@6.43.15 @lezer/common@1.5.5 @lezer/highlight@1.2.5 \
+  @prometheus-io/codemirror-promql@0.316.0 @prometheus-io/lezer-promql@0.316.0
+```
+
+They and their transitive packages grow the runtime closure from 33 to 50. None has an install
+script.
+
+| Package | Version | Licence | Note |
+|---|---|---|---|
+| `@codemirror/state`, `@codemirror/view` | 6.7.6, 6.43.15 | MIT | the editor |
+| `@codemirror/language`, `@codemirror/commands`, `@codemirror/autocomplete`, `@codemirror/lint` | 6.13.1, 6.11.1, 6.20.4, 6.9.8 | MIT | language support, history and keymaps, completion, the run-error underline |
+| `@lezer/common`, `@lezer/highlight` | 1.5.5, 1.2.5 | MIT | syntax trees and highlight tags |
+| `@prometheus-io/codemirror-promql`, `@prometheus-io/lezer-promql` | 0.316.0 | Apache-2.0 | the PromQL grammar and its completion; the package's linter and HTTP clients are never used |
+| `@codemirror/streamparser`, `@lezer/lr`, `@marijn/find-cluster-break`, `crelt`, `style-mod`, `w3c-keyname` | 6.0.0, 1.4.12, 1.0.4, 1.0.7, 4.1.4, 2.2.8 | MIT | transitive |
+| `lru-cache` | 11.2.2 | ISC | transitive, of `codemirror-promql` only; overridden (below) |
+
+**The `lru-cache` override.** `codemirror-promql` 0.316.0 asks for `lru-cache ^11.5.3`, and
+`lru-cache` is licensed BlueOak-1.0.0 from 11.2.3 on, which is not on the licence allowlist
+(ADR-0014 §7). `package.json` therefore pins it for that package alone:
+
+```json
+"overrides": { "@prometheus-io/codemirror-promql": { "lru-cache": "11.2.2" } }
+```
+
+11.2.2 is ISC; `npm ls lru-cache` prints `lru-cache@11.2.2 overridden` under `codemirror-promql`.
+The override is scoped because a global one would also replace the development-only copies other
+packages need (`jsdom`'s `^11.5.3`, `@babel`'s `^5`). It is safe because the package only calls
+`new LRUCache({ttl, ttlAutopurge})`, which 11.2.2 accepts, and only in its `CachedPrometheusClient`,
+which the editor never builds: completion runs over our own `PrometheusClient`
+(`promClient.ts`). **On every `codemirror-promql` update**, repeat the check: search its `dist` for
+`lru-cache` uses, confirm they are still only in the cached HTTP client, and confirm the pinned
+version still satisfies the calls. Without the override, `ci:dep-audit` fails with a `licence`
+finding for `lru-cache` (`"BlueOak-1.0.0"`).
+
+**Tests.** The package has no `exports` map, so the test runner would load its CommonJS build,
+which brings a second copy of `@codemirror/state`; `vite.config.ts` points the tests at its ES
+module build, as the browser build uses.
+
+**Bundle.** No page imports the editor yet, so the build emits no editor chunk; its budget
+(175 000 bytes brotli, `ci:bundle-size`, PRF-009) is checked when Part C first loads it. A trial
+bundle of these packages was 121 620 bytes brotli, with no URL string other than the SVG namespace
+and no HTML sink.
 
 ## Advisories and signatures
 
