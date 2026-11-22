@@ -196,7 +196,9 @@ test.describe('e2e:board-thresholds (fake)', () => {
     uid = await createBoard(request, `E9 ${info.project.name} ${crypto.randomUUID()}`, E7_PANELS);
     const puts: string[] = [];
     page.on('request', (r) => {
-      if (r.method() === 'PUT') puts.push(r.url());
+      if (r.method() === 'PUT' && new URL(r.url()).pathname.startsWith(`${BOARDS_API}/`)) {
+        puts.push(r.url());
+      }
     });
     await page.goto(boardUrl(uid));
     await expect(panel(page, 'Memory').locator('[data-frame-ready="true"]')).toHaveCount(1);

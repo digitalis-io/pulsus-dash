@@ -169,11 +169,14 @@ export function script(page: Page, h: KeyboardHarness) {
     return { scope: overlay, region: overlay };
   }
 
-  /** The element of a `role "name" #n` key in `scope`. */
+  /**
+   * The element of a `role "name" #n` key in `scope`. Keys hold the accessible name as it is, so a
+   * name may itself contain quotes (a legend row's series name, `m{job="a"}`; #64 Part B).
+   */
   function resolve(scope: Locator, key: string): Locator {
-    const m = /^([a-z]+) "((?:[^"\\]|\\.)*)"(?: #(\d+))?$/.exec(key);
+    const m = /^([a-z]+) "(.*)"(?: #(\d+))?$/s.exec(key);
     if (m === null) throw new Error(`bad key ${key}`);
-    const name = JSON.parse(`"${m[2] ?? ''}"`) as string;
+    const name = m[2] ?? '';
     return scope
       .getByRole(m[1] as Parameters<Page['getByRole']>[0], { name, exact: true })
       .nth(Number(m[3] ?? '1') - 1);
