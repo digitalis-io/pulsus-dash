@@ -50,7 +50,14 @@ export function createPromSource(d: PromSourceDeps): PromSource {
     empty: T,
   ): Promise<T> {
     const w = d.window();
-    const parts = { tenant, kind, label, selector, bucket: windowBucket(w.toMs) };
+    const parts = {
+      tenant,
+      lang: 'promql' as const,
+      kind,
+      label,
+      selector,
+      bucket: windowBucket(w.toMs),
+    };
     return cache.get(g, parts, (signal) => load(w, signal)).catch(() => empty);
   }
   const minutes = (w: Window) => snapped(w, MINUTE_MS, true);

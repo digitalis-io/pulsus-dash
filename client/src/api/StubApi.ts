@@ -80,6 +80,7 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogMatchRequest,
   type LogsRequest,
   type PromMatchRequest,
   type RangeRequest,
@@ -662,6 +663,19 @@ export class StubApi implements Api {
       this.checkTenant(tenant);
       return { series: [], completeness: EMPTY_COMPLETENESS };
     }, signal);
+  }
+
+  logLabels(_tenant: string, _req: LogMatchRequest, _signal?: AbortSignal): Promise<PromValues> {
+    return Promise.reject(new Error('not implemented'));
+  }
+
+  logLabelValues(
+    _tenant: string,
+    _name: string,
+    _req: LogMatchRequest,
+    _signal?: AbortSignal,
+  ): Promise<PromValues> {
+    return Promise.reject(new Error('not implemented'));
   }
 
   promMetadata(

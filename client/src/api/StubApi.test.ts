@@ -143,6 +143,28 @@ describe('StubApi prom', () => {
   });
 });
 
+describe('StubApi log completion', () => {
+  it('serves the log label names and values (plan #66 Part A §3.2)', async () => {
+    const api = new StubApi();
+    const r = { fromMs: 0, toMs: 1 };
+    expect((await api.logLabels('demo', r)).values).toEqual(['level', 'pod', 'service_name']);
+    expect((await api.logLabelValues('demo', 'level', r)).values).toEqual([
+      'error',
+      'info',
+      'warn',
+    ]);
+    expect((await api.logLabelValues('demo', 'pod', r)).values).toEqual([
+      'stub-0',
+      'stub-1',
+      'stub-2',
+    ]);
+    expect((await api.logLabelValues('demo', 'x', r)).values).toEqual([]);
+    expect((await api.logLabels('demo', r)).completeness.truncated).toBe(false);
+    expect(await kindOf(api.logLabels('nope', r))).toBe('notFound');
+    expect(await kindOf(api.logLabelValues('nope', 'level', r))).toBe('notFound');
+  });
+});
+
 async function rejection(p: Promise<unknown>): Promise<unknown> {
   try {
     await p;

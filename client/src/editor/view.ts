@@ -132,6 +132,37 @@ export function createPromQLView(o: PromQLViewOptions): EditorView {
   return new EditorView({ parent: o.parent, root: o.root, state, ...probedDispatch() });
 }
 
+/** How a view starts completion (plan #66 Part A §3.10). */
+export interface CompletionTiming {
+  readonly typingDelayMs: number;
+  readonly slots: 1 | 2;
+}
+export const PROMQL_COMPLETION: CompletionTiming = { typingDelayMs: 120, slots: 1 };
+
+export interface QueryViewOptions {
+  readonly parent: HTMLElement;
+  readonly root: ShadowRoot;
+  readonly doc: string;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly language: Extension;
+  readonly completion: CompletionTiming;
+  readonly onChange: (text: string) => void;
+  readonly onRun: () => void;
+  readonly onEscape: () => void;
+  readonly readOnly?: boolean;
+}
+
+/** Stub: not implemented yet. */
+export function languageCompletionAt(_i: number): CompletionSource {
+  throw new Error('not implemented');
+}
+
+/** Stub: not implemented yet. */
+export function createQueryView(_o: QueryViewOptions): EditorView {
+  throw new Error('not implemented');
+}
+
 /** Replaces the document (no-op when equal); caret at the end; its own undo event. */
 export function setDocument(view: EditorView, text: string): void {
   if (view.state.doc.toString() === text) return;

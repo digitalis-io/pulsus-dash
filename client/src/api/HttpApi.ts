@@ -41,6 +41,7 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogMatchRequest,
   type LogsRequest,
   type PromMatchRequest,
   type RangeRequest,
@@ -584,6 +585,19 @@ export class HttpApi implements Api {
     );
     if (data === undefined) throw queryError(response.status, error);
     return decoded(decodeSeriesSet, data);
+  }
+
+  logLabels(_tenant: string, _req: LogMatchRequest, _signal?: AbortSignal): Promise<PromValues> {
+    return Promise.reject(new Error('not implemented'));
+  }
+
+  logLabelValues(
+    _tenant: string,
+    _name: string,
+    _req: LogMatchRequest,
+    _signal?: AbortSignal,
+  ): Promise<PromValues> {
+    return Promise.reject(new Error('not implemented'));
   }
 
   async promMetadata(

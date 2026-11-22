@@ -82,6 +82,16 @@ export interface PromMatchRequest {
   readonly limit?: number;
 }
 
+/** A log label lookup (`GET /logs/labels`, `/logs/label/{name}/values`; plan #66 Part A §3.2). */
+export interface LogMatchRequest {
+  readonly fromMs: number;
+  readonly toMs: number;
+  /** One stream selector, as written (never substituted); omitted when absent or ''. */
+  readonly query?: string;
+  /** 1..10 000; omitted = the BFF's default (1 000). */
+  readonly limit?: number;
+}
+
 export interface Tenant {
   slug: string;
   name: string;

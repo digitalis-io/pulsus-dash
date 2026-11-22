@@ -18,6 +18,7 @@ export type SuggestKind = 'names' | 'labels' | 'values' | 'series';
 
 export interface SuggestKeyParts {
   readonly tenant: string;
+  readonly lang: 'promql' | 'logql';
   readonly kind: SuggestKind;
   readonly label: string | null;
   readonly selector: string | null;
@@ -91,6 +92,7 @@ export class SuggestCache {
     g: SuggestGeneration,
     p: SuggestKeyParts,
     load: (signal: AbortSignal) => Promise<T>,
+    _signal?: AbortSignal,
   ): Promise<T> {
     if (g !== this.gen || p.tenant !== this.retained) return rejected<T>();
     const k = suggestKey(p);
