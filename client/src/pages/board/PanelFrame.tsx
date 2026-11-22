@@ -11,6 +11,7 @@
  */
 import {
   forwardRef,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -188,8 +189,10 @@ function StatStack({
  * panel's Loading until the engine has drawn it, and a new frame is sized from `sizeMemo` (#90).
  * Line and bars stack the legend under the chart; stat stacks the chip, the chart and the
  * threshold text (§3.9). The isolation and the legend sort are this instance's own, never saved.
+ * Memoised: a board change that leaves a panel's view and title alone (an edit to another panel,
+ * opening the editor) does not render its chart or legend again.
  */
-function PanelChart({
+const PanelChart = memo(function PanelChart({
   title,
   view,
   sizeMemo,
@@ -271,7 +274,7 @@ function PanelChart({
         ))}
     </div>
   );
-}
+});
 
 export function PanelBody({
   title,
