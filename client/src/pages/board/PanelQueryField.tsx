@@ -6,7 +6,16 @@
  * Mod+Enter, and when focus leaves the field with a text that has not run.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, type JSX } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from 'react';
 import { flushSync } from 'react-dom';
 import { useApi } from '../../app/providers';
 import type { PromMetadata } from '../../data/decode';
@@ -125,7 +134,18 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
     };
   }, []);
 
-  const Editor = editor?.PromQLEditor ?? null;
+  // The view mounts a frame after the field: the dialog (or a switch to PromQL) paints first, and
+  // creating the editor is a task of its own (`bench:rooms-long-tasks`).
+  const [mountable, setMountable] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setMountable(true);
+    });
+    return () => {
+      cancelAnimationFrame(id);
+    };
+  }, []);
+  const Editor = mountable ? (editor?.PromQLEditor ?? null) : null;
   const unrun = p.value !== p.runText;
   return (
     <div ref={fieldRef} className={cx(styles['queryField'])}>

@@ -10,8 +10,8 @@ import type { Diagnostic } from '../editor/lang/types';
 import type { VisKind, VisSpec } from '../engine/api';
 import { errorView, refusalText } from '../explore/statusText';
 import { t } from '../i18n/t';
-import { autoVis, chooseVis } from '../vis/autovis';
-import { framePlan } from '../vis/framePlan';
+import { autoVis, chooseVis, type ExploreResult } from '../vis/autovis';
+import { framePlan, type FramePlan } from '../vis/framePlan';
 import type { PanelRun } from './usePanelRun';
 
 export interface Resolved {
@@ -96,6 +96,33 @@ export function positionText(text: string, diagnostics: readonly Diagnostic[]): 
   return t('panel.errorAt', { line, column });
 }
 
+/**
+ * `framePlan` per result, vis and rate (a heatmap's buckets are not cheap): a panel's remounts
+ * (the Edit grid, full screen) and the preview reuse the plan of the same result. The title is the
+ * spec's only per-call part.
+ */
+const plans = new WeakMap<ExploreResult, Map<string, FramePlan>>();
+
+function cachedPlan(
+  vis: VisKind,
+  r: ExploreResult,
+  rateApplied: boolean,
+  title: string,
+): FramePlan {
+  let byVis = plans.get(r);
+  if (byVis === undefined) {
+    byVis = new Map();
+    plans.set(r, byVis);
+  }
+  const k = `${vis}|${String(rateApplied)}`;
+  let plan = byVis.get(k);
+  if (plan === undefined) {
+    plan = framePlan(vis, r, { isolatedKey: null, title: '', rateApplied });
+    byVis.set(k, plan);
+  }
+  return plan.spec === null ? plan : { ...plan, spec: { ...plan.spec, title } };
+}
+
 const message = (state: PanelState, text: string): PanelView => ({
   kind: 'message',
   state,
@@ -143,11 +170,7 @@ export function panelView(run: PanelRun, vis: PanelVisKind, title: string): Pane
   });
   // `logs` is blocked above; any other saved kind overrides the auto vis.
   const chosen = chooseVis(vis === 'auto' || vis === 'logs' ? 'auto' : vis, auto) ?? 'line';
-  const plan = framePlan(chosen, r, {
-    isolatedKey: null,
-    title,
-    rateApplied: o.planned.rateApplied,
-  });
+  const plan = cachedPlan(chosen, r, o.planned.rateApplied, title);
   if (plan.notice === 'noBuckets') return message('noBuckets', t('explore.vis.noBuckets'));
   if (plan.notice === 'tooManyTimestamps') {
     return message('tooManyTimestamps', t('explore.vis.tooManyTimestamps'));
