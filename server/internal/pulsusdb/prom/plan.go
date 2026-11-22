@@ -213,6 +213,14 @@ func checkInputs(in Inputs) *PlanError {
 	return nil
 }
 
+// processingCap is the refusal of a substituted text over MaxExpandedBytes (row 9). It carries no
+// plan: nothing was planned.
+func processingCap() *PlanError {
+	return &PlanError{Kind: ErrProcessingCap,
+		Message: "the substituted query is over 2097152 bytes, the most the server processes",
+		Fields:  []FieldError{{Pointer: "/query", MessageKey: "query.too_large_to_plan"}}}
+}
+
 // Prepare checks the inputs, substitutes the variables (each macro as the placeholder "1s"),
 // reads the shape and classifies it: rows 1–5 and 7–9 of §3.1, before any I/O.
 func Prepare(in Inputs) (*Prepared, *PlanError) {
@@ -231,9 +239,7 @@ func Prepare(in Inputs) (*Prepared, *PlanError) {
 		return nil, inputError("/step_ms", "field.required", "step_ms is required for $__interval and $__rate_interval")
 	}
 	if count.size > MaxExpandedBytes {
-		return nil, &PlanError{Kind: ErrProcessingCap,
-			Message: "the substituted query is over 2097152 bytes, the most the server processes",
-			Fields:  []FieldError{{Pointer: "/query", MessageKey: "query.too_large_to_plan"}}}
+		return nil, processingCap()
 	}
 	text := substitute(in.Query, in.Vars, placeholders(), true).text
 	shape := ShapeOf(text)
@@ -278,10 +284,15 @@ func isHistogram(n string, t MetricTypes) bool {
 }
 
 // Plan substitutes the macros at stepMs, reads the shape, applies the rewrites and the size
-// limit: rows 6 and 10 of §3.1 (plan #112 §4.1).
+// limit: rows 6, 9 (the processing cap at the resolved step) and 10 of §3.1 (plan #112 §4.1).
 func (p *Prepared) Plan(stepMs int64, types MetricTypes) (Planned, *PlanError) {
 	if (p.in.Kind == KindRange && stepMs <= 0) || stepMs < 0 {
 		return Planned{}, inputError("/step_ms", "field.range", "step_ms must be positive")
+	}
+	// Row 9 again at the resolved step: a macro's text there may be longer than the placeholder, so
+	// the substituted length is counted before the text is built.
+	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), false).size > MaxExpandedBytes {
+		return Planned{}, processingCap()
 	}
 	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), true)
 	expanded := sub.text

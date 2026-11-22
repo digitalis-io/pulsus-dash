@@ -373,6 +373,14 @@ function substitute(
 
 const pointerToken = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
 
+/** Row 9: the substituted text over the processing cap; no plan. */
+const PROCESSING_CAP: StubPlanError = {
+  status: 413,
+  message: 'the substituted query is over 2097152 bytes, the most the server processes',
+  fields: [{ pointer: '/query', messageKey: 'query.too_large_to_plan' }],
+  hint: { reason: 'processing_cap' },
+};
+
 function inputError(pointer: string, messageKey: string, message: string): StubPlanError {
   return { status: 400, message, fields: [{ pointer, messageKey }] };
 }
@@ -457,20 +465,19 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
       'field.required',
       'step_ms is required for $__interval and $__rate_interval',
     );
-  if (count.size > MAX_EXPANDED_BYTES) {
-    return {
-      status: 413,
-      message: 'the substituted query is over 2097152 bytes, the most the server processes',
-      fields: [{ pointer: '/query', messageKey: 'query.too_large_to_plan' }],
-      hint: { reason: 'processing_cap' },
-    };
-  }
+  if (count.size > MAX_EXPANDED_BYTES) return PROCESSING_CAP;
   const substituted = decoder.decode(substitute(raw, vars, PLACEHOLDERS, true).bytes);
-  const expanded = new Map<number, Substitution>();
-  const sub = (stepMs: number): Substitution => {
+  const expanded = new Map<number, Substitution | StubPlanError>();
+  // Row 9 again at the resolved step: a macro's text may be longer than the placeholder, so the
+  // length is counted before the text is built.
+  const sub = (stepMs: number): Substitution | StubPlanError => {
     let s = expanded.get(stepMs);
     if (s === undefined) {
-      s = substitute(raw, vars, macrosAt(stepMs), true);
+      const m = macrosAt(stepMs);
+      s =
+        substitute(raw, vars, m, false).size > MAX_EXPANDED_BYTES
+          ? PROCESSING_CAP
+          : substitute(raw, vars, m, true);
       expanded.set(stepMs, s);
     }
     return s;
@@ -482,11 +489,15 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
       return !s.hasHistogramQuantile && s.metrics.some((m) => m.endsWith('_bucket'));
     },
     classify: classifyShape,
-    expandedAt: (stepMs) => decoder.decode(sub(stepMs).bytes),
+    expandedAt: (stepMs) => {
+      const e = sub(stepMs);
+      return isPlanError(e) ? e : decoder.decode(e.bytes);
+    },
     plan(stepMs, s, types) {
       if ((i.kind === 'range' && stepMs <= 0) || stepMs < 0)
         return inputError('/step_ms', 'field.range', 'step_ms must be positive');
       const e = sub(stepMs);
+      if (isPlanError(e)) return e;
       const expandedText = decoder.decode(e.bytes);
       interface Facts {
         readonly query: string;

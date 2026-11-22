@@ -187,6 +187,14 @@ func (c *TypesCache) Types(ctx context.Context, rc *core.RequestCtx) (MetricType
 		c.afterMiss()
 	}
 	ch := c.sf.DoChan(key, func() (any, error) {
+		// Another fetch may have filled the entry, and left the singleflight, after this caller's
+		// miss: take that entry rather than fetch again.
+		c.mu.Lock()
+		held, ok := c.entries[key]
+		c.mu.Unlock()
+		if ok && c.o.Now().Before(held.expires) {
+			return held.types, held.err
+		}
 		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.o.FetchTimeout)
 		defer cancel()
 		t, err := c.fetch(fctx, rc)

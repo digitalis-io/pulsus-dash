@@ -61,7 +61,7 @@ today; the alert evaluator will call the same function with a rule's stored step
 | `vars` | at most 64 names, each `^[A-Za-z_][A-Za-z0-9_]{0,63}$`; each value at most 4 096 bytes | names checked in byte order |
 | `rate` (range) | boolean, default `true` | the rate chip |
 | `step_ms` (instant) | 1 000 to 86 400 000 | the step of `$__interval`, `$__rate_interval` and the rate rewrite; without it an instant query is not rated |
-| substituted text | 2 MiB (2 097 152 bytes, the request-body limit) | the processing cap, counted before the text is built |
+| substituted text | 2 MiB (2 097 152 bytes, the request-body limit) | the processing cap, counted before the text is built: in `Prepare` with the placeholder macros, and again in `Plan` with the macros at the resolved step (a `1500ms` is longer than the `1s` placeholder) |
 | planned text | 65 536 bytes | checked on the final planned text only |
 
 The raw text may be up to 128 KB because the planned text, not the raw text, is what has to fit
