@@ -794,6 +794,15 @@ type QueryLang string
 // QueryVars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
 type QueryVars map[string]string
 
+// RangeFrameResponse defines model for RangeFrameResponse.
+type RangeFrameResponse struct {
+	Completeness Completeness  `json:"completeness"`
+	End          int64         `json:"end"`
+	Frames       []SeriesFrame `json:"frames"`
+	Start        int64         `json:"start"`
+	Step         int64         `json:"step"`
+}
+
 // Ready defines model for Ready.
 type Ready struct {
 	Checks ReadyChecks `json:"checks"`

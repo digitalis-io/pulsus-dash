@@ -253,7 +253,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Tenant' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlVolumeRequest' } } } }
       responses:
-        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromRangeResponse' } } } }
+        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/RangeFrameResponse' } } } }
         default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/logs/labels:
     get:
@@ -430,6 +430,16 @@ components:
       required: [planned, start, end, step, frames, completeness]
       properties:
         planned: { $ref: '#/components/schemas/PlannedQuery' }
+        start: { type: integer, format: int64 }
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    RangeFrameResponse:                     # frames on the grid without planned: the LogQL volume body (planned is PromQL-only until logs.Plan, T06-029, #116)
+      type: object
+      additionalProperties: false
+      required: [start, end, step, frames, completeness]
+      properties:
         start: { type: integer, format: int64 }
         end: { type: integer, format: int64 }
         step: { type: integer, format: int64 }

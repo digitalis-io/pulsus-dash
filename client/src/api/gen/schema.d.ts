@@ -525,6 +525,16 @@ export interface components {
             frames: components["schemas"]["SeriesFrame"][];
             completeness: components["schemas"]["Completeness"];
         };
+        RangeFrameResponse: {
+            /** Format: int64 */
+            start: number;
+            /** Format: int64 */
+            end: number;
+            /** Format: int64 */
+            step: number;
+            frames: components["schemas"]["SeriesFrame"][];
+            completeness: components["schemas"]["Completeness"];
+        };
         TimedValue: {
             /** Format: int64 */
             timestamp: number;
@@ -1718,7 +1728,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PromRangeResponse"];
+                    "application/json": components["schemas"]["RangeFrameResponse"];
                 };
             };
             /** @description Error (400 */
