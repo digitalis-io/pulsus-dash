@@ -203,8 +203,32 @@ least multiple of the floor at least the step. Because variables are substituted
 and only the step macros wait, a reserved name a variable introduces is found (`$m` with
 `m=ALERTS` is `virtual`). In v1 nothing resolves to a virtual source, so the routes refuse any
 query that is not `pulsus_db` before any I/O; selectors without a metric name and unparsable text
-are left to the byte guard. LogQL keeps its byte guard until `logs.Plan` lands (the follow-up
-"Move LogQL planning to the Go service").
+are left to the byte guard.
+
+The binding order is the contract for the scene planner's Bind too (T07 §4.1): templates and
+`{{entity}}` bindings are expanded, then the variables substituted, before Classify; only the step
+macros wait for Resolve. v1 has no templates, so the fixture's classify group (V1–V5) proves the
+order with variable values; the issue that implements scene Bind owes the gate
+`unit:bind-classify-template` (a template binding `pulsus_anomaly_score{service="checkout",signal="latency"}`,
+6 h at 1 600 px: `virtual`, floor 300 000 ms, final step 300 000 ms, `Plan` called with it).
+
+**LogQL (follow-up "Move LogQL planning to the Go service", before #66 Part C).** Until `logs.Plan`
+lands, the LogQL routes keep #65's T07-020 byte guard (`pulsusdb.CheckReserved`) unchanged; #112
+changes no LogQL code. The contract of that issue: `logs.Prepare` substitutes, then classifies the
+stream selectors with a LogQL selector reader (not the PromQL parser) before the step is resolved,
+and only the equality matcher `source="pulsus-dash"` is reserved. `wire/fixtures/plan/logql.json`
+gets a `classify` group:
+
+| Case | Query (vars) | Source |
+|---|---|---|
+| L1 | `{source="pulsus-dash"}` | `virtual` |
+| L2 | `{source="pulsus-dash", kind="alert_transition"} \|= "x"` | `virtual` |
+| L3 | `{source=~"pulsus-dash"}` | `pulsus_db` (only the equality matcher is reserved, T07-020) |
+| L4 | `{source="$s"}` with `s=pulsus-dash` | `virtual` |
+| L5 | `sum(count_over_time({source="pulsus-dash"}[$__interval])) + sum(count_over_time({job="a"}[$__interval]))` | `mixed` |
+
+Its gates: `unit:logql-classify` (the group through Go and the TS mirror) and
+`itest:logql-virtual-refused` (400 `virtual_unsupported`, no upstream request).
 
 ### Fixtures
 
