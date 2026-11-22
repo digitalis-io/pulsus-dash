@@ -253,7 +253,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Tenant' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlVolumeRequest' } } } }
       responses:
-        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/RangeFrameResponse' } } } }
+        '200': { description: Frames and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/LogqlVolumeResponse' } } } }
         default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/logs/labels:
     get:
@@ -341,7 +341,8 @@ components:
         hint: { type: object, additionalProperties: true }
         query_id: { type: string }
         fields: { type: array, items: { $ref: '#/components/schemas/FieldError' } }
-        planned: { $ref: '#/components/schemas/PlannedQuery' }   # the PromQL routes: every error raised after planning (ADR-0021)
+        planned:   # every error raised after planning (ADR-0021 §3): the PromQL or the LogQL plan
+          oneOf: [ { $ref: '#/components/schemas/PlannedQuery' }, { $ref: '#/components/schemas/LogqlPlannedQuery' } ]
     ErrorEnvelope: { type: object, additionalProperties: false, required: [error], properties: { error: { $ref: '#/components/schemas/ErrorBody' } } }
     Health: { type: object, required: [status], properties: { status: { type: string, enum: [ok] } } }
     Ready: { type: object, required: [status, checks], properties: { status: { type: string, enum: [ready, not_ready] }, checks: { $ref: '#/components/schemas/ReadyChecks' } } }
@@ -435,16 +436,6 @@ components:
         step: { type: integer, format: int64 }
         frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
         completeness: { $ref: '#/components/schemas/Completeness' }
-    RangeFrameResponse:                     # frames on the grid without planned: the LogQL volume body (planned is PromQL-only until logs.Plan, T06-029, #116)
-      type: object
-      additionalProperties: false
-      required: [start, end, step, frames, completeness]
-      properties:
-        start: { type: integer, format: int64 }
-        end: { type: integer, format: int64 }
-        step: { type: integer, format: int64 }
-        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
-        completeness: { $ref: '#/components/schemas/Completeness' }
     TimedValue:
       type: object
       additionalProperties: false
@@ -505,7 +496,8 @@ components:
       additionalProperties: false
       required: [query, from, to, width_px]
       properties:
-        query: { type: string, minLength: 1, maxLength: 65536 }
+        query: { type: string, minLength: 1, maxLength: 131072 }   # raw text; the server checks UTF-8 bytes and plans it (ADR-0021)
+        vars: { $ref: '#/components/schemas/QueryVars' }
         from: { type: integer, format: int64, minimum: 0 }                    # ms since the epoch
         to: { type: integer, format: int64, maximum: 9223372036854 }          # and the aligned grid end must not pass it
         width_px: { type: integer, minimum: 1, maximum: 10000 }
@@ -518,7 +510,8 @@ components:
       additionalProperties: false
       required: [query, from, to, width_px]
       properties:
-        query: { type: string, minLength: 1, maxLength: 65536 }
+        query: { type: string, minLength: 1, maxLength: 131072 }   # raw text; the server checks UTF-8 bytes and plans it (ADR-0021)
+        vars: { $ref: '#/components/schemas/QueryVars' }
         from: { type: integer, format: int64, minimum: 0 }
         to: { type: integer, format: int64, maximum: 9223372036854 }
         width_px: { type: integer, minimum: 1, maximum: 10000 }
@@ -541,12 +534,23 @@ components:
         key: { type: string, pattern: '^[0-9a-f]{16}$' }
         labels: { type: object, additionalProperties: { type: string } }     # the indexed stream labels
         entries: { type: array, items: { $ref: '#/components/schemas/LogEntry' } }
+    LogqlPlannedQuery:
+      description: What the server planned and sent for a LogQL query (ADR-0021, T06-029).
+      type: object
+      additionalProperties: false
+      required: [query, expanded, bytes, step_ms]
+      properties:
+        query: { type: string }      # sent to PulsusDB (volume: the template around expanded)
+        expanded: { type: string }   # the substituted text
+        bytes: { type: integer }
+        step_ms: { type: integer, format: int64 }
     LogqlStreamsResponse:
       type: object
       additionalProperties: false
-      required: [kind, start, end, step, direction, streams, completeness]
+      required: [kind, planned, start, end, step, direction, streams, completeness]
       properties:
         kind: { type: string, enum: [streams] }
+        planned: { $ref: '#/components/schemas/LogqlPlannedQuery' }
         start: { type: integer, format: int64 }                              # the request's from: the window is (start, end] in ms
         end: { type: integer, format: int64 }                                # the request's to
         step: { type: integer, format: int64 }                               # the grid step
@@ -554,13 +558,25 @@ components:
         streams: { type: array, items: { $ref: '#/components/schemas/LogStream' } }
         cursor: { type: string }                                             # absent: no further entry in the window
         completeness: { $ref: '#/components/schemas/Completeness' }
-    LogqlSeriesResponse:                    # the range frame without planned: PromQL-only until logs.Plan (T06-029, #116)
+    LogqlSeriesResponse:
       type: object
       additionalProperties: false
-      required: [kind, start, end, step, frames, completeness]
+      required: [kind, planned, start, end, step, frames, completeness]
       properties:
         kind: { type: string, enum: [series] }
+        planned: { $ref: '#/components/schemas/LogqlPlannedQuery' }
         start: { type: integer, format: int64 }                              # the grid
+        end: { type: integer, format: int64 }
+        step: { type: integer, format: int64 }
+        frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
+    LogqlVolumeResponse:                    # the level frames on the grid, after what was planned and sent
+      type: object
+      additionalProperties: false
+      required: [planned, start, end, step, frames, completeness]
+      properties:
+        planned: { $ref: '#/components/schemas/LogqlPlannedQuery' }
+        start: { type: integer, format: int64 }
         end: { type: integer, format: int64 }
         step: { type: integer, format: int64 }
         frames: { type: array, items: { $ref: '#/components/schemas/SeriesFrame' } }

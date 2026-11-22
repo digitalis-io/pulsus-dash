@@ -412,7 +412,7 @@ export interface components {
             };
             query_id?: string;
             fields?: components["schemas"]["FieldError"][];
-            planned?: components["schemas"]["PlannedQuery"];
+            planned?: components["schemas"]["PlannedQuery"] | components["schemas"]["LogqlPlannedQuery"];
         };
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
@@ -525,16 +525,6 @@ export interface components {
             frames: components["schemas"]["SeriesFrame"][];
             completeness: components["schemas"]["Completeness"];
         };
-        RangeFrameResponse: {
-            /** Format: int64 */
-            start: number;
-            /** Format: int64 */
-            end: number;
-            /** Format: int64 */
-            step: number;
-            frames: components["schemas"]["SeriesFrame"][];
-            completeness: components["schemas"]["Completeness"];
-        };
         TimedValue: {
             /** Format: int64 */
             timestamp: number;
@@ -587,6 +577,7 @@ export interface components {
         LogLevel: "critical" | "error" | "warn" | "info" | "debug" | "trace" | "unknown";
         LogqlRangeRequest: {
             query: string;
+            vars?: components["schemas"]["QueryVars"];
             /** Format: int64 */
             from: number;
             /** Format: int64 */
@@ -601,6 +592,7 @@ export interface components {
         };
         LogqlVolumeRequest: {
             query: string;
+            vars?: components["schemas"]["QueryVars"];
             /** Format: int64 */
             from: number;
             /** Format: int64 */
@@ -627,12 +619,21 @@ export interface components {
             };
             entries: components["schemas"]["LogEntry"][];
         };
+        /** @description What the server planned and sent for a LogQL query (ADR-0021, T06-029). */
+        LogqlPlannedQuery: {
+            query: string;
+            expanded: string;
+            bytes: number;
+            /** Format: int64 */
+            step_ms: number;
+        };
         LogqlStreamsResponse: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "streams";
+            planned: components["schemas"]["LogqlPlannedQuery"];
             /** Format: int64 */
             start: number;
             /** Format: int64 */
@@ -650,6 +651,18 @@ export interface components {
              * @enum {string}
              */
             kind: "series";
+            planned: components["schemas"]["LogqlPlannedQuery"];
+            /** Format: int64 */
+            start: number;
+            /** Format: int64 */
+            end: number;
+            /** Format: int64 */
+            step: number;
+            frames: components["schemas"]["SeriesFrame"][];
+            completeness: components["schemas"]["Completeness"];
+        };
+        LogqlVolumeResponse: {
+            planned: components["schemas"]["LogqlPlannedQuery"];
             /** Format: int64 */
             start: number;
             /** Format: int64 */
@@ -1728,7 +1741,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RangeFrameResponse"];
+                    "application/json": components["schemas"]["LogqlVolumeResponse"];
                 };
             };
             /** @description Error (400 */
