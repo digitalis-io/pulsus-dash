@@ -229,6 +229,20 @@ function decoded<T>(decode: (b: unknown) => T, body: unknown): T {
 }
 
 /** The query of a `/prom/*` read: `match` repeated in order and omitted when empty. */
+/** The query of a log label lookup: `query` only when non-empty, `limit` only when given. */
+function logQuery(
+  tenant: string,
+  req: LogMatchRequest,
+): { tenant: string; from: number; to: number; query?: string; limit?: number } {
+  return {
+    tenant,
+    from: req.fromMs,
+    to: req.toMs,
+    ...(req.query === undefined || req.query === '' ? {} : { query: req.query }),
+    ...(req.limit === undefined ? {} : { limit: req.limit }),
+  };
+}
+
 function matchQuery(
   tenant: string,
   req: PromMatchRequest,
@@ -587,17 +601,33 @@ export class HttpApi implements Api {
     return decoded(decodeSeriesSet, data);
   }
 
-  logLabels(_tenant: string, _req: LogMatchRequest, _signal?: AbortSignal): Promise<PromValues> {
-    return Promise.reject(new Error('not implemented'));
+  /** GET …/logs/labels (plan #66 Part A §3.2). */
+  async logLabels(tenant: string, req: LogMatchRequest, signal?: AbortSignal): Promise<PromValues> {
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/logs/labels', {
+        params: { query: logQuery(tenant, req) },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeValues, data);
   }
 
-  logLabelValues(
-    _tenant: string,
-    _name: string,
-    _req: LogMatchRequest,
-    _signal?: AbortSignal,
+  /** GET …/logs/label/{name}/values; openapi-fetch percent-encodes `name`. */
+  async logLabelValues(
+    tenant: string,
+    name: string,
+    req: LogMatchRequest,
+    signal?: AbortSignal,
   ): Promise<PromValues> {
-    return Promise.reject(new Error('not implemented'));
+    const { data, error, response } = await send(() =>
+      this.client.GET('/api/dash/v1/logs/label/{name}/values', {
+        params: { path: { name }, query: logQuery(tenant, req) },
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return decoded(decodeValues, data);
   }
 
   async promMetadata(

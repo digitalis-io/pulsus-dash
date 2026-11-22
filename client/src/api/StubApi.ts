@@ -31,6 +31,8 @@ import { RECENT_LIMIT } from '../boards/queries';
 import {
   defaultSeed,
   defaultStarred,
+  STUB_LOG_LABEL_VALUES,
+  STUB_LOG_LABELS,
   STUB_PROM_LABEL_VALUES,
   STUB_PROM_LABELS,
   STUB_PROM_METADATA,
@@ -665,17 +667,24 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  logLabels(_tenant: string, _req: LogMatchRequest, _signal?: AbortSignal): Promise<PromValues> {
-    return Promise.reject(new Error('not implemented'));
+  /** The labels of `queryLogs`' stub streams (plan #66 Part A §3.2); no scope is planned. */
+  logLabels(tenant: string, _req: LogMatchRequest, signal?: AbortSignal): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { values: [...STUB_LOG_LABELS], completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
   logLabelValues(
-    _tenant: string,
-    _name: string,
+    tenant: string,
+    name: string,
     _req: LogMatchRequest,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<PromValues> {
-    return Promise.reject(new Error('not implemented'));
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { values: [...(STUB_LOG_LABEL_VALUES[name] ?? [])], completeness: EMPTY_COMPLETENESS };
+    }, signal);
   }
 
   promMetadata(
