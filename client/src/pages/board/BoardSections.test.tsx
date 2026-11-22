@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi, type StubBoard } from '../../api/StubApi';
 import { defaultSeed } from '../../api/stubData';
-import type { BoardSpec, PanelSpec, SaveResult, SectionSpec } from '../../api/types';
+import type { BoardSpec, PanelSpec, RangeRequest, SaveResult, SectionSpec } from '../../api/types';
 import { deferred, EngineWrapper, panelTitles, stubBoard } from '../../test/boardTestKit';
 import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
 import { renderApp, type RenderAppOptions } from '../../test/renderApp';
@@ -22,7 +22,7 @@ function p(id: string, title: string, [x, y, w, h]: readonly number[]): PanelSpe
     id,
     title,
     grid: { x: x ?? 0, y: y ?? 0, w: w ?? 1, h: h ?? 1 },
-    query: { lang: 'promql', text: 'up' },
+    query: { lang: 'promql', text: `up{panel="${id}"}` },
     vis: { kind: 'line' },
   };
 }
@@ -41,9 +41,27 @@ const COLLAPSED: SectionSpec = {
   panels: [p('p-4', 'Request latency', [0, 0, 6, 8]), p('p-5', 'Latency p99', [6, 0, 6, 8])],
 };
 
-/** The ids `panelData` was called for, in call order, without repeats. */
+/** Each seeded panel's id by its query text (every seeded panel has its own). */
+const BY_TEXT = new Map(
+  [
+    ...defaultSeed.boards.flatMap((b) => [
+      ...b.spec.panels,
+      ...b.spec.sections.flatMap((x) => x.panels),
+    ]),
+    ...COLLAPSED.panels,
+  ].map((x) => [x.query.text, x.id]),
+);
+
+/** The ids `queryRange` was called for, in call order, without repeats (plan #64 A.5). */
 function queried(spy: { mock: { calls: unknown[][] } }): string[] {
-  return [...new Set(spy.mock.calls.map((c) => (c[1] as PanelSpec).id))];
+  return [...new Set(spy.mock.calls.map((c) => BY_TEXT.get((c[1] as RangeRequest).query) ?? '?'))];
+}
+
+/** Every panel body gets a width, so the panels can run (plan #64 §4.1). */
+function sizePanels(): void {
+  act(() => {
+    resizeAll(1000, 240);
+  });
 }
 
 function sectionOf(title: string): HTMLElement {
@@ -65,17 +83,18 @@ function statusLine(): HTMLElement {
 describe('sections', () => {
   it('collapsed sections do not query', async () => {
     const api = new StubApi(seedWith({ boards: withSection(COLLAPSED) }));
-    const data = vi.spyOn(api, 'panelData');
+    const data = vi.spyOn(api, 'queryRange');
     const { user } = open('/t/demo/board/b-1', { api });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    sizePanels();
     await waitFor(() => {
-      expect(queried(data)).toEqual(['p-1', 'p-2', 'p-3']);
+      expect(queried(data)).toEqual(['p-1', 'p-2']);
     });
     const toggle = screen.getByRole('button', { name: 'Latency' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(within(sectionOf('Latency')).getByText('2 panels')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 3, name: 'Request latency' })).toBeNull();
-    expect(queried(data)).toEqual(['p-1', 'p-2', 'p-3']);
+    expect(queried(data)).toEqual(['p-1', 'p-2']);
 
     await user.click(toggle);
     await waitFor(() => {
@@ -84,8 +103,9 @@ describe('sections', () => {
         'true',
       );
     });
+    sizePanels();
     await waitFor(() => {
-      expect(queried(data)).toEqual(['p-1', 'p-2', 'p-3', 'p-4', 'p-5']);
+      expect(queried(data)).toEqual(['p-1', 'p-2', 'p-4', 'p-5']);
     });
     expect(screen.getByRole('heading', { level: 3, name: 'Request latency' })).toBeVisible();
     expect(screen.getByRole('heading', { level: 3, name: 'Latency p99' })).toBeVisible();
@@ -142,14 +162,15 @@ describe('sections', () => {
 
   it('fresh session: collapsed override', async () => {
     const api = new StubApi();
-    const data = vi.spyOn(api, 'panelData');
+    const data = vi.spyOn(api, 'queryRange');
     open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off&collapse=s-1', { api });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    sizePanels();
     const toggle = screen.getByRole('button', { name: 'Latency' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(within(sectionOf('Latency')).getByText('1 panel')).toBeInTheDocument();
     await waitFor(() => {
-      expect(queried(data)).toEqual(['p-1', 'p-2', 'p-3']);
+      expect(queried(data)).toEqual(['p-1', 'p-2']);
     });
     expect(queried(data)).not.toContain('p-4');
   });
@@ -157,7 +178,7 @@ describe('sections', () => {
   it('fresh session: expanded override', async () => {
     const seed = seedWith({ boards: withSection(COLLAPSED) });
     const api = new StubApi(seed);
-    const data = vi.spyOn(api, 'panelData');
+    const data = vi.spyOn(api, 'queryRange');
     const one = open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off&expand=s-1', { api });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
     await waitFor(() => {
@@ -166,15 +187,17 @@ describe('sections', () => {
         'true',
       );
     });
+    sizePanels();
     await waitFor(() => {
       expect(queried(data)).toEqual(expect.arrayContaining(['p-4', 'p-5']));
     });
     one.view.unmount();
 
     const api2 = new StubApi(seed);
-    const data2 = vi.spyOn(api2, 'panelData');
+    const data2 = vi.spyOn(api2, 'queryRange');
     open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off', { api: api2 });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    sizePanels();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Latency' })).toHaveAttribute(
         'aria-expanded',
@@ -182,7 +205,7 @@ describe('sections', () => {
       );
     });
     await waitFor(() => {
-      expect(queried(data2)).toEqual(['p-1', 'p-2', 'p-3']);
+      expect(queried(data2)).toEqual(['p-1', 'p-2']);
     });
   });
 

@@ -89,6 +89,8 @@ describe('unknown tenant / path', () => {
 
 describe('current nav item', () => {
   it('marks Boards current on a board page, and nothing else', async () => {
+    // Board panels measure their bodies (plan #64 §3.4).
+    installResizeObserver();
     renderApp('/t/demo/board/b-1');
     const nav = await screen.findByRole('navigation', { name: 'Main' });
     await screen.findByRole('heading', { level: 1, name: 'Service overview' });

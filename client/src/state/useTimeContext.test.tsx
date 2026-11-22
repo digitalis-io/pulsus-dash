@@ -9,7 +9,9 @@ import { useTimeContext, type TimeContext } from './useTimeContext';
 describe('refreshNow rule', () => {
   it.each([
     ['ABS', 'from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z&refresh=off', true],
-    ['now/d', 'from=now/d&to=now/d&refresh=off', true],
+    // `now/d` to `now/d` is empty (the default window then applies): `now/d` to the next midnight
+    // is the relative range a tick does not move (plan #64 R2).
+    ['now/d', 'from=now/d&to=2026-11-20T00:00:00.000Z&refresh=off', true],
     ['REL', 'from=now-1h&to=now&refresh=off', false],
   ] as const)('refreshNow rule: %s', async (_name, search, same) => {
     const queryClient = new QueryClient();

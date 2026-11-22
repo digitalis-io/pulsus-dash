@@ -28,7 +28,7 @@ import {
   stubBoard,
 } from '../../test/boardTestKit';
 import { fakeEditorSource } from '../../test/fakeEditor';
-import { fakeEngine, type FakeEngine, type FakeFrame } from '../../test/fakeEngine';
+import { fakeEngine, type FakeFrame } from '../../test/fakeEngine';
 import {
   installIntersectionObserver,
   observedCount,
@@ -36,7 +36,7 @@ import {
   uninstallIntersectionObserver,
 } from '../../test/fakeIntersectionObserver';
 import { F } from '../../test/fakePromSource';
-import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
+import { installResizeObserver, resizeAll, resizeOf } from '../../test/fakeResizeObserver';
 import { C0, R_A, R_B, R_H1 } from '../../test/rangeFixtures';
 import { renderApp, T } from '../../test/renderApp';
 import { seedWith } from '../../test/seeds';
@@ -167,12 +167,23 @@ function seriesValues(t: Board, title: string): number[][] | null {
   return d?.kind === 'series' ? d.series.map((s) => Array.from(s.values)) : null;
 }
 
+/** The panel shows a frame, sized and drawn (its Loading cover gone, #90). */
 async function settled(t: Board, title: string): Promise<void> {
   await waitFor(() => {
     expect(panelState(title)).toBe('frame');
   });
-  await waitFor(() => {
-    expect(frameOf(t, title)).toBeDefined();
+  const f = await waitFor(() => {
+    const x = frameOf(t, title);
+    if (x === undefined) throw new Error(`no frame in ${title}`);
+    return x;
+  });
+  const host = panelOf(title).querySelector('[data-chart-frame]');
+  if (host === null) throw new Error(`no chart in ${title}`);
+  act(() => {
+    resizeOf(host, 400, 200);
+  });
+  act(() => {
+    f.draw();
   });
 }
 
@@ -688,9 +699,11 @@ describe('time changes and refresh', () => {
     await ready('Mem A', 'Mem B');
     show('Mem A', 'Mem B');
     await calls(t, 2);
+    await settled(t, 'Mem A');
     await settled(t, 'Mem B');
     windowKey(']');
     await calls(t, 4);
+    await settled(t, 'Mem A');
     await settled(t, 'Mem B');
     await waitFor(() => {
       expect(panelOf('Mem B').querySelector('[data-shimmer]')).toBeNull();
@@ -835,7 +848,7 @@ describe('time changes and refresh', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(shimmer()).not.toBeNull();
-    expect(panelOf('Requests')).toHaveAttribute('aria-busy', 'true');
+    expect(panelOf('Requests').querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(panelOf('Requests').querySelector('[role="progressbar"]')).toBeNull();
     await act(async () => {
       await h.held[0]?.resolve(R_B);
@@ -1163,7 +1176,8 @@ describe('panel menu', () => {
       await calls(t, 2);
       expect(h.held[0]?.req.widthPx).toBe(200);
       expect(t.engine.frames).toHaveLength(frames);
-      expect(within(panelOf('Mix')).queryByText('Loading')).toBeNull();
+      // The chart stays (its own cover shows until it has drawn at the new size, #90).
+      expect(panelState('Mix')).toBe('frame');
       const s = await exploreState(t, 'Mix');
       expect(s.disabled).toBe(true);
       expect(s.button).toBeDisabled();
@@ -1413,7 +1427,7 @@ describe('board time on open', () => {
     await settled(t, 'Mem B');
     await import('../../editor/editor');
     for (const uid of ['b-1', 'b-3']) {
-      await t.queryClient.prefetchQuery({
+      await t.queryClient.query({
         queryKey: ['board', 'demo', uid],
         queryFn: () => t.api.getBoard('demo', uid),
       });

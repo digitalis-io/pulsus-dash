@@ -241,7 +241,7 @@ describe('duplicatePanel', () => {
     const long = edit({ ...MINIMAL, panels: [p('p-1', '😀'.repeat(195))] });
     const cut = run(long, { type: 'duplicatePanel', id: 'p-1' });
     const title = cut.draft.panels[1]?.title ?? '';
-    expect([...title]).toHaveLength(200);
-    expect(title).toBe(`${'😀'.repeat(195)} (co`);
+    expect(Array.from(title)).toHaveLength(200);
+    expect(title).toBe(`${'😀'.repeat(195)} (cop`);
   });
 });
