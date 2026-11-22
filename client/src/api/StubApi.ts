@@ -39,13 +39,14 @@ import {
 import type {
   Completeness,
   InstantResult,
+  LogqlPlannedQuery,
   LogsResult,
   PlannedQuery,
   PromMetadata,
   PromSeriesSet,
   PromValues,
-  RangeFrame,
   RangeResult,
+  VolumeResult,
 } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { LOG_LEVELS, type LogFrame } from '../data/logFrame';
@@ -63,6 +64,13 @@ import {
   type PlanInputs,
   type StubPlanError,
 } from './stub/plan';
+import {
+  isLogsPlanError,
+  prepareLogs,
+  RESERVED_MATCHER,
+  type LogsPlanInputs,
+  type LogsStubPlanError,
+} from './stub/logsPlan';
 import {
   ApiError,
   BoardConflictError,
@@ -286,7 +294,7 @@ function within<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** The gateway's 400 virtual_unsupported, as HttpApi maps it (A.11). */
-function reservedRefusal(name: string, planned?: PlannedQuery): ApiError {
+function reservedRefusal(name: string, planned?: PlannedQuery | LogqlPlannedQuery): ApiError {
   return new ApiError(
     'queryInvalid',
     `${name} is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)`,
@@ -295,7 +303,7 @@ function reservedRefusal(name: string, planned?: PlannedQuery): ApiError {
 }
 
 /** What HttpApi's `queryError` gives for the gateway's body of a planning refusal (A.11). */
-function toApiError(e: StubPlanError): ApiError {
+function toApiError(e: StubPlanError | LogsStubPlanError): ApiError {
   if (e.status === 413) {
     return new ApiError('queryTooLong', e.message, {
       detail: {
@@ -599,6 +607,28 @@ export class StubApi implements Api {
     return { planned: r.planned, warn };
   }
 
+  /**
+   * The server's LogQL route order (plan #116 §4.4, steps 3–6), step for step and synchronous:
+   * Prepare; the Classify refusal and the byte guard on the substituted text; the processing cap
+   * at the step (Resolve is the identity); Plan; and the authoritative Classify and byte guard on
+   * the planned text. Every refusal is the `ApiError` HttpApi maps from the gateway's body.
+   */
+  private planLogs(inputs: LogsPlanInputs): LogqlPlannedQuery {
+    const p = prepareLogs(inputs);
+    if (isLogsPlanError(p)) throw toApiError(p);
+    if (p.class.source !== 'pulsus_db') throw reservedRefusal(RESERVED_MATCHER);
+    const guarded = reservedIn(p.substituted);
+    if (guarded !== null) throw reservedRefusal(guarded);
+    const cap = p.checkCap(inputs.stepMs);
+    if (cap !== null) throw toApiError(cap);
+    const r = p.plan(inputs.stepMs);
+    if (isLogsPlanError(r)) throw toApiError(r);
+    if (r.class.source !== 'pulsus_db') throw reservedRefusal(RESERVED_MATCHER, r.planned);
+    const sent = reservedIn(r.planned.query);
+    if (sent !== null) throw reservedRefusal(sent, r.planned);
+    return r.planned;
+  }
+
   /** Deterministic: always `ok`, checked at 0. */
   checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus> {
     return settle(() => {
@@ -710,6 +740,12 @@ export class StubApi implements Api {
       this.checkTenant(tenant);
       const g = promGrid(req.fromMs, req.toMs, req.widthPx);
       if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const planned = this.planLogs({
+        query: req.query,
+        vars: req.vars ?? {},
+        kind: 'range',
+        stepMs: g.stepMs,
+      });
       const direction = req.direction ?? 'backward';
       const fromNs = BigInt(req.fromMs) * 1000000n;
       const toNs = BigInt(req.toMs) * 1000000n;
@@ -750,16 +786,23 @@ export class StubApi implements Api {
         frame,
         cursor: null,
         completeness: EMPTY_COMPLETENESS,
+        planned,
       };
     }, signal);
   }
 
   /** Three level frames (`error`, `warn`, `info`) of synthetic counts on the grid. */
-  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<VolumeResult> {
     return settle(() => {
       this.checkTenant(tenant);
       const g = promGrid(req.fromMs, req.toMs, req.widthPx);
       if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
+      const planned = this.planLogs({
+        query: req.query,
+        vars: req.vars ?? {},
+        kind: 'volume',
+        stepMs: g.stepMs,
+      });
       const n = (g.endMs - g.startMs) / g.stepMs + 1;
       const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);
       const series = ['error', 'warn', 'info'].map((level, j) => {
@@ -771,7 +814,7 @@ export class StubApi implements Api {
           values: timestamps.map((t) => Math.round(Math.abs(synthLineValue(65, j, t, 20, 10)))),
         };
       });
-      return { ...g, series, completeness: EMPTY_COMPLETENESS };
+      return { ...g, series, completeness: EMPTY_COMPLETENESS, planned };
     }, signal);
   }
 }
