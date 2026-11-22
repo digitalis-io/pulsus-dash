@@ -232,6 +232,16 @@ type memoKey struct {
 	st   lexState
 }
 
+// valueReads, when a test sets it, is called at each quotedLen or representable computation of a
+// scan, so the memo is tested by count rather than by time. Nil outside tests.
+var valueReads func()
+
+func countValueRead() {
+	if valueReads != nil {
+		valueReads()
+	}
+}
+
 // valueMemo is a scan's memo of each referenced value's length and row-7b check per state: a
 // text may repeat one reference many times, so each value is read once per state (review r1).
 // The maps are made on first use.
@@ -252,6 +262,7 @@ func (m *valueMemo) length(name, v string, st lexState) int {
 	if m.lens == nil {
 		m.lens = map[memoKey]int{}
 	}
+	countValueRead()
 	n := quotedLen(v, q)
 	m.lens[k] = n
 	return n
@@ -268,6 +279,7 @@ func (m *valueMemo) representable(name, v string, st lexState) bool {
 	if m.reps == nil {
 		m.reps = map[memoKey]bool{}
 	}
+	countValueRead()
 	r := representable(v, st)
 	m.reps[k] = r
 	return r

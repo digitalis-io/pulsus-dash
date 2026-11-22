@@ -349,6 +349,12 @@ function encodeQuoted(v: Uint8Array, quote: number): Uint8Array {
 }
 
 /**
+ * Test hook (review r2): the number of `quotedLen` and `representable` computations of the scans,
+ * so the memo is tested by count rather than by time. Read and reset by `plan.test.ts` only.
+ */
+export const __test = { valueReads: 0 };
+
+/**
  * Per-scan memo of what a value costs where it is referenced: its length in `"…"` and `'…'`,
  * whether it is representable in each state, and (building) its encoded bytes. A scan repeats a
  * reference many times, so each value is read once per state (review r1).
@@ -365,6 +371,7 @@ class ValueMemo {
     const m = st === 'dq' ? this.lens : this.lensSq;
     let n = m.get(v);
     if (n === undefined) {
+      __test.valueReads++;
       n = quotedLen(v, st === 'dq' ? DQUOTE : SQUOTE);
       m.set(v, n);
     }
@@ -383,6 +390,8 @@ class ValueMemo {
   }
 
   representable(v: Uint8Array, st: LexState): boolean {
+    // "…", '…' and the top level take any value: nothing to compute.
+    if (st !== 'bq' && st !== 'comment') return true;
     let m = this.rep.get(v);
     if (m === undefined) {
       m = new Map();
@@ -390,6 +399,7 @@ class ValueMemo {
     }
     let r = m.get(st);
     if (r === undefined) {
+      __test.valueReads++;
       r = representable(v, st);
       m.set(st, r);
     }

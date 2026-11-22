@@ -643,7 +643,8 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     expect(e.detail.hint?.['reason']).toBe('processing_cap');
     expect(e.detail.planned).toBeUndefined();
     expect(meta).not.toHaveBeenCalled();
-    expect(ms).toBeLessThan(200);
+    // A sanity bound only: plan.test.ts counts the memo's computations (review r2).
+    expect(ms).toBeLessThan(5000);
   });
 });
 
