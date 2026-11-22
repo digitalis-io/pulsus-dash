@@ -288,10 +288,82 @@
 }
 
 .body {
+  position: relative;
   display: grid;
   flex: 1 1 0;
   min-height: 0;
   padding: 0 var(--space-3) var(--space-3);
+}
+
+/* A panel refetch past 300 ms (plan #64 A.2, VL-015): the #63 Explore shimmer, over the body. */
+.shimmer {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 1;
+  height: calc(var(--border-hairline) * 2);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: shimmer calc(var(--motion-standard) * 6) linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background: var(--accent);
+  }
+}
+
+/* The header's completeness badge (plan #64 A.2): Explore's badge as a button. */
+.panelBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--size-target-min);
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.panelBadge:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.panelNotices {
+  max-width: calc(var(--size-sidebar-expanded) + var(--space-16));
+  padding: var(--space-3);
+}
+
+/* A panel's error view (plan #64 A.2): the error text, then Narrow when it helps. */
+.panelError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  text-align: center;
+}
+
+.panelErrorDetail {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .body > * {
@@ -380,6 +452,68 @@
 
 .editorWide {
   grid-column: 1 / -1;
+}
+
+/* The PromQL Query field of the panel editor (plan #64 A.2): picker, hint and Run, editor, status. */
+.queryField {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.queryHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--size-control);
+}
+
+.querySpacer {
+  flex: 1;
+}
+
+.queryHint {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* 5 lines tall at least; the editor scrolls past 8 lines (its theme's own cap is 12). */
+.queryEditor {
+  min-height: calc(var(--font-size-md) * var(--line-height-normal) * 5 + 2 * var(--space-2));
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.queryEditor:focus-within {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.queryEditor :global(.cm-editor) {
+  max-height: calc(var(--font-size-md) * var(--line-height-normal) * 8 + 2 * var(--space-2));
+}
+
+.queryLoading {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+}
+
+.queryLoading p {
+  margin: 0;
+}
+
+.queryStatus {
+  min-height: var(--space-5);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.queryStatus p {
+  margin: 0;
 }
 
 .editorActions {

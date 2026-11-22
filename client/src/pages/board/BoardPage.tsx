@@ -18,6 +18,8 @@ import {
   type PanelSpec,
 } from '../../api/types';
 import { boardKeyAction } from '../../boards/boardKeys';
+import { BoardRunProvider } from '../../boards/boardRun';
+import { boardTimeInit, isTimeReady, type TimeTarget } from '../../boards/boardTime';
 import {
   allPanels,
   blockedText,
@@ -43,7 +45,7 @@ import { useShellRoute } from '../../shell/useShellRoute';
 import type { ParamError } from '../../state/boardParams';
 import { contextSearchString } from '../../state/contextSearch';
 import { useBoardParams } from '../../state/useBoardParams';
-import { useTimeContext } from '../../state/useTimeContext';
+import { useClock, useTimeContext } from '../../state/useTimeContext';
 import pages from '../pages.module.css';
 import styles from './Board.module.css';
 import { BoardConflict } from './BoardConflict';
@@ -162,6 +164,7 @@ function BoardEditor({
   const api = useApi();
   const queryClient = useQueryClient();
   const time = useTimeContext();
+  const clock = useClock();
   const location = useLocation();
   const navigate = useNavigate();
   const [s, dispatch] = useReducer(boardReducer, latest, initialState);
@@ -195,24 +198,39 @@ function BoardEditor({
     dispatch({ type: 'remoteHead', board: latest });
   }, [latest]);
 
-  // A board link applies the saved time range once, then the entry forgets the link (IA-022): a
-  // deep link or a reload keeps the URL's time.
+  // The board's time on first open (plan #64 §4.6, A.8; IA-002, IA-022): a link without a time
+  // opens on the saved time (or the default), a board link applies the saved time once, and the
+  // entry then forgets the link, so a deep link or a reload keeps the URL's time. One navigation.
+  // Panels plan nothing until the URL holds that time (`timeReady`, latched while rendering).
+  const [timeTarget, setTimeTarget] = useState<TimeTarget | undefined>(undefined);
+  const [timeReady, setTimeReady] = useState(false);
+  if (!timeReady && isTimeReady(timeTarget, new URLSearchParams(location.search), time.search)) {
+    setTimeReady(true);
+  }
   const opened = useRef(false);
+  const { timeZone } = time;
   useEffect(() => {
     if (opened.current) return;
     opened.current = true;
     const st: unknown = location.state;
-    if (!isLinkState(st)) return;
-    void navigate(
-      { pathname: location.pathname, search: location.search },
-      { replace: true, state: null },
-    );
-    const saved = latest.spec.time;
-    if (saved !== undefined) {
-      time.dispatch({ type: 'setRange', from: saved.from, to: saved.to }, { replace: true });
+    const linkState = isLinkState(st);
+    const init = boardTimeInit({
+      search: location.search,
+      linkState,
+      saved: latest.spec.time,
+      nowMs: clock.anchor(),
+      timeZone,
+    });
+    if (init?.tick === true) clock.tick();
+    if (init !== null || linkState) {
+      void navigate(
+        { pathname: location.pathname, search: init?.search ?? location.search },
+        { replace: true, state: null },
+      );
     }
-    if (st.edit === true) dispatch({ type: 'enterEdit' });
-  }, [location, navigate, latest, time]);
+    setTimeTarget(init ?? 'url');
+    if (linkState && st.edit === true) dispatch({ type: 'enterEdit' });
+  }, [location, navigate, latest, clock, timeZone]);
 
   // Leaving for another page asks first; time and refresh changes (same path) never do.
   const blocker = useBlocker(
@@ -322,6 +340,18 @@ function BoardEditor({
   // (its Edit control), or to Add panel if the panel is gone. Scheduled one frame later, so it runs
   // after the overlay's own focus restore.
   const editedId = useRef<string | null>(null);
+  // After Remove from the panel menu: focus goes to Add panel once the menu has closed.
+  const [focusAdd, setFocusAdd] = useState(false);
+  useEffect(() => {
+    if (!focusAdd) return;
+    const raf = requestAnimationFrame(() => {
+      setFocusAdd(false);
+      document.querySelector<HTMLElement>('[data-board-add]')?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [focusAdd]);
   useEffect(() => {
     const was = editedId.current;
     editedId.current = s.selected;
@@ -336,6 +366,26 @@ function BoardEditor({
 
   const selected =
     s.selected === null ? undefined : allPanels(s.draft).find((x) => x.panel.id === s.selected);
+  // The run text of the panel in the dialog (plan #64 §4.4, A.10): the preview and the panel
+  // behind run it, so they share one key; typing changes the draft only. Set while rendering.
+  const [editRun, setEditRun] = useState<{ id: string; text: string } | null>(null);
+  const dialogPanel = edit && selected !== undefined ? selected.panel : null;
+  if (dialogPanel === null) {
+    if (editRun !== null) setEditRun(null);
+  } else if (editRun?.id !== dialogPanel.id) {
+    setEditRun({ id: dialogPanel.id, text: dialogPanel.query.text });
+  }
+  const runEdited = (text: string): void => {
+    if (editRun === null) return;
+    if (text !== editRun.text) {
+      setEditRun({ id: editRun.id, text });
+      return;
+    }
+    // The same text again: abort the run in flight, first fetch included, and run it again.
+    const queryKey = ['data', 'panel', tenant, editRun.id];
+    void queryClient.cancelQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey });
+  };
   const full = [t('board.full'), t('board.fullPanels'), t('board.sectionsFull')].includes(
     s.announce,
   )
@@ -373,6 +423,17 @@ function BoardEditor({
     onKeyOp: (id: string, op: LayoutOp) => {
       dispatch({ type: 'keyOp', id, op });
     },
+    // From the panel menu (plan #64 Q3): the change needs a save, so it enters Edit mode.
+    onDuplicate: (id: string) => {
+      dispatch({ type: 'enterEdit' });
+      dispatch({ type: 'duplicatePanel', id });
+    },
+    onRemove: (id: string) => {
+      dispatch({ type: 'enterEdit' });
+      dispatch({ type: 'removePanel', id });
+      setFocusAdd(true);
+    },
+    ...(editRun?.id === p.id ? { runText: editRun.text } : {}),
   });
 
   const viewGrid = (panels: readonly PanelSpec[]) => (
@@ -469,76 +530,80 @@ function BoardEditor({
       {s.remote !== null && (
         <p className={cx(styles['notice'])}>{t('board.remote', { version: s.remote.version })}</p>
       )}
-      <div className={cx(styles['workspace'])}>
-        <div className={cx(styles['grids'])}>
-          {empty && !edit ? (
-            <EmptyState title={t('board.noPanels')} />
-          ) : (
-            <>
-              {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
-              {s.draft.sections.map((sec, j) => {
-                const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
-                return (
-                  <BoardSection
-                    key={sec.id}
-                    section={sec}
-                    index={j}
-                    mode={s.mode}
-                    collapsed={collapsed}
-                    busy={busy}
-                    titleError={titleErrorOf(j)}
-                    onToggle={() => {
-                      if (edit) {
-                        dispatch({ type: 'toggleSection', id: sec.id });
-                        return;
-                      }
-                      // Only a state that differs from the saved one is written to the URL.
-                      const next = !collapsed;
-                      setOverrideError(
-                        boardParams.setSectionOverride(
-                          sec.id,
-                          next === sec.collapsed ? null : next,
-                        ),
-                      );
-                    }}
-                    onTitle={(title) => {
-                      dispatch({ type: 'updateSection', id: sec.id, title });
-                    }}
-                    onAddPanel={() => {
-                      dispatch({ type: 'addPanel', grid: j });
-                    }}
-                    onRemove={() => {
-                      dispatch({ type: 'removeSection', id: sec.id });
-                    }}
-                  >
-                    {grid(sec.panels, j)}
-                  </BoardSection>
-                );
-              })}
-            </>
+      <BoardRunProvider tenant={tenant} vars={boardParams.params.vars} timeReady={timeReady}>
+        <div className={cx(styles['workspace'])}>
+          <div className={cx(styles['grids'])}>
+            {empty && !edit ? (
+              <EmptyState title={t('board.noPanels')} />
+            ) : (
+              <>
+                {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
+                {s.draft.sections.map((sec, j) => {
+                  const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
+                  return (
+                    <BoardSection
+                      key={sec.id}
+                      section={sec}
+                      index={j}
+                      mode={s.mode}
+                      collapsed={collapsed}
+                      busy={busy}
+                      titleError={titleErrorOf(j)}
+                      onToggle={() => {
+                        if (edit) {
+                          dispatch({ type: 'toggleSection', id: sec.id });
+                          return;
+                        }
+                        // Only a state that differs from the saved one is written to the URL.
+                        const next = !collapsed;
+                        setOverrideError(
+                          boardParams.setSectionOverride(
+                            sec.id,
+                            next === sec.collapsed ? null : next,
+                          ),
+                        );
+                      }}
+                      onTitle={(title) => {
+                        dispatch({ type: 'updateSection', id: sec.id, title });
+                      }}
+                      onAddPanel={() => {
+                        dispatch({ type: 'addPanel', grid: j });
+                      }}
+                      onRemove={() => {
+                        dispatch({ type: 'removeSection', id: sec.id });
+                      }}
+                    >
+                      {grid(sec.panels, j)}
+                    </BoardSection>
+                  );
+                })}
+              </>
+            )}
+          </div>
+          {edit && selected !== undefined && (
+            <PanelEditor
+              key={selected.panel.id}
+              panel={selected.panel}
+              tenant={tenant}
+              pointer={panelPointer(selected.grid, selected.index)}
+              fields={s.save.status === 'invalid' ? s.save.fields : []}
+              readOnly={busy}
+              statusText={statusText}
+              runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
+              onRun={runEdited}
+              onChange={(patch) => {
+                dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
+              }}
+              onRemove={() => {
+                dispatch({ type: 'removePanel', id: selected.panel.id });
+              }}
+              onClose={() => {
+                dispatch({ type: 'select', id: null });
+              }}
+            />
           )}
         </div>
-        {edit && selected !== undefined && (
-          <PanelEditor
-            key={selected.panel.id}
-            panel={selected.panel}
-            tenant={tenant}
-            pointer={panelPointer(selected.grid, selected.index)}
-            fields={s.save.status === 'invalid' ? s.save.fields : []}
-            readOnly={busy}
-            statusText={statusText}
-            onChange={(patch) => {
-              dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
-            }}
-            onRemove={() => {
-              dispatch({ type: 'removePanel', id: selected.panel.id });
-            }}
-            onClose={() => {
-              dispatch({ type: 'select', id: null });
-            }}
-          />
-        )}
-      </div>
+      </BoardRunProvider>
       {blocker.state === 'blocked' && (
         <BoardGuard
           onKeep={() => {
