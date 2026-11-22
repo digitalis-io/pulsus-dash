@@ -25,6 +25,10 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
     'b-1 edit with sections': ['label'],
     'b-1 add filter with error': ['label'],
     'b-1 edit, editor field errors': ['label'],
+    // The same crash with the panel editor's PromQL editor loaded (plan #64).
+    'b-1 edit, PromQL editor': ['label'],
+    'b-1 edit, metric picker open': ['label'],
+    'b-1 edit, partial data popover': ['label'],
   },
 };
 

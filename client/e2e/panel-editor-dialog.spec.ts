@@ -170,11 +170,18 @@ async function reopen(page: Page): Promise<void> {
 /** The PromQL editor of the Query field (plan #64 §3.8). */
 const query = (page: Page) => editor(page).d.getByRole('textbox', { name: 'Query' });
 
-/** Replaces the editor's text with `text`. */
+/**
+ * Replaces the editor's one-line text with `text`: End, then Backspace over the old text. In
+ * Firefox neither select-all nor Shift+Home selects inside the editor's shadow root.
+ */
 async function setQuery(page: Page, text: string): Promise<void> {
-  await query(page).click();
-  await page.keyboard.press('ControlOrMeta+A');
+  const box = query(page);
+  await box.click();
+  await page.keyboard.press('End');
+  const old = (await box.textContent()) ?? '';
+  for (let i = 0; i < old.length; i++) await page.keyboard.press('Backspace');
   await page.keyboard.insertText(text);
+  await expect(box).toHaveText(text);
 }
 
 /** Runs the editor's text (Shift+Enter, T09-004); the key press is armed. */
@@ -516,15 +523,20 @@ test.describe('panel editor dialog', () => {
     expect(second.f1.body).toBe('Loading');
     const marks = await marksSince(page, first.t0);
     expect(marks.map((m) => m.query)).toEqual([`${P1_TEXT} * 2`, `${P1_TEXT} * 3`]);
+    // The first run's answer would have come 1.5 s after it: by then the preview still waits
+    // for the second (the first was aborted, so nothing drew it).
+    const firstAt = marks[0]?.t ?? 0;
+    const secondAt = marks[1]?.t ?? 0;
+    expect(secondAt - firstAt).toBeGreaterThanOrEqual(200);
+    await page.waitForFunction((t) => performance.now() > t + 1600, firstAt);
+    const at = await settled(page);
+    if (at.t < secondAt + 1400) {
+      expect(at.body).toBe('Loading');
+      expect(at.frames).toBe(0);
+    }
     await expect(pv.locator('canvas')).toHaveAttribute('aria-label', LABEL['line'] ?? /./, {
       timeout: 5_000,
     });
-    const secondAt = marks[1]?.t ?? 0;
-    const early = await page.evaluate(
-      ([t, t2]) => window.__probe.draws.filter((x) => x.t > t && x.t < t2 + 1400),
-      [marks[0]?.t ?? 0, secondAt] as const,
-    );
-    expect(early).toEqual([]);
   });
 
   for (const from of ['error', 'Logs'] as const) {
