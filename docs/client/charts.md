@@ -17,11 +17,11 @@ application code.
 
 | Type | Meaning |
 |---|---|
-| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Data, never code |
+| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
 | `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`) or `scalar` (`ScalarFrame`), from `src/data/frames.ts` |
 | `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); `null` for stat |
 | `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, and `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
+| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, and `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -132,7 +132,10 @@ All chart colours come from `src/styles/tokens.ts`, generated from `design/token
 `seriesPalette` (the eight `series-N` colours per theme, in order) and `sequentialRamp` (the nine
 `ramp-N` colours per theme, one hue, lightness stepped evenly), plus `surface-1` (background),
 `hairline` (grid), `text-muted` (axis text and crosshair), `text` (stat value) and `brush` (the brush
-band). State colours are never used for series (VL-003).
+band). State colours are never used for series (VL-003). They reach the marks only through
+`StateEncoding` (`src/theme/stateEncoding.ts`, T02-004): each state has `colour` (its token per
+theme), and `themeColours(t).state[s]` is `StateEncoding[s].colour[t]`, used only by the threshold
+lines and labels. The marks take the state glyphs from `StateEncoding[s].glyph` as well.
 
 A series' colour depends only on its own labels and key, never on the chart, the order or the other
 series:
@@ -203,7 +206,31 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   merged cell is missing (no fill) when any merged bucket's count is missing (NaN); hover and the
   a11y summary read the raw buckets. A NaN cell is never filled and has no hover row (#63,
   [T02 §4.4](../../designs/technical/T02-vis-engine.md#44-lod-decimation-and-precision) gaps rule).
-- **Stat.** The formatted value, centred, in 32 px semibold.
+- **Stat.** The formatted value, centred, in 32 px semibold. With series data whose first series has
+  at least two finite values in the window, and a frame at least 104 px tall (`SPARK_MIN_H`), a
+  **sparkline** runs under it: the rect `{ x: 12, y: h − 8 − 32, width: w − 24, height: 32 }`, the
+  window across it, the series' finite min to max from its bottom to its top (mid-height when they
+  are equal), in the series colour, 1.5 px with round joins; a non-finite value or a point outside
+  the window breaks the path. The value then sits at `(h − 32 − 8) / 2`. A scalar, a single point or
+  a shorter frame draws the value alone, centred, as before.
+
+### Threshold lines (ADR-0022, #64 Part B)
+
+On line and bars, after the series and before the value-label chips (`engine/canvas2d/thresholdMark.ts`):
+
+| Step | Rule |
+|---|---|
+| Domain | The auto value domain is `withThresholds(min, max, thresholds)`: the data's (line) or the post-merge stacked totals' (bars, with 0) min and max, widened to every finite threshold; the axis still includes 0. A pinned `valueRange` is used unchanged. `FrameSummary` min, max and last stay data-only |
+| Line | For the first 8 thresholds with a finite value inside the plot: dashed (`size.chart-dash` 5 px, `size.chart-dash-gap` 4 px), 1 px (`border.hairline`), in `colours.state[state]`, at `Math.round(y) + 0.5` across the plot. A threshold outside a pinned axis draws no line |
+| Label text | `${glyph} ${label}` for every finite threshold, drawn or not, in `AXIS_FONT` and the state colour, on a `colours.chip` box `LABEL_HEIGHT` tall with `space.1` padding, from `plot.x + space.2` |
+| Place | Above its line (`y − 4 − H`), or below it when that would leave the plot; at the plot's top or bottom edge for a line off a pinned axis |
+| Width | At most `maxW = max(0, min(plot.width − 16, round(plot.width / 2)))`: a longer text keeps its longest code-point prefix that fits with `…` (or the glyph alone), and is `clipped` |
+| Stack | Labels sorted by their place (ties in spec order) are pushed down so none overlaps (gap 4 px); if the last passes the plot's bottom, the boxes are shifted up whole, keeping their height and gap |
+| Overflow | If the first box then leaves the plot's top, `n = floor((plot.height + 4) / (H + 4))` boxes fit: the first `n − 1` stay and the rest become one `+N` chip (axis text colour, `clipped`, `text` = their full texts joined by `; `) |
+| Leader | A label moved from its place, or whose line is off-axis, gets a 1 px vertical leader in its state colour at `plot.x + 4`, from the box's middle to its line (or the plot edge) |
+
+The layer redraws on every camera preview, so the lines and labels move with the value axis.
+
 
 ## Interaction (INT-033, IA-020 subset)
 
@@ -357,6 +384,11 @@ shows `Loading`, and a visualisation change redraws the same result.
   through it to the canvas.
 - While the value axis is pinned, the summary label ends `Y axis fixed at <min> to <max>.` and the
   Reset Y axis button (at least 24 × 24 px) is in the tab order after the slider.
+- With thresholds, the summary label ends `Thresholds: <state> <label>; ….` listing every threshold
+  in spec order (drawn, stacked, truncated or off-axis). Each `clipped` label box (truncated, or the
+  `+N` chip) gets a focusable target over the canvas (`[data-threshold-hit]`, `role="img"`, named by
+  the full text), at least 24 × 24 px about the box's centre (T08-010), placed through CSSOM from
+  the last summary, with a tooltip of the full text on hover and focus. Stat and heatmap have none.
 - When more than 500 series arrive, a status notice says "Showing 500 of <n> series".
 - A browser without a 2D canvas context shows "This browser cannot draw charts." instead.
 
@@ -366,7 +398,8 @@ shows `Loading`, and a visualisation change redraws the same result.
   per CSS px per series (ADR-0014 §4, with the §4 note on extremes), one value axis and one time axis.
 - Drawing is on the main thread (T01-003 interim exception) with a cached layer; there is no worker,
   GPU decimation or level of detail until #68.
-- No legend, cursor sync, click to select, Inspector, Δ vs baseline or keyboard brushing yet.
+- No legend inside the frame (board panels draw theirs in the DOM, [Boards](boards.md)), cursor sync,
+  click to select, Inspector, Δ vs baseline or keyboard brushing yet. At most 8 threshold lines.
 - Camera (#93): no inertia after a flick, no wheel zoom on an axis band (the page scrolls), no value
   zoom on heatmaps, no touch gestures, no keyboard value zoom, and no live following by other
   panels during a gesture (they follow at the commit). The band does not shrink after a 500 ms
@@ -377,7 +410,7 @@ shows `Loading`, and a visualisation change redraws the same result.
 `/t/:tenant/dev/gallery` (development and stub builds only: the route is in the router only when
 `import.meta.env.DEV` or `VITE_API_MODE` is not `http`, so `http` builds contain neither the route
 nor its chunk; CI checks the `http` build's manifest). There is no navigation entry. The page draws
-seven charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
+nine charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
@@ -390,16 +423,24 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `heatmap` | Request latency distribution, 60 columns × 12 buckets (5 ms … 10 s, `+Inf`) |
 | `bars` | Log volume by level, 5 levels × 60 buckets |
 | `stat` | p99 latency, 2.84 s |
+| `line-thresholds` | Request latency with an SLO threshold, 3 series (s), watch at 250 ms and failing at 300 ms (#64 Part B) |
+| `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
 
 The same window always gives the same pixels; the gallery is the corpus of
 `golden:interim-gallery` and `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
 The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
-baselines were re-baselined once under the `golden-update` label; stat is unchanged.
+baselines were re-baselined once under the `golden-update` label; stat is unchanged. The two #64 Part B
+entries got their baselines from CI under the same label. They are not Rust parity fixtures:
+`scripts/engine-fixtures.ts` selects `PARITY_LINE_IDS` (`line-1`, `line-50`, `line-gaps`,
+`line-600`) and projects each summary to its parity fields, so `engine/fixtures/` is unchanged. The
+script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name proxy, so
+`StateEncoding` loads in Node.
 
 ## Replacing the engine (#68)
 
 The WASM engine implements the same `ChartEngine` interface and is returned by
-`defaultChartEngine()`; only `engine/index.ts` changes. The canvas is already created per frame
+`defaultChartEngine()`; only `engine/index.ts` changes. It implements the threshold lines,
+labels and the stat sparkline (ADR-0022) before it replaces `engine/index.ts`. The canvas is already created per frame
 lifetime, so it can be transferred to the render worker, and `keyTarget` lets the adapter forward key
 presses as the Canvas 2D engine does. Frames from the BFF arrive as Arrow (`FrameData` gains that
 form in #68/#62).
@@ -408,18 +449,20 @@ form in #68/#62).
 
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3, §4;
 [ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md) (`commit`, `valueRange`,
-`valueAxis`);
+`valueAxis`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
+(`thresholds`, `thresholdLabels`, the stat sparkline);
 [ADR-0007](../../designs/adr/0007-in-house-vis-engine.md);
 [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-001 library
-clause, VIZ-010 gaps and stacking, VIZ-013, VIZ-069);
-[08 Visual language](../../designs/product/08-visual-language.md) (VL-002 and Table 8-1a, VL-006,
-VL-012); [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-001 and INT-002
+clause, VIZ-010 gaps and stacking, VIZ-011 threshold lines, VIZ-013, VIZ-067, VIZ-069, Table 5-1
+Stat);
+[08 Visual language](../../designs/product/08-visual-language.md) (VL-002 and Table 8-1a, VL-003,
+VL-006, VL-012); [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-001 and INT-002
 for 2D charts, INT-007, INT-008 subset, INT-025, INT-033, and the §4.1 note of 2026-11-21);
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-020 subset);
 [T01](../../designs/technical/T01-frontend-architecture.md) (T01-002, T01-003, T01-009, T01-010),
-[T02](../../designs/technical/T02-vis-engine.md) (T02-004, T02-005, T02-011 as amended, T02-021,
-§4.6),
+[T02](../../designs/technical/T02-vis-engine.md) (T02-003, T02-004, T02-005, T02-009, T02-011 as
+amended, T02-021, §4.5, §4.6),
 [T03](../../designs/technical/T03-browser-runtime.md) (T03-009, T03-013, T03-016 subset, §4.4),
 [T05](../../designs/technical/T05-testing-and-performance.md) (T05-002),
-[T08](../../designs/technical/T08-dom-component-kit.md) (T08-027),
+[T08](../../designs/technical/T08-dom-component-kit.md) (T08-010, T08-027),
 [T18](../../designs/technical/T18-security.md) (T18-004).

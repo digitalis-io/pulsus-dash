@@ -130,8 +130,10 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 - **`bench:rooms-long-tasks`** (`e2e/perf-rooms-long-tasks.spec.ts`, Chromium only, PRF-005, T05
   §4.3, T08 §7; #90): main-thread long tasks during scripted room interactions, from a Chromium
   trace. Its scenarios are the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
-  `bench:inp-rooms`) and, in a second test, the chart gestures (`e2e/chartGestureScenario.ts`, as
-  document 5, #93), each on `/t/demo/board/b-1` with no fake clock. Around the scenario it records a
+  `bench:inp-rooms`), in a second test the chart gestures (`e2e/chartGestureScenario.ts`, as
+  document 5, #93), and in a third "board editor, 8 thresholds" (`e2e/thresholdsEditorScenario.ts`,
+  #64 Part B: Add threshold up to 8 steps on Request rate, then reopen the editor and edit the last
+  step's value, state and label), each on `/t/demo/board/b-1` with no fake clock. Around the scenario it records a
   trace with the categories `devtools.timeline`, `disabled-by-default-devtools.timeline` and
   `blink.user_timing`; each step leaves a `step:<label>` mark. `scripts/longTasks.ts` reads it:
 
@@ -145,12 +147,14 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   | Thread time | the task's `tdur`; when no task in the window has one, error `no thread time` (the CI check cannot be judged); a single task without it counts as failing when over 50 ms wall |
   | Label | the last `step:` mark at or before the task, else `unlabelled` |
 
-  The editor test writes `test-results/bench-rooms-long-tasks.json` and the chart test
-  `test-results/bench-rooms-long-tasks-chart.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
+  The editor test writes `test-results/bench-rooms-long-tasks.json`, the chart test
+  `test-results/bench-rooms-long-tasks-chart.json` and the thresholds test
+  `test-results/bench-rooms-long-tasks-thresholds.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
   with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `counts`,
   `scenario`, `mode`, `unit`), each with a `bench:rooms-long-tasks` annotation naming its scenario.
   The editor test asserts at least 28 clicks and 15 key presses; the chart test at least 40 wheels,
-  8 pointer downs and 3 context menus. Both assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
+  8 pointer downs and 3 context menus; the thresholds test at least 17 clicks and 8 key presses. All
+  three assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
   interim trace check. That check **blocks merge** on CI, in the `e2e` job's Chromium leg (the
   spec is Chromium only, so no workflow change). With `LONG_TASK_GATE=enforce` (the reference lab,
   #68, and local gate proofs) it also asserts `over16` 0: no task over 16 ms wall. Without it, each
@@ -168,8 +172,8 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   character), and run the animation frames themselves (`src/test/engineHarness.ts`); component tests
   use `src/test/fakeEngine.ts` and `src/test/fakeResizeObserver.ts`. The end-to-end chart specs use
   the chart gallery at 12:00–13:00 UTC on 19 Nov 2026 (`GALLERY_URL` in `e2e/helpers.ts`):
-  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the seven
-    gallery frames in dark and light, compared with `toHaveScreenshot` against
+  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the nine
+    gallery frames (with `line-thresholds` and `stat-sparkline`, #64 Part B) in dark and light, compared with `toHaveScreenshot` against
     `e2e/__screenshots__/golden-gallery.spec.ts/gallery-<id>-<theme>.png` (per-pixel threshold 0.1,
     at most 0.2 % of pixels different, animations off, caret hidden, CSS scale), after the fonts are
     loaded and two animation frames; a reload must give the same pixels. Baselines are never written
@@ -313,6 +317,18 @@ and use one time window per browser, so parallel projects never count each other
   `[5m]` and `[20m]`), **`e2e:board-refresh`** (Refresh now under an absolute window reruns both
   panels, #101) and **`e2e:board-states`** (Partial data with its notices, a too-broad error with
   Narrow, a parse error with line and column, and an empty panel that sends nothing).
+  E1 also checks that the counter panel shows its legend. The boards API helpers (`createBoard`,
+  `deleteBoard`, `panelSpec` with an optional `vis`) are in `e2e/boardApi.ts`.
+- **Board thresholds, legends and stat tiles** (`board-thresholds.spec.ts`, plan #64 Part B B.3,
+  all three engines, on the http-mode BFF and the fake, in the `gauge-range` transcript's window
+  2026-01-01 00:00–01:00 UTC; each test deletes its board): **`e2e:board-thresholds-legend`** (a
+  line panel's legend table with mean, max and last and their threshold states; a row isolates its
+  series; a 4-row panel's compact legend reached by keyboard opens the full table and Escape returns
+  focus; Legend Hidden and a threshold edit survive save and reload, stored as `schema_version` 2;
+  an unparsable value blocks the save with no `PUT`) and **`e2e:board-stat-tile`** (the state chip
+  and threshold text of a stat with thresholds; canvas pixels in the sparkline band of a range stat,
+  none for a scalar stat). `e2e:a11y-rooms` adds `b-1 view, legend and stat chip`, `b-1 edit,
+  compact legend table` and `b-1 edit, thresholds`.
 - **Board panels on the stub** (plan #64 A.3, A.5): `e2e:a11y-rooms` adds the states `b-1 edit,
   PromQL editor`, `b-1 edit, metric picker open`, `b-1 edit, partial data popover` and `b-1 view,
   panel error`; `e2e:keyboard-only-rooms` operates the panel menu's Duplicate, Remove and Open in
