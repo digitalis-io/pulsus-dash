@@ -29,6 +29,7 @@ export const ALWAYS_VISIBLE_TRACKER: VisibilityTracker = Object.freeze({
 const NO_WIDTHS: WidthStore = Object.freeze({
   get: () => null,
   set: () => undefined,
+  retain: () => undefined,
   subscribe: () => () => undefined,
 });
 

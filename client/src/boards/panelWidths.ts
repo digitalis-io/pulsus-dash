@@ -8,6 +8,8 @@ import { BoardRunContext } from './boardRunContext';
 export interface WidthStore {
   get(id: string): number | null;
   set(id: string, w: number | null): void;
+  /** Forgets every width but those of `ids` (the board's panels now). */
+  retain(ids: readonly string[]): void;
   subscribe(cb: () => void): () => void;
 }
 
@@ -21,6 +23,17 @@ export function createWidthStore(): WidthStore {
       if (w === null) widths.delete(id);
       else widths.set(id, w);
       for (const cb of [...listeners]) cb();
+    },
+    retain(ids) {
+      const keep = new Set(ids);
+      let changed = false;
+      for (const id of [...widths.keys()]) {
+        if (!keep.has(id)) {
+          widths.delete(id);
+          changed = true;
+        }
+      }
+      if (changed) for (const cb of [...listeners]) cb();
     },
     subscribe(cb) {
       listeners.add(cb);

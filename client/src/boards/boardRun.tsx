@@ -24,6 +24,7 @@ export function BoardRunProvider({
   tenant,
   vars,
   timeReady,
+  livePanels,
   children,
 }: {
   tenant: string;
@@ -43,6 +44,11 @@ export function BoardRunProvider({
     },
     [visibility],
   );
+  // A panel's width outlives its remounts (the Edit grid) but not the panel: a deleted panel's
+  // entry goes, so a new panel that reuses its id starts without it.
+  useEffect(() => {
+    if (livePanels !== undefined) widths.retain(livePanels);
+  }, [widths, livePanels]);
 
   // `${fromMs}:${toMs}` of the last epoch. A layout effect runs before the panels' passive effects
   // of the same commit, where `useQuery` moves each observer to its new key, so the mark lands first.

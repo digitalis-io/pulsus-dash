@@ -6,7 +6,7 @@
  * View-mode section overrides live in the URL (`useBoardParams`).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { lazy, Suspense, useEffect, useReducer, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Link, useBlocker, useLocation, useNavigate } from 'react-router';
 import { useApi, useBoardPrefs } from '../../app/providers';
 import {
@@ -465,6 +465,7 @@ function BoardEditor({
     );
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
+  const livePanels = useMemo(() => allPanels(s.draft).map((x) => x.panel.id), [s.draft]);
 
   const page = (
     <div className={cx(styles['page'])}>
@@ -639,7 +640,12 @@ function BoardEditor({
   );
   // Every panel of the board reads its variables, width store, viewport tracker and time gate here.
   return (
-    <BoardRunProvider tenant={tenant} vars={boardParams.params.vars} timeReady={timeReady}>
+    <BoardRunProvider
+      tenant={tenant}
+      vars={boardParams.params.vars}
+      timeReady={timeReady}
+      livePanels={livePanels}
+    >
       {page}
     </BoardRunProvider>
   );
