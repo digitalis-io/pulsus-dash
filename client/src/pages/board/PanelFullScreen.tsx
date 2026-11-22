@@ -1,9 +1,10 @@
 /**
  * A panel at full screen (plan #61 Part B §4.3): a modal titled with the panel title, the same
- * body filling most of the viewport, and Close. Escape closes; focus returns to the trigger.
+ * body filling most of the viewport, and Close. Escape closes; focus returns to the trigger. It
+ * shows the panel's own run (plan #64 §3.7): the panel queries while it is open.
  */
 import { useRef } from 'react';
-import type { PanelData } from '../../api/types';
+import type { PanelView } from '../../boards/panelRun';
 import type { FrameSize } from '../../charts/ChartFrame';
 import { t } from '../../i18n/t';
 import { Button } from '../../kit/Button';
@@ -15,14 +16,14 @@ import { PanelBody } from './PanelFrame';
 export function PanelFullScreen({
   isOpen,
   title,
-  data,
-  isError,
+  view,
+  onNarrow,
   onClose,
 }: {
   isOpen: boolean;
   title: string;
-  data: PanelData | undefined;
-  isError: boolean;
+  view: PanelView;
+  onNarrow: () => void;
   onClose: () => void;
 }) {
   // Its own size memo, kept across close and reopen (#90).
@@ -37,7 +38,7 @@ export function PanelFullScreen({
       }}
     >
       <div className={cx(styles['fullBody'])}>
-        {isOpen && <PanelBody title={title} data={data} isError={isError} sizeMemo={frameSize} />}
+        {isOpen && <PanelBody title={title} view={view} sizeMemo={frameSize} onNarrow={onNarrow} />}
       </div>
       <div className={cx(styles['dialogActions'])}>
         <Button variant="primary" onPress={onClose}>

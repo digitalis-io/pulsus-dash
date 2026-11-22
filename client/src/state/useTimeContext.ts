@@ -68,15 +68,23 @@ export function useTimeContext(): TimeContext {
     [search, rest, clock, timeZone, navigate, pathname],
   );
 
-  // Refresh reruns every `['data']` query, a first fetch in flight included: `invalidateQueries`
-  // alone refetches with `cancelRefetch`, which reuses a first fetch, so the requests in flight are
-  // cancelled first. `cancelQueries` aborts synchronously (fetchStatus 'idle'), so no `await` is
-  // needed before the new fetch (plan #63 Part C §4.4). Board panels are `['panel', …]`: untouched.
+  // Refresh now and each auto-refresh tick (plan #64 §3.9, #101). Rule: every `['data', …]` key
+  // includes the resolved window. When the tick moves the window (a relative range), every key is
+  // new and the observers fetch them: no cancel, so no old key restarts. When it does not (an
+  // absolute range, or `now/d`), the keys are the same: the requests in flight, first fetches
+  // included, are cancelled (`invalidateQueries` alone would reuse a first fetch), then the active
+  // queries rerun and the rest are marked to refetch when they are next observed. `cancelQueries`
+  // aborts synchronously, so no `await` is needed before the new fetch.
   const refreshNow = useCallback(() => {
     clock.tick();
+    const a = clock.anchor();
+    const moved =
+      resolveTimeString(search.from, a, timeZone) !== window.fromMs ||
+      resolveTimeString(search.to, a, timeZone) !== window.toMs;
+    if (moved) return;
     void queryClient.cancelQueries({ queryKey: ['data'] });
     void queryClient.invalidateQueries({ queryKey: ['data'] });
-  }, [clock, queryClient]);
+  }, [clock, queryClient, search, timeZone, window]);
 
   return { search, rest, window, timeZone, anchorMs, dispatch, refreshNow };
 }

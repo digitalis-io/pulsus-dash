@@ -117,7 +117,8 @@ test.describe('bench:inp-rooms', () => {
 
     // Document 1: the section toggle and the star.
     await open('/t/demo/board/b-1');
-    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+    // Request rate and Error ratio: Request latency, below the fold, does not query (T07-012).
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
     const latency = page.getByRole('button', { name: 'Latency', exact: true });
     await step('b-1 section toggle', 10, async () => {
       for (let i = 0; i < 5; i++) {
@@ -194,12 +195,14 @@ test.describe('bench:inp-rooms', () => {
 
     // Document 4: the panel editor dialog (#90, plan Appendix B §B.5).
     await open('/t/demo/board/b-1');
-    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+    // Request rate and Error ratio: Request latency, below the fold, does not query (T07-012).
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
     await boardEditorScenario(page, step);
 
     // Document 5: chart gestures on the Request rate panel (#93, plan Appendix A §A.3).
     await open('/t/demo/board/b-1');
-    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+    // Request rate and Error ratio: Request latency, below the fold, does not query (T07-012).
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
     await chartGestureScenario(page, step);
     await flush();
 

@@ -5,15 +5,18 @@
  */
 import { expect, type Page } from '@playwright/test';
 
-/** Clicks and key presses of `boardEditorScenario` (1 + 3 × 14). */
-export const EDITOR_SCENARIO_N = 43;
+/**
+ * Clicks and key presses of `boardEditorScenario` (1 + 3 × 16): Shift+Enter is two interactions
+ * (Shift, then Enter).
+ */
+export const EDITOR_SCENARIO_N = 49;
 
 export type Step = (label: string, count: number, act: () => Promise<void>) => Promise<void>;
 
 const LANGS = ['LogQL', 'PromQL', 'LogQL'] as const;
 const KINDS = ['Bars', 'Heatmap', 'Stat'] as const;
 
-/** On `/t/demo/board/b-1` in View mode, with its three chart frames ready. */
+/** On `/t/demo/board/b-1` in View mode, with its on-screen chart frames ready. */
 export async function boardEditorScenario(page: Page, step: Step): Promise<void> {
   const d = page.getByRole('dialog', { name: 'Edit panel' });
   await step('editor edit board', 1, async () => {
@@ -25,9 +28,12 @@ export async function boardEditorScenario(page: Page, step: Step): Promise<void>
       await page.getByRole('button', { name: /^Panel menu: Request rate/ }).click();
       await page.getByRole('menuitem', { name: 'Edit panel' }).click();
       await d.waitFor();
+      // A drawn chart, or the panel's message: a LogQL panel waits for LogQL panels (#67), and a
+      // Heatmap of Request rate has no buckets (plan #64).
       await d
         .getByRole('region', { name: 'Preview' })
-        .locator('[data-chart-frame][data-frame-ready="true"]')
+        .locator('[data-chart-frame][data-frame-ready="true"], [data-preview-host] > p')
+        .first()
         .waitFor();
     });
     await step('editor title', 4, async () => {
@@ -39,10 +45,12 @@ export async function boardEditorScenario(page: Page, step: Step): Promise<void>
       await d.getByRole('button', { name: /Query language$/ }).click();
       await page.getByRole('option', { name: LANGS[i] ?? 'PromQL', exact: true }).click();
     });
-    await step('editor query', 3, async () => {
+    await step('editor query', 5, async () => {
+      // The PromQL editor (plan #64 A.5); a LogQL panel keeps the text area. Shift+Enter runs.
       await d.getByRole('textbox', { name: 'Query' }).click();
       await page.keyboard.press('End');
       await page.keyboard.type('x');
+      await page.keyboard.press('Shift+Enter');
     });
     await step('editor vis', 2, async () => {
       await d.getByRole('button', { name: /Visualisation$/ }).click();

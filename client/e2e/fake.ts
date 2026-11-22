@@ -2,7 +2,7 @@
  * The e2e PulsusDB fake's control routes (plan #63 §3.6, A.2): `tools/e2e/fake.sh 4190` serves the
  * transcripts of `e2e/transcripts/` with `--control`, which lists every request from arrival.
  */
-import { expect, type APIRequestContext } from '@playwright/test';
+import { expect, type APIRequestContext, type TestInfo } from '@playwright/test';
 
 export const FAKE = 'http://localhost:4190';
 
@@ -42,4 +42,12 @@ export async function resetFake(request: APIRequestContext): Promise<void> {
 /** Seconds as the BFF sends `start`/`end`: `String(ms / 1000)` (1767225600000 → "1767225600"). */
 export function sec(ms: number): string {
   return String(ms / 1000);
+}
+
+/**
+ * A shift for a test's windows, so each run of it (a repeat or a retry) reads only its own records:
+ * the fake keeps every request since it started. Whole minutes keep the windows on every step.
+ */
+export function runShift(info: TestInfo): number {
+  return (info.repeatEachIndex * 4 + info.retry) * 60_000;
 }

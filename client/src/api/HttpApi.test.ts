@@ -10,7 +10,6 @@ import {
   BoardConflictError,
   isApiError,
   type LogsRequest,
-  type PanelSpec,
   type RangeRequest,
 } from './types';
 
@@ -325,14 +324,6 @@ function boardBody(etag: string) {
   };
 }
 
-const PANEL: PanelSpec = {
-  id: 'p-1',
-  title: 'P',
-  grid: { x: 0, y: 0, w: 6, h: 8 },
-  query: { lang: 'promql', text: 'up' },
-  vis: { kind: 'line' },
-};
-
 describe('http boards', () => {
   it('http boards', async () => {
     const list = api(() =>
@@ -421,24 +412,6 @@ describe('http boards', () => {
     );
     const e = await rejection(aborted.api.getBoard('demo', 'x', ctrl.signal));
     expect((e as DOMException).name).toBe('AbortError');
-
-    const none = api(() => Promise.reject(new Error('no request expected')));
-    const window = { fromMs: 0, toMs: 1 };
-    expect(await none.api.panelData('demo', PANEL, window)).toEqual({
-      kind: 'noRoute',
-      lang: 'promql',
-    });
-    expect(
-      await none.api.panelData(
-        'demo',
-        { ...PANEL, query: { lang: 'logql', text: '{a="b"}' }, vis: { kind: 'auto' } },
-        window,
-      ),
-    ).toEqual({ kind: 'noRoute', lang: 'logql' });
-    expect(await none.api.panelData('demo', { ...PANEL, vis: { kind: 'logs' } }, window)).toEqual({
-      kind: 'noVis',
-    });
-    expect(none.requests).toEqual([]);
   });
 });
 

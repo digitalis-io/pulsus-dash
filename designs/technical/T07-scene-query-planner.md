@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-22 |
+| **Version** | 1.10-rc · 2026-11-22 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -469,9 +469,20 @@ P2 MUST NOT be delayed by this debounce.
 MUST NOT produce physical queries. Off-screen viewports within one viewport-height MAY run P2 at
 Prefetch priority only.
 
+*v1 (#64 Part A):* board panels share one `IntersectionObserver` per board (root the viewport,
+`rootMargin` 0): a panel queries only while it intersects the viewport or is at full screen, and no
+Prefetch pass runs. Collapsed sections unmount their panels, so they mount no query. A cached panel
+result is reused only within its window epoch: the board marks every panel query of the tenant
+stale (without refetching) when it opens and whenever the resolved window changes, so a time change
+re-queries the visible panels once, a return to an earlier window included, and the others when
+they scroll in (IA-020).
+
 #### T07-013 — Changes re-plan only dependents
 **MUST** — A change to a Context member or a Board variable MUST re-bind only the viewports the
 dependency index lists for it. Other viewports keep their generation and their data.
+
+*v1 (#64 Part A):* a panel's query key carries only the Board variables its text references (their
+URL values, sorted by name), so changing a variable re-queries only the panels that use it.
 
 ### 4.7 RBAC rewrite insertion point
 
@@ -1139,3 +1150,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.7-rc | 2026-11-21 | #112: §4.1 Classify names its PromQL implementation (`prom.Prepare`) and the LogQL interim (the T07-020 byte guard until `logs.Plan`) |
 | 1.8-rc | 2026-11-22 | #112 code review r1: §4.1 pipeline puts Bind (templates, `{{entity}}`, `$vars` through the language module's `Prepare`) before Classify and leaves only the step macros to Plan (step 2) after Resolve (plan #112 §4.8); the follow-up gate `unit:bind-classify-template` and its assertions; the LogQL Classify contract pointer |
 | 1.9-rc | 2026-11-22 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |
+| 1.10-rc | 2026-11-22 | #64 Part A: T07-012 v1 note (one shared IntersectionObserver per board, `rootMargin` 0, no Prefetch pass; collapsed sections unmount; panel results reused only within their window epoch); T07-013 v1 note (the key carries only the referenced variables) |

@@ -42,6 +42,14 @@ export interface SnapshotEntry {
   name: string;
 }
 
+/** The control that duplicates a board panel (plan #64 §3.6). */
+const DUPLICATE = /^(?:menuitem|button) "Duplicate\b/;
+
+/** A key without its `#n`. */
+function baseKey(k: string): string {
+  return k.replace(/ #\d+$/, '');
+}
+
 /** `role "name"` keys of an ARIA snapshot; duplicates get `#2`, `#3`; grid cells count as the grid. */
 export function parseSnapshot(yaml: string): string[] {
   const keys: string[] = [];
@@ -180,6 +188,55 @@ export function keyboardHarness(page: Page): KeyboardHarness {
   const collected = new Set<string>();
   const operated = new Set<string>();
   const visited = new Set<string>();
+  // Panels the traversal made with Duplicate (plan #64), by `data-panel` id: 1 for a copy of a
+  // board's own panel, 2 for a copy of that copy. A first copy is collected and operated like any
+  // panel; a copy of a copy is not collected, so the copies end there. A page load starts a fresh
+  // board (the stub's), so it forgets them.
+  const copies = new Map<string, number>();
+  page.on('load', () => {
+    copies.clear();
+  });
+
+  async function panelIds(): Promise<string[]> {
+    return page.evaluate(() =>
+      [...document.querySelectorAll('[data-panel]')].map((e) => e.getAttribute('data-panel') ?? ''),
+    );
+  }
+
+  /** The panel a Duplicate acts on: the focused control's, or the one whose menu is open. */
+  async function sourcePanel(): Promise<string | null> {
+    return page.evaluate(() => {
+      const own = document.activeElement?.closest('[data-panel]');
+      const p = own ?? document.querySelector('[data-panel]:has([aria-expanded="true"])');
+      return p?.getAttribute('data-panel') ?? null;
+    });
+  }
+
+  /** Keys in `root` of the controls of copies of copies, with their `#n` among equals. */
+  async function beyondFirstCopy(root: Locator): Promise<string[]> {
+    const out: string[] = [];
+    for (const [id, depth] of copies) {
+      if (depth < 2) continue;
+      const panel = root.locator(`[data-panel="${id}"]`);
+      if ((await panel.count()) === 0) continue;
+      for (const key of new Set(parseSnapshot(await panel.ariaSnapshot()).map(baseKey))) {
+        const m = /^([a-z]+) "(.*)"$/.exec(key);
+        if (m === null) continue;
+        const same = root.getByRole(m[1] as Parameters<Page['getByRole']>[0], {
+          name: m[2] ?? '',
+          exact: true,
+        });
+        const n = await same.count();
+        for (let i = 0; i < n; i++) {
+          const inside = await same
+            .nth(i)
+            .evaluate((e, pid) => e.closest(`[data-panel="${pid}"]`) !== null, id);
+          if (inside) out.push(i === 0 ? key : `${key} #${String(i + 1)}`);
+        }
+      }
+    }
+    return out;
+  }
 
   async function scope(): Promise<{ state: string; root: Locator }> {
     const route = await routeState(page);
@@ -216,7 +273,7 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     try {
       skip = await screenReaderOnly(root);
       yaml = await root.ariaSnapshot({ timeout: 5_000 });
-      skip = [...skip, ...(await screenReaderOnly(root))];
+      skip = [...skip, ...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
     } catch {
       return; // the overlay closed between the reads; the next keystroke collects again
     }
@@ -277,18 +334,27 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     return first;
   }
 
-  async function record(): Promise<void> {
+  async function record(): Promise<string | null> {
     const f = await focused();
-    if (f === null) return;
+    if (f === null) return null;
     const { state } = await scope();
     operated.add(`${state} › ${f}`);
+    return f;
   }
 
   return {
     async press(keys) {
       const overlayOpen = (await overlayState(page)).key !== 'none';
-      if (OPERATING.test(keys) || (keys === 'Escape' && overlayOpen)) await record();
+      const f = OPERATING.test(keys) || (keys === 'Escape' && overlayOpen) ? await record() : null;
+      const dup = f !== null && OPERATING.test(keys) && DUPLICATE.test(f);
+      const before = dup ? await panelIds() : [];
+      const source = dup ? await sourcePanel() : null;
       await page.keyboard.press(keys);
+      if (dup) {
+        await settle();
+        const depth = (source === null ? 0 : (copies.get(source) ?? 0)) + 1;
+        for (const id of await panelIds()) if (!before.includes(id)) copies.set(id, depth);
+      }
       await collect();
     },
     async type(text) {
@@ -305,7 +371,7 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     async pendingHere() {
       await settle();
       const { state, root } = await scope();
-      const skip = await screenReaderOnly(root);
+      const skip = [...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
       const keys = parseSnapshot(await root.ariaSnapshot());
       return keys.filter((k) => !skip.includes(k) && !operated.has(`${state} › ${k}`));
     },

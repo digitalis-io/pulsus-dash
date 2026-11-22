@@ -183,3 +183,65 @@ describe('sections', () => {
     expect(s.save.status).toBe('discardFailed');
   });
 });
+
+describe('duplicatePanel', () => {
+  const p = (id: string, title: string, g = { x: 0, y: 0, w: 6, h: 8 }) => ({
+    id,
+    title,
+    grid: g,
+    query: { lang: 'promql' as const, text: 'up' },
+    vis: { kind: 'line' as const },
+  });
+  const edit = (spec: BoardSpec) => run(initialState(board('1', spec)), { type: 'enterEdit' });
+
+  it('duplicatePanel', () => {
+    // No such panel: unchanged.
+    const one = edit({ ...MINIMAL, panels: [p('p-1', 'Requests')] });
+    expect(run(one, { type: 'duplicatePanel', id: 'p-9' })).toBe(one);
+
+    // The copy: a new id, the copied title, the first free cell of the same grid.
+    const sel = run(one, { type: 'select', id: 'p-1' });
+    const s = run(sel, { type: 'duplicatePanel', id: 'p-1' });
+    expect(s.draft.panels).toHaveLength(2);
+    expect(s.draft.panels[1]).toEqual({
+      ...p('p-2', 'Requests (copy)'),
+      grid: { x: 6, y: 0, w: 6, h: 8 },
+    });
+    expect(s.selected).toBe('p-1');
+    expect(s.announce).toBe('Panel duplicated: Requests (copy)');
+    expect(isDirty(s)).toBe(true);
+
+    // In a section, into the same section.
+    const sec = edit({
+      ...MINIMAL,
+      sections: [{ id: 's-1', title: '', collapsed: false, panels: [p('p-1', '')] }],
+    });
+    const d = run(sec, { type: 'duplicatePanel', id: 'p-1' });
+    expect(d.draft.sections[0]?.panels.map((x) => x.id)).toEqual(['p-1', 'p-2']);
+    expect(d.draft.sections[0]?.panels[1]?.title).toBe('');
+    expect(d.announce).toBe('Panel duplicated: Untitled panel');
+  });
+
+  it('full boards and the title cut', () => {
+    const many = edit({
+      ...MINIMAL,
+      panels: Array.from({ length: 200 }, (_, i) =>
+        p(`p-${String(i + 1)}`, 'A', { x: 0, y: i, w: 1, h: 1 }),
+      ),
+    });
+    const full = run(many, { type: 'duplicatePanel', id: 'p-1' });
+    expect(full.draft).toBe(many.draft);
+    expect(full.announce).toBe('Board is full: at most 200 panels');
+
+    const tall = edit({ ...MINIMAL, panels: [p('p-1', 'A', { x: 0, y: 0, w: 12, h: 10_000 })] });
+    const noRoom = run(tall, { type: 'duplicatePanel', id: 'p-1' });
+    expect(noRoom.draft).toBe(tall.draft);
+    expect(noRoom.announce).toBe('Board is full: no space for a 6 × 8 panel');
+
+    const long = edit({ ...MINIMAL, panels: [p('p-1', '😀'.repeat(195))] });
+    const cut = run(long, { type: 'duplicatePanel', id: 'p-1' });
+    const title = cut.draft.panels[1]?.title ?? '';
+    expect(Array.from(title)).toHaveLength(200);
+    expect(title).toBe(`${'😀'.repeat(195)} (cop`);
+  });
+});

@@ -8,7 +8,13 @@
 import type { EditorView } from '@codemirror/view';
 import { useEffect, useImperativeHandle, useRef, type JSX, type Ref } from 'react';
 import type { Diagnostic, PromSource } from './lang/types';
-import { createPromQLView, insertAtSelection, setDocument, showDiagnostics } from './view';
+import {
+  createPromQLView,
+  insertAtSelection,
+  setDocument,
+  setReadOnly,
+  showDiagnostics,
+} from './view';
 
 export interface PromQLEditorHandle {
   /** No-op before mount. */
@@ -33,6 +39,8 @@ export interface PromQLEditorProps {
   readonly label: string;
   /** Read at mount. */
   readonly placeholder: string;
+  /** No edits while true (the board is saving or discarding). */
+  readonly readOnly?: boolean;
   /** On the outer `<div data-editor-host>`. */
   readonly className?: string;
   readonly ref?: Ref<PromQLEditorHandle>;
@@ -50,8 +58,11 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
     const el = outer.current;
     if (el === null) return;
     const inner = document.createElement('div');
+    // A tab stop that delegates into the shadow root: a focus-containing dialog (the board panel
+    // editor, plan #64) walks the light DOM for tabbable elements and would otherwise skip the view.
+    inner.tabIndex = 0;
     el.append(inner);
-    const root = inner.attachShadow({ mode: 'open' });
+    const root = inner.attachShadow({ mode: 'open', delegatesFocus: true });
     const mount = document.createElement('div');
     root.append(mount);
     const source: PromSource = {
@@ -77,9 +88,17 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
       onEscape: () => {
         latest.current.onEscape();
       },
+      readOnly: latest.current.readOnly === true,
     });
     view.current = v;
+    // Focus delegated to the host lands on the view's first focusable element, its scroller
+    // (`tabindex="-1"`): move it on to the text.
+    const onFocusIn = (e: Event): void => {
+      if (e.target === v.scrollDOM) v.focus();
+    };
+    root.addEventListener('focusin', onFocusIn);
     return () => {
+      root.removeEventListener('focusin', onFocusIn);
       view.current = null;
       v.destroy();
       inner.remove();
@@ -95,6 +114,11 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
     const v = view.current;
     if (v !== null) showDiagnostics(v, p.diagnostics);
   }, [p.diagnostics]);
+
+  useEffect(() => {
+    const v = view.current;
+    if (v !== null) setReadOnly(v, p.readOnly === true);
+  }, [p.readOnly]);
 
   useImperativeHandle(
     ref,

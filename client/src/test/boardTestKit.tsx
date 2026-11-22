@@ -2,12 +2,23 @@
 import { screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import createClient from 'openapi-fetch';
+import rangeRaw from '../../../wire/fixtures/json/promql-range-counter.json?raw';
+import instantRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw';
 import type { paths } from '../api/gen/schema';
 import { HttpApi } from '../api/HttpApi';
 import { defaultSeed } from '../api/stubData';
-import type { Board, BoardSpec, PanelSpec } from '../api/types';
+import type { StubSeed } from '../api/StubApi';
+import type {
+  Board,
+  BoardSpec,
+  PanelSpec,
+  PanelVisKind,
+  SectionSpec,
+  TimeRangeSpec,
+} from '../api/types';
 import { ChartEngineContext } from '../engine/index';
 import { fakeEngine, type FakeEngine } from './fakeEngine';
+import { seedWith } from './seeds';
 
 export function EngineWrapper({ children }: { children: ReactNode }) {
   return <ChartEngineContext.Provider value={fakeEngine()}>{children}</ChartEngineContext.Provider>;
@@ -74,6 +85,11 @@ export function json(status: number, body: unknown): Response {
   });
 }
 
+/** A 200 with a JSON body given as text (a wire golden). */
+function raw(body: string): Response {
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
 /** The wire form of a seeded board, as the BFF serves it. */
 export function wireBoard(uid: string, etag = '1') {
   const b = defaultSeed.boards.find((x) => x.uid === uid);
@@ -91,8 +107,8 @@ export function wireBoard(uid: string, etag = '1') {
 }
 
 /**
- * An `HttpApi` over a fake fetch that serves the bootstrap, the seeded boards and `put` for
- * `PUT /api/dash/v1/boards/{uid}`.
+ * An `HttpApi` over a fake fetch that serves the bootstrap, the seeded boards, the wire goldens for
+ * the PromQL range and instant routes, and `put` for `PUT /api/dash/v1/boards/{uid}`.
  */
 export function httpApi(put?: (req: Request) => Promise<Response>): HttpApi {
   const client = createClient<paths>({
@@ -100,6 +116,8 @@ export function httpApi(put?: (req: Request) => Promise<Response>): HttpApi {
     fetch: (req: Request) => {
       const path = new URL(req.url).pathname;
       if (path === '/api/dash/v1/bootstrap') return Promise.resolve(json(200, BOOTSTRAP));
+      if (path === '/api/dash/v1/query/promql/range') return Promise.resolve(raw(rangeRaw));
+      if (path === '/api/dash/v1/query/promql/instant') return Promise.resolve(raw(instantRaw));
       if (path === '/api/dash/v1/boards' && req.method === 'GET') {
         return Promise.resolve(
           json(200, {
@@ -142,3 +160,35 @@ export function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } 
 }
 
 export type { Board };
+
+/** A PromQL panel (plan #64 A.7); `grid` defaults to a 6 × 8 cell placed by the id's number. */
+export function panel(
+  id: string,
+  title: string,
+  text: string,
+  kind: PanelVisKind = 'auto',
+  g?: readonly [number, number, number, number],
+): PanelSpec {
+  const n = Math.max(1, Number(/\d+$/.exec(id)?.[0] ?? '1'));
+  const [x, y, w, h] = g ?? [6 * ((n - 1) % 2), 8 * Math.floor((n - 1) / 2), 6, 8];
+  return { id, title, grid: { x, y, w, h }, query: { lang: 'promql', text }, vis: { kind } };
+}
+
+/** A seed whose only board, `b-1` "Board", holds `panels` (and `sections`, `time`). */
+export function boardWith(
+  panels: readonly PanelSpec[],
+  o: { sections?: SectionSpec[]; time?: TimeRangeSpec } = {},
+): StubSeed {
+  const spec: BoardSpec = {
+    title: 'Board',
+    ...(o.time === undefined ? {} : { time: o.time }),
+    panels: [...panels],
+    sections: o.sections ?? [],
+  };
+  return seedWith({ boards: [stubBoard('b-1', spec)] });
+}
+
+/** The panel's `data-panel-state`. */
+export function panelState(title: string): string | undefined {
+  return panelOf(title).dataset['panelState'];
+}

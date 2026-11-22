@@ -5,6 +5,9 @@ import { EngineWrapper, panelTitles } from '../../test/boardTestKit';
 import { installResizeObserver } from '../../test/fakeResizeObserver';
 import { renderApp, type RenderAppOptions } from '../../test/renderApp';
 
+// The panel editor's Query field loads the editor chunk: a textarea stands in (plan #64 A.5).
+vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
+
 beforeEach(() => {
   installResizeObserver();
 });
@@ -199,8 +202,10 @@ describe('filter bar', () => {
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     const editor = await screen.findByRole('dialog', { name: 'Edit panel' });
-    const query = within(editor).getByRole('textbox', { name: 'Query' });
+    const query = await within(editor).findByRole('textbox', { name: 'Query' });
     await setText(user, query, 'rate(x{app="$app"}[5m])');
+    // Esc in the editor moves to Run query; a second Esc closes the dialog (T09-004).
+    await user.keyboard('{Escape}');
     await user.keyboard('{Escape}');
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
@@ -236,7 +241,7 @@ describe('filter bar', () => {
   });
 
   it('share keeps section overrides', async () => {
-    const { user, view } = open('/t/demo/board/b-1');
+    const { user, view } = open(`/t/demo/board/b-1?${BASE}`);
     const writeText = stubClipboard();
     await user.click(await screen.findByRole('button', { name: 'Latency' }));
     await copyRelativeLink(user);

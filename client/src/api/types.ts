@@ -4,7 +4,7 @@
  * (ADR-0015, #59, #61, #62).
  */
 import type { components } from './gen/schema';
-import type { FrameData, TimeWindow, VisSpec } from '../engine/api';
+import type { TimeWindow } from '../engine/api';
 import type { PlannedQuery } from '../data/decode';
 
 export type { PlannedQuery };
@@ -156,14 +156,6 @@ export interface FieldError {
   pointer: string;
   messageKey: string;
 }
-
-/** What a panel shows: a chart frame, or why it shows none yet. */
-export type PanelData =
-  | { kind: 'frame'; spec: VisSpec; data: FrameData }
-  /** The BFF has no query route for the language yet (#64, #67). */
-  | { kind: 'noRoute'; lang: QueryLang }
-  /** Visualisation `logs`: the log stream arrives with LogQL panels. */
-  | { kind: 'noVis' };
 
 export type { TimeWindow };
 

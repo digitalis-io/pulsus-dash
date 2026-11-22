@@ -339,9 +339,10 @@ engine gains `valueRange`. While pinned, a **Reset Y axis** button (accessible n
 `Reset Y axis: <title>`) sits over the plot's top-left corner, placed through CSSOM. Pressing it, or
 a `'auto'` commit, clears the pin. A kind or unit change clears it during render, so returning to
 the old kind or unit starts unpinned. On a board, a panel whose window alone changed keeps its
-previous result until the new one arrives (`usePanelData`'s `placeholderData` with
-`sameExceptWindow`), so a commit does not unmount the chart or drop its pin; a query, language or
-visualisation change still shows `Loading`.
+previous result until the new one arrives (`usePanelRun`'s `placeholderData` with
+`sameExceptWindow` over the key head, [Boards: panel runtime](boards.md#placeholder-and-loading)),
+so a commit does not unmount the chart or drop its pin; a query, variable or language change still
+shows `Loading`, and a visualisation change redraws the same result.
 
 ## Accessibility (T01-007)
 
