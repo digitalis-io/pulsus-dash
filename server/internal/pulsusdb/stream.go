@@ -22,6 +22,8 @@ const (
 	ResultVector ResultType = "vector"
 	ResultScalar ResultType = "scalar"
 	ResultString ResultType = "string"
+	// ResultStreams is a LogQL log result (#65); it never reaches a ResultStream's caller.
+	ResultStreams ResultType = "streams"
 )
 
 // Series is one series. For a range query it is placed on the request grid: Timestamps holds

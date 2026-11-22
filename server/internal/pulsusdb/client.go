@@ -17,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -47,10 +48,18 @@ type Limits struct {
 	MaxPoints                     int   // grid points per response
 	MaxValues                     int   // values or series per completion response
 	TextBytes, MaxMessages        int   // bytes per error/warning/info/help text; warnings and infos kept
+	LineBytes                     int   // bytes per log line; a longer line is cut at a UTF-8 boundary + "…" (#65 §4.3)
+	PageBytes                     int64 // Σ line + label bytes of one log response; more → KindTooBroad
+	MaxEntries                    int   // log entries decoded from one response; more → KindProtocol
+	CaptureBytes                  int   // a result captured because it came before resultType (#65 §4.1)
 }
 
 // DefaultLimits are the production limits.
-var DefaultLimits = Limits{256 << 20, 32 << 20, 64 << 10, 5_000_000, 10_000, 1024, 20}
+var DefaultLimits = Limits{
+	DataBody: 256 << 20, MetaBody: 32 << 20, ErrorBody: 64 << 10,
+	MaxPoints: 5_000_000, MaxValues: 10_000, TextBytes: 1024, MaxMessages: 20,
+	LineBytes: 65_536, PageBytes: 64 << 20, MaxEntries: 5_000, CaptureBytes: 96 << 20,
+}
 
 // Timeouts apply when the caller's ctx has a later (or no) deadline; the earlier always wins.
 type Timeouts struct {
@@ -133,6 +142,10 @@ func withDefaults(l Limits) Limits {
 	set(&l.MaxValues, d.MaxValues)
 	set(&l.TextBytes, d.TextBytes)
 	set(&l.MaxMessages, d.MaxMessages)
+	set(&l.LineBytes, d.LineBytes)
+	set64(&l.PageBytes, d.PageBytes)
+	set(&l.MaxEntries, d.MaxEntries)
+	set(&l.CaptureBytes, d.CaptureBytes)
 	return l
 }
 
@@ -173,7 +186,17 @@ type call struct {
 	limit   int64  // 2xx body limit
 	retry   bool
 	timeout bool // send the timeout parameter (range, instant)
+	cut     int  // values or series kept by a completion call (MaxValues, or a log call's Limit)
+	// postOver: a GET whose URL would be longer than maxGetQuery is sent as a POST form instead
+	// (the log query_range and series calls, #65).
+	postOver bool
+	// categorize: send the categorize-labels encoding flag (log query_range pages, #65).
+	categorize bool
 }
+
+// maxGetQuery bounds the URL of a GET call that may fall back to a POST form: a conservative
+// limit below the 8 KiB request-line limit common to HTTP servers and proxies.
+const maxGetQuery = 8 << 10
 
 // response is an upstream 2xx response with its slot held.
 type response struct {
@@ -410,21 +433,29 @@ func cloneValues(v url.Values) url.Values {
 // request builds one attempt, decorated from the binding only (T06-006).
 func (c *Client) request(ctx context.Context, b core.TenantBinding, cl call, form url.Values, cred string) (*http.Request, error) {
 	target := strings.TrimSuffix(b.DatasourceURL, "/") + cl.path
-	var body io.Reader
-	if cl.method == http.MethodPost {
-		body = strings.NewReader(form.Encode())
-	} else if len(form) > 0 {
-		target += "?" + form.Encode()
+	method := cl.method
+	enc := form.Encode()
+	if method == http.MethodGet && cl.postOver && len(target)+1+len(enc) > maxGetQuery {
+		method = http.MethodPost
 	}
-	req, err := http.NewRequestWithContext(ctx, cl.method, target, body)
+	var body io.Reader
+	if method == http.MethodPost {
+		body = strings.NewReader(enc)
+	} else if len(form) > 0 {
+		target += "?" + enc
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, body)
 	if err != nil {
 		return nil, err
 	}
 	h := req.Header
 	h.Set("Accept", acceptHeader)
 	h.Set("User-Agent", "pulsus-dash/"+core.Version)
-	if cl.method == http.MethodPost {
+	if method == http.MethodPost {
 		h.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if cl.categorize {
+		h.Set(categorizeHeader, categorizeValue)
 	}
 	if b.ScopeOrgID != "" {
 		h.Set("X-Scope-OrgID", b.ScopeOrgID)
@@ -439,9 +470,14 @@ func (c *Client) request(ctx context.Context, b core.TenantBinding, cl call, for
 }
 
 // readErrorBody reads a non-2xx body (≤ ErrorBody) and returns its errorType and error text,
-// redacted. err is the read error (a deadline, a cancel, a cut connection, errTooLarge) or a
-// protocol error when the body is not one JSON object.
+// redacted. A text/plain body (any charset) is the text itself, with no errorType (#65 §4.5);
+// any other type is read as JSON. err is the read error (a deadline, a cancel, a cut
+// connection, errTooLarge) or a protocol error when a JSON body is not one object.
 func (c *Client) readErrorBody(resp *http.Response, red redactor) (errorType, msg string, err error) {
+	if mt, _, perr := mime.ParseMediaType(resp.Header.Get("Content-Type")); perr == nil && mt == "text/plain" {
+		msg, err = readTextBody(resp.Body, c.o.Limits.ErrorBody, red)
+		return "", msg, err
+	}
 	d := newUpstreamDecoder(&capReader{r: resp.Body, left: c.o.Limits.ErrorBody}, red)
 	k, err := d.Next()
 	if err != nil {
@@ -535,7 +571,8 @@ func queryIDHash(raw string) string {
 
 // logCall writes the one record of a call: warn on failure, debug on success. It never carries
 // an upstream value or text, the URL, credentials or the query (§4.4).
-func (c *Client) logCall(ctx context.Context, rc *core.RequestCtx, route string, start time.Time, r *response, err error) {
+// extra are further key-value attributes (a log page's page_request).
+func (c *Client) logCall(ctx context.Context, rc *core.RequestCtx, route string, start time.Time, r *response, err error, extra ...any) {
 	attrs := []any{"route", route, "tenant", rc.Tenant.Binding.Slug}
 	status, attempts, rawID, cache := 0, 0, "", ""
 	if r != nil {
@@ -555,6 +592,7 @@ func (c *Client) logCall(ctx context.Context, rc *core.RequestCtx, route string,
 	attrs = append(attrs, "kind", kind, "status", status, "attempts", attempts,
 		"duration_ms", time.Since(start).Milliseconds(), "query_id_present", rawID != "",
 		"query_id_hash", queryIDHash(rawID), "request_id", rc.RequestID)
+	attrs = append(attrs, extra...)
 	switch {
 	case pe != nil:
 		c.o.Logger.WarnContext(ctx, "pulsusdb", attrs...)

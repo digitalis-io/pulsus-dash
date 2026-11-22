@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-22 |
+| **Version** | 1.9-rc · 2026-11-22 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -265,7 +265,7 @@ Return contracts (T06-011). No method returns untyped JSON values.
 
 The completion and metadata results are typed and fully decoded. Three cases are buffered: the log
 page, the log volume, and a `LogQueryRange` response whose `result` comes before `resultType`. T06-011
-sets the bounds for all three when the LogQL client lands (#65).
+sets the bounds for all three (#65).
 
 #### T06-005 — One PulsusDB client
 **MUST** — Every request from Dash to PulsusDB MUST be made through `pulsusdb-client`. No other crate
@@ -357,13 +357,14 @@ together with the number of Dash replicas ([T19](T19-deployment.md)).
 **JSON→Arrow (until R1).** Streaming `simd-json`-style tape parsing straight into Arrow builders
 (`Int64Builder` timestamps, `Float64Builder` values, dictionary-encoded labels). The JSON is never
 materialised as a DOM. Prometheus string values are parsed with `lexical-core`. Each series becomes
-a record batch, flushed at 64k rows, so the browser starts painting before PulsusDB's body ends. When
-R1 is negotiated (`Accept`), the converter is bypassed and batches pass through, re-chunked if
-necessary.
+a record batch, flushed at 64k rows, so the browser starts painting before PulsusDB's body ends. The
+three buffered cases of T06-011 (a log page, a response whose `result` precedes `resultType`, the log
+volume aggregation) are the exceptions: they are decoded whole and bounded there. When R1 is
+negotiated (`Accept`), the converter is bypassed and batches pass through, re-chunked if necessary.
 
 #### T06-011 — Results are Arrow streams
 **MUST** — Client methods MUST return `ResultStream` (record batches plus a `Completeness` trailer),
-never untyped JSON values. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
+never untyped JSON values; the dated amendments below list the typed exceptions. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
 serialises the batches as JSON frames for the TS client.)* *(2026-11-20, #62: until #68 the batch
 type is the Go-native `pulsusdb.Series`, the columns of `labels/1` + `metric_matrix.grid/1`, streamed one
 series at a time; Arrow Go builders arrive with the engine, #68.)* Until R1, the converter MUST stream: the first batch MUST leave
@@ -371,6 +372,31 @@ the BFF ≤ 10 ms after PulsusDB's first byte, and batches MUST be flushed at �
 *(2026-11-21, ADR-0018.)* The completion and metadata methods (series, label names, label values,
 metadata, runtime info) return typed, fully decoded results (§4.3), never untyped JSON values. They
 carry no record batches, so the streaming bounds above do not apply to them.
+*(2026-11-21, #65.)* **Log returns.** The two log query methods return typed results, never
+untyped JSON values, as in the §4.3 table: `LogQueryRange` returns `*LogResult`, which holds
+either a `*LogPage` (`resultType: streams`; typed streams and entries; buffered case 1 below) or a
+`ResultStream` (`resultType: matrix`; streamed when `resultType` precedes `result`, else buffered
+case 2). `LogVolume` returns `[]*Series` with its `Completeness`, one aggregated series per level
+(buffered case 3).
+*(2026-11-21, #65.)* **Buffered cases.** Three bounded cases are buffered instead of streamed. The
+10 ms first-batch bound does not apply to them; batches are still flushed at ≤ 64k rows.
+(1) **A log page** (`resultType: streams`) is decoded whole before its batch is built, because a
+page is cut at complete timestamp groups across streams. Bounds: at most 5 000 entries (`limit`
+≤ 5 000, the upstream's maximum), at most 64 MiB of line, label, metadata and parsed-field bytes per upstream response, at
+most 3 upstream requests per page. The page leaves the BFF as one batch once its last upstream
+response has been read.
+(2) **A response whose `result` precedes `resultType`** (either result type) is captured, at most
+96 MiB (more is refused as too broad), and decoded once `resultType` is known. Its first batch
+leaves the BFF after PulsusDB's body ends.
+(3) **Log volume aggregation.** The upstream matrix is read series by series and folded into at
+most 7 level series (one per level, `unknown` included) on the request's grid; each input series
+is dropped once folded. Bounds: the input is the range limits (≤ 256 MiB body, ≤ 5 000 000 grid
+points per response, beyond which the response is cut with the truncation warning); the output and
+the live aggregate are ≤ 7 × the grid's point count. Its first batch leaves the BFF only after the
+upstream matrix has been read to its end.
+The 10 ms first-batch bound still applies to every other result the converter streams: range
+results, and a LogQL metric result whose `resultType` precedes `result`, which the converter
+streams unchanged.
 
 **Completeness (R10 fallback).** Each typed method extracts what its endpoint offers into one struct:
 
@@ -842,7 +868,7 @@ clusters are supported for one minor version ([T19](T19-deployment.md)).
 | Item | Budget | Ties to | Measured by |
 |---|---|---|---|
 | BFF overhead per physical query (auth, plan, cache lookup, decoration) | p50 ≤ 5 ms, p99 ≤ 20 ms | PRF-010 "first coarse < 300 ms" | `dash_http_request_duration_seconds` minus `dash_pulsusdb_request_duration_seconds`; `load:bff-overhead` |
-| JSON→Arrow conversion | ≤ 30 ms per 10⁶ points per core; first batch out ≤ 10 ms after first PulsusDB byte | PRF-010, R1 | `bench:json-to-arrow` (criterion on recorded responses) |
+| JSON→Arrow conversion | ≤ 30 ms per 10⁶ points per core; first batch out ≤ 10 ms after first PulsusDB byte for streamed results (range results, and LogQL metric results with `resultType` before `result`); the three buffered cases of T06-011 (log page, `result` before `resultType`, log volume) are exempt and bounded there | PRF-010, R1 | `bench:json-to-arrow` (criterion on recorded responses) |
 | L1 hit to first byte on the wire | ≤ 2 ms | PRF-026 | span `cache.lookup` |
 | Catalogue resolve (`{{entity}}`, Atlas inventory) | ≤ 5 ms from snapshot | PRF-012 | span |
 | Virtual-source query (1 week of `ALERTS`, one tenant, ≤ 1 000 series) | p95 ≤ 150 ms | ALR-085 | `bench:vsrc-alerts-week` against seeded Postgres |
@@ -951,3 +977,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.6-rc | 2026-11-21 | Final review of the ADR-0021 PR: §4.3 `Completeness.exactness` drops `Virtual`; virtual provenance lives only in `source` (`Virtual{table}`), as in T07 §4.3 and §4.11.2 |
 | 1.7-rc | 2026-11-21 | #62: T06-011 notes the Go-native `pulsusdb.Series` batch until #68 (Arrow Go from #68); T06-005 enforced by `forbidigo` (`pulsusdb-only`) alongside depguard, with the T19-002 self-check as an allowed caller; T06-010 item 2: direct query routes carry the request's `timeout_ms` (30 s default, 120 s max); §4.9 implemented key `pulsusdb.tenant_concurrency`; T06-023 Go form `x-permission`; §5.1 adds the PromQL query, completion and data-source check routes; §5.2 upstream mapping |
 | 1.8-rc | 2026-11-21 | #112: §4.4 L1 metric-types row: failures held 5 s, a 2 s wait then a degraded plan with the `metric_types_unavailable` warning, fetched only when `NeedsTypes` |
+| 1.9-rc | 2026-11-22 | #65 Part A: T06-011 states the typed `LogQueryRange` (`*LogResult`: a `*LogPage` or a `ResultStream`) and `LogVolume` (`[]*Series` with its `Completeness`) returns, as in the §4.3 table of ADR-0018, and the bounds of the three buffered cases; the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |

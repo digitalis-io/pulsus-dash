@@ -1,4 +1,4 @@
-# PulsusDB client and the PromQL routes
+# PulsusDB client, the PromQL routes and the LogQL calls
 
 The BFF reads telemetry from PulsusDB through one package, `server/internal/pulsusdb`
 ([T06-005](../../designs/technical/T06-bff-architecture.md)). The gateway serves its results to
@@ -275,6 +275,9 @@ request is forwarded.
 | `kind` | must be `pulsusdb`; anything else is refused with 503 `datasource_config` |
 
 Every request also carries `Accept: application/json` and `User-Agent: pulsus-dash/<version>`.
+`Accept` is chosen in one place (`acceptHeader` in `source.go`), and a 2xx body is decoded by the
+decoder its `Content-Type` selects (`formatOf`; JSON is the only one today, any other type is
+`upstream_error`). A second body format can be added there without changing the methods.
 
 ### Credentials
 
@@ -315,6 +318,8 @@ These are the request shapes that the clients PulsusDB has been tested with send
 writes `U__`, then each character as itself when it is a letter, a digit after the first position,
 `__` for `_`, and `_<hex code point>_` otherwise (`_FFFD_` for invalid UTF-8): `http.status` is
 `U__http_2e_status` and `μs` is `U___3bc_s`. The path therefore never holds a percent escape.
+
+The LogQL methods have their own table ([LogQL in the PulsusDB client](#logql-in-the-pulsusdb-client)).
 
 ### Deadlines and the `timeout` parameter
 
@@ -448,6 +453,7 @@ on the PromQL routes every error raised after planning carries `planned`
 | connection failures, retries exhausted | 502 | `unavailable` | `PulsusDB could not be reached` | `hint.reason: upstream_unreachable` |
 | 503 `unavailable` after retries, other 503 | 502 | `unavailable` | `PulsusDB is unavailable` | `hint.reason: upstream_unavailable` |
 | 401, 403 | 502 | `unavailable` | `PulsusDB refused the datasource credentials` | `hint.reason: upstream_unauthorised` |
+| a log page over 64 MiB, or a log response over 96 MiB before its `resultType` | 422 | `too_broad` | `the log page is larger than 64 MiB; lower the limit or narrow the query`, or `the log response is larger than 96 MiB before its resultType; lower the limit or narrow the query` | `hint.action: narrow` |
 | anything unexpected (other status, not JSON, wrong `resultType`, off-grid point, a body over its limit) | 502 | `unavailable` | `PulsusDB returned an unexpected response` | `hint.reason: upstream_error` |
 | misconfigured binding (kind, credentials) | 503 | `unavailable` | `the datasource is misconfigured` | `hint.reason: datasource_config` |
 | data scope not the full tenant | 403 | `scope_denied` | `data scopes are not supported yet` | — |
@@ -456,10 +462,18 @@ on the PromQL routes every error raised after planning carries `planned`
 `query_id` is set whenever PulsusDB returned an accepted query id. Other status texts of PulsusDB
 (5xx bodies, unknown `errorType`) are never returned.
 
+**Text bodies.** An error body whose `Content-Type` is `text/plain` (any charset) is read as text,
+on every route: at most 64 KiB, invalid UTF-8 replaced with U+FFFD, redacted, then cleaned as any
+upstream text. A text 400 is `invalid` and a text 422 `too_broad`, with the text as the message; a
+text over 64 KiB is `upstream_error`. A text 503 has no `errorType`, so it is not retried
+(`upstream_unavailable`). LogQL errors are text: `unexpected end of query at byte 8: expected '}'`.
+
 **Position** ([T09-009](../../designs/technical/T09-query-editors.md)). A message that starts with
 `<line>:<column>: ` (1-based, the column in bytes) gives the byte offset of that line's start in
-the sent query plus column − 1, kept only when it lies within the text. The PromQL routes map it to
-the raw text ([positions](#positions)) and return it as `hint.position.offset`.
+the sent query plus column − 1, kept only when it lies within the text. Without that prefix, the
+first `at byte <N>` (LogQL; `N` is 0-based) gives offset `N`, kept only when `N` is at most the
+query's length. The PromQL routes map the offset to the raw text ([positions](#positions)); it is
+returned as `hint.position.offset`.
 PulsusDB's current messages (for example `unclosed left parenthesis`) carry no position, and the
 client underlines the whole query.
 
@@ -506,6 +520,9 @@ before it can reach a response or a log:
   token is returned through the redactor, and a later Arrow decoder must do the same. The lint
   rule `pulsusdb-decoder` forbids `encoding/json` decoding in `internal/pulsusdb` (tests
   excepted), with a self-test fixture.
+  Text error bodies are read in `updec.go` too (`readTextBody`), and a log result captured before
+  its `resultType` is kept only as a compact JSON image that a second tokenizer re-reads and
+  redacts.
 - **Redaction** replaces the credential `user:password`, the password (at any length), the Basic
   token, the datasource URL, its `scheme://host[:port]` and its `host[:port]` with `<redacted>`,
   after JSON escapes are resolved. Label keys are hashed from the redacted labels.
@@ -534,10 +551,14 @@ Each PulsusDB call writes one record: at `warn` on failure, at `debug` on succes
 `read_cache`):
 
 ```text
-msg=pulsusdb route=<query_range|query|series|labels|label_values|metadata|runtimeinfo> tenant=<slug>
+msg=pulsusdb route=<query_range|query|series|labels|label_values|metadata|runtimeinfo|
+                    logs_query_range|logs_volume|logs_labels|logs_label_values|logs_series> tenant=<slug>
   kind=<ok|unreachable|timeout|…> status=<n> attempts=<n> duration_ms=<n>
-  query_id_present=<bool> query_id_hash=<8 hex> request_id=<id>
+  query_id_present=<bool> query_id_hash=<8 hex> request_id=<id> [page_request=<1..3>]
 ```
+
+A log page writes one record per upstream request; `page_request` numbers them, so the record
+with `page_request=3` shows a page that took three.
 
 `query_id_hash` is the first 8 hex digits of an HMAC-SHA256 of the raw query id under a key drawn
 once per process, so records of one query can be matched without logging the header. No upstream
@@ -552,6 +573,160 @@ failures, timeouts and unavailability; `error` otherwise. It answers 404 for an 
 when the configuration store fails and 504 when its 5 s deadline passes during tenant resolution. `/readyz` never calls it
 ([T06-026](../../designs/technical/T06-bff-architecture.md)), so readiness does not depend on
 PulsusDB. The sidebar's data-source line shows the result ([client](../client/README.md#api-clients)).
+
+## LogQL in the PulsusDB client
+
+The client also calls PulsusDB's native LogQL routes under `/api/logs/v1/`
+([T06-005](../../designs/technical/T06-bff-architecture.md)). No route of the BFF uses them yet:
+the log routes come with #65 Part B. Every call goes through the same `do` as the PromQL methods,
+so it gets the same decoration, tenant slot, retries, deadline-derived `timeout`, redaction and log
+record (T06-006, T06-009).
+
+| Method | `route=` | PulsusDB request | Parameters | Retried | `timeout` |
+|---|---|---|---|---|---|
+| `LogQueryRange` | `logs_query_range` | `GET /api/logs/v1/query_range` (query string), 1 to 3 times per page | `query` (byte for byte, T07-002), `start`, `end`, `step` (`<n>ms`), `limit`, `direction` | yes, per request | yes |
+| `LogVolume` | `logs_volume` | `GET /api/logs/v1/query_range` | `query` (the composed text below), `start` = grid start, `end` = grid end, `step` | yes | yes |
+| `LogLabels` | `logs_labels` | `GET /api/logs/v1/labels` | `start`, `end`; `query` only when set | yes | no (10 s) |
+| `LogLabelValues` | `logs_label_values` | `GET /api/logs/v1/label/<name, path-escaped>/values` | as `LogLabels` | yes | no (10 s) |
+| `LogSeries` | `logs_series` | `GET /api/logs/v1/series` | `match[]` in order, `start`, `end` | yes | no (10 s) |
+
+- **Request shape.** `query_range` and `series` are sent as GET with a query string and `step`
+  in whole milliseconds with the unit (`5000ms`), the shape of the clients PulsusDB has been tested
+  with. A URL longer than 8 KiB is sent as a POST form instead (`maxGetQuery`).
+- **Timestamps are ns, written `%019d`.** PulsusDB reads a timestamp of ten characters or fewer as
+  seconds, so every ns value is zero-padded to 19 digits (`0` is `0000000000000000000`, `-1` is
+  `-000000000000000001`). Times up to 2262-04-11 fit.
+- **Completion limits are the BFF's.** PulsusDB ignores `limit` on the completion routes, so
+  `LogLabels`, `LogLabelValues` and `LogSeries` cut at `Limit` (at most 10 000) and mark the result
+  `truncated`.
+- **Reserved selectors** are screened as on the PromQL routes: `query` for the range, volume and
+  label calls, `match/<i>` for series.
+
+### Window, grid and metric queries
+
+A log page covers the window `(from, to]` in nanoseconds: an entry at exactly `to` is returned and
+one at exactly `from` is not, PulsusDB's own `(start, end]` semantics. Adjacent windows `(a, b]`
+and `(b, c]` tile without overlap. Metric results and volume stay on the
+[grid](#grid) of the request.
+
+Whether a LogQL query is a log or a metric query is known only from the response's `resultType`
+(the text is opaque, T07 §0). The first page is therefore sent on the grid, `(grid start, grid end]`:
+a metric query then anchors on the grid and its matrix is returned as a `ResultStream` (placed on
+the grid as in #62); for a log query, entries outside the window are dropped from that response.
+When the first response is filled entirely by entries beyond the window's near edge (the slack
+between the grid and the window holds `limit` entries), the page is re-requested on the window
+itself.
+
+JSON member order is not significant. A response may carry `result` before or after `resultType`:
+- `resultType` first (every response seen so far): a matrix streams series by series as in #62,
+  and a streams result is decoded as it is read;
+- `result` first: the value is captured (at most 96 MiB, more is 422 `too_broad`) and decoded once
+  `resultType` is known. A metric result in this order does not stream; its first series is handed
+  out after PulsusDB's body ended, and the tenant slot is already free by then.
+
+### Paging
+
+PulsusDB documents `limit` as the global top-`limit` entries in `direction` order. Two properties
+follow, and the probes and the contract subtest confirm them: a response with fewer than `limit`
+entries is the whole of its window, and a response with exactly `limit` entries holds every entry
+strictly before its last timestamp. The pager builds on these only:
+
+- **Complete groups only.** A page delivers only whole timestamp groups. The last group of a
+  response that hit its limit, which may be a partial subset, is never delivered from that response.
+  The main request asks for `limit + 1` entries (at most 5 000), so a page never exceeds `limit` and
+  a group is never split unless it alone exceeds `limit`.
+- **Group fetch.** A group that fills a response is read whole on the one-nanosecond window
+  `(T − 1, T]` with `limit` 5 000, sorted by stream key, then line bytes, then structured metadata,
+  then parsed fields, and sub-paged by offset.
+- **Cursor.** A page ends with `Next` = `(ts, skip)`: every entry beyond `ts` in direction order has
+  been delivered, and so have the first `skip` entries of the group at `ts`. Nothing depends on the
+  order or subset in which PulsusDB returns equal timestamps.
+- **Short and empty pages.** A page can hold fewer than `limit` entries while `Next` is set. It is
+  empty only at the end of the window, or when a group shrank between two requests.
+- **Cost.** At most 3 upstream requests per page (main, re-issue on the window, group fetch);
+  `LogPage.Requests` and the log's `page_request` count them. Every request shares the caller's
+  deadline, takes the tenant slot itself, and no request starts after the caller cancels.
+- **Exactly once while the data is unchanged.** Late data at a boundary timestamp between two page
+  requests can shift a group's offsets.
+- **Documented limit.** Paging returns every entry exactly once while fewer than 5 000 entries
+  share one timestamp; beyond that, a page boundary can fall inside the group, and the next page can
+  skip or repeat some of those entries. Pages still never exceed `limit`, and paging still ends.
+
+`LogPage.Completeness.truncated` means that data was dropped and no cursor can reach it: a line cut
+at 65 536 bytes, or PulsusDB's own `truncated` flag or warning. Reaching `limit` produces a cursor,
+not `truncated`. The page's completeness merges those of its requests, and its data age comes from
+the newest delivered entry.
+
+The pager reads a decoded `logResponse` (streams, entries, completeness), not the JSON tokenizer,
+so another body format can feed it unchanged.
+
+### Streams and levels
+
+Every page request (the main fetch, a re-issue and a group fetch) sends
+`X-Loki-Response-Encoding-Flags: categorize-labels`, as the clients PulsusDB has been tested with
+do (owner decision, 2026-11-21; a deviation from the #65 Part A plan, which skipped the third
+element and left structured metadata out of scope). PulsusDB then answers in the categorised shape:
+`data.encodingFlags` lists `categorize-labels`, `stream` holds the indexed stream labels only, and
+each value is `[ts, line, {"structuredMetadata": {…}, "parsed": {…}}]`. Streams are therefore not
+split by metadata or parsed values; `detected_level`, for example, arrives as structured metadata.
+No other call sends the flag; the volume matrix is the same with or without it.
+
+The plain shape is still accepted. Each stream object may list `stream` and `values` in either
+order. A value is `[ts, line]` or `[ts, line, <third>]`: an object third element is read as the
+categorised entry (its `structuredMetadata` and `parsed` members must be string maps, each at most
+once; other members are skipped), and any other third element is skipped. `ts` must be a decimal
+string without a leading zero that fits in int64. Lines, labels, metadata and parsed fields are
+redacted; label, metadata and parsed names and values are cut at 4 096 bytes, and stream labels,
+metadata and parsed fields count towards the 64 MiB page bound pair by pair, so the decode stops at the pair
+that crosses it. Stream objects with the same label set are merged. A page lists only the streams
+it delivers, by key ascending.
+
+`LogEntry` carries `Metadata` and `Parsed` (sorted by name, `nil` if none) and its `Level`
+(T04 §4.3 `log_lines/1`). The level comes from the stream labels if they have a recognised one,
+else from the structured metadata, else from the parsed fields, else `unknown`. Within each set,
+`detected_level` comes before `level`. `LogStream.Level` is the level of the stream labels alone.
+
+| Level | Values (ASCII case-insensitive) |
+|---|---|
+| critical | `critical`, `crit`, `fatal`, `alert`, `emergency` |
+| error | `error`, `err` |
+| warn | `warn`, `warning` |
+| info | `info`, `informational`, `notice` |
+| debug | `debug` |
+| trace | `trace` |
+
+Any other value, `unknown` included, falls through to the next label, then to the next set.
+
+### Volume
+
+`/api/logs/v1/volume` answers bytes per label at one instant, so it cannot give counts per bucket.
+`LogVolume` composes a matrix query instead, with the user's text embedded byte for byte as the one
+operand of a fixed template (T07 §0):
+
+```text
+sum by (level, detected_level) (count_over_time(<text>
+| drop __error__ [<step>s]))
+```
+
+The newline ends the text, so a trailing line comment cannot swallow the suffix; `| drop __error__`
+keeps lines that a parser stage in the text fails on from failing the whole query. Each grid point
+`t` counts the lines of `(t − step, t]`, so the first and last points can count lines outside
+`(from, to]`; the edges are not split. The matrix is folded into one series per level (by the
+rules above), point-wise sums, in the order critical, error, warn, info, debug, trace, unknown;
+levels without a point are omitted. `LogVolume` returns after the whole matrix was read: it is one
+of the buffered cases of [T06-011](../../designs/technical/T06-bff-architecture.md), bounded by the
+range limits and holding at most 7 level series of the grid.
+
+An error position in the composed text is mapped back: an offset before the text is dropped, one
+inside or after it is clamped to the text, and the first `at byte <N>` of the message is rewritten
+to the mapped offset (`{app="x"` → upstream `at byte 57` → `at byte 8`).
+
+### Errors from PulsusDB on the log routes
+
+Errors are mostly `text/plain` ([text bodies](#errors-t06-52)): a LogQL syntax error is 400 with
+`at byte <N>`; 422 is `query too broad: …`. A window wider than PulsusDB's 5-year limit is
+PulsusDB's own 400 (`query time range … outside the supported range`), returned with its message
+and no position. An error on the second or third request of a page fails the page as a whole.
 
 ## Configuration
 
@@ -579,6 +754,11 @@ The binding itself (URL, scope, database, credentials reference) lives in Postgr
 | completion and check body | 32 MiB | 502 `upstream_error` |
 | error body | 64 KiB | 502 `upstream_error` |
 | error, warning, info, help text | 1 024 bytes; 20 warnings and 20 infos | cut with `…`; `N more … omitted` |
+| log entries per upstream response | 5 000 (the upstream's maximum `limit`) | protocol error |
+| log line | 65 536 bytes | cut at a UTF-8 boundary with `…`; `truncated` with the warning `pulsus-dash: <n> lines cut at 65536 bytes` |
+| log line and label bytes per upstream response | 64 MiB | 422 `too_broad` |
+| log result captured before its `resultType` | 96 MiB | 422 `too_broad` |
+| GET URL of a log `query_range` or `series` call | 8 KiB | sent as a POST form instead |
 
 ## Budgets ([T06 §7](../../designs/technical/T06-bff-architecture.md), T05-006)
 
@@ -606,7 +786,8 @@ client against a real PulsusDB, read-only, when `DASH_CONTRACT_PULSUSDB_URL` is 
 It is skipped in CI. It checks every method, and compares the client's labels and values with a
 generic decode of the same bodies. Two cases pin request shapes the reference clients do not send:
 `timeout=<n>ms` on the range and instant routes, and a range whose end lies after now. Never commit
-the URL.
+the URL. Its `logql` subtest, which also needs `DASH_CONTRACT_LOGQL_SELECTOR`, checks the LogQL
+properties the pager relies on ([testing against PulsusDB](../development/testing-pulsusdb.md#the-logql-contract-subtest)).
 
 ## Code layout
 
@@ -617,7 +798,9 @@ the URL.
 | `internal/pulsusdb/client.go` | options, transport, decoration, attempts, logs |
 | `internal/pulsusdb/promql.go` | the seven methods and the completion decoders |
 | `internal/pulsusdb/stream.go` | `ResultStream`: range streaming, grid placement point by point (the sources' `seriesSink`), instant results, completeness |
-| `internal/pulsusdb/source.go`, `source_json.go` | the decoder seam: `Accept`, the `Content-Type` dispatch, and the JSON source (both member orders, native histograms skipped) |
+| `internal/pulsusdb/source.go`, `source_json.go` | the decoder seam: `Accept`, the `Content-Type` dispatch, and the JSON source (both member orders, native histograms skipped; logs mode with the capture, `logSource`) |
+| `internal/pulsusdb/logql.go` | the five LogQL methods, levels, `nsParam`, volume composition and position mapping |
+| `internal/pulsusdb/logpage.go` | the decoded `logResponse`, `streamsResult`, `openLogs` and the pager |
 | `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rule, errors, retry budget and tenant slots |
 | `internal/pulsusdb/prom/plan.go`, `substitute.go`, `errors.go` | `Prepare`, `Plan`, Classify, the limits, the substitution and its segment map, `PlanError` |
 | `internal/pulsusdb/prom/shape.go`, `types.go` | `ShapeOf` over the upstream parser; metric kinds and `TypesCache` |
@@ -630,9 +813,10 @@ PRF-030 (transport half), PRF-031 (server half) in
 [the performance requirements](../../designs/product/09-performance-contract.md); T06-002, T06-005, T06-006,
 T06-008, T06-009, T06-010, T06-011, T06-023 (declaration), T06-024, T06-025, T06-026, T06-028
 and T06-029 in [T06](../../designs/technical/T06-bff-architecture.md); T04-001, T04-004, T04-005 and T04-010 in
-[T04](../../designs/technical/T04-wire-format-and-data-plane.md); T07-002 and T07-020 (v1) in
+[T04](../../designs/technical/T04-wire-format-and-data-plane.md) (with §4.3 `log_lines/1` levels and
+the §5.2 `log_volume` row); T07-002, T07-020 (v1) and the §0 log volume row in
 [T07](../../designs/technical/T07-scene-query-planner.md), with T07-003 and the §4.1 Classify step
-(PromQL); T09-009 (server half), T09-010 and T09-015 (server half) in
+(PromQL); T09-009 (server half, with LogQL's `at byte N`), T09-010 and T09-015 (server half) in
 [T09](../../designs/technical/T09-query-editors.md); T05-006 in
 [T05](../../designs/technical/T05-testing-and-performance.md);
 [ADR-0006](../../designs/adr/0006-pulsusdb-and-postgres.md),

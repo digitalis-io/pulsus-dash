@@ -147,20 +147,25 @@ func (c *Client) matchCall(route, method, path string, q MatchQuery, unit int64)
 		form.Add("match[]", m)
 		in = append(in, guardInput{"match/" + strconv.Itoa(i), m})
 	}
-	return call{route: route, method: method, path: path, form: form, inputs: in, limit: c.o.Limits.MetaBody, retry: true}
+	return call{route: route, method: method, path: path, form: form, inputs: in, limit: c.o.Limits.MetaBody, retry: true,
+		cut: c.o.Limits.MaxValues}
 }
 
 // Series lists the label sets matching q (len(q.Match) ≥ 1).
 func (c *Client) Series(ctx context.Context, rc *core.RequestCtx, q MatchQuery) (*SeriesResult, error) {
+	return c.series(ctx, rc, c.matchCall("series", http.MethodPost, "/api/v1/series", q, 1))
+}
+
+// series runs a series call: label sets, cut at cl.cut.
+func (c *Client) series(ctx context.Context, rc *core.RequestCtx, cl call) (*SeriesResult, error) {
 	out := &SeriesResult{Series: [][]Label{}}
-	cl := c.matchCall("series", http.MethodPost, "/api/v1/series", q, 1)
 	comp, err := c.meta(ctx, rc, cl, c.o.Timeouts.Metadata, func(d *upstreamDecoder, b *compBuilder) error {
 		return eachElement(d, func() error {
 			ls, err := readLabelBody(d)
 			if err != nil {
 				return err
 			}
-			if len(out.Series) >= c.o.Limits.MaxValues {
+			if len(out.Series) >= cl.cut {
 				b.c.Truncated = true
 				return nil
 			}
@@ -196,7 +201,7 @@ func (c *Client) values(ctx context.Context, rc *core.RequestCtx, cl call) (*Val
 	out := &ValuesResult{Values: []string{}}
 	comp, err := c.meta(ctx, rc, cl, c.o.Timeouts.Metadata, func(d *upstreamDecoder, b *compBuilder) error {
 		return eachElement(d, func() error {
-			if len(out.Values) >= c.o.Limits.MaxValues {
+			if len(out.Values) >= cl.cut {
 				b.c.Truncated = true
 				return nil
 			}

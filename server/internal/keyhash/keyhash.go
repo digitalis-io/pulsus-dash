@@ -47,6 +47,10 @@ func compare(a, b Label) int {
 	return strings.Compare(a.Value, b.Value)
 }
 
+// Text is xxh3_64 (seed 0) of the bytes of s. #65 Part B binds a log page cursor to its query
+// text with it.
+func Text(s string) uint64 { return xxh3.HashString(s) }
+
 // Hex is 16 lower-case hex digits (the client's KEY_PATTERN ^[0-9a-f]{16}$).
 func Hex(k uint64) string {
 	s := strconv.FormatUint(k, 16)

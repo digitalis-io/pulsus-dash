@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"math"
 	"strconv"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -103,6 +104,118 @@ func (d *upstreamDecoder) Sample() (float64, error) {
 		return 0, protocolError()
 	}
 	return v, nil
+}
+
+// Nanos parses the current string token as a log timestamp in ns: ^(0|[1-9][0-9]{0,18})$ that
+// fits in int64, else KindProtocol. Like Sample, the token is parsed only and never returned, so
+// it is not redacted (a numeric password is refused by core.WeakPassword, §4.10 of plan #62).
+func (d *upstreamDecoder) Nanos() (int64, error) {
+	b := d.buf
+	if d.kind != tokString || len(b) == 0 || len(b) > 19 || (b[0] == '0' && len(b) > 1) {
+		return 0, protocolError()
+	}
+	var v int64
+	for _, c := range b {
+		if c < '0' || c > '9' {
+			return 0, protocolError()
+		}
+		n := int64(c - '0')
+		if v > (math.MaxInt64-n)/10 {
+			return 0, protocolError()
+		}
+		v = v*10 + n
+	}
+	return v, nil
+}
+
+// errCaptureTooLarge is the refusal of a result captured before its resultType (#65 §4.1).
+func errCaptureTooLarge() *Error {
+	return &Error{Kind: KindTooBroad,
+		Message: "the log response is larger than 96 MiB before its resultType; lower the limit or narrow the query"}
+}
+
+// CaptureValue is called after Next returned the first token of a value. It reads the rest of
+// that value and returns a compact JSON image of it: keys and strings re-escaped from their
+// decoded, unredacted bytes, numbers as their token text. The image is only ever fed to a second
+// upstreamDecoder, which redacts as this one would, so nothing unredacted leaves the package.
+// An image over max bytes is KindTooBroad.
+func (d *upstreamDecoder) CaptureValue(max int) ([]byte, error) {
+	type frame struct{ n int }
+	var (
+		out      []byte
+		stack    []frame
+		afterKey bool
+	)
+	sep := func() {
+		if afterKey {
+			afterKey = false
+			return
+		}
+		if len(stack) > 0 {
+			if stack[len(stack)-1].n > 0 {
+				out = append(out, ',')
+			}
+			stack[len(stack)-1].n++
+		}
+	}
+	k := d.kind
+	for {
+		switch k {
+		case tokObjStart, tokArrStart:
+			sep()
+			out = append(out, map[tokenKind]byte{tokObjStart: '{', tokArrStart: '['}[k])
+			stack = append(stack, frame{})
+		case tokObjEnd, tokArrEnd:
+			out = append(out, map[tokenKind]byte{tokObjEnd: '}', tokArrEnd: ']'}[k])
+			stack = stack[:len(stack)-1]
+		case tokKey:
+			sep()
+			out = append(appendJSONString(out, d.buf), ':')
+			afterKey = true
+		case tokString:
+			sep()
+			out = appendJSONString(out, d.buf)
+		case tokNumber:
+			sep()
+			out = append(out, d.buf...)
+		case tokBool:
+			sep()
+			out = strconv.AppendBool(out, d.b)
+		case tokNull:
+			sep()
+			out = append(out, "null"...)
+		default:
+			return nil, protocolError()
+		}
+		if len(out) > max {
+			return nil, errCaptureTooLarge()
+		}
+		if len(stack) == 0 {
+			return out, nil
+		}
+		var err error
+		if k, err = d.Next(); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// appendJSONString appends s as a JSON string: '"' and '\' escaped, bytes below 0x20 as
+// \u00XX, everything else verbatim (s is valid UTF-8, as the decoder makes every string).
+func appendJSONString(dst, s []byte) []byte {
+	const hex = "0123456789abcdef"
+	dst = append(dst, '"')
+	for _, c := range s {
+		switch {
+		case c == '"' || c == '\\':
+			dst = append(dst, '\\', c)
+		case c < 0x20:
+			dst = append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xf])
+		default:
+			dst = append(dst, c)
+		}
+	}
+	return append(dst, '"')
 }
 
 // Bool is the current boolean token.
@@ -472,6 +585,21 @@ func toValidUTF8(b []byte) string {
 		b = b[n:]
 	}
 	return string(out)
+}
+
+// readTextBody reads a text/plain body of at most limit bytes (errTooLarge beyond), replaces
+// invalid UTF-8 and redacts it (#65 §4.5). It is here so updec.go stays the only code that reads
+// upstream body bytes.
+func readTextBody(r io.Reader, limit int64, red redactor) (string, error) {
+	b, err := io.ReadAll(&capReader{r: r, left: limit})
+	if err != nil {
+		return "", err
+	}
+	s := string(b)
+	if !utf8.Valid(b) {
+		s = toValidUTF8(b)
+	}
+	return red.redact(s), nil
 }
 
 // errTooLarge is returned by capReader past its limit.

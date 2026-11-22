@@ -129,3 +129,16 @@ func TestHex(t *testing.T) {
 		}
 	}
 }
+
+// unit:query-hash (#65 §3.1).
+func TestText(t *testing.T) {
+	if g := Text(""); g != 0x2d06800538d394c2 {
+		t.Errorf("Text(\"\") = %#x, want 0x2d06800538d394c2", g)
+	}
+	if Text("a") == Text("b") {
+		t.Error(`Text("a") == Text("b")`)
+	}
+	if Text("a") != xxh3.HashString("a") {
+		t.Error("Text is not xxh3_64 seed 0 of the bytes")
+	}
+}
