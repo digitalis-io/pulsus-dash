@@ -409,8 +409,10 @@ func TestLogqlErrorsItest(t *testing.T) {
 				t.Errorf("hang: the fake did not record the cancel: %v", err)
 			}
 			cancel()
+			// The fake's offset 57 is in the volume suffix: no position, the message unchanged, and
+			// the plan (ADR-0021 §3, plan #116 §4.2; #65 clamped it to the end of the text).
 			code, b = s.send(t, logVolume, logRangeBody(`{app="x"`, ""))
-			if e := errorOf(t, b); code != 400 || pos(e) != float64(8) || e["message"] != "unexpected '|' at byte 8: expected '}'" {
+			if e := errorOf(t, b); code != 400 || pos(e) != nil || e["message"] != "unexpected '|' at byte 57: expected '}'" || e["planned"] == nil {
 				t.Errorf("volume parse error: %d %s", code, b)
 			}
 
