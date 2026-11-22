@@ -367,6 +367,111 @@ describe('stub log queries (plan #65 Part B §4.4)', () => {
   });
 });
 
+describe('StubApi LogQL planning (plan #116 §3.9, A.3)', () => {
+  const L: LogsRequest = {
+    query: '{app="x"}',
+    fromMs: 1767225600000,
+    toMs: 1767229200000,
+    widthPx: 1200,
+  };
+  async function errorOf(p: Promise<unknown>): Promise<ApiError> {
+    try {
+      await p;
+    } catch (e) {
+      if (e instanceof ApiError) return e;
+      throw e;
+    }
+    throw new Error('the promise resolved');
+  }
+
+  it('S1: a page carries the plan of its substituted text', async () => {
+    const r = await new StubApi().queryLogs('demo', {
+      ...L,
+      query: '{app="$a"}',
+      vars: { a: 'x' },
+    });
+    expect(r.planned).toEqual({
+      query: '{app="x"}',
+      expanded: '{app="x"}',
+      bytes: 9,
+      stepMs: 5000,
+    });
+    expect(r.kind === 'streams' && r.frame.tsNs.length).toBe(30);
+  });
+
+  it('S2: the volume carries the template', async () => {
+    const v = await new StubApi().queryVolume('demo', L);
+    expect(v.planned.query).toBe(
+      'sum by (level, detected_level) (count_over_time({app="x"}\n| drop __error__ [5s]))',
+    );
+    expect(v.planned.bytes).toBe(81);
+    expect(v.series).toHaveLength(3);
+  });
+
+  it('S3, S4: a reserved selector is refused by Classify, then by the byte guard', async () => {
+    for (const query of ['{source="pulsus-dash"}', '{app="x"} | source="pulsus-dash"']) {
+      const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query }));
+      expect(e.kind, query).toBe('queryInvalid');
+      expect(e.detail.hint?.['reserved']).toBe('source="pulsus-dash"');
+      expect(e.detail.planned).toBeUndefined();
+    }
+  });
+
+  it('S5: a missing variable', async () => {
+    const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query: '{app="$b"}' }));
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/b', messageKey: 'variable.missing' }]);
+  });
+
+  it('S6: the volume template counts toward the 64 KiB limit', async () => {
+    const query = '{app="x"} # ' + 'a'.repeat(65_488);
+    const e = await errorOf(new StubApi().queryVolume('demo', { ...L, query }));
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65_572);
+    expect((await new StubApi().queryLogs('demo', { ...L, query })).planned.bytes).toBe(65_500);
+  });
+
+  it('S7: the processing cap carries no plan', async () => {
+    const e = await errorOf(
+      new StubApi().queryLogs('demo', {
+        ...L,
+        query: '$r'.repeat(600),
+        vars: { r: 'a'.repeat(4096) },
+      }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+  });
+
+  it('S8: values are written in UTF-8 bytes, not UTF-16 units', async () => {
+    for (const [value, query, bytes] of [
+      ['x\ny', '{app="x\\ny"}', 12],
+      ['x\u0001y', '{app="x\\x01y"}', 14],
+      ['ü€😀', '{app="ü€😀"}', 17],
+    ] as const) {
+      const r = await new StubApi().queryLogs('demo', {
+        ...L,
+        query: '{app="$a"}',
+        vars: { a: value },
+      });
+      expect(r.planned.query).toBe(query);
+      expect(r.planned.bytes).toBe(bytes);
+    }
+  });
+
+  it('S9: a value that cannot be written where it is referenced', async () => {
+    for (const [query, value] of [
+      ['{app=`$a`}', 'x`y'],
+      ['{app="x"} # $a', 'z\n{source="pulsus-dash"}'],
+    ] as const) {
+      const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query, vars: { a: value } }));
+      expect(e.kind, query).toBe('invalid');
+      expect(e.fields).toEqual([{ pointer: '/vars/a', messageKey: 'variable.unrepresentable' }]);
+    }
+  });
+});
+
 describe('StubApi planning (plan #112 A.7, A.11)', () => {
   const W = { fromMs: 0, toMs: 3_600_000, widthPx: 1000 };
   /** `prom.WarnTypesUnavailable`, the server's text (only StubApi may import the mirror). */

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-22 |
+| **Version** | 1.11-rc · 2026-11-22 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -418,12 +418,13 @@ pub struct Completeness {
 #### T06-028 — Language modules are isolated
 **MUST** — A package under `internal/pulsusdb/<lang>` MUST NOT import another language module, and
 `internal/pulsusdb` MUST NOT import any of them. Only the core may construct an HTTP request to
-PulsusDB. A module MUST send the request shapes recorded in its fixtures. Enforced by `depguard`.
-Test: `unit:pulsusdb-shapes` per module.
+PulsusDB. A module MUST send the request shapes recorded in its fixtures. Enforced by `depguard`
+(`logs-isolation`, `prom-isolation`, and `modules-from-callers`, which lets only the modules'
+callers import them: `internal/gateway` today, #116). Test: `unit:pulsusdb-shapes` per module.
 
 #### T06-029 — The server builds the final query
 **MUST** — This rule covers the language query paths ADR-0021 decides: the PromQL query routes
-and the evaluator's PromQL queries now, and the LogQL query routes once `logs.Plan` lands. On these
+and the evaluator's PromQL queries now, and the LogQL range and volume routes (#116). On these
 paths, every query sent to PulsusDB MUST be built by the server from the request's raw inputs. The
 language module's `Plan` produces the **planned text** (`planned.query`). The only change after it is
 the scope rewrite (T07-014), which produces the **final text** that is sent. No such route accepts a
@@ -433,9 +434,6 @@ the scope rewrite is the identity for an unrestricted principal and refuses a re
 (T07 §0), so the final text equals `planned.query`. Test: `itest:plan-authority` (a request whose
 `query` is already the planned text of another request still goes through `Plan`, and the query
 sent upstream equals that request's own `planned.query`).
-
-*Note (#65 Part B, 2026-11-22):* the `planned` member of a response is PromQL-only until `logs.Plan`
-lands (#116); the LogQL range and volume bodies carry none.
 
 ### 4.4 Caching tiers
 
@@ -797,8 +795,8 @@ token's data scope applies.
 | `POST /api/dash/v1/csp-report` | `application/reports+json` or `application/csp-report` | CSP violation reports ([T18](T18-security.md) T18-003): rate-limited, 64 KiB, read deadline, logged as allowlisted values only | `api/openapi.yaml` (hand-written handler) |
 | `POST /api/dash/v1/query/promql/range`, `…/instant` (`?tenant=`) | JSON request → JSON frames, the range body streamed series by series | Direct PromQL queries on the BFF's grid (M-UI1, #62): `PromRangeRequest` → `PromRangeResponse` (frames and completeness), `PromInstantRequest` → `PromInstantResponse`; `x-permission: query.read` | `api/openapi.yaml`; frames: [T04](T04-wire-format-and-data-plane.md) §0 |
 | `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}` (`?tenant=`) | JSON | Editor completion metadata for M-UI1 (#62): label names and values, series and metric metadata with completeness. `/suggest` stays T09's ranked, cached design | `api/openapi.yaml` |
-| `POST /api/dash/v1/query/logql/range` (`?tenant=`) | JSON request → JSON | LogQL queries (M-UI1, #65): `LogqlRangeRequest` (`limit` 1 to 5 000, `direction`, `cursor`) → `LogqlRangeResponse`, either a log page (`kind: streams`, the `log_lines/1` JSON image of [T04](T04-wire-format-and-data-plane.md) §4.3, written after the page's last upstream response, with an opaque unsigned cursor bound to the query hash, direction, `from` and `to`) or a LogQL metric result (`kind: series`, frames streamed series by series); `x-permission: query.read` | `api/openapi.yaml` |
-| `POST /api/dash/v1/query/logql/volume` (`?tenant=`) | JSON request → JSON frames | Log volume per level on the grid (#65): `LogqlVolumeRequest` → `RangeFrameResponse` (the range frame without `planned`, T06-029 note) with frames labelled exactly `{level}`, written after the whole upstream matrix was read (T06-011 case 3) | `api/openapi.yaml` |
+| `POST /api/dash/v1/query/logql/range` (`?tenant=`) | JSON request → JSON | LogQL queries (M-UI1, #65, #116): `LogqlRangeRequest` (the raw text and `vars`, planned by `logs.Plan`; `limit` 1 to 5 000, `direction`, `cursor`) → `LogqlRangeResponse`, either a log page (`kind: streams`, the `log_lines/1` JSON image of [T04](T04-wire-format-and-data-plane.md) §4.3, written after the page's last upstream response, with an opaque unsigned cursor bound to the hash of the planned text, direction, `from` and `to`) or a LogQL metric result (`kind: series`, frames streamed series by series); both carry `planned` (`LogqlPlannedQuery`) after `kind`; `x-permission: query.read` | `api/openapi.yaml` |
+| `POST /api/dash/v1/query/logql/volume` (`?tenant=`) | JSON request → JSON frames | Log volume per level on the grid (#65, #116): `LogqlVolumeRequest` (the raw text and `vars`; `logs.Plan` applies the volume template) → `LogqlVolumeResponse` (`planned` first, then the range frame) with frames labelled exactly `{level}`, written after the whole upstream matrix was read (T06-011 case 3) | `api/openapi.yaml` |
 | `GET /api/dash/v1/logs/{labels,label/{name}/values,series}` (`?tenant=`) | JSON | LogQL completion metadata (#65): stream label names and values and stream label sets, as the PromQL completion routes | `api/openapi.yaml` |
 | `GET /api/dash/v1/datasource/check` (`?tenant=`) | JSON | The binding's `runtimeinfo` check (T06-025): `{state, checked_at}`; never part of readiness (T06-026) | `api/openapi.yaml` (`DatasourceStatus`) |
 
@@ -989,3 +987,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.8-rc | 2026-11-21 | #112: §4.4 L1 metric-types row: failures held 5 s, a 2 s wait then a degraded plan with the `metric_types_unavailable` warning, fetched only when `NeedsTypes` |
 | 1.9-rc | 2026-11-22 | #65 Part A: T06-011 states the typed `LogQueryRange` (`*LogResult`: a `*LogPage` or a `ResultStream`) and `LogVolume` (`[]*Series` with its `Completeness`) returns, as in the §4.3 table of ADR-0018, and the bounds of the three buffered cases; the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |
 | 1.10-rc | 2026-11-22 | #65 Part B: §5.1 adds `POST /api/dash/v1/query/logql/{range,volume}` and `GET /api/dash/v1/logs/{labels,label/{name}/values,series}`; the log routes' time range ends at `maxLogTimeMs`; T06-029 note: `planned` is PromQL-only until `logs.Plan` (#116), so the LogQL bodies carry none |
+| 1.11-rc | 2026-11-22 | #116: T06-029 covers the LogQL range and volume routes (the #65 note is removed); §5.1 rows: the LogQL bodies carry `planned` (`LogqlPlannedQuery`) and the volume route answers `LogqlVolumeResponse`; T06-028 enforced by `depguard` (`logs-isolation`, `prom-isolation`, `modules-from-callers`) |

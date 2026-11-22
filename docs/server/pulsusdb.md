@@ -28,8 +28,8 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 | `GET /api/dash/v1/prom/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/prom/series` | as labels; at least one `match` | `PromSeriesResponse` | 10 s |
 | `GET /api/dash/v1/prom/metadata` | `tenant`, `metric` (optional), `limit` | `PromMetadataResponse` | 10 s |
-| `POST /api/dash/v1/query/logql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "limit"?, "direction"?, "cursor"?, "timeout_ms"?}` | `LogqlRangeResponse`: a log page (`kind: streams`) or frames streamed on the grid (`kind: series`) | `timeout_ms`, shared by every upstream request of the page |
-| `POST /api/dash/v1/query/logql/volume?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?}` | `RangeFrameResponse` (no `planned`), one frame per level | `timeout_ms` |
+| `POST /api/dash/v1/query/logql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "limit"?, "direction"?, "cursor"?, "timeout_ms"?, "vars"?}` (`query` is the raw text) | `LogqlRangeResponse`: a log page (`kind: streams`) or frames streamed on the grid (`kind: series`), `planned` after `kind` | `timeout_ms`, shared by every upstream request of the page |
+| `POST /api/dash/v1/query/logql/volume?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?, "vars"?}` | `LogqlVolumeResponse`, `planned` first, one frame per level | `timeout_ms` |
 | `GET /api/dash/v1/logs/labels` | `tenant`, `from`, `to`, `query` (optional, at most 65 536 bytes), `limit` | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/logs/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/logs/series` | `tenant`, `from`, `to`, `match` (repeatable, at least one), `limit` | `PromSeriesResponse` | 10 s |
@@ -51,12 +51,15 @@ written (the access log records 499).
 
 ## Query planning ([ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md))
 
-The two PromQL routes take the text the user wrote and plan it on the server: the browser never
-builds the query that is sent (T06-029). `prom.Plan` in `server/internal/pulsusdb/prom` (the PromQL
-language module, ADR-0018) is a pure function in two halves: `Prepare` checks the inputs,
-substitutes the variables and classifies the result; after the route resolves the step,
-`Prepared.Plan` applies the step macros, the rate rewrites and the size limit. The routes call it
-today; the alert evaluator will call the same function with a rule's stored step.
+The PromQL routes and the LogQL range and volume routes take the text the user wrote and plan it
+on the server: the browser never builds the query that is sent (T06-029). Each language has its
+module (ADR-0018): `prom.Plan` in `server/internal/pulsusdb/prom` and `logs.Plan` in
+`server/internal/pulsusdb/logs` ([LogQL planning](#logql-planning)). Each is a pure function in
+two halves: `Prepare` checks the inputs, substitutes the variables and classifies the result;
+after the route resolves the step, `Prepared.Plan` applies the step macros, the language's
+rewrites (PromQL's rate rewrites, LogQL's volume template) and the size limit. The routes call
+them today; the alert evaluator will call the same functions with a rule's stored step. The
+subsections below up to [Fixtures](#fixtures) describe the PromQL module.
 
 ### Inputs and limits
 
@@ -217,23 +220,13 @@ order with variable values; the issue that implements scene Bind owes the gate
 `unit:bind-classify-template` (a template binding `pulsus_anomaly_score{service="checkout",signal="latency"}`,
 6 h at 1 600 px: `virtual`, floor 300 000 ms, final step 300 000 ms, `Plan` called with it).
 
-**LogQL (follow-up "Move LogQL planning to the Go service", before #66 Part C).** Until `logs.Plan`
-lands, the LogQL routes keep #65's T07-020 byte guard (`pulsusdb.CheckReserved`) unchanged; #112
-changes no LogQL code. The contract of that issue: `logs.Prepare` substitutes, then classifies the
-stream selectors with a LogQL selector reader (not the PromQL parser) before the step is resolved,
-and only the equality matcher `source="pulsus-dash"` is reserved. `wire/fixtures/plan/logql.json`
-gets a `classify` group:
-
-| Case | Query (vars) | Source |
-|---|---|---|
-| L1 | `{source="pulsus-dash"}` | `virtual` |
-| L2 | `{source="pulsus-dash", kind="alert_transition"} \|= "x"` | `virtual` |
-| L3 | `{source=~"pulsus-dash"}` | `pulsus_db` (only the equality matcher is reserved, T07-020) |
-| L4 | `{source="$s"}` with `s=pulsus-dash` | `virtual` |
-| L5 | `sum(count_over_time({source="pulsus-dash"}[$__interval])) + sum(count_over_time({job="a"}[$__interval]))` | `mixed` |
-
-Its gates: `unit:logql-classify` (the group through Go and the TS mirror) and
-`itest:logql-virtual-refused` (400 `virtual_unsupported`, no upstream request).
+**LogQL.** `logs.Prepare` (#116) substitutes, then classifies the stream selectors with the
+in-house selector reader (not a parser) before the step is resolved; only the equality matcher
+`source="pulsus-dash"` is reserved, and the routes refuse a `virtual` or `mixed` query before any
+I/O, then run the T07-020 byte guard on the same text. LogQL reserved selectors have no step floor
+(T07 §4.3), so Resolve is the identity. The binding order is the same: variables are substituted
+before Classify, so `{source="$s"}` with `s=pulsus-dash` is `virtual`
+([LogQL planning](#classify-the-selector-reader)).
 
 ### Fixtures
 
@@ -258,6 +251,13 @@ with a note on the client page, not exempted.
 
 ### The parser boundary
 
+The language modules are isolated by depguard rules in `server/.golangci.yml` (T06-028,
+ADR-0018 §3, §4): `logs-isolation` and `prom-isolation` keep each module from importing the other,
+and `modules-from-callers` lets only their callers import them (`internal/gateway` today; a
+cross-signal caller joins that list in the issue that adds it, citing ADR-0018 §4). The self-test
+fixtures `prom_in_logs.go.txt`, `logs_in_prom.go.txt`, `logs_in_core.go.txt` and
+`prom_in_store.go.txt` prove the three rules fire (`server/scripts/check-depguard-fixture.sh`).
+
 The depguard rule `promql-parser` (`server/.golangci.yml`) allows
 `github.com/prometheus/prometheus` only in `internal/pulsusdb/prom`; the self-test fixture
 `promql_parser_outside_prom.go.txt` proves it fires. The module is pinned at `v0.316.0`, the release
@@ -265,6 +265,185 @@ of the client's `@prometheus-io/lezer-promql` grammar. The package holds one par
 zero options (experimental functions, fill modifiers and unquoted UTF-8 names off), and never sets
 a package global of the module. The package links the parser's storage dependencies; `make
 go-licenses` lists them in `build/THIRD_PARTY_NOTICES.txt`.
+
+There is no LogQL parser. The upstream LogQL parser package is licensed AGPL-3.0-only, which is
+off the `ci:go-licenses` allowlist; its module needs `replace` directives that a dependent module
+ignores, and pins a pre-release PromQL parser below `v0.316.0`. LogQL planning needs no parse
+(ADR-0021 §5): the selector reader below finds what Classify needs, and the byte guard backs it.
+
+## LogQL planning
+
+`logs.Plan` (`server/internal/pulsusdb/logs`, the LogQL module of ADR-0018) is pure and imports
+only the standard library. LogQL needs no metric types, so the whole plan runs before any I/O,
+tenant resolution included, and never logs or returns the query text or a value in an error.
+The fixture `wire/fixtures/plan/logql.json` holds its cases, run by `go test
+./internal/pulsusdb/logs` and by the client's mirror `client/src/api/stub/logsPlan.ts`
+([Explore](../client/explore.md#the-stubapi-planner-mirror)).
+
+### LogQL inputs and limits
+
+The inputs, limits and refusal messages are the PromQL ones ([inputs](#inputs-and-limits),
+[refusals](#refusals)), byte for byte, so the client maps both languages the same way: `query` 1 to
+131 072 UTF-8 bytes, at most 64 `vars`, values at most 4 096 bytes, the 2 MiB processing cap
+(counted in `Prepare` with the `1s` placeholder and again at the step), and 65 536 bytes for the
+planned text. The step is the grid step (`step_ms` of `planned`); there is no `rate` member (a
+`rate` in the body is 400 `/rate` `field.unknown`). Line limits are not a text rewrite: `limit`
+stays a request member, sent as the upstream `limit` parameter, as the reference LogQL clients send
+it.
+
+### Substitution by the LogQL lexical rules
+
+The raw bytes are scanned once, left to right, with a state:
+
+| State | Byte | Next |
+|---|---|---|
+| none | `"` / `` ` `` / `#` | in a `"…"` string / in a `` `…` `` string / in a comment |
+| `"…"` | `\` | skip it and the next byte |
+| `"…"` | `"` or LF | none |
+| `` `…` `` | `` ` `` | none |
+| comment | LF | none |
+
+A reference `$NAME` or `${NAME}` is recognised in every state, except where a backslash skipped
+its `$` inside `"…"`:
+
+| Reference | Becomes |
+|---|---|
+| `$__interval`, `$__rate_interval` | the step, and PromQL's rate window at the step (`max(4 × step, step + 15 s, 60 s)`, so one board means one window); `1s` in `Prepare` |
+| any other `$__…` (`$__auto`, `$__range`), or a name longer than 64 | itself, unchanged; PulsusDB refuses it with a mapped position |
+| a name in `vars`, inside `"…"` | the value, encoded by the table below |
+| a name in `vars`, inside `` `…` `` | the value verbatim; a backtick or CR in it is refused (row 7b) |
+| a name in `vars`, inside a comment | the value verbatim; an LF in it is refused (row 7b) |
+| a name in `vars`, outside strings and comments | the value verbatim: it is query text by intent (`$q` with `q={app="x"}`) |
+| a name not in `vars` | itself; the plan is refused with `variable.missing` |
+
+A comment is substituted (`{app="x"} # $a` needs `$a`), and values are not rescanned (`a=$__interval`
+is sent as typed). A value written into a `"…"` string is encoded so that it reads back as itself:
+
+| Byte or rune of the value | Written |
+|---|---|
+| `"` | `\"` |
+| `\` | `\\` |
+| 0x07, 0x08, 0x0C, 0x0A, 0x0D, 0x09, 0x0B | `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v` |
+| any other byte 0x00–0x1F, and 0x7F | `\x` and two lowercase hex digits (`\x01`, `\x7f`) |
+| any other ASCII byte | itself |
+| any non-ASCII rune | itself, its bytes unchanged |
+
+For a value of ASCII only this is Go's `strconv.Quote` without its quotes. The one recorded
+deviation: for a non-ASCII rune that `strconv.IsPrint` rejects (U+00A0, U+2028), `strconv.Quote`
+writes `\u…` and the planner writes the rune itself. Both forms unquote to the same value, and the
+client's mirror needs no Unicode tables to stay byte-identical. `FuzzEncodeDQ` checks that
+`strconv.Unquote` gives back every valid UTF-8 value.
+
+**Row 7b.** A value that cannot be written where it is referenced is refused before any I/O with
+400, one `/vars/<name>` `variable.unrepresentable` per name (distinct, first reference first), and
+the message `the value of variable $a cannot be written where it is referenced`: a backtick or a
+CR inside a `` `…` `` string (a backtick would end it, and a raw string drops its CRs), or an LF
+inside a comment (it would end it). Missing variables (row 7) are reported first.
+
+### Classify: the selector reader
+
+`logs.Classify` reads every stream selector `{…}` outside strings and comments, with the lexical
+units of the substitution: spaces are SP, HT, CR and LF; a comment runs to the LF; a `"…"` string
+ends at its closing quote, or before an LF or the end (unterminated); a `` `…` `` string ends at its
+backtick or the end. Inside a selector, spaces and comments are skipped between tokens:
+
+| Token | Bytes |
+|---|---|
+| NAME | `[A-Za-z_][A-Za-z0-9_]*`, or a string (a quoted label name), decoded |
+| OP | `=~`, `!~`, `!=`, `=` (longest first) |
+| STR | a string, decoded: `"…"` by Go's `strconv.Unquote` (an invalid escape or an unterminated string gives no value), `` `…` `` verbatim with every CR removed |
+| `}` | ends the selector; the end of the text also ends it |
+| other | one byte |
+
+| State | NAME | OP | STR | other |
+|---|---|---|---|---|
+| no name | a name | no name | a name (decoded) | no name |
+| a name | a new name | a name and an op | a name (decoded) | no name |
+| a name and an op | a new name | no name | a matcher, then no name | no name |
+
+A selector is reserved when one of its matchers has the name `source`, the op `=` and the value
+`pulsus-dash`, all decoded. The source is `pulsus_db` with no reserved selector, `virtual` when
+every selector is reserved, else `mixed`; the reported name is `source="pulsus-dash"`. Examples
+from the fixture's `classify` group:
+
+| Case | Text (vars) | Source |
+|---|---|---|
+| L1 | `{source="pulsus-dash"}` | `virtual` |
+| L2 | `{source="pulsus-dash", kind="alert_transition"} \|= "x"` | `virtual` |
+| L3 | `{source=~"pulsus-dash"}` | `pulsus_db` (only the equality matcher is reserved) |
+| L4 | `{source="$s"}` with `s=pulsus-dash` | `virtual` |
+| L5 | `sum(count_over_time({source="pulsus-dash"}[$__interval])) + sum(count_over_time({job="a"}[$__interval]))` | `mixed` |
+| L6 | `{ source = "pulsus-dash" }` | `virtual` (the byte guard alone misses it) |
+| L10 | `{app="x"} \| source="pulsus-dash"` | `pulsus_db`: a label filter is not a selector; the byte guard refuses it |
+| L12 | `# {source="pulsus-dash"}` LF `{app="x"}` | `pulsus_db`; the byte guard refuses it |
+| L20 | `{app="x" source="pulsus-dash"}` | `virtual`: after a missing comma the next name starts a new matcher (fail closed) |
+
+The routes run Classify, then the byte guard, on both texts: the substituted text right after
+`Prepare` (an early refusal without `planned`) and the planned text after `Plan`. The planned
+text's classification is the authoritative one, because a macro can change a decoded value:
+`{source="pulsus\x${__interval}dash"}` reads `pulsus\x1sdash` (an invalid escape) at the
+placeholder and `pulsus-dash` at a two-day step, so it is refused at the last check, with
+`planned`. The byte guard stays behind Classify as the T07-020 backstop: it still refuses the
+bytes `source="pulsus-dash"` inside a string, comment or label filter, and `ALERTS` as a word.
+
+### The volume template
+
+On the volume route `Plan` (`KindVolume`) wraps the substituted text in the fixed template of #65
+(T07-002, T07 §0), byte for byte:
+
+```text
+sum by (level, detected_level) (count_over_time(<expanded>
+| drop __error__ [<VolumeRange(step)>]))
+```
+
+`VolumeRange` is `<s>s` for a step of whole seconds (`[5s]`, `[60s]`, every grid step) and `<ms>ms`
+otherwise. The newline ends the text, so a trailing comment cannot swallow the suffix. The 65 536-
+byte limit counts the template (72 bytes at 5 s): a 65 500-byte text plans on the range route and
+is refused with 413 on the volume route.
+
+### What LogQL `planned` says
+
+Every LogQL body carries `planned` (`LogqlPlannedQuery`): after `kind` on the range bodies, first on
+the volume body (`LogqlVolumeResponse`); every error raised after planning carries it too.
+
+| Member | Meaning |
+|---|---|
+| `query`, `bytes` | the text sent (on the volume route, the template around `expanded`) and its length |
+| `expanded` | the substituted text |
+| `step_ms` | the step planned at: the grid step |
+
+`ErrorBody.planned` is the PromQL `PlannedQuery` or the LogQL `LogqlPlannedQuery`; the two closed
+schemas exclude each other.
+
+### LogQL positions
+
+PulsusDB's position is mapped back to the raw text by the [three rules](#positions). Both the
+volume prefix and the volume suffix are added text, so an offset inside either, the suffix's first
+byte (its LF) included, has no position, and neither has the end of the composed text. This
+replaces #65's clamp to the end of the text: for `{app="x"` on the volume route, offset 57 (in the
+suffix) and offset 47 (in the prefix) have no position and keep their message, and the client
+underlines the whole query; offset 50 is raw offset 2. When the offset maps, the first `at byte <N>`
+of the message is rewritten to the raw offset: `{app="$a"}` with `a=xyz` and `parse error at byte 8`
+(inside the value) gives position 6 and `parse error at byte 6`.
+
+### LogQL route order ([T06-029](../../designs/technical/T06-bff-architecture.md), T07-020)
+
+| Step | What | On failure |
+|---|---|---|
+| 1 | the body: required members and ranges; range: `limit`, `direction`, the `cursor` pattern | 400 |
+| 2 | the grid, whose end must not pass the supported time range | 400 |
+| 3 | `logs.Prepare` with the grid step | the refusals; 413 `processing_cap` without `planned` |
+| 4 | Classify, then the byte guard, on the substituted text | 400 `virtual_unsupported`, no `planned` |
+| 4b | Resolve (the identity) and `CheckCap` at the step | 413 `processing_cap` |
+| 5 | `Plan` | 413 `query.sent_too_large` with the full `planned` |
+| 6 | Classify, then the byte guard, on the planned text (the authoritative check) | 400 `virtual_unsupported` with `planned` |
+| 7 | range with a cursor: the cursor against `planned.query` | 400 `cursor.invalid` or `cursor.mismatch` with `planned` |
+| 8 | the route deadline; tenant resolution | as before, with `planned` |
+| 9 | the data scope (the full tenant, D12) | 403 `scope_denied` with `planned` |
+| 10 | send `planned.query` | the upstream errors, with `planned` and the mapped position |
+
+Steps 1 to 7 make no I/O and read no tenant. No step logs the raw text, the planned text or a
+variable value. The log completion routes are not planned and keep the byte guard alone.
 
 ## What the binding decides
 
@@ -522,8 +701,9 @@ included. The PromQL routes keep their own `to` bound (year 9999).
 ## Reserved selectors ([T07 §0](../../designs/technical/T07-scene-query-planner.md), T07-020 v1)
 
 Pulsus Dash will serve some series itself. Until it does, a text that names one is refused before
-any I/O, tenant resolution included (on the PromQL routes Classify and this guard run on the
-substituted text before the tenant is resolved, and the guard runs again on the planned text): `ALERTS_FOR_STATE`, `ALERTS` or `pulsus_anomaly_score` as a whole word (the bytes
+any I/O, tenant resolution included (on the PromQL routes and the LogQL range and volume routes,
+Classify and then this guard run on the substituted text before the tenant is resolved, and both
+run again on the planned text; the log completion routes have the guard alone): `ALERTS_FOR_STATE`, `ALERTS` or `pulsus_anomaly_score` as a whole word (the bytes
 around it are absent or not in `[A-Za-z0-9_:]`, so `ALERTS_total` and `my_ALERTS` pass), or the
 exact bytes `source="pulsus-dash"`. The guard screens the query of the range and instant routes,
 every `match` and the metadata `metric`, and logs `msg=reserved_selector field=<pointer>` at `info`
@@ -627,7 +807,7 @@ record (T06-006, T06-009).
 | Method | `route=` | PulsusDB request | Parameters | Retried | `timeout` |
 |---|---|---|---|---|---|
 | `LogQueryRange` | `logs_query_range` | `GET /api/logs/v1/query_range` (query string), 1 to 3 times per page | `query` (byte for byte, T07-002), `start`, `end`, `step` (`<n>ms`), `limit`, `direction` | yes, per request | yes |
-| `LogVolume` | `logs_volume` | `GET /api/logs/v1/query_range` | `query` (the composed text below), `start` = grid start, `end` = grid end, `step` | yes | yes |
+| `LogVolume` | `logs_volume` | `GET /api/logs/v1/query_range` | `query` (the planned volume text below, byte for byte), `start` = grid start, `end` = grid end, `step` | yes | yes |
 | `LogLabels` | `logs_labels` | `GET /api/logs/v1/labels` | `start`, `end`; `query` only when set | yes | no (10 s) |
 | `LogLabelValues` | `logs_label_values` | `GET /api/logs/v1/label/<name, path-escaped>/values` | as `LogLabels` | yes | no (10 s) |
 | `LogSeries` | `logs_series` | `GET /api/logs/v1/series` | `match[]` in order, `start`, `end` | yes | no (10 s) |
@@ -742,8 +922,9 @@ Any other value, `unknown` included, falls through to the next label, then to th
 ### Volume
 
 `/api/logs/v1/volume` answers bytes per label at one instant, so it cannot give counts per bucket.
-`LogVolume` composes a matrix query instead, with the user's text embedded byte for byte as the one
-operand of a fixed template (T07 §0):
+The volume is a matrix query instead: `logs.Plan` wraps the substituted text in a fixed template
+([the volume template](#the-volume-template), T07 §0), and `LogVolume` sends that planned text byte
+for byte:
 
 ```text
 sum by (level, detected_level) (count_over_time(<text>
@@ -759,9 +940,8 @@ levels without a point are omitted. `LogVolume` returns after the whole matrix w
 of the buffered cases of [T06-011](../../designs/technical/T06-bff-architecture.md), bounded by the
 range limits and holding at most 7 level series of the grid.
 
-An error position in the composed text is mapped back: an offset before the text is dropped, one
-inside or after it is clamped to the text, and the first `at byte <N>` of the message is rewritten
-to the mapped offset (`{app="x"` → upstream `at byte 57` → `at byte 8`).
+`LogVolume` returns PulsusDB's position as an offset into the text it sent; the gateway maps it to
+the raw text, with no position inside the template ([LogQL positions](#logql-positions)).
 
 ### Errors from PulsusDB on the log routes
 
@@ -777,10 +957,11 @@ The five log routes run Part A's calls (above) for the browser. Their wire names
 
 ### Range: log pages and metric results
 
-`POST /api/dash/v1/query/logql/range` takes `query`, `from` and `to` (ms since the epoch),
-`width_px`, and optionally `limit` (1 to 5 000, default 1 000), `direction` (`backward`, the
-default, or `forward`), `cursor` (from the previous page) and `timeout_ms`. The route deadline
-covers every upstream request of the page.
+`POST /api/dash/v1/query/logql/range` takes `query` (the raw text, 1 to 131 072 bytes), `from` and
+`to` (ms since the epoch), `width_px`, and optionally `vars`, `limit` (1 to 5 000, default 1 000),
+`direction` (`backward`, the default, or `forward`), `cursor` (from the previous page) and
+`timeout_ms`. The text is planned by `logs.Plan` ([LogQL planning](#logql-planning)) and
+`planned.query` is sent. The route deadline covers every upstream request of the page.
 
 A log query answers one **page** of the window `(from, to]`: at most `limit` entries, complete
 timestamp groups only ([paging](#paging)). The page is written in one go after its last upstream
@@ -788,12 +969,14 @@ response, because it is cut at whole timestamp groups across streams and is know
 whole upstream response is decoded (at most 5 000 entries):
 
 ```json
-{"kind":"streams","start":1767225600000,"end":1767229200000,"step":5000,"direction":"backward",
+{"kind":"streams","planned":{"query":"{app=\"x\"}","expanded":"{app=\"x\"}","bytes":9,"step_ms":5000},
+ "start":1767225600000,"end":1767229200000,"step":5000,"direction":"backward",
  "streams":[{"key":"258d6e4033fa2fdb","labels":{"app":"x","pod":"a"},
    "entries":[{"ts_ns":"1767229100000000500","line":"a5","level":"info","metadata":{"detected_level":"info"}}]},…],
  "cursor":"AQBybb…","completeness":{"truncated":false,"warnings":[],"infos":[],"query_id":"…","data_age_ms":200000}}
 ```
 
+- `planned` is what was planned and sent ([LogQL `planned`](#what-logql-planned-says)).
 - `start` and `end` are the request's `from` and `to` (the window), and `step` is the grid step.
 - `streams` are the page's streams by key ascending, each with its indexed stream labels; a
   stream's `entries` are in page order (ts in direction, then the group order). The page order
@@ -805,18 +988,18 @@ whole upstream response is decoded (at most 5 000 entries):
   comes from the newest delivered entry.
 
 A LogQL metric query (a `matrix` answer) is instead streamed series by series on the grid as on
-the PromQL range route, with `kind` first and no cursor:
-`{"kind":"series","start":…,"end":…,"step":…,"frames":[…],"completeness":…}`. The LogQL bodies
-carry no `planned`: it is PromQL-only until `logs.Plan` lands (T06-029, #116), and a LogQL error has
-none either. The metric query's upstream request
+the PromQL range route, with `kind` and `planned` first and no cursor:
+`{"kind":"series","planned":{…},"start":…,"end":…,"step":…,"frames":[…],"completeness":…}`. Every
+error raised after planning carries `planned` too. The metric query's upstream request
 is the first request of a page (on the grid, with `limit + 1` and the direction); only the
 `resultType` of the answer tells the two apart.
 
 ### Volume
 
-`POST /api/dash/v1/query/logql/volume` takes `query`, `from`, `to`, `width_px` and `timeout_ms`
-and answers the [PromQL range body](#json-frames-t04-0-adr-0014-5) with one frame per level that
-has lines, labelled exactly `{"level": <name>}`, in the order critical, error, warn, info, debug,
+`POST /api/dash/v1/query/logql/volume` takes `query`, `from`, `to`, `width_px`, `timeout_ms` and
+`vars`, plans the text with the volume template, and answers `LogqlVolumeResponse`: `planned` first,
+then the grid and frames of the [PromQL range body](#json-frames-t04-0-adr-0014-5), one frame per
+level that has lines, labelled exactly `{"level": <name>}`, in the order critical, error, warn, info, debug,
 trace, unknown ([volume](#volume)). It is written after `LogVolume` has read the whole upstream
 matrix, so a failure mid-matrix is a 504 or 502 envelope, never a partial aggregate.
 
@@ -840,9 +1023,12 @@ window wider than 5 years ([errors](#errors-from-pulsusdb-on-the-log-routes)).
 ### Cursor
 
 The cursor is opaque, unsigned and 48 characters long: unpadded base64url of 36 bytes, big-endian,
-version 1, the direction, xxh3-64 of the query text, the request's `from` and `to`, and the page
-cursor `(ts, skip)`. It binds the page to the query, direction, `from` and `to` of the request; the
-width is not bound, since it does not change which entries a page holds. It carries no tenant and
+version 1, the direction, xxh3-64 of the planned query text (`planned.query`), the request's `from`
+and `to`, and the page cursor `(ts, skip)`. It binds the page to the planned query, direction,
+`from` and `to` of the request: another `vars` value is another query (`cursor.mismatch`), while a
+text without variables plans to itself, so its cursor is unchanged. The width is not bound, since
+it does not change which entries a page holds (a step macro in the text can make another width
+another query). It carries no tenant and
 authorises nothing, so a forged cursor can only narrow the caller's own window inside its own
 tenant; it is not signed.
 
@@ -872,6 +1058,9 @@ The binding itself (URL, scope, database, credentials reference) lives in Postgr
 | planned PromQL query | 65 536 bytes | 413 `query.sent_too_large`, with `planned` |
 | substituted PromQL query | 2 MiB | 413 `query.too_large_to_plan` |
 | `vars` | 64 entries; values 4 096 bytes | 400 |
+| raw LogQL query (range and volume) | 131 072 bytes | 400 `field.range` |
+| planned LogQL query, the volume template included | 65 536 bytes | 413 `query.sent_too_large`, with `planned` |
+| substituted LogQL query | 2 MiB | 413 `query.too_large_to_plan` |
 | each `match`, `metric` | 65 536 bytes | 400 `field.range` |
 | steps per range | 11 000 | 400 `range.too_long` |
 | grid points per response | 5 000 000 | cut, `truncated` with a warning |
@@ -927,13 +1116,14 @@ properties the pager relies on ([testing against PulsusDB](../development/testin
 | `internal/pulsusdb/promql.go` | the seven methods and the completion decoders |
 | `internal/pulsusdb/stream.go` | `ResultStream`: range streaming, grid placement point by point (the sources' `seriesSink`), instant results, completeness |
 | `internal/pulsusdb/source.go`, `source_json.go` | the decoder seam: `Accept`, the `Content-Type` dispatch, and the JSON source (both member orders, native histograms skipped; logs mode with the capture, `logSource`) |
-| `internal/pulsusdb/logql.go` | the five LogQL methods, levels, `nsParam`, volume composition and position mapping |
+| `internal/pulsusdb/logql.go` | the five LogQL methods, levels, `nsParam`; `LogVolume` sends the planned volume text |
 | `internal/pulsusdb/logpage.go` | the decoded `logResponse`, `streamsResult`, `openLogs` and the pager |
 | `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rule, errors, retry budget and tenant slots |
 | `internal/pulsusdb/prom/plan.go`, `substitute.go`, `errors.go` | `Prepare`, `Plan`, Classify, the limits, the substitution and its segment map, `PlanError` |
 | `internal/pulsusdb/prom/shape.go`, `types.go` | `ShapeOf` over the upstream parser; metric kinds and `TypesCache` |
+| `internal/pulsusdb/logs/plan.go`, `substitute.go`, `selector.go`, `errors.go` | `logs.Prepare`, `Plan`, the limits, the volume template, `RewriteAtByte`; the LogQL substitution, `encodeDQ` and the segment map; the selector reader (`Classify`); `PlanError` |
 | `internal/gateway/query.go`, `plan.go`, `frames.go`, `prom.go`, `datasource.go`, `tenant.go` | the routes, planning on the routes (`planFor`, the `planned` member, error positions), the frame encoder, tenant resolution and the error mapping |
-| `internal/gateway/logql.go`, `logframes.go`, `cursor.go`, `logs.go` | the LogQL range and volume routes, the log page encoder, the cursor, the log completion routes |
+| `internal/gateway/logql.go`, `logplan.go`, `logframes.go`, `cursor.go`, `logs.go` | the LogQL range and volume routes, their planning (`logPlanFor`, the LogQL `planned` member, error positions), the log page encoder, the cursor, the log completion routes |
 | `internal/pulsusfake`, `cmd/pulsus-fake` | the PulsusDB stand-in ([testing against PulsusDB](../development/testing-pulsusdb.md)) |
 
 ## Designs
@@ -946,7 +1136,7 @@ and T06-029 in [T06](../../designs/technical/T06-bff-architecture.md); T04-001, 
 its JSON image, the §5.2 `log_volume` row, the §5.3 `truncated` row and the §7 cancel budget,
 T04-013); the log routes of T06 §5.1; T07-002, T07-020 (v1) and the §0 log volume row in
 [T07](../../designs/technical/T07-scene-query-planner.md), with T07-003 and the §4.1 Classify step
-(PromQL); T09-009 (server half, with LogQL's `at byte N`), T09-010 and T09-015 (server half) in
+(PromQL and LogQL); T09-009 (server half, with LogQL's `at byte N`), T09-010 and T09-015 (server half) in
 [T09](../../designs/technical/T09-query-editors.md); T05-006 in
 [T05](../../designs/technical/T05-testing-and-performance.md);
 [ADR-0006](../../designs/adr/0006-pulsusdb-and-postgres.md),

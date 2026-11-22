@@ -58,7 +58,7 @@ func TestLogCategorized(t *testing.T) {
 		}
 	}
 	uv := newUpstream(t, answer(200, body(typeFirst, "matrix", "[]")))
-	_, _, _ = c.LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(uv.URL)), VolumeQuery{Query: `{app="x"}`, Grid: a1Grid()})
+	_, _, _ = c.LogVolume(ctxWithin(t, 5*time.Second), rcFor(testBinding(uv.URL)), VolumeQuery{Query: volumeText(`{app="x"}`), Grid: a1Grid()})
 	ul := newUpstream(t, answer(200, `{"status":"success","data":[]}`))
 	_, _ = c.LogLabels(ctxWithin(t, 5*time.Second), rcFor(testBinding(ul.URL)), LogMatchQuery{})
 	for name, us := range map[string]*upstream{"volume": uv, "labels": ul} {

@@ -5,9 +5,9 @@
  */
 import type { components } from './gen/schema';
 import type { TimeWindow } from '../engine/api';
-import type { PlannedQuery } from '../data/decode';
+import type { LogqlPlannedQuery, PlannedQuery } from '../data/decode';
 
-export type { PlannedQuery };
+export type { LogqlPlannedQuery, PlannedQuery };
 
 export type Role = 'admin' | 'editor' | 'viewer';
 
@@ -39,7 +39,7 @@ export interface RangeRequest {
   rate?: boolean;
 }
 
-/** A LogQL range request (plan #65 Part B §3.5). */
+/** A LogQL range request (plan #65 Part B §3.5, plan #116 §3.8). */
 export interface LogsRequest {
   query: string;
   fromMs: number;
@@ -49,6 +49,8 @@ export interface LogsRequest {
   direction?: 'backward' | 'forward';
   cursor?: string;
   timeoutMs?: number;
+  /** Variable values; the server substitutes them (plan #116). */
+  vars?: Readonly<Record<string, string>>;
 }
 
 /** A log volume request. */
@@ -58,6 +60,7 @@ export interface VolumeRequest {
   toMs: number;
   widthPx: number;
   timeoutMs?: number;
+  vars?: Readonly<Record<string, string>>;
 }
 
 export interface InstantRequest {
@@ -187,8 +190,11 @@ export interface ApiErrorDetail {
   /** Byte offset into the raw query text (T09-009; the server maps it, ADR-0021 §3). */
   position?: number;
   hint?: Readonly<Record<string, unknown>>;
-  /** What the server planned, on every error raised after planning. */
-  planned?: PlannedQuery;
+  /**
+   * What the server planned, on every error raised after planning: the PromQL or the LogQL plan.
+   * Readers that serve both languages use only `query`, `expanded` and `bytes`.
+   */
+  planned?: PlannedQuery | LogqlPlannedQuery;
 }
 
 /** The optional parts of an `ApiError`. */

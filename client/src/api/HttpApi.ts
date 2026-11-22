@@ -13,6 +13,7 @@ import type { components, paths } from './gen/schema';
 import {
   DecodeError,
   decodeInstant,
+  decodeLogqlPlanned,
   decodeLogs,
   decodeMetadata,
   decodePlanned,
@@ -21,13 +22,14 @@ import {
   decodeValues,
   decodeVolume,
   type InstantResult,
+  type LogqlPlannedQuery,
   type LogsResult,
   type PlannedQuery,
   type PromMetadata,
   type PromSeriesSet,
   type PromValues,
-  type RangeFrame,
   type RangeResult,
+  type VolumeResult,
 } from '../data/decode';
 import {
   ApiError,
@@ -115,11 +117,17 @@ function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/** The decoder of an error body's `planned`: the PromQL or the LogQL plan (plan #116 §3.8). */
+type PlannedDecoder = (v: unknown, path: string) => PlannedQuery | LogqlPlannedQuery;
+
 /** The error body's `planned`, decoded; absent when missing or malformed (plan #112 §3.8). */
-function plannedOf(body: ErrorBody): PlannedQuery | undefined {
+function plannedOf(
+  body: ErrorBody,
+  decode: PlannedDecoder,
+): PlannedQuery | LogqlPlannedQuery | undefined {
   if (body.planned === undefined) return undefined;
   try {
-    return decodePlanned(body.planned, '/planned');
+    return decode(body.planned, '/planned');
   } catch (e) {
     if (e instanceof DecodeError) return undefined;
     throw e;
@@ -130,13 +138,18 @@ const TOO_LONG_KEYS = new Set(['query.sent_too_large', 'query.too_large_to_plan'
 
 /**
  * The `ApiError` of a failed query or check (plan #62 §4.5, plan #112 §3.8): every `detail` carries
- * the server's `planned` when the body has one (errors raised after planning).
+ * the server's `planned` when the body has one (errors raised after planning), decoded by `decode`
+ * (the LogQL routes pass `decodeLogqlPlanned`, plan #116 §3.8).
  */
-function queryError(status: number, error: unknown): ApiError {
+function queryError(
+  status: number,
+  error: unknown,
+  decode: PlannedDecoder = decodePlanned,
+): ApiError {
   const body: ErrorBody = (error as Partial<ErrorEnvelope> | undefined)?.error ?? {};
   const message = messageOf(error, status);
   const hint = isRecord(body.hint) ? body.hint : undefined;
-  const planned = plannedOf(body);
+  const planned = plannedOf(body, decode);
   const fields = body.fields ?? [];
   const queryId = typeof body.query_id === 'string' ? body.query_id : undefined;
   const detail = (extra: ApiErrorDetail = {}): ApiErrorDetail => ({
@@ -489,6 +502,7 @@ export class HttpApi implements Api {
       ...(req.direction === undefined ? {} : { direction: req.direction }),
       ...(req.cursor === undefined ? {} : { cursor: req.cursor }),
       ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
     } as LogsBody;
     const { data, error, response } = await send(() =>
       this.client.POST('/api/dash/v1/query/logql/range', {
@@ -497,18 +511,23 @@ export class HttpApi implements Api {
         ...(signal === undefined ? {} : { signal }),
       }),
     );
-    if (data === undefined) throw queryError(response.status, error);
+    if (data === undefined) throw queryError(response.status, error, decodeLogqlPlanned);
     return decoded(decodeLogs, data);
   }
 
   /** POST …/query/logql/volume. */
-  async queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
+  async queryVolume(
+    tenant: string,
+    req: VolumeRequest,
+    signal?: AbortSignal,
+  ): Promise<VolumeResult> {
     const body = {
       query: req.query,
       from: req.fromMs,
       to: req.toMs,
       width_px: req.widthPx,
       ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
     } as VolumeBody;
     const { data, error, response } = await send(() =>
       this.client.POST('/api/dash/v1/query/logql/volume', {
@@ -517,7 +536,7 @@ export class HttpApi implements Api {
         ...(signal === undefined ? {} : { signal }),
       }),
     );
-    if (data === undefined) throw queryError(response.status, error);
+    if (data === undefined) throw queryError(response.status, error, decodeLogqlPlanned);
     return decoded(decodeVolume, data);
   }
 

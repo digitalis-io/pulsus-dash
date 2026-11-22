@@ -179,6 +179,19 @@ and `step_ms` are in the body only when given. Both results carry `planned: Plan
 Every `detail` carries `planned` when the server sent one (every error raised after planning); a
 malformed `planned` is left out.
 
+The LogQL methods plan on the server too (plan #116, [LogQL
+planning](../server/pulsusdb.md#logql-planning)). `queryLogs(tenant, {query, fromMs, toMs,
+widthPx, limit?, direction?, cursor?, timeoutMs?, vars?})` and `queryVolume(tenant, {query, fromMs,
+toMs, widthPx, timeoutMs?, vars?})` send the raw text, with `vars` in the body only when given.
+Both kinds of `LogsResult` (`streams` and `series`) and the `VolumeResult` of `queryVolume` (a
+`RangeFrame` with `planned`) carry `planned: LogqlPlannedQuery` (`query`, `expanded`, `bytes`,
+`stepMs`), decoded by `decodeLogqlPlanned`; a body without it is a `DecodeError` at `/planned`.
+A LogQL error's `planned` is decoded by `decodeLogqlPlanned` (`queryError` takes the decoder), so
+`ApiErrorDetail.planned` is `PlannedQuery | LogqlPlannedQuery`; readers that serve both languages use
+only `query`, `expanded` and `bytes`. The mapping rows above apply unchanged: a 413 with
+`query.sent_too_large` or `query.too_large_to_plan` is `queryTooLong`, and `variable.missing`,
+`variable.unrepresentable` or another `/vars…` pointer is `invalid`.
+
 Four `Api` methods read the #62 `/prom/*` routes of the BFF ([PulsusDB client and the PromQL
 routes](../server/pulsusdb.md)); each takes the tenant, an unknown tenant is `ApiError('notFound')`
 and other errors map as for `queryRange`. Responses are decoded by `data/decode.ts` (T04-010).
@@ -217,9 +230,27 @@ HttpApi gives for the gateway's body.
 
 `src/api/stub/plan.test.ts` and `promShape.test.ts` run every case of the shared fixture
 `wire/fixtures/plan/promql.json` (the Go planner runs the same file) and require the server's
-results, shapes and function table exactly. The ESLint block `eslint/stub-plan-boundary.ts`
-(`@typescript-eslint/no-restricted-imports`) refuses an import of `stub/plan`, `stub/promShape` or
-`stub/promFunctions` outside `src/api/StubApi.ts` and `src/api/stub/`, with the message
+results, shapes and function table exactly.
+
+`src/api/stub/logsPlan.ts` mirrors `logs.Plan` the same way, on the UTF-8 bytes of the text:
+`prepareLogs` (the checks, the LogQL substitution with its encoding of values written into `"…"`
+strings and the `variable.unrepresentable` refusal, and the classification of the substituted
+text), `checkCap`, `plan` (the macros at the step, the volume template, the 64 KiB limit and the
+classification of the planned text), `classifyLogs` (the selector reader, decoding `"…"` values by
+Go's `strconv.Unquote` rules and dropping CRs from backtick values), `volumeRange`,
+`logsRateWindowMs` and `logsFormatDuration`. The stub's private `planLogs` is synchronous and
+follows the LogQL route order: `prepareLogs`; a `virtual` or `mixed` class is refused as
+`RESERVED_MATCHER`; the byte guard on the substituted text; `checkCap`; `plan`; then the class and
+the byte guard of the planned text, both refusing with `planned`. `queryLogs` and `queryVolume`
+plan at the `promGrid` step and return their synthetic page and frames with `planned`.
+`src/api/stub/logsPlan.test.ts` runs every case of `wire/fixtures/plan/logql.json` (the `classify`
+and `plan` groups and the tables, loaded by `logsPlanFixture.ts`) by the same outcome rules as the
+Go runner.
+
+The ESLint block `eslint/stub-plan-boundary.ts` (`@typescript-eslint/no-restricted-imports`, regex
+`(^|/)stub/(plan|promShape|promFunctions|logsPlan|logsPlanFixture)(\.ts)?$`) refuses an import of
+`stub/plan`, `stub/promShape`, `stub/promFunctions`, `stub/logsPlan` or `stub/logsPlanFixture`
+outside `src/api/StubApi.ts` and `src/api/stub/`, with the message
 `api/stub/plan is the StubApi planner mirror: only StubApi imports it (ADR-0021 §4).`; tests
 outside the directory use literal texts instead (`unit:stub-plan-boundary` checks the rule).
 
