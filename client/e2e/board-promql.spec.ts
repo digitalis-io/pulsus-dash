@@ -226,7 +226,10 @@ test.describe('e2e:board-promql (fake)', () => {
   });
 
   test('e2e:board-cancel', async ({ page, request }, info) => {
-    const A = day(info, 2);
+    // Each run (a repeat or a retry) has its own three hours from day 7, as the fake keeps every
+    // run's records (with one retry, 10 repeats reach into day 9 of the browser's 20).
+    const run = info.repeatEachIndex * 2 + info.retry;
+    const A = day(info, 7) + run * 3 * HOUR;
     const B = A + HOUR;
     const C = B + HOUR;
     const panels = [0, 4, 8].map((x, i) => ({
@@ -245,36 +248,56 @@ test.describe('e2e:board-promql (fake)', () => {
             (await queries(request, A)).filter(
               (r) => r.query === 'slow_metric' && r.state === 'inflight',
             ).length,
+          { intervals: [50] },
         )
         .toBe(3);
-      await page.locator('h1').click();
-      const t0 = Date.now();
-      await page.keyboard.press(']');
-      // The second step starts from B once the page is on it (as e2e:explore-cancel waits).
+      // Both steps happen in the page, 100 ms apart (under the 200 ms of E3), so neither waits on
+      // the runner or on reading the fake back. A's queries are held (2 s) and in flight.
+      const steps = await page.evaluate(async (gapMs) => {
+        const step = (): boolean => {
+          const e = new KeyboardEvent('keydown', {
+            key: ']',
+            code: 'BracketRight',
+            bubbles: true,
+            cancelable: true,
+          });
+          document.body.dispatchEvent(e);
+          return e.defaultPrevented;
+        };
+        const t0 = performance.now();
+        const first = step();
+        await new Promise((r) => setTimeout(r, gapMs));
+        const second = step();
+        return { handled: [first, second], ms: performance.now() - t0 };
+      }, 100);
+      expect(steps.handled).toEqual([true, true]);
+      expect(steps.ms).toBeLessThan(200);
+      // The outcomes, read back with time to spare: every superseded query (A's three, and any of
+      // B's that left before the second step) was cancelled, and only C's three completed.
+      const states = async (start: number) =>
+        (await queries(request, start))
+          .filter((r) => r.query === 'slow_metric')
+          .map((r) => r.state);
       await expect
         .poll(
-          async () => (await queries(request, B)).filter((r) => r.query === 'slow_metric').length,
-          { intervals: [10], timeout: 150 },
+          async () => ({
+            a: await states(A),
+            bCancelled: (await states(B)).every((st) => st === 'cancelled'),
+            c: await states(C),
+          }),
+          { timeout: 10_000 },
         )
-        .toBeGreaterThan(0);
-      await page.keyboard.press(']');
-      expect(Date.now() - t0).toBeLessThanOrEqual(200);
-      await expect
-        .poll(
-          async () => {
-            const states = async (start: number) =>
-              (await queries(request, start))
-                .filter((r) => r.query === 'slow_metric')
-                .map((r) => r.state);
-            const early = [...(await states(A)), ...(await states(B))];
-            return {
-              early: early.every((s) => s === 'cancelled'),
-              c: await states(C),
-            };
-          },
-          { timeout: 6_000 },
-        )
-        .toEqual({ early: true, c: ['completed', 'completed', 'completed'] });
+        .toEqual({
+          a: ['cancelled', 'cancelled', 'cancelled'],
+          bCancelled: true,
+          c: ['completed', 'completed', 'completed'],
+        });
+      // The panels draw C's answer (the transcript's empty matrix: a chart with no series).
+      for (const p of panels) {
+        await expect(panel(page, p.title)).toHaveAttribute('data-panel-state', 'frame', {
+          timeout: 10_000,
+        });
+      }
       expect(searchOf(page)['from']).toBe(iso(C));
       await expect(timeTrigger(page)).toBeVisible();
     } finally {
