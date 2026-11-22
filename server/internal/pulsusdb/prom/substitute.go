@@ -221,3 +221,12 @@ func contains(xs []string, s string) bool {
 	}
 	return false
 }
+
+// replacementRune is U+FFFD as UTF-8 (plan #118 §3.1).
+const replacementRune = "\xef\xbf\xbd"
+
+// quotedLen is len(encodeQuoted(v, q)). Stub (plan #118 §5: tests first).
+func quotedLen(v string, _ byte) int { return len(v) }
+
+// encodeQuoted is v written in a string opened by q. Stub (plan #118 §5: tests first).
+func encodeQuoted(v string, _ byte) string { return v }

@@ -34,8 +34,8 @@ const SET_OPS = new Set(['And', 'Or', 'Unless']);
 const PARAM_SCALAR = new Set(['topk', 'bottomk', 'quantile']);
 const EXPERIMENTAL_AGGREGATES = new Set(['limitk', 'limit_ratio']);
 
-/** The value of a string literal (double, single or backtick quoted). */
-function unquote(lit: string): string {
+/** The value of a string literal (double, single or backtick quoted). @internal exported for its table test. */
+export function unquote(lit: string): string {
   const q = lit[0];
   const body = lit.slice(1, -1);
   if (q === '`') return body;
