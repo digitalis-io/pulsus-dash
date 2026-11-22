@@ -60,22 +60,18 @@ import pages from '../pages.module.css';
 import styles from './Board.module.css';
 import { BoardConflict } from './BoardConflict';
 import { BoardFilterBar } from './BoardFilterBar';
-import { BoardGridView } from './BoardGridView';
 import { BoardGuard } from './BoardGuard';
+import { BoardModeContext } from './boardMode';
 import { BoardSection } from './BoardSection';
 import { BoardToolbar } from './BoardToolbar';
 import { focusAfterEditor, PanelEditor } from './PanelEditor';
 import { PanelFrame, type PanelFrameProps } from './PanelFrame';
 
-// The Edit-mode chunk: react-grid-layout loads only when a board is edited (ADR-0014 §8). It is
-// preloaded when the pointer or the focus reaches Edit board, so the grid seldom swaps under a
-// user who acts at once.
-const loadGridEditor = () => import('./BoardGridEditor');
-const BoardGridEditor = lazy(loadGridEditor);
-
-function preloadGridEditor(): void {
-  loadGridEditor().catch(() => undefined);
-}
+// The grid chunk (react-grid-layout, ADR-0014 §8): one grid serves View and Edit mode, so the
+// panels stay mounted across the modes (#111). It is a lazy chunk of its own, requested when the
+// board route mounts, alongside the board's own read.
+const loadGrid = () => import('./BoardGrid');
+const BoardGrid = lazy(loadGrid);
 
 const PANEL_POINTER = /^(?:\/sections\/(\d+))?\/panels\/(\d+)(?:\/|$)/;
 /** A section title's error shows under its field, not under the status line. */
@@ -121,6 +117,10 @@ export function BoardPage() {
   useEffect(() => {
     if (loadedUid !== null) prefs.recordView(tenant, loadedUid);
   }, [prefs, tenant, loadedUid]);
+  useEffect(() => {
+    // A failed load shows again through the grid's Suspense, which retries it.
+    loadGrid().catch(() => undefined);
+  }, []);
 
   if (board.isPending) {
     return (
@@ -445,7 +445,6 @@ function BoardEditor({
   const panelProps = (p: PanelSpec): PanelFrameProps => ({
     panel: p,
     tenant,
-    mode: s.mode,
     readOnly: busy,
     selected: edit && s.selected === p.id,
     onEdit,
@@ -455,33 +454,24 @@ function BoardEditor({
     ...(editRun?.id === p.id ? { runText: editRun.text } : {}),
   });
 
-  const viewGrid = (panels: readonly PanelSpec[]) => (
-    <BoardGridView
-      panels={panels}
-      renderPanel={(p, place, className) => (
-        <PanelFrame key={p.id} ref={place} className={className} {...panelProps(p)} />
-      )}
-    />
+  // One grid for both modes (#111): entering or leaving Edit mode changes its props, not the
+  // components, so no panel mounts again. Until the chunk arrives the grid is an empty container.
+  const grid = (panels: readonly PanelSpec[], ref: GridRef) => (
+    <Suspense fallback={<div className={cx(styles['grid'])} data-board-grid="" aria-busy="true" />}>
+      <BoardGrid
+        mode={s.mode}
+        panels={panels}
+        readOnly={busy}
+        onLayout={(items) => {
+          dispatch({ type: 'layout', grid: ref, items });
+        }}
+        onBlocked={(p) => {
+          dispatch({ type: 'announce', text: blockedText(p) });
+        }}
+        renderPanel={(p) => <PanelFrame {...panelProps(p)} />}
+      />
+    </Suspense>
   );
-
-  const grid = (panels: readonly PanelSpec[], ref: GridRef) =>
-    edit ? (
-      <Suspense fallback={viewGrid(panels)}>
-        <BoardGridEditor
-          panels={panels}
-          readOnly={busy}
-          onLayout={(items) => {
-            dispatch({ type: 'layout', grid: ref, items });
-          }}
-          onBlocked={(p) => {
-            dispatch({ type: 'announce', text: blockedText(p) });
-          }}
-          renderPanel={(p) => <PanelFrame {...panelProps(p)} />}
-        />
-      </Suspense>
-    ) : (
-      viewGrid(panels)
-    );
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
   const livePanels = useMemo(() => allPanels(s.draft).map((x) => x.panel.id), [s.draft]);
@@ -519,13 +509,12 @@ function BoardEditor({
           <BoardToolbar
             mode="view"
             onEdit={() => {
-              // In a transition, as the panel editor's opening (#111): the Edit grid replaces the
-              // View grid in slices.
+              // In a transition, as the panel editor's opening (#111): React renders the Edit
+              // chrome in slices.
               startTransition(() => {
                 dispatch({ type: 'enterEdit' });
               });
             }}
-            onPreloadEdit={preloadGridEditor}
           />
         )}
       </div>
@@ -669,7 +658,7 @@ function BoardEditor({
       timeReady={timeReady}
       livePanels={livePanels}
     >
-      {page}
+      <BoardModeContext.Provider value={s.mode}>{page}</BoardModeContext.Provider>
     </BoardRunProvider>
   );
 }

@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
   type ForwardedRef,
+  type ReactNode,
   type RefCallback,
 } from 'react';
 import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-components';
@@ -42,6 +43,7 @@ import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
 import { useTimeContext } from '../../state/useTimeContext';
 import styles from './Board.module.css';
+import { BoardModeContext } from './boardMode';
 import { PanelFullScreen } from './PanelFullScreen';
 import { PanelNotices } from './PanelNotices';
 
@@ -233,10 +235,44 @@ export function PanelPreview({
   );
 }
 
+/** The header; the drag handle in Edit mode (the board mode, not a prop: #111). */
+function PanelHeader({ children }: { children: ReactNode }) {
+  const mode = useContext(BoardModeContext);
+  return (
+    <div className={cx(styles['panelHeader'])} data-drag-handle={mode === 'edit' ? '' : undefined}>
+      {children}
+    </div>
+  );
+}
+
+/** Move or resize, in Edit mode only (the board mode, not a prop: #111). */
+function PanelLayoutTool({
+  title,
+  readOnly,
+  onKeyDown,
+}: {
+  title: string;
+  readOnly: boolean;
+  onKeyDown: NonNullable<ButtonProps['onKeyDown']>;
+}) {
+  const mode = useContext(BoardModeContext);
+  if (mode !== 'edit') return null;
+  return (
+    <Button
+      variant="ghost"
+      className={cx(styles['tool'])}
+      aria-label={t('panel.layout', { title })}
+      isDisabled={readOnly}
+      onKeyDown={onKeyDown}
+    >
+      <Icon name="move" />
+    </Button>
+  );
+}
+
 export interface PanelFrameProps {
   panel: PanelSpec;
   tenant: string;
-  mode: 'view' | 'edit';
   /** A save is in flight: the layout button, Duplicate and Remove are disabled. */
   readOnly: boolean;
   selected: boolean;
@@ -246,7 +282,7 @@ export interface PanelFrameProps {
   onKeyOp: (id: string, op: LayoutOp) => void;
   onDuplicate: (id: string) => void;
   onRemove: (id: string) => void;
-  /** Set by the View-mode grid: the panel is placed from these custom properties. */
+  /** Added to the root's class. */
   className?: string;
 }
 
@@ -256,215 +292,202 @@ function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
 }
 
 /**
- * Memoised (#111): a board state change that leaves a panel's props alone (opening the panel
- * editor, an edit to another panel) does not render it. The page passes stable callbacks, and the
- * draft keeps the objects of the panels an edit does not touch.
+ * Memoised (#111): a board state change that leaves a panel's props alone (entering Edit mode,
+ * opening the panel editor, an edit to another panel) does not render it. The page passes stable
+ * callbacks, the draft keeps the objects of the panels an edit does not touch, and the mode reaches
+ * only the Edit chrome, through `BoardModeContext`.
  */
 export const PanelFrame = memo(
   forwardRef<HTMLElement, PanelFrameProps>(function PanelFrame(
-  {
-    panel,
-    tenant,
-    mode,
-    readOnly,
-    selected,
-    runText,
-    onEdit,
-    onKeyOp,
-    onDuplicate,
-    onRemove,
-    className,
-  },
-  ref,
-) {
-  const headingId = useId();
-  const { search, dispatch } = useTimeContext();
-  const navigate = useNavigate();
-  const [full, setFull] = useState(false);
-  // The root element, for the board's viewport tracker.
-  const [el, setEl] = useState<HTMLElement | null>(null);
-  const visible = useInViewport(el);
-  const [bodyRef, widthPx] = useElementWidth<HTMLDivElement>();
-  const { widths } = useContext(BoardRunContext);
-  // The last known width stays in the store across a remount (the Edit grid), so the preview keeps
-  // sharing the panel's key while the new body is measured.
-  useEffect(() => {
-    if (widthPx !== null) widths.set(panel.id, widthPx);
-  }, [widths, panel.id, widthPx]);
-  const run = usePanelRun({
-    tenant,
-    panel,
-    text: runText ?? panel.query.text,
-    enabled: visible || full,
-    widthPx,
-  });
-  const title = panelTitle(panel);
-  const view = useMemo(() => panelView(run, panel.vis.kind, title), [run, panel.vis.kind, title]);
-  const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
-  const notices = noticesOf(run, view);
-  // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
-  const frameSize = useRef<FrameSize | null>(null);
-  const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
-  const g = panel.grid;
-  const explore = exploreHref(tenant, panel, search, run.expanded);
-  const onNarrow = useCallback(() => {
-    dispatch({ type: 'zoom', dir: 'in' });
-  }, [dispatch]);
+    {
+      panel,
+      tenant,
+      readOnly,
+      selected,
+      runText,
+      onEdit,
+      onKeyOp,
+      onDuplicate,
+      onRemove,
+      className,
+    },
+    ref,
+  ) {
+    const headingId = useId();
+    const { search, dispatch } = useTimeContext();
+    const navigate = useNavigate();
+    const [full, setFull] = useState(false);
+    // The root element, for the board's viewport tracker.
+    const [el, setEl] = useState<HTMLElement | null>(null);
+    const visible = useInViewport(el);
+    const [bodyRef, widthPx] = useElementWidth<HTMLDivElement>();
+    const { widths } = useContext(BoardRunContext);
+    // The last known width stays in the store across a remount (a refused drop resets the grid), so
+    // the preview keeps sharing the panel's key while the new body is measured.
+    useEffect(() => {
+      if (widthPx !== null) widths.set(panel.id, widthPx);
+    }, [widths, panel.id, widthPx]);
+    const run = usePanelRun({
+      tenant,
+      panel,
+      text: runText ?? panel.query.text,
+      enabled: visible || full,
+      widthPx,
+    });
+    const title = panelTitle(panel);
+    const view = useMemo(() => panelView(run, panel.vis.kind, title), [run, panel.vis.kind, title]);
+    const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
+    const notices = noticesOf(run, view);
+    // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
+    const frameSize = useRef<FrameSize | null>(null);
+    const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
+    const g = panel.grid;
+    const explore = exploreHref(tenant, panel, search, run.expanded);
+    const onNarrow = useCallback(() => {
+      dispatch({ type: 'zoom', dir: 'in' });
+    }, [dispatch]);
 
-  const rootRef = (node: HTMLElement | null): void => {
-    assignRef(ref, node);
-    if (node !== null) setEl(node);
-  };
+    const rootRef = (node: HTMLElement | null): void => {
+      assignRef(ref, node);
+      if (node !== null) setEl(node);
+    };
 
-  const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
-    const op = keyOp(e);
-    if (op === null) {
-      // Other keys (Tab, the board keys) carry on to their handlers.
-      e.continuePropagation();
-      return;
-    }
-    e.preventDefault();
-    onKeyOp(panel.id, op);
-  };
+    const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
+      const op = keyOp(e);
+      if (op === null) {
+        // Other keys (Tab, the board keys) carry on to their handlers.
+        e.continuePropagation();
+        return;
+      }
+      e.preventDefault();
+      onKeyOp(panel.id, op);
+    };
 
-  return (
-    <section
-      ref={rootRef}
-      className={cx(styles['panel'], className)}
-      aria-labelledby={headingId}
-      data-panel={panel.id}
-      data-grid={[g.x, g.y, g.w, g.h].join(',')}
-      data-vis={panel.vis.kind}
-      data-panel-state={stateOf(view)}
-      data-panel-vis={view.kind === 'frame' ? view.vis : undefined}
-      data-selected={selected ? '' : undefined}
-    >
-      <div
-        className={cx(styles['panelHeader'])}
-        data-drag-handle={mode === 'edit' ? '' : undefined}
+    return (
+      <section
+        ref={rootRef}
+        className={cx(styles['panel'], className)}
+        aria-labelledby={headingId}
+        data-panel={panel.id}
+        data-grid={[g.x, g.y, g.w, g.h].join(',')}
+        data-vis={panel.vis.kind}
+        data-panel-state={stateOf(view)}
+        data-panel-vis={view.kind === 'frame' ? view.vis : undefined}
+        data-selected={selected ? '' : undefined}
       >
-        <div className={cx(styles['titles'])}>
-          <h3
-            id={headingId}
-            className={cx(styles['title'], panel.title === '' ? styles['untitled'] : undefined)}
-            title={title}
-          >
-            {title}
-          </h3>
-          {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
-          {notices !== null && (
-            <PanelNotices title={title} completeness={notices} onNarrow={onNarrow} />
-          )}
-        </div>
-        <div className={cx(styles['tools'])}>
-          {explore === null ? (
-            <IconButton
-              icon="square-arrow-out-up-right"
-              aria-label={t('panel.explore', { title })}
-              isDisabled
-            />
-          ) : (
-            <Link
-              to={explore}
-              className={cx(styles['tool'])}
-              aria-label={t('panel.explore', { title })}
+        <PanelHeader>
+          <div className={cx(styles['titles'])}>
+            <h3
+              id={headingId}
+              className={cx(styles['title'], panel.title === '' ? styles['untitled'] : undefined)}
+              title={title}
             >
-              <Icon name="square-arrow-out-up-right" />
-            </Link>
-          )}
-          <IconButton
-            icon="maximize-2"
-            aria-label={t('panel.fullScreen', { title })}
-            onPress={() => {
-              setFull(true);
-            }}
-          />
-          <RouterProvider
-            navigate={(to) => {
-              void navigate(to);
-            }}
-            useHref={useHref}
-          >
-            <MenuTrigger>
+              {title}
+            </h3>
+            {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
+            {notices !== null && (
+              <PanelNotices title={title} completeness={notices} onNarrow={onNarrow} />
+            )}
+          </div>
+          <div className={cx(styles['tools'])}>
+            {explore === null ? (
               <IconButton
-                icon="ellipsis"
-                aria-label={t('panel.menu', { title })}
-                data-panel-menu=""
+                icon="square-arrow-out-up-right"
+                aria-label={t('panel.explore', { title })}
+                isDisabled
               />
-              <Popover placement="bottom end">
-                <Menu aria-label={t('panel.menu', { title })}>
-                  <MenuItem
-                    id="edit"
-                    onAction={() => {
-                      onEdit(panel.id);
-                    }}
-                  >
-                    {t('panel.editPanel')}
-                  </MenuItem>
-                  <MenuItem
-                    id="duplicate"
-                    isDisabled={readOnly}
-                    onAction={() => {
-                      onDuplicate(panel.id);
-                    }}
-                  >
-                    {t('panel.duplicate')}
-                  </MenuItem>
-                  <MenuItem
-                    id="remove"
-                    isDisabled={readOnly}
-                    onAction={() => {
-                      onRemove(panel.id);
-                    }}
-                  >
-                    {t('panel.remove')}
-                  </MenuItem>
-                  <MenuItem
-                    id="explore"
-                    {...(explore === null ? { isDisabled: true } : { href: explore })}
-                  >
-                    {t('panel.openExplore')}
-                  </MenuItem>
-                  <MenuItem
-                    id="copy"
-                    onAction={() => {
-                      // On the gesture (T08-021); a refused clipboard leaves nothing to undo.
-                      navigator.clipboard.writeText(panel.query.text).catch(() => undefined);
-                    }}
-                  >
-                    {t('panel.copyQuery')}
-                  </MenuItem>
-                </Menu>
-              </Popover>
-            </MenuTrigger>
-          </RouterProvider>
-          {mode === 'edit' && (
-            <Button
-              variant="ghost"
-              className={cx(styles['tool'])}
-              aria-label={t('panel.layout', { title })}
-              isDisabled={readOnly}
-              onKeyDown={onLayoutKey}
+            ) : (
+              <Link
+                to={explore}
+                className={cx(styles['tool'])}
+                aria-label={t('panel.explore', { title })}
+              >
+                <Icon name="square-arrow-out-up-right" />
+              </Link>
+            )}
+            <IconButton
+              icon="maximize-2"
+              aria-label={t('panel.fullScreen', { title })}
+              onPress={() => {
+                setFull(true);
+              }}
+            />
+            <RouterProvider
+              navigate={(to) => {
+                void navigate(to);
+              }}
+              useHref={useHref}
             >
-              <Icon name="move" />
-            </Button>
-          )}
+              <MenuTrigger>
+                <IconButton
+                  icon="ellipsis"
+                  aria-label={t('panel.menu', { title })}
+                  data-panel-menu=""
+                />
+                <Popover placement="bottom end">
+                  <Menu aria-label={t('panel.menu', { title })}>
+                    <MenuItem
+                      id="edit"
+                      onAction={() => {
+                        onEdit(panel.id);
+                      }}
+                    >
+                      {t('panel.editPanel')}
+                    </MenuItem>
+                    <MenuItem
+                      id="duplicate"
+                      isDisabled={readOnly}
+                      onAction={() => {
+                        onDuplicate(panel.id);
+                      }}
+                    >
+                      {t('panel.duplicate')}
+                    </MenuItem>
+                    <MenuItem
+                      id="remove"
+                      isDisabled={readOnly}
+                      onAction={() => {
+                        onRemove(panel.id);
+                      }}
+                    >
+                      {t('panel.remove')}
+                    </MenuItem>
+                    <MenuItem
+                      id="explore"
+                      {...(explore === null ? { isDisabled: true } : { href: explore })}
+                    >
+                      {t('panel.openExplore')}
+                    </MenuItem>
+                    <MenuItem
+                      id="copy"
+                      onAction={() => {
+                        // On the gesture (T08-021); a refused clipboard leaves nothing to undo.
+                        navigator.clipboard.writeText(panel.query.text).catch(() => undefined);
+                      }}
+                    >
+                      {t('panel.copyQuery')}
+                    </MenuItem>
+                  </Menu>
+                </Popover>
+              </MenuTrigger>
+            </RouterProvider>
+            <PanelLayoutTool title={title} readOnly={readOnly} onKeyDown={onLayoutKey} />
+          </div>
+        </PanelHeader>
+        <div ref={bodyRef} className={cx(styles['body'])} aria-busy={shimmer ? true : undefined}>
+          {shimmer && <div className={cx(styles['shimmer'])} data-shimmer="" aria-hidden="true" />}
+          <PanelBody title={title} view={view} sizeMemo={frameSize} onNarrow={onNarrow} />
         </div>
-      </div>
-      <div ref={bodyRef} className={cx(styles['body'])} aria-busy={shimmer ? true : undefined}>
-        {shimmer && <div className={cx(styles['shimmer'])} data-shimmer="" aria-hidden="true" />}
-        <PanelBody title={title} view={view} sizeMemo={frameSize} onNarrow={onNarrow} />
-      </div>
-      <PanelFullScreen
-        isOpen={full}
-        title={title}
-        view={view}
-        onNarrow={onNarrow}
-        onClose={() => {
-          setFull(false);
-        }}
-      />
-    </section>
-  );
-}),
+        <PanelFullScreen
+          isOpen={full}
+          title={title}
+          view={view}
+          onNarrow={onNarrow}
+          onClose={() => {
+            setFull(false);
+          }}
+        />
+      </section>
+    );
+  }),
 );

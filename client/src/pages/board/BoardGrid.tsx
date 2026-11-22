@@ -1,9 +1,13 @@
 /**
- * The Edit-mode grid (plan #61 Part B §4.3), loaded lazily: `react-grid-layout` with the View
- * grid's numbers (12 columns, 40 px rows, 16 px gaps, no padding), so panels do not move when the
- * mode changes. No compaction and no pushing: a drop onto another panel is refused and gaps stay,
- * as with the keyboard. A drop is reported only when the moved panel fits the server's limits and
- * overlaps nothing; otherwise the grid is reset to the draft and `onBlocked` announces it.
+ * The board grid (plan #61 Part B §4.3, #111), one component for View and Edit mode, loaded lazily
+ * with the board: `react-grid-layout` with 12 columns, 40 px rows, 16 px gaps and no padding. The
+ * mode changes props only, so every panel stays mounted when the board enters or leaves Edit mode:
+ * drag and resize are enabled, and the resize handle shown, in Edit mode only. View mode orders
+ * the panels `(y, x)` in the DOM; Edit mode keeps the draft's order, so a keyboard move does not
+ * move the focused panel in the DOM. No compaction and no pushing: a drop onto another panel is
+ * refused and gaps stay, as with the keyboard. A drop is reported only when the moved panel fits
+ * the server's limits and overlaps nothing; otherwise the grid is reset to the draft and
+ * `onBlocked` announces it.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
@@ -21,9 +25,15 @@ import { COLS, GAP, GRID_LIMITS, placeable, ROW } from '../../boards/layout';
 import { cx } from '../../kit/cx';
 import styles from './Board.module.css';
 
-export interface BoardGridEditorProps {
+/** `(y, x)` order. */
+export function readingOrder(panels: readonly PanelSpec[]): PanelSpec[] {
+  return [...panels].sort((a, b) => a.grid.y - b.grid.y || a.grid.x - b.grid.x);
+}
+
+export interface BoardGridProps {
+  mode: 'view' | 'edit';
   panels: readonly PanelSpec[];
-  /** A save is in flight: no drag and no resize. */
+  /** A save is in flight: no drag and no resize (Edit mode). */
   readOnly: boolean;
   /** The panels the pointer moved or resized (only those). */
   onLayout: (items: LayoutItem[]) => void;
@@ -41,6 +51,7 @@ const GRID_CONFIG = {
   maxRows: GRID_LIMITS.maxBottom,
 };
 const RESIZE_HANDLES = ['se'] as const;
+const NO_HANDLES = [] as const;
 
 /**
  * react-draggable adds a `<style id="react-draggable-style-el">` filled through `innerHTML` when a
@@ -51,23 +62,26 @@ const RESIZE_HANDLES = ['se'] as const;
  */
 const DRAGGABLE_STYLE_ID = 'react-draggable-style-el';
 
-function useDraggableStyleElement(): void {
+function useDraggableStyleElement(edit: boolean): void {
   useEffect(() => {
-    if (document.getElementById(DRAGGABLE_STYLE_ID) !== null) return;
+    if (!edit || document.getElementById(DRAGGABLE_STYLE_ID) !== null) return;
     const el = document.createElement('meta');
     el.id = DRAGGABLE_STYLE_ID;
     document.head.append(el);
-  }, []);
+  }, [edit]);
 }
 
-export function BoardGridEditor({
+export function BoardGrid({
+  mode,
   panels,
   readOnly,
   onLayout,
   onBlocked,
   renderPanel,
-}: BoardGridEditorProps) {
-  useDraggableStyleElement();
+}: BoardGridProps) {
+  const edit = mode === 'edit';
+  const live = edit && !readOnly;
+  useDraggableStyleElement(edit);
   const { width, containerRef, mounted } = useContainerWidth();
   // Bumped when a drop is refused: a fresh grid shows the draft again.
   const [revision, setRevision] = useState(0);
@@ -75,6 +89,7 @@ export function BoardGridEditor({
     () => panels.map((p) => ({ i: p.id, x: p.grid.x, y: p.grid.y, w: p.grid.w, h: p.grid.h })),
     [panels],
   );
+  const ordered = useMemo(() => (edit ? panels : readingOrder(panels)), [edit, panels]);
 
   const stop: EventCallback = (next, oldItem) => {
     if (oldItem === null) return;
@@ -93,25 +108,25 @@ export function BoardGridEditor({
   };
 
   return (
-    <div ref={containerRef} className={cx(styles['gridEditor'])} data-board-grid="">
+    <div ref={containerRef} className={cx(styles['grid'])} data-board-grid="">
       {mounted && (
         <GridLayout
           key={revision}
           width={width}
           gridConfig={GRID_CONFIG}
           dragConfig={{
-            enabled: !readOnly,
+            enabled: live,
             handle: '[data-drag-handle]',
             cancel: 'button, a, input, textarea, [role="menuitem"]',
             threshold: 3,
           }}
-          resizeConfig={{ enabled: !readOnly, handles: RESIZE_HANDLES }}
+          resizeConfig={{ enabled: live, handles: edit ? RESIZE_HANDLES : NO_HANDLES }}
           compactor={COMPACTOR}
           layout={layout}
           onDragStop={stop}
           onResizeStop={stop}
         >
-          {panels.map((p) => (
+          {ordered.map((p) => (
             <div key={p.id} className={cx(styles['item'])}>
               {renderPanel(p)}
             </div>
@@ -122,4 +137,4 @@ export function BoardGridEditor({
   );
 }
 
-export default BoardGridEditor;
+export default BoardGrid;
