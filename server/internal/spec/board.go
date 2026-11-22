@@ -1,6 +1,6 @@
-// Package spec is the board spec v1 (plan #61 §3.4): strict, presence-aware decoding, validation
-// with JSON-pointer field errors, the upcaster entry point (T11 §4.0), canonical JSON and the
-// RFC 6902 patch recorded in the audit trail (T11-006).
+// Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1): strict,
+// presence-aware decoding, validation with JSON-pointer field errors, the upcaster entry point
+// (T11 §4.0), canonical JSON and the RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
 
 import (
@@ -9,8 +9,9 @@ import (
 	"fmt"
 )
 
-// BoardSchemaVersion is the current board spec version, stored in board_versions.schema_version.
-const BoardSchemaVersion int64 = 1
+// BoardSchemaVersion is the current board spec version, stored in board_versions.schema_version:
+// 2 adds vis.thresholds and vis.legend (#64 Part B). Version 1 is a subset of 2.
+const BoardSchemaVersion int64 = 2
 
 // Board is a board spec. Panels are the ungrouped panels drawn above the sections.
 type Board struct {
@@ -65,13 +66,15 @@ type Vis struct {
 	Legend     *Legend     `json:"legend,omitempty"`
 }
 
-// Thresholds are a panel's absolute threshold steps; Direction is above or below.
+// Thresholds are a panel's absolute threshold steps (1 to 8, distinct values); Direction is above
+// (worse when the value is at or above a step) or below.
 type Thresholds struct {
 	Direction string          `json:"direction"`
 	Steps     []ThresholdStep `json:"steps"`
 }
 
-// ThresholdStep is one threshold: a value, a state (watch, degraded or failing) and a label.
+// ThresholdStep is one threshold: a value (0, or 1e-9 <= |value| <= 1e15), a state (watch,
+// degraded or failing) and a label of at most 200 runes ("" = the value as text).
 type ThresholdStep struct {
 	Value float64 `json:"value"`
 	State string  `json:"state"`
@@ -120,13 +123,20 @@ func ParseBoard(raw []byte) (Board, error) {
 }
 
 // DecodeBoard decodes a stored spec of schemaVersion into the current version (the upcaster, T11
-// §4.0). Version 1 is current and decodes unchanged; a newer version returns ErrSchemaTooNew and
-// a version below 1 ErrSchemaVersion.
+// §4.0): DecodeBoardUpTo with BoardSchemaVersion.
 func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
+	return DecodeBoardUpTo(raw, schemaVersion, BoardSchemaVersion)
+}
+
+// DecodeBoardUpTo decodes a stored spec of schemaVersion when schemaMax is the newest version the
+// caller reads. Versions 1 and 2 decode unchanged (v1 is a subset of v2: the identity upcast); a
+// version above schemaMax returns ErrSchemaTooNew and a version below 1 ErrSchemaVersion. With
+// schemaMax 1 it decodes as the previous release did (plan #64 Part B §4.7).
+func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {
 	switch {
 	case schemaVersion < 1:
 		return Board{}, fmt.Errorf("%w: %d", ErrSchemaVersion, schemaVersion)
-	case schemaVersion > BoardSchemaVersion:
+	case schemaVersion > schemaMax:
 		return Board{}, fmt.Errorf("%w: %d", ErrSchemaTooNew, schemaVersion)
 	}
 	b, err := ParseBoard(raw)
@@ -134,10 +144,4 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 		return Board{}, fmt.Errorf("spec: stored board: %w", err)
 	}
 	return b, nil
-}
-
-// DecodeBoardUpTo is DecodeBoard with schemaMax as the newest readable version (stub).
-func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {
-	_ = schemaMax
-	return DecodeBoard(raw, schemaVersion)
 }
