@@ -53,10 +53,12 @@ export async function boardLoops(s: Script): Promise<void> {
   };
   // A panel queries only while on screen (T07-012): scroll it in, so its Explore link can appear.
   const showPanel = async (title: string): Promise<void> => {
-    await page
+    const panelEl = page
       .locator('[data-panel]')
-      .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) })
-      .scrollIntoViewIfNeeded();
+      .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) });
+    await expect(async () => {
+      await panelEl.scrollIntoViewIfNeeded({ timeout: 1_000 });
+    }).toPass();
   };
   /** The panel titled `title`. */
   const panelNamed = (title: string) =>
@@ -66,7 +68,10 @@ export async function boardLoops(s: Script): Promise<void> {
   /** The panel has its answer (or its message), and a chart has drawn: its controls are all there. */
   const settledPanel = async (title: string): Promise<void> => {
     const p = panelNamed(title);
-    await p.scrollIntoViewIfNeeded();
+    // The Edit grid may still replace its fallback's panels: retry on a fresh element.
+    await expect(async () => {
+      await p.scrollIntoViewIfNeeded({ timeout: 1_000 });
+    }).toPass();
     await expect(p).not.toHaveAttribute('data-panel-state', 'loading');
     if ((await p.getAttribute('data-panel-state')) === 'frame') {
       await p.locator('[data-chart-frame][data-frame-ready="true"]').waitFor();
