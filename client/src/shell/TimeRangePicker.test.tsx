@@ -1,7 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { installResizeObserver } from '../test/fakeResizeObserver';
 import { createClock } from '../state/clock';
 import { locationOf, renderApp, T } from '../test/renderApp';
+
+// Explore › Metrics measures its chart host (plan #63 Part C).
+beforeEach(() => {
+  installResizeObserver();
+});
 
 const enc = (iso: string): string => encodeURIComponent(iso);
 

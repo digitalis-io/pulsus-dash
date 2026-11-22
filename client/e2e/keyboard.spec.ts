@@ -7,6 +7,7 @@
  */
 import { expect, test } from '@playwright/test';
 import { boardLoops } from './keyboardBoards.ts';
+import { exploreLoops } from './keyboardExplore.ts';
 import { keyboardHarness } from './keyboardCoverage.ts';
 import { script, TRIGGER, type Script } from './keyboardScript.ts';
 import { enc, GALLERY_FROM, GALLERY_TO, GALLERY_URL, ORIGIN, T, timeTrigger } from './helpers.ts';
@@ -54,7 +55,7 @@ declare global {
 }
 
 test.describe('e2e:a11y-rooms keyboard', () => {
-  test('every control and state by keyboard (L1–L31)', async ({ page }) => {
+  test('every control and state by keyboard (L1–L32)', async ({ page }) => {
     test.setTimeout(3_600_000);
     await page.addInitScript(() => {
       window.__copied = [];
@@ -581,6 +582,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
 
     // L23–L31 (plan #61 Parts B and C): the board list and the board page.
     await boardLoops(s);
+    await exploreLoops(s);
 
     await test.step('Coverage', () => {
       const uncovered = h.uncovered();

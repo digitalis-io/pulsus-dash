@@ -5,6 +5,7 @@ import { runScopeHandlers, type EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F, fakePromSource, type FakePromSource } from '../test/fakePromSource';
 import { destroyViews, key, viewIn, wait } from '../test/viewIn';
+import { EDITOR_PROBE_GLOBAL } from './probe';
 import { promqlHighlight } from './theme';
 import { insertAtSelection, setDocument, showDiagnostics } from './view';
 
@@ -179,5 +180,35 @@ describe('unit:editor-styles', () => {
       expect(rules).toContain(`var(--syn-${v})`);
     }
     expect(rules).not.toMatch(/#[0-9a-fA-F]/);
+  });
+});
+
+describe('unit:editor-probe', () => {
+  const g = globalThis as Record<string, unknown>;
+  afterEach(() => {
+    Reflect.deleteProperty(g, EDITOR_PROBE_GLOBAL);
+  });
+
+  it('times each update when the bench installs a probe before the view', () => {
+    const probe = vi.fn<(ms: number, docChanged: boolean) => void>();
+    g[EDITOR_PROBE_GLOBAL] = probe;
+    const { view } = viewIn({ doc: 'up', caret: 2 });
+    probe.mockClear(); // viewIn places the caret with its own dispatch
+    insertAtSelection(view, 'x');
+    expect(probe).toHaveBeenCalledTimes(1);
+    const [ms, changed] = probe.mock.calls[0] ?? [];
+    expect(ms).toBeGreaterThanOrEqual(0);
+    expect(changed).toBe(true);
+    view.dispatch({ selection: { anchor: 0 } });
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(probe.mock.calls[1]?.[1]).toBe(false);
+  });
+
+  it('is read once per view: a probe set later is never called', () => {
+    const { view } = viewIn({ doc: 'up', caret: 2 });
+    const probe = vi.fn();
+    g[EDITOR_PROBE_GLOBAL] = probe;
+    insertAtSelection(view, 'x');
+    expect(probe).not.toHaveBeenCalled();
   });
 });
