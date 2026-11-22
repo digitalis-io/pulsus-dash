@@ -5,6 +5,7 @@ import scalarRaw from '../../../wire/fixtures/json/promql-instant-scalar.json?ra
 import {
   DecodeError,
   decodeInstant,
+  decodeLogqlPlanned,
   decodeLogs,
   decodeMetadata,
   decodeRange,
@@ -183,10 +184,19 @@ interface WireStream {
   entries: WireEntry[];
 }
 
+/** H2's planned object (plan #116 A.3): the `planned` member of a mocked LogQL body. */
+const WIRE_LOG_PLANNED = {
+  query: '{app="x"}',
+  expanded: '{app="x"}',
+  bytes: 9,
+  step_ms: 5000,
+};
+
 /** A one-entry streams body to mutate. */
 function streamsBody(): Json {
   return {
     kind: 'streams',
+    planned: { ...WIRE_LOG_PLANNED },
     start: 1767225600000,
     end: 1767229200000,
     step: 5000,
@@ -332,7 +342,11 @@ describe('unit:decode-logs (plan #65 Part B §3.5, T04-010)', () => {
     expect(r.kind).toBe('series');
     const rest: Json = { ...metric };
     delete rest['kind'];
-    expect(r).toEqual({ kind: 'series', ...decodeRangeFrame(rest) });
+    expect(r).toEqual({
+      kind: 'series',
+      planned: decodeLogqlPlanned(metric['planned'], '/planned'),
+      ...decodeRangeFrame(rest),
+    });
     const v = decodeVolume(logGolden('logql-volume.json'));
     expect(v.series.map((s) => s.labels['level'])).toEqual([
       'error',
@@ -523,7 +537,7 @@ describe('decode planned (plan #112 §3.8)', () => {
   });
 });
 
-describe('planned is PromQL-only until logs.Plan (#116, T06-029 note)', () => {
+describe('LogQL planned (plan #116 §3.8, A.3 D1–D3)', () => {
   const frame = {
     key: keyHash({ level: 'error' }),
     labels: { level: 'error' },
@@ -533,16 +547,30 @@ describe('planned is PromQL-only until logs.Plan (#116, T06-029 note)', () => {
   const completeness = { truncated: false, warnings: [], infos: [] };
   const grid = { start: 0, end: 1000, step: 1000, frames: [frame], completeness };
 
-  it('decodes a LogQL series body without planned, and adds none', () => {
-    const r = decodeLogs({ kind: 'series', ...grid });
-    expect(r.kind).toBe('series');
-    expect('planned' in r).toBe(false);
+  it('D1: every LogQL golden decodes with its planned', () => {
+    const names = Object.keys(LOG_GOLDENS).filter((k) => /\/logql-[^/]*\.json$/.test(k));
+    expect(names.length).toBe(7);
+    for (const k of names) {
+      const name = k.slice(k.lastIndexOf('/') + 1);
+      const body = logGolden(name);
+      const r = name === 'logql-volume.json' ? decodeVolume(body) : decodeLogs(body);
+      expect(r.planned.stepMs, name).toBe(5000);
+      expect(r.planned.query, name).toBe((body['planned'] as Json)['query']);
+    }
   });
 
-  it('decodes a log volume body without planned, and adds none', () => {
-    const r = decodeVolume(grid);
-    expect(r.series).toHaveLength(1);
-    expect('planned' in r).toBe(false);
+  it('D2: a streams body without planned is refused at /planned', () => {
+    const b = logGolden('logql-streams-backward-1.json');
+    delete b['planned'];
+    expect(decodeErrorOf(() => decodeLogs(b)).path).toBe('/planned');
+    expect(decodeErrorOf(() => decodeLogs({ kind: 'series', ...grid })).path).toBe('/planned');
+  });
+
+  it('D3: a volume planned.step_ms that is not an integer is refused at its pointer', () => {
+    const b = logGolden('logql-volume.json');
+    (b['planned'] as Json)['step_ms'] = '1';
+    expect(decodeErrorOf(() => decodeVolume(b)).path).toBe('/planned/step_ms');
+    expect(decodeErrorOf(() => decodeVolume(grid)).path).toBe('/planned');
   });
 
   it('still requires planned on a PromQL range body', () => {

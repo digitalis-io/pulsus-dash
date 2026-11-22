@@ -58,6 +58,21 @@ test.describe('e2e:csp-violations', () => {
     await page.getByRole('listbox').waitFor();
     await page.keyboard.press('Escape');
     expect(await page.evaluate(() => window.__cspViolations), EXPLORE_RESULT).toEqual([]);
+
+    // The board panel editor with the PromQL editor, its popup and the picker (plan #64 A.3).
+    await open(page, '/t/demo/board/b-1');
+    await page.getByRole('button', { name: 'Panel menu: Request rate' }).click();
+    await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+    const d = page.getByRole('dialog', { name: 'Edit panel' });
+    await d.getByRole('textbox', { name: 'Query' }).click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+Space');
+    await page.locator('.cm-tooltip-autocomplete').waitFor();
+    await page.keyboard.press('Escape');
+    await d.getByRole('combobox', { name: 'Metric' }).focus();
+    await page.getByRole('listbox').waitFor();
+    await page.keyboard.press('Escape');
+    expect(await page.evaluate(() => window.__cspViolations), 'board panel editor').toEqual([]);
     expect(console).toEqual([]);
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
 

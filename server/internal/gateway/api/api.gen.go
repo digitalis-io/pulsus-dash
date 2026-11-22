@@ -548,10 +548,13 @@ type ErrorBody struct {
 	Fields  *[]FieldError           `json:"fields,omitempty"`
 	Hint    *map[string]interface{} `json:"hint,omitempty"`
 	Message string                  `json:"message"`
+	Planned *ErrorBody_Planned      `json:"planned,omitempty"`
+	QueryId *string                 `json:"query_id,omitempty"`
+}
 
-	// Planned What the server planned and sent (ADR-0021, T06-029).
-	Planned *PlannedQuery `json:"planned,omitempty"`
-	QueryId *string       `json:"query_id,omitempty"`
+// ErrorBody_Planned defines model for ErrorBody.Planned.
+type ErrorBody_Planned struct {
+	union json.RawMessage
 }
 
 // ErrorCode defines model for ErrorCode.
@@ -609,6 +612,14 @@ type LogStream struct {
 	Labels  map[string]string `json:"labels"`
 }
 
+// LogqlPlannedQuery What the server planned and sent for a LogQL query (ADR-0021, T06-029).
+type LogqlPlannedQuery struct {
+	Bytes    int    `json:"bytes"`
+	Expanded string `json:"expanded"`
+	Query    string `json:"query"`
+	StepMs   int64  `json:"step_ms"`
+}
+
 // LogqlRangeRequest defines model for LogqlRangeRequest.
 type LogqlRangeRequest struct {
 	Cursor    *string       `json:"cursor,omitempty"`
@@ -618,7 +629,10 @@ type LogqlRangeRequest struct {
 	Query     string        `json:"query"`
 	TimeoutMs *int          `json:"timeout_ms,omitempty"`
 	To        int64         `json:"to"`
-	WidthPx   int           `json:"width_px"`
+
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	Vars    *QueryVars `json:"vars,omitempty"`
+	WidthPx int        `json:"width_px"`
 }
 
 // LogqlRangeResponse defines model for LogqlRangeResponse.
@@ -632,8 +646,11 @@ type LogqlSeriesResponse struct {
 	End          int64                   `json:"end"`
 	Frames       []SeriesFrame           `json:"frames"`
 	Kind         LogqlSeriesResponseKind `json:"kind"`
-	Start        int64                   `json:"start"`
-	Step         int64                   `json:"step"`
+
+	// Planned What the server planned and sent for a LogQL query (ADR-0021, T06-029).
+	Planned LogqlPlannedQuery `json:"planned"`
+	Start   int64             `json:"start"`
+	Step    int64             `json:"step"`
 }
 
 // LogqlSeriesResponseKind defines model for LogqlSeriesResponse.Kind.
@@ -646,9 +663,12 @@ type LogqlStreamsResponse struct {
 	Direction    LogDirection             `json:"direction"`
 	End          int64                    `json:"end"`
 	Kind         LogqlStreamsResponseKind `json:"kind"`
-	Start        int64                    `json:"start"`
-	Step         int64                    `json:"step"`
-	Streams      []LogStream              `json:"streams"`
+
+	// Planned What the server planned and sent for a LogQL query (ADR-0021, T06-029).
+	Planned LogqlPlannedQuery `json:"planned"`
+	Start   int64             `json:"start"`
+	Step    int64             `json:"step"`
+	Streams []LogStream       `json:"streams"`
 }
 
 // LogqlStreamsResponseKind defines model for LogqlStreamsResponse.Kind.
@@ -660,7 +680,22 @@ type LogqlVolumeRequest struct {
 	Query     string `json:"query"`
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
 	To        int64  `json:"to"`
-	WidthPx   int    `json:"width_px"`
+
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	Vars    *QueryVars `json:"vars,omitempty"`
+	WidthPx int        `json:"width_px"`
+}
+
+// LogqlVolumeResponse defines model for LogqlVolumeResponse.
+type LogqlVolumeResponse struct {
+	Completeness Completeness  `json:"completeness"`
+	End          int64         `json:"end"`
+	Frames       []SeriesFrame `json:"frames"`
+
+	// Planned What the server planned and sent for a LogQL query (ADR-0021, T06-029).
+	Planned LogqlPlannedQuery `json:"planned"`
+	Start   int64             `json:"start"`
+	Step    int64             `json:"step"`
 }
 
 // MetricMetadata defines model for MetricMetadata.
@@ -793,15 +828,6 @@ type QueryLang string
 
 // QueryVars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
 type QueryVars map[string]string
-
-// RangeFrameResponse defines model for RangeFrameResponse.
-type RangeFrameResponse struct {
-	Completeness Completeness  `json:"completeness"`
-	End          int64         `json:"end"`
-	Frames       []SeriesFrame `json:"frames"`
-	Start        int64         `json:"start"`
-	Step         int64         `json:"step"`
-}
 
 // Ready defines model for Ready.
 type Ready struct {
@@ -1031,6 +1057,68 @@ type CreateBoardJSONRequestBody = BoardCreate
 
 // UpdateBoardJSONRequestBody defines body for UpdateBoard for application/json ContentType.
 type UpdateBoardJSONRequestBody = BoardUpdate
+
+// AsPlannedQuery returns the union data inside the ErrorBody_Planned as a PlannedQuery
+func (t ErrorBody_Planned) AsPlannedQuery() (PlannedQuery, error) {
+	var body PlannedQuery
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPlannedQuery overwrites any union data inside the ErrorBody_Planned as the provided PlannedQuery
+func (t *ErrorBody_Planned) FromPlannedQuery(v PlannedQuery) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePlannedQuery performs a merge with any union data inside the ErrorBody_Planned, using the provided PlannedQuery
+func (t *ErrorBody_Planned) MergePlannedQuery(v PlannedQuery) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsLogqlPlannedQuery returns the union data inside the ErrorBody_Planned as a LogqlPlannedQuery
+func (t ErrorBody_Planned) AsLogqlPlannedQuery() (LogqlPlannedQuery, error) {
+	var body LogqlPlannedQuery
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLogqlPlannedQuery overwrites any union data inside the ErrorBody_Planned as the provided LogqlPlannedQuery
+func (t *ErrorBody_Planned) FromLogqlPlannedQuery(v LogqlPlannedQuery) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLogqlPlannedQuery performs a merge with any union data inside the ErrorBody_Planned, using the provided LogqlPlannedQuery
+func (t *ErrorBody_Planned) MergeLogqlPlannedQuery(v LogqlPlannedQuery) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ErrorBody_Planned) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ErrorBody_Planned) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsLogqlStreamsResponse returns the union data inside the LogqlRangeResponse as a LogqlStreamsResponse
 func (t LogqlRangeResponse) AsLogqlStreamsResponse() (LogqlStreamsResponse, error) {

@@ -10,16 +10,19 @@ import (
 // The JSON image of a log page (plan #65 Part B §3.4; T04 §4.3 log_lines/1, ADR-0014 §5). Key order
 // is fixed, with no whitespace and the string encoding of frames.go:
 //
-//	{"kind":"streams","start":…,"end":…,"step":…,"direction":…,"streams":[…],"cursor":…,"completeness":…}
+//	{"kind":"streams","planned":{…},"start":…,"end":…,"step":…,"direction":…,"streams":[…],"cursor":…,"completeness":…}
 //
+// planned is the encoded LogqlPlannedQuery of the request (appendLogPlanned, plan #116 §3.4).
 // start and end are the request's from and to (the window (start, end] in ms) and step is the grid
 // step. Streams keep LogPage.Streams order (key ascending); each stream's entries keep page order.
 // A stream is {"key":…,"labels":…,"entries":[…]}; an entry is {"ts_ns":…,"line":…,"level":…}, then
 // "metadata" and "parsed" when the entry has any. cursor is omitted when there is no further entry.
 
 // appendLogPage appends the streams body of p. dataAgeMs < 0 omits data_age_ms.
-func appendLogPage(b []byte, p *pulsusdb.LogPage, fromMs, toMs, stepMs int64, dir pulsusdb.Direction, cursor string, dataAgeMs int64) []byte {
-	b = append(b, `{"kind":"streams","start":`...)
+func appendLogPage(b []byte, p *pulsusdb.LogPage, planned []byte, fromMs, toMs, stepMs int64, dir pulsusdb.Direction, cursor string, dataAgeMs int64) []byte {
+	b = append(b, `{"kind":"streams","planned":`...)
+	b = append(b, planned...)
+	b = append(b, `,"start":`...)
 	b = strconv.AppendInt(b, fromMs, 10)
 	b = append(b, `,"end":`...)
 	b = strconv.AppendInt(b, toMs, 10)

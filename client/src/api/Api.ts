@@ -4,8 +4,8 @@ import type {
   PromMetadata,
   PromSeriesSet,
   PromValues,
-  RangeFrame,
   RangeResult,
+  VolumeResult,
 } from '../data/decode';
 import type {
   Board,
@@ -15,20 +15,17 @@ import type {
   DataSourceStatus,
   InstantRequest,
   LogsRequest,
-  PanelData,
-  PanelSpec,
   PromMatchRequest,
   RangeRequest,
   SaveResult,
   Session,
-  TimeWindow,
   VolumeRequest,
 } from './types';
 
 /**
  * The API seam. Boards belong to the organisation: `tenant` is checked against the session's
- * tenants (unknown → `ApiError('notFound')`) and otherwise only selects the data source of
- * `panelData`.
+ * tenants (unknown → `ApiError('notFound')`) and otherwise only selects the data source of the
+ * queries.
  */
 export interface Api {
   getSession(signal?: AbortSignal): Promise<Session>;
@@ -41,13 +38,6 @@ export interface Api {
   saveBoard(tenant: string, uid: string, etag: string, spec: BoardSpec): Promise<SaveResult>;
   /** `notFound`, or `BoardConflictError` when `etag` is not the head's. */
   deleteBoard(tenant: string, uid: string, etag: string): Promise<void>;
-  /** What one panel shows over `window`. */
-  panelData(
-    tenant: string,
-    panel: PanelSpec,
-    window: TimeWindow,
-    signal?: AbortSignal,
-  ): Promise<PanelData>;
   /** Starred boards of the principal, in the server's order (title, then uid). */
   listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]>;
   /** Star: unknown or deleted board → `notFound`. Unstar: idempotent, never `notFound`. */
@@ -67,7 +57,7 @@ export interface Api {
   /** One page of a LogQL log query, or the frames of a LogQL metric query (plan #65 Part B §4.4). */
   queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult>;
   /** Log volume by level on the BFF's grid. */
-  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame>;
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<VolumeResult>;
   /** The data-source check of the tenant's binding (T06-025). */
   checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus>;
   /** Label names (`GET /prom/labels`). Unknown tenant → `ApiError('notFound')`; errors as `queryRange`. */

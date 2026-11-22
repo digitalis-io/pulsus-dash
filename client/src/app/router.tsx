@@ -23,6 +23,9 @@ import { normalisedExploreSearch } from '../state/exploreParams';
 import { RouteErrorPage } from './RouteErrorPage';
 import { routeModules } from './routeModules';
 
+/** A board page: its first open sets the time (plan #64 §4.6). */
+const BOARD_PATH = /^\/t\/[^/]+\/board\/[^/]+$/;
+
 export interface RouterDeps {
   api: Api;
   queryClient: QueryClient;
@@ -82,6 +85,10 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
               throw data(null, { status: 404 });
             }
             const url = new URL(request.url);
+            // A board link without a time is left to the board, which opens on its saved time
+            // (plan #64 §4.6, A.8): normalising here would set the default window first.
+            const p = url.searchParams;
+            if (BOARD_PATH.test(url.pathname) && !p.has('from') && !p.has('to')) return null;
             const n = normalisedSearch(url.search, env());
             if (n !== null) throw replace(url.pathname + n);
             return null;

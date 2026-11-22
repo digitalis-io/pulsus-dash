@@ -3,7 +3,8 @@
  * `vi.mock('../../editor/editor', () => import('../../test/fakeEditor'))`. `PromQLEditor` is a
  * `<textarea>` controlled from `value` the way the real host is: a changed `value` that differs
  * from the text replaces it and is reported through `onChange`, as the real view's update listener
- * does. Shift+Enter, Ctrl+Enter and Meta+Enter run, Escape leaves. The latest `diagnostics` are
+ * does. Shift+Enter, Ctrl+Enter and Meta+Enter run, Escape leaves (and goes no further, as a key the
+ * real view handles). The latest `diagnostics` are
  * written to `data-diagnostics` as JSON. `createPromSource` returns a `fakePromSource` of
  * `fakeEditorSource.data` (default `F`); `promql` is the real language module.
  */
@@ -62,6 +63,9 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
       e.preventDefault();
       latest.current.onRun();
     } else if (e.key === 'Escape') {
+      // Handled, as the real view's keymap does: it goes no further (plan #64, T09-004).
+      e.preventDefault();
+      e.stopPropagation();
       latest.current.onEscape();
     }
   };
@@ -73,6 +77,7 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
         aria-label={p.label}
         placeholder={p.placeholder}
         defaultValue={p.value}
+        readOnly={p.readOnly === true}
         data-diagnostics={JSON.stringify(p.diagnostics)}
         onChange={(e) => {
           latest.current.onChange(e.target.value);

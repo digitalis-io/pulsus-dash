@@ -74,7 +74,7 @@ func (q *dataRoutes) planFor(ctx context.Context, tenant string, in promplan.Inp
 	// The authoritative guard: the planned text is what is sent (rewrites add no reserved name).
 	if v := pulsusdb.CheckReserved("query", planned.Query); v != nil {
 		f := q.failure(ctx, v)
-		f.body.Planned = toAPIPlanned(planned.Wire())
+		f.body.Planned = promErrorPlanned(planned.Wire())
 		return nil, f
 	}
 	return &plannedReq{tc: tc, rc: rc, planned: planned, typesWarning: warn}, nil
@@ -92,7 +92,7 @@ func planError(e *promplan.PlanError) *reqError {
 	switch e.Kind {
 	case promplan.ErrSentTooLarge:
 		if e.Planned != nil {
-			body.Planned = toAPIPlanned(e.Planned.Wire())
+			body.Planned = promErrorPlanned(e.Planned.Wire())
 		}
 	case promplan.ErrProcessingCap:
 		body.Hint = hint("reason", "processing_cap")
@@ -157,7 +157,7 @@ func (q *dataRoutes) failurePlanned(ctx context.Context, err error, p promplan.P
 	}
 	f := q.failure(ctx, err)
 	if f != errCancelled {
-		f.body.Planned = toAPIPlanned(p.Wire())
+		f.body.Planned = promErrorPlanned(p.Wire())
 	}
 	return f
 }

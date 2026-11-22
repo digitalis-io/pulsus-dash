@@ -4,20 +4,14 @@
  * longer than 64 characters are not variables; `$1` and a trailing `$` never match.
  */
 import type { BoardSpec } from '../api/types';
+import { referencedVariables } from './variableRefs';
 
-export const VARIABLE_REF = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
-export const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+export { VARIABLE_NAME, VARIABLE_REF } from './variableRefs';
 
 /** Distinct variable names in first-reference order: top panels, then each section's panels. */
 export function boardVariables(spec: BoardSpec): string[] {
   const seen = new Set<string>();
   const panels = [...spec.panels, ...spec.sections.flatMap((s) => s.panels)];
-  for (const p of panels) {
-    for (const m of p.query.text.matchAll(VARIABLE_REF)) {
-      const name = m[1] ?? m[2];
-      if (name === undefined || name.startsWith('__') || !VARIABLE_NAME.test(name)) continue;
-      seen.add(name);
-    }
-  }
+  for (const p of panels) for (const name of referencedVariables(p.query.text)) seen.add(name);
   return [...seen];
 }

@@ -11,7 +11,7 @@ export const CHART_SCENARIO_N = 14;
 
 export type Step = (label: string, count: number, act: () => Promise<void>) => Promise<void>;
 
-/** On `/t/demo/board/b-1` in View mode with its three chart frames ready; gestures on `Request rate`. */
+/** On `/t/demo/board/b-1` in View mode with its on-screen chart frames ready; gestures on `Request rate`. */
 export async function chartGestureScenario(page: Page, step: Step): Promise<void> {
   const f = page.locator('[data-chart-frame]', {
     has: page.getByRole('slider', { name: 'Crosshair: Request rate', exact: true }),

@@ -41,7 +41,8 @@ async function traced(
   page.on('pageerror', (e) => pageErrors.push(e.message));
   await page.goto('/t/demo/board/b-1');
   await page.locator('html[data-shell-ready="true"]').waitFor();
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(3);
+  // Request rate and Error ratio: Request latency, below the fold, does not query (T07-012).
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
   await browser.startTracing(page, { categories: CATEGORIES });
   await scenario(page, async (label, _count, act) => {
     await page.evaluate((l) => {

@@ -8,6 +8,9 @@
  * after. In the `f1` callback it also observes the root element with a new `ResizeObserver`, whose
  * first callback runs in the same frame after its animation callbacks and layout, before its
  * paint: snapshot `p1` is what frame 1 paints.
+ *
+ * Plan #64 (A.5): the Query field is the PromQL editor; a query runs on Shift+Enter, a vis change
+ * makes no request, and the stub's `stub:query` marks (`{ kind, query }`) count the requests.
  */
 import { expect, test, type Page } from '@playwright/test';
 
@@ -36,7 +39,7 @@ interface Armed {
 
 interface Probe {
   draws: { kind: string; frame: string | null; t: number }[];
-  marks: { id: string; lang: string; text: string; vis: string; t: number }[];
+  marks: { kind: string; query: string; t: number }[];
   snap: () => Snap;
   arm: (type: string, key?: string) => void;
   armed: Promise<Armed> | null;
@@ -126,7 +129,7 @@ function installProbe(): void {
   }).observe({ type: 'measure' });
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
-      if (e.name !== 'stub:panelData') continue;
+      if (e.name !== 'stub:query') continue;
       const d = (e as PerformanceMark).detail as Omit<Probe['marks'][number], 't'>;
       probe.marks.push({ ...d, t: e.startTime });
     }
@@ -147,7 +150,7 @@ async function openEditor(page: Page, o: { delayMs?: number } = {}): Promise<voi
   await page.addInitScript(installProbe);
   if (o.delayMs !== undefined) {
     await page.addInitScript((ms) => {
-      localStorage.setItem('pulsus-dash.stub.panelDelayMs', String(ms));
+      localStorage.setItem('pulsus-dash.stub.queryDelayMs', String(ms));
     }, o.delayMs);
   }
   await page.goto('/t/demo/board/b-1');
@@ -161,7 +164,46 @@ async function reopen(page: Page): Promise<void> {
   await page.getByRole('button', { name: /^Panel menu: Request rate/ }).click();
   await page.getByRole('menuitem', { name: 'Edit panel' }).click();
   await editor(page).d.waitFor();
+  await query(page).waitFor();
 }
+
+/** The PromQL editor of the Query field (plan #64 §3.8). */
+const query = (page: Page) => editor(page).d.getByRole('textbox', { name: 'Query' });
+
+/**
+ * Replaces the editor's one-line text with `text`: End, then Backspace over the old text. In
+ * Firefox neither select-all nor Shift+Home selects inside the editor's shadow root.
+ */
+async function setQuery(page: Page, text: string): Promise<void> {
+  const box = query(page);
+  await box.click();
+  await page.keyboard.press('End');
+  const old = (await box.textContent()) ?? '';
+  for (let i = 0; i < old.length; i++) await page.keyboard.press('Backspace');
+  await page.keyboard.insertText(text);
+  await expect(box).toHaveText(text);
+}
+
+/** Runs the editor's text (Shift+Enter, T09-004); the key press is armed. */
+async function runQuery(page: Page): Promise<Armed> {
+  await query(page).focus();
+  await arm(page, 'keydown', 'Enter');
+  await page.keyboard.press('Shift+Enter');
+  return armed(page);
+}
+
+/**
+ * Escape until the dialog closes: in the editor, Esc closes an open completion list first, then
+ * moves to Run query; Esc there closes the dialog (T09-004).
+ */
+async function closeByEscape(page: Page): Promise<void> {
+  const { d } = editor(page);
+  for (let i = 0; i < 3 && (await d.isVisible()); i++) await page.keyboard.press('Escape');
+  await expect(d).toBeHidden();
+}
+
+/** b-1's Request rate query. */
+const P1_TEXT = 'sum(rate(http_requests_total[5m]))';
 
 /** The preview's chart has drawn: summary ready and no progress over it. */
 async function previewReady(page: Page): Promise<void> {
@@ -347,7 +389,9 @@ test.describe('panel editor dialog', () => {
         true,
       );
     }
+    // From the editor, Esc moves to Run query first (T09-004).
     await page.keyboard.press('Escape');
+    if (await d.isVisible()) await page.keyboard.press('Escape');
     await expect(d).toBeHidden();
     await expect(page.getByRole('button', { name: 'Panel menu: Request rate' })).toBeFocused();
   });
@@ -395,39 +439,36 @@ test.describe('panel editor dialog', () => {
     }
   });
 
-  test('E8 query: request at once, progress, then the result', async ({ page }) => {
+  test('E8 query: request on Run, progress, then the result', async ({ page }) => {
     await openEditor(page, { delayMs: 400 });
-    const { d, pv } = editor(page);
+    const { pv } = editor(page);
     await previewReady(page);
-    const before = await pv.locator('canvas').getAttribute('aria-label');
-    await d.getByRole('textbox', { name: 'Query' }).focus();
+    await query(page).focus();
     await page.keyboard.press('End');
-    await arm(page, 'input');
+    const t0 = await page.evaluate(() => performance.now());
     await page.keyboard.type('1');
-    const a = await armed(page);
+    // Typing changes the draft only (plan #64 §4.4).
+    await expect(
+      editor(page).d.getByText('Press Shift+Enter or Run query to update the preview.'),
+    ).toBeVisible();
+    expect(await marksSince(page, t0)).toEqual([]);
+    const a = await runQuery(page);
     const marks = (await marksSince(page, a.t0)).filter(
-      (m) => m.id === 'p-1' && m.text.endsWith('1') && m.vis === 'line' && m.t < a.f1.t,
+      (m) => m.kind === 'range' && m.query.endsWith('1') && m.t < a.f1.t,
     );
     expect(marks.length).toBeGreaterThan(0);
     expect(a.f1.body).toBe('Loading');
     expect(a.f1.frames).toBe(0);
-    await expect(pv.getByText('Loading')).toBeVisible();
     await expect(pv.locator('canvas')).toHaveAttribute(
       'aria-label',
       /^Request rate: line chart, 3 series/,
       { timeout: 5_000 },
     );
-    expect(await pv.locator('canvas').getAttribute('aria-label')).not.toBe(before);
   });
 
-  test('E9 language: request at once, progress, then the result', async ({ page }) => {
+  test('E9 language: LogQL makes no request', async ({ page }) => {
     await openEditor(page, { delayMs: 400 });
     const { d, pv } = editor(page);
-    await previewReady(page);
-    await pick(page, 'Auto');
-    await expect(pv.locator('canvas')).toHaveAttribute('aria-label', LABEL['line'] ?? /./, {
-      timeout: 5_000,
-    });
     await previewReady(page);
     await d.getByRole('button', { name: /Query language$/ }).click();
     await page.getByRole('listbox').waitFor();
@@ -436,29 +477,19 @@ test.describe('panel editor dialog', () => {
     await arm(page, 'keydown', 'Enter');
     await page.keyboard.press('Enter');
     const a = await armed(page);
-    const marks = (await marksSince(page, a.t0)).filter(
-      (m) => m.lang === 'logql' && m.vis === 'auto' && m.t < a.f1.t,
-    );
-    expect(marks.length).toBeGreaterThan(0);
-    expect(a.f1.body).toBe('Loading');
-    await expect(pv.locator('canvas')).toHaveAttribute('aria-label', LABEL['bars'] ?? /./, {
-      timeout: 5_000,
-    });
+    await expect(pv.getByText('Runs when LogQL support lands')).toBeVisible();
+    expect(await marksSince(page, a.t0)).toEqual([]);
   });
 
-  test('E10 visualisation: progress, then the result', async ({ page }) => {
+  test('E10 visualisation: a notice at once, no request', async ({ page }) => {
     await openEditor(page, { delayMs: 400 });
     const { pv } = editor(page);
     await previewReady(page);
+    // Request rate has no buckets: the heatmap is a notice, from the same result.
     const a = await pick(page, 'Heatmap');
-    const marks = (await marksSince(page, a.t0)).filter((m) => m.vis === 'heatmap');
-    expect(marks).toHaveLength(1);
-    expect(marks[0]?.t ?? Infinity).toBeLessThan(a.f1.t);
-    expect(a.f1.body).toBe('Loading');
+    expect(await marksSince(page, a.t0)).toEqual([]);
+    expect(a.f1.body).toBe('A heatmap needs histogram buckets: series with an le label.');
     expect(a.f1.frames).toBe(0);
-    await expect(pv.locator('canvas')).toHaveAttribute('aria-label', LABEL['heatmap'] ?? /./, {
-      timeout: 5_000,
-    });
     await expect(pv.getByText('Loading')).toHaveCount(0);
   });
 
@@ -467,34 +498,45 @@ test.describe('panel editor dialog', () => {
     const { pv } = editor(page);
     await previewReady(page);
     await page.evaluate(() => {
-      localStorage.setItem('pulsus-dash.stub.failPanelData', '1');
+      localStorage.setItem('pulsus-dash.stub.failQuery', '1');
     });
-    await pick(page, 'Heatmap');
+    await setQuery(page, 'up');
+    await runQuery(page);
     await expect(pv.getByText('Something went wrong')).toBeVisible({ timeout: 5_000 });
     await expect(pv.locator('[data-chart-frame]')).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await expect(editor(page).d).toBeHidden();
+    await closeByEscape(page);
     await expect(page.locator('[data-panel="p-1"]')).toContainText('Something went wrong');
   });
 
-  test('E12 successive changes: the last wins', async ({ page }) => {
+  test('E12 successive runs: the last wins', async ({ page }) => {
     await openEditor(page, { delayMs: 1500 });
     const { pv } = editor(page);
     await previewReady(page);
-    const bars = await pick(page, 'Bars');
-    const heat = await pick(page, 'Heatmap');
-    expect(bars.f1.body).toBe('Loading');
-    expect(heat.f1.body).toBe('Loading');
-    const marks = await marksSince(page, bars.t0);
-    expect(marks.map((m) => m.vis)).toEqual(['bars', 'heatmap']);
-    const barsAt = marks[0]?.t ?? 0;
-    await page.waitForFunction((t) => performance.now() > t + 1700, barsAt);
-    const late = await page.evaluate(
-      (t) => window.__probe.draws.filter((x) => x.kind === 'bars' && x.t > t),
-      barsAt,
-    );
-    expect(late).toEqual([]);
-    await expect(pv.locator('canvas')).toHaveAttribute('aria-label', LABEL['heatmap'] ?? /./);
+    await setQuery(page, `${P1_TEXT} * 2`);
+    const first = await runQuery(page);
+    // At least 200 ms between the runs: the first's answer (if it were drawn) would come 1.5 s
+    // after it, well before the second's.
+    await page.waitForTimeout(200);
+    await setQuery(page, `${P1_TEXT} * 3`);
+    const second = await runQuery(page);
+    expect(first.f1.body).toBe('Loading');
+    expect(second.f1.body).toBe('Loading');
+    const marks = await marksSince(page, first.t0);
+    expect(marks.map((m) => m.query)).toEqual([`${P1_TEXT} * 2`, `${P1_TEXT} * 3`]);
+    // The first run's answer would have come 1.5 s after it: by then the preview still waits
+    // for the second (the first was aborted, so nothing drew it).
+    const firstAt = marks[0]?.t ?? 0;
+    const secondAt = marks[1]?.t ?? 0;
+    expect(secondAt - firstAt).toBeGreaterThanOrEqual(200);
+    await page.waitForFunction((t) => performance.now() > t + 1600, firstAt);
+    const at = await settled(page);
+    if (at.t < secondAt + 1400) {
+      expect(at.body).toBe('Loading');
+      expect(at.frames).toBe(0);
+    }
+    await expect(pv.locator('canvas')).toHaveAttribute('aria-label', LABEL['line'] ?? /./, {
+      timeout: 5_000,
+    });
   });
 
   for (const from of ['error', 'Logs'] as const) {
@@ -504,16 +546,24 @@ test.describe('panel editor dialog', () => {
       const line = await reference(page, LABEL['line'] ?? /./);
       if (from === 'error') {
         await page.evaluate(() => {
-          localStorage.setItem('pulsus-dash.stub.failPanelData', '1');
+          localStorage.setItem('pulsus-dash.stub.failQuery', '1');
         });
-        await pick(page, 'Heatmap');
+        await setQuery(page, 'up');
+        await runQuery(page);
         await expect(pv.getByText('Something went wrong')).toBeVisible({ timeout: 5_000 });
       } else {
         await pick(page, 'Logs');
         await expect(pv.getByText(LOGS)).toBeVisible();
       }
       await expect(pv.locator('[data-chart-frame]')).toHaveCount(0);
-      const a = await pick(page, 'Line');
+      // Back to the cached chart: the saved query again (its result is fresh), or Line.
+      let a: Armed;
+      if (from === 'error') {
+        await setQuery(page, P1_TEXT);
+        a = await runQuery(page);
+      } else {
+        a = await pick(page, 'Line');
+      }
       await expectCachedPick(page, a, 'line', line);
     });
   }
@@ -585,21 +635,22 @@ test.describe('panel editor dialog', () => {
 
     await page.goto('/t/demo/board/b-1');
     await page.locator('html[data-shell-ready="true"]').waitFor();
-    await settle(3);
+    // On screen: Request rate and Error ratio (Request latency is below the fold, T07-012).
+    await settle(2);
     const board = await ids();
     let from = (await records()).length;
     await page.setViewportSize({ width: 1200, height: 900 });
-    await settle(3);
+    await settle(2);
     await clearedThenDrawn(from, board);
 
     await page.getByRole('button', { name: 'Full screen: Request rate' }).click();
     const full = page.getByRole('dialog', { name: 'Request rate' });
     await expect(full.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(1);
-    await settle(4);
+    await settle(3);
     const fullId = (await full.locator('[data-chart-frame]').getAttribute('data-frame-id')) ?? '';
     from = (await records()).length;
     await page.setViewportSize({ width: 1440, height: 900 });
-    await settle(4);
+    await settle(3);
     await clearedThenDrawn(from, [...board, fullId]);
 
     for (const [i, r] of (await records()).entries()) {
@@ -622,21 +673,27 @@ test.describe('panel editor dialog', () => {
       if (from === 'Logs') {
         await pick(page, 'Logs');
       } else {
-        // Two failures: the load, and the refetch of the failed key when the reopened preview
+        // Two failures: the run, and the refetch of the failed key when the reopened preview
         // mounts on it (TanStack retries an errored query on mount).
         await page.evaluate(() => {
-          localStorage.setItem('pulsus-dash.stub.failPanelData', '2');
+          localStorage.setItem('pulsus-dash.stub.failQuery', '2');
         });
-        await pick(page, 'Heatmap');
+        await setQuery(page, 'up');
+        await runQuery(page);
       }
       await expect(pv.getByText(message)).toBeVisible({ timeout: 5_000 });
-      await page.keyboard.press('Escape');
-      await expect(editor(page).d).toBeHidden();
+      await closeByEscape(page);
       await reopen(page);
       await expect(pv.getByText(message)).toBeVisible({ timeout: 5_000 });
       await expect(pv.locator('[data-chart-frame]')).toHaveCount(0);
       await settled(page);
-      const a = await pick(page, 'Line');
+      let a: Armed;
+      if (from === 'error') {
+        await setQuery(page, P1_TEXT);
+        a = await runQuery(page);
+      } else {
+        a = await pick(page, 'Line');
+      }
       await expectCachedPick(page, a, 'line', line);
     });
   }

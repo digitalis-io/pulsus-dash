@@ -11,6 +11,23 @@ import type { Script } from './keyboardScript.ts';
 const EDGE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
 const B1_PANELS = ['Request rate', 'Error ratio', 'Errors', 'Request latency'];
 const B3_PANELS = ['Edge p99', 'Edge errors', 'Pods'];
+/** b-3's panels whose variables the URL does not set: no request, so no Explore link (plan #64). */
+const UNSET_VARIABLES = new Set(['Edge p99', 'Pods']);
+/** The `le` bounds of the stub's bucket series (plan #64 §3.10). */
+const STUB_BUCKETS = [
+  '0.005',
+  '0.01',
+  '0.025',
+  '0.05',
+  '0.1',
+  '0.25',
+  '0.5',
+  '1',
+  '2.5',
+  '5',
+  '10',
+  '+Inf',
+];
 
 export async function boardLoops(s: Script): Promise<void> {
   const { page, h } = s;
@@ -33,6 +50,32 @@ export async function boardLoops(s: Script): Promise<void> {
   const closeEditor = async (): Promise<void> => {
     await press('Escape');
     await expect(editor).toBeHidden();
+  };
+  // A panel queries only while on screen (T07-012): scroll it in, so its Explore link can appear.
+  const showPanel = async (title: string): Promise<void> => {
+    const panelEl = page
+      .locator('[data-panel]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) });
+    await expect(async () => {
+      await panelEl.scrollIntoViewIfNeeded({ timeout: 1_000 });
+    }).toPass();
+  };
+  /** The panel titled `title`. */
+  const panelNamed = (title: string) =>
+    page
+      .locator('[data-panel]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) });
+  /** The panel has its answer (or its message), and a chart has drawn: its controls are all there. */
+  const settledPanel = async (title: string): Promise<void> => {
+    const p = panelNamed(title);
+    // The Edit grid may still replace its fallback's panels: retry on a fresh element.
+    await expect(async () => {
+      await p.scrollIntoViewIfNeeded({ timeout: 1_000 });
+    }).toPass();
+    await expect(p).not.toHaveAttribute('data-panel-state', 'loading');
+    if ((await p.getAttribute('data-panel-state')) === 'frame') {
+      await p.locator('[data-chart-frame][data-frame-ready="true"]').waitFor();
+    }
   };
   const gridOf = (title: string) =>
     page
@@ -141,9 +184,29 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.shellAfter(await s.linkKeys(), () => s.goto(url));
       for (const title of titles) {
         await s.goto(url);
-        await s.on(`link "Open in Explore: ${title}"`);
-        await expect.poll(() => s.path()).toMatch(/^\/t\/demo\/explore\/(metrics|logs)$/);
-        expect(s.search()['q']).toBeTruthy();
+        // Open in Explore waits for the panel's answer (plan #64 §3.5): a disabled button until then.
+        const linked = !UNSET_VARIABLES.has(title);
+        if (linked) {
+          await showPanel(title);
+          await expect(page.getByRole('link', { name: `Open in Explore: ${title}` })).toBeVisible();
+          await s.on(`link "Open in Explore: ${title}"`);
+          await expect.poll(() => s.path()).toMatch(/^\/t\/demo\/explore\/(metrics|logs)$/);
+          expect(s.search()['q']).toBeTruthy();
+          // The histogram panel's query in Explore: the stub's buckets are its rows, drawn as a
+          // heatmap by auto-vis (the other panels' rows are Explore's, L32).
+          if (title === 'Request latency') {
+            await s.focus('radio "Auto (Heatmap)"');
+            await press('Space');
+            for (const le of STUB_BUCKETS) {
+              const esc = le.replace(/[.+]/g, (c) => `\\${c}`);
+              await s.on(new RegExp(`^button "stub_bucket\\{le="${esc}"\\}"$`));
+            }
+          }
+        } else {
+          await expect(
+            page.getByRole('button', { name: `Open in Explore: ${title}` }),
+          ).toBeDisabled();
+        }
         await s.goto(url);
         const full = page.getByRole('button', { name: `Full screen: ${title}` });
         await s.on(`button "Full screen: ${title}"`);
@@ -157,8 +220,49 @@ export async function boardLoops(s: Script): Promise<void> {
         await s.on('button "Close"');
         await expect(d).toBeHidden();
         await expect(full).toBeFocused();
-        await s.menuItem(`button "Panel menu: ${title}"`, 1);
+        // The panel menu (plan #64 §3.7): Edit panel, Duplicate, Remove, Open in Explore (skipped by
+        // the arrow keys while disabled) and Copy query.
+        if (linked) {
+          await showPanel(title);
+          await expect(page.getByRole('link', { name: `Open in Explore: ${title}` })).toBeVisible();
+        }
+        const copyAt = linked ? 4 : 3;
+        await s.menuItem(`button "Panel menu: ${title}"`, copyAt);
         await expect.poll(() => page.evaluate(() => window.__copied.at(-1) ?? '')).not.toBe('');
+        if (linked) {
+          await s.menuItem(`button "Panel menu: ${title}"`, 3);
+          await expect.poll(() => s.path()).toMatch(/^\/t\/demo\/explore\/(metrics|logs)$/);
+          await s.goto(url);
+          await showPanel(title);
+          await expect(page.getByRole('link', { name: `Open in Explore: ${title}` })).toBeVisible();
+        }
+        await s.menuItem(`button "Panel menu: ${title}"`, 1);
+        await expect(
+          page.getByRole('heading', { level: 3, name: `${title} (copy)` }),
+        ).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+        // The copy is a panel of its own: its controls are operated once (the harness does not
+        // traverse a copy of the copy).
+        await s.drain(
+          `${uid} copy of ${title}`,
+          async () => {
+            await s.goto(url);
+            await s.menuItem(`button "Panel menu: ${title}"`, 1);
+            await expect(
+              page.getByRole('heading', { level: 3, name: `${title} (copy)` }),
+            ).toBeVisible();
+            await settledPanel(`${title} (copy)`);
+          },
+          0,
+          panelNamed(`${title} (copy)`),
+        );
+        await s.goto(url);
+        await s.menuItem(`button "Panel menu: ${title}"`, 2);
+        await expect(page.getByRole('button', { name: 'Add panel', exact: true })).toBeFocused();
+        await expect(page.getByRole('heading', { level: 3, name: title, exact: true })).toHaveCount(
+          0,
+        );
+        await s.goto(url);
         await s.menuItem(`button "Panel menu: ${title}"`, 0);
         await expect(editor).toBeVisible();
         // The preview's crosshair (#90), named after the panel: End sets it, Escape clears it.
@@ -311,14 +415,31 @@ export async function boardLoops(s: Script): Promise<void> {
   });
 
   await test.step('L27 Editor', async () => {
-    const url = '/t/demo/board/b-3';
+    // The variables set, so Edge p99 runs and its preview has a chart (plan #64 §4.5).
+    const url = '/t/demo/board/b-3?var-env=prod&var-region=eu';
     const openEditor = async (): Promise<void> => {
       await s.goto(url);
       await s.on('button "Edit board"');
       await s.menuItem('button "Panel menu: Edge p99"', 0);
       await expect(editor).toBeVisible();
     };
+    // With its variables set, Edge p99 runs: its link, its crosshair and its menu's Open in Explore.
+    await s.goto(url);
+    await expect(page.getByRole('link', { name: 'Open in Explore: Edge p99' })).toBeVisible();
+    await s.on('link "Open in Explore: Edge p99"');
+    await expect.poll(() => s.path()).toBe('/t/demo/explore/metrics');
+    await s.goto(url);
+    await s.focus('slider "Crosshair: Edge p99"');
+    await press('End');
+    await press('Escape');
+    await expect(page.getByRole('link', { name: 'Open in Explore: Edge p99' })).toBeVisible();
+    await s.menuItem('button "Panel menu: Edge p99"', 3);
+    await expect.poll(() => s.path()).toBe('/t/demo/explore/metrics');
     await openEditor();
+    await s.focus('slider "Crosshair: Edge p99"');
+    await press('End');
+    await press('Escape');
+    await expect(editor).toBeVisible();
     await s.replaceText('textbox "Title"', 'Edge p99 by region');
     await expect(editor.locator('[data-preview-title]')).toHaveText('Edge p99 by region');
     for (const option of ['LogQL', 'PromQL']) {
@@ -335,17 +456,42 @@ export async function boardLoops(s: Script): Promise<void> {
     await press('End');
     await press('Escape');
     await expect(editor).toBeVisible();
+    // The Query field (plan #64 §3.8, T09-004): the picker, the PromQL editor and its Run keys,
+    // Run query, and Esc from the editor to Run query. The picker types the metric names (typed
+    // identifiers would open the completion list, which Explore's loop covers).
+    /** Picks the picker's option `i` (0-based), as Explore's loop does (L32). */
+    const pick = async (i: number): Promise<void> => {
+      // The list opens on focus; Escape closes it, ArrowDown reopens it on its first option.
+      await s.focus('combobox "Metric"');
+      await press('Escape');
+      for (let k = 0; k <= i; k++) await press('ArrowDown');
+      await press('Enter');
+      await expect(
+        editor.getByText('Press Shift+Enter or Run query to update the preview.'),
+      ).toBeVisible();
+    };
+    for (let i = 0; i < 5; i++) await pick(i);
     await s.focus('textbox "Query"');
-    await press('End');
-    await type(' by (region)');
+    await press('Shift+Enter');
+    await expect(editor.getByText('Press Shift+Enter or Run query')).toHaveCount(0);
+    await pick(0);
+    await s.on('button "Run query"');
+    await expect(editor.getByText('Press Shift+Enter or Run query')).toHaveCount(0);
+    await s.focus('textbox "Query"');
+    await press('Escape');
+    await expect(editor.getByRole('button', { name: 'Run query' })).toBeFocused();
+    await expect(editor).toBeVisible();
     const kinds = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Logs'];
+    // Auto reads "Auto (<vis>)" once the panel has a result (plan #64 §3.8).
     for (const [i, kind] of kinds.entries()) {
-      await s.on(/^button "\w+ Visualisation"$/);
+      await s.on(/^button "\w+( \(\w+\))? Visualisation"$/);
       await expect(page.getByRole('listbox')).toBeVisible();
       await press('Home');
       for (let k = 0; k < i; k++) await press('ArrowDown');
       await press('Enter');
-      await expect(page.getByRole('button', { name: `${kind} Visualisation` })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: new RegExp(`^${kind}( \\(\\w+\\))? Visualisation$`) }),
+      ).toBeVisible();
     }
     // The last trigger name is operated too: open it and close it.
     await s.on('button "Logs Visualisation"');
@@ -361,16 +507,63 @@ export async function boardLoops(s: Script): Promise<void> {
     await expect(page.getByRole('button', { name: 'Add panel', exact: true })).toBeFocused();
     await expect(panelCount).toHaveCount(2);
 
+    // The Auto option names the auto vis of the panel's result, or none without one (plan #64
+    // §3.8): a heatmap panel's and a LogQL panel's.
+    for (const title of ['Request latency', 'Errors']) {
+      await s.goto('/t/demo/board/b-1');
+      await s.on('button "Edit board"');
+      await showPanel(title);
+      await s.menuItem(`button "Panel menu: ${title}"`, 0);
+      await expect(editor).toBeVisible();
+      if (title === 'Request latency') {
+        await editor.locator('[data-chart-frame][data-frame-ready="true"]').waitFor();
+      }
+      await s.on(/^button "\w+ Visualisation"$/);
+      await expect(page.getByRole('listbox')).toBeVisible();
+      await press('Home');
+      await press('Enter');
+      await expect(
+        editor.getByRole('button', { name: /^Auto( \(\w+\))? Visualisation$/ }),
+      ).toBeVisible();
+      // The trigger is named by the option now: open it and close it.
+      await s.on(/^button "Auto( \(\w+\))? Visualisation"$/);
+      await expect(page.getByRole('listbox')).toBeVisible();
+      await press('Escape');
+    }
+
+    // Esc in the editor moves to Run query; a second Esc closes the dialog.
+    await openEditor();
+    await s.focus('textbox "Query"');
+    await press('Escape');
+    await expect(editor.getByRole('button', { name: 'Run query' })).toBeFocused();
+    await press('Escape');
+    await expect(editor).toBeHidden();
+
     // The renamed panel's tools are new keys.
     await s.drain('b-3 renamed panel', async () => {
       await openEditor();
       await s.replaceText('textbox "Title"', 'Edge p99 by region');
       await closeEditor();
     });
+    // The renamed panel's menu has a Duplicate too: its copy's controls, once.
+    await s.drain(
+      'b-3 copy of the renamed panel',
+      async () => {
+        await openEditor();
+        await s.replaceText('textbox "Title"', 'Edge p99 by region');
+        await closeEditor();
+        await s.menuItem('button "Panel menu: Edge p99 by region"', 1);
+        await expect(
+          page.getByRole('heading', { level: 3, name: 'Edge p99 by region (copy)' }),
+        ).toBeVisible();
+      },
+      0,
+      panelNamed('Edge p99 by region (copy)'),
+    );
     for (const which of ['Query language', 'Visualisation']) {
       await s.drain(`${which} list box`, async () => {
         await openEditor();
-        await s.on(new RegExp(`^button "\\w+ ${which}"$`));
+        await s.on(new RegExp(`^button "\\w+( \\(\\w+\\))? ${which}"$`));
         await expect(page.getByRole('listbox')).toBeVisible();
       });
     }

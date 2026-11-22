@@ -3,17 +3,15 @@ import { createElement } from 'react';
 import type { GridLayoutProps, LayoutItem } from 'react-grid-layout';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
-import { stubPanelData } from '../../api/stubPanels';
 import {
   ApiError,
   BoardConflictError,
   type Board,
-  type PanelData,
-  type PanelSpec,
+  type RangeRequest,
   type SaveResult,
-  type TimeWindow,
 } from '../../api/types';
-import type { FrameData } from '../../engine/api';
+import type { RangeResult } from '../../data/decode';
+import type { FrameData, VisKind } from '../../engine/api';
 import header from '../../shell/Header.module.css';
 import { failingApi } from '../../test/failingApi';
 import {
@@ -29,9 +27,14 @@ import {
   stubBoard,
 } from '../../test/boardTestKit';
 import { fakeEngine, type FakeEngine, type FakeFrame } from '../../test/fakeEngine';
-import { installResizeObserver, resizeOf } from '../../test/fakeResizeObserver';
+import { installResizeObserver, resizeAll, resizeOf } from '../../test/fakeResizeObserver';
 import { locationOf, renderApp, type RenderAppOptions } from '../../test/renderApp';
 import { seedWith } from '../../test/seeds';
+import { fromRange } from '../../vis/autovis';
+import { framePlan } from '../../vis/framePlan';
+
+// The panel editor's Query field loads the editor chunk: a textarea stands in (plan #64 A.5).
+vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
 
 /** The props of every react-grid-layout grid rendered, to simulate a pointer drop. */
 const rgl = vi.hoisted(() => ({ props: [] as unknown[] }));
@@ -85,6 +88,13 @@ async function addPanel(user: ReturnType<typeof open>['user'], name = 'Add panel
 }
 
 const B1 = ['Request rate', 'Error ratio', 'Errors', 'Request latency'];
+
+/** Every panel body gets a width, so the panels can run (plan #64 §4.1). */
+function sizePanels(): void {
+  act(() => {
+    resizeAll(1000, 240);
+  });
+}
 
 /** Links between a sidebar group heading and the next heading. */
 function linksAfter(heading: HTMLElement): string[] {
@@ -260,40 +270,52 @@ describe('view mode', () => {
     open('/t/demo/board/b-1');
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
     expect(panelTitles()).toEqual(B1);
+    sizePanels();
     await waitFor(() => {
       expect(document.querySelectorAll('canvas')).toHaveLength(3);
     });
-    expect(await screen.findByText('The log stream arrives with LogQL panels')).toBeInTheDocument();
+    // A LogQL panel waits for LogQL support (#67), whatever its visualisation (plan #64 §4.2).
     expect(
-      within(panelOf('Errors')).getByText('The log stream arrives with LogQL panels'),
+      await within(panelOf('Errors')).findByText('Runs when LogQL support lands'),
     ).toBeVisible();
-    expect(await within(panelOf('Request rate')).findByText('in rps')).toBeVisible();
+    for (const title of ['Request rate', 'Error ratio', 'Request latency']) {
+      expect(panelOf(title), title).toHaveAttribute('data-panel-state', 'frame');
+    }
     expect(gridOf('Request rate')).toBe('0,0,6,8');
     expect(screen.getByRole('heading', { level: 2, name: 'Latency' })).toBeVisible();
   });
 
-  it('BFF mode shows the empty state', async () => {
+  it('BFF mode draws PromQL panels', async () => {
     const one = open('/t/demo/board/b-1', { api: httpApi() });
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
-    const promql = 'Runs when PromQL support lands';
-    for (const title of ['Request rate', 'Error ratio', 'Request latency']) {
-      expect(await within(panelOf(title)).findByText(promql), title).toBeVisible();
+    sizePanels();
+    for (const title of ['Request rate', 'Error ratio']) {
+      await waitFor(() => {
+        expect(panelOf(title), title).toHaveAttribute('data-panel-state', 'frame');
+      });
     }
+    // The golden is a counter's rate, not buckets: the saved Heatmap says so.
+    await waitFor(() => {
+      expect(panelOf('Request latency')).toHaveAttribute('data-panel-state', 'noBuckets');
+    });
     expect(
-      await within(panelOf('Errors')).findByText('The log stream arrives with LogQL panels'),
+      await within(panelOf('Errors')).findByText('Runs when LogQL support lands'),
     ).toBeVisible();
-    expect(document.querySelectorAll('canvas')).toHaveLength(0);
     one.view.unmount();
 
     open('/t/demo/board/b-3', { api: httpApi() });
     await screen.findByRole('heading', { level: 3, name: 'Pods' });
-    for (const title of ['Edge p99', 'Pods']) {
-      expect(await within(panelOf(title)).findByText(promql), title).toBeVisible();
-    }
+    sizePanels();
     expect(
       await within(panelOf('Edge errors')).findByText('Runs when LogQL support lands'),
     ).toBeVisible();
-    expect(document.querySelectorAll('canvas')).toHaveLength(0);
+    // Their variables are unset: no request until the URL gives `var-region` and `var-env`.
+    expect(
+      await within(panelOf('Edge p99')).findByText('Set a value for $region to run this panel'),
+    ).toBeVisible();
+    expect(
+      await within(panelOf('Pods')).findByText('Set a value for $env to run this panel'),
+    ).toBeVisible();
   });
 
   it('max row in both modes', async () => {
@@ -594,7 +616,7 @@ describe('navigation and time', () => {
   });
 
   it('guard ignores time changes', async () => {
-    const { user, router } = open('/t/demo/board/b-1');
+    const { user, router } = open('/t/demo/board/b-1?from=now-1h&to=now&refresh=off');
     await editMode(user);
     await addPanel(user);
     await user.click(
@@ -877,6 +899,7 @@ describe('panel tools', () => {
   it('full screen and menu', async () => {
     const { user } = open('/t/demo/board/b-1');
     await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    sizePanels();
     const full = screen.getByRole('button', { name: 'Full screen: Request rate' });
     await user.click(full);
     const d = await screen.findByRole('dialog', { name: 'Request rate' });
@@ -900,64 +923,15 @@ describe('panel tools', () => {
 
   it('explore link', async () => {
     open('/t/demo/board/b-1');
-    const link = await screen.findByRole('link', { name: 'Open in Explore: Errors' });
-    expect(link).toHaveAttribute(
-      'href',
-      '/t/demo/explore/logs?from=now-1h&to=now&refresh=off&q=%7Bapp%3D%22api%22%7D%20%7C%3D%20%22error%22',
-    );
-  });
-});
-
-describe('refresh', () => {
-  it('BoardPage refresh leaves panel queries', async () => {
-    const api = new HeldPanelApi();
-    const { user } = open(
-      '/t/demo/board/b-1?from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z&refresh=off',
-      { api },
-    );
-    await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    // b-1 opens on its saved time (plan #64 §4.6).
     await waitFor(() => {
-      expect(api.held.length).toBeGreaterThan(0);
-    });
-    await waitFor(() => {
-      expect(api.held).toHaveLength(B1.length);
-    });
-    await user.click(screen.getByRole('button', { name: 'Refresh now' }));
-    await act(async () => {
-      await new Promise((r) => {
-        setTimeout(r, 0);
-      });
-    });
-    expect(api.held.map((h) => h.signal?.aborted ?? false)).toEqual(B1.map(() => false));
-    expect(api.held).toHaveLength(B1.length);
-    await act(async () => {
-      for (const h of api.held) h.release();
-      await Promise.resolve();
-    });
-    // The released data reaches every chart panel (its frame mounts; with #90 a chart panel keeps
-    // its Loading until the engine has drawn, which the fake engine never reports).
-    await waitFor(() => {
-      expect(document.querySelectorAll('canvas')).toHaveLength(3);
+      expect(screen.getByRole('link', { name: 'Open in Explore: Errors' })).toHaveAttribute(
+        'href',
+        '/t/demo/explore/logs?from=now-6h&to=now&refresh=off&q=%7Bapp%3D%22api%22%7D%20%7C%3D%20%22error%22',
+      );
     });
   });
 });
-
-/** A stub whose `panelData` calls wait until the test releases them; each keeps its signal. */
-class HeldPanelApi extends StubApi {
-  readonly held: { signal: AbortSignal | undefined; release: () => void }[] = [];
-
-  override panelData(...a: Parameters<StubApi['panelData']>): ReturnType<StubApi['panelData']> {
-    const [tenant, panel, window, signal] = a;
-    const gate = deferred<undefined>();
-    this.held.push({
-      signal,
-      release: () => {
-        gate.resolve(undefined);
-      },
-    });
-    return gate.promise.then(() => super.panelData(tenant, panel, window));
-  }
-}
 
 /**
  * A stub whose second and later `getBoard` of b-1 wait for `next`, then return the head again or,
@@ -1007,34 +981,43 @@ class GatedRecentApi extends StubApi {
   }
 }
 
-/** A `panelData` call held by `gated()` until the test settles it. */
+/** A `queryRange` call held by `gated()` until the test settles it (plan #64 A.5). */
 interface Held {
-  panel: PanelSpec;
-  window: TimeWindow;
+  req: RangeRequest;
   signal: AbortSignal | undefined;
-  resolve: () => void;
+  /** Answers the stub's result for `req`; settles once it has. */
+  resolve: () => Promise<void>;
   reject: (e: Error) => void;
 }
 
-function frameDataOf(d: PanelData): FrameData {
-  if (d.kind !== 'frame') throw new Error(`no frame data: ${d.kind}`);
-  return d.data;
+/** The text of b-1's Request rate panel. */
+const P1_TEXT = 'sum(rate(http_requests_total[5m]))';
+
+/** The frame data the panel draws for `r` with `vis` (one result, any vis: plan #64 §4.1). */
+function frameDataOf(r: RangeResult, vis: VisKind): FrameData {
+  const plan = framePlan(vis, fromRange(r), {
+    isolatedKey: null,
+    title: 'Request rate',
+    rateApplied: r.planned.rateApplied,
+  });
+  if (plan.data === null) throw new Error(`no frame data: ${plan.notice}`);
+  return plan.data;
 }
 
 describe('panel editor dialog', () => {
   const LOGS = 'The log stream arrives with LogQL panels';
 
   /** Runs `fn` (a held call settling) in `act`, then lets its promise callbacks run. */
-  const settle = (fn: () => void): Promise<void> =>
+  const settle = (fn: () => Promise<void> | void): Promise<void> =>
     act(async () => {
-      fn();
+      await fn();
       await Promise.resolve();
     });
 
-  /** The shared setup (plan §5.1): a stub, a `panelData` spy, a fake engine, b-1 in Edit mode. */
+  /** The shared setup (plan §5.1): a stub, a `queryRange` spy, a fake engine, b-1 in Edit mode. */
   async function setup(o: { edit?: boolean } = {}) {
     const api = new StubApi();
-    const spy = vi.spyOn(api, 'panelData');
+    const spy = vi.spyOn(api, 'queryRange');
     const save = vi.spyOn(api, 'saveBoard');
     const engine: FakeEngine = fakeEngine();
     // Frames created inside the preview, kept after their disposal (`drawnKinds`).
@@ -1046,12 +1029,15 @@ describe('panel editor dialog', () => {
       return f;
     };
     const r = open('/t/demo/board/b-1', { api, wrapper: engineWrapper(engine) });
+    await screen.findByRole('heading', { level: 3, name: 'Request rate' });
+    sizePanels();
     if (o.edit !== false) {
       await editMode(r.user);
       // The Edit grid is a lazy chunk: its panels replace the fallback's once it has loaded.
       await waitFor(() => {
         expect(document.querySelectorAll('.react-grid-item')).toHaveLength(4);
       });
+      sizePanels();
     }
     const { user } = r;
 
@@ -1059,7 +1045,9 @@ describe('panel editor dialog', () => {
     const openOn = async (title: string): Promise<HTMLElement> => {
       await user.click(await screen.findByRole('button', { name: `Panel menu: ${title}` }));
       await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
-      return screen.findByRole('dialog', { name: 'Edit panel' });
+      const d = await screen.findByRole('dialog', { name: 'Edit panel' });
+      await within(d).findByRole('textbox', { name: 'Query' });
+      return d;
     };
     const preview = (): HTMLElement => within(dialog()).getByRole('region', { name: 'Preview' });
     const previewHost = (): HTMLElement => {
@@ -1096,7 +1084,13 @@ describe('panel editor dialog', () => {
     };
     const resizes = (f: FakeFrame) =>
       f.calls.filter((c) => c.method === 'resize').map((c) => c.args);
-    const calls = (pred: (p: PanelSpec) => boolean) => spy.mock.calls.filter((c) => pred(c[1]));
+    const calls = (pred: (r: RangeRequest) => boolean) => spy.mock.calls.filter((c) => pred(c[1]));
+    /** Types into the Query editor and runs it (Shift+Enter). */
+    const runQuery = (d: HTMLElement, text: string): void => {
+      const box = within(d).getByRole('textbox', { name: 'Query' });
+      fireEvent.change(box, { target: { value: text } });
+      fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
+    };
     const vis = async (label: string): Promise<void> => {
       await user.click(within(dialog()).getByRole('button', { name: /Visualisation$/ }));
       await user.click(await screen.findByRole('option', { name: label }));
@@ -1104,15 +1098,12 @@ describe('panel editor dialog', () => {
     const gated = (): Held[] => {
       const held: Held[] = [];
       spy.mockImplementation(
-        (_tenant, panel, window, signal) =>
-          new Promise<PanelData>((res, rej) => {
+        (tenant, req, signal) =>
+          new Promise<RangeResult>((res, rej) => {
             held.push({
-              panel,
-              window,
+              req,
               signal,
-              resolve: () => {
-                res(stubPanelData(panel, window));
-              },
+              resolve: () => StubApi.prototype.queryRange.call(api, tenant, req).then(res, rej),
               reject: (e) => {
                 rej(e);
               },
@@ -1120,6 +1111,12 @@ describe('panel editor dialog', () => {
           }),
       );
       return held;
+    };
+    /** The result of the call at `i` (one the stub answered, or a held one it resolved). */
+    const resultOf = async (i: number): Promise<RangeResult> => {
+      const c = spy.mock.calls[i];
+      if (c === undefined) throw new Error(`no call ${String(i)}`);
+      return StubApi.prototype.queryRange.call(api, c[0], c[1]);
     };
     /** Every `setSpec` kind on preview frames since `mark()` was taken. */
     const mark = () => new Map([...previewFrames].map((f) => [f, f.calls.length] as const));
@@ -1137,10 +1134,10 @@ describe('panel editor dialog', () => {
       expect(kids).toHaveLength(1);
       expect(kids[0]?.matches('[data-chart-frame]')).toBe(true);
     };
-    const firstCallData = (kind: string): FrameData => {
-      const c = calls((p) => p.id === 'p-1' && p.vis.kind === kind)[0];
-      if (c === undefined) throw new Error(`no ${kind} call`);
-      return frameDataOf(stubPanelData(c[1], c[2]));
+    /** Request rate's data drawn as `kind`, from its first call (a vis change is a redraw). */
+    const firstCallData = async (kind: VisKind): Promise<FrameData> => {
+      const i = spy.mock.calls.findIndex((c) => c[1].query === P1_TEXT);
+      return frameDataOf(await resultOf(i), kind);
     };
     return {
       ...r,
@@ -1160,6 +1157,8 @@ describe('panel editor dialog', () => {
       calls,
       vis,
       gated,
+      resultOf,
+      runQuery,
       mark,
       drawnKinds,
       pendingShown,
@@ -1335,7 +1334,7 @@ describe('panel editor dialog', () => {
       t.chartOnly();
       const f = t.previewFrame();
       expect(f.last('setSpec')?.[0], label).toMatchObject({ kind });
-      expect(f.last('setData')?.[0], label).toEqual(t.firstCallData(kind));
+      expect(f.last('setData')?.[0], label).toEqual(await t.firstCallData(kind));
       if (newFrame) {
         expect(f, label).not.toBe(before);
         expect(t.resizes(f), label).toEqual([[760, 240, 1]]);
@@ -1350,33 +1349,26 @@ describe('panel editor dialog', () => {
     }
   });
 
-  it('visualisation: progress, then the result', async () => {
+  it('visualisation: a notice, then the cached chart', async () => {
     const t = await setup();
     await t.openOn('Request rate');
     await waitFor(() => t.previewFrame());
     t.showPreview();
-    const held = t.gated();
+    const n = t.spy.mock.calls.length;
+    // Request rate has no buckets: a heatmap is a notice, from the same result (no request).
     await t.vis('Heatmap');
-    expect(held).toHaveLength(1);
-    expect(held[0]?.panel.vis.kind).toBe('heatmap');
-    expect(within(t.preview()).getByText('Loading')).toBeInTheDocument();
+    expect(
+      await within(t.preview()).findByText(
+        'A heatmap needs histogram buckets: series with an le label.',
+      ),
+    ).toBeInTheDocument();
     expect(t.preview().querySelector('[data-chart-frame]')).toBeNull();
-    await settle(() => {
-      held[0]?.resolve();
-    });
-    await waitFor(() => {
-      expect(t.previewFrame().last('setSpec')?.[0]).toMatchObject({ kind: 'heatmap' });
-    });
-    const h0 = held[0];
-    if (h0 === undefined) throw new Error('no call');
+    await t.vis('Line');
+    expect(t.spy.mock.calls.length).toBe(n);
+    t.chartOnly();
     const f = t.previewFrame();
-    expect(f.last('setData')?.[0]).toEqual(frameDataOf(stubPanelData(h0.panel, h0.window)));
     expect(t.resizes(f)).toEqual([[760, 240, 1]]);
-    expect(t.pendingShown()).toBe(true);
-    act(() => {
-      resizeOf(t.chartHost(), 760, 240);
-    });
-    expect(t.resizes(f)).toHaveLength(1);
+    expect(f.last('setData')?.[0]).toEqual(await t.firstCallData('line'));
     expect(t.pendingShown()).toBe(true);
     act(() => {
       f.draw();
@@ -1384,13 +1376,14 @@ describe('panel editor dialog', () => {
     expect(t.pendingShown()).toBe(false);
   });
 
-  it('visualisation: a failed load shows the error state', async () => {
+  it('query: a failed load, then the cached query', async () => {
     const t = await setup();
-    await t.openOn('Request rate');
+    const d = await t.openOn('Request rate');
     await waitFor(() => t.previewFrame());
     t.showPreview();
     const held = t.gated();
-    await t.vis('Stat');
+    t.runQuery(d, 'sum(rate(x[5m]))');
+    expect(held).toHaveLength(1);
     await settle(() => {
       held[0]?.reject(new ApiError('network', 'x'));
     });
@@ -1398,14 +1391,16 @@ describe('panel editor dialog', () => {
     expect(t.preview().querySelector('[data-chart-frame]')).toBeNull();
     expect(within(t.preview()).queryByText('Loading')).toBeNull();
     expect(panelOf('Request rate')).toHaveTextContent('Something went wrong');
-    expect(t.calls((p) => p.vis.kind === 'stat' && p.id === 'p-1')).toHaveLength(1);
     const n = t.spy.mock.calls.length;
-    await t.vis('Line');
+    // The saved text again: its result of this window is still fresh, so no request.
+    t.runQuery(d, P1_TEXT);
+    await waitFor(() => {
+      t.chartOnly();
+    });
     expect(t.spy.mock.calls.length).toBe(n);
-    t.chartOnly();
     const f = t.previewFrame();
     expect(t.resizes(f)).toEqual([[760, 240, 1]]);
-    expect(f.last('setData')?.[0]).toEqual(t.firstCallData('line'));
+    expect(f.last('setData')?.[0]).toEqual(await t.firstCallData('line'));
     expect(t.pendingShown()).toBe(true);
     act(() => {
       f.draw();
@@ -1427,7 +1422,7 @@ describe('panel editor dialog', () => {
     t.chartOnly();
     const f = t.previewFrame();
     expect(t.resizes(f)).toEqual([[760, 240, 1]]);
-    expect(f.last('setData')?.[0]).toEqual(t.firstCallData('line'));
+    expect(f.last('setData')?.[0]).toEqual(await t.firstCallData('line'));
     expect(t.pendingShown()).toBe(true);
     act(() => {
       f.draw();
@@ -1447,21 +1442,22 @@ describe('panel editor dialog', () => {
         target: { value: 'sum(rate(x[5m]))' },
       });
     });
+    // Typing changes the draft only; the Run keys run it (plan #64 §4.4).
+    expect(held).toHaveLength(0);
+    t.runQuery(d, 'sum(rate(x[5m]))');
     expect(held).toHaveLength(1);
-    expect(held[0]?.panel.query.text).toBe('sum(rate(x[5m]))');
-    expect(held[0]?.panel.vis.kind).toBe('line');
+    expect(held[0]?.req.query).toBe('sum(rate(x[5m]))');
     expect(within(t.preview()).getByText('Loading')).toBeInTheDocument();
     expect(t.preview().querySelector('[data-chart-frame]')).toBeNull();
-    await settle(() => {
-      held[0]?.resolve();
-    });
+    await settle(() => held[0]?.resolve());
     const h0 = held[0];
     if (h0 === undefined) throw new Error('no call');
-    const want = frameDataOf(stubPanelData(h0.panel, h0.window));
+    const want = frameDataOf(await t.resultOf(t.spy.mock.calls.length - 1), 'line');
     await waitFor(() => {
       expect(t.previewFrame().last('setData')?.[0]).toEqual(want);
     });
-    expect(want).not.toEqual(before);
+    // The stub's series depend only on the window: the same data, drawn again for the new key.
+    expect(want).toEqual(before);
   });
 
   it('query: a failed load shows the error state', async () => {
@@ -1470,11 +1466,7 @@ describe('panel editor dialog', () => {
     await waitFor(() => t.previewFrame());
     t.showPreview();
     const held = t.gated();
-    act(() => {
-      fireEvent.change(within(d).getByRole('textbox', { name: 'Query' }), {
-        target: { value: 'sum(rate(x[5m]))' },
-      });
-    });
+    t.runQuery(d, 'sum(rate(x[5m]))');
     await settle(() => {
       held[0]?.reject(new ApiError('network', 'x'));
     });
@@ -1483,76 +1475,49 @@ describe('panel editor dialog', () => {
     expect(t.preview().querySelector('[data-chart-frame]')).toBeNull();
   });
 
-  it('language: request at once, Loading, then the result', async () => {
+  it('language: LogQL makes no request', async () => {
     const t = await setup();
     const d = await t.openOn('Request rate');
-    await t.vis('Auto');
-    await t.waitKind('line');
-    const held = t.gated();
+    await waitFor(() => t.previewFrame());
+    const n = t.spy.mock.calls.length;
     await t.user.click(within(d).getByRole('button', { name: /Query language$/ }));
     await t.user.click(await screen.findByRole('option', { name: 'LogQL' }));
-    expect(held).toHaveLength(1);
-    expect(held[0]?.panel.query.lang).toBe('logql');
-    expect(held[0]?.panel.vis.kind).toBe('auto');
-    expect(within(t.preview()).getByText('Loading')).toBeInTheDocument();
-    await settle(() => {
-      held[0]?.resolve();
-    });
-    await waitFor(() => {
-      expect(t.previewFrame().last('setSpec')?.[0]).toMatchObject({ kind: 'bars' });
-    });
+    expect(
+      await within(t.preview()).findByText('Runs when LogQL support lands'),
+    ).toBeInTheDocument();
+    expect(t.spy.mock.calls.length).toBe(n);
+    // The LogQL field is the plain text area until LogQL panels (#67).
+    expect(within(d).getByRole('textbox', { name: 'Query' }).tagName).toBe('TEXTAREA');
   });
 
-  it('successive changes: the last wins', async () => {
+  it('successive runs: the last wins', async () => {
     const t = await setup();
     const d = await t.openOn('Request rate');
     await waitFor(() => t.previewFrame());
     t.showPreview();
     const held = t.gated();
     const since = t.mark();
-    await t.vis('Bars');
-    await t.vis('Heatmap');
-    // (a) Two visualisations: the first is aborted and its late result never shows.
-    expect(held.map((h) => h.panel.vis.kind)).toEqual(['bars', 'heatmap']);
+    // Two runs: the first is aborted and its late result never shows.
+    t.runQuery(d, 'up');
+    t.runQuery(d, 'up2');
+    expect(held.map((h) => h.req.query)).toEqual(['up', 'up2']);
     expect(held[0]?.signal?.aborted).toBe(true);
-    await settle(() => {
-      held[0]?.resolve();
-    });
-    expect(within(t.preview()).getByText('Loading')).toBeInTheDocument();
-    expect(t.drawnKinds(since)).not.toContain('bars');
-    await settle(() => {
-      held[1]?.resolve();
-    });
-    await waitFor(() => {
-      expect(t.previewFrame().last('setSpec')?.[0]).toMatchObject({ kind: 'heatmap' });
-    });
-    expect(t.drawnKinds(since)).not.toContain('bars');
-    // (b) Two keystrokes in Query: the later result wins whatever order they arrive in.
-    const query = within(d).getByRole('textbox', { name: 'Query' });
-    await t.user.click(query);
-    await t.user.keyboard('{End}1');
-    await t.user.keyboard('2');
-    expect(held).toHaveLength(4);
-    const [h2, h3] = [held[2], held[3]];
-    if (h2 === undefined || h3 === undefined) throw new Error('missing calls');
-    expect(h2.panel.query.text).toMatch(/\)1$/);
-    expect(h3.panel.query.text).toMatch(/\)12$/);
-    const want = frameDataOf(stubPanelData(h3.panel, h3.window));
-    const stale = frameDataOf(stubPanelData(h2.panel, h2.window));
-    await settle(() => {
-      h3.resolve();
-    });
+    const [h0, h1] = [held[0], held[1]];
+    if (h0 === undefined || h1 === undefined) throw new Error('missing calls');
+    const stale = frameDataOf(await t.resultOf(t.spy.mock.calls.length - 2), 'line');
+    const want = frameDataOf(await t.resultOf(t.spy.mock.calls.length - 1), 'line');
+    await settle(() => h1.resolve());
     await waitFor(() => {
       expect(t.previewFrame().last('setData')?.[0]).toEqual(want);
     });
-    await settle(() => {
-      h2.resolve();
-    });
+    await settle(() => h0.resolve());
     expect(t.previewFrame().last('setData')?.[0]).toEqual(want);
+    expect(t.drawnKinds(since)).not.toContain('bars');
     for (const f of t.engine.frames) {
       if (!t.preview().contains(f.canvas) && f.disposed === 0) continue;
       for (const c of f.calls.filter((x) => x.method === 'setData')) {
-        expect(c.args[0]).not.toEqual(stale);
+        if (c.args[0] === want) continue;
+        expect(c.args[0]).not.toBe(stale);
       }
     }
   });
@@ -1671,7 +1636,7 @@ describe('panel editor dialog', () => {
     await waitFor(() => t.previewFrame());
     t.showPreview();
     const held = t.gated();
-    await t.vis('Stat');
+    t.runQuery(d, 'sum(rate(x[5m]))');
     await settle(() => {
       held[0]?.reject(new ApiError('network', 'x'));
     });
@@ -1694,7 +1659,8 @@ describe('panel editor dialog', () => {
       resizeOf(t.previewHost(), 640, 240);
     });
     const n = t.spy.mock.calls.length;
-    await t.vis('Line');
+    t.runQuery(d, P1_TEXT);
+    await waitFor(() => t.previewFrame());
     expect(t.spy.mock.calls.length).toBe(n);
     const f = t.previewFrame();
     expect(t.resizes(f)[0]).toEqual([640, 240, 1]);
@@ -1724,105 +1690,5 @@ describe('panel editor dialog', () => {
       f.draw();
     });
     expect(t.pendingShown()).toBe(false);
-  });
-});
-
-describe('usePanelData across a window change (#93)', () => {
-  /** b-1 in View mode with a gate on `panelData` once `hold()` is called. */
-  async function board() {
-    const api = new StubApi();
-    const spy = vi.spyOn(api, 'panelData');
-    const engine = fakeEngine();
-    const r = open('/t/demo/board/b-1', { api, wrapper: engineWrapper(engine) });
-    const host = await waitFor(() => {
-      const el = panelOf('Request rate').querySelector<HTMLElement>('[data-chart-frame]');
-      if (el === null) throw new Error('no chart');
-      return el;
-    });
-    const f = engine.frames.findLast((x) => x.disposed === 0 && host.contains(x.canvas));
-    if (f === undefined) throw new Error('no frame');
-    act(() => {
-      resizeOf(host, 400, 200);
-    });
-    act(() => {
-      f.draw();
-    });
-    const held: Held[] = [];
-    const hold = (): void => {
-      spy.mockImplementation(
-        (_tenant, panel, window, signal) =>
-          new Promise<PanelData>((res, rej) => {
-            held.push({
-              panel,
-              window,
-              signal,
-              resolve: () => {
-                res(stubPanelData(panel, window));
-              },
-              reject: (e) => {
-                rej(e);
-              },
-            });
-          }),
-      );
-    };
-    return { ...r, engine, host, f, held, hold };
-  }
-
-  it("window change keeps the panel's chart", async () => {
-    const t = await board();
-    const frames = t.engine.frames.length;
-    const before = t.router.state.location.search;
-    t.hold();
-    await t.user.keyboard(']');
-    await waitFor(() => {
-      expect(t.router.state.location.search).not.toBe(before);
-    });
-    await waitFor(() => {
-      expect(t.held.some((x) => x.panel.title === 'Request rate')).toBe(true);
-    });
-    expect(within(panelOf('Request rate')).queryByText('Loading')).toBeNull();
-    expect(t.f.disposed).toBe(0);
-    expect(t.engine.frames).toHaveLength(frames);
-    const n = t.f.calls.filter((c) => c.method === 'setData').length;
-    const h = t.held.find((x) => x.panel.title === 'Request rate');
-    await act(async () => {
-      h?.resolve();
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(t.f.calls.filter((c) => c.method === 'setData').length).toBeGreaterThan(n);
-    });
-    expect(t.f.disposed).toBe(0);
-  });
-
-  it('query change still shows Loading', async () => {
-    const t = await board();
-    await editMode(t.user);
-    await waitFor(() => {
-      expect(document.querySelectorAll('.react-grid-item')).toHaveLength(4);
-    });
-    await t.user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
-    await t.user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
-    const d = await editorDialog();
-    t.hold();
-    await t.user.click(within(d).getByRole('textbox', { name: 'Query' }));
-    await t.user.keyboard('{End}x');
-    const preview = within(d).getByRole('region', { name: 'Preview' });
-    await waitFor(() => {
-      expect(within(preview).getByText('Loading')).toBeInTheDocument();
-    });
-    const h = await waitFor(() => {
-      const x = t.held.at(-1);
-      if (x === undefined) throw new Error('no held call');
-      return x;
-    });
-    await act(async () => {
-      h.resolve();
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(preview.querySelector('[data-chart-frame]')).not.toBeNull();
-    });
   });
 });

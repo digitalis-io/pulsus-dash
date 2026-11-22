@@ -42,7 +42,7 @@ func TestLogGuard(t *testing.T) {
 		q := a1Query(10, Backward)
 		q.Query = text
 		_, err1 := c.LogQueryRange(ctx, rc, q)
-		_, _, err2 := c.LogVolume(ctx, rc, VolumeQuery{Query: text, Grid: a1Grid()})
+		_, _, err2 := c.LogVolume(ctx, rc, VolumeQuery{Query: volumeText(text), Grid: a1Grid()})
 		mq := LogMatchQuery{Query: text, StartNs: 1, EndNs: 2, Limit: 10}
 		_, err3 := c.LogLabels(ctx, rc, mq)
 		_, err4 := c.LogLabelValues(ctx, rc, "app", mq)

@@ -105,17 +105,23 @@ zone) are passed by closure.
   failed load.
 - **Query keys:** `['session']`, `['boards', tenant]`, `['board', tenant, uid]`,
   `['starred', tenant]`, `['recent', tenant]`,
-  `['panel', tenant, panelId, canonicalJson(query), visKind, window]`. Starred and Recent are the
+  `['data', 'panel', tenant, id, text, vars, kind, step, fromMs, toMs]` (a board panel's run,
+  [Boards: panel runtime](boards.md#the-key)). Starred and Recent are the
   same under every tenant, so they are invalidated by the prefixes `['starred']` and `['recent']`;
   after a create, rename, save or delete, `invalidateBoardLists(queryClient)`
   (`src/boards/queries.ts`) invalidates `['boards']`, `['starred']` and `['recent']`, since all three
   show titles;
   `['data', 'explore', tenant, q, …]` (the Explore run, [Explore: metrics](explore.md#the-run-hook-and-d-run)).
-  `refreshNow()` (`src/state/useTimeContext.ts`) cancels `['data']`, then invalidates it, so a
-  request in flight, a first fetch included, is aborted and started again (`invalidateQueries`
-  alone refetches with `cancelRefetch`, which reuses a first fetch). The `['panel', …]` queries
-  are not under `['data']`: they follow the window only, so a refresh with a relative window moves
-  them and one with an absolute window does not refetch them (#101).
+  **Rule: every `['data', …]` key includes the resolved window** (`fromMs`, `toMs`). The board
+  panel key replaces #61's `['panel', …]`, so the shell's refresh reaches panels too.
+  `refreshNow()` (`src/state/useTimeContext.ts`, plan #64 §3.9) ticks the clock, then compares the
+  window resolved at the new anchor with the current one. **Moved** (a relative range): every
+  `['data']` key changes, the observers fetch the new keys, and the old keys' requests abort as
+  their observers leave; nothing is cancelled or invalidated, so no old key restarts. **Not moved**
+  (an absolute range, or `now/d` to a fixed end): it cancels `['data']`, then invalidates it, so a
+  request in flight, a first fetch included, is aborted and the active queries run again
+  (`invalidateQueries` alone refetches with `cancelRefetch`, which reuses a first fetch); inactive
+  ones are marked and fetch when next observed (#101). `useAutoRefresh` calls the same function.
 
 ## Time Context (IA-020, IA-022, IA-023, INT-032, T03-014, T03-017, T08-005)
 
@@ -241,11 +247,18 @@ the panel tools, Share, the layout buttons, the panel editor dialog and its sele
 the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
-Space for checkboxes; End then Escape for sliders; End for text fields), until none is left; when
+Space for checkboxes and radios; End then Escape for sliders; End for text fields; ArrowDown then
+Escape for a combobox, the metric picker), until none is left; when
 an operation opens a dialog, menu or list box, that overlay is drained next (two levels deep). An
 action that adds sidebar or table links (create, rename) is followed in the same page session by
 `shellAfter`, which operates each new link. Two names are normalised: the time range trigger is one control whatever range
-it shows, and the calendar grid one control whatever month. React Aria's screen-reader-only buttons
+it shows, and the calendar grid one control whatever month. Panel copies are bounded by identity
+(plan #64): when a Duplicate is operated, the panels it adds (new `data-panel` ids) are recorded as
+copies one level below the panel it acted on (the focused control's, or the one whose menu is
+open). A first copy is collected and operated like any panel; the controls of a copy of a copy are
+not collected, so the traversal ends there. A page load (a fresh stub board) forgets the copies. A
+control is never skipped for its name. `drain` can be narrowed to one part of the page (a copy's
+panel) at its top level. React Aria's screen-reader-only buttons
 are not counted: an empty button with `tabindex="-1"` whose parent is React Aria's VisuallyHidden
 wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons and the calendar's
 second "Next"; Escape and the visible buttons are their keyboard equivalents. Any other control, including a visible empty icon button
@@ -279,7 +292,6 @@ PromQL queries, data-source check and `/prom/*` reads of #62) and one
 | `listBoards(tenant)` | `{items, truncated}`; an item is `{uid, title, version, updatedAt, updatedBy}` |
 | `getBoard(tenant, uid)` | `Board`: the item plus `etag` and `spec` (generated `BoardSpec`) |
 | `createBoard(tenant, spec)`, `saveBoard(tenant, uid, etag, spec)`, `deleteBoard(tenant, uid, etag)` | `Board`, `{board, changed}`, nothing |
-| `panelData(tenant, panel, window)` | `{kind: 'frame', spec, data}`, `{kind: 'noRoute', lang}` or `{kind: 'noVis'}` |
 | `listStarred(tenant)` | `BoardRef[]` (`{uid, title}`), in the server's order (title, then uid) |
 | `setStarred(tenant, uid, starred)` | nothing; star of an unknown or deleted board → `notFound`; unstar is idempotent |
 | `listRecent(tenant)` | `BoardRef[]`: the `RECENT_LIMIT` (5) most recently opened, newest first |
@@ -292,7 +304,7 @@ PromQL queries, data-source check and `/prom/*` reads of #62) and one
 | `promLabels`, `promLabelValues`, `promSeries`, `promMetadata` | the `/prom/*` reads of #62, used by the editor's completion ([Explore](explore.md)) |
 
 Boards belong to the organisation: `tenant` is checked against the session's tenants (unknown →
-`notFound`) and otherwise only selects the data source of `panelData` and the queries. Each tenant
+`notFound`) and otherwise only selects the data source of the queries. Each tenant
 may carry `dataSource: {state: 'notChecked'}` from the bootstrap. `server` is `{version, commit}` from the BFF, or `null` in
 stub mode; `canSignOut` is false under the fixed local principal.
 
@@ -309,7 +321,6 @@ from `api/openapi.yaml` (ADR-0014 §1, ADR-0015); requests go to the page's orig
 | `createBoard` | `POST /api/dash/v1/boards` `{spec}` | 201 → `Board`; 400 → `invalid` with the envelope's `fields` |
 | `saveBoard` | `PUT /api/dash/v1/boards/{uid}` `{spec}`, `If-Match: "<etag>"` | 200 → `{board, changed}`; 409 → `BoardConflictError(current)`; 400 → `invalid`; 404 → `notFound` |
 | `deleteBoard` | `DELETE /api/dash/v1/boards/{uid}`, `If-Match: "<etag>"` | 204; 409 → `BoardConflictError`; 404 → `notFound` |
-| `panelData` | none | `{kind: 'noVis'}` for visualisation `logs`, else `{kind: 'noRoute', lang}`: the BFF has no query route yet (#64, #67) |
 | `listStarred` | `GET /api/dash/v1/me/starred-boards` | 200 → `items` |
 | `setStarred` | `PUT` (star) or `DELETE` (unstar) `/api/dash/v1/me/starred-boards/{uid}` | 204; 404 → `notFound` |
 | `listRecent` | `GET /api/dash/v1/me/recent-boards?limit=5` | 200 → `items` |
@@ -352,11 +363,12 @@ become `null`. Anything else throws `DecodeError` with the JSON pointer of the f
 for example `/frames/0/values/3`. The output is fresh `Float64Array`s in `SeriesFrame`
 (`data/frames.ts`).
 
-`decodeLogs` decodes the log range body (plan #65 Part B §3.5). A `kind: 'series'` body is a LogQL
-metric result and is decoded by `decodeRangeFrame`: the grid, frames and completeness of
-`decodeRange` without `planned`, which is PromQL-only until `logs.Plan` lands (T06-029, #116).
-`decodeRange` is `decodeRangeFrame` plus the required `planned`. A `kind: 'streams'` body becomes a columnar
-`LogFrame` (`data/logFrame.ts`):
+`decodeLogs` decodes the log range body (plan #65 Part B §3.5). Both kinds require `planned`, the
+LogQL plan the server sent, decoded by `decodeLogqlPlanned` (`query`, `expanded`, `bytes`, `stepMs`;
+T06-029, #116). A `kind: 'series'` body is a LogQL metric result: `planned` and the grid, frames
+and completeness of `decodeRangeFrame`. `decodeRange` is `decodeRangeFrame` plus the required
+PromQL `planned`, and `decodeVolume` the LogQL `planned` plus level frames. A `kind: 'streams'` body
+becomes a columnar `LogFrame` (`data/logFrame.ts`):
 
 | Column | Type | Content |
 |---|---|---|
@@ -380,8 +392,14 @@ frame's labels are exactly `{level: <LogLevel>}` (else a `DecodeError` at `/fram
 `StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
 `promGrid` (`data/step.ts`, the mirror of the BFF's step rule, tested against the same
 `wire/fixtures/json/promql-step.json`), with values `synthLineValue(62, j, t, 100, 40)` and an empty
-completeness; a range too long for the width rejects `queryInvalid`. `queryInstant` returns the same
-three series as a vector at `atMs`; `checkDataSource` resolves `{state: 'ok', checkedAtMs: 0}`.
+completeness; a range too long for the width rejects `queryInvalid`. A range query whose planned
+text matches `/_bucket\b/` answers twelve cumulative buckets `stub_bucket{le}` (`le` 0.005 … +Inf,
+bucket `k` = `(k + 1) × synthLineValue(62, 0, t, 100, 40) / 12`, non-decreasing in `le`), and a
+query containing `topk(1000` answers `completeness.truncated: true` with the warning "results
+truncated due to limit" (plan #64 §3.10, A.3). `queryInstant` answers a scalar
+(`synthLineValue(62, 0, atMs, 100, 40)` at `atMs`) when the planned `valueType` is `scalar`, else
+the same three series as a vector at `atMs`; `checkDataSource` resolves
+`{state: 'ok', checkedAtMs: 0}`.
 
 `queryLogs` serves a synthetic page whose entries all lie in the window `(fromMs, toMs]`:
 `min(limit ?? 1000, 30)` entries 1 s apart, from `toMs` down (backward) or from `fromMs + 1 s` up
@@ -400,9 +418,10 @@ a long title and three panels), the same in both tenants. Boards are kept in mem
 lifetime and behave as the boards API does: version and etag start at `1` and grow by one per
 changed save; a save of the same canonical spec is `changed: false`; a stale etag is a
 `BoardConflictError`; an invalid spec is `invalid` with the fields of `checkBoardSpec`; new uids are
-`b-<n>`; the list is most recently updated first. `panelData` is seeded synthetic data
-(`stubPanels.ts`: a pure function of the panel id, the query text and the window). `b-3`'s queries
-reference the variables `region` and `env`.
+`b-<n>`; the list is most recently updated first. Board panels query through `queryRange` and
+`queryInstant`, as against the BFF (plan #64; `Api.panelData` and `stubPanels.ts` are gone).
+`b-1` saves the time range `now-6h` to `now`; `b-3`'s queries reference the variables `region` and
+`env`.
 
 `StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
 `promGrid` (`data/step.ts`, the mirror of the BFF's step rule, tested against the same
@@ -431,13 +450,14 @@ down:
 | `pulsus-dash.stub.failSave`      | `saveBoard` rejects `network`                                                                                                      |
 | `pulsus-dash.stub.conflictSave`  | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
 | `pulsus-dash.stub.failStar`      | `setStarred` rejects `network` and changes nothing (`e2e:a11y-rooms` state `b-1 star failed`)                                      |
-| `pulsus-dash.stub.failPanelData` | `panelData` rejects `network` ("stub: panel data failed") after the delay below (#90, `panel-editor-dialog.spec.ts` E11, E13, E15) |
+| `pulsus-dash.stub.failQuery`     | `queryRange` and `queryInstant` reject `network` ("stub: query failed") after the delay below, before planning (#90, plan #64; `panel-editor-dialog.spec.ts` E11, E13, E15; `e2e:a11y-rooms` state `b-1 view, panel error`) |
 
-`pulsus-dash.stub.panelDelayMs` (#90), a positive integer n, makes every `panelData` call resolve
-after n ms instead of the next microtask; it is read on every call and never consumed, and an abort
-of the call's signal clears the timer and rejects with `AbortError`. Every `panelData` call also
-leaves a `stub:panelData` performance mark with `detail` `{ id, lang, text, vis }`, which the
-frame-timing e2e specs read to see when a request started.
+`pulsus-dash.stub.queryDelayMs` (#90, plan #64 §3.10), a positive integer n, makes every
+`queryRange` and `queryInstant` call wait n ms before it is planned; it is read on every call and
+never consumed, and an abort of the call's signal clears the timer and rejects with `AbortError`.
+Every call also leaves a `stub:query` performance mark with `detail` `{ kind: 'range' | 'instant',
+query }` (`query` is the raw request text), which the frame-timing e2e specs read to see when a
+request started. The two keys replace #90's `panelDelayMs` and `failPanelData`.
 
 ## Boards
 
@@ -505,17 +525,22 @@ opening, typing in or closing the editor in Edit mode renders another panel, and
 entering Edit mode, by Edit board or from View mode, renders every panel. The scenario's long tasks
 are measured by `bench:rooms-long-tasks` ([Build, test and CI](../development/build-and-ci.md)).
 
-`PanelPreview` (`PanelFrame.tsx`) renders the draft through the board panel's own path,
-`usePanelData` → `PanelBody` → `ChartFrame`. The two share one TanStack query key (`vis.kind` stays
-in it, because `panelData` is shaped per visualisation), so the preview adds no request: every
-draft key is fetched once, for both. What a change shows:
+`PanelPreview` (`PanelFrame.tsx`) renders the editor's run through the board panel's own path,
+`usePanelRun` → `panelView` → `PanelBody` → `ChartFrame` ([Boards: panel runtime](boards.md)). The
+dialog's run and the panel behind share one TanStack key (the same run text, and the panel's body
+width from the board's width store), so the preview adds no request. For PromQL the Query field is
+`PanelQueryField` (the PromQL editor, the picker and Run query); a query runs on Run, the Run keys
+or leaving the field, not on typing (plan #64 §4.4). What a change shows:
 
 | Change | In the change's commit | Then |
 |---|---|---|
 | Title | the preview title and the chart spec; no request | drawn in the next frame |
-| Visualisation, query or language, key already cached | the cached result (or the Logs message); no request | drawn in the next frame, also after an error or Logs message |
-| Same, not cached | one `panelData` call, shared with the panel behind; `Loading` | the chart, or `Something went wrong` (no retry) |
-| Same, changed again before a result | both observers move to the newest key; the superseded call's signal aborts | only the newest key's result renders |
+| Visualisation | the same result drawn with the new vis (or a message); never a request | drawn in the next frame, also after a Logs message |
+| Query typed | the draft only; "Press Shift+Enter or Run query to update the preview." | nothing runs |
+| Query run, key already fresh in this window epoch | the cached result; no request | drawn in the next frame, also after an error |
+| Same, not cached | one request, shared with the panel behind; `Loading` | the chart, or the error view (no retry) |
+| Run again before a result | the newest key, or the same key cancelled and rerun | only the newest result renders |
+| Language → LogQL | "Runs when LogQL support lands"; no request | — |
 
 **Chart readiness** (`ChartFrame.tsx`, #90; [ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md)).
 `ChartFrame` takes `pending` (shown over the frame) and `sizeMemo`. `pending` stays until the
@@ -558,7 +583,7 @@ the lowest free `p-<n>` is used.
 whose button (`aria-expanded`, `aria-controls` the grid) collapses or expands it, then the panel
 count; in Edit mode the heading row adds **Section `n` title**, **Add panel to `<title>`** and
 **Remove section `<title>`**. A collapsed section renders no grid, so its panels mount no
-`PanelFrame` and create no `['panel', …]` query (T07-012). In View mode a toggle writes a URL
+`PanelFrame` and create no panel query (T07-012). In View mode a toggle writes a URL
 override (below) only when it differs from the saved state, with `replace`; entering Edit mode by
 any path clears the overrides, so Edit starts from and saves the saved state. A section title's
 field error shows under the field, not under the status line.

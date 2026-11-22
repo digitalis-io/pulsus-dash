@@ -2,14 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
-import { STUB_FAIL_PANEL_DATA_KEY, STUB_PANEL_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
-import {
-  ApiError,
-  BoardConflictError,
-  type BoardSpec,
-  type LogsRequest,
-  type PanelSpec,
-} from './types';
+import { STUB_FAIL_QUERY_KEY, STUB_QUERY_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
+import { ApiError, BoardConflictError, type BoardSpec, type LogsRequest } from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
   try {
@@ -201,36 +195,6 @@ describe('stub boards', () => {
     expect((conflict as BoardConflictError).current.etag).toBe('2');
     expect((await api.saveBoard('demo', 'b-1', '2', spec)).changed).toBe(true);
   });
-
-  it('stub panel data', async () => {
-    const api = new StubApi();
-    const window = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13) };
-    const p: PanelSpec = {
-      id: 'p-1',
-      title: 'Request rate',
-      grid: { x: 0, y: 0, w: 6, h: 8 },
-      query: { lang: 'promql', text: 'sum(rate(http_requests_total[5m]))' },
-      vis: { kind: 'line' },
-    };
-    const a = await api.panelData('demo', p, window);
-    const b = await api.panelData('demo', p, window);
-    expect(a).toEqual(b);
-    expect(a.kind).toBe('frame');
-    if (a.kind !== 'frame' || a.data.kind !== 'series') throw new Error('not a series frame');
-    expect(a.spec.kind).toBe('line');
-    expect(a.data.series).toHaveLength(3);
-    expect(a.data.series.map((s) => s.values.length)).toEqual([360, 360, 360]);
-
-    const logs = await api.panelData(
-      'demo',
-      { ...p, query: { lang: 'logql', text: '{app="api"}' }, vis: { kind: 'auto' } },
-      window,
-    );
-    expect(logs.kind === 'frame' ? logs.spec.kind : logs.kind).toBe('bars');
-    expect((await api.panelData('demo', { ...p, vis: { kind: 'logs' } }, window)).kind).toBe(
-      'noVis',
-    );
-  });
 });
 
 const EDGE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
@@ -403,77 +367,108 @@ describe('stub log queries (plan #65 Part B §4.4)', () => {
   });
 });
 
-describe('stub panel data hooks (#90)', () => {
-  const window = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13) };
-  const p: PanelSpec = {
-    id: 'p-1',
-    title: 'Request rate',
-    grid: { x: 0, y: 0, w: 6, h: 8 },
-    query: { lang: 'promql', text: 'sum(rate(http_requests_total[5m]))' },
-    vis: { kind: 'line' },
+describe('StubApi LogQL planning (plan #116 §3.9, A.3)', () => {
+  const L: LogsRequest = {
+    query: '{app="x"}',
+    fromMs: 1767225600000,
+    toMs: 1767229200000,
+    widthPx: 1200,
   };
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  /** Whether `promise` has settled, after the microtasks queued so far. */
-  async function settled(promise: Promise<unknown>): Promise<boolean> {
-    let done = false;
-    promise.then(
-      () => {
-        done = true;
-      },
-      () => {
-        done = true;
-      },
-    );
-    for (let i = 0; i < 5; i++) await Promise.resolve();
-    return done;
+  async function errorOf(p: Promise<unknown>): Promise<ApiError> {
+    try {
+      await p;
+    } catch (e) {
+      if (e instanceof ApiError) return e;
+      throw e;
+    }
+    throw new Error('the promise resolved');
   }
 
-  it('panel delay hook', async () => {
-    expect(STUB_PANEL_DELAY_KEY).toBe('pulsus-dash.stub.panelDelayMs');
-    const api = new StubApi();
-    performance.clearMarks('stub:panelData');
-    // Absent: the next microtask, and one mark per call.
-    expect(await settled(api.panelData('demo', p, window))).toBe(true);
-    const marks = performance.getEntriesByName('stub:panelData') as PerformanceMark[];
-    expect(marks).toHaveLength(1);
-    expect(marks[0]?.detail).toEqual({
-      id: 'p-1',
-      lang: 'promql',
-      text: 'sum(rate(http_requests_total[5m]))',
-      vis: 'line',
+  it('S1: a page carries the plan of its substituted text', async () => {
+    const r = await new StubApi().queryLogs('demo', {
+      ...L,
+      query: '{app="$a"}',
+      vars: { a: 'x' },
     });
-
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    localStorage.setItem(STUB_PANEL_DELAY_KEY, '50');
-    const delayed = api.panelData('demo', p, window);
-    await vi.advanceTimersByTimeAsync(49);
-    expect(await settled(delayed)).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(await settled(delayed)).toBe(true);
-    expect((await delayed).kind).toBe('frame');
-    expect(localStorage.getItem(STUB_PANEL_DELAY_KEY)).toBe('50');
-
-    const c = new AbortController();
-    const aborted = api.panelData('demo', p, window, c.signal);
-    await vi.advanceTimersByTimeAsync(10);
-    c.abort();
-    expect(await kindOf(aborted)).toBe('AbortError');
-    expect(vi.getTimerCount()).toBe(0);
-    expect(performance.getEntriesByName('stub:panelData')).toHaveLength(3);
+    expect(r.planned).toEqual({
+      query: '{app="x"}',
+      expanded: '{app="x"}',
+      bytes: 9,
+      stepMs: 5000,
+    });
+    expect(r.kind === 'streams' && r.frame.tsNs.length).toBe(30);
   });
 
-  it('panel fail hook', async () => {
-    expect(STUB_FAIL_PANEL_DATA_KEY).toBe('pulsus-dash.stub.failPanelData');
-    const api = new StubApi();
-    localStorage.setItem(STUB_FAIL_PANEL_DATA_KEY, '1');
-    const first = api.panelData('demo', p, window);
-    expect(await kindOf(first)).toBe('network');
-    expect(localStorage.getItem(STUB_FAIL_PANEL_DATA_KEY)).toBe('0');
-    expect(await kindOf(api.panelData('demo', p, window))).toBe('resolved');
+  it('S2: the volume carries the template', async () => {
+    const v = await new StubApi().queryVolume('demo', L);
+    expect(v.planned.query).toBe(
+      'sum by (level, detected_level) (count_over_time({app="x"}\n| drop __error__ [5s]))',
+    );
+    expect(v.planned.bytes).toBe(81);
+    expect(v.series).toHaveLength(3);
+  });
+
+  it('S3, S4: a reserved selector is refused by Classify, then by the byte guard', async () => {
+    for (const query of ['{source="pulsus-dash"}', '{app="x"} | source="pulsus-dash"']) {
+      const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query }));
+      expect(e.kind, query).toBe('queryInvalid');
+      expect(e.detail.hint?.['reserved']).toBe('source="pulsus-dash"');
+      expect(e.detail.planned).toBeUndefined();
+    }
+  });
+
+  it('S5: a missing variable', async () => {
+    const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query: '{app="$b"}' }));
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/b', messageKey: 'variable.missing' }]);
+  });
+
+  it('S6: the volume template counts toward the 64 KiB limit', async () => {
+    const query = '{app="x"} # ' + 'a'.repeat(65_488);
+    const e = await errorOf(new StubApi().queryVolume('demo', { ...L, query }));
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65_572);
+    expect((await new StubApi().queryLogs('demo', { ...L, query })).planned.bytes).toBe(65_500);
+  });
+
+  it('S7: the processing cap carries no plan', async () => {
+    const e = await errorOf(
+      new StubApi().queryLogs('demo', {
+        ...L,
+        query: '$r'.repeat(600),
+        vars: { r: 'a'.repeat(4096) },
+      }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+  });
+
+  it('S8: values are written in UTF-8 bytes, not UTF-16 units', async () => {
+    for (const [value, query, bytes] of [
+      ['x\ny', '{app="x\\ny"}', 12],
+      ['x\u0001y', '{app="x\\x01y"}', 14],
+      ['ü€😀', '{app="ü€😀"}', 17],
+    ] as const) {
+      const r = await new StubApi().queryLogs('demo', {
+        ...L,
+        query: '{app="$a"}',
+        vars: { a: value },
+      });
+      expect(r.planned.query).toBe(query);
+      expect(r.planned.bytes).toBe(bytes);
+    }
+  });
+
+  it('S9: a value that cannot be written where it is referenced', async () => {
+    for (const [query, value] of [
+      ['{app=`$a`}', 'x`y'],
+      ['{app="x"} # $a', 'z\n{source="pulsus-dash"}'],
+    ] as const) {
+      const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query, vars: { a: value } }));
+      expect(e.kind, query).toBe('invalid');
+      expect(e.fields).toEqual([{ pointer: '/vars/a', messageKey: 'variable.unrepresentable' }]);
+    }
   });
 });
 
@@ -596,5 +591,124 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     expect(e.detail.hint?.['reason']).toBe('processing_cap');
     expect(e.detail.planned).toBeUndefined();
     expect(meta).not.toHaveBeenCalled();
+  });
+});
+
+describe('stub query hooks and buckets (plan #64 §3.10)', () => {
+  const W = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13), widthPx: 1000 };
+  const req = { ...W, query: 'node_memory_free_bytes' };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Whether `promise` has settled after `n` macrotask turns. */
+  async function settledAfter(promise: Promise<unknown>): Promise<boolean> {
+    let done = false;
+    promise.then(
+      () => {
+        done = true;
+      },
+      () => {
+        done = true;
+      },
+    );
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    return done;
+  }
+
+  it('stub query hooks and buckets: delay', async () => {
+    expect(STUB_QUERY_DELAY_KEY).toBe('pulsus-dash.stub.queryDelayMs');
+    const api = new StubApi();
+    performance.clearMarks('stub:query');
+    await api.queryRange('demo', req);
+    await api.queryInstant('demo', { query: 'scalar(vector(1))', atMs: W.toMs, stepMs: 5000 });
+    const marks = performance.getEntriesByName('stub:query') as PerformanceMark[];
+    expect(marks.map((m) => m.detail as unknown)).toEqual([
+      { kind: 'range', query: 'node_memory_free_bytes' },
+      { kind: 'instant', query: 'scalar(vector(1))' },
+    ]);
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    localStorage.setItem(STUB_QUERY_DELAY_KEY, '400');
+    const delayed = api.queryRange('demo', req);
+    await vi.advanceTimersByTimeAsync(399);
+    expect(await settledAfter(delayed)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await kindOf(delayed)).toBe('resolved');
+    expect(localStorage.getItem(STUB_QUERY_DELAY_KEY)).toBe('400');
+
+    const c = new AbortController();
+    const aborted = api.queryRange('demo', req, c.signal);
+    await vi.advanceTimersByTimeAsync(10);
+    c.abort();
+    expect(await kindOf(aborted)).toBe('AbortError');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(performance.getEntriesByName('stub:query')).toHaveLength(4);
+  });
+
+  it('stub query hooks and buckets: fail', async () => {
+    expect(STUB_FAIL_QUERY_KEY).toBe('pulsus-dash.stub.failQuery');
+    const api = new StubApi();
+    localStorage.setItem(STUB_FAIL_QUERY_KEY, '1');
+    const first = api.queryRange('demo', req);
+    await expect(first).rejects.toThrow('stub: query failed');
+    expect(await kindOf(api.queryRange('demo', req))).toBe('resolved');
+    expect(localStorage.getItem(STUB_FAIL_QUERY_KEY)).toBe('0');
+    localStorage.setItem(STUB_FAIL_QUERY_KEY, '1');
+    expect(await kindOf(api.queryInstant('demo', { query: 'up', atMs: W.toMs }))).toBe('network');
+  });
+
+  it('stub query hooks and buckets: buckets, scalar and truncation', async () => {
+    const api = new StubApi();
+    const r = await api.queryRange('demo', {
+      ...W,
+      query: 'sum by (le) (rate(http_request_duration_seconds_bucket[5m]))',
+    });
+    const les = [
+      '0.005',
+      '0.01',
+      '0.025',
+      '0.05',
+      '0.1',
+      '0.25',
+      '0.5',
+      '1',
+      '2.5',
+      '5',
+      '10',
+      '+Inf',
+    ];
+    expect(r.series.map((s) => s.labels)).toEqual(
+      les.map((le) => ({ __name__: 'stub_bucket', le })),
+    );
+    const first = r.series[0];
+    if (first === undefined) throw new Error('no series');
+    for (let i = 0; i < first.values.length; i += 97) {
+      const col = r.series.map((s) => s.values[i] ?? NaN);
+      for (let k = 1; k < col.length; k++) expect(col[k]).toBeGreaterThanOrEqual(col[k - 1] ?? 0);
+      const t = first.timestamps[i] ?? 0;
+      expect(col[11]).toBeCloseTo((12 * synthLineValue(62, 0, t, 100, 40)) / 12);
+    }
+    const plain = await api.queryRange('demo', req);
+    expect(plain.series.map((s) => s.labels['__name__'])).toEqual([
+      'stub_metric',
+      'stub_metric',
+      'stub_metric',
+    ]);
+
+    const s = await api.queryInstant('demo', { query: 'scalar(vector(1)) / 0', atMs: W.toMs });
+    expect(s.kind).toBe('scalar');
+    if (s.kind !== 'scalar') throw new Error('not a scalar');
+    expect(s.scalar).toEqual({
+      value: synthLineValue(62, 0, W.toMs, 100, 40),
+      timestampMs: W.toMs,
+    });
+    expect((await api.queryInstant('demo', { query: 'up', atMs: W.toMs })).kind).toBe('series');
+
+    const top = await api.queryRange('demo', { ...W, query: 'topk(1000, up)' });
+    expect(top.completeness.truncated).toBe(true);
+    expect(top.completeness.warnings).toEqual(['results truncated due to limit']);
+    expect(plain.completeness.truncated).toBe(false);
   });
 });

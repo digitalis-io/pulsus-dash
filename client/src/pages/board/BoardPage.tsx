@@ -12,6 +12,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -27,6 +28,8 @@ import {
   type PanelSpec,
 } from '../../api/types';
 import { boardKeyAction } from '../../boards/boardKeys';
+import { BoardRunProvider } from '../../boards/boardRun';
+import { boardTimeInit, isTimeReady, type TimeTarget } from '../../boards/boardTime';
 import {
   allPanels,
   blockedText,
@@ -52,7 +55,7 @@ import { useShellRoute } from '../../shell/useShellRoute';
 import type { ParamError } from '../../state/boardParams';
 import { contextSearchString } from '../../state/contextSearch';
 import { useBoardParams } from '../../state/useBoardParams';
-import { useTimeContext } from '../../state/useTimeContext';
+import { useClock, useTimeContext } from '../../state/useTimeContext';
 import pages from '../pages.module.css';
 import styles from './Board.module.css';
 import { BoardConflict } from './BoardConflict';
@@ -171,6 +174,7 @@ function BoardEditor({
   const api = useApi();
   const queryClient = useQueryClient();
   const time = useTimeContext();
+  const clock = useClock();
   const location = useLocation();
   const navigate = useNavigate();
   const [s, dispatch] = useReducer(boardReducer, latest, initialState);
@@ -204,24 +208,39 @@ function BoardEditor({
     dispatch({ type: 'remoteHead', board: latest });
   }, [latest]);
 
-  // A board link applies the saved time range once, then the entry forgets the link (IA-022): a
-  // deep link or a reload keeps the URL's time.
+  // The board's time on first open (plan #64 §4.6, A.8; IA-002, IA-022): a link without a time
+  // opens on the saved time (or the default), a board link applies the saved time once, and the
+  // entry then forgets the link, so a deep link or a reload keeps the URL's time. One navigation.
+  // Panels plan nothing until the URL holds that time (`timeReady`, latched while rendering).
+  const [timeTarget, setTimeTarget] = useState<TimeTarget | undefined>(undefined);
+  const [timeReady, setTimeReady] = useState(false);
+  if (!timeReady && isTimeReady(timeTarget, new URLSearchParams(location.search), time.search)) {
+    setTimeReady(true);
+  }
   const opened = useRef(false);
+  const { timeZone } = time;
   useEffect(() => {
     if (opened.current) return;
     opened.current = true;
     const st: unknown = location.state;
-    if (!isLinkState(st)) return;
-    void navigate(
-      { pathname: location.pathname, search: location.search },
-      { replace: true, state: null },
-    );
-    const saved = latest.spec.time;
-    if (saved !== undefined) {
-      time.dispatch({ type: 'setRange', from: saved.from, to: saved.to }, { replace: true });
+    const linkState = isLinkState(st);
+    const init = boardTimeInit({
+      search: location.search,
+      linkState,
+      saved: latest.spec.time,
+      nowMs: clock.anchor(),
+      timeZone,
+    });
+    if (init?.tick === true) clock.tick();
+    if (init !== null || linkState) {
+      void navigate(
+        { pathname: location.pathname, search: init?.search ?? location.search },
+        { replace: true, state: null },
+      );
     }
-    if (st.edit === true) dispatch({ type: 'enterEdit' });
-  }, [location, navigate, latest, time]);
+    setTimeTarget(init ?? 'url');
+    if (linkState && st.edit === true) dispatch({ type: 'enterEdit' });
+  }, [location, navigate, latest, clock, timeZone]);
 
   // Leaving for another page asks first; time and refresh changes (same path) never do.
   const blocker = useBlocker(
@@ -331,6 +350,18 @@ function BoardEditor({
   // (its Edit control), or to Add panel if the panel is gone. Scheduled one frame later, so it runs
   // after the overlay's own focus restore.
   const editedId = useRef<string | null>(null);
+  // After Remove from the panel menu: focus goes to Add panel once the menu has closed.
+  const [focusAdd, setFocusAdd] = useState(false);
+  useEffect(() => {
+    if (!focusAdd) return;
+    const raf = requestAnimationFrame(() => {
+      setFocusAdd(false);
+      document.querySelector<HTMLElement>('[data-board-add]')?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [focusAdd]);
   useEffect(() => {
     const was = editedId.current;
     editedId.current = s.selected;
@@ -345,6 +376,26 @@ function BoardEditor({
 
   const selected =
     s.selected === null ? undefined : allPanels(s.draft).find((x) => x.panel.id === s.selected);
+  // The run text of the panel in the dialog (plan #64 §4.4, A.10): the preview and the panel
+  // behind run it, so they share one key; typing changes the draft only. Set while rendering.
+  const [editRun, setEditRun] = useState<{ id: string; text: string } | null>(null);
+  const dialogPanel = edit && selected !== undefined ? selected.panel : null;
+  if (dialogPanel === null) {
+    if (editRun !== null) setEditRun(null);
+  } else if (editRun?.id !== dialogPanel.id) {
+    setEditRun({ id: dialogPanel.id, text: dialogPanel.query.text });
+  }
+  const runEdited = (text: string): void => {
+    if (editRun === null) return;
+    if (text !== editRun.text) {
+      setEditRun({ id: editRun.id, text });
+      return;
+    }
+    // The same text again: abort the run in flight, first fetch included, and run it again.
+    const queryKey = ['data', 'panel', tenant, editRun.id];
+    void queryClient.cancelQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey });
+  };
   const full = [t('board.full'), t('board.fullPanels'), t('board.sectionsFull')].includes(
     s.announce,
   )
@@ -381,6 +432,16 @@ function BoardEditor({
   const onKeyOp = useCallback((id: string, op: LayoutOp) => {
     dispatch({ type: 'keyOp', id, op });
   }, []);
+  // From the panel menu (plan #64 Q3): the change needs a save, so it enters Edit mode.
+  const onDuplicate = useCallback((id: string) => {
+    dispatch({ type: 'enterEdit' });
+    dispatch({ type: 'duplicatePanel', id });
+  }, []);
+  const onRemove = useCallback((id: string) => {
+    dispatch({ type: 'enterEdit' });
+    dispatch({ type: 'removePanel', id });
+    setFocusAdd(true);
+  }, []);
   const panelProps = (p: PanelSpec): PanelFrameProps => ({
     panel: p,
     tenant,
@@ -389,6 +450,9 @@ function BoardEditor({
     selected: edit && s.selected === p.id,
     onEdit,
     onKeyOp,
+    onDuplicate,
+    onRemove,
+    ...(editRun?.id === p.id ? { runText: editRun.text } : {}),
   });
 
   const viewGrid = (panels: readonly PanelSpec[]) => (
@@ -420,8 +484,9 @@ function BoardEditor({
     );
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
+  const livePanels = useMemo(() => allPanels(s.draft).map((x) => x.panel.id), [s.draft]);
 
-  return (
+  const page = (
     <div className={cx(styles['page'])}>
       <div className={cx(styles['bar'])}>
         <ContextSummary />
@@ -547,6 +612,8 @@ function BoardEditor({
             fields={s.save.status === 'invalid' ? s.save.fields : []}
             readOnly={busy}
             statusText={statusText}
+            runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
+            onRun={runEdited}
             onChange={(patch) => {
               dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
             }}
@@ -593,5 +660,16 @@ function BoardEditor({
         />
       )}
     </div>
+  );
+  // Every panel of the board reads its variables, width store, viewport tracker and time gate here.
+  return (
+    <BoardRunProvider
+      tenant={tenant}
+      vars={boardParams.params.vars}
+      timeReady={timeReady}
+      livePanels={livePanels}
+    >
+      {page}
+    </BoardRunProvider>
   );
 }
