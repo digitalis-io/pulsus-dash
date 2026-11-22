@@ -96,6 +96,7 @@ describe('panel editor thresholds (#64 Part B §4.6)', () => {
     const { t, d, save } = e;
     const add = within(d).getByRole('button', { name: 'Add threshold' });
     await t.user.click(add);
+    await within(d).findByRole('textbox', { name: 'Value' });
     expect(values(d)).toEqual(['0']);
     await t.user.click(add);
     expect(values(d)).toEqual(['0', '1']);
@@ -127,7 +128,8 @@ describe('panel editor thresholds (#64 Part B §4.6)', () => {
 
   it('an invalid value shows an error and blocks save', async () => {
     const { t, d, save } = await editor({ kind: 'line', thresholds: TWO });
-    const value = within(d).getAllByRole('textbox', { name: 'Value' })[0] as HTMLElement;
+    // The rows are revealed in the frames after the editor opens.
+    const value = (await within(d).findAllByRole('textbox', { name: 'Value' }))[0] as HTMLElement;
     await t.user.clear(value);
     await t.user.type(value, 'abc');
     expect(within(d).getByText('Enter a number')).toBeInTheDocument();
@@ -143,7 +145,8 @@ describe('panel editor thresholds (#64 Part B §4.6)', () => {
 
   it('an out-of-range value shows the range error and blocks save', async () => {
     const { t, d, save } = await editor({ kind: 'line', thresholds: TWO });
-    const value = within(d).getAllByRole('textbox', { name: 'Value' })[0] as HTMLElement;
+    // The rows are revealed in the frames after the editor opens.
+    const value = (await within(d).findAllByRole('textbox', { name: 'Value' }))[0] as HTMLElement;
     await t.user.clear(value);
     await t.user.type(value, '2e15');
     const range = 'Use 0 or a value between 1e-9 and 1e15 in size.';

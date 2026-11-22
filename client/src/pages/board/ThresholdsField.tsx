@@ -4,9 +4,12 @@
  * draft at once. The Value text is the row's own: an unparsable text stores NaN and shows "Enter a
  * number", and a value out of the range (0, or 1e-9 to 1e15 in size) is stored as typed and shows
  * the range error; the save then stops on the draft's check (§4.6). Rows are memoised by index, so
- * a keystroke renders one row (R5).
+ * a keystroke renders one row (R5). When the field mounts (the editor opens), its rows are revealed
+ * over the next animation frames, `ROWS_PER_FRAME` at a time, so opening the editor on a panel
+ * with 8 thresholds is not one long task (`bench:rooms-long-tasks`, as the PromQL editor view mounts
+ * a frame after its field); a row added after that renders at once.
  */
-import { memo, useCallback, useLayoutEffect, useRef, useState, type JSX } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { inThresholdRange } from '../../boards/spec';
 import { fieldMessage } from '../../boards/fieldMessages';
 import type { Unit } from '../../engine/api';
@@ -35,6 +38,35 @@ export interface ThresholdsFieldProps {
 }
 
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** Rows mounted per animation frame while the field reveals its rows after mounting. */
+const ROWS_PER_FRAME = 2;
+
+/**
+ * How many of `total` rows to render: none in the mount's own task, then `ROWS_PER_FRAME` more
+ * per animation frame until every row present then is shown; from then on, all of them.
+ */
+function useRevealedRows(total: number): number {
+  const [revealed, setRevealed] = useState<number | 'all'>(0);
+  const totalRef = useRef(total);
+  useLayoutEffect(() => {
+    totalRef.current = total;
+  });
+  useEffect(() => {
+    if (revealed === 'all') return;
+    const id = requestAnimationFrame(() => {
+      setRevealed((r) => {
+        if (r === 'all') return r;
+        const next = r + ROWS_PER_FRAME;
+        return next >= totalRef.current ? 'all' : next;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id);
+    };
+  }, [revealed]);
+  return revealed === 'all' ? total : Math.min(revealed, total);
+}
 
 /** The value of a Value text: a finite number, else NaN. */
 function parse(text: string): number {
@@ -162,6 +194,7 @@ export function ThresholdsField(p: ThresholdsFieldProps): JSX.Element {
   }, []);
   const v = p.value;
   const steps = v?.steps ?? [];
+  const shown = useRevealedRows(steps.length);
   const full = steps.length >= MAX_THRESHOLD_STEPS;
   const add = (): void => {
     if (v === undefined) {
@@ -191,7 +224,7 @@ export function ThresholdsField(p: ThresholdsFieldProps): JSX.Element {
           isDisabled={p.readOnly}
         />
       )}
-      {steps.map((s, k) => (
+      {steps.slice(0, shown).map((s, k) => (
         <ThresholdRow
           // By index: the value is what a row edits, so it cannot be the key.
           key={k}
