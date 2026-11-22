@@ -629,6 +629,22 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     expect(e.detail.planned).toBeUndefined();
     expect(meta).not.toHaveBeenCalled();
   });
+
+  it('G6: repeated quoted references over the cap are refused without encoding each one (review r1)', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    // 1 000 references to a 4 096-byte LF value inside "…": 8 192 000 encoded bytes.
+    const a = '\n'.repeat(4096);
+    const query = 'x{a="' + '$a'.repeat(1000) + '"}';
+    const t0 = performance.now();
+    const e = await errorOf(api.queryRange('demo', { query, vars: { a }, ...W }));
+    const ms = performance.now() - t0;
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+    expect(ms).toBeLessThan(200);
+  });
 });
 
 describe('stub query hooks and buckets (plan #64 §3.10)', () => {

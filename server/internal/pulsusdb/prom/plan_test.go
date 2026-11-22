@@ -3,7 +3,9 @@ package prom
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
@@ -155,6 +157,34 @@ func TestPlanTables(t *testing.T) {
 		if len(b.Text) != b.Bytes {
 			t.Errorf("len(%.20q) = %d, want %d", b.Text, len(b.Text), b.Bytes)
 		}
+	}
+}
+
+// Review r1 (#118): repeated references to one quoted value over the processing cap are counted
+// once per value and quote state, so the refusal is cheap. 65 000 references to a 4 096-byte LF
+// value inside "…" would be 532 480 000 encoded bytes.
+func TestPlanCapRepeatedQuotedValue(t *testing.T) {
+	in := Inputs{Query: `x{a="` + strings.Repeat("$a", 65_000) + `"}`, Vars: map[string]string{"a": strings.Repeat("\n", 4096)},
+		Kind: KindRange, StepMs: 5000, Rate: true}
+	t0 := time.Now()
+	_, err := Prepare(in)
+	d := time.Since(t0)
+	if err == nil || err.Kind != ErrProcessingCap {
+		t.Fatalf("Prepare: %+v, want the processing cap", err)
+	}
+	if d > 200*time.Millisecond {
+		t.Errorf("Prepare took %v, want under 200ms", d)
+	}
+	// The refusal order is unchanged: a missing variable, then a value that cannot be written,
+	// then the cap.
+	in.Query = "x{a=`$a`}" + strings.Repeat(`{a="$a"}`, 1000) + " $m"
+	in.Vars = map[string]string{"a": strings.Repeat("`", 4096)}
+	if _, err := Prepare(in); err == nil || err.Kind != ErrVariableMissing {
+		t.Errorf("missing first: %+v", err)
+	}
+	in.Query = "x{a=`$a`}" + strings.Repeat(`{a="$a"}`, 1000)
+	if _, err := Prepare(in); err == nil || err.Kind != ErrInput || err.Fields[0].MessageKey != "variable.unrepresentable" {
+		t.Errorf("unrepresentable before the cap: %+v", err)
 	}
 }
 
