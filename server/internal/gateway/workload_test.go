@@ -20,7 +20,8 @@ import (
 )
 
 // The budget workloads of plan #62 A.11. W1: a 1 000 × 1 000 matrix decoded, placed on the grid
-// and encoded; W2: 1 000 sequential range requests for a 1-series, 60-point matrix.
+// and encoded; W2: 1 000 sequential range requests for a 1-series, 60-point matrix; W3 (plan #65
+// Part B §8.1): a 5 000-entry log page decoded, paged and encoded.
 
 const workloadFrom = 1767225600000
 
@@ -95,7 +96,7 @@ func (d *discard) Flush()                      {}
 
 // workloadGateway is a gateway with the binding in memory (no Postgres), credentials configured
 // (so redaction is in the counted path) and the upstream m.
-func workloadGateway(m *memTransport) http.Handler {
+func workloadGateway(m http.RoundTripper) http.Handler {
 	b := core.TenantBinding{OrgID: pdbOrg, ID: demoBindingID, Slug: "demo", DatasourceURL: "http://localhost:9091",
 		CredentialsRef: "env:C", Kind: "pulsusdb"}
 	view := core.BootstrapView{Org: core.Org{ID: pdbOrg, Slug: "default", Name: "Default organisation"}, Bindings: []core.TenantBinding{b}}
@@ -181,4 +182,60 @@ func runW2Body(t testing.TB, body []byte, n int, delay time.Duration) []time.Dur
 		out = append(out, time.Since(start)-m.take())
 	}
 	return out
+}
+
+// W3 (plan #65 Part B §8.1): one log page of 5 000 entries. The upstream body holds 50 streams of
+// 100 entries, lines of 120 ASCII bytes, timestamps descending over the whole page with a tie
+// every 10th entry and the last group a single entry; one POST …/logql/range with limit 4 999
+// (so the main fetch asks for 5 000 and one request makes the page).
+const (
+	w3Streams, w3PerStream = 50, 100
+	w3Limit                = 4999
+)
+
+// logPageBody is the W3 upstream body (built before the measured boundary).
+func logPageBody(streams, perStream int) []byte {
+	n := streams * perStream
+	hiNs := int64(workloadFrom+3_600_000) * 1_000_000
+	b := make([]byte, 0, 96+n*160)
+	b = append(b, `{"status":"success","data":{"resultType":"streams","result":[`...)
+	for s := range streams {
+		if s > 0 {
+			b = append(b, ',')
+		}
+		b = fmt.Appendf(b, `{"stream":{"app":"bench","pod":"p-%02d"},"values":[`, s)
+		for j := range perStream {
+			i := j*streams + s // the entry's place in the page, newest first
+			if j > 0 {
+				b = append(b, ',')
+			}
+			b = append(b, `["`...)
+			b = strconv.AppendInt(b, hiNs-1-int64(i-i/10)*1000, 10)
+			b = append(b, `","`...)
+			line := fmt.Appendf(nil, "entry %05d stream %02d ", i, s)
+			for len(line) < 120 {
+				line = append(line, 'x')
+			}
+			b = append(b, line...)
+			b = append(b, `"]`...)
+		}
+		b = append(b, "]}"...)
+	}
+	return append(b, "]}}"...)
+}
+
+// w3 is the W3 harness: the upstream body and the gateway, built before the measured boundary.
+type w3 struct{ h http.Handler }
+
+func newW3Body(body []byte) w3 { return w3{h: workloadGateway(&memTransport{body: body})} }
+
+// run decodes, pages and encodes the 5 000 entries once: from handler start to the last byte.
+func (w w3) run(t testing.TB) {
+	body := fmt.Sprintf(`{"query":"{app=\"bench\"}","from":%d,"to":%d,"width_px":1200,"limit":%d}`, workloadFrom, workloadFrom+3_600_000, w3Limit)
+	req := httptest.NewRequest(http.MethodPost, logRangePath, strings.NewReader(body))
+	sw := &statusRecorder{}
+	w.h.ServeHTTP(&statusOnly{discard: discard{h: http.Header{}}, rec: sw}, req)
+	if sw.status != 200 {
+		t.Fatalf("W3: status %d", sw.status)
+	}
 }

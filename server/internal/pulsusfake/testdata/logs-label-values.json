@@ -1,0 +1,10 @@
+{
+  "name": "logs-label-values",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/label/{name}/values", "sanitised": "labels, lines, values, timestamps and query ids replaced; key order and message text verbatim"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/label/pod/values"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-label-values-1"},
+    "body": {"status":"success","data":["a","b","c"]}
+  }
+}

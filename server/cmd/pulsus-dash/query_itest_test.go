@@ -368,13 +368,7 @@ func TestCancelItest(t *testing.T) {
 					_ = resp.Body.Close()
 				}
 			}()
-			deadline := time.Now().Add(5 * time.Second)
-			for len(fake.Requests()) == 0 {
-				if time.Now().After(deadline) {
-					t.Fatal("the request never reached the fake")
-				}
-				time.Sleep(5 * time.Millisecond)
-			}
+			waitRecorded(t, fake, "hang")
 			t0 := time.Now()
 			cancel()
 			wctx, wcancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -383,8 +377,11 @@ func TestCancelItest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("WaitCancelled: %v", err)
 			}
-			if d := rec.CancelledAt.Sub(t0); d > 100*time.Millisecond {
-				t.Errorf("upstream cancelled %v after the browser, want ≤ 100 ms", d)
+			// T04 §10: cancel → upstream dropped at the BFF within 50 ms (plan #65 Part B §4.2).
+			if d := rec.CancelledAt.Sub(t0); d > 50*time.Millisecond {
+				t.Errorf("upstream cancelled %v after the browser, want ≤ 50 ms", d)
+			} else {
+				t.Logf("upstream cancelled %v after the browser", d)
 			}
 			<-done
 			if st := accessStatus(t, s, "/api/dash/v1/query/promql/range"); st != 499 {

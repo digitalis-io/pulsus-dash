@@ -295,6 +295,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dash/v1/query/logql/range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description LogQL range query. A log query answers one page of the window (from, to] with a continuation cursor; a LogQL metric query answers JSON frames on the aligned grid, streamed series by series (T06-011). Hand-written handler; excluded from server generation. */
+        post: operations["postLogqlRange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/query/logql/volume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Log volume by level on the aligned grid, one frame per level with lines (labels exactly {level}). Hand-written handler; excluded from server generation. */
+        post: operations["postLogqlVolume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/logs/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLogsLabels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/logs/label/{name}/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLogsLabelValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/logs/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLogsSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dash/v1/datasource/check": {
         parameters: {
             query?: never;
@@ -443,6 +525,16 @@ export interface components {
             frames: components["schemas"]["SeriesFrame"][];
             completeness: components["schemas"]["Completeness"];
         };
+        RangeFrameResponse: {
+            /** Format: int64 */
+            start: number;
+            /** Format: int64 */
+            end: number;
+            /** Format: int64 */
+            step: number;
+            frames: components["schemas"]["SeriesFrame"][];
+            completeness: components["schemas"]["Completeness"];
+        };
         TimedValue: {
             /** Format: int64 */
             timestamp: number;
@@ -489,6 +581,85 @@ export interface components {
             };
             completeness: components["schemas"]["Completeness"];
         };
+        /** @enum {string} */
+        LogDirection: "backward" | "forward";
+        /** @enum {string} */
+        LogLevel: "critical" | "error" | "warn" | "info" | "debug" | "trace" | "unknown";
+        LogqlRangeRequest: {
+            query: string;
+            /** Format: int64 */
+            from: number;
+            /** Format: int64 */
+            to: number;
+            width_px: number;
+            /** @default 1000 */
+            limit: number;
+            direction?: components["schemas"]["LogDirection"];
+            cursor?: string;
+            /** @default 30000 */
+            timeout_ms: number;
+        };
+        LogqlVolumeRequest: {
+            query: string;
+            /** Format: int64 */
+            from: number;
+            /** Format: int64 */
+            to: number;
+            width_px: number;
+            /** @default 30000 */
+            timeout_ms: number;
+        };
+        LogEntry: {
+            ts_ns: string;
+            line: string;
+            level: components["schemas"]["LogLevel"];
+            metadata?: {
+                [key: string]: string;
+            };
+            parsed?: {
+                [key: string]: string;
+            };
+        };
+        LogStream: {
+            key: string;
+            labels: {
+                [key: string]: string;
+            };
+            entries: components["schemas"]["LogEntry"][];
+        };
+        LogqlStreamsResponse: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "streams";
+            /** Format: int64 */
+            start: number;
+            /** Format: int64 */
+            end: number;
+            /** Format: int64 */
+            step: number;
+            direction: components["schemas"]["LogDirection"];
+            streams: components["schemas"]["LogStream"][];
+            cursor?: string;
+            completeness: components["schemas"]["Completeness"];
+        };
+        LogqlSeriesResponse: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "series";
+            /** Format: int64 */
+            start: number;
+            /** Format: int64 */
+            end: number;
+            /** Format: int64 */
+            step: number;
+            frames: components["schemas"]["SeriesFrame"][];
+            completeness: components["schemas"]["Completeness"];
+        };
+        LogqlRangeResponse: components["schemas"]["LogqlStreamsResponse"] | components["schemas"]["LogqlSeriesResponse"];
         DatasourceStatus: {
             /** @enum {string} */
             state: "not_checked" | "ok" | "unreachable" | "unauthorised" | "error";
@@ -621,6 +792,10 @@ export interface components {
         To: number;
         Match: string[];
         Limit: number;
+        /** @description ms since the epoch */
+        LogFrom: number;
+        /** @description ms since the epoch; at most 9223372036854 (2262-04-11) */
+        LogTo: number;
     };
     requestBodies: never;
     headers: never;
@@ -1483,6 +1658,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PromMetadataResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postLogqlRange: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogqlRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description A log page (kind streams) or frames on the grid (kind series) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogqlRangeResponse"];
+                };
+            };
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postLogqlVolume: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogqlVolumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Frames and completeness */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeFrameResponse"];
+                };
+            };
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getLogsLabels: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                /** @description ms since the epoch */
+                from: components["parameters"]["LogFrom"];
+                /** @description ms since the epoch; at most 9223372036854 (2262-04-11) */
+                to: components["parameters"]["LogTo"];
+                query?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Log label names */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromValuesResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getLogsLabelValues: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                /** @description ms since the epoch */
+                from: components["parameters"]["LogFrom"];
+                /** @description ms since the epoch; at most 9223372036854 (2262-04-11) */
+                to: components["parameters"]["LogTo"];
+                query?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Log label values */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromValuesResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getLogsSeries: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+                /** @description ms since the epoch */
+                from: components["parameters"]["LogFrom"];
+                /** @description ms since the epoch; at most 9223372036854 (2262-04-11) */
+                to: components["parameters"]["LogTo"];
+                match: string[];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stream label sets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromSeriesResponse"];
                 };
             };
             429: components["responses"]["RateLimited"];

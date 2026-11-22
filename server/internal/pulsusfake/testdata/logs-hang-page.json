@@ -1,0 +1,10 @@
+{
+  "name": "logs-hang-page",
+  "provenance": {"synthetic": "tests cancellation on the second request of a page: limited at one timestamp, so the page needs a group fetch"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"hang2\"}", "form": {"step": "5000ms", "start": "1767225600000000000", "end": "1767229200000000000", "limit": "2", "direction": "backward"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-hang-page-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"x","pod":"a"},"values":[["1767229100000000300","a3",{"structuredMetadata":{"detected_level":"info"}}]]},{"stream":{"app":"x","pod":"b"},"values":[["1767229100000000300","b3",{"structuredMetadata":{"detected_level":"unknown"},"parsed":{"level":"WARNING"}}]]}],"stats":{"streams":2,"entries":2,"bytes":4}}}
+  }
+}

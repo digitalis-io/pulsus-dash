@@ -1,0 +1,10 @@
+{
+  "name": "logs-empty",
+  "provenance": {"captured": "2026-11-21", "pulsusdb": "0.0.12", "route": "/api/logs/v1/query_range", "sanitised": "labels, lines, values, timestamps and query ids replaced; key order and message text verbatim"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"none\"}"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-empty-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}
+  }
+}

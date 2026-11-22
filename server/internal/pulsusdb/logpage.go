@@ -520,7 +520,8 @@ func (p *pager) page(es []pageEntry, next *PageCursor) *LogPage {
 }
 
 // mergeComp merges the completeness of a page's responses: truncated if any is; warnings and
-// infos in order, each text once; the headers of the first response that has them.
+// infos in order, each text once; the query id of the last response, empty when it has none
+// (plan #65 Part B §3.4), and the read-cache headers of the first response that has them.
 func mergeComp(cs []Completeness) Completeness {
 	out := Completeness{Warnings: []string{}, Infos: []string{}, ReadCacheThroughMs: -1, NewestSampleMs: -1}
 	for _, c := range cs {
@@ -535,9 +536,7 @@ func mergeComp(cs []Completeness) Completeness {
 				out.Infos = append(out.Infos, i)
 			}
 		}
-		if out.QueryID == "" {
-			out.QueryID = c.QueryID
-		}
+		out.QueryID = c.QueryID
 		if out.ReadCache == "" {
 			out.ReadCache = c.ReadCache
 		}

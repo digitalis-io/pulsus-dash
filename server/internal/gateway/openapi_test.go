@@ -38,7 +38,8 @@ func TestPermissionDeclared(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{"postPromqlRange": false, "postPromqlInstant": false, "getPromLabels": false,
-		"getPromLabelValues": false, "getPromSeries": false, "getPromMetadata": false, "getDatasourceCheck": false}
+		"getPromLabelValues": false, "getPromSeries": false, "getPromMetadata": false, "getDatasourceCheck": false,
+		"postLogqlRange": false, "postLogqlVolume": false, "getLogsLabels": false, "getLogsLabelValues": false, "getLogsSeries": false}
 	for path, ops := range spec.Paths {
 		for method, op := range ops {
 			if _, ok := want[op.OperationID]; !ok {
