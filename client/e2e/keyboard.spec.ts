@@ -55,6 +55,9 @@ declare global {
 }
 
 test.describe('e2e:a11y-rooms keyboard', () => {
+  // No retry: the traversal is deterministic, so a retry only hides a real failure, and a second
+  // run of this ~32-minute spec does not fit the e2e job's 60-minute timeout.
+  test.describe.configure({ retries: 0 });
   test('every control and state by keyboard (L1–L32)', async ({ page }) => {
     test.setTimeout(3_600_000);
     await page.addInitScript(() => {
