@@ -664,7 +664,7 @@ function drawStat(i: LayerInput): LayerModel {
   const { ctx } = i;
   const first = i.data.kind === 'series' ? i.data.series[0] : undefined;
   const spark =
-    first !== undefined && i.cssH >= SPARK_MIN_H && finiteInWindow(first, i.window) >= 2
+    first !== undefined && i.cssH >= SPARK_MIN_H && finiteInWindow(first, i.window) >= 1
       ? first
       : null;
   ctx.font = STAT_FONT;
@@ -694,9 +694,9 @@ function finiteInWindow(s: SeriesFrame, w: TimeWindow): number {
 }
 
 /**
- * The stat sparkline (§4.3): the series over the window in `r`, its finite min..max from the rect's
- * bottom to its top (mid-height when they are equal), in the series colour; a non-finite value or
- * a point outside the window breaks the path.
+ * The stat sparkline (§4.3): the series' finite points inside the window in `r`, joined across
+ * absent and non-finite ones (a trend glyph), its finite min..max from the rect's bottom to its top
+ * (mid-height when they are equal), in the series colour; a single finite point is a dot.
  */
 function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
   const e = extent(s.values);
@@ -705,20 +705,28 @@ function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
   const x = (t: number): number => r.x + ((t - w.fromMs) / (w.toMs - w.fromMs)) * r.width;
   const y = (v: number): number =>
     e.max === e.min ? r.y + r.height / 2 : r.y + (1 - (v - e.min) / (e.max - e.min)) * r.height;
-  ctx.strokeStyle = i.colours.series[seriesColourIndex(s)] ?? '';
+  const colour = i.colours.series[seriesColourIndex(s)] ?? '';
+  const pts: [number, number][] = [];
+  s.timestamps.forEach((t, k) => {
+    const v = s.values[k] ?? NaN;
+    if (Number.isFinite(v) && t >= w.fromMs && t <= w.toMs) pts.push([x(t), y(v)]);
+  });
+  const [p0] = pts;
+  if (p0 === undefined) return;
+  if (pts.length === 1) {
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.arc(p0[0], p0[1], size['chart-line'], 0, 2 * Math.PI);
+    ctx.fill();
+    return;
+  }
+  ctx.strokeStyle = colour;
   ctx.lineWidth = size['chart-line'];
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  let open = false;
-  s.timestamps.forEach((t, k) => {
-    const v = s.values[k] ?? NaN;
-    if (!Number.isFinite(v) || t < w.fromMs || t > w.toMs) {
-      open = false;
-      return;
-    }
-    if (open) ctx.lineTo(x(t), y(v));
-    else ctx.moveTo(x(t), y(v));
-    open = true;
+  pts.forEach(([px, py], k) => {
+    if (k === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
   });
   ctx.stroke();
 }
