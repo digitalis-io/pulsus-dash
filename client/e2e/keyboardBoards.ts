@@ -13,6 +13,21 @@ const B1_PANELS = ['Request rate', 'Error ratio', 'Errors', 'Request latency'];
 const B3_PANELS = ['Edge p99', 'Edge errors', 'Pods'];
 /** b-3's panels whose variables the URL does not set: no request, so no Explore link (plan #64). */
 const UNSET_VARIABLES = new Set(['Edge p99', 'Pods']);
+/** The `le` bounds of the stub's bucket series (plan #64 §3.10). */
+const STUB_BUCKETS = [
+  '0.005',
+  '0.01',
+  '0.025',
+  '0.05',
+  '0.1',
+  '0.25',
+  '0.5',
+  '1',
+  '2.5',
+  '5',
+  '10',
+  '+Inf',
+];
 
 export async function boardLoops(s: Script): Promise<void> {
   const { page, h } = s;
@@ -158,9 +173,16 @@ export async function boardLoops(s: Script): Promise<void> {
           await s.on(`link "Open in Explore: ${title}"`);
           await expect.poll(() => s.path()).toMatch(/^\/t\/demo\/explore\/(metrics|logs)$/);
           expect(s.search()['q']).toBeTruthy();
-          // The query the panel ran, in Explore (a histogram's buckets have their own rows).
-          const at = new URL(page.url());
-          await s.drain(`explore from ${title}`, () => s.goto(at.pathname + at.search));
+          // The histogram panel's query in Explore: the stub's buckets are its rows, drawn as a
+          // heatmap by auto-vis (the other panels' rows are Explore's, L32).
+          if (title === 'Request latency') {
+            await s.focus('radio "Auto (Heatmap)"');
+            await press('Space');
+            for (const le of STUB_BUCKETS) {
+              const esc = le.replace(/[.+]/g, (c) => `\\${c}`);
+              await s.on(new RegExp(`^button "stub_bucket\\{le="${esc}"\\}"$`));
+            }
+          }
         } else {
           await expect(
             page.getByRole('button', { name: `Open in Explore: ${title}` }),
