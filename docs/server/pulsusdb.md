@@ -167,7 +167,7 @@ offset in `[1m])` has no position and the client underlines the whole text.
 | 2 | range: the grid (`width_px` and the window) | 400 `range.too_long` |
 | 3 | `Prepare` | the refusals above; nothing has been read |
 | 4 | Classify, then the byte guard on the substituted text | 400 `virtual_unsupported`; no upstream request |
-| 4b | resolve the step: `FloorStep(base step, floor)` | — |
+| 4b | resolve the step: `FloorStep(base step, floor)`; `CheckCap`: the processing cap with the macros at that step | 413 `processing_cap`; nothing has been read |
 | 5 | the route deadline; tenant resolution | as before |
 | 6 | metric types, only when the plan depends on them | never fails the request (below) |
 | 7 | `Plan` | 413 with `planned` |

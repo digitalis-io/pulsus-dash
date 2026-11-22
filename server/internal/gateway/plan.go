@@ -23,7 +23,7 @@ type plannedReq struct {
 
 // planFor runs steps 3–8 of the route order (plan #112 §4.4, ADR-0021 §7, T06-029): Prepare,
 // the Classify refusal and the byte guard on the substituted text (both before any I/O), the
-// step, tenant resolution, the metric types when the plan depends on them, Plan, and the guard
+// step and the processing cap at that step (still before any I/O), tenant resolution, the metric types when the plan depends on them, Plan, and the guard
 // on the planned text. ctx carries the route deadline. (nil, nil): the browser went away.
 func (q *dataRoutes) planFor(ctx context.Context, tenant string, in promplan.Inputs) (*plannedReq, *reqError) {
 	prepared, pe := promplan.Prepare(in)
@@ -39,6 +39,10 @@ func (q *dataRoutes) planFor(ctx context.Context, tenant string, in promplan.Inp
 		return nil, q.failure(ctx, v)
 	}
 	step := promplan.FloorStep(in.StepMs, class.FloorMs)
+	// The processing cap with the macros at that step, still before any I/O.
+	if pe := prepared.CheckCap(step); pe != nil {
+		return nil, planError(pe)
+	}
 	tc, e := resolveTenant(ctx, q.d, tenant)
 	if e == errCancelled {
 		return nil, nil

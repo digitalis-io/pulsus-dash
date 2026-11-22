@@ -283,16 +283,26 @@ func isHistogram(n string, t MetricTypes) bool {
 	return k == MetricHistogram || k == MetricUnknown
 }
 
+// CheckCap is row 9 at the resolved step: a macro's text there may be longer than the "1s"
+// placeholder Prepare counted, so the substituted length is counted again, without building the
+// text. It is pure: the routes call it right after resolving the step, before tenant resolution or
+// any metadata read; Plan repeats it.
+func (p *Prepared) CheckCap(stepMs int64) *PlanError {
+	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), false).size > MaxExpandedBytes {
+		return processingCap()
+	}
+	return nil
+}
+
 // Plan substitutes the macros at stepMs, reads the shape, applies the rewrites and the size
 // limit: rows 6, 9 (the processing cap at the resolved step) and 10 of §3.1 (plan #112 §4.1).
 func (p *Prepared) Plan(stepMs int64, types MetricTypes) (Planned, *PlanError) {
 	if (p.in.Kind == KindRange && stepMs <= 0) || stepMs < 0 {
 		return Planned{}, inputError("/step_ms", "field.range", "step_ms must be positive")
 	}
-	// Row 9 again at the resolved step: a macro's text there may be longer than the placeholder, so
-	// the substituted length is counted before the text is built.
-	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), false).size > MaxExpandedBytes {
-		return Planned{}, processingCap()
+	// The cap at the resolved step again, in defence: callers check it with CheckCap first.
+	if pe := p.CheckCap(stepMs); pe != nil {
+		return Planned{}, pe
 	}
 	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), true)
 	expanded := sub.text
