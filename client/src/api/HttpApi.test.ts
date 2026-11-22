@@ -2,6 +2,9 @@ import createClient from 'openapi-fetch';
 import { describe, expect, it } from 'vitest';
 import counterRaw from '../../../wire/fixtures/json/promql-range-counter.json?raw';
 import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw';
+import logStreamsRaw from '../../../wire/fixtures/json/logql-streams-backward-1.json?raw';
+import logMetricRaw from '../../../wire/fixtures/json/logql-metric.json?raw';
+import logVolumeRaw from '../../../wire/fixtures/json/logql-volume.json?raw';
 import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
@@ -491,8 +494,13 @@ describe('http starred and recent', () => {
 /** Plan #65 Part B §4.4: the LogQL query methods. */
 const L: LogsRequest = { query: '{app="x"}', fromMs: 1, toMs: 2, widthPx: 3 };
 
+/** H2's planned object (plan #116 A.3): every mocked LogQL body carries one. */
+const LOG_PLANNED = { query: '{app="x"}', expanded: '{app="x"}', bytes: 9, step_ms: 5000 };
+const LOG_PLANNED_TS = { query: '{app="x"}', expanded: '{app="x"}', bytes: 9, stepMs: 5000 };
+
 const LOG_PAGE = {
   kind: 'streams',
+  planned: LOG_PLANNED,
   start: 1,
   end: 2,
   step: 1000,
@@ -546,6 +554,7 @@ describe('HttpApi log queries (plan #65 Part B)', () => {
 
   it('sends the volume request', async () => {
     const empty = {
+      planned: LOG_PLANNED,
       start: 0,
       end: 1000,
       step: 1000,
@@ -625,8 +634,78 @@ describe('HttpApi log queries (plan #65 Part B)', () => {
     const e = await rejection(a.queryLogs('demo', L));
     expect((e as ApiError).kind).toBe('badResponse');
     expect((e as ApiError).message).toContain('/direction');
-    const v = api(() => Promise.resolve(json(200, { start: 1, end: 2, step: 1, frames: 3 })));
+    const v = api(() =>
+      Promise.resolve(json(200, { planned: LOG_PLANNED, start: 1, end: 2, step: 1, frames: 3 })),
+    );
     expect(((await rejection(v.api.queryVolume('demo', L))) as ApiError).kind).toBe('badResponse');
+  });
+});
+
+describe('HttpApi LogQL planning (plan #116 §3.8, A.3)', () => {
+  it('H1: the log bodies carry vars only when given', async () => {
+    const calls: [(x: Api, r: LogsRequest) => Promise<unknown>, string][] = [
+      [(x, r) => x.queryLogs('demo', r), JSON.stringify(LOG_PAGE)],
+      [(x, r) => x.queryVolume('demo', r), logVolumeRaw],
+    ];
+    for (const [call, body] of calls) {
+      const { api: a, requests } = api(() => Promise.resolve(json(200, body)));
+      await call(a, L);
+      await call(a, { ...L, vars: { a: 'x' } });
+      const first = JSON.parse((await requests[0]?.text()) ?? '{}') as Record<string, unknown>;
+      const second = JSON.parse((await requests[1]?.text()) ?? '{}') as Record<string, unknown>;
+      expect('vars' in first).toBe(false);
+      expect(second['vars']).toEqual({ a: 'x' });
+    }
+  });
+
+  it('H2: a streams golden decodes its planned', async () => {
+    const r = await api(() => Promise.resolve(json(200, logStreamsRaw))).api.queryLogs('demo', L);
+    expect(r.kind).toBe('streams');
+    expect(r.planned).toEqual(LOG_PLANNED_TS);
+  });
+
+  it('H3: a metric golden decodes its planned', async () => {
+    const r = await api(() => Promise.resolve(json(200, logMetricRaw))).api.queryLogs('demo', L);
+    expect(r.kind).toBe('series');
+    expect(r.planned.query).toBe('sum by (level) (count_over_time({app="x"}[1m]))');
+  });
+
+  it('H4: the volume golden decodes its planned', async () => {
+    const r = await api(() => Promise.resolve(json(200, logVolumeRaw))).api.queryVolume('demo', L);
+    expect(r.planned.bytes).toBe(81);
+    expect(r.planned.expanded).toBe('{app="x"}');
+  });
+
+  it('H5: a LogQL error carries the decoded LogqlPlannedQuery', async () => {
+    const e = await rejection(
+      api(
+        envelope(400, {
+          code: 'invalid',
+          message: 'parse error at byte 3',
+          fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+          hint: { position: { offset: 3 } },
+          planned: LOG_PLANNED,
+        }),
+      ).api.queryLogs('demo', L),
+    );
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).kind).toBe('queryInvalid');
+    expect((e as ApiError).detail.planned).toEqual(LOG_PLANNED_TS);
+  });
+
+  it('H6: a volume 413 is queryTooLong with its plan', async () => {
+    const e = await rejection(
+      api(
+        envelope(413, {
+          code: 'invalid',
+          message: 'the planned query is over 65536 bytes',
+          fields: [{ pointer: '/query', message_key: 'query.sent_too_large' }],
+          planned: { query: 'q', expanded: 'q', bytes: 65572, step_ms: 5000 },
+        }),
+      ).api.queryVolume('demo', L),
+    );
+    expect((e as ApiError).kind).toBe('queryTooLong');
+    expect((e as ApiError).detail.planned?.bytes).toBe(65572);
   });
 });
 

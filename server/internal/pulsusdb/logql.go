@@ -231,38 +231,29 @@ func (c *Client) LogQueryRange(ctx context.Context, rc *core.RequestCtx, q LogRa
 
 // VolumeQuery is a log volume query.
 type VolumeQuery struct {
-	Query string // the log query; embedded byte for byte
+	// Query is the planned volume text: logs.Plan applied the fixed template around the
+	// substituted text (T07-002, plan #116). It is sent byte for byte.
+	Query string
 	Grid  Grid
-}
-
-// volumePrefix and volumeSuffix wrap the user's text as the single operand of a fixed template
-// (T07 §0, #65 §4.4). The suffix starts with a newline, so a trailing line comment in the text
-// cannot swallow it. "| drop __error__" keeps lines a parser stage fails on from failing the
-// whole query.
-const volumePrefix = "sum by (level, detected_level) (count_over_time("
-
-func volumeSuffix(g Grid) string {
-	return "\n| drop __error__ [" + strconv.FormatInt(g.Step/1000, 10) + "s]))"
 }
 
 // LogVolume returns one Series per level with a present point, in the order critical, error,
 // warn, info, debug, trace, unknown; Labels = [{level, <name>}], Key = keyhash.Labels(Labels).
 // Each grid point t counts the lines of (t − step, t], so the edge points can count lines
 // outside the log window. It returns after the whole upstream matrix is read (T06-011 case 3);
-// it is not a ResultStream.
+// it is not a ResultStream. An error position is an offset into q.Query, unmapped: the gateway
+// maps it to the raw text (plan #116 §4.5).
 func (c *Client) LogVolume(ctx context.Context, rc *core.RequestCtx, q VolumeQuery) ([]*Series, Completeness, error) {
 	g := q.Grid
 	if g.Step <= 0 || g.Start < 0 || g.End < g.Start || g.End > maxGridMs {
 		return nil, Completeness{}, protocolError()
 	}
-	composed := volumePrefix + q.Query + volumeSuffix(g)
-	cl := call{route: "logs_volume", method: http.MethodGet, path: "/api/logs/v1/query_range", query: composed,
-		form:   url.Values{"query": {composed}, "start": {nsParam(g.Start * 1e6)}, "end": {nsParam(g.End * 1e6)}, "step": {stepParam(g)}},
+	cl := call{route: "logs_volume", method: http.MethodGet, path: "/api/logs/v1/query_range", query: q.Query,
+		form:   url.Values{"query": {q.Query}, "start": {nsParam(g.Start * 1e6)}, "end": {nsParam(g.End * 1e6)}, "step": {stepParam(g)}},
 		inputs: []guardInput{{"query", q.Query}}, limit: c.o.Limits.DataBody, retry: true, timeout: true, postOver: true}
 	t0 := time.Now()
 	resp, err := c.do(ctx, rc, cl)
 	if err != nil {
-		err = volumePosition(err, q.Query)
 		c.logCall(ctx, rc, cl.route, t0, resp, err)
 		return nil, Completeness{}, err
 	}
@@ -308,25 +299,6 @@ func (c *Client) LogVolume(ctx context.Context, rc *core.RequestCtx, q VolumeQue
 	}
 	c.logCall(ctx, rc, cl.route, t0, resp, nil)
 	return out, rs.Completeness(), nil
-}
-
-// volumePosition maps an error position in the composed text back into the user's text: before
-// it, none; inside or after it, clamped to its end; the first "at byte N" of the message follows.
-func volumePosition(err error, query string) error {
-	var pe *Error
-	if !errors.As(err, &pe) || pe.Position == nil {
-		return err
-	}
-	off := pe.Position.Offset - len(volumePrefix)
-	if off < 0 {
-		pe.Position = nil
-		return err
-	}
-	pe.Position.Offset = min(off, len(query))
-	if m := atByte.FindStringSubmatchIndex(pe.Message); m != nil {
-		pe.Message = pe.Message[:m[2]] + strconv.Itoa(pe.Position.Offset) + pe.Message[m[3]:]
-	}
-	return err
 }
 
 // LogMatchQuery is a log completion query (labels, label values).

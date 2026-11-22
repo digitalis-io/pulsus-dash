@@ -34,10 +34,17 @@ export interface PlannedQuery {
   readonly rateWindowMs?: number;
 }
 
-/**
- * Frames on a range grid. The LogQL bodies are this alone: `planned` is PromQL-only until
- * `logs.Plan` lands (T06-029, #116).
- */
+/** What the server planned and sent for a LogQL query (plan #116 §3.8, OpenAPI `LogqlPlannedQuery`). */
+export interface LogqlPlannedQuery {
+  /** The text sent to PulsusDB (volume: the template around `expanded`). */
+  readonly query: string;
+  /** The substituted text. */
+  readonly expanded: string;
+  readonly bytes: number;
+  readonly stepMs: number;
+}
+
+/** Frames on a range grid. */
 export interface RangeFrame {
   readonly startMs: number;
   readonly endMs: number;
@@ -223,6 +230,17 @@ export function decodePlanned(v: unknown, path: string): PlannedQuery {
   };
 }
 
+/** Decodes a `LogqlPlannedQuery` at `path` (plan #116 §3.8). */
+export function decodeLogqlPlanned(v: unknown, path: string): LogqlPlannedQuery {
+  const p = object(v, path);
+  return {
+    query: string(p['query'], `${path}/query`),
+    expanded: string(p['expanded'], `${path}/expanded`),
+    bytes: nonNegative(p['bytes'], `${path}/bytes`),
+    stepMs: nonNegative(p['step_ms'], `${path}/step_ms`),
+  };
+}
+
 /** Decodes the grid, frames and completeness of a range body; a `planned` member is not read. */
 export function decodeRangeFrame(body: unknown): RangeFrame {
   const b = object(body, '');
@@ -293,8 +311,13 @@ export type LogsResult =
       /** The next page's cursor; null when no entry of the window is left. */
       readonly cursor: string | null;
       readonly completeness: Completeness;
+      /** What the server planned and sent. */
+      readonly planned: LogqlPlannedQuery;
     }
-  | ({ readonly kind: 'series' } & RangeFrame);
+  | ({ readonly kind: 'series'; readonly planned: LogqlPlannedQuery } & RangeFrame);
+
+/** A log volume result: the level frames and what the server planned and sent. */
+export type VolumeResult = RangeFrame & { readonly planned: LogqlPlannedQuery };
 
 const DIRECTIONS = ['backward', 'forward'] as const;
 const TS_PATTERN = /^(0|[1-9][0-9]{0,18})$/;
@@ -323,8 +346,15 @@ interface DecodedStream {
 /** Decodes a `LogqlRangeResponse` body (a log page or a metric result). */
 export function decodeLogs(body: unknown): LogsResult {
   const b = object(body, '');
-  if (b['kind'] === 'series') return { kind: 'series', ...decodeRangeFrame(b) };
+  if (b['kind'] === 'series') {
+    return {
+      kind: 'series',
+      planned: decodeLogqlPlanned(b['planned'], '/planned'),
+      ...decodeRangeFrame(b),
+    };
+  }
   if (b['kind'] !== 'streams') throw new DecodeError('/kind', 'expected streams or series');
+  const planned = decodeLogqlPlanned(b['planned'], '/planned');
   const direction = DIRECTIONS.find((d) => d === b['direction']);
   const fromMs = integer(b['start'], '/start');
   const toMs = integer(b['end'], '/end');
@@ -379,6 +409,7 @@ export function decodeLogs(body: unknown): LogsResult {
     frame: merge(direction, streams, decoded),
     cursor,
     completeness,
+    planned,
   };
 }
 
@@ -418,9 +449,11 @@ function merge(
   return { direction, streams, tsNs, streamIndex, lines, levels, metadata, parsed };
 }
 
-/** Decodes a log volume body: a range frame (no `planned`) whose frames are labelled exactly `{level}`. */
-export function decodeVolume(body: unknown): RangeFrame {
-  const r = decodeRangeFrame(body);
+/** Decodes a `LogqlVolumeResponse` body: `planned`, then a range frame whose frames are labelled exactly `{level}`. */
+export function decodeVolume(body: unknown): VolumeResult {
+  const b = object(body, '');
+  const planned = decodeLogqlPlanned(b['planned'], '/planned');
+  const r = { planned, ...decodeRangeFrame(b) };
   r.series.forEach((s, i) => {
     const names = Object.keys(s.labels);
     const level = s.labels['level'];

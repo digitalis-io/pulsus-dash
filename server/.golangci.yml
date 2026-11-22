@@ -14,7 +14,16 @@ linters:
         { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
         { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] },
       promql-parser: { files: ["$all", "!**/internal/pulsusdb/prom/**"], deny: [
-        { pkg: github.com/prometheus/prometheus, desc: "the upstream PromQL parser is used only in internal/pulsusdb/prom (ADR-0021)" } ] } } }
+        { pkg: github.com/prometheus/prometheus, desc: "the upstream PromQL parser is used only in internal/pulsusdb/prom (ADR-0021)" } ] },
+      # T06-028, ADR-0018 §3, §4: the language modules import no other language module, and only
+      # their callers (internal/gateway today) import a language module.
+      logs-isolation: { files: ["**/internal/pulsusdb/logs/**"], deny: [
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom, desc: "a language module imports no other language module (T06-028, ADR-0018 §3)" } ] },
+      prom-isolation: { files: ["**/internal/pulsusdb/prom/**"], deny: [
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/logs, desc: "a language module imports no other language module (T06-028, ADR-0018 §3)" } ] },
+      modules-from-callers: { files: ["$all", "!**/internal/pulsusdb/prom/**", "!**/internal/pulsusdb/logs/**", "!**/internal/gateway/**"], deny: [
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom, desc: "only the language modules' callers import a language module: internal/gateway today (T06-028, ADR-0018 §3, §4)" },
+        { pkg: github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/logs, desc: "only the language modules' callers import a language module: internal/gateway today (T06-028, ADR-0018 §3, §4)" } ] } } }
     # T06-005 and plan #62 §4.9: outbound HTTP only in internal/pulsusdb (and the allowed callers
     # below); every upstream body decoder yields strings only through redact (updec.go today).
     forbidigo:

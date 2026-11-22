@@ -38,11 +38,12 @@ type logEntry struct {
 }
 
 type logPageResp struct {
-	Kind      string `json:"kind"`
-	Start     int64  `json:"start"`
-	End       int64  `json:"end"`
-	Step      int64  `json:"step"`
-	Direction string `json:"direction"`
+	Kind      string         `json:"kind"`
+	Planned   map[string]any `json:"planned"` // the LogqlPlannedQuery (plan #116)
+	Start     int64          `json:"start"`
+	End       int64          `json:"end"`
+	Step      int64          `json:"step"`
+	Direction string         `json:"direction"`
 	Streams   []struct {
 		Key     string            `json:"key"`
 		Labels  map[string]string `json:"labels"`
@@ -408,8 +409,10 @@ func TestLogqlErrorsItest(t *testing.T) {
 				t.Errorf("hang: the fake did not record the cancel: %v", err)
 			}
 			cancel()
+			// The fake's offset 57 is in the volume suffix: no position, the message unchanged, and
+			// the plan (ADR-0021 §3, plan #116 §4.2; #65 clamped it to the end of the text).
 			code, b = s.send(t, logVolume, logRangeBody(`{app="x"`, ""))
-			if e := errorOf(t, b); code != 400 || pos(e) != float64(8) || e["message"] != "unexpected '|' at byte 8: expected '}'" {
+			if e := errorOf(t, b); code != 400 || pos(e) != nil || e["message"] != "unexpected '|' at byte 57: expected '}'" || e["planned"] == nil {
 				t.Errorf("volume parse error: %d %s", code, b)
 			}
 

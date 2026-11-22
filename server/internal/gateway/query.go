@@ -227,7 +227,8 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		q.failPlanned(w, r, err, pr.planned)
 		return
 	}
-	q.stream(w, r, pr.rc, pr, rs, grid, first, "", "promql_stream_aborted")
+	q.stream(w, r, pr.rc, streamHead{planned: appendPlanned(nil, pr.planned.Wire()), typesWarning: pr.typesWarning},
+		rs, grid, first, "promql_stream_aborted")
 }
 
 func rangeIf(bad bool, pointer, msg string) *reqError {
@@ -237,28 +238,34 @@ func rangeIf(bad bool, pointer, msg string) *reqError {
 	return nil
 }
 
+// streamHead is what a range body writes before its grid (plan #116 §3.4): the kind member
+// ("" = none, the PromQL body; "series", a LogQL metric result), the encoded planned object
+// (nil = none) and whether the PromQL types warning joins the completeness.
+type streamHead struct {
+	kind         string
+	planned      []byte
+	typesWarning bool
+}
+
 // stream writes the range body from the first frame on (§4.1 steps 8-10). A failure after the
 // header was written resets the connection, so the browser never sees a truncated body as valid.
-// kind "" writes no kind member (the PromQL body); else the body starts with {"kind":<kind>,
-// (a LogQL metric result, plan #65 Part B §3.4). pr is the plan of a PromQL request: its planned
-// member comes first and its types warning joins the completeness. A LogQL request has none (nil):
-// planned is PromQL-only until logs.Plan lands (T06-029, #116). abortMsg is the log message of a
-// reset.
-func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.RequestCtx, pr *plannedReq, rs *pulsusdb.ResultStream,
-	g pulsusdb.Grid, first *pulsusdb.Series, kind, abortMsg string) {
+// The body starts with h's kind and planned members, in that order (T06-029: PromQL
+// {"planned":…, LogQL {"kind":"series","planned":…). abortMsg is the log message of a reset.
+func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.RequestCtx, h streamHead, rs *pulsusdb.ResultStream,
+	g pulsusdb.Grid, first *pulsusdb.Series, abortMsg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	bw := bufio.NewWriterSize(w, streamBuffer)
 	buf := make([]byte, 0, streamBuffer)
 	buf = append(buf, '{')
-	if kind != "" {
+	if h.kind != "" {
 		buf = append(buf, `"kind":`...)
-		buf = appendString(buf, kind)
+		buf = appendString(buf, h.kind)
 		buf = append(buf, ',')
 	}
-	if pr != nil {
+	if h.planned != nil {
 		buf = append(buf, `"planned":`...)
-		buf = appendPlanned(buf, pr.planned.Wire())
+		buf = append(buf, h.planned...)
 		buf = append(buf, ',')
 	}
 	buf = append(buf, `"start":`...)
@@ -295,10 +302,7 @@ func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.Req
 			}
 		}
 	}
-	c := rs.Completeness()
-	if pr != nil {
-		c = withTypesWarning(c, pr.typesWarning)
-	}
+	c := withTypesWarning(rs.Completeness(), h.typesWarning)
 	buf = append(buf, `],"completeness":`...)
 	buf = appendCompleteness(buf, c, q.dataAge(c))
 	buf = append(buf, '}')
