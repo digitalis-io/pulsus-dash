@@ -145,6 +145,9 @@ query error arrive as byte offsets into the raw text (the server maps them, ADR-
 diagnostics use the identity map (T09-009). The line is 1-based, split on `\n`; the column counts
 code points.
 
+`framePlan` is computed once per result, vis and rate (`panelRun.ts` caches it in a `WeakMap` keyed
+by the result), so a panel's remounts, full screen and the preview reuse the same frame data.
+
 `data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
 the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
 labelled "`<badge>`: `<title>`") shows with any frame or message of an outcome and opens Explore's
@@ -190,7 +193,11 @@ preview."). Typing changes the draft (`updatePanel`) per change; the dialog's **
 Escape inside the editor is the editor's: it closes the completion list, or moves focus to Run
 query; the field stops it from reaching the dialog, so a second Escape (on Run query) closes the
 window (T09-004). The Run keys render the run synchronously (`flushSync`), so the preview shows it
-in the next frame. If the editor chunk fails to load, the field is a plain text area with "The
+in the next frame. The editor view mounts one animation frame after the field, so opening the
+dialog, or switching a panel to PromQL, does not create it in the same task
+(`bench:rooms-long-tasks`). `PromQLEditor`'s inner host is a tab stop that delegates focus into
+its shadow root and on to the text: the dialog's focus containment walks the light DOM only, so
+without it Tab would skip the editor. If the editor chunk fails to load, the field is a plain text area with "The
 query editor could not be loaded. Reload the page to try again." A LogQL panel keeps #90's text
 area.
 

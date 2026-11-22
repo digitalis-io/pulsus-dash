@@ -247,11 +247,14 @@ the panel tools, Share, the layout buttons, the panel editor dialog and its sele
 the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
-Space for checkboxes; End then Escape for sliders; End for text fields), until none is left; when
+Space for checkboxes and radios; End then Escape for sliders; End for text fields; ArrowDown then
+Escape for a combobox, the metric picker), until none is left; when
 an operation opens a dialog, menu or list box, that overlay is drained next (two levels deep). An
 action that adds sidebar or table links (create, rename) is followed in the same page session by
 `shellAfter`, which operates each new link. Two names are normalised: the time range trigger is one control whatever range
-it shows, and the calendar grid one control whatever month. React Aria's screen-reader-only buttons
+it shows, and the calendar grid one control whatever month. A panel copy's controls (a name with
+" (copy)", from Duplicate, plan #64) are not collected: they are their source's controls, and each
+copy's menu has a Duplicate of its own, so covering copies would never end. React Aria's screen-reader-only buttons
 are not counted: an empty button with `tabindex="-1"` whose parent is React Aria's VisuallyHidden
 wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons and the calendar's
 second "Next"; Escape and the visible buttons are their keyboard equivalents. Any other control, including a visible empty icon button
