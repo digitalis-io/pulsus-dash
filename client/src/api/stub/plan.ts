@@ -263,7 +263,7 @@ function reference(raw: Uint8Array, i: number): { name: string; end: number } | 
   return { name, end: k };
 }
 
-const HEX = '0123456789abcdef';
+const HEX = encoder.encode('0123456789abcdef');
 /** U+FFFD as UTF-8: the upstream lexer refuses it in a string (plan #118 §3.1). */
 const FFFD = [0xef, 0xbf, 0xbd] as const;
 const ESCAPED_FFFD = encoder.encode('\\ufffd');
@@ -271,72 +271,130 @@ const ESCAPED_FFFD = encoder.encode('\\ufffd');
 const isFffdAt = (v: Uint8Array, i: number): boolean =>
   v[i] === FFFD[0] && v[i + 1] === FFFD[1] && v[i + 2] === FFFD[2];
 
-/** The escape of byte `b` in a string opened by `quote`, or null when `b` is written as itself. */
-function quotedEscape(b: number, quote: number): string | null {
-  if (b === quote) return quote === DQUOTE ? '\\"' : "\\'";
+/** The letter of the one-letter escape of byte `b` (`\a` … `\v`, `\\`), or 0. */
+function escapeLetter(b: number): number {
   switch (b) {
     case BACKSLASH:
-      return '\\\\';
+      return BACKSLASH;
     case 0x07:
-      return '\\a';
+      return 0x61; // a
     case 0x08:
-      return '\\b';
+      return 0x62; // b
     case 0x0c:
-      return '\\f';
+      return 0x66; // f
     case LF:
-      return '\\n';
+      return 0x6e; // n
     case CR:
-      return '\\r';
+      return 0x72; // r
     case 0x09:
-      return '\\t';
+      return 0x74; // t
     case 0x0b:
-      return '\\v';
+      return 0x76; // v
   }
-  if (b < 0x20 || b === 0x7f) return `\\x${HEX[b >> 4] ?? ''}${HEX[b & 0xf] ?? ''}`;
-  return null;
+  return 0;
+}
+
+/** The length of byte `b` written in a string opened by `quote`: 1, 2 or 4 (`\xHH`). */
+function escapedByteLen(b: number, quote: number): number {
+  if (b === quote || escapeLetter(b) !== 0) return 2;
+  return b < 0x20 || b === 0x7f ? 4 : 1;
+}
+
+/** `encodeQuoted(v, quote).length` without building it or allocating. */
+function quotedLen(v: Uint8Array, quote: number): number {
+  let n = 0;
+  for (let i = 0; i < v.length;) {
+    if (isFffdAt(v, i)) {
+      n += ESCAPED_FFFD.length;
+      i += FFFD.length;
+      continue;
+    }
+    n += escapedByteLen(v[i] ?? 0, quote);
+    i++;
+  }
+  return n;
 }
 
 /**
  * Plan #118 §4.2 on bytes; `quote` is DQUOTE or SQUOTE. Only the opening quote is escaped, U+FFFD
  * is written `\ufffd` and any other non-ASCII rune as itself. Returns `v` itself when nothing is
- * escaped.
+ * escaped; otherwise one array of `quotedLen(v, quote)` bytes.
  */
 function encodeQuoted(v: Uint8Array, quote: number): Uint8Array {
-  const parts: (Uint8Array | number)[] = [];
-  let n = 0;
-  let changed = false;
+  const n = quotedLen(v, quote);
+  if (n === v.length) return v;
+  const out = new Uint8Array(n);
+  let o = 0;
   for (let i = 0; i < v.length;) {
     if (isFffdAt(v, i)) {
-      parts.push(ESCAPED_FFFD);
-      n += ESCAPED_FFFD.length;
+      out.set(ESCAPED_FFFD, o);
+      o += ESCAPED_FFFD.length;
       i += FFFD.length;
-      changed = true;
       continue;
     }
     const b = v[i] ?? 0;
-    const e = quotedEscape(b, quote);
-    if (e === null) {
-      parts.push(b);
-      n++;
-    } else {
-      const eb = encoder.encode(e);
-      parts.push(eb);
-      n += eb.length;
-      changed = true;
-    }
     i++;
-  }
-  if (!changed) return v;
-  const out = new Uint8Array(n);
-  let o = 0;
-  for (const p of parts) {
-    if (typeof p === 'number') out[o++] = p;
-    else {
-      out.set(p, o);
-      o += p.length;
-    }
+    const letter = b === quote ? quote : escapeLetter(b);
+    if (letter !== 0) {
+      out[o++] = BACKSLASH;
+      out[o++] = letter;
+    } else if (b < 0x20 || b === 0x7f) {
+      out[o++] = BACKSLASH;
+      out[o++] = 0x78; // x
+      out[o++] = HEX[b >> 4] ?? 0;
+      out[o++] = HEX[b & 0xf] ?? 0;
+    } else out[o++] = b;
   }
   return out;
+}
+
+/**
+ * Per-scan memo of what a value costs where it is referenced: its length in `"…"` and `'…'`,
+ * whether it is representable in each state, and (building) its encoded bytes. A scan repeats a
+ * reference many times, so each value is read once per state (review r1).
+ */
+class ValueMemo {
+  private readonly lens = new Map<Uint8Array, number>();
+  private readonly lensSq = new Map<Uint8Array, number>();
+  private readonly enc = new Map<Uint8Array, Uint8Array>();
+  private readonly encSq = new Map<Uint8Array, Uint8Array>();
+  private readonly rep = new Map<Uint8Array, Map<LexState, boolean>>();
+
+  len(v: Uint8Array, st: LexState): number {
+    if (st !== 'dq' && st !== 'sq') return v.length;
+    const m = st === 'dq' ? this.lens : this.lensSq;
+    let n = m.get(v);
+    if (n === undefined) {
+      n = quotedLen(v, st === 'dq' ? DQUOTE : SQUOTE);
+      m.set(v, n);
+    }
+    return n;
+  }
+
+  bytes(v: Uint8Array, st: LexState): Uint8Array {
+    if (st !== 'dq' && st !== 'sq') return v;
+    const m = st === 'dq' ? this.enc : this.encSq;
+    let e = m.get(v);
+    if (e === undefined) {
+      e = encodeQuoted(v, st === 'dq' ? DQUOTE : SQUOTE);
+      m.set(v, e);
+    }
+    return e;
+  }
+
+  representable(v: Uint8Array, st: LexState): boolean {
+    let m = this.rep.get(v);
+    if (m === undefined) {
+      m = new Map();
+      this.rep.set(v, m);
+    }
+    let r = m.get(st);
+    if (r === undefined) {
+      r = representable(v, st);
+      m.set(st, r);
+    }
+    return r;
+  }
 }
 
 function holdsFffd(v: Uint8Array): boolean {
@@ -416,6 +474,7 @@ function substitute(
   const segs: Segment[] = [];
   const missing: string[] = [];
   const unrepresentable: string[] = [];
+  const memo = new ValueMemo();
   let size = 0;
   let macro = false;
   let copyFrom = 0;
@@ -472,26 +531,22 @@ function substitute(
         continue;
       }
       // A macro's text is a duration: only a value is checked (row 7b).
-      if (isVar && !representable(value, st) && !unrepresentable.includes(ref.name))
+      if (isVar && !memo.representable(value, st) && !unrepresentable.includes(ref.name))
         unrepresentable.push(ref.name);
       flush(i);
-      const v =
-        st === 'dq'
-          ? encodeQuoted(value, DQUOTE)
-          : st === 'sq'
-            ? encodeQuoted(value, SQUOTE)
-            : value;
+      // Counting only measures the value: nothing is built before the cap is checked.
+      const n = memo.len(value, st);
       if (build) {
         segs.push({
           sentFrom: size,
-          sentLen: v.length,
+          sentLen: n,
           rawFrom: i,
           rawLen: ref.end - i,
           kind: 'insert',
         });
-        parts.push(v);
+        parts.push(memo.bytes(value, st));
       }
-      size += v.length;
+      size += n;
       i = ref.end;
       copyFrom = ref.end;
       continue;
