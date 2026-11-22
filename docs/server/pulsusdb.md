@@ -22,8 +22,8 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 
 | Route | Body or parameters | 200 body | Deadline |
 |---|---|---|---|
-| `POST /api/dash/v1/query/promql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?}` (ms since the epoch) | `PromRangeResponse`, streamed | `timeout_ms`: 200 to 120 000, default 30 000 |
-| `POST /api/dash/v1/query/promql/instant?tenant=<slug>` | `{"query", "at", "timeout_ms"?}` | `PromInstantResponse` | as above |
+| `POST /api/dash/v1/query/promql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?, "vars"?, "rate"?}` (ms since the epoch; `query` is the raw text) | `PromRangeResponse`, streamed, `planned` first | `timeout_ms`: 200 to 120 000, default 30 000 |
+| `POST /api/dash/v1/query/promql/instant?tenant=<slug>` | `{"query", "at", "timeout_ms"?, "vars"?, "step_ms"?}` | `PromInstantResponse`, `planned` first | as above |
 | `GET /api/dash/v1/prom/labels` | `tenant`, `from`, `to`, `match` (repeatable), `limit` (1 to 10 000, default 1 000) | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/prom/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/prom/series` | as labels; at least one `match` | `PromSeriesResponse` | 10 s |
@@ -48,6 +48,223 @@ An unknown slug is 404 `not_found` `unknown tenant`; a store failure is 503 `una
 `configuration store unavailable`. Resolution runs under the route's deadline: if the deadline
 passes first the answer is 504 `upstream_timeout`, and if the browser went away nothing is
 written (the access log records 499).
+
+## Query planning ([ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md))
+
+The two PromQL routes take the text the user wrote and plan it on the server: the browser never
+builds the query that is sent (T06-029). `prom.Plan` in `server/internal/pulsusdb/prom` (the PromQL
+language module, ADR-0018) is a pure function in two halves: `Prepare` checks the inputs,
+substitutes the variables and classifies the result; after the route resolves the step,
+`Prepared.Plan` applies the step macros, the rate rewrites and the size limit. The routes call it
+today; the alert evaluator will call the same function with a rule's stored step.
+
+### Inputs and limits
+
+| Input | Limit | Notes |
+|---|---|---|
+| `query` | 1 to 131 072 UTF-8 bytes | the raw text; JSON Schema `maxLength` counts characters, the server counts bytes |
+| `vars` | at most 64 names, each `^[A-Za-z_][A-Za-z0-9_]{0,63}$`; each value at most 4 096 bytes | names checked in byte order |
+| `rate` (range) | boolean, default `true` | the rate chip |
+| `step_ms` (instant) | 1 000 to 86 400 000 | the step of `$__interval`, `$__rate_interval` and the rate rewrite; without it an instant query is not rated |
+| substituted text | 2 MiB (2 097 152 bytes, the request-body limit) | the processing cap, counted before the text is built: in `Prepare` with the placeholder macros, and again in `Plan` with the macros at the resolved step (a `1500ms` is longer than the `1s` placeholder) |
+| planned text | 65 536 bytes | checked on the final planned text only |
+
+The raw text may be up to 128 KB because the planned text, not the raw text, is what has to fit
+in 64 KiB: a long comment before a bare counter is sent as `rate(x_total[1m])`. A raw text between
+64 and 128 KiB whose plan stays that long is accepted, planned, and then refused with 413. The
+processing cap is a deliberate, bounded exception: a substituted text over 2 MiB is refused even
+when a rewrite would shrink it.
+
+### The rules, in order
+
+1. **Substitution.** The raw bytes are scanned once, left to right, with a quote state (none,
+   `"`, `'`, `` ` ``): outside a string a quote opens one; inside `"…"` or `'…'` a backslash skips
+   the next byte and the same quote closes it; inside backticks only a backtick closes. Comments
+   are not recognised, so `up # $r` still needs `$r`. A reference is `$NAME` or `${NAME}` with
+   `NAME = [A-Za-z_][A-Za-z0-9_]*`:
+
+   | Reference | Becomes |
+   |---|---|
+   | `$__interval` | the step, as a duration (`30s` at 30 000 ms) |
+   | `$__rate_interval` | the rate window of the step (below) |
+   | any other `$__…`, or a name longer than 64 | itself, unchanged |
+   | a name in `vars` | the value; inside `"…"` or `'…'` each `\` becomes `\\` and that quote `\` + quote; inside backticks and outside strings, verbatim |
+   | a name not in `vars` | itself; the plan is refused with `variable.missing` |
+
+   `Prepare` substitutes every macro as the placeholder `1s`, so the selectors are known before
+   the step is.
+2. **Shape.** The substituted text is parsed with the upstream PromQL parser
+   (`github.com/prometheus/prometheus/promql/parser`): its top-level bare selector (a metric name
+   with no offset, `@`, `anchored` or `smoothed`), every metric name, whether it calls
+   `histogram_quantile`, and its value type. Any parse or type error gives the unknown shape; a
+   parse failure never fails the plan.
+3. **Rewrites**, behind `rate` (and only with a step):
+
+   | Shape | Sent |
+   |---|---|
+   | bare selector of a histogram bucket (`…_bucket` whose type is histogram or unknown) | `sum by (le) (rate(<selector>[w]))`, histogram |
+   | bare selector of a counter (type counter, or a name ending in `_total`) | `rate(<selector>[w])` |
+   | anything else | as is; histogram when a `…_bucket` metric is read without `histogram_quantile` |
+
+   A wrap sends the selector's exact bytes; bytes outside it (leading comments and blanks) are
+   dropped. With `rate: false`, or an instant query without `step_ms`, a candidate is sent as is
+   and reported as a candidate. The window is `w = max(4 × step, step + S, 4 × S)` with the scrape
+   interval `S` = 15 s until a per-binding one exists, written as the largest of `d`, `h`, `m`, `s`
+   that divides it: 5 s gives `1m`, 30 s gives `2m`, 60 s gives `4m`, 1 h gives `4h`, 45 s gives
+   `3m`.
+4. **Size.** A planned text over 65 536 bytes is refused with 413 and the full plan.
+
+### What `planned` says
+
+Both 200 bodies start with `planned` (`PlannedQuery`), and every error raised after planning
+carries it too:
+
+| Member | Meaning | The client |
+|---|---|---|
+| `query`, `bytes` | the text sent and its length | Explore's "Sent query" when it differs from the text run |
+| `expanded` | the substituted text before the rewrite | Open in Explore (#64) |
+| `value_type` | the shape's type | — |
+| `rate_candidate`, `rate_applied` | the rewrite could apply, and did | the Rate applied chip; the `/s` unit |
+| `histogram` | the result is histogram buckets | auto-vis rule 5 (heatmap) and rule 6 |
+| `step_ms`, `rate_window_ms` | the step planned at; the window of an applied rewrite | — |
+
+### Refusals
+
+The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~1`.
+
+| Condition | Status | `fields` (pointer, key) | Message |
+|---|---|---|---|
+| `query` not UTF-8 (the body check) | 400 | `/query`, `field.range` | `query must be UTF-8` |
+| `query` empty or over 131 072 bytes | 400 | `/query`, `field.range` | `query must be 1 to 131072 bytes` |
+| more than 64 `vars` | 400 | `/vars`, `field.range` | `vars must have at most 64 entries` |
+| a bad variable name | 400 | `/vars/<name>`, `field.pattern` | `a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$` |
+| a value over 4 096 bytes | 400 | `/vars/<name>`, `field.range` | `a variable value must be UTF-8 and at most 4096 bytes` |
+| referenced variables without a value | 400 | one `/vars/<name>`, `variable.missing` per name, first reference first | `no value for variable $a, $b` |
+| a macro in an instant query without `step_ms` | 400 | `/step_ms`, `field.required` | `step_ms is required for $__interval and $__rate_interval` |
+| the substituted text over 2 MiB | 413 | `/query`, `query.too_large_to_plan` | `the substituted query is over 2097152 bytes, the most the server processes`; `hint.reason: processing_cap`, no `planned` |
+| the planned text over 65 536 bytes | 413 | `/query`, `query.sent_too_large` | `the planned query is over 65536 bytes`; the full `planned` (`bytes` is `len(planned.query)`) |
+
+Every planning refusal has `code: invalid`. A reserved selector is 400 `virtual_unsupported`
+([below](#reserved-selectors-t07-0-t07-020-v1)).
+
+### Positions
+
+PulsusDB's error position is a byte offset into the sent text. The server maps it back to the raw
+text through two segment maps (sent → substituted → raw), so `hint.position.offset` is always an
+offset into what the user wrote ([T09-009](../../designs/technical/T09-query-editors.md)):
+
+1. a byte copied from the raw text maps to itself; every byte of a substituted value maps to the
+   start of its reference (`$r`);
+2. the end of the whole text maps to the end of the raw text, when the text ends with copied or
+   substituted bytes;
+3. anything else has no position: every byte of a rewrite's prefix or suffix, its first byte
+   included, and offsets out of range.
+
+So for `x_total{job="a"}` sent as `rate(x_total{job="a"}[1m])`, PulsusDB's offset 19 is raw
+offset 14; for `up{job="$r"}` with `r=ab`, offset 9 (inside the value) is 8, the start of `$r`; an
+offset in `[1m])` has no position and the client underlines the whole text.
+
+### Route order and security ([T06-029](../../designs/technical/T06-bff-architecture.md), T07-020)
+
+| Step | What | On failure |
+|---|---|---|
+| 1 | the body: required members and ranges | 400 |
+| 2 | range: the grid (`width_px` and the window) | 400 `range.too_long` |
+| 3 | `Prepare` | the refusals above; nothing has been read |
+| 4 | Classify, then the byte guard on the substituted text | 400 `virtual_unsupported`; no upstream request |
+| 4b | resolve the step: `FloorStep(base step, floor)`; `CheckCap`: the processing cap with the macros at that step | 413 `processing_cap`; nothing has been read |
+| 5 | the route deadline; tenant resolution | as before |
+| 6 | metric types, only when the plan depends on them | never fails the request (below) |
+| 7 | `Plan` | 413 with `planned` |
+| 8 | the byte guard on the planned text (the authoritative check) | 400 `virtual_unsupported` with `planned` |
+| 9 | the data scope (the full tenant, D12) | 403 `scope_denied` with `planned` |
+| 10 | send `planned.query` | the upstream errors, with `planned` and the mapped position |
+
+No step logs the raw text, the planned text or a variable value.
+
+### Metric types
+
+Whether a bare selector is a counter or a histogram depends on its type, which comes from
+PulsusDB's metadata route. `Prepared.NeedsTypes` is true only when the answer can change the plan:
+a bare selector whose name does not end in `_total`, or no bare selector, no `histogram_quantile`
+and a `…_bucket` metric. `x_total`, `rate(x[5m])` and every refusal read no metadata.
+
+`prom.TypesCache` holds one entry per tenant binding (organisation and binding ID): a read lasts
+60 s, a failure is held 5 s, concurrent misses share one fetch (singleflight), and the fetch runs
+on with its own 10 s timeout when a caller leaves. A plan waits at most 2 s; after that, or on a
+failure, it plans without types (only names ending in `_total` are rated) and puts
+`pulsus-dash: metric types unavailable, so only names ending in _total are rated (metric_types_unavailable)`
+first in `completeness.warnings`. The fetch logs `metric_types_unavailable` at `warn` with the
+binding slug and the error kind. One read asks for at most 10 000 metrics: a name past that has no
+type, so only the `_total` rule rates it.
+
+### Classify and the binding order ([T07 §4.1](../../designs/technical/T07-scene-query-planner.md), §4.3)
+
+`Prepare` classifies the substituted text (T07 §4.1 step 1a) before the step is resolved: the
+metric names among `ALERTS`, `ALERTS_FOR_STATE` (step floor 15 000 ms) and `pulsus_anomaly_score`
+(300 000 ms) are reserved; the source is `virtual` when every name is reserved, `mixed` when some
+are, else `pulsus_db`. The floor is the largest of theirs, and `FloorStep(step, floor)` is the
+least multiple of the floor at least the step. Because variables are substituted before Classify
+and only the step macros wait, a reserved name a variable introduces is found (`$m` with
+`m=ALERTS` is `virtual`). In v1 nothing resolves to a virtual source, so the routes refuse any
+query that is not `pulsus_db` before any I/O; selectors without a metric name and unparsable text
+are left to the byte guard.
+
+The binding order is the contract for the scene planner's Bind too (T07 §4.1): templates and
+`{{entity}}` bindings are expanded, then the variables substituted, before Classify; only the step
+macros wait for Resolve. v1 has no templates, so the fixture's classify group (V1–V5) proves the
+order with variable values; the issue that implements scene Bind owes the gate
+`unit:bind-classify-template` (a template binding `pulsus_anomaly_score{service="checkout",signal="latency"}`,
+6 h at 1 600 px: `virtual`, floor 300 000 ms, final step 300 000 ms, `Plan` called with it).
+
+**LogQL (follow-up "Move LogQL planning to the Go service", before #66 Part C).** Until `logs.Plan`
+lands, the LogQL routes keep #65's T07-020 byte guard (`pulsusdb.CheckReserved`) unchanged; #112
+changes no LogQL code. The contract of that issue: `logs.Prepare` substitutes, then classifies the
+stream selectors with a LogQL selector reader (not the PromQL parser) before the step is resolved,
+and only the equality matcher `source="pulsus-dash"` is reserved. `wire/fixtures/plan/logql.json`
+gets a `classify` group:
+
+| Case | Query (vars) | Source |
+|---|---|---|
+| L1 | `{source="pulsus-dash"}` | `virtual` |
+| L2 | `{source="pulsus-dash", kind="alert_transition"} \|= "x"` | `virtual` |
+| L3 | `{source=~"pulsus-dash"}` | `pulsus_db` (only the equality matcher is reserved, T07-020) |
+| L4 | `{source="$s"}` with `s=pulsus-dash` | `virtual` |
+| L5 | `sum(count_over_time({source="pulsus-dash"}[$__interval])) + sum(count_over_time({job="a"}[$__interval]))` | `mixed` |
+
+Its gates: `unit:logql-classify` (the group through Go and the TS mirror) and
+`itest:logql-virtual-refused` (400 `virtual_unsupported`, no upstream request).
+
+### Fixtures
+
+`wire/fixtures/plan/promql.json` holds the planner's cases, run by the Go planner
+(`go test ./internal/pulsusdb/prom`) and by the client's StubApi mirror
+([Explore](../client/explore.md#the-stubapi-planner-mirror)), so the two cannot drift:
+
+| Section | Holds |
+|---|---|
+| `plan` | one case per row: `name` (unique), `from` (the test it replaces, or `new`), `inputs`, `types`, `needs_types` (absent on a refusal before types), `shape`, `group` (cases of one group plan to one query: a panel and its rule), `classify`, `resolve`, exactly one of `planned` or `error`, and `to_source` pairs `[sent, raw or null]` |
+| `kind_of`, `from_metadata`, `rate_window`, `durations`, `bytes` | the tables of the type rules, the window and the byte counts |
+| `reserved` | texts and the reserved name the byte guard reports, or null |
+| `functions` | the parser's stable functions; `go test ./internal/pulsusdb/prom -run TestFunctionTable -update` writes it |
+
+A string member that would be long may be a `Text`: `{"concat": [string | {"repeat": Text, "count": n}, …]}`,
+expanded by both runners (the query, `planned.query`, `planned.expanded` and the shape's metric
+names). Each case has one shape, the Go parser's; the stub reproduces it with the Lezer tree and
+a type check of the parser's rules, with no exemption. To add a case, add a row with its expected
+values and run both suites; a case the stub cannot reproduce because of a known limitation of its
+type check (regular-expression dialect, string escapes, number lexing, grammar release) is added
+with a note on the client page, not exempted.
+
+### The parser boundary
+
+The depguard rule `promql-parser` (`server/.golangci.yml`) allows
+`github.com/prometheus/prometheus` only in `internal/pulsusdb/prom`; the self-test fixture
+`promql_parser_outside_prom.go.txt` proves it fires. The module is pinned at `v0.316.0`, the release
+of the client's `@prometheus-io/lezer-promql` grammar. The package holds one parser created with
+zero options (experimental functions, fill modifiers and unquoted UTF-8 names off), and never sets
+a package global of the module. The package links the parser's storage dependencies; `make
+go-licenses` lists them in `build/THIRD_PARTY_NOTICES.txt`.
 
 ## What the binding decides
 
@@ -227,7 +444,9 @@ way the completeness gets one warning,
 
 ## Errors ([T06 §5.2](../../designs/technical/T06-bff-architecture.md))
 
-Every error is the envelope `{"error":{"code","message","hint"?,"query_id"?,"fields"?}}`.
+Every error is the envelope `{"error":{"code","message","hint"?,"query_id"?,"fields"?,"planned"?}}`;
+on the PromQL routes every error raised after planning carries `planned`
+([query planning](#refusals)).
 
 | Cause | Status | `code` | `message` | `hint`, `fields`, headers |
 |---|---|---|---|---|
@@ -257,10 +476,11 @@ text over 64 KiB is `upstream_error`. A text 503 has no `errorType`, so it is no
 (`upstream_unavailable`). LogQL errors are text: `unexpected end of query at byte 8: expected '}'`.
 
 **Position** ([T09-009](../../designs/technical/T09-query-editors.md)). A message that starts with
-`<line>:<column>: ` (1-based, the column in bytes) gives `hint.position.offset`: the byte offset of
-that line's start in the sent query plus column − 1, kept only when it lies within the text.
-Without that prefix, the first `at byte <N>` (LogQL; `N` is 0-based) gives offset `N`, kept only
-when `N` is at most the query's length.
+`<line>:<column>: ` (1-based, the column in bytes) gives the byte offset of that line's start in
+the sent query plus column − 1, kept only when it lies within the text. Without that prefix, the
+first `at byte <N>` (LogQL; `N` is 0-based) gives offset `N`, kept only when `N` is at most the
+query's length. The PromQL routes map the offset to the raw text ([positions](#positions)); it is
+returned as `hint.position.offset`.
 PulsusDB's current messages (for example `unclosed left parenthesis`) carry no position, and the
 client underlines the whole query.
 
@@ -274,8 +494,10 @@ and nothing after it. Errors are 400 `invalid` with one field:
 | not JSON, not an object, trailing data | `""` | `body.invalid` |
 | unknown field `x` | `/x` | `field.unknown` |
 | missing required field | `/<field>` | `field.required` |
-| wrong type, non-integer number | `/<field>` | `field.type` |
-| out of range (`from` < 0, `to` past year 9999, `width_px` outside 1 to 10 000, `from ≥ to` on `/to`, `query` empty or over 65 536 bytes or not UTF-8, `timeout_ms` outside 200 to 120 000) | `/<field>` | `field.range` |
+| wrong type, non-integer number (a variable value by its pointer, `/vars/<name>`) | `/<field>` | `field.type` |
+| out of range (`from` < 0, `to` past year 9999, `width_px` outside 1 to 10 000, `from ≥ to` on `/to`, `timeout_ms` outside 200 to 120 000, instant `step_ms` outside 1 000 to 86 400 000) | `/<field>` | `field.range` |
+| bytes that are not UTF-8: in the query, else in a variable | `/query` or `/vars` | `field.range` |
+| the query, `vars` and the macros | [query planning](#refusals) | |
 | range over 11 000 steps | `/from` | `range.too_long` |
 | `tenant` missing or not a slug | `""` (message `tenant is required`) | `tenant.invalid` |
 
@@ -300,8 +522,8 @@ included. The PromQL routes keep their own `to` bound (year 9999).
 ## Reserved selectors ([T07 §0](../../designs/technical/T07-scene-query-planner.md), T07-020 v1)
 
 Pulsus Dash will serve some series itself. Until it does, a text that names one is refused before
-any I/O, tenant resolution included (the gateway checks the inputs before it resolves the tenant,
-and the client checks them again): `ALERTS_FOR_STATE`, `ALERTS` or `pulsus_anomaly_score` as a whole word (the bytes
+any I/O, tenant resolution included (on the PromQL routes Classify and this guard run on the
+substituted text before the tenant is resolved, and the guard runs again on the planned text): `ALERTS_FOR_STATE`, `ALERTS` or `pulsus_anomaly_score` as a whole word (the bytes
 around it are absent or not in `[A-Za-z0-9_:]`, so `ALERTS_total` and `my_ALERTS` pass), or the
 exact bytes `source="pulsus-dash"`. The guard screens the query of the range and instant routes,
 every `match` and the metadata `metric`, and logs `msg=reserved_selector field=<pointer>` at `info`
@@ -644,7 +866,11 @@ The binding itself (URL, scope, database, credentials reference) lives in Postgr
 | Limit | Value | Over the limit |
 |---|---|---|
 | request body | 2 MiB | 413 |
-| query, each `match`, `metric` | 65 536 bytes | 400 `field.range` |
+| raw PromQL query | 131 072 bytes | 400 `field.range` |
+| planned PromQL query | 65 536 bytes | 413 `query.sent_too_large`, with `planned` |
+| substituted PromQL query | 2 MiB | 413 `query.too_large_to_plan` |
+| `vars` | 64 entries; values 4 096 bytes | 400 |
+| each `match`, `metric` | 65 536 bytes | 400 `field.range` |
 | steps per range | 11 000 | 400 `range.too_long` |
 | grid points per response | 5 000 000 | cut, `truncated` with a warning |
 | values, series or metrics per completion response | 10 000 | cut, `truncated` |
@@ -702,7 +928,9 @@ properties the pager relies on ([testing against PulsusDB](../development/testin
 | `internal/pulsusdb/logql.go` | the five LogQL methods, levels, `nsParam`, volume composition and position mapping |
 | `internal/pulsusdb/logpage.go` | the decoded `logResponse`, `streamsResult`, `openLogs` and the pager |
 | `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rule, errors, retry budget and tenant slots |
-| `internal/gateway/query.go`, `frames.go`, `prom.go`, `datasource.go`, `tenant.go` | the routes, the frame encoder, tenant resolution and the error mapping |
+| `internal/pulsusdb/prom/plan.go`, `substitute.go`, `errors.go` | `Prepare`, `Plan`, Classify, the limits, the substitution and its segment map, `PlanError` |
+| `internal/pulsusdb/prom/shape.go`, `types.go` | `ShapeOf` over the upstream parser; metric kinds and `TypesCache` |
+| `internal/gateway/query.go`, `plan.go`, `frames.go`, `prom.go`, `datasource.go`, `tenant.go` | the routes, planning on the routes (`planFor`, the `planned` member, error positions), the frame encoder, tenant resolution and the error mapping |
 | `internal/gateway/logql.go`, `logframes.go`, `cursor.go`, `logs.go` | the LogQL range and volume routes, the log page encoder, the cursor, the log completion routes |
 | `internal/pulsusfake`, `cmd/pulsus-fake` | the PulsusDB stand-in ([testing against PulsusDB](../development/testing-pulsusdb.md)) |
 
@@ -710,15 +938,17 @@ properties the pager relies on ([testing against PulsusDB](../development/testin
 
 PRF-030 (transport half), PRF-031 (server half) in
 [the performance requirements](../../designs/product/09-performance-contract.md); T06-002, T06-005, T06-006,
-T06-008, T06-009, T06-010, T06-011, T06-023 (declaration), T06-024, T06-025 and T06-026 in
-[T06](../../designs/technical/T06-bff-architecture.md); T04-001, T04-004, T04-005 and T04-010 in
+T06-008, T06-009, T06-010, T06-011, T06-023 (declaration), T06-024, T06-025, T06-026, T06-028
+and T06-029 in [T06](../../designs/technical/T06-bff-architecture.md); T04-001, T04-004, T04-005 and T04-010 in
 [T04](../../designs/technical/T04-wire-format-and-data-plane.md) (with §4.3 `log_lines/1` levels and
 its JSON image, the §5.2 `log_volume` row, the §5.3 `truncated` row and the §7 cancel budget,
 T04-013); the log routes of T06 §5.1; T07-002, T07-020 (v1) and the §0 log volume row in
-[T07](../../designs/technical/T07-scene-query-planner.md); T09-009 (server half, with LogQL's
-`at byte N`) in
+[T07](../../designs/technical/T07-scene-query-planner.md), with T07-003 and the §4.1 Classify step
+(PromQL); T09-009 (server half, with LogQL's `at byte N`), T09-010 and T09-015 (server half) in
 [T09](../../designs/technical/T09-query-editors.md); T05-006 in
 [T05](../../designs/technical/T05-testing-and-performance.md);
 [ADR-0006](../../designs/adr/0006-pulsusdb-and-postgres.md),
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §5,
-[ADR-0015](../../designs/adr/0015-go-bff.md).
+[ADR-0015](../../designs/adr/0015-go-bff.md),
+[ADR-0018](../../designs/adr/0018-query-language-modules.md),
+[ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md).

@@ -19,6 +19,7 @@ import { NotFoundPage, ShellNotFoundPage } from '../pages/NotFoundPage';
 import { AppShell } from '../shell/AppShell';
 import type { Clock } from '../state/clock';
 import { contextSearchString, DEFAULT_CONTEXT, normalisedSearch } from '../state/contextSearch';
+import { normalisedExploreSearch } from '../state/exploreParams';
 import { RouteErrorPage } from './RouteErrorPage';
 import { routeModules } from './routeModules';
 
@@ -108,6 +109,13 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
             {
               id: 'metrics',
               path: 'explore/metrics',
+              // The explore keys `q`, `vis`, `rate` in canonical form (plan #63 §3.5).
+              loader: ({ request }: LoaderFunctionArgs) => {
+                const url = new URL(request.url);
+                const n = normalisedExploreSearch(url.search, env());
+                if (n !== null) throw replace(url.pathname + n);
+                return null;
+              },
               lazy: () => routeModules.metrics().then((m) => ({ Component: m.MetricsPage })),
             },
             {

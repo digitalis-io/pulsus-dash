@@ -83,6 +83,19 @@ describe('unit:frame-validate', () => {
     expect(validateFrameData(spec, data)).toEqual(want);
   });
 
+  it('unit:frame-data NaN counts: a missing heatmap cell is valid', () => {
+    expect(
+      validateFrameData(HEAT, {
+        kind: 'heatmap',
+        heatmap: {
+          timestamps: new Float64Array([0]),
+          bounds: new Float64Array([1, Infinity]),
+          counts: new Float64Array([NaN, 1]),
+        },
+      }),
+    ).toBeNull();
+  });
+
   it('empty data per kind', () => {
     expect(emptyFrameData(LINE)).toEqual({ kind: 'series', series: [] });
     expect(emptyFrameData(BARS)).toEqual({ kind: 'series', series: [] });

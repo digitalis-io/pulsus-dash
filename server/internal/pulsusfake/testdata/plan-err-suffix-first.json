@@ -1,0 +1,21 @@
+{
+  "name": "plan-err-suffix-first",
+  "provenance": {
+    "synthetic": "plan #112"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "rate(z_total[1m])"
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-plan-err-suffix-first"
+    },
+    "body": {"status":"error","errorType":"bad_data","error":"1:13: parse error: synthetic"}
+  }
+}

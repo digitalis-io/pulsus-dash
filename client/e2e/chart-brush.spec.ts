@@ -1,5 +1,8 @@
-/** `e2e:chart-brush` (plan #58 §5, IA-020 subset): drag to brush a window, double-click to zoom out. */
-import { expect, test } from '@playwright/test';
+/**
+ * `e2e:chart-brush` (plan #58 §5, IA-020 subset; #93, INT-025): right drag (or `Alt`+left drag) to
+ * brush a window, double-click to zoom out.
+ */
+import { expect, test, type Page } from '@playwright/test';
 import { brushSnapUnit } from '../src/engine/canvas2d/columns.ts';
 import {
   frame,
@@ -16,9 +19,8 @@ import {
 
 const MIN = 60_000;
 
-test('e2e:chart-brush', async ({ page }) => {
-  await open(page, GALLERY_URL);
-  await galleryReady(page);
+/** The page x of the 12:20 and 12:25 targets, 0.1–0.4 brush units inside them, and the plot's y. */
+async function targets(page: Page) {
   const f = frame(page, 'line-1');
   const plot = await plotOf(f);
   const box = await f.boundingBox();
@@ -35,10 +37,17 @@ test('e2e:chart-brush', async ({ page }) => {
   expect(t(x1)).toBeLessThanOrEqual(lo + 0.4 * u);
   expect(t(x2)).toBeGreaterThanOrEqual(hi - 0.4 * u);
   const y = box.y + plot.y + plot.height / 2;
+  return { x1, x2, y, box, plot };
+}
+
+test('e2e:chart-brush', async ({ page }) => {
+  await open(page, GALLERY_URL);
+  await galleryReady(page);
+  const { x1, x2, y, box, plot } = await targets(page);
   await page.mouse.move(x1, y);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'right' });
   await page.mouse.move(x2, y, { steps: 10 });
-  await page.mouse.up();
+  await page.mouse.up({ button: 'right' });
   await expect
     .poll(() => searchOf(page))
     .toMatchObject({ from: '2026-11-19T12:20:00.000Z', to: '2026-11-19T12:25:00.000Z' });
@@ -49,4 +58,18 @@ test('e2e:chart-brush', async ({ page }) => {
     .poll(() => searchOf(page))
     .toMatchObject({ from: '2026-11-19T12:17:30.000Z', to: '2026-11-19T12:27:30.000Z' });
   await expect(timeTrigger(page)).toHaveText('19 Nov 2026, 12:17:30 – 12:27:30');
+
+  // Alt+left drag brushes the same window.
+  await open(page, GALLERY_URL);
+  await galleryReady(page);
+  const t2 = await targets(page);
+  await page.mouse.move(t2.x1, t2.y);
+  await page.keyboard.down('Alt');
+  await page.mouse.down();
+  await page.mouse.move(t2.x2, t2.y, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect
+    .poll(() => searchOf(page))
+    .toMatchObject({ from: '2026-11-19T12:20:00.000Z', to: '2026-11-19T12:25:00.000Z' });
 });

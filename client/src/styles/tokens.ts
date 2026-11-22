@@ -31,6 +31,11 @@ export const colour = {
     "surface-1": "#12151A",
     "surface-2": "#191D24",
     "surface-hover": "#222731",
+    "syn-func": "#7AA2D6",
+    "syn-keyword": "#B48FC9",
+    "syn-label": "#6FB8B8",
+    "syn-number": "#D6A86B",
+    "syn-string": "#8FBF8F",
     "text": "#E6E8EB",
     "text-muted": "#8A919C",
     "text-on-accent": "#0B0D10",
@@ -67,6 +72,11 @@ export const colour = {
     "surface-1": "#FFFFFF",
     "surface-2": "#ECEEF2",
     "surface-hover": "#E2E5EA",
+    "syn-func": "#2563C9",
+    "syn-keyword": "#6B4A84",
+    "syn-label": "#2E6E6E",
+    "syn-number": "#7F5F2A",
+    "syn-string": "#3D7340",
     "text": "#1A1D23",
     "text-muted": "#555D69",
     "text-on-accent": "#FFFFFF",
@@ -93,7 +103,6 @@ export const space = {
 export const size = {
   "avatar": 28,
   "board-cols": 12,
-  "board-editor": 360,
   "board-panel-header": 40,
   "board-row": 40,
   "chart": 240,
@@ -103,6 +112,8 @@ export const size = {
   "chart-tick": 4,
   "control": 32,
   "crumb-max": 160,
+  "dialog-editor-height": 720,
+  "dialog-editor-width": 800,
   "focus-offset": 2,
   "focus-ring": 2,
   "header": 56,
@@ -123,6 +134,9 @@ export const border = {
 } as const;
 
 export const font = {
+  "advance": {
+    "mono": 0.6,
+  },
   "family": {
     "mono": "\"JetBrains Mono Variable\", ui-monospace, monospace",
     "ui": "\"Inter Variable\", system-ui, sans-serif",

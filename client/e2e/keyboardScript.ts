@@ -50,9 +50,18 @@ export function script(page: Page, h: KeyboardHarness) {
     if ((await el.count()) === 0) return byName;
     return () =>
       el
-        .evaluate((e) => e === document.activeElement || e.contains(document.activeElement), null, {
-          timeout: 2_000,
-        })
+        .evaluate(
+          (e) => {
+            // Into open shadow roots: the editor's textbox is focused inside its host (plan #63 R2).
+            let a = document.activeElement;
+            while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement;
+            return a !== null && (e === a || e.contains(a));
+          },
+          null,
+          {
+            timeout: 2_000,
+          },
+        )
         .catch(byName);
   }
 

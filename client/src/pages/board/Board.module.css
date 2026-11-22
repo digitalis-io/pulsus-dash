@@ -339,27 +339,63 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* The non-modal panel editor (T08-017): 360 px at the right of the grid. */
-.editor {
+/* The panel editor dialog (#90): preview on top, fields below, actions at the foot. */
+.editorBody {
   display: flex;
-  flex: none;
+  flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--space-3);
-  width: var(--size-board-editor);
-  padding: var(--space-4);
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--surface-1);
+  gap: var(--space-4);
+  min-height: 0;
 }
 
-.editorTitle {
-  margin: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
+.preview {
+  flex: none;
+  height: calc(var(--size-board-panel-header) + var(--size-chart));
+}
+
+/*
+ * The measured box of the preview (#90): a fill ChartFrame fills it exactly. A grid, so a message
+ * centres as it does in a panel body.
+ */
+.previewHost {
+  position: relative;
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.editorFields {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4);
+  align-content: start;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.editorWide {
+  grid-column: 1 / -1;
 }
 
 .editorActions {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.editorStatus {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

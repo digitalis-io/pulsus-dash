@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-21 |
+| **Version** | 1.12-rc · 2026-11-22 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -86,7 +86,9 @@ BFF serves a fixed local principal.
 |---|---|---|---|
 | SRF-036 Log stream | M-UI2 | stream (steps 10–11) | minimap |
 | VIZ-034 Log stream | M-UI2 | virtualised list, severity gutter, wrap (step 10); GPU text (step 13) | JSON expand, prettify, dedupe, context lines, minimap |
-| SRF-030 Metrics auto-vis + multiple queries | M-UI1 | auto-vis (step 7) | A/B queries and expressions |
+| SRF-030 Metrics auto-vis + multiple queries | M-UI1 | auto-vis (step 7, #63) | A/B queries and expressions |
+| SRF-027 PromQL editor | M-UI1 | highlighting, completion, errors on run (step 7, #63) | hover docs |
+| SRF-031 Metric browser and series table | M-UI1 | series table sorted by max and last, metric picker with type and help (step 7, #63) | cardinality, label value counts, anomaly ratio |
 | ENT-020 Configuration and derived state in Postgres | M-UI1 | tenant-scoped tables under RLS (`orgs`, `tenant_bindings`), no extension (step 3, #59); `folders`, `boards`, `board_versions`, `audit_events` (partitioned), `stars`, `recent_views` (step 5, #61) | the other Table 6.1 tables with their features; partition retention with the first time-partitioned table; met only when its full acceptance is (D6) |
 | IA-020 Time range in the page header | M-UI1 | header time range picker and refresh control, brush on charts, window keys (steps 1, 2) | LIVE (INT-028) |
 | IA-006 Boards | M-UI5 | board in the root folder, versions stored on save (step 5) | owners, version history UI, variables |
@@ -217,4 +219,5 @@ product owner can confirm them at sign-off.
 | 1.8-rc | 2026-11-20 | Decision D12 (owner): authentication deferred; §3 records D12. §2 M-UI1 drops OIDC login and M-UI6 adds authentication; §2.1 the slice has no sign-in; Table 2.1a step 4 (#60) moves to M-UI6, steps 5 and 6 depend on step 3, critical path 1 → 3 → 5 → … → 11; Q12 moot until authentication is designed; Table 2.1c records the M-UI1 subset of ENT-020 (RLS-scoped `orgs` and `tenant_bindings`, #59), which stays M-UI1 |
 | 1.9-rc | 2026-11-20 | #61 Part A: Table 2.1c ENT-020 subset adds `folders`, `boards`, `board_versions`, `audit_events` (partitioned by class and month), `stars` and `recent_views` (step 5) |
 | 1.10-rc | 2026-11-21 | #61 Part C: Table 2.1c adds the M-UI1 subsets of SRF-016 (collapsible sections that do not query), SRF-017 (filter bar with URL values) and SRF-026 (starred and recently viewed boards); milestones unchanged (D6) |
-| 1.11-rc | 2026-11-21 | #65 Part B: §2.1 "PulsusDB routes": the M-UI1 log volume uses `query_range` (`count_over_time` by level); `/api/logs/v1/volume` moves to the later list |
+| 1.11-rc | 2026-11-21 | #63 Part C: Table 2.1c SRF-030 subset names #63; adds the M-UI1 subsets of SRF-027 (highlighting, completion, errors on run; hover docs remain) and SRF-031 (series table, metric picker; cardinality, label value counts and anomaly ratio remain); milestones unchanged (D6) |
+| 1.12-rc | 2026-11-22 | #65 Part B: §2.1 "PulsusDB routes": the M-UI1 log volume uses `query_range` (`count_over_time` by level); `/api/logs/v1/volume` moves to the later list |

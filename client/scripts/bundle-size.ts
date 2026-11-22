@@ -108,6 +108,33 @@ function missing(what: string, message: string): Finding {
   return { rule: `missing-artefact:${what}`, file: 'dist', subject: what, message };
 }
 
+/** The file name of every chunk holding an editor module (`vite.config.ts` `chunkFileNames`). */
+const EDITOR_FILE = /^assets\/editor-[^/]+\.js$/;
+
+/**
+ * The editor closure (plan #63 Part C §3.6): the files of the `editorModules` entries and every
+ * `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes
+ * only through `editor-*` files: any other import (the entry, a shared chunk, the route chunk) is
+ * neither counted nor walked through, and keeps its own initial or lazy row.
+ */
+export function editorClosure(
+  manifest: ReadonlyMap<string, ManifestChunk>,
+  entries: readonly string[],
+): Set<string> {
+  const files = new Set<string>();
+  const keys = new Set<string>();
+  const walk = (key: string, entry: boolean): void => {
+    if (keys.has(key)) return;
+    const c = manifest.get(key);
+    if (c === undefined || (!entry && !EDITOR_FILE.test(c.file))) return;
+    keys.add(key);
+    files.add(c.file);
+    for (const i of c.imports ?? []) walk(i, false);
+  };
+  for (const e of entries) walk(e, true);
+  return files;
+}
+
 export interface BundleResult {
   findings: Finding[];
   rows: SizeRow[];
@@ -239,13 +266,39 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
     'initial CSS',
     [...initialCss].reduce((a, f) => a + size(f), 0),
   );
-  const editor = new Set(budgets.editorModules);
   const initialFileSet = new Set(initialJsFiles);
+  const editor = editorClosure(manifest, budgets.editorModules);
+  for (const f of [...editor].sort()) {
+    if (initialFileSet.has(f)) {
+      findings.push({
+        rule: 'editor-in-initial',
+        file: f,
+        subject: 'editorChunk',
+        message: `${f} is in the initial JS`,
+      });
+    }
+  }
+  if (editor.size > 0) {
+    over(
+      'editorChunk',
+      `editor closure (${String(editor.size)} files)`,
+      [...editor].reduce((a, f) => a + size(f), 0),
+    );
+  }
+  for (const f of allFiles.filter((x) => EDITOR_FILE.test(x) && !editor.has(x)).sort()) {
+    findings.push({
+      rule: 'editor-orphan',
+      file: f,
+      subject: 'editorChunk',
+      message: `${f} is named as editor code but no editor entry reaches it`,
+    });
+  }
   const seen = new Set<string>();
-  for (const [key, c] of manifest) {
-    if (!c.file.endsWith('.js') || initialFileSet.has(c.file) || seen.has(c.file)) continue;
-    seen.add(c.file);
-    over(editor.has(key) ? 'editorChunk' : 'lazyChunk', c.file, size(c.file));
+  for (const c of manifest.values()) {
+    const f = c.file;
+    if (!f.endsWith('.js') || initialFileSet.has(f) || editor.has(f) || seen.has(f)) continue;
+    seen.add(f);
+    over('lazyChunk', f, size(f));
   }
   const fonts = allFiles.filter((f) => f.startsWith('assets/') && f.endsWith('.woff2'));
   over(

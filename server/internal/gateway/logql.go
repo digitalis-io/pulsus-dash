@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
@@ -154,7 +155,7 @@ func (q *dataRoutes) serveLogsRange(w http.ResponseWriter, r *http.Request) {
 			q.fail(w, r, err)
 			return
 		}
-		q.stream(w, r, rc, rs, lw.grid, first, "series", "logql_stream_aborted")
+		q.stream(w, r, &plannedReq{rc: rc}, rs, lw.grid, first, "series", "logql_stream_aborted")
 		return
 	}
 	page := res.Page
@@ -223,4 +224,30 @@ func (q *dataRoutes) serveLogsVolume(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(b)
+}
+
+// maxLogQueryBytes bounds a LogQL query text; the LogQL routes send it unplanned (T06-029 covers
+// LogQL once logs.Plan lands, #116).
+const maxLogQueryBytes = 65536
+
+// checkQuery checks the size of a LogQL query text.
+func checkQuery(q string) *reqError {
+	if len(q) < 1 || len(q) > maxLogQueryBytes {
+		return fieldError("/query", "field.range", "query must be 1 to 65536 bytes")
+	}
+	return nil
+}
+
+// dataRequestCtx is the request context of a data call for the resolved tenant.
+func dataRequestCtx(r *http.Request, t core.TenantCtx) *core.RequestCtx {
+	return dataRequestCtxFrom(r.Context(), t)
+}
+
+// fail writes the response of a data-call error on an unplanned route. A cancel by the browser
+// writes nothing (the access log records 499).
+func (q *dataRoutes) fail(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
+		return
+	}
+	writeReqError(w, q.failure(r.Context(), err))
 }

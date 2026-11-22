@@ -1,6 +1,6 @@
 /**
- * The chart frame seam (ADR-0014 §3). Every chart is drawn by a `ChartEngine` through this
- * interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019 and ADR-0020). Every chart is drawn by a `ChartEngine`
+ * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
  */
@@ -16,9 +16,21 @@ export interface TimeWindow {
   readonly toMs: number;
 }
 
+/** A value-axis range in data units; `min < max`, both finite. */
+export interface ValueRange {
+  readonly min: number;
+  readonly max: number;
+}
+
 /** Validated data, never code. One axis per side; the time axis is the Context window. */
 export type VisSpec =
-  | { readonly kind: 'line'; readonly title: string; readonly unit: Unit }
+  | {
+      readonly kind: 'line';
+      readonly title: string;
+      readonly unit: Unit;
+      /** The user's value-axis pin (#93); absent = auto. */
+      readonly valueRange?: ValueRange;
+    }
   | {
       readonly kind: 'bars';
       readonly title: string;
@@ -29,6 +41,8 @@ export type VisSpec =
       readonly categoryLabel: string;
       /** Bottom-to-top stack order only; colour is per series. */
       readonly categoryOrder: readonly string[];
+      /** The user's value-axis pin (#93); absent = auto. */
+      readonly valueRange?: ValueRange;
     }
   | {
       readonly kind: 'heatmap';
@@ -43,6 +57,8 @@ export interface FrameInit {
   readonly timeZone: string;
   /** Keydown source for the crosshair; null for stat. */
   readonly keyTarget: HTMLElement | null;
+  /** Diagnostic identity of the frame: tags its `chart-draw` measures (#90, ADR-0019). */
+  readonly id?: string;
 }
 
 /** CSS px, relative to the canvas. */
@@ -77,6 +93,15 @@ export interface BrushEvent {
   readonly gesture: 'drag' | 'zoomOut';
 }
 
+/** A committed camera move (T03 §4.4): the gesture ended and changed the view. */
+export interface CommitEvent {
+  /** The new absolute window, whole ms, `fromMs < toMs`; null when the gesture did not move time. */
+  readonly window: TimeWindow | null;
+  /** A new manual value range; `'auto'` clears the pin; null when the gesture did not move values. */
+  readonly value: ValueRange | 'auto' | null;
+  readonly gesture: 'wheel' | 'pan' | 'axis' | 'fit';
+}
+
 /** Reserved; the Canvas 2D engine never emits it. */
 export interface SelectEvent {
   readonly key: string;
@@ -94,6 +119,19 @@ export interface FrameSummary {
   readonly max: number | null;
   readonly last: number | null;
   readonly plot: PlotRect;
+  /** The drawn value axis (line, bars); null for heatmap and stat. */
+  readonly valueAxis: {
+    readonly min: number;
+    readonly max: number;
+    readonly manual: boolean;
+  } | null;
+}
+
+/** The visible canvas was drawn completely at this size (#90, ADR-0019). */
+export interface DrawnEvent {
+  readonly cssWidth: number;
+  readonly cssHeight: number;
+  readonly dpr: number;
 }
 
 export interface FrameEvents {
@@ -101,6 +139,8 @@ export interface FrameEvents {
   brush: BrushEvent;
   select: SelectEvent;
   a11y: FrameSummary;
+  drawn: DrawnEvent;
+  commit: CommitEvent;
 }
 
 export interface ChartEngine {

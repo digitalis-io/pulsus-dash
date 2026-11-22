@@ -412,6 +412,7 @@ export interface components {
             };
             query_id?: string;
             fields?: components["schemas"]["FieldError"][];
+            planned?: components["schemas"]["PlannedQuery"];
         };
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
@@ -457,6 +458,9 @@ export interface components {
             width_px: number;
             /** @default 30000 */
             timeout_ms: number;
+            vars?: components["schemas"]["QueryVars"];
+            /** @default true */
+            rate: boolean;
         };
         PromInstantRequest: {
             query: string;
@@ -464,6 +468,28 @@ export interface components {
             at: number;
             /** @default 30000 */
             timeout_ms: number;
+            vars?: components["schemas"]["QueryVars"];
+            /** Format: int64 */
+            step_ms?: number;
+        };
+        /** @description Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021). */
+        QueryVars: {
+            [key: string]: string;
+        };
+        /** @description What the server planned and sent (ADR-0021, T06-029). */
+        PlannedQuery: {
+            query: string;
+            expanded: string;
+            bytes: number;
+            /** @enum {string} */
+            value_type: "scalar" | "string" | "vector" | "matrix" | "unknown";
+            rate_candidate: boolean;
+            rate_applied: boolean;
+            histogram: boolean;
+            /** Format: int64 */
+            step_ms?: number;
+            /** Format: int64 */
+            rate_window_ms?: number;
         };
         /** @description A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005). */
         FrameValue: unknown;
@@ -489,6 +515,7 @@ export interface components {
             read_cache_through_ms?: number;
         };
         PromRangeResponse: {
+            planned: components["schemas"]["PlannedQuery"];
             /** Format: int64 */
             start: number;
             /** Format: int64 */
@@ -509,6 +536,7 @@ export interface components {
             value: string;
         };
         PromInstantResponse: {
+            planned: components["schemas"]["PlannedQuery"];
             /** @enum {string} */
             result_type: "vector" | "matrix" | "scalar" | "string";
             /** Format: int64 */

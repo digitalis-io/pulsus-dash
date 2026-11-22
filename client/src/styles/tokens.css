@@ -31,6 +31,11 @@
   --surface-1: #12151A;
   --surface-2: #191D24;
   --surface-hover: #222731;
+  --syn-func: #7AA2D6;
+  --syn-keyword: #B48FC9;
+  --syn-label: #6FB8B8;
+  --syn-number: #D6A86B;
+  --syn-string: #8FBF8F;
   --text: #E6E8EB;
   --text-muted: #8A919C;
   --text-on-accent: #0B0D10;
@@ -68,6 +73,11 @@
   --surface-1: #FFFFFF;
   --surface-2: #ECEEF2;
   --surface-hover: #E2E5EA;
+  --syn-func: #2563C9;
+  --syn-keyword: #6B4A84;
+  --syn-label: #2E6E6E;
+  --syn-number: #7F5F2A;
+  --syn-string: #3D7340;
   --text: #1A1D23;
   --text-muted: #555D69;
   --text-on-accent: #FFFFFF;
@@ -77,6 +87,7 @@
 
 :root {
   --border-hairline: 1px;
+  --font-advance-mono: 0.6;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
   --font-size-display: 32px;
   --font-size-lg: 16px;
@@ -96,7 +107,6 @@
   --radius: 6px;
   --size-avatar: 28px;
   --size-board-cols: 12px;
-  --size-board-editor: 360px;
   --size-board-panel-header: 40px;
   --size-board-row: 40px;
   --size-chart: 240px;
@@ -106,6 +116,8 @@
   --size-chart-tick: 4px;
   --size-control: 32px;
   --size-crumb-max: 160px;
+  --size-dialog-editor-height: 720px;
+  --size-dialog-editor-width: 800px;
   --size-focus-offset: 2px;
   --size-focus-ring: 2px;
   --size-header: 56px;

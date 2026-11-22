@@ -7,7 +7,8 @@ Components, server state in TanStack Query. This page covers the application she
 M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and tokens, and the
 checks that guard them, and the board list and board page (roadmap step 5, issue #61; how to use
 them is in [Boards](../user/boards.md)). Charts (roadmap step 2, issue #58) are in
-[Charts](charts.md). Build and CI
+[Charts](charts.md); the Explore metrics data and rules (issue #63) in
+[Explore](explore.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
 [JavaScript supply chain](supply-chain.md).
 
@@ -25,11 +26,11 @@ In production the BFF serves the client: `make build` embeds an `http`-mode buil
 start it with `serve --api-only` (or a full build) and run `VITE_API_MODE=http npm run dev` with
 `PULSUS_DASH_DEV_BFF` pointing at it; About then shows the server version.
 
-| Variable | Read by | Values | Default |
-|---|---|---|---|
-| `VITE_API_MODE` | the client at build and dev time (`createApi()`) | `stub` (in-repo seeded data) or `http` (the BFF client) | `stub` |
-| `PULSUS_DASH_DEV_BFF` | `vite.config.ts` (dev server only) | base URL the dev server proxies `/api` and `/auth` to | `http://localhost:8080` |
-| `VITE_GIT_SHA` | the About dialog | commit SHA (CI sets it); shown as 12 characters | `dev` |
+| Variable              | Read by                                          | Values                                                  | Default                 |
+| --------------------- | ------------------------------------------------ | ------------------------------------------------------- | ----------------------- |
+| `VITE_API_MODE`       | the client at build and dev time (`createApi()`) | `stub` (in-repo seeded data) or `http` (the BFF client) | `stub`                  |
+| `PULSUS_DASH_DEV_BFF` | `vite.config.ts` (dev server only)               | base URL the dev server proxies `/api` and `/auth` to   | `http://localhost:8080` |
+| `VITE_GIT_SHA`        | the About dialog                                 | commit SHA (CI sets it); shown as 12 characters         | `dev`                   |
 
 The proxy target is never logged. In `http` mode the client is `HttpApi` (below).
 
@@ -80,16 +81,17 @@ window (IA-002).
 `createBrowserRouter` (tests: `createMemoryRouter`). Dependencies (API, query client, clock, time
 zone) are passed by closure.
 
-| Path | Loader / component |
-|---|---|
-| `/` | Loads the session, then `replace()`s to `/t/<defaultTenant>/boards?from=now-1h&to=now&refresh=off` |
-| `/signed-out` | Lazy `SignedOutPage` |
-| `/t/:tenant` | `AppShell`. Loader: the session; a tenant the user has no binding for → 404 (standalone Not found); a non-canonical search → `replace()` to the canonical one |
-| `/t/:tenant` (index) | `replace()` to `/t/:tenant/boards`, keeping the (canonical) search |
-| `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too |
-| `/t/:tenant/dev/gallery` | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
-| `/t/:tenant/*` | Not found inside the shell |
-| `*` | Standalone Not found |
+| Path                                                                          | Loader / component                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                                                                           | Loads the session, then `replace()`s to `/t/<defaultTenant>/boards?from=now-1h&to=now&refresh=off`                                                                                                                            |
+| `/signed-out`                                                                 | Lazy `SignedOutPage`                                                                                                                                                                                                          |
+| `/t/:tenant`                                                                  | `AppShell`. Loader: the session; a tenant the user has no binding for → 404 (standalone Not found); a non-canonical search → `replace()` to the canonical one                                                                 |
+| `/t/:tenant` (index)                                                          | `replace()` to `/t/:tenant/boards`, keeping the (canonical) search                                                                                                                                                            |
+| `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too                                                                                                                                                                                     |
+| `/t/:tenant/explore/metrics` (loader)                                         | A non-canonical `q`, `vis` or `rate` → `replace()` to the canonical search ([Explore](explore.md#url-keys-ia-022))                                                                                                            |
+| `/t/:tenant/dev/gallery`                                                      | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
+| `/t/:tenant/*`                                                                | Not found inside the shell                                                                                                                                                                                                    |
+| `*`                                                                           | Standalone Not found                                                                                                                                                                                                          |
 
 - **`replace()`, not `redirect()`:** loader redirects use `REPLACE`, so normalising a URL adds no
   history entry. In-app writers emit canonical URLs, so they never redirect after a push.
@@ -108,19 +110,23 @@ zone) are passed by closure.
   after a create, rename, save or delete, `invalidateBoardLists(queryClient)`
   (`src/boards/queries.ts`) invalidates `['boards']`, `['starred']` and `['recent']`, since all three
   show titles;
-  `refreshNow()` invalidates `['data']` (the chart queries of later issues); a refresh moves the
-  window, so the panel queries follow it.
+  `['data', 'explore', tenant, q, …]` (the Explore run, [Explore: metrics](explore.md#the-run-hook-and-d-run)).
+  `refreshNow()` (`src/state/useTimeContext.ts`) cancels `['data']`, then invalidates it, so a
+  request in flight, a first fetch included, is aborted and started again (`invalidateQueries`
+  alone refetches with `cancelRefetch`, which reuses a first fetch). The `['panel', …]` queries
+  are not under `['data']`: they follow the window only, so a refresh with a relative window moves
+  them and one with an absolute window does not refetch them (#101).
 
 ## Time Context (IA-020, IA-022, IA-023, INT-032, T03-014, T03-017, T08-005)
 
 **Expressions** (`src/state/timeExpr.ts`), no whitespace anywhere:
 
-| Form | Meaning |
-|---|---|
-| `now` | the clock anchor |
-| `now/d` | the start of the current day in the browser zone (`@internationalized/date`, DST aware) |
-| `now-<n><unit>` | `n` = 1…99 999 without a leading zero; units `s`, `m`, `h`, `d`, `w` are fixed durations (a day is always 24 h) |
-| `YYYY-MM-DDTHH:mm[:ss[.sss]](Z\|±HH:MM)` | an instant, year 1970…9999; printed back as UTC (`2026-11-19T12:03:00.000Z`) |
+| Form                                     | Meaning                                                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `now`                                    | the clock anchor                                                                                                |
+| `now/d`                                  | the start of the current day in the browser zone (`@internationalized/date`, DST aware)                         |
+| `now-<n><unit>`                          | `n` = 1…99 999 without a leading zero; units `s`, `m`, `h`, `d`, `w` are fixed durations (a day is always 24 h) |
+| `YYYY-MM-DDTHH:mm[:ss[.sss]](Z\|±HH:MM)` | an instant, year 1970…9999; printed back as UTC (`2026-11-19T12:03:00.000Z`)                                    |
 
 Errors are `empty`, `syntax`, `badNumber`, `outOfRange` and `unknownUnit` (the message names the
 unit: Unknown unit “x”: use s, m, h, d or w).
@@ -146,16 +152,21 @@ page summary and Copy link all resolve `now` to the same instant.
 
 **Changing the range** (all pushes, so Back restores the previous range):
 
-| Input | Effect |
-|---|---|
-| Quick ranges (5 m … 30 d) | `now-<x>` … `now`, closes the dialog |
-| From / To fields, Apply | validates both; From at or after To gives "To must be later than From"; the first invalid field gets focus and `aria-invalid` with the error linked by `aria-describedby` |
-| Calendar | a whole-day range in the browser zone: From = start of the first day, To = start of the day after the last (so 47 h across the March change, 25 h across October) |
-| `[` / `]` | step the window back or forward by its width |
-| `-` / `=` | zoom out (twice as wide, around the centre) / in (half as wide) |
+| Input                     | Effect                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quick ranges (5 m … 30 d) | `now-<x>` … `now`, closes the dialog                                                                                                                                      |
+| From / To fields, Apply   | validates both; From at or after To gives "To must be later than From"; the first invalid field gets focus and `aria-invalid` with the error linked by `aria-describedby` |
+| Calendar                  | a whole-day range in the browser zone: From = start of the first day, To = start of the day after the last (so 47 h across the March change, 25 h across October)         |
+| `[` / `]`                 | step the window back or forward by its width                                                                                                                              |
+| `-` / `=`                 | zoom out (twice as wide, around the centre) / in (half as wide)                                                                                                           |
 
 The window keys use `KeyboardEvent.code` without modifiers and are ignored inside fields, dialogs,
-menus, list boxes and grids. Steps and zooms produce absolute times; a window narrower than 1 s or
+menus, list boxes and grids. The exclusions apply to every element on the event's
+`composedPath()`, falling back to `e.target` when the path is empty. So a key typed in an editor in
+a shadow root (whose events reach `window` with the host as their target) is excluded, as is a key
+from a shadow root whose host sits inside a dialog, menu, list box or grid. For light-DOM events
+the path is the target and its ancestors, so the result is the same as before. Steps and zooms
+produce absolute times; a window narrower than 1 s or
 wider than 3 650 days is not applied.
 
 **Auto-refresh** calls Refresh now at the chosen interval, skips ticks while the page is hidden, and
@@ -182,7 +193,10 @@ properties; reduced motion sets durations to `0ms`) and `src/styles/tokens.ts` (
 `sequentialRamp`). Both are committed; CI regenerates and compares. The chart tokens (#58) are
 `ramp-1`…`ramp-9` (the sequential heatmap ramp, one hue per theme) and `brush` in both themes,
 `size.chart` (240), `chart-stat` (120), `chart-tick` (4), `chart-line` (1.5), `chart-brush-min` (4)
-and `font.size.display` (32). `series-N` and `ramp-N` must be numbered contiguously from 1; the
+and `font.size.display` (32). The query syntax tokens (#63) are `syn-keyword`, `syn-func`,
+`syn-string`, `syn-number` and `syn-label` in both themes, each at least 4.5:1 on `surface-1` and
+`surface-2`; the editor's highlight style and theme use only tokens ([Explore: editor
+chunk](explore.md#editor-chunk)). `series-N` and `ramp-N` must be numbered contiguously from 1; the
 generator fails naming the first missing key.
 Components use CSS modules with `var(--…)` and, where a React Aria prop needs a number (popover
 offset, tooltip delay), the `tokens.ts` values; ESLint bans inline `style` and literal numbers in
@@ -196,14 +210,14 @@ those props.
 - TypeScript (ESLint with `eslint/tokens-plugin.ts`): every string literal, and every template
   literal with each `${…}` read as `1`.
 
-| Rule | Reported | Allowed |
-|---|---|---|
-| `colour-literal` | hex colours, colour functions (`rgb()`, `hsl()`, `oklch()`, `color-mix()` …), CSS named colours | `transparent`, `currentcolor`, `inherit`, `initial`, `unset` |
-| `size-literal` | non-zero `px`, `rem`, `em`, `pt`, `pc`, `in`, `cm`, `mm`, `q`, `ch`, `ex` (CSS, and TypeScript under `src/{app,shell,kit,pages,theme}/`) | `0`; `%`, `fr`, viewport units; unitless numbers; media-query lengths |
-| `duration-literal` | non-zero `ms` and `s` (same scope) | `0s`, `0ms` |
-| `state-token` | `--ok`, `--watch`, `--degraded`, `--failing`, `--unknown` as `var()` arguments or values; `colour.<theme>.<state>` and any computed `colour.<theme>[…]` | only in `src/theme/stateEncoding.module.css` and `stateEncoding.ts` |
-| `computed-token-name` | a template literal building a custom property name (`` `--${x}` ``) | — |
-| `suppressed-token-rule` | a comment that disables a `tokens/` rule | — (there are no inline exceptions) |
+| Rule                    | Reported                                                                                                                                                | Allowed                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `colour-literal`        | hex colours, colour functions (`rgb()`, `hsl()`, `oklch()`, `color-mix()` …), CSS named colours                                                         | `transparent`, `currentcolor`, `inherit`, `initial`, `unset`          |
+| `size-literal`          | non-zero `px`, `rem`, `em`, `pt`, `pc`, `in`, `cm`, `mm`, `q`, `ch`, `ex` (CSS, and TypeScript under `src/{app,shell,kit,pages,theme}/`)                | `0`; `%`, `fr`, viewport units; unitless numbers; media-query lengths |
+| `duration-literal`      | non-zero `ms` and `s` (same scope)                                                                                                                      | `0s`, `0ms`                                                           |
+| `state-token`           | `--ok`, `--watch`, `--degraded`, `--failing`, `--unknown` as `var()` arguments or values; `colour.<theme>.<state>` and any computed `colour.<theme>[…]` | only in `src/theme/stateEncoding.module.css` and `stateEncoding.ts`   |
+| `computed-token-name`   | a template literal building a custom property name (`` `--${x}` ``)                                                                                     | —                                                                     |
+| `suppressed-token-rule` | a comment that disables a `tokens/` rule                                                                                                                | — (there are no inline exceptions)                                    |
 
 The generated token files and tests are not linted.
 
@@ -223,8 +237,8 @@ the missing keys. L20 operates the header and sidebar on the gallery too (the ti
 relative and Copy link exist only on pages with a view URL pattern, so not there); L22 operates the
 six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
 and the value text. L23–L28 cover the board list and its dialogs, the board in View and Edit mode,
-the panel tools, Share, the layout buttons, the panel editor and its selects, the guard and the
-conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
+the panel tools, Share, the layout buttons, the panel editor dialog and its selects, the guard and
+the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
 Space for checkboxes; End then Escape for sliders; End for text fields), until none is left; when
@@ -244,8 +258,9 @@ itself.
 
 ## API clients
 
-`src/api/` defines `Api` and one `ApiError(kind, message, {fields?, detail?})`. Its kinds come in
-three families:
+`src/api/` defines `Api` (session, boards, panel data, Starred and Recent, sign-out, and the
+PromQL queries, data-source check and `/prom/*` reads of #62) and one
+`ApiError(kind, message, {fields?, detail?})`. Its kinds come in three families:
 
 - common: `notFound`, `unauthorised`, `network`, `notImplemented` and `unknown`;
 - boards (#61): `conflict` and `invalid`. An `invalid` error carries `fields`
@@ -274,6 +289,7 @@ three families:
 | `queryLogs(tenant, req, signal)` | `LogsResult` (#65): a log page `{kind: 'streams', fromMs, toMs, stepMs, frame, cursor, completeness}` or a metric result `{kind: 'series', …RangeResult}`; `req` is `{query, fromMs, toMs, widthPx, limit?, direction?, cursor?, timeoutMs?}` |
 | `queryVolume(tenant, req, signal)` | `RangeResult` with one series per level, labelled `{level}`; `req` is `{query, fromMs, toMs, widthPx, timeoutMs?}` |
 | `checkDataSource(tenant, signal)` | `{state, checkedAtMs?}` (T06-025) |
+| `promLabels`, `promLabelValues`, `promSeries`, `promMetadata` | the `/prom/*` reads of #62, used by the editor's completion ([Explore](explore.md)) |
 
 Boards belong to the organisation: `tenant` is checked against the session's tenants (unknown →
 `notFound`) and otherwise only selects the data source of `panelData` and the queries. Each tenant
@@ -386,12 +402,18 @@ changed save; a save of the same canonical spec is `changed: false`; a stale eta
 (`stubPanels.ts`: a pure function of the panel id, the query text and the window). `b-3`'s queries
 reference the variables `region` and `env`.
 
+`StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
+`promGrid` (`data/step.ts`, the mirror of the BFF's step rule, tested against the same
+`wire/fixtures/json/promql-step.json`), with values `synthLineValue(62, j, t, 100, 40)` and an empty
+completeness; a range too long for the width rejects `queryInvalid`. `queryInstant` returns the same
+three series as a vector at `atMs`; `checkDataSource` resolves `{state: 'ok', checkedAtMs: 0}`.
+
 Starred and Recent mirror the BFF's per-user lists, one for every tenant, in `localStorage`:
 
-| Key | Value | Absent or invalid |
-|---|---|---|
-| `pulsus-dash.stub.starred` | JSON array of uids, in starring order; listed by title (case-folded), then uid | absent → `["b-1"]`; not a string array → `[]` |
-| `pulsus-dash.stub.recent` | JSON array of `{"uid", "at"}`, newest first, at most 200; a view keeps the greater `at` (no clamp), an equal `at` puts the later write first; listed in stored order, five | absent, or any element of another shape → `[]` |
+| Key                        | Value                                                                                                                                                                      | Absent or invalid                              |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `pulsus-dash.stub.starred` | JSON array of uids, in starring order; listed by title (case-folded), then uid                                                                                             | absent → `["b-1"]`; not a string array → `[]`  |
+| `pulsus-dash.stub.recent`  | JSON array of `{"uid", "at"}`, newest first, at most 200; a view keeps the greater `at` (no clamp), an equal `at` puts the later write first; listed in stored order, five | absent, or any element of another shape → `[]` |
 
 Both lists drop uids that are no longer boards (a deleted board stays stored, as the server's join
 drops it). The Part B keys `pulsus-dash.stub.starred.<tenant>` and `pulsus-dash.recent.<tenant>`
@@ -400,29 +422,36 @@ are no longer read.
 Test hooks, each a positive integer n in `localStorage` that makes the next n calls fail and counts
 down:
 
-| Key | Effect |
-|---|---|
-| `pulsus-dash.stub.failSession` | `getSession` rejects `network` |
-| `pulsus-dash.stub.failSignOut` | `signOut` rejects `network` (keyboard L21) |
-| `pulsus-dash.stub.failSave` | `saveBoard` rejects `network` |
-| `pulsus-dash.stub.conflictSave` | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
-| `pulsus-dash.stub.failStar` | `setStarred` rejects `network` and changes nothing (`e2e:a11y-rooms` state `b-1 star failed`) |
+| Key                              | Effect                                                                                                                             |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `pulsus-dash.stub.failSession`   | `getSession` rejects `network`                                                                                                     |
+| `pulsus-dash.stub.failSignOut`   | `signOut` rejects `network` (keyboard L21)                                                                                         |
+| `pulsus-dash.stub.failSave`      | `saveBoard` rejects `network`                                                                                                      |
+| `pulsus-dash.stub.conflictSave`  | `saveBoard` moves the head on by one version (same spec, as if someone else saved) and rejects `BoardConflictError` (keyboard L28) |
+| `pulsus-dash.stub.failStar`      | `setStarred` rejects `network` and changes nothing (`e2e:a11y-rooms` state `b-1 star failed`)                                      |
+| `pulsus-dash.stub.failPanelData` | `panelData` rejects `network` ("stub: panel data failed") after the delay below (#90, `panel-editor-dialog.spec.ts` E11, E13, E15) |
+
+`pulsus-dash.stub.panelDelayMs` (#90), a positive integer n, makes every `panelData` call resolve
+after n ms instead of the next microtask; it is read on every call and never consumed, and an abort
+of the call's signal clears the timer and rejects with `AbortError`. Every `panelData` call also
+leaves a `stub:panelData` performance mark with `detail` `{ id, lang, text, vis }`, which the
+frame-timing e2e specs read to see when a request started.
 
 ## Boards
 
 The board list is `src/pages/boards/` (`BoardsPage.tsx`, `BoardDialogs.tsx`); the board page is
 `src/pages/board/`; the logic they share is `src/boards/`:
 
-| Module | Contents |
-|---|---|
-| `spec.ts` | `checkBoardSpec(value)`: the server's validator (`server/internal/spec`) ported to parsed JSON, same message keys, pointers and order, at most 50 errors; `canonicalJson` (keys sorted); `nextId(spec, prefix)`, with `nextPanelId` (`p-<n+1>`) and `nextSectionId` (`s-<n+1>`). The six fixture cases that only exist as raw JSON text (not JSON, trailing data, empty body, duplicate key, `6.5` and `1e2` as integers) are the server's alone |
-| `layout.ts` | `COLS` 12, `ROW` 40, `GAP` 16; `GRID_LIMITS` (the server's: x + w ≤ 12, y ≤ 9 999, h ≤ 100); `fits`, `firstFree(panels, w, h)` (first free slot in row-then-column order, or `null`), `applyOp(panels, id, op)` (one cell of move or resize; blocked when it leaves the grid or overlaps), `cellPx(width)` |
-| `editorState.ts` | The page reducer: the head (`Board`), the draft spec, the mode, the selected panel, the save status (including `discardFailed`) and field errors, the conflict and remote heads, the live-region text. Dirty = the draft's canonical JSON differs from the head's. No edit is taken while saving; a later read of the board replaces the draft only when it is clean. Section actions: `addSection` (at most 50), `updateSection`, `removeSection`, `toggleSection` (Edit only: saved with the board), and `addPanel {grid}` into a section (which expands it). `isCollapsed(mode, section, overrides)`: View follows the URL overrides, else the saved state; Edit follows the draft |
-| `variables.ts` | `boardVariables(spec)`: the `$name` / `${name}` references in the queries, top panels first, then each section's, distinct; `$__…` macros and names over 64 characters are not variables |
-| `queries.ts` | `RECENT_LIMIT` (5) and `invalidateBoardLists(queryClient)` |
-| `prefs.ts` | `BoardPrefs` (below) |
-| `boardKeys.ts` | `Shift+E` (toggle Edit, not while typing or in a dialog or menu) and `⌘S` / `Ctrl+S` (save in Edit mode, from any target) |
-| `fieldMessages.ts` | `message_key` → the catalogue text `field.<key>` |
+| Module             | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `spec.ts`          | `checkBoardSpec(value)`: the server's validator (`server/internal/spec`) ported to parsed JSON, same message keys, pointers and order, at most 50 errors; `canonicalJson` (keys sorted); `nextId(spec, prefix)`, with `nextPanelId` (`p-<n+1>`) and `nextSectionId` (`s-<n+1>`). The six fixture cases that only exist as raw JSON text (not JSON, trailing data, empty body, duplicate key, `6.5` and `1e2` as integers) are the server's alone                                                                                                                                                                                                                                      |
+| `layout.ts`        | `COLS` 12, `ROW` 40, `GAP` 16; `GRID_LIMITS` (the server's: x + w ≤ 12, y ≤ 9 999, h ≤ 100); `fits`, `firstFree(panels, w, h)` (first free slot in row-then-column order, or `null`), `applyOp(panels, id, op)` (one cell of move or resize; blocked when it leaves the grid or overlaps), `cellPx(width)`                                                                                                                                                                                                                                                                                                                                                                            |
+| `editorState.ts`   | The page reducer: the head (`Board`), the draft spec, the mode, the selected panel, the save status (including `discardFailed`) and field errors, the conflict and remote heads, the live-region text. Dirty = the draft's canonical JSON differs from the head's. No edit is taken while saving; a later read of the board replaces the draft only when it is clean. Section actions: `addSection` (at most 50), `updateSection`, `removeSection`, `toggleSection` (Edit only: saved with the board), and `addPanel {grid}` into a section (which expands it). `isCollapsed(mode, section, overrides)`: View follows the URL overrides, else the saved state; Edit follows the draft |
+| `variables.ts`     | `boardVariables(spec)`: the `$name` / `${name}` references in the queries, top panels first, then each section's, distinct; `$__…` macros and names over 64 characters are not variables                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `queries.ts`       | `RECENT_LIMIT` (5) and `invalidateBoardLists(queryClient)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `prefs.ts`         | `BoardPrefs` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `boardKeys.ts`     | `Shift+E` (toggle Edit, not while typing or in a dialog or menu) and `⌘S` / `Ctrl+S` (save in Edit mode, from any target)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `fieldMessages.ts` | `message_key` → the catalogue text `field.<key>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 **View and Edit grids.** View mode (`BoardGridView`) places each panel absolutely from custom
 properties `--gx --gy --gw --gh` set in CSSOM (T08-023) and sizes the container from `--gbottom`;
@@ -441,7 +470,51 @@ creates an empty marker element with that id first (an inert `<meta>`, since eve
 with `react-grid-layout` and its stylesheet, is the separate lazy chunk of
 `src/pages/board/BoardGridEditor.tsx`, preloaded when the pointer or the focus reaches Edit board. Both are listed in `bundle-budgets.json` and checked against
 the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-chain.md#react-grid-layout);
-after Part C the board chunk is 11 765 bytes, the Edit grid 18 029 and the initial JS 171 050).
+after #90 the board chunk is 12 196 bytes, the Edit grid 18 016, the chart frame chunk 10 668, the
+initial JS 171 112 and the initial CSS 5 373).
+
+**Panel editor** (`PanelEditor.tsx`, #90; IA-015, T08-017). The editor is the kit's `ModalDialog`
+with `size="editor"`: a centred window of `--size-dialog-editor-width` × `--size-dialog-editor-height`
+(800 × 720), capped to the viewport less 24 px a side, with no drag handle or resize affordance,
+over the kit's `--backdrop`. The page renders it while Edit mode has a selected panel (`key` = the
+panel id, so a switch remounts it); Done, Escape and a backdrop click dispatch `select(null)`, and
+the draft is never reverted. Its tree is `PanelPreview`, then Title, Query language, Query (both
+columns) and Visualisation in a two-column grid that scrolls vertically, then Remove panel, a
+mirror of the page's save status (`role="status"`, "Save status": the board behind is `aria-hidden`
+while the modal is open) and Done. Focus return: when `selected` goes from an id to null in Edit
+mode, `BoardEditor` calls `focusAfterEditor(document, id)` one animation frame later (after the
+overlay's own restore), which focuses the panel's `[data-panel-menu]` button, else the toolbar's
+`[data-board-add]` Add panel.
+
+`PanelPreview` (`PanelFrame.tsx`) renders the draft through the board panel's own path,
+`usePanelData` → `PanelBody` → `ChartFrame`. The two share one TanStack query key (`vis.kind` stays
+in it, because `panelData` is shaped per visualisation), so the preview adds no request: every
+draft key is fetched once, for both. What a change shows:
+
+| Change | In the change's commit | Then |
+|---|---|---|
+| Title | the preview title and the chart spec; no request | drawn in the next frame |
+| Visualisation, query or language, key already cached | the cached result (or the Logs message); no request | drawn in the next frame, also after an error or Logs message |
+| Same, not cached | one `panelData` call, shared with the panel behind; `Loading` | the chart, or `Something went wrong` (no retry) |
+| Same, changed again before a result | both observers move to the newest key; the superseded call's signal aborts | only the newest key's result renders |
+
+**Chart readiness** (`ChartFrame.tsx`, #90; [ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md)).
+`ChartFrame` takes `pending` (shown over the frame) and `sizeMemo`. `pending` stays until the
+engine's `drawn` event reports a complete draw at the size last applied; it shows again on every
+resize (a zero size included, since setting the canvas size clears it), on a DPR change, on a new
+engine frame (a switch to or from Stat), on a kind change of a kept frame (the engine clears its
+canvas) and on unmount. Changes from the observer, the DPR callback and the engine's frame callback
+are committed with `flushSync`, so they show before that frame's paint. A new `fill` frame is
+sized at once from `sizeMemo.current` (the host's last non-empty observed size) and an equal
+observed size is then skipped, so a re-created frame draws in its first animation frame. Every
+`PanelBody` caller holds its own memo above `ChartFrame`: the board panel (`PanelFrame`), full
+screen (`PanelFullScreen`, kept across close and reopen) and the preview. The preview measures an
+always-mounted host element (`[data-preview-host]`) with its own observer, so its memo is current
+while a message shows, on a fresh dialog too. `PanelChart` passes the panel's `Loading` as
+`pending`, so no panel ever paints a blank canvas. Explore and the gallery pass neither prop and
+keep their behaviour. Each frame has a diagnostic id (`f1`, `f2`, …): the host's `data-frame-id`,
+`FrameInit.id`, and `detail.frame` of the engine's `chart-draw` measures; it is for tests and
+traces only.
 
 **Saving.** Save checks the draft with `checkBoardSpec` first (field errors open the editor on the
 first panel they point into), then calls `saveBoard` with the head's etag. A 409 opens the conflict
@@ -481,10 +554,10 @@ open; a budget refusal (`url.tooLong`) shows under Value. Each submit is one his
 ADR-0017). The board's own parameters live in the Context's `rest` pairs, read and written only
 here:
 
-| Parameter | Meaning | Rules |
-|---|---|---|
-| `var-<name>` | a variable's value | name as `VARIABLE_NAME`; value 1–200 code points; the first occurrence wins |
-| `f=<label>=<value>` (repeated) | a `+ Filter` filter | label `^[A-Za-z_][A-Za-z0-9_.]{0,99}$`; value 1–200 code points; at most 20 (`MAX_FILTERS`); a repeated label is ignored |
+| Parameter                                 | Meaning                                                  | Rules                                                                                                                     |
+| ----------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `var-<name>`                              | a variable's value                                       | name as `VARIABLE_NAME`; value 1–200 code points; the first occurrence wins                                               |
+| `f=<label>=<value>` (repeated)            | a `+ Filter` filter                                      | label `^[A-Za-z_][A-Za-z0-9_.]{0,99}$`; value 1–200 code points; at most 20 (`MAX_FILTERS`); a repeated label is ignored  |
 | `collapse=<id>`, `expand=<id>` (repeated) | View-mode overrides of a section's saved collapsed state | id as a spec id; an id in both is ignored; ids the board does not have are ignored and dropped at the next override write |
 
 Invalid pairs are ignored (and kept until the next write of their kind); writers emit canonical
@@ -518,7 +591,7 @@ the StrictMode replay (setup, cleanup, setup) leaves it working. `useBoardPrefs(
   send + 15 s (`VIEW_TIMEOUT_MS` + `RECONCILE_DELAY_MS`), re-armed to the latest due time when
   several are pending, which invalidates `['recent']` and tells other tabs once.
 - **Other tabs.** `BroadcastChannel('pulsus-dash.board-prefs')` carries `{kind: 'starred' |
-  'recent'}`; a message invalidates that list. Without `BroadcastChannel` nothing is posted.
+'recent'}`; a message invalidates that list. Without `BroadcastChannel` nothing is posted.
 - **Focus.** `useStarred` and `useRecent` set `refetchOnWindowFocus: 'always'`, so both lists
   refetch whenever the tab becomes visible again, however fresh they are: another browser's
   changes show then.
@@ -575,8 +648,8 @@ every request, fonts included, stays on the app origin.
   when PromQL support lands"; #64, #67), command palette, alert count or AI dock yet.
 - Boards: no undo or history, no reordering of sections or moving panels between them, variables
   and filters do not change queries yet (#64), no permissions (D12).
-- No page runs PromQL queries yet: Explore and the panels come with #63 and #64. The data-source
-  line shows the check, but nothing retries it before the cached result goes stale (60 s).
+- The data-source line shows the check, but nothing retries it before the cached result goes
+  stale (60 s).
 - Day and week units are fixed 24 h and 7 × 24 h durations; only `now/d` and the calendar follow DST.
 - Layouts are designed for desktop widths (1440 px reference); narrow layouts are later work.
 
@@ -584,14 +657,15 @@ every request, fonts included, stays on the app origin.
 
 D9 ([designs README](../../designs/README.md)), [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),
 [ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md),
-[ADR-0017](../../designs/adr/0017-react-router.md);
+[ADR-0017](../../designs/adr/0017-react-router.md),
+[ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md);
 [ADR-0015](../../designs/adr/0015-go-bff.md);
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-003,
 IA-006, IA-015, IA-016, IA-020, IA-021, IA-022, IA-023),
 [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014, SRF-016, SRF-017, SRF-020, SRF-026),
-[03 Interaction model](../../designs/product/03-interaction-model.md) (INT-032),
+[03 Interaction model](../../designs/product/03-interaction-model.md) (INT-015, INT-032),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-001, VL-010, VL-017, VL-021),
-[09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-008, PRF-030
+[09 Performance contract](../../designs/product/09-performance-contract.md) (PRF-005, PRF-008, PRF-030
 client half, PRF-033);
 [T01](../../designs/technical/T01-frontend-architecture.md) (T01-007, T01-008, T01-010),
 [T07](../../designs/technical/T07-scene-query-planner.md) (T07-012, collapsed sections do not query),

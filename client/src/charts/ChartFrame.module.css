@@ -26,6 +26,35 @@
   height: 100%;
 }
 
+/* The camera's cursors (#93): the zone under the pointer, then the gesture in progress. */
+.canvas[data-zone='plot'] {
+  cursor: grab;
+}
+
+.canvas[data-zone='x-axis'] {
+  cursor: ew-resize;
+}
+
+.canvas[data-zone='y-axis'] {
+  cursor: ns-resize;
+}
+
+.canvas[data-gesture='pan'] {
+  cursor: grabbing;
+}
+
+.canvas[data-gesture='box'] {
+  cursor: crosshair;
+}
+
+/* Over the plot's top-left corner while the value axis is pinned (#93); placed through CSSOM. */
+.resetValue {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
 /* Placed over the plot from the engine's plot rectangle; pointer input reaches the canvas. */
 .crosshair {
   position: absolute;
@@ -143,4 +172,12 @@
   background: var(--surface-2);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+}
+
+/* Over the frame until the engine has drawn it at its current size (#90): the caller's progress state. */
+.pending {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
 }

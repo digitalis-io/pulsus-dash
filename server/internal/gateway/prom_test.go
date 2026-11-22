@@ -153,7 +153,18 @@ func TestBodyValidation(t *testing.T) {
 		{"width 10001", rangePath, `{"query":"up","from":1,"to":2,"width_px":10001}`, "/width_px", "field.range"},
 		{"from = to", rangePath, `{"query":"up","from":2,"to":2,"width_px":3}`, "/to", "field.range"},
 		{"empty query", rangePath, `{"query":"","from":1,"to":2,"width_px":3}`, "/query", "field.range"},
-		{"long query", rangePath, `{"query":"` + strings.Repeat("a", 65537) + `","from":1,"to":2,"width_px":3}`, "/query", "field.range"},
+		{"long query", rangePath, `{"query":"` + strings.Repeat("a", 131073) + `","from":1,"to":2,"width_px":3}`, "/query", "field.range"},
+		{"vars not an object", rangePath, `{` + ok + `,"vars":[]}`, "/vars", "field.type"},
+		{"vars value not a string", rangePath, `{` + ok + `,"vars":{"a":1}}`, "/vars/a", "field.type"},
+		{"rate not a boolean", rangePath, `{` + ok + `,"rate":"yes"}`, "/rate", "field.type"},
+		{"range step_ms", rangePath, `{` + ok + `,"step_ms":1000}`, "/step_ms", "field.unknown"},
+		{"instant rate", instantPath, `{"query":"up","at":1,"rate":true}`, "/rate", "field.unknown"},
+		{"instant step_ms 999", instantPath, `{"query":"up","at":1,"step_ms":999}`, "/step_ms", "field.range"},
+		{"instant step_ms 86400001", instantPath, `{"query":"up","at":1,"step_ms":86400001}`, "/step_ms", "field.range"},
+		{"bad variable name", rangePath, `{` + ok + `,"vars":{"a-b":"1"}}`, "/vars/a-b", "field.pattern"},
+		{"missing variable", rangePath, `{"query":"$x","from":1767225600000,"to":1767229200000,"width_px":1200}`, "/vars/x", "variable.missing"},
+		{"instant macro without step_ms", instantPath, `{"query":"x[$__interval]","at":1}`, "/step_ms", "field.required"},
+		{"variable value not utf-8", rangePath, "{" + ok + ",\"vars\":{\"a\":\"\xff\"}}", "/vars", "field.range"},
 		{"query not utf-8", rangePath, "{\"query\":\"a\xffb\",\"from\":1,\"to\":2,\"width_px\":3}", "/query", "field.range"},
 		{"timeout 199", rangePath, `{` + ok + `,"timeout_ms":199}`, "/timeout_ms", "field.range"},
 		{"timeout 120001", rangePath, `{` + ok + `,"timeout_ms":120001}`, "/timeout_ms", "field.range"},
@@ -171,6 +182,10 @@ func TestBodyValidation(t *testing.T) {
 		if c.key == "tenant.invalid" && e.Error.Message != "tenant is required" {
 			t.Errorf("%s: message %q", c.name, e.Error.Message)
 		}
+	}
+	long := wantError(t, "long query message", postJSON(h, rangePath, `{"query":"`+strings.Repeat("a", 131073)+`","from":1,"to":2,"width_px":3}`), 400, "invalid", "/query", "field.range")
+	if long.Error.Message != "query must be 1 to 131072 bytes" {
+		t.Errorf("long query: message %q", long.Error.Message)
 	}
 	big := `{"query":"` + strings.Repeat("a", 2<<20) + `"}`
 	e := wantError(t, "2 MiB + 1", postJSON(h, rangePath, big), 413, "invalid", "-", "")

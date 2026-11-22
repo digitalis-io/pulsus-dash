@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient } from '@tanstack/react-query';
 import { StrictMode, useState, type ReactNode } from 'react';
@@ -102,6 +102,7 @@ function summary(
     max,
     last,
     plot: PLOT,
+    valueAxis: kind === 'line' || kind === 'bars' ? { min, max, manual: false } : null,
   };
 }
 
@@ -147,7 +148,11 @@ describe('component lifecycle', () => {
     const canvases = document.querySelectorAll('canvas[role=img]');
     expect(canvases).toHaveLength(1);
     const slider = screen.getByRole('slider', { name: 'Crosshair: T' });
-    expect(engine.createCalls[0]?.init).toEqual({ timeZone: TZ, keyTarget: slider });
+    expect(engine.createCalls[0]?.init).toEqual({
+      timeZone: TZ,
+      keyTarget: slider,
+      id: expect.stringMatching(/^f\d+$/) as unknown,
+    });
     expect(engine.createCalls[0]?.canvas).toBe(canvases[0]);
     const f = lastFrame(engine);
     expect(f.last('setSpec')).toEqual([LINE]);
@@ -509,5 +514,373 @@ describe('component fill', () => {
     renderFrame(engine, LINE, DATA);
     expect(root()).toHaveClass(styles['chart'] ?? 'chart');
     expect(root()).not.toHaveClass(styles['fill'] ?? 'fill');
+  });
+});
+
+describe('component pre-size and pending (#90)', () => {
+  const STAT: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+  const BARS: VisSpec = BARS30;
+  const LOADING = <p>Loading</p>;
+
+  /** A `ChartFrame` whose spec the test switches; `fill` and `pending` as given. */
+  function renderSwitchable(
+    engine: FakeEngine,
+    o: {
+      fill?: boolean;
+      pending?: ReactNode;
+      sizeMemo?: { current: { width: number; height: number } | null };
+    } = {},
+  ): { setSpec: (s: VisSpec) => void } {
+    const out: { setSpec: (s: VisSpec) => void } = { setSpec: () => undefined };
+    function Switchable() {
+      const [spec, set] = useState<VisSpec>(LINE);
+      out.setSpec = set;
+      return (
+        <ChartFrame
+          spec={spec}
+          data={DATA}
+          {...(o.fill === undefined ? {} : { fill: o.fill })}
+          {...(o.pending === undefined ? {} : { pending: o.pending })}
+          {...(o.sizeMemo === undefined ? {} : { sizeMemo: o.sizeMemo })}
+        />
+      );
+    }
+    const deps: RouterDeps = {
+      api: new StubApi(),
+      queryClient: new QueryClient(),
+      clock: createClock(() => T),
+      timeZone: TZ,
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/t/:tenant/x',
+          element: (
+            <ChartEngineContext.Provider value={engine}>
+              <Switchable />
+            </ChartEngineContext.Provider>
+          ),
+        },
+      ],
+      { initialEntries: [URL0] },
+    );
+    act(() => {
+      render(
+        <Providers deps={deps}>
+          <RouterProvider router={router} />
+        </Providers>,
+      );
+    });
+    return out;
+  }
+
+  const resizes = (f: FakeFrame) => f.calls.filter((c) => c.method === 'resize').map((c) => c.args);
+  const pendingEl = (): Element | null => document.querySelector('[data-chart-pending]');
+  const host = (): HTMLElement => {
+    const el = document.querySelector<HTMLElement>('[data-chart-frame]');
+    if (el === null) throw new Error('no frame');
+    return el;
+  };
+  const switchTo = (o: { setSpec: (s: VisSpec) => void }, s: VisSpec): void => {
+    act(() => {
+      o.setSpec(s);
+    });
+  };
+  const draw = (engine: FakeEngine): void => {
+    act(() => {
+      lastFrame(engine).draw();
+    });
+  };
+  const resize = (w: number, h: number): void => {
+    act(() => {
+      resizeAll(w, h);
+    });
+  };
+
+  it('a re-created fill frame is sized at once', () => {
+    const engine = fakeEngine();
+    const o = renderSwitchable(engine, { fill: true, pending: LOADING });
+    resize(640, 240);
+    for (const [spec, n] of [
+      [STAT, 2],
+      [LINE, 3],
+    ] as const) {
+      switchTo(o, spec);
+      expect(engine.frames).toHaveLength(n);
+      expect(engine.frames[n - 2]?.disposed).toBe(1);
+      const f = lastFrame(engine);
+      expect(resizes(f)).toEqual([[640, 240, 1]]);
+      const methods = f.calls.map((c) => c.method);
+      expect(methods.indexOf('resize')).toBeGreaterThan(methods.indexOf('setSpec'));
+    }
+  });
+
+  it('an equal observed size is not re-applied', () => {
+    const engine = fakeEngine();
+    const o = renderSwitchable(engine, { fill: true, pending: LOADING });
+    resize(640, 240);
+    switchTo(o, STAT);
+    expect(resizes(lastFrame(engine))).toEqual([[640, 240, 1]]);
+    resize(640, 240);
+    expect(resizes(lastFrame(engine))).toHaveLength(1);
+    resize(320, 240);
+    expect(resizes(lastFrame(engine))).toEqual([
+      [640, 240, 1],
+      [320, 240, 1],
+    ]);
+  });
+
+  it('pending until drawn at the current size', () => {
+    const engine = fakeEngine();
+    renderSwitchable(engine, { fill: true, pending: LOADING });
+    expect(pendingEl()).toHaveTextContent('Loading');
+    expect(resizes(lastFrame(engine))).toEqual([]);
+    resize(640, 240);
+    expect(pendingEl()).not.toBeNull();
+    act(() => {
+      lastFrame(engine).emit('drawn', { cssWidth: 320, cssHeight: 240, dpr: 1 });
+    });
+    expect(pendingEl()).not.toBeNull();
+    draw(engine);
+    expect(pendingEl()).toBeNull();
+    resize(320, 240);
+    expect(pendingEl()).not.toBeNull();
+    draw(engine);
+    expect(pendingEl()).toBeNull();
+    resize(0, 0);
+    expect(pendingEl()).not.toBeNull();
+    draw(engine);
+    expect(pendingEl()).not.toBeNull();
+  });
+
+  it('pending on frame replacement and kind change', () => {
+    const engine = fakeEngine();
+    const o = renderSwitchable(engine, { fill: true, pending: LOADING });
+    resize(640, 240);
+    draw(engine);
+    expect(pendingEl()).toBeNull();
+    for (const [spec, frames] of [
+      [STAT, 2],
+      [LINE, 3],
+      [BARS, 3],
+    ] as const) {
+      switchTo(o, spec);
+      expect(engine.frames, spec.kind).toHaveLength(frames);
+      expect(pendingEl(), spec.kind).not.toBeNull();
+      if (spec !== BARS) expect(resizes(lastFrame(engine))).toEqual([[640, 240, 1]]);
+      draw(engine);
+      expect(pendingEl(), spec.kind).toBeNull();
+    }
+  });
+
+  it('a size memo pre-sizes a new mount', () => {
+    const engine = fakeEngine();
+    const memo = {
+      current: { width: 640, height: 240 } as { width: number; height: number } | null,
+    };
+    renderSwitchable(engine, { fill: true, pending: LOADING, sizeMemo: memo });
+    expect(resizes(lastFrame(engine))).toEqual([[640, 240, 1]]);
+    expect(pendingEl()).not.toBeNull();
+    draw(engine);
+    expect(pendingEl()).toBeNull();
+    resize(500, 200);
+    expect(memo.current).toEqual({ width: 500, height: 200 });
+    resize(0, 0);
+    expect(memo.current).toEqual({ width: 500, height: 200 });
+  });
+
+  it('frame id', () => {
+    const engine = fakeEngine();
+    const o = renderSwitchable(engine, { fill: true, pending: LOADING });
+    const first = lastFrame(engine).init.id;
+    expect(first).toEqual(expect.any(String));
+    expect(host().dataset['frameId']).toBe(first);
+    switchTo(o, STAT);
+    const second = lastFrame(engine).init.id;
+    expect(second).toEqual(expect.any(String));
+    expect(host().dataset['frameId']).toBe(second);
+    expect(second).not.toBe(first);
+  });
+
+  it('a non-fill frame is not pre-sized', () => {
+    const engine = fakeEngine();
+    const o = renderSwitchable(engine);
+    resize(640, 240);
+    switchTo(o, STAT);
+    expect(engine.frames).toHaveLength(2);
+    expect(resizes(lastFrame(engine))).toEqual([]);
+    resize(640, 120);
+    expect(resizes(lastFrame(engine))).toEqual([[640, 120, 1]]);
+  });
+
+  it('unsupported: no progress', async () => {
+    const engine = fakeEngine({ unsupported: true });
+    renderSwitchable(engine, { fill: true, pending: LOADING });
+    expect(await screen.findByText('This browser cannot draw charts.')).toBeInTheDocument();
+    expect(pendingEl()).toBeNull();
+  });
+});
+
+describe('component camera commit (#93)', () => {
+  /** A `ChartFrame` whose spec a test can change, inside the router (URL0). */
+  function switchable(engine: FakeEngine, first: VisSpec) {
+    let setSpec: (s: VisSpec) => void = () => undefined;
+    function Switchable() {
+      const [spec, set] = useState<VisSpec>(first);
+      setSpec = set;
+      return <ChartFrame spec={spec} data={DATA} />;
+    }
+    const deps: RouterDeps = {
+      api: new StubApi(),
+      queryClient: new QueryClient(),
+      clock: createClock(() => T),
+      timeZone: TZ,
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/t/:tenant/x',
+          element: (
+            <ChartEngineContext.Provider value={engine}>
+              <Switchable />
+            </ChartEngineContext.Provider>
+          ),
+        },
+      ],
+      { initialEntries: [URL0] },
+    );
+    render(
+      <Providers deps={deps}>
+        <RouterProvider router={router} />
+      </Providers>,
+    );
+    return {
+      router,
+      setSpec: (s: VisSpec) => {
+        act(() => {
+          setSpec(s);
+        });
+      },
+    };
+  }
+
+  async function ready(spec: VisSpec = LINE) {
+    const engine = fakeEngine();
+    const r = switchable(engine, spec);
+    await waitFor(() => {
+      expect(engine.frames).toHaveLength(1);
+    });
+    const f = lastFrame(engine);
+    act(() => {
+      f.emit('a11y', summary(spec.kind, 1, 24, 336, 200));
+    });
+    return { ...r, engine, f };
+  }
+
+  const lastSpec = (f: FakeFrame): VisSpec => f.last('setSpec')?.[0] as VisSpec;
+  const resetButton = () => screen.queryByRole('button', { name: 'Reset Y axis: T' });
+  const pin = (f: FakeFrame, min = 1, max = 2): void => {
+    act(() => {
+      f.emit('commit', { window: null, value: { min, max }, gesture: 'wheel' });
+    });
+  };
+
+  it('commit sets the window (push)', async () => {
+    const { router, f } = await ready();
+    act(() => {
+      f.emit('commit', {
+        window: { fromMs: FROM + 20 * 60_000, toMs: FROM + 25 * 60_000 },
+        value: null,
+        gesture: 'wheel',
+      });
+    });
+    await waitFor(() => {
+      expect(Object.fromEntries(new URLSearchParams(router.state.location.search))).toMatchObject({
+        from: '2026-11-19T12:20:00.000Z',
+        to: '2026-11-19T12:25:00.000Z',
+      });
+    });
+    expect(router.state.historyAction).toBe('PUSH');
+  });
+
+  it('commit pins the value axis', async () => {
+    const { router, f } = await ready();
+    const before = router.state.location.search;
+    pin(f);
+    expect(lastSpec(f)).toMatchObject({ valueRange: { min: 1, max: 2 } });
+    expect(resetButton()).toBeInTheDocument();
+    expect(resetButton()).toHaveTextContent('Reset Y axis');
+    expect(router.state.location.search).toBe(before);
+  });
+
+  it('reset returns to auto', async () => {
+    const user = userEvent.setup();
+    const { f } = await ready();
+    pin(f);
+    const b = resetButton();
+    expect(b).toBeInTheDocument();
+    if (b === null) return;
+    act(() => {
+      b.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(lastSpec(f)).not.toHaveProperty('valueRange');
+    expect(resetButton()).toBeNull();
+    expect(screen.getByRole('slider')).toHaveFocus();
+  });
+
+  it("'auto' commit clears the pin", async () => {
+    const { f } = await ready();
+    pin(f);
+    expect(resetButton()).toBeInTheDocument();
+    act(() => {
+      f.emit('commit', { window: null, value: 'auto', gesture: 'fit' });
+    });
+    expect(lastSpec(f)).not.toHaveProperty('valueRange');
+    expect(resetButton()).toBeNull();
+  });
+
+  it('pin dropped on kind or unit change', async () => {
+    for (const next of [BARS30, { ...LINE, unit: { kind: 'time', base: 's' } } as VisSpec]) {
+      const { f, setSpec } = await ready();
+      pin(f);
+      expect(resetButton()).toBeInTheDocument();
+      setSpec(next);
+      expect(lastSpec(f)).not.toHaveProperty('valueRange');
+      expect(resetButton()).toBeNull();
+      cleanup();
+    }
+  });
+
+  it.each<[string, VisSpec]>([
+    ['line → bars → line', { ...BARS30, unit: { kind: 'time', base: 'ms' } }],
+    ['unit round trip', { ...LINE, unit: { kind: 'time', base: 's' } }],
+  ])('pin does not return: %s', async (_name, middle) => {
+    const { f, setSpec } = await ready();
+    pin(f);
+    expect(lastSpec(f)).toMatchObject({ valueRange: { min: 1, max: 2 } });
+    setSpec(middle);
+    setSpec(LINE);
+    expect(lastSpec(f)).not.toHaveProperty('valueRange');
+    expect(resetButton()).toBeNull();
+    act(() => {
+      f.emit('a11y', summary('line', 1, 24, 336, 200));
+    });
+    expect(document.querySelector('canvas')?.getAttribute('aria-label')).not.toContain(
+      'Y axis fixed at',
+    );
+  });
+
+  it('pinned summary label', async () => {
+    const { f } = await ready();
+    act(() => {
+      f.emit('a11y', {
+        ...summary('line', 50, 24, 336, 200),
+        valueAxis: { min: 1, max: 2, manual: true },
+      });
+    });
+    expect(document.querySelector('canvas')?.getAttribute('aria-label')).toMatch(
+      /Min 24 ms, max 336 ms, last 200 ms\. Y axis fixed at 1 ms to 2 ms\.$/,
+    );
   });
 });

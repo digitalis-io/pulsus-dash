@@ -1,0 +1,11 @@
+{
+  "name": "slow",
+  "provenance": {"synthetic": "held long enough to be superseded"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "slow_metric"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-slow-1"},
+    "delay_ms": 2000,
+    "body": {"status":"success","data":{"resultType":"matrix","result":[]}}
+  }
+}

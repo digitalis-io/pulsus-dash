@@ -1,0 +1,16 @@
+[package]
+name = "dash-gpu"
+description = "The wgpu device, tiers and frame targets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+pollster.workspace = true
+thiserror.workspace = true
+wgpu.workspace = true

@@ -16,6 +16,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "tokens": "node scripts/gen-tokens.ts",
+    "engine-fixtures": "node scripts/engine-fixtures.ts",
     "token-lint": "node scripts/token-lint.ts",
     "size": "node scripts/bundle-size.ts",
     "check:lockfile": "node scripts/check-lockfile.ts",
@@ -23,7 +24,17 @@
     "audit": "node scripts/check-deps.ts && npm audit --omit=dev --audit-level=high && npm audit --audit-level=critical && npm audit signatures"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/lint": "6.9.8",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@internationalized/date": "3.12.4",
+    "@lezer/common": "1.5.5",
+    "@lezer/highlight": "1.2.5",
+    "@prometheus-io/codemirror-promql": "0.316.0",
+    "@prometheus-io/lezer-promql": "0.316.0",
     "@tanstack/react-query": "5.107.1",
     "openapi-fetch": "0.17.0",
     "react": "19.3.1",
@@ -61,5 +72,10 @@
     "typescript-eslint": "8.72.2",
     "vite": "8.3.8",
     "vitest": "5.1.0"
+  },
+  "overrides": {
+    "@prometheus-io/codemirror-promql": {
+      "lru-cache": "11.2.2"
+    }
   }
 }

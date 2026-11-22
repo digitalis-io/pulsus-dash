@@ -292,7 +292,7 @@ describe('engine', () => {
     expect(h.hover.at(-1)).toBeNull();
   });
 
-  it('brush: snaps the dragged window, ignores short drags, zooms out on double-click', () => {
+  it('box zoom: right drag snaps the dragged window, ignores short drags, zooms out on double-click', () => {
     const h = harness(Canvas2DEngine);
     const from = Date.UTC(2026, 10, 19, 12);
     const to = Date.UTC(2026, 10, 19, 13);
@@ -308,15 +308,15 @@ describe('engine', () => {
     expect(brushSnapUnit(300)).toBe(5_000);
     const x = (ms: number): number => plot.x + ((ms - from) / (to - from)) * plot.width;
     const y = plot.y + plot.height / 2;
-    pointer(h.canvas, 'pointerdown', x(from + 20 * 60_000 + 1_200), y, { buttons: 1 });
-    pointer(h.canvas, 'pointermove', x(from + 22 * 60_000), y, { buttons: 1 });
-    pointer(h.canvas, 'pointerup', x(from + 24 * 60_000 + 58_900), y);
+    pointer(h.canvas, 'pointerdown', x(from + 20 * 60_000 + 1_200), y, { button: 2, buttons: 2 });
+    pointer(h.canvas, 'pointermove', x(from + 22 * 60_000), y, { button: 2, buttons: 2 });
+    pointer(h.canvas, 'pointerup', x(from + 24 * 60_000 + 58_900), y, { button: 2, buttons: 2 });
     h.flush();
     expect(h.brush).toEqual([
       { fromMs: from + 20 * 60_000, toMs: from + 25 * 60_000, gesture: 'drag' },
     ]);
-    pointer(h.canvas, 'pointerdown', 500, y, { buttons: 1 });
-    pointer(h.canvas, 'pointerup', 503, y);
+    pointer(h.canvas, 'pointerdown', 500, y, { button: 2, buttons: 2 });
+    pointer(h.canvas, 'pointerup', 503, y, { button: 2, buttons: 2 });
     h.flush();
     expect(h.brush).toHaveLength(1);
     pointer(h.canvas, 'dblclick', x(from + 30 * 60_000), y);
@@ -373,7 +373,7 @@ describe('engine', () => {
     expect(h.queued()).toBe(1);
     h.frame.dispose();
     expect(h.queued()).toBe(0);
-    expect(onCanvas).toHaveBeenCalledTimes(6);
+    expect(onCanvas).toHaveBeenCalledTimes(12);
     expect(onTarget).toHaveBeenCalledTimes(2);
     expect(h.canvas.width).toBe(0);
     h.layer().clearOps();
@@ -392,6 +392,70 @@ describe('engine', () => {
     expect(() =>
       engine.createFrame(document.createElement('canvas'), { timeZone: 'UTC', keyTarget: null }),
     ).toThrow(ChartUnsupportedError);
+  });
+});
+
+describe('unit:drawn and frame id (#90, ADR-0019)', () => {
+  const data = seriesData(seriesFrame(K(1), [0, 1, 2], [1, 2, 3]));
+  const w = { fromMs: 0, toMs: 2 };
+
+  it('unit:drawn after each draw', () => {
+    const h = harness(Canvas2DEngine, { id: 'f9' });
+    show(h, LINE_NONE, data, w, [800, 240, 1]);
+    expect(h.drawn).toEqual([{ cssWidth: 800, cssHeight: 240, dpr: 1 }]);
+    const plot = plotOf(h);
+    pointer(h.canvas, 'pointermove', plot.x + plot.width / 2, plot.y + 10);
+    h.flush();
+    expect(h.drawn).toHaveLength(2);
+    h.frame.resize(0, 0, 1);
+    h.flush();
+    expect(h.drawn).toHaveLength(2);
+    h.frame.dispose();
+    h.frame.setData(data);
+    h.flush();
+    expect(h.drawn).toHaveLength(2);
+  });
+
+  it('unit:chart-draw carries the frame id', () => {
+    const measure = vi.spyOn(performance, 'measure');
+    try {
+      const h = harness(Canvas2DEngine, { id: 'f9' });
+      show(h, LINE_NONE, data, w);
+      const detailOf = () =>
+        (
+          measure.mock.calls.filter((c) => c[0] === 'chart-draw').at(-1)?.[1] as
+            { detail?: unknown } | undefined
+        )?.detail;
+      expect(detailOf()).toEqual({ kind: 'line', series: 1, frame: 'f9' });
+      const plain = harness(Canvas2DEngine);
+      show(plain, LINE_NONE, data, w);
+      expect(detailOf()).toEqual({ kind: 'line', series: 1, frame: null });
+    } finally {
+      measure.mockRestore();
+    }
+  });
+
+  it('unit:a kind change clears the canvas', () => {
+    const h = harness(Canvas2DEngine, { id: 'f9' });
+    show(h, LINE_NONE, data, w);
+    const clears = () =>
+      h
+        .visible()
+        .calls('clearRect')
+        .map((o) => o.args);
+    // The same kind (a title change) keeps the drawn image until the redraw.
+    h.frame.setSpec({ ...LINE_NONE, title: 'U' });
+    expect(clears()).toHaveLength(0);
+    h.flush();
+    h.frame.setSpec({
+      kind: 'bars',
+      title: 'U',
+      unit: { kind: 'none' },
+      stacking: 'normal',
+      categoryLabel: 'level',
+      categoryOrder: [],
+    });
+    expect(clears()).toEqual([[0, 0, 800, 240]]);
   });
 });
 
@@ -494,4 +558,95 @@ describe('bucket overlapping the window edge (merged path)', () => {
       expect(last.x + last.w).toBeGreaterThanOrEqual(plot.x + plot.width - 1);
     },
   );
+});
+
+describe('heatmap missing cells (plan #63 §4.3.1)', () => {
+  const HEAT: VisSpec = {
+    kind: 'heatmap',
+    title: 'T',
+    unit: { kind: 'none' },
+    countUnit: { kind: 'none' },
+  };
+  const ramp: readonly string[] = sequentialRamp.dark;
+  const rows = (h: Harness) =>
+    (h.hover.at(-1)?.rows ?? []).map((r) => ({ key: r.key, value: r.value }));
+
+  it('Canvas2DEngine heatmap missing cells: no fill, no hover row, skipped in the summary', () => {
+    const h = harness(Canvas2DEngine);
+    const data: FrameData = {
+      kind: 'heatmap',
+      heatmap: {
+        timestamps: new Float64Array([0, 1000]),
+        bounds: new Float64Array([1, Infinity]),
+        counts: new Float64Array([NaN, NaN, 4, 2]),
+      },
+    };
+    show(h, HEAT, data, { fromMs: 0, toMs: 2000 });
+    const fills = h
+      .layer()
+      .calls('fillRect')
+      .filter((o) => ramp.includes(o.fillStyle))
+      .map((o) => o.fillStyle);
+    expect(fills.sort()).toEqual([ramp[4], ramp[8]].sort());
+    const plot = plotOf(h);
+    const band = bucketScale(new Float64Array([1, Infinity]), plot, 14).infBand ?? { y0: 0, y1: 0 };
+    pointer(h.canvas, 'pointermove', plot.x + plot.width * 0.25, (band.y0 + band.y1) / 2);
+    h.flush();
+    expect(rows(h)).toEqual([]);
+    pointer(h.canvas, 'pointermove', plot.x + plot.width * 0.75, (band.y0 + band.y1) / 2);
+    h.flush();
+    expect(rows(h)).toEqual([{ key: '1', value: 2 }]);
+    expect(h.a11y.at(-1)).toMatchObject({ min: 2, max: 4, last: 6 });
+  });
+
+  it('Canvas2DEngine heatmap compressed missing: a merged cell with a missing bucket is not drawn', () => {
+    const target = document.createElement('div');
+    const h = harness(Canvas2DEngine, { keyTarget: target });
+    const n = 2000;
+    const counts = new Float64Array(2 * n);
+    for (let i = 0; i < n; i++) {
+      counts[2 * i] = i % 2 === 1 && i < 1000 ? NaN : 4;
+      counts[2 * i + 1] = 2;
+    }
+    const bounds = new Float64Array([1, Infinity]);
+    const data: FrameData = {
+      kind: 'heatmap',
+      heatmap: {
+        timestamps: new Float64Array(Array.from({ length: n }, (_, i) => i * 1000)),
+        bounds,
+        counts,
+      },
+    };
+    show(h, HEAT, data, { fromMs: 0, toMs: 2_000_000 }, [800, 240, 1]);
+    const plot = plotOf(h);
+    expect(n).toBeGreaterThan(Math.floor(plot.width));
+    const scale = bucketScale(bounds, plot, 14);
+    const row0 = scale.rows[0];
+    const inf = scale.infBand;
+    if (row0 === undefined || inf === null) throw new Error('no bands');
+    const fills = h
+      .layer()
+      .calls('fillRect')
+      .filter((o) => ramp.includes(o.fillStyle));
+    const inRow0 = fills.filter((o) => Math.abs(Number(o.args[1]) - row0.y1) < 1e-6);
+    const inInf = fills.filter((o) => Math.abs(Number(o.args[1]) - inf.y0) < 1e-6);
+    // (1) Row 0 is drawn only where no merged bucket is missing: the right half.
+    expect(inRow0.length).toBeGreaterThanOrEqual(1);
+    const mid = Math.round(plot.x + plot.width / 2) - 1;
+    expect(inRow0.filter((o) => Number(o.args[0]) < mid).map((o) => Number(o.args[0]))).toEqual([]);
+    // (2) The +Inf row has no missing bucket and starts at the left edge.
+    expect(inInf.some((o) => Number(o.args[0]) === plot.x)).toBe(true);
+    // (3) Keyboard hover lists the raw buckets, never a merged sum.
+    key(target, 'ArrowRight');
+    h.flush();
+    expect(rows(h)).toEqual([
+      { key: '1', value: 2 },
+      { key: '0', value: 4 },
+    ]);
+    key(target, 'ArrowRight');
+    h.flush();
+    expect(rows(h)).toEqual([{ key: '1', value: 2 }]);
+    // (4) The summary reads the raw cells.
+    expect(h.a11y.at(-1)).toMatchObject({ max: 4 });
+  });
 });

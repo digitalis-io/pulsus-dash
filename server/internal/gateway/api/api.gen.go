@@ -220,6 +220,33 @@ func (e LogqlStreamsResponseKind) Valid() bool {
 	}
 }
 
+// Defines values for PlannedQueryValueType.
+const (
+	PlannedQueryValueTypeMatrix  PlannedQueryValueType = "matrix"
+	PlannedQueryValueTypeScalar  PlannedQueryValueType = "scalar"
+	PlannedQueryValueTypeString  PlannedQueryValueType = "string"
+	PlannedQueryValueTypeUnknown PlannedQueryValueType = "unknown"
+	PlannedQueryValueTypeVector  PlannedQueryValueType = "vector"
+)
+
+// Valid indicates whether the value is a known member of the PlannedQueryValueType enum.
+func (e PlannedQueryValueType) Valid() bool {
+	switch e {
+	case PlannedQueryValueTypeMatrix:
+		return true
+	case PlannedQueryValueTypeScalar:
+		return true
+	case PlannedQueryValueTypeString:
+		return true
+	case PlannedQueryValueTypeUnknown:
+		return true
+	case PlannedQueryValueTypeVector:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PrincipalRole.
 const (
 	Admin  PrincipalRole = "admin"
@@ -243,22 +270,22 @@ func (e PrincipalRole) Valid() bool {
 
 // Defines values for PromInstantResponseResultType.
 const (
-	Matrix PromInstantResponseResultType = "matrix"
-	Scalar PromInstantResponseResultType = "scalar"
-	String PromInstantResponseResultType = "string"
-	Vector PromInstantResponseResultType = "vector"
+	PromInstantResponseResultTypeMatrix PromInstantResponseResultType = "matrix"
+	PromInstantResponseResultTypeScalar PromInstantResponseResultType = "scalar"
+	PromInstantResponseResultTypeString PromInstantResponseResultType = "string"
+	PromInstantResponseResultTypeVector PromInstantResponseResultType = "vector"
 )
 
 // Valid indicates whether the value is a known member of the PromInstantResponseResultType enum.
 func (e PromInstantResponseResultType) Valid() bool {
 	switch e {
-	case Matrix:
+	case PromInstantResponseResultTypeMatrix:
 		return true
-	case Scalar:
+	case PromInstantResponseResultTypeScalar:
 		return true
-	case String:
+	case PromInstantResponseResultTypeString:
 		return true
-	case Vector:
+	case PromInstantResponseResultTypeVector:
 		return true
 	default:
 		return false
@@ -521,7 +548,10 @@ type ErrorBody struct {
 	Fields  *[]FieldError           `json:"fields,omitempty"`
 	Hint    *map[string]interface{} `json:"hint,omitempty"`
 	Message string                  `json:"message"`
-	QueryId *string                 `json:"query_id,omitempty"`
+
+	// Planned What the server planned and sent (ADR-0021, T06-029).
+	Planned *PlannedQuery `json:"planned,omitempty"`
+	QueryId *string       `json:"query_id,omitempty"`
 }
 
 // ErrorCode defines model for ErrorCode.
@@ -655,6 +685,22 @@ type Panel struct {
 	Vis   Vis    `json:"vis"`
 }
 
+// PlannedQuery What the server planned and sent (ADR-0021, T06-029).
+type PlannedQuery struct {
+	Bytes         int                   `json:"bytes"`
+	Expanded      string                `json:"expanded"`
+	Histogram     bool                  `json:"histogram"`
+	Query         string                `json:"query"`
+	RateApplied   bool                  `json:"rate_applied"`
+	RateCandidate bool                  `json:"rate_candidate"`
+	RateWindowMs  *int64                `json:"rate_window_ms,omitempty"`
+	StepMs        *int64                `json:"step_ms,omitempty"`
+	ValueType     PlannedQueryValueType `json:"value_type"`
+}
+
+// PlannedQueryValueType defines model for PlannedQuery.ValueType.
+type PlannedQueryValueType string
+
 // Principal defines model for Principal.
 type Principal struct {
 	Email string        `json:"email"`
@@ -670,17 +716,24 @@ type PrincipalRole string
 type PromInstantRequest struct {
 	At        int64  `json:"at"`
 	Query     string `json:"query"`
+	StepMs    *int64 `json:"step_ms,omitempty"`
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
+
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	Vars *QueryVars `json:"vars,omitempty"`
 }
 
 // PromInstantResponse defines model for PromInstantResponse.
 type PromInstantResponse struct {
-	At           int64                         `json:"at"`
-	Completeness Completeness                  `json:"completeness"`
-	Frames       []SeriesFrame                 `json:"frames"`
-	ResultType   PromInstantResponseResultType `json:"result_type"`
-	Scalar       *TimedValue                   `json:"scalar,omitempty"`
-	String       *TimedString                  `json:"string,omitempty"`
+	At           int64         `json:"at"`
+	Completeness Completeness  `json:"completeness"`
+	Frames       []SeriesFrame `json:"frames"`
+
+	// Planned What the server planned and sent (ADR-0021, T06-029).
+	Planned    PlannedQuery                  `json:"planned"`
+	ResultType PromInstantResponseResultType `json:"result_type"`
+	Scalar     *TimedValue                   `json:"scalar,omitempty"`
+	String     *TimedString                  `json:"string,omitempty"`
 }
 
 // PromInstantResponseResultType defines model for PromInstantResponse.ResultType.
@@ -696,9 +749,13 @@ type PromMetadataResponse struct {
 type PromRangeRequest struct {
 	From      int64  `json:"from"`
 	Query     string `json:"query"`
+	Rate      *bool  `json:"rate,omitempty"`
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
 	To        int64  `json:"to"`
-	WidthPx   int    `json:"width_px"`
+
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	Vars    *QueryVars `json:"vars,omitempty"`
+	WidthPx int        `json:"width_px"`
 }
 
 // PromRangeResponse defines model for PromRangeResponse.
@@ -706,8 +763,11 @@ type PromRangeResponse struct {
 	Completeness Completeness  `json:"completeness"`
 	End          int64         `json:"end"`
 	Frames       []SeriesFrame `json:"frames"`
-	Start        int64         `json:"start"`
-	Step         int64         `json:"step"`
+
+	// Planned What the server planned and sent (ADR-0021, T06-029).
+	Planned PlannedQuery `json:"planned"`
+	Start   int64        `json:"start"`
+	Step    int64        `json:"step"`
 }
 
 // PromSeriesResponse defines model for PromSeriesResponse.
@@ -730,6 +790,9 @@ type Query struct {
 
 // QueryLang defines model for Query.Lang.
 type QueryLang string
+
+// QueryVars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+type QueryVars map[string]string
 
 // Ready defines model for Ready.
 type Ready struct {

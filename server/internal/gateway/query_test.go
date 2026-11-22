@@ -58,7 +58,7 @@ func TestRangeCounterShape(t *testing.T) {
 	rec := postJSON(h, rangePath, counterReq)
 	body := rec.Body.String()
 	for _, want := range []string{
-		`{"start":1767225600000,"end":1767229200000,"step":5000,"frames":[{"key":"47ad55f1f828d9ee","labels":{"instance":"a:9090","job":"api"},"timestamps":[1767225600000,1767225605000,`,
+		`{"planned":{"query":"sum by (job, instance) (rate(http_requests_total[5m]))","expanded":"sum by (job, instance) (rate(http_requests_total[5m]))","bytes":54,"value_type":"vector","rate_candidate":false,"rate_applied":false,"histogram":false,"step_ms":5000},"start":1767225600000,"end":1767229200000,"step":5000,"frames":[{"key":"47ad55f1f828d9ee","labels":{"instance":"a:9090","job":"api"},"timestamps":[1767225600000,1767225605000,`,
 		`"values":[0.1,"NaN","+Inf","-Inf",null,-0,5e-324,0.30000000000000004,null,`,
 		`,1e+308]},{"key":"`,
 		`"labels":{"instance":"b:9090","job":"api"}`,
@@ -116,7 +116,7 @@ func TestRangeStreams(t *testing.T) {
 	}()
 	select {
 	case b := <-got:
-		if resp.StatusCode != 200 || !strings.HasPrefix(b, `{"start":1767225600000,"end":1767229200000,"step":5000,"frames":[{"key":`) {
+		if resp.StatusCode != 200 || !strings.HasPrefix(b, `{"planned":{"query":"sum by (job, instance) (rate(http_requests_total[5m]))","expanded":"sum by (job, instance) (rate(http_requests_total[5m]))","bytes":54,"value_type":"vector","rate_candidate":false,"rate_applied":false,"histogram":false,"step_ms":5000},"start":1767225600000,"end":1767229200000,"step":5000,"frames":[{"key":`) {
 			t.Errorf("%d first bytes %q", resp.StatusCode, b)
 		}
 	case <-time.After(3 * time.Second):

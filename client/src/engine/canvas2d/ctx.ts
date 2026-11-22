@@ -13,6 +13,8 @@ export type Ctx2D = Pick<
   | 'fillText'
   | 'measureText'
   | 'drawImage'
+  | 'rect'
+  | 'clip'
   | 'save'
   | 'restore'
   | 'fillStyle'

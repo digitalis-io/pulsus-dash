@@ -1,6 +1,7 @@
 # Pulsus Dash design tokens: the single source of colour, spacing, size, type and motion values.
-# `client/scripts/gen-tokens.ts` generates `client/src/styles/tokens.css` and `tokens.ts` from this
-# file (VL-001, VL-021, T08-022). `series-1`…`series-8` (categorical, VL-002) and `ramp-1`…`ramp-9`
+# `client/scripts/gen-tokens.ts` generates `client/src/styles/tokens.css`, `tokens.ts` and the
+# engine's `engine/crates/dash-tokens/src/tokens.rs` from this file (VL-001, VL-021, T08-022,
+# T01-010). `series-1`…`series-8` (categorical, VL-002) and `ramp-1`…`ramp-9`
 # (sequential, single hue, VL-006) must be numbered contiguously from 1; they are also emitted as
 # ordered arrays (`seriesPalette`, `sequentialRamp`). Colours are uppercase #RRGGBB or #RRGGBBAA;
 # lengths are px; durations are ms. Light colours are designed, not inverted from dark (VL-001).
@@ -40,6 +41,12 @@ ramp-7 = "#8DBBEB"
 ramp-8 = "#B1D3F7"
 ramp-9 = "#D8EAFE"
 brush = "#5B9BFF29"
+# Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
+syn-keyword = "#B48FC9"
+syn-func = "#7AA2D6"
+syn-string = "#8FBF8F"
+syn-number = "#D6A86B"
+syn-label = "#6FB8B8"
 
 [color.light]
 canvas = "#F5F6F8"
@@ -76,6 +83,12 @@ ramp-7 = "#3C6995"
 ramp-8 = "#365371"
 ramp-9 = "#313F4D"
 brush = "#2563C929"
+# Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
+syn-keyword = "#6B4A84"
+syn-func = "#2563C9"
+syn-string = "#3D7340"
+syn-number = "#7F5F2A"
+syn-label = "#2E6E6E"
 
 # Spacing scale (px).
 [space]
@@ -110,12 +123,13 @@ chart-stat = 120
 chart-tick = 4
 chart-line = 1.5
 chart-brush-min = 4
-# Boards (plan #61 Part B): 12 columns of 40 px rows; the Edit-mode panel editor sheet; the
-# panel header (the drag handle in Edit).
+# Boards (plan #61 Part B): 12 columns of 40 px rows; the panel header (the drag handle in Edit).
 board-cols = 12
 board-row = 40
-board-editor = 360
 board-panel-header = 40
+# The fixed-size editing window (kit ModalDialog size "editor", #90).
+dialog-editor-width = 800
+dialog-editor-height = 720
 
 [radius]
 default = 6
@@ -140,6 +154,10 @@ display = 32
 regular = 400
 medium = 500
 semibold = 600
+
+# Glyph advance (em): JetBrains Mono's 600/1000; the engine measures axis labels with it (#68).
+[font.advance]
+mono = 0.6
 
 [line-height]
 tight = 1.25

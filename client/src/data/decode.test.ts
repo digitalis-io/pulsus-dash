@@ -6,8 +6,11 @@ import {
   DecodeError,
   decodeInstant,
   decodeLogs,
+  decodeMetadata,
   decodeRange,
+  decodeSeriesSet,
   decodeValue,
+  decodeValues,
   decodeVolume,
   type LogsResult,
 } from './decode';
@@ -90,6 +93,15 @@ describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
 
   it('decodes a string result', () => {
     const r = decodeInstant({
+      planned: {
+        query: '"hello"',
+        expanded: '"hello"',
+        bytes: 7,
+        value_type: 'string',
+        rate_candidate: false,
+        rate_applied: false,
+        histogram: false,
+      },
       result_type: 'string',
       at: 5,
       frames: [],
@@ -423,5 +435,88 @@ describe('unit:decode-logs (plan #65 Part B §3.5, T04-010)', () => {
     expect(vol({ level: 'x' })).toBe('/frames/0/labels');
     expect(vol({ level: 'error', pod: 'a' })).toBe('/frames/0/labels');
     expect(vol({})).toBe('/frames/0/labels');
+  });
+});
+
+/** The DecodeError path of `f`, or null when it does not throw one. */
+function pathOf(f: () => unknown): string | null {
+  try {
+    f();
+  } catch (e) {
+    if (e instanceof DecodeError) return e.path;
+    throw e;
+  }
+  return null;
+}
+
+describe('unit:decode-frames prom', () => {
+  const C = {
+    truncated: true,
+    warnings: ['results truncated due to limit'],
+    infos: [],
+  };
+
+  it('decodes values, series and metadata bodies', () => {
+    const v = decodeValues({ values: ['a', 'b'], completeness: C });
+    expect(v.values).toEqual(['a', 'b']);
+    expect(v.completeness).toMatchObject({ truncated: true, queryId: null });
+    expect(v.completeness.warnings).toEqual(['results truncated due to limit']);
+    const s = decodeSeriesSet({
+      series: [{ key: '0123456789abcdef', labels: { job: 'api' } }],
+      completeness: C,
+    });
+    expect(s.series).toEqual([{ key: '0123456789abcdef', labels: { job: 'api' } }]);
+    expect(s.completeness.truncated).toBe(true);
+    const m = decodeMetadata({
+      metrics: { up: [{ type: 'gauge', help: 'Target up.', unit: '' }] },
+      completeness: C,
+    });
+    expect(m.metrics).toEqual({ up: [{ type: 'gauge', help: 'Target up.', unit: '' }] });
+  });
+
+  it('reports the JSON pointer of the first bad element', () => {
+    expect(pathOf(() => decodeValues({ values: ['a', 1], completeness: C }))).toBe('/values/1');
+    expect(
+      pathOf(() => decodeSeriesSet({ series: [{ key: 'xyz', labels: {} }], completeness: C })),
+    ).toBe('/series/0/key');
+    expect(
+      pathOf(() =>
+        decodeMetadata({
+          metrics: { up: [{ type: 'gauge', help: 1, unit: '' }] },
+          completeness: C,
+        }),
+      ),
+    ).toBe('/metrics/up/0/help');
+  });
+});
+
+describe('decode planned (plan #112 §3.8)', () => {
+  it('decodes planned from the regenerated goldens', () => {
+    expect(decodeRange(counter()).planned).toEqual({
+      query: 'sum by (job, instance) (rate(http_requests_total[5m]))',
+      expanded: 'sum by (job, instance) (rate(http_requests_total[5m]))',
+      bytes: 54,
+      valueType: 'vector',
+      rateCandidate: false,
+      rateApplied: false,
+      histogram: false,
+      stepMs: 5000,
+    });
+    const gauge = decodeInstant(JSON.parse(gaugeRaw));
+    expect(gauge.planned.query).toBe('node_memory_free_bytes');
+    expect(gauge.planned.stepMs).toBeUndefined();
+    expect(decodeInstant(JSON.parse(scalarRaw)).planned.valueType).toBe('scalar');
+  });
+
+  it('reports the pointer of a bad planned member', () => {
+    const body = counter();
+    (body['planned'] as Json)['bytes'] = '1';
+    expect(decodeErrorOf(() => decodeRange(body)).path).toBe('/planned/bytes');
+    const vt = counter();
+    (vt['planned'] as Json)['value_type'] = 'histogram';
+    expect(decodeErrorOf(() => decodeRange(vt)).path).toBe('/planned/value_type');
+    const missing = counter();
+    delete missing['planned'];
+    expect(decodeErrorOf(() => decodeRange(missing)).path).toBe('/planned');
   });
 });

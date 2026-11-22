@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted (2026-11-19, product owner) |
+| **Status** | Accepted (2026-11-19, product owner); "Query validation" amended by [ADR-0021](0021-query-planning-is-server-side.md) (2026-11-21, the BFF parses PromQL for planning only) |
 | **Supersedes** | The server half of [ADR-0001](0001-rust-wasm-everywhere.md) (Rust everywhere); the Rust/axum crate layout of [T06](../technical/T06-bff-architecture.md) §4.1, the `sqlx` decision of [T11](../technical/T11-postgres-schema.md) §4.8 and the Rust build of [T19](../technical/T19-deployment.md) §4.1 |
 | **Source** | Owner decision of 2026-11-19 |
 | **See** | [ADR-0014](0014-typescript-react-web-client.md), [ADR-0011](0011-terraform-provider-in-go.md), [T06](../technical/T06-bff-architecture.md), [T11](../technical/T11-postgres-schema.md), [T19](../technical/T19-deployment.md) |

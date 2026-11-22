@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import { seedWith } from '../test/seeds';
-import { StubApi, type StubBoard } from './StubApi';
+import { STUB_FAIL_PANEL_DATA_KEY, STUB_PANEL_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
 import {
   ApiError,
   BoardConflictError,
@@ -113,6 +113,39 @@ describe('stub api queries (plan #62 §4.5)', () => {
     expect(await kindOf(api.queryRange('demo', R, c.signal))).toBe('AbortError');
     expect(await api.checkDataSource('demo')).toEqual({ state: 'ok', checkedAtMs: 0 });
     expect(await kindOf(api.checkDataSource('nope'))).toBe('notFound');
+  });
+});
+
+describe('StubApi prom', () => {
+  it('serves the completion stub data (plan #63 A.3)', async () => {
+    const api = new StubApi();
+    const r = { fromMs: 0, toMs: 1 };
+    expect((await api.promMetadata('demo', {})).metrics).toEqual({
+      http_requests_total: [{ type: 'counter', help: 'Total HTTP requests.', unit: '' }],
+      http_request_duration_seconds: [
+        { type: 'histogram', help: 'HTTP request duration.', unit: 'seconds' },
+      ],
+      node_memory_free_bytes: [{ type: 'gauge', help: 'Free memory in bytes.', unit: 'bytes' }],
+      up: [{ type: 'gauge', help: 'Target up.', unit: '' }],
+    });
+    expect((await api.promLabelValues('demo', '__name__', r)).values).toEqual([
+      'http_request_duration_seconds_bucket',
+      'http_requests_total',
+      'node_memory_free_bytes',
+      'stub_metric',
+      'up',
+    ]);
+    expect((await api.promLabelValues('demo', 'job', r)).values).toEqual(['a', 'b']);
+    expect((await api.promLabels('demo', r)).values).toEqual([
+      '__name__',
+      'instance',
+      'job',
+      'le',
+      'series',
+    ]);
+    expect((await api.promSeries('demo', { ...r, match: ['up'] })).series).toEqual([]);
+    expect(await kindOf(api.promLabels('x', r))).toBe('notFound');
+    expect(await kindOf(api.promMetadata('x', {}))).toBe('notFound');
   });
 });
 
@@ -367,5 +400,201 @@ describe('stub log queries (plan #65 Part B §4.4)', () => {
     expect(v.series[0]?.key).toBe(keyHash({ level: 'error' }));
     const t1 = v.series[1]?.timestamps[1] ?? 0;
     expect(v.series[1]?.values[1]).toBe(Math.round(Math.abs(synthLineValue(65, 1, t1, 20, 10))));
+  });
+});
+
+describe('stub panel data hooks (#90)', () => {
+  const window = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13) };
+  const p: PanelSpec = {
+    id: 'p-1',
+    title: 'Request rate',
+    grid: { x: 0, y: 0, w: 6, h: 8 },
+    query: { lang: 'promql', text: 'sum(rate(http_requests_total[5m]))' },
+    vis: { kind: 'line' },
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Whether `promise` has settled, after the microtasks queued so far. */
+  async function settled(promise: Promise<unknown>): Promise<boolean> {
+    let done = false;
+    promise.then(
+      () => {
+        done = true;
+      },
+      () => {
+        done = true;
+      },
+    );
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    return done;
+  }
+
+  it('panel delay hook', async () => {
+    expect(STUB_PANEL_DELAY_KEY).toBe('pulsus-dash.stub.panelDelayMs');
+    const api = new StubApi();
+    performance.clearMarks('stub:panelData');
+    // Absent: the next microtask, and one mark per call.
+    expect(await settled(api.panelData('demo', p, window))).toBe(true);
+    const marks = performance.getEntriesByName('stub:panelData') as PerformanceMark[];
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.detail).toEqual({
+      id: 'p-1',
+      lang: 'promql',
+      text: 'sum(rate(http_requests_total[5m]))',
+      vis: 'line',
+    });
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    localStorage.setItem(STUB_PANEL_DELAY_KEY, '50');
+    const delayed = api.panelData('demo', p, window);
+    await vi.advanceTimersByTimeAsync(49);
+    expect(await settled(delayed)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await settled(delayed)).toBe(true);
+    expect((await delayed).kind).toBe('frame');
+    expect(localStorage.getItem(STUB_PANEL_DELAY_KEY)).toBe('50');
+
+    const c = new AbortController();
+    const aborted = api.panelData('demo', p, window, c.signal);
+    await vi.advanceTimersByTimeAsync(10);
+    c.abort();
+    expect(await kindOf(aborted)).toBe('AbortError');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(performance.getEntriesByName('stub:panelData')).toHaveLength(3);
+  });
+
+  it('panel fail hook', async () => {
+    expect(STUB_FAIL_PANEL_DATA_KEY).toBe('pulsus-dash.stub.failPanelData');
+    const api = new StubApi();
+    localStorage.setItem(STUB_FAIL_PANEL_DATA_KEY, '1');
+    const first = api.panelData('demo', p, window);
+    expect(await kindOf(first)).toBe('network');
+    expect(localStorage.getItem(STUB_FAIL_PANEL_DATA_KEY)).toBe('0');
+    expect(await kindOf(api.panelData('demo', p, window))).toBe('resolved');
+  });
+});
+
+describe('StubApi planning (plan #112 A.7, A.11)', () => {
+  const W = { fromMs: 0, toMs: 3_600_000, widthPx: 1000 };
+  /** `prom.WarnTypesUnavailable`, the server's text (only StubApi may import the mirror). */
+  const WARN_TYPES_UNAVAILABLE =
+    'pulsus-dash: metric types unavailable, so only names ending in _total are rated (metric_types_unavailable)';
+
+  async function errorOf(p: Promise<unknown>): Promise<ApiError> {
+    try {
+      await p;
+    } catch (e) {
+      if (e instanceof ApiError) return e;
+      throw e;
+    }
+    throw new Error('the query resolved');
+  }
+
+  it('T1: a bare counter is rated without metadata', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const r = await api.queryRange('demo', { query: 'http_requests_total', ...W });
+    expect(r.planned.query).toBe('rate(http_requests_total[1m])');
+    expect(r.planned.rateWindowMs).toBe(60000);
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('T2: a selector that needs types reads the metadata once', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const r = await api.queryRange('demo', { query: 'up', ...W });
+    expect(meta).toHaveBeenCalledTimes(1);
+    expect(meta.mock.calls[0]?.[1]).toEqual({ limit: 10000 });
+    expect(r.planned.query).toBe('up');
+  });
+
+  it('T3: a planned text over 64 KiB is queryTooLong', async () => {
+    const n19 = 'x_total{a="' + 'b'.repeat(65_517) + '"}';
+    const e = await errorOf(new StubApi().queryRange('demo', { query: n19, ...W }));
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.planned?.bytes).toBe(65540);
+  });
+
+  it('T4: variables', async () => {
+    const api = new StubApi();
+    const e = await errorOf(api.queryRange('demo', { query: 'up{r="$r"}', ...W }));
+    expect(e.kind).toBe('invalid');
+    expect(e.fields).toEqual([{ pointer: '/vars/r', messageKey: 'variable.missing' }]);
+    const r = await api.queryRange('demo', { query: 'up{r="$r"}', vars: { r: 'eu' }, ...W });
+    expect(r.planned.query).toBe('up{r="eu"}');
+  });
+
+  it('T5: a metadata failure plans without types and warns', async () => {
+    const api = new StubApi();
+    vi.spyOn(api, 'promMetadata').mockRejectedValue(new ApiError('unavailable', 'down'));
+    const r = await api.queryRange('demo', { query: 'up', ...W });
+    expect(r.completeness.warnings).toEqual([WARN_TYPES_UNAVAILABLE]);
+    const i = await errorOf(
+      api.queryInstant('demo', { query: 'rate(x[$__rate_interval])', atMs: 1 }),
+    );
+    expect(i.kind).toBe('invalid');
+    expect(i.fields).toEqual([{ pointer: '/step_ms', messageKey: 'field.required' }]);
+    const ok = await api.queryInstant('demo', {
+      query: 'rate(x[$__rate_interval])',
+      atMs: 1,
+      stepMs: 15000,
+    });
+    expect(ok.planned.query).toBe('rate(x[1m])');
+  });
+
+  it('T6: a variable that names a virtual source is refused before metadata', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const e = await errorOf(
+      api.queryRange('demo', { query: '$m', vars: { m: 'pulsus_anomaly_score' }, ...W }),
+    );
+    expect(e.kind).toBe('queryInvalid');
+    expect(e.detail.hint?.['reserved']).toBe('pulsus_anomaly_score');
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G1–G3: reserved names are refused before metadata', async () => {
+    for (const [query, vars] of [
+      ['ALERTS{', {}],
+      ['up{note="ALERTS"}', {}],
+      ['$m', { m: 'ALERTS' }],
+    ] as const) {
+      const api = new StubApi();
+      const meta = vi.spyOn(api, 'promMetadata');
+      const e = await errorOf(api.queryRange('demo', { query, vars, ...W }));
+      expect(e.kind, query).toBe('queryInvalid');
+      expect(e.detail.hint?.['reserved'], query).toBe('ALERTS');
+      expect(meta, query).not.toHaveBeenCalled();
+    }
+  });
+
+  it('the resolved-step cap comes before the metadata read (review r2)', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const query = '$c'.repeat(510) + '$__interval'.repeat(3000) + '\nx';
+    const e = await errorOf(
+      api.queryInstant('demo', { query, vars: { c }, atMs: 1, stepMs: 1500 }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G5: over the processing cap is queryTooLong without a plan', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    const c = '#' + 'a'.repeat(4095);
+    const e = await errorOf(
+      api.queryRange('demo', { query: '$c'.repeat(600) + '\nx_total', vars: { c }, ...W }),
+    );
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
   });
 });
