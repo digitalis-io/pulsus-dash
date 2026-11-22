@@ -207,12 +207,14 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   a11y summary read the raw buckets. A NaN cell is never filled and has no hover row (#63,
   [T02 §4.4](../../designs/technical/T02-vis-engine.md#44-lod-decimation-and-precision) gaps rule).
 - **Stat.** The formatted value, centred, in 32 px semibold. With series data whose first series has
-  at least two finite values in the window, and a frame at least 104 px tall (`SPARK_MIN_H`), a
+  at least one finite value in the window, and a frame at least 104 px tall (`SPARK_MIN_H`), a
   **sparkline** runs under it: the rect `{ x: 12, y: h − 8 − 32, width: w − 24, height: 32 }`, the
   window across it, the series' finite min to max from its bottom to its top (mid-height when they
-  are equal), in the series colour, 1.5 px with round joins; a non-finite value or a point outside
-  the window breaks the path. The value then sits at `(h − 32 − 8) / 2`. A scalar, a single point or
-  a shorter frame draws the value alone, centred, as before.
+  are equal), in the series colour, 1.5 px with round joins. It is a trend glyph: it joins the
+  finite points inside the window across absent and non-finite ones (a sparse series on the step
+  grid is mostly absent points), and a single finite point is a dot of radius 1.5 px. The value
+  then sits at `(h − 32 − 8) / 2`. A scalar, a series with no finite value in the window or a
+  shorter frame draws the value alone, centred, as before.
 
 ### Threshold lines (ADR-0022, #64 Part B)
 

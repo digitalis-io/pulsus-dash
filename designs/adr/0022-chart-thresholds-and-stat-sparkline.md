@@ -53,7 +53,9 @@ has no member for either, and T02-004 allows state colours in marks only through
    threshold (for bars, the stacked totals after the bucket merge, widened). A manual `valueRange`
    (ADR-0020) wins.
 4. **Stat sparkline.** A stat with series data draws a sparkline of its first series under the
-   value, from a frame 104 CSS px tall. The spec is unchanged.
+   value, from a frame 104 CSS px tall. The sparkline is a trend glyph: it joins the series'
+   finite points in the window across absent and non-finite ones (on the step grid a sparse series
+   is mostly absent points, T04-005), and a single finite point is a dot. The spec is unchanged.
 5. **State colours and glyphs only from `StateEncoding`** (T02-004): the marks take a state's
    colour from `StateEncoding[s].colour` and its glyph from `StateEncoding[s].glyph`.
 6. **Every engine behind the seam implements (1)–(4).** The WASM engine (#68) implements them before
