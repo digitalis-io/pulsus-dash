@@ -29,7 +29,7 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 | `GET /api/dash/v1/prom/series` | as labels; at least one `match` | `PromSeriesResponse` | 10 s |
 | `GET /api/dash/v1/prom/metadata` | `tenant`, `metric` (optional), `limit` | `PromMetadataResponse` | 10 s |
 | `POST /api/dash/v1/query/logql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "limit"?, "direction"?, "cursor"?, "timeout_ms"?}` | `LogqlRangeResponse`: a log page (`kind: streams`) or frames streamed on the grid (`kind: series`) | `timeout_ms`, shared by every upstream request of the page |
-| `POST /api/dash/v1/query/logql/volume?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?}` | `PromRangeResponse`, one frame per level | `timeout_ms` |
+| `POST /api/dash/v1/query/logql/volume?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?}` | `RangeFrameResponse` (no `planned`), one frame per level | `timeout_ms` |
 | `GET /api/dash/v1/logs/labels` | `tenant`, `from`, `to`, `query` (optional, at most 65 536 bytes), `limit` | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/logs/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/logs/series` | `tenant`, `from`, `to`, `match` (repeatable, at least one), `limit` | `PromSeriesResponse` | 10 s |
