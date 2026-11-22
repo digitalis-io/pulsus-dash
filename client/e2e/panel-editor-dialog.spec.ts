@@ -721,7 +721,8 @@ test.describe('panel editor dialog', () => {
     expect(await marksSince(page, a.t0)).toEqual([]);
     expect(a.p1.frames).toBe(1);
     expect(a.p1.pending).toBe(0);
-    expect(a.p1.canvasCss).toEqual(hs);
+    // The chart's own size at this viewport: the legend under it takes the rest of the host (#64).
+    expect(a.p1.canvasCss).toEqual(small.canvasCss);
     expect(a.p1.hostBox).toEqual(hs);
     expect(a.p1.fp).toBe(small.fp);
     const inFrame1 = (await draws(page, 'line', a.p1)).filter((x) => a.t0 < x.t && x.t < a.p1.t);

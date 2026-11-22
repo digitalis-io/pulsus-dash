@@ -29,6 +29,8 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
     'b-1 edit, PromQL editor': ['label'],
     'b-1 edit, metric picker open': ['label'],
     'b-1 edit, partial data popover': ['label'],
+    // The same crash with the panel editor's threshold rows (#64 Part B).
+    'b-1 edit, thresholds': ['label'],
   },
 };
 

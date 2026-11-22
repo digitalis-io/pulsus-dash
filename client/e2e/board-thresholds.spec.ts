@@ -124,9 +124,14 @@ test.describe('e2e:board-thresholds (fake)', () => {
     const compact = short.locator('[data-panel-legend="compact"]');
     await expect(compact.locator('[data-legend-item]')).toHaveCount(3);
     await short.getByRole('button', { name: 'Panel menu: Short' }).focus();
+    // Until focus is on a legend item: Firefox also stops on the scrolling list itself.
     for (let i = 0; i < 60; i++) {
-      const inside = await compact.evaluate((el) => el.contains(document.activeElement));
-      if (inside) break;
+      const onItem = await compact.evaluate(
+        (el) =>
+          el.contains(document.activeElement) &&
+          document.activeElement?.matches('[data-legend-item]') === true,
+      );
+      if (onItem) break;
       await page.keyboard.press('Tab');
     }
     const first = compact.locator('[data-legend-item]').first();

@@ -211,6 +211,10 @@ the stat chip and the threshold labels all use it.
   table from `size.board-legend-table-min` (240 px) and while not yet measured, compact below. The
   stack fills the body, so the legend's own height never changes the layout. A 4-row panel is
   compact; 6 rows and up have a table.
+- **First frame (#90).** The stack is measured once when it attaches (in the commit), and a line
+  or bars chart mounts only then, so the layout is final before the chart is sized. In the same
+  commit the chart cell's size goes into the panel's size memo, which the chart pre-sizes from: a
+  chart under a legend, or a stat under its chip, is sized once and draws in its first frame.
 - **Compact.** One button per series (`[data-legend-item]`, at least 24 px tall, `title` = the full
   name) with its swatch, name and last value; "Legend table" (`[data-legend-table]`) opens the same
   table in a popover dialog named by the caption.
