@@ -466,7 +466,7 @@ function BoardEditor({
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
 
-  return (
+  const page = (
     <div className={cx(styles['page'])}>
       <div className={cx(styles['bar'])}>
         <ContextSummary />
@@ -530,80 +530,78 @@ function BoardEditor({
       {s.remote !== null && (
         <p className={cx(styles['notice'])}>{t('board.remote', { version: s.remote.version })}</p>
       )}
-      <BoardRunProvider tenant={tenant} vars={boardParams.params.vars} timeReady={timeReady}>
-        <div className={cx(styles['workspace'])}>
-          <div className={cx(styles['grids'])}>
-            {empty && !edit ? (
-              <EmptyState title={t('board.noPanels')} />
-            ) : (
-              <>
-                {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
-                {s.draft.sections.map((sec, j) => {
-                  const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
-                  return (
-                    <BoardSection
-                      key={sec.id}
-                      section={sec}
-                      index={j}
-                      mode={s.mode}
-                      collapsed={collapsed}
-                      busy={busy}
-                      titleError={titleErrorOf(j)}
-                      onToggle={() => {
-                        if (edit) {
-                          dispatch({ type: 'toggleSection', id: sec.id });
-                          return;
-                        }
-                        // Only a state that differs from the saved one is written to the URL.
-                        const next = !collapsed;
-                        setOverrideError(
-                          boardParams.setSectionOverride(
-                            sec.id,
-                            next === sec.collapsed ? null : next,
-                          ),
-                        );
-                      }}
-                      onTitle={(title) => {
-                        dispatch({ type: 'updateSection', id: sec.id, title });
-                      }}
-                      onAddPanel={() => {
-                        dispatch({ type: 'addPanel', grid: j });
-                      }}
-                      onRemove={() => {
-                        dispatch({ type: 'removeSection', id: sec.id });
-                      }}
-                    >
-                      {grid(sec.panels, j)}
-                    </BoardSection>
-                  );
-                })}
-              </>
-            )}
-          </div>
-          {edit && selected !== undefined && (
-            <PanelEditor
-              key={selected.panel.id}
-              panel={selected.panel}
-              tenant={tenant}
-              pointer={panelPointer(selected.grid, selected.index)}
-              fields={s.save.status === 'invalid' ? s.save.fields : []}
-              readOnly={busy}
-              statusText={statusText}
-              runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
-              onRun={runEdited}
-              onChange={(patch) => {
-                dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
-              }}
-              onRemove={() => {
-                dispatch({ type: 'removePanel', id: selected.panel.id });
-              }}
-              onClose={() => {
-                dispatch({ type: 'select', id: null });
-              }}
-            />
+      <div className={cx(styles['workspace'])}>
+        <div className={cx(styles['grids'])}>
+          {empty && !edit ? (
+            <EmptyState title={t('board.noPanels')} />
+          ) : (
+            <>
+              {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
+              {s.draft.sections.map((sec, j) => {
+                const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
+                return (
+                  <BoardSection
+                    key={sec.id}
+                    section={sec}
+                    index={j}
+                    mode={s.mode}
+                    collapsed={collapsed}
+                    busy={busy}
+                    titleError={titleErrorOf(j)}
+                    onToggle={() => {
+                      if (edit) {
+                        dispatch({ type: 'toggleSection', id: sec.id });
+                        return;
+                      }
+                      // Only a state that differs from the saved one is written to the URL.
+                      const next = !collapsed;
+                      setOverrideError(
+                        boardParams.setSectionOverride(
+                          sec.id,
+                          next === sec.collapsed ? null : next,
+                        ),
+                      );
+                    }}
+                    onTitle={(title) => {
+                      dispatch({ type: 'updateSection', id: sec.id, title });
+                    }}
+                    onAddPanel={() => {
+                      dispatch({ type: 'addPanel', grid: j });
+                    }}
+                    onRemove={() => {
+                      dispatch({ type: 'removeSection', id: sec.id });
+                    }}
+                  >
+                    {grid(sec.panels, j)}
+                  </BoardSection>
+                );
+              })}
+            </>
           )}
         </div>
-      </BoardRunProvider>
+        {edit && selected !== undefined && (
+          <PanelEditor
+            key={selected.panel.id}
+            panel={selected.panel}
+            tenant={tenant}
+            pointer={panelPointer(selected.grid, selected.index)}
+            fields={s.save.status === 'invalid' ? s.save.fields : []}
+            readOnly={busy}
+            statusText={statusText}
+            runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
+            onRun={runEdited}
+            onChange={(patch) => {
+              dispatch({ type: 'updatePanel', id: selected.panel.id, patch });
+            }}
+            onRemove={() => {
+              dispatch({ type: 'removePanel', id: selected.panel.id });
+            }}
+            onClose={() => {
+              dispatch({ type: 'select', id: null });
+            }}
+          />
+        )}
+      </div>
       {blocker.state === 'blocked' && (
         <BoardGuard
           onKeep={() => {
@@ -638,5 +636,11 @@ function BoardEditor({
         />
       )}
     </div>
+  );
+  // Every panel of the board reads its variables, width store, viewport tracker and time gate here.
+  return (
+    <BoardRunProvider tenant={tenant} vars={boardParams.params.vars} timeReady={timeReady}>
+      {page}
+    </BoardRunProvider>
   );
 }

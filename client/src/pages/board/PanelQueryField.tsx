@@ -7,6 +7,7 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, type JSX } from 'react';
+import { flushSync } from 'react-dom';
 import { useApi } from '../../app/providers';
 import type { PromMetadata } from '../../data/decode';
 import type { PromQLEditorHandle } from '../../editor/PromQLEditor';
@@ -83,8 +84,12 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
     },
     [onChange],
   );
+  // The Run keys come from the editor's own (native) key handler: render the run in this task, so
+  // the preview shows it in the next frame (#90 AC2), as the Run button's press does.
   const run = useCallback(() => {
-    onRun(valueRef.current);
+    flushSync(() => {
+      onRun(valueRef.current);
+    });
   }, [onRun]);
   const onEscape = useCallback(() => {
     runButtonRef.current?.focus();
@@ -103,9 +108,20 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
       if (next instanceof Element && next.closest(PICKER_KEEP) !== null) return;
       if (valueRef.current !== runTextRef.current) onRunRef.current(valueRef.current);
     };
+    // Escape the editor handled (T09-004: it closed the completion popup, or moved to Run query)
+    // must not also reach the dialog, which closes on Escape. The editor's key handlers are its
+    // own (native, inside the host), so they have run when the event bubbles here.
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || !e.defaultPrevented) return;
+      if (e.target instanceof Element && e.target.closest('[data-editor-host]') !== null) {
+        e.stopPropagation();
+      }
+    };
     field.addEventListener('focusout', onFocusOut);
+    field.addEventListener('keydown', onKeyDown);
     return () => {
       field.removeEventListener('focusout', onFocusOut);
+      field.removeEventListener('keydown', onKeyDown);
     };
   }, []);
 
