@@ -217,9 +217,15 @@ function macrosAt(stepMs: number): Macros {
   };
 }
 
+/** The lexical state of the substitution scan (plan #118 §4.1). */
+type LexState = 'none' | 'dq' | 'sq' | 'bq' | 'comment';
+
 interface Substitution {
   readonly size: number;
+  /** Row 7: distinct, first-reference order. */
   readonly missing: readonly string[];
+  /** Row 7b: distinct, first-reference order. */
+  readonly unrepresentable: readonly string[];
   readonly macro: boolean;
   readonly bytes: Uint8Array;
   readonly segs: readonly Segment[];
@@ -231,7 +237,10 @@ const DOLLAR = 0x24,
   BACKSLASH = 0x5c,
   DQUOTE = 0x22,
   SQUOTE = 0x27,
-  BACKTICK = 0x60;
+  BACKTICK = 0x60,
+  HASH = 0x23,
+  LF = 0x0a,
+  CR = 0x0d;
 
 const isNameStart = (b: number | undefined): boolean =>
   b !== undefined && (b === 0x5f || (b >= 0x61 && b <= 0x7a) || (b >= 0x41 && b <= 0x5a));
@@ -254,18 +263,146 @@ function reference(raw: Uint8Array, i: number): { name: string; end: number } | 
   return { name, end: k };
 }
 
-function escaped(v: Uint8Array, quote: number): Uint8Array {
-  if (quote !== DQUOTE && quote !== SQUOTE) return v;
-  let n = v.length;
-  for (const b of v) if (b === BACKSLASH || b === quote) n++;
-  if (n === v.length) return v;
+const HEX = '0123456789abcdef';
+/** U+FFFD as UTF-8: the upstream lexer refuses it in a string (plan #118 §3.1). */
+const FFFD = [0xef, 0xbf, 0xbd] as const;
+const ESCAPED_FFFD = encoder.encode('\\ufffd');
+
+const isFffdAt = (v: Uint8Array, i: number): boolean =>
+  v[i] === FFFD[0] && v[i + 1] === FFFD[1] && v[i + 2] === FFFD[2];
+
+/** The escape of byte `b` in a string opened by `quote`, or null when `b` is written as itself. */
+function quotedEscape(b: number, quote: number): string | null {
+  if (b === quote) return quote === DQUOTE ? '\\"' : "\\'";
+  switch (b) {
+    case BACKSLASH:
+      return '\\\\';
+    case 0x07:
+      return '\\a';
+    case 0x08:
+      return '\\b';
+    case 0x0c:
+      return '\\f';
+    case LF:
+      return '\\n';
+    case CR:
+      return '\\r';
+    case 0x09:
+      return '\\t';
+    case 0x0b:
+      return '\\v';
+  }
+  if (b < 0x20 || b === 0x7f) return `\\x${HEX[b >> 4] ?? ''}${HEX[b & 0xf] ?? ''}`;
+  return null;
+}
+
+/**
+ * Plan #118 §4.2 on bytes; `quote` is DQUOTE or SQUOTE. Only the opening quote is escaped, U+FFFD
+ * is written `\ufffd` and any other non-ASCII rune as itself. Returns `v` itself when nothing is
+ * escaped.
+ */
+function encodeQuoted(v: Uint8Array, quote: number): Uint8Array {
+  const parts: (Uint8Array | number)[] = [];
+  let n = 0;
+  let changed = false;
+  for (let i = 0; i < v.length;) {
+    if (isFffdAt(v, i)) {
+      parts.push(ESCAPED_FFFD);
+      n += ESCAPED_FFFD.length;
+      i += FFFD.length;
+      changed = true;
+      continue;
+    }
+    const b = v[i] ?? 0;
+    const e = quotedEscape(b, quote);
+    if (e === null) {
+      parts.push(b);
+      n++;
+    } else {
+      const eb = encoder.encode(e);
+      parts.push(eb);
+      n += eb.length;
+      changed = true;
+    }
+    i++;
+  }
+  if (!changed) return v;
   const out = new Uint8Array(n);
   let o = 0;
-  for (const b of v) {
-    if (b === BACKSLASH || b === quote) out[o++] = BACKSLASH;
-    out[o++] = b;
+  for (const p of parts) {
+    if (typeof p === 'number') out[o++] = p;
+    else {
+      out.set(p, o);
+      o += p.length;
+    }
   }
   return out;
+}
+
+function holdsFffd(v: Uint8Array): boolean {
+  for (let i = 0; i < v.length; i++) if (isFffdAt(v, i)) return true;
+  return false;
+}
+
+/**
+ * Row 7b (plan #118 §4.3): in `…` a backtick, a CR or U+FFFD cannot be written; in a comment an
+ * LF or a CR cannot. Quoted strings take any value (encoded); the top level takes it as text.
+ */
+function representable(v: Uint8Array, st: LexState): boolean {
+  switch (st) {
+    case 'bq':
+      return !v.includes(BACKTICK) && !v.includes(CR) && !holdsFffd(v);
+    case 'comment':
+      return !v.includes(LF) && !v.includes(CR);
+    default:
+      return true;
+  }
+}
+
+/** The state after byte `c` in state `st`, the `\` skip aside (plan #118 §4.1). */
+function nextState(st: LexState, c: number): LexState {
+  switch (st) {
+    case 'none':
+      if (c === DQUOTE) return 'dq';
+      if (c === SQUOTE) return 'sq';
+      if (c === BACKTICK) return 'bq';
+      return c === HASH ? 'comment' : 'none';
+    case 'dq':
+      return c === DQUOTE || c === LF ? 'none' : st;
+    case 'sq':
+      return c === SQUOTE || c === LF ? 'none' : st;
+    case 'bq':
+      return c === BACKTICK ? 'none' : st;
+    case 'comment':
+      return c === LF || c === CR ? 'none' : st;
+  }
+}
+
+/**
+ * `text` with every CR that ends a `#` comment (by the states of plan #118 §4.1, on the text
+ * itself) replaced by LF; every other byte unchanged, so offsets are kept. Lezer's LineComment
+ * runs to LF only; the upstream lexer's runs to LF or CR.
+ */
+export function endCommentsAtCR(text: string): string {
+  if (!text.includes('\r')) return text;
+  let out = '';
+  let from = 0;
+  let st: LexState = 'none';
+  // The states read ASCII bytes only, so UTF-16 units give the same states as UTF-8 bytes.
+  for (let i = 0; i < text.length;) {
+    const c = text.charCodeAt(i);
+    if ((st === 'dq' || st === 'sq') && c === BACKSLASH) {
+      i += 2;
+      continue;
+    }
+    if (st === 'comment' && c === CR) {
+      out += text.slice(from, i) + '\n';
+      from = i + 1;
+    }
+    st = nextState(st, c);
+    i++;
+  }
+  return out + text.slice(from);
 }
 
 /** One scan of the raw bytes (plan #112 §4.2); `build` false only counts the output. */
@@ -278,6 +415,7 @@ function substitute(
   const parts: Uint8Array[] = [];
   const segs: Segment[] = [];
   const missing: string[] = [];
+  const unrepresentable: string[] = [];
   let size = 0;
   let macro = false;
   let copyFrom = 0;
@@ -307,7 +445,7 @@ function substitute(
     }
     size += to - copyFrom;
   };
-  let quote = 0;
+  let st: LexState = 'none';
   for (let i = 0; i < raw.length;) {
     const c = raw[i];
     if (c === DOLLAR) {
@@ -317,6 +455,7 @@ function substitute(
         continue;
       }
       let value: Uint8Array | null = null;
+      let isVar = false;
       if (ref.name === '__interval') {
         value = m.interval;
         macro = true;
@@ -325,14 +464,23 @@ function substitute(
         macro = true;
       } else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
         value = vars.get(ref.name) ?? null;
+        isVar = value !== null;
         if (value === null && !missing.includes(ref.name)) missing.push(ref.name);
       }
       if (value === null) {
         i = ref.end;
         continue;
       }
+      // A macro's text is a duration: only a value is checked (row 7b).
+      if (isVar && !representable(value, st) && !unrepresentable.includes(ref.name))
+        unrepresentable.push(ref.name);
       flush(i);
-      const v = escaped(value, quote);
+      const v =
+        st === 'dq'
+          ? encodeQuoted(value, DQUOTE)
+          : st === 'sq'
+            ? encodeQuoted(value, SQUOTE)
+            : value;
       if (build) {
         segs.push({
           sentFrom: size,
@@ -348,14 +496,12 @@ function substitute(
       copyFrom = ref.end;
       continue;
     }
-    if (quote === 0) {
-      if (c === DQUOTE || c === SQUOTE || c === BACKTICK) quote = c;
-    } else if (quote === BACKTICK) {
-      if (c === BACKTICK) quote = 0;
-    } else if (c === BACKSLASH) {
+    if ((st === 'dq' || st === 'sq') && c === BACKSLASH) {
+      // The escaped byte is skipped: a $ there is not a reference.
       i += 2;
       continue;
-    } else if (c === quote) quote = 0;
+    }
+    st = nextState(st, c ?? 0);
     i++;
   }
   flush(raw.length);
@@ -368,7 +514,7 @@ function substitute(
       o += p.length;
     }
   }
-  return { size, missing, macro, bytes, segs };
+  return { size, missing, unrepresentable, macro, bytes, segs };
 }
 
 const pointerToken = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -442,7 +588,7 @@ function isHistogram(n: string, t: MetricTypes): boolean {
   return k === 'histogram' || k === 'unknown';
 }
 
-/** Prepare: rows 1–5 and 7–9 of §3.1, the placeholder substitution (plan #112 §4.1). */
+/** Prepare: rows 1–5, 7, 7b (plan #118 §4.3), 8 and 9 of §3.1, the placeholder substitution (plan #112 §4.1). */
 export function prepare(i: PlanInputs): Prepared | StubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
@@ -456,6 +602,16 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
       fields: count.missing.map((n) => ({
         pointer: `/vars/${pointerToken(n)}`,
         messageKey: 'variable.missing',
+      })),
+    };
+  }
+  if (count.unrepresentable.length > 0) {
+    return {
+      status: 400,
+      message: `the value of variable $${count.unrepresentable.join(', $')} cannot be written where it is referenced`,
+      fields: count.unrepresentable.map((n) => ({
+        pointer: `/vars/${pointerToken(n)}`,
+        messageKey: 'variable.unrepresentable',
       })),
     };
   }
