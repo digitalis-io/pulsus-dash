@@ -4,6 +4,7 @@ import type {
   PromMetadata,
   PromSeriesSet,
   PromValues,
+  RangeFrame,
   RangeResult,
 } from '../data/decode';
 import type {
@@ -66,7 +67,7 @@ export interface Api {
   /** One page of a LogQL log query, or the frames of a LogQL metric query (plan #65 Part B §4.4). */
   queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult>;
   /** Log volume by level on the BFF's grid. */
-  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeResult>;
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame>;
   /** The data-source check of the tenant's binding (T06-025). */
   checkDataSource(tenant: string, signal?: AbortSignal): Promise<DataSourceStatus>;
   /** Label names (`GET /prom/labels`). Unknown tenant → `ApiError('notFound')`; errors as `queryRange`. */

@@ -43,6 +43,7 @@ import type {
   PromMetadata,
   PromSeriesSet,
   PromValues,
+  RangeFrame,
   RangeResult,
 } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
@@ -724,7 +725,7 @@ export class StubApi implements Api {
   }
 
   /** Three level frames (`error`, `warn`, `info`) of synthetic counts on the grid. */
-  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeResult> {
+  queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
     return settle(() => {
       this.checkTenant(tenant);
       const g = promGrid(req.fromMs, req.toMs, req.widthPx);
@@ -740,16 +741,7 @@ export class StubApi implements Api {
           values: timestamps.map((t) => Math.round(Math.abs(synthLineValue(65, j, t, 20, 10)))),
         };
       });
-      const planned: PlannedQuery = {
-        query: req.query,
-        expanded: req.query,
-        bytes: new TextEncoder().encode(req.query).length,
-        valueType: 'matrix',
-        rateCandidate: false,
-        rateApplied: false,
-        histogram: false,
-      };
-      return { planned, ...g, series, completeness: EMPTY_COMPLETENESS };
+      return { ...g, series, completeness: EMPTY_COMPLETENESS };
     }, signal);
   }
 }

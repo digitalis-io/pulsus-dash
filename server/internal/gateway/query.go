@@ -227,7 +227,7 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		q.failPlanned(w, r, err, pr.planned)
 		return
 	}
-	q.stream(w, r, pr, rs, grid, first, "", "promql_stream_aborted")
+	q.stream(w, r, pr.rc, pr, rs, grid, first, "", "promql_stream_aborted")
 }
 
 func rangeIf(bad bool, pointer, msg string) *reqError {
@@ -240,10 +240,12 @@ func rangeIf(bad bool, pointer, msg string) *reqError {
 // stream writes the range body from the first frame on (§4.1 steps 8-10). A failure after the
 // header was written resets the connection, so the browser never sees a truncated body as valid.
 // kind "" writes no kind member (the PromQL body); else the body starts with {"kind":<kind>,
-// (a LogQL metric result, plan #65 Part B §3.4). abortMsg is the log message of a reset.
-func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, pr *plannedReq, rs *pulsusdb.ResultStream, g pulsusdb.Grid,
-	first *pulsusdb.Series, kind, abortMsg string) {
-	rc := pr.rc
+// (a LogQL metric result, plan #65 Part B §3.4). pr is the plan of a PromQL request: its planned
+// member comes first and its types warning joins the completeness. A LogQL request has none (nil):
+// planned is PromQL-only until logs.Plan lands (T06-029, #116). abortMsg is the log message of a
+// reset.
+func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, rc *core.RequestCtx, pr *plannedReq, rs *pulsusdb.ResultStream,
+	g pulsusdb.Grid, first *pulsusdb.Series, kind, abortMsg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	bw := bufio.NewWriterSize(w, streamBuffer)
@@ -254,9 +256,12 @@ func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, pr *plannedR
 		buf = appendString(buf, kind)
 		buf = append(buf, ',')
 	}
-	buf = append(buf, `"planned":`...)
-	buf = appendPlanned(buf, pr.planned.Wire())
-	buf = append(buf, `,"start":`...)
+	if pr != nil {
+		buf = append(buf, `"planned":`...)
+		buf = appendPlanned(buf, pr.planned.Wire())
+		buf = append(buf, ',')
+	}
+	buf = append(buf, `"start":`...)
 	buf = strconv.AppendInt(buf, g.Start, 10)
 	buf = append(buf, `,"end":`...)
 	buf = strconv.AppendInt(buf, g.End, 10)
@@ -290,7 +295,10 @@ func (q *dataRoutes) stream(w http.ResponseWriter, r *http.Request, pr *plannedR
 			}
 		}
 	}
-	c := withTypesWarning(rs.Completeness(), pr.typesWarning)
+	c := rs.Completeness()
+	if pr != nil {
+		c = withTypesWarning(c, pr.typesWarning)
+	}
 	buf = append(buf, `],"completeness":`...)
 	buf = appendCompleteness(buf, c, q.dataAge(c))
 	buf = append(buf, '}')

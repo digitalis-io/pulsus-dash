@@ -155,7 +155,7 @@ func (q *dataRoutes) serveLogsRange(w http.ResponseWriter, r *http.Request) {
 			q.fail(w, r, err)
 			return
 		}
-		q.stream(w, r, &plannedReq{rc: rc}, rs, lw.grid, first, "series", "logql_stream_aborted")
+		q.stream(w, r, rc, nil, rs, lw.grid, first, "series", "logql_stream_aborted")
 		return
 	}
 	page := res.Page

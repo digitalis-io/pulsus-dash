@@ -8,6 +8,7 @@ import {
   decodeLogs,
   decodeMetadata,
   decodeRange,
+  decodeRangeFrame,
   decodeSeriesSet,
   decodeValue,
   decodeValues,
@@ -325,13 +326,13 @@ describe('unit:decode-logs (plan #65 Part B §3.5, T04-010)', () => {
     expect(p1.frame.parsed[1]).toEqual({ level: 'WARNING' });
   });
 
-  it('decodes a metric result as decodeRange does and the volume as five level frames', () => {
+  it('decodes a metric result as decodeRangeFrame does and the volume as five level frames', () => {
     const metric = logGolden('logql-metric.json');
     const r = decodeLogs(metric);
     expect(r.kind).toBe('series');
     const rest: Json = { ...metric };
     delete rest['kind'];
-    expect(r).toEqual({ kind: 'series', ...decodeRange(rest) });
+    expect(r).toEqual({ kind: 'series', ...decodeRangeFrame(rest) });
     const v = decodeVolume(logGolden('logql-volume.json'));
     expect(v.series.map((s) => s.labels['level'])).toEqual([
       'error',

@@ -286,8 +286,8 @@ PromQL queries, data-source check and `/prom/*` reads of #62) and one
 | `recordView(tenant, uid, at, signal)` | nothing; `at` is the navigation time (integer ms since the epoch), the greater of the stored and the new time wins; unknown → `notFound`; an abort is rethrown |
 | `signOut()` | as before |
 | `queryRange(tenant, req, signal)`, `queryInstant(tenant, req, signal)` | the PromQL range and instant results of #62 (below) |
-| `queryLogs(tenant, req, signal)` | `LogsResult` (#65): a log page `{kind: 'streams', fromMs, toMs, stepMs, frame, cursor, completeness}` or a metric result `{kind: 'series', …RangeResult}`; `req` is `{query, fromMs, toMs, widthPx, limit?, direction?, cursor?, timeoutMs?}` |
-| `queryVolume(tenant, req, signal)` | `RangeResult` with one series per level, labelled `{level}`; `req` is `{query, fromMs, toMs, widthPx, timeoutMs?}` |
+| `queryLogs(tenant, req, signal)` | `LogsResult` (#65): a log page `{kind: 'streams', fromMs, toMs, stepMs, frame, cursor, completeness}` or a metric result `{kind: 'series', …RangeFrame}` (no `planned`); `req` is `{query, fromMs, toMs, widthPx, limit?, direction?, cursor?, timeoutMs?}` |
+| `queryVolume(tenant, req, signal)` | `RangeFrame` (no `planned`) with one series per level, labelled `{level}`; `req` is `{query, fromMs, toMs, widthPx, timeoutMs?}` |
 | `checkDataSource(tenant, signal)` | `{state, checkedAtMs?}` (T06-025) |
 | `promLabels`, `promLabelValues`, `promSeries`, `promMetadata` | the `/prom/*` reads of #62, used by the editor's completion ([Explore](explore.md)) |
 
@@ -353,7 +353,9 @@ for example `/frames/0/values/3`. The output is fresh `Float64Array`s in `Series
 (`data/frames.ts`).
 
 `decodeLogs` decodes the log range body (plan #65 Part B §3.5). A `kind: 'series'` body is a LogQL
-metric result and is decoded by `decodeRange`'s rules. A `kind: 'streams'` body becomes a columnar
+metric result and is decoded by `decodeRangeFrame`: the grid, frames and completeness of
+`decodeRange` without `planned`, which is PromQL-only until `logs.Plan` lands (T06-029, #116).
+`decodeRange` is `decodeRangeFrame` plus the required `planned`. A `kind: 'streams'` body becomes a columnar
 `LogFrame` (`data/logFrame.ts`):
 
 | Column | Type | Content |
@@ -370,7 +372,7 @@ stream index, then entry index; this rebuilds the BFF's page order. The checks: 
 pattern and every label, metadata and parsed value is a string; `ts_ns` is a decimal string without
 a leading zero, at most 2⁶³ − 1, and inside the window `start·10⁶ < ts ≤ end·10⁶`; a stream's
 entries do not go back against the direction; `level` is one of `LOG_LEVELS`; `cursor` is absent
-(`null`: no further page) or a non-empty string. `decodeVolume` is `decodeRange` plus one rule: every
+(`null`: no further page) or a non-empty string. `decodeVolume` is `decodeRangeFrame` plus one rule: every
 frame's labels are exactly `{level: <LogLevel>}` (else a `DecodeError` at `/frames/<i>/labels`).
 
 ### StubApi

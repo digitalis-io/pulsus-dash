@@ -34,14 +34,20 @@ export interface PlannedQuery {
   readonly rateWindowMs?: number;
 }
 
-export interface RangeResult {
-  readonly planned: PlannedQuery;
+/**
+ * Frames on a range grid. The LogQL bodies are this alone: `planned` is PromQL-only until
+ * `logs.Plan` lands (T06-029, #116).
+ */
+export interface RangeFrame {
   readonly startMs: number;
   readonly endMs: number;
   readonly stepMs: number;
   readonly series: readonly SeriesFrame[];
   readonly completeness: Completeness;
 }
+
+/** A PromQL range result: the frames and what the server planned and sent. */
+export type RangeResult = RangeFrame & { readonly planned: PlannedQuery };
 
 export type InstantResult = {
   readonly planned: PlannedQuery;
@@ -217,17 +223,22 @@ export function decodePlanned(v: unknown, path: string): PlannedQuery {
   };
 }
 
-/** Decodes a `PromRangeResponse` body. */
-export function decodeRange(body: unknown): RangeResult {
+/** Decodes the grid, frames and completeness of a range body; a `planned` member is not read. */
+export function decodeRangeFrame(body: unknown): RangeFrame {
   const b = object(body, '');
   return {
-    planned: decodePlanned(b['planned'], '/planned'),
     startMs: integer(b['start'], '/start'),
     endMs: integer(b['end'], '/end'),
     stepMs: integer(b['step'], '/step'),
     series: frames(b['frames'], '/frames'),
     completeness: decodeCompleteness(b['completeness'], '/completeness'),
   };
+}
+
+/** Decodes a `PromRangeResponse` body; `planned` is required. */
+export function decodeRange(body: unknown): RangeResult {
+  const b = object(body, '');
+  return { planned: decodePlanned(b['planned'], '/planned'), ...decodeRangeFrame(b) };
 }
 
 const RESULT_TYPES = ['vector', 'matrix', 'scalar', 'string'] as const;
@@ -283,7 +294,7 @@ export type LogsResult =
       readonly cursor: string | null;
       readonly completeness: Completeness;
     }
-  | ({ readonly kind: 'series' } & RangeResult);
+  | ({ readonly kind: 'series' } & RangeFrame);
 
 const DIRECTIONS = ['backward', 'forward'] as const;
 const TS_PATTERN = /^(0|[1-9][0-9]{0,18})$/;
@@ -312,7 +323,7 @@ interface DecodedStream {
 /** Decodes a `LogqlRangeResponse` body (a log page or a metric result). */
 export function decodeLogs(body: unknown): LogsResult {
   const b = object(body, '');
-  if (b['kind'] === 'series') return { kind: 'series', ...decodeRange(b) };
+  if (b['kind'] === 'series') return { kind: 'series', ...decodeRangeFrame(b) };
   if (b['kind'] !== 'streams') throw new DecodeError('/kind', 'expected streams or series');
   const direction = DIRECTIONS.find((d) => d === b['direction']);
   const fromMs = integer(b['start'], '/start');
@@ -407,9 +418,9 @@ function merge(
   return { direction, streams, tsNs, streamIndex, lines, levels, metadata, parsed };
 }
 
-/** Decodes a log volume body: a `PromRangeResponse` whose frames are labelled exactly `{level}`. */
-export function decodeVolume(body: unknown): RangeResult {
-  const r = decodeRange(body);
+/** Decodes a log volume body: a range frame (no `planned`) whose frames are labelled exactly `{level}`. */
+export function decodeVolume(body: unknown): RangeFrame {
+  const r = decodeRangeFrame(body);
   r.series.forEach((s, i) => {
     const names = Object.keys(s.labels);
     const level = s.labels['level'];

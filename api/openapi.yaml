@@ -544,7 +544,7 @@ components:
         streams: { type: array, items: { $ref: '#/components/schemas/LogStream' } }
         cursor: { type: string }                                             # absent: no further entry in the window
         completeness: { $ref: '#/components/schemas/Completeness' }
-    LogqlSeriesResponse:
+    LogqlSeriesResponse:                    # the range frame without planned: PromQL-only until logs.Plan (T06-029, #116)
       type: object
       additionalProperties: false
       required: [kind, start, end, step, frames, completeness]

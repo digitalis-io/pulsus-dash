@@ -26,6 +26,7 @@ import {
   type PromMetadata,
   type PromSeriesSet,
   type PromValues,
+  type RangeFrame,
   type RangeResult,
 } from '../data/decode';
 import {
@@ -512,11 +513,7 @@ export class HttpApi implements Api {
   }
 
   /** POST …/query/logql/volume. */
-  async queryVolume(
-    tenant: string,
-    req: VolumeRequest,
-    signal?: AbortSignal,
-  ): Promise<RangeResult> {
+  async queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<RangeFrame> {
     const body = {
       query: req.query,
       from: req.fromMs,

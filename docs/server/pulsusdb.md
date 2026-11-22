@@ -806,7 +806,9 @@ whole upstream response is decoded (at most 5 000 entries):
 
 A LogQL metric query (a `matrix` answer) is instead streamed series by series on the grid as on
 the PromQL range route, with `kind` first and no cursor:
-`{"kind":"series","start":…,"end":…,"step":…,"frames":[…],"completeness":…}`. Its upstream request
+`{"kind":"series","start":…,"end":…,"step":…,"frames":[…],"completeness":…}`. The LogQL bodies
+carry no `planned`: it is PromQL-only until `logs.Plan` lands (T06-029, #116), and a LogQL error has
+none either. The metric query's upstream request
 is the first request of a page (on the grid, with `limit + 1` and the direction); only the
 `resultType` of the answer tells the two apart.
 
