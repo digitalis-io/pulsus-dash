@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-22 |
+| **Version** | 1.15-rc · 2026-11-22 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -229,6 +229,11 @@ Mechanics:
   whole `composedPath()`, so keys typed in the editor do not step the window (INT-032).
 - **v1 Explore keys (#63 Part C).** `Esc` with no popup open moves the focus to the page's **Run**
   button, so the editor never traps focus; Shift+Enter and Mod+Enter run from the editor.
+- **v1 board panel editor (#64 Part A).** The panel editor's PromQL Query field is the same editor,
+  with the metric picker and a **Run query** button: Shift+Enter, Mod+Enter and Run query run the
+  text for the preview and the panel behind, and so does focus leaving the field with a text that
+  has not run; typing changes only the board draft. `Esc` closes an open popup, else moves the
+  focus to Run query, and does not reach the dialog: a second `Esc` closes the dialog.
 - **v1 composition guard (T09-005, #63).** An open or pending completion popup closes at
   `compositionstart`; while composing nothing opens, is looked up or is accepted, and results that
   arrive are held and dropped; completion re-evaluates once, 20 ms after the last `compositionend`.
@@ -725,3 +730,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.12-rc | 2026-11-21 | #63 Part C plan 7: §7 "Keystroke → highlighted repaint" row: the 2 ms is the editor's update (parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` |
 | 1.13-rc | 2026-11-21 | #112: the VIZ-065 Satisfies row names `unit:plan-parity`, which replaces `unit:explore-plan` (T05 §7.1) |
 | 1.14-rc | 2026-11-22 | #112: §4.6 "v1" paragraph: the server plans the rate-chip rewrites and checks the sent size (ADR-0021); the page sends the raw text and reads the chip, rules 5 and 6 and the sent query from `planned`; `client/src/explore/plan.ts` is gone |
+| 1.15-rc | 2026-11-22 | #64 Part A: §4.3 (T09-004) v1 board panel editor: the same editor and Run keys, Run query, a run when focus leaves the field, and `Esc` to Run query, then to close the dialog |

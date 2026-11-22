@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-21 |
+| **Version** | 1.12-rc · 2026-11-22 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -86,7 +86,7 @@ BFF serves a fixed local principal.
 |---|---|---|---|
 | SRF-036 Log stream | M-UI2 | stream (steps 10–11) | minimap |
 | VIZ-034 Log stream | M-UI2 | virtualised list, severity gutter, wrap (step 10); GPU text (step 13) | JSON expand, prettify, dedupe, context lines, minimap |
-| SRF-030 Metrics auto-vis + multiple queries | M-UI1 | auto-vis (step 7, #63) | A/B queries and expressions |
+| SRF-030 Metrics auto-vis + multiple queries | M-UI1 | auto-vis (step 7, #63); auto-vis on board panels (step 8, #64) | A/B queries and expressions |
 | SRF-027 PromQL editor | M-UI1 | highlighting, completion, errors on run (step 7, #63) | hover docs |
 | SRF-031 Metric browser and series table | M-UI1 | series table sorted by max and last, metric picker with type and help (step 7, #63) | cardinality, label value counts, anomaly ratio |
 | ENT-020 Configuration and derived state in Postgres | M-UI1 | tenant-scoped tables under RLS (`orgs`, `tenant_bindings`), no extension (step 3, #59); `folders`, `boards`, `board_versions`, `audit_events` (partitioned), `stars`, `recent_views` (step 5, #61) | the other Table 6.1 tables with their features; partition retention with the first time-partitioned table; met only when its full acceptance is (D6) |
@@ -94,7 +94,7 @@ BFF serves a fixed local principal.
 | IA-006 Boards | M-UI5 | board in the root folder, versions stored on save (step 5) | owners, version history UI, variables |
 | SRF-014 Board layout | M-UI5 | 12-column grid (step 5) | free-form canvas, 3D viewports |
 | SRF-016 Lazy collapsed sections | M-UI5 | collapsible sections that do not query (step 5, #61) | anomaly strip of a collapsed section |
-| SRF-017 Variables | M-UI5 | filter bar with URL values (step 5, #61) | variable definitions, seeding from Context, re-query and crossfade |
+| SRF-017 Variables | M-UI5 | filter bar with URL values (step 5, #61); M-UI1 subset: values in the URL substitute into PromQL panels and re-query only their panels (step 8, #64) | definitions, values from Context, crossfade |
 | SRF-026 Board library | M-UI5 | starred and recently viewed boards in the sidebar (step 5, #61) | folders, tags, search, owners, incident ranking |
 | ENT-022 Versioned content | M-UI5 | version rows on every save (step 5) | diff and restore |
 | VL-002 Neutral series palette with stable identity colours | M-UI1 | stable colours: level table, else key hash (step 2, #58) | `ci:palette-check` |
@@ -218,3 +218,4 @@ product owner can confirm them at sign-off.
 | 1.9-rc | 2026-11-20 | #61 Part A: Table 2.1c ENT-020 subset adds `folders`, `boards`, `board_versions`, `audit_events` (partitioned by class and month), `stars` and `recent_views` (step 5) |
 | 1.10-rc | 2026-11-21 | #61 Part C: Table 2.1c adds the M-UI1 subsets of SRF-016 (collapsible sections that do not query), SRF-017 (filter bar with URL values) and SRF-026 (starred and recently viewed boards); milestones unchanged (D6) |
 | 1.11-rc | 2026-11-21 | #63 Part C: Table 2.1c SRF-030 subset names #63; adds the M-UI1 subsets of SRF-027 (highlighting, completion, errors on run; hover docs remain) and SRF-031 (series table, metric picker; cardinality, label value counts and anomaly ratio remain); milestones unchanged (D6) |
+| 1.12-rc | 2026-11-22 | #64 Part A: Table 2.1c SRF-030 subset adds auto-vis on board panels (step 8); SRF-017 subset adds the URL values substituting into PromQL panels and re-querying only their panels (definitions, values from Context and crossfade remain); milestones unchanged (D6) |

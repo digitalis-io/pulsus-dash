@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.21-rc · 2026-11-21 |
+| **Version** | 1.22-rc · 2026-11-22 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -714,6 +714,12 @@ the merge train), nightly (release blocker).
 | `e2e:explore-truncation` | A truncated result shows the partial-data badge with its text and Narrow, which re-issues the middle half; a `422` shows PulsusDB's message with Narrow (PRF-031) |
 | `e2e:explore-refresh` | The header Refresh now reruns the Explore query (IA-020) |
 | `e2e:editor-ime` | Chromium, CDP composition in the editor: no completion popup during the composition, one after it commits (T09-005) |
+| `e2e:board-promql-panels` | Create a board with counter, histogram and gauge PromQL panels against the fake: rate line, heatmap and line; an override to Stat survives save and reload |
+| `e2e:board-visible-only` | A 30-panel board with 6 on screen issues exactly 6 range queries on open; scrolling issues queries for newly visible panels only, and none on scrolling back |
+| `e2e:board-cancel` | Two window changes while board panels load: every superseded request cancelled, one completed request per panel for the last window |
+| `e2e:board-open-in-explore` | A panel's Open in Explore carries its query and the board's time; `$__interval` and `$__rate_interval` keep the panel's values at a 5 m step |
+| `e2e:board-refresh` | Under an absolute window, Refresh now reruns every visible panel |
+| `e2e:board-states` | Partial-data badge with Narrow, a too-broad error with Narrow, a parse error with line and column, and the empty panel, on a board |
 | `e2e:bff-headers` | Against the BFF-served stub build: `GET /` carries a `Content-Security-Policy` equal to the client's `CSP` constant and every other document header of [T18](T18-security.md) T18-002; an `/assets/*.js` file requested with `Accept-Encoding: br` is served `br` and `immutable`; a deep link returns `index.html`; an unknown `/api/` path is the 404 envelope |
 | `e2e:bff-http-shell` | Against the BFF-served `http` build, and through the Vite dev server proxied to the BFF: the shell bootstraps from `GET /api/dash/v1/bootstrap`, About shows the server version, Sign out is absent under the fixed local principal (D12), and the sidebar shows the data-source line (IA-021) |
 | `e2e:board-edit-save` | Against the BFF-served `http` build and its database, in Chromium, Firefox and WebKit (plan #61 Part B): create a board, add three panels, move one with the pointer to column 7 and resize it to 6 × 10, set titles and visualisations, save with `⌘S`/`Ctrl+S`, reload: the same grid positions, titles and visualisations in View mode, and `GET /api/dash/v1/boards/<uid>` agrees; each panel shows the PromQL empty state; with unsaved changes, in-app navigation asks first (Keep editing stays, Discard changes leaves). A board at the last row (y 9 999, h 100) renders at the same box in View and Edit mode. Each run uses its own uniquely named board and deletes it |
@@ -943,3 +949,4 @@ Meta-testing:
 | 1.19-rc | 2026-11-21 | #63 Part C: §7.1 adds `unit:explore-run-size`, `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:editor-ime` and the lab benchmark `bench:editor-keystroke` (lab-gate row: merge once the lab exists, report-only on shared CI until then); `e2e:lazy-load` and `ci:bundle-size` name the editor closure |
 | 1.20-rc | 2026-11-21 | #63 Part C (orchestrator decision on plan C.12): §4.3 states the interim CI long-task check as AND: a task fails CI only over 50 ms wall **and** over 16 ms thread time, or without thread time; PRF-005's 16 ms limit is the reference-lab gate (`over16`, enforce mode), pending #68; `bench:editor-keystroke` uses the same check. §7.1 `bench:editor-keystroke`: the editor update per key (probe) p95 ≤ 2 ms and the traced tasks |
 | 1.21-rc | 2026-11-21 | #112: §7.1 `unit:plan-parity` (the shared planner fixture through the Go planner and the TS StubApi mirror, with the Go and Lezer shapes) replaces `unit:explore-plan`; the integration table adds `itest:plan-authority` (T06-029) |
+| 1.22-rc | 2026-11-22 | #64 Part A: §7.1 adds `e2e:board-promql-panels`, `e2e:board-visible-only`, `e2e:board-cancel`, `e2e:board-open-in-explore`, `e2e:board-refresh` and `e2e:board-states` |

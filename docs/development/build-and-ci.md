@@ -253,7 +253,7 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 |---|---|---|
 | PulsusDB fake on `localhost:4190` (first; ready on `/__fake/requests`) | `tools/e2e/fake.sh 4190` | both BFFs' data source; the specs read its request records through `e2e/fake.ts` ([control mode](testing-pulsusdb.md#in-the-e2e-suite-control-mode)) |
 | stub-mode BFF on `localhost:4173` | `tools/e2e/serve.sh stub 4173` | every existing spec (`baseURL`): the stub's seeded boards and tenants, served with the real headers; and `e2e:bff-headers` |
-| http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap`; `e2e:board-edit-save`, `e2e:board-tall` and `e2e:board-sections` (`board-edit.spec.ts`): boards created, laid out, saved and reloaded through the boards API, and collapsed sections, their URL overrides and saved state; `e2e:board-prefs` (`board-prefs.spec.ts`): Starred and Recent across two tabs and a fresh browser context (each test creates its own uniquely named board and deletes it in `finally`) |
+| http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap`; `e2e:board-edit-save`, `e2e:board-tall` and `e2e:board-sections` (`board-edit.spec.ts`): boards created, laid out, saved and reloaded through the boards API, and collapsed sections, their URL overrides and saved state; `e2e:board-prefs` (`board-prefs.spec.ts`): Starred and Recent across two tabs and a fresh browser context (each test creates its own uniquely named board and deletes it in `finally`); the board PromQL panels of `board-promql.spec.ts` (below) |
 | Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
 
 Before a run:
@@ -294,11 +294,34 @@ and use one time window per browser, so parallel projects never count each other
   size, position and backdrop, focus containment and return, and the live preview. Its frame-timing
   cases (E4, E7–E16) run without the fake clock, which would replace the page's User Timing
   methods: an init script observes the engine's `chart-draw` measures (with `detail.frame`, the
-  frame id) and the stub's `stub:panelData` marks, and snapshots the preview in the first animation
-  frame after an input, in that frame's resize-observer step (what the frame paints), and one frame
-  later. They use the stub's test hooks `pulsus-dash.stub.panelDelayMs` (a delay in ms for every
-  `panelData` call, never consumed) and `pulsus-dash.stub.failPanelData` (fail the next n calls);
-  see [the client page](../client/README.md#stubapi).
+  frame id) and the stub's `stub:query` marks (`{ kind, query }`, plan #64), and snapshots the
+  preview in the first animation frame after an input, in that frame's resize-observer step (what
+  the frame paints), and one frame later. A query runs on Shift+Enter (plan #64 §4.4) and a
+  visualisation change makes no request. They use the stub's test hooks
+  `pulsus-dash.stub.queryDelayMs` (a delay in ms for every `queryRange` and `queryInstant` call,
+  never consumed) and `pulsus-dash.stub.failQuery` (fail the next n calls); see
+  [the client page](../client/README.md#stubapi).
+- **Board PromQL panels** (`board-promql.spec.ts`, plan #64 Part A A.3, all three engines, on the
+  http-mode BFF and the fake; each browser uses its own days from 2026-02-01, so parallel projects
+  never count each other's requests): **`e2e:board-promql-panels`** (a counter, a histogram and a
+  gauge panel typed into the panel editor draw a rate line, a heatmap and a line; an override to
+  Stat survives save and reload), **`e2e:board-visible-only`** (30 panels, 6 on screen: exactly 6
+  range queries on open, only the newly visible ones on scrolling, none on scrolling back),
+  **`e2e:board-cancel`** (two window changes while three panels load: every superseded request
+  cancelled, three completed for the last window), **`e2e:board-open-in-explore`** (the link carries
+  the panel's query and the board's time; at a 5 m step `$__interval` and `$__rate_interval` are
+  `[5m]` and `[20m]`), **`e2e:board-refresh`** (Refresh now under an absolute window reruns both
+  panels, #101) and **`e2e:board-states`** (Partial data with its notices, a too-broad error with
+  Narrow, a parse error with line and column, and an empty panel that sends nothing).
+- **Board panels on the stub** (plan #64 A.3, A.5): `e2e:a11y-rooms` adds the states `b-1 edit,
+  PromQL editor`, `b-1 edit, metric picker open`, `b-1 edit, partial data popover` and `b-1 view,
+  panel error`; `e2e:keyboard-only-rooms` operates the panel menu's Duplicate, Remove and Open in
+  Explore, and in the panel editor the picker, the PromQL editor and its Run keys, Run query, and
+  Escape to Run query then to close; `e2e:lazy-load` checks that a board loads the editor chunk
+  once (its panels read the query shape through the language module); `e2e:csp-violations` opens
+  the board panel editor with the completion popup and the picker. On b-1 at 1440 × 900 only
+  Request rate and Error ratio are on screen: Request latency, below the fold, does not query
+  (T07-012), so the board specs wait for two drawn charts.
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
   shows `Data source: demo · Connected`, and the fake lists at least one completed

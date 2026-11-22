@@ -42,9 +42,13 @@ the keyboard focus into it (they are always reachable with Tab):
 
 | Tool | What it does |
 |---|---|
-| **Open in Explore: `<panel>`** | Opens Metrics (PromQL) or Logs (LogQL) with the same time range and the panel's query |
+| **Open in Explore: `<panel>`** | Opens Metrics (PromQL) or Logs (LogQL) with the same time range and the panel's query (see [Open in Explore](#open-in-explore)) |
 | **Full screen: `<panel>`** | Shows the panel over most of the window; **Close** or Escape returns to the board |
-| **Panel menu: `<panel>`** | **Edit panel** (opens Edit mode with the panel editor) and **Copy query** (copies the query to the clipboard) |
+| **Panel menu: `<panel>`** | **Edit panel** (opens Edit mode with the panel editor), **Duplicate**, **Remove**, **Open in Explore** and **Copy query** (copies the query to the clipboard) |
+
+**Duplicate** adds a copy of the panel ("`<title>` (copy)") in the first free place of the same
+grid, and **Remove** removes it. Both switch the board to Edit mode, because the change needs a
+save; focus moves to **Add panel** after a removal. While a save is in flight both are unavailable.
 
 Charts have a keyboard crosshair: focus the chart (**Crosshair: `<panel>`**) and use the arrow keys
 to read values ([Charts](../client/charts.md#accessibility-t01-007)).
@@ -86,22 +90,68 @@ Point at a chart's plot (the area with the lines or bars) and:
 - A trackpad pinch zooms time only, and **Ctrl** or **⌘** + wheel zooms both axes. A mouse whose
   wheel moves in fractional steps acts like a pinch.
 
-### What panels show today
+### PromQL panels
 
-Panel queries run when PromQL and LogQL support reaches the server (#64, #67). Until then:
+A PromQL panel runs its query against the board's time range and draws the result. What it sends,
+and what the server makes of it:
 
-- against the server, a PromQL panel shows "Runs when PromQL support lands" and a LogQL panel "Runs
-  when LogQL support lands";
-- panels with the **Logs** visualisation show "The log stream arrives with LogQL panels";
-- in the development build (`npm run dev`), panels show seeded synthetic data, the same on every
-  load.
+- **The query as you wrote it**, with the values of the board variables it uses (see
+  [the filter bar](#the-filter-bar)). The server puts the values in, expands the macros and sends
+  the result to the data source: `$__interval` is the panel's step (one point per pixel or two of
+  its width) and `$__rate_interval` the rate window for that step.
+- **A counter is drawn as a rate.** A bare counter such as `http_requests_total` is sent as
+  `rate(http_requests_total[<window>])` with the window for the panel's step, and the header reads
+  "in /s".
+- **Auto-vis.** With the visualisation **Auto**, histogram buckets (`sum by (le) (rate(…_bucket…))`)
+  draw as a heatmap, a scalar (for example `scalar(vector(1)) / 0`) as a stat, and everything else
+  as a line. A visualisation you choose in the panel editor is saved with the panel and always
+  wins; changing it redraws the result without asking the server again.
+
+What a panel shows:
+
+| State | What you see |
+|---|---|
+| no query | "Add a query" |
+| a variable it uses has no value | "Set a value for `$name` to run this panel" (no request is made) |
+| waiting for its first result | "Loading" |
+| fetching again (new time range, refresh, a resize) | the previous chart stays, and a thin bar moves along the top of the panel after 300 ms |
+| an error | "Something went wrong" and the error; a query error adds where it is, "(line 1, column 7)"; when the time range is too wide, **Narrow the time range** halves it around its centre |
+| partial data | a **Partial data** badge in the header (or **Warnings** when the result is complete but the data source warned); pressing it lists the notices and, for partial data, offers **Narrow the time range** |
+| a LogQL panel | "Runs when LogQL support lands" (LogQL panels come with #67) |
+| visualisation **Logs** | "The log stream arrives with LogQL panels" |
+| PromQL support failed to load | "PromQL support could not be loaded. Reload the page." |
+
+**Only panels on screen query.** A panel queries when it scrolls into view, and panels in a
+collapsed section do not query at all. A panel that has shown a result for the current time range
+shows it again at once when you scroll back to it. When the time range changes, the panels on
+screen query again (even for a range they showed before), and the others when they scroll in.
+
+**Refresh.** **Refresh now**, and each auto-refresh tick, reruns every panel on screen: under a
+relative range ("Last 1 hour") with the range moved to now, under an absolute range with the same
+range. A query still running is cancelled first, so each panel makes one request. Panels off
+screen refresh when they scroll in.
+
+In the development build (`npm run dev`) the panels run against the in-app stub, which plans the
+query as the server does and answers with seeded synthetic series.
+
+### Open in Explore
+
+**Open in Explore** (the header tool or the panel menu) opens Explore › Metrics with the board's
+time range and the panel's query **as the server ran it**: the variables filled in and the
+`$__interval` / `$__rate_interval` macros replaced by the panel's values, before the counter rate
+is added (Explore adds its own). It is available once the panel has its answer for the current
+time range: while the panel is loading, before its first result, or after an error that the server
+gave no query for, the tool and the menu item are unavailable. A LogQL panel opens Explore › Logs
+with its query as saved. A visualisation other than Auto is carried over.
 
 ### Saved time range
 
 A board can save a time range (for example the last 6 hours). It applies when you open the board
-**from a link in the app**: the board list, the sidebar's Starred and Recent links, or New board.
-It does not apply to a shared link, a bookmark or a reload: those keep the time in the address, so a
-link always shows what its sender saw.
+**from a link in the app** (the board list, the sidebar's Starred and Recent links, or New board),
+and when a link has no time range in it (`/t/<tenant>/board/<uid>` alone); a board without a saved
+range then opens on the last hour. It does not apply to a shared link, a bookmark or a reload that
+carries a time range: those keep the time in the address, so a link always shows what its sender
+saw. Panels wait until the board's time is set, so they never query the default range first.
 
 ### Sections
 
@@ -140,8 +190,9 @@ closing a dialog changes nothing.
 
 Neither variables nor filters are saved with the board. They are part of the address, so each
 change is a step in the browser history (Back undoes it), a reload keeps them, and **Copy link**
-carries them. Changing them never asks about unsaved changes. They do not change what the panels
-query yet: that comes with PromQL panels (#64).
+carries them. Changing them never asks about unsaved changes. A variable's value goes into the
+PromQL panels that use it: changing it reruns only those panels. Filters do not change the queries
+yet.
 
 The board's address (path and parameters) is limited to **4 096 bytes**. A value that would make it
 longer is refused: "This would make the board link too long. Remove a filter or use a shorter
@@ -234,18 +285,27 @@ query and the current time range. Under it are the fields:
 |---|---|
 | **Title** | at most 200 characters; empty shows "Untitled panel" |
 | **Query language** | PromQL or LogQL |
-| **Query** | the query text, at most 16 384 bytes |
-| **Visualisation** | Auto (a line chart for PromQL, bars for LogQL), Line, Bars, Heatmap, Stat or Logs |
+| **Query** | the query text, at most 16 384 bytes; for PromQL, the PromQL editor of Explore (below) |
+| **Visualisation** | **Auto (`<vis>`)**, naming what auto-vis picked for the current result (see [PromQL panels](#promql-panels)), Line, Bars, Heatmap, Stat or Logs |
 
-Every change applies to the board draft at once, and the preview follows it:
+For PromQL the **Query** field is the editor of Explore › Metrics, with highlighting, completion
+and the **Metric** picker above it ([Explore: metrics](explore-metrics.md)). What you type goes into
+the board draft at once, but the query **runs** only when you ask:
 
-- a title change shows at once;
-- a visualisation, query or language change shows the result at once if it was loaded before in
-  this page (for example, switching back to a visualisation you had already picked). Otherwise
-  the preview shows **Loading** until the result arrives, and "Something went wrong" if the load
-  fails. When you change it again before a result arrives, only the latest change is shown.
+- **Shift+Enter** or **⌘/Ctrl+Enter** in the editor, or **Run query**;
+- or when you leave the field (Tab, or a click elsewhere in the window) with a query that has not
+  run.
 
-The panel on the board behind follows the same draft, so it shows the same chart or message.
+Until then the field says "Press Shift+Enter or Run query to update the preview." A run shows
+**Loading** in the preview and on the panel behind until the result arrives (a query you ran
+before for the same time range shows at once); running the same query again reruns it, and a newer
+run cancels an older one. A query error underlines its place in the editor. **Escape** in the editor
+moves to **Run query** (closing the completion list first, if it is open); a second **Escape**
+closes the window. If the editor cannot load, the field is a plain text box and says so.
+
+Every other change applies to the draft at once, and the preview follows it: a title shows at
+once, and a visualisation change redraws the result without a new request. The panel on the board
+behind shows the same chart or message.
 
 **Remove panel** removes the panel from the board. **Done**, Escape or a click outside the window
 closes it; focus returns to the panel's menu button (to **Add panel** if the panel was removed).
@@ -286,6 +346,8 @@ but cannot be saved." Leaving the page still asks first.
 | Arrows, **Shift**+arrows | **Move or resize** button | Move, resize |
 | **[**, **]**, **-**, **=** | anywhere but text fields and menus | Step the time window back and forward, zoom out and in |
 | **Escape** | a chart's crosshair, while dragging on the chart | Cancel the drag: the chart returns to where it was |
+| **Shift+Enter**, **⌘/Ctrl+Enter** | the panel editor's PromQL query | Run the query |
+| **Escape** | the panel editor's PromQL query | Move to **Run query**; again: close the panel editor |
 
 ## Limits
 
@@ -294,12 +356,18 @@ but cannot be saved." Leaving the page still asks first.
   a 6 × 8 panel".
 - 12 columns; rows up to 10 000 (a panel's top row), panels up to 100 rows high.
 - At most 20 filters; values up to 200 characters; the board's address up to 4 096 bytes.
+- A panel's query text is at most 16 384 bytes when saved, and at most 200 panels have one. A
+  query over 128 KB is not sent ("This query is over 128 KB…"); the query the server would send,
+  with the variables and macros filled in and any rate applied, is at most 64 KiB, and the server
+  refuses a longer one ("The query to send … is over 64 KiB…"), with no request to the data source.
 - Recent shows five boards.
 - Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
   touch gestures, and other panels follow a zoom only when it ends.
-- Not yet: undo and history, moving panels between sections, reordering sections, variables and
-  filters changing the queries (#64), the anomaly strip of a collapsed section, folders and tags,
-  viewing or restoring old versions, and permissions (everyone can edit every board).
+- Not yet: undo and history, moving panels between sections, reordering sections, filters changing
+  the queries, variable definitions and value lists, LogQL panels (#67), several queries in one
+  panel, repeated panels, legends, thresholds and stat tiles (#64 Part B), the anomaly strip of a
+  collapsed section, folders and tags, viewing or restoring old versions, and permissions (everyone
+  can edit every board).
 
 ## Design references
 
@@ -310,4 +378,8 @@ SRF-016, SRF-017, SRF-020, SRF-026),
 [03 Interaction model](../../designs/product/03-interaction-model.md) §4.1 (INT-001, INT-002,
 INT-007, INT-008, INT-025 for 2D charts),
 [T08 DOM component kit](../../designs/technical/T08-dom-component-kit.md) (T08-008, T08-015, T08-017,
-T08-021, T08-024).
+T08-021, T08-024), [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-065, Table
+5-13), [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md) (T07-012,
+T07-013), [T09 Query editors](../../designs/technical/T09-query-editors.md) (T09-004, T09-010,
+T09-015), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
+server).
