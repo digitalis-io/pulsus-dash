@@ -50,8 +50,11 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
     const el = outer.current;
     if (el === null) return;
     const inner = document.createElement('div');
+    // A tab stop that delegates into the shadow root: a focus-containing dialog (the board panel
+    // editor, plan #64) walks the light DOM for tabbable elements and would otherwise skip the view.
+    inner.tabIndex = 0;
     el.append(inner);
-    const root = inner.attachShadow({ mode: 'open' });
+    const root = inner.attachShadow({ mode: 'open', delegatesFocus: true });
     const mount = document.createElement('div');
     root.append(mount);
     const source: PromSource = {
