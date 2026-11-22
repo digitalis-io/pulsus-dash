@@ -14,6 +14,7 @@ import {
   decodeVolume,
   type LogsResult,
 } from './decode';
+import { keyHash } from '../dev/keyHash';
 import { LOG_LEVELS } from './logFrame';
 
 type Json = Record<string, unknown>;
@@ -518,5 +519,32 @@ describe('decode planned (plan #112 §3.8)', () => {
     const missing = counter();
     delete missing['planned'];
     expect(decodeErrorOf(() => decodeRange(missing)).path).toBe('/planned');
+  });
+});
+
+describe('planned is PromQL-only until logs.Plan (#116, T06-029 note)', () => {
+  const frame = {
+    key: keyHash({ level: 'error' }),
+    labels: { level: 'error' },
+    timestamps: [0, 1000],
+    values: [1, null],
+  };
+  const completeness = { truncated: false, warnings: [], infos: [] };
+  const grid = { start: 0, end: 1000, step: 1000, frames: [frame], completeness };
+
+  it('decodes a LogQL series body without planned, and adds none', () => {
+    const r = decodeLogs({ kind: 'series', ...grid });
+    expect(r.kind).toBe('series');
+    expect('planned' in r).toBe(false);
+  });
+
+  it('decodes a log volume body without planned, and adds none', () => {
+    const r = decodeVolume(grid);
+    expect(r.series).toHaveLength(1);
+    expect('planned' in r).toBe(false);
+  });
+
+  it('still requires planned on a PromQL range body', () => {
+    expect(decodeErrorOf(() => decodeRange(grid)).path).toBe('/planned');
   });
 });
