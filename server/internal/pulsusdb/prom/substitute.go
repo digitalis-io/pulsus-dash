@@ -226,11 +226,59 @@ func quoteOf(st lexState) byte {
 	return 0
 }
 
+// memoKey is one reference name in one lexical state.
+type memoKey struct {
+	name string
+	st   lexState
+}
+
+// valueMemo is a scan's memo of each referenced value's length and row-7b check per state: a
+// text may repeat one reference many times, so each value is read once per state (review r1).
+// The maps are made on first use.
+type valueMemo struct {
+	lens map[memoKey]int
+	reps map[memoKey]bool
+}
+
+func (m *valueMemo) length(name, v string, st lexState) int {
+	q := quoteOf(st)
+	if q == 0 {
+		return len(v)
+	}
+	k := memoKey{name, st}
+	if n, ok := m.lens[k]; ok {
+		return n
+	}
+	if m.lens == nil {
+		m.lens = map[memoKey]int{}
+	}
+	n := quotedLen(v, q)
+	m.lens[k] = n
+	return n
+}
+
+func (m *valueMemo) representable(name, v string, st lexState) bool {
+	if st != stBQ && st != stComment {
+		return true
+	}
+	k := memoKey{name, st}
+	if r, ok := m.reps[k]; ok {
+		return r
+	}
+	if m.reps == nil {
+		m.reps = map[memoKey]bool{}
+	}
+	r := representable(v, st)
+	m.reps[k] = r
+	return r
+}
+
 // substitute scans raw once (plan #112 §4.2), by the lexical states of plan #118 §4.1. With build
 // false it only counts the output, so a text over the cap is refused before it is built; with
 // build true it builds the text and the segment map of expanded → raw.
 func substitute(raw string, vars map[string]string, m macroText, build bool) substitution {
 	var out substitution
+	var memo valueMemo
 	var b strings.Builder
 	if build {
 		b.Grow(len(raw))
@@ -273,15 +321,12 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				continue
 			}
 			// A macro's text is a duration: only a value is checked (row 7b).
-			if isVar && !representable(value, st) && !contains(out.unrepresentable, name) {
+			if isVar && !memo.representable(name, value, st) && !contains(out.unrepresentable, name) {
 				out.unrepresentable = append(out.unrepresentable, name)
 			}
 			flush(i)
 			q := quoteOf(st)
-			n := len(value)
-			if q != 0 {
-				n = quotedLen(value, q)
-			}
+			n := memo.length(name, value, st)
 			if build {
 				out.segs = append(out.segs, segment{sentFrom: out.size, sentLen: n, rawFrom: i, rawLen: end - i, kind: segInsert})
 				if q != 0 {
