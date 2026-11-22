@@ -82,7 +82,14 @@ export function PromQLEditor({ ref, className, ...p }: PromQLEditorProps): JSX.E
       },
     });
     view.current = v;
+    // Focus delegated to the host lands on the view's first focusable element, its scroller
+    // (`tabindex="-1"`): move it on to the text.
+    const onFocusIn = (e: Event): void => {
+      if (e.target === v.scrollDOM) v.focus();
+    };
+    root.addEventListener('focusin', onFocusIn);
     return () => {
+      root.removeEventListener('focusin', onFocusIn);
       view.current = null;
       v.destroy();
       inner.remove();
