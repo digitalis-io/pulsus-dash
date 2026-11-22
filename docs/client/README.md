@@ -363,11 +363,12 @@ become `null`. Anything else throws `DecodeError` with the JSON pointer of the f
 for example `/frames/0/values/3`. The output is fresh `Float64Array`s in `SeriesFrame`
 (`data/frames.ts`).
 
-`decodeLogs` decodes the log range body (plan #65 Part B §3.5). A `kind: 'series'` body is a LogQL
-metric result and is decoded by `decodeRangeFrame`: the grid, frames and completeness of
-`decodeRange` without `planned`, which is PromQL-only until `logs.Plan` lands (T06-029, #116).
-`decodeRange` is `decodeRangeFrame` plus the required `planned`. A `kind: 'streams'` body becomes a columnar
-`LogFrame` (`data/logFrame.ts`):
+`decodeLogs` decodes the log range body (plan #65 Part B §3.5). Both kinds require `planned`, the
+LogQL plan the server sent, decoded by `decodeLogqlPlanned` (`query`, `expanded`, `bytes`, `stepMs`;
+T06-029, #116). A `kind: 'series'` body is a LogQL metric result: `planned` and the grid, frames
+and completeness of `decodeRangeFrame`. `decodeRange` is `decodeRangeFrame` plus the required
+PromQL `planned`, and `decodeVolume` the LogQL `planned` plus level frames. A `kind: 'streams'` body
+becomes a columnar `LogFrame` (`data/logFrame.ts`):
 
 | Column | Type | Content |
 |---|---|---|
