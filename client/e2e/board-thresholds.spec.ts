@@ -164,6 +164,8 @@ test.describe('e2e:board-thresholds (fake)', () => {
 
     // Legend Hidden and a threshold edit survive save and reload.
     await page.getByRole('button', { name: 'Edit board' }).click();
+    // The Edit grid is a lazy chunk; its panels replace the View grid's once it has loaded.
+    await expect(page.locator('.react-grid-item')).toHaveCount(2);
     await page.getByRole('button', { name: 'Panel menu: Memory' }).click();
     await page.getByRole('menuitem', { name: 'Edit panel' }).click();
     const editor = page.getByRole('dialog', { name: 'Edit panel' });
@@ -208,6 +210,8 @@ test.describe('e2e:board-thresholds (fake)', () => {
     await page.goto(boardUrl(uid));
     await expect(panel(page, 'Memory').locator('[data-frame-ready="true"]')).toHaveCount(1);
     await page.getByRole('button', { name: 'Edit board' }).click();
+    // The Edit grid is a lazy chunk; its panels replace the View grid's once it has loaded.
+    await expect(page.locator('.react-grid-item')).toHaveCount(2);
     await page.getByRole('button', { name: 'Panel menu: Memory' }).click();
     await page.getByRole('menuitem', { name: 'Edit panel' }).click();
     const editor = page.getByRole('dialog', { name: 'Edit panel' });
