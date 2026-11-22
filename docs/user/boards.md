@@ -49,6 +49,43 @@ the keyboard focus into it (they are always reachable with Tab):
 Charts have a keyboard crosshair: focus the chart (**Crosshair: `<panel>`**) and use the arrow keys
 to read values ([Charts](../client/charts.md#accessibility-t01-007)).
 
+### Zoom and pan a chart
+
+Point at a chart's plot (the area with the lines or bars) and:
+
+| Do this | What happens |
+|---|---|
+| Scroll the wheel, or pinch on a trackpad | Zoom the time range in or out around the pointer |
+| **Shift** + wheel | Zoom the value (Y) axis around the pointer |
+| **Ctrl** + wheel, or **⌘** + wheel | Zoom both axes around the pointer |
+| Swipe sideways with two fingers | Move the time range earlier or later |
+| Drag (left or middle button) | Move the time range; the chart follows the pointer |
+| Right drag, or **Alt** + drag | Zoom into the time span you dragged across |
+| Drag on the time axis (below the plot) | Move the time range |
+| Drag on the value axis (left of the plot) | Move the value range |
+| Double-click the plot | Zoom out: twice the time range, around its centre |
+| Double-click the value axis | Return the value axis to automatic |
+| **Reset Y axis** (top left of the plot) | Return the value axis to automatic |
+
+- **Time changes apply to the whole board.** When you stop scrolling (after about a third of a
+  second) or let go of the mouse, the new time range is set for every panel and the time range
+  picker, and it goes into the browser history: **Back** returns to the previous range.
+- **The value axis is per chart.** A zoomed or moved value axis stays on that chart until you reset
+  it. It is not in the address, so a reload, a shared link, or changing the panel's visualisation
+  or unit starts it automatic again (and it stays automatic if you change back). While it is fixed,
+  the chart's description ends "Y axis fixed at … to …".
+- **The page still scrolls.** The wheel zooms a chart only over its plot. Over the axes, titles, gaps
+  between panels and the rest of the page it scrolls the page, and a scroll that is already going
+  keeps scrolling when it passes over a chart.
+- **No browser menu on a plot.** Right-clicking or right-dragging on a plot opens no browser menu;
+  elsewhere right-click works as usual.
+- **Short labels while you zoom.** While you work a chart, a value label that would not fit is shown
+  in short form (`15µ`, `-1.23k`), and a very long one inside the chart on a small background. On a
+  chart too narrow for either form, that label is left out (its gridline stays). The full labels
+  return when the pointer leaves the chart.
+- A trackpad pinch zooms time only, and **Ctrl** or **⌘** + wheel zooms both axes. A mouse whose
+  wheel moves in fractional steps acts like a pinch.
+
 ### What panels show today
 
 Panel queries run when PromQL and LogQL support reaches the server (#64, #67). Until then:
@@ -248,6 +285,7 @@ but cannot be saved." Leaving the page still asks first.
 | **⌘S** / **Ctrl+S** | a board in Edit mode, anywhere | Save |
 | Arrows, **Shift**+arrows | **Move or resize** button | Move, resize |
 | **[**, **]**, **-**, **=** | anywhere but text fields and menus | Step the time window back and forward, zoom out and in |
+| **Escape** | a chart's crosshair, while dragging on the chart | Cancel the drag: the chart returns to where it was |
 
 ## Limits
 
@@ -257,6 +295,8 @@ but cannot be saved." Leaving the page still asks first.
 - 12 columns; rows up to 10 000 (a panel's top row), panels up to 100 rows high.
 - At most 20 filters; values up to 200 characters; the board's address up to 4 096 bytes.
 - Recent shows five boards.
+- Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
+  touch gestures, and other panels follow a zoom only when it ends.
 - Not yet: undo and history, moving panels between sections, reordering sections, variables and
   filters changing the queries (#64), the anomaly strip of a collapsed section, folders and tags,
   viewing or restoring old versions, and permissions (everyone can edit every board).
@@ -267,5 +307,7 @@ but cannot be saved." Leaving the page still asks first.
 IA-006, IA-021, IA-022, IA-023), [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014,
 SRF-016, SRF-017, SRF-020, SRF-026),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-017),
+[03 Interaction model](../../designs/product/03-interaction-model.md) §4.1 (INT-001, INT-002,
+INT-007, INT-008, INT-025 for 2D charts),
 [T08 DOM component kit](../../designs/technical/T08-dom-component-kit.md) (T08-008, T08-015, T08-017,
 T08-021, T08-024).
