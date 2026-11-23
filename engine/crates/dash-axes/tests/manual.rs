@@ -41,3 +41,33 @@ fn manual_axis_uses_the_range() {
         assert!((ax.y(hi) - ax.plot.y).abs() <= 1e-9, "{r:?}: {}", ax.y(hi));
     }
 }
+
+/// #97 (T02-011): a manual range whose nice ticks round to a duplicate falls back to the
+/// height-aware extreme ticks. The manual path is used because the auto path widens the lower end
+/// to min(0, data_min).
+#[test]
+fn manual_axis_collision_falls_back() {
+    assert_eq!(layout_plot(VisKind::Line, 1118.0, 234.0, 0.0).height, 200.0);
+    let ax = value_axis(
+        VisKind::Line,
+        1118.0,
+        234.0,
+        0.0,
+        30.0,
+        Some(Range64 {
+            lo: 1.0,
+            hi: 1.0 + 1e-11,
+        }),
+        &Unit::None,
+        Band::Measure,
+    );
+    assert!(ax.manual);
+    assert_eq!(
+        ax.domain,
+        Range64 {
+            lo: 1.0,
+            hi: 1.00000000001
+        }
+    );
+    assert_eq!(ax.ticks, [1.0, 1.000000000005, 1.00000000001]);
+}

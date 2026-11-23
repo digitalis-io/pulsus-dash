@@ -375,7 +375,7 @@ test.describe('e2e:a11y-rooms gallery', () => {
   test('gallery canvases expose their summary', async ({ page }) => {
     await open(page, GALLERY_URL);
     await galleryReady(page);
-    await expect(page.locator('canvas[role="img"]')).toHaveCount(9);
+    await expect(page.locator('canvas[role="img"]')).toHaveCount(10);
     const label = (id: string) => frame(page, id).locator('canvas').getAttribute('aria-label');
     const range = '12:00 – 13:00 GMT';
     expect(await label('line-50')).toMatch(

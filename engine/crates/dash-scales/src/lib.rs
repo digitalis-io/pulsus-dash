@@ -139,7 +139,8 @@ pub fn value_ticks(
 
 /// Ticks for ranges `value_ticks` cannot handle (A.3.2): `[lo, lo/2 + hi/2, hi]`; equal ends are
 /// first widened toward zero, so the axis always has `lo < hi`.
-pub fn extreme_ticks(lo: f64, hi: f64) -> ValueTicks {
+pub fn extreme_ticks(lo: f64, hi: f64, height_px: f64, label_height_px: f64) -> ValueTicks {
+    let _ = (height_px, label_height_px);
     let (lo, hi) = if lo < hi {
         (lo, hi)
     } else if lo > 0.0 {
@@ -155,6 +156,27 @@ pub fn extreme_ticks(lo: f64, hi: f64) -> ValueTicks {
         max: hi,
         ticks: vec![lo, m, hi],
     }
+}
+
+/// Relative slack on the label gap (#97): absorbs the rounding of `y0 − y1` only.
+pub const GAP_TOLERANCE: f64 = 1e-9;
+
+/// Where `v` sits on [min, max] as a fraction from min (#97 stub).
+pub fn value_fraction(v: f64, min: f64, max: f64) -> f64 {
+    let _ = (v, min, max);
+    unimplemented!("#97: not implemented")
+}
+
+/// The renderer's y of `v` (#97 stub).
+pub fn tick_y(v: f64, min: f64, max: f64, top: f64, height: f64) -> f64 {
+    let _ = (v, min, max, top, height);
+    unimplemented!("#97: not implemented")
+}
+
+/// True when every adjacent tick pair is one label gap apart on the drawn y (#97 stub).
+pub fn ticks_fit(ticks: &[f64], min: f64, max: f64, height_px: f64, label_height_px: f64) -> bool {
+    let _ = (ticks, min, max, height_px, label_height_px);
+    unimplemented!("#97: not implemented")
 }
 
 /// Column of a sample, the interim formula: clamp(floor((t − from)/(to − from) · n), 0, n − 1),

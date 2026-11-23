@@ -5,6 +5,66 @@ export interface ValueTicks {
   readonly ticks: readonly number[];
 }
 
+/** The most step-search iterations before giving up (= dash-scales `MAX_STEPS`). */
+export const MAX_TICK_STEPS = 64;
+/** The largest end magnitude the nice search accepts (= dash-scales). */
+export const NICE_MAX_ABS = 1e300;
+/** The most tick intervals the nice search emits (= dash-scales). */
+export const MAX_TICK_COUNT = 1e4;
+/** Relative slack on the label gap: absorbs the rounding of y0 − y1 only (#97 plan §4.3). */
+export const GAP_TOLERANCE = 1e-9;
+
+const notImplemented = (...args: unknown[]): never => {
+  throw new Error(`#97: not implemented (${String(args.length)} args)`);
+};
+
+/** The end shown when one label fits: the smaller |v|; on a tie, lo. */
+export function nearerZero(lo: number, hi: number): number {
+  return notImplemented(lo, hi);
+}
+
+/** Where v sits on [min, max] as a fraction from min (draw.ts's y mapping). */
+export function valueFraction(v: number, min: number, max: number): number {
+  return notImplemented(v, min, max);
+}
+
+/** The renderer's y of v (draw.ts `valueAxis`). */
+export function tickY(v: number, min: number, max: number, top: number, height: number): number {
+  return notImplemented(v, min, max, top, height);
+}
+
+/** True when every adjacent pair of ticks is at least one label gap apart on the drawn y. */
+export function ticksFit(
+  ticks: readonly number[],
+  min: number,
+  max: number,
+  heightPx: number,
+  labelHeightPx: number,
+): boolean {
+  return notImplemented(ticks, min, max, heightPx, labelHeightPx);
+}
+
+/** The bounded nice-step search; null when it gives up. */
+export function niceValueTicks(
+  dataMin: number,
+  dataMax: number,
+  heightPx: number,
+  labelHeightPx: number,
+  base: 1000 | 1024,
+): ValueTicks | null {
+  return notImplemented(dataMin, dataMax, heightPx, labelHeightPx, base);
+}
+
+/** The height-aware fallback ticks. */
+export function extremeTicks(
+  lo: number,
+  hi: number,
+  heightPx: number,
+  labelHeightPx: number,
+): ValueTicks {
+  return notImplemented(lo, hi, heightPx, labelHeightPx);
+}
+
 /** The next nice step: 1 → 2 → 5 → 10. */
 function nextNice(step: number): number {
   const k = Math.floor(Math.log10(step) + 1e-9);
