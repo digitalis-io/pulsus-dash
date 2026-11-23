@@ -401,6 +401,7 @@ export const messages = {
   'gallery.stat': 'p99 latency',
   'gallery.lineThresholds': 'Request latency with an SLO threshold',
   'gallery.statSparkline': 'p99 latency with a sparkline',
+  'gallery.lineExtreme': 'Values near the largest finite number',
 
   'chart.kind.line': 'line chart',
   'chart.kind.bars': 'stacked bar chart',
