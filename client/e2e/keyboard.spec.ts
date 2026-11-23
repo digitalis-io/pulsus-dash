@@ -55,6 +55,9 @@ declare global {
 }
 
 test.describe('e2e:a11y-rooms keyboard', () => {
+  // No retry: the traversal is deterministic, so a retry only hides a real failure, and a second
+  // run of this ~32-minute spec does not fit the e2e job's 60-minute timeout.
+  test.describe.configure({ retries: 0 });
   test('every control and state by keyboard (L1–L32)', async ({ page }) => {
     test.setTimeout(3_600_000);
     await page.addInitScript(() => {
@@ -534,7 +537,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
 
     await test.step('L22 Chart frames: the crosshair slider of every chart', async () => {
       await s.goto(GALLERY_URL);
-      await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(7);
+      await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(9);
       const MIN = 60_000;
       const lineStep = Math.floor((GALLERY_TO - GALLERY_FROM) / 1_440);
       // Title, last sample or bucket start, the second one, and the rows at a sample.
@@ -555,6 +558,13 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         ['Pod memory, 600 series', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 500],
         ['Request latency distribution', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 12],
         ['Log volume by level', GALLERY_FROM + 59 * MIN, GALLERY_FROM + MIN, 5],
+        // #64 Part B: the line chart with threshold lines (the stat sparkline has no crosshair).
+        [
+          'Request latency with an SLO threshold',
+          GALLERY_FROM + 1_439 * lineStep,
+          GALLERY_FROM + lineStep,
+          3,
+        ],
       ];
       for (const [title, last, second, n] of charts) {
         const name = `Crosshair: ${title}`;

@@ -74,7 +74,7 @@ function outcome(r: RangeResult, facts: { rateApplied?: boolean } = {}) {
 
 describe('panelView', () => {
   it('blocked states', () => {
-    const msg = (run: Partial<PanelRun>) => panelView({ ...BASE, ...run }, 'auto', 'T');
+    const msg = (run: Partial<PanelRun>) => panelView({ ...BASE, ...run }, { kind: 'auto' }, 'T');
     expect(msg({ blocked: 'unsupported' })).toEqual({
       kind: 'message',
       state: 'unsupported',
@@ -118,7 +118,7 @@ describe('panelView', () => {
           error: e,
           diagnostics: [{ from: 2, to: 3, message: 'bad', positionKnown: true }],
         },
-        'auto',
+        { kind: 'auto' },
         'T',
       ),
     ).toEqual({ kind: 'error', text: 'bad', detail: 'bad (line 1, column 3)', narrow: false });
@@ -129,24 +129,32 @@ describe('panelView', () => {
         error: e,
         diagnostics: [{ from: 4, to: 5, message: 'bad', positionKnown: true }],
       },
-      'auto',
+      { kind: 'auto' },
       'T',
     );
     // The diagnostics index the text the run had.
     expect(multi).toMatchObject({ kind: 'error', detail: 'bad (line 2, column 2)' });
-    const broad = panelView({ ...BASE, error: new ApiError('tooBroad', 'wide') }, 'auto', 'T');
+    const broad = panelView(
+      { ...BASE, error: new ApiError('tooBroad', 'wide') },
+      { kind: 'auto' },
+      'T',
+    );
     expect(broad).toMatchObject({ kind: 'error', text: 'wide', narrow: true });
-    expect(panelView(BASE, 'auto', 'T')).toEqual({ kind: 'loading' });
+    expect(panelView(BASE, { kind: 'auto' }, 'T')).toEqual({ kind: 'loading' });
 
-    const line = panelView({ ...BASE, outcome: outcome(R_A) }, 'auto', 'T');
+    const line = panelView({ ...BASE, outcome: outcome(R_A) }, { kind: 'auto' }, 'T');
     expect(line).toMatchObject({ kind: 'frame', vis: 'line', spec: { kind: 'line', title: 'T' } });
-    const heat = panelView({ ...BASE, outcome: outcome(R_H1) }, 'auto', 'T');
+    const heat = panelView({ ...BASE, outcome: outcome(R_H1) }, { kind: 'auto' }, 'T');
     expect(heat).toMatchObject({ kind: 'frame', vis: 'heatmap' });
-    const stat = panelView({ ...BASE, outcome: outcome(R_A) }, 'stat', 'T');
+    const stat = panelView({ ...BASE, outcome: outcome(R_A) }, { kind: 'stat' }, 'T');
     expect(stat).toMatchObject({ kind: 'frame', vis: 'stat' });
-    const rate = panelView({ ...BASE, outcome: outcome(R_A, { rateApplied: true }) }, 'auto', 'T');
+    const rate = panelView(
+      { ...BASE, outcome: outcome(R_A, { rateApplied: true }) },
+      { kind: 'auto' },
+      'T',
+    );
     expect(rate).toMatchObject({ kind: 'frame', spec: { unit: { kind: 'suffix', suffix: '/s' } } });
-    const noBuckets = panelView({ ...BASE, outcome: outcome(R_A) }, 'heatmap', 'T');
+    const noBuckets = panelView({ ...BASE, outcome: outcome(R_A) }, { kind: 'heatmap' }, 'T');
     expect(noBuckets).toMatchObject({ kind: 'message', state: 'noBuckets' });
     const str = panelView(
       {
@@ -164,7 +172,7 @@ describe('panelView', () => {
           }),
         },
       },
-      'auto',
+      { kind: 'auto' },
       'T',
     );
     expect(str).toEqual({ kind: 'message', state: 'string', text: 'String result: hi' });
@@ -182,5 +190,21 @@ describe('panelView', () => {
     );
     expect(positionText('x', [{ from: 0, to: 1, message: 'm', positionKnown: false }])).toBe('');
     expect(positionText('x', [])).toBe('');
+  });
+});
+
+describe('panelView thresholds (#64 Part B §4.1)', () => {
+  it('heatmap ignores thresholds', () => {
+    const vis = {
+      kind: 'heatmap' as const,
+      thresholds: {
+        direction: 'above' as const,
+        steps: [{ value: 2, state: 'degraded' as const, label: '' }],
+      },
+    };
+    const view = panelView({ ...BASE, outcome: outcome(R_H1) }, vis, 'T');
+    expect(view).toMatchObject({ kind: 'frame', vis: 'heatmap' });
+    if (view.kind !== 'frame') throw new Error('not a frame');
+    expect('thresholds' in view.spec).toBe(false);
   });
 });

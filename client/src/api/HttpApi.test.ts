@@ -380,7 +380,7 @@ function boardBody(etag: string) {
     updated_at: '2026-11-19T12:00:00Z',
     updated_by: AUTHOR,
     etag,
-    schema_version: 1,
+    schema_version: 2,
     spec: SPEC,
   };
 }

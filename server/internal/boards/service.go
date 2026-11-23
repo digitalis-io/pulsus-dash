@@ -33,17 +33,22 @@ type Service struct {
 	db     *store.Db
 	now    func() time.Time
 	newUID func() (string, error)
+	// schemaMax is the newest board schema version the service reads: spec.BoardSchemaVersion,
+	// or 1 in the test that proves the previous release's refusal of a v2 row (§4.7).
+	schemaMax int64
 }
 
 var _ core.Boards = (*Service)(nil)
 
 // New returns the service over db (the pulsus_app pool).
-func New(db *store.Db) *Service { return &Service{db: db, now: time.Now, newUID: NewUID} }
+func New(db *store.Db) *Service {
+	return &Service{db: db, now: time.Now, newUID: NewUID, schemaMax: spec.BoardSchemaVersion}
+}
 
 // toBoard converts a head into the API's board: the spec upcast to the current version and in
 // canonical form (T11 §4.0: upcast on read, persisted on the next write).
-func toBoard(h store.BoardHead) (core.Board, error) {
-	b, err := spec.DecodeBoard(h.Spec, h.SchemaVersion)
+func (s *Service) toBoard(h store.BoardHead) (core.Board, error) {
+	b, err := spec.DecodeBoardUpTo(h.Spec, h.SchemaVersion, s.schemaMax)
 	if err != nil {
 		return core.Board{}, err
 	}
@@ -88,7 +93,7 @@ func (s *Service) GetBoard(ctx context.Context, rc *core.RequestCtx, uid string)
 		if err != nil {
 			return err
 		}
-		b, err = toBoard(h)
+		b, err = s.toBoard(h)
 		return err
 	})
 	return b, err
@@ -153,7 +158,7 @@ func (s *Service) CreateBoard(ctx context.Context, rc *core.RequestCtx, raw []by
 		if err != nil {
 			return err
 		}
-		out, err = toBoard(h)
+		out, err = s.toBoard(h)
 		return err
 	})
 	if err != nil {
@@ -186,18 +191,18 @@ func (s *Service) SaveBoard(ctx context.Context, rc *core.RequestCtx, uid string
 			return err
 		}
 		if etag != ifMatch {
-			cur, err := toBoard(head)
+			cur, err := s.toBoard(head)
 			if err != nil {
 				return err
 			}
 			return &core.ConflictError{Current: cur}
 		}
-		old, err := spec.DecodeBoard(head.Spec, head.SchemaVersion)
+		old, err := spec.DecodeBoardUpTo(head.Spec, head.SchemaVersion, s.schemaMax)
 		if err != nil {
 			return err
 		}
 		if bytes.Equal(hash[:], head.ContentHash) {
-			res.Board, err = toBoard(head)
+			res.Board, err = s.toBoard(head)
 			return err
 		}
 		oldCanon, err := spec.Canonical(old)
@@ -227,7 +232,7 @@ func (s *Service) SaveBoard(ctx context.Context, rc *core.RequestCtx, uid string
 		if err != nil {
 			return err
 		}
-		res.Board, err = toBoard(h)
+		res.Board, err = s.toBoard(h)
 		res.Changed = true
 		return err
 	})
@@ -249,7 +254,7 @@ func (s *Service) DeleteBoard(ctx context.Context, rc *core.RequestCtx, uid stri
 			if err != nil {
 				return err
 			}
-			cur, err := toBoard(head)
+			cur, err := s.toBoard(head)
 			if err != nil {
 				return err
 			}

@@ -1,5 +1,5 @@
 /**
- * Board spec v1 on the client (plan #61 Part B §3.5): the server's validator
+ * Board spec v2 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2): the server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
  *
@@ -8,6 +8,7 @@
  * only ever sends `JSON.stringify` output).
  */
 import type { BoardSpec, FieldError, GridPos, PanelSpec } from '../api/types';
+import { MAX_THRESHOLD_STEPS } from '../vis/thresholds';
 import { fits, overlaps } from './layout';
 
 export const MAX_PANELS = 200;
@@ -16,16 +17,26 @@ export const MAX_TITLE = 200;
 export const MAX_QUERY_BYTES = 16384;
 /** At most this many field errors per spec, in document order. */
 export const MAX_FIELD_ERRORS = 50;
+/**
+ * A threshold value is 0, or finite with `MIN_THRESHOLD_ABS <= |v| <= MAX_THRESHOLD_ABS`: far
+ * inside the range where the value-axis ticks are safe at both ends (#97). The Go
+ * `minThresholdAbs` and `maxThresholdAbs` have the same values.
+ */
+export const MIN_THRESHOLD_ABS = 1e-9;
+export const MAX_THRESHOLD_ABS = 1e15;
 
 const QUERY_LANGS: readonly string[] = ['promql', 'logql'];
 const VIS_KINDS: readonly string[] = ['auto', 'line', 'bars', 'heatmap', 'stat', 'logs'];
 const TIME_PATTERN =
   /^(now|now\/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$/;
 const ID_PATTERN = /^[a-z0-9-]{1,40}$/;
+const DIRECTIONS: readonly string[] = ['above', 'below'];
+const STEP_STATES: readonly string[] = ['watch', 'degraded', 'failing'];
+const LEGEND_MODES: readonly string[] = ['table', 'hidden'];
 /** Only Go's `unicode.IsSpace` characters (what the server's `strings.TrimSpace` trims). */
 const BLANK = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
 
-type Kind = 'string' | 'bool' | 'int' | 'array' | 'object';
+type Kind = 'string' | 'bool' | 'int' | 'number' | 'array' | 'object';
 
 interface ValueType {
   kind: Kind;
@@ -42,8 +53,20 @@ interface Field {
 const tString: ValueType = { kind: 'string' };
 const tBool: ValueType = { kind: 'bool' };
 const tInt: ValueType = { kind: 'int' };
+const tNumber: ValueType = { kind: 'number' };
 const obj = (shape: readonly Field[]): ValueType => ({ kind: 'object', shape });
 const req = (name: string, type: ValueType): Field => ({ name, required: true, type });
+const opt = (name: string, type: ValueType): Field => ({ name, required: false, type });
+
+const stepShape = [req('value', tNumber), req('state', tString), req('label', tString)];
+const visShape = [
+  req('kind', tString),
+  opt(
+    'thresholds',
+    obj([req('direction', tString), req('steps', { kind: 'array', elem: obj(stepShape) })]),
+  ),
+  opt('legend', obj([req('mode', tString)])),
+];
 
 const gridShape = [req('x', tInt), req('y', tInt), req('w', tInt), req('h', tInt)];
 const panelShape = [
@@ -51,7 +74,7 @@ const panelShape = [
   req('title', tString),
   req('grid', obj(gridShape)),
   req('query', obj([req('lang', tString), req('text', tString)])),
-  req('vis', obj([req('kind', tString)])),
+  req('vis', obj(visShape)),
 ];
 const tPanels: ValueType = { kind: 'array', elem: obj(panelShape) };
 const sectionShape = [
@@ -64,7 +87,7 @@ const tBoard = obj([
   req('title', tString),
   req('panels', tPanels),
   req('sections', { kind: 'array', elem: obj(sectionShape) }),
-  { name: 'time', required: false, type: obj([req('from', tString), req('to', tString)]) },
+  opt('time', obj([req('from', tString), req('to', tString)])),
 ]);
 
 /** Collects field errors in document order, at most `MAX_FIELD_ERRORS`. */
@@ -104,6 +127,10 @@ function checkShape(c: Collector, pointer: string, value: unknown, t: ValueType)
       return;
     case 'int':
       if (typeof value !== 'number' || !isInt32(value)) c.add(pointer, 'board.json.type');
+      return;
+    case 'number':
+      // The editor's draft can hold NaN (plan #64 Part B §4.6); JSON has no such number.
+      if (typeof value !== 'number' || !Number.isFinite(value)) c.add(pointer, 'board.json.type');
       return;
     case 'array': {
       if (!Array.isArray(value)) {
@@ -147,6 +174,12 @@ function utf8Bytes(s: string): number {
   return new TextEncoder().encode(s).length;
 }
 
+/** 0 (-0 included), or `MIN_THRESHOLD_ABS <= |v| <= MAX_THRESHOLD_ABS`; v is finite. */
+export function inThresholdRange(v: number): boolean {
+  const a = Math.abs(v);
+  return v === 0 || (a >= MIN_THRESHOLD_ABS && a <= MAX_THRESHOLD_ABS);
+}
+
 /** The semantic pass (`validate.go`), on a spec whose shape is clean. */
 function checkRules(c: Collector, b: BoardSpec): void {
   const ids = new Set<string>();
@@ -188,7 +221,35 @@ function checkRules(c: Collector, b: BoardSpec): void {
         utf8Bytes(s) > MAX_QUERY_BYTES ? 'board.query.text.tooLong' : null,
       );
       str(`${pp}/vis/kind`, p.vis.kind, oneOf(VIS_KINDS, 'board.vis.kind.invalid'));
+      vis(`${pp}/vis`, p.vis);
     });
+  };
+  // Thresholds and legend (`validate.go` `vis`), after vis.kind; every step is checked, even past 8.
+  const vis = (pointer: string, v: PanelSpec['vis']): void => {
+    const th = v.thresholds;
+    if (th !== undefined) {
+      const tp = `${pointer}/thresholds`;
+      str(`${tp}/direction`, th.direction, oneOf(DIRECTIONS, 'board.thresholds.direction.invalid'));
+      if (th.steps.length === 0 || th.steps.length > MAX_THRESHOLD_STEPS) {
+        c.add(`${tp}/steps`, 'board.thresholds.steps.count');
+      }
+      th.steps.forEach((s, k) => {
+        const sp = `${tp}/steps/${String(k)}`;
+        if (!inThresholdRange(s.value)) c.add(`${sp}/value`, 'board.thresholds.value.range');
+        else if (th.steps.slice(0, k).some((e) => e.value === s.value)) {
+          c.add(`${sp}/value`, 'board.thresholds.value.duplicate');
+        }
+        str(`${sp}/state`, s.state, oneOf(STEP_STATES, 'board.thresholds.state.invalid'));
+        str(`${sp}/label`, s.label, maxRunes('board.thresholds.label.tooLong'));
+      });
+    }
+    if (v.legend !== undefined) {
+      str(
+        `${pointer}/legend/mode`,
+        v.legend.mode,
+        oneOf(LEGEND_MODES, 'board.legend.mode.invalid'),
+      );
+    }
   };
 
   str('/title', b.title, (s) =>

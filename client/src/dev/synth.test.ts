@@ -23,6 +23,8 @@ describe('unit:synth', () => {
       'heatmap',
       'bars',
       'stat',
+      'line-thresholds',
+      'stat-sparkline',
     ]);
     expect(b).toEqual(a);
     for (const [i, e] of a.entries()) {

@@ -10,6 +10,10 @@
  * range is this component's pin, passed back to the engine in the spec (`valueRange`) until it is
  * reset (Reset Y axis, a fit commit), the kind or unit changes, or the chart unmounts.
  *
+ * Threshold labels (#64 Part B §3.9.1, ADR-0022): every label the engine truncated or gathered into
+ * an overflow chip gets a focusable target over the canvas, at least 24 × 24 px (T08-010), whose
+ * tooltip and accessible name are the full text; the summary label lists every threshold.
+ *
  * Readiness (#90, ADR-0019): the caller's `pending` shows over the frame until the engine reports,
  * with `drawn`, a complete draw at the size last applied; every resize, kind change and new frame
  * resets it. A new `fill` frame is sized at once from the caller's `sizeMemo` (the host's last
@@ -26,12 +30,14 @@ import {
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { Focusable } from 'react-aria-components';
 import { emptyFrameData, validateFrameData } from '../data/frames';
 import type {
   ChartFrame as EngineFrame,
   FrameData,
   FrameSummary,
   HoverEvent,
+  PlotRect,
   ValueRange,
   VisSpec,
 } from '../engine/api';
@@ -40,10 +46,11 @@ import { ChartEngineContext } from '../engine/index';
 import { t } from '../i18n/t';
 import { Button } from '../kit/Button';
 import { cx } from '../kit/cx';
+import { Tooltip } from '../kit/Tooltip';
 import { printTimeExpr } from '../state/timeExpr';
 import { useTimeZone } from '../state/timeZone';
 import { useTimeContext } from '../state/useTimeContext';
-import { space } from '../styles/tokens';
+import { size, space } from '../styles/tokens';
 import { useResolvedTheme } from '../theme/useResolvedTheme';
 import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
@@ -78,6 +85,51 @@ interface Pin {
 }
 
 const px = (n: number): string => `${String(n)}px`;
+
+/**
+ * The focusable target over a clipped threshold label: its tooltip and accessible name are the
+ * full text. Placed through CSSOM (no inline styles: CSP style-src, T01-010).
+ */
+function ThresholdHit({ box, text }: { box: PlotRect; text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const r = hitRect(box);
+    el.style.left = px(r.x);
+    el.style.top = px(r.y);
+    el.style.width = px(r.width);
+    el.style.height = px(r.height);
+  }, [box]);
+  return (
+    <Tooltip label={text}>
+      <Focusable>
+        <span
+          ref={ref}
+          // A clipped label's full text, by keyboard (T08-010).
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+          tabIndex={0}
+          role="img"
+          aria-label={text}
+          data-threshold-hit=""
+          className={cx(styles['thresholdHit'])}
+        />
+      </Focusable>
+    </Tooltip>
+  );
+}
+
+/** A threshold label's box grown to at least the minimum target size about its centre (T08-010). */
+function hitRect(b: PlotRect): PlotRect {
+  const width = Math.max(b.width, size['target-min']);
+  const height = Math.max(b.height, size['target-min']);
+  return {
+    x: b.x + b.width / 2 - width / 2,
+    y: b.y + b.height / 2 - height / 2,
+    width,
+    height,
+  };
+}
 
 /** Diagnostic frame ids (`f1`, `f2`, …): `data-frame-id` and the `chart-draw` measures' `frame`. */
 let frameSeq = 0;
@@ -386,6 +438,12 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
           timeZone={tz}
         />
       )}
+      {!isStat &&
+        (summary?.thresholdLabels ?? [])
+          .filter((b) => b.clipped)
+          .map((b) => (
+            <ThresholdHit key={`${String(b.box.x)},${String(b.box.y)}`} box={b.box} text={b.text} />
+          ))}
       {valueRange !== null && (
         // The kit Button takes no ref, so its wrapper is the placed element.
         <div ref={resetRef} className={cx(styles['resetValue'])}>

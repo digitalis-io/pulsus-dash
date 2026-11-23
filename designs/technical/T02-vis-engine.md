@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-23 |
+| **Version** | 1.10-rc · 2026-11-23 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -442,8 +442,8 @@ These make charts feel professional, and they take longer than the shaders.
 | **Colour scales** (`dash-colour`) | Perceptual ramps (OKLab interpolation), categorical palettes stable per series key, threshold scales, CVD-safe sets (T02-004, T02-005) |
 | **Decimation and binning** | §4.4 |
 | **Style options** | Interpolation (linear, smooth, step-before, step-after); null handling (gaps, connect under a threshold, zero); gradient (opacity, hue, scheme); stacking groups; log/symlog; soft min/max; negative-Y transform; per-series overrides (M-UI5 for the full Table 5-10 override set) |
-| **Overlays** | Baseline ghost band (M2 on the comparison axis) and anomaly band (expected range); threshold lines and areas; time regions; event markers (◆ ⚙ ⚠ as M1 verticals + M9 glyphs); exemplars (M4, M-UI2); forecast (dashed M1 + M2 cone); annotations; cursor sync. Each overlay declares its axis (T02-009). Anomaly and forecast bands read Dash-derived baselines from Postgres virtual sources ([ADR-0012](../adr/0012-derived-state-in-postgres.md)) |
-| **Field configuration** (`dash-fieldcfg`) | Units and formatting, thresholds, legends, tooltips (M-UI1); value mappings, overrides, data links, transformations, repeat (M-UI5). Compiled into core, the BFF and the native renderer |
+| **Overlays** | Baseline ghost band (M2 on the comparison axis) and anomaly band (expected range); threshold lines and areas; time regions; event markers (◆ ⚙ ⚠ as M1 verticals + M9 glyphs); exemplars (M4, M-UI2); forecast (dashed M1 + M2 cone); annotations; cursor sync. Each overlay declares its axis (T02-009). Anomaly and forecast bands read Dash-derived baselines from Postgres virtual sources ([ADR-0012](../adr/0012-derived-state-in-postgres.md)). Interim client: threshold lines (M-UI1, #64 Part B, [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md)); event markers #64 Part C |
+| **Field configuration** (`dash-fieldcfg`) | Units and formatting, thresholds, legends, tooltips (M-UI1); value mappings, overrides, data links, transformations, repeat (M-UI5). Compiled into core, the BFF and the native renderer. *Note (#64 Part B):* until #68, `client/src/vis/thresholds.ts` is the one threshold evaluator (T02-018's single implementation in the interim client; no headless renderer exists yet) |
 | **Text flow** | Logs, GPU table grid, Markdown on canvas: wrapping, ANSI colours, JSON pretty-print. Markdown is parsed (`pulldown-cmark`) into styled glyph runs; raw HTML and script are dropped and counted |
 | **Interaction controllers** | §4.6 |
 | **Tooltips and Inspector anchors** | Computed in Rust; rendered in DOM by the shell at a GPU-provided anchor, so they are accessible and selectable |
@@ -594,7 +594,7 @@ persisted user override.
 | Parallel coordinates | M1, M8 | N linear axes | — |
 | Bar chart / bar gauge / bullet | M3, M8 | band × linear | sort |
 | Gauge / pie / donut / radar | M5, M7, M8 | angular | — |
-| Stat | M8, M1 (sparkline) | — | text fit |
+| Stat | M8, M1 (sparkline: a trend glyph that joins its finite points across absent and non-finite ones; one finite point is a dot, [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md)) | — | text fit |
 | Table grid (> 10k rows) | M3, M8, M1, M5 (mini-cells) | per column | virtual scroll |
 | Treemap / sunburst | M3 / M5, M8 | colour | squarified / radial |
 | Sankey / funnel | M6, M3, M8 | — | Sankey |
@@ -825,4 +825,6 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.5-rc | 2026-11-21 | #63 Part A: §4.4 LOD table, Heatmap row: a re-binned cell with any missing constituent is missing, never a partial sum (the interim renderer's pixel-column merge does the same); §7 M3 heatmap row names the interim stand-in `bench:frame-interim-heatmap`, report only until #68 |
 | 1.6-rc | 2026-11-21 | #93 (owner-delegated decision 2026-11-21): T02-011 amended (minimum band of the widest compact label; compact tick labels during a camera hold, where T02-021 takes precedence; no truncation; under a hold, a label with no fitting compact form is drawn whole inside the plot on a chip, plan review r5); §0 interim 2D camera row; Satisfies INT-001 (2D) and `e2e:chart-zoom`; `commit` in the shell event list (ADR-0020) |
 | 1.7-rc | 2026-11-21 | #93 code review r3 (decision under the escalation rule): T02-011 adds the omission rule. A value label whose full and compact forms are both wider than the plot is omitted, never drawn partially or outside the plot; the value stays in the crosshair readout and the summary label. Corrected in code review r4: the omitted tick keeps its gridline, and the clause about the value remaining available is dropped (neither the crosshair nor the summary exposes an arbitrary tick); fit is tested against the plot width, the chip padding shrinking as needed |
-| 1.8-rc | 2026-11-23 | #66 Part B: Satisfies row PRF-020: the gate is `bench:log-scroll` (the M-UI1 DOM list, #66); `bench:frame-gallery` measures the log page from #69 |
+| 1.8-rc | 2026-11-22 | #64 Part B ([ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md)): §4.5 Field configuration note (the interim client's one threshold evaluator is `vis/thresholds.ts` until #68); Overlays row: threshold lines in the interim client (M-UI1), event markers #64 Part C |
+| 1.9-rc | 2026-11-22 | #64 Part B code (decision 2026-11-22): §4.8 Stat row: the sparkline joins its finite points across absent and non-finite ones and draws a single finite point as a dot (ADR-0022 decision 4); the M1 polyline still breaks at null validity elsewhere |
+| 1.10-rc | 2026-11-23 | #66 Part B: Satisfies row PRF-020: the gate is `bench:log-scroll` (the M-UI1 DOM list, #66); `bench:frame-gallery` measures the log page from #69 |

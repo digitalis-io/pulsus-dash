@@ -33,7 +33,8 @@ export function ser(n: number, labels: Record<string, string>, values: number[])
   return {
     key: fkey(n),
     labels,
-    timestamps: Float64Array.of(W0, W0 + 5000),
+    // One sample per value, 5 s apart (two values: W0 and W0 + 5 s, as before).
+    timestamps: Float64Array.from(values, (_, i) => W0 + 5000 * i),
     values: Float64Array.from(values),
   };
 }

@@ -97,7 +97,7 @@ func sampleBoard(version, etag int64) core.Board {
 	return core.Board{
 		BoardSummary: core.BoardSummary{UID: "abc", Title: "T", Version: version,
 			UpdatedAt: time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC), UpdatedBy: core.LocalActor()},
-		ETag: etag, SchemaVersion: 1, Spec: []byte(`{"panels":[],"sections":[],"title":"T"}`),
+		ETag: etag, SchemaVersion: 2, Spec: []byte(`{"panels":[],"sections":[],"title":"T"}`),
 	}
 }
 
@@ -192,7 +192,7 @@ func TestBoardRoutes(t *testing.T) {
 		if _, ok := r.body["spec"].(map[string]any); !ok {
 			t.Errorf("spec = %T, want a JSON object", r.body["spec"])
 		}
-		if r.body["etag"] != "3" || r.body["schema_version"] != float64(1) || r.body["version"] != float64(3) {
+		if r.body["etag"] != "3" || r.body["schema_version"] != float64(2) || r.body["version"] != float64(3) {
 			t.Errorf("body = %s", r.raw)
 		}
 	})

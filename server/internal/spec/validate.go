@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -8,8 +9,16 @@ import (
 	"unicode/utf8"
 )
 
-// Limits of the board spec v1 (plan #61 §3.4.3; SRF-019 for the panel count).
+// Limits of the board spec (plan #61 §3.4.3; SRF-019 for the panel count; plan #64 Part B §3.1 for
+// thresholds).
 const (
+	maxThresholdSteps = 8
+	// minThresholdAbs and maxThresholdAbs bound a non-zero threshold value: far inside the range
+	// where the value axis ticks are safe at both ends (#97). The client's MIN_THRESHOLD_ABS and
+	// MAX_THRESHOLD_ABS have the same values.
+	minThresholdAbs = 1e-9
+	maxThresholdAbs = 1e15
+
 	maxTitleRunes  = 200
 	maxSections    = 50
 	maxPanels      = 200
@@ -24,6 +33,9 @@ var (
 	idPattern   = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
 	queryLangs  = []string{"promql", "logql"}
 	visKinds    = []string{"auto", "line", "bars", "heatmap", "stat", "logs"}
+	directions  = []string{"above", "below"}
+	stepStates  = []string{"watch", "degraded", "failing"}
+	legendModes = []string{"table", "hidden"}
 )
 
 // validator collects field errors in document order, at most maxFieldErrors.
@@ -156,5 +168,39 @@ func (v *validator) panels(pointer string, panels []Panel) {
 			return ""
 		})
 		v.str(pp+"/vis/kind", p.Vis.Kind, oneOf(visKinds, "board.vis.kind.invalid"))
+		v.vis(pp+"/vis", p.Vis)
+	}
+}
+
+// inThresholdRange reports whether a threshold value is 0 (-0 included) or has a magnitude in
+// [minThresholdAbs, maxThresholdAbs]. The shape pass has already made it finite.
+func inThresholdRange(x float64) bool {
+	a := math.Abs(x)
+	return x == 0 || (a >= minThresholdAbs && a <= maxThresholdAbs)
+}
+
+// vis checks a panel's thresholds and legend (plan #64 Part B §3.1), after vis.kind. Thresholds
+// are valid on every kind; every step is checked, even past 8.
+func (v *validator) vis(pointer string, vis Vis) {
+	if t := vis.Thresholds; t != nil {
+		tp := pointer + "/thresholds"
+		v.str(tp+"/direction", t.Direction, oneOf(directions, "board.thresholds.direction.invalid"))
+		if len(t.Steps) == 0 || len(t.Steps) > maxThresholdSteps {
+			v.add(tp+"/steps", "board.thresholds.steps.count")
+		}
+		for k, s := range t.Steps {
+			sp := tp + "/steps/" + strconv.Itoa(k)
+			switch {
+			case !inThresholdRange(s.Value):
+				v.add(sp+"/value", "board.thresholds.value.range")
+			case slices.ContainsFunc(t.Steps[:k], func(e ThresholdStep) bool { return e.Value == s.Value }):
+				v.add(sp+"/value", "board.thresholds.value.duplicate")
+			}
+			v.str(sp+"/state", s.State, oneOf(stepStates, "board.thresholds.state.invalid"))
+			v.str(sp+"/label", s.Label, maxRunes("board.thresholds.label.tooLong"))
+		}
+	}
+	if l := vis.Legend; l != nil {
+		v.str(pointer+"/legend/mode", l.Mode, oneOf(legendModes, "board.legend.mode.invalid"))
 	}
 }

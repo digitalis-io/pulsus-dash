@@ -55,6 +55,19 @@
   z-index: 1;
 }
 
+/* A truncated or gathered threshold label (#64 Part B §3.9.1): a focusable target over the canvas,
+   at least 24 × 24 px, placed from the engine's label box; its tooltip holds the full text. */
+.thresholdHit {
+  position: absolute;
+  z-index: 1;
+  border-radius: var(--radius);
+}
+
+.thresholdHit:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
 /* Placed over the plot from the engine's plot rectangle; pointer input reaches the canvas. */
 .crosshair {
   position: absolute;

@@ -1,6 +1,14 @@
 /** The text of a chart frame (plan #58 §3.5, §3.8): summary label, crosshair, rows, issues. */
 import type { FrameDataIssue } from '../data/frames';
-import type { FrameSummary, HoverEvent, HoverRow, PlotRect, Unit, VisSpec } from '../engine/api';
+import type {
+  FrameSummary,
+  HoverEvent,
+  HoverRow,
+  PlotRect,
+  ThresholdState,
+  Unit,
+  VisSpec,
+} from '../engine/api';
 import { formatRangeShort, formatTime, formatValue } from '../i18n/format';
 import { t, type MessageId } from '../i18n/t';
 
@@ -12,6 +20,16 @@ const KIND: Readonly<Record<VisSpec['kind'], MessageId>> = {
   bars: 'chart.kind.bars',
   heatmap: 'chart.kind.heatmap',
   stat: 'chart.kind.stat',
+};
+
+/**
+ * The state names of `StateEncoding[s].label`, read here by id: the e2e specs import this module
+ * in Node, where `StateEncoding`'s CSS module does not load.
+ */
+const STATE_LABEL: Readonly<Record<ThresholdState, MessageId>> = {
+  watch: 'state.watch',
+  degraded: 'state.degraded',
+  failing: 'state.failing',
 };
 
 /** The unit of the values a frame reports: heatmap counts use `countUnit`. */
@@ -40,10 +58,28 @@ export function pointerWindowStart(n: number, yCss: number, plot: PlotRect): num
 }
 
 /**
+ * `Thresholds: {list}.` (#64 Part B §3.9.1): every threshold line of a line or bars spec, in spec
+ * order, as `{state} {label}` joined by `; `, whether drawn, stacked, truncated or off-axis; ''
+ * when there is none.
+ */
+export function thresholdsText(spec: VisSpec): string {
+  const lines = spec.kind === 'line' || spec.kind === 'bars' ? (spec.thresholds ?? []) : [];
+  if (lines.length === 0) return '';
+  const list = lines.map((l) => `${t(STATE_LABEL[l.state])} ${l.label}`).join('; ');
+  return t('chart.thresholds', { list });
+}
+
+/**
  * `{title}: {kind}, {count} {noun}, {range}. Min {min}, max {max}, last {last}.`, then
- * `Y axis fixed at {min} to {max}.` while the value axis is pinned (#93).
+ * `Y axis fixed at {min} to {max}.` while the value axis is pinned (#93), then the thresholds.
  */
 export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string {
+  const base = summaryBase(spec, s, tz);
+  const th = thresholdsText(spec);
+  return th === '' ? base : `${base} ${th}`;
+}
+
+function summaryBase(spec: VisSpec, s: FrameSummary, tz: string): string {
   const unit = valueUnit(spec);
   const v = (x: number | null): string => (x === null ? '—' : formatValue(x, unit));
   const text = t('chart.summary', {

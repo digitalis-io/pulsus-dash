@@ -1,5 +1,5 @@
 /**
- * The chart frame seam (ADR-0014 §3, amended by ADR-0019 and ADR-0020). Every chart is drawn by a `ChartEngine`
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020 and ADR-0022). Every chart is drawn by a `ChartEngine`
  * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
@@ -22,6 +22,17 @@ export interface ValueRange {
   readonly max: number;
 }
 
+export type ThresholdState = 'watch' | 'degraded' | 'failing';
+
+/** A horizontal threshold on the value axis (T02-009: the default axis; ADR-0022). */
+export interface ThresholdLine {
+  /** Data units; a non-finite value is not drawn. */
+  readonly value: number;
+  readonly state: ThresholdState;
+  /** Display text, drawn after the state glyph; plain text, never markup. */
+  readonly label: string;
+}
+
 /** Validated data, never code. One axis per side; the time axis is the Context window. */
 export type VisSpec =
   | {
@@ -30,6 +41,8 @@ export type VisSpec =
       readonly unit: Unit;
       /** The user's value-axis pin (#93); absent = auto. */
       readonly valueRange?: ValueRange;
+      /** Absent = none; at most 8 are drawn, in order (ADR-0022). */
+      readonly thresholds?: readonly ThresholdLine[];
     }
   | {
       readonly kind: 'bars';
@@ -43,6 +56,8 @@ export type VisSpec =
       readonly categoryOrder: readonly string[];
       /** The user's value-axis pin (#93); absent = auto. */
       readonly valueRange?: ValueRange;
+      /** Absent = none; at most 8 are drawn, in order, on the stacked value axis (ADR-0022). */
+      readonly thresholds?: readonly ThresholdLine[];
     }
   | {
       readonly kind: 'heatmap';
@@ -50,6 +65,7 @@ export type VisSpec =
       readonly unit: Unit;
       readonly countUnit: Unit;
     }
+  /** With series data, a sparkline of the first series is drawn under the value (ADR-0022). */
   | { readonly kind: 'stat'; readonly title: string; readonly unit: Unit };
 
 export interface FrameInit {
@@ -108,6 +124,15 @@ export interface SelectEvent {
   readonly tMs: number;
 }
 
+/** A threshold label as laid out (ADR-0022), CSS px relative to the canvas. */
+export interface ThresholdLabelBox {
+  readonly box: PlotRect;
+  /** The full text: `${glyph} ${label}`, or for an overflow chip every hidden label, joined by '; '. */
+  readonly text: string;
+  /** Truncated with an ellipsis, or an overflow chip (`+N`): the DOM shows `text` on hover/focus. */
+  readonly clipped: boolean;
+}
+
 export interface FrameSummary {
   readonly kind: VisKind;
   /** Heatmap: buckets; bars: categories; stat: 1. */
@@ -125,6 +150,8 @@ export interface FrameSummary {
     readonly max: number;
     readonly manual: boolean;
   } | null;
+  /** The threshold labels in stack order (line, bars; [] otherwise; ADR-0022). */
+  readonly thresholdLabels: readonly ThresholdLabelBox[];
 }
 
 /** The visible canvas was drawn completely at this size (#90, ADR-0019). */

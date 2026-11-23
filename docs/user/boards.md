@@ -134,6 +134,59 @@ screen refresh when they scroll in.
 In the development build (`npm run dev`) the panels run against the in-app stub, which plans the
 query as the server does and answers with seeded synthetic series.
 
+### Legends
+
+A line or bars panel shows a **legend** under its chart: one row per series, at most 50, in the
+order the data source returned them (the footer says "Showing the first 50 of N series" when there
+are more).
+
+- **Columns:** a colour swatch and the series name, then **Mean**, **Max** and **Last**, in tabular
+  numbers in the panel's unit. Choose a column header to sort by it (descending first; choose it
+  again to flip).
+- **Click to isolate.** Choose a series name to draw that series alone; choose it again to show all
+  of them. The legend is local to the panel: isolating or sorting never makes a new request, and is
+  never saved. When a refresh no longer returns the isolated series, all series show again.
+- **Threshold highlights.** With [thresholds](#thresholds), a mean, max or last value beyond a
+  threshold shows in the threshold's state: its colour, its glyph (◐ Watch, ◉ Degraded, ■ Failing)
+  and, for screen readers, its name.
+- **Short panels.** Below 240 px of panel body (a panel 5 rows high or less), the legend is
+  **compact**: the swatch, name and last value of each series, which isolate as the table rows do,
+  and **Legend table**, which opens the full table (sort, isolation and highlights) in a popover.
+  Escape closes it.
+- **Hidden.** Set **Legend** to **Hidden** in the panel editor to show the chart alone.
+
+### Thresholds
+
+A panel can have up to 8 **thresholds**: absolute values that mark a state, set in the panel editor.
+
+- **Direction.** **Worse when: Above the value** means a value at or above a threshold is in its
+  state; **Below the value**, at or below it.
+- **Steps.** Each threshold has a value, a state (**Watch**, **Degraded** or **Failing**) and an
+  optional label. A value is 0, or a number between 1e-9 and 1e15 in size (for example `1.5e9` or
+  `-0.25`); two thresholds cannot have the same value. A value beyond several thresholds takes the
+  most severe state it crosses.
+- **On line and bars charts**, each threshold is a dashed line in its state's colour across the
+  plot, with its label (or `≥ value` / `≤ value` when it has none) after the state glyph. Labels
+  that would overlap are stacked, a long label is cut with "…", and labels that do not fit are
+  gathered in a "+N" chip; Tab reaches a cut label or the chip, and its tooltip shows the full text.
+  The value axis stretches to show every threshold; when you have fixed the axis (zoom), a threshold
+  outside it shows only its label, at the edge of the plot. The chart's description lists every
+  threshold for screen readers.
+- **On stat panels** (see [Stat tiles](#stat-tiles)).
+- Thresholds on a heatmap or logs panel are kept but not shown.
+
+### Stat tiles
+
+A stat panel shows one number: the scalar, or the last value of the first series. With a range
+query, a **sparkline** of that series runs under the number when the panel is tall enough (104 px
+of chart). The sparkline shows the trend: it joins the points across gaps in the data, and a
+single point shows as a dot. With thresholds, the tile also shows:
+
+- a **state chip** above the number: the state of the value (OK when it crosses no threshold,
+  Unknown when there is no value);
+- the **threshold text** under it: the threshold the value crossed, in its state's colour, or else
+  the next threshold it would reach, muted.
+
 ### Open in Explore
 
 **Open in Explore** (the header tool or the panel menu) opens Explore › Metrics with the board's
@@ -287,6 +340,8 @@ query and the current time range. Under it are the fields:
 | **Query language** | PromQL or LogQL |
 | **Query** | the query text, at most 16 384 bytes; for PromQL, the PromQL editor of Explore (below) |
 | **Visualisation** | **Auto (`<vis>`)**, naming what auto-vis picked for the current result (see [PromQL panels](#promql-panels)), Line, Bars, Heatmap, Stat or Logs |
+| **Thresholds** | **Add threshold** (up to 8; "Up to 8 thresholds" when full), then per threshold **Value**, **State** and **Label**, and **Remove threshold n**; **Worse when** sets the direction (see [Thresholds](#thresholds)) |
+| **Legend** | **Table** (the default) or **Hidden** (see [Legends](#legends)) |
 
 For PromQL the **Query** field is the editor of Explore › Metrics, with highlighting, completion
 and the **Metric** picker above it ([Explore: metrics](explore-metrics.md)). What you type goes into
@@ -304,7 +359,10 @@ moves to **Run query** (closing the completion list first, if it is open); a sec
 closes the window. If the editor cannot load, the field is a plain text box and says so.
 
 Every other change applies to the draft at once, and the preview follows it: a title shows at
-once, and a visualisation change redraws the result without a new request. The panel on the board
+once, and a visualisation, threshold or legend change redraws the result without a new request.
+Changing the visualisation keeps the thresholds and the legend setting. A threshold **Value** that
+is not a number shows "Enter a number", and one outside the range shows "Use 0 or a value between
+1e-9 and 1e15 in size."; either stops the save until it is fixed. The panel on the board
 behind shows the same chart or message.
 
 **Remove panel** removes the panel from the board. **Done**, Escape or a click outside the window
@@ -361,11 +419,13 @@ but cannot be saved." Leaving the page still asks first.
   with the variables and macros filled in and any rate applied, is at most 64 KiB, and the server
   refuses a longer one ("The query to send … is over 64 KiB…"), with no request to the data source.
 - Recent shows five boards.
+- At most 8 thresholds per panel, labels up to 200 characters; a legend shows at most 50 series.
 - Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
   touch gestures, and other panels follow a zoom only when it ends.
 - Not yet: undo and history, moving panels between sections, reordering sections, filters changing
   the queries, variable definitions and value lists, LogQL panels (#67), several queries in one
-  panel, repeated panels, legends, thresholds and stat tiles (#64 Part B), the anomaly strip of a
+  panel, repeated panels, percentage thresholds, threshold areas, list legends and legend placement,
+  event markers on charts (#64 Part C), the anomaly strip of a
   collapsed section, folders and tags, viewing or restoring old versions, and permissions (everyone
   can edit every board).
 
@@ -374,12 +434,13 @@ but cannot be saved." Leaving the page still asks first.
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-003,
 IA-006, IA-021, IA-022, IA-023), [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014,
 SRF-016, SRF-017, SRF-020, SRF-026),
-[08 Visual language](../../designs/product/08-visual-language.md) (VL-017),
+[08 Visual language](../../designs/product/08-visual-language.md) (VL-003, VL-007, VL-017),
 [03 Interaction model](../../designs/product/03-interaction-model.md) §4.1 (INT-001, INT-002,
 INT-007, INT-008, INT-025 for 2D charts),
 [T08 DOM component kit](../../designs/technical/T08-dom-component-kit.md) (T08-008, T08-015, T08-017,
-T08-021, T08-024), [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-065, Table
-5-13), [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md) (T07-012,
+T08-021, T08-024), [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-011, VIZ-057,
+VIZ-065, VIZ-067, Table 5-13), [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md) (T07-012,
 T07-013), [T09 Query editors](../../designs/technical/T09-query-editors.md) (T09-004, T09-010,
 T09-015), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
-server).
+server), [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (threshold lines
+and the stat sparkline).

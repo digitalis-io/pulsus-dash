@@ -61,8 +61,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 1) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 2); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 2) = %v, want ErrSchemaTooNew", err)
+			// Version 2 adds members only: a v1 spec is the identity upcast (T11-016).
+			b2, err := DecodeBoard(raw, 2)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 2): %v", err)
+			}
+			if got, want := canon(t, b2), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 2) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 3); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 3) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)
@@ -79,5 +87,37 @@ func TestMinimalContentHash(t *testing.T) {
 	h := ContentHash(c)
 	if got, want := hex.EncodeToString(h[:]), "f40543b019d375e2e7aa7965bfb4a7fe190d742bcc402550e821a5523725bb37"; got != want {
 		t.Errorf("ContentHash = %s, want %s", got, want)
+	}
+}
+
+func TestV2FixtureRoundTrip(t *testing.T) {
+	for _, name := range []string{"v2-full.json", "v2-threshold-bounds.json"} {
+		t.Run(name, func(t *testing.T) {
+			raw := fixture(t, name)
+			b, err := ParseBoard(raw)
+			if err != nil {
+				t.Fatalf("ParseBoard: %v", err)
+			}
+			if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("Canonical(board) = %s\nwant Canonical(raw) = %s", got, want)
+			}
+		})
+	}
+}
+
+func TestDecodeBoardUpTo(t *testing.T) {
+	raw := fixture(t, "v2-full.json")
+	if _, err := DecodeBoardUpTo(raw, 2, 1); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(raw, 2, 1) = %v, want ErrSchemaTooNew", err)
+	}
+	b, err := DecodeBoardUpTo(raw, 2, 2)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(raw, 2, 2): %v", err)
+	}
+	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
+	}
+	if BoardSchemaVersion != 2 {
+		t.Errorf("BoardSchemaVersion = %d, want 2", BoardSchemaVersion)
 	}
 }

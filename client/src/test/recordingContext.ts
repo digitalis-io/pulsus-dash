@@ -113,6 +113,7 @@ export function recordingContext(): RecordingContext {
     drawImage: rec('drawImage'),
     rect: rec('rect'),
     clip: rec('clip'),
+    setLineDash: rec('setLineDash'),
     save() {
       stack.push({ ...state });
       rec('save')();

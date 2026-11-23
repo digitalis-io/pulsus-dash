@@ -129,11 +129,15 @@ pub mod space {
 pub mod size {
     pub const AVATAR: f32 = 28.0;
     pub const BOARD_COLS: f32 = 12.0;
+    pub const BOARD_LEGEND_TABLE_MIN: f32 = 240.0;
     pub const BOARD_PANEL_HEADER: f32 = 40.0;
     pub const BOARD_ROW: f32 = 40.0;
     pub const CHART: f32 = 240.0;
     pub const CHART_BRUSH_MIN: f32 = 4.0;
+    pub const CHART_DASH: f32 = 5.0;
+    pub const CHART_DASH_GAP: f32 = 4.0;
     pub const CHART_LINE: f32 = 1.5;
+    pub const CHART_SPARKLINE: f32 = 32.0;
     pub const CHART_STAT: f32 = 120.0;
     pub const CHART_TICK: f32 = 4.0;
     pub const CONTROL: f32 = 32.0;

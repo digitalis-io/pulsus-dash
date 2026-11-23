@@ -158,6 +158,10 @@ async function openEditor(page: Page, o: { delayMs?: number } = {}): Promise<voi
   await page.getByRole('button', { name: 'Edit board' }).click();
   await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
   await reopen(page);
+  // The pointer stays where the Edit panel item was, which a later viewport can put over the
+  // preview's chart; WebKit then sends a pointer move after a layout change, and the chart draws
+  // its crosshair into the canvas the fingerprints read. Park it in the corner, off the dialog.
+  await page.mouse.move(0, 0);
 }
 
 async function reopen(page: Page): Promise<void> {
@@ -727,7 +731,8 @@ test.describe('panel editor dialog', () => {
     expect(await marksSince(page, a.t0)).toEqual([]);
     expect(a.p1.frames).toBe(1);
     expect(a.p1.pending).toBe(0);
-    expect(a.p1.canvasCss).toEqual(hs);
+    // The chart's own size at this viewport: the legend under it takes the rest of the host (#64).
+    expect(a.p1.canvasCss).toEqual(small.canvasCss);
     expect(a.p1.hostBox).toEqual(hs);
     expect(a.p1.fp).toBe(small.fp);
     const inFrame1 = (await draws(page, 'line', a.p1)).filter((x) => a.t0 < x.t && x.t < a.p1.t);

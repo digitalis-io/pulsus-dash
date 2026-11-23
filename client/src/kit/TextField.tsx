@@ -15,9 +15,18 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, 'className' | '
   error?: string | null;
   mono?: boolean;
   inputRef?: Ref<HTMLInputElement>;
+  /** Shown in the empty input; never instead of the label. */
+  placeholder?: string;
 }
 
-export function TextField({ label, error, mono = false, inputRef, ...props }: TextFieldProps) {
+export function TextField({
+  label,
+  error,
+  mono = false,
+  inputRef,
+  placeholder,
+  ...props
+}: TextFieldProps) {
   const invalid = error !== null && error !== undefined;
   return (
     <AriaTextField
@@ -27,7 +36,11 @@ export function TextField({ label, error, mono = false, inputRef, ...props }: Te
       className={cx(styles['field'])}
     >
       <Label className={cx(styles['label'])}>{label}</Label>
-      <Input ref={inputRef} className={cx(styles['input'], mono ? styles['mono'] : undefined)} />
+      <Input
+        ref={inputRef}
+        className={cx(styles['input'], mono ? styles['mono'] : undefined)}
+        {...(placeholder === undefined ? {} : { placeholder })}
+      />
       <FieldError className={cx(styles['error'])}>{error}</FieldError>
     </AriaTextField>
   );

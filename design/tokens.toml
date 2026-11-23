@@ -139,10 +139,16 @@ chart-stat = 120
 chart-tick = 4
 chart-line = 1.5
 chart-brush-min = 4
+# Threshold lines and stat tiles (#64 Part B, ADR-0022): the stat sparkline height and the dash pattern.
+chart-sparkline = 32
+chart-dash = 5
+chart-dash-gap = 4
 # Boards (plan #61 Part B): 12 columns of 40 px rows; the panel header (the drag handle in Edit).
 board-cols = 12
 board-row = 40
 board-panel-header = 40
+# A board panel's legend is a table from this stack height, compact below (#64 Part B §4.5).
+board-legend-table-min = 240
 # The fixed-size editing window (kit ModalDialog size "editor", #90).
 dialog-editor-width = 800
 dialog-editor-height = 720

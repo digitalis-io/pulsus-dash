@@ -5,7 +5,15 @@ import { LEVELS, synthHeatmap, synthLevels, synthLines } from './synth';
 
 export const GALLERY_SEED = 20261120;
 export type GalleryId =
-  'line-1' | 'line-50' | 'line-gaps' | 'line-600' | 'heatmap' | 'bars' | 'stat';
+  | 'line-1'
+  | 'line-50'
+  | 'line-gaps'
+  | 'line-600'
+  | 'heatmap'
+  | 'bars'
+  | 'stat'
+  | 'line-thresholds'
+  | 'stat-sparkline';
 export interface GalleryEntry {
   readonly id: GalleryId;
   readonly spec: VisSpec;
@@ -14,7 +22,10 @@ export interface GalleryEntry {
 
 const HEATMAP_BOUNDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, Infinity];
 
-/** The seven entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. */
+/**
+ * The nine entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. The last two
+ * show threshold lines and a stat sparkline (#64 Part B, ADR-0022).
+ */
 export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
   const s0 = seed ?? GALLERY_SEED;
   const win = { fromMs: w.fromMs, toMs: w.toMs };
@@ -83,6 +94,24 @@ export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
       id: 'stat',
       spec: { kind: 'stat', title: t('gallery.stat'), unit: { kind: 'time', base: 'ms' } },
       data: { kind: 'scalar', scalar: { value: 2843, timestampMs: w.toMs } },
+    },
+    {
+      id: 'line-thresholds',
+      spec: {
+        kind: 'line',
+        title: t('gallery.lineThresholds'),
+        unit: { kind: 'time', base: 's' },
+        thresholds: [
+          { value: 0.25, state: 'watch', label: '≥ 250 ms' },
+          { value: 0.3, state: 'failing', label: 'SLO p99 ≤ 300 ms' },
+        ],
+      },
+      data: lines(7, 3, 1_440, 'http_request_duration_seconds', 0.2, 0.06),
+    },
+    {
+      id: 'stat-sparkline',
+      spec: { kind: 'stat', title: t('gallery.statSparkline'), unit: { kind: 'time', base: 'ms' } },
+      data: lines(8, 1, 120, 'http_request_duration_p99_ms', 280, 60),
     },
   ];
 }

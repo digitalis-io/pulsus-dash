@@ -1,7 +1,8 @@
 /**
  * `bench:rooms-long-tasks` (#90, plan §3.7 and Appendix B §B.5; PRF-005, T05 §4.3, T08 §7): the
  * main-thread long tasks of scripted room interactions, from a Chromium trace. The board editor is
- * its first scenario, chart gestures on a board panel its second (#93). CI's `e2e` Chromium leg always asserts T05 §4.3's interim trace check (no
+ * its first scenario, chart gestures on a board panel its second (#93), and the board editor with 8
+ * thresholds its third (#64 Part B B.10). CI's `e2e` Chromium leg always asserts T05 §4.3's interim trace check (no
  * task over 50 ms wall with over 16 ms thread time); `LONG_TASK_GATE=enforce` (the reference lab,
  * #68, and the D13 local proofs) also fails any task over 16 ms wall. No fake clock.
  */
@@ -15,6 +16,7 @@ import {
 } from '../scripts/longTasks.ts';
 import { boardEditorScenario, type Step } from './boardEditorScenario.ts';
 import { chartGestureScenario } from './chartGestureScenario.ts';
+import { thresholdsEditorScenario } from './thresholdsEditorScenario.ts';
 
 const CATEGORIES = [
   'devtools.timeline',
@@ -102,4 +104,16 @@ test('bench:rooms-long-tasks chart gestures (CI thresholds; 16 ms wall with LONG
   expect(r.counts['contextmenu'] ?? 0).toBeGreaterThanOrEqual(3);
   expect(pageErrors).toEqual([]);
   gate(r, info, 'bench-rooms-long-tasks-chart.json', 'chart gestures');
+});
+
+test('bench:rooms-long-tasks board editor, 8 thresholds (CI thresholds; 16 ms wall with LONG_TASK_GATE=enforce)', async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(120_000);
+  const { r, pageErrors } = await traced(page, browser, thresholdsEditorScenario);
+  expect(r.clicks).toBeGreaterThanOrEqual(17);
+  expect(r.keydowns).toBeGreaterThanOrEqual(8);
+  expect(pageErrors).toEqual([]);
+  gate(r, info, 'bench-rooms-long-tasks-thresholds.json', 'board editor, 8 thresholds');
 });
