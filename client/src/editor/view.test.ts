@@ -5,7 +5,7 @@ import { runScopeHandlers, type EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F, fakePromSource, type FakePromSource } from '../test/fakePromSource';
 import { destroyViews, key, viewIn, wait } from '../test/viewIn';
-import { EDITOR_PROBE_GLOBAL } from './probe';
+import { COMPLETION_PROBE_GLOBAL, EDITOR_PROBE_GLOBAL } from './probe';
 import { promqlHighlight } from './theme';
 import { insertAtSelection, setDocument, setReadOnly, showDiagnostics } from './view';
 
@@ -209,6 +209,34 @@ describe('unit:editor-probe', () => {
     const probe = vi.fn();
     g[EDITOR_PROBE_GLOBAL] = probe;
     insertAtSelection(view, 'x');
+    expect(probe).not.toHaveBeenCalled();
+  });
+});
+
+describe('unit:editor-probe (completion, plan #107 §3.9)', () => {
+  const g = globalThis as Record<string, unknown>;
+  afterEach(() => {
+    Reflect.deleteProperty(g, COMPLETION_PROBE_GLOBAL);
+  });
+
+  it('times both slots when the bench installs a probe before the view', async () => {
+    const probe = vi.fn<(ms: number, part: string) => void>();
+    g[COMPLETION_PROBE_GLOBAL] = probe;
+    const { view } = viewIn({ doc: 'sum(', caret: 4 });
+    startCompletion(view);
+    await vi.waitFor(() => {
+      expect(probe).toHaveBeenCalledWith(expect.any(Number), 'slot0');
+      expect(probe).toHaveBeenCalledWith(expect.any(Number), 'slot1pre');
+    });
+    for (const [ms] of probe.mock.calls) expect(ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it('is read once per view: a probe set later is never called', async () => {
+    const { view } = viewIn({ doc: 'sum(', caret: 4 });
+    const probe = vi.fn();
+    g[COMPLETION_PROBE_GLOBAL] = probe;
+    startCompletion(view);
+    await wait(200);
     expect(probe).not.toHaveBeenCalled();
   });
 });

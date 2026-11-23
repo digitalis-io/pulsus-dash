@@ -4,7 +4,8 @@
  * popup opens in the keystroke's task (T09 §7). Slot 1, the remote slot, answers label names,
  * label values and grouping labels through a `LogSource`: it waits 120 ms itself (`afterQuiet`,
  * restarted by every document change), and the fetch it starts belongs to the view's
- * `RemoteLookups`, which releases it once the caret context leaves its key. Every context belongs
+ * `RemoteLookups` (`../../remoteLookups`, shared with PromQL since #107), which releases it once
+ * the caret context leaves its key (`logqlLookupKeyAt`). Every context belongs
  * to exactly one slot; the other returns `null` synchronously, so CodeMirror never merges local
  * and remote options. Accepting an option replaces the whole token or value under the caret,
  * re-measured at accept time (`replacing`).
@@ -17,8 +18,9 @@ import {
   type CompletionResult,
   type CompletionSource,
 } from '@codemirror/autocomplete';
-import type { EditorState, Extension, Text } from '@codemirror/state';
-import { ViewPlugin, type EditorView, type ViewUpdate } from '@codemirror/view';
+import type { EditorState, Text } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
+import { afterQuiet, REMOTE_DEBOUNCE_MS, type RemoteLookups } from '../../remoteLookups';
 import type { CompletionTiming } from '../../view';
 import type { LogSource } from '../types';
 import { caretContext, type LogCaretContext } from './context';
@@ -36,14 +38,8 @@ export const LOGQL_DURATIONS: readonly string[] = Object.freeze([
   '24h',
 ]);
 
-/** T09-007: a lookup starts 120 ms after the last keystroke. */
-export const REMOTE_DEBOUNCE_MS = 120;
-
 /** The LogQL view's timing: both slots start in the keystroke's task. */
 export const LOGQL_COMPLETION: CompletionTiming = { typingDelayMs: 0, slots: 2 };
-
-/** Over this many code units no lookup is kept (the guard's 128 KB of UTF-8 holds fewer). */
-const MAX_LOOKUP_DOC = 131_072;
 
 const WORD = /^[A-Za-z_]*$/;
 const NAME = /^[A-Za-z0-9_]*$/;
@@ -140,99 +136,9 @@ export function lookupKeyOf(c: LogCaretContext): string | null {
   }
 }
 
-/** The in-flight remote lookup of one view: at most one key, one AbortController. Main thread only. */
-export class RemoteLookups {
-  private key: string | null = null;
-  private controller: AbortController | null = null;
-  private users = 0;
-
-  get pendingKey(): string | null {
-    return this.key;
-  }
-
-  /**
-   * Aborts and forgets a pending lookup of another key; returns the pending controller's signal
-   * for `key` (users + 1), or a new controller's (users = 1).
-   */
-  signalFor(key: string): AbortSignal {
-    if (this.controller !== null && this.key === key) {
-      this.users += 1;
-      return this.controller.signal;
-    }
-    this.abort();
-    const c = new AbortController();
-    this.controller = c;
-    this.key = key;
-    this.users = 1;
-    return c.signal;
-  }
-
-  /** users − 1 when `signal` is the pending one; at 0 the lookup is forgotten (not aborted). */
-  settled(signal: AbortSignal): void {
-    if (this.controller?.signal !== signal) return;
-    this.users -= 1;
-    if (this.users <= 0) this.forget();
-  }
-
-  /** Aborts and forgets the pending lookup unless its key is `key`. */
-  retain(key: string | null): void {
-    if (this.key !== null && this.key !== key) this.abort();
-  }
-
-  /** Aborts and forgets the pending lookup. */
-  abort(): void {
-    const c = this.controller;
-    this.forget();
-    c?.abort();
-  }
-
-  private forget(): void {
-    this.key = null;
-    this.controller = null;
-    this.users = 0;
-  }
-}
-
-/**
- * On a document or selection change while a lookup is pending: above `MAX_LOOKUP_DOC` code units
- * it is aborted; else it is kept only while the caret context keeps its key. Destroy aborts it.
- */
-export function remoteLookupsPlugin(lookups: RemoteLookups): Extension {
-  return ViewPlugin.define(() => ({
-    update(u: ViewUpdate) {
-      if (!(u.docChanged || u.selectionSet) || lookups.pendingKey === null) return;
-      if (u.state.doc.length > MAX_LOOKUP_DOC) {
-        lookups.abort();
-        return;
-      }
-      lookups.retain(lookupKeyOf(contextAt(u.state, u.state.selection.main.head)));
-    },
-    destroy() {
-      lookups.abort();
-    },
-  }));
-}
-
-/**
- * Resolves true after `ms`, or at once when `ctx.explicit`; resolves false (timer cleared) when
- * CodeMirror aborts `ctx`, which it does on any document change (`onDocChange`).
- */
-export function afterQuiet(ctx: CompletionContext, ms: number): Promise<boolean> {
-  if (ctx.explicit) return Promise.resolve(true);
-  if (ctx.aborted) return Promise.resolve(false);
-  return new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
-      resolve(true);
-    }, ms);
-    ctx.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        resolve(false);
-      },
-      { onDocChange: true },
-    );
-  });
+/** `lookupKeyOf(contextAt(state, pos))`: the LogQL `LookupKeyAt`. */
+export function logqlLookupKeyAt(state: EditorState, pos: number): string | null {
+  return lookupKeyOf(contextAt(state, pos));
 }
 
 type RemoteContext = Extract<LogCaretContext, { kind: 'labelName' | 'labelValue' | 'grouping' }>;

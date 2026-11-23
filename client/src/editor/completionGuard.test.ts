@@ -31,6 +31,13 @@ function compose(view: EditorView, phase: 'start' | 'end'): void {
   );
 }
 
+/**
+ * The microtask checkpoint a browser runs after the input event, before it dispatches
+ * `compositionend` (plan #107: with no typing delay, CodeMirror's own query would otherwise start
+ * after a synchronous `compositionend` and look up beside the guard's one re-evaluation).
+ */
+const settleEvent = () => Promise.resolve();
+
 function typeComposed(view: EditorView, s: string): void {
   const head = view.state.selection.main.head;
   view.dispatch({
@@ -192,6 +199,7 @@ describe('unit:editor-composition', () => {
     const { view } = viewIn({ doc: 'up{job="', caret: 8, source });
     compose(view, 'start');
     typeComposed(view, 'a');
+    await settleEvent();
     const n = source.calls.length;
     compose(view, 'end');
     await active(view);
@@ -218,9 +226,11 @@ describe('unit:editor-composition', () => {
     const n = source.calls.length;
     compose(view, 'start');
     typeComposed(view, 'a');
+    await settleEvent();
     compose(view, 'end');
     compose(view, 'start');
     typeComposed(view, 'p');
+    await settleEvent();
     compose(view, 'end');
     await active(view);
     expect(labels(view)).toContain('api');
