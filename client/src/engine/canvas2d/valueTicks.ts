@@ -198,8 +198,27 @@ export function valueTicks(
   labelHeightPx: number,
   base: 1000 | 1024,
 ): ValueTicks {
-  return (
-    niceValueTicks(dataMin, dataMax, heightPx, labelHeightPx, base) ??
-    extremeTicks(dataMin, dataMax, heightPx, labelHeightPx)
+  const lo = dataMin;
+  const hi = dataMax === dataMin ? dataMin + 1 : dataMax;
+  const p = Math.max(
+    0,
+    Math.floor(Math.log(Math.max(Math.abs(lo), Math.abs(hi))) / Math.log(base)),
   );
+  const unit = base ** p;
+  const target = (hi - lo) / unit / Math.max(2, Math.floor(heightPx / (2.5 * labelHeightPx)));
+  let stepUnits = niceAtLeast(target);
+  let { min, max } = snapped(lo, hi, stepUnits * unit);
+  for (;;) {
+    const step = stepUnits * unit;
+    const count = Math.round((max - min) / step);
+    const spacing = heightPx / count;
+    if (spacing >= labelHeightPx + 2 || count <= 1) break;
+    stepUnits = nextNice(stepUnits);
+    ({ min, max } = snapped(lo, hi, stepUnits * unit));
+  }
+  const step = stepUnits * unit;
+  const count = Math.round((max - min) / step);
+  const ticks: number[] = [];
+  for (let i = 0; i <= count; i++) ticks.push(round12(min + i * step));
+  return { min, max, ticks };
 }
