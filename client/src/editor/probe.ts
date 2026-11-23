@@ -1,7 +1,8 @@
 /**
  * The editor's update probe (plan #63 Part C C.11.2; T09-003): `bench:editor-keystroke` installs a
  * global function before the page loads, and each view then times every `view.update(trs)`. In
- * normal use there is no probe and CodeMirror's own dispatch runs unchanged.
+ * normal use there is no probe and CodeMirror's own dispatch runs unchanged. The completion probe
+ * (plan #107 §3.9) is read the same way.
  */
 import type { EditorViewConfig } from '@codemirror/view';
 
@@ -30,10 +31,17 @@ export function probedDispatch(): Pick<EditorViewConfig, 'dispatchTransactions'>
   };
 }
 
-/** The bench's completion probe (plan #107 §3.9). */
+/**
+ * The bench's completion probe (plan #107 §3.9): `bench:promql-completion-latency` installs a
+ * global function before the page loads (as the editor probe above), and the PromQL completion
+ * slots then report their main-thread work in ms. Never set in normal use: the slots then skip
+ * `performance.now()` entirely.
+ */
 export const COMPLETION_PROBE_GLOBAL = '__pulsusCompletionProbe';
 export type CompletionProbe = (ms: number, part: 'slot0' | 'slot1pre' | 'slot1post') => void;
 
+/** The installed probe, read once (`promqlExtensions` calls it once per view); null when absent. */
 export function completionProbe(): CompletionProbe | null {
-  throw new Error('not implemented');
+  const p: unknown = (globalThis as Record<string, unknown>)[COMPLETION_PROBE_GLOBAL];
+  return typeof p === 'function' ? (p as CompletionProbe) : null;
 }

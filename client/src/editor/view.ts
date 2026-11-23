@@ -20,6 +20,7 @@ import { Compartment, EditorState, Prec, type Extension } from '@codemirror/stat
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { completionGuard } from './completionGuard';
 import { probedDispatch } from './probe';
+import { PROMQL_COMPLETION } from './lang/promql/complete';
 import { promqlExtensions } from './lang/promql/extensions';
 import type { Diagnostic, PromSource } from './lang/types';
 import { promqlTheme } from './theme';
@@ -67,10 +68,12 @@ const PARSE_BUDGET_MS = 100;
 export interface CompletionTiming {
   readonly typingDelayMs: number;
   readonly slots: 1 | 2;
+  /**
+   * `autocompletion`'s `updateSyncTime` (how long a finished slot waits for a pending one);
+   * CodeMirror's 100 ms when absent.
+   */
+  readonly updateSyncMs?: number;
 }
-
-/** The PromQL view's timing (#63): one source behind a 120 ms typing delay (T09-007). */
-export const PROMQL_COMPLETION: CompletionTiming = { typingDelayMs: 120, slots: 1 };
 
 /**
  * Slot `i` of the language's own completion sources: its `autocomplete` language data at the
@@ -127,6 +130,9 @@ export function createQueryView(o: QueryViewOptions): EditorView {
       history(),
       autocompletion({
         activateOnTypingDelay: o.completion.typingDelayMs,
+        ...(o.completion.updateSyncMs === undefined
+          ? {}
+          : { updateSyncTime: o.completion.updateSyncMs }),
         maxRenderedOptions: 100,
         icons: false,
         defaultKeymap: false,
