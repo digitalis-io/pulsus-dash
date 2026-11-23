@@ -62,6 +62,8 @@ export const messages = {
   'board.remote':
     'This board was saved elsewhere (version {version}). Saving will ask which version to keep.',
   'board.reloadFailed': 'Could not reload this board. Your changes are kept.',
+  'board.events.truncated': 'Showing the newest 500 events in this time range.',
+  'board.events.failed': 'Events could not be loaded.',
   'board.reloadGone':
     'This board was deleted elsewhere. Your changes are kept here but cannot be saved.',
   'board.saveStatus': 'Save status',
@@ -435,6 +437,7 @@ export const messages = {
   'gallery.lineThresholds': 'Request latency with an SLO threshold',
   'gallery.statSparkline': 'p99 latency with a sparkline',
   'gallery.lineExtreme': 'Values near the largest finite number',
+  'gallery.lineEvents': 'Request rate with deploy and change markers',
 
   'chart.kind.line': 'line chart',
   'chart.kind.bars': 'stacked bar chart',
@@ -464,6 +467,11 @@ export const messages = {
   'chart.valueAxis.resetLabel': 'Reset Y axis: {title}',
   'chart.valueAxis.pinned': 'Y axis fixed at {min} to {max}.',
   'chart.thresholds': 'Thresholds: {list}.',
+  'chart.events': 'Events in view: {count}.',
+  'event.kind.deploy': 'Deploy',
+  'event.kind.config': 'Config change',
+  'event.kind.flag': 'Feature flag',
+  'event.kind.annotation': 'Note',
 
   'state.ok': 'OK',
   'state.watch': 'Watch',

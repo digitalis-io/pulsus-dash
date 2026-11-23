@@ -14,6 +14,11 @@
  * an overflow chip gets a focusable target over the canvas, at least 24 × 24 px (T08-010), whose
  * tooltip and accessible name are the full text; the summary label lists every threshold.
  *
+ * Event markers (#64 Part C §3.7, ADR-0023): the caller's `events` go to the engine, which draws
+ * them and reports each label box; every box gets a focusable target over the canvas, at least
+ * 24 × 24 px and kept inside the frame (T08-010), whose tooltip and accessible name list its events
+ * with their kind and time; the summary label counts the events in view.
+ *
  * Readiness (#90, ADR-0019): the caller's `pending` shows over the frame until the engine reports,
  * with `drawn`, a complete draw at the size last applied; every resize, kind change and new frame
  * resets it. A new `fill` frame is sized at once from the caller's `sizeMemo` (the host's last
@@ -28,6 +33,7 @@ import {
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { flushSync } from 'react-dom';
 import { Focusable } from 'react-aria-components';
@@ -55,7 +61,7 @@ import { size, space } from '../styles/tokens';
 import { useResolvedTheme } from '../theme/useResolvedTheme';
 import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
-import { crosshairText, issueText, summaryLabel, valueUnit } from './chartText';
+import { crosshairText, eventText, issueText, summaryLabel, valueUnit } from './chartText';
 
 export interface FrameSize {
   readonly width: number;
@@ -88,6 +94,9 @@ interface Pin {
 }
 
 const px = (n: number): string => `${String(n)}px`;
+
+/** No events: one frozen value, so an absent prop never changes. */
+const NO_MARKERS: readonly EventMarker[] = Object.freeze([]);
 
 /**
  * The focusable target over a clipped threshold label: its tooltip and accessible name are the
@@ -122,6 +131,55 @@ function ThresholdHit({ box, text }: { box: PlotRect; text: string }) {
   );
 }
 
+/**
+ * The focusable target over an event label box (ADR-0023): its tooltip and accessible name are
+ * every event in the box. At least the minimum target size and kept inside the frame (`host`), so
+ * a box without text at a plot edge stays reachable (T08-010). Placed through CSSOM.
+ */
+function EventHit({
+  box,
+  x,
+  text,
+  host,
+}: {
+  box: PlotRect;
+  x: number;
+  text: string;
+  host: RefObject<HTMLDivElement | null>;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const r = hitRect(box);
+    const w = host.current?.clientWidth ?? 0;
+    const h = host.current?.clientHeight ?? 0;
+    const left = w > 0 ? Math.min(Math.max(0, r.x), Math.max(0, w - r.width)) : r.x;
+    const top = h > 0 ? Math.min(Math.max(0, r.y), Math.max(0, h - r.height)) : r.y;
+    el.style.left = px(left);
+    el.style.top = px(top);
+    el.style.width = px(r.width);
+    el.style.height = px(r.height);
+  }, [box, host]);
+  return (
+    <Tooltip label={text}>
+      <Focusable>
+        <span
+          ref={ref}
+          // The events of a marker label, by keyboard (T08-010).
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+          tabIndex={0}
+          role="img"
+          aria-label={text}
+          data-event-hit=""
+          data-event-x={x}
+          className={cx(styles['eventHit'])}
+        />
+      </Focusable>
+    </Tooltip>
+  );
+}
+
 /** A threshold label's box grown to at least the minimum target size about its centre (T08-010). */
 function hitRect(b: PlotRect): PlotRect {
   const width = Math.max(b.width, size['target-min']);
@@ -137,7 +195,14 @@ function hitRect(b: PlotRect): PlotRect {
 /** Diagnostic frame ids (`f1`, `f2`, …): `data-frame-id` and the `chart-draw` measures' `frame`. */
 let frameSeq = 0;
 
-export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: ChartFrameProps) {
+export function ChartFrame({
+  spec,
+  data,
+  fill = false,
+  pending,
+  sizeMemo,
+  events = NO_MARKERS,
+}: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
   const tz = useTimeZone();
@@ -172,10 +237,33 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
   const frameRef = useRef<EngineFrame | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // The latest inputs, for the mount effect and the event callbacks (not effect dependencies).
-  const latest = useRef({ spec, engineSpec, pinKey, frameData, fromMs, toMs, theme, dispatch, tz });
-  useLayoutEffect(() => {
-    latest.current = { spec, engineSpec, pinKey, frameData, fromMs, toMs, theme, dispatch, tz };
+  const latest = useRef({
+    spec,
+    engineSpec,
+    pinKey,
+    frameData,
+    fromMs,
+    toMs,
+    theme,
+    dispatch,
+    tz,
+    events,
   });
+  useLayoutEffect(() => {
+    latest.current = {
+      spec,
+      engineSpec,
+      pinKey,
+      frameData,
+      fromMs,
+      toMs,
+      theme,
+      dispatch,
+      tz,
+      events,
+    };
+  });
+  const eventsById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
   const [summary, setSummary] = useState<FrameSummary | null>(null);
   const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
@@ -283,6 +371,7 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
     frame.setData(l.frameData);
     frame.setTimeWindow({ fromMs: l.fromMs, toMs: l.toMs });
     frame.setTheme(l.theme);
+    frame.setEvents(l.events);
     // A new canvas is blank.
     setDrawnTo(false, false);
     // A new fill frame takes the host's last size at once, so it draws in its first frame.
@@ -349,6 +438,9 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
   useEffect(() => {
     frameRef.current?.setTheme(theme);
   }, [theme]);
+  useEffect(() => {
+    frameRef.current?.setEvents(events);
+  }, [events]);
 
   // The summary label follows the spec (title, unit, kind) and the zone as well as the summary: the
   // engine emits `a11y` only when the numbers change.
@@ -447,6 +539,16 @@ export function ChartFrame({ spec, data, fill = false, pending, sizeMemo }: Char
           .map((b) => (
             <ThresholdHit key={`${String(b.box.x)},${String(b.box.y)}`} box={b.box} text={b.text} />
           ))}
+      {!isStat &&
+        (summary?.eventLabels ?? []).map((b) => (
+          <EventHit
+            key={b.ids.join(',')}
+            box={b.box}
+            x={b.x}
+            text={eventText(b.ids, eventsById, tz)}
+            host={hostRef}
+          />
+        ))}
       {valueRange !== null && (
         // The kit Button takes no ref, so its wrapper is the placed element.
         <div ref={resetRef} className={cx(styles['resetValue'])}>
