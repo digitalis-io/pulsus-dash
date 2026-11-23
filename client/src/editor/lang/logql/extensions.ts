@@ -33,7 +33,6 @@ const TOKEN_TABLE: Readonly<Record<string, Tag>> = {
   brace: tags.brace,
   paren: tags.paren,
   squareBracket: tags.squareBracket,
-  comment: tags.comment,
   invalid: tags.invalid,
 };
 
@@ -70,8 +69,6 @@ function styleOf(t: Token, word: string, st: LexState): string | null {
     case 'lbracket':
     case 'rbracket':
       return 'squareBracket';
-    case 'comment':
-      return 'comment';
     case 'error':
       return 'invalid';
     case 'space':
@@ -88,12 +85,11 @@ export const logqlLanguage: StreamLanguage<LexState> = StreamLanguage.define<Lex
     stream.pos = t.to;
     st.inRaw = t.kind === 'rawString' && !t.closed;
     const style = styleOf(t, stream.string.slice(t.from, t.to), st);
-    if (t.kind !== 'space' && t.kind !== 'comment') advance(st, t, stream.string);
+    if (t.kind !== 'space') advance(st, t, stream.string);
     return style;
   },
   tokenTable: TOKEN_TABLE,
   languageData: {
-    commentTokens: { line: '#' },
     closeBrackets: { brackets: ['(', '[', '{', '"', '`'] },
   },
 });

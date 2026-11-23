@@ -46,7 +46,7 @@ const OPERAND_WORDS = new Set(['and', 'or', 'unless', 'bool']);
 const OPENERS = new Set<TokenKind>(['lbrace', 'lparen', 'lbracket']);
 const CLOSERS = new Set<TokenKind>(['rbrace', 'rparen', 'rbracket']);
 
-const significant = (t: Token) => t.kind !== 'space' && t.kind !== 'comment';
+const significant = (t: Token) => t.kind !== 'space';
 const isString = (t: Token) => t.kind === 'string' || t.kind === 'rawString';
 const isDigit = (c: string) => c.length === 1 && c >= '0' && c <= '9';
 
@@ -126,7 +126,6 @@ export function caretContext(text: string, pos: number): LogCaretContext {
     }
   }
   const at = tokens[k];
-  if (at?.kind === 'comment') return NONE;
   let cur: Token | null = null;
   if (at !== undefined) {
     if (isString(at)) {

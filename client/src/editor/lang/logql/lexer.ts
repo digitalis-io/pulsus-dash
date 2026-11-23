@@ -4,13 +4,14 @@
  * `LexState`) and `lexLogQL`, the whole-text lexer of the caret context, so highlighting and
  * completion read the same tokens. `advance` keeps the mode stack (selector, parens, grouping,
  * range) that decides a label name's colour and a completion context. Nothing here decides whether
- * a query is valid: PulsusDB does (T09-002). Never throws.
+ * a query is valid: PulsusDB does (T09-002). LogQL has no comments (#121): a `#` outside a string is
+ * one `error` token, as any other character LogQL does not use, and the scan goes on after it.
+ * Never throws.
  */
 import { GROUP_WORDS } from './grammar';
 
 export type TokenKind =
   | 'space'
-  | 'comment'
   | 'string'
   | 'rawString'
   | 'number'
@@ -52,7 +53,7 @@ export interface LexState {
   depthOver: number;
   /** StreamLanguage only: a backtick string is open at the line end. */
   inRaw: boolean;
-  /** The last significant token (not space or comment). */
+  /** The last significant token (not space). */
   prev: TokenKind | null;
   /** Its text when it is an ident, else null. */
   prevWord: string | null;
@@ -137,10 +138,6 @@ export function scanAt(s: string, i: number, inRaw: boolean): Token {
     let j = i + 1;
     while (j < s.length && isSpace(s.charAt(j))) j++;
     return tok('space', i, j);
-  }
-  if (c === '#') {
-    const j = s.indexOf('\n', i);
-    return tok('comment', i, j < 0 ? s.length : j);
   }
   if (c === '"') return quoted(s, i);
   if (c === '`') return rawFrom(s, i, i + 1);
