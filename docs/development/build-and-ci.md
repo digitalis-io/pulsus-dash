@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:promql-completion-latency` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
@@ -349,6 +349,53 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   - Report: `test-results/bench-promql-completion.json` (`{local, remote, keyWork: {p50, p95, max},
     docMs: {p95}, completionMs: {p95}, remoteWork: {p50, p95, max}, longTasks, ciOver, windowMs,
     mode}`).
+- **The log stream harness** (`/t/demo/dev/log-stream`, development and stub builds only, #66
+  Part B): `LogStream` over the synthetic log API, prefilled to a configured size; a spec sets
+  `window.__logStreamBenchConfig` with `page.addInitScript` before the page loads, waits for
+  `[data-prefilled="true"]` and drives `window.__logStreamBench`
+  ([Log stream](../client/logs.md#the-harness-and-its-gates)).
+- **`e2e:log-stream`** (`e2e/log-stream.spec.ts`, Chromium, Firefox and WebKit; E6 Chromium only,
+  PRF-020, VIZ-034): "at rest" is no `scroll` event for 300 ms. E1 the top row keeps its ordinal and
+  offset (within 1 px) across far-end eviction, fixed and wrapped rows; E2 the same across three
+  re-slices of a 2 000-row slice, wheel 400 px per step; E3 the last of 10⁶ held rows (`End`) is
+  inside the scroller; E4 wrapping keeps the top row, a 400-character line wrapped to 40–2 000 px;
+  E5 a wrapped 20 000-character slice stays within 8 × 10⁶ px with rows of at most 2 000 px and does
+  not re-slice or write `scrollTop` for 2 s at rest; E7a and E7b (viewport pinned to 1 440 × 900,
+  40 000-character lines estimated one row each, and a precondition that every mounted line wraps
+  past 100 lines) rows taller than estimated are re-sliced back within `maxPx` at rest
+  (`reslices.extent`) and within `hardPx` while 80 wheel events of 2 000 px run (`reslices.hard`
+  while scrolling; the list height sampled each frame stays ≤ `hardPx` + 120 000 px); E6 a CDP touch
+  gesture makes no `scrollTop` write while it runs, and the top row is kept at each re-slice.
+- **`bench:log-scroll`** (`e2e/perf-log-scroll.spec.ts`, Chromium only, PRF-020, PRF-001, PRF-003,
+  PRF-004, PRF-005, #66 Part B): the harness's default config (10⁶ of 2 × 10⁶ entries held, 50 ms
+  page latency after the prefill), no fake clock, a rAF recorder of `performance.now()`.
+  - **Phases.** 0 ready (10⁶ held, `firstOrd` 0); 1 calibrate: 120 frames at rest at row 500 000,
+    `vsyncMs` = the median interval, and the run is invalid under 59 Hz; 2 control: the same gesture
+    on `[data-log-control]`, a static scroller of 2 × 10⁶ px with no script (the browser's floor);
+    3 fling: `performance.mark('bench:start')`, then CDP `Input.synthesizeScrollGesture` (`yDistance`
+    −30 000, `speed` 6 000, mouse) in the middle; 4 crossing: from row 997 500 the same gesture
+    across the buffer end, which loads a page (latency 50 ms), renders it and evicts one at the
+    head; the window runs to 1 s after the page lands, then `bench:end`; 5 the trace.
+  - **Trace.** Categories `devtools.timeline`, `disabled-by-default-devtools.timeline`,
+    `blink.user_timing`, `cc`, `benchmark`, `input`, `input.scrolling`. `scripts/longTasks.ts` with
+    `marks: {start: 'bench:start', end: 'bench:end'}` counts the tasks between the two marks (a task
+    after the last input counts); `scripts/eventLatency.ts` reads every scroll-update `EventLatency`
+    (`GESTURE_SCROLL_UPDATE`, `FIRST_GESTURE_SCROLL_UPDATE`, `INERTIAL_GESTURE_SCROLL_UPDATE`), from
+    the input's OS timestamp to the presentation of the frame that shows it: the PRF-003 proxy
+    (photons are not observable; on the lab the error is at most one refresh plus the panel's
+    response time; headless CI presents through a software compositor, an earlier point, so CI
+    values are a lower bound and are reported only).
+  - **Always (blocking in CI's `e2e` Chromium leg):** 10⁶ held, the crossing made a request,
+    `endOrd − firstOrd` 10⁶ and `firstOrd` ≥ 1 000 after it, at least one `wheel` or `scroll`
+    dispatch, `ciOver` 0, at least 50 latencies.
+  - **`LOG_BENCH_GATE=enforce`** (the reference lab and the local D13 proofs), unrounded against
+    `vsyncMs`: fling median interval ≤ `vsyncMs` at ≥ 60 Hz (PRF-001), every crossing interval up to
+    2 frames after the landing ≤ 2 × `vsyncMs` (PRF-020), `EventLatency` median ≤ `vsyncMs` and p99
+    ≤ 2 × `vsyncMs` (PRF-003, PRF-004), no task over 16 ms between the marks (PRF-005); otherwise
+    each breach is a `warning` annotation. If the lab misses PRF-001 at 10⁶ lines, PRF-020 returns
+    to M-UI2 (roadmap Table 2.1b, D6) and #69 meets it.
+  - Report: `test-results/bench-log-scroll.json` (`held`, `vsyncMs`, `control`, `fling`,
+    `crossing`, `eventLatency`, `longTasks`, `ciOver`, `worstMs`, `windowMs`, `mode`).
 - **`e2e:editor-ime`** (`e2e/editor-ime.spec.ts`, Chromium only, T09-005): a CDP IME composition in
   the Explore editor opens no completion popup while it lasts; the popup follows once it commits.
 
@@ -390,6 +437,7 @@ pulsus_owner;`). CI creates `pulsus_e2e` per job.
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
 `bff-http`, `dev-proxy`, `editor-ime`, `perf-editor-keystroke`, `perf-logql-completion` and
+`perf-log-scroll` and
 `perf-promql-completion` run on Chromium only. The Explore
 specs that read the fake's request records (`e2e/explore-metrics.spec.ts`) run on the http-mode BFF
 and use one time window per browser, so parallel projects never count each other's requests.

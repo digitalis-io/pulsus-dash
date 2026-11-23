@@ -1,0 +1,150 @@
+/* The log stream (plan #66 Part B §3.7): a virtualised DOM list; rows are placed through CSSOM. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--size-control);
+  padding-bottom: var(--space-2);
+}
+
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text);
+  font: var(--font-size-sm) / var(--size-log-row) var(--font-mono);
+}
+
+.scroller:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+.list {
+  position: relative;
+}
+
+.row,
+.sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 100%;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  height: var(--size-log-row);
+}
+
+.root[data-wrap='true'] .row {
+  height: auto;
+}
+
+.gutter {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  gap: var(--space-1);
+  height: var(--size-log-row);
+  padding-right: var(--space-2);
+}
+
+.bar {
+  width: var(--size-log-level-bar);
+  background: var(--level-unknown);
+}
+
+.row[data-level='critical'] .bar {
+  background: var(--level-critical);
+}
+
+.row[data-level='error'] .bar {
+  background: var(--level-error);
+}
+
+.row[data-level='warn'] .bar {
+  background: var(--level-warn);
+}
+
+.row[data-level='info'] .bar {
+  background: var(--level-info);
+}
+
+.row[data-level='debug'] .bar {
+  background: var(--level-debug);
+}
+
+.row[data-level='trace'] .bar {
+  background: var(--level-trace);
+}
+
+/* Three monospace columns. */
+.glyph {
+  width: calc(var(--font-size-sm) * var(--font-advance-mono) * 3);
+  color: var(--text-muted);
+}
+
+.ts {
+  flex: none;
+  padding-right: var(--space-2);
+  color: var(--text-muted);
+  white-space: pre;
+}
+
+/* A flex item is blockified; kept so that max-height applies to the wrapped line. */
+.line {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  white-space: pre;
+}
+
+.root[data-wrap='true'] .line {
+  max-height: calc(var(--size-log-row) * 100);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sentinel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--size-log-sentinel);
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+}
+
+.srOnly {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* T08-019: the bar keeps one system colour; the glyph still names the level. */
+@media (forced-colors: active) {
+  .bar,
+  .row[data-level] .bar {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}

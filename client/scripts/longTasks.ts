@@ -13,7 +13,14 @@ export interface TraceEvent {
   tdur?: number;
   pid: number;
   tid: number;
-  args?: { name?: string; data?: { type?: string } };
+  /** Async events (`EventLatency`): the id that pairs a begin with its end. */
+  id?: string;
+  id2?: { local?: string; global?: string };
+  args?: {
+    name?: string;
+    data?: { type?: string };
+    event_latency?: { event_type?: string };
+  };
 }
 
 export interface LongTask {
@@ -71,10 +78,13 @@ const CI_THREAD_MS = 16;
 
 const threadKey = (e: { pid: number; tid: number }): string => `${String(e.pid)}:${String(e.tid)}`;
 
-/** `inputs`: the `EventDispatch` types that open and close the window (default `DEFAULT_INPUTS`). */
+/** `inputs`: the `EventDispatch` types that open and close the window (default `DEFAULT_INPUTS`).
+ *  `marks` (plan #66 Part B, B.3): the window runs instead from the first User Timing event named
+ *  `start` to the last named `end` on the page's main thread (a missing mark is an error naming
+ *  it); `inputs` still selects the main thread and the counts. */
 export function longTasks(
   events: readonly TraceEvent[],
-  o: { inputs?: readonly string[] } = {},
+  o: { inputs?: readonly string[]; marks?: { start: string; end: string } } = {},
 ): LongTaskResult {
   const types = new Set<string>(o.inputs ?? DEFAULT_INPUTS);
   const renderers = new Set(
@@ -106,8 +116,18 @@ export function longTasks(
     .sort((a, b) => a.ts - b.ts);
   const first = inputs[0];
   if (first === undefined) throw new Error('no input');
-  const start = first.ts;
-  const end = Math.max(...inputs.map((e) => e.ts + (e.dur ?? 0)));
+  let start = first.ts;
+  let end = Math.max(...inputs.map((e) => e.ts + (e.dur ?? 0)));
+  if (o.marks !== undefined) {
+    const { start: from, end: to } = o.marks;
+    const at = (name: string) => onMain.filter((e) => e.name === name).map((e) => e.ts);
+    const starts = at(from);
+    const ends = at(to);
+    if (starts.length === 0) throw new Error(`no User Timing mark ${from}`);
+    if (ends.length === 0) throw new Error(`no User Timing mark ${to}`);
+    start = Math.min(...starts);
+    end = Math.max(...ends);
+  }
   const counts: Record<string, number> = {};
   for (const e of inputs) {
     const t = e.args?.data?.type ?? '';

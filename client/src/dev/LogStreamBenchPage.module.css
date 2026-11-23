@@ -1,0 +1,13 @@
+/* The log stream harness (plan #66 Part B, B.2): the stream fills the viewport below the header. */
+
+.page {
+  box-sizing: border-box;
+  height: calc(100vh - var(--size-header) - var(--size-page-padding) * 2);
+  min-height: 0;
+}
+
+.control {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+}

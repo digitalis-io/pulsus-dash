@@ -1,0 +1,547 @@
+{
+  "description": "Shared log paging cases (plan #66 Part B, B.1.1): the BFF's pager (TestPagingFixture) and the client's synthetic log API (unit:log-synth) deliver exactly these pages. ts = t0 + off ns; pages are numbered from 1; a mutation changes the data after after_page pages, then page refetch_page is requested again with the cursor that first requested it.",
+  "t0": "1767229100000000000",
+  "window": {
+    "from": 1767225600000,
+    "to": 1767229200000
+  },
+  "streams": {
+    "S1": {
+      "app": "x",
+      "pod": "a"
+    },
+    "S2": {
+      "app": "x",
+      "pod": "b"
+    }
+  },
+  "cases": [
+    {
+      "name": "F1",
+      "direction": "backward",
+      "limit": 4,
+      "entries": [
+        {
+          "off": 9,
+          "stream": "S1",
+          "line": "a"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "b"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "c"
+        },
+        {
+          "off": 7,
+          "stream": "S1",
+          "line": "d"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "e"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "f"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "g"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "h"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "i"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "j"
+        },
+        {
+          "off": 5,
+          "stream": "S1",
+          "line": "k"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/a",
+            "S1/b",
+            "S1/c",
+            "S1/d"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 0
+          }
+        },
+        {
+          "ids": [
+            "S1/e",
+            "S1/f",
+            "S1/g",
+            "S1/h"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 4
+          }
+        },
+        {
+          "ids": [
+            "S1/i",
+            "S1/j"
+          ],
+          "next": {
+            "off": 5,
+            "skip": 0
+          }
+        },
+        {
+          "ids": [
+            "S1/k"
+          ],
+          "next": null
+        }
+      ],
+      "mutate": null
+    },
+    {
+      "name": "F2",
+      "direction": "forward",
+      "limit": 4,
+      "entries": [
+        {
+          "off": 9,
+          "stream": "S1",
+          "line": "a"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "b"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "c"
+        },
+        {
+          "off": 7,
+          "stream": "S1",
+          "line": "d"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "e"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "f"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "g"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "h"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "i"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "j"
+        },
+        {
+          "off": 5,
+          "stream": "S1",
+          "line": "k"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/k"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 0
+          }
+        },
+        {
+          "ids": [
+            "S1/e",
+            "S1/f",
+            "S1/g",
+            "S1/h"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 4
+          }
+        },
+        {
+          "ids": [
+            "S1/i",
+            "S1/j"
+          ],
+          "next": {
+            "off": 7,
+            "skip": 0
+          }
+        },
+        {
+          "ids": [
+            "S1/d",
+            "S1/b",
+            "S1/c",
+            "S1/a"
+          ],
+          "next": null
+        }
+      ],
+      "mutate": null
+    },
+    {
+      "name": "F3",
+      "direction": "backward",
+      "limit": 3,
+      "entries": [
+        {
+          "off": 3,
+          "stream": "S1",
+          "line": "a"
+        },
+        {
+          "off": 2,
+          "stream": "S1",
+          "line": "b"
+        },
+        {
+          "off": 1,
+          "stream": "S1",
+          "line": "c"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/a",
+            "S1/b",
+            "S1/c"
+          ],
+          "next": null
+        }
+      ],
+      "mutate": null
+    },
+    {
+      "name": "F4",
+      "direction": "backward",
+      "limit": 2,
+      "entries": [
+        {
+          "off": 3,
+          "stream": "S1",
+          "line": "a"
+        },
+        {
+          "off": 2,
+          "stream": "S1",
+          "line": "b"
+        },
+        {
+          "off": 1,
+          "stream": "S1",
+          "line": "c"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/a",
+            "S1/b"
+          ],
+          "next": {
+            "off": 1,
+            "skip": 0
+          }
+        },
+        {
+          "ids": [
+            "S1/c"
+          ],
+          "next": null
+        }
+      ],
+      "mutate": null
+    },
+    {
+      "name": "F5",
+      "direction": "backward",
+      "limit": 4,
+      "entries": [
+        {
+          "off": 9,
+          "stream": "S1",
+          "line": "a"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "b"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "c"
+        },
+        {
+          "off": 7,
+          "stream": "S1",
+          "line": "d"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "e"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "f"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "g"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "h"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "i"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "j"
+        },
+        {
+          "off": 5,
+          "stream": "S1",
+          "line": "k"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/a",
+            "S1/b",
+            "S1/c",
+            "S1/d"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 0
+          }
+        }
+      ],
+      "mutate": {
+        "after_page": 1,
+        "insert": {
+          "off": 8,
+          "stream": "S1",
+          "line": "b2"
+        },
+        "refetch_page": 1,
+        "page": {
+          "ids": [
+            "S1/a",
+            "S1/b",
+            "S1/b2",
+            "S1/c"
+          ],
+          "next": {
+            "off": 7,
+            "skip": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "F6",
+      "direction": "backward",
+      "limit": 4,
+      "entries": [
+        {
+          "off": 9,
+          "stream": "S1",
+          "line": "a"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "b"
+        },
+        {
+          "off": 8,
+          "stream": "S1",
+          "line": "c"
+        },
+        {
+          "off": 7,
+          "stream": "S1",
+          "line": "d"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "e"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "f"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "g"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "h"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "i"
+        },
+        {
+          "off": 6,
+          "stream": "S1",
+          "line": "j"
+        },
+        {
+          "off": 5,
+          "stream": "S1",
+          "line": "k"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/a",
+            "S1/b",
+            "S1/c",
+            "S1/d"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 0
+          }
+        }
+      ],
+      "mutate": {
+        "after_page": 1,
+        "replace": {
+          "off": 8,
+          "stream": "S1",
+          "line": "c",
+          "with": "c2"
+        },
+        "refetch_page": 1,
+        "page": {
+          "ids": [
+            "S1/a",
+            "S1/b",
+            "S1/c2",
+            "S1/d"
+          ],
+          "next": {
+            "off": 6,
+            "skip": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "F7",
+      "direction": "backward",
+      "limit": 2,
+      "entries": [
+        {
+          "off": 4,
+          "stream": "S1",
+          "line": "x"
+        },
+        {
+          "off": 4,
+          "stream": "S2",
+          "line": "x"
+        },
+        {
+          "off": 4,
+          "stream": "S1",
+          "line": "y"
+        }
+      ],
+      "pages": [
+        {
+          "ids": [
+            "S1/x",
+            "S1/y"
+          ],
+          "next": {
+            "off": 4,
+            "skip": 2
+          }
+        },
+        {
+          "ids": [
+            "S2/x"
+          ],
+          "next": {
+            "off": 3,
+            "skip": 0
+          }
+        },
+        {
+          "ids": [],
+          "next": null
+        }
+      ],
+      "mutate": null
+    }
+  ]
+}

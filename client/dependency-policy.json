@@ -18,7 +18,8 @@
     "@lezer/common",
     "@lezer/highlight",
     "@prometheus-io/codemirror-promql",
-    "@prometheus-io/lezer-promql"
+    "@prometheus-io/lezer-promql",
+    "@tanstack/react-virtual"
   ],
   "runtimeClosure": {
     "ui-framework": ["react", "react-dom", "scheduler", "use-sync-external-store"],
@@ -66,7 +67,8 @@
       "lru-cache",
       "style-mod",
       "w3c-keyname"
-    ]
+    ],
+    "virtual-list": ["@tanstack/react-virtual", "@tanstack/virtual-core"]
   },
   "licenceAllowlist": [
     "MIT",

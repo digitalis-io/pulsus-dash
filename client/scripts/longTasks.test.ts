@@ -121,3 +121,39 @@ describe('longTasks options (#93)', () => {
     expect(r.clicks).toBe(3);
   });
 });
+
+// unit:long-task-marks (plan #66 Part B, B.3): the window between two User Timing marks.
+describe('unit:long-task-marks', () => {
+  const mark = (name: string, ts: number): TraceEvent => ({ name, ph: 'R', ts, ...MAIN });
+  const WHEELS: TraceEvent[] = [
+    thread(MAIN),
+    mark('bench:start', 0),
+    input('wheel', 0),
+    task(10_000, 5, 4),
+    input('wheel', 99_000),
+    task(300_000, 30, 28),
+    mark('bench:end', 400_000),
+  ];
+
+  it('M1 with marks: a task after the last input counts', () => {
+    const r = longTasks(WHEELS, {
+      inputs: ['wheel', 'scroll'],
+      marks: { start: 'bench:start', end: 'bench:end' },
+    });
+    expect(r.windowMs).toBe(400);
+    expect(r.over16).toBe(1);
+    expect(r.counts['wheel']).toBe(2);
+  });
+
+  it('M2 without marks: unchanged', () => {
+    const r = longTasks(WHEELS, { inputs: ['wheel', 'scroll'] });
+    expect(r.windowMs).toBe(100);
+    expect(r.over16).toBe(0);
+  });
+
+  it('a missing mark is an error naming it', () => {
+    expect(() =>
+      longTasks(WHEELS, { inputs: ['wheel'], marks: { start: 'bench:start', end: 'bench:nope' } }),
+    ).toThrow('bench:nope');
+  });
+});
