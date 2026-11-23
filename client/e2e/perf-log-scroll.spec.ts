@@ -91,7 +91,8 @@ async function traced(page: Page, act: () => Promise<void>): Promise<TraceEvent[
 }
 
 function check(info: TestInfo, ok: boolean, what: string): void {
-  if (enforce) expect(ok, what).toBe(true);
+  // Soft: every threshold is observed on its own, also when another one fails (D13).
+  if (enforce) expect.soft(ok, what).toBe(true);
   else if (!ok)
     info.annotations.push({
       type: 'warning',
@@ -171,9 +172,9 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
     await page.evaluate(() => performance.mark('bench:end'));
     const s = await state(page);
     calls = s.calls - calls0;
-    expect(calls).toBeGreaterThan(0);
-    expect(s.endOrd - s.firstOrd).toBe(1_000_000);
-    expect(s.firstOrd).toBeGreaterThanOrEqual(1_000);
+    expect.soft(calls, 'the crossing made a request').toBeGreaterThan(0);
+    expect.soft(s.endOrd - s.firstOrd, 'held after the crossing').toBe(1_000_000);
+    expect.soft(s.firstOrd, 'a head page evicted').toBeGreaterThanOrEqual(1_000);
   });
 
   // 5 trace.
@@ -181,6 +182,8 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
     inputs: ['wheel', 'scroll'],
     marks: { start: 'bench:start', end: 'bench:end' },
   });
+  // The same trace on #90's window (first to last input): a task after the last input is outside.
+  const inputWindow = longTasks(events, { inputs: ['wheel', 'scroll'] });
   const latency = eventLatencies(events, { types: SCROLL_UPDATE_TYPES });
   const report = {
     held: ready.held,
@@ -194,6 +197,7 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
       p99Ms: percentile(latency, 99),
     },
     longTasks: lt.over16,
+    longTasksInputWindow: inputWindow.over16,
     ciOver: lt.ciOver,
     worstMs: lt.worstMs,
     windowMs: lt.windowMs,
@@ -207,9 +211,9 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
   });
 
   // Always (after the report, so a failing run still records its numbers).
-  expect((lt.counts['wheel'] ?? 0) + (lt.counts['scroll'] ?? 0)).toBeGreaterThan(0);
-  expect(lt.ciOver).toBe(0);
-  expect(latency.length).toBeGreaterThanOrEqual(50);
+  expect.soft((lt.counts['wheel'] ?? 0) + (lt.counts['scroll'] ?? 0), 'inputs').toBeGreaterThan(0);
+  expect.soft(lt.ciOver, 'ciOver').toBe(0);
+  expect.soft(latency.length, 'EventLatency samples').toBeGreaterThanOrEqual(50);
 
   check(
     info,

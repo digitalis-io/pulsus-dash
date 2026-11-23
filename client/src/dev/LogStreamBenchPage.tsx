@@ -61,6 +61,8 @@ declare global {
       topRow(): TopRow | null;
       /** Every re-slice that wrote, with `topRow()` when it was decided. */
       reslicesLog(): ResliceRecord[];
+      /** `performance.now()` of each `scrollTop` write `LogStream` made. */
+      writesAt(): number[];
       /** Swaps the stream for the control scroller `[data-log-control]` and back (B.3 phase 2). */
       showControl(on: boolean): void;
     };
@@ -119,6 +121,7 @@ export function LogStreamBenchPage(): JSX.Element {
   const stream = useRef<LogStreamHandle>(null);
   const counters = useRef({
     writes: 0,
+    writesAt: [] as number[],
     reslices: zero(),
     reslicesScrolling: zero(),
     log: [] as ResliceRecord[],
@@ -188,6 +191,7 @@ export function LogStreamBenchPage(): JSX.Element {
       },
       topRow,
       reslicesLog: () => [...c.log],
+      writesAt: () => [...c.writesAt],
       showControl: setControl,
     };
     return () => {
@@ -218,6 +222,7 @@ export function LogStreamBenchPage(): JSX.Element {
           wrapEstimate={config.wrapEstimate ?? 'bound'}
           onScrollWrite={() => {
             counters.current.writes += 1;
+            counters.current.writesAt.push(performance.now());
           }}
           onReslice={(cause, scrolling) => {
             const c = counters.current;

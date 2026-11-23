@@ -63,6 +63,7 @@ declare global {
       state(): BenchState;
       topRow(): TopRow | null;
       reslicesLog(): ResliceRecord[];
+      writesAt(): number[];
       showControl(on: boolean): void;
     };
     __lastScrollAt?: number;

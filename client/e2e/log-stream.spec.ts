@@ -139,27 +139,36 @@ test.describe('e2e:log-stream', () => {
 
   test('E3 the last of 10⁶ rows is reachable', async ({ page }) => {
     test.setTimeout(300_000);
-    await openBench(
-      page,
-      // A run of exactly 10⁶ entries: Firefox and WebKit animate End, and with more entries the
-      // tail prefetch would extend the list under the animation, past row 10⁶.
-      { total: 1_000_000, prefillTo: 1_000_000, capEntries: MAX_ENTRIES, latencyMs: 0 },
-      240_000,
-    );
+    // The default config with latencyMs 0: 10⁶ of 2 × 10⁶ entries held, so the tail stays active.
+    await openBench(page, { latencyMs: 0 }, 240_000);
+    const rowIn = () =>
+      page.evaluate(() => {
+        const r = document.querySelector('[aria-posinset="1000000"]')?.getBoundingClientRect();
+        const b = document.querySelector('[data-log-scroller]')?.getBoundingClientRect();
+        return r === undefined || b === undefined
+          ? null
+          : { top: r.top, bottom: r.bottom, boxTop: b.top, boxBottom: b.bottom };
+      });
     await scrollToOrd(page, 999_990);
     await atRest(page);
     await page.locator('[data-log-scroller]').press('End');
     await atRest(page);
-    const rects = await page.evaluate(() => {
-      const r = document.querySelector('[aria-posinset="1000000"]')?.getBoundingClientRect();
-      const b = document.querySelector('[data-log-scroller]')?.getBoundingClientRect();
-      return r === undefined || b === undefined
-        ? null
-        : { top: r.top, bottom: r.bottom, boxTop: b.top, boxBottom: b.bottom };
-    });
+    // Firefox and WebKit animate End, and the tail prefetch extends the list under the
+    // animation, so the settled view can lie past row 10⁶: it is then reached by scrollToOrd.
+    let rects = await rowIn();
+    const inside = (x: typeof rects) =>
+      x !== null && x.top >= x.boxTop - 1 && x.bottom <= x.boxBottom + 1;
+    if (!inside(rects)) {
+      await scrollToOrd(page, 999_999);
+      await atRest(page);
+      rects = await rowIn();
+    }
     expect(rects, 'row 1 000 000 is mounted').not.toBeNull();
     expect(rects?.top ?? 0).toBeGreaterThanOrEqual((rects?.boxTop ?? 0) - 1);
     expect(rects?.bottom ?? 0).toBeLessThanOrEqual((rects?.boxBottom ?? 0) + 1);
+    const s = await state(page);
+    expect(s.endOrd, 'the tail loaded past 10⁶').toBeGreaterThan(1_000_000);
+    expect(s.held).toBe(1_000_000);
   });
 
   test('E4 wrap keeps the top row', async ({ page }) => {
@@ -185,6 +194,7 @@ test.describe('e2e:log-stream', () => {
     expect(h).toBeLessThanOrEqual(2_000);
   });
 
+  // Soft assertions: each of E5's checks is observed on its own (D13).
   test('E5 the wrapped extent is bounded and still at rest', async ({ page }) => {
     await openBench(
       page,
@@ -201,8 +211,8 @@ test.describe('e2e:log-stream', () => {
     await scrollToOrd(page, 29_999);
     await atRest(page);
     const { listHeight, rows } = await rowBoxes(page);
-    expect(listHeight).toBeLessThanOrEqual(8_000_000);
-    for (const r of rows) expect(r.height, `row ${String(r.ord)}`).toBeLessThanOrEqual(2_000);
+    expect.soft(listHeight, 'list height').toBeLessThanOrEqual(8_000_000);
+    for (const r of rows) expect.soft(r.height, `row ${String(r.ord)}`).toBeLessThanOrEqual(2_000);
     const rects = await page.evaluate(() => {
       const r = document.querySelector('[aria-posinset="30000"]')?.getBoundingClientRect();
       const b = document.querySelector('[data-log-scroller]')?.getBoundingClientRect();
@@ -210,14 +220,35 @@ test.describe('e2e:log-stream', () => {
         ? null
         : { top: r.top, bottom: r.bottom, boxTop: b.top, boxBottom: b.bottom };
     });
-    expect(rects, 'row 30 000 is mounted').not.toBeNull();
-    expect(rects?.bottom ?? 0).toBeGreaterThan(rects?.boxTop ?? 0);
-    expect(rects?.top ?? 0).toBeLessThan(rects?.boxBottom ?? 0);
+    expect.soft(rects, 'row 30 000 is mounted').not.toBeNull();
+    expect.soft(rects?.bottom ?? 0).toBeGreaterThan(rects?.boxTop ?? 0);
+    expect.soft(rects?.top ?? 0).toBeLessThan(rects?.boxBottom ?? 0);
     const start = await sliceStart(page);
     const writes = (await state(page)).writes;
     await page.waitForTimeout(2_000);
-    expect(await sliceStart(page)).toBe(start);
-    expect((await state(page)).writes).toBe(writes);
+    expect.soft(await sliceStart(page), 'slice start at rest').toBe(start);
+    expect.soft((await state(page)).writes, 'writes at rest').toBe(writes);
+  });
+
+  // The E7 workload, checked on its own: every mounted line of the E7 config wraps past 100
+  // lines, at rest after scrollToOrd(1 000) and after wheeling as E7a and E7b do.
+  test('E7 workload: every mounted line wraps past 100 lines', async ({ page }) => {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await openBench(page, E7_CONFIG);
+    await scrollToOrd(page, 1_000);
+    await atRest(page);
+    await expectWrapsPast100(page);
+    for (let step = 0; step < 5; step += 1) {
+      await wheel(page, 600);
+      await atRest(page);
+      await expectWrapsPast100(page);
+    }
+    for (let i = 0; i < 80; i += 1) {
+      await wheel(page, 2_000);
+      await page.waitForTimeout(50);
+    }
+    await atRest(page);
+    await expectWrapsPast100(page);
   });
 
   test('E7a rows taller than estimated are re-sliced at rest', async ({ page }) => {
@@ -225,8 +256,8 @@ test.describe('e2e:log-stream', () => {
     await openBench(page, E7_CONFIG);
     await scrollToOrd(page, 1_000);
     await atRest(page);
-    await expectWrapsPast100(page);
-    expect((await state(page)).reslices.extent).toBeGreaterThanOrEqual(1);
+    // The workload (every line wraps past 100 lines) is checked on its own, by the E7 workload test.
+    expect.soft((await state(page)).reslices.extent, 'reslices.extent').toBeGreaterThanOrEqual(1);
     let seen = 0;
     for (let step = 0; step <= 5; step += 1) {
       if (step > 0) {
@@ -234,12 +265,12 @@ test.describe('e2e:log-stream', () => {
         await atRest(page);
       }
       const { listHeight, rows } = await rowBoxes(page);
-      expect(listHeight, `step ${String(step)}: list height`).toBeLessThanOrEqual(40_000);
+      expect.soft(listHeight, `step ${String(step)}: list height`).toBeLessThanOrEqual(40_000);
       for (const r of rows) {
-        expect(r.height, `row ${String(r.ord)}`).toBeLessThanOrEqual(2_000);
-        expect(r.scrollHeight, `row ${String(r.ord)} scrolls inside`).toBeGreaterThan(
-          r.clientHeight,
-        );
+        expect.soft(r.height, `row ${String(r.ord)} height`).toBeLessThanOrEqual(2_000);
+        expect
+          .soft(r.scrollHeight, `row ${String(r.ord)} scrolls inside`)
+          .toBeGreaterThan(r.clientHeight);
       }
       const log = await reslicesLog(page);
       const now = await topRow(page);
@@ -255,7 +286,6 @@ test.describe('e2e:log-stream', () => {
     await openBench(page, { ...E7_CONFIG, view: { ...E7_VIEW, hardPx: 60_000 } });
     await scrollToOrd(page, 1_000);
     await atRest(page);
-    await expectWrapsPast100(page);
     // Every frame's list height while the wheel events run.
     await page.evaluate(() => {
       const w = window as unknown as { __heights: number[]; __sampling: boolean };
@@ -278,13 +308,16 @@ test.describe('e2e:log-stream', () => {
       return w.__heights;
     });
     expect((await state(page)).reslicesScrolling.hard).toBeGreaterThanOrEqual(1);
-    await expectWrapsPast100(page);
     expect(Math.max(...heights)).toBeLessThanOrEqual(60_000 + 120_000);
   });
 
   test('E6 touch: no scroll write during the gesture', async ({ browser, browserName }) => {
-    test.skip(browserName !== 'chromium', 'CDP touch gestures are Chromium only');
-    const context = await browser.newContext({ hasTouch: true });
+    test.skip(browserName !== 'chromium', 'CDP touch events are Chromium only');
+    // A tall viewport, so one uninterrupted 3 000 px drag fits inside the scroller.
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 1_440, height: 3_400 },
+    });
     const page = await context.newPage();
     try {
       await openBench(page, {
@@ -296,18 +329,31 @@ test.describe('e2e:log-stream', () => {
       });
       await scrollToOrd(page, 1_000);
       await atRest(page);
+      await page.evaluate(() => {
+        const w = window as unknown as { __scrolls: number[] };
+        w.__scrolls = [];
+        document
+          .querySelector('[data-log-scroller]')
+          ?.addEventListener('scroll', () => w.__scrolls.push(performance.now()), {
+            passive: true,
+            capture: true,
+          });
+      });
       const cdp = await context.newCDPSession(page);
       const box = await page.locator('[data-log-scroller]').boundingBox();
       if (box === null) throw new Error('no box');
+      expect(box.height, 'the scroller holds a 3 000 px drag').toBeGreaterThan(3_100);
+      const x = box.x + box.width / 2;
+      const y0 = box.y + box.height - 20;
+      const now = () => page.evaluate(() => performance.now());
       let changes = 0;
       let seen = (await reslicesLog(page)).length;
       let start = await sliceStart(page);
       for (let i = 0; i < 40 && changes < 2; i += 1) {
-        const writes = (await state(page)).writes;
-        // A touch drag of 3 000 px at about 3 000 px/s, from CDP touch events: headless
-        // Chromium's synthesizeScrollGesture with a touch source does not scroll.
-        const x = box.x + box.width / 2;
-        const y0 = box.y + box.height - 20;
+        // One uninterrupted gesture: a single touchStart, 60 moves of 50 px, one touchEnd
+        // (Chromium flings on), from CDP touch events: headless Chromium's
+        // synthesizeScrollGesture with a touch source does not scroll.
+        const t0 = await now();
         await cdp.send('Input.dispatchTouchEvent', {
           type: 'touchStart',
           touchPoints: [{ x, y: y0 }],
@@ -315,29 +361,32 @@ test.describe('e2e:log-stream', () => {
         for (let step = 1; step <= 60; step += 1) {
           await cdp.send('Input.dispatchTouchEvent', {
             type: 'touchMove',
-            touchPoints: [{ x, y: y0 - ((step % 12) + 1) * 50 }],
+            touchPoints: [{ x, y: y0 - step * 50 }],
           });
-          if (step % 12 === 11) {
-            // Lift and put the finger down again: the scroller is shorter than 3 000 px.
-            await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-            expect((await state(page)).writes, 'no scrollTop write during the gesture').toBe(
-              writes,
-            );
-            await cdp.send('Input.dispatchTouchEvent', {
-              type: 'touchStart',
-              touchPoints: [{ x, y: y0 }],
-            });
-          }
           await page.waitForTimeout(16);
         }
-        expect((await state(page)).writes, 'no scrollTop write during the gesture').toBe(writes);
+        const t1 = await now();
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await atRest(page);
-        const now = await sliceStart(page);
-        if (now !== start) {
+        const { writes, scrolls } = await page.evaluate(() => ({
+          writes: window.__logStreamBench?.writesAt() ?? [],
+          scrolls: (window as unknown as { __scrolls: number[] }).__scrolls,
+        }));
+        for (const w of writes.filter((t) => t >= t0)) {
+          expect(w > t1, `a scrollTop write at ${w.toFixed(0)} ms while the finger was down`).toBe(
+            true,
+          );
+          // After the finger lifts (and any fling): a write only at rest, 150 ms after the last scroll.
+          const before = scrolls.filter((t) => t < w).at(-1) ?? 0;
+          expect(w - before, 'a scrollTop write while the list scrolled').toBeGreaterThanOrEqual(
+            140,
+          );
+        }
+        const nowStart = await sliceStart(page);
+        if (nowStart !== start) {
           changes += 1;
           seen = await expectKeptSince(page, seen, `touch change ${String(changes)}`);
-          start = now;
+          start = nowStart;
         }
       }
       expect(changes).toBe(2);

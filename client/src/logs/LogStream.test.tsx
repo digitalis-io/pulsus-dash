@@ -316,4 +316,86 @@ describe('unit:log-stream', () => {
       expect(rowOf(5001)).not.toBeNull();
     });
   });
+
+  // Plan revision (code review r1 #2): each end's prefetch follows the reader's direction.
+  it('L12 a scrollbar drag back to an evicted head re-fetches it', async () => {
+    const api = scriptedLogsApi();
+    const pager = new LogPager(api, input, { entries: 1000 });
+    void pager.start();
+    mount({ pager });
+    const page = (k: number) => streamsResult(logFrame(pageRows(k, 1000)), `c${String(k + 1)}`);
+    await act(() => api.resolve(0, page(0)));
+    await waitFor(() => {
+      expect(api.calls).toHaveLength(2);
+    });
+    await act(() => api.resolve(1, page(1)));
+    await waitFor(() => {
+      expect(api.calls).toHaveLength(3);
+    });
+    await scrollTo(2000 * 20 - 400);
+    await act(() => api.resolve(2, page(2)));
+    await waitFor(() => {
+      expect(pager.buffer.firstOrd).toBe(1000);
+    });
+    const noCursor = () => api.calls.filter((c) => c.req.cursor === undefined).length;
+    expect(noCursor()).toBe(1);
+    // A drag of the scrollbar thumb: scroll events only, no wheel, key or touch input.
+    await act(() => new Promise((r) => setTimeout(r, 200)));
+    await scrollTo(0);
+    await act(() => new Promise((r) => setTimeout(r, 200)));
+    await scrollTo(0);
+    await waitFor(() => {
+      expect(noCursor()).toBe(2);
+    });
+  });
+
+  it('L13 a wheel at the head edge with no scroll event loads the evicted head', async () => {
+    const synth = createSynthLogApi({ total: 20_000 });
+    const pager = new LogPager(synth, input, { entries: 1000 });
+    await pager.start();
+    await pager.loadTail();
+    expect(pager.buffer.firstOrd).toBe(1000);
+    mount({ pager });
+    await act(() => new Promise((r) => setTimeout(r, 300)));
+    const heads = () => synth.calls.filter((c) => c.cursor === undefined).length;
+    expect(heads()).toBe(1);
+    // The list is at its top: the wheel moves nothing and fires no scroll event.
+    await act(async () => {
+      fireEvent.wheel(scroller(), { deltaY: -100 });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await waitFor(() => {
+      expect(heads()).toBe(2);
+    });
+  });
+
+  it.each([1000, 3000, 6000])(
+    'L14 no opposing-end load loop with a %i-entry cap',
+    async (cap) => {
+      const synth = createSynthLogApi({ total: 50_000 });
+      const pager = new LogPager(synth, input, { entries: cap });
+      await pager.start();
+      while (pager.buffer.length + 1000 <= cap) await pager.loadTail();
+      mount({ pager });
+      const settle = () => act(() => new Promise((r) => setTimeout(r, 400)));
+      const steady = async (what: string) => {
+        await settle();
+        const before = synth.calls.length;
+        await settle();
+        expect(synth.calls.length, what).toBe(before);
+      };
+      // Down to the end of the held rows, then back to the top, by drag (scroll events).
+      for (let i = 0; i < 3; i += 1) {
+        await scrollTo(scroller().scrollHeight);
+        await settle();
+      }
+      await steady('after the drag down');
+      for (let i = 0; i < 3; i += 1) {
+        await scrollTo(0);
+        await settle();
+      }
+      await steady('after the drag up');
+    },
+    20_000,
+  );
 });
