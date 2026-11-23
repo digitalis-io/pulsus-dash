@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-20 |
+| **Version** | 1.4-rc · 2026-11-23 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -88,10 +88,15 @@ stacked volume chart, in the same chart with the levels reordered or reduced, an
 | `info`, `informational`, `notice` | `series-1` |
 | `debug` | `series-5` |
 | `trace` | `series-4` |
+| `unknown` (no level) | `series-3` |
 
 > **Rationale:** five levels hashed into eight colours collide in about 80 % of cases, so a log
 > volume chart would often show two levels in one colour. The level colours are series hues, not
 > state colours: state colours stay reserved for health (VL-003).
+
+The `level-critical` … `level-unknown` tokens (#66 Part B) hold the table's hues in each theme, so a
+level has one colour in the log stream's gutter and in a volume chart; `critical` shares the `error`
+hue and is told apart by its glyph and name (VIZ-067).
 
 #### VL-003 — State colours are reserved for health
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -529,3 +534,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §7 layout tokens for the sidebar, page header, content padding and board panel gap; VL-017 revised in place (application layout dimensions); VL-019 adds the 16 px board panel gap; VL-021 generates CSS, TS and Rust token outputs; resolution 10 |
 | 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19): VL-017 adds the 56 px sidebar top block aligned with the header, title truncation before any header control moves, and the time trigger's absolute window from 1520 px |
 | 1.3-rc | 2026-11-20 | #58, owner decision 2026-11-20: VL-002 gives log-level series the fixed colours of the new Table 8-1a (error `series-6`, warn `series-2`, info `series-1`, debug `series-5`, trace `series-4`; key hash for everything else); acceptance extended |
+| 1.4-rc | 2026-11-23 | #66 Part B: Table 8-1a adds `unknown` → `series-3`; the `level-*` tokens hold the table's hues (Q2) |
