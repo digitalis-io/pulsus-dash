@@ -41,8 +41,8 @@ from `https://registry.npmjs.org/` (`non-registry-resolved`) or without an `sha5
 | Field | Meaning |
 |---|---|
 | `forbiddenCategories` | `charting`, `mapping`, `3d`, `graph-diagram`, `css-in-js` (ADR-0014 §7; charts are drawn by our own renderer, ADR-0007) |
-| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board grid, [below](#react-grid-layout)), and the ten query-editor packages ([below](#query-editor)) |
-| `runtimeClosure` | every package of the runtime closure (50 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds), `query-editor` (the 17 packages of the PromQL editor) |
+| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board grid, [below](#react-grid-layout)), the ten query-editor packages ([below](#query-editor)), and `@tanstack/react-virtual` (the log stream, [below](#tanstackreact-virtual)) |
+| `runtimeClosure` | every package of the runtime closure (52 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds), `query-editor` (the 17 packages of the PromQL editor), `virtual-list` (`@tanstack/react-virtual` and `@tanstack/virtual-core`) |
 | `licenceAllowlist` | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, MPL-2.0 (ADR-0014 §7, unchanged) |
 | `licenceExceptionAllowlist` | exact `"<licence> WITH <exception>"` pairs; empty. Adding one needs an ADR |
 | `buildUrlAllowlist` | the exact URL strings the production bundle may contain as plain text, each with a reason (namespace URIs, the URL-parsing base, error-help links) |
@@ -187,6 +187,37 @@ module build, as the browser build uses.
 (175 000 bytes brotli, `ci:bundle-size`, PRF-009) is checked when Part C first loads it. A trial
 bundle of these packages was 121 620 bytes brotli, with no URL string other than the SVG namespace
 and no HTML sink.
+
+## @tanstack/react-virtual
+
+The log stream ([Log stream](logs.md), issue #66 Part B; ADR-0014 §7) virtualises its DOM list
+with `@tanstack/react-virtual` **3.14.26**, category `virtual-list` (not a forbidden category),
+resolved with the 7-day cut-off:
+
+```sh
+npm install --ignore-scripts --before=2026-11-16 @tanstack/react-virtual@3.14.26
+```
+
+It adds two runtime packages to the closure (50 → 52), both MIT, neither with an install script:
+
+| Package | Version | Published | Note |
+|---|---|---|---|
+| `@tanstack/react-virtual` | 3.14.26 | 2026-11-03 | the React adapter (`useVirtualizer`); peers `react` and `react-dom` ≥ 16.8 |
+| `@tanstack/virtual-core` | 3.19.11 | 2026-11-03 | the virtualiser, pinned exactly by the adapter; no dependencies |
+
+The one `useVirtualizer` call carries a documented `react-hooks/incompatible-library` disable: the
+build has no React Compiler, so nothing memoises the virtualiser's functions.
+
+**Bundle.** No product route imports `src/logs/` yet (the Logs page is #66 Part C), so the library
+is only in the dev-only harness chunk, a lazy route chunk that the `http` build drops. Measured by
+`npm run size` (brotli, stub build):
+
+| Chunk | Brotli bytes | Budget |
+|---|---|---|
+| `LogStreamBenchPage` (the harness, `LogStream`, the virtualiser and the synthetic API) | 17 260 | 120 000 (`lazyChunk`) |
+| Initial JS (unchanged by the library) | 189 668 | 200 000 (`initialJs`) |
+
+`bundle-budgets.json` is unchanged. The chunk contains no URL string.
 
 ## Advisories and signatures
 

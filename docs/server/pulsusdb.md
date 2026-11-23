@@ -1144,6 +1144,12 @@ tenant; it is not signed.
 Paging returns every entry exactly once while fewer than 5 000 entries share one timestamp and the
 data does not change; beyond that is the [documented limit](#paging) (owner decision Q5).
 
+The browser keeps the cursor of every page it fetched and re-requests an evicted page with it; a
+re-fetch that answers another count, cursor or content is shown as changed data, never spliced in;
+see [Log stream](../client/logs.md). The shared fixture `wire/fixtures/json/logql-paging.json` pins
+this pager's pages and cursors (`TestPagingFixture`, 10 seeds of edge-group subsets), and the
+client's synthetic log API passes the same cases (`unit:log-synth`).
+
 ## Configuration
 
 | Key | Default | Rule |

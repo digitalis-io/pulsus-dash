@@ -8,7 +8,8 @@ M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and 
 checks that guard them, and the board list and board page (roadmap step 5, issue #61; how to use
 them is in [Boards](../user/boards.md)). Charts (roadmap step 2, issue #58) are in
 [Charts](charts.md); the Explore metrics data and rules (issue #63) in
-[Explore](explore.md). Build and CI
+[Explore](explore.md); the log buffer, pager and virtualised log list `src/logs/` (issue #66 Part
+B) in [Log stream](logs.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
 [JavaScript supply chain](supply-chain.md).
 
@@ -91,6 +92,7 @@ zone) are passed by closure.
 | `/t/:tenant/explore/metrics` (loader)                                         | A non-canonical `q`, `vis` or `rate` → `replace()` to the canonical search ([Explore](explore.md#url-keys-ia-022))                                                                                                            |
 | `/t/:tenant/dev/gallery`                                                      | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
 | `/t/:tenant/dev/logql-editor?q=…`                                             | Lazy `LogQLEditorBenchPage`, the LogQL editor harness of the editor benches ([Explore](explore.md#the-logql-editor-harness-devlogql-editor)). The same condition as the gallery |
+| `/t/:tenant/dev/log-stream`                                                   | Lazy `LogStreamBenchPage`, the log stream harness of `e2e:log-stream` and `bench:log-scroll` ([Log stream](logs.md#the-harness-and-its-gates)). The same condition as the gallery |
 | `/t/:tenant/*`                                                                | Not found inside the shell                                                                                                                                                                                                    |
 | `*`                                                                           | Standalone Not found                                                                                                                                                                                                          |
 
@@ -203,7 +205,9 @@ properties; reduced motion sets durations to `0ms`) and `src/styles/tokens.ts` (
 and `font.size.display` (32). The query syntax tokens (#63) are `syn-keyword`, `syn-func`,
 `syn-string`, `syn-number` and `syn-label` in both themes, each at least 4.5:1 on `surface-1` and
 `surface-2`; the editor's highlight style and theme use only tokens ([Explore: editor
-chunk](explore.md#editor-chunk)). `series-N` and `ramp-N` must be numbered contiguously from 1; the
+chunk](explore.md#editor-chunk)). The log tokens (#66 Part B) are `level-critical` … `level-unknown` in
+both themes (the hues of VL-002 Table 8-1a, never a state colour) and `size.log-row` (20),
+`log-sentinel` (40) and `log-level-bar` (3) ([Log stream](logs.md#tokens)). `series-N` and `ramp-N` must be numbered contiguously from 1; the
 generator fails naming the first missing key.
 Components use CSS modules with `var(--…)` and, where a React Aria prop needs a number (popover
 offset, tooltip delay), the `tokens.ts` values; ESLint bans inline `style` and literal numbers in
@@ -690,7 +694,8 @@ unknown id is a type error. `src/i18n/format.ts` is the only place `Intl` format
 (locale en-GB, 24-hour time): `formatDate` (19 Nov 2026), `formatTime` (12:03:00), `formatRange`,
 `formatRangeShort` (12:03 – 13:03 GMT), `formatZone` (Europe/London (GMT)) and `describeRange`; for
 charts, `formatValue` (`2.84 s`, `1.2k rps`, `1.5 GiB`; rules in [Charts](charts.md#numbers-vl-012-t08-027)),
-`formatHourMinute` and `formatDayMonth`.
+`formatHourMinute` and `formatDayMonth`; for the log stream, `formatLogTime`
+(`2026-01-01 00:58:20.000`, built from `formatToParts`, [Log stream](logs.md#rows)).
 
 ## Adding a page or a search key
 
