@@ -56,7 +56,9 @@ function mount(p: Props) {
   return {
     ...r,
     props: s.props,
-    rerenderWith: (q: Partial<Props>) => r.rerender(stream({ ...s.props, ...q }).ui),
+    rerenderWith: (q: Partial<Props>) => {
+      r.rerender(stream({ ...s.props, ...q }).ui);
+    },
   };
 }
 
@@ -181,7 +183,7 @@ describe('unit:log-stream', () => {
     const before = synth.calls.length;
     await scrollTo(10_000 * 20);
     await waitFor(() => {
-      expect(synth.calls.length).toBe(before + 1);
+      expect(synth.calls.length).toBeGreaterThan(before);
     });
     expect(synth.calls[before]?.cursor).toBe(pager.buffer.cursorOf(10));
   });

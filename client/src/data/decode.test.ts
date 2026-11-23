@@ -548,7 +548,10 @@ describe('LogQL planned (plan #116 §3.8, A.3 D1–D3)', () => {
   const grid = { start: 0, end: 1000, step: 1000, frames: [frame], completeness };
 
   it('D1: every LogQL golden decodes with its planned', () => {
-    const names = Object.keys(LOG_GOLDENS).filter((k) => /\/logql-[^/]*\.json$/.test(k));
+    // logql-paging.json is the shared paging fixture of #66 Part B, not a response body.
+    const names = Object.keys(LOG_GOLDENS).filter(
+      (k) => /\/logql-[^/]*\.json$/.test(k) && !k.endsWith('/logql-paging.json'),
+    );
     expect(names.length).toBe(7);
     for (const k of names) {
       const name = k.slice(k.lastIndexOf('/') + 1);

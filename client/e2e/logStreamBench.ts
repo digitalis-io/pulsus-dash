@@ -153,7 +153,7 @@ export const rowBoxes = (page: Page) =>
         scrollHeight: line?.scrollHeight ?? 0,
         clientHeight: line?.clientHeight ?? 0,
         lines: line === null || lh === 0 ? 0 : line.scrollHeight / lh,
-        text: line?.textContent?.length ?? 0,
+        text: line?.textContent.length ?? 0,
       };
     });
     return { listHeight: list?.getBoundingClientRect().height ?? 0, rows };

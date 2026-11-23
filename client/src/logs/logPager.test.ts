@@ -334,7 +334,8 @@ describe('unit:log-pager', () => {
     while (!pager.getState().atEnd) await pager.loadTail();
     expect(calls.calls.length).toBeGreaterThan(1);
     for (const r of calls.calls) {
-      const { cursor: _cursor, ...rest } = r;
+      const rest = { ...r };
+      delete rest.cursor;
       expect(rest).toStrictEqual({ ...P1_REQ, limit: 7 });
     }
   }, 60_000);

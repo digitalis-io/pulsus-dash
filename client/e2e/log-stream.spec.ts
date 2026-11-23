@@ -35,19 +35,19 @@ const E7_CONFIG: BenchConfig = {
   view: E7_VIEW,
 };
 
-/** The scroller's remaining scroll range below the viewport. */
-const below = (page: Page) =>
-  page.evaluate(() => {
-    const s = document.querySelector<HTMLElement>('[data-log-scroller]');
-    return s === null ? 0 : s.scrollHeight - s.clientHeight - s.scrollTop;
-  });
-
-/** Wheels until the viewport is 200 px above the list's end (or the end is reached). */
+/** Wheels until the viewport is 200 px above the list's end as it was before the wheel (the
+ *  tail prefetch then extends the list, and evicts head pages). */
 async function wheelToNearEnd(page: Page): Promise<void> {
+  const target = await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-log-scroller]');
+    return s === null ? 0 : s.scrollHeight - s.clientHeight - 200;
+  });
+  const top = () =>
+    page.evaluate(() => document.querySelector<HTMLElement>('[data-log-scroller]')?.scrollTop ?? 0);
   for (let i = 0; i < 400; i += 1) {
-    const left = await below(page);
-    if (left <= 200) return;
-    await wheel(page, Math.min(2_000, left - 200));
+    const left = target - (await top());
+    if (left <= 1) return;
+    await wheel(page, Math.min(2_000, left));
   }
 }
 
@@ -79,10 +79,12 @@ test.describe('e2e:log-stream', () => {
 
   for (const wrap of [false, true]) {
     test(`E1 eviction keeps the top row (${wrap ? 'wrapped' : 'fixed'} rows)`, async ({ page }) => {
+      // Cap 5 000, not 3 000: with 1 000-row pages and the 2 000-row prefetch, the view near the
+      // end of a 3 000-row buffer protects the only head page left to evict.
       await openBench(page, {
         total: 50_000,
-        prefillTo: 3_000,
-        capEntries: 3_000,
+        prefillTo: 5_000,
+        capEntries: 5_000,
         latencyMs: 0,
         wrap,
         ...(wrap ? { lineLength: 300 } : {}),
@@ -148,17 +150,16 @@ test.describe('e2e:log-stream', () => {
     await atRest(page);
     await page.locator('[data-log-scroller]').press('End');
     await atRest(page);
-    const last = page.locator('[aria-posinset="1000000"]');
-    await expect(last).toHaveCount(1);
-    const [row, box] = await Promise.all([
-      last.boundingBox(),
-      page.locator('[data-log-scroller]').boundingBox(),
-    ]);
-    expect(row).not.toBeNull();
-    expect(box).not.toBeNull();
-    if (row === null || box === null) return;
-    expect(row.y).toBeGreaterThanOrEqual(box.y - 1);
-    expect(row.y + row.height).toBeLessThanOrEqual(box.y + box.height + 1);
+    const rects = await page.evaluate(() => {
+      const r = document.querySelector('[aria-posinset="1000000"]')?.getBoundingClientRect();
+      const b = document.querySelector('[data-log-scroller]')?.getBoundingClientRect();
+      return r === undefined || b === undefined
+        ? null
+        : { top: r.top, bottom: r.bottom, boxTop: b.top, boxBottom: b.bottom };
+    });
+    expect(rects, 'row 1 000 000 is mounted').not.toBeNull();
+    expect(rects?.top ?? 0).toBeGreaterThanOrEqual((rects?.boxTop ?? 0) - 1);
+    expect(rects?.bottom ?? 0).toBeLessThanOrEqual((rects?.boxBottom ?? 0) + 1);
   });
 
   test('E4 wrap keeps the top row', async ({ page }) => {
@@ -176,7 +177,7 @@ test.describe('e2e:log-stream', () => {
     await atRest(page);
     expect((await topRow(page))?.ord).toBe(2_500);
     const row = page.locator('[data-log-row][data-ord="2500"]');
-    expect(await row.locator('[data-log-line]').evaluate((e) => e.textContent?.length)).toBe(400);
+    expect(await row.locator('[data-log-line]').evaluate((e) => e.textContent.length)).toBe(400);
     const h = (await row.boundingBox())?.height ?? 0;
     expect(h).toBeGreaterThanOrEqual(40);
     expect(h).toBeLessThanOrEqual(2_000);
@@ -200,15 +201,16 @@ test.describe('e2e:log-stream', () => {
     const { listHeight, rows } = await rowBoxes(page);
     expect(listHeight).toBeLessThanOrEqual(8_000_000);
     for (const r of rows) expect(r.height, `row ${String(r.ord)}`).toBeLessThanOrEqual(2_000);
-    const last = page.locator('[aria-posinset="30000"]');
-    await expect(last).toHaveCount(1);
-    const [row, box] = await Promise.all([
-      last.boundingBox(),
-      page.locator('[data-log-scroller]').boundingBox(),
-    ]);
-    if (row === null || box === null) throw new Error('no box');
-    expect(row.y + Math.min(row.height, box.height)).toBeGreaterThan(box.y);
-    expect(row.y).toBeLessThan(box.y + box.height);
+    const rects = await page.evaluate(() => {
+      const r = document.querySelector('[aria-posinset="30000"]')?.getBoundingClientRect();
+      const b = document.querySelector('[data-log-scroller]')?.getBoundingClientRect();
+      return r === undefined || b === undefined
+        ? null
+        : { top: r.top, bottom: r.bottom, boxTop: b.top, boxBottom: b.bottom };
+    });
+    expect(rects, 'row 30 000 is mounted').not.toBeNull();
+    expect(rects?.bottom ?? 0).toBeGreaterThan(rects?.boxTop ?? 0);
+    expect(rects?.top ?? 0).toBeLessThan(rects?.boxBottom ?? 0);
     const start = await sliceStart(page);
     const writes = (await state(page)).writes;
     await page.waitForTimeout(2_000);
