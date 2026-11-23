@@ -35,19 +35,14 @@ const E7_CONFIG: BenchConfig = {
   view: E7_VIEW,
 };
 
-/** Wheels until the viewport is 200 px above the list's end as it was before the wheel (the
- *  tail prefetch then extends the list, and evicts head pages). */
-async function wheelToNearEnd(page: Page): Promise<void> {
-  const target = await page.evaluate(() => {
-    const s = document.querySelector<HTMLElement>('[data-log-scroller]');
-    return s === null ? 0 : s.scrollHeight - s.clientHeight - 200;
-  });
-  const top = () =>
-    page.evaluate(() => document.querySelector<HTMLElement>('[data-log-scroller]')?.scrollTop ?? 0);
+/** Wheels down until the top row is in the last page of the prefilled buffer (the list's end
+ *  before the wheel): the tail prefetch then extends the list and evicts head pages. A row, not a
+ *  pixel target, since wrapped rows are estimated taller than they measure. */
+async function wheelToNearEnd(page: Page, prefill: number): Promise<void> {
   for (let i = 0; i < 400; i += 1) {
-    const left = target - (await top());
-    if (left <= 1) return;
-    await wheel(page, Math.min(2_000, left));
+    const top = await topRow(page);
+    if (top !== null && top.ord >= prefill - 50) return;
+    await wheel(page, 1_000);
   }
 }
 
@@ -79,17 +74,18 @@ test.describe('e2e:log-stream', () => {
 
   for (const wrap of [false, true]) {
     test(`E1 eviction keeps the top row (${wrap ? 'wrapped' : 'fixed'} rows)`, async ({ page }) => {
-      // Cap 5 000, not 3 000: with 1 000-row pages and the 2 000-row prefetch, the view near the
-      // end of a 3 000-row buffer protects the only head page left to evict.
+      // Cap 6 000, not 3 000: with 1 000-row pages and the 2 000-row prefetch, the prefetch stops
+      // 2 000–3 000 rows past the view, so a 6 000-row buffer always leaves two head pages outside
+      // the shown rows to evict (a 3 000-row buffer leaves none).
       await openBench(page, {
         total: 50_000,
-        prefillTo: 5_000,
-        capEntries: 5_000,
+        prefillTo: 6_000,
+        capEntries: 6_000,
         latencyMs: 0,
         wrap,
         ...(wrap ? { lineLength: 300 } : {}),
       });
-      await wheelToNearEnd(page);
+      await wheelToNearEnd(page, 6_000);
       await atRest(page);
       const first = (await state(page)).firstOrd;
       const kept = await topRow(page);
@@ -145,7 +141,9 @@ test.describe('e2e:log-stream', () => {
     test.setTimeout(300_000);
     await openBench(
       page,
-      { total: 2_000_000, prefillTo: 1_000_000, capEntries: MAX_ENTRIES, latencyMs: 0 },
+      // A run of exactly 10⁶ entries: Firefox and WebKit animate End, and with more entries the
+      // tail prefetch would extend the list under the animation, past row 10⁶.
+      { total: 1_000_000, prefillTo: 1_000_000, capEntries: MAX_ENTRIES, latencyMs: 0 },
       240_000,
     );
     await scrollToOrd(page, 999_990);
