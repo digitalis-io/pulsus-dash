@@ -23,7 +23,23 @@ describe('unit:logql-lex', () => {
         ['rbrace', '}'],
       ],
     ],
-    ['L2', '|= `x` # c', [['lineFilter', '|='], S, ['rawString', '`x`'], S, ['comment', '# c']]],
+    // LogQL has no comments (#121): a `#` outside a string is one error token and the rest of the
+    // line is scanned as LogQL.
+    [
+      'L2',
+      '|= `x` # c',
+      [['lineFilter', '|='], S, ['rawString', '`x`'], S, ['error', '#'], S, ['ident', 'c']],
+    ],
+    [
+      'L2b',
+      '#{a',
+      [
+        ['error', '#'],
+        ['lbrace', '{'],
+        ['ident', 'a'],
+      ],
+    ],
+    ['L2c', '"a#b"', [['string', '"a#b"']]],
     ['L3', '"ab', [['string', '"ab', false]]],
     [
       'L4',
@@ -161,7 +177,7 @@ function walk(text: string): Snap[] {
   const st = startLex();
   const out: Snap[] = [];
   for (const t of lexLogQL(text)) {
-    if (t.kind === 'space' || t.kind === 'comment') continue;
+    if (t.kind === 'space') continue;
     advance(st, t, text);
     out.push({
       text: text.slice(t.from, t.to),

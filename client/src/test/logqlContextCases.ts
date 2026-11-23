@@ -55,6 +55,8 @@ export const CONTEXT_ROWS: readonly [string, string, LogCaretContext][] = [
   ['C18', 'sum by (‸) (count_over_time({a="b"}[1m]))', grouping(8, 8, '{a="b"}')],
   ['C19', 'sum by (pod, ‸)', grouping(13, 13, null)],
   ['C20', '{app="web"} # co‸', NONE],
+  // LogQL has no comments (#121): the text after a `#` is LogQL.
+  ['C20b', '# {ap‸', name(3, 5, null)],
   ['C21', '{app="web"}‸', NONE],
   ['C22', 'count_over_time({app="web"}[5m]) > ‸', fn(35, 35)],
   ['C23', '{app="web"} | json | sta‸', stage(21, 24)],

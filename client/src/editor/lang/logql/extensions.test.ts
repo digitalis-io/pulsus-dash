@@ -63,11 +63,12 @@ describe('unit:logql-highlight', () => {
     ],
     [
       'H4',
-      '{a="b"} # note',
+      '{a="b"} # "note"',
       [
         ['a', 'L'],
         ['"b"', 'S'],
-        ['# note', 'C'],
+        ['#', 'X'],
+        ['"note"', 'S'],
       ],
     ],
     [

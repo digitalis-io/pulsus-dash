@@ -1,15 +1,19 @@
 import { completionStatus, currentCompletions, startCompletion } from '@codemirror/autocomplete';
-import { diagnosticCount } from '@codemirror/lint';
+import { toggleComment } from '@codemirror/commands';
+import { diagnosticCount, forEachDiagnostic } from '@codemirror/lint';
 import { EditorView, runScopeHandlers } from '@codemirror/view';
 import { act, render } from '@testing-library/react';
 import { StrictMode, type JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../test/editorDom';
+import { StubApi } from '../api/StubApi';
+import { ApiError } from '../api/types';
 import { FL, fakeLogSource } from '../test/fakeLogSource';
 import { F, fakePromSource } from '../test/fakePromSource';
 import { flush, key, wait } from '../test/viewIn';
 import type { Diagnostic, LogSource } from './lang/types';
 import { STAGES } from './lang/logql/grammar';
+import { logql } from './lang/logql/logql';
 import { LogQLEditor } from './LogQLEditor';
 import { PromQLEditor } from './PromQLEditor';
 import { setDocument } from './view';
@@ -124,6 +128,47 @@ describe('unit:logql-editor', () => {
 
     unmount();
     expect(inner.isConnected).toBe(false);
+  });
+  it('a positioned server refusal of a `#` underlines the `#`, which is not a comment (#121)', async () => {
+    // PulsusDB's LogQL has no comments: the planner refuses a top-level `#` at its byte offset.
+    const text = '{app="é"} # note';
+    let refusal: unknown = null;
+    try {
+      await new StubApi().queryLogs('demo', {
+        query: text,
+        fromMs: 1767225600000,
+        toMs: 1767229200000,
+        widthPx: 1200,
+      });
+    } catch (e) {
+      refusal = e;
+    }
+    expect(refusal).toBeInstanceOf(ApiError);
+    expect((refusal as ApiError).detail.position).toBe(11);
+    const diagnostics = logql.diagnosticsOf(text, refusal, (i) => i, text);
+    const hash = text.indexOf('#');
+    expect(diagnostics).toEqual([
+      {
+        from: hash,
+        to: hash + 1,
+        message: "unexpected '#' at byte 11: LogQL has no comments",
+        positionKnown: true,
+      },
+    ]);
+    const { container } = render(
+      logEditor({ value: text, source: fakeLogSource(FL), diagnostics }),
+    );
+    const { view } = viewOf(container);
+    const shown: [number, number][] = [];
+    forEachDiagnostic(view.state, (d, from, to) => {
+      shown.push([from, to]);
+      expect(d.severity).toBe('error');
+    });
+    expect(shown).toEqual([[hash, hash + 1]]);
+    // No line-comment token and no comment command: toggling leaves the text as it is.
+    expect(view.state.languageDataAt('commentTokens', 0)).toEqual([]);
+    expect(toggleComment(view)).toBe(false);
+    expect(view.state.doc.toString()).toBe(text);
   });
 });
 
