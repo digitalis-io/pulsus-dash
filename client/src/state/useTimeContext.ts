@@ -31,6 +31,8 @@ export interface TimeContext {
   anchorMs: number;
   dispatch: (a: ContextAction, o?: { replace?: boolean }) => void;
   refreshNow: () => void;
+  /** `useSyncExternalStore(clock.subscribe, clock.epoch)`. */
+  refreshEpoch: number;
 }
 
 export function useTimeContext(): TimeContext {
@@ -86,5 +88,7 @@ export function useTimeContext(): TimeContext {
     void queryClient.invalidateQueries({ queryKey: ['data'] });
   }, [clock, queryClient, search, timeZone, window]);
 
-  return { search, rest, window, timeZone, anchorMs, dispatch, refreshNow };
+  // Stub (plan #66 Part C §3.3): implemented after the failing tests.
+  const refreshEpoch = 0;
+  return { search, rest, window, timeZone, anchorMs, dispatch, refreshNow, refreshEpoch };
 }

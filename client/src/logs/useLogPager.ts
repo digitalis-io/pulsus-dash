@@ -12,6 +12,8 @@ import { LogPager, logPagerKey, type LogPagerInput, type LogPagerState } from '.
 export function useLogPager(
   input: LogPagerInput | null,
   api?: Pick<Api, 'queryLogs'>,
+  // Stub (plan #66 Part C §3.4): read after the failing tests.
+  _generation = '',
 ): LogPager | null {
   const fallback = useApi();
   const source = api ?? fallback;

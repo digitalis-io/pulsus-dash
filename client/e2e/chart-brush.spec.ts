@@ -3,41 +3,21 @@
  * brush a window, double-click to zoom out.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { brushSnapUnit } from '../src/engine/canvas2d/columns.ts';
 import {
+  brushTargets,
   frame,
   GALLERY_FROM,
   GALLERY_TO,
   GALLERY_URL,
   galleryReady,
   open,
-  plotOf,
   searchOf,
-  timeAt,
   timeTrigger,
 } from './helpers.ts';
 
-const MIN = 60_000;
-
-/** The page x of the 12:20 and 12:25 targets, 0.1–0.4 brush units inside them, and the plot's y. */
-async function targets(page: Page) {
-  const f = frame(page, 'line-1');
-  const plot = await plotOf(f);
-  const box = await f.boundingBox();
-  if (box === null) throw new Error('line-1 has no box');
-  const t = (x: number): number => timeAt(box.x, plot, x, GALLERY_FROM, GALLERY_TO);
-  const u = brushSnapUnit((GALLERY_TO - GALLERY_FROM) / plot.width);
-  const lo = GALLERY_FROM + 20 * MIN;
-  const hi = GALLERY_FROM + 25 * MIN;
-  // Integer page pixels 0.1u–0.4u inside the target boundaries: only snapping gives the exact URL.
-  let x1 = Math.floor(box.x + plot.x);
-  while (t(x1) < lo + 0.1 * u) x1 += 1;
-  let x2 = Math.ceil(box.x + plot.x + plot.width);
-  while (t(x2) > hi - 0.1 * u) x2 -= 1;
-  expect(t(x1)).toBeLessThanOrEqual(lo + 0.4 * u);
-  expect(t(x2)).toBeGreaterThanOrEqual(hi - 0.4 * u);
-  const y = box.y + plot.y + plot.height / 2;
-  return { x1, x2, y, box, plot };
+/** The 12:20 and 12:25 targets of the gallery's `line-1`. */
+function targets(page: Page) {
+  return brushTargets(page, frame(page, 'line-1'), GALLERY_FROM, GALLERY_TO);
 }
 
 test('e2e:chart-brush', async ({ page }) => {

@@ -1,11 +1,13 @@
 /**
- * Keyboard loop L32 (plan #63 Part C Appendix C.7): the Explore metrics page with a result — the
+ * Keyboard loops L32 (plan #63 Part C Appendix C.7): the Explore metrics page with a result — the
  * editor's Run keys and Escape, the crosshair, the rate chip, the table's sort buttons, rows and
- * region, the vis options and the metric picker — and with a query the server refuses (plan #112). Run inside the one keyboard test, so the final
- * coverage check covers it.
+ * region, the vis options and the metric picker — and with a query the server refuses (plan #112);
+ * and L33 (plan #66 Part C §5.3): Explore › Logs with the stub's stream — the editor, Run, the
+ * volume's crosshair, the order options, Wrap lines and the `Log lines` region. Run inside the one
+ * keyboard test, so the final coverage check covers them.
  */
 import { expect, test } from '@playwright/test';
-import { EXPLORE_RESULT } from './helpers.ts';
+import { EXPLORE_RESULT, LOGS_RESULT } from './helpers.ts';
 import type { Script } from './keyboardScript.ts';
 
 const ROW = (i: number): RegExp => new RegExp(`^button "stub_metric\\{series="${String(i)}"\\}"$`);
@@ -79,5 +81,40 @@ export async function exploreLoops(s: Script): Promise<void> {
     await s.on('radio "Auto"', 'Space');
 
     await s.goto('/t/demo/explore/metrics');
+  });
+
+  await test.step('L33 Explore logs', async () => {
+    await s.goto(LOGS_RESULT);
+    const rows = page.getByRole('list', { name: 'Log lines' }).locator('[data-log-row]');
+    await expect(rows).toHaveCount(30);
+
+    await s.focus('textbox "LogQL query"');
+    await press('End');
+    await press('Shift+Enter');
+    await press('Escape');
+    await expect(page.getByRole('button', { name: 'Run' })).toBeFocused();
+    await s.on('button "Run"');
+
+    await s.on('slider "Crosshair: Log volume"', 'ArrowRight');
+
+    // The order options (roving focus: only the selected one is a tab stop). Space on the
+    // selected one, an arrow to the other: a new run remounts the list, so focus is found again.
+    await s.on('radio "Newest first"', 'Space');
+    await press('ArrowRight');
+    await expect.poll(() => s.search()['dir']).toBe('forward');
+    await expect(rows).toHaveCount(30);
+    await s.on('radio "Oldest first"', 'Space');
+    await press('ArrowLeft');
+    await expect.poll(() => s.search()['dir']).toBeUndefined();
+    await expect(rows).toHaveCount(30);
+
+    await s.on('checkbox "Wrap lines"', 'Space');
+    await expect.poll(() => s.search()['wrap']).toBe('on');
+    await press('Space');
+    await expect.poll(() => s.search()['wrap']).toBeUndefined();
+
+    await s.focus(/^region "Log lines"/);
+
+    await s.goto('/t/demo/explore/logs');
   });
 }

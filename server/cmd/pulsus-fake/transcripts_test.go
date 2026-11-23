@@ -24,15 +24,20 @@ func TestE2ETranscripts(t *testing.T) {
 	}
 	// Load sorts by file name.
 	want := []string{
-		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram", "labels", "metadata",
-		"metric-names", "parse-error-nopos", "parse-error-position", "runtimeinfo", "scalar",
-		"slow-final-chromium", "slow-final-firefox", "slow-final-webkit", "slow", "too-broad",
-		"truncated",
+		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram", "labels",
+		// The Explore › Logs set (plan #66 Part C §3.13).
+		"logs-checkout-1h", "logs-checkout-brushed", "logs-checkout-volume-1h",
+		"logs-checkout-volume-brushed", "logs-label-values-app", "logs-labels", "logs-metric-checkout",
+		"logs-paging-1", "logs-paging-2", "logs-paging-volume", "logs-parse-error", "logs-slow-volume",
+		"logs-slow", "logs-too-broad", "logs-truncated-volume", "logs-truncated",
+		"metadata", "metric-names", "parse-error-nopos", "parse-error-position", "runtimeinfo",
+		"scalar", "slow-final-chromium", "slow-final-firefox", "slow-final-webkit", "slow",
+		"too-broad", "truncated",
 	}
 	if !slices.Equal(names, want) {
 		t.Errorf("transcripts %v, want %v", names, want)
 	}
-	for _, name := range []string{"runtimeinfo", "histogram", "scalar", "too-broad"} {
+	for _, name := range []string{"runtimeinfo", "histogram", "scalar", "too-broad", "logs-parse-error", "logs-too-broad"} {
 		// #nosec G304 -- fixed test paths under the repository.
 		got, err := os.ReadFile(filepath.Join(e2eTranscripts, name+".json"))
 		if err != nil {

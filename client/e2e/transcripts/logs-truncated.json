@@ -1,0 +1,10 @@
+{
+  "name": "logs-truncated",
+  "provenance": {"synthetic": "empty streams so any narrowed window is valid"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"truncated\"}"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-truncated-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[],"stats":{"streams":0,"entries":0}},"warnings":["results truncated due to limit"]}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "logs-checkout-1h",
+  "provenance": {"synthetic": "six checkout lines in 12:00-13:00, so the Logs page shows a stream"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"checkout\"}", "form": {"end": "1767272400000000000", "limit": "1001", "direction": "backward"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-checkout-1h-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"checkout"},"values":[["1767272100000000000","checkout line F",{"structuredMetadata":{"detected_level":"error"}}],["1767271200000000000","checkout line E",{"structuredMetadata":{"detected_level":"info"}}],["1767270240000000000","checkout line D",{"structuredMetadata":{"detected_level":"error"}}],["1767270120000000000","checkout line C",{"structuredMetadata":{"detected_level":"info"}}],["1767269700000000000","checkout line B",{"structuredMetadata":{"detected_level":"error"}}],["1767269100000000000","checkout line A",{"structuredMetadata":{"detected_level":"info"}}]]}],"stats":{"streams":1,"entries":6}}}
+  }
+}

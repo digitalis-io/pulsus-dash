@@ -1,0 +1,10 @@
+{
+  "name": "logs-checkout-volume-1h",
+  "provenance": {"synthetic": "the checkout volume by level at step 5 s"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level, detected_level) (count_over_time({app=\"checkout\"}\n| drop __error__ [5s]))"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-checkout-volume-1h-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"detected_level":"error"},"values":[[1767268800,"3"],[1767270000,"5"],[1767270300,"2"],[1767272400,"1"]]},{"metric":{"detected_level":"info"},"values":[[1767268800,"4"],[1767270000,"6"]]}]}}
+  }
+}
