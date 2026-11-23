@@ -8,6 +8,7 @@ import {
   describeRange,
   formatCompact,
   formatRange,
+  formatLogTime,
   formatRangeShort,
   formatValue,
   formatZone,
@@ -234,5 +235,15 @@ describe('out-of-range fallback and holdLabels', () => {
     expect(band).toBe(42);
     expect(holdLabels(ctx, [1e-5, 30], none, band)).toEqual(['10µ', '30']);
     expect(holdLabels(ctx, [1.5e-13], none, band)).toBeNull();
+  });
+});
+
+// unit:log-time (plan #66 Part B §3.8; T08-027).
+describe('unit:log-time', () => {
+  it('formats YYYY-MM-DD HH:mm:ss.SSS in the zone', () => {
+    expect(formatLogTime(1767229100000, 'UTC')).toBe('2026-01-01 00:58:20.000');
+    expect(formatLogTime(1767229100000, 'America/New_York')).toBe('2025-12-31 19:58:20.000');
+    expect(formatLogTime(1767229100000, 'Asia/Kolkata')).toBe('2026-01-01 06:28:20.000');
+    expect(formatLogTime(1767229100005, 'UTC')).toBe('2026-01-01 00:58:20.005');
   });
 });

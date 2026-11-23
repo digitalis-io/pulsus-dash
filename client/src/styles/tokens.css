@@ -10,6 +10,13 @@
   --failing: #E0457B;
   --focus: #5B9BFF;
   --hairline: #FFFFFF14;
+  --level-critical: #C98F8F;
+  --level-debug: #6FB8B8;
+  --level-error: #C98F8F;
+  --level-info: #7AA2D6;
+  --level-trace: #B48FC9;
+  --level-unknown: #8FBF8F;
+  --level-warn: #C9A36B;
   --ok: #2FB59A;
   --ramp-1: #253444;
   --ramp-2: #2C4967;
@@ -52,6 +59,13 @@
   --failing: #B8285C;
   --focus: #2563C9;
   --hairline: #0B0D1014;
+  --level-critical: #985757;
+  --level-debug: #358282;
+  --level-error: #985757;
+  --level-info: #3F6FA8;
+  --level-trace: #7E5A97;
+  --level-unknown: #4E874E;
+  --level-warn: #93703A;
   --ok: #17806A;
   --ramp-1: #E3F0FE;
   --ramp-2: #B9DAFD;
@@ -126,6 +140,9 @@
   --size-focus-ring: 2px;
   --size-header: 56px;
   --size-icon: 16px;
+  --size-log-level-bar: 3px;
+  --size-log-row: 20px;
+  --size-log-sentinel: 40px;
   --size-page-padding: 24px;
   --size-sidebar-collapsed: 56px;
   --size-sidebar-expanded: 240px;

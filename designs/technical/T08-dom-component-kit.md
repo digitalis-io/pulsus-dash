@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-21 |
+| **Version** | 1.11-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -376,7 +376,10 @@ pub enum CellKind {
 - **Virtualisation.** Fixed-height rows are the fast path: offset = i × h. With text wrap on, a
   Fenwick tree over measured row heights gives O(log n) offset ↔ index lookups. The window is the
   visible rows plus 10 overscan rows (about 60 rows mounted), and row DOM nodes are recycled by key.
-  Frozen columns use `position: sticky`.
+  Frozen columns use `position: sticky`. *v1 note (#66 Part B):* the M-UI1 log stream is not this
+  table: it virtualises its DOM list with `@tanstack/react-virtual` over a slice of at most
+  200 000 rows of its buffer (fixed 20 px rows; rows measured with wrap), re-sliced at rest by an
+  explicit anchor ([docs: Log stream](../../docs/client/logs.md)).
 - **Cell rendering.** Each kind is a small React component:
   - **Sparkline and mini-heatmap:** inline SVG built in TS from points pre-decimated to the cell
     width (≤ 120 points), so 60 visible rows × 2 columns is about 15k SVG path bytes. No canvas per
@@ -880,3 +883,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.8-rc | 2026-11-21 | #90: §4.4 and §11 M-UI1: the panel editor is a centred, fixed-size modal dialog with a live preview (owner decision 2026-11-21); it replaces the non-modal right-hand sheet. §7: `bench:rooms-long-tasks` and its interim CI check |
 | 1.9-rc | 2026-11-21 | #68: §4.7 token contract: the generator is `client/scripts/gen-tokens.ts` → `tokens.css`, `tokens.ts`, `tokens.rs`; colours authored as sRGB hex and emitted to `tokens.rs` as sRGB-encoded `Rgba8([u8; 4])`, the same bytes as CSS; the engine blends in sRGB-encoded space (T02 §4.2). Replaces linear-space `[f32; 4]` and `Lin([..])` |
 | 1.10-rc | 2026-11-21 | #93: §7 `bench:rooms-long-tasks` scenarios include chart gestures |
+| 1.11-rc | 2026-11-23 | #66 Part B: §4.4 v1 note: the M-UI1 log stream virtualises with `@tanstack/react-virtual` over a slice of ≤ 200 000 rows (fixed 20 px rows, measured with wrap), not the Fenwick table virtualiser |

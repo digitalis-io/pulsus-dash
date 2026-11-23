@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-22 |
+| **Version** | 1.10-rc · 2026-11-23 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -71,7 +71,7 @@ are [T03](T03-browser-runtime.md); tests are [T05](T05-testing-and-performance.m
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [VIZ-001](../product/05-visualisation-catalogue.md#viz-001--gpu-rendering-by-one-shared-engine) | §4.1, §4.6 | `e2e:no-dom-vis` |
-| [PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable) | §4.5 (text flow), §4.8 (log stream); paging co-satisfied with T04 (`log_lines/1`, §4.4) | `bench:frame-gallery` (log stream page: 10⁶ lines in window, fling scroll, page past the window end) |
+| [PRF-020](../product/09-performance-contract.md#prf-020--10⁶-log-lines-scrollable) | §4.5 (text flow), §4.8 (log stream); paging co-satisfied with T04 (`log_lines/1`, §4.4) | `bench:log-scroll` (M-UI1 DOM list, #66); `bench:frame-gallery` log page from #69 (10⁶ lines in window, fling scroll, page past the window end) |
 | [VIZ-002](../product/05-visualisation-catalogue.md#viz-002--every-vis-is-a-composition-of-shared-mark-primitives) | §4.1, §4.8 | `ci:spec-lint` |
 | [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | §4.6 | `replay:universal-interactions` |
 | [VIZ-004](../product/05-visualisation-catalogue.md#viz-004--scale-targets-per-vis) | §4.2, §4.9, §7 | `bench:frame-gallery` (every page at its scale target, (b)) |
@@ -827,3 +827,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.7-rc | 2026-11-21 | #93 code review r3 (decision under the escalation rule): T02-011 adds the omission rule. A value label whose full and compact forms are both wider than the plot is omitted, never drawn partially or outside the plot; the value stays in the crosshair readout and the summary label. Corrected in code review r4: the omitted tick keeps its gridline, and the clause about the value remaining available is dropped (neither the crosshair nor the summary exposes an arbitrary tick); fit is tested against the plot width, the chip padding shrinking as needed |
 | 1.8-rc | 2026-11-22 | #64 Part B ([ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md)): §4.5 Field configuration note (the interim client's one threshold evaluator is `vis/thresholds.ts` until #68); Overlays row: threshold lines in the interim client (M-UI1), event markers #64 Part C |
 | 1.9-rc | 2026-11-22 | #64 Part B code (decision 2026-11-22): §4.8 Stat row: the sparkline joins its finite points across absent and non-finite ones and draws a single finite point as a dot (ADR-0022 decision 4); the M1 polyline still breaks at null validity elsewhere |
+| 1.10-rc | 2026-11-23 | #66 Part B: Satisfies row PRF-020: the gate is `bench:log-scroll` (the M-UI1 DOM list, #66); `bench:frame-gallery` measures the log page from #69 |
