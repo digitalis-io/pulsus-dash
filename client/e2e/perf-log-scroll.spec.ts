@@ -20,6 +20,8 @@ import { longTasks, type TraceEvent } from '../scripts/longTasks.ts';
 import { atRest, centre, openBench, scrollToOrd, state } from './logStreamBench.ts';
 
 const enforce = process.env['LOG_BENCH_GATE'] === 'enforce';
+/** Floating-point noise of rAF timestamps (ms): equal frame intervals compare equal. Not rounding. */
+const EPS = 1e-6;
 const CATEGORIES = [
   'devtools.timeline',
   'disabled-by-default-devtools.timeline',
@@ -211,22 +213,22 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
 
   check(
     info,
-    report.fling.medianMs <= vsyncMs && vsyncMs <= 1000 / 60,
+    report.fling.medianMs <= vsyncMs + EPS && vsyncMs <= 1000 / 60 + EPS,
     `PRF-001: fling median ${report.fling.medianMs.toFixed(2)} ms ≤ vsync ${vsyncMs.toFixed(2)} ms at ≥ 60 Hz`,
   );
   check(
     info,
-    report.crossing.maxMs <= 2 * vsyncMs,
+    report.crossing.maxMs <= 2 * vsyncMs + EPS,
     `PRF-020: crossing max ${report.crossing.maxMs.toFixed(2)} ms ≤ 2 vsyncs`,
   );
   check(
     info,
-    report.eventLatency.medianMs <= vsyncMs,
+    report.eventLatency.medianMs <= vsyncMs + EPS,
     `PRF-003: EventLatency median ${report.eventLatency.medianMs.toFixed(2)} ms ≤ 1 vsync`,
   );
   check(
     info,
-    report.eventLatency.p99Ms <= 2 * vsyncMs,
+    report.eventLatency.p99Ms <= 2 * vsyncMs + EPS,
     `PRF-004: EventLatency p99 ${report.eventLatency.p99Ms.toFixed(2)} ms ≤ 2 vsyncs`,
   );
   check(info, lt.over16 === 0, `PRF-005: ${String(lt.over16)} tasks over 16 ms between the marks`);
