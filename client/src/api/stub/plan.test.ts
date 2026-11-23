@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { expand, expandedOf, fieldsOf, FIXTURE, plannedOf, type FixtureCase } from './planFixture';
 import {
+  __test,
   floorStep,
   formatDuration,
   isPlanError,
@@ -142,6 +143,23 @@ describe('unit:plan-parity (TS)', () => {
     expect(FIXTURE.reserved.length).toBeGreaterThan(0);
     for (const r of FIXTURE.reserved)
       expect(reservedIn(expand(r.text)), expand(r.text)).toBe(r.want);
+  });
+
+  it('repeated references are measured once per value and state (review r1, r2)', () => {
+    const vars = { a: '\n'.repeat(4096) };
+    const refuse = (query: string) => {
+      __test.valueReads = 0;
+      const p = prepare({ query, vars, kind: 'range', stepMs: 5000, rate: true });
+      if (!isPlanError(p)) throw new Error('prepared');
+      return p;
+    };
+    // 1 000 references in one "…" string: 8 192 000 encoded bytes, one (value, state) pair.
+    expect(refuse('x{a="' + '$a'.repeat(1000) + '"}').hint).toEqual({ reason: 'processing_cap' });
+    expect(__test.valueReads).toBe(1);
+    // A comment and a "…" string: two pairs; the comment value is refused first (row 7b).
+    const e = refuse('x{a="' + '$a'.repeat(1000) + '"} # $a');
+    expect(e.fields).toEqual([{ pointer: '/vars/a', messageKey: 'variable.unrepresentable' }]);
+    expect(__test.valueReads).toBe(2);
   });
 
   it('bytes', () => {

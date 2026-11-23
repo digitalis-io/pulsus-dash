@@ -213,6 +213,15 @@ func checkInputs(in Inputs) *PlanError {
 	return nil
 }
 
+// namesError is one refusal naming variables: "<prefix>$a, $b<suffix>", one field per name.
+func namesError(kind PlanErrorKind, names []string, key, prefix, suffix string) *PlanError {
+	e := &PlanError{Kind: kind, Message: prefix + "$" + strings.Join(names, ", $") + suffix}
+	for _, n := range names {
+		e.Fields = append(e.Fields, FieldError{Pointer: "/vars/" + pointerToken(n), MessageKey: key})
+	}
+	return e
+}
+
 // processingCap is the refusal of a substituted text over MaxExpandedBytes (row 9). It carries no
 // plan: nothing was planned.
 func processingCap() *PlanError {
@@ -222,18 +231,20 @@ func processingCap() *PlanError {
 }
 
 // Prepare checks the inputs, substitutes the variables (each macro as the placeholder "1s"),
-// reads the shape and classifies it: rows 1–5 and 7–9 of §3.1, before any I/O.
+// reads the shape and classifies it: rows 1–5, 7, 7b (plan #118 §4.3), 8 and 9 of §3.1, before
+// any I/O.
 func Prepare(in Inputs) (*Prepared, *PlanError) {
 	if e := checkInputs(in); e != nil {
 		return nil, e
 	}
 	count := substitute(in.Query, in.Vars, placeholders(), false)
 	if len(count.missing) > 0 {
-		e := &PlanError{Kind: ErrVariableMissing, Message: "no value for variable $" + strings.Join(count.missing, ", $")}
-		for _, n := range count.missing {
-			e.Fields = append(e.Fields, FieldError{Pointer: "/vars/" + pointerToken(n), MessageKey: "variable.missing"})
-		}
-		return nil, e
+		return nil, namesError(ErrVariableMissing, count.missing, "variable.missing", "no value for variable ", "")
+	}
+	// Row 7b depends only on the raw text and the values, never on the step (plan #118 §4.3).
+	if len(count.unrepresentable) > 0 {
+		return nil, namesError(ErrInput, count.unrepresentable, "variable.unrepresentable",
+			"the value of variable ", " cannot be written where it is referenced")
 	}
 	if count.macro && in.StepMs == 0 {
 		return nil, inputError("/step_ms", "field.required", "step_ms is required for $__interval and $__rate_interval")

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -433,5 +434,153 @@ func TestPlanMacroCapBeforeTypes(t *testing.T) {
 	}
 	if n := len(fake.Requests()); n != 0 {
 		t.Errorf("%d upstream requests (metadata included), want 0", n)
+	}
+}
+
+// promqlCase is a plan case of the shared fixture, as this file reads it.
+type promqlCase struct {
+	Name   string `json:"name"`
+	Inputs struct {
+		Query string            `json:"query"`
+		Vars  map[string]string `json:"vars"`
+	} `json:"inputs"`
+	Planned *struct {
+		Query string `json:"query"`
+	} `json:"planned"`
+	Error *struct {
+		Message string `json:"message"`
+		Fields  []struct {
+			Pointer    string `json:"pointer"`
+			MessageKey string `json:"message_key"`
+		} `json:"fields"`
+	} `json:"error"`
+}
+
+// promqlValueCases are the #118 cases of wire/fixtures/plan/promql.json by their Q number.
+func promqlValueCases(t *testing.T) map[string]promqlCase {
+	t.Helper()
+	b, err := os.ReadFile("../../../wire/fixtures/plan/promql.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Plan []json.RawMessage `json:"plan"`
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]promqlCase{}
+	for _, raw := range f.Plan {
+		var c promqlCase
+		// A case whose query is a {"concat": …} Text is not one of the Q cases.
+		if json.Unmarshal(raw, &c) != nil || !strings.HasPrefix(c.Name, "Q") {
+			continue
+		}
+		out[strings.Fields(c.Name)[0]] = c
+	}
+	return out
+}
+
+// valueUpstream answers the range route with an empty matrix and the metadata route with no
+// metric types, recording every request.
+func valueUpstream(t *testing.T) *logUpstream {
+	return newLogUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/query_range":
+			writeJSONBody(w, `{"status":"success","data":{"resultType":"matrix","result":[]}}`)
+		case "/api/v1/metadata":
+			writeJSONBody(w, `{"status":"success","data":{}}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+}
+
+func valuesBody(c promqlCase) string {
+	vars, _ := json.Marshal(c.Inputs.Vars)
+	return rangeBody(c.Inputs.Query, `"vars":`+string(vars))
+}
+
+func pathCount(rs []upReq, path string) int {
+	n := 0
+	for _, r := range rs {
+		if r.Path == path {
+			n++
+		}
+	}
+	return n
+}
+
+// itest:plan-authority (PromQL, plan #118 §5.1): the value cases of promql.json are sent as
+// planned, or refused with variable.unrepresentable and no upstream request (T06-029).
+func TestPromqlValuesInStrings(t *testing.T) {
+	cases := promqlValueCases(t)
+	up := valueUpstream(t)
+	h := plannedGateway(t, up.URL, fixedNow)
+	get := func(q string) promqlCase {
+		t.Helper()
+		c, ok := cases[q]
+		if !ok {
+			t.Fatalf("%s: not in the fixture", q)
+		}
+		return c
+	}
+	refused := func(q string, rec *httptest.ResponseRecorder, c promqlCase) {
+		t.Helper()
+		if rec.Code != 400 {
+			t.Errorf("%s: status %d, want 400 (body %.300s)", q, rec.Code, rec.Body.String())
+			return
+		}
+		e := errEnvelopeOf(t, rec.Body.Bytes())
+		if e.Error.Code != "invalid" || c.Error == nil || e.Error.Message != c.Error.Message || len(e.Error.Fields) != len(c.Error.Fields) {
+			t.Errorf("%s: %.300s", q, rec.Body.String())
+			return
+		}
+		for i, f := range c.Error.Fields {
+			if e.Error.Fields[i].Pointer != f.Pointer || e.Error.Fields[i].MessageKey != f.MessageKey {
+				t.Errorf("%s: field %d %+v, want %+v", q, i, e.Error.Fields[i], f)
+			}
+		}
+		if b := planBodyOf(t, rec); b.Planned != nil || (b.Error != nil && b.Error.Planned != nil) {
+			t.Errorf("%s: a refusal carries a plan: %.300s", q, rec.Body.String())
+		}
+	}
+	for _, q := range []string{"Q1", "Q2", "Q3", "Q4", "Q5", "Q7", "Q8", "Q11", "Q12", "Q13", "Q14", "Q17", "Q19",
+		"Q24", "Q26", "Q27", "Q28", "Q29", "Q30"} {
+		c := get(q)
+		up.reset()
+		rec := postJSON(h, rangePath, valuesBody(c))
+		rs := up.requests()
+		sent := make([]string, 0, len(rs))
+		for _, r := range rs {
+			sent = append(sent, r.Path+" "+r.Form.Get("query"))
+		}
+		b := planBodyOf(t, rec)
+		if rec.Code != 200 || c.Planned == nil || b.Planned == nil || len(rs) != 1 || rs[0].Path != "/api/v1/query_range" ||
+			rs[0].Form.Get("query") != c.Planned.Query || b.Planned.Query != c.Planned.Query {
+			t.Errorf("%s: %d %.300s, upstream %q", q, rec.Code, rec.Body.String(), sent)
+		}
+	}
+	for _, q := range []string{"Q6", "Q9", "Q10", "Q15", "Q16", "Q20"} {
+		c := get(q)
+		up.reset()
+		rec := postJSON(h, rangePath, valuesBody(c))
+		refused(q, rec, c)
+		if n := len(up.requests()); n != 0 {
+			t.Errorf("%s: %d upstream requests, want 0", q, n)
+		}
+	}
+
+	// Q23 needs metric types if planned: on a fresh gateway, so no earlier case filled the cache.
+	c := get("Q23")
+	up23 := valueUpstream(t)
+	h23 := plannedGateway(t, up23.URL, fixedNow)
+	refused("Q23", postJSON(h23, rangePath, valuesBody(c)), c)
+	rs := up23.requests()
+	if n := pathCount(rs, "/api/v1/metadata"); n != 0 {
+		t.Errorf("Q23: %d /api/v1/metadata requests, want 0", n)
+	}
+	if n := pathCount(rs, "/api/v1/query_range"); n != 0 {
+		t.Errorf("Q23: %d /api/v1/query_range requests, want 0", n)
 	}
 }

@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { expandedOf, FIXTURE, shapeOf } from './planFixture';
 import { STABLE_FUNCTIONS } from './promFunctions';
-import { stubShape } from './promShape';
+import { stubShape, unquote } from './promShape';
 
 describe('unit:plan-shape (stub)', () => {
   for (const c of FIXTURE.plan) {
@@ -30,5 +30,36 @@ describe('unit:plan-shape (stub)', () => {
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     expect(FIXTURE.functions.length).toBeGreaterThan(70);
     expect(ours).toEqual(FIXTURE.functions);
+  });
+});
+
+describe('unquote (§4.4)', () => {
+  it('reads the upstream escapes', () => {
+    for (const [lit, want] of [
+      ['"\\a\\b\\f\\n\\r\\t\\v\\\\\\""', '\x07\b\f\n\r\t\v\\"'],
+      ["'\\''", "'"],
+      ['"\\x41\\101\\u00e9\\U0001F600"', 'AAé😀'],
+      ['`a\rb`', 'a\rb'],
+      ['"\\ufffd"', '\ufffd'],
+      ["'\\ufffd'", '\ufffd'],
+    ] as const)
+      expect(unquote(lit), lit).toBe(want);
+  });
+
+  it('refuses what the upstream lexer refuses', () => {
+    for (const lit of [
+      '"\\\'"',
+      "'\\\"'",
+      '"\\q"',
+      '"\\x4"',
+      '"\\400"',
+      '"\\ud800"',
+      '"\\U00110000"',
+      '"a\nb"',
+      '"a\ufffdb"',
+      "'\ufffd'",
+      '`\ufffd`',
+    ])
+      expect(unquote(lit), lit).toBeNull();
   });
 });

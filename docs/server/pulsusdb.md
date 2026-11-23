@@ -80,19 +80,65 @@ when a rewrite would shrink it.
 
 ### The rules, in order
 
-1. **Substitution.** The raw bytes are scanned once, left to right, with a quote state (none,
-   `"`, `'`, `` ` ``): outside a string a quote opens one; inside `"…"` or `'…'` a backslash skips
-   the next byte and the same quote closes it; inside backticks only a backtick closes. Comments
-   are not recognised, so `up # $r` still needs `$r`. A reference is `$NAME` or `${NAME}` with
-   `NAME = [A-Za-z_][A-Za-z0-9_]*`:
+1. **Substitution.** The raw bytes are scanned once, left to right, by the lexical states of the
+   upstream PromQL lexer (`promql/parser/lex.go`):
+
+   | State | Byte | Next |
+   |---|---|---|
+   | none | `"` / `'` / `` ` `` / `#` | in `"…"` / in `'…'` / in `` `…` `` / in a comment |
+   | `"…"`, `'…'` | `\` | skip it and the next byte (a `$` there is not a reference) |
+   | `"…"` | `"` or LF | none |
+   | `'…'` | `'` or LF | none |
+   | `` `…` `` | `` ` `` | none |
+   | comment | LF or CR | none |
+
+   A reference is `$NAME` or `${NAME}` with `NAME = [A-Za-z_][A-Za-z0-9_]*`. It is read in every
+   state, except where a backslash skipped it. A reference in a comment is substituted, so
+   `up # $r` still needs `$r`. Values are not rescanned, so a quote or a `#` in a value never
+   changes the state.
 
    | Reference | Becomes |
    |---|---|
    | `$__interval` | the step, as a duration (`30s` at 30 000 ms) |
    | `$__rate_interval` | the rate window of the step (below) |
    | any other `$__…`, or a name longer than 64 | itself, unchanged |
-   | a name in `vars` | the value; inside `"…"` or `'…'` each `\` becomes `\\` and that quote `\` + quote; inside backticks and outside strings, verbatim |
+   | a name in `vars`, inside `"…"` or `'…'` | the value, encoded by the table below |
+   | a name in `vars`, inside `` `…` `` | the value verbatim; a backtick, a CR or U+FFFD in it is refused (row 7b) |
+   | a name in `vars`, inside a comment | the value verbatim; an LF or a CR in it is refused (row 7b) |
+   | a name in `vars`, outside strings and comments | the value verbatim: it is query text by intent (`$q` with `q=sum(x)`) |
    | a name not in `vars` | itself; the plan is refused with `variable.missing` |
+
+   A value written into a string opened by `"` or `'` is encoded so that the upstream parser reads
+   it back as itself:
+
+   | Byte or rune of the value | In `"…"` | In `'…'` |
+   |---|---|---|
+   | the string's own quote | `\"` | `\'` |
+   | the other quote | `'` | `"` |
+   | `\` | `\\` | `\\` |
+   | 0x07, 0x08, 0x0C, 0x0A, 0x0D, 0x09, 0x0B | `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v` | the same |
+   | any other byte 0x00–0x1F, and 0x7F | `\x` and two lowercase hex digits (`\x01`, `\x7f`) | the same |
+   | any other ASCII byte | itself | itself |
+   | U+FFFD | `\ufffd` | `\ufffd` |
+   | any other non-ASCII rune | itself, its bytes unchanged | the same |
+
+   Only the string's own quote is escaped: the upstream lexer accepts `\` followed by the opening
+   quote only, so `\"` inside `'…'` is an unknown escape. For a value of ASCII only, the `"…"`
+   column is Go's `strconv.Quote` without its quotes. The two recorded deviations from
+   `strconv.Quote`:
+   - a non-ASCII rune that `strconv.IsPrint` rejects (U+00A0, U+2028) is written as itself;
+   - U+FFFD is written `\ufffd`, because the upstream lexer refuses a literal U+FFFD in a string.
+
+   `FuzzEncodeQuoted` checks that the upstream `strutil.Unquote` gives back every valid UTF-8
+   value in both forms, and `FuzzValueRoundTrip` that the planned text parses to a matcher with the
+   value, or is refused.
+
+   **Row 7b.** A value that cannot be written where it is referenced is refused before any I/O
+   (before tenant resolution, the metric-types read and any upstream request). That is a
+   backtick, a CR or U+FFFD inside a `` `…` `` string (a backtick would end it, Go's raw-string
+   unquote drops a CR, and the upstream lexer refuses U+FFFD), or an LF or a CR inside a comment
+   (either would end it). A step macro's text is a duration and is never checked. Missing
+   variables (row 7) are reported first, and row 7b comes before the `step_ms` row.
 
    `Prepare` substitutes every macro as the placeholder `1s`, so the selectors are known before
    the step is.
@@ -143,6 +189,7 @@ The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~
 | a bad variable name | 400 | `/vars/<name>`, `field.pattern` | `a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$` |
 | a value over 4 096 bytes | 400 | `/vars/<name>`, `field.range` | `a variable value must be UTF-8 and at most 4096 bytes` |
 | referenced variables without a value | 400 | one `/vars/<name>`, `variable.missing` per name, first reference first | `no value for variable $a, $b` |
+| a referenced value that cannot be written where it is referenced | 400 | one `/vars/<name>`, `variable.unrepresentable` per name, first reference first | `the value of variable $a, $b cannot be written where it is referenced` |
 | a macro in an instant query without `step_ms` | 400 | `/step_ms`, `field.required` | `step_ms is required for $__interval and $__rate_interval` |
 | the substituted text over 2 MiB | 413 | `/query`, `query.too_large_to_plan` | `the substituted query is over 2097152 bytes, the most the server processes`; `hint.reason: processing_cap`, no `planned` |
 | the planned text over 65 536 bytes | 413 | `/query`, `query.sent_too_large` | `the planned query is over 65536 bytes`; the full `planned` (`bytes` is `len(planned.query)`) |
@@ -240,6 +287,10 @@ before Classify, so `{source="$s"}` with `s=pulsus-dash` is `virtual`
 | `kind_of`, `from_metadata`, `rate_window`, `durations`, `bytes` | the tables of the type rules, the window and the byte counts |
 | `reserved` | texts and the reserved name the byte guard reports, or null |
 | `functions` | the parser's stable functions; `go test ./internal/pulsusdb/prom -run TestFunctionTable -update` writes it |
+
+The `plan` cases Q1–Q33 (`from: "new (#118)"`) are the value encodings: each string form, the
+comment and its CR end, the row-7b refusals and their order, and the string literals the
+upstream lexer refuses.
 
 A string member that would be long may be a `Text`: `{"concat": [string | {"repeat": Text, "count": n}, …]}`,
 expanded by both runners (the query, `planned.query`, `planned.expanded` and the shape's metric
