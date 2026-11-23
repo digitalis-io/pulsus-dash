@@ -327,6 +327,40 @@ describe('engine', () => {
     expect(layer.calls('fillText')[0]?.args).toEqual(['3', 150, 60]);
   });
 
+  it('stat sparkline scales to the finite points inside the window', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const ts = [-30, 0, 30, 60, 90].map((m) => W0 + m * MIN);
+    const s = seriesFrame(K(3), ts, [100, 1, 3, 2, -50]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke'].includes(o.op));
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
+      ['moveTo', 12, 152],
+      ['lineTo', 150, 120],
+      ['lineTo', 288, 136],
+      ['stroke'],
+    ]);
+  });
+
+  it('stat sparkline: one visible point is a dot at mid-height', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const ts = [-30, 30, 90].map((m) => W0 + m * MIN);
+    const s = seriesFrame(K(3), ts, [10, 3, -10]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    expect(h.layer().calls('lineTo')).toHaveLength(0);
+    expect(
+      h
+        .layer()
+        .calls('arc')
+        .map((o) => o.args),
+    ).toEqual([[150, 136, size['chart-line'], 0, 2 * Math.PI]]);
+  });
+
   it('stat without sparkline: scalar; short frame', () => {
     const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
     const scalar = harness(Canvas2DEngine);
