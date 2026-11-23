@@ -565,6 +565,13 @@ test.describe('e2e:a11y-rooms keyboard', () => {
           GALLERY_FROM + lineStep,
           3,
         ],
+        // #97: values over [−MAX, MAX].
+        [
+          'Values near the largest finite number',
+          GALLERY_FROM + 1_439 * lineStep,
+          GALLERY_FROM + lineStep,
+          1,
+        ],
       ];
       for (const [title, last, second, n] of charts) {
         const name = `Crosshair: ${title}`;
