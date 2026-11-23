@@ -54,10 +54,11 @@ var fixtures = map[string]rlsFixture{
 	"stars":             {"org_id", "INSERT INTO stars (org_id, user_id, kind, object_id) SELECT $1, $2, 'board', $2 WHERE $3::text IS NOT NULL"},
 	"recent_views":      {"org_id", "INSERT INTO recent_views (org_id, user_id, kind, id, viewed_at) SELECT $1, $2, 'board', $2, now() WHERE $3::text IS NOT NULL"},
 	"audit_chain_heads": {"org_id", "INSERT INTO audit_chain_heads (org_id, last_at, last_id, last_hash) VALUES ($1, now(), $2, sha256($3::text::bytea))"},
+	"annotations":       {"org_id", "INSERT INTO annotations (org_id, id, at, kind, text, author_kind) VALUES ($1, $2, now(), 'deploy', $3, 'local')"},
 }
 
 // insertOrder respects foreign keys.
-var insertOrder = []string{"orgs", "tenant_bindings", "folders", "boards", "board_versions", "audit_events", "audit_chain_heads", "stars", "recent_views"}
+var insertOrder = []string{"orgs", "tenant_bindings", "folders", "boards", "board_versions", "audit_events", "audit_chain_heads", "stars", "recent_views", "annotations"}
 
 // tenantTables lists every ordinary or partitioned table in public except the non-tenant ones and
 // the partitions (reached only through their parent, T11-026).

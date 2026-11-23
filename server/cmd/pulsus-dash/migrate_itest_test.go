@@ -64,7 +64,7 @@ func TestMigrateFromEmpty(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("exit %d stderr %q", r.code, r.stderr)
 			}
-			wantLines(t, "migrate", r.stdout, "applied 00001_tenancy.sql", "applied 00002_boards.sql", "schema at version 2",
+			wantLines(t, "migrate", r.stdout, "applied 00001_tenancy.sql", "applied 00002_boards.sql", "applied 00003_annotations.sql", "schema at version 3",
 				`seeded organisation "default" with tenant binding "default"`)
 			if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM orgs WHERE slug = 'default'"); n != 1 {
 				t.Errorf("%d default orgs, want 1", n)
@@ -91,7 +91,7 @@ func TestMigrateIdempotent(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("second: exit %d stderr %q", r.code, r.stderr)
 			}
-			wantLines(t, "second migrate", r.stdout, "schema at version 2; nothing to apply", "organisation already seeded")
+			wantLines(t, "second migrate", r.stdout, "schema at version 3; nothing to apply", "organisation already seeded")
 			if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM orgs"); n != 1 {
 				t.Errorf("%d orgs, want 1", n)
 			}
@@ -296,7 +296,7 @@ func TestSeedValuesIgnoredWhenSeeded(t *testing.T) {
 				if r.code != 0 {
 					t.Errorf("plain: exit %d stderr %q", r.code, r.stderr)
 				}
-				wantLines(t, "plain", r.stdout, "schema at version 2; nothing to apply", "organisation already seeded")
+				wantLines(t, "plain", r.stdout, "schema at version 3; nothing to apply", "organisation already seeded")
 				r = migrateCLI(t, cfg, env, "--dry-run")
 				if r.code != 0 || !strings.Contains(r.stdout, "dry run: nothing changed\n") || strings.Contains(r.stdout, "would seed") {
 					t.Errorf("dry run: exit %d stdout %q stderr %q", r.code, r.stdout, r.stderr)

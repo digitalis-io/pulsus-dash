@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store"
@@ -271,23 +270,9 @@ func TestAnnotationsAudit(t *testing.T) {
 // returns the SQLSTATE ("" on success).
 func appInsertCode(t *testing.T, dsn string, org core.OrgID, end string, kind string) string {
 	t.Helper()
-	conn, err := pgx.Connect(itestCtx(t), dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close(context.Background()) }()
-	tx, err := conn.Begin(itestCtx(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
-	if _, err := tx.Exec(itestCtx(t), "SELECT set_config('pulsus.org_id', $1, true)", org.String()); err != nil {
-		t.Fatal(err)
-	}
 	id, _ := core.NewID()
-	_, err = tx.Exec(itestCtx(t), `INSERT INTO annotations (org_id, id, at, end_at, kind, text, author_kind)
+	return storetest.OrgExecCode(t, dsn, org, `INSERT INTO annotations (org_id, id, at, end_at, kind, text, author_kind)
 		VALUES ($1, $2, '2026-01-01T00:30:00Z', $3::timestamptz, $4, 'x', 'local')`, uuid.UUID(org), id, end, kind)
-	return storetest.Code(err)
 }
 
 func TestAnnotationsChecks(t *testing.T) {
