@@ -50,8 +50,14 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
   K4: ['Request rate', 'Error ratio', 'Errors', 'Request latency'].map(
     (t) => `${BOARD} link "Open in Explore: ${t}"`,
   ),
-  // Operated by K3 and K4.
-  K2: [`${BOARD} button "Add panel"`],
+  K2: [
+    // Operated by K3 and K4.
+    `${BOARD} button "Add panel"`,
+    // Operated by K3 (L24 b-1).
+    `${BOARD} button "Share"`,
+    // Operated by K4 (L24 b-3).
+    `${BOARD} button "Full screen: Edge p99"`,
+  ],
   // Operated by K3 and K4 (L25).
   K5: [`${BOARD} button "Share"`],
 };
