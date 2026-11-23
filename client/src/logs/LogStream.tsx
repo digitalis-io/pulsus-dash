@@ -7,7 +7,7 @@
  * wrap and measured with wrap (at most 100 lines; a longer line scrolls inside its row). The gutter
  * shows a level-coloured bar, a three-letter glyph and the level name for screen readers.
  */
-import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual';
+import { elementScroll, useVirtualizer, type VirtualItem } from '@tanstack/react-virtual';
 import {
   useCallback,
   useEffect,
@@ -173,8 +173,22 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   const [perLine, setPerLine] = useState(80);
   const [touching, setTouching] = useState(false);
   const [wrapSeen, setWrapSeen] = useState(wrap);
-  /** The reader's last scroll direction, from wheel, key and touch input. */
-  const directionRef = useRef<'down' | 'up' | null>(null);
+  /** The reader's last scroll direction (per pager), as state: a change runs the load decision
+   *  of §4.5 even when nothing scrolls (a wheel at an edge). */
+  const [dirState, setDirState] = useState<{ pager: LogPager; dir: 'down' | 'up' | null }>({
+    pager,
+    dir: null,
+  });
+  const direction = dirState.pager === pager ? dirState.dir : null;
+  const setDirection = useCallback(
+    (dir: 'down' | 'up') => {
+      setDirState((d) => (d.pager === pager && d.dir === dir ? d : { pager, dir }));
+    },
+    [pager],
+  );
+  /** The offset of the last programmatic write (LogStream's or the virtualiser's): its scroll
+   *  event is not the reader's. */
+  const programmaticRef = useRef<number | null>(null);
 
   // A new pager starts at its first row (§4.5).
   const [vs, setVs] = useState<ViewState>(() => ({
@@ -234,6 +248,10 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     followOnAppend: false,
     isScrollingResetDelay: 150,
     measureElement: measureRow,
+    scrollToFn: (offset, options, instance) => {
+      programmaticRef.current = offset + (options.adjustments ?? 0);
+      elementScroll(offset, options, instance);
+    },
   });
   const items: VirtualItem[] = virtualizer.getVirtualItems();
   const totalPx = virtualizer.getTotalSize();
@@ -250,6 +268,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
 
   const write = (scroller: HTMLElement, top: number): void => {
     scroller.scrollTop = top;
+    programmaticRef.current = scroller.scrollTop;
     onScrollWrite?.();
   };
 
@@ -419,19 +438,30 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     const scroller = scrollerRef.current;
     if (scroller === null) return;
     write(scroller, 0);
-    directionRef.current = null;
   });
 
-  // The reader's scroll direction, from the reader's own input (wheel, keys, touch drag), not from
-  // scroll events, which the virtualiser's measurement corrections also cause: the tail prefetches
-  // unless the reader last moved up, the head (an evicted page) only after the reader moved up, so
-  // loads at the two ends never evict each other's pages in turn.
+  // The reader's scroll direction: from the change of `scrollTop` in each scroll event that no
+  // programmatic write made (so a scrollbar drag counts), and from wheel, key and touch input,
+  // which also count at an edge, where nothing scrolls. The tail prefetches unless the reader last
+  // moved up, the head (an evicted page) only after the reader moved up, so loads at the two ends
+  // never evict each other's pages in turn.
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller === null) return undefined;
+    let prevTop = scroller.scrollTop;
     let touchY: number | null = null;
     const set = (down: boolean) => {
-      directionRef.current = down ? 'down' : 'up';
+      setDirection(down ? 'down' : 'up');
+    };
+    const onScroll = () => {
+      const top = scroller.scrollTop;
+      const written = programmaticRef.current;
+      if (written !== null && Math.abs(top - written) < 1) {
+        programmaticRef.current = null;
+      } else if (Math.abs(top - prevTop) >= 1) {
+        set(top > prevTop);
+      }
+      prevTop = top;
     };
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY !== 0) set(e.deltaY > 0);
@@ -450,17 +480,19 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       set(y < touchY);
       touchY = y;
     };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
     scroller.addEventListener('wheel', onWheel, { passive: true });
     scroller.addEventListener('keydown', onKey);
     scroller.addEventListener('touchstart', onTouchStart, { passive: true });
     scroller.addEventListener('touchmove', onTouchMove, { passive: true });
     return () => {
+      scroller.removeEventListener('scroll', onScroll);
       scroller.removeEventListener('wheel', onWheel);
       scroller.removeEventListener('keydown', onKey);
       scroller.removeEventListener('touchstart', onTouchStart);
       scroller.removeEventListener('touchmove', onTouchMove);
     };
-  }, []);
+  }, [setDirection]);
 
   // A touch down holds every re-slice until it ends (§4.5 "at rest").
   useEffect(() => {
@@ -492,7 +524,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     if (scroller === null || seen === null || Math.abs(seen - scroller.scrollTop) > 1) return;
     const { a, b } = visibleOrds(range, slice, layout);
     pager.protect({ from: a - OVERSCAN, to: b + OVERSCAN + 1 });
-    const dir = directionRef.current;
+    const dir = direction;
     if (layout.tail && state.endOrd - b <= PREFETCH_ROWS && dir !== 'up') void pager.loadTail();
     if (layout.head && a - state.firstOrd <= PREFETCH_ROWS && dir === 'up') {
       void pager.loadHead();
@@ -525,7 +557,17 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- §4.5: runs when the visible range, the state or the extent changes
-  }, [rangeStart, rangeEnd, state, slice, isScrolling, touching, extentPx, current.restore]);
+  }, [
+    rangeStart,
+    rangeEnd,
+    state,
+    slice,
+    isScrolling,
+    touching,
+    extentPx,
+    current.restore,
+    direction,
+  ]);
 
   useImperativeHandle(ref, () => ({
     scrollToOrd(ord: number) {
@@ -535,7 +577,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       const scroller = scrollerRef.current;
       if (scroller !== null) {
         const at = anchorOf(items, scroller.scrollTop, slice, layout, state.firstOrd, state.endOrd);
-        if (o !== at.ord) directionRef.current = o < at.ord ? 'up' : 'down';
+        if (o !== at.ord) setDirection(o < at.ord ? 'up' : 'down');
       }
       reslice('scrollTo', { ord: o, offsetPx: 0 });
     },

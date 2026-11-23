@@ -101,12 +101,14 @@ After each change the view protects the shown rows (± `OVERSCAN` 10) from evict
 the next page when the tail sentinel is in the slice and the last visible row is within
 `PREFETCH_ROWS` 2 000 of the buffer end, or the page before the head when the head sentinel is in
 the slice and the first visible row is within 2 000 of the buffer start. The reader's last scroll
-direction gates the two ends: it comes from the reader's own input (wheel, the arrow, Page, Home,
-End and Space keys, a touch drag; `scrollToOrd` counts as a move towards the ordinal), not from
-scroll events, which LogStream's writes and the virtualiser's measurement corrections also cause.
-The tail loads unless the reader last moved up; the head (an evicted page) loads only after the
-reader moved up. Without this, a buffer narrower than both prefetch zones (a small cap, or very long
-lines filling the text cap) would load a page at one end, evict the other end's page, and load it back, without end.
+direction gates the two ends. It comes from the change of `scrollTop` in each scroll event that no
+programmatic write made (LogStream's restore writes and the virtualiser's measurement corrections
+are recorded and skipped), so a scrollbar drag counts; and from wheel, key (arrow, Page, Home, End,
+Space) and touch input, which also count at an edge, where nothing scrolls. `scrollToOrd` counts as
+a move towards the ordinal. The direction is state, so a change runs the load decision even
+without a scroll event. The tail loads unless the reader last moved up; the head (an evicted page)
+loads only after the reader moved up. Without this, a buffer narrower than both prefetch zones (a
+small cap, or very long lines filling the text cap) would load a page at one end, evict the other end's page, and load it back, without end.
 
 ### Rows
 
