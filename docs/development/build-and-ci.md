@@ -56,7 +56,7 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 | `engine-fixtures.ts [--write]` | written / up to date | a fixture is stale (`error[engine-fixtures] engine/fixtures/<file> is stale`) | — | — | `engine-fixtures.test.ts` (a fresh run equals the committed files) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
-| `keyboard-coverage.ts <dir> <project>` | covered | findings | a part file unreadable, not JSON, `version` ≠ 1 or of another project; arguments missing | `keyboard-part-missing`, `keyboard-part-duplicate`, `keyboard-empty`, `keyboard-uncovered`, `keyboard-unvisited` | `keyboard-coverage.test.ts`; `keyboard-coverage-reporter.test.ts` with `scripts/fixtures/kbd-reporter/` |
+| `keyboard-coverage.ts <dir> <project>` | covered | findings | a part file unreadable, not JSON, `version` ≠ 1 or of another project; arguments missing | `keyboard-part-missing`, `keyboard-part-duplicate`, `keyboard-empty`, `keyboard-uncovered`, `keyboard-unvisited`, `keyboard-skip-unbacked`, `keyboard-skip-unused` | `keyboard-coverage.test.ts`; `keyboard-coverage-reporter.test.ts` with `scripts/fixtures/kbd-reporter/` |
 | `e2e-complete.ts <listed.json> <project> <shard.json>...` | complete | findings | a report unreadable or not JSON; no listed test for the project; no shard report | `e2e-test-missing`, `e2e-test-duplicate`, `e2e-test-not-run`, `e2e-test-skipped`, `e2e-test-failed`, `e2e-skip-unused`, `e2e-test-unexpected` | `e2e-complete.test.ts` with `scripts/__fixtures__/e2e-complete/firefox-log-stream.json` (a real Firefox report) |
 
 ### Keyboard coverage and e2e completeness
@@ -74,6 +74,11 @@ one project's five files:
 | `keyboard-empty` | no part collected a control | the project |
 | `keyboard-uncovered` | a key collected by some part and operated by none (one finding per key, sorted) | the key |
 | `keyboard-unvisited` | a required state (`REQUIRED_STATES` in `e2e/keyboardParts.ts`) visited by no part | the state |
+| `keyboard-skip-unbacked` | a key in part P's `DRAIN_SKIP` that no part before P in `SINGLE_TEST_ORDER` operated | `P key` |
+| `keyboard-skip-unused` | a key in part P's `DRAIN_SKIP` that P did not collect (the skip is stale: remove it) | `P key` |
+
+The two skip rules run only for parts whose file is present. A skip never enters the part's
+`operated`, so a skipped control still has to be operated by some part (`keyboard-uncovered`).
 
 `keyboard-coverage.ts` searches `<dir>` at any depth for `keyboard-coverage/<project>-K*.json`, so
 it reads one run's `test-results/` or CI's downloaded shard artefacts alike. A missing `<dir>` has no

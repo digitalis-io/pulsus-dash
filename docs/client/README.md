@@ -302,6 +302,32 @@ the harness itself.
 shard's test step then exceeds 15 minutes, rebalance as
 [E2E shards](../development/build-and-ci.md#e2e-shards) says.
 
+**Drain skips.** Before the split, one test ran the loops in the order K1, K3, K4, K2, K5
+(`SINGLE_TEST_ORDER` in `e2e/keyboardParts.ts`), and a drain skipped what an earlier loop had
+already operated. A part alone lacks those earlier loops, so its drains would try to operate
+controls they cannot reach from their own entry (for example a board's `Share` button from
+K5's edit-sections drain). `DRAIN_SKIP[part]` lists the keys (`state › role "name"`) that part's
+drains treat as done: `keyboardSession` passes them to `keyboardHarness(page, done)`, and
+`pendingHere` (through `drainPending`) leaves them out. They only leave the drains' work list:
+they never enter the part's `operated`, so the union rule still needs some part to operate them.
+The checker fails a key that no part before it in `SINGLE_TEST_ORDER` operated
+(`keyboard-skip-unbacked`) or that the part no longer collects (`keyboard-skip-unused`). The
+lists today:
+
+| Part | Skipped keys (on `/t/:tenant/board/:uid + none`) | Operated by |
+|---|---|---|
+| K1, K3 | none | |
+| K4 | `link "Open in Explore: …"` for Request rate, Error ratio, Errors, Request latency | K3 (L24 on b-1) |
+| K2 | `button "Add panel"`; `button "Share"`; `button "Full screen: Edge p99"` | K3, K4; K3 (L24 on b-1); K4 (L24 on b-3) |
+| K5 | `button "Share"` | K3, K4 (L25) |
+
+A list grows only when a part fails alone: for a drain failure `drain <n> › <k1> › … : cannot
+reach <x>` (or `still pending`) in part P, take the first of k1, …, x whose full key (the state
+at the drain's entry, ` › `, the key) is in the operated file of a part before P in
+`SINGLE_TEST_ORDER`, and add it with a comment naming that part. If none qualifies, the part has
+a real gap: operate the control in a loop instead. Remove an entry that `keyboard-skip-unused`
+reports.
+
 ## API clients
 
 `src/api/` defines `Api` (session, boards, panel data, Starred and Recent, sign-out, and the
