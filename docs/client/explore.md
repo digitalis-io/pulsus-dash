@@ -774,8 +774,12 @@ character later); backtick strings have no escapes. Values are escaped by the pa
 before the page loads, as `bench:editor-keystroke` installs the editor probe. `promqlExtensions`
 reads it once per view (`completionProbe()`); a probe set later is never called, and in normal use
 there is none and the slots never call `performance.now()`. The slots report their main-thread work
-in ms: `slot0` (slot 0's entry to its result), `slot1pre` (slot 1's entry to its wait) and
-`slot1post` (from the remote run settling to the result built). The fetch wait is not counted.
+in ms, each when it ends: `slot0` (slot 0's entry to its result), `slot1pre` (slot 1's entry to its
+wait) and `slot1post` (from the remote run settling to the result built). The fetch wait is not
+counted. `slot0` and `slot1pre` of one request overlap: both slots start in one task and each
+interval runs across the await on the shared analysis, which resumes in the same task. A reader
+therefore takes the union of the intervals `[end − ms, end]`, never their sum; the bench does
+(`src/test/completionWork.ts`).
 
 ### The LogQL editor harness (`dev/logql-editor`)
 
@@ -991,7 +995,7 @@ install the fake `ResizeObserver`.
 | `unit:promql-shape`                                                                                                                       | `src/editor/lang/promql/promql.test.ts`: the 23 shape rows (comments, value types, `histogram_quantile`, error nodes)                                                                                                                                                                                                                                                                                                  |
 | `unit:promql-diagnostics`                                                                                                                 | `src/editor/lang/promql/promql.test.ts`: bytes to UTF-16 (multi-byte, pairs, lone surrogates), positions D1–D9, and a raw-byte position placed by the identity mapping                                                                                                                                                                                                                                        |
 | `unit:suggest-cache`                                                                                                                      | `src/editor/suggestCache.test.ts`: C1–C19 (C5, C17: no in-flight entry is superseded by another key, evicted or not; C19: an evicted in-flight LogQL entry is re-joined by its key), the key by language, a LogQL get that leaves an in-flight PromQL entry alone, and the caller signals G1–G7, with no unhandled rejection in any case |
-| `unit:promql-completion`, `unit:promql-replace`, `unit:promql-completion-timing`, `unit:promql-cancel` | `src/editor/lang/promql/complete.test.ts`: Q1–Q9 (the two slots per context, results at the caret, sections, the recording run sends nothing), R1–R18 (whole documents after accepting), P1–P7, P9, P10 (timing and T09-008 order under fake timers), Y1–Y13 (release on every change, the epoch, the real stack across views); `src/editor/lang/promql/replace.test.ts`: E1–E18 and the package parity P; P8 in `src/editor/PromQLEditor.test.tsx` |
+| `unit:promql-completion`, `unit:promql-replace`, `unit:promql-completion-timing`, `unit:promql-cancel` | `src/editor/lang/promql/complete.test.ts`: Q1–Q9 (the two slots per context, results at the caret, sections, the recording run sends nothing), R1–R18 (whole documents after accepting), P1–P7, P9, P10 (timing and T09-008 order under fake timers), Y1–Y13 (release on every change, the epoch, the real stack across views), Z1 (`unit:promql-completion-probe`: the two slots' probe intervals overlap and count once, on an injected clock); `src/editor/lang/promql/replace.test.ts`: E1–E18 and the package parity P; P8 in `src/editor/PromQLEditor.test.tsx` |
 | `unit:logql-lex`, `unit:logql-state` | `src/editor/lang/logql/lexer.test.ts`: L1–L16, a 1 000-text property (contiguous tokens, never throws), S1–S5 |
 | `unit:logql-highlight` | `src/editor/lang/logql/extensions.test.ts`: H1–H7 |
 | `unit:logql-context` | `src/editor/lang/logql/context.test.ts`: C1–C49 and C9b (`src/test/logqlContextCases.ts`) |
@@ -1022,7 +1026,7 @@ install the fake `ResizeObserver`.
 | `e2e:editor-ime` | `e2e/editor-ime.spec.ts` (Chromium) |
 | `bench:editor-keystroke` | `e2e/perf-editor-keystroke.spec.ts` (Chromium): a PromQL case on Explore › Metrics and a LogQL case on the `dev/logql-editor` harness; the editor's update per key through `src/editor/probe.ts` (p95 ≤ 2 ms) and a trace of the keys through `scripts/longTasks.ts`; the interim CI check blocks, the rest with `EDITOR_BENCH_GATE=enforce` ([Build, test and CI](../development/build-and-ci.md#tests)) |
 | `bench:logql-completion-latency` | `e2e/perf-logql-completion.spec.ts` (Chromium): keydown to popup on the harness, local and remote ([Build, test and CI](../development/build-and-ci.md#tests)) |
-| `bench:promql-completion-latency` | `e2e/perf-promql-completion.spec.ts` (Chromium): keydown to popup on Explore › Metrics, local (a 1 KB query) and remote, the work per local key (`keyWork`) and long tasks ([Build, test and CI](../development/build-and-ci.md#tests)) |
+| `bench:promql-completion-latency` | `e2e/perf-promql-completion.spec.ts` (Chromium): keydown to popup on Explore › Metrics, local (a 1 KB query) and remote, the work per local key (`keyWork`, the union of the probes' intervals) and long tasks; its arithmetic and enforce gate in `src/test/completionWork.ts`, checked by `src/test/completionWork.test.ts` (W1–W3, G1–G3) ([Build, test and CI](../development/build-and-ci.md#tests)) |
 | `e2e:a11y-rooms`, `e2e:csp-violations` (explore) | `e2e/a11y-rooms.spec.ts`, `e2e/keyboard.spec.ts` (L32, `e2e/keyboardExplore.ts`), `e2e/csp-violations.spec.ts` |
 | `ci:bundle-size` (editor closure) | `scripts/bundle-size.test.ts` (h)–(k) and the real build |
 
