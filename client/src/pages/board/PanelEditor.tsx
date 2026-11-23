@@ -12,7 +12,7 @@
  * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
  * them. They change the spec, not the query key: the preview reruns nothing.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { FieldError, PanelSpec, PanelVisKind, QueryLang } from '../../api/types';
 import { panelView } from '../../boards/panelRun';
 import { fieldMessage } from '../../boards/fieldMessages';
@@ -70,6 +70,12 @@ function useAfterFirstFrame(): boolean {
   return after;
 }
 
+/** `value` by its JSON: the same object while the JSON is unchanged, so memoised children skip. */
+function useStable<T>(value: T): T {
+  const key = JSON.stringify(value);
+  return useMemo(() => JSON.parse(key) as T, [key]);
+}
+
 /** `vis` without the member `key` (absent, not undefined: the saved spec has no such key). */
 function without(vis: PanelSpec['vis'], key: 'thresholds' | 'legend'): PanelSpec['vis'] {
   return Object.fromEntries(Object.entries(vis).filter(([k]) => k !== key)) as PanelSpec['vis'];
@@ -83,6 +89,59 @@ const KINDS: readonly { id: PanelVisKind; label: MessageId }[] = [
   { id: 'stat', label: 'editor.vis.stat' },
   { id: 'logs', label: 'editor.vis.logs' },
 ];
+
+/**
+ * Thresholds and Legend (§3.10). Memoised, with stable props from the editor, so an edit elsewhere
+ * in the dialog (title, language, query) does not render them again (`bench:rooms-long-tasks`).
+ */
+const VisExtras = memo(function VisExtras({
+  vis,
+  unit,
+  fields,
+  pointer,
+  readOnly,
+  onVis,
+}: {
+  vis: PanelSpec['vis'];
+  unit: Unit;
+  /** The field errors under the panel's `/vis`. */
+  fields: readonly FieldError[];
+  pointer: string;
+  readOnly: boolean;
+  onVis: (next: PanelSpec['vis']) => void;
+}) {
+  const errorAt = (suffix: string): string | null => {
+    const f = fields.find((x) => x.pointer === `${pointer}${suffix}`);
+    return f === undefined ? null : fieldMessage(f.messageKey);
+  };
+  return (
+    <>
+      <div className={cx(styles['editorWide'])}>
+        <ThresholdsField
+          value={vis.thresholds}
+          onChange={(thresholds) => {
+            onVis(thresholds === undefined ? without(vis, 'thresholds') : { ...vis, thresholds });
+          }}
+          errorAt={(suffix) => errorAt(`/vis/thresholds${suffix}`)}
+          unit={unit}
+          readOnly={readOnly}
+        />
+      </div>
+      <div className={cx(styles['editorWide'])}>
+        <Select
+          label={t('editor.legend')}
+          value={vis.legend?.mode ?? 'table'}
+          options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
+          onChange={(mode) => {
+            onVis(mode === 'hidden' ? { ...vis, legend: { mode } } : without(vis, 'legend'));
+          }}
+          error={errorAt('/vis/legend/mode')}
+          isDisabled={readOnly}
+        />
+      </div>
+    </>
+  );
+});
 
 export interface PanelEditorProps {
   panel: PanelSpec;
@@ -141,6 +200,16 @@ export function PanelEditor({
   const patchVis = (next: PanelSpec['vis']): void => {
     onChange({ vis: next });
   };
+  // Stable props for `VisExtras`: the latest `onChange`, the unit and the `/vis` errors by value.
+  const latestOnChange = useRef(onChange);
+  useLayoutEffect(() => {
+    latestOnChange.current = onChange;
+  });
+  const onVis = useCallback((next: PanelSpec['vis']) => {
+    latestOnChange.current({ vis: next });
+  }, []);
+  const stableUnit = useStable(unit);
+  const visErrors = useStable(fields.filter((f) => f.pointer.startsWith(`${pointer}/vis/`)));
   const autoLabel = useMemo(() => {
     const vis =
       outcome === null
@@ -228,39 +297,14 @@ export function PanelEditor({
             isDisabled={readOnly}
           />
           {visFields && (
-            <div className={cx(styles['editorWide'])}>
-              <ThresholdsField
-                value={panel.vis.thresholds}
-                onChange={(thresholds) => {
-                  patchVis(
-                    thresholds === undefined
-                      ? without(panel.vis, 'thresholds')
-                      : { ...panel.vis, thresholds },
-                  );
-                }}
-                errorAt={(suffix) => errorAt(`/vis/thresholds${suffix}`)}
-                unit={unit}
-                readOnly={readOnly}
-              />
-            </div>
-          )}
-          {visFields && (
-            <div className={cx(styles['editorWide'])}>
-              <Select
-                label={t('editor.legend')}
-                value={panel.vis.legend?.mode ?? 'table'}
-                options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
-                onChange={(mode) => {
-                  patchVis(
-                    mode === 'hidden'
-                      ? { ...panel.vis, legend: { mode } }
-                      : without(panel.vis, 'legend'),
-                  );
-                }}
-                error={errorAt('/vis/legend/mode')}
-                isDisabled={readOnly}
-              />
-            </div>
+            <VisExtras
+              vis={panel.vis}
+              unit={stableUnit}
+              fields={visErrors}
+              pointer={pointer}
+              readOnly={readOnly}
+              onVis={onVis}
+            />
           )}
         </div>
         <div className={cx(styles['editorActions'])}>
