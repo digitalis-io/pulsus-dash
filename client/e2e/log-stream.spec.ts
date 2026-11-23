@@ -230,6 +230,28 @@ test.describe('e2e:log-stream', () => {
     expect.soft((await state(page)).writes, 'writes at rest').toBe(writes);
   });
 
+  // E5's stationary check on its own, on a lighter pixel-limited slice: 2 000-character lines
+  // (about 14 lines a row) under a 400 000 px bound give a slice of about 1 400 rows, whose
+  // margin is a quarter of it; a still viewport must not re-slice or write again.
+  test('E5b a pixel-limited slice does not re-slice at rest', async ({ page }) => {
+    await openBench(page, {
+      total: 30_000,
+      prefillTo: 30_000,
+      capEntries: MAX_ENTRIES,
+      latencyMs: 0,
+      wrap: true,
+      lineLength: 2_000,
+      view: { cap: 200_000, margin: 20_000, maxPx: 400_000, hardPx: 12_000_000 },
+    });
+    await scrollToOrd(page, 15_000);
+    await atRest(page);
+    const start = await sliceStart(page);
+    const writes = (await state(page)).writes;
+    await page.waitForTimeout(2_000);
+    expect.soft(await sliceStart(page), 'slice start at rest').toBe(start);
+    expect.soft((await state(page)).writes, 'writes at rest').toBe(writes);
+  });
+
   // The E7 workload, checked on its own: every mounted line of the E7 config wraps past 100
   // lines, at rest after scrollToOrd(1 000) and after wheeling as E7a and E7b do.
   test('E7 workload: every mounted line wraps past 100 lines', async ({ page }) => {
