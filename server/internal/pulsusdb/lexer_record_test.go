@@ -1,8 +1,10 @@
 package pulsusdb
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -10,11 +12,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 )
@@ -31,7 +35,7 @@ type lexerCase struct {
 }
 
 // fffd is U+FFFD, the replacement character, as UTF-8.
-const fffd = "�"
+const fffd = "\uFFFD"
 
 // hashMsg is PulsusDB's refusal of a '#' at byte n.
 func hashMsg(n int) string {
@@ -73,29 +77,454 @@ var (
 	errProbeTooLarge  = errors.New("too large")
 )
 
-// The recorder is not written yet (plan #121 tests first): every entry point is a stub.
-
-func rawLogResponse(_ context.Context, _ *Client, _ *core.RequestCtx, _ url.Values) (probeResult, error) {
-	return probeResult{}, nil
+// probeGet sends one GET through the client's transport, decorated as cl says, and reads the
+// body only through io.LimitReader(resp.Body, maxProbeBody+1).
+func probeGet(ctx context.Context, c *Client, rc *core.RequestCtx, cl call, form url.Values) (probeResult, error) {
+	cred, err := c.credential(ctx, rc)
+	if err != nil {
+		return probeResult{}, errProbeRequest
+	}
+	req, err := c.request(ctx, rc.Tenant.Binding, cl, form, cred)
+	if err != nil {
+		return probeResult{}, errProbeRequest
+	}
+	resp, err := c.http.Do(req) // #nosec G704 -- the contract binding's configured URL, from the environment
+	if err != nil {
+		return probeResult{}, errProbeTransport
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxProbeBody+1))
+	if err != nil {
+		return probeResult{}, errProbeRead
+	}
+	if len(b) > maxProbeBody {
+		return probeResult{}, errProbeTooLarge
+	}
+	return probeResult{status: resp.StatusCode, ctype: resp.Header.Get("Content-Type"), body: b}, nil
 }
 
-func rawBuildInfo(_ context.Context, _ *Client, _ *core.RequestCtx) (probeResult, error) {
-	return probeResult{}, nil
+// rawLogResponse sends one GET /api/logs/v1/query_range, decorated as a page request
+// (categorize flag, tenant header, credential), and returns its status, Content-Type and body
+// (at most maxProbeBody bytes), undecoded.
+func rawLogResponse(ctx context.Context, c *Client, rc *core.RequestCtx, form url.Values) (probeResult, error) {
+	return probeGet(ctx, c, rc, call{method: http.MethodGet, path: "/api/logs/v1/query_range", categorize: true}, form)
 }
 
-func runLexer(_ context.Context, _ *Client, _ *core.RequestCtx, _ []lexerCase, _ []string, _, _ string) error {
+// rawBuildInfo is GET /api/v1/status/buildinfo by the same rules.
+func rawBuildInfo(ctx context.Context, c *Client, rc *core.RequestCtx) (probeResult, error) {
+	return probeGet(ctx, c, rc, call{method: http.MethodGet, path: "/api/v1/status/buildinfo"}, nil)
+}
+
+// runLexer is the whole collection path: every case over (now-5m, now], limit 1, backward; the
+// build info; synthesise; and, when dir is not "", writeAll. Its error is "<id>: <reason code>"
+// or synthesise's error.
+func runLexer(ctx context.Context, c *Client, rc *core.RequestCtx, cases []lexerCase, secrets []string, date, dir string) error {
+	now := time.Now().UnixNano()
+	got := make([]probeResult, 0, len(cases))
+	for _, lc := range cases {
+		form := url.Values{"query": {lc.query}, "start": {nsParam(now - int64(5*time.Minute))}, "end": {nsParam(now)},
+			"limit": {"1"}, "direction": {"backward"}}
+		r, err := rawLogResponse(ctx, c, rc, form)
+		if err != nil {
+			return errors.New(lc.id + ": " + err.Error())
+		}
+		got = append(got, r)
+	}
+	bi, err := rawBuildInfo(ctx, c, rc)
+	if err != nil {
+		return errors.New("buildinfo: " + err.Error())
+	}
+	files, err := synthesise(cases, got, bi, secrets, date)
+	if err != nil {
+		return err
+	}
+	if dir == "" {
+		return nil
+	}
+	if err := writeAll(dir, files); err != nil {
+		return errors.New("write: " + err.Error())
+	}
 	return nil
 }
 
-func synthesise(_ []lexerCase, _ []probeResult, _ probeResult, _ []string, _ string) (map[string][]byte, error) {
-	return nil, nil
+// reason is a diagnostic of synthesise: a case id and a reason code, nothing else (§4.4).
+func reason(id, code string) error { return errors.New(id + ": " + code) }
+
+var versionRE = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// lexBody is the only shape a 200 may have (§4.4): any other member fails the decode.
+type lexBody struct {
+	Status string `json:"status"`
+	Data   *struct {
+		ResultType    string             `json:"resultType"`
+		EncodingFlags []string           `json:"encodingFlags"`
+		Result        *[]json.RawMessage `json:"result"`
+		Stats         *struct {
+			Streams *int64 `json:"streams"`
+			Entries *int64 `json:"entries"`
+			Bytes   *int64 `json:"bytes"`
+		} `json:"stats"`
+	} `json:"data"`
 }
 
-func leaks(_ []byte, _ []string) bool { return false }
+// check200 validates a 200 body; flags reports whether it had encodingFlags.
+func check200(body []byte, secrets []string) (flags bool, code string) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	var b lexBody
+	if err := dec.Decode(&b); err != nil {
+		if strings.HasPrefix(err.Error(), "json: unknown field") {
+			return false, "unknown field"
+		}
+		return false, "body"
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return false, "body"
+	}
+	if stringsLeak(body, secrets) {
+		return false, "leak"
+	}
+	d := b.Data
+	switch {
+	case b.Status != "success" || d == nil || d.ResultType != "streams" || d.Result == nil || d.Stats == nil:
+		return false, "body"
+	case len(*d.Result) != 0:
+		return false, "result not empty"
+	case d.Stats.Streams == nil || d.Stats.Entries == nil || d.Stats.Bytes == nil ||
+		*d.Stats.Streams != 0 || *d.Stats.Entries != 0 || *d.Stats.Bytes != 0:
+		return false, "stats not zero"
+	case len(d.EncodingFlags) > 1 || (len(d.EncodingFlags) == 1 && d.EncodingFlags[0] != categorizeValue):
+		return false, "flag not allowed"
+	}
+	return len(d.EncodingFlags) == 1, ""
+}
 
-func writeAll(_ string, _ map[string][]byte) error { return nil }
+// stringsLeak reports whether any decoded JSON string or member name of body holds a secret.
+func stringsLeak(body []byte, secrets []string) bool {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if s, ok := tok.(string); ok && leaks([]byte(s), secrets) {
+			return true
+		}
+	}
+}
 
-func probeSecrets(_, _, _ string) []string { return nil }
+// buildVersion is data.version of a 200 application/json build info, when it is a plain
+// x.y.z; the only member read.
+func buildVersion(bi probeResult, secrets []string) (string, bool) {
+	if bi.status != http.StatusOK || bi.ctype != "application/json" || leaks(bi.body, secrets) {
+		return "", false
+	}
+	var doc struct {
+		Data struct {
+			Version string `json:"version"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(bi.body, &doc) != nil || !versionRE.MatchString(doc.Data.Version) {
+		return "", false
+	}
+	return doc.Data.Version, true
+}
+
+// The transcripts' match queries, as JSON string contents (plan #121 §3.5).
+var transcriptQuery = map[string]string{
+	"logs-fffd-dq": `{app=\"x\ufffdy\"}`,
+	"logs-fffd-bq": "{app=`x\\ufffdy`}",
+}
+
+// transcriptFile is the §3.5 text of one transcript.
+func transcriptFile(name, date, version string, flags bool) []byte {
+	fl := ""
+	if flags {
+		fl = `"encodingFlags":["categorize-labels"],`
+	}
+	return []byte("{\n" +
+		`  "name": "` + name + `",` + "\n" +
+		`  "provenance": {"captured": "` + date + `", "pulsusdb": "` + version + `", "route": "/api/logs/v1/query_range", "sanitised": "synthesised from validated fields: status, resultType, an empty result"},` + "\n" +
+		`  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "` + transcriptQuery[name] + `"},` + "\n" +
+		`  "response": {` + "\n" +
+		`    "status": 200,` + "\n" +
+		`    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-` + name + `-1"},` + "\n" +
+		`    "body": {"status":"success","data":{"resultType":"streams",` + fl + `"result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}` + "\n" +
+		"  }\n}\n")
+}
+
+var dateRE = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
+
+// synthesise validates every result against its case and builds the files to write: the two
+// transcripts and lexer-transcript.txt, all from constants and validated facts, never from
+// received bytes. Any failure returns (nil, err); err names case ids and reason codes only.
+func synthesise(cases []lexerCase, got []probeResult, buildinfo probeResult, secrets []string, date string) (map[string][]byte, error) {
+	if len(got) != len(cases) {
+		return nil, reason("probe", "count")
+	}
+	if !dateRE.MatchString(date) {
+		return nil, reason("probe", "date")
+	}
+	version, ok := buildVersion(buildinfo, secrets)
+	if !ok {
+		return nil, reason("buildinfo", "version withheld")
+	}
+	files := map[string][]byte{}
+	var txt strings.Builder
+	txt.WriteString("pulsusdb " + version + ", GET /api/logs/v1/query_range, " + date + " UTC\n")
+	for i, lc := range cases {
+		r := got[i]
+		if r.status != lc.status {
+			return nil, reason(lc.id, "status")
+		}
+		if leaks(r.body, secrets) {
+			return nil, reason(lc.id, "leak")
+		}
+		line := lc.id + " query=" + strconv.Quote(lc.query) + " status=" + strconv.Itoa(lc.status)
+		switch lc.status {
+		case http.StatusBadRequest:
+			if r.ctype != "text/plain; charset=utf-8" {
+				return nil, reason(lc.id, "content type")
+			}
+			if string(r.body) != lc.message {
+				return nil, reason(lc.id, "message differs")
+			}
+			line += " message=" + strconv.Quote(lc.message)
+		case http.StatusOK:
+			if r.ctype != "application/json" {
+				return nil, reason(lc.id, "content type")
+			}
+			flags, code := check200(r.body, secrets)
+			if code != "" {
+				return nil, reason(lc.id, code)
+			}
+			if lc.transcript != "" {
+				files[lc.transcript+".json"] = transcriptFile(lc.transcript, date, version, flags)
+			}
+			line += " result=empty streams"
+		default:
+			return nil, reason(lc.id, "status")
+		}
+		txt.WriteString(line + "\n")
+	}
+	files["lexer-transcript.txt"] = []byte(txt.String())
+	for name, b := range files {
+		if leaks(b, secrets) {
+			return nil, reason(name, "leak")
+		}
+	}
+	return files, nil
+}
+
+// leaks reports whether b holds any secret in any encoding of §4.4: b as is, lowercased,
+// percent-decoded up to three times, and with \uXXXX, \xHH and &#…; escapes decoded, each against
+// every secret (lowercased), its percent-encodings and its standard and URL base64.
+func leaks(b []byte, secrets []string) bool {
+	var needles []string
+	for _, s := range secrets {
+		if s == "" {
+			continue
+		}
+		for _, n := range []string{s, url.QueryEscape(s), url.PathEscape(s),
+			base64.StdEncoding.EncodeToString([]byte(s)), base64.URLEncoding.EncodeToString([]byte(s)),
+			base64.RawStdEncoding.EncodeToString([]byte(s)), base64.RawURLEncoding.EncodeToString([]byte(s))} {
+			needles = append(needles, strings.ToLower(n))
+		}
+	}
+	if len(needles) == 0 {
+		return false
+	}
+	v := string(b)
+	variants := []string{v, unescapes(v)}
+	for range 3 {
+		v = percentDecode(v)
+		variants = append(variants, v, unescapes(v))
+	}
+	for _, x := range variants {
+		x = strings.ToLower(x)
+		for _, n := range needles {
+			if strings.Contains(x, n) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hexVal(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	}
+	return -1
+}
+
+// hexAt is the value of the n hex digits at s[i:], or -1.
+func hexAt(s string, i, n int) int {
+	if i+n > len(s) {
+		return -1
+	}
+	v := 0
+	for k := range n {
+		d := hexVal(s[i+k])
+		if d < 0 {
+			return -1
+		}
+		v = v*16 + d
+	}
+	return v
+}
+
+// percentDecode decodes every valid %HH of s and leaves the rest as is.
+func percentDecode(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' {
+			if v := hexAt(s, i+1, 2); v >= 0 {
+				b.WriteByte(byte(v))
+				i += 2
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// unescapes decodes every \uXXXX, \xHH, &#NNN; and &#xHH; of s and leaves the rest as is.
+func unescapes(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '\\' && i+1 < len(s) && s[i+1] == 'u':
+			if v := hexAt(s, i+2, 4); v >= 0 {
+				b.WriteRune(rune(v))
+				i += 5
+				continue
+			}
+		case s[i] == '\\' && i+1 < len(s) && s[i+1] == 'x':
+			if v := hexAt(s, i+2, 2); v >= 0 {
+				b.WriteByte(byte(v))
+				i += 3
+				continue
+			}
+		case s[i] == '&' && i+2 < len(s) && s[i+1] == '#':
+			if r, n := entity(s[i+2:]); n > 0 {
+				b.WriteRune(r)
+				i += 1 + n // with the loop's i++: past "&#", the n bytes and nothing more
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// entity reads the rest of a numeric character reference after "&#" (NNN; or xHH;): its rune and
+// the bytes it read (the ';' included), or n 0.
+func entity(s string) (rune, int) {
+	base, j := 10, 0
+	if j < len(s) && (s[j] == 'x' || s[j] == 'X') {
+		base, j = 16, 1
+	}
+	v, k := 0, j
+	for k < len(s) && k-j < 8 {
+		d := hexVal(s[k])
+		if d < 0 || d >= base {
+			break
+		}
+		v = v*base + d
+		k++
+	}
+	if k == j || k >= len(s) || s[k] != ';' || v > utf8.MaxRune {
+		return 0, 0
+	}
+	return rune(v), k + 1
+}
+
+// writeAll writes every file or none: dir must exist, be empty and lie outside the repository.
+// Each file is written to dir/.<name>.tmp, and all are renamed once every write succeeded; on any
+// error every file it wrote is removed.
+func writeAll(dir string, files map[string][]byte) (err error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return errors.New("dir")
+	}
+	if st, serr := os.Stat(abs); serr != nil || !st.IsDir() {
+		return errors.New("dir")
+	}
+	if es, rerr := os.ReadDir(abs); rerr != nil || len(es) != 0 {
+		return errors.New("dir not empty")
+	}
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		return errors.New("root")
+	}
+	if under(abs, root) {
+		return errors.New("dir in the repository")
+	}
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	var written []string
+	defer func() {
+		if err != nil {
+			for _, p := range written {
+				_ = os.Remove(p)
+			}
+		}
+	}()
+	for _, n := range names {
+		if n == "" || filepath.Base(n) != n || strings.HasPrefix(n, ".") {
+			return errors.New("name")
+		}
+		tmp := filepath.Join(abs, "."+n+".tmp")
+		if werr := os.WriteFile(tmp, files[n], 0o600); werr != nil {
+			_ = os.Remove(tmp)
+			return errors.New("write")
+		}
+		written = append(written, tmp)
+	}
+	for _, n := range names {
+		tmp, final := filepath.Join(abs, "."+n+".tmp"), filepath.Join(abs, n)
+		if rerr := os.Rename(tmp, final); rerr != nil {
+			return errors.New("rename")
+		}
+		written = slices.DeleteFunc(written, func(p string) bool { return p == tmp })
+		written = append(written, final)
+	}
+	return nil
+}
+
+// under reports whether p is root or inside it, symbolic links resolved where they exist.
+func under(p, root string) bool {
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	if q, err := filepath.EvalSymlinks(p); err == nil {
+		p = q
+	}
+	rel, err := filepath.Rel(root, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// probeSecrets are the values no recorded file or diagnostic may hold (plan #121 §3.4): the base
+// URL, the URL without its scheme, its host name and host, the org and the credential.
+func probeSecrets(base, org, cred string) []string {
+	out := []string{base}
+	if u, err := url.Parse(base); err == nil {
+		out = append(out, strings.TrimPrefix(base, u.Scheme+"://"), u.Hostname(), u.Host)
+	}
+	out = append(out, org, cred)
+	return slices.DeleteFunc(out, func(s string) bool { return s == "" })
+}
 
 // emptyStreamsBody is the empty 200 answer of the design-time probe.
 const emptyStreamsBody = `{"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}`
@@ -104,7 +533,7 @@ const emptyStreamsBody = `{"status":"success","data":{"resultType":"streams","en
 const wantFFFDdq = `{
   "name": "logs-fffd-dq",
   "provenance": {"captured": "2026-01-01", "pulsusdb": "0.0.0", "route": "/api/logs/v1/query_range", "sanitised": "synthesised from validated fields: status, resultType, an empty result"},
-  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"x�y\"}"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"x\ufffdy\"}"},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-fffd-dq-1"},

@@ -1,0 +1,10 @@
+{
+  "name": "logs-fffd-bq",
+  "provenance": {"captured": "2026-11-23", "pulsusdb": "0.0.13", "route": "/api/logs/v1/query_range", "sanitised": "synthesised from validated fields: status, resultType, an empty result"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=`x\ufffdy`}"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-fffd-bq-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}
+  }
+}
