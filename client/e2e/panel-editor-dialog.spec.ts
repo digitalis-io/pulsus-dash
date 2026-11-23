@@ -156,7 +156,7 @@ async function openEditor(page: Page, o: { delayMs?: number } = {}): Promise<voi
   await page.goto('/t/demo/board/b-1');
   await page.locator('html[data-shell-ready="true"]').waitFor();
   await page.getByRole('button', { name: 'Edit board' }).click();
-  await expect(page.locator('.react-grid-item')).toHaveCount(4);
+  await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
   await reopen(page);
 }
 
@@ -640,8 +640,12 @@ test.describe('panel editor dialog', () => {
     const board = await ids();
     let from = (await records()).length;
     await page.setViewportSize({ width: 1200, height: 900 });
-    await settle(2);
-    await clearedThenDrawn(from, board);
+    // The grid takes its new width from a ResizeObserver (#111), so the frames may start Loading a
+    // frame after the resize: retry until each has shown Loading and then drawn.
+    await expect(async () => {
+      await settle(2);
+      await clearedThenDrawn(from, board);
+    }).toPass({ timeout: 10_000 });
 
     await page.getByRole('button', { name: 'Full screen: Request rate' }).click();
     const full = page.getByRole('dialog', { name: 'Request rate' });
@@ -650,8 +654,10 @@ test.describe('panel editor dialog', () => {
     const fullId = (await full.locator('[data-chart-frame]').getAttribute('data-frame-id')) ?? '';
     from = (await records()).length;
     await page.setViewportSize({ width: 1440, height: 900 });
-    await settle(3);
-    await clearedThenDrawn(from, [...board, fullId]);
+    await expect(async () => {
+      await settle(3);
+      await clearedThenDrawn(from, [...board, fullId]);
+    }).toPass({ timeout: 10_000 });
 
     for (const [i, r] of (await records()).entries()) {
       for (const x of r) {

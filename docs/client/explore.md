@@ -219,10 +219,19 @@ unknown shape. `typeCheck` mirrors the server parser's type rules on the Lezer t
 argument types and arity from `src/api/stub/promFunctions.ts` (`STABLE_FUNCTIONS`, the parser's
 stable functions), scalar comparisons without `bool`, set operators and vector matching on
 non-vectors, experimental aggregators, subqueries of a matrix, the target of `offset` and `@`,
-selectors whose matchers all match the empty string, and aggregation parameters. Its known
-limitations, stub mode only: regular-expression dialects (the empty string is tested with
-JavaScript's engine and no pattern is refused), string escapes and number lexing, and a Lezer
-grammar that lags or leads the server's parser.
+selectors whose matchers all match the empty string, and aggregation parameters.
+
+`plan.ts`'s substitution follows the PromQL lexical states of the server (`"…"`, `'…'`,
+`` `…` `` and `#` comments, a comment ending at LF or CR), encodes values written into `"…"` and
+`'…'` by the same table, and refuses `variable.unrepresentable` as the server does, before any
+metadata read. `promShape.ts` reads string literals by the upstream lexer's escape rules
+(`unquote`: `\a`…`\v`, `\xHH`, octal, `\u`, `\U`, only the opening quote escaped, a literal
+U+FFFD refused); `typeCheck` fails on a literal that does not unquote, as the server's parser
+does. Lezer's `LineComment` runs to LF only, so `stubShape` first runs `endCommentsAtCR`, which
+writes every CR that ends a comment as an LF and keeps every offset. Its known limitations, stub
+mode only: regular-expression dialects (the empty string is tested with JavaScript's engine and
+no pattern is refused), number lexing, and a Lezer grammar that lags or leads the server's
+parser.
 
 The stub's private `plan` follows the route order: `prepare`; Classify and the byte guard on the
 substituted text (a refusal never reads metadata); the step; `promMetadata` only when the plan

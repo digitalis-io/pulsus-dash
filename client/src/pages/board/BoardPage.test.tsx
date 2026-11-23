@@ -334,16 +334,17 @@ describe('view mode', () => {
     await screen.findByRole('heading', { level: 3, name: 'p-2' });
     const far = panelOf('p-2');
     expect(far.getAttribute('data-grid')).toBe('0,9999,6,100');
-    expect(far.style.getPropertyValue('--gy')).toBe('9999');
-    expect(far.style.getPropertyValue('--gh')).toBe('100');
-    const container = far.parentElement;
-    expect(container?.style.getPropertyValue('--gbottom')).toBe('10099');
+    // One grid in both modes (#111): the same item, placed alike.
+    const viewItem = far.closest<HTMLElement>('.react-grid-item');
+    expect(viewItem?.style.height).toBe('5584px');
+    expect(viewItem?.style.transform).toContain('559944px');
 
     await editMode(user);
     await waitFor(() => {
-      expect(document.querySelectorAll('.react-grid-item')).toHaveLength(2);
+      expect(document.querySelectorAll('[data-drag-handle]')).toHaveLength(2);
     });
     const item = panelOf('p-2').closest<HTMLElement>('.react-grid-item');
+    expect(item).toBe(viewItem);
     expect(item?.style.height).toBe('5584px');
     expect(item?.style.transform).toContain('559944px');
     expect(gridOf('p-2')).toBe('0,9999,6,100');
