@@ -63,8 +63,12 @@ async function recorder(page: Page, on: boolean): Promise<number[]> {
   }, on);
 }
 
-async function gesture(page: Page, cdp: CDPSession): Promise<void> {
-  const c = await centre(page);
+async function gesture(
+  page: Page,
+  cdp: CDPSession,
+  selector = '[data-log-scroller]',
+): Promise<void> {
+  const c = await centre(page, selector);
   await cdp.send('Input.synthesizeScrollGesture', {
     x: c.x,
     y: c.y,
@@ -125,7 +129,7 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
   await page.evaluate(() => {
     window.__logStreamBench?.showControl(true);
   });
-  const controlEvents = await traced(page, () => gesture(page, cdp));
+  const controlEvents = await traced(page, () => gesture(page, cdp, '[data-log-control]'));
   const control = eventLatencies(controlEvents, { types: SCROLL_UPDATE_TYPES });
   await page.evaluate(() => {
     window.__logStreamBench?.showControl(false);

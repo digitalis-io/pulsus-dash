@@ -120,9 +120,12 @@ export async function scrollToOrd(page: Page, ord: number): Promise<void> {
   }, ord);
 }
 
-/** The scroller's centre, for wheel and gesture input. */
-export async function centre(page: Page): Promise<{ x: number; y: number }> {
-  const box = await page.locator('[data-log-scroller]').boundingBox();
+/** The centre of the scroller (or of `selector`), for wheel and gesture input. */
+export async function centre(
+  page: Page,
+  selector = '[data-log-scroller]',
+): Promise<{ x: number; y: number }> {
+  const box = await page.locator(selector).boundingBox();
   if (box === null) throw new Error('no scroller box');
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
