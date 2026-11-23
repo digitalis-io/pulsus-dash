@@ -30,6 +30,7 @@ import { cx } from '../kit/cx';
 import { SegmentedControl } from '../kit/SegmentedControl';
 import { useTimeZone } from '../state/timeZone';
 import { font, size } from '../styles/tokens';
+import { RowEstimates } from './estimates';
 import { wrapLines } from './logBuffer';
 import { LEVEL_GLYPH, LEVEL_NAME } from './levels';
 import type { LogPager, LogPagerState } from './logPager';
@@ -207,7 +208,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   // A row's estimate is kept once made, so a row evicted while the list scrolls keeps its last
   // known height as a placeholder and nothing below it moves (§3.5).
   const estimates = useMemo(
-    () => new Map<number, number>(),
+    () => new RowEstimates(),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a new cache whenever the estimate rule changes
     [buffer, wrap, wrapEstimate, perLine],
   );

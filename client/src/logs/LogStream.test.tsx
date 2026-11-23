@@ -9,6 +9,7 @@ import { TimeZoneContext } from '../state/timeZone';
 import { installLayout } from '../test/fakeLayout';
 import { logFrame, pageRows, seriesResult, streamsResult } from '../test/logFrames';
 import { scriptedLogsApi } from '../test/scriptedLogsApi';
+import { RowEstimates } from './estimates';
 import { LogPager, type LogPagerInput } from './logPager';
 import { LogStream, type LogStreamHandle, type LogStreamProps } from './LogStream';
 
@@ -398,4 +399,65 @@ describe('unit:log-stream', () => {
     },
     20_000,
   );
+
+  // Code review r2 #1: the touch hold follows the scroller element, not the first mount.
+  it('L15 after a series result, a held touch on the new stream holds every re-slice', async () => {
+    const metric = scriptedLogsApi();
+    const p1 = new LogPager(metric, input);
+    void p1.start();
+    const onReslice = vi.fn();
+    const onScrollWrite = vi.fn();
+    const view = { cap: 2000, margin: 500, maxPx: 8_000_000, hardPx: 12_000_000 };
+    const { container, rerenderWith } = mount({ pager: p1, view, onReslice, onScrollWrite });
+    await act(() => metric.resolve(0, seriesResult()));
+    expect(container).toBeEmptyDOMElement();
+    const { pager } = await synthPager(10);
+    rerenderWith({ pager });
+    await waitFor(() => {
+      expect(rowOf(1)).not.toBeNull();
+    });
+    const settle = () => act(() => new Promise((r) => setTimeout(r, 300)));
+    await settle();
+    onReslice.mockClear();
+    onScrollWrite.mockClear();
+    fireEvent.touchStart(scroller(), { touches: [{ clientY: 300 }] });
+    // The finger drags into the slice's bottom margin, then stays down past the scroll reset.
+    fireEvent.touchMove(scroller(), { touches: [{ clientY: 100 }] });
+    await scrollTo(1700 * 20);
+    await settle();
+    expect(onReslice).not.toHaveBeenCalled();
+    expect(onScrollWrite).not.toHaveBeenCalled();
+    // The finger lifts: the list is at rest and re-slices around the shown rows.
+    fireEvent.touchEnd(scroller(), { touches: [] });
+    await waitFor(() => {
+      expect(onReslice).toHaveBeenCalledWith('edge', false);
+    });
+  });
+
+  // Code review r2 #2: wrapped-row estimates are pruned to the held rows and the slice.
+  it('L16 with wrap, the estimate cache stays bounded while paging through evictions', async () => {
+    const set = vi.spyOn(RowEstimates.prototype, 'set');
+    try {
+      const cap = 2000;
+      const synth = createSynthLogApi({ total: 50_000 });
+      const pager = new LogPager(synth, input, { entries: cap });
+      await pager.start();
+      await pager.loadTail();
+      mount({ pager, wrap: true });
+      const settle = () => act(() => new Promise((r) => setTimeout(r, 300)));
+      await settle();
+      const list = (): HTMLElement => screen.getByRole('list');
+      for (let i = 0; i < 40 && pager.buffer.firstOrd < 8000; i += 1) {
+        await scrollTo(parseFloat(list().style.height) - 400);
+        await settle();
+      }
+      expect(pager.buffer.firstOrd).toBeGreaterThanOrEqual(8000);
+      const cache = set.mock.contexts.at(-1);
+      if (!(cache instanceof RowEstimates)) throw new Error('no estimate cache');
+      // The held rows and a slice of at most those rows: never every row ever visited.
+      expect(cache.size).toBeLessThanOrEqual(2 * cap);
+    } finally {
+      set.mockRestore();
+    }
+  }, 20_000);
 });
