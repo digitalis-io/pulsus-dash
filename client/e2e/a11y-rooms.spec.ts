@@ -370,7 +370,9 @@ test.describe('e2e:a11y-rooms logs', () => {
   test('dark, logs completion popup open', async ({ page }) => {
     await logsResult(page);
     await page.getByRole('textbox', { name: 'LogQL query' }).click();
-    await page.keyboard.press('End');
+    // Inside the selector, after `{`: the label names.
+    await page.keyboard.press('Home');
+    await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Control+Space');
     await page.locator('.cm-tooltip-autocomplete').waitFor();
     expect(await seriousViolations(page)).toEqual([]);

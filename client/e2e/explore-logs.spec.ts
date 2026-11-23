@@ -159,7 +159,8 @@ test.describe('e2e:logs (fake)', () => {
     await open(page, logsUrl('{app="paging"}'));
     await expect(rows(page).first()).toBeVisible();
     widthChecked(b.range[0]);
-    const region = page.getByRole('region', { name: 'Log lines' });
+    const region = page.locator('[data-log-scroller]');
+    await region.scrollIntoViewIfNeeded();
     const box = await region.boundingBox();
     if (box === null) throw new Error('no Log lines region');
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

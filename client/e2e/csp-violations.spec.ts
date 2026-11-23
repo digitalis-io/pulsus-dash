@@ -67,14 +67,18 @@ test.describe('e2e:csp-violations', () => {
       page.getByRole('list', { name: 'Log lines' }).locator('[data-log-row]'),
     ).not.toHaveCount(0);
     await page.getByRole('textbox', { name: 'LogQL query' }).click();
-    await page.keyboard.press('End');
+    // Inside the selector, after `{`: the label names.
+    await page.keyboard.press('Home');
+    await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Control+Space');
     await page.locator('.cm-tooltip-autocomplete').waitFor();
     await page.keyboard.press('Escape');
-    const wrap = page.getByRole('checkbox', { name: 'Wrap lines' });
-    await wrap.click();
-    await expect(wrap).toBeChecked();
-    await wrap.click();
+    // The checkbox's input is visually hidden: press its label.
+    const wrapLabel = page.getByText('Wrap lines', { exact: true });
+    await wrapLabel.click();
+    await expect(page.getByRole('checkbox', { name: 'Wrap lines' })).toBeChecked();
+    await wrapLabel.click();
+    await expect(page.getByRole('checkbox', { name: 'Wrap lines' })).not.toBeChecked();
     expect(await page.evaluate(() => window.__cspViolations), LOGS_RESULT).toEqual([]);
 
     // The board panel editor with the PromQL editor, its popup and the picker (plan #64 A.3).

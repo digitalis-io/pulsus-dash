@@ -128,7 +128,8 @@ test.describe('bench:log-page-load', () => {
     release();
 
     // 6 Window two: to the end of the list, then 1 s.
-    const region = page.getByRole('region', { name: 'Log lines' });
+    const region = page.locator('[data-log-scroller]');
+    await region.scrollIntoViewIfNeeded();
     const box = await region.boundingBox();
     if (box === null) throw new Error('no Log lines region');
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
