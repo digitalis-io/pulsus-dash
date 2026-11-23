@@ -12,6 +12,7 @@ import { readdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import {
   COVERAGE_DIR,
+  DRAIN_SKIP,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
   type KeyboardPart,
@@ -49,7 +50,12 @@ function parsePart(v: unknown, project: string, i: number): PartCoverage {
   };
 }
 
-export function checkKeyboardCoverage(parts: readonly unknown[], project: string): Finding[] {
+export function checkKeyboardCoverage(
+  parts: readonly unknown[],
+  project: string,
+  skip: Readonly<Record<KeyboardPart, readonly string[]>> = DRAIN_SKIP,
+): Finding[] {
+  if (skip === DRAIN_SKIP) parts.slice(); // Stub (#130 tests first).
   const file = `${COVERAGE_DIR}/${project}`;
   const parsed = parts.map((p, i) => parsePart(p, project, i));
   const findings: Finding[] = [];

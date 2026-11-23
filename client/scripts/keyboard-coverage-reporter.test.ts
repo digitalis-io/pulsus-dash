@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   COVERAGE_DIR,
   coverageFileName,
+  DRAIN_SKIP,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
   type KeyboardPart,
@@ -38,8 +39,12 @@ function writeFiles(outputDir: string, parts: readonly KeyboardPart[], uncovered
   const at = join(outputDir, COVERAGE_DIR);
   mkdirSync(at, { recursive: true });
   for (const [i, id] of parts.entries()) {
-    const collected = id === 'K2' ? ['a › k', 'b › k'] : [];
-    const operated = id === 'K4' ? (uncovered ? ['a › k'] : ['a › k', 'b › k']) : [];
+    // Each part collects its DRAIN_SKIP keys; K1, first in the single test's order, operates them.
+    const collected = [...(id === 'K2' ? ['a › k', 'b › k'] : []), ...DRAIN_SKIP[id]];
+    const operated = [
+      ...(id === 'K4' ? (uncovered ? ['a › k'] : ['a › k', 'b › k']) : []),
+      ...(id === 'K1' ? Object.values(DRAIN_SKIP).flat() : []),
+    ];
     const visited = REQUIRED_STATES.filter((_, j) => j % parts.length === i);
     writeFileSync(
       join(at, coverageFileName('p', id)),
@@ -99,6 +104,12 @@ describe('keyboard coverage reporter (#130, IA-015, T05-002)', () => {
     expect(await run(tmp(), ['K3'])).toBeUndefined();
     expect(stderr.join('')).toContain(
       'keyboard-coverage p: not checked (E2E_SHARD=kbd-b; run has K3)',
+    );
+    stderr = [];
+    vi.stubEnv('E2E_SHARD', 'rest');
+    expect(await run(tmp(), [])).toBeUndefined();
+    expect(stderr.join('')).toContain(
+      'keyboard-coverage p: not checked (E2E_SHARD=rest; run has no part)',
     );
   });
 

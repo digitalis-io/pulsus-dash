@@ -1,7 +1,8 @@
 /**
  * Five `@kbd` parts that write part files without a browser (#130, test 12). `KBD_FIXTURE`:
  * `covered` (every collected key operated), `uncovered` (`b › k` never operated), `no-k4` (K4 not
- * declared).
+ * declared). Each part also collects its `DRAIN_SKIP` keys, which K1 (first in the single test's
+ * order) operates, so the skip rules hold.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,6 +10,7 @@ import { test } from '@playwright/test';
 import {
   COVERAGE_DIR,
   coverageFileName,
+  DRAIN_SKIP,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
   type PartCoverage,
@@ -26,8 +28,11 @@ for (const [i, id] of KEYBOARD_PARTS.entries()) {
       version: 1,
       project: info.project.name,
       part: id,
-      collected: id === 'K1' ? ['a › k', 'b › k'] : [],
-      operated: id === 'K5' ? operated : [],
+      collected: [...(id === 'K1' ? ['a › k', 'b › k'] : []), ...DRAIN_SKIP[id]],
+      operated: [
+        ...(id === 'K5' ? operated : []),
+        ...(id === 'K1' ? Object.values(DRAIN_SKIP).flat() : []),
+      ],
       visited: REQUIRED_STATES.filter((_, j) => j % KEYBOARD_PARTS.length === i),
     };
     const dir = join(info.project.outputDir, COVERAGE_DIR);

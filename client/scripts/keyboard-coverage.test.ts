@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   COVERAGE_DIR,
   coverageFileName,
+  DRAIN_SKIP,
+  drainPending,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
   type KeyboardPart,
@@ -30,8 +32,19 @@ function covered(): PartCoverage[] {
   );
 }
 
-const ids = (parts: readonly unknown[]): string[] =>
-  checkKeyboardCoverage(parts, P).map((f) => `${f.rule} ${f.subject ?? ''}`);
+const NO_SKIP: Record<KeyboardPart, readonly string[]> = { K1: [], K2: [], K3: [], K4: [], K5: [] };
+
+const ids = (parts: readonly unknown[], skip = NO_SKIP): string[] =>
+  checkKeyboardCoverage(parts, P, skip).map((f) => `${f.rule} ${f.subject ?? ''}`);
+
+/** `covered()` with each part collecting its `DRAIN_SKIP` keys, which K1 (first) operates. */
+function backed(): PartCoverage[] {
+  return covered().map((p) => ({
+    ...p,
+    collected: [...p.collected, ...DRAIN_SKIP[p.part]],
+    operated: [...p.operated, ...(p.part === 'K1' ? Object.values(DRAIN_SKIP).flat() : [])],
+  }));
+}
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -79,9 +92,30 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
     expect(ids(parts)).toEqual(['keyboard-unvisited session-error']);
   });
 
+  it('skip must be backed by an earlier part and collected', () => {
+    const skip = { ...NO_SKIP, K4: ['s › x'] };
+    const at = (o: Partial<Record<KeyboardPart, Partial<PartCoverage>>>): PartCoverage[] =>
+      covered().map((p) => ({ ...p, ...o[p.part] }));
+    // K3 runs before K4 in the single test, so its operating backs K4's skip.
+    const ok = at({ K3: { operated: ['a › k', 's › x'] }, K4: { collected: ['s › x'] } });
+    expect(ids(ok, skip)).toEqual([]);
+    // K2 runs after K4: its operating does not back K4's skip.
+    const late = at({ K2: { operated: ['s › x'] }, K4: { collected: ['s › x'] } });
+    expect(ids(late, skip)).toEqual(['keyboard-skip-unbacked K4 s › x']);
+    // A skip of a key K4 never collected is stale.
+    const unused = at({ K3: { operated: ['a › k', 's › x'] } });
+    expect(ids(unused, skip)).toEqual(['keyboard-skip-unused K4 s › x']);
+  });
+
+  it('drainPending leaves out operated and done keys', () => {
+    expect(drainPending(['a', 'b', 'c'], 's', new Set(['s › a']), new Set(['s › b']))).toEqual([
+      'c',
+    ]);
+  });
+
   it('bad input is exit 2', () => {
     const files = Object.fromEntries(
-      covered().map((p) => [coverageFileName(P, p.part), JSON.stringify(p)]),
+      backed().map((p) => [coverageFileName(P, p.part), JSON.stringify(p)]),
     );
     const bad = writeParts({ ...files, [coverageFileName(P, 'K2')]: '{ not json' });
     expect(() => checkKeyboardCoverageDir(bad, P)).toThrow(InputError);
