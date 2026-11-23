@@ -51,8 +51,9 @@ values, series, metadata and runtime info.
 
 ### The log transcripts (`logs-*.json`, #65)
 
-Twenty transcripts answer the log routes. Every page request is a `GET` of
-`/api/logs/v1/query_range` with the query `{app="x"}` and `step` `5000ms`; each page transcript
+Twenty-two transcripts answer the log routes. Every page request is a `GET` of
+`/api/logs/v1/query_range`, and except for the two U+FFFD transcripts its query is `{app="x"}` with
+`step` `5000ms`; each page transcript
 matches its `start`, `end`, `limit` and `direction` through `match.form`, so a request with
 another window or limit is unexpected. Their bodies are in the **categorised** shape that PulsusDB
 returns to the page requests (they send `categorize-labels`): `data.encodingFlags`, indexed stream
@@ -69,6 +70,7 @@ group at `t0 + 300` (`a3` twice, `b3`, `c3`); the levels come from the metadata 
 | `logs-parse-error`, `logs-parse-error-nopos`, `logs-volume-parse-error`, `logs-too-broad`, `logs-wide-window` | `text/plain` errors with their messages verbatim (`at byte N`, none, the composed volume text's offset 57, 422, the 5-year window) | captured, 2026-11-21, PulsusDB 0.0.12 |
 | `logs-timeout`, `logs-hang`, `logs-hang-page`, `logs-hang-group` | a 504, a stall on the first request, and a page that needs a group fetch which stalls | synthetic: no timeout or stall can be provoked read-only |
 | `logs-labels`, `logs-label-values`, `logs-series` | the completion routes | captured |
+| `logs-fffd-dq`, `logs-fffd-bq` | an empty streams answer to `{app="x` U+FFFD `y"}` and to the same in `` `…` ``, matched by the query alone: the planner writes U+FFFD as itself (#121) | captured 2026-11-23, PulsusDB 0.0.13, `sanitised`: "synthesised from validated fields: status, resultType, an empty result", written by the `logql-lexer` recorder ([below](#the-logql-lexer-contract-subtest)) |
 
 `logs-hang-group` sorts before `logs-hang-page` but requires `limit` `5000`, so the main request
 (`limit` `2`) is answered by `logs-hang-page`. The captured errors carry an `X-Pulsus-Query-Id`,
@@ -243,6 +245,51 @@ case asserts that PulsusDB answers with `data.encodingFlags` naming it and an ob
 on every entry, and that the same request without the flag gets the plain shape. It logs, without asserting, whether `resultType` precedes `result`, and whether a
 GET with a query over 8 KiB is accepted; the client's POST fallback for such a query must succeed.
 
+## The logql-lexer contract subtest
+
+`itest:pulsusdb-contract` has a second LogQL subtest, `logql-lexer` (#121,
+`internal/pulsusdb/lexer_itest_test.go`), that pins what PulsusDB's LogQL lexer does with the
+bytes the planner relies on: a `#` outside a string is refused at its own byte (there are no
+comments, CR or LF after it changes nothing), and U+FFFD is accepted in `"…"` and `` `…` ``, each
+string ending at its own quote. It sends the twelve texts P1 to P12 of `lexerCases`
+(`internal/pulsusdb/lexer_record_test.go`) to `GET /api/logs/v1/query_range` over `(now − 5 min,
+now]` with `limit` 1, `backward` and the page request's decoration, then reads the build info: 13
+sequential read-only requests, each within the 30 s deadline. It needs only the base URL:
+
+```bash
+set -a; . dev/local.env; set +a        # the development base URL lives only here
+DASH_CONTRACT_PULSUSDB_URL="$PULSUS_DASH_DATASOURCE_URL" DASH_CONTRACT_RECORD_DIR="$(mktemp -d)" \
+  go -C server test -tags itest -count=1 -run 'TestPulsusDBContract/logql-lexer$' -v ./internal/pulsusdb/
+```
+
+Never commit the URL. Without `DASH_CONTRACT_PULSUSDB_URL` the whole contract test skips. The
+subtest has its own client on a clone of the default transport, not the contract test's buffering
+`recorder` transport, so a probe body is read only through `io.LimitReader` at 64 KiB + 1: a larger
+body is the error `too large`. Every answer must equal its case: a 400 is `text/plain;
+charset=utf-8` with the exact message, a 200 is `application/json` with `status` `success`,
+`resultType` `streams`, an empty `result`, zero stats and no flag but `categorize-labels`, and
+nothing else (unknown members fail). The build info must be a 200 with a plain `x.y.z`
+`data.version`.
+
+**Recording.** With `DASH_CONTRACT_RECORD_DIR` set, the recorder writes three files there:
+`logs-fffd-dq.json` and `logs-fffd-bq.json` for `internal/pulsusfake/testdata/`, and
+`lexer-transcript.txt`, the evidence (a header with the version and date, then one line per case
+with its query, status and message or `result=empty streams`). The recorder's rules:
+
+| Rule | What |
+|---|---|
+| synthesised | every file is built from constants and validated facts (the version, the date, whether `encodingFlags` was present); no received byte is copied |
+| leaks | every raw body, every decoded JSON string and every file is checked against the base URL, the URL without its scheme, the host name, the host, `DASH_CONTRACT_PULSUSDB_ORG` and the resolved credential: as is, lowercased, percent-decoded up to three times, with `\uXXXX`, `\xHH` and `&#…;` escapes decoded, and each secret also percent-encoded and in standard and URL base64 |
+| all or none | the directory must exist, be empty and lie outside the repository; each file is written as `.<name>.tmp` and renamed once all are written, and any failure removes what was written |
+| redacted | a failure prints only `logql-lexer: <id>: <reason>` with a reason code (`status`, `content type`, `message differs`, `unknown field`, `body`, `result not empty`, `stats not zero`, `flag not allowed`, `leak`, `transport`, `too large`, `version withheld`), never a body, header, decoded string or secret |
+
+Copy the two transcripts into `testdata/`, then run `make no-pulsusdb-host` (with `dev/local.env`)
+and `go test ./internal/pulsusfake`, and remove the record directory. **A failing row means
+PulsusDB's lexer changed**: the planner's model (no comments, row 9b, U+FFFD as itself) must be
+planned again in an issue; never edit an expectation to match. `unit:lexer-record`
+(`TestLexerRecord`, `TestLexerRunPath`) runs the whole path, recorder included, against an
+`httptest` server on every `go test`.
+
 ### Probe evidence
 
 `server/internal/pulsusdb/testdata/logs-evidence-2026-11-21.json` records the probes behind the
@@ -274,8 +321,10 @@ with the `captured`, `pulsusdb`, `method` and `sanitised` header, and run the `l
 | `unit:logs-completion`, `unit:log-time-range` (GET routes) | `internal/gateway/logs_test.go` |
 | `unit:sanitise` (log lines and text errors), `unit:deadlines` (log routes) | `internal/gateway/redact_test.go`, `deadline_test.go` |
 | `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check` | `cmd/pulsus-dash/query_itest_test.go` (`make itest`) |
-| `itest:logql-streams`, `itest:logql-metric`, `itest:logql-volume`, `itest:logql-errors`, `itest:logql-cancel` | `cmd/pulsus-dash/logql_itest_test.go` (`make itest`) |
-| `itest:pulsusdb-contract` | `internal/pulsusdb/contract_itest_test.go`, only with `DASH_CONTRACT_PULSUSDB_URL` (the `logql` subtest also with `DASH_CONTRACT_LOGQL_SELECTOR`) |
+| `itest:logql-streams`, `itest:logql-metric`, `itest:logql-volume`, `itest:logql-errors`, `itest:logql-cancel`, `itest:logql-lexer` | `cmd/pulsus-dash/logql_itest_test.go` (`make itest`) |
+| `itest:logql-hash-refused` | `internal/gateway/logplan_test.go` (`TestLogqlHashRefused`) |
+| `unit:lexer-record` | `internal/pulsusdb/lexer_record_test.go` (`TestLexerRecord`, `TestLexerRunPath`) |
+| `itest:pulsusdb-contract` | `internal/pulsusdb/contract_itest_test.go`, only with `DASH_CONTRACT_PULSUSDB_URL` (the `logql` subtest also with `DASH_CONTRACT_LOGQL_SELECTOR`; `logql-lexer` in `lexer_itest_test.go`) |
 
 ## Designs
 

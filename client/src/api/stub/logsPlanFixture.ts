@@ -26,6 +26,8 @@ export interface LogsClassifyCase {
   readonly name: string;
   readonly text: Text;
   readonly vars?: Readonly<Record<string, string>>;
+  /** The offset at which Prepare refuses the text with row 9b (plan #121 §3.3). */
+  readonly prepare_position?: number;
   readonly want: LogsFacts & {
     readonly selectors: readonly { readonly reserved: boolean; readonly text: Text }[];
   };
@@ -57,6 +59,8 @@ export interface LogsPlanCase {
     readonly status: 400 | 413;
     readonly message: string;
     readonly fields: readonly { readonly pointer: string; readonly message_key: string }[];
+    /** Row 9b's byte offset into the raw text (plan #121 §3.3): `hint.position.offset`. */
+    readonly position?: number;
     readonly hint?: { readonly reason: 'processing_cap' };
     readonly planned?: WireLogsPlanned;
   };

@@ -26,8 +26,8 @@ func post(t *testing.T, base, path string, form url.Values) (*http.Response, str
 
 // unit:fake-transcripts (test infrastructure).
 func TestFakeTranscripts(t *testing.T) {
-	if n := len(Default()); n != 46 {
-		t.Fatalf("Default() has %d transcripts, want 46", n)
+	if n := len(Default()); n != 48 {
+		t.Fatalf("Default() has %d transcripts, want 48", n)
 	}
 	for _, tr := range Default() {
 		if tr.Provenance.Captured == "" && tr.Provenance.Synthetic == "" {

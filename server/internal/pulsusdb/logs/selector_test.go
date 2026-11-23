@@ -11,7 +11,9 @@ import (
 )
 
 // unit:logql-classify (Go): every entry of the fixture's classify group, classified on its
-// substituted text (plan #116 §3.5, A.1.1), and the byte guard over the reserved table.
+// substituted text (plan #116 §3.5, A.1.1), and the byte guard over the reserved table. The text
+// is Prepare's substitution before row 9b (plan #121 §5.1), so an entry with a top-level '#' is
+// still classified; Prepare itself refuses it at prepare_position.
 func TestLogqlClassify(t *testing.T) {
 	f := logs.LoadFixture(t)
 	for _, e := range f.Classify {
@@ -20,24 +22,37 @@ func TestLogqlClassify(t *testing.T) {
 			if vars == nil {
 				vars = map[string]string{}
 			}
-			p, err := logs.Prepare(logs.Inputs{Query: string(e.Text), Vars: vars, Kind: logs.KindRange, StepMs: 5000})
+			in := logs.Inputs{Query: string(e.Text), Vars: vars, Kind: logs.KindRange, StepMs: 5000}
+			sub, serr := logs.PrepareSubstitute(in)
+			if serr != nil {
+				t.Fatalf("logs.PrepareSubstitute: %v", serr)
+			}
+			c := logs.Classify(sub)
+			if string(c.Source) != e.Want.Class || !slices.Equal(c.Reserved, e.Want.Reserved) {
+				t.Errorf("class %s %v, want %s %v", c.Source, c.Reserved, e.Want.Class, e.Want.Reserved)
+			}
+			if len(c.Selectors) != len(e.Want.Selectors) {
+				t.Fatalf("%d selectors %v, want %d", len(c.Selectors), c.Selectors, len(e.Want.Selectors))
+			}
+			for i, s := range c.Selectors {
+				w := e.Want.Selectors[i]
+				if s.Reserved != w.Reserved || sub[s.From:s.To] != string(w.Text) {
+					t.Errorf("selector %d %q reserved %v, want %q %v", i, sub[s.From:s.To], s.Reserved, w.Text, w.Reserved)
+				}
+			}
+			p, err := logs.Prepare(in)
+			if e.PreparePosition != nil {
+				if err == nil || err.Kind != logs.ErrInput || !slices.Equal(err.Fields, []logs.FieldError{{Pointer: "/query", MessageKey: "query.invalid"}}) ||
+					err.Position == nil || *err.Position != *e.PreparePosition {
+					t.Errorf("logs.Prepare: %v, want ErrInput /query query.invalid at %d", err, *e.PreparePosition)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("logs.Prepare: %v", err)
 			}
-			sub := p.Substituted()
-			for _, c := range []logs.Class{p.Class(), logs.Classify(sub)} {
-				if string(c.Source) != e.Want.Class || !slices.Equal(c.Reserved, e.Want.Reserved) {
-					t.Errorf("class %s %v, want %s %v", c.Source, c.Reserved, e.Want.Class, e.Want.Reserved)
-				}
-				if len(c.Selectors) != len(e.Want.Selectors) {
-					t.Fatalf("%d selectors %v, want %d", len(c.Selectors), c.Selectors, len(e.Want.Selectors))
-				}
-				for i, s := range c.Selectors {
-					w := e.Want.Selectors[i]
-					if s.Reserved != w.Reserved || sub[s.From:s.To] != string(w.Text) {
-						t.Errorf("selector %d %q reserved %v, want %q %v", i, sub[s.From:s.To], s.Reserved, w.Text, w.Reserved)
-					}
-				}
+			if pc := p.Class(); string(pc.Source) != string(c.Source) || !slices.Equal(pc.Reserved, c.Reserved) || !slices.Equal(pc.Selectors, c.Selectors) {
+				t.Errorf("Prepare's class %+v, want Classify(sub) %+v", pc, c)
 			}
 		})
 	}

@@ -110,9 +110,8 @@ func VolumeRange(stepMs int64) string {
 }
 
 // volumePrefix and volumeSuffix wrap the substituted text as the single operand of the fixed
-// volume template (T07 §0, T07-002, #65 §4.4). The suffix starts with a newline, so a trailing
-// line comment in the text cannot swallow it. "| drop __error__" keeps lines a parser stage fails
-// on from failing the whole query.
+// volume template (T07 §0, T07-002, #65 §4.4). The suffix starts with a newline. "| drop
+// __error__" keeps lines a parser stage fails on from failing the whole query.
 const volumePrefix = "sum by (level, detected_level) (count_over_time("
 
 func volumeSuffix(stepMs int64) string {
@@ -204,24 +203,51 @@ func namesError(kind PlanErrorKind, names []string, key, prefix, suffix string) 
 	return e
 }
 
-// Prepare checks the inputs, substitutes the variables (each macro as the placeholder "1s") and
-// classifies the substituted text: rows 1–5, 7, 7b and 9 of §3.1, before any I/O.
-func Prepare(in Inputs) (*Prepared, *PlanError) {
+// hashError is row 9b: PulsusDB's LogQL has no comments (plan #121 §1), so a '#' outside strings
+// is refused before any I/O. raw is the '#' mapped to the raw text; ok false (an offset with no
+// position) gives no Position and a message without "at byte".
+func hashError(raw int, ok bool) *PlanError {
+	e := inputError("/query", "query.invalid", "unexpected '#': LogQL has no comments")
+	if ok {
+		e.Message = "unexpected '#' at byte " + strconv.Itoa(raw) + ": LogQL has no comments"
+		e.Position = &raw
+	}
+	return e
+}
+
+// prepareSubstitute is Prepare before row 9b: rows 1–5, 7, 7b and 9, then the substituted text
+// (each macro as the placeholder "1s") and its segment map to the raw text.
+func prepareSubstitute(in Inputs) (text string, segs []segment, err *PlanError) {
 	if e := checkInputs(in); e != nil {
-		return nil, e
+		return "", nil, e
 	}
 	count := substitute(in.Query, in.Vars, placeholders(), false)
 	if len(count.missing) > 0 {
-		return nil, namesError(ErrVariableMissing, count.missing, "variable.missing", "no value for variable ", "")
+		return "", nil, namesError(ErrVariableMissing, count.missing, "variable.missing", "no value for variable ", "")
 	}
 	if len(count.unrepresentable) > 0 {
-		return nil, namesError(ErrInput, count.unrepresentable, "variable.unrepresentable",
+		return "", nil, namesError(ErrInput, count.unrepresentable, "variable.unrepresentable",
 			"the value of variable ", " cannot be written where it is referenced")
 	}
 	if count.size > MaxExpandedBytes {
-		return nil, processingCap()
+		return "", nil, processingCap()
 	}
-	text := substitute(in.Query, in.Vars, placeholders(), true).text
+	built := substitute(in.Query, in.Vars, placeholders(), true)
+	return built.text, built.segs, nil
+}
+
+// Prepare checks the inputs, substitutes the variables (each macro as the placeholder "1s"),
+// refuses a top-level '#' and classifies the substituted text: rows 1–5, 7, 7b, 9 and 9b of
+// §3.1, before any I/O. Row 9b comes before Classify (plan #121 §4.3), so a text with a '#' is
+// refused as query.invalid whatever selectors it holds.
+func Prepare(in Inputs) (*Prepared, *PlanError) {
+	text, segs, err := prepareSubstitute(in)
+	if err != nil {
+		return nil, err
+	}
+	if off := hashAt(text); off >= 0 {
+		return nil, hashError(at(segs, len(text), off))
+	}
 	return &Prepared{in: in, substituted: text, class: Classify(text)}, nil
 }
 
@@ -242,8 +268,9 @@ func (p *Prepared) CheckCap(stepMs int64) *PlanError {
 	return nil
 }
 
-// Plan substitutes the macros at stepMs, applies the volume template and the size limit, and
-// classifies the planned text: rows 6, 9 and 10 of §3.1 (plan #116 §4.1).
+// Plan substitutes the macros at stepMs, applies the volume template, refuses a top-level '#' in
+// the final text, applies the size limit and classifies the planned text: rows 6, 9, 9b and 10 of
+// §3.1 (plan #116 §4.1, plan #121 §4.3).
 func (p *Prepared) Plan(stepMs int64) (Planned, *PlanError) {
 	if stepMs <= 0 {
 		return Planned{}, inputError("/step_ms", "field.range", "step_ms must be positive")
@@ -264,6 +291,11 @@ func (p *Prepared) Plan(stepMs int64) (Planned, *PlanError) {
 			{sentFrom: len(volumePrefix), sentLen: len(expanded), rawFrom: 0, rawLen: len(expanded), kind: segCopy},
 			{sentFrom: len(volumePrefix) + len(expanded), sentLen: len(suffix), kind: segAdded},
 		}
+	}
+	// Row 9b on the final text, in defence: macros and the template add no '#', so after Prepare
+	// passed this cannot fire.
+	if off := hashAt(out.Query); off >= 0 {
+		return Planned{}, hashError(out.ToSource(off))
 	}
 	out.Bytes = len(out.Query)
 	out.Class = Classify(out.Query)

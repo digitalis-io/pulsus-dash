@@ -313,7 +313,14 @@ function toApiError(e: StubPlanError | LogsStubPlanError): ApiError {
     });
   }
   const pointer = e.fields[0]?.pointer ?? '';
-  if (pointer === '/query') return new ApiError('queryInvalid', e.message, { detail: {} });
+  if (pointer === '/query') {
+    // Row 9b (plan #121): the position of a top-level '#', as HttpApi reads hint.position.
+    const position =
+      e.hint !== undefined && 'position' in e.hint ? e.hint.position.offset : undefined;
+    return new ApiError('queryInvalid', e.message, {
+      detail: position === undefined ? {} : { position },
+    });
+  }
   return new ApiError('invalid', e.message, { fields: e.fields });
 }
 
