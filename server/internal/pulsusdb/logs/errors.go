@@ -21,6 +21,8 @@ type PlanError struct {
 	Kind    PlanErrorKind
 	Message string
 	Fields  []FieldError
+	// Position is set by row 9b only: the byte offset of the '#' in the raw text (plan #121 §3.1).
+	Position *int
 	// Planned is set on every ErrSentTooLarge (the full plan) and nil otherwise.
 	Planned *Planned
 }

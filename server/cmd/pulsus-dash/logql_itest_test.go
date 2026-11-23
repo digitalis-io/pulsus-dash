@@ -351,6 +351,61 @@ func TestLogqlVolumeItest(t *testing.T) {
 	}
 }
 
+// itest:logql-lexer (plan #121 §5.1, AC1, AC4): a top-level '#' is refused with its raw
+// position and no upstream request; a value with U+FFFD is sent as itself in "…" and `…` and
+// matches the synthesised transcripts byte for byte.
+func TestLogqlLexerItest(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			fake, url := fakeharness.Start(t)
+			s, _ := boundServe(t, c, url, "")
+			for _, r := range []struct {
+				name, query, extra string
+				pos                int
+			}{
+				{"E1", `{app="$a"} # c`, `,"vars":{"a":"xyz"}`, 11},
+				{"E2", "# c\r{app=\"x\"}", "", 0},
+			} {
+				fake.Reset()
+				code, b := s.send(t, logRange, logRangeBody(r.query, r.extra))
+				e := errorOf(t, b)
+				h, _ := e["hint"].(map[string]any)
+				p, _ := h["position"].(map[string]any)
+				want := "unexpected '#' at byte " + strconv.Itoa(r.pos) + ": LogQL has no comments"
+				if code != 400 || e["code"] != "invalid" || p["offset"] != float64(r.pos) || e["message"] != want || e["planned"] != nil {
+					t.Errorf("%s: %d %s", r.name, code, b)
+				}
+				if n := len(fake.Requests()); n != 0 {
+					t.Errorf("%s: %d upstream requests, want 0", r.name, n)
+				}
+			}
+			for _, r := range []struct{ name, query, sent string }{
+				{"U1", `{app="$a"}`, "{app=\"x\uFFFDy\"}"},
+				{"U2", "{app=`$a`}", "{app=`x\uFFFDy`}"},
+			} {
+				fake.Reset()
+				code, b := s.send(t, logRange, logRangeBody(r.query, `,"vars":{"a":"x\ufffdy"}`))
+				if code != 200 {
+					t.Errorf("%s: %d %s", r.name, code, b)
+					continue
+				}
+				p := decodeLogPage(t, b)
+				entries := 0
+				for _, st := range p.Streams {
+					entries += len(st.Entries)
+				}
+				if q, _ := p.Planned["query"].(string); q != r.sent || len(q) != 13 || entries != 0 {
+					t.Errorf("%s: planned %v, %d entries; want %q (13 bytes), 0", r.name, p.Planned, entries, r.sent)
+				}
+				if rs := fake.Requests(); len(rs) == 0 || rs[0].Form.Get("query") != r.sent {
+					t.Errorf("%s: upstream %+v", r.name, rs)
+				}
+			}
+			s.stop(t)
+		})
+	}
+}
+
 // itest:logql-errors (issue acceptance 4; PRF-031, T06-009, T06-010, T07-020, T09-009, T06-026).
 func TestLogqlErrorsItest(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {

@@ -18,6 +18,7 @@ import {
   logsFormatDuration,
   logsRateWindowMs,
   prepareLogs,
+  substituteLogs,
   volumeRange,
   type LogsClass,
   type LogsStubPlanError,
@@ -49,6 +50,7 @@ function wantError(c: LogsPlanCase): LogsStubPlanError {
     message: c.error.message,
     fields: logsFieldsOf(c.error.fields),
     ...(c.error.hint === undefined ? {} : { hint: c.error.hint }),
+    ...(c.error.position === undefined ? {} : { hint: { position: { offset: c.error.position } } }),
     ...(c.error.planned === undefined ? {} : { planned: logsPlannedOf(c.error.planned) }),
   };
 }
@@ -119,10 +121,18 @@ describe('unit:plan-parity (TS, logs)', () => {
 
   it('the A.1.4 values are written byte for byte', () => {
     const q = LOGS_FIXTURE.plan.filter((c) => /^Q\d+ /.test(c.name));
-    expect(q.length).toBe(11);
+    expect(q.length).toBe(13);
     for (const c of q) {
       const p = prepareLogs(inputsOf(c));
       if (isLogsPlanError(p)) {
+        if (c.name.startsWith('Q10 ')) {
+          // Q10 (plan #121 §3.3): the value is top-level text after a '#', refused by row 9b.
+          expect(p.fields[0]?.messageKey, c.name).toBe('query.invalid');
+          expect(p.hint !== undefined && 'position' in p.hint && p.hint.position.offset).toBe(10);
+          expect(p.message, c.name).toBe(c.error?.message);
+          continue;
+        }
+        expect(p.fields[0]?.messageKey, c.name).toBe('variable.unrepresentable');
         expect(c.error?.fields[0]?.message_key, c.name).toBe('variable.unrepresentable');
         continue;
       }
@@ -137,23 +147,36 @@ describe('unit:plan-parity (TS, logs)', () => {
 describe('unit:logql-classify', () => {
   for (const e of LOGS_FIXTURE.classify) {
     it(e.name, () => {
-      const p = prepareLogs({
+      // The text is the substitution before row 9b (plan #121 §5.2): an entry with a top-level
+      // '#' is still classified, and prepareLogs refuses it at prepare_position.
+      const inputs = {
         query: expand(e.text),
         vars: e.vars ?? {},
         kind: 'range',
         stepMs: 5000,
-      });
-      if (isLogsPlanError(p)) throw new Error(`${e.name}: ${p.message}`);
-      for (const c of [p.class, classifyLogs(p.substituted)]) {
-        expect(c.source).toBe(e.want.class);
-        expect(c.reserved).toEqual(e.want.reserved);
-        expect(
-          c.selectors.map((s) => ({
-            reserved: s.reserved,
-            text: slice(p.substituted, s.from, s.to),
-          })),
-        ).toEqual(e.want.selectors.map((s) => ({ reserved: s.reserved, text: expand(s.text) })));
+      } as const;
+      const s = substituteLogs(inputs);
+      if (isLogsPlanError(s)) throw new Error(`${e.name}: ${s.message}`);
+      const c = classifyLogs(s.substituted);
+      expect(c.source).toBe(e.want.class);
+      expect(c.reserved).toEqual(e.want.reserved);
+      expect(
+        c.selectors.map((x) => ({
+          reserved: x.reserved,
+          text: slice(s.substituted, x.from, x.to),
+        })),
+      ).toEqual(e.want.selectors.map((x) => ({ reserved: x.reserved, text: expand(x.text) })));
+      const p = prepareLogs(inputs);
+      if (e.prepare_position !== undefined) {
+        if (!isLogsPlanError(p)) throw new Error(`${e.name}: prepared, want the hash refusal`);
+        expect(p.fields).toEqual([{ pointer: '/query', messageKey: 'query.invalid' }]);
+        expect(p.hint !== undefined && 'position' in p.hint && p.hint.position.offset).toBe(
+          e.prepare_position,
+        );
+        return;
       }
+      if (isLogsPlanError(p)) throw new Error(`${e.name}: ${p.message}`);
+      expect(p.class).toEqual(classifyLogs(p.substituted));
     });
   }
 

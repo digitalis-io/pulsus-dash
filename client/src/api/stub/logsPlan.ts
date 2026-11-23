@@ -54,7 +54,8 @@ export interface LogsStubPlanError {
   readonly status: 400 | 413;
   readonly message: string;
   readonly fields: readonly FieldError[];
-  readonly hint?: { readonly reason: 'processing_cap' };
+  readonly hint?:
+    { readonly reason: 'processing_cap' } | { readonly position: { readonly offset: number } };
   readonly planned?: LogqlPlannedQuery;
 }
 
@@ -667,4 +668,13 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
       };
     },
   };
+}
+
+/**
+ * @internal Tests only: the steps of `prepareLogs` before row 9b (plan #121 §3.2), the text the
+ * classify runner reads.
+ */
+export function substituteLogs(i: LogsPlanInputs): { substituted: string } | LogsStubPlanError {
+  const p = prepareLogs(i);
+  return isLogsPlanError(p) ? p : { substituted: p.substituted };
 }

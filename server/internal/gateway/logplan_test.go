@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -199,12 +200,20 @@ func TestLogqlPlanned(t *testing.T) {
 		{"Q7", `{app="$a"}`, "x`y", "{app=\"x`y\"}"},
 		{"Q8", `{app="$a"}`, " ", "{app=\" \"}"},
 		{"Q9", "{app=`$a`}", "x\ry", ""},
-		{"Q10", `{app="x"} # $a`, "z\n{source=\"pulsus-dash\"}", ""},
+		{"Q10", `{app="x"} # $a`, "z\n{source=\"pulsus-dash\"}", "hash"},
 		{"Q11", `$a`, "{app=\"x\"}\n|= \"y\"", "{app=\"x\"}\n|= \"y\""},
 	} {
 		up.reset()
 		rec := postJSON(h, logRangePath, logBodyVars(c.query, map[string]string{"a": c.value}, ""))
 		rs := up.requests()
+		if c.sent == "hash" {
+			// Q10 (plan #121 §3.3): the value is top-level text after a '#', refused by row 9b.
+			wantHashRefusal(t, c.name, rec, 10)
+			if len(rs) != 0 {
+				t.Errorf("%s: %d upstream requests", c.name, len(rs))
+			}
+			continue
+		}
 		if c.sent == "" {
 			e := wantError(t, c.name, rec, 400, "invalid", "/vars/a", "variable.unrepresentable")
 			if e.Error.Message != "the value of variable $a cannot be written where it is referenced" {
@@ -245,12 +254,27 @@ func TestLogqlVirtualRefused(t *testing.T) {
 			t.Errorf("%s: %d upstream requests, want 0", what, n)
 		}
 	}
-	guardOnly := map[string]bool{"L10": true, "L12": true, "L22": true}
+	// hashFirst (plan #121 §4.3): a text with a top-level '#' is refused by row 9b as
+	// query.invalid before the reserved-selector check, so it is never sent either.
+	hashFirst := map[string]bool{"L12": true, "L21": true}
+	guardOnly := map[string]bool{"L10": true, "L22": true}
 	passes := map[string]bool{"L3": true, "L9": true, "L11": true, "L14": true, "L18": true}
-	var nR1, nR2, nR3 int
+	var nR1, nR2, nR3, nHash int
 	for _, c := range cases {
 		id := caseID(c.Name)
 		switch {
+		case hashFirst[id]:
+			nHash++
+			for kind, path := range logPaths {
+				up.reset()
+				what := "hash " + kind + " " + c.Name
+				rec := postJSON(h, path, logBodyVars(c.Text, c.Vars, ""))
+				wantError(t, what, rec, 400, "invalid", "/query", "query.invalid")
+				noPlanned(t, what, logPlanBodyOf(t, rec))
+				if n := len(up.requests()); n != 0 {
+					t.Errorf("%s: %d upstream requests, want 0", what, n)
+				}
+			}
 		case c.Want.Class == "virtual" || c.Want.Class == "mixed":
 			nR1++
 			for kind, path := range logPaths {
@@ -270,8 +294,8 @@ func TestLogqlVirtualRefused(t *testing.T) {
 			}
 		}
 	}
-	if nR1 != 14 || nR2 != 3 || nR3 != 5 {
-		t.Errorf("rows R1 %d, R2 %d, R3 %d; want 14, 3, 5", nR1, nR2, nR3)
+	if nR1 != 13 || nR2 != 2 || nR3 != 5 || nHash != 2 {
+		t.Errorf("rows R1 %d, R2 %d, R3 %d, hash %d; want 13, 2, 5, 2", nR1, nR2, nR3, nHash)
 	}
 
 	// R4: refused before tenant resolution.
@@ -328,7 +352,7 @@ func TestLogqlPlanAuthority(t *testing.T) {
 func TestLogqlPlanSizes(t *testing.T) {
 	up := planUpstream(t)
 	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
-	n9 := `{app="x"} # ` + strings.Repeat("a", 65_488)
+	n9 := `{app="x"} |= "` + strings.Repeat("a", 65_485) + `"`
 
 	rec := postJSON(h, logRangePath, logBody(strings.Repeat("a", 131_073), ""))
 	e := wantError(t, "Z1", rec, 400, "invalid", "/query", "field.range")
@@ -451,5 +475,98 @@ func TestLogqlCursorBindsPlanned(t *testing.T) {
 	wantError(t, "C2", rec, 400, "invalid", "/cursor", "cursor.mismatch")
 	if b := logPlanBodyOf(t, rec); b.Error == nil || b.Error.Planned == nil || b.Error.Planned.Query != `{app="y"}` {
 		t.Errorf("C2: %.300s", rec.Body.String())
+	}
+}
+
+// wantHashRefusal checks a row-9b response (plan #121 §3.2): 400 invalid, /query query.invalid,
+// the message and hint.position.offset at pos, and no planned.
+func wantHashRefusal(t *testing.T, what string, rec *httptest.ResponseRecorder, pos int) {
+	t.Helper()
+	e := wantError(t, what, rec, 400, "invalid", "/query", "query.invalid")
+	if want := "unexpected '#' at byte " + strconv.Itoa(pos) + ": LogQL has no comments"; e.Error.Message != want {
+		t.Errorf("%s: message %q, want %q", what, e.Error.Message, want)
+	}
+	if p, ok := e.Error.Hint["position"].(map[string]any); !ok || p["offset"] != float64(pos) || len(e.Error.Hint) != 1 {
+		t.Errorf("%s: hint %v, want {position: {offset: %d}}", what, e.Error.Hint, pos)
+	}
+	noPlanned(t, what, logPlanBodyOf(t, rec))
+}
+
+// itest:logql-hash-refused (plan #121 §5.1, T07-020, T06-029): a '#' outside strings, raw or
+// from a value, is refused with its mapped position on both routes before any upstream request,
+// a spaced or escaped reserved selector after it included; a '#' inside a string is planned and
+// sent as is.
+func TestLogqlHashRefused(t *testing.T) {
+	up := planUpstream(t)
+	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
+	h1 := "# x\r{source = \"pulsus-dash\"}"
+	h2 := map[string]string{"q": "{app=\"x\"} # c\r{ source = \"pulsus-dash\" }"}
+	refused := []struct {
+		name, query string
+		vars        map[string]string
+		pos         int
+	}{
+		{"H1", h1, nil, 0},
+		{"H2", "$q", h2, 0},
+		{"H3", "# x\r{source=\"pulsus\\x2ddash\"}", nil, 0},
+		{"H4", `{app="$a"} # c`, map[string]string{"a": "xyz"}, 11},
+		{"H9", "{app=\"x\n# c", nil, 8},
+		{"H10", "$a", map[string]string{"a": "#"}, 0},
+		{"H12", `{app="x"} # y`, nil, 10},
+	}
+	for _, c := range refused {
+		for _, kind := range []string{"range", "volume"} {
+			up.reset()
+			what := c.name + " " + kind
+			vars := c.vars
+			if vars == nil {
+				vars = map[string]string{}
+			}
+			rec := postJSON(h, logPaths[kind], logBodyVars(c.query, vars, ""))
+			if n := len(up.requests()); n != 0 {
+				t.Errorf("%s: %d upstream requests, want 0", what, n)
+			}
+			wantHashRefusal(t, what, rec, c.pos)
+		}
+	}
+	for _, c := range []struct {
+		name, query string
+		vars        map[string]string
+		sent        string
+	}{
+		{"H5", `{app="x"} |= "#"`, nil, `{app="x"} |= "#"`},
+		{"H6", "{app=\"x\"} |= `#`", nil, "{app=\"x\"} |= `#`"},
+		{"H7", `{app="$a"}`, map[string]string{"a": "#"}, `{app="#"}`},
+		{"H8", `{app="x\"#"}`, nil, `{app="x\"#"}`},
+	} {
+		up.reset()
+		vars := c.vars
+		if vars == nil {
+			vars = map[string]string{}
+		}
+		rec := postJSON(h, logRangePath, logBodyVars(c.query, vars, ""))
+		b, rs := logPlanBodyOf(t, rec), up.requests()
+		if rec.Code != 200 || len(rs) != 1 || rs[0].Form.Get("query") != c.sent || b.Planned == nil || b.Planned.Query != c.sent {
+			t.Errorf("%s: %d %.200s, %d upstream requests, want 1 sending %q", c.name, rec.Code, rec.Body.String(), len(rs), c.sent)
+		}
+	}
+
+	// Refused before tenant resolution: no bootstrap call and no upstream request.
+	var calls atomic.Int32
+	ho, ct, _ := orderGateway(func(context.Context) (core.BootstrapView, error) {
+		calls.Add(1)
+		return core.BootstrapView{}, nil
+	})
+	for _, c := range refused[:2] {
+		for _, kind := range []string{"range", "volume"} {
+			vars := c.vars
+			if vars == nil {
+				vars = map[string]string{}
+			}
+			wantHashRefusal(t, "order "+c.name+" "+kind, postJSON(ho, logPaths[kind], logBodyVars(c.query, vars, "")), c.pos)
+		}
+	}
+	if calls.Load() != 0 || ct.n.Load() != 0 {
+		t.Errorf("order: %d bootstrap calls, %d upstream requests; want 0, 0", calls.Load(), ct.n.Load())
 	}
 }
