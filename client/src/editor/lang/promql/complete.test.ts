@@ -16,6 +16,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { StubApi } from '../../../api/StubApi';
 import type { PromValues } from '../../../data/decode';
+import { keyWorkOf, type Work } from '../../../test/completionWork';
 import '../../../test/editorDom';
 import {
   F,
@@ -624,5 +625,48 @@ describe('unit:promql-cancel', () => {
       expect(fresh[0]?.signal.aborted).toBe(true);
       expect(second.cache.has(jobKey)).toBe(false);
     });
+  });
+});
+
+describe('unit:promql-completion-probe (plan #107 §3.3, §5.3)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(g, COMPLETION_PROBE_GLOBAL);
+  });
+
+  it('Z1: the slots’ overlapping intervals count once in completionMs (injected clock)', async () => {
+    // Every `performance.now()` read advances the clock by 1; the probe records the end as the
+    // bench's page does.
+    let t = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => ++t);
+    const work: Work[] = [];
+    g[COMPLETION_PROBE_GLOBAL] = (ms: number, part: Work[2]) => {
+      work.push([t, ms, part]);
+    };
+    const { text, pos } = caretOf('sum(r‸');
+    const state = EditorState.create({
+      doc: text,
+      selection: { anchor: pos },
+      extensions: [promqlExtensions(fakePromSource(F))],
+    });
+    const [s0, s1] = state.languageDataAt<CompletionSource>('autocomplete', pos);
+    if (s0 === undefined || s1 === undefined) throw new Error('two slots expected');
+    // As CodeMirror's `startUpdate`: both slots start in one task, each with its own context.
+    await Promise.all([
+      s0(new CompletionContext(state, pos, true)),
+      s1(new CompletionContext(state, pos, true)),
+    ]);
+    const local = work.filter(([, , k]) => k === 'slot0' || k === 'slot1pre');
+    expect(local.map(([, , k]) => k).sort()).toEqual(['slot0', 'slot1pre']);
+    const starts = local.map(([end, ms]) => end - ms);
+    const ends = local.map(([end]) => end);
+    // The intervals overlap: each slot starts before the other ends.
+    expect(Math.max(...starts)).toBeLessThan(Math.min(...ends));
+    const span = Math.max(...ends) - Math.min(...starts);
+    const sum = local.reduce((a, [, ms]) => a + ms, 0);
+    expect(sum).toBeGreaterThan(span);
+    const k = keyWorkOf(work, 0, Number.POSITIVE_INFINITY);
+    expect(k.completionMs).toBe(span);
+    expect(k.keyWork).toBe(span);
   });
 });
