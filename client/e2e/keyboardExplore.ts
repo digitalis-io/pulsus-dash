@@ -97,14 +97,15 @@ export async function exploreLoops(s: Script): Promise<void> {
 
     await s.on('slider "Crosshair: Log volume"', 'ArrowRight');
 
-    // The order options (roving focus: only the selected one is a tab stop). Space on the
-    // selected one, an arrow to the other: a new run remounts the list, so focus is found again.
+    // The order options: a toggle group whose arrow keys move the one tab stop and Space selects.
+    // A new order is a new run that remounts the list, so focus is found again by Tab.
     await s.on('radio "Newest first"', 'Space');
     await press('ArrowRight');
+    await press('Space');
     await expect.poll(() => s.search()['dir']).toBe('forward');
     await expect(rows).toHaveCount(30);
-    await s.on('radio "Oldest first"', 'Space');
-    await press('ArrowLeft');
+    // The remounted group's tab stop is its first option.
+    await s.on('radio "Newest first"', 'Space');
     await expect.poll(() => s.search()['dir']).toBeUndefined();
     await expect(rows).toHaveCount(30);
 
@@ -113,7 +114,8 @@ export async function exploreLoops(s: Script): Promise<void> {
     await press('Space');
     await expect.poll(() => s.search()['wrap']).toBeUndefined();
 
-    await s.focus(/^region "Log lines"/);
+    // The second `Log lines` region: the card's section is the first, the scroller the second.
+    await s.focus('region "Log lines" #2');
 
     await s.goto('/t/demo/explore/logs');
   });
