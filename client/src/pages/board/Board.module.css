@@ -146,46 +146,27 @@
   margin-inline-start: auto;
 }
 
-/*
- * View mode: each panel is placed from its grid cell through custom properties set in CSSOM
- * (T08-023). 12 columns, 40 px rows, 16 px gaps; no CSS grid (track limits are below the server's
- * 10 099 rows in some engines).
- */
-.grid {
-  position: relative;
-  height: calc(var(--gbottom) * (var(--size-board-row) + var(--space-4)) - var(--space-4));
-  min-width: 0;
-}
-
-.placed {
-  position: absolute;
-  top: calc(var(--gy) * (var(--size-board-row) + var(--space-4)));
-  left: calc(var(--gx) * ((100% - 11 * var(--space-4)) / 12 + var(--space-4)));
-  width: calc(var(--gw) * (100% - 11 * var(--space-4)) / 12 + (var(--gw) - 1) * var(--space-4));
-  height: calc(var(--gh) * var(--size-board-row) + (var(--gh) - 1) * var(--space-4));
-}
-
-/* No text selection while a panel is dragged (react-draggable's rules; see BoardGridEditor). */
+/* No text selection while a panel is dragged (react-draggable's rules; see BoardGrid). */
 :global(.react-draggable-transparent-selection) *::selection {
   all: inherit;
 }
 
-/* Edit mode: react-grid-layout places the items with the same numbers. */
-.gridEditor {
+/* Both modes: react-grid-layout places the items (12 columns, 40 px rows, 16 px gaps). */
+.grid {
   min-width: 0;
 }
 
-.gridEditor :global(.react-grid-item) {
+.grid :global(.react-grid-item) {
   transition: none;
 }
 
-.gridEditor :global(.react-grid-item.react-grid-placeholder) {
+.grid :global(.react-grid-item.react-grid-placeholder) {
   border-radius: var(--radius);
   background: var(--brush);
   opacity: 1;
 }
 
-.gridEditor :global(.react-grid-item > .react-resizable-handle::after) {
+.grid :global(.react-grid-item > .react-resizable-handle::after) {
   border-color: var(--text-muted);
 }
 

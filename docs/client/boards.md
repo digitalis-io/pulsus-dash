@@ -117,7 +117,7 @@ its request in flight (it fills the cache) and starts no new one.
 
 `PanelFrame` writes its body width into the board's width store (`panelWidths.ts`); the dialog's
 run reads it (`usePanelWidth`), so the preview sends the panel's width and shares its key. The last
-known width stays in the store when the panel remounts (the Edit grid replaces the View grid);
+known width stays in the store when the panel remounts (a refused drop resets the grid);
 the provider reconciles the store with the board's live panel ids (`livePanels`), so a deleted
 panel's width goes and a new panel that reuses its id starts without it.
 

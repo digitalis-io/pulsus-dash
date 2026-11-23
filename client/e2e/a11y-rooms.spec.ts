@@ -119,8 +119,8 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   const edit = async (): Promise<void> => {
     await open(page, '/t/demo/board/b-1');
     await page.getByRole('button', { name: 'Edit board' }).click();
-    // The Edit grid is a lazy chunk; its panels replace the View grid's once it has loaded.
-    await expect(page.locator('.react-grid-item')).toHaveCount(4);
+    // The Edit chrome on every panel (one grid serves both modes, #111).
+    await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
     await page.getByRole('button', { name: 'Panel menu: Request rate' }).click();
     await page.getByRole('menuitem', { name: 'Edit panel' }).click();
     await editor.waitFor();
@@ -141,7 +141,7 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   // A panel with partial data: its badge's popover.
   await open(page, '/t/demo/board/b-1');
   await page.getByRole('button', { name: 'Edit board' }).click();
-  await expect(page.locator('.react-grid-item')).toHaveCount(4);
+  await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
   await page.getByRole('button', { name: 'Add panel', exact: true }).click();
   await editor.getByRole('textbox', { name: 'Query' }).click();
   await page.keyboard.insertText('topk(1000, up)');
@@ -200,7 +200,7 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
 
   await open(page, '/t/demo/board/b-1');
   await page.getByRole('button', { name: 'Edit board' }).click();
-  await expect(page.locator('.react-grid-item')).toHaveCount(4);
+  await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
   await page.getByRole('button', { name: 'Add section' }).click();
   await page.getByRole('textbox', { name: 'Section 2 title' }).waitFor();
   await check('b-1 edit with sections');

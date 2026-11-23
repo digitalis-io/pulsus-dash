@@ -9,7 +9,7 @@
       "src/pages/admin/AdminPage.tsx",
       "src/pages/SignedOutPage.tsx",
       "src/shell/TimeRangeDialog.tsx",
-      "src/pages/board/BoardGridEditor.tsx",
+      "src/pages/board/BoardGrid.tsx",
       "src/editor/editor.ts",
       "src/editor/lang/promql/promql.ts"
     ],

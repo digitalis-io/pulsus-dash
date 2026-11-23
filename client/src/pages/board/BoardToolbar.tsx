@@ -47,7 +47,7 @@ function Updated() {
 }
 
 export type BoardToolbarProps =
-  | { mode: 'view'; onEdit: () => void; onPreloadEdit: () => void }
+  | { mode: 'view'; onEdit: () => void }
   | {
       mode: 'edit';
       /** A save or Discard's reload is in flight: every edit control is disabled. */
@@ -68,12 +68,7 @@ export function BoardToolbar(props: BoardToolbarProps) {
       <div role="group" aria-label={t('board.actions')} className={cx(styles['toolbar'])}>
         <Updated />
         <BoardShare />
-        <Button
-          variant="primary"
-          onPress={props.onEdit}
-          onHoverStart={props.onPreloadEdit}
-          onFocus={props.onPreloadEdit}
-        >
+        <Button variant="primary" onPress={props.onEdit}>
           {t('board.edit')}
         </Button>
       </div>

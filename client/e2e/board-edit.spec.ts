@@ -228,7 +228,7 @@ test.describe('e2e:board-tall', () => {
       await check();
 
       await page.getByRole('button', { name: 'Edit board' }).click();
-      await expect(page.locator('.react-grid-item')).toHaveCount(2);
+      await expect(page.locator('[data-drag-handle]')).toHaveCount(2);
       await check();
       const header = await far.getByRole('heading', { level: 3 }).boundingBox();
       if (header === null) throw new Error('no header');

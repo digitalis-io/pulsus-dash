@@ -6,7 +6,17 @@
  * View-mode section overrides live in the URL (`useBoardParams`).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  lazy,
+  startTransition,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useBlocker, useLocation, useNavigate } from 'react-router';
 import { useApi, useBoardPrefs } from '../../app/providers';
 import {
@@ -50,22 +60,18 @@ import pages from '../pages.module.css';
 import styles from './Board.module.css';
 import { BoardConflict } from './BoardConflict';
 import { BoardFilterBar } from './BoardFilterBar';
-import { BoardGridView } from './BoardGridView';
 import { BoardGuard } from './BoardGuard';
+import { BoardModeContext } from './boardMode';
 import { BoardSection } from './BoardSection';
 import { BoardToolbar } from './BoardToolbar';
 import { focusAfterEditor, PanelEditor } from './PanelEditor';
 import { PanelFrame, type PanelFrameProps } from './PanelFrame';
 
-// The Edit-mode chunk: react-grid-layout loads only when a board is edited (ADR-0014 §8). It is
-// preloaded when the pointer or the focus reaches Edit board, so the grid seldom swaps under a
-// user who acts at once.
-const loadGridEditor = () => import('./BoardGridEditor');
-const BoardGridEditor = lazy(loadGridEditor);
-
-function preloadGridEditor(): void {
-  loadGridEditor().catch(() => undefined);
-}
+// The grid chunk (react-grid-layout, ADR-0014 §8): one grid serves View and Edit mode, so the
+// panels stay mounted across the modes (#111). It is a lazy chunk of its own, requested when the
+// board route mounts, alongside the board's own read.
+const loadGrid = () => import('./BoardGrid');
+const BoardGrid = lazy(loadGrid);
 
 const PANEL_POINTER = /^(?:\/sections\/(\d+))?\/panels\/(\d+)(?:\/|$)/;
 /** A section title's error shows under its field, not under the status line. */
@@ -111,6 +117,10 @@ export function BoardPage() {
   useEffect(() => {
     if (loadedUid !== null) prefs.recordView(tenant, loadedUid);
   }, [prefs, tenant, loadedUid]);
+  useEffect(() => {
+    // A failed load shows again through the grid's Suspense, which retries it.
+    loadGrid().catch(() => undefined);
+  }, []);
 
   if (board.isPending) {
     return (
@@ -410,59 +420,56 @@ function BoardEditor({
     return f === undefined ? null : fieldMessage(f.messageKey);
   };
 
+  // Stable, so a memoised `PanelFrame` whose panel is unchanged skips the page's renders (#111).
+  // The editor opens in a transition: React renders the dialog in slices that yield to the
+  // browser instead of in one long task after the click (#111, PRF-005).
+  const onEdit = useCallback((id: string) => {
+    startTransition(() => {
+      dispatch({ type: 'enterEdit' });
+      dispatch({ type: 'select', id });
+    });
+  }, []);
+  const onKeyOp = useCallback((id: string, op: LayoutOp) => {
+    dispatch({ type: 'keyOp', id, op });
+  }, []);
+  // From the panel menu (plan #64 Q3): the change needs a save, so it enters Edit mode.
+  const onDuplicate = useCallback((id: string) => {
+    dispatch({ type: 'enterEdit' });
+    dispatch({ type: 'duplicatePanel', id });
+  }, []);
+  const onRemove = useCallback((id: string) => {
+    dispatch({ type: 'enterEdit' });
+    dispatch({ type: 'removePanel', id });
+    setFocusAdd(true);
+  }, []);
   const panelProps = (p: PanelSpec): PanelFrameProps => ({
     panel: p,
     tenant,
-    mode: s.mode,
     readOnly: busy,
     selected: edit && s.selected === p.id,
-    onEdit: (id: string) => {
-      dispatch({ type: 'enterEdit' });
-      dispatch({ type: 'select', id });
-    },
-    onKeyOp: (id: string, op: LayoutOp) => {
-      dispatch({ type: 'keyOp', id, op });
-    },
-    // From the panel menu (plan #64 Q3): the change needs a save, so it enters Edit mode.
-    onDuplicate: (id: string) => {
-      dispatch({ type: 'enterEdit' });
-      dispatch({ type: 'duplicatePanel', id });
-    },
-    onRemove: (id: string) => {
-      dispatch({ type: 'enterEdit' });
-      dispatch({ type: 'removePanel', id });
-      setFocusAdd(true);
-    },
+    onEdit,
+    onKeyOp,
+    onDuplicate,
+    onRemove,
     ...(editRun?.id === p.id ? { runText: editRun.text } : {}),
   });
 
-  const viewGrid = (panels: readonly PanelSpec[]) => (
-    <BoardGridView
+  // One grid for both modes (#111): entering or leaving Edit mode changes its props, not the
+  // components, so no panel mounts again.
+  const grid = (panels: readonly PanelSpec[], ref: GridRef) => (
+    <BoardGrid
+      mode={s.mode}
       panels={panels}
-      renderPanel={(p, place, className) => (
-        <PanelFrame key={p.id} ref={place} className={className} {...panelProps(p)} />
-      )}
+      readOnly={busy}
+      onLayout={(items) => {
+        dispatch({ type: 'layout', grid: ref, items });
+      }}
+      onBlocked={(p) => {
+        dispatch({ type: 'announce', text: blockedText(p) });
+      }}
+      renderPanel={(p) => <PanelFrame {...panelProps(p)} />}
     />
   );
-
-  const grid = (panels: readonly PanelSpec[], ref: GridRef) =>
-    edit ? (
-      <Suspense fallback={viewGrid(panels)}>
-        <BoardGridEditor
-          panels={panels}
-          readOnly={busy}
-          onLayout={(items) => {
-            dispatch({ type: 'layout', grid: ref, items });
-          }}
-          onBlocked={(p) => {
-            dispatch({ type: 'announce', text: blockedText(p) });
-          }}
-          renderPanel={(p) => <PanelFrame {...panelProps(p)} />}
-        />
-      </Suspense>
-    ) : (
-      viewGrid(panels)
-    );
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
   const livePanels = useMemo(() => allPanels(s.draft).map((x) => x.panel.id), [s.draft]);
@@ -500,9 +507,12 @@ function BoardEditor({
           <BoardToolbar
             mode="view"
             onEdit={() => {
-              dispatch({ type: 'enterEdit' });
+              // In a transition, as the panel editor's opening (#111): React renders the Edit
+              // chrome in slices.
+              startTransition(() => {
+                dispatch({ type: 'enterEdit' });
+              });
             }}
-            onPreloadEdit={preloadGridEditor}
           />
         )}
       </div>
@@ -533,52 +543,56 @@ function BoardEditor({
       )}
       <div className={cx(styles['workspace'])}>
         <div className={cx(styles['grids'])}>
-          {empty && !edit ? (
-            <EmptyState title={t('board.noPanels')} />
-          ) : (
-            <>
-              {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
-              {s.draft.sections.map((sec, j) => {
-                const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
-                return (
-                  <BoardSection
-                    key={sec.id}
-                    section={sec}
-                    index={j}
-                    mode={s.mode}
-                    collapsed={collapsed}
-                    busy={busy}
-                    titleError={titleErrorOf(j)}
-                    onToggle={() => {
-                      if (edit) {
-                        dispatch({ type: 'toggleSection', id: sec.id });
-                        return;
-                      }
-                      // Only a state that differs from the saved one is written to the URL.
-                      const next = !collapsed;
-                      setOverrideError(
-                        boardParams.setSectionOverride(
-                          sec.id,
-                          next === sec.collapsed ? null : next,
-                        ),
-                      );
-                    }}
-                    onTitle={(title) => {
-                      dispatch({ type: 'updateSection', id: sec.id, title });
-                    }}
-                    onAddPanel={() => {
-                      dispatch({ type: 'addPanel', grid: j });
-                    }}
-                    onRemove={() => {
-                      dispatch({ type: 'removeSection', id: sec.id });
-                    }}
-                  >
-                    {grid(sec.panels, j)}
-                  </BoardSection>
-                );
-              })}
-            </>
-          )}
+          {/* One boundary for every grid: until the grid chunk arrives the board shows none, so
+              no grid is placed above another that has not (#111). */}
+          <Suspense fallback={<div data-board-grid="" aria-busy="true" />}>
+            {empty && !edit ? (
+              <EmptyState title={t('board.noPanels')} />
+            ) : (
+              <>
+                {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
+                {s.draft.sections.map((sec, j) => {
+                  const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
+                  return (
+                    <BoardSection
+                      key={sec.id}
+                      section={sec}
+                      index={j}
+                      mode={s.mode}
+                      collapsed={collapsed}
+                      busy={busy}
+                      titleError={titleErrorOf(j)}
+                      onToggle={() => {
+                        if (edit) {
+                          dispatch({ type: 'toggleSection', id: sec.id });
+                          return;
+                        }
+                        // Only a state that differs from the saved one is written to the URL.
+                        const next = !collapsed;
+                        setOverrideError(
+                          boardParams.setSectionOverride(
+                            sec.id,
+                            next === sec.collapsed ? null : next,
+                          ),
+                        );
+                      }}
+                      onTitle={(title) => {
+                        dispatch({ type: 'updateSection', id: sec.id, title });
+                      }}
+                      onAddPanel={() => {
+                        dispatch({ type: 'addPanel', grid: j });
+                      }}
+                      onRemove={() => {
+                        dispatch({ type: 'removeSection', id: sec.id });
+                      }}
+                    >
+                      {grid(sec.panels, j)}
+                    </BoardSection>
+                  );
+                })}
+              </>
+            )}
+          </Suspense>
         </div>
         {edit && selected !== undefined && (
           <PanelEditor
@@ -646,7 +660,7 @@ function BoardEditor({
       timeReady={timeReady}
       livePanels={livePanels}
     >
-      {page}
+      <BoardModeContext.Provider value={s.mode}>{page}</BoardModeContext.Provider>
     </BoardRunProvider>
   );
 }

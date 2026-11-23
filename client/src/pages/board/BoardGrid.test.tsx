@@ -4,7 +4,7 @@ import type { PanelSpec } from '../../api/types';
 import type { LayoutItem } from '../../boards/editorState';
 import { cellPx } from '../../boards/layout';
 import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
-import { BoardGridEditor } from './BoardGridEditor';
+import { BoardGrid } from './BoardGrid';
 
 function panel(id: string, x: number, y: number): PanelSpec {
   return {
@@ -77,13 +77,14 @@ afterEach(() => {
   restore();
 });
 
-describe('BoardGridEditor', () => {
+describe('BoardGrid', () => {
   it('mounts under React 19 without errors', async () => {
     const error = vi.spyOn(console, 'error');
     const onLayout = vi.fn();
     const onBlocked = vi.fn();
     const view = render(
-      <BoardGridEditor
+      <BoardGrid
+        mode="edit"
         panels={PANELS}
         readOnly={false}
         onLayout={onLayout}
@@ -114,5 +115,48 @@ describe('BoardGridEditor', () => {
 
     view.unmount();
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it('View mode: the same items, (y, x) order, no drag and no resize handle', async () => {
+    const onLayout = vi.fn();
+    const renderPanel = (p: PanelSpec) => <div data-drag-handle="">{p.id}</div>;
+    // C before B in the draft; View mode reads (y, x).
+    const draft = [PANELS[0], PANELS[2], PANELS[1]].filter((p) => p !== undefined);
+    const view = render(
+      <BoardGrid
+        mode="view"
+        panels={draft}
+        readOnly={false}
+        onLayout={onLayout}
+        onBlocked={vi.fn()}
+        renderPanel={renderPanel}
+      />,
+    );
+    await act(async () => {
+      resizeAll(WIDTH, 800);
+      await new Promise((r) => requestAnimationFrame(r));
+    });
+    const order = () =>
+      [...document.querySelectorAll('.react-grid-item')].map((e) => e.textContent);
+    expect(order()).toEqual(['A', 'B', 'C']);
+    expect(document.querySelector('.react-resizable-handle')).toBeNull();
+    const b = item('B');
+    drag('B', 0, 16 * 56);
+    expect(onLayout).not.toHaveBeenCalled();
+
+    view.rerender(
+      <BoardGrid
+        mode="edit"
+        panels={draft}
+        readOnly={false}
+        onLayout={onLayout}
+        onBlocked={vi.fn()}
+        renderPanel={renderPanel}
+      />,
+    );
+    // The draft's order in Edit mode; the same elements.
+    expect(order()).toEqual(['A', 'C', 'B']);
+    expect(item('B')).toBe(b);
+    expect(document.querySelectorAll('.react-resizable-handle')).toHaveLength(3);
   });
 });
