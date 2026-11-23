@@ -2,6 +2,9 @@
  * The anchor relative expressions resolve against (T03-017). The anchor moves only on `tick()`: when
  * `from` or `to` changes, on Refresh now and on each auto-refresh tick. Between ticks every view of
  * the Context (header, page summary, copy link) resolves `now` to the same instant.
+ *
+ * The refresh epoch (plan #66 Part C §3.3) counts the refreshes that moved no window, so a run
+ * held outside TanStack Query (the log pager) can rerun under a fixed window.
  */
 export interface Clock {
   now: () => number;
@@ -16,6 +19,7 @@ export interface Clock {
 
 export function createClock(nowFn: () => number = Date.now): Clock {
   let anchor = nowFn();
+  let epoch = 0;
   const listeners = new Set<() => void>();
   return {
     now: () => nowFn(),
@@ -24,10 +28,10 @@ export function createClock(nowFn: () => number = Date.now): Clock {
       anchor = nowFn();
       for (const cb of [...listeners]) cb();
     },
-    // Stub (plan #66 Part C §3.3): implemented after the failing tests.
-    epoch: () => 0,
+    epoch: () => epoch,
     refreshed() {
-      return undefined;
+      epoch += 1;
+      for (const cb of [...listeners]) cb();
     },
     subscribe(cb) {
       listeners.add(cb);

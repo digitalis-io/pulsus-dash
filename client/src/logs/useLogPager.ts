@@ -1,23 +1,26 @@
 /**
  * The pager hooks (plan #66 Part B §3.4): one live `LogPager` per input key. The pager is created
- * in an effect, so StrictMode's second mount leaves one live pager; a new key disposes the old
- * pager (its requests abort) and starts a new one; unmount disposes.
+ * in an effect, so StrictMode's second mount leaves one live pager; a new key (input or
+ * generation) disposes the old pager (its requests abort) and starts a new one; unmount disposes.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Api } from '../api/Api';
 import { useApi } from '../app/providers';
 import { LogPager, logPagerKey, type LogPagerInput, type LogPagerState } from './logPager';
 
-/** A started pager for `input` (null → null). `api` defaults to `useApi()`. */
+/**
+ * A started pager for `input` (null → null). `api` defaults to `useApi()`. A new `generation` with
+ * an equal input is a new run (plan #66 Part C §3.4): the page's Run with unchanged text and the
+ * shell's refresh under a fixed window.
+ */
 export function useLogPager(
   input: LogPagerInput | null,
   api?: Pick<Api, 'queryLogs'>,
-  // Stub (plan #66 Part C §3.4): read after the failing tests.
-  _generation = '',
+  generation = '',
 ): LogPager | null {
   const fallback = useApi();
   const source = api ?? fallback;
-  const key = input === null ? null : logPagerKey(input);
+  const key = input === null ? null : generation + '\n' + logPagerKey(input);
   // The input of the current key: a new but equal input object keeps the pager.
   const [keyed, setKeyed] = useState<{ key: string | null; input: LogPagerInput | null }>({
     key,
@@ -28,31 +31,39 @@ export function useLogPager(
   // The live pager is held outside React state: the effect publishes it, the hook subscribes.
   const [slot] = useState(() => new PagerSlot());
   useEffect(() => {
-    if (run === null) {
-      slot.set(null);
+    if (run === null || key === null) {
+      slot.set(null, null);
       return undefined;
     }
     const p = new LogPager(source, run);
-    slot.set(p);
+    slot.set(p, key);
     void p.start();
     return () => {
       p.dispose();
     };
-  }, [run, source, slot]);
-  const pager = useSyncExternalStore(slot.subscribe, slot.get);
-  return pager !== null && key !== null && logPagerKey(pager.input) === key ? pager : null;
+    // `key` carries the generation: a new one with the same input object is a new pager.
+  }, [key, run, source, slot]);
+  const live = useSyncExternalStore(slot.subscribe, slot.get);
+  return live !== null && key !== null && live.key === key ? live.pager : null;
 }
 
-/** The current pager of one `useLogPager` call, as an external store. */
+interface Live {
+  readonly pager: LogPager;
+  /** The key the effect made the pager for. */
+  readonly key: string;
+}
+
+/** The current pager of one `useLogPager` call and its key, as an external store. */
 class PagerSlot {
-  private value: LogPager | null = null;
+  private value: Live | null = null;
   private readonly listeners = new Set<() => void>();
 
-  get = (): LogPager | null => this.value;
+  get = (): Live | null => this.value;
 
-  set(p: LogPager | null): void {
-    if (p === this.value) return;
-    this.value = p;
+  /** A new `{ pager, key }` (or null); the listeners are called only when the pager differs. */
+  set(p: LogPager | null, key: string | null): void {
+    if (p === (this.value?.pager ?? null)) return;
+    this.value = p === null || key === null ? null : { pager: p, key };
     for (const l of [...this.listeners]) l();
   }
 

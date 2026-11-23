@@ -20,6 +20,7 @@ import { AppShell } from '../shell/AppShell';
 import type { Clock } from '../state/clock';
 import { contextSearchString, DEFAULT_CONTEXT, normalisedSearch } from '../state/contextSearch';
 import { normalisedExploreSearch } from '../state/exploreParams';
+import { normalisedLogsSearch } from '../state/logsParams';
 import { RouteErrorPage } from './RouteErrorPage';
 import { routeModules } from './routeModules';
 
@@ -128,6 +129,13 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
             {
               id: 'logs',
               path: 'explore/logs',
+              // The logs keys `q`, `dir`, `wrap` in canonical form (plan #66 Part C §3.1).
+              loader: ({ request }: LoaderFunctionArgs) => {
+                const url = new URL(request.url);
+                const n = normalisedLogsSearch(url.search, env());
+                if (n !== null) throw replace(url.pathname + n);
+                return null;
+              },
               lazy: () => routeModules.logs().then((m) => ({ Component: m.LogsPage })),
             },
             {
