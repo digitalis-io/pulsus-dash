@@ -1,11 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ChartEngineContext } from '../engine/index';
 import { fakeEngine } from '../test/fakeEngine';
 import { installResizeObserver } from '../test/fakeResizeObserver';
 import '../test/editorDom';
 import { locationOf, renderApp } from '../test/renderApp';
+import type { RouteObject } from 'react-router';
+import { createRoutes, type RouterDeps } from './router';
 
 async function settled(
   router: ReturnType<typeof renderApp>['router'],
@@ -143,5 +145,38 @@ describe('unit:router-dev-logql', () => {
     });
     const box = within(host).getByRole('textbox', { name: 'LogQL query' });
     expect(box.textContent).toBe('{a="b"}');
+  });
+});
+
+// Plan #66 Part B §2, B.2: the dev-only log stream harness, in dev and stub builds only.
+describe('unit:router-dev-log-stream', () => {
+  const ids = (routes: readonly RouteObject[]): string[] =>
+    routes.flatMap((r) => [r.id ?? '', ...ids(r.children ?? [])]);
+
+  it('renders the harness in the stub build', async () => {
+    renderApp('/t/demo/dev/log-stream');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Log stream bench' }),
+    ).toBeInTheDocument();
+  });
+
+  it('has no logStreamBench route in the http build', () => {
+    const deps: RouterDeps = {
+      api: {} as never,
+      queryClient: {} as never,
+      clock: {} as never,
+      timeZone: 'UTC',
+    };
+    expect(ids(createRoutes(deps))).toContain('logStreamBench');
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_API_MODE', 'http');
+    try {
+      const http = ids(createRoutes(deps));
+      expect(http).toContain('logs');
+      expect(http).not.toContain('logStreamBench');
+      expect(http).not.toContain('logqlBench');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -71,6 +71,12 @@ export function formatRangeShort(fromMs: number, toMs: number, tz: string): stri
   return `${dm(fromMs)} ${hm(fromMs)} – ${dm(toMs)} ${hm(toMs)} ${zone}`;
 }
 
+/** `2026-01-01 00:58:20.000` in `tz` (plan #66 Part B §3.8). Stub: implemented in the next commit. */
+export function formatLogTime(ms: number, tz: string): string {
+  void [ms, tz];
+  throw new Error('not implemented');
+}
+
 /** 'Europe/London (GMT)', 'America/New_York (GMT-05:00)'; a zero offset is shown as plain GMT. */
 export function formatZone(tz: string, atMs: number): string {
   const offset = zonePart('zoneLong', tz, atMs).replace(/^GMT[+-−]00:00$/, 'GMT');

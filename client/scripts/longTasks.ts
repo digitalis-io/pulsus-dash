@@ -13,7 +13,14 @@ export interface TraceEvent {
   tdur?: number;
   pid: number;
   tid: number;
-  args?: { name?: string; data?: { type?: string } };
+  /** Async events (`EventLatency`): the id that pairs a begin with its end. */
+  id?: string;
+  id2?: { local?: string; global?: string };
+  args?: {
+    name?: string;
+    data?: { type?: string };
+    event_latency?: { event_type?: string };
+  };
 }
 
 export interface LongTask {
@@ -74,7 +81,7 @@ const threadKey = (e: { pid: number; tid: number }): string => `${String(e.pid)}
 /** `inputs`: the `EventDispatch` types that open and close the window (default `DEFAULT_INPUTS`). */
 export function longTasks(
   events: readonly TraceEvent[],
-  o: { inputs?: readonly string[] } = {},
+  o: { inputs?: readonly string[]; marks?: { start: string; end: string } } = {},
 ): LongTaskResult {
   const types = new Set<string>(o.inputs ?? DEFAULT_INPUTS);
   const renderers = new Set(
