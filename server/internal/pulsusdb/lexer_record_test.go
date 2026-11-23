@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -352,32 +353,28 @@ func leaks(b []byte, secrets []string) bool {
 	return false
 }
 
-func hexVal(c byte) int {
+func hexVal(c byte) rune {
 	switch {
 	case c >= '0' && c <= '9':
-		return int(c - '0')
+		return rune(c - '0')
 	case c >= 'a' && c <= 'f':
-		return int(c-'a') + 10
+		return rune(c-'a') + 10
 	case c >= 'A' && c <= 'F':
-		return int(c-'A') + 10
+		return rune(c-'A') + 10
 	}
 	return -1
 }
 
-// hexAt is the value of the n hex digits at s[i:], or -1.
-func hexAt(s string, i, n int) int {
-	if i+n > len(s) {
-		return -1
+// hexByte is the byte of the two hex digits at s[i:].
+func hexByte(s string, i int) (byte, bool) {
+	if i+2 > len(s) {
+		return 0, false
 	}
-	v := 0
-	for k := range n {
-		d := hexVal(s[i+k])
-		if d < 0 {
-			return -1
-		}
-		v = v*16 + d
+	d, err := hex.DecodeString(s[i : i+2])
+	if err != nil {
+		return 0, false
 	}
-	return v
+	return d[0], true
 }
 
 // percentDecode decodes every valid %HH of s and leaves the rest as is.
@@ -385,8 +382,8 @@ func percentDecode(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		if s[i] == '%' {
-			if v := hexAt(s, i+1, 2); v >= 0 {
-				b.WriteByte(byte(v))
+			if v, ok := hexByte(s, i+1); ok {
+				b.WriteByte(v)
 				i += 2
 				continue
 			}
@@ -402,21 +399,21 @@ func unescapes(s string) string {
 	for i := 0; i < len(s); i++ {
 		switch {
 		case s[i] == '\\' && i+1 < len(s) && s[i+1] == 'u':
-			if v := hexAt(s, i+2, 4); v >= 0 {
-				b.WriteRune(rune(v))
+			if r, n := digits(s[i+2:], 16, 4); n == 4 {
+				b.WriteRune(r)
 				i += 5
 				continue
 			}
 		case s[i] == '\\' && i+1 < len(s) && s[i+1] == 'x':
-			if v := hexAt(s, i+2, 2); v >= 0 {
-				b.WriteByte(byte(v))
+			if v, ok := hexByte(s, i+2); ok {
+				b.WriteByte(v)
 				i += 3
 				continue
 			}
 		case s[i] == '&' && i+2 < len(s) && s[i+1] == '#':
 			if r, n := entity(s[i+2:]); n > 0 {
 				b.WriteRune(r)
-				i += 1 + n // with the loop's i++: past "&#", the n bytes and nothing more
+				i += 1 + n // with the loop's i++, past the "&#" and the n bytes
 				continue
 			}
 		}
@@ -425,26 +422,36 @@ func unescapes(s string) string {
 	return b.String()
 }
 
-// entity reads the rest of a numeric character reference after "&#" (NNN; or xHH;): its rune and
-// the bytes it read (the ';' included), or n 0.
-func entity(s string) (rune, int) {
-	base, j := 10, 0
-	if j < len(s) && (s[j] == 'x' || s[j] == 'X') {
-		base, j = 16, 1
-	}
-	v, k := 0, j
-	for k < len(s) && k-j < 8 {
+// digits reads at most max digits of base at the start of s: their value and how many it read.
+// It stops before a value past utf8.MaxRune.
+func digits(s string, base rune, maxDigits int) (rune, int) {
+	var v rune
+	k := 0
+	for k < len(s) && k < maxDigits {
 		d := hexVal(s[k])
-		if d < 0 || d >= base {
+		if d < 0 || d >= base || v > (utf8.MaxRune-d)/base {
 			break
 		}
 		v = v*base + d
 		k++
 	}
-	if k == j || k >= len(s) || s[k] != ';' || v > utf8.MaxRune {
+	return v, k
+}
+
+// entity reads the rest of a numeric character reference after "&#" (NNN; or xHH;): its rune and
+// the bytes it read (the ';' included), or n 0.
+func entity(s string) (rune, int) {
+	var base rune = 10
+	j := 0
+	if j < len(s) && (s[j] == 'x' || s[j] == 'X') {
+		base, j = 16, 1
+	}
+	v, n := digits(s[j:], base, 8)
+	k := j + n
+	if n == 0 || k >= len(s) || s[k] != ';' {
 		return 0, 0
 	}
-	return rune(v), k + 1
+	return v, k + 1
 }
 
 // writeAll writes every file or none: dir must exist, be empty and lie outside the repository.
@@ -455,7 +462,7 @@ func writeAll(dir string, files map[string][]byte) (err error) {
 	if err != nil {
 		return errors.New("dir")
 	}
-	if st, serr := os.Stat(abs); serr != nil || !st.IsDir() {
+	if st, serr := os.Stat(abs); serr != nil || !st.IsDir() { // #nosec G703 -- the test's or DASH_CONTRACT_RECORD_DIR
 		return errors.New("dir")
 	}
 	if es, rerr := os.ReadDir(abs); rerr != nil || len(es) != 0 {
@@ -477,7 +484,7 @@ func writeAll(dir string, files map[string][]byte) (err error) {
 	defer func() {
 		if err != nil {
 			for _, p := range written {
-				_ = os.Remove(p)
+				_ = os.Remove(p) // #nosec G703 -- a file this call wrote in dir
 			}
 		}
 	}()
@@ -486,15 +493,16 @@ func writeAll(dir string, files map[string][]byte) (err error) {
 			return errors.New("name")
 		}
 		tmp := filepath.Join(abs, "."+n+".tmp")
+		// #nosec G703 -- dir is the test's or DASH_CONTRACT_RECORD_DIR, checked above; n is one of the recorder's names, checked by filepath.Base
 		if werr := os.WriteFile(tmp, files[n], 0o600); werr != nil {
-			_ = os.Remove(tmp)
+			_ = os.Remove(tmp) // #nosec G703 -- the temporary file just named
 			return errors.New("write")
 		}
 		written = append(written, tmp)
 	}
 	for _, n := range names {
 		tmp, final := filepath.Join(abs, "."+n+".tmp"), filepath.Join(abs, n)
-		if rerr := os.Rename(tmp, final); rerr != nil {
+		if rerr := os.Rename(tmp, final); rerr != nil { // #nosec G703 -- both in dir, named by the recorder
 			return errors.New("rename")
 		}
 		written = slices.DeleteFunc(written, func(p string) bool { return p == tmp })
@@ -628,7 +636,7 @@ func TestLexerRecord(t *testing.T) {
 		if names := dirNames(t, dir); !slices.Equal(names, []string{"lexer-transcript.txt", "logs-fffd-bq.json", "logs-fffd-dq.json"}) {
 			t.Errorf("files %v", names)
 		}
-		if b, err := os.ReadFile(filepath.Join(dir, "logs-fffd-dq.json")); err != nil || string(b) != wantFFFDdq {
+		if b, err := os.ReadFile(filepath.Join(dir, "logs-fffd-dq.json")); err != nil || string(b) != wantFFFDdq { // #nosec G304 -- the test's temporary directory
 			t.Errorf("written logs-fffd-dq.json: %v", err)
 		}
 	})
@@ -711,7 +719,7 @@ func TestLexerRecord(t *testing.T) {
 		if err := writeAll(full, files); err == nil {
 			t.Error("writeAll to a non-empty dir: nil error")
 		}
-		if b, err := os.ReadFile(keep); err != nil || string(b) != "keep" || len(dirNames(t, full)) != 1 {
+		if b, err := os.ReadFile(keep); err != nil || string(b) != "keep" || len(dirNames(t, full)) != 1 { // #nosec G304 -- the test's temporary directory
 			t.Errorf("non-empty dir changed: %q %v %v", b, err, dirNames(t, full))
 		}
 		inRepo, err := os.MkdirTemp(".", ".lexer-record-")
@@ -850,7 +858,7 @@ func TestLexerRunPath(t *testing.T) {
 				if err != nil || !slices.Equal(names, []string{"lexer-transcript.txt", "logs-fffd-bq.json", "logs-fffd-dq.json"}) {
 					t.Fatalf("runLexer: %v, files %v", err, names)
 				}
-				if b, _ := os.ReadFile(filepath.Join(dir, "lexer-transcript.txt")); !strings.HasPrefix(string(b), "pulsusdb 0.0.13, GET ") {
+				if b, _ := os.ReadFile(filepath.Join(dir, "lexer-transcript.txt")); !strings.HasPrefix(string(b), "pulsusdb 0.0.13, GET ") { // #nosec G304 -- the test's temporary directory
 					t.Errorf("lexer-transcript.txt %q", b)
 				}
 				return
