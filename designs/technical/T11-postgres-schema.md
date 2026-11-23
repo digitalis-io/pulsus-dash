@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-22 |
+| **Version** | 1.7-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (tenancy, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (identity, Git sync, Terraform) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
@@ -110,7 +110,7 @@ conventions of §4.0.
 | [ENT-017](../product/11-enterprise.md#ent-017--append-only-audit-log) | §4.7 `audit_events`: no UPDATE/DELETE for any app role, hash chain | `itest:audit-append-only`; `itest:audit-hash-chain` |
 | [ENT-018](../product/11-enterprise.md#ent-018--audit-viewer) | §4.7 audit indexes on actor, action, resource | `bench:pg-audit-filter` (10⁴ events, ≤ 50 ms) |
 | [ENT-019](../product/11-enterprise.md#ent-019--siem-export) | §4.7 `audit_export_cursors` | `itest:audit-export-cursor` |
-| [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.1 RLS on every table (from #59: `orgs`, `tenant_bindings`; from #61: `folders`, `boards`, `board_versions`, `audit_events` and its partitions, `audit_chain_heads`, `stars`, `recent_views`; partial, roadmap Table 2.1c); §4.11 drop-partition retention; T11-001 no extensions | `itest:rls-isolation`; `itest:retention-drop`; `itest:no-extensions` (vanilla PG 15) |
+| [ENT-020](../product/11-enterprise.md#ent-020--configuration-and-derived-state-in-postgres) | §4.1 RLS on every table (from #59: `orgs`, `tenant_bindings`; from #61: `folders`, `boards`, `board_versions`, `audit_events` and its partitions, `audit_chain_heads`, `stars`, `recent_views`; from #64: `annotations`; partial, roadmap Table 2.1c); §4.11 drop-partition retention; T11-001 no extensions | `itest:rls-isolation`; `itest:retention-drop`; `itest:no-extensions` (vanilla PG 15) |
 | [ENT-021](../product/11-enterprise.md#ent-021--large-artefacts-in-optional-object-storage) | §4.15 object references with `lo_blobs` fallback | `itest:object-store-fallback` |
 | [ENT-022](../product/11-enterprise.md#ent-022--versioned-content-with-diff-and-restore) | §4.3 `<kind>` + `<kind>_versions`, diff and restore | `itest:versions-diff-restore` |
 | [ENT-023](../product/11-enterprise.md#ent-023--yaml-export) | §4.9 YAML envelope | `itest:yaml-roundtrip` (byte-identical canonical YAML) |
@@ -440,11 +440,25 @@ CREATE TABLE saved_views (org_id uuid, id uuid, owner_user_id uuid, team_id uuid
 CREATE TABLE layout_positions (org_id uuid, layout_key text,         -- e.g. 'atlas:topology:<perspective>'
   entity_key text, x real, y real, z real, pinned bool NOT NULL DEFAULT false, updated_at timestamptz,
   PRIMARY KEY (org_id, layout_key, entity_key));
-CREATE TABLE annotations (org_id uuid, id uuid, at timestamptz NOT NULL, end_at timestamptz,
-  entity_key text, text text NOT NULL, tags text[], author_kind text, author_id uuid,
-  PRIMARY KEY (org_id, id));                                            -- user notes on the time axis
-CREATE INDEX ON annotations (org_id, at);
+CREATE TABLE annotations (org_id uuid NOT NULL REFERENCES orgs (id), id uuid NOT NULL,   -- events on the time axis (INT-031)
+  at timestamptz NOT NULL, end_at timestamptz,
+  kind text NOT NULL CHECK (kind IN ('deploy', 'config', 'flag', 'annotation')),
+  entity_key text, text text NOT NULL CHECK (char_length(text) BETWEEN 1 AND 500),
+  tags text[] NOT NULL DEFAULT '{}' CHECK (cardinality(tags) <= 16),
+  author_kind text NOT NULL CHECK (author_kind IN ('local', 'user', 'service_account')), author_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (end_at IS NULL OR (end_at >= at AND end_at - at <= interval '31 days')),
+  PRIMARY KEY (org_id, id));
+CREATE INDEX annotations_at ON annotations (org_id, at);
 ```
+
+- `annotations` (migration 3, #64 Part C, [ADR-0023](../adr/0023-chart-event-markers.md)) is the
+  M-UI1 source of `events/1` ([T04](T04-wire-format-and-data-plane.md) §0, §4.3): deploys, config
+  and feature flag changes and notes, created and deleted through the annotations API with one
+  audit event each (T11-017). It is per organisation; a tenant column later is an expand-only
+  change. `entity_key` stays NULL until M-UI3. Unpartitioned (low volume); a range is at most 31
+  days, so the list query's lower bound on `at` is exact. RLS as T11-003; `pulsus_app` holds
+  SELECT, INSERT and DELETE.
 
 - `entities` and `entity_edges` are partitioned on a **day** column: the precise `last_seen` is
   kept in the in-memory catalogue and the `catalogue_snapshots` blob, and `last_seen_day` is
@@ -1291,7 +1305,7 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 
 | Milestone | Scope |
 |---|---|
-| M-UI1 | `orgs`, `tenant_bindings`, `install_state`, `user_preferences`, `saved_views`, `folders`, `boards` and `board_versions` (minimal Boards, #48), `audit_events` (config only), migration runner, RLS template, partition maintenance framework |
+| M-UI1 | `orgs`, `tenant_bindings`, `install_state`, `user_preferences`, `saved_views`, `folders`, `boards` and `board_versions` (minimal Boards, #48), `audit_events` (config only), `annotations` (event markers, #64 Part C), migration runner, RLS template, partition maintenance framework |
 | M-UI2–3 | Entities tables, `layout_positions`, `waypoints`, lens templates (versioned), `entity_change_events`, `anomaly_*`, `pyramid_tiles` |
 | M-UI4 | Alerting domain incl. `alert_transitions` and `notification_deliveries`, investigations/evidence, incidents, AI tables, `actions`, `secrets`, `artefacts` |
 | M-UI5 | Boards versions UI, diff and restore, legacy dashboard import, playlists, schematics, `noise_reports` |
@@ -1370,3 +1384,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 | 1.4-rc | 2026-11-21 | #61 Part C: §4.3 `recent_views.viewed_at` is the client's navigation time when given (clamped to now − 1 day … now + 5 min), else `now()`; an upsert keeps the greater time; the ordering guarantee of D-RECENT-window (no schema change) |
 | 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.6 `alert_rule_versions.spec` query entries gain `vars`, `rate` and an optional `plan_step_ms` (the panel's planning step for a rule created from a panel; T16 §4.2); `expr` is the raw query |
 | 1.6-rc | 2026-11-22 | #64 Part B: §4.0 note: board spec schema version 2 (`vis.thresholds`, `vis.legend`); v1 upcasts unchanged (T11-016); no SQL migration (`schema_version` is an existing column) |
+| 1.7-rc | 2026-11-23 | #64 Part C (migration 3, [ADR-0023](../adr/0023-chart-event-markers.md)): §4.4 `annotations` DDL as built: `kind` (deploy, config, flag, annotation), the text, tag-count and 31-day range CHECKs, `created_at`, the named index, RLS and grants; §11 M-UI1 adds `annotations`; §3 ENT-020 row adds it |
