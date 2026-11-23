@@ -1,7 +1,7 @@
 /**
  * Render and mount counts of the board's panels (#111). One grid serves View and Edit mode, so
- * entering Edit mode (Edit board, or Edit panel from View mode) neither unmounts nor mounts a panel,
- * and renders each panel at most once; opening the editor from View mode renders no other panel.
+ * entering Edit mode (Edit board, or Edit panel from View mode) and leaving it neither unmount,
+ * mount nor render a panel; opening the editor from View mode renders no other panel.
  * In Edit mode, opening the panel editor, editing in it and closing it render only the panel being
  * edited. A panel is counted through its `PanelFullScreen`, which every `PanelFrame` render
  * renders and which mounts and unmounts with it.
@@ -152,7 +152,7 @@ describe('board render counts (#111)', () => {
     expect(of(counts.renders, OTHERS)).toEqual(each(OTHERS, 0));
   });
 
-  it('entering Edit mode keeps every panel mounted and renders each at most once', async () => {
+  it('entering Edit mode keeps every panel mounted and renders none', async () => {
     const { user } = await viewBoard();
     const edit = await screen.findByRole('button', { name: 'Edit board' });
     await settle();
@@ -162,7 +162,7 @@ describe('board render counts (#111)', () => {
     await settle();
     expect(of(counts.unmounts, ALL)).toEqual(each(ALL, 0));
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 0));
-    for (const n of Object.values(of(counts.renders, ALL))) expect(n).toBeLessThanOrEqual(1);
+    expect(of(counts.renders, ALL)).toEqual(each(ALL, 0));
   });
 
   it('Edit panel from View mode keeps the panels mounted and renders no other panel', async () => {
@@ -179,13 +179,15 @@ describe('board render counts (#111)', () => {
     expect(of(counts.renders, OTHERS)).toEqual(each(OTHERS, 0));
   });
 
-  it('leaving Edit mode keeps every panel mounted', async () => {
+  it('leaving Edit mode keeps every panel mounted and renders none', async () => {
     const { user } = await editGrid();
+    await settle();
     clear();
     await user.click(screen.getByRole('button', { name: 'Done' }));
     await screen.findByRole('button', { name: 'Edit board' });
     await settle();
     expect(of(counts.unmounts, ALL)).toEqual(each(ALL, 0));
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 0));
+    expect(of(counts.renders, ALL)).toEqual(each(ALL, 0));
   });
 });
