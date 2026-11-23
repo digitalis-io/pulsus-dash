@@ -1,7 +1,8 @@
 /**
- * The PromQL editor view (plan #63 Part B §3.5): CodeMirror 6 in the host's shadow root, the
- * PromQL language extensions (`lang/promql`), the keymap of T09-004, one history for typing and
- * programmatic edits (T09-006), and every completion through the guard (T09-005, T09-015).
+ * The query editor view (plan #63 Part B §3.5, plan #66 Part A §3.10): CodeMirror 6 in the host's
+ * shadow root, one language's extensions (`lang/<id>`), the keymap of T09-004, one history for
+ * typing and programmatic edits (T09-006), and every completion through the guard (T09-005,
+ * T09-015). `createPromQLView` is the PromQL view over `createQueryView`.
  */
 import {
   acceptCompletion,
@@ -60,22 +61,54 @@ export function setReadOnly(view: EditorView, on: boolean): void {
 const PARSE_BUDGET_MS = 100;
 
 /**
- * The language's own completion source: its `autocomplete` language data at the caret. The
- * context is read from the syntax tree, so a tree that stops before the caret is parsed on first,
- * within `PARSE_BUDGET_MS`, and the request reads the state that holds it.
+ * How a view starts completion: `typingDelayMs` is `autocompletion`'s `activateOnTypingDelay`
+ * (one view-wide value); `slots` is how many `autocomplete` language-data entries are sources.
  */
-const languageCompletion: CompletionSource = (c) => {
-  let ctx = c;
-  if (c.view !== undefined && syntaxTree(c.state).length < c.pos) {
-    if (forceParsing(c.view, c.pos, PARSE_BUDGET_MS) && c.view.state.doc.eq(c.state.doc)) {
-      ctx = new CompletionContext(c.view.state, c.pos, c.explicit, c.view);
-    }
-  }
-  const source = ctx.state.languageDataAt<CompletionSource>('autocomplete', ctx.pos)[0];
-  return source === undefined ? null : source(ctx);
-};
+export interface CompletionTiming {
+  readonly typingDelayMs: number;
+  readonly slots: 1 | 2;
+}
 
-export function createPromQLView(o: PromQLViewOptions): EditorView {
+/** The PromQL view's timing (#63): one source behind a 120 ms typing delay (T09-007). */
+export const PROMQL_COMPLETION: CompletionTiming = { typingDelayMs: 120, slots: 1 };
+
+/**
+ * Slot `i` of the language's own completion sources: its `autocomplete` language data at the
+ * caret. The context is read from the syntax tree, so a tree that stops before the caret is parsed
+ * on first, within `PARSE_BUDGET_MS`, and the request reads the state that holds it. Null when the
+ * language has no source in that slot.
+ */
+export function languageCompletionAt(i: number): CompletionSource {
+  return (c) => {
+    let ctx = c;
+    if (c.view !== undefined && syntaxTree(c.state).length < c.pos) {
+      if (forceParsing(c.view, c.pos, PARSE_BUDGET_MS) && c.view.state.doc.eq(c.state.doc)) {
+        ctx = new CompletionContext(c.view.state, c.pos, c.explicit, c.view);
+      }
+    }
+    const source = ctx.state.languageDataAt<CompletionSource>('autocomplete', ctx.pos)[i];
+    return source === undefined ? null : source(ctx);
+  };
+}
+
+export interface QueryViewOptions {
+  readonly parent: HTMLElement;
+  readonly root: ShadowRoot;
+  readonly doc: string;
+  readonly label: string;
+  readonly placeholder: string;
+  /** The language extensions (highlighting, completion data). */
+  readonly language: Extension;
+  /** `override` = slots 0 … `slots − 1`, each through the guard. */
+  readonly completion: CompletionTiming;
+  readonly onChange: (text: string) => void;
+  readonly onRun: () => void;
+  readonly onEscape: () => void;
+  /** No edits by the user (default false); `setReadOnly` changes it (#64). */
+  readonly readOnly?: boolean;
+}
+
+export function createQueryView(o: QueryViewOptions): EditorView {
   const g = completionGuard();
   const run = () => {
     o.onRun();
@@ -85,16 +118,19 @@ export function createPromQLView(o: PromQLViewOptions): EditorView {
     o.onEscape();
     return true;
   };
+  const override = Array.from({ length: o.completion.slots }, (_, i) =>
+    g.source(languageCompletionAt(i)),
+  );
   const state = EditorState.create({
     doc: o.doc,
     extensions: [
       history(),
       autocompletion({
-        activateOnTypingDelay: 120,
+        activateOnTypingDelay: o.completion.typingDelayMs,
         maxRenderedOptions: 100,
         icons: false,
         defaultKeymap: false,
-        override: [g.source(languageCompletion)],
+        override,
       }),
       // The default completion keys with a guarded Enter; above the run keys, so Escape closes
       // the popup first.
@@ -118,7 +154,7 @@ export function createPromQLView(o: PromQLViewOptions): EditorView {
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
       closeBrackets(),
       bracketMatching(),
-      promqlExtensions(o.source),
+      o.language,
       promqlTheme,
       placeholder(o.placeholder),
       EditorView.contentAttributes.of({ 'aria-label': o.label }),
@@ -130,6 +166,16 @@ export function createPromQLView(o: PromQLViewOptions): EditorView {
     ],
   });
   return new EditorView({ parent: o.parent, root: o.root, state, ...probedDispatch() });
+}
+
+/** The PromQL view: `createQueryView` with the PromQL extensions and `PROMQL_COMPLETION`. */
+export function createPromQLView(o: PromQLViewOptions): EditorView {
+  const { source, ...rest } = o;
+  return createQueryView({
+    ...rest,
+    language: promqlExtensions(source),
+    completion: PROMQL_COMPLETION,
+  });
 }
 
 /** Replaces the document (no-op when equal); caret at the end; its own undo event. */

@@ -8,7 +8,7 @@ const preview = process.env['E2E_SERVER'] === 'preview';
 const updateGoldens = process.env['PW_UPDATE_GOLDENS'] === '1';
 // Chromium only: pixel goldens and benches are not compared across engines.
 const chromiumOnly =
-  /(golden-gallery|perf-chart-redraw|perf-cold-load|perf-heatmap-draw|perf-inp-rooms|perf-rooms-long-tasks|bff-headers|bff-http|dev-proxy|editor-ime|perf-editor-keystroke)\.spec\.ts/;
+  /(golden-gallery|perf-chart-redraw|perf-cold-load|perf-heatmap-draw|perf-inp-rooms|perf-rooms-long-tasks|bff-headers|bff-http|dev-proxy|editor-ime|perf-editor-keystroke|perf-logql-completion)\.spec\.ts/;
 
 // The servers of plan #59 §3.7: the PulsusDB fake both BFFs use as their data source (plan #63
 // §4.5), the stub-mode and http-mode BFF builds (`make e2e-build`), and the Vite dev server

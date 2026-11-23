@@ -31,6 +31,8 @@ import { RECENT_LIMIT } from '../boards/queries';
 import {
   defaultSeed,
   defaultStarred,
+  STUB_LOG_LABEL_VALUES,
+  STUB_LOG_LABELS,
   STUB_PROM_LABEL_VALUES,
   STUB_PROM_LABELS,
   STUB_PROM_METADATA,
@@ -80,6 +82,7 @@ import {
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
+  type LogMatchRequest,
   type LogsRequest,
   type PromMatchRequest,
   type RangeRequest,
@@ -668,6 +671,26 @@ export class StubApi implements Api {
     return settle(() => {
       this.checkTenant(tenant);
       return { series: [], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  /** The labels of `queryLogs`' stub streams (plan #66 Part A §3.2); no scope is planned. */
+  logLabels(tenant: string, _req: LogMatchRequest, signal?: AbortSignal): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { values: [...STUB_LOG_LABELS], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  logLabelValues(
+    tenant: string,
+    name: string,
+    _req: LogMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { values: [...(STUB_LOG_LABEL_VALUES[name] ?? [])], completeness: EMPTY_COMPLETENESS };
     }, signal);
   }
 

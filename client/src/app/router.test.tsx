@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ChartEngineContext } from '../engine/index';
 import { fakeEngine } from '../test/fakeEngine';
 import { installResizeObserver } from '../test/fakeResizeObserver';
+import '../test/editorDom';
 import { locationOf, renderApp } from '../test/renderApp';
 
 async function settled(
@@ -122,5 +123,25 @@ describe('gallery route', () => {
     expect(screen.getAllByRole('slider')).toHaveLength(7);
     expect(document.querySelectorAll('canvas')).toHaveLength(9);
     expect(engine.frames).toHaveLength(9);
+  });
+});
+
+// Plan #66 Part A §3.12: the dev-only LogQL editor harness of the two benches.
+describe('unit:router-dev-logql', () => {
+  it('renders the LogQL editor with the q text', async () => {
+    renderApp('/t/demo/dev/logql-editor?q=%7Ba%3D%22b%22%7D');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'LogQL editor bench' }),
+    ).toBeInTheDocument();
+    const host = await waitFor(() => {
+      const el = [...document.querySelectorAll('[data-editor-host] > *')].find(
+        (e) => e.shadowRoot !== null,
+      );
+      if (el?.shadowRoot?.firstElementChild === null || el === undefined)
+        throw new Error('no editor');
+      return el.shadowRoot?.firstElementChild as HTMLElement;
+    });
+    const box = within(host).getByRole('textbox', { name: 'LogQL query' });
+    expect(box.textContent).toBe('{a="b"}');
   });
 });

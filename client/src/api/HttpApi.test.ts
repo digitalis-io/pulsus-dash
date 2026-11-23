@@ -311,6 +311,64 @@ describe('HttpApi prom routes', () => {
   });
 });
 
+describe('HttpApi log completion', () => {
+  // Plan #66 Part A §3.2.
+  const C = { truncated: false, warnings: [], infos: [] };
+  const target = (r: Request | undefined) =>
+    r === undefined ? '' : `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`;
+
+  it('sends the two GETs; query only when non-empty, limit only when given', async () => {
+    const { api: a, requests } = api(() =>
+      Promise.resolve(json(200, { values: ['x'], completeness: C })),
+    );
+    const c = new AbortController();
+    const r = await a.logLabels('demo', { fromMs: 1, toMs: 2 }, c.signal);
+    expect(r.values).toEqual(['x']);
+    expect(r.completeness.truncated).toBe(false);
+    await a.logLabels('demo', { fromMs: 1, toMs: 2, query: '{app="a"}', limit: 5 });
+    await a.logLabels('demo', { fromMs: 1, toMs: 2, query: '' });
+    await a.logLabelValues('demo', 'a b', { fromMs: 1, toMs: 2, query: '{app="a"}' });
+    expect(requests.map(target)).toEqual([
+      'GET /api/dash/v1/logs/labels?tenant=demo&from=1&to=2',
+      'GET /api/dash/v1/logs/labels?tenant=demo&from=1&to=2&query=%7Bapp%3D%22a%22%7D&limit=5',
+      'GET /api/dash/v1/logs/labels?tenant=demo&from=1&to=2',
+      'GET /api/dash/v1/logs/label/a%20b/values?tenant=demo&from=1&to=2&query=%7Bapp%3D%22a%22%7D',
+    ]);
+    expect(requests[0]?.signal.aborted).toBe(false);
+    c.abort();
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it('maps a refused reserved scope and a bad selector to queryInvalid', async () => {
+    const reserved = api(
+      envelope(400, {
+        code: 'virtual_unsupported',
+        message: 'm',
+        fields: [{ pointer: '/query', message_key: 'query.reserved' }],
+      }),
+    );
+    expect(
+      isApiError(
+        await rejection(reserved.api.logLabels('demo', { fromMs: 1, toMs: 2 })),
+        'queryInvalid',
+      ),
+    ).toBe(true);
+    const bad = api(
+      envelope(400, {
+        code: 'invalid',
+        message: 'm',
+        fields: [{ pointer: '/query', message_key: 'query.invalid' }],
+      }),
+    );
+    expect(
+      isApiError(
+        await rejection(bad.api.logLabelValues('demo', 'app', { fromMs: 1, toMs: 2 })),
+        'queryInvalid',
+      ),
+    ).toBe(true);
+  });
+});
+
 const AUTHOR = { kind: 'local', name: 'Local user' };
 const SPEC = { title: 'Board', panels: [], sections: [] };
 

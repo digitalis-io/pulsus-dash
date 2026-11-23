@@ -168,3 +168,13 @@ export const STUB_PROM_METRIC_NAMES: readonly string[] = [
 export const STUB_PROM_LABEL_VALUES: readonly string[] = ['a', 'b'];
 
 export const STUB_PROM_LABELS: readonly string[] = ['__name__', 'instance', 'job', 'le', 'series'];
+
+/** The labels of the stub log streams (`StubApi.queryLogs`; plan #66 Part A §3.2). */
+export const STUB_LOG_LABELS: readonly string[] = ['level', 'pod', 'service_name'];
+
+/** The values of each stub log label; any other label has none. */
+export const STUB_LOG_LABEL_VALUES: Readonly<Partial<Record<string, readonly string[]>>> = {
+  level: ['error', 'info', 'warn'],
+  pod: ['stub-0', 'stub-1', 'stub-2'],
+  service_name: ['stub'],
+};

@@ -91,3 +91,17 @@ export interface PromSource {
     Readonly<Record<string, readonly { readonly type: string; readonly help: string }[]>>
   >;
 }
+
+/**
+ * LogQL completion data (never rejects: a failure or abort resolves []). `selector` is a whole
+ * `{…}` of complete matchers, or null for none (the BFF never receives `{}`). `signal`: the
+ * caller's interest; the fetch is aborted only when no caller holds it any more (plan #66 §3.9).
+ */
+export interface LogSource {
+  labelNames(selector: string | null, signal?: AbortSignal): Promise<readonly string[]>;
+  labelValues(
+    name: string,
+    selector: string | null,
+    signal?: AbortSignal,
+  ): Promise<readonly string[]>;
+}
