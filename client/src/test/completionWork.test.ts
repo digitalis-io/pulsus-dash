@@ -16,7 +16,7 @@ const w = (start: number, end: number, kind: Work[2]): Work => [end, end - start
 
 describe('bench:promql-completion-latency arithmetic', () => {
   it('W1: overlapping slot intervals count once', () => {
-    // Slot 0 from its entry past the shared analysis; slot 1 from its entry (inside slot 0's) on.
+    // The union arithmetic: where two entries overlap, the shared part counts once.
     const ws = [w(10, 13, 'slot0'), w(11, 14, 'slot1pre')];
     expect(unionMs(ws)).toBe(4);
     expect(keyWorkOf(ws, 0, 20)).toMatchObject({ keyWork: 4, completionMs: 4, slot0s: 1 });
