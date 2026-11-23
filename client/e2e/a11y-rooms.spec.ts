@@ -104,6 +104,8 @@ test.describe('e2e:a11y-rooms axe', () => {
 });
 
 // A board with event markers (plan #64 Part C): the stub has no annotations, so the http-mode BFF.
+// Annotations are the organisation's: these sit at 01:30, after every window other specs open on the
+// same database (`board-events.spec.ts`, `board-thresholds.spec.ts` end at 01:00).
 test.describe('e2e:a11y-rooms axe, board with markers', () => {
   test.skip(PREVIEW, NEEDS_BFF);
   test.use({ baseURL: HTTP_BFF });
@@ -120,9 +122,9 @@ test.describe('e2e:a11y-rooms axe, board with markers', () => {
         },
       ]);
       const ids = [
-        await createAnnotation(request, { at: from + 15 * 60_000, kind: 'deploy', text: 'v2.31' }),
+        await createAnnotation(request, { at: from + 90 * 60_000, kind: 'deploy', text: 'v2.31' }),
         await createAnnotation(request, {
-          at: from + 15 * 60_000 + 1_000,
+          at: from + 90 * 60_000 + 1_000,
           kind: 'flag',
           text: 'checkout',
         }),
@@ -132,9 +134,10 @@ test.describe('e2e:a11y-rooms axe, board with markers', () => {
           localStorage.setItem('pulsus-dash.theme', t);
         }, theme);
         await page.goto(
-          `/t/demo/board/${uid}?from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-01T01%3A00%3A00.000Z&refresh=off`,
+          `/t/demo/board/${uid}?from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-01T02%3A30%3A00.000Z&refresh=off`,
         );
-        await expect(page.locator('[data-event-hit]')).toHaveCount(1);
+        // At least this test's chip; markers other specs post at the same time may show too.
+        await expect(page.locator('[data-event-hit][aria-label*="checkout"]')).toHaveCount(1);
         // The board itself (`main`): the http-mode shell's user menu is outside this change.
         expect(await seriousViolations(page, 'board with markers', 'main')).toEqual([]);
       } finally {
