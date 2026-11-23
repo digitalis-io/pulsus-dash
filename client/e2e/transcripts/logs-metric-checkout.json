@@ -1,0 +1,10 @@
+{
+  "name": "logs-metric-checkout",
+  "provenance": {"synthetic": "a LogQL metric query the Logs page draws as a line chart"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level) (count_over_time({app=\"checkout\"}[1m]))"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-metric-checkout-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"level":"error"},"values":[[1767268800,"3"],[1767270600,"1"],[1767272400,"2"]]},{"metric":{"level":"info"},"values":[[1767268800,"6"],[1767270600,"4"],[1767272400,"5"]]}]}}
+  }
+}

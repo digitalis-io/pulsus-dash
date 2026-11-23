@@ -1,0 +1,10 @@
+{
+  "name": "logs-checkout-volume-brushed",
+  "provenance": {"synthetic": "the checkout volume of the brushed window at step 1 s"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level, detected_level) (count_over_time({app=\"checkout\"}\n| drop __error__ [1s]))"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-checkout-volume-brushed-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"detected_level":"error"},"values":[[1767270000,"5"],[1767270300,"2"]]},{"metric":{"detected_level":"info"},"values":[[1767270000,"6"]]}]}}
+  }
+}

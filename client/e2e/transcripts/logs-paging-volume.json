@@ -1,0 +1,10 @@
+{
+  "name": "logs-paging-volume",
+  "provenance": {"synthetic": "an empty volume for the paging stream"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level, detected_level) (count_over_time({app=\"paging\"}\n| drop __error__ [5s]))"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-paging-volume-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[]}}
+  }
+}

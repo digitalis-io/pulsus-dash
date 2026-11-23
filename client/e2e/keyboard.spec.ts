@@ -1,6 +1,7 @@
 /**
  * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
- * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3): loops L1–L31,
+ * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3; plan #63 L32;
+ * plan #66 Part C L33): loops L1–L33,
  * keyboard only. Input goes through `press` and `type` of `keyboardCoverage.ts`
  * (ESLint bans other input here); the coverage check at the end fails on any control never operated
  * and any state never visited.
@@ -58,7 +59,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   // No retry: the traversal is deterministic, so a retry only hides a real failure, and a second
   // run of this ~32-minute spec does not fit the e2e job's 60-minute timeout.
   test.describe.configure({ retries: 0 });
-  test('every control and state by keyboard (L1–L32)', async ({ page }) => {
+  test('every control and state by keyboard (L1–L33)', async ({ page }) => {
     test.setTimeout(3_600_000);
     await page.addInitScript(() => {
       window.__copied = [];

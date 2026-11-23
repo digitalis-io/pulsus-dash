@@ -28,9 +28,10 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)) | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency`, `bench:log-page-load` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
+| `npm run gen:log-transcripts` | Writes the generated paging transcripts `e2e/transcripts/logs-paging-1.json` and `logs-paging-2.json` from `scripts/logTranscripts.ts` (#66 Part C) | `unit:log-transcripts` (compares them byte for byte, in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
 | `npm run check:lockfile` | Exact versions, lockfile v3, registry and integrity of every locked package | `ci:lockfile` |
@@ -270,6 +271,10 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     (`{app="checkout",env="prod"} | json`, 20 label filters, `|= "xxx…"`) on the dev-only harness
     `/t/demo/dev/logql-editor` (the caret context is `none`, so both completion slots run and return
     nothing); report `test-results/bench-editor-keystroke-logql.json`.
+  - **Logs page** (`bench:editor-keystroke logs page`, #66 Part C): the same 1 024-byte LogQL query
+    and keys on Explore › Logs (`/t/demo/explore/logs?from=now-1h&to=now&refresh=off&q=…`), ready
+    once the `LogQL query` textbox and the stub's `Log lines` list are visible, so the keys run with
+    the stream mounted; report `test-results/bench-editor-keystroke-logs-page.json`.
   - **Editor update (T09-003).** Before the page loads, the spec installs
     `window.__pulsusEditorProbe`; the editor (`src/editor/probe.ts`, `probedDispatch`) then times
     each `view.update(trs)`. A key's work is the sum of its doc-changing updates minus the median of
@@ -396,6 +401,39 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     to M-UI2 (roadmap Table 2.1b, D6) and #69 meets it.
   - Report: `test-results/bench-log-scroll.json` (`held`, `vsyncMs`, `control`, `fling`,
     `crossing`, `eventLatency`, `longTasks`, `ciOver`, `worstMs`, `windowMs`, `mode`).
+- **`bench:log-page-load`** (`e2e/perf-log-page-load.spec.ts`, Chromium only (it skips itself in
+  the other engines), http BFF and the fake, PRF-005, PRF-020, #66 Part C): the main-thread cost of
+  Explore › Logs loading and decoding a 1 000-entry page over HTTP. The page opens on
+  `{app="checkout"}`; the editor text becomes `{app="paging"}` outside the trace; then
+  `bench:start`, Run (the response wait registered before the click), `bench:page1` once the row
+  `data-ord="0"` reads `paging line 0000` (in the same frame the page records whether any row of
+  page two is mounted), wheel to `End of results`, 1 s, `bench:end`. `LogStream` prefetches the next
+  page as soon as page one renders, so a **cursor gate** (`page.route` on the path
+  `/api/dash/v1/query/logql/range`, which matches the tenant-scoped `…/range?tenant=…` request)
+  holds every request with a `cursor` until `bench:page1` is marked: page two's answer and decode
+  fall in window two.
+  - **Always (blocking in CI's `e2e` Chromium leg):** exactly two range requests in the windows,
+    both `{app="paging"}`, the first without a cursor and the second with one; the gate held one
+    request (`cursorHeld === 1`); one volume request with the same text and no other
+    `/query/logql/` request; page one's Resource Timing `responseEnd` after `bench:start` and by
+    `bench:page1`, page two's after `bench:page1`; no page-two row at the mark; the row
+    `data-ord="1499"` (`paging line 1499`) mounted by `bench:end`; `ciOver` 0 over both windows.
+  - **`LOG_BENCH_GATE=enforce`:** no main-thread task over 16 ms in either window (PRF-005);
+    otherwise each breach is a `warning` annotation. A lab-gate row.
+  - Report: `test-results/bench-log-page-load.json` (`page1Ms`, `endMs`, `tasks` per window,
+    `worst` per window, `ciOver`, `cursorHeld`, `mode`).
+- **`e2e:logs-*`** (`e2e/explore-logs.spec.ts`, Chromium, Firefox and WebKit, http BFF and the fake,
+  #66 Part C): `e2e:logs-completion` (`{app="` offers the fake's `app` values), `e2e:logs-run` (the
+  raw text, window and `width_px` to the range and volume routes; the volume's summary; six lines,
+  the first announced `Error … checkout line F`), `e2e:logs-brush` (a right drag 12:20–12:25 on the
+  volume sets the window and reruns both), `e2e:logs-paging` (1 500 lines over two pages, no
+  duplicate or missing ordinal), `e2e:logs-metric` (a line chart, no stream, no volume),
+  `e2e:logs-cancel` (the superseded range and volume requests are cancelled at the fake),
+  `e2e:logs-truncation` (Partial data in the Log lines card; Narrow; the 422 with Narrow),
+  `e2e:logs-refresh` (Refresh now under an absolute window reruns both) and
+  `e2e:logs-error-on-run` (the underline and `expected '}'`); and `e2e:lazy-load logs` on the stub
+  build. The transcripts are `e2e/transcripts/logs-*.json`
+  ([Explore: the Logs page](../client/explore.md#e2e-transcripts-and-gates)).
 - **`e2e:editor-ime`** (`e2e/editor-ime.spec.ts`, Chromium only, T09-005): a CDP IME composition in
   the Explore editor opens no completion popup while it lasts; the popup follows once it commits.
 
@@ -438,9 +476,11 @@ pulsus_owner;`). CI creates `pulsus_e2e` per job.
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
 `bff-http`, `dev-proxy`, `editor-ime`, `perf-editor-keystroke`, `perf-logql-completion` and
 `perf-log-scroll` and
-`perf-promql-completion` run on Chromium only. The Explore
-specs that read the fake's request records (`e2e/explore-metrics.spec.ts`) run on the http-mode BFF
-and use one time window per browser, so parallel projects never count each other's requests.
+`perf-promql-completion` run on Chromium only; `perf-log-page-load` skips itself outside Chromium.
+The Explore specs on the fake (`e2e/explore-metrics.spec.ts`, `e2e/explore-logs.spec.ts`) run on
+the http-mode BFF and, where they read the fake's request records, use one time window per browser,
+so parallel projects never count each other's requests (the Logs specs read their own requests in
+the browser otherwise).
 
 - **`e2e:bff-headers`** (`bff-headers.spec.ts`): `GET /` has `Content-Security-Policy` equal to
   `CSP` from `config/headers.ts` and every other document header; the first `/assets/*.js` the page
@@ -508,7 +548,7 @@ no secrets are used.
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
-| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`), with a PostgreSQL 16.16 service on port 55432: `npm ci`, Go 1.27.4 and its toolchain check, install that browser with its system dependencies, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once, except the keyboard coverage spec (`retries: 0` in its `describe`): it is deterministic, and a second run of its ~32 minutes does not fit the 60-minute job |
+| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`), with a PostgreSQL 16.16 service on port 55432: `npm ci`, Go 1.27.4 and its toolchain check, install that browser with its system dependencies, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once, except the keyboard coverage spec (`retries: 0` in its `describe`): it is deterministic, and a second run of its ~32 minutes does not fit the job. `timeout-minutes` is 90, a stopgap for the Explore › Logs rows (#66 Part C); the job's run time is #130 |
 
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the

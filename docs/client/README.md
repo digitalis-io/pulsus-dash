@@ -7,9 +7,11 @@ Components, server state in TanStack Query. This page covers the application she
 M-UI1 (roadmap step 1, issue #57): layout, routes, the time Context, themes and tokens, and the
 checks that guard them, and the board list and board page (roadmap step 5, issue #61; how to use
 them is in [Boards](../user/boards.md)). Charts (roadmap step 2, issue #58) are in
-[Charts](charts.md); the Explore metrics data and rules (issue #63) in
-[Explore](explore.md); the log buffer, pager and virtualised log list `src/logs/` (issue #66 Part
-B) in [Log stream](logs.md). Build and CI
+[Charts](charts.md); the Explore metrics data and rules (issue #63) and the Explore › Logs page
+(issue #66 Part C: `src/state/logsParams.ts`, `src/explore/useLogqlModules.ts`, `stepWidth.ts`,
+`useLogsVolume.ts`, `logsRun.ts` and the `LogsQueryCard`, `LogsVolumeCard`, `LogsStreamCard` and
+`LogsMetricCard` of `src/pages/explore/`) in [Explore](explore.md#logs-page); the log buffer,
+pager and virtualised log list `src/logs/` (issue #66 Part B) in [Log stream](logs.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
 [JavaScript supply chain](supply-chain.md).
 
@@ -90,6 +92,7 @@ zone) are passed by closure.
 | `/t/:tenant` (index)                                                          | `replace()` to `/t/:tenant/boards`, keeping the (canonical) search                                                                                                                                                            |
 | `/t/:tenant/boards`, `board/:uid`, `explore/metrics`, `explore/logs`, `admin` | Lazy pages; `TimeRangeDialog` is lazy too                                                                                                                                                                                     |
 | `/t/:tenant/explore/metrics` (loader)                                         | A non-canonical `q`, `vis` or `rate` → `replace()` to the canonical search ([Explore](explore.md#url-keys-ia-022))                                                                                                            |
+| `/t/:tenant/explore/logs` (loader)                                            | A non-canonical `q`, `dir` or `wrap` → `replace()` to the canonical search ([Explore: the Logs page](explore.md#url-keys)) |
 | `/t/:tenant/dev/gallery`                                                      | Lazy `GalleryPage`, the chart gallery ([Charts](charts.md#the-chart-gallery)). Development and stub builds only (`import.meta.env.DEV` or `VITE_API_MODE` ≠ `http`); no sidebar entry, no breadcrumb, no `routeModules` entry |
 | `/t/:tenant/dev/logql-editor?q=…`                                             | Lazy `LogQLEditorBenchPage`, the LogQL editor harness of the editor benches ([Explore](explore.md#the-logql-editor-harness-devlogql-editor)). The same condition as the gallery |
 | `/t/:tenant/dev/log-stream`                                                   | Lazy `LogStreamBenchPage`, the log stream harness of `e2e:log-stream` and `bench:log-scroll` ([Log stream](logs.md#the-harness-and-its-gates)). The same condition as the gallery |
@@ -114,7 +117,9 @@ zone) are passed by closure.
   after a create, rename, save or delete, `invalidateBoardLists(queryClient)`
   (`src/boards/queries.ts`) invalidates `['boards']`, `['starred']` and `['recent']`, since all three
   show titles;
-  `['data', 'explore', tenant, q, …]` (the Explore run, [Explore: metrics](explore.md#the-run-hook-and-d-run)).
+  `['data', 'explore', tenant, q, …]` (the Explore run, [Explore: metrics](explore.md#the-run-hook-and-d-run)),
+  `['data', 'logs', 'volume', tenant, q, fromMs, toMs, stepMs]` (the Logs page's volume,
+  [Explore: the Logs page](explore.md#logs-page)).
   **Rule: every `['data', …]` key includes the resolved window** (`fromMs`, `toMs`). The board
   panel key replaces #61's `['panel', …]`, so the shell's refresh reaches panels too.
   `refreshNow()` (`src/state/useTimeContext.ts`, plan #64 §3.9) ticks the clock, then compares the
@@ -125,6 +130,9 @@ zone) are passed by closure.
   request in flight, a first fetch included, is aborted and the active queries run again
   (`invalidateQueries` alone refetches with `cancelRefetch`, which reuses a first fetch); inactive
   ones are marked and fetch when next observed (#101). `useAutoRefresh` calls the same function.
+  In the not-moved case it first calls `clock.refreshed()`, which moves the **refresh epoch**
+  (`Clock.epoch()`, `TimeContext.refreshEpoch`, #66 Part C): a run held outside TanStack Query (the
+  Logs page's pager) keys on it, so it reruns under a fixed window too.
 
 ## Time Context (IA-020, IA-022, IA-023, INT-032, T03-014, T03-017, T08-005)
 

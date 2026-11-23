@@ -41,12 +41,13 @@ interface Overrides {
 }
 
 /**
- * The editor entries E1, E2 and their shared chunk S (plan #63 Part C §5 (h)–(k)), and the LogQL
- * language entry E3 (plan #66 Part A §3.11).
+ * The editor entries E1, E2 and their shared chunk S (plan #63 Part C §5 (h)–(k)), the LogQL
+ * language entry E3 (plan #66 Part A §3.11) and the Logs page's editor entry E4 (Part C).
  */
 const E1 = 'assets/editor-e1.js';
 const E2 = 'assets/editor-e2.js';
 const E3 = 'assets/editor-e3.js';
+const E4 = 'assets/editor-e4.js';
 const S = 'assets/editor-s.js';
 const R = 'assets/MetricsPage-r.js';
 
@@ -88,6 +89,7 @@ function makeDist(o: Overrides = {}): string {
       imports: ['_editor-s.js', 'src/pages/explore/MetricsPage.tsx'],
     },
     'src/editor/lang/logql/logql.ts': { file: E3, isDynamicEntry: true, imports: ['_editor-s.js'] },
+    'src/editor/logqlEditor.ts': { file: E4, isDynamicEntry: true, imports: ['_editor-s.js'] },
     '_editor-s.js': { file: S, imports: ['index.html'] },
   };
   const metrics = manifest['src/pages/explore/MetricsPage.tsx'] as
@@ -98,6 +100,10 @@ function makeDist(o: Overrides = {}): string {
       'src/editor/lang/promql/promql.ts',
       'src/editor/lang/logql/logql.ts',
     ];
+  }
+  const logs = manifest['src/pages/explore/LogsPage.tsx'] as Record<string, unknown> | undefined;
+  if (logs !== undefined) {
+    logs['dynamicImports'] = ['src/editor/lang/logql/logql.ts', 'src/editor/logqlEditor.ts'];
   }
   for (const k of o.dropKeys ?? []) Reflect.deleteProperty(manifest, k);
   const files: Record<string, Buffer | null> = {
@@ -115,6 +121,7 @@ function makeDist(o: Overrides = {}): string {
     [E1]: Buffer.from('export const e1 = 1'),
     [E2]: Buffer.from('export const e2 = 1'),
     [E3]: Buffer.from('export const e3 = 1'),
+    [E4]: Buffer.from('export const e4 = 1'),
     [S]: Buffer.from('export const s = 1'),
     ...o.files,
   };
@@ -195,7 +202,7 @@ describe('bundle-size editor closure (PRF-009)', () => {
     expect(r.findings.map((f) => f.rule)).toEqual(['over-budget:editorChunk']);
     const editor = r.rows.filter((x) => x.cls === 'editorChunk');
     expect(editor).toHaveLength(1);
-    expect(editor[0]?.file).toBe('editor closure (4 files)');
+    expect(editor[0]?.file).toBe('editor closure (5 files)');
     expect(editor[0]?.bytes).toBeGreaterThan(180_000);
     expect(r.rows.some((x) => x.cls === 'lazyChunk' && x.file === S)).toBe(false);
     const route = r.rows.find((x) => x.cls === 'lazyChunk' && x.file === R);
