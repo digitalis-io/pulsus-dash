@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-22 |
+| **Version** | 1.12-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -40,7 +40,7 @@ PulsusDB byte-for-byte as planned (after substitution by the language module, M-
 | Exactness prediction (§4.3, T07-005) | `Predicted{level}` from the range→level rule alone (`predict_exactness(level)`); `RawExact` only when the level is `None` | Per-function rollup eligibility |
 | Dedupe (§4.4, T07-007) | Identity, range union and display derivation on the exact-text key | — |
 | Classification (§4.11.2) | Always `SourceClass::PulsusDb` | `Virtual`, `Mixed` |
-| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so. The v1 guard also screens the editor-completion inputs (`match[]`, `metric`) with the same byte match (#62) | Virtual resolution |
+| Reserved names (T07-020) | Text containing `ALERTS`, `ALERTS_FOR_STATE` or `pulsus_anomaly_score` as a whole word, or the bytes `source="pulsus-dash"`, is refused with `virtual_unsupported` by the `VirtualGuardLayer` byte match before dispatch. This may refuse a query that only mentions the name inside a string; the refusal says so. The v1 guard also screens the editor-completion inputs (`match[]`, `metric`) with the same byte match (#62). LogQL (#121): `logs.Prepare` refuses a `#` outside strings with 400 `query.invalid` (positioned at the `#`) before the reserved-selector check, so a text such as `# {source="pulsus-dash"}` LF `{app="x"}` gets `query.invalid`, not `virtual_unsupported`. Either refusal comes before any upstream request, so the guarantee that nothing reserved is dispatched holds. Every reserved selector in a text that row 9b does not refuse is still refused with `virtual_unsupported`, by Classify or by the byte match | Virtual resolution |
 | Fusion (§4.4, T07-006), virtual sources and joins (§4.11, T07-021 to T07-023), selector-based estimates (§4.8), metrics-family scopes (T07-015) | Not available | All of these |
 | Expressions (§4.14, T07-030) | v1 form in §4.14: the client sends the expanded expression as one query text | Operand reuse (T07-030) |
 | Log volume (#65) | The BFF wraps the text byte for byte as the single operand of a fixed template, `sum by (level, detected_level) (count_over_time(` + text + newline + `\| drop __error__ [<step>s]))`, with a newline before the suffix as in §4.14. The template is applied by `logs.Plan` (`KindVolume`, #116); `planned.query` is the composed text. Nothing is parsed or rewritten inside the text; an error position inside the text maps back into it, and one inside the template has no position (ADR-0021 §3) | — |
@@ -195,7 +195,9 @@ JSON form and is held to the same semantics by shared fixtures (§0).
   capabilities alone. PromQL Classify is `prom.Prepare` (#112). LogQL Classify is `logs.Prepare`
   (#116): stream selectors with the equality matcher `source="pulsus-dash"`, read by the in-house
   selector reader on the substituted text, and again on the planned text (the authoritative
-  check); the T07-020 byte guard stays as the backstop. The cases are in
+  check); the T07-020 byte guard stays as the backstop. PulsusDB's LogQL has no comments, so
+  `logs.Prepare` and `Plan` refuse a `#` outside strings before any I/O (#121), and the selector
+  reader skips no text. The cases are in
   [PulsusDB client and the query routes](../../docs/server/pulsusdb.md#logql-planning).
 - **Resolve** (1b) computes the step from the viewport's range, width and pass and the floor from
   Classify (§4.3; the §0 table: step, level and alignment do not depend on the text). The step is
@@ -1151,3 +1153,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.9-rc | 2026-11-22 | #65 Part A: §0 v1 table row "Log volume (#65)" (byte-for-byte embedding in a fixed template, newline before the suffix, positions mapped back); T07-002 note |
 | 1.10-rc | 2026-11-22 | #64 Part A: T07-012 v1 note (one shared IntersectionObserver per board, `rootMargin` 0, no Prefetch pass; collapsed sections unmount; panel results reused only within their window epoch); T07-013 v1 note (the key carries only the referenced variables) |
 | 1.11-rc | 2026-11-22 | #116: §0 "Parser crates" row (LogQL read by the in-house selector reader for Classify only); §0 "Log volume (#65)" row (the template applied by `logs.Plan`, no position inside it, ADR-0021 §3); §4.1 Classify names the LogQL implementation (`logs.Prepare`), replacing the interim; T07-002 note (the template is composed by the planner) |
+| 1.12-rc | 2026-11-23 | #121: §0 Reserved names row: the LogQL `#` refusal (`query.invalid`) precedes the reserved-selector check, and the no-dispatch guarantee is unchanged; §4.1 Classify: LogQL has no comments, and the selector reader skips no text |

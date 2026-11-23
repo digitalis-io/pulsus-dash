@@ -177,12 +177,19 @@
    }
   },
   {
-   "name": "L12 selector inside a comment",
+   "name": "L12 selector after a hash",
    "text": "# {source=\"pulsus-dash\"}\n{app=\"x\"}",
+   "prepare_position": 0,
    "want": {
-    "class": "pulsus_db",
-    "reserved": [],
+    "class": "mixed",
+    "reserved": [
+     "source=\"pulsus-dash\""
+    ],
     "selectors": [
+     {
+      "reserved": true,
+      "text": "{source=\"pulsus-dash\"}"
+     },
      {
       "reserved": false,
       "text": "{app=\"x\"}"
@@ -318,8 +325,9 @@
    }
   },
   {
-   "name": "L21 quote inside a comment",
+   "name": "L21 quote after a hash",
    "text": "{app=\"x\"} # \"\n{source=\"pulsus-dash\"}",
+   "prepare_position": 10,
    "want": {
     "class": "mixed",
     "reserved": [
@@ -731,7 +739,7 @@
    ]
   },
   {
-   "name": "P6 reference in a comment",
+   "name": "P6 a hash before a reference is refused",
    "from": "new",
    "inputs": {
     "query": "{app=\"x\"} # $a",
@@ -741,23 +749,17 @@
     "kind": "range",
     "step_ms": 5000
    },
-   "substituted": "{app=\"x\"} # z",
-   "planned": {
-    "query": "{app=\"x\"} # z",
-    "expanded": "{app=\"x\"} # z",
-    "bytes": 13,
-    "step_ms": 5000
-   },
-   "to_source": [
-    [
-     12,
-     12
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 10: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
     ],
-    [
-     13,
-     14
-    ]
-   ]
+    "position": 10
+   }
   },
   {
    "name": "P7 other macros stay as typed",
@@ -935,7 +937,7 @@
    ]
   },
   {
-   "name": "V3 volume with a comment at 60 s",
+   "name": "V3 a hash on the volume route is refused before the template",
    "from": "#65 TestVolumeCompose",
    "inputs": {
     "query": "{app=\"$a\"} # c",
@@ -945,64 +947,17 @@
     "kind": "volume",
     "step_ms": 60000
    },
-   "substituted": "{app=\"x\"} # c",
-   "want": {
-    "same_class": true,
-    "prepared": {
-     "class": "pulsus_db",
-     "reserved": []
-    },
-    "planned": {
-     "class": "pulsus_db",
-     "reserved": []
-    }
-   },
-   "selectors": [
-    {
-     "text": "prepared",
-     "from": 0,
-     "to": 9,
-     "reserved": false
-    },
-    {
-     "text": "planned",
-     "from": 48,
-     "to": 57,
-     "reserved": false
-    }
-   ],
-   "planned": {
-    "query": "sum by (level, detected_level) (count_over_time({app=\"x\"} # c\n| drop __error__ [60s]))",
-    "expanded": "{app=\"x\"} # c",
-    "bytes": 86,
-    "step_ms": 60000
-   },
-   "to_source": [
-    [
-     48,
-     0
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 11: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
     ],
-    [
-     54,
-     6
-    ],
-    [
-     57,
-     10
-    ],
-    [
-     60,
-     13
-    ],
-    [
-     61,
-     null
-    ],
-    [
-     86,
-     null
-    ]
-   ]
+    "position": 11
+   }
   },
   {
    "name": "V4 volume at a step of 1500 ms",
@@ -1464,11 +1419,12 @@
    "inputs": {
     "query": {
      "concat": [
-      "{app=\"x\"} # ",
+      "{app=\"x\"} |= \"",
       {
        "repeat": "a",
-       "count": 65530
-      }
+       "count": 65527
+      },
+      "\""
      ]
     },
     "vars": {},
@@ -1477,11 +1433,12 @@
    },
    "substituted": {
     "concat": [
-     "{app=\"x\"} # ",
+     "{app=\"x\"} |= \"",
      {
       "repeat": "a",
-      "count": 65530
-     }
+      "count": 65527
+     },
+     "\""
     ]
    },
    "want": {
@@ -1502,20 +1459,22 @@
     "planned": {
      "query": {
       "concat": [
-       "{app=\"x\"} # ",
+       "{app=\"x\"} |= \"",
        {
         "repeat": "a",
-        "count": 65530
-       }
+        "count": 65527
+       },
+       "\""
       ]
      },
      "expanded": {
       "concat": [
-       "{app=\"x\"} # ",
+       "{app=\"x\"} |= \"",
        {
         "repeat": "a",
-        "count": 65530
-       }
+        "count": 65527
+       },
+       "\""
       ]
      },
      "bytes": 65542,
@@ -1529,11 +1488,12 @@
    "inputs": {
     "query": {
      "concat": [
-      "{app=\"x\"} # ",
+      "{app=\"x\"} |= \"",
       {
        "repeat": "a",
-       "count": 65488
-      }
+       "count": 65485
+      },
+      "\""
      ]
     },
     "vars": {},
@@ -1542,30 +1502,33 @@
    },
    "substituted": {
     "concat": [
-     "{app=\"x\"} # ",
+     "{app=\"x\"} |= \"",
      {
       "repeat": "a",
-      "count": 65488
-     }
+      "count": 65485
+     },
+     "\""
     ]
    },
    "planned": {
     "query": {
      "concat": [
-      "{app=\"x\"} # ",
+      "{app=\"x\"} |= \"",
       {
        "repeat": "a",
-       "count": 65488
-      }
+       "count": 65485
+      },
+      "\""
      ]
     },
     "expanded": {
      "concat": [
-      "{app=\"x\"} # ",
+      "{app=\"x\"} |= \"",
       {
        "repeat": "a",
-       "count": 65488
-      }
+       "count": 65485
+      },
+      "\""
      ]
     },
     "bytes": 65500,
@@ -1578,11 +1541,12 @@
    "inputs": {
     "query": {
      "concat": [
-      "{app=\"x\"} # ",
+      "{app=\"x\"} |= \"",
       {
        "repeat": "a",
-       "count": 65488
-      }
+       "count": 65485
+      },
+      "\""
      ]
     },
     "vars": {},
@@ -1591,11 +1555,12 @@
    },
    "substituted": {
     "concat": [
-     "{app=\"x\"} # ",
+     "{app=\"x\"} |= \"",
      {
       "repeat": "a",
-      "count": 65488
-     }
+      "count": 65485
+     },
+     "\""
     ]
    },
    "want": {
@@ -1617,21 +1582,23 @@
      "query": {
       "concat": [
        "sum by (level, detected_level) (count_over_time(",
-       "{app=\"x\"} # ",
+       "{app=\"x\"} |= \"",
        {
         "repeat": "a",
-        "count": 65488
+        "count": 65485
        },
+       "\"",
        "\n| drop __error__ [5s]))"
       ]
      },
      "expanded": {
       "concat": [
-       "{app=\"x\"} # ",
+       "{app=\"x\"} |= \"",
        {
         "repeat": "a",
-        "count": 65488
-       }
+        "count": 65485
+       },
+       "\""
       ]
      },
      "bytes": 65572,
@@ -1835,7 +1802,7 @@
    }
   },
   {
-   "name": "Q10 LF in a comment value",
+   "name": "Q10 a hash before a value is refused",
    "from": "new",
    "inputs": {
     "query": "{app=\"x\"} # $a",
@@ -1847,13 +1814,14 @@
    },
    "error": {
     "status": 400,
-    "message": "the value of variable $a cannot be written where it is referenced",
+    "message": "unexpected '#' at byte 10: LogQL has no comments",
     "fields": [
      {
-      "pointer": "/vars/a",
-      "message_key": "variable.unrepresentable"
+      "pointer": "/query",
+      "message_key": "query.invalid"
      }
-    ]
+    ],
+    "position": 10
    }
   },
   {
@@ -1873,6 +1841,330 @@
     "expanded": "{app=\"x\"}\n|= \"y\"",
     "bytes": 16,
     "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q12 U+FFFD in a quoted value is written as itself",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "x\ufffdy"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\ufffdy\"}",
+   "planned": {
+    "query": "{app=\"x\ufffdy\"}",
+    "expanded": "{app=\"x\ufffdy\"}",
+    "bytes": 13,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     11,
+     8
+    ],
+    [
+     13,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "Q13 U+FFFD in a backtick value is written as itself",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=`$a`}",
+    "vars": {
+     "a": "x\ufffdy"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=`x\ufffdy`}",
+   "planned": {
+    "query": "{app=`x\ufffdy`}",
+    "expanded": "{app=`x\ufffdy`}",
+    "bytes": 13,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     11,
+     8
+    ],
+    [
+     13,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "H1 a CR after a hash hides no selector",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "# x\r{source = \"pulsus-dash\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 0: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 0
+   }
+  },
+  {
+   "name": "H2 a hash from a substituted value",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "$q",
+    "vars": {
+     "q": "{app=\"x\"} # c\r{ source = \"pulsus-dash\" }"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 0: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 0
+   }
+  },
+  {
+   "name": "H3 an escaped reserved value after a hash",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "# x\r{source=\"pulsus\\x2ddash\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 0: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 0
+   }
+  },
+  {
+   "name": "H4 a hash after a substituted value",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"$a\"} # c",
+    "vars": {
+     "a": "xyz"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 11: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 11
+   }
+  },
+  {
+   "name": "H5 a hash in a quoted string",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"#\"",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"#\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"#\"",
+    "expanded": "{app=\"x\"} |= \"#\"",
+    "bytes": 16,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H6 a hash in a backtick string",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"x\"} |= `#`",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `#`",
+   "planned": {
+    "query": "{app=\"x\"} |= `#`",
+    "expanded": "{app=\"x\"} |= `#`",
+    "bytes": 16,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H7 a hash value in a quoted string",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"$a\"}",
+    "vars": {
+     "a": "#"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"#\"}",
+   "planned": {
+    "query": "{app=\"#\"}",
+    "expanded": "{app=\"#\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     6,
+     6
+    ],
+    [
+     7,
+     8
+    ],
+    [
+     9,
+     10
+    ]
+   ]
+  },
+  {
+   "name": "H8 a hash after an escaped quote",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"x\\\"#\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\\\"#\"}",
+   "planned": {
+    "query": "{app=\"x\\\"#\"}",
+    "expanded": "{app=\"x\\\"#\"}",
+    "bytes": 12,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H9 an LF ends a string before a hash",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"x\n# c",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 8: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 8
+   }
+  },
+  {
+   "name": "H10 a hash value at the top level",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "$a",
+    "vars": {
+     "a": "#"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 0: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 0
+   }
+  },
+  {
+   "name": "H11 H1 on the volume route",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "# x\r{source = \"pulsus-dash\"}",
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 0: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 0
+   }
+  },
+  {
+   "name": "H12 a hash with no reserved selector",
+   "from": "new (#121)",
+   "inputs": {
+    "query": "{app=\"x\"} # y",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "unexpected '#' at byte 10: LogQL has no comments",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.invalid"
+     }
+    ],
+    "position": 10
    }
   }
  ],

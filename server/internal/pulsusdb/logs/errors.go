@@ -7,7 +7,7 @@ type PlanErrorKind int
 
 // The planning refusals.
 const (
-	ErrInput           PlanErrorKind = iota + 1 // a request member out of range or malformed, or a value that cannot be written (rows 1–6, 7b)
+	ErrInput           PlanErrorKind = iota + 1 // a request member out of range or malformed, a value that cannot be written, or a top-level '#' (rows 1–6, 7b, 9b)
 	ErrVariableMissing                          // a referenced variable without a value (row 7)
 	ErrProcessingCap                            // the substituted text would exceed MaxExpandedBytes (row 9)
 	ErrSentTooLarge                             // the final planned text exceeds MaxSentBytes (row 10)
@@ -21,6 +21,8 @@ type PlanError struct {
 	Kind    PlanErrorKind
 	Message string
 	Fields  []FieldError
+	// Position is set by row 9b only: the byte offset of the '#' in the raw text (plan #121 §3.1).
+	Position *int
 	// Planned is set on every ErrSentTooLarge (the full plan) and nil otherwise.
 	Planned *Planned
 }
