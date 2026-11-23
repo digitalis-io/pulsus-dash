@@ -172,7 +172,33 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   least label height + 2 px apart. Grid lines are hairlines. Manual (`valueRange` set): the domain is
   exactly the range, the ticks are those of the range inside it (1e-9 relative tolerance), and the
   marks are clipped to the plot (`save`, `rect`, `clip`, `restore`); hover dots outside the plot are
-  not drawn.
+  not drawn. `valueTicks` (`canvas2d/valueTicks.ts`, #97) always finishes, for every finite domain:
+  - **Nice search** (`niceValueTicks`). It runs only on finite ends with `min ≤ max`, both
+    magnitudes ≤ 1e300 and a span under 2^1023; at most 64 step iterations (`MAX_TICK_STEPS`), at
+    most 10 001 ticks (`MAX_TICK_COUNT` intervals), and `ticks − 1 ≤ floor(h / (label + 2))`. It
+    gives up (null) outside that domain, when equal ends cannot be widened (`min + 1 === min`), when
+    no step fits in 64 iterations, or on any non-finite result.
+  - **Short plots.** Three ticks need both gaps to hold a label, two need a plot at least
+    label + 2 px tall (16 px at the 14 px label), and below that a single tick is drawn: the end
+    nearer zero (the lower end on a tie).
+  - **Collision check.** After the search, every tick is mapped through the renderer's own y
+    (`tickY`, built on `valueFraction`); if two adjacent ticks are equal or a drawn gap is below
+    (label + 2)·(1 − 1e-9) px, the nice result is dropped for the fallback. The 1e-9 relative
+    slack (`GAP_TOLERANCE`) only absorbs the rounding of the y subtraction
+    ([T02-011](../../designs/technical/T02-vis-engine.md#t02-011--axis-bands-do-not-jitter)).
+  - **Fallback** (`extremeTicks`): `[lo, lo/2 + hi/2, hi]` when the midpoint is strictly inside and
+    both drawn gaps hold a label, else `[lo, hi]` when the plot holds one gap, else the end nearer
+    zero. Equal ends are first widened toward zero (`4..4` → `2..4`, `0..0` → `0..1`).
+  - **Overflow mapping.** When the domain span `max − min` overflows (for example −MAX..MAX), the y
+    mapping uses the halved form `(v/2 − min/2) / (max/2 − min/2)`, so the line and its labels stay
+    finite; otherwise the arithmetic is unchanged.
+  - **Changed outputs** (#97 plan §4.3). Ends beyond ±1e300 now get the fallback (0..1e301 →
+    `[0, 5e300, 1e301]`); spans a few ulps wide that gave one tick with `min === max` now get the
+    fallback; plots under one label gap show one tick instead of two; and a nice result whose
+    12-digit rounding repeats a tick (a relative span under about 1e-11, such as 1..1 + 1e-11)
+    gets the fallback. Everywhere else the output is byte-identical to before. Labels that format
+    to the same three significant digits without their pixels colliding are a number-format
+    matter, not a collision.
 - **Time axis.** Steps from 1 s to 12 h and 1, 2, 7 and 14 days; the smallest step whose labels fit
   is used. Sub-day candidates are generated on the local wall clock in the browser zone and converted
   with `'compatible'` disambiguation; a candidate that does not move forward in time (the repeated
@@ -412,7 +438,7 @@ shows `Loading`, and a visualisation change redraws the same result.
 `/t/:tenant/dev/gallery` (development and stub builds only: the route is in the router only when
 `import.meta.env.DEV` or `VITE_API_MODE` is not `http`, so `http` builds contain neither the route
 nor its chunk; CI checks the `http` build's manifest). There is no navigation entry. The page draws
-nine charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
+ten charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
@@ -427,12 +453,13 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `stat` | p99 latency, 2.84 s |
 | `line-thresholds` | Request latency with an SLO threshold, 3 series (s), watch at 250 ms and failing at 300 ms (#64 Part B) |
 | `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
+| `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
 
 The same window always gives the same pixels; the gallery is the corpus of
 `golden:interim-gallery` and `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
 The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
 baselines were re-baselined once under the `golden-update` label; stat is unchanged. The two #64 Part B
-entries got their baselines from CI under the same label. They are not Rust parity fixtures:
+entries and `line-extreme` (#97) got their baselines from CI under the same label. They are not Rust parity fixtures:
 `scripts/engine-fixtures.ts` selects `PARITY_LINE_IDS` (`line-1`, `line-50`, `line-gaps`,
 `line-600`) and projects each summary to its parity fields, so `engine/fixtures/` is unchanged. The
 script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name proxy, so

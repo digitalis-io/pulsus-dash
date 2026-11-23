@@ -176,10 +176,21 @@ Values are uploaded as f32 `u = (v − v_ref)·2^−exp` ([T02-014](../../design
   tiers and each segment is clipped in f64 before encoding (`clip_segment`, 1-D Liang–Barsky on
   value); a cut end carries its parameter t and lands on the f64 line, so crossings are exact to
   `dx·2⁻²³` px. Spans and dots use clamped u.
-- `value_ticks` ports the client's `valueTicks` bit for bit on its finite domain. It returns None
-  where the TS loop would never end (a zero span after `min + 1 === min`, or a range straddling zero
-  on a plot under 2·(label + 2) px tall) or the span overflows; `value_axis` then uses
-  `extreme_ticks` (`[lo, lo/2 + hi/2, hi]`). The integer powers `10 ** k`, `1000 ** p` and
+- `value_ticks` ports the client's `niceValueTicks` and `extreme_ticks(lo, hi, height_px,
+  label_height_px)` its `extremeTicks` (#97). They equal the TS on the fixture inputs
+  (`ticks.json`, `ticks-extreme.json`, including the power and decade edge rows), checked under
+  Node 24.22.3 (`unit:engine-fixtures`) and, for the TS, in Chromium and Firefox as pinned by
+  Playwright (`e2e:ticks-parity`); other inputs and runtimes are not claimed. WebKit's `**`
+  differs from V8's in the last bits for some large powers, so there the nice-search rows that
+  differ are held only to the bounded-ticks invariants, and only the fallback rows are exact.
+  `value_ticks` returns None outside its domain (non-finite input, an end beyond ±1e300, a span of
+  2^1023 or more), where the search does not finish in 64 steps (a zero span after
+  `min + 1 === min`, or a range straddling zero on a plot under 2·(label + 2) px tall), and when two
+  drawn ticks are closer than one label gap (`ticks_fit`: through `tick_y`, the renderer's y,
+  halved when the span overflows; gap ≥ (label + 2)·(1 − 1e-9)). A two-tick result on a plot under
+  label + 2 px keeps the end nearer zero. `value_axis` then uses `extreme_ticks`:
+  `[lo, lo/2 + hi/2, hi]` when both mapped gaps hold a label, `[lo, hi]` when the plot holds one
+  gap, else the end nearer zero (lo on a tie). The integer powers `10 ** k`, `1000 ** p` and
   `1024 ** p` come from a table of the values V8 computes (`dash-scales::js_pow`), because V8's
   `Math.pow` is not correctly rounded (`10 ** -5` is 9.999999999999999e-6); `pow.json` checks the
   table.
@@ -236,6 +247,7 @@ Each Rust port is held to its TypeScript source by a JSON fixture in `engine/fix
 |---|---|---|
 | `format.json` | `i18n/format.ts` `formatValue` | `unit:number-format` |
 | `ticks.json`, `pow.json` | `canvas2d/valueTicks.ts`; the JS engine's `**` | `unit:layout-parity` |
+| `ticks-extreme.json` | `canvas2d/valueTicks.ts` `valueTicks` and `extremeTicks`: 32 fixed rows, 8 fallback-fit rows, 57 power and decade edge rows and 300 seeded rows over the whole finite range, short plots included (#97) | `unit:layout-parity` (`value_ticks_or_extreme_match_ts`) |
 | `layout.json` | `canvas2d/layout.ts` `layoutPlot` and draw.ts's value axis (via `drawLayer` with label widths from the monospace advance) | `unit:layout-parity` |
 | `columns.json` | `canvas2d/columns.ts` `lineColumns` (plus each column's first sample) | `unit:columns-parity` |
 | `palette.json` | `canvas2d/palette.ts` `seriesColourIndex` | `unit:colour-hash` |
