@@ -47,6 +47,14 @@ syn-func = "#7AA2D6"
 syn-string = "#8FBF8F"
 syn-number = "#D6A86B"
 syn-label = "#6FB8B8"
+# Log levels (#66 Part B): the hues of VL-002 Table 8-1a; never state colours (VL-003).
+level-critical = "#C98F8F"
+level-error = "#C98F8F"
+level-warn = "#C9A36B"
+level-info = "#7AA2D6"
+level-debug = "#6FB8B8"
+level-trace = "#B48FC9"
+level-unknown = "#8FBF8F"
 
 [color.light]
 canvas = "#F5F6F8"
@@ -89,6 +97,14 @@ syn-func = "#2563C9"
 syn-string = "#3D7340"
 syn-number = "#7F5F2A"
 syn-label = "#2E6E6E"
+# Log levels (#66 Part B): the hues of VL-002 Table 8-1a; never state colours (VL-003).
+level-critical = "#985757"
+level-error = "#985757"
+level-warn = "#93703A"
+level-info = "#3F6FA8"
+level-debug = "#358282"
+level-trace = "#7E5A97"
+level-unknown = "#4E874E"
 
 # Spacing scale (px).
 [space]
@@ -130,6 +146,10 @@ board-panel-header = 40
 # The fixed-size editing window (kit ModalDialog size "editor", #90).
 dialog-editor-width = 800
 dialog-editor-height = 720
+# The log stream (#66 Part B): a row (one line without wrap), a sentinel row and the level bar.
+log-row = 20
+log-sentinel = 40
+log-level-bar = 3
 
 [radius]
 default = 6

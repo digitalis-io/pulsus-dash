@@ -13,6 +13,13 @@ pub mod colour {
         pub const FAILING: Rgba8 = Rgba8([0xE0, 0x45, 0x7B, 0xFF]);
         pub const FOCUS: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0xFF]);
         pub const HAIRLINE: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x14]);
+        pub const LEVEL_CRITICAL: Rgba8 = Rgba8([0xC9, 0x8F, 0x8F, 0xFF]);
+        pub const LEVEL_DEBUG: Rgba8 = Rgba8([0x6F, 0xB8, 0xB8, 0xFF]);
+        pub const LEVEL_ERROR: Rgba8 = Rgba8([0xC9, 0x8F, 0x8F, 0xFF]);
+        pub const LEVEL_INFO: Rgba8 = Rgba8([0x7A, 0xA2, 0xD6, 0xFF]);
+        pub const LEVEL_TRACE: Rgba8 = Rgba8([0xB4, 0x8F, 0xC9, 0xFF]);
+        pub const LEVEL_UNKNOWN: Rgba8 = Rgba8([0x8F, 0xBF, 0x8F, 0xFF]);
+        pub const LEVEL_WARN: Rgba8 = Rgba8([0xC9, 0xA3, 0x6B, 0xFF]);
         pub const OK: Rgba8 = Rgba8([0x2F, 0xB5, 0x9A, 0xFF]);
         pub const RAMP_1: Rgba8 = Rgba8([0x25, 0x34, 0x44, 0xFF]);
         pub const RAMP_2: Rgba8 = Rgba8([0x2C, 0x49, 0x67, 0xFF]);
@@ -55,6 +62,13 @@ pub mod colour {
         pub const FAILING: Rgba8 = Rgba8([0xB8, 0x28, 0x5C, 0xFF]);
         pub const FOCUS: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0xFF]);
         pub const HAIRLINE: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0x14]);
+        pub const LEVEL_CRITICAL: Rgba8 = Rgba8([0x98, 0x57, 0x57, 0xFF]);
+        pub const LEVEL_DEBUG: Rgba8 = Rgba8([0x35, 0x82, 0x82, 0xFF]);
+        pub const LEVEL_ERROR: Rgba8 = Rgba8([0x98, 0x57, 0x57, 0xFF]);
+        pub const LEVEL_INFO: Rgba8 = Rgba8([0x3F, 0x6F, 0xA8, 0xFF]);
+        pub const LEVEL_TRACE: Rgba8 = Rgba8([0x7E, 0x5A, 0x97, 0xFF]);
+        pub const LEVEL_UNKNOWN: Rgba8 = Rgba8([0x4E, 0x87, 0x4E, 0xFF]);
+        pub const LEVEL_WARN: Rgba8 = Rgba8([0x93, 0x70, 0x3A, 0xFF]);
         pub const OK: Rgba8 = Rgba8([0x17, 0x80, 0x6A, 0xFF]);
         pub const RAMP_1: Rgba8 = Rgba8([0xE3, 0xF0, 0xFE, 0xFF]);
         pub const RAMP_2: Rgba8 = Rgba8([0xB9, 0xDA, 0xFD, 0xFF]);
@@ -130,6 +144,9 @@ pub mod size {
     pub const FOCUS_RING: f32 = 2.0;
     pub const HEADER: f32 = 56.0;
     pub const ICON: f32 = 16.0;
+    pub const LOG_LEVEL_BAR: f32 = 3.0;
+    pub const LOG_ROW: f32 = 20.0;
+    pub const LOG_SENTINEL: f32 = 40.0;
     pub const PAGE_PADDING: f32 = 24.0;
     pub const SIDEBAR_COLLAPSED: f32 = 56.0;
     pub const SIDEBAR_EXPANDED: f32 = 240.0;
