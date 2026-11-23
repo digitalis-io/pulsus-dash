@@ -774,12 +774,14 @@ character later); backtick strings have no escapes. Values are escaped by the pa
 before the page loads, as `bench:editor-keystroke` installs the editor probe. `promqlExtensions`
 reads it once per view (`completionProbe()`); a probe set later is never called, and in normal use
 there is none and the slots never call `performance.now()`. The slots report their main-thread work
-in ms, each when it ends: `slot0` (slot 0's entry to its result), `slot1pre` (slot 1's entry to its
-wait) and `slot1post` (from the remote run settling to the result built). The fetch wait is not
-counted. `slot0` and `slot1pre` of one request overlap: both slots start in one task and each
-interval runs across the await on the shared analysis, which resumes in the same task. A reader
-therefore takes the union of the intervals `[end − ms, end]`, never their sum; the bench does
-(`src/test/completionWork.ts`).
+in ms, each when it ends, and no timer spans an await: each part is one synchronous segment.
+`slot0entry` and `slot1entry` run from a slot's entry to its await on the shared analysis (the
+slot that runs first computes the analysis inside its entry, so it is counted once); `slot0` runs
+from resuming to slot 0's result, `slot1pre` from resuming to slot 1's wait, and `slot1post` from
+the remote run settling to the result built. The fetch wait is not counted, and neither is
+anything that runs while a slot waits on the analysis (other microtasks, and the package's own
+continuation of the analysis): it falls between segments. A reader takes the union of the
+intervals `[end − ms, end]`; the bench does (`src/test/completionWork.ts`).
 
 ### The LogQL editor harness (`dev/logql-editor`)
 

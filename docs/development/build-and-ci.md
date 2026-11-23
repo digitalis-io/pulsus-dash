@@ -314,21 +314,26 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     label values after the 120 ms debounce, then Escape, Backspace and 200 ms.
   - **Work per local key.** The page is opened with two probes installed (`addInitScript`): the
     editor probe (each `view.update`: `doc` when it changes the document, else `view`) and the
-    completion probe (`slot0`, `slot1pre`, `slot1post`; `src/editor/probe.ts`). Each pushes
-    `[performance.now(), ms, kind]` to `window.__work` when its work ends, so an entry is the
-    interval `[end − ms, end]`. `keyWork` is the length of the **union** of the intervals that end
-    between a local trial's keydown and its popup, except `slot1post`: the key's document update,
-    its local completion work (slot 0, and slot 1 up to its wait) and the popup render, all the
-    main-thread work the key causes up to the visible list. The report also gives the parts
-    (`docMs`, and `completionMs`, the union of `slot0` and `slot1pre`). A union, not a sum: both
-    slots start in CodeMirror's one query task and each times its entry to a point after awaiting
-    the shared analysis, so their intervals overlap, and a sum would count slot 1's entry and the
-    analysis's microtasks twice. Nothing waits inside an interval: the recording source settles
-    at once, so each await resumes in the same task. The arithmetic and the gate are in
-    `src/test/completionWork.ts`, checked with injected samples by `completionWork.test.ts`
-    (overlapping, contained and disjoint intervals; each part under 2 ms with their union over,
-    red under enforce) and by `unit:promql-completion-probe` Z1 (the real slots on an injected
-    clock: `completionMs` is their span, below their sum). `remoteWork` (`slot1post` and `view` from 120 ms after the keydown to
+    completion probe (`slot0entry`, `slot0`, `slot1entry`, `slot1pre`, `slot1post`;
+    `src/editor/probe.ts`). Each pushes `[performance.now(), ms, kind]` to `window.__work` when
+    its work ends, so an entry is the interval `[end − ms, end]`. `keyWork` is the length of the
+    **union** of the intervals that end between a local trial's keydown and its popup, except
+    `slot1post`: the key's document update, its local completion work (slot 0, and slot 1 up to
+    its wait) and the popup render, all the main-thread work the key causes up to the visible
+    list. The report also gives the parts (`docMs`, and `completionMs`, the union of the four
+    local completion segments). The measurement is segmented: no timer spans an await. Each slot
+    reports its entry up to its await on the shared analysis (`slot0entry`, `slot1entry`; the
+    slot that runs first computes the analysis there, so that work is counted once) and its work
+    from resuming to its result or its wait (`slot0`, `slot1pre`). Other microtasks that run while
+    a slot waits fall between its segments and are not counted, nor is the package's own
+    continuation of the analysis, which runs in those microtasks; the union counts nested or
+    overlapping intervals once. The arithmetic and the gate are in `src/test/completionWork.ts`,
+    checked with injected samples by `completionWork.test.ts` (overlapping, contained and
+    disjoint intervals; each part under 2 ms with their union over, red under enforce) and by
+    `unit:promql-completion-probe` on an injected clock: Z1 (each slot reports a segment either
+    side of its await, and `completionMs` is their union) and Z2 (5 units of unrelated microtask
+    work queued while the slots await the analysis lie outside every interval, so neither
+    `completionMs` nor `keyWork` includes them). `remoteWork` (`slot1post` and `view` from 120 ms after the keydown to
     the merged list) is reported only: it runs in its own timer task after a fetch, so its bound is
     PRF-005's per-task limit, which the trace gates.
   - **Long tasks.** A Chromium trace from the first local trial to the last remote one, read by
