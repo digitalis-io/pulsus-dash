@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-22 |
+| **Version** | 1.8-rc · 2026-11-23 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -559,6 +559,8 @@ The workbench MUST show a volume histogram stacked by level (PulsusDB `/volume` 
 
 *Acceptance:* Given a 1 h query, when the user brushes 12:20–12:25 on the volume, then Context time
 becomes that window and the stream and patterns update.
+
+> **Note (M-UI1, #66):** the stream and the volume update; patterns join with SRF-034 in M-UI2.
 
 #### SRF-034 — Patterns as the default for large results
 **MUST** · M-UI2 · SRE, Engineer
@@ -1144,6 +1146,7 @@ release and in the team channel.
 | 1.5-rc | 2026-11-21 | #61 Part C: §4.3 note on the M-UI1 filter bar (variable chips and `+ Filter`, URL only) and collapsible sections (no render, no query; Edit state saved, View toggles as URL overrides); the anomaly strip stays M-UI5 (SRF-016) |
 | 1.6-rc | 2026-11-21 | #90: §4.3 the M-UI1 panel editor is a centred modal window with a live preview (owner decision 2026-11-21); the region table's viewport editor is a modal window |
 | 1.7-rc | 2026-11-22 | #64 Part B: §4.3 note: the panel editor's Thresholds and Legend, the legend table, threshold lines and the stat chip (M-UI1) |
+| 1.8-rc | 2026-11-23 | #66 Part C (owner decision Q-C2): SRF-033 note: in M-UI1 the brush updates the stream and the volume; patterns join with SRF-034 in M-UI2 |
 
 ## Resolved during formalisation
 
