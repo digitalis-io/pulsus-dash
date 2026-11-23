@@ -501,8 +501,9 @@ and use one time window per browser, so parallel projects never count each other
   E10 (a deploy at 00:15, a config change at 00:30 and a note at 00:45 show as three
   `[data-event-hit]` targets on the line panel with their labels, evenly spaced on `data-event-x`;
   one at 23:00 the day before does not; the stat tile has none; the summary label ends
-  `Events in view: 3.`), E11 (on 00:00–00:20 one marker; after the API deletes it, Refresh now shows
-  none) and E12 (Tab from the panel menu reaches the first marker, whose tooltip reads
+  `Events in view: 3.`), E11 (opened on 2025-12-31 22:30 – 01:00, a window that still holds the
+  fake's samples, the line panel shows four markers, the 23:00 one first; after the API deletes it,
+  Refresh now shows the other three) and E12 (Tab from the panel menu reaches the first marker, whose tooltip reads
   `Deploy · v2.31 · …`). The annotations API helpers are in `e2e/annotationApi.ts`.
   `e2e:a11y-rooms` adds `board with markers` (dark and light, on the http-mode BFF: a chip of two
   markers, no serious or critical axe violation).
