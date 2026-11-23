@@ -446,13 +446,30 @@ export class HttpApi implements Api {
     );
   }
 
-  listAnnotations(
-    _tenant: string,
-    _w: { fromMs: number; toMs: number },
-    _signal?: AbortSignal,
+  /** `GET /annotations?from&to` (no `limit`: the server's 500); 503 → `unavailable`. */
+  async listAnnotations(
+    tenant: string,
+    w: { fromMs: number; toMs: number },
+    signal?: AbortSignal,
   ): Promise<AnnotationList> {
-    // Stub (plan #64 Part C tests first).
-    return Promise.resolve({ items: [], truncated: false });
+    this.checkTenant(tenant);
+    let r;
+    try {
+      r = await this.client.GET('/api/dash/v1/annotations', {
+        params: { query: { from: w.fromMs, to: w.toMs } },
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      throw new ApiError('network', 'the BFF could not be reached');
+    }
+    const status = r.response.status;
+    if (status === 200) return required(r.data);
+    if (status === 503) throw new ApiError('unavailable', messageOf(r.error, status));
+    if (status === 400) {
+      throw new ApiError('invalid', messageOf(r.error, status), { fields: fieldsOf(r.error) });
+    }
+    throw new ApiError('unknown', messageOf(r.error, status));
   }
 
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */

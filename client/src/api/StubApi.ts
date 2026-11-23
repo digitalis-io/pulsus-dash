@@ -364,10 +364,10 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  /** The stub has no annotations. */
+  /** The stub has no annotations (plan #64 Part C §3.5). */
   listAnnotations(
     tenant: string,
-    _w: { fromMs: number; toMs: number },
+    _window: { fromMs: number; toMs: number },
     signal?: AbortSignal,
   ): Promise<AnnotationList> {
     return settle(() => {

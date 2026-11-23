@@ -153,20 +153,9 @@ export interface BoardList {
 }
 
 /** The board head: its summary, the etag to save against and the spec. */
-/** An event marker as the annotations API sends it (plan #64 Part C §3.5); stub until generated. */
-export interface Annotation {
-  id: string;
-  at: number;
-  end_at: number | null;
-  kind: 'deploy' | 'config' | 'flag' | 'annotation';
-  text: string;
-  tags: string[];
-}
-
-export interface AnnotationList {
-  items: Annotation[];
-  truncated: boolean;
-}
+/** An event marker as the annotations API sends it (plan #64 Part C §3.5). */
+export type Annotation = components['schemas']['Annotation'];
+export type AnnotationList = components['schemas']['AnnotationList'];
 
 export interface Board extends BoardSummary {
   etag: string;
