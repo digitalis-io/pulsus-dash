@@ -215,7 +215,8 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   const layout = layoutOf(slice, state.firstOrd, state.endOrd, state.atStart);
 
   // A row's estimate is kept once made, so a row evicted while the list scrolls keeps its last
-  // known height as a placeholder and nothing below it moves (§3.5).
+  // known height as a placeholder and nothing below it moves (§3.5); it is dropped once the row is
+  // neither held nor in the slice (the effect below).
   const estimates = useMemo(
     () => new RowEstimates(),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a new cache whenever the estimate rule changes
@@ -304,6 +305,12 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
         : v,
     );
   };
+
+  // Only held rows and the slice's rows (placeholders included) are ever estimated or anchored to:
+  // every other estimate goes, so the cache is bounded by the buffer and the slice.
+  useEffect(() => {
+    estimates.retain(Math.min(state.firstOrd, slice.start), Math.max(state.endOrd, slice.end));
+  }, [estimates, state.firstOrd, state.endOrd, slice.start, slice.end]);
 
   // The columns per line (§3.7 estimateSize): the scroller's width less the first mounted line's
   // inset in its row (the gutter and the timestamp), the same with or without wrap (an unwrapped

@@ -114,7 +114,7 @@ small cap, or very long lines filling the text cap) would load a page at one end
 
 | Topic | Rule |
 |---|---|
-| Height | without wrap every row is `size.log-row` (20 px) and never measured, so the extent is exact; with wrap rows are measured (border box, at least one line), estimated by `wrapLines` at `perLine` = ⌊line width / (`font.size.sm` × `font.advance.mono`)⌋ columns (line width: the first mounted line, before any the scroller − 240 px). A wrapped line shows at most 100 lines (2 000 px) and scrolls inside its row beyond that |
+| Height | without wrap every row is `size.log-row` (20 px) and never measured, so the extent is exact; with wrap rows are measured (border box, at least one line), estimated by `wrapLines` at `perLine` = ⌊line width / (`font.size.sm` × `font.advance.mono`)⌋ columns (line width: the first mounted line, before any the scroller − 240 px). An estimate is kept (`logs/estimates.ts`) while its row is held or in the slice, so an evicted row in the slice keeps its height as a placeholder, and dropped after, so the cache is bounded by the buffer and the slice however far the reader pages. A wrapped line shows at most 100 lines (2 000 px) and scrolls inside its row beyond that |
 | Gutter | a bar in the level's colour (`--level-<level>`), a three-letter glyph (`CRT ERR WRN INF DBG TRC UNK`, `aria-hidden`) and the level name for screen readers (VIZ-067: never colour alone). In forced colours the bar is `CanvasText`; the glyph still names the level (T08-019) |
 | Timestamp | `formatLogTime(ms, tz)`: `2026-01-01 00:58:20.000` in the browser's zone (`useTimeZone()`), milliseconds truncated from the nanosecond timestamp |
 | Line | a text node in JetBrains Mono (`--font-mono`); never parsed as HTML |

@@ -26,13 +26,14 @@ describe('RowEstimates', () => {
       e.retain(k * 1000, k * 1000 + 2000);
       expect(e.size).toBe(2000);
     }
-    // A head re-fetch: the window moves back.
-    e.retain(47_000, 49_000);
-    for (let o = 46_000; o < 47_000; o += 1) e.set(o, 20);
-    e.retain(46_000, 48_000);
+    // A head re-fetch: the last window [49 000, 51 000) moves back by a page.
+    e.retain(48_000, 50_000);
+    expect(e.size).toBe(1000);
+    for (let o = 48_000; o < 49_000; o += 1) e.set(o, 20);
+    e.retain(48_000, 50_000);
     expect(e.size).toBe(2000);
-    expect(e.get(45_999)).toBeUndefined();
-    expect(e.get(48_000)).toBeUndefined();
+    expect(e.get(47_999)).toBeUndefined();
+    expect(e.get(50_000)).toBeUndefined();
   });
 
   it('drops everything when the retained range is empty or disjoint', () => {
