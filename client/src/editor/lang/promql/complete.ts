@@ -193,7 +193,12 @@ function repeatsStatic(
 
 const now = (probe: CompletionProbe | null): number => (probe === null ? 0 : performance.now());
 
-/** Slot 0. `probe` (§3.9) receives the slot's work in ms, or is null. */
+/**
+ * Slot 0. `probe` (§3.9) receives the slot's work in ms, or is null. The interval runs from the
+ * slot's entry to its result, across the await on the shared analysis, which resumes in the same
+ * task (the recording source settles at once). Slot 1's `slot1pre` spans the same analysis, so the
+ * two intervals overlap: the bench measures their union, never their sum (plan #107 §5.3).
+ */
 export function promqlLocalSource(probe: CompletionProbe | null): CompletionSource {
   return async (ctx) => {
     const t0 = now(probe);

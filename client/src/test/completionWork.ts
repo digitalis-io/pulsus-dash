@@ -44,7 +44,17 @@ export const within = (
 
 /** The length of the union of the entries' intervals `[end − ms, end]`. */
 export function unionMs(ws: readonly Work[]): number {
-  return ws.reduce((a, [, ms]) => a + ms, 0);
+  const iv = ws.map(([end, ms]) => [end - ms, end] as const).sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let open: [number, number] | null = null;
+  for (const [s, e] of iv) {
+    if (open === null) open = [s, e];
+    else if (s > open[1]) {
+      total += open[1] - open[0];
+      open = [s, e];
+    } else if (e > open[1]) open[1] = e;
+  }
+  return open === null ? total : total + (open[1] - open[0]);
 }
 
 export interface KeyWork {

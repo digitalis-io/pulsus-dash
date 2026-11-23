@@ -9,10 +9,12 @@
  *   debounce.
  * - **Work per local key** (`keyWork`): the editor probe (each `view.update`: `doc` when it changes
  *   the document, else `view`) and the completion probe (`slot0`, `slot1pre`, `slot1post`) push
- *   `[time, ms, kind]` to `window.__work`. `keyWork` sums every entry from the key's keydown to its
- *   popup except `slot1post`: the key's document update, its local completion work and the popup
- *   render. `remoteWork` (reported only) is `slot1post` plus `view` from the 120 ms timer to the
- *   merged list.
+ *   `[end, ms, kind]` to `window.__work`, the interval `[end − ms, end]`. `keyWork` is the length of
+ *   the union of the intervals that end from the key's keydown to its popup, except `slot1post`:
+ *   the key's document update, its local completion work and the popup render. The two slots'
+ *   intervals overlap (both span the shared analysis), so they are not summed
+ *   (`src/test/completionWork.ts`). `remoteWork` (reported only) is `slot1post` plus `view` from
+ *   the 120 ms timer to the merged list.
  * - **Long tasks** (PRF-005): a Chromium trace of every trial, read by `scripts/longTasks.ts`.
  *
  * Always (blocking): 30 + 30 samples, remote min ≥ 120 ms, local p50 < 100 ms (a list held behind
@@ -26,20 +28,19 @@ import { expect, test, type Page } from '@playwright/test';
 import { parser } from '@prometheus-io/lezer-promql';
 import { longTasks, type TraceEvent } from '../scripts/longTasks.ts';
 import {
-  DEBOUNCE_MS,
-  frames,
-  LOCAL_P95_MS,
-  openProbed,
-  percentile,
-  REMOTE_P95_MS,
+  breaches,
+  checkGate,
+  keyWorkOf,
   summary,
-  trial,
-  TRIALS,
-} from './completionLatency.ts';
+  unionMs,
+  within,
+  type Work,
+  type WorkKind,
+} from '../src/test/completionWork.ts';
+import { DEBOUNCE_MS, frames, openProbed, trial, TRIALS } from './completionLatency.ts';
 
 const enforce = process.env['EDITOR_BENCH_GATE'] === 'enforce';
 const LOCAL_P50_MS = 100;
-const KEY_WORK_P95_MS = 2;
 const CATEGORIES = [
   'devtools.timeline',
   'disabled-by-default-devtools.timeline',
@@ -52,9 +53,6 @@ const Q1K_LOCAL = `${'up + '.repeat(203)}sum(up)`;
 const metrics = (q: string) =>
   `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=${encodeURIComponent(q)}`;
 
-type WorkKind = 'doc' | 'view' | 'slot0' | 'slot1pre' | 'slot1post';
-type Work = [number, number, WorkKind];
-
 declare global {
   interface Window {
     __work: Work[];
@@ -62,12 +60,6 @@ declare global {
     __pulsusCompletionProbe: (ms: number, part: 'slot0' | 'slot1pre' | 'slot1post') => void;
   }
 }
-
-/** The entries of `work` that end in `[from, to]` and are of one of `kinds`. */
-const within = (work: readonly Work[], from: number, to: number, kinds: readonly WorkKind[]) =>
-  work.filter(([t, , k]) => t >= from && t <= to && kinds.includes(k));
-
-const sum = (ws: readonly Work[]) => ws.reduce((a, [, ms]) => a + ms, 0);
 
 async function ready(page: Page): Promise<void> {
   await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toBeVisible();
@@ -126,25 +118,12 @@ test('bench:promql-completion-latency', async ({ page }, info) => {
   const trace = JSON.parse(String(await browser.stopTracing())) as { traceEvents: TraceEvent[] };
   const r = longTasks(trace.traceEvents);
 
-  const keyKinds: WorkKind[] = ['doc', 'view', 'slot0', 'slot1pre'];
-  const perKey = local.spans.map(([down, shown]) => {
-    const ws = within(local.work, down, shown, keyKinds);
-    return {
-      keyWork: sum(ws),
-      docMs: sum(ws.filter(([, , k]) => k === 'doc')),
-      completionMs: sum(ws.filter(([, , k]) => k === 'slot0' || k === 'slot1pre')),
-      docs: ws.filter(([, , k]) => k === 'doc').length,
-      slot0s: ws.filter(([, , k]) => k === 'slot0').length,
-    };
-  });
+  const perKey = local.spans.map(([down, shown]) => keyWorkOf(local.work, down, shown));
+  const remoteKinds: WorkKind[] = ['slot1post', 'view'];
   const remoteWork = remote.spans.map(([down, shown]) =>
-    sum(within(remote.work, down + DEBOUNCE_MS, shown, ['slot1post', 'view'])),
+    unionMs(within(remote.work, down + DEBOUNCE_MS, shown, remoteKinds)),
   );
-  const p95 = (xs: readonly number[]) =>
-    percentile(
-      [...xs].sort((a, b) => a - b),
-      95,
-    );
+  const p95 = (xs: readonly number[]) => summary(xs).p95;
 
   const report = {
     local: summary(local.lat),
@@ -191,18 +170,7 @@ test('bench:promql-completion-latency', async ({ page }, info) => {
     ci.map((x) => `${x.durMs.toFixed(1)} ms wall, ${String(x.threadMs)} ms thread`).join('; '),
   ).toBe(0);
 
-  const breaches = [
-    ...(report.local.p95 > LOCAL_P95_MS
-      ? [`local p95 ${ms(report.local.p95)} ms > ${String(LOCAL_P95_MS)} ms (T09 §7)`]
-      : []),
-    ...(report.remote.p95 > REMOTE_P95_MS
-      ? [`remote p95 ${ms(report.remote.p95)} ms > ${String(REMOTE_P95_MS)} ms (T09-007)`]
-      : []),
-    ...(r.over16 > 0 ? [`${String(r.over16)} main-thread tasks over 16 ms (PRF-005)`] : []),
-    ...(report.keyWork.p95 > KEY_WORK_P95_MS
-      ? [`keyWork p95 ${ms(report.keyWork.p95)} ms > ${String(KEY_WORK_P95_MS)} ms (T09 §7)`]
-      : []),
-  ];
-  if (enforce) expect(breaches).toEqual([]);
-  else for (const b of breaches) info.annotations.push({ type: 'warning', description: b });
+  checkGate(breaches({ ...report, over16: r.over16 }), enforce, (b) => {
+    info.annotations.push({ type: 'warning', description: b });
+  });
 });

@@ -31,7 +31,7 @@ describe('bench:promql-completion-latency arithmetic', () => {
 
   it('W3: keyWork is the key’s document update, its completion work and the popup render', () => {
     const ws = [
-      w(99, 100, 'view'), // before the keydown
+      w(98, 99.5, 'view'), // before the keydown
       w(100.1, 101.3, 'doc'),
       w(102, 102.8, 'slot0'),
       w(102.2, 103, 'slot1pre'),

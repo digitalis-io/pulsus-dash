@@ -34,8 +34,10 @@ export function probedDispatch(): Pick<EditorViewConfig, 'dispatchTransactions'>
 /**
  * The bench's completion probe (plan #107 §3.9): `bench:promql-completion-latency` installs a
  * global function before the page loads (as the editor probe above), and the PromQL completion
- * slots then report their main-thread work in ms. Never set in normal use: the slots then skip
- * `performance.now()` entirely.
+ * slots then report their main-thread work in ms, each when it ends, so the work is the interval
+ * `[now − ms, now]`. `slot0` and `slot1pre` of one request overlap (both span the shared analysis),
+ * so a reader takes their union. Never set in normal use: the slots then skip `performance.now()`
+ * entirely.
  */
 export const COMPLETION_PROBE_GLOBAL = '__pulsusCompletionProbe';
 export type CompletionProbe = (ms: number, part: 'slot0' | 'slot1pre' | 'slot1post') => void;

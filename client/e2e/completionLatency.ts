@@ -10,8 +10,7 @@ import { waitReady } from './helpers.ts';
 
 export const TRIALS = 30;
 export const DEBOUNCE_MS = 120;
-export const LOCAL_P95_MS = 16;
-export const REMOTE_P95_MS = 136;
+export { LOCAL_P95_MS, percentile, REMOTE_P95_MS, summary } from '../src/test/completionWork.ts';
 
 declare global {
   interface Window {
@@ -21,16 +20,6 @@ declare global {
     __spans: [number, number][];
   }
 }
-
-export function percentile(sorted: readonly number[], p: number): number {
-  const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
-  return sorted[i] ?? 0;
-}
-
-export const summary = (xs: readonly number[]): { p50: number; p95: number; max: number } => {
-  const s = [...xs].sort((a, b) => a - b);
-  return { p50: percentile(s, 50), p95: percentile(s, 95), max: s.at(-1) ?? 0 };
-};
 
 export async function frames(page: Page): Promise<void> {
   await page.evaluate(
