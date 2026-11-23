@@ -158,7 +158,8 @@ test.describe('e2e:log-stream', () => {
     let rects = await rowIn();
     const inside = (x: typeof rects) =>
       x !== null && x.top >= x.boxTop - 1 && x.bottom <= x.boxBottom + 1;
-    if (!inside(rects)) {
+    // An End animation still running can override one scrollToOrd write: try up to three times.
+    for (let i = 0; i < 3 && !inside(rects); i += 1) {
       await scrollToOrd(page, 999_999);
       await atRest(page);
       rects = await rowIn();
