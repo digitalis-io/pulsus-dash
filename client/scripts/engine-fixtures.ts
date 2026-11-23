@@ -104,6 +104,13 @@ interface Sources {
     label: number,
     base: 1000 | 1024,
   ) => { min: number; max: number; ticks: readonly number[] };
+  niceValueTicks: (
+    min: number,
+    max: number,
+    h: number,
+    label: number,
+    base: 1000 | 1024,
+  ) => { min: number; max: number; ticks: readonly number[] } | null;
   extremeTicks: (
     min: number,
     max: number,
@@ -246,7 +253,15 @@ function ticksRows(s: Sources): unknown[] {
     const height = Math.floor(40 + r() * 1200);
     const label = 14;
     const base = r() < 0.3 ? 1024 : 1000;
-    rows.push({ min, max, height, label, base, out: s.valueTicks(min, max, height, label, base) });
+    rows.push({
+      min,
+      max,
+      height,
+      label,
+      base,
+      path: ticksPath(s, min, max, height, label, base),
+      out: s.valueTicks(min, max, height, label, base),
+    });
   }
   return rows;
 }
@@ -323,6 +338,7 @@ function ticksExtremeRows(s: Sources): unknown[] {
     height,
     label,
     base,
+    path: ticksPath(s, min, max, height, label, base),
     out: s.valueTicks(min, max, height, label, base),
   });
   const rows: unknown[] = TICKS_EXTREME_FIXED.map(([min, max, h, base]) => vt(min, max, h, base));
@@ -334,6 +350,7 @@ function ticksExtremeRows(s: Sources): unknown[] {
       height,
       label,
       base: null,
+      path: 'fallback',
       out: s.extremeTicks(min, max, height, label),
     });
   }
@@ -364,6 +381,18 @@ function ticksExtremeRows(s: Sources): unknown[] {
     seeded += 1;
   }
   return rows;
+}
+
+/** `'fallback'` when the nice search gives up (collision rejection included), else `'nice'` (#97). */
+function ticksPath(
+  s: Sources,
+  min: number,
+  max: number,
+  h: number,
+  label: number,
+  base: 1000 | 1024,
+): 'nice' | 'fallback' {
+  return s.niceValueTicks(min, max, h, label, base) === null ? 'fallback' : 'nice';
 }
 
 /** A recording 2D context: label widths from the §3.5 formula (monospace advance). */
