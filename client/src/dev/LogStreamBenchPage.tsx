@@ -42,7 +42,7 @@ interface ResliceRecord {
 
 declare global {
   interface Window {
-    __logStreamBenchConfig?: LogStreamBenchConfig;
+    __logStreamBenchConfig?: Partial<LogStreamBenchConfig>;
     __logStreamBench?: {
       scrollToOrd(ord: number): void;
       loadTail(): Promise<void>;

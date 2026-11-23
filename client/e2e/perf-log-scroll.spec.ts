@@ -104,11 +104,8 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
   const cdp = await page.context().newCDPSession(page);
 
   // 0 ready.
-  await openBench(
-    page,
-    { total: 2_000_000, prefillTo: 1_000_000, capEntries: 1_000_000, latencyMs: 50 },
-    300_000,
-  );
+  // The harness's default config (B.2): 10⁶ of 2 × 10⁶ entries, MAX_ENTRIES, 50 ms latency.
+  await openBench(page, {}, 300_000);
   const ready = await state(page);
   expect(ready.held).toBe(1_000_000);
   expect(ready.firstOrd).toBe(0);
@@ -183,10 +180,6 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
     marks: { start: 'bench:start', end: 'bench:end' },
   });
   const latency = eventLatencies(events, { types: SCROLL_UPDATE_TYPES });
-  expect((lt.counts['wheel'] ?? 0) + (lt.counts['scroll'] ?? 0)).toBeGreaterThan(0);
-  expect(lt.ciOver).toBe(0);
-  expect(latency.length).toBeGreaterThanOrEqual(50);
-
   const report = {
     held: ready.held,
     vsyncMs,
@@ -210,6 +203,11 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
     type: 'bench:log-scroll',
     description: `vsync ${vsyncMs.toFixed(2)} ms; fling median ${report.fling.medianMs.toFixed(2)} ms; crossing max ${report.crossing.maxMs.toFixed(2)} ms; EventLatency median ${report.eventLatency.medianMs.toFixed(2)} ms, p99 ${report.eventLatency.p99Ms.toFixed(2)} ms (control ${report.control.medianMs.toFixed(2)} / ${report.control.p99Ms.toFixed(2)} ms); ${String(lt.over16)} tasks over 16 ms`,
   });
+
+  // Always (after the report, so a failing run still records its numbers).
+  expect((lt.counts['wheel'] ?? 0) + (lt.counts['scroll'] ?? 0)).toBeGreaterThan(0);
+  expect(lt.ciOver).toBe(0);
+  expect(latency.length).toBeGreaterThanOrEqual(50);
 
   check(
     info,

@@ -56,7 +56,7 @@ export interface ResliceRecord {
 
 declare global {
   interface Window {
-    __logStreamBenchConfig?: BenchConfig;
+    __logStreamBenchConfig?: Partial<BenchConfig>;
     __logStreamBench?: {
       scrollToOrd(ord: number): void;
       loadTail(): Promise<void>;
@@ -70,7 +70,12 @@ declare global {
 }
 
 /** Sets the config, opens the harness and waits for the prefill; then records scroll times. */
-export async function openBench(page: Page, config: BenchConfig, timeout = 90_000): Promise<void> {
+/** `config` is merged over the harness's default config (B.2). */
+export async function openBench(
+  page: Page,
+  config: Partial<BenchConfig>,
+  timeout = 90_000,
+): Promise<void> {
   await page.addInitScript((c) => {
     window.__logStreamBenchConfig = c;
   }, config);
