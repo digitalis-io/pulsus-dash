@@ -75,11 +75,15 @@ fn snapped(lo: f64, hi: f64, step: f64) -> (f64, f64) {
 /// The most iterations of the step loop before the port gives up (A.3.2).
 const MAX_STEPS: usize = 64;
 
-/// Port of `canvas2d/valueTicks.ts`, bit-identical on its finite domain (A.3.2): finite ends with
-/// `data_min ≤ data_max`, both magnitudes ≤ 1e300 and `data_max/2 − data_min/2 < 2^1022`. Returns
-/// None outside that domain, after 64 loop iterations (where the TS loop never ends: a zero span,
-/// or a range straddling 0 on a plot under 2·(label + 2) px), or on any non-finite output or
-/// `min ≥ max`. `round12` is ECMAScript `Number(x.toPrecision(12))`; `**` is V8's (`js_pow`).
+/// Port of `canvas2d/valueTicks.ts` `niceValueTicks` (A.3.2, #97). It accepts finite ends with
+/// `data_min ≤ data_max`, both magnitudes ≤ 1e300 and `data_max/2 − data_min/2 < 2^1022`, and
+/// returns None outside that domain, after 64 loop iterations (a zero span, or a range straddling
+/// 0 on a plot under 2·(label + 2) px), on a count outside [0, 1e4], on any non-finite output or
+/// `min ≥ max`, or when two drawn ticks are closer than one label gap (`ticks_fit`; rounded
+/// duplicates fail). A two-tick result on a plot shorter than label + 2 px keeps the end nearer
+/// zero. `round12` is ECMAScript `Number(x.toPrecision(12))`; `**` is V8's (`js_pow`). Parity
+/// with the TS is claimed on the fixture inputs only (`ticks.json`, `ticks-extreme.json`), as
+/// generated under the pinned Node; not on other inputs or runtimes.
 pub fn value_ticks(
     data_min: f64,
     data_max: f64,
@@ -134,12 +138,65 @@ pub fn value_ticks(
     if ticks.iter().any(|t| !t.is_finite()) {
         return None;
     }
+    // Short plot: the loop leaves ≥ 3 ticks only with spacing ≥ label + 2; two ticks h px apart
+    // collide below one gap.
+    let one_gap = height_px >= label_height_px + 2.0;
+    if ticks.len() == 2 && !one_gap {
+        return Some(ValueTicks {
+            min,
+            max,
+            ticks: vec![nearer_zero(ticks[0], ticks[1])],
+        });
+    }
+    // Collision check through the renderer's y: `ticks_of` then uses `extreme_ticks`.
+    if !ticks_fit(&ticks, min, max, height_px, label_height_px) {
+        return None;
+    }
     Some(ValueTicks { min, max, ticks })
 }
 
-/// Ticks for ranges `value_ticks` cannot handle (A.3.2): `[lo, lo/2 + hi/2, hi]`; equal ends are
-/// first widened toward zero, so the axis always has `lo < hi`.
-pub fn extreme_ticks(lo: f64, hi: f64) -> ValueTicks {
+/// The end shown when one label fits: the smaller |v|; on a tie, lo (= TS `nearerZero`).
+fn nearer_zero(lo: f64, hi: f64) -> f64 {
+    if hi.abs() < lo.abs() { hi } else { lo }
+}
+
+/// = TS `valueFraction`: where `v` sits on [min, max] as a fraction from min, (v − min)/(max − min),
+/// halved when the span overflows. Subnormal spans are exact (subtraction is exact there).
+pub fn value_fraction(v: f64, min: f64, max: f64) -> f64 {
+    let span = max - min;
+    if span.is_finite() {
+        (v - min) / span
+    } else {
+        (v / 2.0 - min / 2.0) / (max / 2.0 - min / 2.0)
+    }
+}
+
+/// = TS `tickY`: the renderer's y of `v`, top + (1 − value_fraction(v, min, max))·height.
+pub fn tick_y(v: f64, min: f64, max: f64, top: f64, height: f64) -> f64 {
+    top + (1.0 - value_fraction(v, min, max)) * height
+}
+
+/// Relative slack on the label gap (#97): absorbs the rounding of `y0 − y1` only.
+pub const GAP_TOLERANCE: f64 = 1e-9;
+
+/// = TS `ticksFit`, the same expression order: every adjacent pair has finite y (top 0) and
+/// y[k−1] − y[k] ≥ (label + 2)·(1 − GAP_TOLERANCE). Equal adjacent ticks fail; one tick fits.
+pub fn ticks_fit(ticks: &[f64], min: f64, max: f64, height_px: f64, label_height_px: f64) -> bool {
+    let gap = (label_height_px + 2.0) * (1.0 - GAP_TOLERANCE);
+    ticks.windows(2).all(|w| {
+        let y0 = tick_y(w[0], min, max, 0.0, height_px);
+        let y1 = tick_y(w[1], min, max, 0.0, height_px);
+        let d = y0 - y1;
+        y0.is_finite() && y1.is_finite() && d.is_finite() && d >= gap
+    })
+}
+
+/// Fallback ticks for ranges `value_ticks` cannot handle (A.3.2, #97; = TS `extremeTicks`):
+/// `[lo, lo/2 + hi/2, hi]` when the midpoint is strictly inside and
+/// `ticks_fit([lo, m, hi], lo, hi, height_px, label_height_px)`; `[lo, hi]` when
+/// `height_px ≥ label + 2`; else the end nearer zero (lo on a tie; also for a NaN height). Equal
+/// ends are first widened toward zero, so the axis always has `lo < hi`.
+pub fn extreme_ticks(lo: f64, hi: f64, height_px: f64, label_height_px: f64) -> ValueTicks {
     let (lo, hi) = if lo < hi {
         (lo, hi)
     } else if lo > 0.0 {
@@ -150,10 +207,18 @@ pub fn extreme_ticks(lo: f64, hi: f64) -> ValueTicks {
         (0.0, 1.0)
     };
     let m = lo / 2.0 + hi / 2.0;
+    let three = m > lo && m < hi && ticks_fit(&[lo, m, hi], lo, hi, height_px, label_height_px);
+    let ticks = if three {
+        vec![lo, m, hi]
+    } else if height_px >= label_height_px + 2.0 {
+        vec![lo, hi]
+    } else {
+        vec![nearer_zero(lo, hi)]
+    };
     ValueTicks {
         min: lo,
         max: hi,
-        ticks: vec![lo, m, hi],
+        ticks,
     }
 }
 

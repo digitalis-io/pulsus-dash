@@ -2,7 +2,8 @@
  * `bench:rooms-long-tasks` (#90, plan §3.7 and Appendix B §B.5; PRF-005, T05 §4.3, T08 §7): the
  * main-thread long tasks of scripted room interactions, from a Chromium trace. The board editor is
  * its first scenario, chart gestures on a board panel its second (#93), and the board editor with 8
- * thresholds its third (#64 Part B B.10). CI's `e2e` Chromium leg always asserts T05 §4.3's interim trace check (no
+ * thresholds its third (#64 Part B B.10), and wheel zoom on the gallery's near-limit chart its fourth
+ * (#97). CI's `e2e` Chromium leg always asserts T05 §4.3's interim trace check (no
  * task over 50 ms wall with over 16 ms thread time); `LONG_TASK_GATE=enforce` (the reference lab,
  * #68, and the D13 local proofs) also fails any task over 16 ms wall. No fake clock.
  */
@@ -16,6 +17,8 @@ import {
 } from '../scripts/longTasks.ts';
 import { boardEditorScenario, type Step } from './boardEditorScenario.ts';
 import { chartGestureScenario } from './chartGestureScenario.ts';
+import { galleryExtremeScenario } from './galleryExtremeScenario.ts';
+import { GALLERY_URL, galleryReady } from './helpers.ts';
 import { thresholdsEditorScenario } from './thresholdsEditorScenario.ts';
 
 const CATEGORIES = [
@@ -55,6 +58,28 @@ async function traced(
   const trace = JSON.parse(String(await browser.stopTracing())) as { traceEvents: TraceEvent[] };
   const r = longTasks(trace.traceEvents, inputs === undefined ? {} : { inputs });
   return { r, pageErrors };
+}
+
+/** Opens the gallery, starts tracing once every chart has drawn, traces `scenario` and parses. */
+async function tracedGallery(
+  page: Page,
+  browser: Browser,
+  scenario: (page: Page, step: Step) => Promise<void>,
+): Promise<{ r: LongTaskResult; pageErrors: string[] }> {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.goto(GALLERY_URL);
+  await page.locator('html[data-shell-ready="true"]').waitFor();
+  await galleryReady(page);
+  await browser.startTracing(page, { categories: CATEGORIES });
+  await scenario(page, async (label, _count, act) => {
+    await page.evaluate((l) => {
+      performance.mark(`step:${l}`);
+    }, label);
+    await act();
+  });
+  const trace = JSON.parse(String(await browser.stopTracing())) as { traceEvents: TraceEvent[] };
+  return { r: longTasks(trace.traceEvents, { inputs: CHART_INPUTS }), pageErrors };
 }
 
 /** The JSON, the annotation, and the CI and (with `LONG_TASK_GATE=enforce`) 16 ms checks. */
@@ -116,4 +141,15 @@ test('bench:rooms-long-tasks board editor, 8 thresholds (CI thresholds; 16 ms wa
   expect(r.keydowns).toBeGreaterThanOrEqual(8);
   expect(pageErrors).toEqual([]);
   gate(r, info, 'bench-rooms-long-tasks-thresholds.json', 'board editor, 8 thresholds');
+});
+
+test('bench:rooms-long-tasks gallery near-limit (CI thresholds; 16 ms wall with LONG_TASK_GATE=enforce)', async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(120_000);
+  const { r, pageErrors } = await tracedGallery(page, browser, galleryExtremeScenario);
+  expect(r.counts['wheel'] ?? 0).toBeGreaterThanOrEqual(20);
+  expect(pageErrors).toEqual([]);
+  gate(r, info, 'bench-rooms-long-tasks-gallery-extreme.json', 'gallery near-limit');
 });

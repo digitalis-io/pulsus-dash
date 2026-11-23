@@ -14,6 +14,7 @@ describe('unit:engine-fixtures', () => {
       'pow.json',
       'summary.json',
       'synth.json',
+      'ticks-extreme.json',
       'ticks.json',
     ]);
     for (const [name, text] of Object.entries(files)) {

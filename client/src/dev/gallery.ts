@@ -13,7 +13,8 @@ export type GalleryId =
   | 'bars'
   | 'stat'
   | 'line-thresholds'
-  | 'stat-sparkline';
+  | 'stat-sparkline'
+  | 'line-extreme';
 export interface GalleryEntry {
   readonly id: GalleryId;
   readonly spec: VisSpec;
@@ -22,9 +23,32 @@ export interface GalleryEntry {
 
 const HEATMAP_BOUNDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, Infinity];
 
+/** Each series' finite values mapped onto [−MAX, MAX]: q = (v − lo)/(hi − lo), MAX·(2q − 1); NaN stays; hi === lo → 0. */
+function nearLimit(d: FrameData): FrameData {
+  if (d.kind !== 'series') return d;
+  const series = d.series.map((s) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const v of s.values) {
+      if (!Number.isFinite(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    const values = s.values.map((v) => {
+      if (!Number.isFinite(v)) return v;
+      if (hi === lo) return 0;
+      const q = (v - lo) / (hi - lo);
+      return Number.MAX_VALUE * (2 * q - 1);
+    });
+    return { ...s, values };
+  });
+  return { kind: 'series', series };
+}
+
 /**
- * The nine entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. The last two
- * show threshold lines and a stat sparkline (#64 Part B, ADR-0022).
+ * The ten entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7 and
+ * 8 show threshold lines and a stat sparkline (#64 Part B, ADR-0022); the last spans values near
+ * the largest finite number (#97).
  */
 export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
   const s0 = seed ?? GALLERY_SEED;
@@ -112,6 +136,11 @@ export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
       id: 'stat-sparkline',
       spec: { kind: 'stat', title: t('gallery.statSparkline'), unit: { kind: 'time', base: 'ms' } },
       data: lines(8, 1, 120, 'http_request_duration_p99_ms', 280, 60),
+    },
+    {
+      id: 'line-extreme',
+      spec: { kind: 'line', title: t('gallery.lineExtreme'), unit: { kind: 'none' } },
+      data: nearLimit(lines(9, 1, 1_440, 'near_limit_values', 0, 1)),
     },
   ];
 }

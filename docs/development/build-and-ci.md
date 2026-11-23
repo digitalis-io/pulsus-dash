@@ -131,9 +131,12 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   §4.3, T08 §7; #90): main-thread long tasks during scripted room interactions, from a Chromium
   trace. Its scenarios are the panel editor (`e2e/boardEditorScenario.ts`, as document 4 of
   `bench:inp-rooms`), in a second test the chart gestures (`e2e/chartGestureScenario.ts`, as
-  document 5, #93), and in a third "board editor, 8 thresholds" (`e2e/thresholdsEditorScenario.ts`,
+  document 5, #93), in a third "board editor, 8 thresholds" (`e2e/thresholdsEditorScenario.ts`,
   #64 Part B: Add threshold up to 8 steps on Request rate, then reopen the editor and edit the last
-  step's value, state and label), each on `/t/demo/board/b-1` with no fake clock. Around the scenario it records a
+  step's value, state and label), each on `/t/demo/board/b-1` with no fake clock, and in a fourth
+  "gallery near-limit" (`e2e/galleryExtremeScenario.ts`, #97): on `GALLERY_URL`, tracing starts
+  once every gallery chart has drawn, then 20 wheel steps (time zoom; the value band is avoided) at
+  the centre of `line-extreme`'s plot, each followed by one animation frame, then its redraw. Around the scenario it records a
   trace with the categories `devtools.timeline`, `disabled-by-default-devtools.timeline` and
   `blink.user_timing`; each step leaves a `step:<label>` mark. `scripts/longTasks.ts` reads it:
 
@@ -149,12 +152,13 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 
   The editor test writes `test-results/bench-rooms-long-tasks.json`, the chart test
   `test-results/bench-rooms-long-tasks-chart.json` and the thresholds test
-  `test-results/bench-rooms-long-tasks-thresholds.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
+  `test-results/bench-rooms-long-tasks-thresholds.json` and the gallery test
+  `test-results/bench-rooms-long-tasks-gallery-extreme.json` (`clicks`, `keydowns`, `windowMs`, `tasks[]`
   with `tsUs`, `durMs`, `threadMs` and `label`, `over16`, `ciOver`, `worstMs`, `counts`,
   `scenario`, `mode`, `unit`), each with a `bench:rooms-long-tasks` annotation naming its scenario.
   The editor test asserts at least 28 clicks and 15 key presses; the chart test at least 40 wheels,
-  8 pointer downs and 3 context menus; the thresholds test at least 17 clicks and 8 key presses. All
-  three assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
+  8 pointer downs and 3 context menus; the thresholds test at least 17 clicks and 8 key presses; the
+  gallery test at least 20 wheels (it parses with `CHART_INPUTS`). All four assert no page error and `ciOver` 0: no task over 50 ms wall with over 16 ms thread time, T05 §4.3's
   interim trace check. That check **blocks merge** on CI, in the `e2e` job's Chromium leg (the
   spec is Chromium only, so no workflow change). With `LONG_TASK_GATE=enforce` (the reference lab,
   #68, and local gate proofs) it also asserts `over16` 0: no task over 16 ms wall. Without it, each
@@ -172,8 +176,17 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   character), and run the animation frames themselves (`src/test/engineHarness.ts`); component tests
   use `src/test/fakeEngine.ts` and `src/test/fakeResizeObserver.ts`. The end-to-end chart specs use
   the chart gallery at 12:00–13:00 UTC on 19 Nov 2026 (`GALLERY_URL` in `e2e/helpers.ts`):
-  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the nine
-    gallery frames (with `line-thresholds` and `stat-sparkline`, #64 Part B) in dark and light, compared with `toHaveScreenshot` against
+  - **`unit:value-ticks-bounded`** (`src/engine/canvas2d/valueTicks.bounded.test.ts` and the
+    in-process rows of `valueTicks.test.ts`; #97): `valueTicks` returns finite, bounded ticks for
+    every finite domain, including overflowing spans, ±MAX ends, equal ends, subnormal spans, short
+    plots and rounded duplicates. Each row runs `scripts/value-ticks-probe.ts` (modes `ticks`,
+    `prop` and `draw`) in a child process killed after 5 s (10 s for the 10 000-case property run
+    and the `line-extreme` draw), with a 15 s test limit, so a search that never finishes fails
+    instead of hanging the run. `node scripts/value-ticks-probe.ts ticks <min> <max> <height>
+    <label> <base>` prints one result as JSON.
+  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the ten
+    gallery frames (with `line-thresholds` and `stat-sparkline`, #64 Part B, and `line-extreme`,
+    #97) in dark and light, compared with `toHaveScreenshot` against
     `e2e/__screenshots__/golden-gallery.spec.ts/gallery-<id>-<theme>.png` (per-pixel threshold 0.1,
     at most 0.2 % of pixels different, animations off, caret hidden, CSS scale), after the fonts are
     loaded and two animation frames; a reload must give the same pixels. Baselines are never written
@@ -215,7 +228,26 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     until #68): 40 theme changes, the `chart-draw` measure of the 50 × 1 440 line chart each time;
     p50 and p95 are written to `test-results/bench-interim-line.json` and added as an annotation.
     There is no threshold. The page is opened without Playwright's fake clock, which replaces the
-    User Timing methods.
+    User Timing methods. A separate test, `bench:frame-interim-line line-extreme (report only)`, on
+    its own page and with a 30 s limit, does the same for the `line-extreme` frame (the measures
+    whose `detail.frame` is that frame's `data-frame-id`; #97) and writes
+    `test-results/bench-interim-line-extreme.json` with a `bench:frame-interim-line line-extreme`
+    annotation. Both assert at least 40 samples.
+  - **`e2e:gallery-extreme`** (`e2e/gallery-extreme.spec.ts`, Chromium, Firefox and WebKit; #97,
+    60 s limit): the `line-extreme` frame (values over [−MAX, MAX]) becomes ready with a non-empty
+    plot, and the page then answers an `evaluate` within 2 s.
+  - **`e2e:ticks-parity`** (`e2e/ticks-parity.spec.ts`, Chromium, Firefox and WebKit; #97, 60 s
+    limit): `src/engine/canvas2d/valueTicks.ts` is type-stripped (`node:module`
+    `stripTypeScriptTypes`) and loaded as a classic script into a blank page; each of the 897 rows
+    of `engine/fixtures/ticks.json` and `ticks-extreme.json` is computed in the page and compared
+    with its `out` (`===`, NaN equal to NaN) and its recorded `path`, under the rule in
+    [the engine page](../client/engine.md) (#97 plan §10 Q1): every engine must take the recorded
+    path on every row; fallback rows (F) are exact everywhere; Chromium and Firefox match every
+    row. WebKit's `**` differs from V8's in the last bits for some large powers (#126): there short
+    nice rows (S, height ≤ 2·(label + 2)) must have exact ticks, `min` and `max` within 4 ulps
+    (`scripts/ulp.ts`, `unit:ulp-distance`) and the bounded-ticks invariants P1 to P7 (plan
+    §4.5); other nice rows (N) are exact or hold P1 to P7. The S and N rows that differ are
+    annotated as two counts (1 and 91 at #97).
   - **`bench:frame-interim-heatmap`** (`e2e/perf-heatmap-draw.spec.ts`, Chromium only, report only
     until #68, skipped under `E2E_SERVER=preview`): on the Vite dev server (5174) the page imports
     the engine's `draw.ts`, `palette.ts` and `dev/synth.ts` and draws a 10 000 × 200 heatmap

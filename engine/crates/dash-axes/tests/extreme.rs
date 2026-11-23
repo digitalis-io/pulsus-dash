@@ -2,7 +2,7 @@
 //! tick search terminates. Termination is checked by a hang guard (the axis is computed on another
 //! thread and must answer within 10 s); the elapsed time is printed for information only, so CI
 //! load cannot fail the test.
-use dash_axes::{Band, VisKind, value_axis};
+use dash_axes::{Band, VisKind, label_height, layout_plot, value_axis};
 use dash_scales::extreme_ticks;
 use dash_units::{Unit, format_value};
 
@@ -32,7 +32,12 @@ fn overflowing_spans_use_extreme_ticks() {
             "{lo:e}..{hi:e}: value_axis took {:?} (report only)",
             t0.elapsed()
         );
-        let want = extreme_ticks(lo.min(0.0), hi);
+        let want = extreme_ticks(
+            lo.min(0.0),
+            hi,
+            layout_plot(VisKind::Line, 1118.0, 240.0, 0.0).height,
+            label_height(),
+        );
         assert_eq!(ax.ticks, want.ticks, "{lo:e}..{hi:e}");
         assert_eq!(ax.ticks.len(), 3);
         assert!(ax.ticks.iter().all(|t| t.is_finite()));

@@ -142,7 +142,7 @@ fn ticks_of(
                     vt.ticks,
                 ),
                 None => {
-                    let vt = dash_scales::extreme_ticks(lo, data_max);
+                    let vt = dash_scales::extreme_ticks(lo, data_max, height, label_height());
                     (
                         Range64 {
                             lo: vt.min,
@@ -163,7 +163,7 @@ fn ticks_of(
                         .filter(|t| *t >= r.lo - tol && *t <= r.hi + tol)
                         .collect()
                 }
-                None => dash_scales::extreme_ticks(r.lo, r.hi).ticks,
+                None => dash_scales::extreme_ticks(r.lo, r.hi, height, label_height()).ticks,
             };
             (r, ticks)
         }

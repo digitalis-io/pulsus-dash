@@ -537,7 +537,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
 
     await test.step('L22 Chart frames: the crosshair slider of every chart', async () => {
       await s.goto(GALLERY_URL);
-      await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(9);
+      await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(10);
       const MIN = 60_000;
       const lineStep = Math.floor((GALLERY_TO - GALLERY_FROM) / 1_440);
       // Title, last sample or bucket start, the second one, and the rows at a sample.
@@ -564,6 +564,13 @@ test.describe('e2e:a11y-rooms keyboard', () => {
           GALLERY_FROM + 1_439 * lineStep,
           GALLERY_FROM + lineStep,
           3,
+        ],
+        // #97: values over [−MAX, MAX].
+        [
+          'Values near the largest finite number',
+          GALLERY_FROM + 1_439 * lineStep,
+          GALLERY_FROM + lineStep,
+          1,
         ],
       ];
       for (const [title, last, second, n] of charts) {
