@@ -104,6 +104,12 @@ interface Sources {
     label: number,
     base: 1000 | 1024,
   ) => { min: number; max: number; ticks: readonly number[] };
+  extremeTicks: (
+    min: number,
+    max: number,
+    h: number,
+    label: number,
+  ) => { min: number; max: number; ticks: readonly number[] };
   layoutPlot: (kind: string, w: number, h: number, labelW: number) => Plot;
   LABEL_HEIGHT: number;
   drawLayer: (i: Record<string, unknown>) => { summary: Summary };
@@ -232,14 +238,130 @@ function ticksRows(s: Sources): unknown[] {
     const a = (r() - 0.3) * mag;
     const b = r() < 0.1 ? a : a + r() * mag * (r() < 0.5 ? 1 : 1e-6);
     const [min, max] = a <= b ? [a, b] : [b, a];
+    // These skips predate #97, when valueTicks did not terminate on such domains (plan #68 §8
+    // R10); they stay so the rows stay stable. The near-limit domains are in ticks-extreme.json.
     if (Math.max(Math.abs(min), Math.abs(max)) > 1e300) continue;
-    // valueTicks never terminates when its span is 0 (equal ends where `min + 1 === min`): §8 R10.
     if (min === max && min + 1 === min) continue;
-    // Below 2 · (label + 2) px a range straddling 0 keeps two intervals forever (the same class).
+    // Heights start at 40 px, so no row thins below 2 · (label + 2) px (ticks-extreme.json has those).
     const height = Math.floor(40 + r() * 1200);
     const label = 14;
     const base = r() < 0.3 ? 1024 : 1000;
     rows.push({ min, max, height, label, base, out: s.valueTicks(min, max, height, label, base) });
+  }
+  return rows;
+}
+
+const M = Number.MAX_VALUE;
+const H = M / 2;
+
+/** #97 plan §5 A1 to A30, A33 and A34: [min, max, height, base]. */
+const TICKS_EXTREME_FIXED: readonly (readonly [number, number, number, 1000 | 1024])[] = [
+  [-M, M, 200, 1000],
+  [H, M, 200, 1000],
+  [-M, -H, 200, 1000],
+  [-M, 1, 200, 1000],
+  [-1e308, 1e308, 200, 1000],
+  [1e17, 1e17, 200, 1000],
+  [-1e17, -1e17, 200, 1000],
+  [M, M, 200, 1000],
+  [-M, -M, 200, 1000],
+  [0, 5e-324, 200, 1000],
+  [5e-324, 1e-323, 200, 1000],
+  [-5e-324, 5e-324, 200, 1000],
+  [-1.7e-6, 4e-6, 21, 1024],
+  [-1, 1, 0, 1000],
+  [0, M, 200, 1024],
+  [0, 1e301, 200, 1000],
+  [0, 0, 200, 1000],
+  [-1e300, 1e300, 200, 1000],
+  [1e-310, 3e-310, 200, 1000],
+  [5e-324, 5e-324, 200, 1000],
+  [-M, M, 32, 1000],
+  [-M, M, 31.5, 1000],
+  [-M, M, 16, 1000],
+  [-M, M, 15.5, 1000],
+  [1, M, 15.5, 1000],
+  [-M, -1, 15.5, 1000],
+  [0, 1, 16, 1000],
+  [0, 1, 15.5, 1000],
+  [-3, 1, 10, 1000],
+  [0, 1, 40, 1000],
+  [1, 1 + 1e-11, 200, 1000],
+  [2615306150439.0483, 2615306150439.0483, 1026, 1000],
+];
+
+/** #97 plan §3.5 X1 to X8: `extremeTicks` rows, [min, max, height]. */
+const TICKS_EXTREME_FIT: readonly (readonly [number, number, number])[] = [
+  [0, 3 * Number.MIN_VALUE, 32],
+  [0, 3 * Number.MIN_VALUE, 48],
+  [0, 3 * Number.MIN_VALUE, 47.5],
+  [-2, 6, 32],
+  [-2, 6, 31.9],
+  [-2, 6, 15.9],
+  [-M, M, 32],
+  [-M, M, 31.5],
+];
+
+/** A positive double stepped by `d` ulps, through its bits. */
+function adj(x: number, d: number): number {
+  const f = new Float64Array([x]);
+  const u = new BigUint64Array(f.buffer);
+  u[0] = (u[0] ?? 0n) + BigInt(d);
+  return f[0] ?? NaN;
+}
+
+/**
+ * `ticks-extreme.json` (#97 plan §3.5): the fixed rows, the fallback-fit rows, the `log`/`**` edge
+ * rows and 300 seeded rows over the whole finite range, short plots included.
+ */
+function ticksExtremeRows(s: Sources): unknown[] {
+  const label = 14;
+  const vt = (min: number, max: number, height: number, base: 1000 | 1024): unknown => ({
+    fn: 'valueTicks',
+    min,
+    max,
+    height,
+    label,
+    base,
+    out: s.valueTicks(min, max, height, label, base),
+  });
+  const rows: unknown[] = TICKS_EXTREME_FIXED.map(([min, max, h, base]) => vt(min, max, h, base));
+  for (const [min, max, height] of TICKS_EXTREME_FIT) {
+    rows.push({
+      fn: 'extremeTicks',
+      min,
+      max,
+      height,
+      label,
+      base: null,
+      out: s.extremeTicks(min, max, height, label),
+    });
+  }
+  for (const base of [1000, 1024] as const) {
+    for (const p of [1, 2, 5, 10, 50, 100]) {
+      const x = base ** p;
+      for (const hi of [adj(x, -1), x, adj(x, 1)]) rows.push(vt(0, hi, 200, base));
+    }
+  }
+  for (const k of [-300, -12, -1, 0, 1, 12, 299]) {
+    const x = 5 * 10 ** k;
+    for (const hi of [adj(x, -1), x, adj(x, 1)]) rows.push(vt(0, hi, 200, 1000));
+  }
+  const r = stream(s, 9);
+  let seeded = 0;
+  while (seeded < 300) {
+    const mag = 10 ** (-330 + 640 * r());
+    const a = (r() - 0.3) * mag;
+    const equal = r() < 0.1;
+    const scale = equal ? 0 : r();
+    const narrow = equal ? false : r() >= 0.5;
+    const b = equal ? a : a + scale * mag * (narrow ? 1e-6 : 1);
+    const height = Math.floor(r() * 1240);
+    const base = r() < 0.3 ? 1024 : 1000;
+    const [min, max] = a <= b ? [a, b] : [b, a];
+    if (!Number.isFinite(min) || !Number.isFinite(max)) continue;
+    rows.push(vt(min, max, height, base));
+    seeded += 1;
   }
   return rows;
 }
@@ -500,6 +622,7 @@ export async function fixtures(): Promise<Record<string, string>> {
   return {
     'format.json': json(formatRows(s)),
     'ticks.json': json(ticksRows(s)),
+    'ticks-extreme.json': json(ticksExtremeRows(s)),
     'pow.json': json(powRows()),
     'layout.json': json(layoutRows(s, entries)),
     'columns.json': json(columnRows(s)),
