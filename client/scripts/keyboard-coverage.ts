@@ -2,7 +2,8 @@
  * `e2e:a11y-rooms` over the keyboard parts (#130, IA-015): every control any part collected was
  * operated by some part, and every required state was visited by some part, over one project's
  * part files (`e2e/keyboardParts.ts`). Every part must have exactly one file; a part that failed
- * writes none.
+ * writes none. Every `DRAIN_SKIP` key of a part must be operated by a part before it in
+ * `SINGLE_TEST_ORDER` and collected by the part itself.
  *
  * Usage: node scripts/keyboard-coverage.ts <dir> <project>
  *   (<dir> is searched at any depth for `keyboard-coverage/<project>-K*.json`)
@@ -15,6 +16,7 @@ import {
   DRAIN_SKIP,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
+  SINGLE_TEST_ORDER,
   type KeyboardPart,
   type PartCoverage,
 } from '../e2e/keyboardParts.ts';
@@ -55,7 +57,6 @@ export function checkKeyboardCoverage(
   project: string,
   skip: Readonly<Record<KeyboardPart, readonly string[]>> = DRAIN_SKIP,
 ): Finding[] {
-  if (skip === DRAIN_SKIP) parts.slice(); // Stub (#130 tests first).
   const file = `${COVERAGE_DIR}/${project}`;
   const parsed = parts.map((p, i) => parsePart(p, project, i));
   const findings: Finding[] = [];
@@ -103,6 +104,35 @@ export function checkKeyboardCoverage(
       subject: state,
       message: `no part visited ${state}`,
     });
+  }
+  // A part's drain skips (`DRAIN_SKIP`): each must be operated by a part before it in the single
+  // test's order, and collected by the part itself. Only parts whose file is present.
+  for (const id of KEYBOARD_PARTS) {
+    const own = parsed.filter((p) => p.part === id);
+    if (own.length === 0) continue;
+    const earlier = SINGLE_TEST_ORDER.slice(0, SINGLE_TEST_ORDER.indexOf(id));
+    const backing = new Set(
+      parsed.filter((p) => earlier.includes(p.part)).flatMap((p) => p.operated),
+    );
+    const mine = new Set(own.flatMap((p) => p.collected));
+    for (const key of skip[id]) {
+      if (!backing.has(key)) {
+        findings.push({
+          rule: 'keyboard-skip-unbacked',
+          file,
+          subject: `${id} ${key}`,
+          message: `${id} skips ${key}, but no part before it (${earlier.join(', ') || 'none'}) operated it`,
+        });
+      }
+      if (!mine.has(key)) {
+        findings.push({
+          rule: 'keyboard-skip-unused',
+          file,
+          subject: `${id} ${key}`,
+          message: `${id} skips ${key}, but did not collect it: remove it from DRAIN_SKIP`,
+        });
+      }
+    }
   }
   return findings;
 }

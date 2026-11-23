@@ -63,8 +63,10 @@ export function drainPending(
   operated: ReadonlySet<string>,
   done: ReadonlySet<string>,
 ): string[] {
-  // Stub (#130 tests first).
-  return [...keys].filter(() => state === state && operated === operated && done === done);
+  return keys.filter((k) => {
+    const key = `${state} › ${k}`;
+    return !operated.has(key) && !done.has(key);
+  });
 }
 
 /** Under the project's outputDir (test-results/), which Playwright empties at run start. */

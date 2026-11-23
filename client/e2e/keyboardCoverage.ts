@@ -10,6 +10,7 @@
  * overlay's, because React Aria popovers leave the page behind them in the accessibility tree.
  */
 import type { Locator, Page } from '@playwright/test';
+import { drainPending } from './keyboardParts.ts';
 
 export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
   'link',
@@ -176,7 +177,7 @@ export interface KeyboardHarness {
   state: () => Promise<string>;
   /** The accessible `role "name"` of the focused control. */
   focusName: () => Promise<string>;
-  /** Controls on screen now that have not been operated in the current state. */
+  /** Controls on screen now that have not been operated in the current state, nor are `done`. */
   pendingHere: () => Promise<string[]>;
   collected: () => ReadonlySet<string>;
   operated: () => ReadonlySet<string>;
@@ -186,7 +187,15 @@ export interface KeyboardHarness {
   unvisited: (required: readonly string[]) => string[];
 }
 
-export function keyboardHarness(page: Page): KeyboardHarness {
+/**
+ * `done`: keys the part's drains treat as operated because an earlier part operates them
+ * (`DRAIN_SKIP`, #130). They only leave `pendingHere`; `collected`, `operated` and `uncovered`
+ * ignore them.
+ */
+export function keyboardHarness(
+  page: Page,
+  done: ReadonlySet<string> = new Set(),
+): KeyboardHarness {
   const collected = new Set<string>();
   const operated = new Set<string>();
   const visited = new Set<string>();
@@ -375,7 +384,12 @@ export function keyboardHarness(page: Page): KeyboardHarness {
       const { state, root } = await scope();
       const skip = [...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
       const keys = parseSnapshot(await root.ariaSnapshot());
-      return keys.filter((k) => !skip.includes(k) && !operated.has(`${state} › ${k}`));
+      return drainPending(
+        keys.filter((k) => !skip.includes(k)),
+        state,
+        operated,
+        done,
+      );
     },
     collected: () => collected,
     operated: () => operated,
