@@ -167,7 +167,7 @@ test.describe('e2e:logs (fake)', () => {
     const seen = new Map<number, string>();
     const end = page.getByText('End of results');
     let lastSetSize = '';
-    for (let i = 0; i < 400; i++) {
+    for (let i = 0; i < 1_000; i++) {
       const mounted = await rows(page).evaluateAll((els) =>
         els.map((e) => [
           Number(e.getAttribute('data-ord')),
@@ -180,7 +180,9 @@ test.describe('e2e:logs (fake)', () => {
         if (ord === 1499) lastSetSize = size;
       }
       if (seen.has(1499) && (await end.isVisible())) break;
-      await page.mouse.wheel(0, 600);
+      // Under the mounted rows' extent (the 560 px view and the overscan) in every engine: WebKit
+      // scrolls further per wheel delta than Chromium, and 600 px skipped rows there.
+      await page.mouse.wheel(0, 300);
       await page.waitForTimeout(30);
     }
     await expect(end).toBeVisible();
