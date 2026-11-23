@@ -545,7 +545,6 @@ contiguous tokens. First match at `i`:
 | --- | --- |
 | a backtick string continued from an earlier line | `rawString` to the next `` ` `` (closed), else to the end |
 | spaces, tabs, CR, LF | `space` |
-| `#` | `comment` up to the next LF |
 | `"` | `string`: `\` escapes the next code unit; ends after the closing `"`, or unclosed before a LF or at the end |
 | `` ` `` | `rawString` to the next `` ` `` (LF allowed), else unclosed to the end |
 | `\|=` `\|~` `\|>` `!>` | `lineFilter` |
@@ -556,7 +555,15 @@ contiguous tokens. First match at `i`:
 | `{ } ( ) [ ] ,` | brackets and `comma` |
 | a digit | `number`; with a unit, `duration` (`5m`, `1h30m`, `5µs`), `bytes` (`10KB`, `3MiB`) or `error` (`5x`) |
 | `[A-Za-z_]` | `ident` |
-| anything else | `error` over one code point (`$`, an emoji) |
+| anything else | `error` over one code point (`#`, `$`, an emoji) |
+
+**No comments.** PulsusDB's LogQL has no comments (#121). The scanner has no comment state: a `#`
+outside a string is one `error` token, highlighted `invalid` like any other character LogQL does not
+use, and the text after it is scanned as LogQL. So a selector after a `#` still completes. The
+language data has no `commentTokens`, so the comment commands (`Mod-/`) change nothing. A run with a
+top-level `#` is refused by the server with 400 `query.invalid` at the `#`'s byte offset, and the
+editor underlines the `#` (T09-009). The editor adds no diagnostic of its own before a run
+(T09-002).
 
 **Mode stack.** `advance` keeps a stack of frames: `{` opens a selector (`brace`), `(` a `group`
 after `by`, `without`, `on`, `ignoring`, `group_left` or `group_right` and a `paren` otherwise, `[`
@@ -574,7 +581,7 @@ first.
 | other `ident` | `variableName` |
 | `string`, `rawString` (a backtick string over two lines stays a string) | `string` |
 | `number`, `duration`, `bytes` | `number` |
-| operators, `comma`, brackets, comments | `operator`, `brace`, `paren`, `squareBracket`, `comment` |
+| operators, `comma`, brackets | `operator`, `brace`, `paren`, `squareBracket` |
 | `error` | `invalid` (no error colour) |
 
 **Caret contexts** (`caretContext(text, pos)`). The token holding the caret is a string the caret
@@ -590,7 +597,7 @@ two significant tokens before it decide:
 | `duration` | in a range `[…]` | slot 0 | `1m 5m 10m 15m 30m 1h 6h 12h 24h` |
 | `grouping` | in `by (…)` and the like, after `(` or `,` | slot 1 | `labelNames(first selector)` |
 | `function` | at the start, after `(`, `,`, an operator, `and`, `or`, `unless` or `bool` | slot 0 | `FUNCTIONS` |
-| `none` | in a line filter string, a comment, after a closed selector, anything else | — | — |
+| `none` | in a line filter string, after a closed selector, anything else | — | — |
 
 **Scope.** The selector of a lookup is the other complete matchers of the caret's selector (name,
 operator, closed string) at its own depth, copied as written and joined by `, ` in `{…}`, matchers
