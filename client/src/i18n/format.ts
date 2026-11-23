@@ -8,7 +8,7 @@ import { t, type MessageId } from './t';
 
 const LOCALE = 'en-GB';
 
-type Kind = 'date' | 'time' | 'dayMonth' | 'hourMinute' | 'zoneShort' | 'zoneLong';
+type Kind = 'date' | 'time' | 'dayMonth' | 'hourMinute' | 'zoneShort' | 'zoneLong' | 'logTime';
 
 const OPTIONS: Readonly<Record<Kind, Intl.DateTimeFormatOptions>> = {
   date: { day: 'numeric', month: 'short', year: 'numeric' },
@@ -17,6 +17,16 @@ const OPTIONS: Readonly<Record<Kind, Intl.DateTimeFormatOptions>> = {
   hourMinute: { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
   zoneShort: { timeZoneName: 'short' },
   zoneLong: { timeZoneName: 'longOffset' },
+  logTime: {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+    hourCycle: 'h23',
+  },
 };
 
 const cache = new Map<string, Intl.DateTimeFormat>();
@@ -71,10 +81,13 @@ export function formatRangeShort(fromMs: number, toMs: number, tz: string): stri
   return `${dm(fromMs)} ${hm(fromMs)} – ${dm(toMs)} ${hm(toMs)} ${zone}`;
 }
 
-/** `2026-01-01 00:58:20.000` in `tz` (plan #66 Part B §3.8). Stub: implemented in the next commit. */
+/** `2026-01-01 00:58:20.000` in `tz`, built from formatToParts (year-month-day
+ *  hour:minute:second.fraction; plan #66 Part B §3.8). */
 export function formatLogTime(ms: number, tz: string): string {
-  void [ms, tz];
-  throw new Error('not implemented');
+  const p: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+  for (const part of formatter('logTime', tz).formatToParts(ms)) p[part.type] = part.value;
+  const v = (k: Intl.DateTimeFormatPartTypes): string => p[k] ?? '';
+  return `${v('year')}-${v('month')}-${v('day')} ${v('hour')}:${v('minute')}:${v('second')}.${v('fractionalSecond')}`;
 }
 
 /** 'Europe/London (GMT)', 'America/New_York (GMT-05:00)'; a zero offset is shown as plain GMT. */
