@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-21 |
+| **Version** | 1.7-rc · 2026-11-22 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -313,6 +313,13 @@ queries and `+ Filter` (`label=value`), values in the URL only and not applied t
 sections are collapsible with a panel count, collapsed sections neither render nor query, the
 Edit-mode collapsed state is saved with the board and View-mode toggles are URL overrides
 (`collapse`/`expand`), not saved; the anomaly strip stays M-UI5.
+
+*Note (M-UI1, #64 Part B):* the panel editor gains Thresholds (up to 8 absolute steps, each a
+value, a state and a label, and the direction in which values are worse) and Legend (Table or
+Hidden). A line or bars panel shows a legend table under its chart (mean, max and last, with the
+values beyond a threshold in the threshold's state, and click to isolate), compact with the table in
+a popover on short panels; threshold lines are dashed with their labels. A stat panel with
+thresholds shows a state chip and its threshold text, and a range query draws a sparkline.
 
 #### SRF-014 — Board layout
 **MUST** · M-UI5 · Engineer, SRE, NOC
@@ -1136,6 +1143,7 @@ release and in the team channel.
 | 1.4-rc | 2026-11-20 | #61 Part B: §4.3 note on the M-UI1 edit-mode regions (toolbar with Add panel, Save current time range, Discard, Save and Done; panel editor at the right); Undo and History stay M-UI5 (SRF-020) |
 | 1.5-rc | 2026-11-21 | #61 Part C: §4.3 note on the M-UI1 filter bar (variable chips and `+ Filter`, URL only) and collapsible sections (no render, no query; Edit state saved, View toggles as URL overrides); the anomaly strip stays M-UI5 (SRF-016) |
 | 1.6-rc | 2026-11-21 | #90: §4.3 the M-UI1 panel editor is a centred modal window with a live preview (owner decision 2026-11-21); the region table's viewport editor is a modal window |
+| 1.7-rc | 2026-11-22 | #64 Part B: §4.3 note: the panel editor's Thresholds and Legend, the legend table, threshold lines and the stat chip (M-UI1) |
 
 ## Resolved during formalisation
 

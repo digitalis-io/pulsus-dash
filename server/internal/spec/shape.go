@@ -24,7 +24,8 @@ type kind int
 const (
 	kString kind = iota
 	kBool
-	kInt // a JSON number with no '.', 'e' or 'E' that fits int32
+	kInt    // a JSON number with no '.', 'e' or 'E' that fits int32
+	kNumber // any JSON number that is a finite float64 (not 1e400)
 	kArray
 	kObject
 	kAny // any JSON value, checked later (the spec inside a request envelope)
@@ -48,10 +49,18 @@ var (
 	tString = valueType{kind: kString}
 	tBool   = valueType{kind: kBool}
 	tInt    = valueType{kind: kInt}
+	tNumber = valueType{kind: kNumber}
 
 	gridShape  = []field{{"x", true, tInt}, {"y", true, tInt}, {"w", true, tInt}, {"h", true, tInt}}
 	queryShape = []field{{"lang", true, tString}, {"text", true, tString}}
-	visShape   = []field{{"kind", true, tString}}
+	// Board spec v2 (#64 Part B §3.1): thresholds and legend are optional members of vis.
+	stepShape       = []field{{"value", true, tNumber}, {"state", true, tString}, {"label", true, tString}}
+	thresholdsShape = []field{{"direction", true, tString},
+		{"steps", true, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: stepShape}}}}
+	legendShape = []field{{"mode", true, tString}}
+	visShape    = []field{{"kind", true, tString},
+		{"thresholds", false, valueType{kind: kObject, shape: thresholdsShape}},
+		{"legend", false, valueType{kind: kObject, shape: legendShape}}}
 	panelShape = []field{{"id", true, tString}, {"title", true, tString},
 		{"grid", true, valueType{kind: kObject, shape: gridShape}},
 		{"query", true, valueType{kind: kObject, shape: queryShape}},
@@ -168,7 +177,17 @@ func (c *shapeChecker) value(pointer string, t valueType) error {
 			c.add(pointer, keyType)
 		}
 	case json.Number:
-		if t.kind != kInt || !isInt32(string(v)) {
+		switch t.kind {
+		case kInt:
+			if !isInt32(string(v)) {
+				c.add(pointer, keyType)
+			}
+		case kNumber:
+			// Float64 fails only out of range (1e400): not a finite number.
+			if _, err := v.Float64(); err != nil {
+				c.add(pointer, keyType)
+			}
+		default:
 			c.add(pointer, keyType)
 		}
 	}

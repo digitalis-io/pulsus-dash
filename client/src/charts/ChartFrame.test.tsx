@@ -103,6 +103,7 @@ function summary(
     last,
     plot: PLOT,
     valueAxis: kind === 'line' || kind === 'bars' ? { min, max, manual: false } : null,
+    thresholdLabels: [],
   };
 }
 
@@ -319,6 +320,50 @@ describe('component summary label follows the spec', () => {
       'U: line chart, 50 series, 12:00 – 13:00 GMT. Min 24 s, max 5.6 min, last 3.33 min.',
     );
     expect(engine.frames).toHaveLength(1);
+  });
+});
+
+describe('component threshold labels (#64 Part B)', () => {
+  it('clipped labels get focusable tooltips', async () => {
+    const engine = fakeEngine();
+    const spec: VisSpec = {
+      ...LINE7,
+      thresholds: [
+        { value: 5, state: 'failing', label: 'A long objective label' },
+        { value: 3, state: 'watch', label: 'Warn' },
+      ],
+    };
+    renderFrame(engine, spec, DATA);
+    await waitFor(() => {
+      expect(engine.frames).toHaveLength(1);
+    });
+    const full = '■ A long objective label';
+    act(() => {
+      lastFrame(engine).emit('a11y', {
+        ...summary('line', 1, 1, 1, 1),
+        thresholdLabels: [
+          { box: { x: 66, y: 20, width: 120, height: 15 }, text: full, clipped: true },
+          { box: { x: 66, y: 60, width: 49, height: 15 }, text: '◐ Warn', clipped: false },
+        ],
+      });
+    });
+    const hits = document.querySelectorAll<HTMLElement>('[data-threshold-hit]');
+    expect(hits).toHaveLength(1);
+    const hit = hits[0];
+    expect(hit, 'no hit target').not.toBeUndefined();
+    if (hit === undefined) throw new Error('no hit target');
+    expect(hit).toHaveAttribute('aria-label', full);
+    expect(hit).toHaveAttribute('tabindex', '0');
+    expect(parseFloat(hit.style.width)).toBeGreaterThanOrEqual(24);
+    expect(parseFloat(hit.style.height)).toBeGreaterThanOrEqual(24);
+    // Grown about the box's centre (T08-010): the 15 px tall box becomes 24 px.
+    expect(parseFloat(hit.style.top)).toBeCloseTo(20 + 7.5 - 12, 6);
+    expect(parseFloat(hit.style.left)).toBeCloseTo(66, 6);
+    const user = userEvent.setup();
+    await user.tab();
+    await user.tab();
+    expect(hit).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(full);
   });
 });
 

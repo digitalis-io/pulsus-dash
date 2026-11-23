@@ -10,11 +10,12 @@ import {
   seriesFrame,
   type Harness,
 } from '../../test/engineHarness';
-import { colour, seriesPalette, sequentialRamp } from '../../styles/tokens';
+import { colour, seriesPalette, sequentialRamp, size } from '../../styles/tokens';
 import { bucketScale } from './bucketScale';
 import { barStats } from './summary';
 import { brushSnapUnit } from './columns';
 import { Canvas2DEngine, ChartUnsupportedError, MAX_SERIES } from './Canvas2DEngine';
+import { seriesColourIndex } from './palette';
 
 const K = (i: number): string => `00000000000000${i.toString(16).padStart(2, '0')}`;
 const STATE = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
@@ -264,6 +265,119 @@ describe('engine', () => {
         .calls('fillText')
         .map((o) => o.args[0]),
     ).toEqual(['—']);
+  });
+
+  it('stat sparkline from series', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const s = seriesFrame(K(3), [W0, W0 + 30 * MIN, W0 + 60 * MIN], [1, 3, 2]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke'].includes(o.op));
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
+      ['moveTo', 12, 152],
+      ['lineTo', 150, 120],
+      ['lineTo', 288, 136],
+      ['stroke'],
+    ]);
+    const stroke = h.layer().calls('stroke')[0];
+    expect(stroke?.strokeStyle).toBe(
+      colour.dark[`series-${String(seriesColourIndex(s) + 1)}` as keyof typeof colour.dark],
+    );
+    const value = h.layer().calls('fillText')[0];
+    expect(value?.args).toEqual(['2', 150, 60]);
+  });
+
+  it('stat sparkline joins its finite points across absent ones', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const ts = [0, 15, 30, 45, 60].map((m) => W0 + m * MIN);
+    const s = seriesFrame(K(3), ts, [1, NaN, 3, NaN, 2]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke', 'arc'].includes(o.op));
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
+      ['moveTo', 12, 152],
+      ['lineTo', 150, 120],
+      ['lineTo', 288, 136],
+      ['stroke'],
+    ]);
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+  });
+
+  it('stat sparkline of one finite point is a dot', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const s = seriesFrame(K(3), [W0, W0 + 30 * MIN, W0 + 60 * MIN], [NaN, 3, NaN]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const layer = h.layer();
+    expect(layer.calls('lineTo')).toHaveLength(0);
+    expect(layer.calls('arc').map((o) => o.args)).toEqual([
+      [150, 136, size['chart-line'], 0, 2 * Math.PI],
+    ]);
+    const fill = layer.ops.filter((o) => o.op === 'fill');
+    expect(fill).toHaveLength(1);
+    expect(fill[0]?.fillStyle).toBe(
+      colour.dark[`series-${String(seriesColourIndex(s) + 1)}` as keyof typeof colour.dark],
+    );
+    expect(layer.calls('fillText')[0]?.args).toEqual(['3', 150, 60]);
+  });
+
+  it('stat sparkline scales to the finite points inside the window', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const ts = [-30, 0, 30, 60, 90].map((m) => W0 + m * MIN);
+    const s = seriesFrame(K(3), ts, [100, 1, 3, 2, -50]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke'].includes(o.op));
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
+      ['moveTo', 12, 152],
+      ['lineTo', 150, 120],
+      ['lineTo', 288, 136],
+      ['stroke'],
+    ]);
+  });
+
+  it('stat sparkline: one visible point is a dot at mid-height', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const ts = [-30, 30, 90].map((m) => W0 + m * MIN);
+    const s = seriesFrame(K(3), ts, [10, 3, -10]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    expect(h.layer().calls('lineTo')).toHaveLength(0);
+    expect(
+      h
+        .layer()
+        .calls('arc')
+        .map((o) => o.args),
+    ).toEqual([[150, 136, size['chart-line'], 0, 2 * Math.PI]]);
+  });
+
+  it('stat without sparkline: scalar; short frame', () => {
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    const scalar = harness(Canvas2DEngine);
+    show(
+      scalar,
+      spec,
+      { kind: 'scalar', scalar: { value: 7, timestampMs: 0 } },
+      { fromMs: 0, toMs: 1 },
+      [300, 160, 1],
+    );
+    expect(scalar.layer().calls('stroke')).toHaveLength(0);
+    expect(scalar.layer().calls('fillText')[0]?.args).toEqual(['7', 150, 80]);
+    const short = harness(Canvas2DEngine);
+    const s = seriesFrame(K(3), [0, 1_000, 2_000], [1, 3, 2]);
+    show(short, spec, seriesData(s), { fromMs: 0, toMs: 2_000 }, [300, 100, 1]);
+    expect(short.layer().calls('stroke')).toHaveLength(0);
+    expect(short.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 50]);
   });
 
   it('hover: snaps to the nearest sample and reports every series', () => {

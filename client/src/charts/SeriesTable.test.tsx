@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { SeriesRow } from '../../explore/seriesRows';
+import type { SeriesRow } from '../explore/seriesRows';
+import { TABLE_ROWS } from '../explore/seriesRows';
 import { SeriesTable, type SeriesTableProps } from './SeriesTable';
 
 const row = (i: number): SeriesRow => ({
@@ -9,8 +10,10 @@ const row = (i: number): SeriesRow => ({
   colourIndex: i % 8,
   last: i,
   max: i * 10,
+  mean: i * 5,
 });
 const ROWS = [row(0), row(1), row(2)];
+const caption = 'Series. Choose a series to show it alone; choose it again to show all.';
 
 function props(o: Partial<SeriesTableProps> = {}): SeriesTableProps {
   return {
@@ -22,11 +25,12 @@ function props(o: Partial<SeriesTableProps> = {}): SeriesTableProps {
     onIsolate: vi.fn(),
     swatches: true,
     unit: { kind: 'none' },
+    caption,
+    columns: ['last', 'max'],
+    maxRows: TABLE_ROWS,
     ...o,
   };
 }
-
-const caption = 'Series. Choose a series to show it alone; choose it again to show all.';
 
 describe('SeriesTable', () => {
   it('sorting, isolation and dimming', () => {
@@ -72,5 +76,41 @@ describe('SeriesTable', () => {
     render(<SeriesTable {...props({ rows, total: 600 })} />);
     expect(screen.getAllByRole('row')).toHaveLength(501);
     expect(screen.getByText('Showing the first 500 of 600 series')).toBeInTheDocument();
+  });
+
+  it('SeriesTable columns, maxRows, cellState', () => {
+    const rows = [
+      { ...row(1), mean: 1, max: 3, last: 1 },
+      { ...row(2), mean: 2.5, max: 2.5, last: 2 },
+      { ...row(3), mean: 0.5, max: 1, last: 0.5 },
+    ];
+    render(
+      <SeriesTable
+        {...props({
+          rows,
+          total: 3,
+          caption: 'Legend',
+          columns: ['mean', 'max', 'last'],
+          maxRows: 2,
+          cellState: (v) => (v !== null && v >= 2.5 ? 'degraded' : null),
+        })}
+      />,
+    );
+    const table = screen.getByRole('table', { name: 'Legend' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Series', 'Mean', 'Max', 'Last']);
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(2);
+    expect(screen.getByText('Showing the first 2 of 3 series')).toBeInTheDocument();
+    const hot = table.querySelectorAll('td[data-state="degraded"]');
+    // Row 1's max (3) and row 2's mean and max (2.5).
+    expect(hot).toHaveLength(3);
+    const first = hot[0] as HTMLElement;
+    expect(first.textContent).toContain('◉');
+    expect(first.querySelector('[aria-hidden="true"]')?.textContent).toBe('◉');
+    expect(within(first).getByText('Degraded')).toBeInTheDocument();
+    expect(table.querySelectorAll('td[data-state]')).toHaveLength(3);
   });
 });

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/draw.ts';
+import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/layout.ts';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the suite. */
 export const T = Date.UTC(2026, 10, 19, 13, 3);
@@ -74,6 +74,8 @@ export const GALLERY_IDS = [
   'heatmap',
   'bars',
   'stat',
+  'line-thresholds',
+  'stat-sparkline',
 ] as const;
 
 /** The chart frame of a gallery entry. */
@@ -107,9 +109,11 @@ export function timeAt(boxX: number, plot: Plot, x: number, fromMs: number, toMs
   return fromMs + ((x - boxX - plot.x) / plot.width) * (toMs - fromMs);
 }
 
-/** Waits until all seven gallery charts have drawn with their fonts loaded. */
+/** Waits until every gallery chart has drawn with its fonts loaded. */
 export async function galleryReady(page: Page): Promise<void> {
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(7);
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(
+    GALLERY_IDS.length,
+  );
   await page.waitForFunction(
     (fonts) => fonts.every((f) => document.fonts.check(f)),
     [AXIS_FONT, STAT_FONT],

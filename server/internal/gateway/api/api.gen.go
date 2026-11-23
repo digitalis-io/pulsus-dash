@@ -139,6 +139,24 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for LegendMode.
+const (
+	Hidden LegendMode = "hidden"
+	Table  LegendMode = "table"
+)
+
+// Valid indicates whether the value is a known member of the LegendMode enum.
+func (e LegendMode) Valid() bool {
+	switch e {
+	case Hidden:
+		return true
+	case Table:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LogDirection.
 const (
 	Backward LogDirection = "backward"
@@ -400,6 +418,45 @@ func (e ReadyChecksSchema) Valid() bool {
 	}
 }
 
+// Defines values for ThresholdStepState.
+const (
+	Degraded ThresholdStepState = "degraded"
+	Failing  ThresholdStepState = "failing"
+	Watch    ThresholdStepState = "watch"
+)
+
+// Valid indicates whether the value is a known member of the ThresholdStepState enum.
+func (e ThresholdStepState) Valid() bool {
+	switch e {
+	case Degraded:
+		return true
+	case Failing:
+		return true
+	case Watch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ThresholdsDirection.
+const (
+	Above ThresholdsDirection = "above"
+	Below ThresholdsDirection = "below"
+)
+
+// Valid indicates whether the value is a known member of the ThresholdsDirection enum.
+func (e ThresholdsDirection) Valid() bool {
+	switch e {
+	case Above:
+		return true
+	case Below:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VisKind.
 const (
 	Auto    VisKind = "auto"
@@ -589,6 +646,14 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// Legend defines model for Legend.
+type Legend struct {
+	Mode LegendMode `json:"mode"`
+}
+
+// LegendMode defines model for Legend.Mode.
+type LegendMode string
 
 // LogDirection defines model for LogDirection.
 type LogDirection string
@@ -883,6 +948,25 @@ type TenantInfo struct {
 	Slug       string           `json:"slug"`
 }
 
+// ThresholdStep defines model for ThresholdStep.
+type ThresholdStep struct {
+	Label string             `json:"label"`
+	State ThresholdStepState `json:"state"`
+	Value float64            `json:"value"`
+}
+
+// ThresholdStepState defines model for ThresholdStep.State.
+type ThresholdStepState string
+
+// Thresholds defines model for Thresholds.
+type Thresholds struct {
+	Direction ThresholdsDirection `json:"direction"`
+	Steps     []ThresholdStep     `json:"steps"`
+}
+
+// ThresholdsDirection defines model for Thresholds.Direction.
+type ThresholdsDirection string
+
 // TimeRange defines model for TimeRange.
 type TimeRange struct {
 	From string `json:"from"`
@@ -911,7 +995,9 @@ type Version struct {
 
 // Vis defines model for Vis.
 type Vis struct {
-	Kind VisKind `json:"kind"`
+	Kind       VisKind     `json:"kind"`
+	Legend     *Legend     `json:"legend,omitempty"`
+	Thresholds *Thresholds `json:"thresholds,omitempty"`
 }
 
 // VisKind defines model for Vis.Kind.

@@ -1,0 +1,1 @@
+{"title":"New board","panels":[{"id":"p-1","title":"Bounds","grid":{"x":0,"y":0,"w":6,"h":8},"query":{"lang":"promql","text":"up"},"vis":{"kind":"line","thresholds":{"direction":"above","steps":[{"value":-1e-9,"state":"watch","label":""},{"value":0,"state":"degraded","label":""},{"value":1e-9,"state":"failing","label":""}]}}}],"sections":[]}

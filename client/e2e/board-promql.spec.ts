@@ -6,10 +6,10 @@
  */
 import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
+import { createBoard, deleteBoard } from './boardApi.ts';
 import { fakeRequests, runShift, sec, type FakeRequest } from './fake.ts';
 import { searchOf, timeTrigger } from './helpers.ts';
 
-const API = '/api/dash/v1/boards';
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const W1 = Date.UTC(2026, 1, 1);
@@ -35,42 +35,6 @@ const iso = (ms: number): string => new Date(ms).toISOString();
 function boardUrl(uid: string, from: number, to: number = from + HOUR): string {
   const e = (ms: number) => encodeURIComponent(iso(ms));
   return `/t/demo/board/${uid}?from=${e(from)}&to=${e(to)}&refresh=off`;
-}
-
-interface PanelInput {
-  id: string;
-  title: string;
-  text: string;
-  grid: [number, number, number, number];
-}
-
-const panelSpec = (p: PanelInput) => ({
-  id: p.id,
-  title: p.title,
-  grid: { x: p.grid[0], y: p.grid[1], w: p.grid[2], h: p.grid[3] },
-  query: { lang: 'promql', text: p.text },
-  vis: { kind: 'auto' },
-});
-
-/** Creates a board through the boards API (201) and returns its uid. */
-async function createBoard(
-  request: APIRequestContext,
-  title: string,
-  panels: readonly PanelInput[],
-): Promise<string> {
-  const created = await request.post(API, {
-    data: { spec: { title, panels: panels.map(panelSpec), sections: [] } },
-  });
-  expect(created.status()).toBe(201);
-  return ((await created.json()) as { uid: string }).uid;
-}
-
-async function deleteBoard(request: APIRequestContext, uid: string | null): Promise<void> {
-  if (uid === null) return;
-  const head = await request.get(`${API}/${uid}`);
-  if (head.status() !== 200) return;
-  const { etag } = (await head.json()) as { etag: string };
-  await request.delete(`${API}/${uid}`, { headers: { 'If-Match': `"${etag}"` } });
 }
 
 const panel = (page: Page, title: string) =>
@@ -145,6 +109,8 @@ test.describe('e2e:board-promql (fake)', () => {
       await expect(panel(page, 'P1')).toHaveAttribute('data-panel-vis', 'line');
       await expect(panel(page, 'P2')).toHaveAttribute('data-panel-vis', 'heatmap');
       await expect(panel(page, 'P3')).toHaveAttribute('data-panel-vis', 'line');
+      // #64 Part B: a line panel shows its legend by default.
+      await expect(panel(page, 'P1').locator('[data-panel-legend]')).toBeVisible();
 
       // The override, saved with the panel.
       await page.getByRole('button', { name: 'Panel menu: P1' }).click();

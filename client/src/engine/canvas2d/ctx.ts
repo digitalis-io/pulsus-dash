@@ -17,6 +17,7 @@ export type Ctx2D = Pick<
   | 'clip'
   | 'save'
   | 'restore'
+  | 'setLineDash'
   | 'fillStyle'
   | 'strokeStyle'
   | 'lineWidth'

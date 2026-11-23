@@ -29,6 +29,8 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
     'b-1 edit, PromQL editor': ['label'],
     'b-1 edit, metric picker open': ['label'],
     'b-1 edit, partial data popover': ['label'],
+    // The same crash with the panel editor's threshold rows (#64 Part B).
+    'b-1 edit, thresholds': ['label'],
   },
 };
 
@@ -127,6 +129,29 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   };
   await edit();
   await check('b-1 edit, editor open');
+
+  // #64 Part B (B.3 A1): legends, the stat chip, the compact legend's table and the thresholds.
+  await open(page, '/t/demo/board/b-1');
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(2);
+  await page.locator('[data-panel-legend]').first().waitFor();
+  await page.locator('[data-stat-chip]').first().waitFor();
+  await check('b-1 view, legend and stat chip');
+
+  await open(page, '/t/demo/board/b-1');
+  await page.getByRole('button', { name: 'Edit board' }).click();
+  await expect(page.locator('.react-grid-item')).toHaveCount(4);
+  await page.getByRole('button', { name: 'Move or resize: Request rate' }).focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press('Shift+ArrowUp');
+  const short = page.locator('[data-panel="p-1"]');
+  await expect(short).toHaveAttribute('data-grid', /,4$/);
+  await short.locator('[data-panel-legend="compact"]').waitFor();
+  await short.getByRole('button', { name: 'Legend table' }).click();
+  await page.getByRole('dialog', { name: /^Legend\. / }).waitFor();
+  await check('b-1 edit, compact legend table');
+
+  await edit();
+  await expect(editor.getByRole('textbox', { name: 'Value' })).toHaveCount(2);
+  await check('b-1 edit, thresholds');
 
   // Plan #64 A.3: the PromQL editor and the metric picker in the dialog.
   await edit();
@@ -350,7 +375,7 @@ test.describe('e2e:a11y-rooms gallery', () => {
   test('gallery canvases expose their summary', async ({ page }) => {
     await open(page, GALLERY_URL);
     await galleryReady(page);
-    await expect(page.locator('canvas[role="img"]')).toHaveCount(7);
+    await expect(page.locator('canvas[role="img"]')).toHaveCount(9);
     const label = (id: string) => frame(page, id).locator('canvas').getAttribute('aria-label');
     const range = '12:00 – 13:00 GMT';
     expect(await label('line-50')).toMatch(

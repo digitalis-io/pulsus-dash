@@ -251,6 +251,14 @@ export async function boardLoops(s: Script): Promise<void> {
             await expect(
               page.getByRole('heading', { level: 3, name: `${title} (copy)` }),
             ).toBeVisible();
+            // Duplicate enters Edit: the lazy Edit grid replaces the View grid's panels, and only
+            // its panels have Move or resize. Wait for it, or a drain round that starts on the
+            // fallback finds the copy's Edit tools missing and ends with them uncollected.
+            await expect(
+              page
+                .locator('.react-grid-item')
+                .filter({ has: page.getByRole('heading', { level: 3, name: `${title} (copy)` }) }),
+            ).toHaveCount(1);
             await settledPanel(`${title} (copy)`);
           },
           0,
@@ -567,6 +575,28 @@ export async function boardLoops(s: Script): Promise<void> {
         await expect(page.getByRole('listbox')).toBeVisible();
       });
     }
+    // #64 Part B: the editor on b-1's Request rate, which has thresholds (B.9): the Worse when and
+    // Legend list boxes, and the compact legend's table in the preview (the preview is short).
+    const thresholdsEditor = async (): Promise<void> => {
+      await s.goto('/t/demo/board/b-1');
+      await s.on('button "Edit board"');
+      await expect(page.locator('.react-grid-item')).toHaveCount(4);
+      await s.menuItem('button "Panel menu: Request rate"', 0);
+      await expect(editor).toBeVisible();
+      await expect(editor.getByRole('textbox', { name: 'Value' })).toHaveCount(2);
+    };
+    for (const which of ['Worse when', 'Legend']) {
+      await s.drain(`${which} list box`, async () => {
+        await thresholdsEditor();
+        await s.on(new RegExp(`^button ".+ ${which}"$`));
+        await expect(page.getByRole('listbox')).toBeVisible();
+      });
+    }
+    await s.drain('b-1 preview legend table', async () => {
+      await thresholdsEditor();
+      await s.on('button "Legend table"');
+      await expect(page.getByRole('dialog', { name: /^Legend\. / })).toBeVisible();
+    });
   });
 
   await test.step('L28 Guard and conflict', async () => {

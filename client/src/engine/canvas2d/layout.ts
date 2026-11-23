@@ -2,6 +2,13 @@
 import { font, size, space } from '../../styles/tokens';
 import type { PlotRect, VisKind } from '../api';
 
+/**
+ * Canvas fonts (plan #58 Appendix A §A.3). Here rather than in `draw.ts`, which re-exports them, so
+ * the e2e helpers read them without loading `StateEncoding`'s CSS module.
+ */
+export const AXIS_FONT = `${String(font.size.xs)}px ${font.family.mono}`;
+export const STAT_FONT = `${String(font.weight.semibold)} ${String(font.size.display)}px ${font.family.ui}`;
+
 /** The height of one axis label line. */
 export const LABEL_HEIGHT = Math.ceil(font.size.xs * font.lineHeight.tight);
 

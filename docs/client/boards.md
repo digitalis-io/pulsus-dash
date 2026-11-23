@@ -147,13 +147,108 @@ query error arrive as byte offsets into the raw text (the server maps them, ADR-
 diagnostics use the identity map (T09-009). The line is 1-based, split on `\n`; the column counts
 code points.
 
-`framePlan` is computed once per result, vis and rate (`panelRun.ts` caches it in a `WeakMap` keyed
-by the result), so a panel's remounts, full screen and the preview reuse the same frame data.
+`framePlan` is computed once per result, vis, rate and isolated series (`panelRun.ts` caches it in a
+`WeakMap` keyed by the result, `${vis}|${rateApplied}|${isolatedKey ?? ''}`), so a panel's
+remounts, full screen and the preview reuse the same frame data.
+
+`panelView(run, panel.vis, title)` takes the panel's whole `vis`. A frame view also carries the
+result (`result`, for the legend and isolation), `rateApplied`, the panel's `thresholds`
+(`panel.vis.thresholds ?? null`) and `legend` (`panel.vis.legend?.mode ?? 'table'`). On line and
+bars its spec has `thresholds = thresholdLines(thresholds, spec.unit)` (the seam lines of
+[ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)); heatmap and stat specs
+never carry them. `panelFrame(view, key)` is the frame with series `key` isolated (the cached
+`framePlan` isolation, thresholds carried over), and `legendRows(result)` the legend rows
+(`seriesRows`, cached per result).
 
 `data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
 the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
 labelled "`<badge>`: `<title>`") shows with any frame or message of an outcome and opens Explore's
 `CompletenessNotice` in a popover.
+
+## Thresholds, legends and stat tiles (#64 Part B)
+
+Board spec version 2 adds two optional members to a panel's `vis`
+([Boards API](../server/boards-api.md#board-spec-v2)):
+
+```json
+"vis": {
+  "kind": "line",
+  "thresholds": { "direction": "above", "steps": [{ "value": 1.5, "state": "degraded", "label": "SLO" }] },
+  "legend": { "mode": "hidden" }
+}
+```
+
+`client/src/boards/spec.ts` checks them with the server's rules, order, pointers and keys: a
+`number` shape kind (a finite number; the editor's draft can hold `NaN`, which is
+`board.json.type`), then direction, 1–8 steps, a value of 0 or `MIN_THRESHOLD_ABS` (1e-9) ≤ |v| ≤
+`MAX_THRESHOLD_ABS` (1e15), no duplicate value, state, label and legend mode.
+
+### The evaluator (`vis/thresholds.ts`)
+
+The one threshold evaluator of the client (T02-018 in the interim client): the legend highlight,
+the stat chip and the threshold labels all use it.
+
+| Function | Rule |
+|---|---|
+| `crosses(t, s, v)` | above: v ≥ s.value; below: v ≤ s.value; false for NaN; ±Inf compare normally |
+| `crossed(t, v)` | the most severe step v crosses (watch < degraded < failing); ties go to the furthest (above: the largest value; below: the smallest) |
+| `stateOf(t, v)` | null without thresholds; `unknown` for null or NaN; `ok` when nothing is crossed; else the crossed step's state |
+| `nextStep(t, v)` | above: the smallest value > v; below: the largest value < v; for null or NaN, the first step in the direction; null when every step is crossed |
+| `displayText(t, s, unit)` | the label when it has a non-space character, else `≥ <value>` (above) or `≤ <value>` (below) |
+| `thresholdLines(t, unit)` | the seam lines: finite steps in spec order, labelled with `displayText` |
+
+### The panel body
+
+`PanelChart` renders by the drawn vis (`view.vis`):
+
+| Vis | DOM |
+|---|---|
+| line, bars | `.frameStack[data-legend]`: the chart cell, then the legend when `legend` is `table` and there are rows: `[data-panel-legend="table"]` (`SeriesTable` with Mean, Max, Last, at most `LEGEND_ROWS` = 50) or `LegendCompact` (`[data-panel-legend="compact"]`) |
+| stat | `.statStack[data-stat-stack]`: `[data-stat-chip][data-state]` (`StateGlyph`) when the panel has thresholds, the chart cell, then `[data-stat-threshold]` (with `data-crossed` when the value crossed a step) |
+| heatmap | the chart alone: no legend; thresholds are ignored |
+
+- **Layout.** `useLegendLayout()` observes the stack's content height (one `ResizeObserver`): the
+  table from `size.board-legend-table-min` (240 px) and while not yet measured, compact below. The
+  stack fills the body, so the legend's own height never changes the layout. A 4-row panel is
+  compact; 6 rows and up have a table.
+- **First frame (#90).** The stack is measured once when it attaches (in the commit), and a line
+  or bars chart mounts only then, so the layout is final before the chart is sized. In the same
+  commit the chart cell's size goes into the panel's size memo, which the chart pre-sizes from: a
+  chart under a legend, or a stat under its chip, is sized once and draws in its first frame.
+- **Compact.** One button per series (`[data-legend-item]`, at least 24 px tall, `title` = the full
+  name) with its swatch, name and last value; "Legend table" (`[data-legend-table]`) opens the same
+  table in a popover dialog named by the caption.
+- **Isolation and sort.** `isolatedKey` and the sort are `PanelChart` state: never saved, never in
+  the URL, and no request (the frame is `panelFrame(view, key)`). The isolation applies only while
+  the rows still have the key.
+- **Highlights.** `cellState(v)` is `stateOf(thresholds, v)` limited to watch, degraded and failing;
+  mean, max and last are highlighted: `td.stateCell[data-state]` with the glyph (`aria-hidden`) and
+  the hidden state name.
+- **Stat.** `v = statValue(view.data)` (finite, else null). The chip is `unknown` for no value, the
+  crossed step's state, or `ok`; the text is the crossed step (in its state's colour, `data-crossed`)
+  or the next step (muted), as `<glyph> <displayText>`.
+
+### The editor's Thresholds and Legend
+
+`ThresholdsField` and the Legend select follow Visualisation. Every vis edit is one `updatePanel`
+of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend;
+Legend Table and the last threshold's removal delete their member (the saved spec has no key).
+**Add threshold** starts at `{ direction: 'above', steps: [{ value: 0, state: 'degraded' }] }`, then
+adds the largest finite value + 1 (above) or the smallest − 1 (below); it is disabled at 8.
+
+Each Value field keeps its own text. On every change the trimmed text is matched against
+`^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$` and stored as its number, or as `NaN` with the local
+error "Enter a number"; a number outside the range is stored as typed and shows the range error at
+once. Either local error replaces the save error under the field. The draft's `checkBoardSpec`
+stops the save on `NaN` (`board.json.type`) or the range (`board.thresholds.value.range`), so
+nothing invalid is sent. The text is re-seeded only when the value changes from outside and the text
+does not already read as it. Rows are memoised by index, so a keystroke renders one row
+(`bench:rooms-long-tasks` "board editor, 8 thresholds").
+
+To keep opening the editor out of one long task, the Thresholds and Legend fields mount in the
+animation frame after the dialog, and the threshold rows then appear two per frame; a row added
+after that renders at once. `PanelChart` is memoised, so an edit to one panel, or opening the
+editor, does not render the other panels' charts and legends again.
 
 ## Open in Explore
 
@@ -213,11 +308,19 @@ and the run on leaving the field do nothing, so nothing typed can be lost or run
 hooks `pulsus-dash.stub.queryDelayMs` and `pulsus-dash.stub.failQuery` (they replace #90's
 `panelDelayMs` and `failPanelData`), leaving a `stub:query` mark per call
 ([Client application › StubApi](README.md#stubapi)). `Api.panelData`, `PanelData` and
-`stubPanels.ts` are removed: panels have one query path per language (ADR-0018).
+`stubPanels.ts` are removed: panels have one query path per language (ADR-0018). On b-1, Request
+rate has two thresholds (watch 1500, degraded 2500 "Capacity") and Error ratio two (degraded 0.01,
+failing 0.05 "SLO breach").
 
 ## Design references
 
 - [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md): query planning on the server.
+- [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md): threshold lines and the
+  stat sparkline on the seam.
+- [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-057 and
+  VIZ-011 (subsets: thresholds, legends), VIZ-067 (state glyphs);
+  [08 Visual language](../../designs/product/08-visual-language.md): VL-003, VL-007 (the tile);
+  [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v1 upcast).
 - [04 Surfaces](../../designs/product/04-surfaces.md): SRF-030 (auto-vis on panels), SRF-017
   (subset: variables re-query only their panels).
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-065,

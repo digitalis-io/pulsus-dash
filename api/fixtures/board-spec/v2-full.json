@@ -1,0 +1,60 @@
+{
+  "title": "Service overview",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Request rate",
+      "grid": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "sum(rate(http_requests_total[5m]))" },
+      "vis": {
+        "kind": "line",
+        "thresholds": {
+          "direction": "above",
+          "steps": [
+            { "value": 0.5, "state": "watch", "label": "" },
+            { "value": 1.5, "state": "degraded", "label": "SLO p99 ≤ 1.5 s" },
+            { "value": 1000000000000000, "state": "failing", "label": "" }
+          ]
+        },
+        "legend": { "mode": "table" }
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Error ratio",
+      "grid": { "x": 6, "y": 0, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "sum(rate(http_requests_total{code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))" },
+      "vis": {
+        "kind": "stat",
+        "thresholds": {
+          "direction": "below",
+          "steps": [{ "value": 99.5, "state": "failing", "label": "Success" }]
+        }
+      }
+    },
+    {
+      "id": "p-3",
+      "title": "Errors",
+      "grid": { "x": 0, "y": 8, "w": 12, "h": 10 },
+      "query": { "lang": "logql", "text": "{app=\"api\"} |= \"error\"" },
+      "vis": { "kind": "logs" }
+    }
+  ],
+  "sections": [
+    {
+      "id": "s-1",
+      "title": "Latency",
+      "collapsed": true,
+      "panels": [
+        {
+          "id": "p-4",
+          "title": "Request latency",
+          "grid": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "query": { "lang": "promql", "text": "sum(rate(http_request_duration_seconds_bucket[5m])) by (le)" },
+          "vis": { "kind": "heatmap", "legend": { "mode": "hidden" } }
+        }
+      ]
+    }
+  ]
+}

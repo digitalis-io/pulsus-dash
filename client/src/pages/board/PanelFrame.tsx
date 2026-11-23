@@ -5,6 +5,9 @@
  * handle in Edit mode. Tools stay in the tab order and show on hover and focus. The panel runs its
  * query through `usePanelRun` while it is in the viewport or at full screen (T07-012); a refetch
  * shows the shimmer after 300 ms (VL-015). `PanelPreview` is the panel editor's live preview (#90).
+ * A line or bars body has its legend below the chart (a table, or compact on short panels) with
+ * local isolation and the threshold highlights; a stat body has the state chip and the threshold
+ * text (plan #64 Part B §3.9, §4.4, §4.5).
  */
 import {
   forwardRef,
@@ -13,12 +16,14 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ForwardedRef,
   type ReactNode,
   type RefCallback,
+  type RefObject,
 } from 'react';
 import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-components';
 import { Link, useHref, useNavigate } from 'react-router';
@@ -26,11 +31,22 @@ import type { PanelSpec } from '../../api/types';
 import { BoardRunContext } from '../../boards/boardRunContext';
 import { exploreHref } from '../../boards/exploreLink';
 import type { LayoutOp } from '../../boards/layout';
-import { panelView, type PanelView } from '../../boards/panelRun';
+import {
+  LEGEND_ROWS,
+  legendRows,
+  panelFrame,
+  panelView,
+  type PanelView,
+} from '../../boards/panelRun';
+import { useLegendLayout } from '../../boards/useLegendLayout';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
 import { ChartFrame, type FrameSize } from '../../charts/ChartFrame';
-import type { Unit } from '../../engine/api';
+import type { SeriesTableProps } from '../../charts/SeriesTable';
+import { SeriesTable } from '../../charts/SeriesTable';
+import { statValue } from '../../data/frames';
+import type { ThresholdState, Unit } from '../../engine/api';
+import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { useElementWidth } from '../../explore/useElementWidth';
 import { t } from '../../i18n/t';
@@ -41,9 +57,19 @@ import { Icon } from '../../kit/Icon';
 import { IconButton } from '../../kit/IconButton';
 import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
+import { StateGlyph } from '../../kit/StateGlyph';
 import { useTimeContext } from '../../state/useTimeContext';
+import { StateEncoding } from '../../theme/stateEncoding';
+import {
+  crossed,
+  displayText,
+  nextStep,
+  stateOf as thresholdState,
+  type Thresholds,
+} from '../../vis/thresholds';
 import styles from './Board.module.css';
 import { BoardModeContext } from './boardMode';
+import { LegendCompact } from './LegendCompact';
 import { PanelFullScreen } from './PanelFullScreen';
 import { PanelNotices } from './PanelNotices';
 
@@ -99,30 +125,157 @@ function stateOf(v: PanelView): string {
 /** The host's last non-empty size, held above `ChartFrame` across its unmounts (#90). */
 export type SizeMemo = { current: FrameSize | null };
 
+type FrameView = Extract<PanelView, { kind: 'frame' }>;
+
+/** A legend cell's highlight: watch, degraded or failing; ok, unknown and none show none (§4.5). */
+function legendState(t: Thresholds, v: number | null): ThresholdState | null {
+  const s = thresholdState(t, v);
+  return s === 'watch' || s === 'degraded' || s === 'failing' ? s : null;
+}
+
+/** The stat tile's chip state and the step its threshold text shows (§4.4). */
+function statState(t: Thresholds, view: FrameView) {
+  const raw = statValue(view.data);
+  const v = Number.isFinite(raw) ? raw : null;
+  const hit = v === null ? null : crossed(t, v);
+  return {
+    chip: v === null ? 'unknown' : (hit?.state ?? 'ok'),
+    hit,
+    step: hit ?? nextStep(t, v),
+  } as const;
+}
+
+/** The stat tile (§3.9, §4.4): the state chip, the chart and the threshold text. */
+function StatStack({
+  t,
+  view,
+  chart,
+  cellRef,
+}: {
+  t: Thresholds | null;
+  view: FrameView;
+  chart: ReactNode;
+  cellRef: RefObject<HTMLDivElement | null>;
+}) {
+  const s = t === null ? null : statState(t, view);
+  return (
+    <div className={cx(styles['statStack'])} data-stat-stack="">
+      {s !== null && (
+        <div className={cx(styles['statChip'])} data-stat-chip="" data-state={s.chip}>
+          <StateGlyph state={s.chip} />
+        </div>
+      )}
+      <div ref={cellRef} className={cx(styles['chartCell'])}>
+        {chart}
+      </div>
+      {t !== null && s?.step != null && (
+        <p
+          className={cx(
+            styles['statThreshold'],
+            s.hit === null ? undefined : StateEncoding[s.hit.state].className,
+          )}
+          data-stat-threshold=""
+          data-crossed={s.hit === null ? undefined : ''}
+        >
+          <span aria-hidden="true">{StateEncoding[s.step.state].glyph}</span>{' '}
+          {displayText(t, s.step, view.spec.unit)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * A chart frame titled with the panel's current title (a rename shows at once). It shows the
  * panel's Loading until the engine has drawn it, and a new frame is sized from `sizeMemo` (#90).
+ * Line and bars stack the legend under the chart; stat stacks the chip, the chart and the
+ * threshold text (§3.9). The isolation and the legend sort are this instance's own, never saved.
+ * Memoised: a board change that leaves a panel's view and title alone (an edit to another panel,
+ * opening the editor) does not render its chart or legend again.
  */
-function PanelChart({
+const PanelChart = memo(function PanelChart({
   title,
   view,
   sizeMemo,
 }: {
   title: string;
-  view: Extract<PanelView, { kind: 'frame' }>;
+  view: FrameView;
   sizeMemo: SizeMemo | undefined;
 }) {
-  const spec = useMemo(() => ({ ...view.spec, title }), [view.spec, title]);
-  return (
+  const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [stackRef, layout, measured] = useLegendLayout();
+  const cellRef = useRef<HTMLDivElement>(null);
+  const rows = legendRows(view.result);
+  const legend = view.legend === 'table' && rows.length > 0;
+  // The chart cell is smaller than the body by the legend or the stat's chip and text: its size
+  // goes into the memo in the commit, before the chart's mount effect pre-sizes from it, so a
+  // re-created chart is sized once and draws in its first frame (#90, ADR-0019).
+  const structure = `${view.vis}|${String(legend)}|${layout}|${String(measured)}|${String(view.thresholds !== null)}`;
+  const ownMemo = useRef<FrameSize | null>(null);
+  const memo = sizeMemo ?? ownMemo;
+  // eslint-disable-next-line react-hooks/immutability -- the memo is the caller's ref, kept for the chart's pre-size (#90)
+  useLayoutEffect(() => {
+    const el = cellRef.current;
+    if (el === null) return;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) memo.current = { width: r.width, height: r.height };
+  }, [structure, memo]);
+  // A new result without the isolated series shows all again.
+  const isolation =
+    isolatedKey !== null && rows.some((r) => r.key === isolatedKey) ? isolatedKey : null;
+  const frame = useMemo(() => panelFrame(view, isolation), [view, isolation]);
+  const spec = useMemo(() => ({ ...frame.spec, title }), [frame.spec, title]);
+  const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
+  const chart = (
     <ChartFrame
       fill
       spec={spec}
-      data={view.data}
+      data={frame.data}
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
-      {...(sizeMemo === undefined ? {} : { sizeMemo })}
+      sizeMemo={memo}
     />
   );
-}
+  if (view.vis === 'heatmap') return chart;
+  if (view.vis === 'stat') {
+    return <StatStack t={view.thresholds} view={view} chart={chart} cellRef={cellRef} />;
+  }
+  const th = view.thresholds;
+  const table: SeriesTableProps = {
+    caption: t('panel.legend.caption'),
+    columns: ['mean', 'max', 'last'],
+    maxRows: LEGEND_ROWS,
+    swatches: true,
+    onIsolate: (key) => {
+      setIsolatedKey(toggleIsolation(isolation, key));
+    },
+    ...(th === null ? {} : { cellState: (v: number | null) => legendState(th, v) }),
+    sort,
+    onSort: (c) => {
+      setSort((s) => nextSort(s, c));
+    },
+    unit: spec.unit,
+    rows: sorted,
+    total: rows.length,
+    isolatedKey: isolation,
+  };
+  return (
+    <div ref={stackRef} className={cx(styles['frameStack'])} data-legend={view.legend}>
+      {/* The chart mounts once the stack is measured, so the legend layout is final (see above). */}
+      <div ref={cellRef} className={cx(styles['chartCell'])}>
+        {measured ? chart : null}
+      </div>
+      {legend &&
+        (layout === 'table' ? (
+          <div className={cx(styles['legend'])} data-panel-legend="table">
+            <SeriesTable {...table} />
+          </div>
+        ) : (
+          <LegendCompact table={table} />
+        ))}
+    </div>
+  );
+});
 
 export function PanelBody({
   title,
@@ -183,7 +336,7 @@ export function PanelPreview({
 }) {
   const { dispatch } = useTimeContext();
   const title = panelTitle(panel);
-  const view = useMemo(() => panelView(run, panel.vis.kind, title), [run, panel.vis.kind, title]);
+  const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
   // The preview host's size, across message states (Appendix C §C.2).
   const frameSize = useRef<FrameSize | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -335,7 +488,7 @@ export const PanelFrame = memo(
       widthPx,
     });
     const title = panelTitle(panel);
-    const view = useMemo(() => panelView(run, panel.vis.kind, title), [run, panel.vis.kind, title]);
+    const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
     const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
     const notices = noticesOf(run, view);
     // The body's size, across message states and remounts of its chart (#90); full screen holds its own.

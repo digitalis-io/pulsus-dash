@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.13-rc · 2026-11-22 |
+| **Version** | 1.14-rc · 2026-11-22 |
 | **Requirement area** | — (milestones; no requirements) |
 | **Source draft** | plans/12-roadmap-and-open-questions.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [15](15-estate-navigation.md), [designs README](../README.md), [ADR index](../adr/README.md) |
@@ -103,6 +103,8 @@ BFF serves a fixed local principal.
 | VIZ-010 Line, area and bar style options | M-UI1 | gaps, stacking (step 2, #58) | the other options |
 | VIZ-013 Axes are first-class objects | M-UI1 | one time axis and one value axis (step 2, #58) | multiple axes |
 | VIZ-069 Gallery is the vis test corpus | M-UI1 | interim gallery goldens (step 2, #58) | manifest, frame-time gate |
+| VIZ-057 Field configuration parity | M-UI1 | thresholds absolute with state steps drawn as lines, legend tables with mean, max and last and click to isolate, on board panels (step 8, #64 Part B) | percentage thresholds, areas, units catalogue, tooltip modes, list legends and placement, shift-click multi-select, headless parity |
+| VIZ-011 Overlays on any time vis | M-UI1 | threshold lines on line and bars (step 8, #64 Part B) | event markers (#64 Part C), baseline and anomaly bands, regions, exemplars, forecast, annotations, cursor sync, heatmap overlays |
 
 Traces and profiles (SRF-040 to SRF-048, VIZ-033, VIZ-036, PRF-021), the rest of logs (SRF-034,
 SRF-035, SRF-037 to SRF-039, VIZ-035, PRF-015), the rest of Boards (SRF-015 to SRF-026, PRF-022) and
@@ -222,3 +224,4 @@ product owner can confirm them at sign-off.
 | 1.11-rc | 2026-11-21 | #63 Part C: Table 2.1c SRF-030 subset names #63; adds the M-UI1 subsets of SRF-027 (highlighting, completion, errors on run; hover docs remain) and SRF-031 (series table, metric picker; cardinality, label value counts and anomaly ratio remain); milestones unchanged (D6) |
 | 1.12-rc | 2026-11-22 | #65 Part B: §2.1 "PulsusDB routes": the M-UI1 log volume uses `query_range` (`count_over_time` by level); `/api/logs/v1/volume` moves to the later list |
 | 1.13-rc | 2026-11-22 | #64 Part A: Table 2.1c SRF-030 subset adds auto-vis on board panels (step 8); SRF-017 subset adds the URL values substituting into PromQL panels and re-querying only their panels (definitions, values from Context and crossfade remain); milestones unchanged (D6) |
+| 1.14-rc | 2026-11-22 | #64 Part B: Table 2.1c adds the M-UI1 subsets of VIZ-057 (absolute thresholds drawn as lines, legend tables with mean, max and last and isolation, on board panels) and VIZ-011 (threshold lines on line and bars); milestones unchanged (D6) |

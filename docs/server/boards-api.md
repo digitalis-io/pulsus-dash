@@ -14,9 +14,11 @@ every version, the actor of every audit event, and the owner of the starred and 
 
 The tables are described in [the database page](database.md#schema-migration-2).
 
-## Board spec v1
+## Board spec v2
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 1.
+A board is a JSON object, called the spec. The server stores it with `schema_version` 2. Version 2
+(#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1, which is otherwise
+the same (see [Versions and the upcaster](#versions-and-the-upcaster)).
 
 ```json
 {
@@ -53,6 +55,8 @@ A board is a JSON object, called the spec. The server stores it with `schema_ver
 | `panels[].grid` | object | `x` 0–11, `w` 1–12, `x + w` ≤ 12, `y` 0–9999, `h` 1–100, all integers. The grid has 12 columns; two panels of the same grid (the top level, or one section) must not overlap |
 | `panels[].query` | object | `lang` `promql` or `logql`; `text` at most 16 384 bytes |
 | `panels[].vis` | object | `kind` `auto`, `line`, `bars`, `heatmap`, `stat` or `logs` |
+| `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every kind; drawn on line, bars and stat |
+| `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table` |
 
 A board has at most 200 panels in total, counting the panels of every section (SRF-019). No string
 may contain U+0000. The request body, including the spec, is at most 2 MiB (T06-021).
@@ -91,7 +95,7 @@ The first pass checks the shape, token by token:
 | a key that is not in the table above, including a wrongly cased one (`Title`) | the key | `board.json.unknownKey` |
 | a required key absent (reported after the object's last key) | the key | `board.json.required` |
 | a `null` value | the key | `board.json.null` |
-| a value of the wrong type, including `1.5`, `1e2` or `2147483648` for a grid value | the value | `board.json.type` |
+| a value of the wrong type, including `1.5`, `1e2` or `2147483648` for a grid value, and a threshold `value` that is not a number or not a finite one (`"1"`, `1e400`) | the value | `board.json.type` |
 
 Only a spec with a clean shape goes on to the rules:
 
@@ -110,17 +114,30 @@ Only a spec with a clean shape goes on to the rules:
 | `query.lang` not `promql` or `logql` | `…/query/lang` | `board.query.lang.invalid` |
 | `query.text` over 16 384 bytes | `…/query/text` | `board.query.text.tooLong` |
 | `vis.kind` not one of the six kinds | `…/vis/kind` | `board.vis.kind.invalid` |
+| `thresholds.direction` not `above` or `below` | `…/vis/thresholds/direction` | `board.thresholds.direction.invalid` |
+| no step, or more than 8 | `…/vis/thresholds/steps` | `board.thresholds.steps.count` |
+| a step value not 0 and smaller than 1e-9 or larger than 1e15 in size (every step is checked) | `…/vis/thresholds/steps/<k>/value` | `board.thresholds.value.range` |
+| else a step value equal to an earlier step's | `…/vis/thresholds/steps/<k>/value` | `board.thresholds.value.duplicate` |
+| a step state not `watch`, `degraded` or `failing` | `…/steps/<k>/state` | `board.thresholds.state.invalid` |
+| a step label over 200 characters | `…/steps/<k>/label` | `board.thresholds.label.tooLong` |
+| `legend.mode` not `table` or `hidden` | `…/vis/legend/mode` | `board.legend.mode.invalid` |
 | a string containing U+0000 | that string | `board.string.nul` |
 
-`…` is `/panels/<i>`, `/sections/<j>/panels/<i>`, or `/sections/<j>` for a section. The shared
-fixtures `api/fixtures/board-spec/` hold a minimal and a full valid board, and `invalid.json` with
+`…` is `/panels/<i>`, `/sections/<j>/panels/<i>`, or `/sections/<j>` for a section. The threshold
+rules come after `vis.kind`, in this order for each step. The value range keeps a threshold far
+inside the range where the value-axis ticks are safe (#97). The shared fixtures
+`api/fixtures/board-spec/` hold a minimal and a full valid board of each version (`v1-*.json`,
+`v2-full.json`, and `v2-threshold-bounds.json` with -1e-9, 0 and 1e-9), and `invalid.json` with
 one case per problem and its exact `fields`. The server's tests and the client's tests both run
 them.
 
 ### Canonical JSON and the content hash
 
 The server stores the spec in canonical form: object keys sorted, no insignificant whitespace, no
-HTML escaping, numbers as written. The `content_hash` of a version is the SHA-256 of that form. For
+HTML escaping, numbers as written. A threshold value is written as Go prints a `float64` (the
+ECMAScript form `JSON.stringify` gives, for example `1000000000000000` for `1e15` and `1e-9`), so
+a board saved by the web client keeps its `content_hash`. The `content_hash` of a version is the
+SHA-256 of that form. For
 example, `{"title":"New board","panels":[],"sections":[]}` is stored as
 `{"panels":[],"sections":[],"title":"New board"}` (47 bytes, SHA-256
 `f40543b019d375e2e7aa7965bfb4a7fe190d742bcc402550e821a5523725bb37`). Every response returns the
@@ -132,9 +149,20 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 1 is the current
-version and reads unchanged. A spec stored by a newer server (a rolling upgrade) answers 503
-`board saved by a newer server version`, and is never overwritten by the older server.
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 2 is the current
+version; a version 1 spec is a subset of it and reads unchanged (the identity upcast). Every write
+stores version 2; there is no SQL migration (`schema_version` is an existing column). A spec stored
+by a newer server (a rolling upgrade) answers 503 `board saved by a newer server version`, and is
+never overwritten by the older server.
+
+| Server | Reads a v1 row | Reads a v2 row | Writes |
+|---|---|---|---|
+| this release | unchanged | parsed | `schema_version` 2 |
+| the previous release, during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 1 |
+
+`spec.DecodeBoardUpTo(raw, version, max)` holds the rule (`version > max` is too new);
+`DecodeBoard` calls it with `BoardSchemaVersion`. The itest `TestPreviousServerRefusesV2Row` reads
+a real v2 row with `max` 1, as the previous release did.
 
 ## Concurrency: `ETag` and `If-Match`
 

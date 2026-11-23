@@ -169,11 +169,14 @@ export function script(page: Page, h: KeyboardHarness) {
     return { scope: overlay, region: overlay };
   }
 
-  /** The element of a `role "name" #n` key in `scope`. */
+  /**
+   * The element of a `role "name" #n` key in `scope`. Keys hold the accessible name as it is, so a
+   * name may itself contain quotes (a legend row's series name, `m{job="a"}`; #64 Part B).
+   */
   function resolve(scope: Locator, key: string): Locator {
-    const m = /^([a-z]+) "((?:[^"\\]|\\.)*)"(?: #(\d+))?$/.exec(key);
+    const m = /^([a-z]+) "(.*)"(?: #(\d+))?$/s.exec(key);
     if (m === null) throw new Error(`bad key ${key}`);
-    const name = JSON.parse(`"${m[2] ?? ''}"`) as string;
+    const name = m[2] ?? '';
     return scope
       .getByRole(m[1] as Parameters<Page['getByRole']>[0], { name, exact: true })
       .nth(Number(m[3] ?? '1') - 1);
@@ -283,7 +286,8 @@ export function script(page: Page, h: KeyboardHarness) {
         const after = await h.state();
         if (after !== before || page.url() !== url) {
           const sameRoute = before.split(' + ')[0] === after.split(' + ')[0];
-          if (depth < 2 && sameRoute && !after.endsWith(' + none')) {
+          const overlay = sameRoute && !after.endsWith(' + none');
+          if (depth < 2 && overlay) {
             await drain(
               `${name} › ${key}`,
               async () => {
@@ -292,6 +296,15 @@ export function script(page: Page, h: KeyboardHarness) {
               },
               depth + 1,
             );
+          } else if (overlay && page.url() === url) {
+            // An overlay past the depth limit is not drained: close it, and go on from here when
+            // that restores the state (a select's list box in the panel editor, #64 Part B), so
+            // it costs no replay.
+            await press('Escape');
+            if ((await h.state()) === before) {
+              next = await nextPending(only);
+              continue;
+            }
           }
           break;
         }

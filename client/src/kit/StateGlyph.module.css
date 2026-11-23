@@ -1,0 +1,10 @@
+/* A state glyph (#64 Part B B.2): glyph and name in the state's colour (`--state-colour` from the
+   StateEncoding class beside this one). */
+.stateGlyph {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--state-colour);
+}
