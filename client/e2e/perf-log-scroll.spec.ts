@@ -198,6 +198,9 @@ test('bench:log-scroll (functional always; lab thresholds with LOG_BENCH_GATE=en
     },
     longTasks: lt.over16,
     longTasksInputWindow: inputWindow.over16,
+    // Each task over 16 ms as [start in trace µs, wall ms], in each window.
+    tasks: lt.tasks.map((x) => [x.tsUs, Math.round(x.durMs * 10) / 10]),
+    tasksInputWindow: inputWindow.tasks.map((x) => [x.tsUs, Math.round(x.durMs * 10) / 10]),
     ciOver: lt.ciOver,
     worstMs: lt.worstMs,
     windowMs: lt.windowMs,
