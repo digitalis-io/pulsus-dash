@@ -89,13 +89,14 @@ func TestPulsusDBContract(t *testing.T) {
 	b.ScopeOrgID = os.Getenv("DASH_CONTRACT_PULSUSDB_ORG")
 	b.CredentialsRef = os.Getenv("DASH_CONTRACT_PULSUSDB_CREDENTIALS_REF")
 	rec := &recorder{}
-	c := New(Options{Transport: rec, Secrets: func(ref string) (string, error) {
+	secrets := func(ref string) (string, error) {
 		name, ok := strings.CutPrefix(ref, "env:")
 		if !ok {
 			return "", os.ErrNotExist
 		}
 		return os.Getenv(name), nil
-	}})
+	}
+	c := New(Options{Transport: rec, Secrets: secrets})
 	rc := rcFor(b)
 	ctx := func() context.Context { return ctxWithin(t, 30*time.Second) }
 	now := time.Now().Truncate(time.Minute)
@@ -232,6 +233,11 @@ func TestPulsusDBContract(t *testing.T) {
 		}
 	})
 	t.Run("logql", func(t *testing.T) { contractLogQL(t, c, rc) })
+	// The lexer probe (plan #121 §3.4) has its own client on an unbuffered transport: the 64 KiB
+	// bound of rawLogResponse and rawBuildInfo is then the only read of a probe body (the
+	// recorder transport above reads whole bodies).
+	lc := New(Options{Transport: http.DefaultTransport.(*http.Transport).Clone(), Secrets: secrets})
+	t.Run("logql-lexer", func(t *testing.T) { contractLexer(t, lc, rc) })
 }
 
 // compareGeneric decodes raw with encoding/json and checks the client saw the same labels and values.

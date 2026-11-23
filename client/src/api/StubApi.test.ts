@@ -446,7 +446,7 @@ describe('StubApi LogQL planning (plan #116 §3.9, A.3)', () => {
   });
 
   it('S6: the volume template counts toward the 64 KiB limit', async () => {
-    const query = '{app="x"} # ' + 'a'.repeat(65_488);
+    const query = '{app="x"} |= "' + 'a'.repeat(65_485) + '"';
     const e = await errorOf(new StubApi().queryVolume('demo', { ...L, query }));
     expect(e.kind).toBe('queryTooLong');
     expect(e.detail.planned?.bytes).toBe(65_572);
@@ -483,13 +483,31 @@ describe('StubApi LogQL planning (plan #116 §3.9, A.3)', () => {
   });
 
   it('S9: a value that cannot be written where it is referenced', async () => {
-    for (const [query, value] of [
-      ['{app=`$a`}', 'x`y'],
-      ['{app="x"} # $a', 'z\n{source="pulsus-dash"}'],
-    ] as const) {
+    for (const [query, value] of [['{app=`$a`}', 'x`y']] as const) {
       const e = await errorOf(new StubApi().queryLogs('demo', { ...L, query, vars: { a: value } }));
       expect(e.kind, query).toBe('invalid');
       expect(e.fields).toEqual([{ pointer: '/vars/a', messageKey: 'variable.unrepresentable' }]);
+    }
+  });
+
+  it('S10: a hash is refused with its position (plan #121)', async () => {
+    for (const [query, vars, position] of [
+      ['# x\r{source = "pulsus-dash"}', {}, 0],
+      ['$q', { q: '{app="x"} # c\r{ source = "pulsus-dash" }' }, 0],
+      ['{app="x"} # $a', { a: 'z\n{source="pulsus-dash"}' }, 10],
+    ] as const) {
+      for (const run of [
+        (api: StubApi) => api.queryLogs('demo', { ...L, query, vars }),
+        (api: StubApi) => api.queryVolume('demo', { ...L, query, vars }),
+      ]) {
+        const e = await errorOf(run(new StubApi()));
+        expect(e.kind, query).toBe('queryInvalid');
+        expect(e.message, query).toBe(
+          `unexpected '#' at byte ${String(position)}: LogQL has no comments`,
+        );
+        expect(e.detail.position, query).toBe(position);
+        expect(e.detail.planned, query).toBeUndefined();
+      }
     }
   });
 });

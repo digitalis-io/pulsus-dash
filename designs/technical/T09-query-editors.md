@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-22 |
+| **Version** | 1.18-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -188,6 +188,12 @@ the first token. Highlighting never waits for it.
 **MUST** — Whether a query is valid MUST be decided only by the PulsusDB parser for its language.
 `dash-qlex` and `dash-qctx` MAY drive colour, completion and spans, but MUST NOT place errors or mark
 a query valid or invalid.
+
+*Exception (#121):* before dispatch, the server MAY refuse a text it cannot classify safely. This
+is a fail-closed security guard (T07-020, T06-029), not a validity decision. Today the only case is
+a top-level `#` in LogQL, which PulsusDB also refuses: 400 `query.invalid` positioned at the `#`,
+with the message `unexpected '#' at byte N: LogQL has no comments`. The editor shows it as it shows
+any server error with a position (T09-009).
 
 #### T09-003 — Highlighting never waits
 **MUST** — Highlighting MUST run synchronously on the main thread from the CodeMirror language of
@@ -753,4 +759,5 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.14-rc | 2026-11-22 | #112: §4.6 "v1" paragraph: the server plans the rate-chip rewrites and checks the sent size (ADR-0021); the page sends the raw text and reads the chip, rules 5 and 6 and the sent query from `planned`; `client/src/explore/plan.ts` is gone |
 | 1.15-rc | 2026-11-22 | #65 Part A: T09-009 reads LogQL's `at byte N` (0-based) as the offset |
 | 1.16-rc | 2026-11-22 | #64 Part A: §4.3 (T09-004) v1 board panel editor: the same editor and Run keys, Run query, a run when focus leaves the field, and `Esc` to Run query, then to close the dialog |
-| 1.17-rc | 2026-11-22 | #66 Part A: §0 rows `dash-qlex` (the LogQL scanner and `StreamLanguage`, the mode stack), `dash-qctx` (the v1 LogQL contexts) and "Editor-worker suggest cache" (the key by language; PromQL supersession, LogQL release by caller interest); §4.4 LogQL v1 lookups (scope as written, variable references left out, minute window, limit 1 000) and whole-token replacement; T09-007 v1 note (the synchronous local slot and the 120 ms remote slot; release when the caret context leaves the key); §5.1 v1 LogQL `shape` and the shared host |
+| 1.17-rc | 2026-11-23 | #121: T09-002: the server's fail-closed pre-dispatch refusal (LogQL top-level `#`) is not a validity decision |
+| 1.18-rc | 2026-11-23 | #66 Part A: §0 rows `dash-qlex` (the LogQL scanner and `StreamLanguage`, the mode stack), `dash-qctx` (the v1 LogQL contexts) and "Editor-worker suggest cache" (the key by language; PromQL supersession, LogQL release by caller interest); §4.4 LogQL v1 lookups (scope as written, variable references left out, minute window, limit 1 000) and whole-token replacement; T09-007 v1 note (the synchronous local slot and the 120 ms remote slot; release when the caret context leaves the key); §5.1 v1 LogQL `shape` and the shared host |

@@ -258,6 +258,16 @@ plan at the `promGrid` step and return their synthetic page and frames with `pla
 and `plan` groups and the tables, loaded by `logsPlanFixture.ts`) by the same outcome rules as the
 Go runner.
 
+The LogQL mirror has no comment state (#121): PulsusDB's LogQL has no comments, so the substitution
+scan and the selector reader treat a `#` outside strings as an ordinary byte and skip no text.
+`prepareLogs` refuses a top-level `#` as the server does (row 9b, on the substituted text before
+the classification, and again in `plan` on the final text): 400 `/query` `query.invalid`, the
+message `unexpected '#' at byte <N>: LogQL has no comments` and `hint: {position: {offset: N}}`,
+with N mapped back to the raw text. `StubApi`'s `toApiError` passes that offset as
+`detail.position`, as `HttpApi` reads `hint.position` from the gateway's body, so the editor
+underlines the `#` in stub mode too. `substituteLogs` (marked `@internal`, tests only) is the
+substitution before row 9b, which the classify runner reads.
+
 The ESLint block `eslint/stub-plan-boundary.ts` (`@typescript-eslint/no-restricted-imports`, regex
 `(^|/)stub/(plan|promShape|promFunctions|logsPlan|logsPlanFixture)(\.ts)?$`) refuses an import of
 `stub/plan`, `stub/promShape`, `stub/promFunctions`, `stub/logsPlan` or `stub/logsPlanFixture`

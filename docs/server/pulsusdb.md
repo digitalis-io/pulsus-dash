@@ -192,6 +192,7 @@ The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~
 | a referenced value that cannot be written where it is referenced | 400 | one `/vars/<name>`, `variable.unrepresentable` per name, first reference first | `the value of variable $a, $b cannot be written where it is referenced` |
 | a macro in an instant query without `step_ms` | 400 | `/step_ms`, `field.required` | `step_ms is required for $__interval and $__rate_interval` |
 | the substituted text over 2 MiB | 413 | `/query`, `query.too_large_to_plan` | `the substituted query is over 2097152 bytes, the most the server processes`; `hint.reason: processing_cap`, no `planned` |
+| LogQL only (row 9b): a `#` outside strings in the substituted or the planned text | 400 | `/query`, `query.invalid` | `unexpected '#' at byte <N>: LogQL has no comments`; `hint.position.offset` is N, the `#` in the raw text; no `planned` ([below](#row-9b-a-top-level--is-refused)) |
 | the planned text over 65 536 bytes | 413 | `/query`, `query.sent_too_large` | `the planned query is over 65536 bytes`; the full `planned` (`bytes` is `len(planned.query)`) |
 
 Every planning refusal has `code: invalid`. A reserved selector is 400 `virtual_unsupported`
@@ -348,11 +349,13 @@ The raw bytes are scanned once, left to right, with a state:
 
 | State | Byte | Next |
 |---|---|---|
-| none | `"` / `` ` `` / `#` | in a `"…"` string / in a `` `…` `` string / in a comment |
+| none | `"` / `` ` `` | in a `"…"` string / in a `` `…` `` string |
 | `"…"` | `\` | skip it and the next byte |
 | `"…"` | `"` or LF | none |
 | `` `…` `` | `` ` `` | none |
-| comment | LF | none |
+
+There is no comment state: PulsusDB's LogQL has no comments ([below](#pulsusdbs-logql-lexer-121)).
+Outside strings a `#` is an ordinary byte to the scan, and row 9b then refuses the text.
 
 A reference `$NAME` or `${NAME}` is recognised in every state, except where a backslash skipped
 its `$` inside `"…"`:
@@ -363,12 +366,12 @@ its `$` inside `"…"`:
 | any other `$__…` (`$__auto`, `$__range`), or a name longer than 64 | itself, unchanged; PulsusDB refuses it with a mapped position |
 | a name in `vars`, inside `"…"` | the value, encoded by the table below |
 | a name in `vars`, inside `` `…` `` | the value verbatim; a backtick or CR in it is refused (row 7b) |
-| a name in `vars`, inside a comment | the value verbatim; an LF in it is refused (row 7b) |
-| a name in `vars`, outside strings and comments | the value verbatim: it is query text by intent (`$q` with `q={app="x"}`) |
+| a name in `vars`, outside strings | the value verbatim: it is query text by intent (`$q` with `q={app="x"}`) |
 | a name not in `vars` | itself; the plan is refused with `variable.missing` |
 
-A comment is substituted (`{app="x"} # $a` needs `$a`), and values are not rescanned (`a=$__interval`
-is sent as typed). A value written into a `"…"` string is encoded so that it reads back as itself:
+A reference after a `#` is top-level text (`{app="x"} # $a` needs `$a`); the text is then refused by
+row 9b. Values are not rescanned (`a=$__interval` is sent as typed). A value written into a `"…"`
+string is encoded so that it reads back as itself:
 
 | Byte or rune of the value | Written |
 |---|---|
@@ -377,26 +380,78 @@ is sent as typed). A value written into a `"…"` string is encoded so that it r
 | 0x07, 0x08, 0x0C, 0x0A, 0x0D, 0x09, 0x0B | `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v` |
 | any other byte 0x00–0x1F, and 0x7F | `\x` and two lowercase hex digits (`\x01`, `\x7f`) |
 | any other ASCII byte | itself |
-| any non-ASCII rune | itself, its bytes unchanged |
+| any non-ASCII rune, U+FFFD included | itself, its bytes unchanged |
 
 For a value of ASCII only this is Go's `strconv.Quote` without its quotes. The one recorded
 deviation: for a non-ASCII rune that `strconv.IsPrint` rejects (U+00A0, U+2028), `strconv.Quote`
 writes `\u…` and the planner writes the rune itself. Both forms unquote to the same value, and the
 client's mirror needs no Unicode tables to stay byte-identical. `FuzzEncodeDQ` checks that
-`strconv.Unquote` gives back every valid UTF-8 value.
+`strconv.Unquote` gives back every valid UTF-8 value. U+FFFD is written as itself in `"…"` and in
+`` `…` ``: PulsusDB's LogQL lexer accepts it in both (unlike the PromQL lexer, which refuses it), so
+`{app="$a"}` with `a=x\ufffdy` is sent as the 13 bytes `{app="x` U+FFFD `y"}`.
 
 **Row 7b.** A value that cannot be written where it is referenced is refused before any I/O with
 400, one `/vars/<name>` `variable.unrepresentable` per name (distinct, first reference first), and
 the message `the value of variable $a cannot be written where it is referenced`: a backtick or a
-CR inside a `` `…` `` string (a backtick would end it, and a raw string drops its CRs), or an LF
-inside a comment (it would end it). Missing variables (row 7) are reported first.
+CR inside a `` `…` `` string (a backtick would end it, and a raw string drops its CRs). Missing
+variables (row 7) are reported first.
+
+### Row 9b: a top-level `#` is refused
+
+`hashAt` finds the first `#` outside `"…"` and `` `…` `` by the states above (a backslash in `"…"`
+skips the next byte, and an LF ends an unterminated `"…"`). It reads the substituted text, never the
+raw text and the values apart, so a `#` that a value brings in is found. Two checks run, both before
+any I/O:
+
+1. `Prepare` checks the substituted text, after row 9 and before Classify. A text that holds both a
+   `#` and a reserved selector is refused here as `query.invalid`, never as `virtual_unsupported`.
+2. `Plan` checks the final planned text again, after the volume template and before row 10. Macros
+   and the template add no `#`, so this check fires only if `Prepare` was bypassed; it is the
+   final-text guarantee.
+
+The refusal is 400, `code: invalid`, one field `/query` `query.invalid`, the message `unexpected
+'#' at byte <N>: LogQL has no comments` and `hint: {"position": {"offset": N}}`, with N the `#`
+mapped back to the raw text by the [three rules](#positions) (a `#` inside a value maps to the
+reference's start). An offset with no position would give the message `unexpected '#': LogQL has no
+comments` and no hint. No `planned` is written. Examples from the fixture:
+
+| Case | Text (vars) | Outcome |
+|---|---|---|
+| H1 | `# x` CR `{source = "pulsus-dash"}` | refused at 0: a CR does not end anything, and the selector is never sent |
+| H2 | `$q` with `q={app="x"} # c` CR `{ source = "pulsus-dash" }` | refused at 0, the reference's start |
+| H4 | `{app="$a"} # c` with `a=xyz` | refused at 11 (the substituted text has it at 12) |
+| H5, H6 | `{app="x"} \|= "#"`, `` {app="x"} \|= `#` `` | planned as is: the `#` is inside a string |
+| H8 | `{app="x\"#"}` | planned as is: the escaped quote does not end the string |
+| H9 | `{app="x` LF `# c` | refused at 8: the LF ended the unterminated string |
+| H12 | `{app="x"} # y` | refused at 10, though it names no reserved selector |
+
+The refusal matches PulsusDB 0.0.13's own (`unexpected '#' at byte N: expected a valid LogQL
+token`), but the planner does not depend on it: a later PulsusDB that accepted comments could never
+run a selector that Classify skipped (T07-020). [T09-002](../../designs/technical/T09-query-editors.md)
+records this pre-dispatch refusal as a fail-closed guard, not a validity decision.
+
+### PulsusDB's LogQL lexer (#121)
+
+The `logql-lexer` contract subtest ([testing](../development/testing-pulsusdb.md#the-logql-lexer-contract-subtest))
+pins what PulsusDB 0.0.13's LogQL lexer does with the bytes the planner relies on (native `GET
+/api/logs/v1/query_range`, 2026-11-23; F is U+FFFD):
+
+| Question | Probe texts | Answer |
+|---|---|---|
+| Does a `#` start a comment, and does it end at CR? | P1 `{app="xyz"} # c`, P2 `# c` CR `{app="x"}` | There are no comments: outside a string, `#` is refused at its own byte, whatever follows (`unexpected '#' at byte 12` and `at byte 0: expected a valid LogQL token`). Inside `"…"` and `` `…` `` it is content |
+| U+FFFD in `"…"`? | P6 `{app="xFy"}`, P8 the same with ` )` | accepted (200, empty streams); the string ends at its own quote (`unexpected trailing input at byte 14`) |
+| U+FFFD in `` `…` ``? | P7 ``{app=`xFy`}``, P9 the same with ` )` | accepted, the same way |
+
+So the planner models no comment and refuses a `#` itself, fail closed for T07-020, and writes
+U+FFFD as itself.
 
 ### Classify: the selector reader
 
-`logs.Classify` reads every stream selector `{…}` outside strings and comments, with the lexical
-units of the substitution: spaces are SP, HT, CR and LF; a comment runs to the LF; a `"…"` string
-ends at its closing quote, or before an LF or the end (unterminated); a `` `…` `` string ends at its
-backtick or the end. Inside a selector, spaces and comments are skipped between tokens:
+`logs.Classify` reads every stream selector `{…}` outside strings, with the lexical units of the
+substitution: spaces are SP, HT, CR and LF; a `"…"` string ends at its closing quote, or before an
+LF or the end (unterminated); a `` `…` `` string ends at its backtick or the end. LogQL has no
+comments, so no text is skipped: a `#` is an "other" byte, and a selector after it is always read.
+Inside a selector, only spaces are skipped between tokens:
 
 | Token | Bytes |
 |---|---|
@@ -426,7 +481,7 @@ from the fixture's `classify` group:
 | L5 | `sum(count_over_time({source="pulsus-dash"}[$__interval])) + sum(count_over_time({job="a"}[$__interval]))` | `mixed` |
 | L6 | `{ source = "pulsus-dash" }` | `virtual` (the byte guard alone misses it) |
 | L10 | `{app="x"} \| source="pulsus-dash"` | `pulsus_db`: a label filter is not a selector; the byte guard refuses it |
-| L12 | `# {source="pulsus-dash"}` LF `{app="x"}` | `pulsus_db`; the byte guard refuses it |
+| L12 | `# {source="pulsus-dash"}` LF `{app="x"}` | `mixed` (both selectors are read); `Prepare` refuses the text by row 9b at 0 first |
 | L20 | `{app="x" source="pulsus-dash"}` | `virtual`: after a missing comma the next name starts a new matcher (fail closed) |
 
 The routes run Classify, then the byte guard, on both texts: the substituted text right after
@@ -435,7 +490,7 @@ text's classification is the authoritative one, because a macro can change a dec
 `{source="pulsus\x${__interval}dash"}` reads `pulsus\x1sdash` (an invalid escape) at the
 placeholder and `pulsus-dash` at a two-day step, so it is refused at the last check, with
 `planned`. The byte guard stays behind Classify as the T07-020 backstop: it still refuses the
-bytes `source="pulsus-dash"` inside a string, comment or label filter, and `ALERTS` as a word.
+bytes `source="pulsus-dash"` inside a string or a label filter, and `ALERTS` as a word.
 
 ### The volume template
 
@@ -448,8 +503,7 @@ sum by (level, detected_level) (count_over_time(<expanded>
 ```
 
 `VolumeRange` is `<s>s` for a step of whole seconds (`[5s]`, `[60s]`, every grid step) and `<ms>ms`
-otherwise. The newline ends the text, so a trailing comment cannot swallow the suffix. The 65 536-
-byte limit counts the template (72 bytes at 5 s): a 65 500-byte text plans on the range route and
+otherwise. The newline ends the text. The 65 536-byte limit counts the template (72 bytes at 5 s): a 65 500-byte text plans on the range route and
 is refused with 413 on the volume route.
 
 ### What LogQL `planned` says
@@ -483,10 +537,10 @@ of the message is rewritten to the raw offset: `{app="$a"}` with `a=xyz` and `pa
 |---|---|---|
 | 1 | the body: required members and ranges; range: `limit`, `direction`, the `cursor` pattern | 400 |
 | 2 | the grid, whose end must not pass the supported time range | 400 |
-| 3 | `logs.Prepare` with the grid step | the refusals; 413 `processing_cap` without `planned` |
+| 3 | `logs.Prepare` with the grid step, row 9b included | the refusals (row 9b: 400 `query.invalid` at the `#`); 413 `processing_cap` without `planned` |
 | 4 | Classify, then the byte guard, on the substituted text | 400 `virtual_unsupported`, no `planned` |
 | 4b | Resolve (the identity) and `CheckCap` at the step | 413 `processing_cap` |
-| 5 | `Plan` | 413 `query.sent_too_large` with the full `planned` |
+| 5 | `Plan`: row 9b on the final text, then the size | 400 `query.invalid` at the `#`, no `planned`; 413 `query.sent_too_large` with the full `planned` |
 | 6 | Classify, then the byte guard, on the planned text (the authoritative check) | 400 `virtual_unsupported` with `planned` |
 | 7 | range with a cursor: the cursor against `planned.query` | 400 `cursor.invalid` or `cursor.mismatch` with `planned` |
 | 8 | the route deadline; tenant resolution | as before, with `planned` |
@@ -982,8 +1036,7 @@ sum by (level, detected_level) (count_over_time(<text>
 | drop __error__ [<step>s]))
 ```
 
-The newline ends the text, so a trailing line comment cannot swallow the suffix; `| drop __error__`
-keeps lines that a parser stage in the text fails on from failing the whole query. Each grid point
+The newline ends the text; `| drop __error__` keeps lines that a parser stage in the text fails on from failing the whole query. Each grid point
 `t` counts the lines of `(t − step, t]`, so the first and last points can count lines outside
 `(from, to]`; the edges are not split. The matrix is folded into one series per level (by the
 rules above), point-wise sums, in the order critical, error, warn, info, debug, trace, unknown;

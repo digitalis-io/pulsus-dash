@@ -31,8 +31,8 @@ type Class struct {
 	Selectors []Selector
 }
 
-// Classify reads every stream selector of text outside strings and comments (the selector reader
-// of plan #116 §4.3): a selector is reserved when one of its matchers has the name source, the op
+// Classify reads every stream selector of text outside strings (the selector reader of plan #116
+// §4.3; LogQL has no comments, so a '#' is an ordinary byte and no text is skipped, plan #121): a selector is reserved when one of its matchers has the name source, the op
 // = and the value pulsus-dash, names and values decoded as Go string literals. It never fails and
 // never panics; anything it cannot read fails closed or is left to the byte guard (T07-020).
 func Classify(text string) Class {
@@ -42,8 +42,6 @@ func Classify(text string) Class {
 		switch text[i] {
 		case '"', '`':
 			_, _, i = readString(text, i)
-		case '#':
-			i = skipComment(text, i)
 		case '{':
 			var s Selector
 			s, i = readSelector(text, i)
@@ -66,14 +64,6 @@ func Classify(text string) Class {
 		c.Reserved = []string{ReservedMatcher}
 	}
 	return c
-}
-
-// skipComment returns the offset of the LF that ends the # comment at text[i], or the end.
-func skipComment(text string, i int) int {
-	if j := strings.IndexByte(text[i:], '\n'); j >= 0 {
-		return i + j
-	}
-	return len(text)
 }
 
 // readString reads the string at text[i] ('"' or '`') and returns its decoded value, whether it
@@ -142,8 +132,6 @@ func readSelector(text string, i int) (Selector, int) {
 		switch {
 		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
 			j++
-		case c == '#':
-			j = skipComment(text, j)
 		case c == '}':
 			s.To = j + 1
 			return s, s.To

@@ -3,6 +3,7 @@ package logs
 import (
 	"reflect"
 	"slices"
+	"strconv"
 	"testing"
 )
 
@@ -22,6 +23,14 @@ func checkError(t *testing.T, c fxCase, err *PlanError) {
 	}
 	if err.Status() != c.Error.Status || err.Message != c.Error.Message || !slices.Equal(err.Fields, fields(c.Error.Fields)) {
 		t.Errorf("error %d %q %+v, want %d %q %+v", err.Status(), err.Message, err.Fields, c.Error.Status, c.Error.Message, c.Error.Fields)
+	}
+	switch {
+	case c.Error.Position == nil && err.Position != nil:
+		t.Errorf("position %d, want none", *err.Position)
+	case c.Error.Position != nil && err.Position == nil:
+		t.Errorf("no position, want %d", *c.Error.Position)
+	case c.Error.Position != nil && *err.Position != *c.Error.Position:
+		t.Errorf("position %d, want %d", *err.Position, *c.Error.Position)
 	}
 	if (c.Error.Hint != nil) != (err.Kind == ErrProcessingCap) || (c.Error.Hint != nil && c.Error.Hint.Reason != "processing_cap") {
 		t.Errorf("hint %+v with kind %d", c.Error.Hint, err.Kind)
@@ -153,6 +162,48 @@ func TestLogsPlanParity(t *testing.T) {
 				t.Errorf("want without a plan to classify")
 			}
 		})
+	}
+}
+
+// hashRefusal checks that err is row 9b at pos (plan #121 §3.1).
+func hashRefusal(t *testing.T, what string, err *PlanError, pos int) {
+	t.Helper()
+	want := "unexpected '#' at byte " + strconv.Itoa(pos) + ": LogQL has no comments"
+	switch {
+	case err == nil:
+		t.Errorf("%s: err = nil, want ErrInput query.invalid at %d", what, pos)
+	case err.Kind != ErrInput || err.Message != want || !slices.Equal(err.Fields, []FieldError{{"/query", "query.invalid"}}) ||
+		err.Position == nil || *err.Position != pos || err.Planned != nil:
+		got := "none"
+		if err.Position != nil {
+			got = strconv.Itoa(*err.Position)
+		}
+		t.Errorf("%s: %d %q %+v position %s, want ErrInput %q [/query query.invalid] at %d", what, err.Kind, err.Message, err.Fields, got, want, pos)
+	}
+}
+
+// TestPrepareHashBeforeClassify: row 9b in Prepare refuses H1 before Classify reads the
+// selector after the '#' (plan #121 §4.3, T07-020).
+func TestPrepareHashBeforeClassify(t *testing.T) {
+	for _, k := range []Kind{KindRange, KindVolume} {
+		p, err := Prepare(Inputs{Query: "# x\r{source = \"pulsus-dash\"}", Vars: map[string]string{}, Kind: k, StepMs: 5000})
+		if p != nil {
+			t.Errorf("Prepare(H1) kind %d: prepared, want the hash refusal", k)
+		}
+		hashRefusal(t, "Prepare(H1) kind "+strconv.Itoa(int(k)), err, 0)
+	}
+}
+
+// TestPlanHashAtFinal: row 9b in Plan checks the final planned text (plan #121 §4.3); Prepare is
+// bypassed, so only that check can refuse. The volume offset 56 maps through the template to 8.
+func TestPlanHashAtFinal(t *testing.T) {
+	for _, k := range []Kind{KindRange, KindVolume} {
+		got, err := (&Prepared{in: Inputs{Query: "{a=\"x\"} #", Kind: k}}).Plan(5000)
+		if err == nil {
+			t.Errorf("Plan kind %d: planned %q, want the hash refusal at 8", k, got.Query)
+			continue
+		}
+		hashRefusal(t, "Plan kind "+strconv.Itoa(int(k)), err, 8)
 	}
 }
 

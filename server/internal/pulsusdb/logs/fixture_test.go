@@ -81,11 +81,13 @@ type fxField struct {
 }
 
 type fxError struct {
-	Status  int        `json:"status"`
-	Message string     `json:"message"`
-	Fields  []fxField  `json:"fields"`
-	Hint    *fxHint    `json:"hint"`
-	Planned *fxPlanned `json:"planned"`
+	Status  int       `json:"status"`
+	Message string    `json:"message"`
+	Fields  []fxField `json:"fields"`
+	// Position is row 9b's byte offset into the raw text (plan #121 §3.3); absent means none.
+	Position *int       `json:"position"`
+	Hint     *fxHint    `json:"hint"`
+	Planned  *fxPlanned `json:"planned"`
 }
 
 type fxHint struct {
@@ -140,7 +142,10 @@ type fxClassify struct {
 	Name string            `json:"name"`
 	Text text              `json:"text"`
 	Vars map[string]string `json:"vars"`
-	Want struct {
+	// PreparePosition is the offset at which Prepare refuses the text with row 9b (plan #121
+	// §3.3): present on exactly the entries whose text holds a top-level '#'.
+	PreparePosition *int `json:"prepare_position"`
+	Want            struct {
 		Class     string   `json:"class"`
 		Reserved  []string `json:"reserved"`
 		Selectors []struct {

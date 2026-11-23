@@ -56,14 +56,15 @@ func macrosAt(stepMs int64) macroText {
 	return macroText{interval: FormatDuration(stepMs), rateInterval: FormatDuration(RateWindowMs(stepMs))}
 }
 
-// lexState is the lexical state of the substitution scan (plan #116 §4.2).
+// lexState is the lexical state of the substitution scan (plan #116 §4.2). PulsusDB's LogQL has
+// no comments (plan #121 §1): outside strings a '#' is an ordinary byte here, and row 9b refuses
+// it (hashAt).
 type lexState int
 
 const (
-	stNone    lexState = iota // outside strings and comments
-	stDQ                      // inside a "…" string
-	stBQ                      // inside a `…` string
-	stComment                 // inside a # comment
+	stNone lexState = iota // outside strings
+	stDQ                   // inside a "…" string
+	stBQ                   // inside a `…` string
 )
 
 // substitution is the outcome of one scan of the raw text.
@@ -245,8 +246,6 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				st = stDQ
 			case '`':
 				st = stBQ
-			case '#':
-				st = stComment
 			}
 		case stDQ:
 			switch c {
@@ -261,10 +260,6 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 			if c == '`' {
 				st = stNone
 			}
-		case stComment:
-			if c == '\n' {
-				st = stNone
-			}
 		}
 		i++
 	}
@@ -276,16 +271,46 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 }
 
 // representable reports whether v can be written verbatim in state st (row 7b): a backtick would
-// end a `…` string and Go's raw-string unquote drops a CR; an LF would end a # comment. A "…"
-// string takes any value (encodeDQ), and the top level takes it as query text.
+// end a `…` string and Go's raw-string unquote drops a CR. A "…" string takes any value
+// (encodeDQ), and the top level takes it as query text.
 func representable(v string, st lexState) bool {
-	switch st {
-	case stBQ:
+	if st == stBQ {
 		return !strings.ContainsAny(v, "`\r")
-	case stComment:
-		return !strings.ContainsRune(v, '\n')
 	}
 	return true
+}
+
+// hashAt is the offset of the first '#' outside "…" and `…` in text, by the states of the
+// substitution scan (plan #121 §4.1), or -1. It reads the text itself, never the raw text and the
+// values apart, so a '#' a value brings in is found.
+func hashAt(text string) int {
+	st := stNone
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch st {
+		case stNone:
+			switch c {
+			case '"':
+				st = stDQ
+			case '`':
+				st = stBQ
+			case '#':
+				return i
+			}
+		case stDQ:
+			switch c {
+			case '\\':
+				i++ // the escaped byte is skipped
+			case '"', '\n':
+				st = stNone
+			}
+		case stBQ:
+			if c == '`' {
+				st = stNone
+			}
+		}
+	}
+	return -1
 }
 
 // appendCopy appends a copy segment, merged with a copy just before it.
