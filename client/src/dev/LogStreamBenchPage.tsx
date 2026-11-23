@@ -43,6 +43,8 @@ interface ResliceRecord {
 declare global {
   interface Window {
     __logStreamBenchConfig?: Partial<LogStreamBenchConfig>;
+    /** Every `scrollTop` write since the page loaded; kept when the harness unmounts. */
+    __logStreamBenchWrites?: number;
     __logStreamBench?: {
       scrollToOrd(ord: number): void;
       loadTail(): Promise<void>;
@@ -223,6 +225,7 @@ export function LogStreamBenchPage(): JSX.Element {
           onScrollWrite={() => {
             counters.current.writes += 1;
             counters.current.writesAt.push(performance.now());
+            window.__logStreamBenchWrites = (window.__logStreamBenchWrites ?? 0) + 1;
           }}
           onReslice={(cause, scrolling) => {
             const c = counters.current;

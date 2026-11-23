@@ -67,6 +67,7 @@ declare global {
       showControl(on: boolean): void;
     };
     __lastScrollAt?: number;
+    __logStreamBenchWrites?: number;
   }
 }
 

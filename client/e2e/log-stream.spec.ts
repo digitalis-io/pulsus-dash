@@ -234,7 +234,7 @@ test.describe('e2e:log-stream', () => {
   // (about 14 lines a row) under a 400 000 px bound give a slice of about 1 400 rows, whose
   // margin is a quarter of it; a still viewport must not re-slice or write again.
   test('E5b a pixel-limited slice does not re-slice at rest', async ({ page }) => {
-    await openBench(page, {
+    const config = {
       total: 30_000,
       prefillTo: 30_000,
       capEntries: MAX_ENTRIES,
@@ -242,7 +242,22 @@ test.describe('e2e:log-stream', () => {
       wrap: true,
       lineLength: 2_000,
       view: { cap: 200_000, margin: 20_000, maxPx: 400_000, hardPx: 12_000_000 },
-    });
+    };
+    // 1. The list as loaded, untouched: at most one scrollTop write (a page-lifetime count, so a
+    //    re-slice loop that ends the page is still counted).
+    await page.addInitScript((c) => {
+      window.__logStreamBenchConfig = c;
+    }, config);
+    await page.goto('/t/demo/dev/log-stream');
+    await page.waitForTimeout(4_000);
+    const loaded = await page.evaluate(() => window.__logStreamBenchWrites ?? 0);
+    await page.waitForTimeout(2_000);
+    const later = await page.evaluate(() => window.__logStreamBenchWrites ?? 0);
+    // One settling re-slice may follow the first measurements; a still viewport never re-slices twice.
+    expect.soft(loaded, 'scrollTop writes of the untouched list').toBeLessThanOrEqual(1);
+    expect.soft(later, 'scrollTop writes 2 s later').toBe(loaded);
+    // 2. After scrollToOrd, at rest: neither the slice nor the writes change for 2 s.
+    await openBench(page, config);
     await scrollToOrd(page, 15_000);
     await atRest(page);
     const start = await sliceStart(page);
