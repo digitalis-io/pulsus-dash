@@ -7,8 +7,8 @@
  * Chromium and Firefox equal every row. WebKit's `**` differs from V8's in the last bits for some
  * large powers, so its nice-search rows can snap to a neighbouring double (plan §8 R2, §10 Q1). In
  * WebKit the exact rows are the fallback rows, which are pure IEEE arithmetic (`extremeTicks`, or
- * `niceValueTicks` null under V8); every nice-search row that differs must still hold the
- * bounded-ticks invariants P1 to P7 (plan §4.5).
+ * `niceValueTicks` null under V8), and the short-plot rows (height ≤ 2 · (label + 2)); every other
+ * nice-search row that differs must still hold the bounded-ticks invariants P1 to P7 (plan §4.5).
  */
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
@@ -40,7 +40,10 @@ const rows = (name: string): (FixtureRow & { file: string; exact: boolean })[] =
     const fallback =
       r.fn === 'extremeTicks' ||
       niceValueTicks(num(r.min), num(r.max), num(r.height), r.label, r.base ?? 1000) === null;
-    return { ...r, file: name, exact: fallback };
+    // Short plot: at most two label gaps tall, where the 3 → 2 → 1 thinning applies (A13, A14,
+    // A21 to A29 and the short seeded rows).
+    const short = num(r.height) <= 2 * (r.label + 2);
+    return { ...r, file: name, exact: fallback || short };
   });
 
 test('e2e:ticks-parity valueTicks equals ticks.json and ticks-extreme.json', async ({
