@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.31-rc · 2026-11-23 |
+| **Version** | 1.32-rc · 2026-11-23 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -581,6 +581,7 @@ the merge train), nightly (release blocker).
 | `ci:engine-lint` | From #68: `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` on `engine/`, with `unwrap_used`, `expect_used` and `disallowed_types` (`std::sync::Mutex`, `RwLock`: T03-008) denied | PR | yes |
 | `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
 | `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh production build of the client (and, from #68, the engine), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
+| `ci:e2e-complete` | Every test `playwright test --list` names for an engine ran in exactly one CI shard of it and was not skipped, except the skips allowlisted in `client/config/e2eSkips.ts` (`client/scripts/e2e-complete.ts`) | PR | yes |
 
 **Unit, property and fuzz (L1)**
 
@@ -1026,3 +1027,4 @@ Meta-testing:
 | 1.29-rc | 2026-11-23 | #64 Part B: §7.1 adds `unit:thresholds`, `e2e:board-thresholds-legend` and `e2e:board-stat-tile`; `unit:board-spec` covers board spec v2; `bench:rooms-long-tasks` adds the "board editor, 8 thresholds" scenario under the same interim CI check; `golden:interim-gallery` "seven" → "nine" (`line-thresholds`, `stat-sparkline`) |
 | 1.30-rc | 2026-11-23 | #66 Part B: §7.1 adds `unit:log-buffer`, `unit:log-pager`, `unit:log-synth`, `unit:log-slice`, `unit:log-stream`, `unit:log-time`, `unit:level-tokens`, `unit:use-log-pager`, `unit:router-dev-log-stream`, `unit:long-task-marks`, `unit:event-latency` and `e2e:log-stream`; `unit:log-paging` adds the shared fixture `wire/fixtures/json/logql-paging.json` (`TestPagingFixture`), which the client synth also passes; the lab benchmark `bench:log-scroll` and its lab-gate row; §4.3: the M-UI1 log stream page is measured by `bench:log-scroll` on the dev harness |
 | 1.31-rc | 2026-11-23 | #97: §7.1 adds `unit:value-ticks-bounded`, `e2e:ticks-parity` (path parity; F, S and N classes), `unit:ulp-distance` and `e2e:gallery-extreme`; `unit:extreme-ticks` is height-aware; `unit:layout-parity` adds `ticks-extreme.json`; `bench:frame-interim-line` adds the `line-extreme` frame; `bench:rooms-long-tasks` adds the "gallery near-limit" scenario; `golden:interim-gallery` "nine" → "ten" (`line-extreme`) |
+| 1.32-rc | 2026-11-23 | #130: §7.1 adds `ci:e2e-complete` (the e2e suite runs as three tag-selected CI shards per engine) |

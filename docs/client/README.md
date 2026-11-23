@@ -234,20 +234,40 @@ The generated token files and tests are not linted.
 
 ## Keyboard coverage
 
-`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L28) through
+`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L32) through
 `e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
-text, `drain`, `shellAfter`) and the board loops L23–L28 in `e2e/keyboardBoards.ts`, run inside the
-one test. ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in all three files. After every keystroke the harness collects each interactive control (links, buttons,
+text, `drain`, `shellAfter`), the board loops L23–L31 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
+one function per step) and the Explore loop L32 in `e2e/keyboardExplore.ts`. The loops run as five
+independent tests, the parts (#130), each in its own browser context from the same preamble (the
+clipboard stub and the fixed clock), in parallel and in any CI shard:
+
+| Part | Tags | Loops |
+|---|---|---|
+| K1 shell and chart frames | `@kbd` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
+| K2 panel editor | `@kbd @kbd-a` | L27 |
+| K3 board list and b-1 view tools | `@kbd @kbd-b` | L23, L24 on b-1 |
+| K4 b-3 and b-2 view tools, toolbar, edit layout | `@kbd @kbd-b` | L24 on b-3 and b-2, L25, L26 |
+| K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32 |
+
+A part that passes writes what it collected, operated and visited to
+`test-results/keyboard-coverage/<project>-K<n>.json` (`PartCoverage` in `e2e/keyboardParts.ts`;
+nothing is written when the part fails). The coverage rule holds over the union of a project's five
+files: a control collected by one part may be operated by another. The check runs at the end of a
+full `npm run e2e` (the reporter) and, on CI, over the three shards' files in the `e2e-report` job
+(`scripts/keyboard-coverage.ts`; see
+[Build, test and CI](../development/build-and-ci.md#keyboard-coverage-and-e2e-completeness)). ESLint
+bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in the spec, the script and the board
+loops. After every keystroke the harness collects each interactive control (links, buttons,
 fields, menu items, options; a grid counts as one control) from the accessibility snapshot, keyed by
 state: the route pattern plus the open overlay (with an overlay open, only the overlay is read).
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
 overlay, it records the focused control as operated; Tab never counts. The test fails if any
-collected control was never operated, or if a required state (every route, Not found, Signed out,
-the session error, and the chart gallery `/t/:tenant/dev/gallery`) was never visited, and prints
-the missing keys. L20 operates the header and sidebar on the gallery too (the time dialog's Keep
+collected control was never operated by any part, or if a required state (every route, Not found,
+Signed out, the session error, and the chart gallery `/t/:tenant/dev/gallery`; `REQUIRED_STATES` in
+`e2e/keyboardParts.ts`) was never visited by any part, and prints the missing keys. L20 operates the header and sidebar on the gallery too (the time dialog's Keep
 relative and Copy link exist only on pages with a view URL pattern, so not there); L22 operates the
 six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
-and the value text. L23–L28 cover the board list and its dialogs, the board in View and Edit mode,
+and the value text. L23–L31 cover the board list and its dialogs, the board in View and Edit mode,
 the panel tools, Share, the layout buttons, the panel editor dialog and its selects, the guard and
 the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
@@ -269,10 +289,18 @@ wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons 
 second "Next"; Escape and the visible buttons are their keyboard equivalents. Any other control, including a visible empty icon button
 with `tabindex="-1"`, is counted (the self-test checks this).
 
-**Adding a control:** run the keyboard script; if it lists the new control as uncovered, add the
-key presses that operate it to the loop for its page (or to `chrome()` in L20 if it is in the
-sidebar or header), with an assertion of what it does. `e2e/coverage.spec.ts` checks the harness
-itself.
+**Adding a control:** run the keyboard script (a full `npm run e2e`, or
+`npx playwright test --grep @kbd --project=chromium` then
+`npm run e2e:keyboard-coverage -- test-results chromium`); if it lists the new control as
+uncovered, add the key presses that operate it to the loop for its page (or to `chrome()` in L20 if
+it is in the sidebar or header), with an assertion of what it does. `e2e/coverage.spec.ts` checks
+the harness itself.
+
+**Adding a loop:** add it to the part whose pages it covers (a board loop as a new function of
+`boardSteps`, called from that part's body in `keyboard.spec.ts`). Each part must pass alone
+(`--grep "K3 "`): a loop starts from its own `goto`, not from the state an earlier loop left. If a
+shard's test step then exceeds 15 minutes, rebalance as
+[E2E shards](../development/build-and-ci.md#e2e-shards) says.
 
 ## API clients
 
