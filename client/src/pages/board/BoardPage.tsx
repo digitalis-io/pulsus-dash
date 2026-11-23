@@ -378,20 +378,22 @@ function BoardEditor({
     s.selected === null ? undefined : allPanels(s.draft).find((x) => x.panel.id === s.selected);
   // The run text of the panel in the dialog (plan #64 §4.4, A.10): the preview and the panel
   // behind run it, so they share one key; typing changes the draft only. Set while rendering.
-  const [editRun, setEditRun] = useState<{ id: string; text: string } | null>(null);
+  // `seq` counts the runs of the same text: a LogQL stream preview's new pager (plan #67 §3.5).
+  const [editRun, setEditRun] = useState<{ id: string; text: string; seq: number } | null>(null);
   const dialogPanel = edit && selected !== undefined ? selected.panel : null;
   if (dialogPanel === null) {
     if (editRun !== null) setEditRun(null);
   } else if (editRun?.id !== dialogPanel.id) {
-    setEditRun({ id: dialogPanel.id, text: dialogPanel.query.text });
+    setEditRun({ id: dialogPanel.id, text: dialogPanel.query.text, seq: 0 });
   }
   const runEdited = (text: string): void => {
     if (editRun === null) return;
     if (text !== editRun.text) {
-      setEditRun({ id: editRun.id, text });
+      setEditRun({ id: editRun.id, text, seq: editRun.seq });
       return;
     }
     // The same text again: abort the run in flight, first fetch included, and run it again.
+    setEditRun({ ...editRun, seq: editRun.seq + 1 });
     const queryKey = ['data', 'panel', tenant, editRun.id];
     void queryClient.cancelQueries({ queryKey });
     void queryClient.invalidateQueries({ queryKey });
@@ -451,7 +453,7 @@ function BoardEditor({
     onKeyOp,
     onDuplicate,
     onRemove,
-    ...(editRun?.id === p.id ? { runText: editRun.text } : {}),
+    ...(editRun?.id === p.id ? { runText: editRun.text, runSeq: editRun.seq } : {}),
   });
 
   // One grid for both modes (#111): entering or leaving Edit mode changes its props, not the
@@ -604,6 +606,7 @@ function BoardEditor({
             readOnly={busy}
             statusText={statusText}
             runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
+            runSeq={editRun?.id === selected.panel.id ? editRun.seq : 0}
             onRun={runEdited}
             onChange={(patch) => {
               dispatch({ type: 'updatePanel', id: selected.panel.id, patch });

@@ -352,7 +352,8 @@ describe('unit:panel-view LogQL', () => {
     const isolated = panelFrame(bars, 'error');
     expect(isolated.spec).toBe(bars.spec);
     expect(isolated.data).toEqual({ kind: 'series', series: [lvl('error', 3)] });
-    expect(panelFrame(bars, 'error')).toBe(isolated);
+    // Cached per data and key.
+    expect(panelFrame(bars, 'error').data).toBe(isolated.data);
     expect(panelFrame(bars, null)).toBe(bars);
 
     const metric = frameRun({ logKind: 'series', result: fromRange(SER) });

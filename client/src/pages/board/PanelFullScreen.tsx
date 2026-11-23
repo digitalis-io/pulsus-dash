@@ -1,7 +1,8 @@
 /**
  * A panel at full screen (plan #61 Part B §4.3): a modal titled with the panel title, the same
  * body filling most of the viewport, and Close. Escape closes; focus returns to the trigger. It
- * shows the panel's own run (plan #64 §3.7): the panel queries while it is open.
+ * shows the panel's own run (plan #64 §3.7): the panel queries while it is open. A LogQL stream
+ * panel's `LogStream` shows here on the panel's pager while the panel body yields (plan #67 §3.5).
  */
 import { useRef } from 'react';
 import type { PanelView } from '../../boards/panelRun';

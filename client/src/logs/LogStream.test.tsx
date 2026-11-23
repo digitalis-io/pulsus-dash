@@ -464,8 +464,9 @@ describe('unit:log-stream', () => {
 
 describe('unit:log-stream-prefetch (plan #67)', () => {
   it('prefetchRows 50 waits for the reader; the default prefetches at once', async () => {
+    // The next page's requests (a call of loadTail while one is in flight sends nothing).
     const a = await synthPager(1);
-    const loadA = vi.spyOn(a.pager, 'loadTail');
+    const sent = a.synth.calls.length;
     const m = mount({ pager: a.pager, prefetchRows: 50 });
     await waitFor(() => {
       expect(rowOf(1)).not.toBeNull();
@@ -473,18 +474,19 @@ describe('unit:log-stream-prefetch (plan #67)', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(loadA).toHaveBeenCalledTimes(0);
+    expect(a.synth.calls.length - sent).toBe(0);
     await scrollTo(960 * 20);
     await waitFor(() => {
-      expect(loadA).toHaveBeenCalledTimes(1);
+      expect(a.synth.calls.length - sent).toBe(1);
     });
+    expect(a.synth.calls.at(-1)?.cursor).toBe(a.pager.buffer.cursorOf(1));
     m.unmount();
 
     const b = await synthPager(1);
-    const loadB = vi.spyOn(b.pager, 'loadTail');
+    const before = b.synth.calls.length;
     mount({ pager: b.pager });
     await waitFor(() => {
-      expect(loadB).toHaveBeenCalledTimes(1);
+      expect(b.synth.calls.length - before).toBe(1);
     });
   });
 });

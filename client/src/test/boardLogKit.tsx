@@ -11,6 +11,7 @@ import { StubApi } from '../api/StubApi';
 import type { LogsRequest, PanelSpec, PanelVisKind, VolumeRequest } from '../api/types';
 import type { LogqlPlannedQuery, LogsResult, VolumeResult } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
+import { keyHash } from '../dev/keyHash';
 import { ABS, T12, T13 } from './boardPanelKit';
 import { boardWith, engineWrapper } from './boardTestKit';
 import { fakeEngine } from './fakeEngine';
@@ -136,8 +137,9 @@ export function lines(
   return { ...r, stepMs: 5000, planned: planned(o.q ?? '{app="a"}') };
 }
 
+/** A series of one sample, keyed as the decoder keys it. */
 export const level = (l: string, v: number): SeriesFrame => ({
-  key: l,
+  key: keyHash({ level: l }),
   labels: { level: l },
   timestamps: Float64Array.of(T12 + 5000),
   values: Float64Array.of(v),
@@ -154,7 +156,11 @@ export function metric(
     startMs: T12,
     endMs: T13,
     stepMs: 5000,
-    series: keys.map((k, i) => ({ ...level(k, i + 1), labels: { app: k } })),
+    series: keys.map((k, i) => ({
+      ...level(k, i + 1),
+      key: keyHash({ app: k }),
+      labels: { app: k },
+    })),
     completeness: { ...s.completeness, truncated: o.truncated ?? false },
     planned: planned(o.q ?? 'rate({app="a"}[1m])'),
   };

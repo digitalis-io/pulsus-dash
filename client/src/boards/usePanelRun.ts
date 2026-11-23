@@ -5,6 +5,8 @@
  * query under `['data', 'panel', …]` (the shell's refresh reaches it; a new key aborts the old
  * request, PRF-030), fresh within the window epoch only (`staleTime: Infinity`, `BoardRunProvider`).
  * A window or step change keeps the previous outcome as the placeholder; any other change does not.
+ * A LogQL panel runs through `useLogPanelRun` (plan #67 §3.3); both hooks are called on every render
+ * and the inactive one sends nothing and loads no language.
  */
 import { useQuery } from '@tanstack/react-query';
 import { useContext, useLayoutEffect, useMemo, useRef } from 'react';
@@ -25,6 +27,7 @@ import {
   type PanelState,
   type PanelStream,
 } from './panelRun';
+import { useLogPanelRun } from './useLogPanelRun';
 import { useQueryLanguage } from './useQueryLanguage';
 import { panelVars, referencedVariables } from './variableRefs';
 
@@ -37,6 +40,10 @@ export interface PanelRunInput {
   readonly enabled: boolean;
   /** The board panel body's width (§3.4). */
   readonly widthPx: number | null;
+  /** Runs of the same text (the editor's Run, plan #67 §3.3): a new LogQL pager each; default 0. */
+  readonly runSeq?: number;
+  /** The panel behind its open editor: a LogQL stream panel holds no pager (the preview has one). */
+  readonly editing?: boolean;
 }
 
 export type { PanelOutcome };
@@ -68,41 +75,49 @@ export interface PanelRun {
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
 const NO_NAMES: readonly string[] = Object.freeze([]);
 
-function isAbort(e: unknown): boolean {
+export function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === 'AbortError';
 }
 
 /** The `variable.missing` names of a 400, in field order; null for any other error. */
-function missingOf(e: unknown): string[] | null {
+export function missingOf(e: unknown): string[] | null {
   if (!isApiError(e, 'invalid') || e.fields.length === 0) return null;
   if (!e.fields.every((f) => f.messageKey === 'variable.missing')) return null;
   return e.fields.map((f) => f.pointer.replace(/^\/vars\//, ''));
 }
 
+/** The panel's run: its language's hook (plan #67 §3.3). */
 export function usePanelRun(a: PanelRunInput): PanelRun {
+  const logql = a.panel.query.lang === 'logql';
+  const prom = usePromPanelRun(a, !logql);
+  const logs = useLogPanelRun(a, logql);
+  return logql ? logs : prom;
+}
+
+/** A PromQL panel's run; inactive (a LogQL panel), an idle key and no language. */
+function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const api = useApi();
   const { vars, timeReady } = useContext(BoardRunContext);
   const { window } = useTimeContext();
   const { tenant, panel, text, enabled, widthPx } = a;
   const { fromMs, toMs } = window;
-  const { lang, failed } = useQueryLanguage('promql');
+  const { lang, failed } = useQueryLanguage(active ? 'promql' : null);
 
   const hint = useMemo(() => referencedVariables(text).filter((n) => !vars.has(n)), [text, vars]);
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
-  const pre: PanelState | null =
-    panel.query.lang === 'logql'
-      ? 'unsupported'
-      : panel.vis.kind === 'logs'
-        ? 'logs'
-        : text.trim() === ''
-          ? 'empty'
-          : refusedEarly !== null
-            ? 'refused'
-            : hint.length > 0
-              ? 'variable'
-              : failed
-                ? 'langFailed'
-                : null;
+  const pre: PanelState | null = !active
+    ? null
+    : panel.vis.kind === 'logs'
+      ? 'logs'
+      : text.trim() === ''
+        ? 'empty'
+        : refusedEarly !== null
+          ? 'refused'
+          : hint.length > 0
+            ? 'variable'
+            : failed
+              ? 'langFailed'
+              : null;
 
   // Nothing is planned before the board's time is set (§4.6).
   const stepMs =
@@ -110,8 +125,8 @@ export function usePanelRun(a: PanelRunInput): PanelRun {
       ? (promGrid(fromMs, toMs, widthPx)?.stepMs ?? null)
       : null;
   const kind = useMemo(
-    () => (timeReady && pre === null ? runKind(text, lang) : null),
-    [timeReady, pre, text, lang],
+    () => (active && timeReady && pre === null ? runKind(text, lang) : null),
+    [active, timeReady, pre, text, lang],
   );
   const sentPairs = useMemo(() => panelVars(text, vars), [text, vars]);
   const varsJson = useMemo(() => JSON.stringify(sentPairs), [sentPairs]);

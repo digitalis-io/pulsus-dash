@@ -90,12 +90,12 @@ function deferred<T>(): Deferred<T> {
 function spies() {
   const logs = deferred<LogsResult>();
   const volume = deferred<VolumeResult>();
-  const queryLogs = vi.fn(
-    (_t: string, _r: LogsRequest, _s?: AbortSignal): Promise<LogsResult> => logs.promise,
+  const queryLogs = vi.fn<(t: string, r: LogsRequest, s?: AbortSignal) => Promise<LogsResult>>(
+    () => logs.promise,
   );
-  const queryVolume = vi.fn(
-    (_t: string, _r: VolumeRequest, _s?: AbortSignal): Promise<VolumeResult> => volume.promise,
-  );
+  const queryVolume = vi.fn<
+    (t: string, r: VolumeRequest, s?: AbortSignal) => Promise<VolumeResult>
+  >(() => volume.promise);
   const api: Pick<Api, 'queryLogs' | 'queryVolume'> = { queryLogs, queryVolume };
   const logsSignal = () => queryLogs.mock.calls[0]?.[2];
   const volumeSignal = () => queryVolume.mock.calls[0]?.[2];

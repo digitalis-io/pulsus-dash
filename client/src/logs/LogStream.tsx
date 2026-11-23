@@ -151,6 +151,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     onWrapChange,
     onDirectionChange,
     onRerun,
+    prefetchRows = PREFETCH_ROWS,
     view: limits = DEFAULT_VIEW,
     onScrollWrite,
     onReslice,
@@ -545,8 +546,8 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     const { a, b } = visibleOrds(range, slice, layout);
     pager.protect({ from: a - OVERSCAN, to: b + OVERSCAN + 1 });
     const dir = direction;
-    if (layout.tail && state.endOrd - b <= PREFETCH_ROWS && dir !== 'up') void pager.loadTail();
-    if (layout.head && a - state.firstOrd <= PREFETCH_ROWS && dir === 'up') {
+    if (layout.tail && state.endOrd - b <= prefetchRows && dir !== 'up') void pager.loadTail();
+    if (layout.head && a - state.firstOrd <= prefetchRows && dir === 'up') {
       void pager.loadHead();
     }
     const scrolling = isScrolling || touching;

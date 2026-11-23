@@ -2,6 +2,7 @@
  * One `LANGUAGES[id]()` per page load, as state (plan #64 §3.2; ADR-0018): a board's panels share
  * one import. A language that has loaded is returned on the first render, so a warm board has no
  * render without it; a rejection is kept as `failed` and never retried until the page reloads.
+ * A null id (a panel of another language, plan #67) loads nothing and stays loading.
  */
 import { useEffect, useState } from 'react';
 import { LANGUAGES } from '../editor/lang/index';
@@ -37,9 +38,20 @@ function load(id: LangId): Promise<LoadedLanguage> {
   return p;
 }
 
-export function useQueryLanguage(id: LangId): LoadedLanguage {
-  const [state, setState] = useState<LoadedLanguage>(() => settled.get(id) ?? LOADING);
+export function useQueryLanguage(id: LangId | null): LoadedLanguage {
+  const [state, setState] = useState<LoadedLanguage>(() =>
+    id === null ? LOADING : (settled.get(id) ?? LOADING),
+  );
+  // A new id (a panel's language changed): the last result is not this language's.
+  const [seen, setSeen] = useState(id);
+  let current = state;
+  if (seen !== id) {
+    current = id === null ? LOADING : (settled.get(id) ?? LOADING);
+    setSeen(id);
+    setState(current);
+  }
   useEffect(() => {
+    if (id === null) return undefined;
     let live = true;
     load(id).then(
       (s) => {
@@ -51,7 +63,7 @@ export function useQueryLanguage(id: LangId): LoadedLanguage {
       live = false;
     };
   }, [id]);
-  return state;
+  return current;
 }
 
 /** Forgets every load, so the next panel imports again (tests only). */

@@ -35,6 +35,7 @@ import { framePlan } from '../../vis/framePlan';
 
 // The panel editor's Query field loads the editor chunk: a textarea stands in (plan #64 A.5).
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
+vi.mock('../../editor/logqlEditor', () => import('../../test/fakeLogqlEditor'));
 
 /** The props of every react-grid-layout grid rendered, to simulate a pointer drop. */
 const rgl = vi.hoisted(() => ({ props: [] as unknown[] }));
@@ -274,9 +275,12 @@ describe('view mode', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('canvas')).toHaveLength(3);
     });
-    // A LogQL panel waits for LogQL support (#67), whatever its visualisation (plan #64 §4.2).
+    // A LogQL Logs panel is the log stream of its query (plan #67).
+    await waitFor(() => {
+      expect(panelOf('Errors')).toHaveAttribute('data-panel-state', 'stream');
+    });
     expect(
-      await within(panelOf('Errors')).findByText('Runs when LogQL support lands'),
+      within(panelOf('Errors')).getByRole('list', { name: 'Log lines: Errors' }),
     ).toBeVisible();
     for (const title of ['Request rate', 'Error ratio', 'Request latency']) {
       expect(panelOf(title), title).toHaveAttribute('data-panel-state', 'frame');
@@ -298,17 +302,18 @@ describe('view mode', () => {
     await waitFor(() => {
       expect(panelOf('Request latency')).toHaveAttribute('data-panel-state', 'noBuckets');
     });
-    expect(
-      await within(panelOf('Errors')).findByText('Runs when LogQL support lands'),
-    ).toBeVisible();
+    // A LogQL panel runs its query (plan #67): this fake fetch serves no LogQL route.
+    await waitFor(() => {
+      expect(panelOf('Errors')).toHaveAttribute('data-panel-state', 'error');
+    });
     one.view.unmount();
 
     open('/t/demo/board/b-3', { api: httpApi() });
     await screen.findByRole('heading', { level: 3, name: 'Pods' });
     sizePanels();
-    expect(
-      await within(panelOf('Edge errors')).findByText('Runs when LogQL support lands'),
-    ).toBeVisible();
+    await waitFor(() => {
+      expect(panelOf('Edge errors')).toHaveAttribute('data-panel-state', 'error');
+    });
     // Their variables are unset: no request until the URL gives `var-region` and `var-env`.
     expect(
       await within(panelOf('Edge p99')).findByText('Set a value for $region to run this panel'),
@@ -924,7 +929,9 @@ describe('panel tools', () => {
 
   it('explore link', async () => {
     open('/t/demo/board/b-1');
-    // b-1 opens on its saved time (plan #64 §4.6).
+    await screen.findByRole('heading', { level: 3, name: 'Errors' });
+    sizePanels();
+    // b-1 opens on its saved time (plan #64 §4.6); a LogQL panel links its answer's text (#67).
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Open in Explore: Errors' })).toHaveAttribute(
         'href',
@@ -1483,19 +1490,20 @@ describe('panel editor dialog', () => {
     expect(t.preview().querySelector('[data-chart-frame]')).toBeNull();
   });
 
-  it('language: LogQL makes no request', async () => {
+  it('language: LogQL runs the text through the LogQL field', async () => {
     const t = await setup();
     const d = await t.openOn('Request rate');
     await waitFor(() => t.previewFrame());
     const n = t.spy.mock.calls.length;
     await t.user.click(within(d).getByRole('button', { name: /Query language$/ }));
     await t.user.click(await screen.findByRole('option', { name: 'LogQL' }));
-    expect(
-      await within(t.preview()).findByText('Runs when LogQL support lands'),
-    ).toBeInTheDocument();
+    // The text is kept and runs as LogQL (plan #67 §3.5): no PromQL request, the LogQL editor.
+    await waitFor(() => {
+      const field = within(d).getByRole('textbox', { name: 'Query' });
+      expect(field.closest('[data-editor-host]')).not.toBeNull();
+      expect(field).toHaveValue('sum(rate(http_requests_total[5m]))');
+    });
     expect(t.spy.mock.calls.length).toBe(n);
-    // The LogQL field is the plain text area until LogQL panels (#67).
-    expect(within(d).getByRole('textbox', { name: 'Query' }).tagName).toBe('TEXTAREA');
   });
 
   it('successive runs: the last wins', async () => {
