@@ -168,11 +168,20 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   const tz = useTimeZone();
   const buffer = pager.buffer;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  /** The mounted scroller, as state: its input listeners follow the element (a series result
+   *  removes it, a later stream mounts another). */
+  const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const committedRef = useRef<Committed | null>(null);
   const cancelRestoreRef = useRef<(() => void) | null>(null);
   const [perLine, setPerLine] = useState(80);
   const [touching, setTouching] = useState(false);
+  const scrollerCallback = useCallback((el: HTMLDivElement | null) => {
+    scrollerRef.current = el;
+    setScrollerEl(el);
+    // A removed scroller ends any touch on it: no touchend will come.
+    if (el === null) setTouching(false);
+  }, []);
   const [wrapSeen, setWrapSeen] = useState(wrap);
   /** The reader's last scroll direction (per pager), as state: a change runs the load decision
    *  of §4.5 even when nothing scrolls (a wheel at an edge). */
@@ -447,7 +456,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   // moved up, the head (an evicted page) only after the reader moved up, so loads at the two ends
   // never evict each other's pages in turn.
   useEffect(() => {
-    const scroller = scrollerRef.current;
+    const scroller = scrollerEl;
     if (scroller === null) return undefined;
     let prevTop = scroller.scrollTop;
     let touchY: number | null = null;
@@ -493,11 +502,12 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       scroller.removeEventListener('touchstart', onTouchStart);
       scroller.removeEventListener('touchmove', onTouchMove);
     };
-  }, [setDirection]);
+  }, [setDirection, scrollerEl]);
 
-  // A touch down holds every re-slice until it ends (§4.5 "at rest").
+  // A touch down holds every re-slice until it ends (§4.5 "at rest"), on whichever scroller is
+  // mounted.
   useEffect(() => {
-    const scroller = scrollerRef.current;
+    const scroller = scrollerEl;
     if (scroller === null) return undefined;
     const down = () => {
       setTouching(true);
@@ -513,7 +523,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       scroller.removeEventListener('touchend', up);
       scroller.removeEventListener('touchcancel', up);
     };
-  }, []);
+  }, [scrollerEl]);
 
   // After a render whose visible range or state changed: protect, grow, load, re-slice (§4.5).
   useEffect(() => {
@@ -664,7 +674,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
         </Checkbox>
       </div>
       <div
-        ref={scrollerRef}
+        ref={scrollerCallback}
         className={cx(styles['scroller'])}
         data-log-scroller=""
         role="region"
