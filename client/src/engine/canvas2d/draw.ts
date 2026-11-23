@@ -695,28 +695,31 @@ function finiteInWindow(s: SeriesFrame, w: TimeWindow): number {
 
 /**
  * The stat sparkline (§4.3): the series' finite points inside the window in `r`, joined across
- * absent and non-finite ones (a trend glyph), its finite min..max from the rect's bottom to its top
- * (mid-height when they are equal), in the series colour; a single finite point is a dot.
+ * absent and non-finite ones (a trend glyph); those points' min..max runs from the rect's bottom
+ * to its top (mid-height when they are equal), in the series colour; one point is a dot.
  */
 function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
-  const e = extent(s.values);
-  if (e === null) return;
   const { ctx, window: w } = i;
-  const x = (t: number): number => r.x + ((t - w.fromMs) / (w.toMs - w.fromMs)) * r.width;
-  const y = (v: number): number =>
-    e.max === e.min ? r.y + r.height / 2 : r.y + (1 - (v - e.min) / (e.max - e.min)) * r.height;
-  const colour = i.colours.series[seriesColourIndex(s)] ?? '';
   const pts: [number, number][] = [];
+  let min = Infinity;
+  let max = -Infinity;
   s.timestamps.forEach((t, k) => {
     const v = s.values[k] ?? NaN;
-    if (Number.isFinite(v) && t >= w.fromMs && t <= w.toMs) pts.push([x(t), y(v)]);
+    if (!Number.isFinite(v) || t < w.fromMs || t > w.toMs) return;
+    pts.push([t, v]);
+    if (v < min) min = v;
+    if (v > max) max = v;
   });
   const [p0] = pts;
   if (p0 === undefined) return;
+  const x = (t: number): number => r.x + ((t - w.fromMs) / (w.toMs - w.fromMs)) * r.width;
+  const y = (v: number): number =>
+    max === min ? r.y + r.height / 2 : r.y + (1 - (v - min) / (max - min)) * r.height;
+  const colour = i.colours.series[seriesColourIndex(s)] ?? '';
   if (pts.length === 1) {
     ctx.fillStyle = colour;
     ctx.beginPath();
-    ctx.arc(p0[0], p0[1], size['chart-line'], 0, 2 * Math.PI);
+    ctx.arc(x(p0[0]), y(p0[1]), size['chart-line'], 0, 2 * Math.PI);
     ctx.fill();
     return;
   }
@@ -724,9 +727,9 @@ function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
   ctx.lineWidth = size['chart-line'];
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  pts.forEach(([px, py], k) => {
-    if (k === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+  pts.forEach(([t, v], k) => {
+    if (k === 0) ctx.moveTo(x(t), y(v));
+    else ctx.lineTo(x(t), y(v));
   });
   ctx.stroke();
 }

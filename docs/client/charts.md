@@ -209,7 +209,7 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 - **Stat.** The formatted value, centred, in 32 px semibold. With series data whose first series has
   at least one finite value in the window, and a frame at least 104 px tall (`SPARK_MIN_H`), a
   **sparkline** runs under it: the rect `{ x: 12, y: h − 8 − 32, width: w − 24, height: 32 }`, the
-  window across it, the series' finite min to max from its bottom to its top (mid-height when they
+  window across it, the min to max of the series' finite values inside the window from its bottom to its top (mid-height when they
   are equal), in the series colour, 1.5 px with round joins. It is a trend glyph: it joins the
   finite points inside the window across absent and non-finite ones (a sparse series on the step
   grid is mostly absent points), and a single finite point is a dot of radius 1.5 px. The value
