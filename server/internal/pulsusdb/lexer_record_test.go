@@ -656,7 +656,7 @@ func TestLexerRecord(t *testing.T) {
 		name, id, ctype, body, want string
 	}{
 		{"encoded host: a \\u escape", "P6", "application/json",
-			`{"status":"success","warnings":["probe-secret-host"],"data":{"resultType":"streams","result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}`, "P6: leak"},
+			`{"status":"success","warnings":["probe\u002dsecret-host"],"data":{"resultType":"streams","result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}`, "P6: leak"},
 		{"encoded host: percent-encoded", "P1", "text/plain; charset=utf-8", "unexpected '#' at byte 12: probe%2Dsecret-host", "P1: leak"},
 		{"encoded host: base64 in a flag", "P6", "application/json",
 			`{"status":"success","data":{"resultType":"streams","encodingFlags":["` + b64 + `"],"result":[],"stats":{"streams":0,"entries":0,"bytes":0}}}`, "P6: leak"},
@@ -758,7 +758,7 @@ func TestLexerRecord(t *testing.T) {
 	})
 
 	t.Run("leaks", func(t *testing.T) {
-		for _, b := range []string{host, "PROBE-SECRET-HOST", "probe%2Dsecret-host", "probe%252Dsecret-host", "probe\\x2dsecret-host",
+		for _, b := range []string{host, "PROBE-SECRET-HOST", "probe%2Dsecret-host", "probe%252Dsecret-host", "probe\\x2dsecret-host", "probe\\u002Dsecret-host",
 			"probe&#45;secret-host", "probe&#x2d;secret-host", b64, base64.URLEncoding.EncodeToString([]byte(host + ":9999")),
 			url.QueryEscape(secrets[2])} {
 			if !leaks([]byte("a "+b+" z"), secrets) {
