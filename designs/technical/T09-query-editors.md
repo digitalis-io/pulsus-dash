@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.18-rc · 2026-11-23 |
+| **Version** | 1.19-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -29,7 +29,7 @@ revised below.
 | `pulsus-re2` regex screen (T09-016) | T09-016 revised |
 | Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree with a TS printer and a token-sequence loss check (§4.9 and T09-013 rewritten); no PulsusDB AST or printer is needed |
 | Leptos `QueryEditor`, `QueryBuilder` | React components (§5.1) |
-| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014). v1: `editor/suggestCache.ts`; key `(tenant, lang, kind, label, selector, bucket)` without `scope_fp` while data scopes are deferred (D12); TTL from settle; LRU by last get; eviction never aborts; the in-flight lookup per kind is tracked apart from the LRU, so an evicted one is still superseded; a tenant switch or clear ends a generation, aborting every tracked call (metadata included) and rejecting its callers at once; a source with an ended token sends nothing; metadata is one TanStack query per tenant. #66: `lang` is `promql` or `logql`; supersession by kind is PromQL's only; a LogQL entry is released by caller interest: it aborts when its last signalled caller aborts and no unsignalled caller holds it, or when its generation ends |
+| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014). v1: `editor/suggestCache.ts`; key `(tenant, lang, kind, label, selector, bucket)` without `scope_fp` while data scopes are deferred (D12); TTL from settle; LRU by last get; eviction never aborts; an in-flight entry is tracked by key apart from the LRU, so an evicted one is re-joined by its key; a tenant switch or clear ends a generation, aborting every tracked call (metadata included) and rejecting its callers at once; a source with an ended token sends nothing; metadata is one TanStack query per tenant. #66: `lang` is `promql` or `logql`. #107: no entry is superseded by another key in any language: an in-flight entry aborts when its last signalled caller releases it and no unsignalled caller holds it, or when its generation ends |
 
 ## 1. Context & problem
 
@@ -309,6 +309,12 @@ value lookups, so `{service="checkout", pod=~"|` only suggests checkout's pods.
   Accepting an option replaces the whole token or value under the caret, re-measured at accept
   time, and never a delimiter: a quoted value that is not well closed ends at the first quote, `}`,
   `,` or whitespace after the caret and gains its closing quote.
+- **PromQL v1 (#107).** The list filters by the text before the caret. Accepting replaces the whole
+  token or value under the caret, re-measured at accept time: the package's own end rule, and a
+  label value that is not well closed ends at the first unescaped quote, `}`, `,` or whitespace
+  after the caret and gains its closing quote. Static items are listed above lookup results in one
+  list, and the local slot holds a result whenever the remote one can, so a late result never moves
+  the highlighted item (T09-008).
 
 #### T09-007 — Completion fetches by context key, debounced and cancellable
 **MUST** — Local sources MUST answer in the same frame. Remote lookups MUST be debounced 120 ms after
@@ -322,12 +328,15 @@ a superseded lookup MUST be cancelled (the BFF propagates cancellation, [T06](T0
 15 min so nearby windows share entries. The BFF has its own L1 metadata cache with a 30–60 s TTL
 ([T06](T06-bff-architecture.md) §4.4).
 
-v1 (#66, LogQL): static completions (stages, functions, durations) answer from a synchronous
-source with no typing delay (≤ 16 ms, §7); remote lookups wait 120 ms inside their own source and
-restart on every document change, so a lookup starts 120 ms after the last keystroke. A view's
-interest in an in-flight lookup is released when its caret context leaves the lookup's key (another
-key, a non-remote context, or the view's end); the shared fetch aborts when its last signalled
-caller releases it.
+v1 (#66, LogQL; #107, PromQL): static completions answer from a local source with no typing delay
+(≤ 16 ms, §7): LogQL's stages, functions and durations; PromQL's functions, aggregations, keywords,
+operators, durations and numbers. Remote lookups wait 120 ms inside their own source and restart on
+every document change, so a lookup starts 120 ms after the last keystroke; PromQL's remote source
+answers metric names, label names and label values. In LogQL, a view's interest in an in-flight
+lookup is released when its caret context leaves the lookup's key (another key, a non-remote
+context, or the view's end); in PromQL, every document or selection change releases it (the next
+lookup starts 120 ms after the last key). Another view's interest keeps a shared request: the
+shared fetch aborts when its last signalled caller releases it.
 
 #### T09-008 — Late completions do not move the selection
 **MUST** — Remote completion results arriving after the popup opened MUST NOT reorder items at or
@@ -624,7 +633,7 @@ cache MUST be keyed by tenant and `scope_fp` and cleared on logout or tenant swi
 |---|---|---|
 | Keystroke → highlighted repaint | ≤ 1 frame; ≤ 2 ms main-thread work for a 1 KB query: the editor's update (incremental parse, highlighting, DOM sync), timed per key by `bench:editor-keystroke` (#63) | incremental CodeMirror parse (PRF-005) |
 | Keystroke → diagnostics visible | ≤ 50 ms after a 30 ms idle, once the WASM crates land; until then on run | PromQL parse estimated ≤ 0.4 ms in wasm |
-| Local completions | ≤ 16 ms from keystroke | — |
+| Local completions | ≤ 16 ms from keystroke | their work per key (analysis, result, popup) is measured together with the key's document update by `bench:promql-completion-latency` `keyWork`, ≤ 2 ms (#107); remote processing is bounded per task (PRF-005) |
 | Remote completions (cache miss) | ≤ 150 ms p50 / 400 ms p95 after the debounce | BFF L1 hit typical |
 | Builder toggle (project + loss check) | ≤ 16 ms for a 1 KB query | editor worker |
 | Editor-worker cold start (WASM phase: fetch + compile + LR init) | ≤ 300 ms on (b), overlapped with first focus | ~0.45–0.55 MB br estimated (PRF-009: not in core) |
@@ -761,3 +770,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.16-rc | 2026-11-22 | #64 Part A: §4.3 (T09-004) v1 board panel editor: the same editor and Run keys, Run query, a run when focus leaves the field, and `Esc` to Run query, then to close the dialog |
 | 1.17-rc | 2026-11-23 | #121: T09-002: the server's fail-closed pre-dispatch refusal (LogQL top-level `#`) is not a validity decision |
 | 1.18-rc | 2026-11-23 | #66 Part A: §0 rows `dash-qlex` (the LogQL scanner and `StreamLanguage`, the mode stack), `dash-qctx` (the v1 LogQL contexts) and "Editor-worker suggest cache" (the key by language; PromQL supersession, LogQL release by caller interest); §4.4 LogQL v1 lookups (scope as written, variable references left out, minute window, limit 1 000) and whole-token replacement; T09-007 v1 note (the synchronous local slot and the 120 ms remote slot; release when the caret context leaves the key); §5.1 v1 LogQL `shape` and the shared host |
+| 1.19-rc | 2026-11-23 | #107: §0 "Editor-worker suggest cache": an in-flight entry is tracked by key apart from the LRU and re-joined by its key; no entry is superseded by another key in any language; §4.4 PromQL v1 (filtering by the text before the caret, whole-token replacement, static items above lookup results, T09-008); T09-007 v1 note (PromQL's local and remote slots; every document or selection change releases the PromQL view's interest; another view's interest keeps a shared request); §7 "Local completions" row: `keyWork` measures the work per key with its document update (≤ 2 ms); remote processing bounded per task |

@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)); a full run also checks the keyboard coverage over its parts | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)); a full run also checks the keyboard coverage over its parts | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency` |
 | `npm run e2e:keyboard-coverage -- <dir> <project>` | The keyboard coverage check over the part files under `<dir>` ([below](#keyboard-coverage-and-e2e-completeness)) | `e2e:a11y-rooms` (CI, merged shards) |
 | `npm run e2e:complete -- <listed.json> <project> <shard.json>...` | Every listed test ran in exactly one shard and was not skipped ([below](#keyboard-coverage-and-e2e-completeness)) | `ci:e2e-complete` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
@@ -358,7 +358,8 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   editor's shadow root (a `MutationObserver`). 30 local trials (`|` after `{app="web"} ` opens the
   stage list from the synchronous slot; then Escape, Backspace and two frames) and 30 remote trials
   (`w` inside `{app=""}` opens the label values after the 120 ms debounce; then Escape, Backspace
-  and 200 ms).
+  and 200 ms). The probe, trial, percentile and summary helpers are in `e2e/completionLatency.ts`,
+  shared with `bench:promql-completion-latency`.
   - **Always:** 30 + 30 samples and remote min ≥ 120 ms (the debounce is never skipped, and its
     timer never fires early).
   - **`EDITOR_BENCH_GATE=enforce`:** local p95 ≤ 16 ms and remote p95 ≤ 136 ms (the debounce plus
@@ -367,6 +368,53 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     frame that follows the key, and the two frames between local trials put each key just after a
     frame, so a local sample is about one frame (16–17 ms at 60 Hz) on a workstation.
   - Report: `test-results/bench-logql-completion.json` (`{local: {p50, p95, max}, remote: {…}}`).
+- **`bench:promql-completion-latency`** (`e2e/perf-promql-completion.spec.ts`, Chromium only,
+  T09-007, T09-008, T09 §7, PRF-005, #107): on the stub build's Explore › Metrics, whose source
+  (`createPromSource` over `StubApi`) answers at once, so the client alone is timed; no fake clock.
+  Keydown `timeStamp` to the popup's insertion, as above (`e2e/completionLatency.ts`).
+  - **Local** (30 trials): `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=…` with
+    `'up + '.repeat(203) + 'sum(up)'` (1 022 bytes, asserted to parse without an error node), the
+    caret before the last `up)`; `r` (`sum(r‸up)`: functions from the local slot, metric names
+    waiting in the remote one), then Escape, Backspace and two frames.
+  - **Remote** (30 trials): `up{job=""}` with the caret between the quotes; `a` opens the stub's
+    label values after the 120 ms debounce, then Escape, Backspace and 200 ms.
+  - **Work per local key.** The page is opened with two probes installed (`addInitScript`): the
+    editor probe (each `view.update`: `doc` when it changes the document, else `view`) and the
+    completion probe (`slot0entry`, `slot0`, `slot1entry`, `slot1pre`, `slot1post`;
+    `src/editor/probe.ts`). Each pushes `[performance.now(), ms, kind]` to `window.__work` when
+    its work ends, so an entry is the interval `[end − ms, end]`. `keyWork` is the length of the
+    **union** of the intervals that end between a local trial's keydown and its popup, except
+    `slot1post`: the key's document update, its local completion work (slot 0, and slot 1 up to
+    its wait) and the popup render, all the main-thread work the key causes up to the visible
+    list. The report also gives the parts (`docMs`, and `completionMs`, the union of the four
+    local completion segments). The measurement is segmented: no timer spans an await. Each slot
+    reports its entry up to its await on the shared analysis (`slot0entry`, `slot1entry`; the
+    slot that runs first computes the analysis there, so that work is counted once) and its work
+    from resuming to its result or its wait (`slot0`, `slot1pre`). Other microtasks that run while
+    a slot waits fall between its segments and are not counted, nor is the package's own
+    continuation of the analysis, which runs in those microtasks; the union counts nested or
+    overlapping intervals once. The arithmetic and the gate are in `src/test/completionWork.ts`,
+    checked with injected samples by `completionWork.test.ts` (overlapping, contained and
+    disjoint intervals; each part under 2 ms with their union over, red under enforce) and by
+    `unit:promql-completion-probe` on an injected clock: Z1 (each slot reports a segment either
+    side of its await, and `completionMs` is their union) and Z2 (5 units of unrelated microtask
+    work queued while the slots await the analysis lie outside every interval, so neither
+    `completionMs` nor `keyWork` includes them). `remoteWork` (`slot1post` and `view` from 120 ms after the keydown to
+    the merged list) is reported only: it runs in its own timer task after a fetch, so its bound is
+    PRF-005's per-task limit, which the trace gates.
+  - **Long tasks.** A Chromium trace from the first local trial to the last remote one, read by
+    `scripts/longTasks.ts`.
+  - **Always (blocking in CI's `e2e` Chromium leg):** 30 + 30 samples; remote min ≥ 120 ms; local
+    p50 < 100 ms (a list held behind the 120 ms typing delay or CodeMirror's 100 ms sync wait gives
+    every sample ≥ 100 ms); `ciOver` 0; 30 `keyWork` samples, each with at least one `doc` and one
+    `slot0` entry (both probes are wired).
+  - **`EDITOR_BENCH_GATE=enforce`:** local p95 ≤ 16 ms, remote p95 ≤ 136 ms, `over16` 0 and
+    `keyWork` p95 ≤ 2 ms; otherwise each breach is a `warning` annotation. A lab-gate row, as above.
+    On a workstation `docMs` alone is several ms for this query (the incremental parse of a
+    204-term binary expression), on `main` as on this branch.
+  - Report: `test-results/bench-promql-completion.json` (`{local, remote, keyWork: {p50, p95, max},
+    docMs: {p95}, completionMs: {p95}, remoteWork: {p50, p95, max}, longTasks, ciOver, windowMs,
+    mode}`).
 - **The log stream harness** (`/t/demo/dev/log-stream`, development and stub builds only, #66
   Part B): `LogStream` over the synthetic log API, prefilled to a configured size; a spec sets
   `window.__logStreamBenchConfig` with `page.addInitScript` before the page loads, waits for
@@ -463,7 +511,8 @@ after the part ends the match); `--grep @kbd` runs all five, in parallel.
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
 preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
 `bff-http`, `dev-proxy`, `editor-ime`, `perf-editor-keystroke`, `perf-logql-completion` and
-`perf-log-scroll` run on Chromium only. The Explore
+`perf-log-scroll` and
+`perf-promql-completion` run on Chromium only. The Explore
 specs that read the fake's request records (`e2e/explore-metrics.spec.ts`) run on the http-mode BFF
 and use one time window per browser, so parallel projects never count each other's requests.
 

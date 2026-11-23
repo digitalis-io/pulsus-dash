@@ -81,12 +81,15 @@ export interface QueryLanguage {
   detect(prefix: string): number;
 }
 
-/** Completion data (never rejects: a failure resolves empty). */
+/**
+ * Completion data (never rejects: a failure or abort resolves empty). `signal`: the caller's
+ * interest; the fetch is aborted only when no caller holds it any more (plan #107 §3.6).
+ */
 export interface PromSource {
-  metricNames(): Promise<readonly string[]>;
-  labelNames(match: string | null): Promise<readonly string[]>;
-  labelValues(name: string, match: string | null): Promise<readonly string[]>;
-  series(match: string): Promise<readonly Readonly<Record<string, string>>[]>;
+  metricNames(signal?: AbortSignal): Promise<readonly string[]>;
+  labelNames(match: string | null, signal?: AbortSignal): Promise<readonly string[]>;
+  labelValues(name: string, match: string | null, signal?: AbortSignal): Promise<readonly string[]>;
+  series(match: string, signal?: AbortSignal): Promise<readonly Readonly<Record<string, string>>[]>;
   metadata(): Promise<
     Readonly<Record<string, readonly { readonly type: string; readonly help: string }[]>>
   >;

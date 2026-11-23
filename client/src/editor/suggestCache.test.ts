@@ -150,17 +150,18 @@ describe('unit:suggest-cache', () => {
     h.at(0).resolve(0);
   });
 
-  it('C5: a superseded lookup of the same kind is aborted, another kind is not', async () => {
+  it('C5: two keys of one kind do not supersede each other; another kind neither', async () => {
     const c = make();
     const g = c.retainTenant('demo');
     const h = controlled<number>();
-    const p1 = c.get(g, P(1, 'values'), h.load);
-    const first = nameOf(p1);
-    void c.get(g, P(2, 'values'), h.load).catch(() => undefined);
-    expect(h.at(0).signal.aborted).toBe(true);
-    expect(c.has(P(1, 'values'))).toBe(false);
-    await flush();
-    expect(first.got).toBe('AbortError');
+    const p1 = c.get(g, P(1, 'values'), h.load, new AbortController().signal);
+    const p2 = c.get(g, P(2, 'values'), h.load, new AbortController().signal);
+    expect(h.load).toHaveBeenCalledTimes(2);
+    expect(h.at(0).signal.aborted).toBe(false);
+    h.at(0).resolve(1);
+    h.at(1).resolve(2);
+    expect(await p1).toBe(1);
+    expect(await p2).toBe(2);
 
     const c2 = make();
     const g2 = c2.retainTenant('demo');
@@ -401,23 +402,22 @@ describe('unit:suggest-cache', () => {
     expect(r.count).toHaveBeenCalledTimes(1);
   });
 
-  it('C17: an evicted in-flight lookup is still superseded', async () => {
+  it('C17: an evicted in-flight lookup is not superseded; its last caller still releases it', async () => {
     const c = make(1);
     const g = c.retainTenant('demo');
     const h0 = controlled<number>();
-    const p0 = c.get(g, P(0, 'values'), h0.load);
+    const s0 = new AbortController();
+    const p0 = c.get(g, P(0, 'values'), h0.load, s0.signal);
     const box = nameOf(p0);
     await c.get(g, P(1, 'labels'), resolving().of(1));
     expect(c.has(P(0, 'values'))).toBe(false);
+    const other = controlled<number>();
+    void c.get(g, P(2, 'values'), other.load, new AbortController().signal).catch(() => undefined);
     expect(h0.at(0).signal.aborted).toBe(false);
-    const h2 = controlled<number>();
-    void c.get(g, P(2, 'values'), h2.load);
+    s0.abort();
     expect(h0.at(0).signal.aborted).toBe(true);
     await flush();
     expect(box.got).toBe('AbortError');
-    expect(h2.load).toHaveBeenCalledTimes(1);
-    expect(h2.at(0).signal.aborted).toBe(false);
-    expect(c.has(P(2, 'values'))).toBe(true);
   });
 
   it('C18: an evicted in-flight lookup is re-joined by its own key', async () => {
@@ -553,6 +553,20 @@ describe('unit:suggest-cache by language', () => {
     l2.at(0).resolve(2);
     expect(await p1).toBe(1);
     expect(await p2).toBe(2);
+  });
+
+  it('C19: an evicted in-flight LogQL entry is re-joined by its own key', async () => {
+    const c = make(1);
+    const g = c.retainTenant('demo');
+    const h = controlled<number>();
+    const p0 = c.get(g, L1, h.load, new AbortController().signal);
+    await c.get(g, P(1, 'labels'), resolving().of(1));
+    expect(c.has(L1)).toBe(false);
+    const p1 = c.get(g, L1, h.load, new AbortController().signal);
+    expect(p1).toBe(p0);
+    expect(h.load).toHaveBeenCalledTimes(1);
+    h.at(0).resolve(3);
+    expect(await p0).toBe(3);
   });
 
   it('G7: a pinned LogQL entry survives a released caller and another key', async () => {

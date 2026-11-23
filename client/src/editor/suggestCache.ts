@@ -1,15 +1,16 @@
 /**
  * The completion lookup cache (plan #63 Part B §3.2, §4.1; D-LRU; T09-007, T09-014): at most
  * `maxKeys` entries, least recently got first out; a settled entry lives `ttlMs` from settle;
- * in-flight promises are shared; the in-flight lookup of each kind is tracked apart from the LRU,
- * so a superseded one is aborted even after eviction, and an evicted one is re-joined by its key.
- * Eviction never aborts. A generation counter, ended by a tenant switch or `clear()`, drops every
- * tracked call at once (callers reject `AbortError`, stuck requests included), and a call with an
- * ended token runs no `load`. Main-thread state only: every mutation is synchronous.
+ * in-flight promises are shared; an in-flight entry is tracked by key apart from the LRU
+ * (`inflight`), so an evicted one is re-joined by its key. Eviction never aborts. A generation
+ * counter, ended by a tenant switch or `clear()`, drops every tracked call at once (callers reject
+ * `AbortError`, stuck requests included), and a call with an ended token runs no `load`.
+ * Main-thread state only: every mutation is synchronous.
  *
- * By language (plan #66 Part A §3.9): the key holds the language. Supersession by kind is PromQL's
- * only; a LogQL entry is never superseded by another key. A caller may pass a `signal`: an entry in
- * flight is aborted when its last signalled caller aborts and no unsignalled caller holds it.
+ * By language (plan #66 Part A §3.9; plan #107 §3.7): the key holds the language. No entry is
+ * superseded by another key, in any language. A caller may pass a `signal`: an entry in flight is
+ * aborted when its last signalled caller aborts and no unsignalled caller holds it, or when its
+ * generation ends.
  */
 
 export const SUGGEST_MAX_KEYS = 2_000;
@@ -48,9 +49,8 @@ export interface SuggestCacheOptions {
 export type SuggestGeneration = number;
 
 interface Entry {
-  /** `null`, `null`: a `track` call. */
+  /** `null`: a `track` call. */
   readonly key: string | null;
-  readonly kind: SuggestKind | null;
   /** The shared promise. */
   readonly promise: Promise<unknown>;
   readonly resolve: (v: unknown) => void;
@@ -80,8 +80,8 @@ export class SuggestCache {
   private readonly entries = new Map<string, Entry>();
   /** Every unsettled, undropped call: held, evicted or tracked. */
   private readonly pending = new Set<Entry>();
-  /** The last PromQL lookup started per kind; not pruned by eviction. */
-  private readonly current = new Map<SuggestKind, Entry>();
+  /** Every pending keyed entry, by key; not pruned by eviction, never touched by `track`. */
+  private readonly inflight = new Map<string, Entry>();
   private retained: string | null = null;
   private gen: SuggestGeneration = 0;
 
@@ -93,7 +93,7 @@ export class SuggestCache {
 
   /**
    * The cached or in-flight promise for `p`, else `load(signal)`. Rejects as `load` does, or
-   * `AbortError` at once when the entry is dropped (superseded, released, generation ended), or at
+   * `AbortError` at once when the entry is dropped (released, generation ended), or at
    * once without calling `load` when `g` is not the current generation, `p.tenant` not its tenant
    * or `signal` already aborted. `signal` is this caller's interest (see `hold`).
    */
@@ -113,31 +113,26 @@ export class SuggestCache {
 
   private entryFor<T>(p: SuggestKeyParts, load: (signal: AbortSignal) => Promise<T>): Entry {
     const k = suggestKey(p);
-    const t = this.now();
-    // Supersession by kind is PromQL's (#63); a LogQL entry is released by its callers only.
-    const byKind = p.lang === 'promql';
-    const c = byKind ? this.current.get(p.kind) : undefined;
-    if (c !== undefined && this.pending.has(c)) {
-      if (c.key !== k) this.drop(c);
-      else if (this.entries.get(k) !== c) {
-        // Evicted while in flight: re-joined by its own key, as the most recent.
-        this.entries.set(k, c);
-        this.evict();
-        return c;
-      }
+    const c = this.inflight.get(k);
+    if (c !== undefined) {
+      // In flight, evicted or not: re-joined by its own key, as the most recent.
+      this.entries.delete(k);
+      this.entries.set(k, c);
+      this.evict();
+      return c;
     }
     const e = this.entries.get(k);
     if (e !== undefined) {
-      if (this.pending.has(e) || (e.settledAt !== null && t - e.settledAt < this.ttlMs)) {
+      if (e.settledAt !== null && this.now() - e.settledAt < this.ttlMs) {
         this.entries.delete(k);
         this.entries.set(k, e);
         return e;
       }
       this.entries.delete(k);
     }
-    const en = this.start(k, p.kind, load);
+    const en = this.start(k, load);
     this.entries.set(k, en);
-    if (byKind) this.current.set(p.kind, en);
+    this.inflight.set(k, en);
     this.evict();
     return en;
   }
@@ -168,7 +163,7 @@ export class SuggestCache {
   /** An uncached call tracked like an in-flight entry: never shared or evicted; dropped when its generation ends. */
   track<T>(g: SuggestGeneration, load: (signal: AbortSignal) => Promise<T>): Promise<T> {
     if (g !== this.gen) return rejected<T>();
-    return this.start(null, null, load).promise as Promise<T>;
+    return this.start(null, load).promise as Promise<T>;
   }
 
   /**
@@ -197,11 +192,7 @@ export class SuggestCache {
     return this.entries.has(suggestKey(p));
   }
 
-  private start<T>(
-    key: string | null,
-    kind: SuggestKind | null,
-    load: (signal: AbortSignal) => Promise<T>,
-  ): Entry {
+  private start<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>): Entry {
     let resolve: (v: unknown) => void = () => undefined;
     let reject: (x: unknown) => void = () => undefined;
     const promise = new Promise<unknown>((res, rej) => {
@@ -212,7 +203,6 @@ export class SuggestCache {
     promise.catch(() => undefined);
     const en: Entry = {
       key,
-      kind,
       promise,
       resolve,
       reject,
@@ -233,12 +223,14 @@ export class SuggestCache {
       (v) => {
         if (en.dropped) return;
         this.pending.delete(en);
+        this.untrack(en);
         if (key !== null && this.entries.get(key) === en) en.settledAt = this.now();
         en.resolve(v);
       },
       (x: unknown) => {
         if (en.dropped) return;
         this.pending.delete(en);
+        this.untrack(en);
         if (key !== null && this.entries.get(key) === en) this.entries.delete(key);
         en.reject(x);
       },
@@ -246,7 +238,7 @@ export class SuggestCache {
     return en;
   }
 
-  /** Least recent out of `entries` only: never aborted, never dropped, `current` untouched. */
+  /** Least recent out of `entries` only: never aborted, never dropped, `inflight` untouched. */
   private evict(): void {
     while (this.entries.size > this.maxKeys) {
       const oldest = this.entries.keys().next();
@@ -259,6 +251,7 @@ export class SuggestCache {
     if (en.dropped) return;
     en.dropped = true;
     this.pending.delete(en);
+    this.untrack(en);
     if (en.key !== null && this.entries.get(en.key) === en) this.entries.delete(en.key);
     en.reject(abortError());
     en.controller.abort();
@@ -268,7 +261,12 @@ export class SuggestCache {
     this.gen += 1;
     for (const en of [...this.pending]) this.drop(en);
     this.entries.clear();
-    this.current.clear();
+    this.inflight.clear();
+  }
+
+  /** Out of `inflight` if it is the entry there for its key. */
+  private untrack(en: Entry): void {
+    if (en.key !== null && this.inflight.get(en.key) === en) this.inflight.delete(en.key);
   }
 }
 
