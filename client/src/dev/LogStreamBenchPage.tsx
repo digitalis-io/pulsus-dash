@@ -203,7 +203,7 @@ export function LogStreamBenchPage(): JSX.Element {
         <div className={styles['control']} data-log-control="" tabIndex={0}>
           <div ref={controlHeight} />
         </div>
-      ) : run === null ? null : (
+      ) : run === null || !prefilled ? null : (
         <LogStream
           ref={stream}
           pager={run.pager}

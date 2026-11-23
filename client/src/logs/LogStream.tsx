@@ -106,6 +106,8 @@ interface ViewState {
 /** The committed positions the anchor of a wrap change is taken from. */
 interface Committed {
   readonly items: readonly { index: number; start: number; end: number }[];
+  /** `scrollTop` at that commit: the virtualiser's measurements of the next commit can move it. */
+  readonly scrollTop: number;
   readonly slice: Slice;
   readonly layout: Layout;
 }
@@ -146,13 +148,22 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     onWrapChange,
     onDirectionChange,
     onRerun,
-    view = DEFAULT_VIEW,
+    view: limits = DEFAULT_VIEW,
     onScrollWrite,
     onReslice,
     wrapEstimate = 'bound',
     ref,
   } = props;
   const state = useSyncExternalStore(pager.subscribe, pager.getState);
+  // The pixel bounds are the list's: the rows get them less the room of both sentinels.
+  const view = useMemo(
+    () => ({
+      ...limits,
+      maxPx: limits.maxPx - 2 * SENTINEL_PX,
+      hardPx: limits.hardPx - 2 * SENTINEL_PX,
+    }),
+    [limits],
+  );
   const tz = useTimeZone();
   const buffer = pager.buffer;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -162,9 +173,8 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   const [perLine, setPerLine] = useState(80);
   const [touching, setTouching] = useState(false);
   const [wrapSeen, setWrapSeen] = useState(wrap);
-  /** The reader's last scroll direction; LogStream's own writes do not count. */
+  /** The reader's last scroll direction, from wheel, key and touch input. */
   const directionRef = useRef<'down' | 'up' | null>(null);
-  const scrollSeenRef = useRef<{ top: number; written: number | null }>({ top: 0, written: null });
 
   // A new pager starts at its first row (§4.5).
   const [vs, setVs] = useState<ViewState>(() => ({
@@ -240,7 +250,6 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
 
   const write = (scroller: HTMLElement, top: number): void => {
     scroller.scrollTop = top;
-    scrollSeenRef.current = { top: scroller.scrollTop, written: scroller.scrollTop };
     onScrollWrite?.();
   };
 
@@ -267,6 +276,23 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     );
   };
 
+  // The columns per line (§3.7 estimateSize): the scroller's width less the first mounted line's
+  // inset in its row (the gutter and the timestamp), the same with or without wrap (an unwrapped
+  // row is as wide as its line), so a wrap change starts from the right estimate.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const line = listRef.current?.querySelector<HTMLElement>('[data-log-line]');
+    const inset =
+      line !== null && line !== undefined && line.offsetLeft > 0 ? line.offsetLeft : LINE_INSET_PX;
+    const width = (scroller?.clientWidth ?? 0) - inset;
+    const next = Math.max(1, Math.floor(width / COLUMN_PX));
+    if (next !== perLine) {
+      setPerLine(next);
+      if (wrap) virtualizer.measure();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when wrap or the mounted rows change
+  }, [wrap, perLine, rangeStart, rangeEnd]);
+
   // A wrap change: the anchor of the committed positions, every measurement dropped, a re-slice.
   useLayoutEffect(() => {
     if (wrap === wrapSeen) return;
@@ -274,14 +300,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     const scroller = scrollerRef.current;
     const c = committedRef.current;
     if (scroller === null || c === null) return;
-    const a = anchorOf(
-      c.items,
-      scroller.scrollTop,
-      c.slice,
-      c.layout,
-      state.firstOrd,
-      state.endOrd,
-    );
+    const a = anchorOf(c.items, c.scrollTop, c.slice, c.layout, state.firstOrd, state.endOrd);
     virtualizer.measure();
     reslice('wrap', a);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a wrap change only
@@ -302,6 +321,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     }
     committedRef.current = {
       items: items.map((it) => ({ index: it.index, start: it.start, end: it.end })),
+      scrollTop: scrollerRef.current?.scrollTop ?? 0,
       slice,
       layout,
     };
@@ -312,6 +332,8 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     const r = current.restore;
     const scroller = scrollerRef.current;
     if (r === null || scroller === null) return;
+    const maxScroll = (): number => virtualizer.getTotalSize() - scroller.clientHeight;
+    // Step 3: the virtualiser's offsets after the commit.
     const target = (): number => {
       virtualizer.getVirtualItems();
       const measured = (i: number): number | undefined => virtualizer.measurementsCache[i]?.start;
@@ -320,8 +342,34 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
         (i) => startOf(i, measured, slice, layout, heightOf, SENTINEL_PX),
         slice,
         layout,
-        virtualizer.getTotalSize() - scroller.clientHeight,
+        maxScroll(),
       );
+    };
+    // Step 4 (wrap): from the laid-out rows, since rows measured before the virtualiser saw the
+    // write moved them without a correction. The mounted row nearest the anchor, plus the heights
+    // between; `exact` once the anchor row itself is mounted.
+    const laidOut = (): { px: number; exact: boolean } => {
+      virtualizer.getVirtualItems();
+      const list = listRef.current;
+      const a = r.anchor.ord;
+      let best: { ord: number; top: number } | null = null;
+      if (list !== null) {
+        const listTop = list.getBoundingClientRect().top;
+        for (const el of list.querySelectorAll<HTMLElement>('[data-ord]')) {
+          const o = Number(el.dataset['ord']);
+          if (best === null || Math.abs(o - a) < Math.abs(best.ord - a)) {
+            best = { ord: o, top: el.getBoundingClientRect().top - listTop };
+          }
+        }
+      }
+      if (best === null || a < slice.start || a >= slice.end) {
+        return { px: target(), exact: false };
+      }
+      let start = best.top;
+      for (let o = best.ord; o < a; o += 1) start += heightOf(o);
+      for (let o = a; o < best.ord; o += 1) start -= heightOf(o);
+      const px = Math.min(Math.max(start + r.anchor.offsetPx, 0), Math.max(0, maxScroll()));
+      return { px, exact: best.ord === a };
     };
     let last = target();
     write(scroller, last);
@@ -338,14 +386,14 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       if (cancelRestoreRef.current === stop) cancelRestoreRef.current = null;
     };
     const tick = () => {
-      const next = target();
+      const next = laidOut();
       frames += 1;
-      if (next === last || frames >= RESTORE_FRAMES) {
+      if ((next.exact && Math.abs(next.px - last) < 1) || frames >= RESTORE_FRAMES) {
         stop();
         return;
       }
-      last = next;
-      write(scroller, next);
+      last = next.px;
+      if (Math.abs(next.px - scroller.scrollTop) >= 1) write(scroller, next.px);
       raf = requestAnimationFrame(tick);
     };
     for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown']) {
@@ -374,25 +422,43 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     directionRef.current = null;
   });
 
-  // The reader's scroll direction: each end prefetches only while the reader is not moving away
-  // from it, so loads at the two ends never evict each other's pages in turn.
+  // The reader's scroll direction, from the reader's own input (wheel, keys, touch drag), not from
+  // scroll events, which the virtualiser's measurement corrections also cause: the tail prefetches
+  // unless the reader last moved up, the head (an evicted page) only after the reader moved up, so
+  // loads at the two ends never evict each other's pages in turn.
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller === null) return undefined;
-    const onScroll = () => {
-      const top = scroller.scrollTop;
-      const seen = scrollSeenRef.current;
-      if (seen.written !== null && Math.abs(top - seen.written) < 1) {
-        scrollSeenRef.current = { top, written: null };
-        return;
-      }
-      if (top > seen.top) directionRef.current = 'down';
-      else if (top < seen.top) directionRef.current = 'up';
-      scrollSeenRef.current = { top, written: null };
+    let touchY: number | null = null;
+    const set = (down: boolean) => {
+      directionRef.current = down ? 'down' : 'up';
     };
-    scroller.addEventListener('scroll', onScroll, { passive: true });
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0) set(e.deltaY > 0);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (['ArrowDown', 'PageDown', 'End', ' '].includes(e.key)) set(true);
+      else if (['ArrowUp', 'PageUp', 'Home'].includes(e.key)) set(false);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      if (y === undefined || touchY === null || y === touchY) return;
+      // A finger moving up scrolls the list down.
+      set(y < touchY);
+      touchY = y;
+    };
+    scroller.addEventListener('wheel', onWheel, { passive: true });
+    scroller.addEventListener('keydown', onKey);
+    scroller.addEventListener('touchstart', onTouchStart, { passive: true });
+    scroller.addEventListener('touchmove', onTouchMove, { passive: true });
     return () => {
-      scroller.removeEventListener('scroll', onScroll);
+      scroller.removeEventListener('wheel', onWheel);
+      scroller.removeEventListener('keydown', onKey);
+      scroller.removeEventListener('touchstart', onTouchStart);
+      scroller.removeEventListener('touchmove', onTouchMove);
     };
   }, []);
 
@@ -416,23 +482,6 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     };
   }, []);
 
-  // With wrap, the columns per line from the first mounted line (§3.7 estimateSize).
-  useLayoutEffect(() => {
-    if (!wrap) return;
-    const scroller = scrollerRef.current;
-    const line = listRef.current?.querySelector<HTMLElement>('[data-log-line]');
-    const width =
-      line !== null && line !== undefined && line.clientWidth > 0
-        ? line.clientWidth
-        : (scroller?.clientWidth ?? 0) - LINE_INSET_PX;
-    const next = Math.max(1, Math.floor(width / COLUMN_PX));
-    if (next !== perLine) {
-      setPerLine(next);
-      virtualizer.measure();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when wrap or the mounted rows change
-  }, [wrap, perLine, rangeStart, rangeEnd]);
-
   // After a render whose visible range or state changed: protect, grow, load, re-slice (§4.5).
   useEffect(() => {
     if (state.phase !== 'streams' || current.restore !== null) return;
@@ -445,7 +494,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     pager.protect({ from: a - OVERSCAN, to: b + OVERSCAN + 1 });
     const dir = directionRef.current;
     if (layout.tail && state.endOrd - b <= PREFETCH_ROWS && dir !== 'up') void pager.loadTail();
-    if (layout.head && a - state.firstOrd <= PREFETCH_ROWS && dir !== 'down') {
+    if (layout.head && a - state.firstOrd <= PREFETCH_ROWS && dir === 'up') {
       void pager.loadHead();
     }
     const scrolling = isScrolling || touching;
