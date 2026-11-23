@@ -21,7 +21,7 @@ export async function boardEditorScenario(page: Page, step: Step): Promise<void>
   const d = page.getByRole('dialog', { name: 'Edit panel' });
   await step('editor edit board', 1, async () => {
     await page.getByRole('button', { name: 'Edit board' }).click();
-    await expect(page.locator('.react-grid-item')).toHaveCount(4);
+    await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
   });
   for (let i = 0; i < 3; i++) {
     await step('editor open', 2, async () => {

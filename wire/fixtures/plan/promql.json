@@ -4574,7 +4574,7 @@
    ]
   },
   {
-   "name": "N23 comments are not recognised",
+   "name": "N23 a reference in a comment is substituted",
    "from": "new",
    "inputs": {
     "query": "up # $r",
@@ -4904,6 +4904,1174 @@
     "histogram": false,
     "step_ms": 5000
    }
+  },
+  {
+   "name": "Q1 LF in a double-quoted string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "x\ny"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"x\\ny\"})",
+    "expanded": "sum(x{a=\"x\\ny\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q2 tab",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "x\ty"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"x\\ty\"})",
+    "expanded": "sum(x{a=\"x\\ty\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q3 other control byte",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "x\u0001y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"x\\x01y\"})",
+    "expanded": "sum(x{a=\"x\\x01y\"})",
+    "bytes": 18,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q4 DEL",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "\u007f"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"\\x7f\"})",
+    "expanded": "sum(x{a=\"\\x7f\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q5 multibyte value",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "ü€😀"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"ü€😀\"})",
+    "expanded": "sum(x{a=\"ü€😀\"})",
+    "bytes": 21,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     9,
+     9
+    ],
+    [
+     17,
+     9
+    ],
+    [
+     18,
+     11
+    ],
+    [
+     21,
+     14
+    ]
+   ]
+  },
+  {
+   "name": "Q6 backtick in a raw string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=`$a`})",
+    "vars": {
+     "a": "x`y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q7 backtick in a double-quoted string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "x`y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"x`y\"})",
+    "expanded": "sum(x{a=\"x`y\"})",
+    "bytes": 15,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q8 non-printable rune verbatim",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "\u00a0"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"\u00a0\"})",
+    "expanded": "sum(x{a=\"\u00a0\"})",
+    "bytes": 14,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q9 CR in a raw string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=`$a`})",
+    "vars": {
+     "a": "x\ry"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q10 LF in a comment",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x) # $a",
+    "vars": {
+     "a": "z\nor vector(1)"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q11 query text at the top level",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "$a",
+    "vars": {
+     "a": "sum(x)\n+ 1"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x)\n+ 1",
+    "expanded": "sum(x)\n+ 1",
+    "bytes": 10,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q12 single-quoted string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a='$a'})",
+    "vars": {
+     "a": "\"'\n"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a='\"\\'\\n'})",
+    "expanded": "sum(x{a='\"\\'\\n'})",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q13 both quotes in a double-quoted string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "\"'"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"\\\"'\"})",
+    "expanded": "sum(x{a=\"\\\"'\"})",
+    "bytes": 15,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q14 U+FFFD in a double-quoted string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"$a\"})",
+    "vars": {
+     "a": "x\ufffdy"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x{a=\"x\\ufffdy\"})",
+    "expanded": "sum(x{a=\"x\\ufffdy\"})",
+    "bytes": 20,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q15 U+FFFD in a raw string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=`$a`})",
+    "vars": {
+     "a": "x\ufffdy"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q16 CR in a comment",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x) # $a",
+    "vars": {
+     "a": "z\ror vector(1)"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q17 a quote in a comment opens no string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x) # it's\n+ sum(y{a=\"$a\"})",
+    "vars": {
+     "a": "x\"y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x",
+     "y"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x) # it's\n+ sum(y{a=\"x\\\"y\"})",
+    "expanded": "sum(x) # it's\n+ sum(y{a=\"x\\\"y\"})",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   },
+   "to_source": [
+    [
+     25,
+     25
+    ],
+    [
+     28,
+     25
+    ],
+    [
+     29,
+     27
+    ],
+    [
+     32,
+     30
+    ]
+   ]
+  },
+  {
+   "name": "Q18 an LF ends a double-quoted string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=\"b\n$a",
+    "vars": {
+     "a": "c\"d"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "sum(x{a=\"b\nc\"d",
+    "expanded": "sum(x{a=\"b\nc\"d",
+    "bytes": 14,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q19 a comment takes a quote verbatim",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x) # $a",
+    "vars": {
+     "a": "a\"b"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [
+     "x"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum(x) # a\"b",
+    "expanded": "sum(x) # a\"b",
+    "bytes": 12,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q20 names in first-reference order",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=`$b`}) # $a $b",
+    "vars": {
+     "a": "\n",
+     "b": "`"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $b, $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/b",
+      "message_key": "variable.unrepresentable"
+     },
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q21 row 7 before row 7b",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "sum(x{a=`$a`}) + $m",
+    "vars": {
+     "a": "x`y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "no value for variable $m",
+    "fields": [
+     {
+      "pointer": "/vars/m",
+      "message_key": "variable.missing"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q22 row 7b before row 8",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "rate(x{a=`$a`}[$__interval])",
+    "vars": {
+     "a": "x`y"
+    },
+    "kind": "instant",
+    "step_ms": 0,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q23 refused in a selector that needs types",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "x{a=`$a`}",
+    "vars": {
+     "a": "x\ry"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $a cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/a",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Q24 escaped value in a bare counter",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "x_total{a=\"$a\"}",
+    "vars": {
+     "a": "x\ny"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 17
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total{a=\"x\\ny\"}[1m])",
+    "expanded": "x_total{a=\"x\\ny\"}",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     0
+    ],
+    [
+     16,
+     11
+    ],
+    [
+     21,
+     14
+    ],
+    [
+     22,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "Q25 single-quoted value in a bare histogram",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "h_bucket{a='$a'}",
+    "vars": {
+     "a": "\"'"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": true,
+   "shape": {
+    "bare": {
+     "metric": "h_bucket",
+     "from": 0,
+     "to": 17
+    },
+    "metrics": [
+     "h_bucket"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "sum by (le) (rate(h_bucket{a='\"\\''}[1m]))",
+    "expanded": "h_bucket{a='\"\\''}",
+    "bytes": 41,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": true,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     18,
+     0
+    ],
+    [
+     30,
+     12
+    ],
+    [
+     34,
+     15
+    ],
+    [
+     35,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "Q26 a comment, then an escaped value in a bare counter",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "# $a\nx_total{b=\"$a\"}",
+    "vars": {
+     "a": "a\"b"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 6,
+     "to": 23
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total{b=\"a\\\"b\"}[1m])",
+    "expanded": "# a\"b\nx_total{b=\"a\\\"b\"}",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     5
+    ],
+    [
+     16,
+     16
+    ],
+    [
+     21,
+     19
+    ],
+    [
+     22,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "Q27 a CR in the raw text ends a comment",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "# c\rhttp_requests_total{a=\"$a\"}",
+    "vars": {
+     "a": "x\"y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "http_requests_total",
+     "from": 4,
+     "to": 33
+    },
+    "metrics": [
+     "http_requests_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(http_requests_total{a=\"x\\\"y\"}[1m])",
+    "expanded": "# c\rhttp_requests_total{a=\"x\\\"y\"}",
+    "bytes": 39,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     4
+    ],
+    [
+     28,
+     27
+    ],
+    [
+     33,
+     30
+    ],
+    [
+     34,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "Q28 a CR in the raw text inside a string ends nothing",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "x_total{a=\"\r$a\"}",
+    "vars": {
+     "a": "y"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 15
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total{a=\"\ry\"}[1m])",
+    "expanded": "x_total{a=\"\ry\"}",
+    "bytes": 25,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     0
+    ],
+    [
+     17,
+     12
+    ],
+    [
+     19,
+     15
+    ],
+    [
+     20,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "Q29 an encoded control byte makes an empty-matching regex",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "{a=~\"$a\"}",
+    "vars": {
+     "a": "\u0007*"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "{a=~\"\\a*\"}",
+    "expanded": "{a=~\"\\a*\"}",
+    "bytes": 10,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q30 an encoded control byte in a valid regex",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "{a=~\"$a\"}",
+    "vars": {
+     "a": "\u0007+"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "{a=~\"\\a+\"}",
+    "expanded": "{a=~\"\\a+\"}",
+    "bytes": 10,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q31 an escape the lexer refuses",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "x{a=\"\\q\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "x{a=\"\\q\"}",
+    "expanded": "x{a=\"\\q\"}",
+    "bytes": 9,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q32 a literal U+FFFD in the raw text's string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "x_total{a=\"\ufffd\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": null,
+    "metrics": [],
+    "has_histogram_quantile": false,
+    "value_type": "unknown"
+   },
+   "planned": {
+    "query": "x_total{a=\"\ufffd\"}",
+    "expanded": "x_total{a=\"\ufffd\"}",
+    "bytes": 16,
+    "value_type": "unknown",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "Q33 an escaped U+FFFD in the raw text's string",
+   "from": "new (#118)",
+   "inputs": {
+    "query": "x_total{a=\"\\ufffd\"}",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "shape": {
+    "bare": {
+     "metric": "x_total",
+     "from": 0,
+     "to": 19
+    },
+    "metrics": [
+     "x_total"
+    ],
+    "has_histogram_quantile": false,
+    "value_type": "vector"
+   },
+   "planned": {
+    "query": "rate(x_total{a=\"\\ufffd\"}[1m])",
+    "expanded": "x_total{a=\"\\ufffd\"}",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": true,
+    "rate_applied": true,
+    "histogram": false,
+    "step_ms": 5000,
+    "rate_window_ms": 60000
+   },
+   "to_source": [
+    [
+     5,
+     0
+    ],
+    [
+     23,
+     18
+    ],
+    [
+     24,
+     null
+    ]
+   ]
   }
  ],
  "kind_of": [

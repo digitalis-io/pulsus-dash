@@ -41,7 +41,7 @@ from `https://registry.npmjs.org/` (`non-registry-resolved`) or without an `sha5
 | Field | Meaning |
 |---|---|
 | `forbiddenCategories` | `charting`, `mapping`, `3d`, `graph-diagram`, `css-in-js` (ADR-0014 §7; charts are drawn by our own renderer, ADR-0007) |
-| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board Edit grid, [below](#react-grid-layout)), and the ten query-editor packages ([below](#query-editor)) |
+| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board grid, [below](#react-grid-layout)), and the ten query-editor packages ([below](#query-editor)) |
 | `runtimeClosure` | every package of the runtime closure (50 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds), `query-editor` (the 17 packages of the PromQL editor) |
 | `licenceAllowlist` | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, MPL-2.0 (ADR-0014 §7, unchanged) |
 | `licenceExceptionAllowlist` | exact `"<licence> WITH <exception>"` pairs; empty. Adding one needs an ADR |
@@ -70,7 +70,7 @@ dependencies are not on the runtime allowlist; check their licences when adding 
 
 ## react-grid-layout
 
-The board's Edit mode drags and resizes panels with `react-grid-layout` **2.3.0** (MIT, published
+The board grid places the panels, and in Edit mode drags and resizes them, with `react-grid-layout` **2.3.0** (MIT, published
 2026-10-05; plan #61 Part B §0). Category `board-layout`, not a forbidden one. It was resolved with
 the 7-day cut-off:
 
@@ -95,12 +95,15 @@ and adds these runtime packages to the closure (23 → 33), all MIT, none with a
 
 `clsx`, which it also uses, was already in the closure (`accessible-components`). React 19
 compatibility is checked by the component test `mounts under React 19 without errors`
-(`BoardGridEditor.test.tsx`: no `console.error` while it mounts, drags and unmounts).
+(`BoardGrid.test.tsx`: no `console.error` while it mounts, drags and unmounts).
 
-**Bundle.** Only the Edit-mode chunk loads the library: `src/pages/board/BoardGridEditor.tsx` is a
-lazy module of its own (`required.lazyModules` in `bundle-budgets.json`), so View mode and every
-other page carry none of it until the pointer or the focus reaches Edit board (the chunk is
-preloaded then). Measured by `npm run size` (brotli, stub build) at the time of adoption:
+**Bundle.** Only the grid chunk loads the library: `src/pages/board/BoardGrid.tsx` (until #111
+`BoardGridEditor.tsx`) is a lazy module of its own (`required.lazyModules` in
+`bundle-budgets.json`), so no page but a board carries any of it. Until #111 the chunk served Edit
+mode only and was preloaded when the pointer or the focus reached Edit board; since #111 one grid
+serves View and Edit mode, so that the panels stay mounted across the modes, and the board route
+requests the chunk when it mounts. Measured by `npm run size` (brotli, stub build) at the time of
+adoption:
 
 | Chunk | Brotli bytes | Budget |
 |---|---|---|
@@ -116,6 +119,14 @@ dependency), measured the same way:
 | `BoardGridEditor` | 18 029 | 120 000 (`lazyChunk`) |
 | `BoardPage` (with the filter bar and sections) | 11 765 | 120 000 (`lazyChunk`) |
 | Initial JS (with `BoardPrefs` and the sidebar lists) | 171 050 | 200 000 (`initialJs`) |
+
+After #111 (one grid for both modes; no new dependency), measured the same way:
+
+| Chunk | Brotli bytes | Budget |
+|---|---|---|
+| `BoardGrid` | 18 112 | 120 000 (`lazyChunk`) |
+| `BoardPage` | 16 788 | 120 000 (`lazyChunk`) |
+| Initial JS | 186 045 | 200 000 (`initialJs`) |
 
 **Build text.** The production chunk contains two help URLs as plain text, both on
 `buildUrlAllowlist`: react-draggable's `https://github.com/react-grid-layout/react-draggable#noderef`

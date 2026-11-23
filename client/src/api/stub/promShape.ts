@@ -5,16 +5,19 @@
  * syntax; `typeCheck` mirrors those rules on the Lezer tree, so the stub gives the server's shape.
  * Loaded lazily by `StubApi`, so Lezer stays out of the initial chunk.
  *
+ * String literals are read by the upstream lexer's escape rules (plan #118 §4.4), and a CR that
+ * ends a `#` comment is read as an LF before the Lezer parse (`endCommentsAtCR`).
+ *
  * Known limitations (stub mode only, never the http path; A.9): regular-expression dialects (the
  * server compiles RE2; here the empty string is tested with JavaScript's engine and no pattern is
- * refused), string-escape and number or duration lexing differences, and a Lezer grammar that lags
- * or leads the server's parser release.
+ * refused), number or duration lexing differences, and a Lezer grammar that lags or leads the
+ * server's parser release.
  */
 import type { SyntaxNode, Tree } from '@lezer/common';
 import { parser } from '@prometheus-io/lezer-promql';
 import { analysePromQL } from '../../editor/lang/promql/promql';
 import type { ValueType } from '../../editor/lang/types';
-import { byteShape, type ByteShape } from './plan';
+import { byteShape, endCommentsAtCR, type ByteShape } from './plan';
 import { STABLE_FUNCTIONS } from './promFunctions';
 
 const UNKNOWN: ByteShape = Object.freeze({
@@ -34,17 +37,86 @@ const SET_OPS = new Set(['And', 'Or', 'Unless']);
 const PARAM_SCALAR = new Set(['topk', 'bottomk', 'quantile']);
 const EXPERIMENTAL_AGGREGATES = new Set(['limitk', 'limit_ratio']);
 
-/** The value of a string literal (double, single or backtick quoted). */
-function unquote(lit: string): string {
-  const q = lit[0];
-  const body = lit.slice(1, -1);
-  if (q === '`') return body;
-  try {
-    const json = q === "'" ? `"${body.replace(/\\'/g, "'").replace(/"/g, '\\"')}"` : lit;
-    return JSON.parse(json) as string;
-  } catch {
-    return body;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+
+const SIMPLE_ESCAPES: Readonly<Record<string, number>> = {
+  a: 0x07,
+  b: 0x08,
+  f: 0x0c,
+  n: 0x0a,
+  r: 0x0d,
+  t: 0x09,
+  v: 0x0b,
+  '\\': 0x5c,
+};
+
+/** The value of `n` digits of `base` at `body[i]`, or null. */
+function digits(body: Uint8Array, i: number, n: number, base: 8 | 16): number | null {
+  if (i + n > body.length) return null;
+  let v = 0;
+  for (let k = i; k < i + n; k++) {
+    const d = Number.parseInt(String.fromCharCode(body[k] ?? 0), base);
+    if (Number.isNaN(d)) return null;
+    v = v * base + d;
   }
+  return v;
+}
+
+function holdsFffd(b: Uint8Array): boolean {
+  for (let i = 0; i + 2 < b.length; i++)
+    if (b[i] === 0xef && b[i + 1] === 0xbf && b[i + 2] === 0xbd) return true;
+  return false;
+}
+
+/**
+ * A PromQL string literal's value by the upstream lexer and strutil.Unquote rules (plan #118
+ * §4.4), or null when the upstream parser would refuse the literal. @internal exported for its
+ * table test.
+ */
+export function unquote(lit: string): string | null {
+  const q = lit[0];
+  if (lit.length < 2 || lit.at(-1) !== q || (q !== '"' && q !== "'" && q !== '`')) return null;
+  const body = encoder.encode(lit.slice(1, -1));
+  // lexString and lexRawString refuse utf8.RuneError, which a valid U+FFFD decodes to.
+  if (holdsFffd(body)) return null;
+  if (q === '`') return body.includes(0x60) ? null : decoder.decode(body);
+  const open = q.charCodeAt(0);
+  const out: number[] = [];
+  for (let i = 0; i < body.length;) {
+    const b = body[i] ?? 0;
+    if (b === 0x0a || b === open) return null;
+    if (b !== 0x5c) {
+      out.push(b);
+      i++;
+      continue;
+    }
+    const c = body[i + 1];
+    if (c === undefined) return null;
+    const ch = String.fromCharCode(c);
+    i += 2;
+    const simple = Object.hasOwn(SIMPLE_ESCAPES, ch) ? SIMPLE_ESCAPES[ch] : undefined;
+    if (simple !== undefined) out.push(simple);
+    else if (c === open) out.push(c);
+    else if (ch === 'x') {
+      const v = digits(body, i, 2, 16);
+      if (v === null) return null;
+      out.push(v);
+      i += 2;
+    } else if (c >= 0x30 && c <= 0x37) {
+      const v = digits(body, i - 1, 3, 8);
+      if (v === null || v > 255) return null;
+      out.push(v);
+      i += 2;
+    } else if (ch === 'u' || ch === 'U') {
+      const n = ch === 'u' ? 4 : 8;
+      const v = digits(body, i, n, 16);
+      if (v === null || v > 0x10ffff || (v >= 0xd800 && v <= 0xdfff)) return null;
+      out.push(...encoder.encode(String.fromCodePoint(v)));
+      i += n;
+    } else return null;
+  }
+  return decoder.decode(new Uint8Array(out));
 }
 
 /** Whether a label matcher accepts the empty string. */
@@ -81,7 +153,8 @@ function matchersOf(sel: SyntaxNode, text: string): Matcher[] {
   if (list === null) return out;
   const slice = (n: SyntaxNode | null) => (n === null ? '' : text.slice(n.from, n.to));
   for (let m = list.firstChild; m !== null; m = m.nextSibling) {
-    const value = (n: SyntaxNode) => unquote(slice(n.getChild('StringLiteral')));
+    // typeCheck has refused every literal that does not unquote.
+    const value = (n: SyntaxNode) => unquote(slice(n.getChild('StringLiteral'))) ?? '';
     if (m.name === 'UnquotedLabelMatcher') {
       out.push({
         label: slice(m.getChild('LabelName')),
@@ -91,13 +164,13 @@ function matchersOf(sel: SyntaxNode, text: string): Matcher[] {
     } else if (m.name === 'QuotedLabelMatcher') {
       const name = m.getChild('QuotedLabelName');
       out.push({
-        label: name === null ? '' : unquote(slice(name.getChild('StringLiteral'))),
+        label: name === null ? '' : (unquote(slice(name.getChild('StringLiteral'))) ?? ''),
         op: slice(m.getChild('MatchOp')),
         value: value(m),
       });
     } else if (m.name === 'QuotedLabelName') {
       // `{"name"}`: the metric name in quoted form.
-      out.push({ label: '__name__', op: '=', value: unquote(slice(m.getChild('StringLiteral'))) });
+      out.push({ label: '__name__', op: '=', value: value(m) });
     }
   }
   return out;
@@ -241,18 +314,26 @@ function typeOf(n: SyntaxNode, text: string): T {
   return FAIL;
 }
 
-/** The server parser's type rules on a Lezer tree (A.9): false when the server would refuse. */
+/**
+ * The server parser's type rules on a Lezer tree (A.9): false when the server would refuse,
+ * including a string literal its lexer refuses (plan #118 §4.4).
+ */
 export function typeCheck(tree: Tree, text: string): boolean {
   const c = tree.cursor();
   do {
     if (c.type.isError) return false;
+    if (c.name === 'StringLiteral' && unquote(text.slice(c.from, c.to)) === null) return false;
   } while (c.next());
   const top = tree.topNode.getChildren('Expr');
   return top.length === 1 && top[0] !== undefined && typeOf(top[0], text) !== FAIL;
 }
 
-/** The stub's shape of `text`: Lezer's, in bytes, when the type check passes; else unknown. */
+/**
+ * The stub's shape of `text`: Lezer's, in bytes, when the type check passes; else unknown. It reads
+ * `endCommentsAtCR(text)`, which keeps every offset, so a CR ends a comment as upstream.
+ */
 export function stubShape(text: string): ByteShape {
-  if (!typeCheck(parser.parse(text), text)) return UNKNOWN;
-  return byteShape(text, analysePromQL(text));
+  const t = endCommentsAtCR(text);
+  if (!typeCheck(parser.parse(t), t)) return UNKNOWN;
+  return byteShape(t, analysePromQL(t));
 }

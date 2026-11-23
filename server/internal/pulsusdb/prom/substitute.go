@@ -56,13 +56,25 @@ func macrosAt(stepMs int64) macroText {
 	return macroText{interval: FormatDuration(stepMs), rateInterval: FormatDuration(RateWindowMs(stepMs))}
 }
 
+// lexState is the lexical state of the substitution scan (plan #118 §4.1).
+type lexState int
+
+const (
+	stNone    lexState = iota // outside strings and comments
+	stDQ                      // inside "…"
+	stSQ                      // inside '…'
+	stBQ                      // inside `…`
+	stComment                 // inside # …, to LF or CR
+)
+
 // substitution is the outcome of one scan of the raw text.
 type substitution struct {
-	size    int      // bytes of the substituted text
-	missing []string // referenced variables without a value: distinct, first-reference order
-	macro   bool     // a step macro is referenced
-	text    string   // built only when asked
-	segs    []segment
+	size            int      // bytes of the substituted text
+	missing         []string // row 7: distinct, first-reference order
+	unrepresentable []string // row 7b: distinct, first-reference order
+	macro           bool     // a step macro is referenced
+	text            string   // built only when asked
+	segs            []segment
 }
 
 // isNameStart and isNameByte are the bytes of NAME = [A-Za-z_][A-Za-z0-9_]* (#61 VARIABLE_REF).
@@ -94,38 +106,191 @@ func reference(raw string, i int) (name string, end int, ok bool) {
 	return name, k, true
 }
 
-// escapedLen is the length of v written inside a string quoted by q (0 outside strings).
-func escapedLen(v string, q byte) int {
-	if q != '"' && q != '\'' {
-		return len(v)
+// replacementRune is U+FFFD as UTF-8. The upstream lexer reads it as utf8.RuneError and refuses it
+// in a string, so it is written \ufffd in "…"/'…' and refused in `…`.
+const replacementRune = "\xef\xbf\xbd"
+
+const hexDigits = "0123456789abcdef"
+
+// quotedEscape is the escape of byte b in a string opened by q, or "" when b is written as itself
+// (plan #118 §4.2). Only the opening quote is escaped: the upstream lexEscape accepts \ followed
+// by the opening quote and refuses \ followed by the other one.
+func quotedEscape(b, q byte) string {
+	switch b {
+	case q:
+		if q == '"' {
+			return `\"`
+		}
+		return `\'`
+	case '\\':
+		return `\\`
+	case 0x07:
+		return `\a`
+	case 0x08:
+		return `\b`
+	case 0x0C:
+		return `\f`
+	case 0x0A:
+		return `\n`
+	case 0x0D:
+		return `\r`
+	case 0x09:
+		return `\t`
+	case 0x0B:
+		return `\v`
 	}
-	n := len(v)
-	for i := 0; i < len(v); i++ {
-		if v[i] == '\\' || v[i] == q {
+	if b < 0x20 || b == 0x7F {
+		return `\x` + hexDigits[b>>4:b>>4+1] + hexDigits[b&0xF:b&0xF+1]
+	}
+	return ""
+}
+
+// isReplacementAt reports whether v holds U+FFFD at byte i.
+func isReplacementAt(v string, i int) bool {
+	return v[i] == replacementRune[0] && strings.HasPrefix(v[i:], replacementRune)
+}
+
+// quotedLen is len(encodeQuoted(v, q)) without building it; q is '"' or '\”.
+func quotedLen(v string, q byte) int {
+	n := 0
+	for i := 0; i < len(v); {
+		if isReplacementAt(v, i) {
+			n += len(`\ufffd`)
+			i += len(replacementRune)
+			continue
+		}
+		if e := quotedEscape(v[i], q); e != "" {
+			n += len(e)
+		} else {
 			n++
 		}
+		i++
 	}
 	return n
 }
 
-func writeEscaped(b *strings.Builder, v string, q byte) {
-	if q != '"' && q != '\'' {
-		b.WriteString(v)
-		return
-	}
-	for i := 0; i < len(v); i++ {
-		if v[i] == '\\' || v[i] == q {
-			b.WriteByte('\\')
+// writeQuoted writes v by the table of plan #118 §4.2 for a string opened by q:
+// strutil.Unquote(q + encodeQuoted(v, q) + q) == v for every valid UTF-8 v. For an ASCII-only v
+// in "…" it is strconv.Quote(v) without its quotes. The recorded deviations from strconv.Quote: a
+// non-ASCII rune that strconv.IsPrint rejects is written as itself, and U+FFFD is written \ufffd.
+func writeQuoted(b *strings.Builder, v string, q byte) {
+	for i := 0; i < len(v); {
+		if isReplacementAt(v, i) {
+			b.WriteString(`\ufffd`)
+			i += len(replacementRune)
+			continue
 		}
-		b.WriteByte(v[i])
+		if e := quotedEscape(v[i], q); e != "" {
+			b.WriteString(e)
+		} else {
+			b.WriteByte(v[i])
+		}
+		i++
 	}
 }
 
-// substitute scans raw once (plan #112 §4.2). With build false it only counts the output, so a
-// text over the cap is refused before it is built; with build true it builds the text and the
-// segment map of expanded → raw.
+// encodeQuoted is writeQuoted into a new string (the fuzz tests' subject).
+func encodeQuoted(v string, q byte) string {
+	n := quotedLen(v, q)
+	if n == len(v) {
+		return v
+	}
+	var b strings.Builder
+	b.Grow(n)
+	writeQuoted(&b, v, q)
+	return b.String()
+}
+
+// representable reports whether v can be written in state st (row 7b, plan #118 §4.3): in `…` a
+// backtick would end the string, Go's raw-string unquote drops a CR and the upstream lexer
+// refuses U+FFFD; in a # comment an LF or a CR would end it. "…" and '…' take any value
+// (encodeQuoted), and the top level takes it as query text.
+func representable(v string, st lexState) bool {
+	switch st {
+	case stBQ:
+		return !strings.ContainsAny(v, "`\r") && !strings.Contains(v, replacementRune)
+	case stComment:
+		return !strings.ContainsAny(v, "\n\r")
+	}
+	return true
+}
+
+// quoteOf is the opening quote of a quoted state, or 0.
+func quoteOf(st lexState) byte {
+	switch st {
+	case stDQ:
+		return '"'
+	case stSQ:
+		return '\''
+	}
+	return 0
+}
+
+// memoKey is one reference name in one lexical state.
+type memoKey struct {
+	name string
+	st   lexState
+}
+
+// valueReads, when a test sets it, is called at each quotedLen or representable computation of a
+// scan, so the memo is tested by count rather than by time. Nil outside tests.
+var valueReads func()
+
+func countValueRead() {
+	if valueReads != nil {
+		valueReads()
+	}
+}
+
+// valueMemo is a scan's memo of each referenced value's length and row-7b check per state: a
+// text may repeat one reference many times, so each value is read once per state (review r1).
+// The maps are made on first use.
+type valueMemo struct {
+	lens map[memoKey]int
+	reps map[memoKey]bool
+}
+
+func (m *valueMemo) length(name, v string, st lexState) int {
+	q := quoteOf(st)
+	if q == 0 {
+		return len(v)
+	}
+	k := memoKey{name, st}
+	if n, ok := m.lens[k]; ok {
+		return n
+	}
+	if m.lens == nil {
+		m.lens = map[memoKey]int{}
+	}
+	countValueRead()
+	n := quotedLen(v, q)
+	m.lens[k] = n
+	return n
+}
+
+func (m *valueMemo) representable(name, v string, st lexState) bool {
+	if st != stBQ && st != stComment {
+		return true
+	}
+	k := memoKey{name, st}
+	if r, ok := m.reps[k]; ok {
+		return r
+	}
+	if m.reps == nil {
+		m.reps = map[memoKey]bool{}
+	}
+	countValueRead()
+	r := representable(v, st)
+	m.reps[k] = r
+	return r
+}
+
+// substitute scans raw once (plan #112 §4.2), by the lexical states of plan #118 §4.1. With build
+// false it only counts the output, so a text over the cap is refused before it is built; with
+// build true it builds the text and the segment map of expanded → raw.
 func substitute(raw string, vars map[string]string, m macroText, build bool) substitution {
 	var out substitution
+	var memo valueMemo
 	var b strings.Builder
 	if build {
 		b.Grow(len(raw))
@@ -140,17 +305,16 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 			out.size += to - copyFrom
 		}
 	}
-	var quote byte // 0, '"', '\'' or '`'
+	st := stNone
 	for i := 0; i < len(raw); {
 		c := raw[i]
-		switch {
-		case c == '$':
+		if c == '$' {
 			name, end, ok := reference(raw, i)
 			if !ok {
 				i++
 				continue
 			}
-			value, subst := "", false
+			value, subst, isVar := "", false, false
 			switch {
 			case name == macroInterval:
 				value, subst, out.macro = m.interval, true, true
@@ -159,7 +323,7 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 			case strings.HasPrefix(name, "__") || len(name) > maxNameLen:
 			default:
 				if v, has := vars[name]; has {
-					value, subst = v, true
+					value, subst, isVar = v, true, true
 				} else if !contains(out.missing, name) {
 					out.missing = append(out.missing, name)
 				}
@@ -168,28 +332,54 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				i = end
 				continue
 			}
+			// A macro's text is a duration: only a value is checked (row 7b).
+			if isVar && !memo.representable(name, value, st) && !contains(out.unrepresentable, name) {
+				out.unrepresentable = append(out.unrepresentable, name)
+			}
 			flush(i)
-			n := escapedLen(value, quote)
+			q := quoteOf(st)
+			n := memo.length(name, value, st)
 			if build {
 				out.segs = append(out.segs, segment{sentFrom: out.size, sentLen: n, rawFrom: i, rawLen: end - i, kind: segInsert})
-				writeEscaped(&b, value, quote)
+				if q != 0 {
+					writeQuoted(&b, value, q)
+				} else {
+					b.WriteString(value)
+				}
 			}
 			out.size += n
 			i, copyFrom = end, end
 			continue
-		case quote == 0:
-			if c == '"' || c == '\'' || c == '`' {
-				quote = c
+		}
+		switch st {
+		case stNone:
+			switch c {
+			case '"':
+				st = stDQ
+			case '\'':
+				st = stSQ
+			case '`':
+				st = stBQ
+			case '#':
+				st = stComment
 			}
-		case quote == '`':
+		case stDQ, stSQ:
+			switch {
+			case c == '\\':
+				// The escaped byte is skipped: a $ there is not a reference.
+				i += 2
+				continue
+			case c == quoteOf(st) || c == '\n':
+				st = stNone
+			}
+		case stBQ:
 			if c == '`' {
-				quote = 0
+				st = stNone
 			}
-		case c == '\\':
-			i += 2
-			continue
-		case c == quote:
-			quote = 0
+		case stComment:
+			if c == '\n' || c == '\r' {
+				st = stNone
+			}
 		}
 		i++
 	}

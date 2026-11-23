@@ -475,25 +475,30 @@ The board list is `src/pages/boards/` (`BoardsPage.tsx`, `BoardDialogs.tsx`); th
 | `boardKeys.ts`     | `Shift+E` (toggle Edit, not while typing or in a dialog or menu) and `⌘S` / `Ctrl+S` (save in Edit mode, from any target)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `fieldMessages.ts` | `message_key` → the catalogue text `field.<key>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
-**View and Edit grids.** View mode (`BoardGridView`) places each panel absolutely from custom
-properties `--gx --gy --gw --gh` set in CSSOM (T08-023) and sizes the container from `--gbottom`;
-the arithmetic is the 12-column, 40 px, 16 px grid, so any layout the server accepts (rows up to
-10 099) renders, which a CSS grid's track limit would not allow in every engine. DOM order is
-`(y, x)`. Edit mode loads `BoardGridEditor` lazily: `react-grid-layout` 2.3.0 with the same numbers
-(`margin` 16, `containerPadding` 0, `rowHeight` 40, `maxRows` 10 099), no compaction and
-`preventCollision`, so panels never push each other and gaps stay. A pointer drop is taken only if
-the moved panel fits and overlaps nothing; otherwise the grid is reset and the refusal announced.
-While it loads, the View grid is the fallback, so nothing moves. react-draggable fills a `<style>`
-element through `innerHTML` when a drag starts, which Trusted Types blocks; `BoardGridEditor`
-creates an empty marker element with that id first (an inert `<meta>`, since even an empty
-`<style>` is an inline style under the CSP), and `Board.module.css` holds the same selection rules.
+**Board grid** (`BoardGrid.tsx`, #111). One grid serves View and Edit mode: `react-grid-layout`
+2.3.0 with the 12-column, 40 px, 16 px grid (`margin` 16, `containerPadding` 0, `rowHeight` 40,
+`maxRows` 10 099), so any layout the server accepts renders and panels do not move when the mode
+changes. Items are placed with transforms and sizes in CSSOM (T08-023), by React's `style`
+property. The `mode` prop changes props only: drag (from the panel header's `[data-drag-handle]`)
+and resize (the `se` handle) are enabled, and the handle rendered, in Edit mode only, when no save
+is in flight. View mode orders the panels `(y, x)` in the DOM; Edit mode keeps the draft's order, so
+a keyboard move does not move the focused panel in the DOM (entering Edit mode reorders the items,
+which moves them and keeps them mounted). There is no compaction and `preventCollision` is set, so
+panels never push each other and gaps stay. A pointer drop is taken only if the moved panel fits and
+overlaps nothing; otherwise the grid is reset and the refusal announced. react-draggable fills a
+`<style>` element through `innerHTML` when a drag starts, which Trusted Types blocks; in Edit mode
+`BoardGrid` creates an empty marker element with that id first (an inert `<meta>`, since even an
+empty `<style>` is an inline style under the CSP), and `Board.module.css` holds the same selection
+rules.
 
-**Chunks.** The board page is the lazy chunk of `src/pages/board/BoardPage.tsx`; the Edit grid,
-with `react-grid-layout` and its stylesheet, is the separate lazy chunk of
-`src/pages/board/BoardGridEditor.tsx`, preloaded when the pointer or the focus reaches Edit board. Both are listed in `bundle-budgets.json` and checked against
+**Chunks.** The board page is the lazy chunk of `src/pages/board/BoardPage.tsx`; the grid, with
+`react-grid-layout` and its stylesheet, is the separate lazy chunk of `src/pages/board/BoardGrid.tsx`.
+The board route requests it when it mounts, alongside the board's read. One Suspense boundary holds
+every grid of the board (the top panels and each section's), so they appear together: until the
+chunk arrives the board shows an empty, `aria-busy` container, and no grid is placed above another
+that has not yet loaded (a panel below the fold never sees the viewport and never queries, T07-012). Both are listed in `bundle-budgets.json` and checked against
 the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-chain.md#react-grid-layout);
-after #90 the board chunk is 12 196 bytes, the Edit grid 18 016, the chart frame chunk 10 668, the
-initial JS 171 112 and the initial CSS 5 373).
+after #111 the board chunk is 16 788 bytes and the grid 18 112).
 
 **Panel editor** (`PanelEditor.tsx`, #90; IA-015, T08-017). The editor is the kit's `ModalDialog`
 with `size="editor"`: a centred window of `--size-dialog-editor-width` × `--size-dialog-editor-height`
@@ -507,6 +512,38 @@ while the modal is open) and Done. Focus return: when `selected` goes from an id
 mode, `BoardEditor` calls `focusAfterEditor(document, id)` one animation frame later (after the
 overlay's own restore), which focuses the panel's `[data-panel-menu]` button, else the toolbar's
 `[data-board-add]` Add panel.
+
+**Render scope** (#111; PRF-005, T05 §4.3). The panels stay mounted across View and Edit mode,
+and a mode change renders none of them:
+- **One grid.** `BoardGrid` is the same component, with the same per-panel keys under the same
+  parent, in both modes (above), so entering or leaving Edit mode changes its props, not the
+  component tree.
+- **The mode is not a panel prop.** `BoardEditor` provides it through `BoardModeContext`
+  (`boardMode.ts`). In `PanelFrame` only two small components read it: `PanelHeader` (the
+  `data-drag-handle` attribute) and `PanelLayoutTool` (Move or resize). A mode change renders those,
+  not the panel's body, menus or chart frame.
+- **Memoised panels.** `PanelFrame` is `memo(forwardRef(…))`. `BoardEditor` passes stable `onEdit`,
+  `onKeyOp`, `onDuplicate` and `onRemove` callbacks (`useCallback` over the reducer's `dispatch`).
+  The reducer keeps the object of every panel an action does not touch.
+
+So entering Edit mode (Edit board, Shift+E, or Edit panel from a View-mode Panel menu) unmounts and
+mounts no panel and renders none, and opening, editing in and closing the panel editor render only
+the edited panel (its `selected`, `panel` and `runText` props change). Opening the editor from the
+Panel menu and the toolbar's Edit board dispatch inside `startTransition`, so React renders the
+dialog and the Edit chrome in slices that yield to the browser; what is committed is the same.
+Shift+E, Add panel and a board link's Edit state stay synchronous. A refused pointer drop resets the
+grid (a new `react-grid-layout` instance), which mounts its panels again.
+
+`BoardRenders.test.tsx` counts each panel's renders, mounts and unmounts through its
+`PanelFullScreen` (a `useEffect` cleanup spy). It fails if:
+- entering Edit mode, by Edit board or from View mode, unmounts or mounts a panel, or renders one
+  more than once;
+- opening the editor from View mode renders another panel;
+- opening, typing in or closing the editor in Edit mode renders another panel;
+- leaving Edit mode unmounts or mounts a panel.
+
+The scenario's long tasks are measured by `bench:rooms-long-tasks`
+([Build, test and CI](../development/build-and-ci.md)).
 
 `PanelPreview` (`PanelFrame.tsx`) renders the editor's run through the board panel's own path,
 `usePanelRun` → `panelView` → `PanelBody` → `ChartFrame` ([Boards: panel runtime](boards.md)). The

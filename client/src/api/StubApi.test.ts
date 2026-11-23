@@ -580,6 +580,43 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     expect(meta).not.toHaveBeenCalled();
   });
 
+  it('T7: values in strings (plan #118 §4.2)', async () => {
+    const api = new StubApi();
+    for (const [query, a, sent, bytes] of [
+      ['sum(x{a="$a"})', 'x\ny', 'sum(x{a="x\\ny"})', 16],
+      ['sum(x{a="$a"})', 'ü€😀', 'sum(x{a="ü€😀"})', 21],
+      ["sum(x{a='$a'})", '"\'\n', "sum(x{a='\"\\'\\n'})", 17],
+      ['sum(x{a="$a"})', 'x\ufffdy', 'sum(x{a="x\\ufffdy"})', 20],
+      ['# c\rhttp_requests_total{a="$a"}', 'x"y', 'rate(http_requests_total{a="x\\"y"}[1m])', 39],
+    ] as const) {
+      const r = await api.queryRange('demo', { query, vars: { a }, ...W });
+      expect(r.planned.query, query).toBe(sent);
+      expect(r.planned.bytes, query).toBe(bytes);
+      if (query.startsWith('#')) expect(r.planned.rateApplied, query).toBe(true);
+    }
+  });
+
+  it('T8: a value that cannot be written where it is referenced (plan #118 §4.3)', async () => {
+    const want = [{ pointer: '/vars/a', messageKey: 'variable.unrepresentable' }];
+    for (const [query, a, instant] of [
+      ['sum(x{a=`$a`})', 'x`y', false],
+      ['sum(x) # $a', 'z\ror vector(1)', false],
+      ['x{a=`$a`}', 'x\ry', false],
+      ['rate(x{a=`$a`}[$__interval])', 'x`y', true],
+    ] as const) {
+      const api = new StubApi();
+      const meta = vi.spyOn(api, 'promMetadata');
+      const e = await errorOf(
+        instant
+          ? api.queryInstant('demo', { query, vars: { a }, atMs: 1 })
+          : api.queryRange('demo', { query, vars: { a }, ...W }),
+      );
+      expect(e.kind, query).toBe('invalid');
+      expect(e.fields, query).toEqual(want);
+      expect(meta, query).toHaveBeenCalledTimes(0);
+    }
+  });
+
   it('G5: over the processing cap is queryTooLong without a plan', async () => {
     const api = new StubApi();
     const meta = vi.spyOn(api, 'promMetadata');
@@ -591,6 +628,23 @@ describe('StubApi planning (plan #112 A.7, A.11)', () => {
     expect(e.detail.hint?.['reason']).toBe('processing_cap');
     expect(e.detail.planned).toBeUndefined();
     expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('G6: repeated quoted references over the cap are refused without encoding each one (review r1)', async () => {
+    const api = new StubApi();
+    const meta = vi.spyOn(api, 'promMetadata');
+    // 1 000 references to a 4 096-byte LF value inside "…": 8 192 000 encoded bytes.
+    const a = '\n'.repeat(4096);
+    const query = 'x{a="' + '$a'.repeat(1000) + '"}';
+    const t0 = performance.now();
+    const e = await errorOf(api.queryRange('demo', { query, vars: { a }, ...W }));
+    const ms = performance.now() - t0;
+    expect(e.kind).toBe('queryTooLong');
+    expect(e.detail.hint?.['reason']).toBe('processing_cap');
+    expect(e.detail.planned).toBeUndefined();
+    expect(meta).not.toHaveBeenCalled();
+    // A sanity bound only: plan.test.ts counts the memo's computations (review r2).
+    expect(ms).toBeLessThan(5000);
   });
 });
 
