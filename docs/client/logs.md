@@ -100,11 +100,13 @@ A DOM list (ADR-0007: no charting library; ADR-0014 §2: main thread) virtualise
 After each change the view protects the shown rows (± `OVERSCAN` 10) from eviction, and requests
 the next page when the tail sentinel is in the slice and the last visible row is within
 `PREFETCH_ROWS` 2 000 of the buffer end, or the page before the head when the head sentinel is in
-the slice and the first visible row is within 2 000 of the buffer start. Each end loads only while
-the reader is not scrolling away from it: the last scroll direction of the reader (LogStream's own
-`scrollTop` writes do not count; `scrollToOrd` counts as a move towards the ordinal). Without this,
-a buffer narrower than both prefetch zones (a small cap, or very long lines filling the text cap)
-would load a page at one end, evict the other end's page, and load it back, without end.
+the slice and the first visible row is within 2 000 of the buffer start. The reader's last scroll
+direction gates the two ends: it comes from the reader's own input (wheel, the arrow, Page, Home,
+End and Space keys, a touch drag; `scrollToOrd` counts as a move towards the ordinal), not from
+scroll events, which LogStream's writes and the virtualiser's measurement corrections also cause.
+The tail loads unless the reader last moved up; the head (an evicted page) loads only after the
+reader moved up. Without this, a buffer narrower than both prefetch zones (a small cap, or very long
+lines filling the text cap) would load a page at one end, evict the other end's page, and load it back, without end.
 
 ### Rows
 
@@ -145,8 +147,8 @@ nanosecond past a group), without JSON; the shared fixture `wire/fixtures/json/l
 is passed by both (`unit:log-synth`, `TestPagingFixture`). A test sets
 `window.__logStreamBenchConfig` (`total`, `prefillTo`, `capEntries`, `latencyMs`, `view`, `wrap`,
 `lineLength`, `wrapEstimate`) before the page loads; the default holds 10⁶ of 2 × 10⁶ entries with
-50 ms page latency after the prefill. The page sets `data-prefilled="true"` when the prefill is
-done and exposes `window.__logStreamBench` (`scrollToOrd`, `loadTail`, `state()`, `topRow()`,
+50 ms page latency after the prefill. The stream is rendered once the prefill is done, when the
+page sets `data-prefilled="true"` and exposes `window.__logStreamBench` (`scrollToOrd`, `loadTail`, `state()`, `topRow()`,
 `reslicesLog()`, `showControl(on)`).
 
 - `e2e:log-stream` (`e2e/log-stream.spec.ts`, Chromium, Firefox and WebKit; E6 Chromium only): the

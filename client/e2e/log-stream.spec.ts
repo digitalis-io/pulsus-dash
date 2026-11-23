@@ -97,6 +97,8 @@ test.describe('e2e:log-stream', () => {
       for (let i = 0; i < 20 && evictions < 2; i += 1) {
         const before = (await state(page)).firstOrd;
         await page.evaluate(() => window.__logStreamBench?.loadTail());
+        // The eviction's re-slice runs at rest after the page lands; its write is a scroll event.
+        await page.waitForTimeout(500);
         await atRest(page);
         const s = await state(page);
         if (s.firstOrd > before) {
@@ -173,7 +175,9 @@ test.describe('e2e:log-stream', () => {
     await scrollToOrd(page, 2_500);
     await atRest(page);
     expect((await topRow(page))?.ord).toBe(2_500);
-    await page.getByRole('checkbox', { name: 'Wrap lines' }).click();
+    // The checkbox's input is visually hidden: press its label.
+    await page.getByText('Wrap lines', { exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: 'Wrap lines' })).toBeChecked();
     await atRest(page);
     expect((await topRow(page))?.ord).toBe(2_500);
     const row = page.locator('[data-log-row][data-ord="2500"]');
@@ -302,14 +306,34 @@ test.describe('e2e:log-stream', () => {
       let start = await sliceStart(page);
       for (let i = 0; i < 40 && changes < 2; i += 1) {
         const writes = (await state(page)).writes;
-        await cdp.send('Input.synthesizeScrollGesture', {
-          x: box.x + box.width / 2,
-          y: box.y + box.height / 2,
-          yDistance: -3_000,
-          speed: 3_000,
-          gestureSourceType: 'touch',
+        // A touch drag of 3 000 px at about 3 000 px/s, from CDP touch events: headless
+        // Chromium's synthesizeScrollGesture with a touch source does not scroll.
+        const x = box.x + box.width / 2;
+        const y0 = box.y + box.height - 20;
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [{ x, y: y0 }],
         });
+        for (let step = 1; step <= 60; step += 1) {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x, y: y0 - ((step % 12) + 1) * 50 }],
+          });
+          if (step % 12 === 11) {
+            // Lift and put the finger down again: the scroller is shorter than 3 000 px.
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            expect((await state(page)).writes, 'no scrollTop write during the gesture').toBe(
+              writes,
+            );
+            await cdp.send('Input.dispatchTouchEvent', {
+              type: 'touchStart',
+              touchPoints: [{ x, y: y0 }],
+            });
+          }
+          await page.waitForTimeout(16);
+        }
         expect((await state(page)).writes, 'no scrollTop write during the gesture').toBe(writes);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await atRest(page);
         const now = await sliceStart(page);
         if (now !== start) {
