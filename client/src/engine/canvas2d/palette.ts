@@ -27,6 +27,8 @@ export const LEVEL_COLOUR: Readonly<Record<string, number>> = Object.freeze({
   notice: 0,
   debug: 4,
   trace: 3,
+  // A volume series of lines without a level (#66 Part C; Table 8-1a 1.4-rc).
+  unknown: 2,
 });
 
 /** 0..7: the series-N token index of the series. */
