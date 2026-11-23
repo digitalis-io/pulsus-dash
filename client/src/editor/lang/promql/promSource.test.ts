@@ -118,7 +118,7 @@ describe('unit:prom-source', () => {
     });
   });
 
-  it('S3: a superseded label-values lookup is aborted and resolves []', async () => {
+  it('S3: a lookup of another key does not abort; the caller signal does', async () => {
     let first: AbortSignal | undefined;
     labelValues.mockImplementation((_t, _n, req: PromMatchRequest, signal?: AbortSignal) => {
       if (req.match?.[0] === 'up') {
@@ -132,8 +132,11 @@ describe('unit:prom-source', () => {
       return Promise.resolve(V('n1'));
     });
     const s = source();
-    const p1 = s.labelValues('job', 'up');
-    const p2 = s.labelValues('job', 'node');
+    const c1 = new AbortController();
+    const p1 = s.labelValues('job', 'up', c1.signal);
+    const p2 = s.labelValues('job', 'node', new AbortController().signal);
+    expect(first?.aborted).toBe(false);
+    c1.abort();
     expect(first?.aborted).toBe(true);
     expect(await p1).toEqual([]);
     expect(await p2).toEqual(['n1']);
@@ -143,6 +146,41 @@ describe('unit:prom-source', () => {
       { ...R, match: ['node'], limit: 1_000 },
       expect.any(AbortSignal),
     );
+  });
+
+  it('S15: every lookup passes the caller signal', async () => {
+    const held = <T>() =>
+      vi.fn(
+        (...args: unknown[]) =>
+          new Promise<T>((_r, reject) => {
+            const signal = args.at(-1) as AbortSignal | undefined;
+            signal?.addEventListener('abort', () => {
+              reject(abortError());
+            });
+          }),
+      );
+    const names = held<PromValues>();
+    const lbls = held<PromValues>();
+    const sers = held<Awaited<ReturnType<StubApi['promSeries']>>>();
+    labelValues.mockImplementation(names);
+    labels.mockImplementation(lbls);
+    series.mockImplementation(sers);
+    const s = source();
+    let sig = new AbortController();
+    const calls: [string, () => Promise<readonly unknown[]>, Mock][] = [
+      ['metricNames', () => s.metricNames(sig.signal), names],
+      ['labelNames', () => s.labelNames('up', sig.signal), lbls],
+      ['series', () => s.series('up', sig.signal), sers],
+    ];
+    for (const [name, run, spy] of calls) {
+      sig = new AbortController();
+      const p = run();
+      const signal = spy.mock.calls.at(-1)?.at(-1) as AbortSignal | undefined;
+      expect(signal?.aborted, name).toBe(false);
+      sig.abort();
+      expect(signal?.aborted, name).toBe(true);
+      expect(await p, name).toEqual([]);
+    }
   });
 
   it('S4: label names with and without a selector', async () => {

@@ -9,12 +9,8 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { tags, type Tag } from '@lezer/highlight';
 import type { LogSource } from '../types';
 import { promqlHighlight } from '../../theme';
-import {
-  logqlLocalSource,
-  logqlRemoteSource,
-  remoteLookupsPlugin,
-  RemoteLookups,
-} from './complete';
+import { remoteLookupsPlugin, RemoteLookups } from '../../remoteLookups';
+import { logqlLocalSource, logqlLookupKeyAt, logqlRemoteSource } from './complete';
 import { CONVERSIONS, FUNCTIONS, KEYWORDS, STAGES } from './grammar';
 import { advance, scanAt, startLex, type LexState, type Token } from './lexer';
 
@@ -100,7 +96,7 @@ export function logqlExtensions(source: LogSource): Extension[] {
   return [
     logqlLanguage,
     syntaxHighlighting(promqlHighlight),
-    remoteLookupsPlugin(lookups),
+    remoteLookupsPlugin(lookups, logqlLookupKeyAt),
     EditorState.languageData.of(() => [
       { autocomplete: logqlLocalSource() },
       { autocomplete: logqlRemoteSource(source, lookups) },

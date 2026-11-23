@@ -4,6 +4,10 @@
  * read from the request's own Lezer tree. The selector sent leaves out exactly the matcher under
  * the caret and copies every other one as typed (delimiters and escapes); the edited label's name
  * is decoded. If the package's matcher list differs from the tree's, nothing is sent.
+ *
+ * Requests come from the two completion slots of `complete.ts` (plan #107): the local slot runs the
+ * strategy over a recording source that sends nothing, the remote slot over the real source with
+ * the view's signal.
  */
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';

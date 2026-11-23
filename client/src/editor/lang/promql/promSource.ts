@@ -3,8 +3,10 @@
  * goes through the BFF's `/prom/*` routes (`Api.prom*`) and the suggest cache, keyed by tenant and
  * 15-min window bucket. Names, label names and label values are asked over the window snapped to
  * whole minutes (start floored, end ceiled, one minute when they meet), series over whole seconds,
- * the request shapes PulsusDB is tested with. A source never rejects: any failure, abort or
- * ended generation resolves `[]` (`{}` for metadata), with nothing logged or shown (T09 §9).
+ * the request shapes PulsusDB is tested with. Each lookup passes its caller's signal to the cache
+ * (plan #107 §3.6): a released lookup is cancelled once no other caller holds it. A source never
+ * rejects: any failure, abort or ended generation resolves `[]` (`{}` for metadata), with nothing
+ * logged or shown (T09 §9).
  */
 import { promMetadataQuery } from '../../../explore/promMetadata';
 import { suggestCache, windowBucket, type SuggestKind } from '../../suggestCache';
@@ -37,6 +39,7 @@ export function createPromSource(d: PromSourceDeps): PromSource {
     selector: string | null,
     load: (w: Window, signal: AbortSignal) => Promise<T>,
     empty: T,
+    signal: AbortSignal | undefined,
   ): Promise<T> {
     const w = d.window();
     const parts = {
@@ -47,14 +50,14 @@ export function createPromSource(d: PromSourceDeps): PromSource {
       selector,
       bucket: windowBucket(w.toMs),
     };
-    return cache.get(g, parts, (signal) => load(w, signal)).catch(() => empty);
+    return cache.get(g, parts, (s) => load(w, s), signal).catch(() => empty);
   }
   const minutes = minuteWindow;
   const seconds = secondWindow;
   const none: readonly string[] = [];
 
   return {
-    metricNames: () =>
+    metricNames: (signal) =>
       lookup(
         'names',
         null,
@@ -64,8 +67,9 @@ export function createPromSource(d: PromSourceDeps): PromSource {
             .promLabelValues(tenant, '__name__', { ...minutes(w), limit: PROM_NAMES_LIMIT }, signal)
             .then((r) => r.values),
         none,
+        signal,
       ),
-    labelNames: (m) =>
+    labelNames: (m, signal) =>
       lookup(
         'labels',
         null,
@@ -75,8 +79,9 @@ export function createPromSource(d: PromSourceDeps): PromSource {
             .promLabels(tenant, { ...minutes(w), ...matchOf(m), limit: PROM_LOOKUP_LIMIT }, signal)
             .then((r) => r.values),
         none,
+        signal,
       ),
-    labelValues: (name, m) =>
+    labelValues: (name, m, signal) =>
       lookup(
         'values',
         name,
@@ -91,8 +96,9 @@ export function createPromSource(d: PromSourceDeps): PromSource {
             )
             .then((r) => r.values),
         none,
+        signal,
       ),
-    series: (m) => {
+    series: (m, signal) => {
       if (m === '') return Promise.resolve([]);
       return lookup(
         'series',
@@ -103,6 +109,7 @@ export function createPromSource(d: PromSourceDeps): PromSource {
             .promSeries(tenant, { ...seconds(w), match: [m], limit: PROM_LOOKUP_LIMIT }, signal)
             .then((r) => r.series.map((s) => s.labels)),
         [],
+        signal,
       );
     },
     // Not cached here (D-LRU): one TanStack query per tenant, shared with the page. Tracked, so a
