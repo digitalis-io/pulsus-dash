@@ -121,11 +121,35 @@
   margin: 0;
 }
 
-.alert {
+.alert,
+.cardAlert {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* The status row's alert inside a result card (plan #66 Part C §3.11). */
+.cardAlert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+/* Explore › Logs: the results column, its width the run's (plan #66 Part C §3.9). */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* The Log lines card's list: a fixed height the stream virtualises in (plan #66 Part C §3.11). */
+.streamHost {
+  height: var(--size-log-stream);
+  min-height: 0;
 }
 
 .chip {

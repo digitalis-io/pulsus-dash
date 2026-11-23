@@ -268,10 +268,10 @@ describe('unit:logs-page', () => {
         detail: { position: 8 },
       }),
     );
+    // Byte 8 is the end of the text: its last character is marked (`positionDiagnostics`).
     await waitFor(() => {
-      const d = JSON.parse(textbox().dataset['diagnostics'] ?? '[]') as { from: number }[];
-      expect(d).toHaveLength(1);
-      expect(d[0]?.from).toBe(8);
+      const d = JSON.parse(textbox().dataset['diagnostics'] ?? '[]') as unknown[];
+      expect(d).toEqual([expect.objectContaining({ from: 7, to: 8, positionKnown: true })]);
     });
     const d = JSON.parse(textbox().dataset['diagnostics'] ?? '[]') as { message: string }[];
     const status = within(card('Query')).getByRole('alert');
@@ -428,9 +428,12 @@ describe('unit:logs-page', () => {
         null,
       ),
     );
+    expect(pager.buffer.headPage).toBe(1);
+    fireEvent.click(await screen.findByRole('button', { name: 'Load earlier lines' }));
     await waitFor(() => {
       expect(s.logs).toHaveLength(3);
     });
+    expect(s.logs[2]?.req.cursor).toBeUndefined();
     // The re-fetch of page one answers other lines: drift.
     await s.logs[2]?.resolve(
       page(
