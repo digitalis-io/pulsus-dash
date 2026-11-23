@@ -634,7 +634,7 @@ describe('unit:promql-completion-probe (plan #107 §3.3, §5.3)', () => {
     Reflect.deleteProperty(g, COMPLETION_PROBE_GLOBAL);
   });
 
-  it('Z1: the slots’ overlapping intervals count once in completionMs (injected clock)', async () => {
+  it('Z1: each slot reports a segment either side of its await; completionMs is their union (injected clock)', async () => {
     // Every `performance.now()` read advances the clock by 1; the probe records the end as the
     // bench's page does.
     let t = 0;
@@ -656,18 +656,15 @@ describe('unit:promql-completion-probe (plan #107 §3.3, §5.3)', () => {
       s0(new CompletionContext(state, pos, true)),
       s1(new CompletionContext(state, pos, true)),
     ]);
-    const local = work.filter(([, , k]) => k === 'slot0' || k === 'slot1pre');
-    expect(local.map(([, , k]) => k).sort()).toEqual(['slot0', 'slot1pre']);
-    const starts = local.map(([end, ms]) => end - ms);
-    const ends = local.map(([end]) => end);
-    // The intervals overlap: each slot starts before the other ends.
-    expect(Math.max(...starts)).toBeLessThan(Math.min(...ends));
-    const span = Math.max(...ends) - Math.min(...starts);
+    const local = work.filter(([, , k]) => k !== 'slot1post');
+    // Both entries run before either slot resumes.
+    expect(local.map(([, , k]) => k)).toEqual(['slot0entry', 'slot1entry', 'slot0', 'slot1pre']);
     const sum = local.reduce((a, [, ms]) => a + ms, 0);
-    expect(sum).toBeGreaterThan(span);
     const k = keyWorkOf(work, 0, Number.POSITIVE_INFINITY);
-    expect(k.completionMs).toBe(span);
-    expect(k.keyWork).toBe(span);
+    // Synchronous segments never overlap, so their union is their sum.
+    expect(k.completionMs).toBe(sum);
+    expect(k.keyWork).toBe(sum);
+    expect(k.slot0s).toBe(1);
   });
 
   it('Z2: microtasks that run while a slot awaits the analysis are not the key’s work', async () => {

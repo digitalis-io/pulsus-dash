@@ -4,15 +4,17 @@
  * pure, so `completionWork.test.ts` checks it with injected samples.
  *
  * A probe reports how long its work took when it ends; the page pushes `[performance.now(), ms,
- * kind]`, so an entry is the interval `[end − ms, end]`. The two completion slots of one request
- * share the memoised analysis and each times its entry to a point after awaiting it, so their
- * intervals overlap (slot 1's synchronous entry and the analysis's microtasks lie in both). The
- * work of a key is therefore the length of the **union** of its intervals, not their sum. Inside
- * one such interval nothing waits: the recording source settles at once, so the awaits resume in
- * the same task's microtask checkpoint, and the interval is main-thread execution only.
+ * kind]`, so an entry is the interval `[end − ms, end]`. Every completion entry is one synchronous
+ * segment: each slot reports its entry up to the await on the memoised analysis (`slot0entry`,
+ * `slot1entry`; the first of them computes the analysis) and its work from resuming (`slot0`,
+ * `slot1pre`), and no timer spans an await. Whatever runs while a slot waits, other microtasks
+ * included, lies between segments and is not counted; so is the package's own continuation of the
+ * analysis, which runs in those microtasks too. The work of a key is the length of the **union**
+ * of its intervals, so nested or overlapping intervals count once.
  */
 
-export type WorkKind = 'doc' | 'view' | 'slot0' | 'slot1pre' | 'slot1post';
+export type WorkKind =
+  'doc' | 'view' | 'slot0entry' | 'slot0' | 'slot1entry' | 'slot1pre' | 'slot1post';
 /** `[end, ms, kind]`: the probe's `performance.now()` at the end of the work, and its length. */
 export type Work = readonly [number, number, WorkKind];
 
@@ -21,8 +23,15 @@ export const REMOTE_P95_MS = 136;
 export const KEY_WORK_P95_MS = 2;
 
 /** The key's kinds: its document update, its local completion work and the popup render. */
-export const KEY_KINDS: readonly WorkKind[] = ['doc', 'view', 'slot0', 'slot1pre'];
-const COMPLETION_KINDS: readonly WorkKind[] = ['slot0', 'slot1pre'];
+export const KEY_KINDS: readonly WorkKind[] = [
+  'doc',
+  'view',
+  'slot0entry',
+  'slot0',
+  'slot1entry',
+  'slot1pre',
+];
+const COMPLETION_KINDS: readonly WorkKind[] = ['slot0entry', 'slot0', 'slot1entry', 'slot1pre'];
 
 export function percentile(sorted: readonly number[], p: number): number {
   const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
@@ -58,13 +67,14 @@ export function unionMs(ws: readonly Work[]): number {
 }
 
 export interface KeyWork {
-  /** The union of every `doc`, `view`, `slot0` and `slot1pre` interval of the key. */
+  /** The union of every interval of the key except `slot1post`. */
   readonly keyWork: number;
   /** The key's document updates. */
   readonly docMs: number;
-  /** The union of its `slot0` and `slot1pre` intervals. */
+  /** The union of its local completion segments (`slot0entry`, `slot0`, `slot1entry`, `slot1pre`). */
   readonly completionMs: number;
   readonly docs: number;
+  /** Its `slot0` entries: one per run of slot 0. */
   readonly slot0s: number;
 }
 

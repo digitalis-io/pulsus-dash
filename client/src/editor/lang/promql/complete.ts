@@ -194,15 +194,18 @@ function repeatsStatic(
 const now = (probe: CompletionProbe | null): number => (probe === null ? 0 : performance.now());
 
 /**
- * Slot 0. `probe` (§3.9) receives the slot's work in ms, or is null. The interval runs from the
- * slot's entry to its result, across the await on the shared analysis, which resumes in the same
- * task (the recording source settles at once). Slot 1's `slot1pre` spans the same analysis, so the
- * two intervals overlap: the bench measures their union, never their sum (plan #107 §5.3).
+ * Slot 0. `probe` (§3.9) receives the slot's work in ms, or is null. No timer spans an await: the
+ * slot reports two synchronous segments, `slot0entry` (its entry, which computes the shared
+ * analysis when slot 0 runs first, up to the await) and `slot0` (from resuming to its result).
+ * Whatever runs while it waits, other microtasks included, lies between the two and is not counted.
  */
 export function promqlLocalSource(probe: CompletionProbe | null): CompletionSource {
   return async (ctx) => {
     const t0 = now(probe);
-    const a = await analysisAt(ctx.state, ctx.pos, ctx.explicit);
+    const pending = analysisAt(ctx.state, ctx.pos, ctx.explicit);
+    probe?.(performance.now() - t0, 'slot0entry');
+    const a = await pending;
+    const t1 = now(probe);
     let r: CompletionResult | null = null;
     if (a.statics.length > 0) {
       r = resultOf(
@@ -215,12 +218,16 @@ export function promqlLocalSource(probe: CompletionProbe | null): CompletionSour
       // Empty, so slot 0 holds a result whenever slot 1 can (§4.5).
       r = resultOf(a.from, ctx.pos, [], a.validFor);
     }
-    probe?.(performance.now() - t0, 'slot0');
+    probe?.(performance.now() - t1, 'slot0');
     return r;
   };
 }
 
-/** Slot 1. */
+/**
+ * Slot 1. Its local work is reported in two synchronous segments, as slot 0's: `slot1entry` (its
+ * entry up to the await on the analysis, which it computes when it runs first) and `slot1pre`
+ * (from resuming to its wait). `slot1post` times the remote result's processing.
+ */
 export function promqlRemoteSource(
   source: PromSource,
   lookups: RemoteLookups,
@@ -229,11 +236,18 @@ export function promqlRemoteSource(
   return async (ctx) => {
     const t0 = now(probe);
     const e = lookups.epoch;
-    const a = await analysisAt(ctx.state, ctx.pos, ctx.explicit);
-    probe?.(performance.now() - t0, 'slot1pre');
-    if (a.key === null) return null;
+    const pending = analysisAt(ctx.state, ctx.pos, ctx.explicit);
+    probe?.(performance.now() - t0, 'slot1entry');
+    const a = await pending;
+    const t1 = now(probe);
+    if (a.key === null) {
+      probe?.(performance.now() - t1, 'slot1pre');
+      return null;
+    }
+    const quiet = afterQuiet(ctx, REMOTE_DEBOUNCE_MS);
+    probe?.(performance.now() - t1, 'slot1pre');
     // A context CodeMirror does not own is never aborted: the epoch catches a change during the wait.
-    if (!(await afterQuiet(ctx, REMOTE_DEBOUNCE_MS)) || !lookups.current(e)) return null;
+    if (!(await quiet) || !lookups.current(e)) return null;
     const signal = lookups.signalFor(a.key);
     let r: CompletionResult | null;
     try {
@@ -243,7 +257,7 @@ export function promqlRemoteSource(
     } finally {
       lookups.settled(signal);
     }
-    const t1 = now(probe);
+    const t2 = now(probe);
     let out: CompletionResult | null = null;
     if (r !== null) {
       const statics = new Set(a.statics);
@@ -258,7 +272,7 @@ export function promqlRemoteSource(
         );
       }
     }
-    probe?.(performance.now() - t1, 'slot1post');
+    probe?.(performance.now() - t2, 'slot1post');
     return out;
   };
 }

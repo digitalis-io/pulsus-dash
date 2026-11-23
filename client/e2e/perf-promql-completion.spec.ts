@@ -8,11 +8,12 @@
  * - **Remote** (30 trials): `a` inside `up{job=""}` opens the label values after the 120 ms
  *   debounce.
  * - **Work per local key** (`keyWork`): the editor probe (each `view.update`: `doc` when it changes
- *   the document, else `view`) and the completion probe (`slot0`, `slot1pre`, `slot1post`) push
- *   `[end, ms, kind]` to `window.__work`, the interval `[end − ms, end]`. `keyWork` is the length of
- *   the union of the intervals that end from the key's keydown to its popup, except `slot1post`:
- *   the key's document update, its local completion work and the popup render. The two slots'
- *   intervals overlap (both span the shared analysis), so they are not summed
+ *   the document, else `view`) and the completion probe (`slot0entry`, `slot0`, `slot1entry`,
+ *   `slot1pre`, `slot1post`) push `[end, ms, kind]` to `window.__work`, the interval
+ *   `[end − ms, end]`. `keyWork` is the length of the union of the intervals that end from the
+ *   key's keydown to its popup, except `slot1post`: the key's document update, its local completion
+ *   work and the popup render. Each completion entry is one synchronous segment either side of a
+ *   slot's await on the shared analysis, so work that runs while a slot waits is not counted
  *   (`src/test/completionWork.ts`). `remoteWork` (reported only) is `slot1post` plus `view` from
  *   the 120 ms timer to the merged list.
  * - **Long tasks** (PRF-005): a Chromium trace of every trial, read by `scripts/longTasks.ts`.
@@ -57,7 +58,7 @@ declare global {
   interface Window {
     __work: Work[];
     __pulsusEditorProbe: (ms: number, docChanged: boolean) => void;
-    __pulsusCompletionProbe: (ms: number, part: 'slot0' | 'slot1pre' | 'slot1post') => void;
+    __pulsusCompletionProbe: (ms: number, part: Exclude<WorkKind, 'doc' | 'view'>) => void;
   }
 }
 
