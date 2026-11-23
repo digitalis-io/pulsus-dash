@@ -455,22 +455,20 @@ function BoardEditor({
   });
 
   // One grid for both modes (#111): entering or leaving Edit mode changes its props, not the
-  // components, so no panel mounts again. Until the chunk arrives the grid is an empty container.
+  // components, so no panel mounts again.
   const grid = (panels: readonly PanelSpec[], ref: GridRef) => (
-    <Suspense fallback={<div className={cx(styles['grid'])} data-board-grid="" aria-busy="true" />}>
-      <BoardGrid
-        mode={s.mode}
-        panels={panels}
-        readOnly={busy}
-        onLayout={(items) => {
-          dispatch({ type: 'layout', grid: ref, items });
-        }}
-        onBlocked={(p) => {
-          dispatch({ type: 'announce', text: blockedText(p) });
-        }}
-        renderPanel={(p) => <PanelFrame {...panelProps(p)} />}
-      />
-    </Suspense>
+    <BoardGrid
+      mode={s.mode}
+      panels={panels}
+      readOnly={busy}
+      onLayout={(items) => {
+        dispatch({ type: 'layout', grid: ref, items });
+      }}
+      onBlocked={(p) => {
+        dispatch({ type: 'announce', text: blockedText(p) });
+      }}
+      renderPanel={(p) => <PanelFrame {...panelProps(p)} />}
+    />
   );
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
@@ -545,52 +543,56 @@ function BoardEditor({
       )}
       <div className={cx(styles['workspace'])}>
         <div className={cx(styles['grids'])}>
-          {empty && !edit ? (
-            <EmptyState title={t('board.noPanels')} />
-          ) : (
-            <>
-              {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
-              {s.draft.sections.map((sec, j) => {
-                const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
-                return (
-                  <BoardSection
-                    key={sec.id}
-                    section={sec}
-                    index={j}
-                    mode={s.mode}
-                    collapsed={collapsed}
-                    busy={busy}
-                    titleError={titleErrorOf(j)}
-                    onToggle={() => {
-                      if (edit) {
-                        dispatch({ type: 'toggleSection', id: sec.id });
-                        return;
-                      }
-                      // Only a state that differs from the saved one is written to the URL.
-                      const next = !collapsed;
-                      setOverrideError(
-                        boardParams.setSectionOverride(
-                          sec.id,
-                          next === sec.collapsed ? null : next,
-                        ),
-                      );
-                    }}
-                    onTitle={(title) => {
-                      dispatch({ type: 'updateSection', id: sec.id, title });
-                    }}
-                    onAddPanel={() => {
-                      dispatch({ type: 'addPanel', grid: j });
-                    }}
-                    onRemove={() => {
-                      dispatch({ type: 'removeSection', id: sec.id });
-                    }}
-                  >
-                    {grid(sec.panels, j)}
-                  </BoardSection>
-                );
-              })}
-            </>
-          )}
+          {/* One boundary for every grid: until the grid chunk arrives the board shows none, so
+              no grid is placed above another that has not (#111). */}
+          <Suspense fallback={<div data-board-grid="" aria-busy="true" />}>
+            {empty && !edit ? (
+              <EmptyState title={t('board.noPanels')} />
+            ) : (
+              <>
+                {(s.draft.panels.length > 0 || edit) && grid(s.draft.panels, 'top')}
+                {s.draft.sections.map((sec, j) => {
+                  const collapsed = isCollapsed(s.mode, sec, boardParams.params.sections);
+                  return (
+                    <BoardSection
+                      key={sec.id}
+                      section={sec}
+                      index={j}
+                      mode={s.mode}
+                      collapsed={collapsed}
+                      busy={busy}
+                      titleError={titleErrorOf(j)}
+                      onToggle={() => {
+                        if (edit) {
+                          dispatch({ type: 'toggleSection', id: sec.id });
+                          return;
+                        }
+                        // Only a state that differs from the saved one is written to the URL.
+                        const next = !collapsed;
+                        setOverrideError(
+                          boardParams.setSectionOverride(
+                            sec.id,
+                            next === sec.collapsed ? null : next,
+                          ),
+                        );
+                      }}
+                      onTitle={(title) => {
+                        dispatch({ type: 'updateSection', id: sec.id, title });
+                      }}
+                      onAddPanel={() => {
+                        dispatch({ type: 'addPanel', grid: j });
+                      }}
+                      onRemove={() => {
+                        dispatch({ type: 'removeSection', id: sec.id });
+                      }}
+                    >
+                      {grid(sec.panels, j)}
+                    </BoardSection>
+                  );
+                })}
+              </>
+            )}
+          </Suspense>
         </div>
         {edit && selected !== undefined && (
           <PanelEditor

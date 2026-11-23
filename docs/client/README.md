@@ -493,8 +493,10 @@ rules.
 
 **Chunks.** The board page is the lazy chunk of `src/pages/board/BoardPage.tsx`; the grid, with
 `react-grid-layout` and its stylesheet, is the separate lazy chunk of `src/pages/board/BoardGrid.tsx`.
-The board route requests it when it mounts, alongside the board's read; until it arrives each grid
-is an empty container (`aria-busy`). Both are listed in `bundle-budgets.json` and checked against
+The board route requests it when it mounts, alongside the board's read. One Suspense boundary holds
+every grid of the board (the top panels and each section's), so they appear together: until the
+chunk arrives the board shows an empty, `aria-busy` container, and no grid is placed above another
+that has not yet loaded (a panel below the fold never sees the viewport and never queries, T07-012). Both are listed in `bundle-budgets.json` and checked against
 the 120 KB brotli `lazyChunk` budget (sizes in [JavaScript supply chain](supply-chain.md#react-grid-layout);
 after #111 the board chunk is 16 788 bytes and the grid 18 112).
 

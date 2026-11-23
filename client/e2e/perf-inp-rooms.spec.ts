@@ -180,7 +180,7 @@ test.describe('bench:inp-rooms', () => {
       await step('b-1 edit', 1, async () => {
         await click(page, 'Edit board');
         await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
-        if (i === 0) await expect(page.locator('.react-grid-item')).toHaveCount(4);
+        if (i === 0) await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
       });
       await step('b-1 add section', 1, () => click(page, 'Add section'));
       await step('b-1 done', 2, async () => {
