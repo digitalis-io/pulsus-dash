@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { FullConfig, FullResult, Suite } from '@playwright/test/reporter';
+import type { FullConfig, Suite } from '@playwright/test/reporter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   COVERAGE_DIR,
@@ -76,7 +76,7 @@ function tmp(): string {
 async function run(outputDir: string, parts: readonly KeyboardPart[], c = config()) {
   const r = new KeyboardCoverageReporter();
   r.onBegin(c, suite(outputDir, parts));
-  return await r.onEnd({ status: 'passed' } as FullResult);
+  return await r.onEnd();
 }
 
 describe('keyboard coverage reporter (#130, IA-015, T05-002)', () => {

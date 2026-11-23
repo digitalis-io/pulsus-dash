@@ -180,6 +180,8 @@ export interface KeyboardHarness {
   pendingHere: () => Promise<string[]>;
   collected: () => ReadonlySet<string>;
   operated: () => ReadonlySet<string>;
+  /** Route states seen so far. */
+  visited: () => ReadonlySet<string>;
   uncovered: () => string[];
   unvisited: (required: readonly string[]) => string[];
 }
@@ -377,6 +379,7 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     },
     collected: () => collected,
     operated: () => operated,
+    visited: () => visited,
     uncovered: () => [...collected].filter((k) => !operated.has(k)).sort(),
     unvisited: (required) => required.filter((r) => !visited.has(r)),
   };

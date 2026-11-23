@@ -55,13 +55,20 @@ const FOUR: T[] = [
   { file: 'b.spec.ts', path: ['three'] },
   { file: 'b.spec.ts', path: ['B', 'four'] },
 ];
-const listed = (tests: readonly T[]) => report(tests.map((t) => ({ ...t, results: 0 })));
-const ids = (l: unknown, shards: [string, T[]][], project = 'firefox'): string[] =>
-  checkE2eComplete(
-    l,
-    shards.map(([name, tests]) => ({ name, report: report(tests) })),
-    project,
-  ).map((f) => `${f.rule} ${f.subject ?? ''}`);
+/** Firefox's one allowed skip (config/e2eSkips.ts): listed, and skipped in `rest`. */
+const E6T: T = {
+  file: 'log-stream.spec.ts',
+  path: ['e2e:log-stream', 'E6 touch: no scroll write during the gesture'],
+  status: 'skipped',
+};
+const listed = (tests: readonly T[]) =>
+  report([...tests, E6T].map((t) => ({ ...t, status: 'expected' as const, results: 0 })));
+const withE6 = ([name, tests]: [string, T[]]): { name: string; report: unknown } => ({
+  name,
+  report: report(name === 'rest' ? [...tests, E6T] : tests),
+});
+const ids = (l: unknown, shards: [string, T[]][]): string[] =>
+  checkE2eComplete(l, shards.map(withE6), 'firefox').map((f) => `${f.rule} ${f.subject ?? ''}`);
 
 const REAL = JSON.parse(
   readFileSync(
@@ -110,11 +117,13 @@ describe('ci:e2e-complete (#130, T05-002)', () => {
     const [a1, a2, b1, b2] = FOUR as [T, T, T, T];
     const f = checkE2eComplete(
       listed(FOUR),
-      [
-        { name: 'kbd-a', report: report([a1, a2]) },
-        { name: 'kbd-b', report: report([b1]) },
-        { name: 'rest', report: report([b1, b2]) },
-      ],
+      (
+        [
+          ['kbd-a', [a1, a2]],
+          ['kbd-b', [b1]],
+          ['rest', [b1, b2]],
+        ] as [string, T[]][]
+      ).map(withE6),
       'firefox',
     );
     expect(f.map((x) => `${x.rule} ${x.subject ?? ''}`)).toEqual([
@@ -164,7 +173,7 @@ describe('ci:e2e-complete (#130, T05-002)', () => {
 
   it('empty input is exit 2', () => {
     expect(() =>
-      checkE2eComplete(listed([]), [{ name: 'rest', report: report(FOUR) }], 'firefox'),
+      checkE2eComplete(report([]), [{ name: 'rest', report: report(FOUR) }], 'firefox'),
     ).toThrow(InputError);
     expect(() => checkE2eComplete(listed(FOUR), [], 'firefox')).toThrow(InputError);
   });

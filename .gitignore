@@ -28,6 +28,7 @@ client/dist/
 client/dist-http/
 test-results/
 playwright-report/
+blob-report/
 
 # Server build output and pinned tools (make server-build, make tools-ci)
 build/

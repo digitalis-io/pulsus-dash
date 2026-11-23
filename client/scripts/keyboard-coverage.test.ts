@@ -53,7 +53,11 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
   });
 
   it('missing part', () => {
-    expect(ids(covered().filter((p) => p.part !== 'K4'))).toEqual(['keyboard-part-missing K4']);
+    // K4's states visited by K1, so only the part is missing.
+    const parts = covered();
+    const k4 = parts.find((p) => p.part === 'K4')?.visited ?? [];
+    parts[0] = { ...(parts[0] ?? part('K1')), visited: [...(parts[0]?.visited ?? []), ...k4] };
+    expect(ids(parts.filter((p) => p.part !== 'K4'))).toEqual(['keyboard-part-missing K4']);
   });
 
   it('duplicate part', () => {
@@ -63,7 +67,7 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
 
   it('uncovered key', () => {
     const parts = covered();
-    parts[1] = part('K2', { collected: ['b › k'] });
+    parts[1] = { ...(parts[1] ?? part('K2')), collected: ['b › k'] };
     expect(ids(parts)).toEqual(['keyboard-uncovered b › k']);
   });
 
