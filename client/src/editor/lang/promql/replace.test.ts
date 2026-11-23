@@ -116,6 +116,6 @@ describe('unit:promql-replace (parity)', () => {
       }
     }
     expect(mismatches).toEqual([]);
-    expect(checked).toBeGreaterThanOrEqual(300);
+    expect(checked).toBe(350);
   });
 });

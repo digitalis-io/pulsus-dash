@@ -1,4 +1,4 @@
-import { completionStatus, startCompletion } from '@codemirror/autocomplete';
+import { completionStatus, currentCompletions, startCompletion } from '@codemirror/autocomplete';
 import { diagnosticCount } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
 import { act, render } from '@testing-library/react';
@@ -102,13 +102,16 @@ describe('unit:promql-completion-timing (host, plan #107 §5.1 P8)', () => {
     const dom = shadow?.querySelector('.cm-editor');
     const view = dom instanceof HTMLElement ? EditorView.findFromDOM(dom) : null;
     if (view === null) throw new Error('no view');
+    // `s`, not the plan's `u`: no static item starts with `u`, so `u` opens no local list.
     view.dispatch({
-      changes: { from: 0, insert: 'u' },
+      changes: { from: 0, insert: 's' },
       selection: { anchor: 1 },
       userEvent: 'input.type',
     });
     await vi.advanceTimersByTimeAsync(1);
-    expect(completionStatus(view.state)).toBe('active');
+    // Open while slot 1 waits: CodeMirror reports a pending slot as 'pending'.
+    expect(completionStatus(view.state)).toBe('pending');
+    expect(currentCompletions(view.state).length).toBeGreaterThan(0);
     expect(pending.held).toEqual([]);
     await vi.advanceTimersByTimeAsync(120);
     await vi.advanceTimersByTimeAsync(0);

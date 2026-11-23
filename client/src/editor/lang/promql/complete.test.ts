@@ -243,19 +243,23 @@ describe('unit:promql-completion-timing', () => {
     Reflect.deleteProperty(g, COMPLETION_PROBE_GLOBAL);
   });
 
-  /** `sum(‸`, key `r`, 1 ms. */
+  /**
+   * `sum(‸`, key `h`, 1 ms. (`h`, not the plan's `r`: CodeMirror matches a one-character pattern
+   * at the start of a label only, so no metric of `F` would follow `r`.)
+   */
   async function p1() {
     const source = fakePromSource(F);
     const { view } = viewIn({ doc: 'sum(', caret: 4, source });
-    type(view, 'r');
+    type(view, 'h');
     await advance(1);
     return { view, source };
   }
 
   it('P1: the local list opens within 1 ms, with no lookup', async () => {
     const { view, source } = await p1();
-    expect(completionStatus(view.state)).toBe('active');
-    expect(shownLabels(view)).toContain('rate');
+    // Open while slot 1 waits: CodeMirror reports a pending slot as 'pending'.
+    expect(completionStatus(view.state)).toBe('pending');
+    expect(shownLabels(view)).toContain('histogram_quantile');
     expect(shownLabels(view)).not.toContain('http_requests_total');
     expect(source.calls).toEqual([]);
   });

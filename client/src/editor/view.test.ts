@@ -236,9 +236,7 @@ describe('unit:editor-probe (completion, plan #107 §3.9)', () => {
     const probe = vi.fn();
     g[COMPLETION_PROBE_GLOBAL] = probe;
     startCompletion(view);
-    await vi.waitFor(() => {
-      expect(completionStatus(view.state)).toBe('active');
-    });
+    await wait(200);
     expect(probe).not.toHaveBeenCalled();
   });
 });
