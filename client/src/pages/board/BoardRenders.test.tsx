@@ -68,11 +68,24 @@ function clear(): void {
   counts.unmounts.clear();
 }
 
-/** Lets the grid's own follow-up renders (its width, the panels' data) settle. */
+function total(): number {
+  let n = 0;
+  for (const v of counts.renders.values()) n += v;
+  return n;
+}
+
+/**
+ * Lets the panels' own follow-up renders (the grid's width, their data, their viewport state)
+ * settle: until no panel renders for 50 ms (at most 2 s), so a busy runner does not count them.
+ */
 async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((res) => setTimeout(res, 50));
-  });
+  for (let i = 0; i < 40; i++) {
+    const before = total();
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 50));
+    });
+    if (total() === before) return;
+  }
 }
 
 /** The board in View mode, its four panels mounted. */
@@ -105,6 +118,7 @@ describe('board render counts (#111)', () => {
   it('opening the editor does not re-render the other panels', async () => {
     const { user } = await editGrid();
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
+    await settle();
     clear();
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     await screen.findByRole('dialog', { name: 'Edit panel' });
@@ -116,6 +130,7 @@ describe('board render counts (#111)', () => {
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     const d = await screen.findByRole('dialog', { name: 'Edit panel' });
+    await settle();
     clear();
     await user.type(within(d).getByRole('textbox', { name: 'Title' }), 'X');
     // The edited panel shows the new title at once.
@@ -128,6 +143,7 @@ describe('board render counts (#111)', () => {
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     const d = await screen.findByRole('dialog', { name: 'Edit panel' });
+    await settle();
     clear();
     await user.click(within(d).getByRole('button', { name: 'Done' }));
     await waitFor(() => {
@@ -139,6 +155,7 @@ describe('board render counts (#111)', () => {
   it('entering Edit mode keeps every panel mounted and renders each at most once', async () => {
     const { user } = await viewBoard();
     const edit = await screen.findByRole('button', { name: 'Edit board' });
+    await settle();
     clear();
     await user.click(edit);
     await editChrome();
@@ -151,6 +168,7 @@ describe('board render counts (#111)', () => {
   it('Edit panel from View mode keeps the panels mounted and renders no other panel', async () => {
     const { user } = await viewBoard();
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
+    await settle();
     clear();
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     await screen.findByRole('dialog', { name: 'Edit panel' });
