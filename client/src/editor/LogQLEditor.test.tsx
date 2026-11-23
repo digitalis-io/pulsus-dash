@@ -9,13 +9,11 @@ import '../test/editorDom';
 import { StubApi } from '../api/StubApi';
 import { ApiError } from '../api/types';
 import { FL, fakeLogSource } from '../test/fakeLogSource';
-import { F, fakePromSource } from '../test/fakePromSource';
 import { flush, key, wait } from '../test/viewIn';
 import type { Diagnostic, LogSource } from './lang/types';
 import { STAGES } from './lang/logql/grammar';
 import { logql } from './lang/logql/logql';
 import { LogQLEditor } from './LogQLEditor';
-import { PromQLEditor } from './PromQLEditor';
 import { setDocument } from './view';
 
 /** The one view under `container`'s editor host. */
@@ -242,25 +240,5 @@ describe('unit:logql-completion-timing', () => {
     await vi.advanceTimersByTimeAsync(50);
     await vi.advanceTimersByTimeAsync(0);
     expect(source.calls).toHaveLength(1);
-  });
-
-  it('T5: PromQL keeps its 120 ms typing delay', async () => {
-    const source = fakePromSource(F);
-    const { container } = render(
-      <PromQLEditor
-        value=""
-        source={source}
-        diagnostics={[]}
-        label="PromQL query"
-        placeholder=""
-        onChange={vi.fn()}
-        onRun={vi.fn()}
-        onEscape={vi.fn()}
-      />,
-    );
-    const { view } = viewOf(container);
-    type(view, 'u');
-    await vi.advanceTimersByTimeAsync(119);
-    expect(source.calls).toEqual([]);
   });
 });

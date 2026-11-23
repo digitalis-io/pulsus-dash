@@ -29,3 +29,11 @@ export function probedDispatch(): Pick<EditorViewConfig, 'dispatchTransactions'>
     },
   };
 }
+
+/** The bench's completion probe (plan #107 §3.9). */
+export const COMPLETION_PROBE_GLOBAL = '__pulsusCompletionProbe';
+export type CompletionProbe = (ms: number, part: 'slot0' | 'slot1pre' | 'slot1post') => void;
+
+export function completionProbe(): CompletionProbe | null {
+  throw new Error('not implemented');
+}
