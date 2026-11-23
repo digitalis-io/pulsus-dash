@@ -27,8 +27,10 @@ func checkError(t *testing.T, c fxCase, err *PlanError) {
 	switch {
 	case c.Error.Position == nil && err.Position != nil:
 		t.Errorf("position %d, want none", *err.Position)
-	case c.Error.Position != nil && (err.Position == nil || *err.Position != *c.Error.Position):
-		t.Errorf("position %v, want %d", err.Position, *c.Error.Position)
+	case c.Error.Position != nil && err.Position == nil:
+		t.Errorf("no position, want %d", *c.Error.Position)
+	case c.Error.Position != nil && *err.Position != *c.Error.Position:
+		t.Errorf("position %d, want %d", *err.Position, *c.Error.Position)
 	}
 	if (c.Error.Hint != nil) != (err.Kind == ErrProcessingCap) || (c.Error.Hint != nil && c.Error.Hint.Reason != "processing_cap") {
 		t.Errorf("hint %+v with kind %d", c.Error.Hint, err.Kind)
@@ -172,7 +174,11 @@ func hashRefusal(t *testing.T, what string, err *PlanError, pos int) {
 		t.Errorf("%s: err = nil, want ErrInput query.invalid at %d", what, pos)
 	case err.Kind != ErrInput || err.Message != want || !slices.Equal(err.Fields, []FieldError{{"/query", "query.invalid"}}) ||
 		err.Position == nil || *err.Position != pos || err.Planned != nil:
-		t.Errorf("%s: %d %q %+v position %v, want ErrInput %q [/query query.invalid] at %d", what, err.Kind, err.Message, err.Fields, err.Position, want, pos)
+		got := "none"
+		if err.Position != nil {
+			got = strconv.Itoa(*err.Position)
+		}
+		t.Errorf("%s: %d %q %+v position %s, want ErrInput %q [/query query.invalid] at %d", what, err.Kind, err.Message, err.Fields, got, want, pos)
 	}
 }
 
