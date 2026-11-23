@@ -669,4 +669,44 @@ describe('unit:promql-completion-probe (plan #107 §3.3, §5.3)', () => {
     expect(k.completionMs).toBe(span);
     expect(k.keyWork).toBe(span);
   });
+
+  it('Z2: microtasks that run while a slot awaits the analysis are not the key’s work', async () => {
+    // Every `performance.now()` read advances the clock by 1. Unrelated work queued after both
+    // slots have started runs before either resumes (the analysis settles a few microtasks later)
+    // and advances the clock by 5 more; no reported interval may cover it.
+    let t = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => ++t);
+    const work: Work[] = [];
+    g[COMPLETION_PROBE_GLOBAL] = (ms: number, part: Work[2]) => {
+      work.push([t, ms, part]);
+    };
+    const { text, pos } = caretOf('sum(r‸');
+    const state = EditorState.create({
+      doc: text,
+      selection: { anchor: pos },
+      extensions: [promqlExtensions(fakePromSource(F))],
+    });
+    const [s0, s1] = state.languageDataAt<CompletionSource>('autocomplete', pos);
+    if (s0 === undefined || s1 === undefined) throw new Error('two slots expected');
+    const p0 = s0(new CompletionContext(state, pos, true));
+    const p1 = s1(new CompletionContext(state, pos, true));
+    const gap: number[] = [];
+    queueMicrotask(() => {
+      gap.push(t, t + 5);
+      t += 5;
+    });
+    await Promise.all([p0, p1]);
+    const [g0, g1] = gap;
+    if (g0 === undefined || g1 === undefined)
+      throw new Error('the unrelated microtask did not run');
+    const k = keyWorkOf(work, 0, Number.POSITIVE_INFINITY);
+    const local = work.filter(([, , kind]) => kind !== 'slot1post');
+    // The unrelated work lies outside every interval of the key.
+    expect(local.filter(([end, ms]) => end - ms < g1 && end > g0)).toEqual([]);
+    // So the slots' intervals, one unit each, are disjoint: the union is their sum, under 5.
+    const sum = local.reduce((a, [, ms]) => a + ms, 0);
+    expect(k.completionMs).toBe(sum);
+    expect(k.keyWork).toBe(sum);
+    expect(k.completionMs).toBeLessThan(5);
+  });
 });
