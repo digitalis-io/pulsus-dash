@@ -188,13 +188,43 @@ function encodeDQ(v: Uint8Array): Uint8Array {
   return out;
 }
 
-type LexState = 'none' | 'dq' | 'bq' | 'comment';
+/** PulsusDB's LogQL has no comments (plan #121): outside strings a `#` is an ordinary byte. */
+type LexState = 'none' | 'dq' | 'bq';
 
 /** Row 7b: a value that cannot be written verbatim in state st. */
 function representable(v: Uint8Array, st: LexState): boolean {
   if (st === 'bq') return !v.includes(BACKTICK) && !v.includes(CR);
-  if (st === 'comment') return !v.includes(LF);
   return true;
+}
+
+/** The Go `hashAt` on UTF-8 bytes: the offset of the first `#` outside strings, or -1. */
+function hashAt(text: Uint8Array): number {
+  let st: LexState = 'none';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (st === 'none') {
+      if (c === DQUOTE) st = 'dq';
+      else if (c === BACKTICK) st = 'bq';
+      else if (c === HASH) return i;
+    } else if (st === 'dq') {
+      if (c === BACKSLASH) i++;
+      else if (c === DQUOTE || c === LF) st = 'none';
+    } else if (c === BACKTICK) st = 'none';
+  }
+  return -1;
+}
+
+/** Row 9b: the refusal of a top-level `#` at raw offset `raw` (null: no position). */
+function hashError(raw: number | null): LogsStubPlanError {
+  const fields = [{ pointer: '/query', messageKey: 'query.invalid' }];
+  if (raw === null)
+    return { status: 400, message: "unexpected '#': LogQL has no comments", fields };
+  return {
+    status: 400,
+    message: `unexpected '#' at byte ${String(raw)}: LogQL has no comments`,
+    fields,
+    hint: { position: { offset: raw } },
+  };
 }
 
 interface Macros {
@@ -302,7 +332,6 @@ function substitute(
     if (st === 'none') {
       if (c === DQUOTE) st = 'dq';
       else if (c === BACKTICK) st = 'bq';
-      else if (c === HASH) st = 'comment';
     } else if (st === 'dq') {
       if (c === BACKSLASH) {
         // The escaped byte is skipped: a $ there is not a reference.
@@ -310,9 +339,7 @@ function substitute(
         continue;
       }
       if (c === DQUOTE || c === LF) st = 'none';
-    } else if (st === 'bq') {
-      if (c === BACKTICK) st = 'none';
-    } else if (c === LF) st = 'none';
+    } else if (c === BACKTICK) st = 'none';
     i++;
   }
   flush(raw.length);
@@ -429,11 +456,6 @@ function readString(text: Uint8Array, i: number): { value: Uint8Array | null; en
   return { value: null, end: text.length };
 }
 
-function skipComment(text: Uint8Array, i: number): number {
-  const j = text.indexOf(LF, i);
-  return j < 0 ? text.length : j;
-}
-
 const SOURCE = encoder.encode('source');
 const PULSUS_DASH = encoder.encode('pulsus-dash');
 
@@ -460,8 +482,6 @@ function readSelector(text: Uint8Array, i: number): { s: LogsSelector; end: numb
     const c = text[j] ?? 0;
     if (c === 0x20 || c === 0x09 || c === CR || c === LF) {
       j++;
-    } else if (c === HASH) {
-      j = skipComment(text, j);
     } else if (c === BRACE_CLOSE) {
       return { s: { from: i, to: j + 1, reserved }, end: j + 1 };
     } else if (c === DQUOTE || c === BACKTICK) {
@@ -503,7 +523,6 @@ function classifyBytes(text: Uint8Array): LogsClass {
   for (let i = 0; i < text.length;) {
     const c = text[i];
     if (c === DQUOTE || c === BACKTICK) i = readString(text, i).end;
-    else if (c === HASH) i = skipComment(text, i);
     else if (c === BRACE_OPEN) {
       const r = readSelector(text, i);
       selectors.push(r.s);
@@ -518,7 +537,7 @@ function classifyBytes(text: Uint8Array): LogsClass {
   };
 }
 
-/** The Go `logs.Classify`: every stream selector outside strings and comments (§4.3). */
+/** The Go `logs.Classify`: every stream selector outside strings (§4.3; no text is skipped). */
 export function classifyLogs(text: string): LogsClass {
   return classifyBytes(encoder.encode(text));
 }
@@ -595,8 +614,14 @@ function concat(...ps: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** Prepare: rows 1–5, 7, 7b and 9, the placeholder substitution and Classify (plan #116 §4.1). */
-export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError {
+interface Substituted {
+  readonly raw: Uint8Array;
+  readonly vars: ReadonlyMap<string, Uint8Array>;
+  readonly sub: Substitution;
+}
+
+/** Prepare before row 9b: rows 1–5, 7, 7b and 9, then the placeholder substitution. */
+function prepareSubstitute(i: LogsPlanInputs): Substituted | LogsStubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
   if (bad !== null) return bad;
@@ -615,7 +640,20 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
       `the value of variable $${count.unrepresentable.join(', $')} cannot be written where it is referenced`,
     );
   if (count.size > MAX_EXPANDED_BYTES) return PROCESSING_CAP;
-  const sub = substitute(raw, vars, PLACEHOLDERS, true).bytes;
+  return { raw, vars, sub: substitute(raw, vars, PLACEHOLDERS, true) };
+}
+
+/**
+ * Prepare: rows 1–5, 7, 7b, 9 and 9b, the placeholder substitution and Classify (plan #116 §4.1;
+ * plan #121 §4.3: a top-level `#` is refused before Classify).
+ */
+export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError {
+  const s = prepareSubstitute(i);
+  if (isLogsPlanError(s)) return s;
+  const { raw, vars } = s;
+  const sub = s.sub.bytes;
+  const hash = hashAt(sub);
+  if (hash >= 0) return hashError(at(s.sub.segs, sub.length, hash));
   const checkCap = (stepMs: number): LogsStubPlanError | null =>
     substitute(raw, vars, macrosAt(stepMs), false).size > MAX_EXPANDED_BYTES
       ? PROCESSING_CAP
@@ -643,6 +681,14 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
           { sentFrom: p + e.size, sentLen: suffix.length, rawFrom: 0, rawLen: 0, kind: 'added' },
         ];
       }
+      const total = query.length;
+      const toSource = (sent: number): number | null => {
+        const x = at(rw, total, sent);
+        return x === null ? null : at(e.segs, e.size, x);
+      };
+      // Row 9b on the final text, in defence: macros and the template add no `#`.
+      const finalHash = hashAt(query);
+      if (finalHash >= 0) return hashError(toSource(finalHash));
       const planned: LogqlPlannedQuery = {
         query: decoder.decode(query),
         expanded: decoder.decode(e.bytes),
@@ -657,15 +703,7 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
           planned,
         };
       }
-      const total = query.length;
-      return {
-        planned,
-        class: classifyBytes(query),
-        toSource: (sent) => {
-          const x = at(rw, total, sent);
-          return x === null ? null : at(e.segs, e.size, x);
-        },
-      };
+      return { planned, class: classifyBytes(query), toSource };
     },
   };
 }
@@ -675,6 +713,6 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
  * classify runner reads.
  */
 export function substituteLogs(i: LogsPlanInputs): { substituted: string } | LogsStubPlanError {
-  const p = prepareLogs(i);
-  return isLogsPlanError(p) ? p : { substituted: p.substituted };
+  const s = prepareSubstitute(i);
+  return isLogsPlanError(s) ? s : { substituted: decoder.decode(s.sub.bytes) };
 }

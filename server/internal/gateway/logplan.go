@@ -50,7 +50,8 @@ func (q *dataRoutes) logPlanFor(ctx context.Context, in logplan.Inputs) (logplan
 
 // logPlanError is the response of a LogQL planning refusal, as planError's: 400 or 413, code
 // invalid, the refusal's fields; the full plan only on the final-size 413; hint {reason:
-// processing_cap} and no plan on the processing cap.
+// processing_cap} and no plan on the processing cap; hint {position: {offset}} on row 9b's
+// refusal of a top-level '#' (plan #121 §3.2), its offset into the raw text.
 func logPlanError(e *logplan.PlanError) *reqError {
 	fields := make([]api.FieldError, 0, len(e.Fields))
 	for _, f := range e.Fields {
@@ -64,6 +65,9 @@ func logPlanError(e *logplan.PlanError) *reqError {
 		}
 	case logplan.ErrProcessingCap:
 		body.Hint = hint("reason", "processing_cap")
+	}
+	if e.Position != nil {
+		body.Hint = hint("position", map[string]any{"offset": *e.Position})
 	}
 	return &reqError{status: e.Status(), body: body}
 }
