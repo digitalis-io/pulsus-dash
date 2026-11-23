@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/types';
-import type { RangeResult } from '../data/decode';
+import type { RangeResult, VolumeResult } from '../data/decode';
+import type { SeriesFrame } from '../data/frames';
+import { VOLUME_STACK } from '../explore/logsRun';
+import { LogPager, type LogPagerState } from '../logs/logPager';
+import { EMPTY_COMPLETENESS as EC } from '../test/histogramFixtures';
+import { logFrame, pageRows, seriesResult, streamsResult } from '../test/logFrames';
 import { fromInstant, fromRange } from '../vis/autovis';
 import { R_A, R_H1 } from '../test/rangeFixtures';
+import { fromLogqlPlanned } from './logPanel';
 import {
+  panelFrame,
   positionText,
   panelIdleKey,
   panelRunKey,
@@ -62,6 +69,7 @@ const BASE: PanelRun = {
   fetching: false,
   stepMs: 5000,
   expanded: null,
+  stream: null,
 };
 
 function outcome(r: RangeResult, facts: { rateApplied?: boolean } = {}) {
@@ -75,15 +83,10 @@ function outcome(r: RangeResult, facts: { rateApplied?: boolean } = {}) {
 describe('panelView', () => {
   it('blocked states', () => {
     const msg = (run: Partial<PanelRun>) => panelView({ ...BASE, ...run }, { kind: 'auto' }, 'T');
-    expect(msg({ blocked: 'unsupported' })).toEqual({
-      kind: 'message',
-      state: 'unsupported',
-      text: 'Runs when LogQL support lands',
-    });
     expect(msg({ blocked: 'logs' })).toEqual({
       kind: 'message',
       state: 'logs',
-      text: 'The log stream arrives with LogQL panels',
+      text: 'A metric query has no log lines. Choose Auto or a chart.',
     });
     expect(msg({ blocked: 'empty' })).toEqual({
       kind: 'message',
@@ -206,5 +209,167 @@ describe('panelView thresholds (#64 Part B §4.1)', () => {
     expect(view).toMatchObject({ kind: 'frame', vis: 'heatmap' });
     if (view.kind !== 'frame') throw new Error('not a frame');
     expect('thresholds' in view.spec).toBe(false);
+  });
+});
+
+// unit:panel-view (plan #67 §3.4): the LogQL rows.
+const T0 = 1767225600000;
+const T1 = 1767229200000;
+const lvl = (l: string, v: number): SeriesFrame => ({
+  key: l,
+  labels: { level: l },
+  timestamps: Float64Array.of(T0),
+  values: Float64Array.of(v),
+});
+const STR = streamsResult(logFrame(pageRows(0, 1)), null);
+const SER = { ...seriesResult(), series: [lvl('a', 1)] };
+const VOL: VolumeResult = {
+  startMs: T0,
+  endMs: T1,
+  stepMs: 1000,
+  series: [lvl('error', 3), lvl('info', 5)],
+  completeness: EC,
+  planned: STR.planned,
+};
+const TH = {
+  direction: 'above' as const,
+  steps: [{ value: 2, state: 'degraded' as const, label: '' }],
+};
+
+function st(o: Partial<LogPagerState>): LogPagerState {
+  return {
+    version: 1,
+    phase: 'pending',
+    series: null,
+    planned: null,
+    completeness: null,
+    head: { status: 'idle', error: null },
+    tail: { status: 'idle', error: null },
+    firstOrd: 0,
+    endOrd: 0,
+    atStart: true,
+    atEnd: false,
+    total: null,
+    ...o,
+  };
+}
+
+const PAGER = new LogPager(
+  { queryLogs: () => Promise.reject(new Error('not called')) },
+  {
+    tenant: 'demo',
+    query: '{app="x"}',
+    fromMs: T0,
+    toMs: T1,
+    widthPx: 1000,
+    direction: 'backward',
+  },
+);
+
+function streamRun(pager: LogPager | null, state: LogPagerState | null): PanelRun {
+  return {
+    ...BASE,
+    text: '{app="x"}',
+    stream: {
+      pager,
+      state,
+      wrap: false,
+      setWrap: () => undefined,
+      setDirection: () => undefined,
+      rerun: () => undefined,
+    },
+  };
+}
+
+function frameRun(o: {
+  logKind: 'streams' | 'series';
+  result: ReturnType<typeof fromRange>;
+  volume?: VolumeResult;
+}): PanelRun {
+  return {
+    ...BASE,
+    text: '{app="x"}',
+    outcome: {
+      key: [],
+      planned: fromLogqlPlanned(o.logKind === 'series' ? SER.planned : STR.planned),
+      result: o.result,
+      logKind: o.logKind,
+      ...(o.volume === undefined ? {} : { volume: o.volume }),
+    },
+  };
+}
+
+describe('unit:panel-view LogQL', () => {
+  it('stream path', () => {
+    expect(panelView(streamRun(null, null), { kind: 'auto' }, 'S')).toEqual({ kind: 'loading' });
+    expect(panelView(streamRun(PAGER, st({})), { kind: 'auto' }, 'S')).toEqual({
+      kind: 'loading',
+    });
+    const streams = streamRun(PAGER, st({ phase: 'streams', planned: STR.planned }));
+    const v = panelView(streams, { kind: 'auto' }, 'S');
+    expect(v.kind).toBe('stream');
+    if (v.kind !== 'stream') throw new Error('not a stream');
+    expect(v.stream.pager).toBe(PAGER);
+    expect(panelView(streams, { kind: 'logs' }, 'S').kind).toBe('stream');
+
+    const series = streamRun(PAGER, st({ phase: 'series', series: SER }));
+    const line = panelView(series, { kind: 'auto' }, 'S');
+    expect(line).toMatchObject({ kind: 'frame', vis: 'line', spec: { kind: 'line', title: 'S' } });
+    // The same series state: the same result object (WeakMap-cached).
+    const again = panelView(series, { kind: 'auto' }, 'S');
+    if (line.kind !== 'frame' || again.kind !== 'frame') throw new Error('not a frame');
+    expect(again.result).toBe(line.result);
+    expect(line.result).toEqual(fromRange(SER));
+    expect(panelView(series, { kind: 'logs' }, 'S')).toEqual({
+      kind: 'message',
+      state: 'logs',
+      text: 'A metric query has no log lines. Choose Auto or a chart.',
+    });
+  });
+
+  it('frame path', () => {
+    expect(panelView({ ...BASE, text: '{app="x"}' }, { kind: 'bars' }, 'V')).toEqual({
+      kind: 'loading',
+    });
+    const vol = frameRun({ logKind: 'streams', result: fromRange(VOL), volume: VOL });
+    const bars = panelView(vol, { kind: 'bars', thresholds: TH }, 'V');
+    expect(bars).toMatchObject({
+      kind: 'frame',
+      vis: 'bars',
+      volume: true,
+      legend: 'table',
+      thresholds: TH,
+      spec: {
+        kind: 'bars',
+        categoryLabel: 'level',
+        categoryOrder: VOLUME_STACK,
+        unit: { kind: 'suffix', suffix: 'lines' },
+      },
+    });
+    if (bars.kind !== 'frame') throw new Error('not a frame');
+    expect(bars.spec.kind === 'bars' && bars.spec.thresholds?.length).toBe(1);
+    expect(bars.data).toEqual({ kind: 'series', series: VOL.series });
+    const isolated = panelFrame(bars, 'error');
+    expect(isolated.spec).toBe(bars.spec);
+    expect(isolated.data).toEqual({ kind: 'series', series: [lvl('error', 3)] });
+    expect(panelFrame(bars, 'error')).toBe(isolated);
+    expect(panelFrame(bars, null)).toBe(bars);
+
+    const metric = frameRun({ logKind: 'series', result: fromRange(SER) });
+    for (const vis of ['bars', 'line', 'stat'] as const) {
+      const fv = panelView(metric, { kind: vis }, 'M');
+      expect(fv, vis).toMatchObject({ kind: 'frame', vis, spec: { kind: vis } });
+      expect(fv).not.toHaveProperty('volume');
+    }
+
+    const empty = { kind: 'series' as const, source: 'range' as const, series: [], stepMs: 1000 };
+    const notMetric = frameRun({ logKind: 'streams', result: { ...empty, completeness: EC } });
+    for (const vis of ['line', 'heatmap', 'stat'] as const) {
+      expect(panelView(notMetric, { kind: vis }, 'N'), vis).toEqual({
+        kind: 'message',
+        state: 'notMetric',
+        text: 'Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines.',
+      });
+    }
   });
 });

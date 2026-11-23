@@ -34,6 +34,8 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
     'b-1 edit, partial data popover': ['label'],
     // The same crash with the panel editor's threshold rows (#64 Part B).
     'b-1 edit, thresholds': ['label'],
+    // The same crash with the panel editor's LogQL editor loaded (plan #67).
+    'b-1 edit, log panel as bars': ['label'],
   },
 };
 
@@ -155,6 +157,28 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await edit();
   await expect(editor.getByRole('textbox', { name: 'Value' })).toHaveCount(2);
   await check('b-1 edit, thresholds');
+
+  // Plan #67: the LogQL stream panel (the stub's 30 lines), then its editor with Bars chosen.
+  await open(page, '/t/demo/board/b-1');
+  const errors = page.locator('[data-panel]', {
+    has: page.getByRole('heading', { level: 3, name: 'Errors', exact: true }),
+  });
+  await errors.scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole('list', { name: 'Log lines: Errors' }).locator('[data-log-row]'),
+  ).toHaveCount(30);
+  await check('b-1 view, log panel');
+
+  await open(page, '/t/demo/board/b-1');
+  await page.getByRole('button', { name: 'Edit board' }).click();
+  await expect(page.locator('[data-drag-handle]')).toHaveCount(4);
+  await page.getByRole('button', { name: 'Panel menu: Errors' }).click();
+  await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+  await editor.waitFor();
+  await editor.getByRole('button', { name: /Visualisation$/ }).click();
+  await page.getByRole('option', { name: 'Bars', exact: true }).click();
+  await expect(editor.locator('[data-panel-preview]')).toHaveAttribute('data-panel-vis', 'bars');
+  await check('b-1 edit, log panel as bars');
 
   // Plan #64 A.3: the PromQL editor and the metric picker in the dialog.
   await edit();

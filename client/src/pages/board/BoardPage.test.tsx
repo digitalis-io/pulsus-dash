@@ -1006,7 +1006,7 @@ function frameDataOf(r: RangeResult, vis: VisKind): FrameData {
 }
 
 describe('panel editor dialog', () => {
-  const LOGS = 'The log stream arrives with LogQL panels';
+  const LOGS = 'A metric query has no log lines. Choose Auto or a chart.';
 
   /** Runs `fn` (a held call settling) in `act`, then lets its promise callbacks run. */
   const settle = (fn: () => Promise<void> | void): Promise<void> =>

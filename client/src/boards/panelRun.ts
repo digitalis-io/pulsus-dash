@@ -6,7 +6,8 @@
  * bars, ADR-0022) and legend mode, and its result for the legend rows and local isolation (plan
  * #64 Part B §3.8).
  */
-import type { PanelSpec } from '../api/types';
+import type { PanelSpec, PlannedQuery } from '../api/types';
+import type { VolumeResult } from '../data/decode';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
 import type { VisKind, VisSpec } from '../engine/api';
@@ -16,7 +17,34 @@ import { t } from '../i18n/t';
 import { autoVis, chooseVis, type ExploreResult } from '../vis/autovis';
 import { framePlan, type FramePlan } from '../vis/framePlan';
 import { thresholdLines, type Thresholds } from '../vis/thresholds';
+import type { LogPager, LogPagerState } from '../logs/logPager';
 import type { PanelRun } from './usePanelRun';
+
+/** What a panel key runs: PromQL's two routes, or a LogQL frame (plan #67 §3.1). */
+export type PanelRunKind = 'range' | 'instant' | 'logs-bars' | 'logs-frame';
+
+export interface PanelOutcome {
+  /** The queryKey it was fetched under (§3.5). */
+  readonly key: readonly unknown[];
+  /** LogQL: `fromLogqlPlanned(probe.planned)`. */
+  readonly planned: PlannedQuery;
+  readonly result: ExploreResult;
+  /** LogQL only: the probe's answer kind. */
+  readonly logKind?: 'streams' | 'series';
+  /** `bars` on a log query. */
+  readonly volume?: VolumeResult;
+}
+
+/** A LogQL stream panel's pager and its unsaved controls (plan #67 §3.1). */
+export interface PanelStream {
+  readonly pager: LogPager | null;
+  readonly state: LogPagerState | null;
+  readonly wrap: boolean;
+  readonly setWrap: (w: boolean) => void;
+  readonly setDirection: (d: 'backward' | 'forward') => void;
+  /** Drift's Run again. */
+  readonly rerun: () => void;
+}
 
 export interface Resolved {
   /** The panel text as saved (or the editor's run text, §4.4); sent raw. */

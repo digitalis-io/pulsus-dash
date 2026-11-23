@@ -59,7 +59,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   // No retry: the traversal is deterministic, so a retry only hides a real failure, and a second
   // run of this ~32-minute spec does not fit the e2e job's 60-minute timeout.
   test.describe.configure({ retries: 0 });
-  test('every control and state by keyboard (L1–L33)', async ({ page }) => {
+  test('every control and state by keyboard (L1–L34)', async ({ page }) => {
     test.setTimeout(3_600_000);
     await page.addInitScript(() => {
       window.__copied = [];
@@ -598,7 +598,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       }
     });
 
-    // L23–L31 (plan #61 Parts B and C): the board list and the board page.
+    // L23–L31 and L34 (plan #61 Parts B and C, plan #67): the board list and the board page.
     await boardLoops(s);
     await exploreLoops(s);
 

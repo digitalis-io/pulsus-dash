@@ -81,6 +81,8 @@ export interface LogStreamProps {
   readonly onDirectionChange: (d: 'backward' | 'forward') => void;
   /** Drift's "Run again": the caller makes a new pager. */
   readonly onRerun: () => void;
+  /** Rows from either end of the held range at which that end loads (default PREFETCH_ROWS). */
+  readonly prefetchRows?: number;
   /** DEFAULT_VIEW unless a test or the harness narrows it. */
   readonly view?: ViewLimits;
   /** Called after each `scrollTop` write `LogStream` makes (the harness counts them, E6). */

@@ -9,14 +9,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { useContext, useLayoutEffect, useMemo, useRef } from 'react';
 import { useApi } from '../app/providers';
-import { isApiError, type PanelSpec, type PlannedQuery } from '../api/types';
+import { isApiError, type PanelSpec } from '../api/types';
 import { promGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
 import { refusalOf, runKind, type Refusal } from '../explore/useExploreRun';
 import { useTimeContext } from '../state/useTimeContext';
-import { fromInstant, fromRange, type ExploreResult } from '../vis/autovis';
+import { fromInstant, fromRange } from '../vis/autovis';
 import { BoardRunContext } from './boardRunContext';
-import { panelIdleKey, panelRunKey, sameExceptWindow, sameKey, type PanelState } from './panelRun';
+import {
+  panelIdleKey,
+  panelRunKey,
+  sameExceptWindow,
+  sameKey,
+  type PanelOutcome,
+  type PanelState,
+  type PanelStream,
+} from './panelRun';
 import { useQueryLanguage } from './useQueryLanguage';
 import { panelVars, referencedVariables } from './variableRefs';
 
@@ -31,12 +39,7 @@ export interface PanelRunInput {
   readonly widthPx: number | null;
 }
 
-export interface PanelOutcome {
-  /** The queryKey it was fetched under (§3.5). */
-  readonly key: readonly unknown[];
-  readonly planned: PlannedQuery;
-  readonly result: ExploreResult;
-}
+export type { PanelOutcome };
 
 export interface PanelRun {
   /** The text this run is for (`diagnostics` index into it). */
@@ -58,6 +61,8 @@ export interface PanelRun {
   readonly stepMs: number | null;
   /** `planned.expanded` of the current key's own response only (§3.5); else null. */
   readonly expanded: string | null;
+  /** The LogQL stream path's pager and controls (plan #67); else null. */
+  readonly stream: PanelStream | null;
 }
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
@@ -206,6 +211,7 @@ export function usePanelRun(a: PanelRunInput): PanelRun {
       fetching,
       stepMs,
       expanded,
+      stream: null,
     }),
     [
       text,

@@ -1,0 +1,10 @@
+{
+  "name": "board-logs-probe-checkout",
+  "provenance": {"synthetic": "the kind probe of a board LogQL frame panel (limit 1, so 2 upstream) over the checkout lines: the newest line of either window"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"checkout\"}", "form": {"limit": "2"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-board-logs-probe-checkout-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"checkout"},"values":[["1767272100000000000","checkout line F",{"structuredMetadata":{"detected_level":"error"}}]]}],"stats":{"streams":1,"entries":1}}}
+  }
+}

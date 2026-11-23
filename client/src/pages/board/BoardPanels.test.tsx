@@ -187,7 +187,7 @@ describe('panel runs', () => {
     const texts = {
       Empty: 'Add a query',
       Logs: 'Runs when LogQL support lands',
-      Stream: 'The log stream arrives with LogQL panels',
+      Stream: 'A metric query has no log lines. Choose Auto or a chart.',
       Region: 'Set a value for $region to run this panel',
     };
     for (const [title, text] of Object.entries(texts)) {

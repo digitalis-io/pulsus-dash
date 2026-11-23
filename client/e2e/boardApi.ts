@@ -13,13 +13,15 @@ export interface PanelInput {
   grid: [number, number, number, number];
   /** The panel's `vis`; absent = `{ kind: 'auto' }`. */
   vis?: Record<string, unknown>;
+  /** The query language; absent = `promql`. */
+  lang?: 'promql' | 'logql';
 }
 
 export const panelSpec = (p: PanelInput) => ({
   id: p.id,
   title: p.title,
   grid: { x: p.grid[0], y: p.grid[1], w: p.grid[2], h: p.grid[3] },
-  query: { lang: 'promql', text: p.text },
+  query: { lang: p.lang ?? 'promql', text: p.text },
   vis: p.vis ?? { kind: 'auto' },
 });
 

@@ -461,3 +461,30 @@ describe('unit:log-stream', () => {
     }
   }, 20_000);
 });
+
+describe('unit:log-stream-prefetch (plan #67)', () => {
+  it('prefetchRows 50 waits for the reader; the default prefetches at once', async () => {
+    const a = await synthPager(1);
+    const loadA = vi.spyOn(a.pager, 'loadTail');
+    const m = mount({ pager: a.pager, prefetchRows: 50 });
+    await waitFor(() => {
+      expect(rowOf(1)).not.toBeNull();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(loadA).toHaveBeenCalledTimes(0);
+    await scrollTo(960 * 20);
+    await waitFor(() => {
+      expect(loadA).toHaveBeenCalledTimes(1);
+    });
+    m.unmount();
+
+    const b = await synthPager(1);
+    const loadB = vi.spyOn(b.pager, 'loadTail');
+    mount({ pager: b.pager });
+    await waitFor(() => {
+      expect(loadB).toHaveBeenCalledTimes(1);
+    });
+  });
+});

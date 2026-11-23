@@ -30,7 +30,14 @@ describe('exploreHref', () => {
     ['L2', p('up', 'bars'), 'up', `/t/demo/explore/metrics?${Q}&q=up&vis=bars`],
     ['L3', p('up', 'logs'), 'up', `/t/demo/explore/metrics?${Q}&q=up`],
     ['L4', p('up{r="$r"}'), null, null],
-    ['L5', p('{a="b"}', 'auto', 'logql'), null, `/t/demo/explore/logs?${Q}&q=%7Ba%3D%22b%22%7D`],
+    // unit:explore-link (plan #67): a LogQL panel links the server's expanded text, else nothing.
+    [
+      'L5',
+      p('{app="$app"}', 'auto', 'logql'),
+      '{app="a"}',
+      `/t/demo/explore/logs?${Q}&q=%7Bapp%3D%22a%22%7D`,
+    ],
+    ['L5b', p('{app="$app"}', 'bars', 'logql'), null, null],
     ['L6', p('x[$__interval]'), 'x[30s]', `/t/demo/explore/metrics?${Q}&q=x%5B30s%5D`],
     [
       'L7',
