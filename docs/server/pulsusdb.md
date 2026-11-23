@@ -190,9 +190,9 @@ The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~
 | a value over 4 096 bytes | 400 | `/vars/<name>`, `field.range` | `a variable value must be UTF-8 and at most 4096 bytes` |
 | referenced variables without a value | 400 | one `/vars/<name>`, `variable.missing` per name, first reference first | `no value for variable $a, $b` |
 | a referenced value that cannot be written where it is referenced | 400 | one `/vars/<name>`, `variable.unrepresentable` per name, first reference first | `the value of variable $a, $b cannot be written where it is referenced` |
-| LogQL only (row 9b): a `#` outside strings in the substituted or the planned text | 400 | `/query`, `query.invalid` | `unexpected '#' at byte <N>: LogQL has no comments`; `hint.position.offset` is N, the `#` in the raw text; no `planned` ([below](#row-9b-a-top-level--is-refused)) |
 | a macro in an instant query without `step_ms` | 400 | `/step_ms`, `field.required` | `step_ms is required for $__interval and $__rate_interval` |
 | the substituted text over 2 MiB | 413 | `/query`, `query.too_large_to_plan` | `the substituted query is over 2097152 bytes, the most the server processes`; `hint.reason: processing_cap`, no `planned` |
+| LogQL only (row 9b): a `#` outside strings in the substituted or the planned text | 400 | `/query`, `query.invalid` | `unexpected '#' at byte <N>: LogQL has no comments`; `hint.position.offset` is N, the `#` in the raw text; no `planned` ([below](#row-9b-a-top-level--is-refused)) |
 | the planned text over 65 536 bytes | 413 | `/query`, `query.sent_too_large` | `the planned query is over 65536 bytes`; the full `planned` (`bytes` is `len(planned.query)`) |
 
 Every planning refusal has `code: invalid`. A reserved selector is 400 `virtual_unsupported`
