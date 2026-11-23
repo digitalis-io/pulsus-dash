@@ -50,6 +50,9 @@ type Deps struct {
 	Types promplan.TypesSource
 	// Boards is the boards service; nil (or a zero Org) answers every board route with 503.
 	Boards core.Boards
+	// Annotations is the annotations service; nil (or a zero Org) answers every annotation route
+	// with 503.
+	Annotations core.Annotations
 	// Org is the organisation of every request until authentication lands (D12).
 	Org core.OrgID
 	// AuditPartitions is the audit partition health for /readyz; nil reports unknown.

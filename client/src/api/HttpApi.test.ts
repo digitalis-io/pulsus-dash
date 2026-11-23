@@ -900,3 +900,28 @@ describe('HttpApi planning (plan #112 A.7, A.11)', () => {
     expect(e.detail.planned).toBeUndefined();
   });
 });
+
+describe('HttpApi annotations (plan #64 Part C §3.5)', () => {
+  it('listAnnotations', async () => {
+    const list = {
+      items: [{ id: 'a1', at: 1, end_at: null, kind: 'deploy', text: 'v2.31', tags: ['ci'] }],
+      truncated: false,
+    };
+    const ok = api(() => Promise.resolve(json(200, list)));
+    expect(await ok.api.listAnnotations('demo', { fromMs: 1, toMs: 2 })).toEqual(list);
+    expect(
+      ok.requests.map((r) => `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`),
+    ).toEqual(['GET /api/dash/v1/annotations?from=1&to=2']);
+    const down = api(() =>
+      Promise.resolve(
+        json(503, { error: { code: 'unavailable', message: 'configuration store unavailable' } }),
+      ),
+    );
+    expect(
+      isApiError(
+        await rejection(down.api.listAnnotations('demo', { fromMs: 1, toMs: 2 })),
+        'unavailable',
+      ),
+    ).toBe(true);
+  });
+});

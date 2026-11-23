@@ -36,6 +36,7 @@ import {
   BoardConflictError,
   type ApiErrorDetail,
   type Board,
+  type AnnotationList,
   type BoardList,
   type BoardRef,
   type BoardSpec,
@@ -443,6 +444,15 @@ export class HttpApi implements Api {
         }),
       204,
     );
+  }
+
+  listAnnotations(
+    _tenant: string,
+    _w: { fromMs: number; toMs: number },
+    _signal?: AbortSignal,
+  ): Promise<AnnotationList> {
+    // Stub (plan #64 Part C tests first).
+    return Promise.resolve({ items: [], truncated: false });
   }
 
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */

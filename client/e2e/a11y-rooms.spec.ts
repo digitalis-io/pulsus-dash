@@ -1,5 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { createAnnotation, deleteAnnotations } from './annotationApi.ts';
+import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
+import { createBoard, deleteBoard } from './boardApi.ts';
 import {
   ALL_PAGES,
   EXPLORE_RESULT,
@@ -100,6 +103,47 @@ test.describe('e2e:a11y-rooms axe', () => {
     await openUserMenu(page);
     expect(await seriousViolations(page)).toEqual([]);
   });
+});
+
+// A board with event markers (plan #64 Part C): the stub has no annotations, so the http-mode BFF.
+test.describe('e2e:a11y-rooms axe, board with markers', () => {
+  test.skip(PREVIEW, NEEDS_BFF);
+  test.use({ baseURL: HTTP_BFF });
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} board with markers`, async ({ page, request }, info) => {
+      const from = Date.parse('2026-01-01T00:00:00.000Z');
+      const uid = await createBoard(request, `A11y ${info.project.name} ${crypto.randomUUID()}`, [
+        {
+          id: 'p-1',
+          title: 'Memory',
+          text: 'node_memory_free_bytes',
+          grid: [0, 0, 8, 10],
+          vis: { kind: 'line' },
+        },
+      ]);
+      const ids = [
+        await createAnnotation(request, { at: from + 15 * 60_000, kind: 'deploy', text: 'v2.31' }),
+        await createAnnotation(request, {
+          at: from + 15 * 60_000 + 1_000,
+          kind: 'flag',
+          text: 'checkout',
+        }),
+      ];
+      try {
+        await page.addInitScript((t) => {
+          localStorage.setItem('pulsus-dash.theme', t);
+        }, theme);
+        await page.goto(
+          `/t/demo/board/${uid}?from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-01T01%3A00%3A00.000Z&refresh=off`,
+        );
+        await expect(page.locator('[data-event-hit]')).toHaveCount(1);
+        expect(await seriousViolations(page, 'board with markers')).toEqual([]);
+      } finally {
+        await deleteAnnotations(request, ids);
+        await deleteBoard(request, uid);
+      }
+    });
+  }
 });
 
 /**

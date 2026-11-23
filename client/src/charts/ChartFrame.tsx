@@ -34,6 +34,7 @@ import { Focusable } from 'react-aria-components';
 import { emptyFrameData, validateFrameData } from '../data/frames';
 import type {
   ChartFrame as EngineFrame,
+  EventMarker,
   FrameData,
   FrameSummary,
   HoverEvent,
@@ -70,6 +71,8 @@ export interface ChartFrameProps {
   readonly pending?: ReactNode;
   /** The host's last non-empty observed size, kept by the caller across unmounts (#90). */
   readonly sizeMemo?: { current: FrameSize | null };
+  /** Event markers on the time axis (ADR-0023); absent = none. */
+  readonly events?: readonly EventMarker[];
 }
 
 interface HoverState {

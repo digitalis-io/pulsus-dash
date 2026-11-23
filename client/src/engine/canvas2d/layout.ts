@@ -12,6 +12,9 @@ export const STAT_FONT = `${String(font.weight.semibold)} ${String(font.size.dis
 /** The height of one axis label line. */
 export const LABEL_HEIGHT = Math.ceil(font.size.xs * font.lineHeight.tight);
 
+/** The event label band above the plot (ADR-0023): one label line and the gap under it. */
+export const EVENT_BAND = LABEL_HEIGHT + space['1'];
+
 /** The space under the plot: tick, padding above and below the time labels, one label line. */
 const BOTTOM = size['chart-tick'] + 2 * space['1'] + LABEL_HEIGHT;
 

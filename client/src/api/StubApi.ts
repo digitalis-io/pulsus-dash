@@ -77,6 +77,7 @@ import {
   ApiError,
   BoardConflictError,
   type Board,
+  type AnnotationList,
   type BoardList,
   type BoardRef,
   type BoardSpec,
@@ -360,6 +361,18 @@ export class StubApi implements Api {
         throw new ApiError('network', 'stub: session request failed');
       }
       return structuredClone(this.seed.session);
+    }, signal);
+  }
+
+  /** The stub has no annotations. */
+  listAnnotations(
+    tenant: string,
+    _w: { fromMs: number; toMs: number },
+    signal?: AbortSignal,
+  ): Promise<AnnotationList> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { items: [], truncated: false };
     }, signal);
   }
 

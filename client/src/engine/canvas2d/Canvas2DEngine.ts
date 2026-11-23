@@ -15,6 +15,7 @@ import type {
   ChartEngine,
   ChartFrame,
   CommitEvent,
+  EventMarker,
   FrameData,
   FrameEvents,
   FrameInit,
@@ -326,6 +327,10 @@ class Canvas2DFrame implements ChartFrame {
     this.window = win;
     this.view = spanOf(win);
     this.changed();
+  }
+
+  setEvents(_events: readonly EventMarker[]): void {
+    // Stub (plan #64 Part C tests first).
   }
 
   setTheme(t: ThemeName): void {
