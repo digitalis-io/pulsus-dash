@@ -35,7 +35,7 @@ import {
 } from './summary';
 import { drawThresholds, thresholdsOf, withThresholds } from './thresholdMark';
 import { timeTicks } from './timeTicks';
-import { valueTicks } from './valueTicks';
+import { tickY, valueTicks } from './valueTicks';
 
 /** Canvas fonts (plan #58 Appendix A §A.3), defined in `layout.ts`. */
 export { AXIS_FONT, STAT_FONT };
@@ -376,8 +376,8 @@ function valueAxis(i: LayerInput, dataMin: number, dataMax: number, unit: Unit):
   }
   const { texts, width, held } = axisTexts(i, ticks, unit);
   const plot = layoutPlot(i.spec.kind, i.cssW, i.cssH, width);
-  const y = (v: number): number =>
-    plot.y + (1 - (v - domain.min) / (domain.max - domain.min)) * plot.height;
+  // Today's arithmetic while the span is finite; halved when it overflows (#97 plan §4.4).
+  const y = (v: number): number => tickY(v, domain.min, domain.max, plot.y, plot.height);
   const labels = ticks.map((t, k) => ({
     y: y(t),
     label: texts[k]?.text ?? '',
