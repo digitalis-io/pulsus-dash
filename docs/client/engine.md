@@ -179,10 +179,9 @@ Values are uploaded as f32 `u = (v − v_ref)·2^−exp` ([T02-014](../../design
 - `value_ticks` ports the client's `niceValueTicks` and `extreme_ticks(lo, hi, height_px,
   label_height_px)` its `extremeTicks` (#97). They equal the TS on the fixture inputs
   (`ticks.json`, `ticks-extreme.json`, including the power and decade edge rows), checked under
-  Node 24.22.3 (`unit:engine-fixtures`) and, for the TS, in Chromium and Firefox as pinned by
-  Playwright (`e2e:ticks-parity`); other inputs and runtimes are not claimed. WebKit's `**`
-  differs from V8's in the last bits for some large powers, so there the nice-search rows that
-  differ are held only to the bounded-ticks invariants, and only the fallback rows are exact.
+  Node 24.22.3 (`unit:engine-fixtures`) and, for the TS, in the browser engines Playwright pins
+  (`e2e:ticks-parity`, under the rule below); other inputs and runtimes are not claimed. WebKit's
+  `**` differs from V8's in the last bits for some large powers (#126), which the rule allows for.
   `value_ticks` returns None outside its domain (non-finite input, an end beyond ±1e300, a span of
   2^1023 or more), where the search does not finish in 64 steps (a zero span after
   `min + 1 === min`, or a range straddling zero on a plot under 2·(label + 2) px tall), and when two
@@ -194,6 +193,22 @@ Values are uploaded as f32 `u = (v − v_ref)·2^−exp` ([T02-014](../../design
   `1024 ** p` come from a table of the values V8 computes (`dash-scales::js_pow`), because V8's
   `Math.pow` is not correctly rounded (`10 ** -5` is 9.999999999999999e-6); `pow.json` checks the
   table.
+
+The `e2e:ticks-parity` rule (#97 plan §10 Q1):
+
+> **Path parity, every engine, every row.** Every row of `ticks.json` and `ticks-extreme.json`
+> carries `path: 'nice' | 'fallback'`, generated under the pinned Node 24.22.3. `'fallback'`
+> means `fn === 'extremeTicks'` or `niceValueTicks(...) === null`; this includes the collision
+> rejection, which returns null. Each engine computes its own path in-engine the same way. A path
+> that differs from the recorded `path` fails in every engine and every class. Classes are
+> assigned from the recorded `path`, with gap = label + 2:
+> - **F** (`path === 'fallback'`): exact `{min, max, ticks}` in every engine.
+> - **S** (`path === 'nice'`, `height ≤ 2·gap`): exact in Chromium and Firefox. In WebKit, the
+>   tick count and every tick are exact (−0 compared numerically); `min` and `max` are each exact
+>   or within 4 ulps of the recorded value (`ulpDistance` on the IEEE-754 bit patterns); and P1
+>   to P7 hold on WebKit's own result.
+> - **N** (`path === 'nice'`, `height > 2·gap`): exact in Chromium and Firefox. In WebKit, exact,
+>   or P1 to P7 hold.
 
 Supported domain: every finite axis `lo < hi` (spans 2⁻¹⁰⁷⁴ to 2·MAX) and every f64 value; there is
 no finite input outside it. Timestamps stay f64; samples 1 ms apart at epoch scale land in

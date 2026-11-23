@@ -240,11 +240,14 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     limit): `src/engine/canvas2d/valueTicks.ts` is type-stripped (`node:module`
     `stripTypeScriptTypes`) and loaded as a classic script into a blank page; each of the 897 rows
     of `engine/fixtures/ticks.json` and `ticks-extreme.json` is computed in the page and compared
-    with its `out` (`===`, NaN equal to NaN). Chromium and Firefox must match every row. WebKit's
-    `**` differs from V8's in the last bits for some large powers (about 90 nice-search rows, in
-    `ticks.json` too, before #97): there the fallback rows must match exactly and each differing
-    nice-search row must hold the bounded-ticks invariants P1 to P7 (#97 plan §4.5); the count is
-    annotated.
+    with its `out` (`===`, NaN equal to NaN) and its recorded `path`, under the rule in
+    [the engine page](../client/engine.md) (#97 plan §10 Q1): every engine must take the recorded
+    path on every row; fallback rows (F) are exact everywhere; Chromium and Firefox match every
+    row. WebKit's `**` differs from V8's in the last bits for some large powers (#126): there short
+    nice rows (S, height ≤ 2·(label + 2)) must have exact ticks, `min` and `max` within 4 ulps
+    (`scripts/ulp.ts`, `unit:ulp-distance`) and the bounded-ticks invariants P1 to P7 (plan
+    §4.5); other nice rows (N) are exact or hold P1 to P7. The S and N rows that differ are
+    annotated as two counts (1 and 91 at #97).
   - **`bench:frame-interim-heatmap`** (`e2e/perf-heatmap-draw.spec.ts`, Chromium only, report only
     until #68, skipped under `E2E_SERVER=preview`): on the Vite dev server (5174) the page imports
     the engine's `draw.ts`, `palette.ts` and `dev/synth.ts` and draws a 10 000 × 200 heatmap
