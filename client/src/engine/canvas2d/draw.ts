@@ -5,6 +5,10 @@
  * and the camera (#93) need: the value-label band width, the value domain and whether the band
  * was held.
  *
+ * Event markers (ADR-0023, #64 Part C §4.2): on line, bars and heatmap, a label band above the plot
+ * once the frame has events, and a solid `text-muted` line per event in view over the series and
+ * the thresholds, with labels in the band (`eventMark.ts`).
+ *
  * Threshold lines (ADR-0022, #64 Part B §4.2): on line and bars, dashed lines in their state colour
  * (from `StateEncoding`, T02-004) after the series, with labels that are stacked, truncated or
  * gathered into an overflow chip but never dropped; the auto value domain includes them. A stat
@@ -18,7 +22,15 @@
 import { font, radius, size, space } from '../../styles/tokens';
 import { statValue, type FrameData, type HeatmapFrame, type SeriesFrame } from '../../data/frames';
 import { compactSamples, formatCompact, formatValue, type Unit } from '../../i18n/format';
-import type { FrameSummary, HoverEvent, PlotRect, TimeWindow, ValueRange, VisSpec } from '../api';
+import type {
+  EventMarker,
+  FrameSummary,
+  HoverEvent,
+  PlotRect,
+  TimeWindow,
+  ValueRange,
+  VisSpec,
+} from '../api';
 import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
@@ -33,6 +45,7 @@ import {
   stackedTotals,
   type Stats,
 } from './summary';
+import { drawEventLabels, drawEventLines, eventBandOf, layoutEventLabels } from './eventMark';
 import { drawThresholds, thresholdsOf, withThresholds } from './thresholdMark';
 import { timeTicks } from './timeTicks';
 import { tickY, valueTicks } from './valueTicks';
@@ -67,6 +80,8 @@ export interface LayerInput {
    * (`dash-axes`) draws no text until #69 and has no minimum yet.
    */
   readonly minBand: number;
+  /** The frame's event markers (ADR-0023); absent or [] = none, and no label band. */
+  readonly events?: readonly EventMarker[];
 }
 
 /** What picking and the overlay need from the last layer draw. */
@@ -110,6 +125,9 @@ interface AxisLabel {
 }
 
 const isPlotEmpty = (p: PlotRect): boolean => !(p.width > 0) || !(p.height > 0);
+
+/** The event label band of the layer (ADR-0023): 0 for stat and for a frame without events. */
+const bandOf = (i: LayerInput): number => eventBandOf(i.spec.kind, i.events);
 
 function xOf(plot: PlotRect, w: TimeWindow, t: number): number {
   return plot.x + ((t - w.fromMs) / (w.toMs - w.fromMs)) * plot.width;
@@ -204,7 +222,7 @@ function axisTexts(
   extra: readonly string[] = [],
 ): { texts: HeldLabel[]; width: number; held: boolean } {
   if (i.band !== null) {
-    const room = layoutPlot(i.spec.kind, i.cssW, i.cssH, i.band).width;
+    const room = layoutPlot(i.spec.kind, i.cssW, i.cssH, i.band, bandOf(i)).width;
     const texts = heldLabels(i.ctx, ticks, unit, i.band, room);
     for (const e of extra) texts.push({ text: e, chip: false });
     return { texts, width: i.band, held: true };
@@ -358,7 +376,7 @@ interface ValueAxis {
 
 /** The value axis of line and bars: auto from the data, or the manual range (#93). */
 function valueAxis(i: LayerInput, dataMin: number, dataMax: number, unit: Unit): ValueAxis {
-  const height = layoutPlot(i.spec.kind, i.cssW, i.cssH, 0).height;
+  const height = layoutPlot(i.spec.kind, i.cssW, i.cssH, 0, bandOf(i)).height;
   const base = unit.kind === 'bytes' ? 1024 : 1000;
   const r = i.valueRange;
   let ticks: readonly number[];
@@ -375,7 +393,7 @@ function valueAxis(i: LayerInput, dataMin: number, dataMax: number, unit: Unit):
     domain = { min: vt.min, max: vt.max };
   }
   const { texts, width, held } = axisTexts(i, ticks, unit);
-  const plot = layoutPlot(i.spec.kind, i.cssW, i.cssH, width);
+  const plot = layoutPlot(i.spec.kind, i.cssW, i.cssH, width, bandOf(i));
   // Today's arithmetic while the span is finite; halved when it overflows (#97 plan §4.4).
   const y = (v: number): number => tickY(v, domain.min, domain.max, plot.y, plot.height);
   const labels = ticks.map((t, k) => ({
@@ -442,8 +460,13 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
     }
   });
   const thresholdLabels = drawThresholds(i, plot, y, thresholdsOf(i.spec));
+  const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
+  clipped(i, plot, () => {
+    drawEventLines(i, plot, events.lines);
+  });
   drawChips(i, plot, labels);
-  return model({ ...base, thresholdLabels });
+  const eventLabels = drawEventLabels(i, events.labels);
+  return model({ ...base, thresholdLabels, eventLabels });
 }
 
 /**
@@ -577,14 +600,19 @@ function drawBars(
     }
   });
   const thresholdLabels = drawThresholds(i, plot, y, thresholdsOf(spec));
+  const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
+  clipped(i, plot, () => {
+    drawEventLines(i, plot, events.lines);
+  });
   drawChips(i, plot, labels);
-  return model({ ...base, thresholdLabels });
+  const eventLabels = drawEventLabels(i, events.labels);
+  return model({ ...base, thresholdLabels, eventLabels });
 }
 
 /** The heatmap's bucket-axis labels and the band they need (`+Inf` last when there is one). */
 function heatmapAxis(i: LayerInput, h: HeatmapFrame, unit: Unit) {
   const empty = h.bounds.length === 0 || h.timestamps.length === 0;
-  const plot0 = layoutPlot('heatmap', i.cssW, i.cssH, 0);
+  const plot0 = layoutPlot('heatmap', i.cssW, i.cssH, 0, bandOf(i));
   const scale0 = empty ? null : bucketScale(h.bounds, plot0, LABEL_HEIGHT);
   const inf = scale0 !== null && scale0.infBand !== null ? ['+Inf'] : [];
   const { width, held } = axisTexts(i, scale0?.ticks ?? [], unit, inf);
@@ -607,7 +635,7 @@ function drawHeatmap(
   const nb = h.bounds.length;
   const stats = heatmapStats(h);
   const { empty, width, held } = heatmapAxis(i, h, spec.unit);
-  const plot = layoutPlot('heatmap', i.cssW, i.cssH, width);
+  const plot = layoutPlot('heatmap', i.cssW, i.cssH, width, bandOf(i));
   const summary = frameSummary('heatmap', i.window, plot, nb, nb, stats, null);
   const base = { summary, labelW: width, valueDomain: null, bandHeld: held };
   if (empty || isPlotEmpty(plot)) return { ...base, pick: null };
@@ -641,9 +669,13 @@ function drawHeatmap(
       i.ctx.fillRect(span[0], band.y0, span[1], band.y1 - band.y0);
     }
   }
+  const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
+  drawEventLines(i, plot, events.lines);
   drawChips(i, plot, labels);
+  const eventLabels = drawEventLabels(i, events.labels);
   return {
     ...base,
+    summary: { ...summary, eventLabels },
     pick: { kind: 'heatmap', ref: h.timestamps, heatmap: h, scale, unit: spec.unit },
   };
 }
