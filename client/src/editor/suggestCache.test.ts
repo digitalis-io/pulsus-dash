@@ -24,6 +24,7 @@ afterEach(async () => {
 
 const P = (i: number, kind: SuggestKind = 'names'): SuggestKeyParts => ({
   tenant: 'demo',
+  lang: 'promql',
   kind,
   label: null,
   selector: `k${String(i)}`,
@@ -214,7 +215,14 @@ describe('unit:suggest-cache', () => {
 
   it('C9: key, window bucket and clear', () => {
     expect(
-      suggestKey({ tenant: 'demo', kind: 'values', label: 'job', selector: 'up', bucket: 8 }),
+      suggestKey({
+        tenant: 'demo',
+        lang: 'promql',
+        kind: 'values',
+        label: 'job',
+        selector: 'up',
+        bucket: 8,
+      }),
     ).toBe('["demo","promql","values","job","up",8]');
     expect(windowBucket(899_999)).toBe(0);
     expect(windowBucket(900_000)).toBe(1);
@@ -426,5 +434,142 @@ describe('unit:suggest-cache', () => {
     h.at(0).resolve(7);
     expect(await p0).toBe(7);
     expect(h.at(0).signal.aborted).toBe(false);
+  });
+});
+
+// Plan #66 Part A §3.9, Appendix A.4 (Cache caller signals): the key holds the language; a LogQL
+// entry is released by its callers' signals, never superseded.
+const L = (label: string): SuggestKeyParts => ({
+  tenant: 'demo',
+  lang: 'logql',
+  kind: 'values',
+  label,
+  selector: null,
+  bucket: 0,
+});
+const L1 = L('app');
+const L2 = L('pod');
+
+describe('unit:suggest-cache by language', () => {
+  it('the key holds the language', () => {
+    expect(
+      suggestKey({
+        tenant: 'demo',
+        lang: 'logql',
+        kind: 'labels',
+        label: null,
+        selector: null,
+        bucket: 0,
+      }),
+    ).toBe('["demo","logql","labels",null,null,0]');
+  });
+
+  it('a LogQL get of another key does not abort an in-flight PromQL entry of its kind', () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const prom = controlled<number>();
+    const logs = controlled<number>();
+    void c.get(g, { ...P(1, 'labels') }, prom.load);
+    void c.get(g, { ...L1, kind: 'labels', label: null }, logs.load);
+    expect(prom.at(0).signal.aborted).toBe(false);
+    expect(logs.at(0).signal.aborted).toBe(false);
+  });
+
+  it('G1: the last signalled caller aborts the load', async () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const h = controlled<number>();
+    const s1 = new AbortController();
+    const p = c.get(g, P(0), h.load, s1.signal);
+    const box = nameOf(p);
+    s1.abort();
+    expect(h.at(0).signal.aborted).toBe(true);
+    await flush();
+    expect(box.got).toBe('AbortError');
+    expect(c.has(P(0))).toBe(false);
+  });
+
+  it('G2: a shared load is aborted only when both callers abort', () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const h = controlled<number>();
+    const s1 = new AbortController();
+    const s2 = new AbortController();
+    void c.get(g, P(0), h.load, s1.signal).catch(() => undefined);
+    void c.get(g, P(0), h.load, s2.signal).catch(() => undefined);
+    expect(h.load).toHaveBeenCalledTimes(1);
+    s1.abort();
+    expect(h.at(0).signal.aborted).toBe(false);
+    s2.abort();
+    expect(h.at(0).signal.aborted).toBe(true);
+  });
+
+  it('G3: an unsignalled caller pins the load', () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const h = controlled<number>();
+    const s1 = new AbortController();
+    void c.get(g, P(0), h.load);
+    void c.get(g, P(0), h.load, s1.signal);
+    s1.abort();
+    expect(h.at(0).signal.aborted).toBe(false);
+  });
+
+  it('G4: an aborted signal rejects at once and loads nothing', async () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const h = controlled<number>();
+    const s = new AbortController();
+    s.abort();
+    const box = nameOf(c.get(g, P(0), h.load, s.signal));
+    await flush();
+    expect(box.got).toBe('AbortError');
+    expect(h.load).not.toHaveBeenCalled();
+    expect(c.has(P(0))).toBe(false);
+  });
+
+  it('G5: a settled entry ignores signals', async () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const s1 = new AbortController();
+    expect(await c.get(g, P(0), () => Promise.resolve(['x']), s1.signal)).toEqual(['x']);
+    s1.abort();
+    expect(c.has(P(0))).toBe(true);
+    const load2 = vi.fn(() => Promise.resolve(['y']));
+    expect(await c.get(g, P(0), load2)).toEqual(['x']);
+    expect(load2).not.toHaveBeenCalled();
+  });
+
+  it('G6: two LogQL keys of one kind do not supersede each other', async () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const l1 = controlled<number>();
+    const l2 = controlled<number>();
+    const p1 = c.get(g, L1, l1.load, new AbortController().signal);
+    const p2 = c.get(g, L2, l2.load, new AbortController().signal);
+    expect(l1.at(0).signal.aborted).toBe(false);
+    expect(l2.at(0).signal.aborted).toBe(false);
+    l1.at(0).resolve(1);
+    l2.at(0).resolve(2);
+    expect(await p1).toBe(1);
+    expect(await p2).toBe(2);
+  });
+
+  it('G7: a pinned LogQL entry survives a released caller and another key', async () => {
+    const c = make();
+    const g = c.retainTenant('demo');
+    const l1 = controlled<number>();
+    const l1b = controlled<number>();
+    const l2 = controlled<number>();
+    const first = c.get(g, L1, l1.load);
+    const s1 = new AbortController();
+    void c.get(g, L1, l1b.load, s1.signal).catch(() => undefined);
+    s1.abort();
+    void c.get(g, L2, l2.load, new AbortController().signal);
+    l1.at(0).resolve(7);
+    expect(l1b.load).not.toHaveBeenCalled();
+    expect(l1.at(0).signal.aborted).toBe(false);
+    expect(await first).toBe(7);
+    expect(c.has(L1)).toBe(true);
   });
 });

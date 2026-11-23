@@ -1,6 +1,8 @@
 /**
  * `bench:editor-keystroke` (PRF-005, T09-003; plan #63 Part C Appendix C.6 and C.11.2, D-BENCH;
- * Chromium only, stub BFF): 100 keys typed at the end of a 1 KB PromQL query.
+ * Chromium only, stub BFF): 100 keys typed at the end of a 1 KB PromQL query on Explore › Metrics,
+ * and 100 keys typed inside the last line filter of a 1 KB LogQL query on the dev-only LogQL editor
+ * harness (`/t/demo/dev/logql-editor`, plan #66 Part A A.8.1). Both cases share one body.
  *
  * - **Editor update (T09-003).** The editor's probe (`src/editor/probe.ts`, installed here before
  *   the page loads) times each CodeMirror update in the page; a key's work is the sum of its
@@ -14,7 +16,7 @@
  * and `over16` checks; otherwise each breach is a `warning` annotation.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { longTasks, type TraceEvent } from '../scripts/longTasks.ts';
 import { waitReady } from './helpers.ts';
 
@@ -23,7 +25,6 @@ const P95_MS = 2.0;
 const WARMUP = 20;
 const MEASURED = 100;
 const IDLE = 30;
-const KEYS = ' or up'.split('');
 const CATEGORIES = [
   'devtools.timeline',
   'disabled-by-default-devtools.timeline',
@@ -35,6 +36,71 @@ const Q1K = `${Array.from(
   { length: 19 },
   (_, i) => `rate(http_requests_total{job="api",shard="${String(i).padStart(2, '0')}"}[5m])`,
 ).join(' + ')}\n`;
+
+/**
+ * `{app="checkout",env="prod"} | json` (34), 20 label filters of 35, ` |= "` (5), 284 `x` and the
+ * closing quote: 1 024 bytes on one line.
+ */
+const Q1K_LOGQL = `{app="checkout",env="prod"} | json${Array.from({ length: 20 }, (_, i) => {
+  const ii = String(i).padStart(2, '0');
+  return ` | level="error-${ii}" or status="5${ii}"`;
+}).join('')} |= "${'x'.repeat(284)}"`;
+
+interface KeystrokeCase {
+  /** The test title and the annotation type. */
+  readonly name: string;
+  readonly url: string;
+  /** The textbox's accessible name. */
+  readonly label: string;
+  /** Asserted 1 024 UTF-8 bytes. */
+  readonly doc: string;
+  /** Cycled; ' ' is pressed as Space. */
+  readonly keys: string;
+  /** Under test-results/. */
+  readonly report: string;
+  /** Line breaks of `doc` that are not in the content's `textContent`. */
+  readonly lineBreaks: number;
+  /** After `waitReady(page, url)`. */
+  ready(page: Page): Promise<void>;
+  /** After the click into the textbox. */
+  caret(page: Page): Promise<void>;
+}
+
+const PROMQL: KeystrokeCase = {
+  name: 'bench:editor-keystroke',
+  url: `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=${encodeURIComponent(Q1K)}`,
+  label: 'PromQL query',
+  doc: Q1K,
+  keys: ' or up',
+  report: 'bench-editor-keystroke.json',
+  // The query's trailing newline.
+  lineBreaks: 1,
+  ready: async (page) => {
+    await expect(page.getByRole('textbox', { name: 'PromQL query' })).toBeVisible();
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toBeVisible();
+  },
+  caret: async (page) => {
+    await page.keyboard.press('ControlOrMeta+End');
+  },
+};
+
+const LOGQL: KeystrokeCase = {
+  name: 'bench:editor-keystroke logql',
+  url: `/t/demo/dev/logql-editor?q=${encodeURIComponent(Q1K_LOGQL)}`,
+  label: 'LogQL query',
+  doc: Q1K_LOGQL,
+  keys: 'error ',
+  report: 'bench-editor-keystroke-logql.json',
+  lineBreaks: 0,
+  ready: async (page) => {
+    await expect(page.getByRole('textbox', { name: 'LogQL query' })).toBeVisible();
+  },
+  // Before the final `"`: inside the line filter, a `none` context (both slots return null).
+  caret: async (page) => {
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.press('ArrowLeft');
+  },
+};
 
 declare global {
   interface Window {
@@ -61,9 +127,9 @@ async function frames(page: Page): Promise<void> {
   );
 }
 
-test('bench:editor-keystroke', async ({ page }, info) => {
+async function keystrokeBench(page: Page, info: TestInfo, c: KeystrokeCase): Promise<void> {
   test.setTimeout(120_000);
-  expect(new TextEncoder().encode(Q1K).length).toBe(1024);
+  expect(new TextEncoder().encode(c.doc).length).toBe(1024);
   await page.addInitScript(() => {
     window.__editorUpdates = [];
     window.__pulsusEditorProbe = (ms, docChanged) => {
@@ -71,14 +137,12 @@ test('bench:editor-keystroke', async ({ page }, info) => {
     };
   });
   // No fake clock (helpers' `open` installs one): it would also replace `performance.now`.
-  const url = `/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=${encodeURIComponent(Q1K)}`;
-  await page.goto(url);
-  await waitReady(page, url);
-  const editor = page.getByRole('textbox', { name: 'PromQL query' });
-  await expect(editor).toBeVisible();
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toBeVisible();
+  await page.goto(c.url);
+  await waitReady(page, c.url);
+  const editor = page.getByRole('textbox', { name: c.label });
+  await c.ready(page);
   await editor.click();
-  await page.keyboard.press('ControlOrMeta+End');
+  await c.caret(page);
 
   /** The editor's doc-changing update time and count for one key (or none). */
   const sample = async (
@@ -98,7 +162,7 @@ test('bench:editor-keystroke', async ({ page }, info) => {
     50,
   );
 
-  const keyAt = (i: number) => KEYS[i % KEYS.length] ?? ' ';
+  const keyAt = (i: number) => c.keys[i % c.keys.length] ?? ' ';
   const press = (k: string) => () => page.keyboard.press(k === ' ' ? 'Space' : k);
   for (let i = 0; i < WARMUP; i++) await sample(press(keyAt(i)));
 
@@ -129,9 +193,9 @@ test('bench:editor-keystroke', async ({ page }, info) => {
     mode: enforce ? 'enforce' : 'ci',
   };
   mkdirSync('test-results', { recursive: true });
-  writeFileSync('test-results/bench-editor-keystroke.json', `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(`test-results/${c.report}`, `${JSON.stringify(report, null, 2)}\n`);
   info.annotations.push({
-    type: 'bench:editor-keystroke',
+    type: c.name,
     description: `editor update p50 ${report.p50.toFixed(2)} ms, p95 ${report.p95.toFixed(2)} ms, max ${report.max.toFixed(2)} ms; ${String(r.over16)} tasks over 16 ms (worst ${r.worstMs.toFixed(1)} ms), ${String(r.ciOver)} over the CI check`,
   });
 
@@ -139,8 +203,8 @@ test('bench:editor-keystroke', async ({ page }, info) => {
   expect(noUpdate.map((i) => `key ${String(i)}: no editor update`)).toEqual([]);
   expect(r.keydowns).toBeGreaterThanOrEqual(MEASURED);
   const text = await editor.evaluate((e) => e.textContent);
-  // One line break (the query's trailing newline) is not in the content's text.
-  expect(text.length + 1).toBe(Q1K.length + WARMUP + MEASURED);
+  // Line breaks are not in the content's text.
+  expect(text.length + c.lineBreaks).toBe(c.doc.length + WARMUP + MEASURED);
   const describe = (tasks: typeof r.tasks): string =>
     tasks
       .map(
@@ -161,4 +225,12 @@ test('bench:editor-keystroke', async ({ page }, info) => {
   ];
   if (enforce) expect(breaches).toEqual([]);
   else for (const b of breaches) info.annotations.push({ type: 'warning', description: b });
+}
+
+test('bench:editor-keystroke', async ({ page }, info) => {
+  await keystrokeBench(page, info, PROMQL);
+});
+
+test('bench:editor-keystroke logql', async ({ page }, info) => {
+  await keystrokeBench(page, info, LOGQL);
 });

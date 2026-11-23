@@ -14,6 +14,7 @@ import type {
   BoardSpec,
   DataSourceStatus,
   InstantRequest,
+  LogMatchRequest,
   LogsRequest,
   PromMatchRequest,
   RangeRequest,
@@ -75,6 +76,15 @@ export interface Api {
     req: PromMatchRequest & { readonly match: readonly [string, ...string[]] },
     signal?: AbortSignal,
   ): Promise<PromSeriesSet>;
+  /** Log label names (`GET /logs/labels`). Unknown tenant → `ApiError('notFound')`; errors as `promLabels`. */
+  logLabels(tenant: string, req: LogMatchRequest, signal?: AbortSignal): Promise<PromValues>;
+  /** The values of log label `name` (`GET /logs/label/{name}/values`). */
+  logLabelValues(
+    tenant: string,
+    name: string,
+    req: LogMatchRequest,
+    signal?: AbortSignal,
+  ): Promise<PromValues>;
   /** Metric metadata (`GET /prom/metadata`). */
   promMetadata(
     tenant: string,

@@ -40,9 +40,13 @@ interface Overrides {
   entryImports?: string[];
 }
 
-/** The editor entries E1, E2 and their shared chunk S (plan #63 Part C §5 (h)–(k)). */
+/**
+ * The editor entries E1, E2 and their shared chunk S (plan #63 Part C §5 (h)–(k)), and the LogQL
+ * language entry E3 (plan #66 Part A §3.11).
+ */
 const E1 = 'assets/editor-e1.js';
 const E2 = 'assets/editor-e2.js';
+const E3 = 'assets/editor-e3.js';
 const S = 'assets/editor-s.js';
 const R = 'assets/MetricsPage-r.js';
 
@@ -83,12 +87,17 @@ function makeDist(o: Overrides = {}): string {
       isDynamicEntry: true,
       imports: ['_editor-s.js', 'src/pages/explore/MetricsPage.tsx'],
     },
+    'src/editor/lang/logql/logql.ts': { file: E3, isDynamicEntry: true, imports: ['_editor-s.js'] },
     '_editor-s.js': { file: S, imports: ['index.html'] },
   };
   const metrics = manifest['src/pages/explore/MetricsPage.tsx'] as
     Record<string, unknown> | undefined;
   if (metrics !== undefined) {
-    metrics['dynamicImports'] = ['src/editor/editor.ts', 'src/editor/lang/promql/promql.ts'];
+    metrics['dynamicImports'] = [
+      'src/editor/editor.ts',
+      'src/editor/lang/promql/promql.ts',
+      'src/editor/lang/logql/logql.ts',
+    ];
   }
   for (const k of o.dropKeys ?? []) Reflect.deleteProperty(manifest, k);
   const files: Record<string, Buffer | null> = {
@@ -105,6 +114,7 @@ function makeDist(o: Overrides = {}): string {
     ...Object.fromEntries(LAZY.map(([, f]) => [f, Buffer.from('export default 1')])),
     [E1]: Buffer.from('export const e1 = 1'),
     [E2]: Buffer.from('export const e2 = 1'),
+    [E3]: Buffer.from('export const e3 = 1'),
     [S]: Buffer.from('export const s = 1'),
     ...o.files,
   };
@@ -185,7 +195,7 @@ describe('bundle-size editor closure (PRF-009)', () => {
     expect(r.findings.map((f) => f.rule)).toEqual(['over-budget:editorChunk']);
     const editor = r.rows.filter((x) => x.cls === 'editorChunk');
     expect(editor).toHaveLength(1);
-    expect(editor[0]?.file).toBe('editor closure (3 files)');
+    expect(editor[0]?.file).toBe('editor closure (4 files)');
     expect(editor[0]?.bytes).toBeGreaterThan(180_000);
     expect(r.rows.some((x) => x.cls === 'lazyChunk' && x.file === S)).toBe(false);
     const route = r.rows.find((x) => x.cls === 'lazyChunk' && x.file === R);

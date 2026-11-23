@@ -3,7 +3,9 @@
 The Explore metrics page (issue #63) is built in three parts. This page documents **Part A**, the
 modules that decide what the page sends and draws, without drawing it (each rule is a pure,
 table-tested function); **Part B**, the PromQL editor chunk, a library the page loads lazily
-([Editor chunk](#editor-chunk)); and **Part C**, the page itself ([Page](#page)). How to use the
+([Editor chunk](#editor-chunk)); and **Part C**, the page itself ([Page](#page)). The LogQL editor
+of issue #66 Part A shares the editor chunk's host, guard, cache and diagnostics
+([LogQL (`lang/logql`)](#logql-langlogql)). How to use the
 page is in the user guide, [Explore: metrics](../user/explore-metrics.md).
 
 Requirements: [SRF-030](../../designs/product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries)
@@ -278,45 +280,68 @@ outside the directory use literal texts instead (`unit:stub-plan-boundary` check
 The PromQL editor (Part B) is CodeMirror 6 with the Lezer PromQL grammar of
 `@prometheus-io/codemirror-promql` and `@prometheus-io/lezer-promql` (pinned versions in
 [JavaScript supply chain](supply-chain.md#query-editor)). The page loads it with a dynamic import of `src/editor/editor.ts`, which exports `PromQLEditor`,
-`promql` and `createPromSource`; `LANGUAGES.promql()` loads `lang/promql/promql.ts`. Both are
-named `editor-*` in the build ([Chunk naming and the closure budget](#chunk-naming-and-the-closure-budget)).
+`promql` and `createPromSource`; `LANGUAGES.promql()` loads `lang/promql/promql.ts`. The LogQL
+editor (#66) has its own entry, `src/editor/logqlEditor.ts` (`LogQLEditor`, `logql`,
+`createLogSource`, the `QueryEditorHandle` type), so the Logs page never loads the PromQL parser;
+`LANGUAGES.logql()` loads `lang/logql/logql.ts`. All of them are named `editor-*` in the build
+([Chunk naming and the closure budget](#chunk-naming-and-the-closure-budget)).
 
 ### Modules
 
 | Module                                 | What it does                                                                                                                                                                                                                                   |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/editor/editor.ts`                 | The chunk entry, the only module a page imports from the chunk                                                                                                                                                                                 |
-| `src/editor/lang/index.ts`             | `LANGUAGES`: a static table from `LangId` to a lazy import of the language's `QueryLanguage` (ADR-0018). PromQL resolves `lang/promql/promql.ts`; `logql`, `traceql` and `profile` reject with `LanguageUnavailableError` until they are built |
-| `src/editor/lang/promql/promql.ts`     | `promql: QueryLanguage`: `shape` (`analysePromQL`), `diagnosticsOf`, `utf8ToIndex`, `editor(deps)` and `detect`                                                                                                                                |
+| `src/editor/lang/index.ts`             | `LANGUAGES`: a static table from `LangId` to a lazy import of the language's `QueryLanguage` (ADR-0018). PromQL resolves `lang/promql/promql.ts`, LogQL `lang/logql/logql.ts`; `traceql` and `profile` reject with `LanguageUnavailableError` until they are built |
+| `src/editor/lang/promql/promql.ts`     | `promql: QueryLanguage`: `shape` (`analysePromQL`), `editor(deps)` and `detect`; re-exports `utf8ToIndex` and `positionDiagnostics` as `diagnosticsOf` |
+| `src/editor/lang/diagnostics.ts`       | `utf8ToIndex`, `positionDiagnostics`: the run diagnostics of every language ([Run diagnostics](#run-diagnostics)) |
+| `src/editor/lang/lookupWindow.ts`      | `minuteWindow`, `secondWindow`: the windows of completion lookups |
+| `src/editor/lang/logql/lexer.ts`       | `scanAt`, `lexLogQL`, `startLex`, `advance`: the LogQL scanner and its mode stack |
+| `src/editor/lang/logql/grammar.ts`     | The static word lists (`FUNCTIONS`, `CONVERSIONS`, `KEYWORDS`, `STAGES`, `GROUP_WORDS`) |
+| `src/editor/lang/logql/context.ts`     | `caretContext`, `selectorOf`, `firstSelector`, `VAR_REF`: the LogQL caret context |
+| `src/editor/lang/logql/complete.ts`    | The two completion slots, `replacing`, `afterQuiet`, `RemoteLookups`, `remoteLookupsPlugin`, `lookupKeyOf`, `escapeDoubleQuoted`, `LOGQL_COMPLETION` |
+| `src/editor/lang/logql/logSource.ts`   | `createLogSource(deps)`: the LogQL lookups over `Api.logLabels`, `Api.logLabelValues` and the suggest cache |
+| `src/editor/lang/logql/extensions.ts`  | `logqlLanguage` (the `StreamLanguage`), `logqlExtensions(source)` |
+| `src/editor/lang/logql/logql.ts`       | `logql: QueryLanguage` |
 | `src/editor/lang/promql/extensions.ts` | `promqlExtensions(source)`: the Lezer PromQL language (its completion and linter off), the highlight style, and the completion source as `autocomplete` language data                                                                          |
 | `src/editor/lang/promql/promSource.ts` | `createPromSource(deps)`: the completion lookups over `Api.prom*` and the suggest cache                                                                                                                                                        |
 | `src/editor/lang/promql/promClient.ts` | `matcherContextAt`, `selectorOf`, `decodeLabelName`, `toPrometheusClient`, `promqlCompleteStrategy`: the package's completion over a `PromSource`                                                                                              |
 | `src/editor/suggestCache.ts`           | `SuggestCache`, `suggestKey`, `windowBucket`, `suggestCache` (the module instance)                                                                                                                                                             |
 | `src/editor/completionGuard.ts`        | `completionGuard()`, `overLimitField`: no completion while an IME composes or above 128 KB                                                                                                                                                     |
-| `src/editor/view.ts`                   | `createPromQLView`, `setDocument`, `insertAtSelection`, `showDiagnostics`                                                                                                                                                                      |
+| `src/editor/view.ts`                   | `createQueryView`, `CompletionTiming`, `PROMQL_COMPLETION`, `languageCompletionAt`, `createPromQLView`, `setDocument`, `insertAtSelection`, `setReadOnly`, `showDiagnostics` |
 | `src/editor/theme.ts`                  | `promqlTheme`, `promqlHighlight` (tokens only)                                                                                                                                                                                                 |
-| `src/editor/PromQLEditor.tsx`          | The React host                                                                                                                                                                                                                                 |
+| `src/editor/QueryEditorHost.tsx`       | The React host shared by the languages ([Host](#host-shadow-root-and-csp)) |
+| `src/editor/PromQLEditor.tsx`          | `QueryEditorHost` with the PromQL extensions and `PROMQL_COMPLETION` |
+| `src/editor/LogQLEditor.tsx`           | `QueryEditorHost` with the LogQL extensions and `LOGQL_COMPLETION` |
+| `src/editor/logqlEditor.ts`            | The Logs page's chunk entry |
 | `src/explore/promMetadata.ts`          | `promMetadataQuery(api, tenant)`: the page's metric-metadata query, also read by completion. No editor import, so the page can use it before the chunk loads                                                                                   |
 | `src/explore/querySize.ts`             | `QUERY_BYTE_LIMIT` (131 072), `queryBytes`, `overQueryLimit` (T09-015)                                                                                                                                                                         |
 
 Each language lives in `src/editor/lang/<id>/` and implements `QueryLanguage` (T09 §5.1). No
 language directory imports another: ESLint `no-restricted-imports` fails a file in
 `src/editor/lang/<id>/` that imports from another language's directory. Shared code
-(`suggestCache.ts`, `completionGuard.ts`, `theme.ts`, `lang/types.ts`) lives outside them.
+(`suggestCache.ts`, `completionGuard.ts`, `theme.ts`, `view.ts`, `lang/types.ts`,
+`lang/diagnostics.ts`, `lang/lookupWindow.ts`) lives outside them.
 
 ### `QueryLanguage` (ADR-0018)
 
-| Member                                       | PromQL                                                                                                                                                                                                                                                                                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lang`                                       | `'promql'`                                                                                                                                                                                                                                                                                                                                       |
-| `editor(deps: LanguageDeps)`                 | `promqlExtensions(createPromSource(deps))`. `LanguageDeps` is `{api, queryClient, tenant, window, cache?}`: the BFF client, the TanStack client, the tenant (the suggest-cache key, T09-014; there is no `scope_fp` while data scopes are deferred, D12), the window shown now (read on each lookup) and the cache (default the module instance) |
-| `shape(text)`                                | `analysePromQL` ([below](#shape-analyser))                                                                                                                                                                                                                                                                                                       |
-| `diagnosticsOf(text, error, toSource, sent)` | [Run diagnostics](#run-diagnostics)                                                                                                                                                                                                                                                                                                              |
-| `detect(prefix)`                             | `0` (no claim): ⌘K query detection (INT-038) is not built yet                                                                                                                                                                                                                                                                                    |
+| Member | PromQL | LogQL |
+| --- | --- | --- |
+| `lang` | `'promql'` | `'logql'` |
+| `editor(deps: LanguageDeps)` | `promqlExtensions(createPromSource(deps))`. `LanguageDeps` is `{api, queryClient, tenant, window, cache?}`: the BFF client, the TanStack client, the tenant (the suggest-cache key, T09-014; there is no `scope_fp` while data scopes are deferred, D12), the window shown now (read on each lookup) and the cache (default the module instance) | `logqlExtensions(createLogSource(deps))`, the same `LanguageDeps` |
+| `shape(text)` | `analysePromQL` ([below](#shape-analyser)) | `UNKNOWN_SHAPE` for every text: LogQL has one range route, so no route choice needs a shape, and the page reads log versus metric from the response's `kind` (`streams` or `series`) ([ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) §4) |
+| `diagnosticsOf(text, error, toSource, sent)` | `positionDiagnostics` ([Run diagnostics](#run-diagnostics)) | the same function, with the identity map |
+| `detect(prefix)` | `0` (no claim): ⌘K query detection (INT-038) is not built yet | `0` |
 
 ### Host, shadow root and CSP
 
-`PromQLEditor` renders an empty `<div data-editor-host>` (with `className`). Its mount effect
+`QueryEditorHost` (`src/editor/QueryEditorHost.tsx`) is the host of every language; `PromQLEditor`
+and `LogQLEditor` are thin wrappers that pass it a `language` builder and a `CompletionTiming`
+(`PROMQL_COMPLETION`, `LOGQL_COMPLETION`). Each wrapper keeps its `source` in a ref and builds its
+extensions once over a proxy that forwards every lookup (and, for LogQL, the caller's signal) to the
+current source, so a new `source` takes effect at the next lookup; the props and exports of
+`PromQLEditor` are unchanged, and `QueryCard` and `PanelQueryField` use it as before.
+
+The host renders an empty `<div data-editor-host>` (with `className`). Its mount effect
 creates an inner `<div>`, attaches an **open shadow root** to it, and mounts the view there; the
 cleanup destroys the view and removes the inner host. Because the inner host is created inside the
 effect, StrictMode's second run attaches to a new element. In a shadow root, CodeMirror's style
@@ -331,7 +356,8 @@ block. Custom properties inherit into the shadow tree, so the theme follows `dat
 | `value`                 | When it changes and differs from the document, `setDocument` replaces it  |
 | `onChange(text)`        | Every change, typed or programmatic                                       |
 | `onRun()`, `onEscape()` | The run keys; Escape when no completion popup is open                     |
-| `source: PromSource`    | Read at each lookup: a new source takes effect at once                    |
+| `source`                | `PromSource` or `LogSource` (wrappers): read at each lookup               |
+| `readOnly`              | No edits while true; `aria-readonly` on `.cm-content` (#64)               |
 | `diagnostics`           | Shown when the array identity changes                                     |
 | `label`, `placeholder`  | Read at mount (`aria-label` on `.cm-content`, which has `role="textbox"`) |
 | `ref`                   | `{focus(), insert(text)}`, no-ops before mount                            |
@@ -355,11 +381,14 @@ The editor is 12 lines high at most, then it scrolls.
 
 ### Extensions
 
-In order: `history()`; `autocompletion` (120 ms typing delay, at most 100 options rendered, no
-icons, no default keymap, one override source: the guarded language source); the completion keys
+`createQueryView(o)` builds every language's view; `createPromQLView` is `createQueryView` with
+`promqlExtensions(source)` and `PROMQL_COMPLETION`. In order: `history()`; `autocompletion` (the
+language's `CompletionTiming`: PromQL a 120 ms typing delay and one override source, LogQL no delay
+and two; at most 100 options rendered, no icons, no default keymap; each override source is
+`languageCompletionAt(i)` through the guard, slot `i` of the language's `autocomplete` data); the completion keys
 with a guarded Enter; the run, Escape and guarded Tab keys (highest precedence, above the default
 keymap's Mod-Enter); `closeBracketsKeymap`, `defaultKeymap`, `historyKeymap`; `closeBrackets()`,
-`bracketMatching()`; the PromQL language extensions; the theme; the placeholder; the `aria-label`;
+`bracketMatching()`; the language extensions; the theme; the placeholder; the `aria-label`;
 an update listener for `onChange`; the guard. There is **no linter**: only PulsusDB decides whether
 a query is valid (T09-002, ADR-0015), so the editor places no diagnostic of its own.
 
@@ -439,11 +468,13 @@ context; the through-view tests then go red.
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Size         | 2 000 keys, least recently got out first; eviction never aborts or withholds a result                                                                                                                                                                                                                  |
 | TTL          | 60 s from settle; a rejected load is not kept                                                                                                                                                                                                                                                          |
+| Key          | `JSON.stringify([tenant, lang, kind, label, selector, bucket])`; `lang` is `'promql'` or `'logql'`, so the two languages never share an entry |
 | Sharing      | an in-flight or fresh entry is shared: one request per key                                                                                                                                                                                                                                             |
-| Supersede    | starting a lookup of a kind aborts the in-flight lookup of the same kind with another key, even if it was evicted; an evicted in-flight lookup is re-joined by its own key                                                                                                                             |
+| Supersede    | PromQL only: starting a PromQL lookup of a kind aborts the in-flight PromQL lookup of the same kind with another key, even if it was evicted; an evicted in-flight lookup is re-joined by its own key. A LogQL entry is never superseded by another key, view or language |
+| Caller interest | `get(g, parts, load, signal?)`: an already aborted `signal` rejects `AbortError` at once and runs no `load`. While the entry is in flight, a call without a signal pins it; a call with one holds it until the signal aborts. When the last holder aborts and nothing pins it, the entry is dropped: its request is aborted and its key removed, so nothing aborted is cached. A settled entry ignores signals |
 | Generations  | `retainTenant(t)` with the retained tenant joins the current generation; another tenant, or `clear()`, ends it: every entry and tracked call (metadata included) is dropped, in-flight requests are aborted, and their callers reject `AbortError` at once, even if the response never comes (T09-014) |
 | Ended tokens | a call with a token of an ended generation, or for another tenant, runs no `load` (an old source after `a → b → a` or `clear()` sends nothing)                                                                                                                                                         |
-| Unmount      | a destroyed view aborts nothing; in-flight lookups settle into the cache                                                                                                                                                                                                                               |
+| Unmount      | a destroyed PromQL view aborts nothing; in-flight lookups settle into the cache. A destroyed LogQL view releases its interest (its `RemoteLookups` aborts its signal) |
 
 All state belongs to the main thread and changes synchronously.
 
@@ -460,7 +491,8 @@ URL change, never per keystroke (about 0.4 ms for 1 KB).
 
 ### Run diagnostics
 
-`diagnosticsOf(text, error, toSource, sent)` underlines PulsusDB's `queryInvalid` error (T09-009).
+`positionDiagnostics(text, error, toSource, sent)` (`lang/diagnostics.ts`; `promql.diagnosticsOf`
+and `logql.diagnosticsOf`) underlines PulsusDB's `queryInvalid` error (T09-009).
 The server maps PulsusDB's position to the raw text (ADR-0021 §3), so the page passes the identity
 mapping and the text itself as `sent`: `utf8ToIndex` maps the byte offset to the UTF-16 index of the
 code point that holds that byte. A position the server could not map (inside a rate rewrite) does
@@ -468,6 +500,19 @@ not arrive. At the end of the text the last code point is marked;
 a surrogate pair is marked whole. With no position, one out of range or one inside text the
 planner added, the whole query is marked and the message gets " (position unknown)". The message
 stays PulsusDB's text, its `1:52:` prefix included. Any other error places nothing.
+
+For LogQL every caller passes `logql.diagnosticsOf(text, error, (i) => i, text)`: the server maps
+PulsusDB's offset to the raw text and gives none inside the volume template or a value it inserted
+([LogQL positions](../server/pulsusdb.md#logql-positions)). `planned.query` never places an
+underline: an offset read against it would land after the template's prefix.
+
+| Run error (LogQL) | Diagnostics |
+| --- | --- |
+| `queryInvalid` with `detail.position` (a byte offset into the raw text) | one underline at the code point holding that byte; past the end, the whole text with " (position unknown)" |
+| `queryInvalid` without a position (400 `virtual_unsupported`; an offset inside the volume template or an inserted value) | the whole text, " (position unknown)" |
+| `invalid` (`variable.missing`, `variable.unrepresentable`, another `/vars…` or `/step_ms` field) | none: a field error, shown by the caller's status line |
+| `queryTooLong` (413 `query.sent_too_large` with `planned`, `query.too_large_to_plan`, or `hint.reason` `processing_cap`) | none |
+| any other kind, a non-`ApiError`, or an empty text | none |
 
 ### Highlighting (T09 §4.8)
 
@@ -485,6 +530,156 @@ stays PulsusDB's text, its `1:52:` prefix included. Any other error places nothi
 The run error is a wavy `accent` underline, not a state colour: a query error is not an entity
 state (VL-003).
 
+### LogQL (`lang/logql`)
+
+LogQL is the second `QueryLanguage` ([ADR-0018](../../designs/adr/0018-query-language-modules.md)
+§5). Nothing here decides whether a query is valid (T09-002), plans it or substitutes variables
+(ADR-0021 §2): the browser keeps the editor, highlighting and completion (ADR-0021 §4).
+
+**Scanner** (`lexer.ts`, T09-003). One context-free `scanAt(s, i, inRaw)` cuts the text into
+tokens; it drives both the CodeMirror `StreamLanguage` (line by line, resumable) and `lexLogQL`, the
+whole-text lexer of the caret context, so the two never drift. It never throws: any text lexes into
+contiguous tokens. First match at `i`:
+
+| Text | Token |
+| --- | --- |
+| a backtick string continued from an earlier line | `rawString` to the next `` ` `` (closed), else to the end |
+| spaces, tabs, CR, LF | `space` |
+| `"` | `string`: `\` escapes the next code unit; ends after the closing `"`, or unclosed before a LF or at the end |
+| `` ` `` | `rawString` to the next `` ` `` (LF allowed), else unclosed to the end |
+| `\|=` `\|~` `\|>` `!>` | `lineFilter` |
+| `\|` | `pipe` |
+| `=~` `!~` `!=` `=` | `matchOp` |
+| `==` `>=` `<=` `>` `<` | `cmpOp` |
+| `+ - * / % ^` | `arith` |
+| `{ } ( ) [ ] ,` | brackets and `comma` |
+| a digit | `number`; with a unit, `duration` (`5m`, `1h30m`, `5µs`), `bytes` (`10KB`, `3MiB`) or `error` (`5x`) |
+| `[A-Za-z_]` | `ident` |
+| anything else | `error` over one code point (`#`, `$`, an emoji) |
+
+**No comments.** PulsusDB's LogQL has no comments (#121). The scanner has no comment state: a `#`
+outside a string is one `error` token, highlighted `invalid` like any other character LogQL does not
+use, and the text after it is scanned as LogQL. So a selector after a `#` still completes. The
+language data has no `commentTokens`, so the comment commands (`Mod-/`) change nothing. A run with a
+top-level `#` is refused by the server with 400 `query.invalid` at the `#`'s byte offset, and the
+editor underlines the `#` (T09-009). The editor adds no diagnostic of its own before a run
+(T09-002).
+
+**Mode stack.** `advance` keeps a stack of frames: `{` opens a selector (`brace`), `(` a `group`
+after `by`, `without`, `on`, `ignoring`, `group_left` or `group_right` and a `paren` otherwise, `[`
+a range (`bracket`). A closer pops only its own frame (`)` closes `paren` and `group`); an
+unmatched closer is ignored. At most 64 frames are kept; deeper openers are counted and popped
+first.
+
+**Highlighting** (`extensions.ts`; colours of [Highlighting](#highlighting-t09-48)):
+
+| Token | Tag |
+| --- | --- |
+| `ident` in a selector or grouping (checked first: `json` in `{json="1"}` is a label) | `labelName` |
+| `ident` in `FUNCTIONS` or `CONVERSIONS` | `function(variableName)` |
+| `ident` in `KEYWORDS` or `STAGES` | `keyword` |
+| other `ident` | `variableName` |
+| `string`, `rawString` (a backtick string over two lines stays a string) | `string` |
+| `number`, `duration`, `bytes` | `number` |
+| operators, `comma`, brackets | `operator`, `brace`, `paren`, `squareBracket` |
+| `error` | `invalid` (no error colour) |
+
+**Caret contexts** (`caretContext(text, pos)`). The token holding the caret is a string the caret
+is inside (or at the end of, when unclosed), or a word, number, duration or digit-led error ending at
+or running over the caret; a token that starts at the caret is not it. The mode stack and the last
+two significant tokens before it decide:
+
+| Context | When | Completes from | Lookup |
+| --- | --- | --- | --- |
+| `labelValue` | in a selector, after `name` and a matcher operator; quoted (`"` or `` ` ``) or not yet quoted | slot 1 | `labelValues(name, selector)` |
+| `labelName` | in a selector, after `{` or `,` | slot 1 | `labelNames(selector)` |
+| `stage` | after `\|` | slot 0 | `STAGES` |
+| `duration` | in a range `[…]` | slot 0 | `1m 5m 10m 15m 30m 1h 6h 12h 24h` |
+| `grouping` | in `by (…)` and the like, after `(` or `,` | slot 1 | `labelNames(first selector)` |
+| `function` | at the start, after `(`, `,`, an operator, `and`, `or`, `unless` or `bool` | slot 0 | `FUNCTIONS` |
+| `none` | in a line filter string, after a closed selector, anything else | — | — |
+
+**Scope.** The selector of a lookup is the other complete matchers of the caret's selector (name,
+operator, closed string) at its own depth, copied as written and joined by `, ` in `{…}`, matchers
+after the caret included; the matcher being edited is left out, and so is any matcher whose value
+holds a variable reference (`$name`, `${name}`): the browser never substitutes, and a literal `$app`
+would narrow the lookup to nothing (T09-010). With no matcher left the scope is `null`, and the BFF
+never receives `{}`. A grouping lookup is scoped by the query's first selector.
+
+**Log source** (`createLogSource(deps)`). It retains the tenant's generation once. Each lookup reads
+the window once, sends it snapped to whole minutes (`minuteWindow`), `limit` 1 000 and `query` only
+when there is a scope, exactly as written; it is cached under `(tenant, 'logql', kind, label,
+selector, bucket)` and passes the caller's signal to the cache.
+
+| Method | Request |
+| --- | --- |
+| `labelNames(selector, signal?)` | `Api.logLabels(tenant, {fromMs, toMs, query?, limit: 1000}, signal)` → `GET /api/dash/v1/logs/labels` |
+| `labelValues(name, selector, signal?)` | `Api.logLabelValues(tenant, name, {…}, signal)` → `GET /api/dash/v1/logs/label/{name}/values` |
+
+Any error resolves `[]` and nothing is shown or logged (T09 §9): a bad selector, a reserved
+`{source="pulsus-dash"}` scope the server refuses (400 `virtual_unsupported`, `queryInvalid`),
+`tooBroad`, `busy`, `timeout`, `unavailable`, `network`, `badResponse`, an abort or an ended
+generation. A new tenant needs a new source; retaining it aborts the old tenant's calls (T09-014).
+
+### Completion timing
+
+LogQL has two completion slots, so static lists do not wait for the lookup debounce (T09-007,
+T09 §7: ≤ 16 ms for local completions). The LogQL view uses `LOGQL_COMPLETION` (no typing delay,
+two slots); PromQL keeps `PROMQL_COMPLETION` (120 ms, one slot). Every context belongs to exactly one
+slot, and the other slot returns `null` synchronously, so CodeMirror never merges local and remote
+options in one list.
+
+| Moment | Slot 0 (local) | Slot 1 (remote) |
+| --- | --- | --- |
+| a typed character in a stage, function or duration context | the list at once (the first frame after the key) | `null` |
+| a typed character in a label context | `null` | `afterQuiet(ctx, 120)`: every document change aborts the wait and starts a new one, so the lookup starts 120 ms after the last keystroke |
+| Ctrl+Space (`startCompletion`) | after CodeMirror's 50 ms explicit start | no wait |
+| Backspace | no new query (CodeMirror's `activateOnTyping`) | the same |
+
+A fetch already started belongs to the view's `RemoteLookups` (one per view, created by
+`logqlExtensions`), not to the CodeMirror query. `remoteLookupsPlugin` checks every document or
+selection change while a lookup is pending:
+
+| After the fetch started | Effect |
+| --- | --- |
+| a change whose caret context has the same key (typing `e` in `{app="w‸"}`) | kept; the next query of that key gets the same signal and shares the cache entry (one request) |
+| a change to another key (`{pod="‸"}`) or to a non-remote context | this view's signal is aborted, which releases only this view's interest: the request aborts (and is not cached) only when no other view or unsignalled caller holds it |
+| a query of another key in the same view | the old signal is aborted first (the same release) |
+| the view is destroyed, or the document is over 131 072 code units | aborted |
+
+An open remote result re-filters within its `validFor` without a new query. The guard wraps both
+slots (T09-005, T09-015).
+
+### Accepting a completion
+
+`replacing(text, kind)` is every LogQL option's `apply`. At accept time it measures the caret
+context again on the current document and, when its kind is the option's, replaces `[from, end)`:
+the whole token or value under the caret, never a suffix of it and never a `}`. The result's `to`
+stays the caret, so CodeMirror still filters by the typed prefix (`w` in `{app="w‸rong"}` shows
+`web`).
+
+| Under the caret | `end` |
+| --- | --- |
+| a quoted value that is well closed (its closing quote is there and `}` or `,` follows) | before the closing quote (spaces and commas inside it are value) |
+| a quoted value that is not well closed (unclosed; or closed and followed by anything else, the end of the query included) | the first `"`, `` ` ``, `}`, `,` or whitespace at or after the caret, else the end; the closing quote is appended unless that stop is the value's own quote |
+| a name, word, unquoted value or range | the end of the token |
+| nothing | the caret |
+
+Values are escaped for the quote in use: `\`, `"`, LF, CR and tab inside `"…"`; backtick strings
+are inserted as is and values holding a backtick are not offered there; an unquoted value is
+inserted in double quotes. Examples: `{app="w‸rong"}` → `{app="web"}`; `{app="w‸rong` →
+`{app="web"`; `{app=w‸x}` → `{app="web"}`; `rate({a="b"}[1‸0m])` → `rate({a="b"}[1h])`.
+
+### The LogQL editor harness (`dev/logql-editor`)
+
+`/t/<tenant>/dev/logql-editor?q=<text>` renders the real `LogQLEditor` (accessible name `LogQL
+query`, page title `LogQL editor bench`) over an in-memory `LogSource` that answers at once
+(`app`, `env`, `level`, `pod`; values `checkout`, `web`), so the editor benches time the client,
+not a network. The route sits next to the chart gallery inside the dev-and-stub-build condition of
+`router.tsx`, so http builds leave it out (CI's "http build has no gallery" step covers every
+`src/dev/` module). The page loads the editor with a dynamic import of `logqlEditor.ts`; its own
+chunk is not an `editor-*` chunk.
+
 ### Testing an editor in jsdom
 
 Tests build a view with `viewIn(o)` (`src/test/viewIn.ts`): a host on `document.body`, an open
@@ -493,7 +688,11 @@ shadow root, a mount `<div>` in it; `destroyViews()` after each test. Keys go th
 `startCompletion`, wait for `completionStatus === 'active'`, then 100 ms (CodeMirror ignores
 accept keys for 75 ms after a popup opens). `fakePromSource(F)` (`src/test/fakePromSource.ts`)
 returns fixed data and records each call (`'labelValues job up'`). Compositions are synthetic
-`CompositionEvent`s on `view.contentDOM` with `input.type.compose` transactions.
+`CompositionEvent`s on `view.contentDOM` with `input.type.compose` transactions. LogQL tests use
+`fakeLogSource(FL)` and `pendingLogSource()` (`src/test/fakeLogSource.ts`: fixed data, or calls
+held until released and settled `[]` when their signal aborts), the caret cases of
+`src/test/logqlContextCases.ts` (`‸` marks the caret), and fake timers for the 120 ms debounce. jsdom
+has no `ShadowRoot.delegatesFocus`, so the host test reads it from the `attachShadow` call.
 `src/test/editorDom.ts` (imported by `viewIn` and the host test) defines what jsdom lacks: text
 ranges without layout (`getClientRects`, `getBoundingClientRect`), which CodeMirror measures when it
 scrolls the caret into view, and `execCommand`, which its selection read in a shadow root falls back
@@ -641,11 +840,14 @@ chunks and the route chunk, where Rollup places `explore/promMetadata` and `expl
 because the route loads first.
 
 `ci:bundle-size` measures the editor closure: the files of the `editorModules` entries
-(`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, both in `required.lazyModules`) and
-every `assets/editor-*.js` file reachable from them through static manifest imports, walking only
-through `editor-*` files; other imported chunks keep their own initial or lazy rows, so each byte is
-counted once. The build measures 2 files, about 125 KB brotli (budget 175 000); the route chunk
-`MetricsPage-*` keeps its own `lazyChunk` row (about 14 KB, budget 120 000). See
+(`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts` and
+`src/editor/logqlEditor.ts`; all but the last in `required.lazyModules`, because `logqlEditor.ts` is
+a manifest entry only in builds with the LogQL harness route until the Logs page imports it, and an
+entry missing from the manifest is skipped) and every `assets/editor-*.js` file reachable from them
+through static manifest imports, walking only through `editor-*` files; other imported chunks keep
+their own initial or lazy rows, so each byte is counted once. The stub build measures 7 files, about
+135 KB brotli (budget 175 000 for the union, ADR-0014 §8); the route chunk `MetricsPage-*` keeps its
+own `lazyChunk` row (budget 120 000). See
 [Build, test and CI](../development/build-and-ci.md#bundle-budgets).
 
 ### Testing the page
@@ -679,14 +881,25 @@ install the fake `ResizeObserver`.
 | `bench:frame-interim-heatmap`                                                                                                             | `e2e/perf-heatmap-draw.spec.ts` ([Build, test and CI](../development/build-and-ci.md#tests))                                                                                                                                                                                                                                                                                                                           |
 | `unit:promql-shape`                                                                                                                       | `src/editor/lang/promql/promql.test.ts`: the 23 shape rows (comments, value types, `histogram_quantile`, error nodes)                                                                                                                                                                                                                                                                                                  |
 | `unit:promql-diagnostics`                                                                                                                 | `src/editor/lang/promql/promql.test.ts`: bytes to UTF-16 (multi-byte, pairs, lone surrogates), positions D1–D9, and a raw-byte position placed by the identity mapping                                                                                                                                                                                                                                        |
-| `unit:suggest-cache`                                                                                                                      | `src/editor/suggestCache.test.ts`: C1–C18, with no unhandled rejection in any case                                                                                                                                                                                                                                                                                                                                     |
+| `unit:suggest-cache`                                                                                                                      | `src/editor/suggestCache.test.ts`: C1–C18, the key by language, a LogQL get that leaves an in-flight PromQL entry alone, and the caller signals G1–G7, with no unhandled rejection in any case |
+| `unit:logql-lex`, `unit:logql-state` | `src/editor/lang/logql/lexer.test.ts`: L1–L16, a 1 000-text property (contiguous tokens, never throws), S1–S5 |
+| `unit:logql-highlight` | `src/editor/lang/logql/extensions.test.ts`: H1–H7 |
+| `unit:logql-context` | `src/editor/lang/logql/context.test.ts`: C1–C49 and C9b (`src/test/logqlContextCases.ts`) |
+| `unit:logql-completion`, `unit:logql-replace`, `unit:logql-cancel` | `src/editor/lang/logql/complete.test.ts`: K1–K13 (each context in one slot, slot 0 never a promise), M1–M21 (whole documents after accepting), X1–X9 (in-flight lookups kept, released and shared, over `pendingLogSource` and the real source and cache) |
+| `unit:log-source` | `src/editor/lang/logql/logSource.test.ts`: S1–S8 |
+| `unit:lookup-window` | `src/editor/lang/lookupWindow.test.ts` |
+| `unit:logql-diagnostics` | `src/editor/lang/logql/logql.test.ts`: D1–D9 (D8: the offset counts in the raw text, never in `planned.query`) |
+| `unit:diagnostics-shared` | `src/editor/lang/diagnostics.test.ts`: PromQL re-exports the shared functions |
+| `unit:logql-editor`, `unit:logql-completion-timing` | `src/editor/LogQLEditor.test.tsx`: the host (shadow root, label, run keys, Escape, diagnostics, completion and accept, a rerendered source, read-only, composition, unmount); T1–T5 under fake timers |
+| `unit:router-dev-logql` | `src/app/router.test.tsx` |
 | `unit:prom-source`                                                                                                                        | `src/editor/lang/promql/promSource.test.ts`: S1–S14 (requests, buckets, supersede, failures, series, tenant switches, metadata, ended tokens, the minute and second windows)                                                                                                                                                                                                                                           |
 | `unit:prom-client`                                                                                                                        | `src/editor/lang/promql/promClient.test.ts`: `selectorOf`, `decodeLabelName`, `matcherContextAt` and `toPrometheusClient` rows                                                                                                                                                                                                                                                                                         |
 | `unit:editor-keys`, `unit:editor-completion`, `unit:editor-doc`, `unit:editor-diagnostics`, `unit:editor-no-linter`, `unit:editor-styles` | `src/editor/view.test.ts`                                                                                                                                                                                                                                                                                                                                                                                              |
 | `unit:editor-composition`, `unit:editor-size`                                                                                             | `src/editor/completionGuard.test.ts`: K1–K5, Z1–Z6                                                                                                                                                                                                                                                                                                                                                                     |
 | `unit:query-size`                                                                                                                         | `src/explore/querySize.test.ts`: Q1–Q6                                                                                                                                                                                                                                                                                                                                                                                 |
 | `unit:editor-host`                                                                                                                        | `src/editor/PromQLEditor.test.tsx`                                                                                                                                                                                                                                                                                                                                                                                     |
-| `unit:lang-table`                                                                                                                         | `src/editor/lang/index.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        |
+| `unit:lang-table`                                                                                                                         | `src/editor/lang/index.test.ts`: PromQL and LogQL load (LogQL's shape is `UNKNOWN_SHAPE`), TraceQL and profiles reject |
+| `HttpApi` and `StubApi` log completion | `src/api/HttpApi.test.ts`, `src/api/StubApi.test.ts` |
 | `unit:window-keys`                                                                                                                        | `src/state/useWindowKeys.test.tsx`: an editable element in a shadow root, a shadow host in a dialog, and an event without a path                                                                                                                                                                                                                                                                                       |
 | `unit:explore-run-size` | `src/pages/explore/MetricsPage.test.tsx`: R1–R8 (128 KB of draft or URL query refused before sending; drafts whose plan is over 64 KiB sent and answered 413 by the stub; `rate=off`; the width arriving after the draft; metric types the stub's, not a gate) |
 | Page component tests | `src/pages/explore/MetricsPage.test.tsx` (run on load, no metadata wait, scalar, histogram, string, supersede, frame kept, refresh, interval refresh, refresh and rerun during the first fetch, shimmer, errors, partial data, warnings, rate and vis, run keys, escape, picker, away and back, empty query, isolation, tenant switch, heatmap isolation), `SeriesTable`, `MetricPicker`, `CompletenessNotice`, `src/kit/SegmentedControl.test.tsx`, `src/pages/board/BoardPage.test.tsx` (Refresh leaves panel queries) |
@@ -697,7 +910,8 @@ install the fake `ResizeObserver`.
 | `inertOutside`, `MetricPicker inert`, `unit:editor-probe` | `src/kit/inertOutside.test.ts`, `src/pages/explore/MetricPicker.test.tsx`, `src/editor/view.test.ts` |
 | `e2e:deep-link` (explore) | `e2e/deep-link.spec.ts` |
 | `e2e:editor-ime` | `e2e/editor-ime.spec.ts` (Chromium) |
-| `bench:editor-keystroke` | `e2e/perf-editor-keystroke.spec.ts` (Chromium): the editor's update per key through `src/editor/probe.ts` (p95 ≤ 2 ms) and a trace of the keys through `scripts/longTasks.ts`; the interim CI check blocks, the rest with `EDITOR_BENCH_GATE=enforce` ([Build, test and CI](../development/build-and-ci.md#tests)) |
+| `bench:editor-keystroke` | `e2e/perf-editor-keystroke.spec.ts` (Chromium): a PromQL case on Explore › Metrics and a LogQL case on the `dev/logql-editor` harness; the editor's update per key through `src/editor/probe.ts` (p95 ≤ 2 ms) and a trace of the keys through `scripts/longTasks.ts`; the interim CI check blocks, the rest with `EDITOR_BENCH_GATE=enforce` ([Build, test and CI](../development/build-and-ci.md#tests)) |
+| `bench:logql-completion-latency` | `e2e/perf-logql-completion.spec.ts` (Chromium): keydown to popup on the harness, local and remote ([Build, test and CI](../development/build-and-ci.md#tests)) |
 | `e2e:a11y-rooms`, `e2e:csp-violations` (explore) | `e2e/a11y-rooms.spec.ts`, `e2e/keyboard.spec.ts` (L32, `e2e/keyboardExplore.ts`), `e2e/csp-violations.spec.ts` |
 | `ci:bundle-size` (editor closure) | `scripts/bundle-size.test.ts` (h)–(k) and the real build |
 
@@ -706,8 +920,10 @@ The editor's budgets are measured with the page: PRF-005 keystroke work by `benc
 gates are `e2e:csp-violations`, `e2e:lazy-load` and `e2e:editor-ime`.
 
 Editor design rules: [T09](../../designs/technical/T09-query-editors.md) T09-001 (one interface per
-language), T09-002 (no client-side validity), T09-003 (Lezer highlighting), T09-004 (keys), T09-005
-(composition), T09-006 (one history), T09-007 (lookups, window bucket, supersede), T09-009 (run
-error position), T09-014 (cache keyed by tenant, dropped on switch), T09-015 (128 KB);
+language), T09-002 (no client-side validity), T09-003 (Lezer highlighting for PromQL, the stream
+tokenizer for LogQL), T09-004 (keys), T09-005
+(composition), T09-006 (one history), T09-007 (lookups, window bucket, supersede, the LogQL slots
+and release), T09-009 (run error position), T09-010 (no substitution in a lookup scope), T09-014
+(cache keyed by tenant, dropped on switch), T09-015 (128 KB);
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §1 (CodeMirror), §7 (supply
 chain), §9 (CSP).

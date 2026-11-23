@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-23 |
+| **Version** | 1.18-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -21,15 +21,15 @@ revised below.
 |---|---|
 | `dash-lang` crate and `QueryLanguage` trait (T09-001) | `lang/` with a TS `QueryLanguage` interface (§5.1); implementations `RemoteValidator` (BFF → PulsusDB) now and `WasmValidator` (PulsusDB crates in an editor worker) later |
 | Textarea overlay (§4.3, T09-004) | CodeMirror 6 (§4.3, T09-004 revised) |
-| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail). PromQL v1 (#63): `@prometheus-io/codemirror-promql` supplies the Lezer language with its completion and linter off; completion is our `CompleteStrategy` (`lang/promql/promClient.ts`) behind a guard, over the BFF `/prom/*` routes until `/suggest` exists; it leaves out only the matcher under the caret, copies kept matchers' source text and decodes the edited label name |
-| `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005) |
+| `dash-qlex` highlight lexers | PromQL: the upstream open-source Lezer PromQL grammar (Apache-2.0, on the `client/dependency-policy.json` allowlist), incremental and error-tolerant. LogQL and TraceQL: in-house CodeMirror stream tokenizers implementing the `dash-qlex` design (resumable per line, never fail). PromQL v1 (#63): `@prometheus-io/codemirror-promql` supplies the Lezer language with its completion and linter off; completion is our `CompleteStrategy` (`lang/promql/promClient.ts`) behind a guard, over the BFF `/prom/*` routes until `/suggest` exists; it leaves out only the matcher under the caret, copies kept matchers' source text and decodes the edited label name. LogQL v1 (#66): `lang/logql/lexer.ts`, one context-free scanner (`scanAt`) driving a CodeMirror `StreamLanguage` (resumable per line) and the whole-text lexer of the caret context, with a mode stack (selector, parens, grouping, range; at most 64 frames) |
+| `dash-qctx` tolerant context parser | `lang/context.ts`: the `CaretContext` of §4.4 from the Lezer tree (PromQL) or from the tokenizer with the bracket and mode stack (LogQL, TraceQL); runs on the main thread (≤ 2 ms per keystroke, PRF-005). LogQL v1 (#66): `lang/logql/context.ts` with the contexts `labelName`, `labelValue`, `grouping`, `stage`, `function` and `duration`, the M-UI1 subset of §4.4's `CaretContext` (`LogField` waits for detected fields, M-UI2) |
 | Validation in the `editor` worker | v1: on run (and on Explore's auto-run), the BFF forwards the query to PulsusDB and maps its error and position, if any, to a diagnostic. Later: `dash-editor.wasm` (PulsusDB crates) in an editor worker on every edit (§4.2 diagram), with no change to the editor |
 | `promql-parser` `prettify()` for formatting | **Not in M-UI1.** Formatting ships with the WASM crates (M-UI2, §11). A PulsusDB format route through the BFF (Q5) MAY bring it earlier, only once PulsusDB confirms the route. T09-011 stands |
 | `nucleo-matcher` fuzzy ranking | CodeMirror autocompletion's matcher plus the ranking boosts of §4.4 |
 | `pulsus-re2` regex screen (T09-016) | T09-016 revised |
 | Visual builder over the PulsusDB AST (§4.9) | Over the Lezer PromQL tree with a TS printer and a token-sequence loss check (§4.9 and T09-013 rewritten); no PulsusDB AST or printer is needed |
 | Leptos `QueryEditor`, `QueryBuilder` | React components (§5.1) |
-| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014). v1: `editor/suggestCache.ts`; key `(tenant, lang, kind, label, selector, bucket)` without `scope_fp` while data scopes are deferred (D12); TTL from settle; LRU by last get; eviction never aborts; the in-flight lookup per kind is tracked apart from the LRU, so an evicted one is still superseded; a tenant switch or clear ends a generation, aborting every tracked call (metadata included) and rejecting its callers at once; a source with an ended token sends nothing; metadata is one TanStack query per tenant |
+| Editor-worker suggest cache | Module-level LRU in the editor chunk, same keys and TTL (T09-007, T09-014). v1: `editor/suggestCache.ts`; key `(tenant, lang, kind, label, selector, bucket)` without `scope_fp` while data scopes are deferred (D12); TTL from settle; LRU by last get; eviction never aborts; the in-flight lookup per kind is tracked apart from the LRU, so an evicted one is still superseded; a tenant switch or clear ends a generation, aborting every tracked call (metadata included) and rejecting its callers at once; a source with an ended token sends nothing; metadata is one TanStack query per tenant. #66: `lang` is `promql` or `logql`; supersession by kind is PromQL's only; a LogQL entry is released by caller interest: it aborts when its last signalled caller aborts and no unsignalled caller holds it, or when its generation ends |
 
 ## 1. Context & problem
 
@@ -302,6 +302,13 @@ value lookups, so `{service="checkout", pod=~"|` only suggests checkout's pods.
   narrow" come with `/suggest`.
 - **Scope.** Families withheld by the principal's metrics scope (T07-015) are listed with "withheld
   by scope" and no series count.
+- **LogQL v1 (#66).** Label names and values come from the BFF's `/logs/labels` and
+  `/logs/label/{name}/values` with `query` = the other complete matchers of the caret's selector as
+  written (never `{}`; a matcher whose value holds a variable reference is left out, T09-010; a
+  grouping lookup uses the first selector), the window snapped to whole minutes, and limit 1 000.
+  Accepting an option replaces the whole token or value under the caret, re-measured at accept
+  time, and never a delimiter: a quoted value that is not well closed ends at the first quote, `}`,
+  `,` or whitespace after the caret and gains its closing quote.
 
 #### T09-007 — Completion fetches by context key, debounced and cancellable
 **MUST** — Local sources MUST answer in the same frame. Remote lookups MUST be debounced 120 ms after
@@ -314,6 +321,13 @@ a superseded lookup MUST be cancelled (the BFF propagates cancellation, [T06](T0
 `(tenant, scope_fp, lang, kind, label, selector_hash, window_bucket)`; the window is bucketed to
 15 min so nearby windows share entries. The BFF has its own L1 metadata cache with a 30–60 s TTL
 ([T06](T06-bff-architecture.md) §4.4).
+
+v1 (#66, LogQL): static completions (stages, functions, durations) answer from a synchronous
+source with no typing delay (≤ 16 ms, §7); remote lookups wait 120 ms inside their own source and
+restart on every document change, so a lookup starts 120 ms after the last keystroke. A view's
+interest in an in-flight lookup is released when its caret context leaves the lookup's key (another
+key, a non-remote context, or the view's end); the shared fetch aborts when its last signalled
+caller releases it.
 
 #### T09-008 — Late completions do not move the selection
 **MUST** — Remote completion results arriving after the popup opened MUST NOT reorder items at or
@@ -544,6 +558,11 @@ host's completion guard). PromQL lives in `lang/promql/`; `LANGUAGES` resolves P
 three languages not built yet. `detect` returns 0 until ⌘K detection (INT-038) is built.
 `PromQLEditor` is the PromQL-only M-UI1 `QueryEditor`.
 
+v1 (#66): `lang/logql/` is the second language. Its `shape` returns `UNKNOWN_SHAPE` for every text:
+LogQL has one range route, so no route choice needs a shape, and log versus metric is the response's
+`kind` ([ADR-0021](../adr/0021-query-planning-is-server-side.md) §4). `QueryEditorHost` is the host
+of both languages; `PromQLEditor` and `LogQLEditor` wrap it.
+
 Auto-vis (SRF-030, VIZ-065, §4.6) ships in M-UI1 through `shape`: the language returns a
 `QueryShape`, and the Explore planner applies the Table 5-13 rows to that shape, the metric metadata
 and the result (#63). Only the interface methods are later. `validate` and `format` are added with
@@ -741,3 +760,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.15-rc | 2026-11-22 | #65 Part A: T09-009 reads LogQL's `at byte N` (0-based) as the offset |
 | 1.16-rc | 2026-11-22 | #64 Part A: §4.3 (T09-004) v1 board panel editor: the same editor and Run keys, Run query, a run when focus leaves the field, and `Esc` to Run query, then to close the dialog |
 | 1.17-rc | 2026-11-23 | #121: T09-002: the server's fail-closed pre-dispatch refusal (LogQL top-level `#`) is not a validity decision |
+| 1.18-rc | 2026-11-23 | #66 Part A: §0 rows `dash-qlex` (the LogQL scanner and `StreamLanguage`, the mode stack), `dash-qctx` (the v1 LogQL contexts) and "Editor-worker suggest cache" (the key by language; PromQL supersession, LogQL release by caller interest); §4.4 LogQL v1 lookups (scope as written, variable references left out, minute window, limit 1 000) and whole-token replacement; T09-007 v1 note (the synchronous local slot and the 120 ms remote slot; release when the caret context leaves the key); §5.1 v1 LogQL `shape` and the shared host |

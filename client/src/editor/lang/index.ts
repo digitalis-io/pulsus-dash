@@ -20,7 +20,7 @@ const unavailable = (lang: LangId) => () =>
 
 export const LANGUAGES: Readonly<Record<LangId, () => Promise<QueryLanguage>>> = Object.freeze({
   promql: () => import('./promql/promql').then((m) => m.promql),
-  logql: unavailable('logql'),
+  logql: () => import('./logql/logql').then((m) => m.logql),
   traceql: unavailable('traceql'),
   profile: unavailable('profile'),
 });
