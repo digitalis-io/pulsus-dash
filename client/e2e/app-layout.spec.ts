@@ -42,7 +42,9 @@ test.describe('e2e:app-layout', () => {
       expect((top?.y ?? 0) + (top?.height ?? 0)).toBe((header?.y ?? 0) + (header?.height ?? 0));
       const time = await timeTrigger(page).boundingBox();
       const refresh = await page.getByRole('group', { name: 'Refresh' }).boundingBox();
-      const user = await page.getByRole('button', { name: 'User menu: Ada Admin' }).boundingBox();
+      const user = await page
+        .getByRole('button', { name: 'AA, user menu: Ada Admin' })
+        .boundingBox();
       expect(time && refresh && user).toBeTruthy();
       if (!time || !refresh || !user) return;
       expect(time.x).toBeLessThan(refresh.x);

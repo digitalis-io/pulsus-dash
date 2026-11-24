@@ -59,8 +59,10 @@ overflowing; the title is the element that gives way.
 window in mono ("12:03 – 13:03 GMT"). The refresh control is a group "Refresh" of "Refresh now" and
 an interval menu button named "Auto-refresh interval: `<label>`" that shows the interval (`Off`,
 `10s`, `30s`, `1m`, `5m`, `15m`) and a live dot when it is not off; choosing an interval replaces
-the history entry. The user menu (avatar initials, "User menu: `<name>`") shows name, email and
-role, then the theme section (Dark, Light, System), "About Pulsus Dash" (version, build, the line
+the history entry. The user menu's avatar shows the initials; the button's name is
+"`<initials>`, user menu: `<name>`", so it starts with what is visible (WCAG 2.5.3, label in name).
+The menu it opens is labelled by the button, so it has the same name. If the name has no initials,
+both are named "User menu: `<name>`". The menu shows name, email and role, then the theme section (Dark, Light, System), "About Pulsus Dash" (version, build, the line
 "Server version `<version>`" when the session has a server, and the licence) and "Sign out". Sign
 out is shown only when `session.canSignOut` is true: under the BFF's fixed local principal
 (decision D12) it is false, so the item is hidden rather than offered as a no-op. Only a confirmed

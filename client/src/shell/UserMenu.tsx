@@ -40,6 +40,15 @@ export function initials(name: string): string {
     .join('');
 }
 
+/**
+ * The avatar button's accessible name. It starts with the visible initials (WCAG 2.5.3, label in
+ * name). If the name has no initials, it falls back to the menu's name.
+ */
+export function userMenuButtonLabel(name: string): string {
+  const i = initials(name);
+  return i === '' ? t('user.menu', { name }) : t('user.menuButton', { initials: i, name });
+}
+
 export function UserMenu() {
   const session = useSession();
   const api = useApi();
@@ -71,7 +80,7 @@ export function UserMenu() {
       <MenuTrigger>
         <AriaButton
           ref={triggerRef}
-          aria-label={t('user.menu', { name: user.name })}
+          aria-label={userMenuButtonLabel(user.name)}
           className={cx(styles['avatar'])}
         >
           <span aria-hidden="true">{initials(user.name)}</span>
@@ -82,6 +91,7 @@ export function UserMenu() {
             <p className={cx(styles['email'])}>{user.email}</p>
             <p className={cx(styles['role'])}>{t(ROLE_LABEL[user.role])}</p>
           </div>
+          {/* MenuTrigger labels this menu by the trigger (aria-labelledby), which overrides aria-label. */}
           <Menu aria-label={t('user.menu', { name: user.name })}>
             <MenuSection title={t('user.theme')} selectionMode="single" selectedKeys={[pref]}>
               {THEME_PREFS.map((p) => (

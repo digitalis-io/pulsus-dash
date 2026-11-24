@@ -386,6 +386,7 @@ export const messages = {
   'refresh.15m': '15m',
 
   'user.menu': 'User menu: {name}',
+  'user.menuButton': '{initials}, user menu: {name}',
   'user.theme': 'Theme',
   'user.about': 'About Pulsus Dash',
   'user.signOut': 'Sign out',

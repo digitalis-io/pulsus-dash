@@ -7,5 +7,8 @@ describe('i18n typed ids', () => {
     expect(() => t('no.such.id')).not.toThrow();
     expect(t('time.quick.6h')).toBe('Last 6 hours');
     expect(t('user.menu', { name: 'Ada Admin' })).toBe('User menu: Ada Admin');
+    expect(t('user.menuButton', { initials: 'AA', name: 'Ada Admin' })).toBe(
+      'AA, user menu: Ada Admin',
+    );
   });
 });
