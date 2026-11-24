@@ -1,6 +1,7 @@
 /**
  * The Query card of Explore › Logs (plan #66 Part C §3.9): the language tag, the Run hint and
- * button, the LogQL editor from the lazy chunk (or its placeholder while it loads) and the status
+ * button, the LogQL editor from the lazy chunk (or its placeholder while it loads,
+ * `QueryFallback` if it fails; the load-failed alert whenever an import failed) and the status
  * line, which the Run button is described by. No metric picker.
  */
 import { useId, type JSX, type ReactNode, type Ref } from 'react';
@@ -12,6 +13,7 @@ import { Button } from '../../kit/Button';
 import { Card } from '../../kit/Card';
 import { cx } from '../../kit/cx';
 import styles from './Explore.module.css';
+import { QueryFallback } from './QueryFallback';
 
 export interface LogsQueryCardProps {
   readonly modules: LogqlModules;
@@ -62,15 +64,23 @@ export function LogsQueryCard({ editorRef, runButtonRef, ...p }: LogsQueryCardPr
           label={t('explore.logs.label')}
           placeholder={t('explore.logs.placeholder')}
         />
+      ) : p.modules.editorFailed ? (
+        <QueryFallback
+          label={t('explore.logs.label')}
+          value={p.q}
+          onChange={p.onDraft}
+          onRun={p.onRun}
+        />
       ) : (
         <div className={cx(styles['editorPlaceholder'])}>
-          {p.modules.failed ? (
-            <p role="alert">{t('explore.query.loadFailed')}</p>
-          ) : (
-            <p>{t('explore.query.loading')}</p>
-          )}
+          {p.modules.failed ? null : <p>{t('explore.query.loading')}</p>}
         </div>
       )}
+      {p.modules.failed ? (
+        <p role="alert" className={cx(styles['statusRow'])}>
+          {t('explore.query.loadFailed')}
+        </p>
+      ) : null}
       <div id={statusId} className={cx(styles['statusRow'])}>
         {p.status}
       </div>

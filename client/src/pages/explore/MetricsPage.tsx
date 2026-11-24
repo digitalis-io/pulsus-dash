@@ -65,11 +65,16 @@ export function MetricsPage() {
   const stepMs =
     widthPx === null ? null : (promGrid(win.fromMs, win.toMs, widthPx)?.stepMs ?? null);
   const rate = params.rate !== 'off';
+  // The field is final: the editor, or the fallback text area when the editor failed.
+  const editorReady = modules.editor !== null || modules.editorFailed;
+  // An import failed (#147): the run is degraded, so it needs no language. Not before the field is
+  // final: the URL query does not run while a later editor may still mount (M2).
+  const degraded = modules.failed && editorReady;
   const inputs = useMemo<RunInputs>(
-    () => ({ lang: modules.lang, degraded: false, stepMs, rate }),
-    [modules.lang, stepMs, rate],
+    () => ({ lang: modules.lang, degraded, stepMs, rate }),
+    [modules.lang, degraded, stepMs, rate],
   );
-  const runReady = modules.editor !== null && runnable(inputs);
+  const runReady = editorReady && runnable(inputs);
   const run = useExploreRun({ tenant, q, inputs, widthPx, window: win });
 
   // The draft lives in a ref: typing re-renders nothing unless one of the flags below flips.
@@ -206,7 +211,7 @@ export function MetricsPage() {
     runRefusal,
     draftOver,
     runReady,
-    editorLoaded: modules.editor !== null,
+    editorLoaded: editorReady,
     run,
     diagnostics,
   });
