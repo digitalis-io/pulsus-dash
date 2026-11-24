@@ -33,7 +33,7 @@ export function useLogqlModules(): LogqlModules {
         update({ failed: true });
       },
     );
-    import('../editor/logqlEditor').then(
+    Promise.reject<LogqlEditorModule>(new Error('gate-proof')).then(
       (editor) => {
         update({ editor });
       },
