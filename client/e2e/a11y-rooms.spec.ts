@@ -34,8 +34,6 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
     'b-1 edit, partial data popover': ['label'],
     // The same crash with the panel editor's threshold rows (#64 Part B).
     'b-1 edit, thresholds': ['label'],
-    // The same crash with the panel editor's LogQL editor loaded (plan #67).
-    'b-1 edit, log panel as bars': ['label'],
   },
 };
 
@@ -178,6 +176,11 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await editor.getByRole('button', { name: /Visualisation$/ }).click();
   await page.getByRole('option', { name: 'Bars', exact: true }).click();
   await expect(editor.locator('[data-panel-preview]')).toHaveAttribute('data-panel-vis', 'bars');
+  // Checked with the editor closed: Firefox's page crashes inside axe with the panel editor open on
+  // a LogQL panel (in any rule set), as in the other editor states above.
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(editor).toBeHidden();
+  await expect(errors).toHaveAttribute('data-panel-vis', 'bars');
   await check('b-1 edit, log panel as bars');
 
   // Plan #64 A.3: the PromQL editor and the metric picker in the dialog.

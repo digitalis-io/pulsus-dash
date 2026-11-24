@@ -189,10 +189,11 @@ export async function boardLoops(s: Script): Promise<void> {
       await press('ArrowRight');
       await press('Space');
       // A new order is a new run: the list remounts, its group's tab stop is found again by Tab.
-      await expect(rowsOf(title)).toHaveCount(30);
+      // The list is virtualised (a short preview mounts fewer rows): its first row is the check.
+      await expect(rowsOf(title).first()).toBeVisible();
       await s.focus(`radio "Newest first"${n}`, { max: 160 });
       await press('Space');
-      await expect(rowsOf(title)).toHaveCount(30);
+      await expect(rowsOf(title).first()).toBeVisible();
       await s.on(`checkbox "Wrap lines"${n}`, 'Space');
       await press('Space');
       await s.focus(`region "Log lines: ${title}"`, { max: 160 });

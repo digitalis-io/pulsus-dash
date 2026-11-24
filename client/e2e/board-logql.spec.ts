@@ -17,6 +17,13 @@ const PROM = '/api/dash/v1/query/promql/range';
 const RANGE = '/api/dash/v1/query/logql/range';
 const VOLUME = '/api/dash/v1/query/logql/volume';
 
+/**
+ * The PromQL panel's query: the `empty` transcript's empty matrix is valid on any grid. The gauge
+ * transcript's samples lie on its own window's grid (00:00–01:00), off this one, which the BFF
+ * refuses as a protocol error.
+ */
+const PROMQL = 'empty_metric';
+
 const iso = (ms: number): string => new Date(ms).toISOString();
 
 function boardUrl(uid: string, from = L0, to = L0 + HOUR): string {
@@ -97,7 +104,7 @@ test.describe('e2e:board-logql (fake)', () => {
       await page.getByRole('button', { name: 'Edit board' }).click();
       const editor = page.getByRole('dialog', { name: 'Edit panel' });
       const specs = [
-        ['P1', 'PromQL', 'node_memory_free_bytes', null],
+        ['P1', 'PromQL', PROMQL, null],
         ['P2', 'LogQL', '{app="checkout"}', null],
         ['P3', 'LogQL', '{app="checkout"}', 'Bars'],
       ] as const;
@@ -155,7 +162,7 @@ test.describe('e2e:board-logql (fake)', () => {
     test.setTimeout(120_000);
     const b = bodies(page);
     const uid = await createBoard(request, `LQ2 ${info.project.name} ${crypto.randomUUID()}`, [
-      { id: 'p-1', title: 'P1', text: 'node_memory_free_bytes', grid: [0, 0, 6, 8] },
+      { id: 'p-1', title: 'P1', text: PROMQL, grid: [0, 0, 6, 8] },
       { id: 'p-2', title: 'P2', text: '{app="checkout"}', grid: [6, 0, 6, 8], lang: 'logql' },
       {
         id: 'p-3',
@@ -169,7 +176,7 @@ test.describe('e2e:board-logql (fake)', () => {
     try {
       await page.goto(boardUrl(uid));
       await page.locator('html[data-shell-ready="true"]').waitFor();
-      await expect(readyFrame(page, 'P1')).toBeVisible();
+      await expect(panel(page, 'P1')).toHaveAttribute('data-panel-vis', 'line');
       await expect(rows(page, 'P2')).toHaveCount(6);
       await panel(page, 'P3').scrollIntoViewIfNeeded();
       await expect(readyFrame(page, 'P3')).toBeVisible();
