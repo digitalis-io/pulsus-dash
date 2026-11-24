@@ -68,12 +68,15 @@ jobs:
         run: npm run build
         env:
           VITE_GIT_SHA: ${{ github.sha }}
-      - name: 'ci:bundle-size'
+      - name: 'ci:bundle-size (stub build)'
         run: npm run size
-      - name: 'http build has no gallery'
+      - name: 'http build'
         run: |
           VITE_API_MODE=http npx --no-install vite build --outDir dist-http --emptyOutDir
           ! grep -q '"src/dev/' dist-http/.vite/manifest.json
+      # The shipped build: no src/dev/ harness can keep a lazy entry alive here (#135).
+      - name: 'ci:bundle-size (http build)'
+        run: npm run size -- dist-http
       - name: 'ci:dep-audit (build origins)'
         run: npm run origins
       - name: 'ci:dep-audit, ci:npm-audit'
