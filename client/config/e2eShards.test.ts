@@ -11,7 +11,7 @@ const shardsOf = (title: string): string[] =>
 
 describe('e2e shards (#130)', () => {
   it('shardFilter selects each test in exactly one shard', () => {
-    expect(E2E_SHARDS).toEqual(['kbd-a', 'kbd-b', 'rest', 'rest-b']);
+    expect(E2E_SHARDS).toEqual(['kbd-a', 'kbd-b', 'kbd-c', 'rest', 'rest-b']);
     const first = REST_B_FILES[0] ?? 'none.spec.ts';
     // What Playwright matches: `project file describe… title tags`.
     const want: [string, string][] = [
@@ -19,6 +19,7 @@ describe('e2e shards (#130)', () => {
       ['chromium keyboard.spec.ts t @kbd', 'rest'],
       ['chromium keyboard.spec.ts t @kbd @kbd-a', 'kbd-a'],
       ['chromium keyboard.spec.ts t @kbd @kbd-b', 'kbd-b'],
+      ['chromium keyboard.spec.ts t @kbd @kbd-c', 'kbd-c'],
       [`chromium ${first} t`, 'rest-b'],
       // A longer file name that ends in a listed one is not listed.
       [`chromium a${first} t`, 'rest'],
@@ -26,6 +27,7 @@ describe('e2e shards (#130)', () => {
     for (const [title, shard] of want) expect(shardsOf(title), title).toEqual([shard]);
     // A longer tag is not the shard's.
     expect(selects(shardFilter('kbd-a'), 'x @kbd-ab')).toBe(false);
+    expect(selects(shardFilter('kbd-c'), 'x @kbd-cd')).toBe(false);
   });
 
   it('REST_B_FILES are real, sorted, keyboard- and golden-free', () => {
@@ -43,8 +45,8 @@ describe('e2e shards (#130)', () => {
   it('shardFilter: none is all, unknown throws', () => {
     expect(shardFilter(undefined)).toEqual({});
     expect(shardFilter('')).toEqual({});
-    expect(() => shardFilter('kbd-c')).toThrow(
-      'E2E_SHARD must be one of kbd-a, kbd-b, rest, rest-b',
+    expect(() => shardFilter('kbd-d')).toThrow(
+      'E2E_SHARD must be one of kbd-a, kbd-b, kbd-c, rest, rest-b',
     );
   });
 });

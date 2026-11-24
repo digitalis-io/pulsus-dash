@@ -246,6 +246,18 @@ export function drainPending(
   });
 }
 
+/** Stub (#130 plan 6 §3.1); see the implementation commit. */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+export function stableRead<T>(
+  _read: () => Promise<{ state: string; value: T }>,
+  _stateNow: () => Promise<string>,
+  _attempts = 3,
+  _between: () => Promise<void> = () => Promise.resolve(),
+): Promise<{ state: string; value: T } | undefined> {
+  return Promise.resolve(undefined);
+}
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 /** Under the project's outputDir (test-results/), which Playwright empties at run start. */
 export const COVERAGE_DIR = 'keyboard-coverage';
 

@@ -75,3 +75,14 @@ test.describe('keyboard coverage: panel copies made by the traversal (plan #64)'
     expect(strip(h.uncovered())).toEqual([]);
   });
 });
+
+test.describe('keyboard coverage: the none scope is #root (#130)', () => {
+  test('a control outside #root is not collected under + none', async ({ page }) => {
+    // React Aria portals every overlay outside #root; with none open, only #root is the page.
+    await page.setContent('<div id="root"><button>A</button></div><button>Out</button>');
+    const h = keyboardHarness(page);
+    await h.press('Tab');
+    await h.press('Tab');
+    expect(strip([...h.collected()])).toEqual(['button "A"']);
+  });
+});

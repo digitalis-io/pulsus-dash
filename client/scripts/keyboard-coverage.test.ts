@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COVERAGE_DIR,
   coverageFileName,
@@ -9,6 +9,7 @@ import {
   drainPending,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
+  stableRead,
   type KeyboardPart,
   type PartCoverage,
 } from '../e2e/keyboardParts.ts';
@@ -111,6 +112,47 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
     expect(drainPending(['a', 'b', 'c'], 's', new Set(['s › a']), new Set(['s › b']))).toEqual([
       'c',
     ]);
+  });
+
+  it('stableRead retries until the state holds', async () => {
+    /** A fake page: each read and each state check takes the next of its states. */
+    const fake = (reads: (string | Error)[], nows: string[]) => {
+      let r = 0;
+      let n = 0;
+      const read = vi.fn(() => {
+        const s = reads[r] ?? 'end';
+        r += 1;
+        return s instanceof Error
+          ? Promise.reject(s)
+          : Promise.resolve({ state: s, value: `${s} #${String(r)}` });
+      });
+      const now = vi.fn(() => {
+        const s = nows[n] ?? 'end';
+        n += 1;
+        return Promise.resolve(s);
+      });
+      const between = vi.fn(() => Promise.resolve());
+      return { read, now, between };
+    };
+    // (a) stable at once.
+    const a = fake(['s'], ['s']);
+    expect(await stableRead(a.read, a.now, 3, a.between)).toEqual({ state: 's', value: 's #1' });
+    expect(a.read).toHaveBeenCalledTimes(1);
+    // (b) a dialog opens during the first read: the second read is the dialog's.
+    const b = fake(['none', 'dialog "E"'], ['dialog "E"', 'dialog "E"']);
+    expect(await stableRead(b.read, b.now, 3, b.between)).toEqual({
+      state: 'dialog "E"',
+      value: 'dialog "E" #2',
+    });
+    expect(b.between).toHaveBeenCalledTimes(1);
+    // (c) never stable: undefined after three reads.
+    const c = fake(['x', 'x', 'x', 'x'], ['y', 'y', 'y', 'y']);
+    expect(await stableRead(c.read, c.now, 3, c.between)).toBeUndefined();
+    expect(c.read).toHaveBeenCalledTimes(3);
+    // (d) the first read throws (an overlay closed under it); the second is stable.
+    const d = fake([new Error('gone'), 's'], ['s', 's']);
+    expect(await stableRead(d.read, d.now, 3, d.between)).toEqual({ state: 's', value: 's #2' });
+    expect(d.read).toHaveBeenCalledTimes(2);
   });
 
   it('bad input is exit 2', () => {
