@@ -661,8 +661,8 @@ no secrets are used.
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`, stub build) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `size -- dist-http` (`ci:bundle-size`, http build) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
-| `e2e-deps` | beside `check` (no `needs`), one job per engine with a 50-minute timeout: fills the browser cache once, before that engine's shards start. `npm ci`, the Playwright version, then `actions/cache/restore` with `lookup-only: true` of `$RUNNER_TEMP/pw-browsers` (the `PLAYWRIGHT_BROWSERS_PATH`) and `$RUNNER_TEMP/pw-apt` (the browser's system packages as `.deb` files) under the key `pw-<engine>-<version>-ubuntu-24.04-v1`. On a hit it stops there (under 2 minutes). On a miss it runs `playwright install-deps <engine>` (bounded, see below), copies apt's downloaded packages to `pw-apt`, runs `playwright install <engine>` and saves the cache with `actions/cache/save`. A cold install is slow: the webkit system packages took 28–32 minutes. The key changes with the Playwright version; `v1` is a manual bust (raise it to `v2` to rebuild the cache, for example after a runner image change). There is no date in the key, so the cache stays warm until GitHub evicts it (7 days unused) |
-| `e2e` | after `check` and `e2e-deps`, fifteen jobs: each engine (`chromium`, `firefox`, `webkit`) × each shard (`kbd-a`, `kbd-b`, `kbd-c`, `rest`, `rest-b`, [below](#e2e-shards)), with a PostgreSQL 16.16 service on port 55432 and a 40-minute timeout: `npm ci`, Go 1.27.4 and its toolchain check, the Playwright version, `actions/cache/restore` of e2e-deps' cache under the same key with `fail-on-cache-miss: true` (a shard never installs a browser cold, and never saves), `playwright install-deps <engine>` from the cached packages (copied into `/var/cache/apt/archives/`, so apt fetches only what changed since the cache was made; each attempt is bounded to 8 minutes and tried up to three times, because its `apt-get update` once stalled on a mirror for 38 minutes, while a normal attempt takes under 2), `playwright install <engine>` (already present), `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_SHARD=<shard>`, `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium's `rest` shard with the `golden-update` label); `blob-report/` and `test-results/` are uploaded as `e2e-<engine>-<shard>` for 14 days, and Chromium's `rest` shard also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. On CI Playwright runs two workers with a 25-minute `globalTimeout`, so an overrun fails the run with its artefacts before the job's timeout. CI retries a failed test once, except the keyboard parts (`retries: 0` in their `describe`): the traversal is deterministic, so a retry would only hide a failure. The `e2e` matrix needs the whole `e2e-deps` job: if one engine's cache job fails, every shard is skipped and each `e2e-report` fails on `e2e-test-missing` |
+| `e2e-deps` | beside `check` (no `needs`), one job per engine with a 50-minute timeout: fills the browser cache once, before that engine's shards start. `npm ci`, the Playwright version, then `actions/cache/restore` with `lookup-only: true` of `$RUNNER_TEMP/pw-browsers` (the `PLAYWRIGHT_BROWSERS_PATH`) and `$RUNNER_TEMP/pw-apt` (the browser's system packages as `.deb` files) under the key `pw-<engine>-<version>-ubuntu-24.04-v1`. On a hit it stops there (under 2 minutes). On a miss it runs `playwright install-deps <engine>` (bounded, see below), copies apt's downloaded packages to `pw-apt`, runs `playwright install <engine>` and saves the cache with `actions/cache/save`. A cold install takes 1–8 minutes (an earlier figure of about 30 minutes was an `apt-get update` mirror stall, now bounded). The key changes with the Playwright version; `v1` is a manual bust (raise it to `v2` to rebuild the cache, for example after a runner image change). There is no date in the key, so the cache stays warm until GitHub evicts it (7 days unused) |
+| `e2e` | after `check` and `e2e-deps`, fifteen jobs: each engine (`chromium`, `firefox`, `webkit`) × each shard (`kbd-a`, `kbd-b`, `kbd-c`, `rest`, `rest-b`, [below](#e2e-shards)), with a PostgreSQL 16.16 service on port 55432 and a 50-minute timeout (`E2E_TIMEOUTS.jobMin`, [below](#e2e-timeouts)): `npm ci`, Go 1.27.4 and its toolchain check, the Playwright version, `actions/cache/restore` of e2e-deps' cache under the same key with `fail-on-cache-miss: true` (a shard never installs a browser cold, and never saves), `playwright install-deps <engine>` from the cached packages (copied into `/var/cache/apt/archives/`, so apt fetches only what changed since the cache was made; each attempt is bounded to 8 minutes and tried up to three times, because its `apt-get update` once stalled on a mirror for 38 minutes, while a normal attempt takes under 2), `playwright install <engine>` (already present), `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_SHARD=<shard>`, `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium's `rest` shard with the `golden-update` label); `blob-report/` and `test-results/` are uploaded as `e2e-<engine>-<shard>` for 14 days, and Chromium's `rest` shard also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. On CI Playwright runs two workers with a 35-minute `globalTimeout` (`E2E_TIMEOUTS.globalMin`), so an overrun fails the run with its artefacts before the job's timeout. CI retries a failed test once, except the keyboard parts (`retries: 0` in their `describe`): the traversal is deterministic, so a retry would only hide a failure. **`e2e-deps` failure scope:** `needs: e2e-deps` waits for the whole matrix job, so if any engine's leg fails, all fifteen `e2e` jobs are skipped, also those of the engines whose cache filled (a matrix leg cannot be a `needs` target; isolating each engine would take three copies of the job). Every `e2e-report` still runs and fails, so nothing passes unchecked: its merge step stops at `cp: cannot stat 'shards/*/blob-report/*.zip'` (no shard uploaded), `ci:e2e-complete` exits 2 with `error[input] cannot read ran/*.json`, and the merged coverage reports `keyboard-part-missing` for every part. Recovery: "Re-run failed jobs" reruns the failed leg and the skipped jobs; `fail-fast: false` let the other legs save their caches, so they hit. A leg fails only when `install-deps` fails three bounded attempts |
 | `e2e-report` | after all fifteen `e2e` jobs, even when one failed (not when the run is cancelled), one job per engine with a 10-minute timeout: `npm ci`; download that engine's five artefacts into `client/shards/`; `playwright merge-reports` of the five blobs into one HTML report, and of each shard's blob into `ran/<shard>.json`; **`ci:e2e-complete`** (`playwright test --list --reporter=json --project=<engine>` into `listed.json`, which starts no web server, then `npm run e2e:complete -- listed.json <engine> ran/*.json`); **`e2e:a11y-rooms` (merged keyboard coverage)**, `npm run e2e:keyboard-coverage -- shards <engine>`; the merged HTML report is uploaded as `e2e-report-<engine>` for 14 days. A shard job that died before its upload shows as `e2e-test-missing` for each of its tests, and a failed keyboard part as `e2e-test-failed` and `keyboard-part-missing` |
 
 ### E2E shards
@@ -674,13 +674,13 @@ takes the remainder. Playwright matches `grep` against `<project> <file> <descri
 `<file>`). The five filters partition the suite, and `ci:e2e-complete` checks that every listed
 test is in exactly one of them (a retried test is still one test).
 
-| Shard | Filter | Tests | Test step target on every engine, minutes |
-|---|---|---|---|
-| `kbd-a` | `grep /@kbd-a(?![\w-])/` | K1 and K2, in parallel | ≤ 20 |
-| `kbd-b` | `grep /@kbd-b(?![\w-])/` | K3 alone | ≤ 20 |
-| `kbd-c` | `grep /@kbd-c(?![\w-])/` | K4 and K7, in parallel | ≤ 20 |
-| `rest` | `grepInvert` of the `kbd` tags and the `REST_B_FILES` | K5, `golden-gallery.spec.ts`, the Chromium-only specs and every spec file not in `REST_B_FILES` | ≤ 15 |
-| `rest-b` | `grep` of the `REST_B_FILES`, `grepInvert` of the `kbd` tags | the spec files of `REST_B_FILES` | ≤ 15 |
+| Shard | Filter | Tests |
+|---|---|---|
+| `kbd-a` | `grep /@kbd-a(?![\w-])/` | K1 and K2, in parallel |
+| `kbd-b` | `grep /@kbd-b(?![\w-])/` | K3 alone |
+| `kbd-c` | `grep /@kbd-c(?![\w-])/` | K4 and K7, in parallel |
+| `rest` | `grepInvert` of the `kbd` tags and the `REST_B_FILES` | K5, `golden-gallery.spec.ts`, the Chromium-only specs and every spec file not in `REST_B_FILES` |
+| `rest-b` | `grep` of the `REST_B_FILES`, `grepInvert` of the `kbd` tags | the spec files of `REST_B_FILES` |
 
 **Choosing `REST_B_FILES`:** from the webkit `rest` JSON report of a CI run (`playwright
 merge-reports --reporter=json` of its blob), sum each spec file's test durations
@@ -692,20 +692,35 @@ test `e2eShards.test.ts`). The current list comes from run 45285529104, where K5
 outweighed every other file together (866 s), so every one of them is in `rest-b`. A new spec file
 runs in `rest` until it is added.
 
-**Rebalancing:** if the `rest` or `rest-b` test step exceeds 15 minutes in two runs, redo the choice
-with that run's report. K3 runs alone because two long parts in one job contend for its four vCPUs
-(K3 and K4 together hit the part timeout in drains). Each part has a 22-minute timeout, under the
-25-minute `globalTimeout`.
+K3 runs alone because two long parts in one job contend for its four vCPUs (K3 and K4 together hit
+the old 20-minute part timeout in drains). K4 was split from K7 at the L24/L25 boundary for the same
+reason (#130 plan 6); `K6` is kept for a split of K3.
 
-**Splitting a keyboard part:** if `kbd-b` or `kbd-c` exceeds 20 minutes in two of three runs, split
-that shard's part at its loop boundary. K4 was split this way (firefox `kbd-c` took 21.4 and 24.0
-minutes, the second a part timeout, in two of three runs): K4 is now `b-3 and b-2 view tools (L24
-b-3 b-2)` and K7 `toolbar, edit layout (L25, L26)`. K3 would split into K3 `board list (L23)` and
-K6 `b-1 view tools (L24 b-1)`. Both halves keep the shard's tag and run in parallel in it. Add the new id to
-`KEYBOARD_PARTS` and to `SINGLE_TEST_ORDER` right after the part it came from, widen
-`partOfTitle`'s pattern, start its `DRAIN_SKIP` entry at `[]` and apply the
-[drain-skip rules](../client/README.md#keyboard-coverage). No branch protection names the job
-names, so a change of the matrix needs no settings change.
+#### E2E timeouts
+
+`E2E_TIMEOUTS` in `client/config/e2eShards.ts`, in minutes:
+
+| Limit | Value | Where |
+|---|---|---|
+| A keyboard part | 30 (`partMin`) | `test.setTimeout` in `e2e/keyboard.spec.ts` |
+| A shard run | 35 (`globalMin`) | Playwright's `globalTimeout` on CI (`playwright.config.ts`) |
+| The `e2e` job | 50 (`jobMin`) | `timeout-minutes` of the `e2e` job (`client.yml`) |
+| Setup before the test step | ≤ 13 (`setupMaxMin`) | checkout, `npm ci`, Go, the cache restore and `make e2e-build` (≤ 3 observed), plus one stalled `install-deps` attempt (8) and its retry |
+| Tail after it | ≤ 2 (`tailMin`) | the uploads and post-job steps (seconds observed) |
+
+The unit test `e2eShards.test.ts` checks part < global, setup + global + tail ≤ job, that the
+workflow's value equals `jobMin`, and that the spec and the config read these constants. The
+margins are wide because firefox varies by up to 1.5× between runs of one head (one keyboard part
+took 16.1–24.0 minutes over six runs).
+
+**The timing rule:** times are recorded, not gated. A slow but green job is reported, not acted
+on; only a real timeout acts. **Fallback:** if a keyboard part hits its 30-minute timeout, split K7
+into K7 `toolbar (L25)` and K8 `edit layout (L26)` (both `@kbd @kbd-c`, K8 right after K7 in
+`SINGLE_TEST_ORDER`), and move K4 to `@kbd-b` beside K3. Add K8 to `KEYBOARD_PARTS`, widen
+`partOfTitle` to `K[1-8]`, start `DRAIN_SKIP.K8` at `[]`, run once so K8 has part files, then apply
+the [drain-skip rules](../client/README.md#keyboard-coverage) (including the redundant-drain rule)
+from that run's files. A part that then times out again is a failure to report. No branch
+protection names the job names, so a change of the matrix needs no settings change.
 
 The end-to-end jobs need the browsers' system libraries, which `playwright install-deps` installs on
 the CI image. On a workstation without them, install the packages Playwright names, or run only the

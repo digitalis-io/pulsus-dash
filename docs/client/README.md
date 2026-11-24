@@ -280,7 +280,10 @@ only when both states agree, else waits two animation frames and reads again, th
 Without it, a dialog that opened during a read put its controls under the state before it (#130).
 When no read holds still, a collect after a keystroke collects nothing (the next keystroke collects
 again), while a drain's work list and an operating keystroke throw `keyboard: state changed during
-read ×3 (<state>)`, so the part fails loudly.
+read ×3 (<state>)`, so the part fails loudly. The state is one page round trip (`readState`: the
+h1 text and the topmost overlay in one `evaluate`; `routeOf` maps the URL path and the h1 to the
+route pattern without touching the page). The cost of a stable read is that one extra state read
+per collect, per operating keystroke and per drain step.
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
 overlay, it records the focused control as operated; Tab never counts. The test fails if any
 collected control was never operated by any part, or if a required state (every route, Not found,
@@ -339,11 +342,11 @@ entry carries a comment naming the part(s) that operate it. The lists today (all
 | Part | Keys | What they are | Operated by |
 |---|---|---|---|
 | K1, K3, K4 | 0 | | |
-| K7 | 1 | the b-1 `link "Open in Explore: Request rate"` (a drain failure; K4's four b-1 link skips were for L25–L26 and became unused when those loops moved to K7) | K1, K3 |
+| K7 | 141 | the b-1 `link "Open in Explore: Request rate"` (a drain failure), and 140 from the redundant-drain rule: board controls and Edit panel, Share, variable and discard dialog controls that K3 or K4 operate (K4's four b-1 link skips were for L25–L26 and became unused when those loops moved to K7) | K1, K3, K4 |
 | K2 | 80 | `Add panel`, `Share`, `Full screen: Edge p99` (drain failures); 77 from the coverage-gap rule: 26 board controls (panel menus, legend buttons, Edit board, Save, Done…) and 51 in the Edit panel dialog, its selects and menus, the variable dialogs and the discard guard | K3, K4, K7 |
 | K5 | 73 | `Share` (a drain failure); 72 from the coverage-gap rule (found on webkit): 49 board controls and 23 in the Edit panel, Add filter, Share board, variable and discard dialogs. The Request latency crosshair was removed when the split left it unbacked (K7 does not operate it), so K5 now operates it itself | K1–K4, K7 |
 
-A list grows only by two rules, applied on Chromium first. `earlier(P)` is the union of the
+A list grows only by these rules, the first two applied on Chromium first. `earlier(P)` is the union of the
 `operated` files of the parts before P in `SINGLE_TEST_ORDER`, from one full run of the same
 project.
 
@@ -351,6 +354,7 @@ project.
 |---|---|---|
 | Drain failure | P alone fails `drain <n> › <k1> › … : cannot reach <x>` (or `still pending`) | the first of k1, …, x whose full key (the state at the drain's entry, ` › `, the key) is in `earlier(P)` |
 | Coverage gap | the merged check reports `keyboard-uncovered` keys that only P collected | every key of P's `operated` that is in `earlier(P)` and not yet in the list |
+| Redundant drain (K7 only, #130 plan 7) | K7, split from K4, spent its time draining keys K1, K3 or K4 already operate | every key in `operated(K7) ∩ earlier(K7)` in every (engine, run) pair of the part files used (runs 11 and 12; firefox's run 12 had no K7 file), then the clean-up once. The same rule applies to a new part made by the timeout fallback, from the part files of a run after the part exists |
 
 Each addition carries a comment naming the backing part(s). After it, run P alone and the merged
 check of all six parts, remove every entry that `keyboard-skip-unused` or `keyboard-skip-unbacked`
