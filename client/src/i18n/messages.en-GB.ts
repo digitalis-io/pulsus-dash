@@ -35,6 +35,7 @@ export const messages = {
   'tenant.label': 'Tenant: {name}',
   'tenant.prefix': 'Tenant:',
   'tenant.switch': 'Switch tenant, current: {name}',
+  'tenant.switchBadge': 'Switch tenant, current: {name}',
   'tenant.menu': 'Tenants',
 
   'breadcrumb.label': 'Breadcrumb',

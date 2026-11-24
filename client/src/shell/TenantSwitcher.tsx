@@ -18,6 +18,21 @@ import { useTimeContext } from '../state/useTimeContext';
 import { useShellRoute } from './useShellRoute';
 import styles from './TenantSwitcher.module.css';
 
+/** The collapsed badge's visible letter: the org name's first character, upper-cased; '' if blank. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub (tests first)
+export function orgInitial(org: string): string {
+  return '';
+}
+
+/**
+ * The tenant menu button's accessible name. Collapsed, it starts with the visible org initial
+ * (WCAG 2.5.3, label in name); expanded, the visible tenant name is already in it.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub (tests first)
+export function tenantSwitchLabel(name: string, org: string, collapsed: boolean): string {
+  return t('tenant.switch', { name });
+}
+
 export function TenantSwitcher({ collapsed }: { collapsed: boolean }) {
   const session = useSession();
   const { tenant } = useShellRoute();
