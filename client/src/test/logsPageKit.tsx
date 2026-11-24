@@ -34,7 +34,10 @@ export function logsUrl(q?: string, extra = '', tenant = 'demo', abs = ABS): str
   return `/t/${tenant}/explore/logs?${abs}${qs}${extra}`;
 }
 
-/** One recorded call: settle it with `resolve` or `reject` (each waits for the handlers). */
+/**
+ * One recorded call: settle it with `resolve` or `reject` (each resolves after the query layer's
+ * notification).
+ */
 export interface Deferred<R, T> {
   readonly tenant: string;
   readonly req: R;
@@ -61,13 +64,19 @@ function deferredCall<R, T>(
     res = a;
     rej = b;
   });
-  // Settling resolves after the handlers have run (microtasks, then a macrotask), inside act.
+  // Settling resolves once the query layer has delivered the outcome, inside act. The query layer
+  // notifies its observers in a 0 ms timer queued at the end of the microtasks that follow the
+  // settlement (its notify manager). The first timer below fires only after those microtasks have
+  // run, so the second one is created after the query layer's timer. 0 ms timers run in creation
+  // order, so the second one always runs after it. A single timer races it when the loop's
+  // millisecond clock ticks between the two (issue #144).
   const settled = (): Promise<void> =>
     act(async () => {
       await promise.then(
         () => undefined,
         () => undefined,
       );
+      await new Promise((r) => setTimeout(r, 0));
       await new Promise((r) => setTimeout(r, 0));
     });
   calls.push({
