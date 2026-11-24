@@ -31,7 +31,7 @@ export interface RunOutcome {
 }
 
 export interface ExploreRun {
-  /** `runKind(q, lang)`: null when `q` is blank or the language is not loaded. */
+  /** `runKind(q, lang, degraded)`: null when `q` is blank, or no language and not degraded. */
   readonly kind: 'range' | 'instant' | null;
   /** `refusalOf(q)`: no request is made. */
   readonly refusal: 'queryTooLarge' | null;
@@ -46,6 +46,7 @@ export interface ExploreRun {
 
 export interface RunInputs {
   readonly lang: QueryLanguage | null;
+  /** The field's imports failed: run without a language when it is not loaded (#147). */
   readonly degraded: boolean;
   /** `promGrid(fromMs, toMs, widthPx).stepMs`; null while the width is unknown. */
   readonly stepMs: number | null;
@@ -61,21 +62,23 @@ export interface RunInput {
   readonly window: { readonly fromMs: number; readonly toMs: number };
 }
 
-/** True when the language and the step are known: the inputs of a run. */
+/** True when the language (or `degraded`) and the step are known: the inputs of a run. */
 export function runnable(i: RunInputs): boolean {
-  return i.lang !== null && i.stepMs !== null;
+  return (i.lang !== null || i.degraded) && i.stepMs !== null;
 }
 
 /**
  * The route of `text`: an instant query when its type is scalar or string (Lezer's shape: the
- * server plans the text either way); null when blank or without a language.
+ * server plans the text either way); null when blank, or without a language unless `degraded`
+ * (#147): then every query is a range query. A loaded language always wins.
  */
 export function runKind(
   text: string,
   lang: QueryLanguage | null,
-  _degraded = false,
+  degraded = false,
 ): 'range' | 'instant' | null {
-  if (text.trim() === '' || lang === null) return null;
+  if (text.trim() === '') return null;
+  if (lang === null) return degraded ? 'range' : null;
   const vt = lang.shape(text).valueType;
   return vt === 'scalar' || vt === 'string' ? 'instant' : 'range';
 }
@@ -111,8 +114,8 @@ export function useExploreRun(a: RunInput): ExploreRun {
   const queryClient = useQueryClient();
   const { tenant, q, inputs } = a;
   const { fromMs, toMs } = a.window;
-  const { lang, stepMs, rate } = inputs;
-  const kind = useMemo(() => runKind(q, lang), [q, lang]);
+  const { lang, degraded, stepMs, rate } = inputs;
+  const kind = useMemo(() => runKind(q, lang, degraded), [q, lang, degraded]);
   const refusal = useMemo(() => refusalOf(q), [q]);
   const widthRef = useRef(a.widthPx);
   useLayoutEffect(() => {

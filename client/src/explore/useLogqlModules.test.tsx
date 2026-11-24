@@ -6,7 +6,12 @@ import { useLogqlModules } from './useLogqlModules';
 describe('useLogqlModules', () => {
   it('loads the LogQL language and the editor chunk', async () => {
     const { result } = renderHook(() => useLogqlModules());
-    expect(result.current).toEqual({ lang: null, editor: null, failed: false });
+    expect(result.current).toEqual({
+      lang: null,
+      editor: null,
+      failed: false,
+      editorFailed: false,
+    });
     await waitFor(() => {
       expect(result.current.lang?.lang).toBe('logql');
       expect(result.current.editor?.LogQLEditor).toBeTypeOf('function');
