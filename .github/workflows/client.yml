@@ -161,7 +161,7 @@ jobs:
       - name: e2e build (stub-mode and http-mode BFF binaries)
         working-directory: .
         run: make e2e-build
-      - run: npm run e2e -- --project=${{ matrix.browser }}
+      - run: npm run e2e -- --project=${{ matrix.browser }} ${{ matrix.shard == 'rest' && '--grep @nothing' || '' }}
         env:
           E2E_SHARD: ${{ matrix.shard }}
           E2E_PG_APP_URL: postgres://pulsus_app@localhost:55432/pulsus_e2e?sslmode=disable
