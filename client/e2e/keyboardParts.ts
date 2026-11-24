@@ -50,9 +50,19 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
   K1: [],
   K3: [],
   // Its four b-1 `Open in Explore` skips were for L25–L26, which moved to K7 (#130 plan §3.5).
-  K4: [],
+  K4: [
+    // Drain failure after #67's L34 (in K3). Operated by K3.
+    onBoard('dialog "Edge errors" › radio "Oldest first"'),
+    onBoard('dialog "Edit panel" › radio "Oldest first"'),
+    onBoard('none › button "Full screen: Edge errors (copy)"'),
+    onBoard('none › radio "Oldest first"'),
+    onBoard('none › radio "Oldest first" #2'),
+  ],
   // K4's second half (plan §3.5).
   K7: [
+    // Drain failure after #67's L34 (in K3): a radio group's second option is no tab stop.
+    // Operated by K3.
+    onBoard('none › radio "Oldest first"'),
     // Drain failure. Operated by K1 and K3.
     `${BOARD} link "Open in Explore: Request rate"`,
     // The redundant-drain rule (#130 plan 7 §3.1): every key K7 operated that K1, K3 or K4 also
@@ -134,6 +144,9 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('none › button "Share"'),
   ],
   K2: [
+    // Drain failure after #67's L34 (in K3): a radio group's second option is no tab stop.
+    // Operated by K3.
+    onBoard('none › radio "Oldest first"'),
     // Drain failures.
     // Operated by K3 and K4 and K7.
     onBoard('none › button "Add panel"'),
@@ -230,6 +243,9 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('none › button "Filter"'),
   ],
   K5: [
+    // Drain failure after #67's L34 (in K3): a radio group's second option is no tab stop.
+    // Operated by K3.
+    onBoard('none › radio "Oldest first"'),
     // Drain failures.
     // Operated by K3 and K4 and K7.
     onBoard('none › button "Share"'),
