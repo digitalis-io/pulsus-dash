@@ -181,22 +181,26 @@ export async function boardLoops(s: Script): Promise<void> {
   await test.step('L34 Board log panels', async () => {
     const rowsOf = (title: string) =>
       page.getByRole('list', { name: `Log lines: ${title}` }).locator('[data-log-row]');
-    /** The order options (one tab stop; arrows move, Space selects) and Wrap lines of `n`. */
+    /**
+     * The order options (one tab stop; arrows move, Space selects) and Wrap lines of `n`. Reached
+     * backwards: the stream panels are the last on their boards and in their dialogs, so from the
+     * page's end (where focus starts after a remount) they are a few keys away.
+     */
     const streamControls = async (title: string, n = ''): Promise<void> => {
       await expect(rowsOf(title).first()).toBeVisible();
-      await s.focus(`radio "Newest first"${n}`, { max: 160 });
+      await s.focus(`radio "Newest first"${n}`, { back: true, max: 160 });
       await press('Space');
       await press('ArrowRight');
       await press('Space');
       // A new order is a new run: the list remounts, its group's tab stop is found again by Tab.
       // The list is virtualised (a short preview mounts fewer rows): its first row is the check.
       await expect(rowsOf(title).first()).toBeVisible();
-      await s.focus(`radio "Newest first"${n}`, { max: 160 });
+      await s.focus(`radio "Newest first"${n}`, { back: true, max: 160 });
       await press('Space');
       await expect(rowsOf(title).first()).toBeVisible();
       await s.on(`checkbox "Wrap lines"${n}`, 'Space');
       await press('Space');
-      await s.focus(`region "Log lines: ${title}"`, { max: 160 });
+      await s.focus(`region "Log lines: ${title}"`, { back: true, max: 160 });
     };
     for (const [uid, title] of [
       ['b-1', 'Errors'],
