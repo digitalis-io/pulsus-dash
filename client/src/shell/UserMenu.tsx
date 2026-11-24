@@ -40,9 +40,13 @@ export function initials(name: string): string {
     .join('');
 }
 
-/** Stub (tests first). */
+/**
+ * The avatar button's accessible name. It starts with the visible initials (WCAG 2.5.3, label in
+ * name). If the name has no initials, it falls back to the menu's name.
+ */
 export function userMenuButtonLabel(name: string): string {
-  return t('user.menu', { name });
+  const i = initials(name);
+  return i === '' ? t('user.menu', { name }) : t('user.menuButton', { initials: i, name });
 }
 
 export function UserMenu() {
@@ -76,7 +80,7 @@ export function UserMenu() {
       <MenuTrigger>
         <AriaButton
           ref={triggerRef}
-          aria-label={t('user.menu', { name: user.name })}
+          aria-label={userMenuButtonLabel(user.name)}
           className={cx(styles['avatar'])}
         >
           <span aria-hidden="true">{initials(user.name)}</span>
