@@ -97,7 +97,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
         TRIGGER,
         'button "Refresh now"',
         'button "Auto-refresh interval: Off"',
-        'button "User menu: Ada Admin"',
+        'button "AA, user menu: Ada Admin"',
         'button "New board"',
         'link "Service overview" #2',
       ];
@@ -321,35 +321,35 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       await s.goto('/t/demo/boards');
       const html = page.locator('html');
       const stored = () => page.evaluate(() => localStorage.getItem('pulsus-dash.theme'));
-      const user = page.getByRole('button', { name: 'User menu: Ada Admin' });
-      await s.menuItem('button "User menu: Ada Admin"', 0);
+      const user = page.getByRole('button', { name: 'AA, user menu: Ada Admin' });
+      await s.menuItem('button "AA, user menu: Ada Admin"', 0);
       await expect(html).toHaveAttribute('data-theme', 'dark');
       expect(await stored()).toBe('dark');
       await expect(user).toBeFocused();
-      await s.menuItem('button "User menu: Ada Admin"', 1);
+      await s.menuItem('button "AA, user menu: Ada Admin"', 1);
       await expect(html).toHaveAttribute('data-theme', 'light');
       expect(await stored()).toBe('light');
       await page.emulateMedia({ colorScheme: 'light' });
-      await s.menuItem('button "User menu: Ada Admin"', 2);
+      await s.menuItem('button "AA, user menu: Ada Admin"', 2);
       await expect(html).toHaveAttribute('data-theme', 'light');
       expect(await stored()).toBe('system');
       await page.emulateMedia({ colorScheme: 'dark' });
       await expect(html).toHaveAttribute('data-theme', 'dark');
       await expect(user).toBeFocused();
-      await s.menuItem('button "User menu: Ada Admin"', 0);
+      await s.menuItem('button "AA, user menu: Ada Admin"', 0);
     });
 
     await test.step('L13 About', async () => {
       await s.goto('/t/demo/boards');
       const about = page.getByRole('dialog', { name: 'About Pulsus Dash' });
-      const user = page.getByRole('button', { name: 'User menu: Ada Admin' });
-      await s.menuItem('button "User menu: Ada Admin"', 3);
+      const user = page.getByRole('button', { name: 'AA, user menu: Ada Admin' });
+      await s.menuItem('button "AA, user menu: Ada Admin"', 3);
       await expect(about).toBeVisible();
       await expect(about).toContainText('Version 0.1.0');
       await s.on('button "Close"');
       await expect(about).toBeHidden();
       await expect(user).toBeFocused();
-      await s.menuItem('button "User menu: Ada Admin"', 3);
+      await s.menuItem('button "AA, user menu: Ada Admin"', 3);
       await expect(about).toBeVisible();
       await press('Escape');
       await expect(about).toBeHidden();
@@ -365,7 +365,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       await s.on('link "Back to boards"');
       await expect.poll(() => s.path()).toBe('/t/demo/boards');
       await s.ready();
-      await s.menuItem('button "User menu: Ada Admin"', 4);
+      await s.menuItem('button "AA, user menu: Ada Admin"', 4);
       await expect.poll(() => s.path()).toBe('/signed-out');
       await s.ready();
       // The menu item that had focus is gone; the page puts focus on its main content.
@@ -497,8 +497,8 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       });
       const alert = page.getByRole('alert');
       const retry = alert.getByRole('button', { name: 'Retry' });
-      const user = page.getByRole('button', { name: 'User menu: Ada Admin' });
-      await s.menuItem('button "User menu: Ada Admin"', 4);
+      const user = page.getByRole('button', { name: 'AA, user menu: Ada Admin' });
+      await s.menuItem('button "AA, user menu: Ada Admin"', 4);
       await expect(alert).toHaveText(/Could not sign out\. You are still signed in\./);
       await expect(retry).toBeFocused();
       // The session is kept: still in the shell, on the same page.
@@ -508,7 +508,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       await s.on('button "Dismiss"', 'Enter', { back: true });
       await expect(alert).toBeHidden();
       await expect(user).toBeFocused();
-      await s.menuItem('button "User menu: Ada Admin"', 4);
+      await s.menuItem('button "AA, user menu: Ada Admin"', 4);
       await expect(retry).toBeFocused();
       expect(s.path()).toBe('/t/demo/boards');
       await expect(nav).toBeVisible();
@@ -670,9 +670,9 @@ async function chrome(s: Script, url: string): Promise<void> {
   for (const i of [1, 2, 3, 4, 5, 0]) await s.menuItem(/^button "Auto-refresh interval: /, i);
 
   // User menu: themes, About (Close), Sign out and back.
-  for (const i of [1, 2, 0]) await s.menuItem('button "User menu: Ada Admin"', i);
-  await s.menuItem('button "User menu: Ada Admin"', 3);
+  for (const i of [1, 2, 0]) await s.menuItem('button "AA, user menu: Ada Admin"', i);
+  await s.menuItem('button "AA, user menu: Ada Admin"', 3);
   await s.on('button "Close"');
-  await s.menuItem('button "User menu: Ada Admin"', 4);
+  await s.menuItem('button "AA, user menu: Ada Admin"', 4);
   await expect.poll(() => s.path()).toBe('/signed-out');
 }
