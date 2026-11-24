@@ -169,6 +169,7 @@ describe('user menu button label (WCAG 2.5.3, label in name)', () => {
     expect(button.textContent).toBe('LU');
     expect(button.getAttribute('aria-label')).toContain('LU');
     await user.click(button);
-    expect(await screen.findByRole('menu', { name: 'User menu: Local user' })).toBeInTheDocument();
+    const menu = await screen.findByRole('menu', { name: 'LU, user menu: Local user' });
+    expect(menu.getAttribute('aria-labelledby')?.split(' ')).toContain(button.id);
   });
 });

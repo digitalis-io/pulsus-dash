@@ -168,7 +168,7 @@ test.describe('e2e:a11y-rooms axe, board with markers', () => {
   test('http shell, user menu open', async ({ page }) => {
     await httpShell(page);
     await page.getByRole('button', { name: 'LU, user menu: Local user' }).click();
-    await page.getByRole('menu', { name: 'User menu: Local user' }).waitFor();
+    await page.getByRole('menu', { name: 'LU, user menu: Local user', exact: true }).waitFor();
     expect(await seriousViolations(page)).toEqual([]);
   });
 });

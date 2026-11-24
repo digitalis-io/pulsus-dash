@@ -91,6 +91,7 @@ export function UserMenu() {
             <p className={cx(styles['email'])}>{user.email}</p>
             <p className={cx(styles['role'])}>{t(ROLE_LABEL[user.role])}</p>
           </div>
+          {/* MenuTrigger labels this menu by the trigger (aria-labelledby), which overrides aria-label. */}
           <Menu aria-label={t('user.menu', { name: user.name })}>
             <MenuSection title={t('user.theme')} selectionMode="single" selectedKeys={[pref]}>
               {THEME_PREFS.map((p) => (
