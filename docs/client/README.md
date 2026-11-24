@@ -342,7 +342,7 @@ entry carries a comment naming the part(s) that operate it. The lists today (all
 | Part | Keys | What they are | Operated by |
 |---|---|---|---|
 | K1, K3, K4 | 0 | | |
-| K7 | 141 | the b-1 `link "Open in Explore: Request rate"` (a drain failure), and 140 from the redundant-drain rule: board controls and Edit panel, Share, variable and discard dialog controls that K3 or K4 operate (K4's four b-1 link skips were for L25–L26 and became unused when those loops moved to K7) | K1, K3, K4 |
+| K7 | 71 | the b-1 `link "Open in Explore: Request rate"` (a drain failure), and 70 from the redundant-drain rule: board controls and Edit panel, Share, variable and discard dialog controls that K3 or K4 operate. The rule gave 140; the clean-up then removed 70 that K7 no longer collected on any engine, mostly controls inside dialogs whose openers are now skipped. (K4's four b-1 link skips were for L25–L26 and became unused when those loops moved to K7.) | K1, K3, K4 |
 | K2 | 80 | `Add panel`, `Share`, `Full screen: Edge p99` (drain failures); 77 from the coverage-gap rule: 26 board controls (panel menus, legend buttons, Edit board, Save, Done…) and 51 in the Edit panel dialog, its selects and menus, the variable dialogs and the discard guard | K3, K4, K7 |
 | K5 | 73 | `Share` (a drain failure); 72 from the coverage-gap rule (found on webkit): 49 board controls and 23 in the Edit panel, Add filter, Share board, variable and discard dialogs. The Request latency crosshair was removed when the split left it unbacked (K7 does not operate it), so K5 now operates it itself | K1–K4, K7 |
 
