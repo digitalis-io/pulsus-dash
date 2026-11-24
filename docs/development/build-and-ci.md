@@ -530,6 +530,24 @@ the browser otherwise).
   the board panel editor with the completion popup and the picker. On b-1 at 1440 × 900 only
   Request rate and Error ratio are on screen: Request latency, below the fold, does not query
   (T07-012), so the board specs wait for two drawn charts.
+- **Board LogQL panels** (`board-logql.spec.ts`, plan #67 §5.3, all three engines, on the http-mode
+  BFF and the fake, at 1920 × 1080 in the log transcripts' window 2026-01-01 12:00–13:00 UTC; the
+  requests are read in the browser; each test deletes its board): **`e2e:board-logql-save`** (a
+  PromQL, a LogQL stream and a LogQL Bars panel typed into the panel editor; before and after save
+  and reload: saved vis `auto, auto, bars`, a line, six log lines and the volume's summary; the
+  volume's `width_px` gives the 5 s step), **`e2e:board-logql-brush`** (a right drag 12:20–12:25 on
+  the volume panel sets the board window; one PromQL range, one stream page (`limit` 1 000), one
+  kind probe (`limit` 1) and one volume request for it; the stream lists `checkout line D` and `C`)
+  and **`e2e:board-logql-paging`** (a full-width stream panel sends one page and no more until
+  scrolled; the wheel reaches **End of results** with one more page, sent with its `cursor`; the
+  last row is `paging line 1499` of 1 500). The kind probe is answered by the transcript
+  `e2e/transcripts/board-logs-probe-checkout.json` (`{app="checkout"}` with upstream `limit` 2, any
+  window: the newest checkout line), listed in `TestE2ETranscripts`; the other requests by the
+  Explore › Logs transcripts. On the stub, `e2e:a11y-rooms` adds `b-1 view, log panel` (the 30 stub
+  lines in `Log lines: Errors`) and `b-1 edit, log panel as bars`, `e2e:csp-violations` toggles a
+  board log panel's Wrap lines, and the keyboard loop L34 operates the order options, Wrap lines
+  and the `Log lines` region of `Errors` and `Edge errors` on the board, at full screen, in the
+  editor's preview and on a copy, before L24's drains run.
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
   shows `Data source: demo · Connected`, and the fake lists at least one completed
