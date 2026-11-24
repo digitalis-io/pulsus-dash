@@ -63,6 +63,19 @@ export function ticksFit(
   return true;
 }
 
+/** 2^1022: the half-span limit of the nice search (stub, #126). */
+export const SPAN_HALF_LIMIT = Number.NaN;
+
+/** `10 ** k` as V8 computes it (stub, #126). */
+export function pow10(k: number): number {
+  return Number.NaN + k;
+}
+
+/** `base ** p` as V8 computes it (stub, #126). */
+export function powBase(base: 1000 | 1024, p: number): number {
+  return Number.NaN + base + p;
+}
+
 /** The next nice step: 1 → 2 → 5 → 10. */
 function nextNice(step: number): number {
   const k = Math.floor(Math.log10(step) + 1e-9);
