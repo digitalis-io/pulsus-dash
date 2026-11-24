@@ -24,6 +24,8 @@ func TestE2ETranscripts(t *testing.T) {
 	}
 	// Load sorts by file name.
 	want := []string{
+		// The board LogQL frame panel's kind probe (plan #67 §5.3).
+		"board-logs-probe-checkout",
 		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram", "labels",
 		// The Explore › Logs set (plan #66 Part C §3.13).
 		"logs-checkout-1h", "logs-checkout-brushed", "logs-checkout-volume-1h",

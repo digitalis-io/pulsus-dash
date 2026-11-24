@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { InstantResult, PlannedQuery, RangeResult } from '../data/decode';
+import type { InstantResult, PlannedQuery, RangeResult, VolumeResult } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { EMPTY_COMPLETENESS, fixture, H1, N } from '../test/histogramFixtures';
 import { autoVis, chooseVis, fromInstant, fromRange, type ExploreResult } from './autovis';
@@ -157,5 +157,32 @@ describe('unit:autovis-table', () => {
         completeness: EMPTY_COMPLETENESS,
       }),
     ).toEqual({ kind: 'string', value: 's', completeness: EMPTY_COMPLETENESS });
+  });
+});
+
+describe('unit:from-range-frame (plan #67)', () => {
+  it('a volume result is a range frame', () => {
+    const T0 = 1767225600000;
+    const lvl = (l: string, v: number): SeriesFrame => ({
+      key: l,
+      labels: { level: l },
+      timestamps: Float64Array.of(T0),
+      values: Float64Array.of(v),
+    });
+    const VOL: VolumeResult = {
+      startMs: T0,
+      endMs: T0 + 3_600_000,
+      stepMs: 1000,
+      series: [lvl('error', 3), lvl('info', 5)],
+      completeness: EMPTY_COMPLETENESS,
+      planned: { query: '{app="x"}', expanded: '{app="x"}', bytes: 9, stepMs: 1000 },
+    };
+    expect(fromRange(VOL)).toEqual({
+      kind: 'series',
+      source: 'range',
+      series: VOL.series,
+      stepMs: 1000,
+      completeness: EMPTY_COMPLETENESS,
+    });
   });
 });

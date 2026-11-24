@@ -128,8 +128,11 @@ export const messages = {
   'panel.moved': '{title}: column {x}, row {y}, {w} × {h}',
   'panel.blocked': '{title}: blocked at column {x}, row {y}, {w} × {h}',
   'panel.close': 'Close',
-  'panel.noRoute.logql': 'Runs when LogQL support lands',
-  'panel.noVis': 'The log stream arrives with LogQL panels',
+  'panel.noVis': 'A metric query has no log lines. Choose Auto or a chart.',
+  'panel.logs.notMetric':
+    'Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines.',
+  'panel.logs.label': 'Log lines: {title}',
+  'panel.logs.fullScreen': 'Shown at full screen',
   'panel.unit': 'in {unit}',
   'panel.loading': 'Loading',
   'panel.empty': 'Add a query',

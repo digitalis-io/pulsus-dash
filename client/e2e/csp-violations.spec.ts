@@ -81,6 +81,20 @@ test.describe('e2e:csp-violations', () => {
     await expect(page.getByRole('checkbox', { name: 'Wrap lines' })).not.toBeChecked();
     expect(await page.evaluate(() => window.__cspViolations), LOGS_RESULT).toEqual([]);
 
+    // A board LogQL stream panel and its Wrap lines (plan #67).
+    await open(page, '/t/demo/board/b-1');
+    const errors = page.locator('[data-panel]', {
+      has: page.getByRole('heading', { level: 3, name: 'Errors', exact: true }),
+    });
+    await errors.scrollIntoViewIfNeeded();
+    await expect(
+      page.getByRole('list', { name: 'Log lines: Errors' }).locator('[data-log-row]'),
+    ).not.toHaveCount(0);
+    const panelWrap = errors.getByText('Wrap lines', { exact: true });
+    await panelWrap.click();
+    await expect(errors.getByRole('checkbox', { name: 'Wrap lines' })).toBeChecked();
+    expect(await page.evaluate(() => window.__cspViolations), 'board log panel').toEqual([]);
+
     // The board panel editor with the PromQL editor, its popup and the picker (plan #64 A.3).
     await open(page, '/t/demo/board/b-1');
     await page.getByRole('button', { name: 'Panel menu: Request rate' }).click();

@@ -244,9 +244,9 @@ The generated token files and tests are not linted.
 
 ## Keyboard coverage
 
-`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L33) through
+`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L34) through
 `e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
-text, `drain`, `shellAfter`), the board loops L23–L31 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
+text, `drain`, `shellAfter`), the board loops L23–L31 and L34 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
 one function per step) and the Explore loops L32 (metrics) and L33 (logs) in
 `e2e/keyboardExplore.ts`. The loops run as six
 independent tests, the parts (#130), each in its own browser context from the same preamble (the
@@ -256,7 +256,7 @@ clipboard stub and the fixed clock), in parallel and in any CI shard:
 |---|---|---|
 | K1 shell and chart frames | `@kbd @kbd-a` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
 | K2 panel editor | `@kbd @kbd-a` | L27 |
-| K3 board list and b-1 view tools | `@kbd @kbd-b` | L23, L24 on b-1 |
+| K3 board list, log panels and b-1 view tools | `@kbd @kbd-b` | L23, L34 (the board log panels, #67), L24 on b-1 |
 | K4 b-3 and b-2 view tools | `@kbd @kbd-c` | L24 on b-3 and b-2 |
 | K7 toolbar, edit layout | `@kbd @kbd-c` | L25, L26 |
 | K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32, L33 |
@@ -674,7 +674,7 @@ or leaving the field, not on typing (plan #64 §4.4). What a change shows:
 | Query run, key already fresh in this window epoch | the cached result; no request | drawn in the next frame, also after an error |
 | Same, not cached | one request, shared with the panel behind; `Loading` | the chart, or the error view (no retry) |
 | Run again before a result | the newest key, or the same key cancelled and rerun | only the newest result renders |
-| Language → LogQL | "Runs when LogQL support lands"; no request | — |
+| Language → LogQL | the text kept and run as LogQL ([LogQL panels](boards.md#logql-panels-67)); no PromQL request | the LogQL field mounts a frame after the change |
 
 **Chart readiness** (`ChartFrame.tsx`, #90; [ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md)).
 `ChartFrame` takes `pending` (shown over the frame) and `sizeMemo`. `pending` stays until the

@@ -443,12 +443,23 @@ describe('unit:log-stream', () => {
       const pager = new LogPager(synth, input, { entries: cap });
       await pager.start();
       await pager.loadTail();
+      // Issue #144: the component's timers (the synth delay, the scroll-reset debounce, the
+      // wrapped restore frames) run on fake time, so every run takes the same path. The shared
+      // `scrollTo()` waits on a timer that fake time never fires, so the scroll is inline here.
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'],
+      });
       mount({ pager, wrap: true });
-      const settle = () => act(() => new Promise((r) => setTimeout(r, 300)));
+      const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+      const settle = () => advance(300);
       await settle();
       const list = (): HTMLElement => screen.getByRole('list');
       for (let i = 0; i < 40 && pager.buffer.firstOrd < 8000; i += 1) {
-        await scrollTo(parseFloat(list().style.height) - 400);
+        act(() => {
+          scroller().scrollTop = parseFloat(list().style.height) - 400;
+          fireEvent.scroll(scroller());
+        });
+        await advance(0);
         await settle();
       }
       expect(pager.buffer.firstOrd).toBeGreaterThanOrEqual(8000);
@@ -457,7 +468,37 @@ describe('unit:log-stream', () => {
       // The held rows and a slice of at most those rows: never every row ever visited.
       expect(cache.size).toBeLessThanOrEqual(2 * cap);
     } finally {
+      vi.useRealTimers();
       set.mockRestore();
     }
   }, 20_000);
+});
+
+describe('unit:log-stream-prefetch (plan #67)', () => {
+  it('prefetchRows 50 waits for the reader; the default prefetches at once', async () => {
+    // The next page's requests (a call of loadTail while one is in flight sends nothing).
+    const a = await synthPager(1);
+    const sent = a.synth.calls.length;
+    const m = mount({ pager: a.pager, prefetchRows: 50 });
+    await waitFor(() => {
+      expect(rowOf(1)).not.toBeNull();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(a.synth.calls.length - sent).toBe(0);
+    await scrollTo(960 * 20);
+    await waitFor(() => {
+      expect(a.synth.calls.length - sent).toBe(1);
+    });
+    expect(a.synth.calls.at(-1)?.cursor).toBe(a.pager.buffer.cursorOf(1));
+    m.unmount();
+
+    const b = await synthPager(1);
+    const before = b.synth.calls.length;
+    mount({ pager: b.pager });
+    await waitFor(() => {
+      expect(b.synth.calls.length - before).toBe(1);
+    });
+  });
 });

@@ -28,7 +28,7 @@ export async function boardEditorScenario(page: Page, step: Step): Promise<void>
       await page.getByRole('button', { name: /^Panel menu: Request rate/ }).click();
       await page.getByRole('menuitem', { name: 'Edit panel' }).click();
       await d.waitFor();
-      // A drawn chart, or the panel's message: a LogQL panel waits for LogQL panels (#67), and a
+      // A drawn chart, or the panel's message: a LogQL panel's answer may not draw (#67), and a
       // Heatmap of Request rate has no buckets (plan #64).
       await d
         .getByRole('region', { name: 'Preview' })
@@ -46,7 +46,7 @@ export async function boardEditorScenario(page: Page, step: Step): Promise<void>
       await page.getByRole('option', { name: LANGS[i] ?? 'PromQL', exact: true }).click();
     });
     await step('editor query', 5, async () => {
-      // The PromQL editor (plan #64 A.5); a LogQL panel keeps the text area. Shift+Enter runs.
+      // The PromQL editor (plan #64 A.5) or the LogQL editor (#67). Shift+Enter runs.
       await d.getByRole('textbox', { name: 'Query' }).click();
       await page.keyboard.press('End');
       await page.keyboard.type('x');

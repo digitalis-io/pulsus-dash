@@ -81,6 +81,8 @@ export interface LogStreamProps {
   readonly onDirectionChange: (d: 'backward' | 'forward') => void;
   /** Drift's "Run again": the caller makes a new pager. */
   readonly onRerun: () => void;
+  /** Rows from either end of the held range at which that end loads (default PREFETCH_ROWS). */
+  readonly prefetchRows?: number;
   /** DEFAULT_VIEW unless a test or the harness narrows it. */
   readonly view?: ViewLimits;
   /** Called after each `scrollTop` write `LogStream` makes (the harness counts them, E6). */
@@ -149,6 +151,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     onWrapChange,
     onDirectionChange,
     onRerun,
+    prefetchRows = PREFETCH_ROWS,
     view: limits = DEFAULT_VIEW,
     onScrollWrite,
     onReslice,
@@ -543,8 +546,8 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     const { a, b } = visibleOrds(range, slice, layout);
     pager.protect({ from: a - OVERSCAN, to: b + OVERSCAN + 1 });
     const dir = direction;
-    if (layout.tail && state.endOrd - b <= PREFETCH_ROWS && dir !== 'up') void pager.loadTail();
-    if (layout.head && a - state.firstOrd <= PREFETCH_ROWS && dir === 'up') {
+    if (layout.tail && state.endOrd - b <= prefetchRows && dir !== 'up') void pager.loadTail();
+    if (layout.head && a - state.firstOrd <= prefetchRows && dir === 'up') {
       void pager.loadHead();
     }
     const scrolling = isScrolling || touching;

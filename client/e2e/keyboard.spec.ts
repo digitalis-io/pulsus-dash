@@ -1,8 +1,8 @@
 /**
  * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
  * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3; plan #63 L32;
- * plan #66 Part C L33): loops L1–L33, keyboard only, as six independent parts, K1–K5 and K7
- * (#130). Input goes through `press` and `type` of `keyboardCoverage.ts` (ESLint bans other input
+ * plan #66 Part C L33; plan #67 L34): loops L1–L34, keyboard only, as six independent parts,
+ * K1–K5 and K7 (#130). Input goes through `press` and `type` of `keyboardCoverage.ts` (ESLint bans other input
  * here). Each part that passes writes what it collected, operated and visited (`keyboardParts.ts`);
  * the coverage check over all six (`scripts/keyboard-coverage.ts`, run by the reporter at the end of
  * a full run and by CI over the merged shards) fails on any control never operated and any state
@@ -62,11 +62,17 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   test.describe.configure({ mode: 'parallel', retries: 0 });
   part('K1', 'shell and chart frames (L1–L22)', ['@kbd', '@kbd-a'], (s) => shellLoops(s));
   part('K2', 'panel editor (L27)', ['@kbd', '@kbd-a'], (s) => boardSteps(s).editor());
-  part('K3', 'board list and b-1 view tools (L23, L24 b-1)', ['@kbd', '@kbd-b'], async (s) => {
-    const b = boardSteps(s);
-    await b.boardList();
-    await b.viewTools('b-1');
-  });
+  part(
+    'K3',
+    'board list, log panels and b-1 view tools (L23, L34, L24 b-1)',
+    ['@kbd', '@kbd-b'],
+    async (s) => {
+      const b = boardSteps(s);
+      await b.boardList();
+      await b.logPanels();
+      await b.viewTools('b-1');
+    },
+  );
   // K4 and K7 are the two halves of the `kbd-c` shard, split at the L24/L25 boundary (plan §3.5).
   part('K4', 'b-3 and b-2 view tools (L24 b-3 b-2)', ['@kbd', '@kbd-c'], async (s) => {
     const b = boardSteps(s);

@@ -2,7 +2,7 @@
  * Auto-vis (plan #63 §4.2; VIZ-065 Table 5-13 rows 5, 6, 7, 14; SRF-030): the vis the Explore page
  * draws a result with, unless the URL's `vis` overrides it. The first matching row wins.
  */
-import type { Completeness, InstantResult, RangeResult } from '../data/decode';
+import type { Completeness, InstantResult, RangeFrame } from '../data/decode';
 import type { ScalarFrame, SeriesFrame } from '../data/frames';
 import type { VisKind } from '../engine/api';
 import { isHistogram } from './histogram';
@@ -20,7 +20,8 @@ export type ExploreResult =
   | { readonly kind: 'scalar'; readonly scalar: ScalarFrame; readonly completeness: Completeness }
   | { readonly kind: 'string'; readonly value: string; readonly completeness: Completeness };
 
-export function fromRange(r: RangeResult): ExploreResult {
+/** Frames on a range grid: a PromQL range result, a log volume or a LogQL metric answer. */
+export function fromRange(r: RangeFrame): ExploreResult {
   return {
     kind: 'series',
     source: 'range',

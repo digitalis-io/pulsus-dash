@@ -1,13 +1,15 @@
 # Boards: panel runtime
 
-How a board panel runs its PromQL query (#64 Part A): the run hook and its key, the window epoch,
-the time gate on first open, visible-only queries, the panel states and menu, and the query field
-of the panel editor; and the board's event markers (#64 Part C). The board page itself (modes, saving, sections, the filter bar) is in
+How a board panel runs its PromQL query (#64 Part A) or its LogQL query (#67,
+[below](#logql-panels-67)): the run hook and its key, the window epoch, the time gate on first
+open, visible-only queries, the panel states and menu, and the query field of the panel editor;
+and the board's event markers (#64 Part C). The board page itself (modes, saving, sections, the filter bar) is in
 [Client application › Boards](README.md#boards); the user's view is [Boards](../user/boards.md).
 
 | Module | Role |
 |---|---|
-| `src/boards/usePanelRun.ts` | the run hook: inputs, key, query, the facts read back |
+| `src/boards/usePanelRun.ts` | the run hook: the language's hook (`usePromPanelRun` or `useLogPanelRun`); PromQL's inputs, key, query, the facts read back |
+| `src/boards/useLogPanelRun.ts`, `logPanel.ts` | a LogQL panel's run (the stream and frame paths) and its pure parts |
 | `src/boards/panelRun.ts` | the key (`panelRunKey`, `panelIdleKey`, `sameExceptWindow`, `sameKey`) and `panelView` |
 | `src/boards/variableRefs.ts` | `referencedVariables`, `panelVars` |
 | `src/boards/boardRun.tsx`, `boardRunContext.ts` | `BoardRunProvider` and `BoardRunContext` (vars, widths, visibility, `timeReady`); the window epoch |
@@ -15,8 +17,9 @@ of the panel editor; and the board's event markers (#64 Part C). The board page 
 | `src/boards/boardTime.ts` | `boardTimeInit`, `isTimeReady` (first open) |
 | `src/boards/boardEvents.ts` | `useBoardEvents`, `BoardEventsContext`, `NO_EVENTS`, `toMarkers` (event markers) |
 | `src/boards/exploreLink.ts` | `exploreHref` |
-| `src/boards/useQueryLanguage.ts` | one `LANGUAGES.promql()` per page load |
-| `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelQueryField.tsx`, `PanelEditor.tsx` | the panel chrome, the completeness badge, the editor's Query field |
+| `src/boards/useQueryLanguage.ts` | one `LANGUAGES[id]()` per language per page load; `null` loads none |
+| `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome, the completeness badge, the editor |
+| `src/pages/board/PanelQueryField.tsx`, `PanelLogqlField.tsx`, `useQueryFieldRun.ts` | the editor's Query field per language and their shared run rules |
 
 ## What a panel sends (ADR-0021)
 
@@ -128,8 +131,7 @@ First match; the text is from `messages.en-GB.ts`.
 
 | Condition | View | Text |
 |---|---|---|
-| LogQL | message `unsupported` | "Runs when LogQL support lands" (#67) |
-| visualisation Logs | message `logs` | "The log stream arrives with LogQL panels" |
+| PromQL, visualisation Logs | message `logs` | "A metric query has no log lines. Choose Auto or a chart." |
 | blank text | message `empty` | "Add a query" |
 | a referenced variable without a value | message `variable` | "Set a value for `$a, $b` to run this panel" |
 | the language module failed | message `langFailed` | "PromQL support could not be loaded. Reload the page." |
@@ -138,6 +140,7 @@ First match; the text is from `messages.en-GB.ts`.
 | no outcome yet | loading | "Loading" |
 | a string result | message `string` | "String result: …" |
 | `framePlan` notice | message `noBuckets` / `tooManyTimestamps` | Explore's texts |
+| LogQL | the LogQL rows ([below](#panel-views)) | |
 | otherwise | frame | `framePlan(chooseVis(saved or auto, autoVis(planned, result)), …)` |
 
 The client checks (the 128 KB pre-check and the referenced-variable hint) are hints made before a
@@ -295,7 +298,8 @@ screen view and the editor's preview. The stub (`StubApi.listAnnotations`) has n
 
 `exploreHref(tenant, panel, search, run.expanded)`: for PromQL,
 `/t/<tenant>/explore/metrics<board time>&q=<expanded>` plus `&vis=<kind>` unless the kind is Auto
-or Logs; for LogQL, `/t/<tenant>/explore/logs<board time>&q=<saved text>`. `run.expanded` is
+or Logs; for LogQL, `/t/<tenant>/explore/logs<board time>&q=<expanded>`, and null without
+`expanded` (a stream panel's is its pager's `planned`, `streamMeta`). For PromQL `run.expanded` is
 `planned.expanded` of the **current key's own** response: the data the key was fetched under
 (`PanelOutcome.key`, compared with `sameKey`) and not a placeholder, or, after an error, the
 rejection's `detail.planned`. Without it (gated, blocked, a first fetch in flight, a placeholder
@@ -336,12 +340,108 @@ dialog, or switching a panel to PromQL, does not create it in the same task
 (`bench:rooms-long-tasks`). `PromQLEditor`'s inner host is a tab stop that delegates focus into
 its shadow root and on to the text: the dialog's focus containment walks the light DOM only, so
 without it Tab would skip the editor. If the editor chunk fails to load, the field is a plain text area with "The
-query editor could not be loaded. Reload the page to try again." A LogQL panel keeps #90's text
-area.
+query editor could not be loaded. Reload the page to try again." For LogQL the field is
+`PanelLogqlField`: the same layout without the picker, Explore › Logs' `LogQLEditor` from
+`useLogqlModules` (placeholder `explore.logs.placeholder`), and a completion source made by
+`editor.createLogSource({api, queryClient, tenant, window})` once per editor, api, query client and
+tenant (T09-014; the window is read at each lookup). If the LogQL chunk fails to load, its plain text area keeps Run query enabled and runs on Shift+Enter or Mod+Enter, unchanged text included (`PanelLogqlField.fallback.test.tsx`). Both fields take their run rules (the draft
+ref, the Run keys through `flushSync`, the run on leaving, the Escape guard) from
+`useQueryFieldRun`. A language change keeps the text, so the field and the run follow it. A Run of
+the same text also adds one to `editRun.seq`, which reaches the edited panel and the editor as
+`runSeq`: a LogQL stream preview's new pager.
 
 While the board saves or discards (read-only), the editor is read-only (`EditorState.readOnly`
 through a compartment, `aria-readonly`), the metric picker is disabled, and Run query, the Run keys
 and the run on leaving the field do nothing, so nothing typed can be lost or run.
+
+## LogQL panels (#67)
+
+`usePanelRun(a)` calls both hooks on every render: `usePromPanelRun(a, !logql)` and
+`useLogPanelRun(a, logql)`, and returns the active one's run. The inactive hook has an idle key,
+starts no pager and loads no language (`useQueryLanguage(null)`), so a PromQL-only board never
+imports LogQL. Nothing is planned in the browser (ADR-0021 §2): the panel sends its raw text and
+`vars = Object.fromEntries(panelVars(text, vars))` (`{}` included). The saved vis picks the path
+(`logPanelPath`):
+
+| Vis | Path | Requests |
+|---|---|---|
+| Auto, Logs | stream | a `LogPager` (`useLogPager`): `queryLogs` pages of `limit` 1 000, the first without `cursor` |
+| Bars | `logs-bars` | under the panel key: `queryLogs({...req, limit: 1})` (the kind probe) and `queryVolume(req)` in parallel |
+| Line, Heatmap, Stat | `logs-frame` | under the panel key: the kind probe only |
+
+`req` is `{query: text, fromMs, toMs, widthPx, vars}`.
+
+### The stream path
+
+The pager input is `{tenant, query, vars, fromMs, toMs, widthPx: step.widthPx, direction}`, with
+the width held per grid step (`useStepWidth`), and its generation
+`${refreshEpoch}.${runSeq}.${driftSeq}`. `streamInput(enabled, held, next)` is the run the panel
+holds, set while rendering on every render: visible (or full screen, or the preview) → the next
+run; scrolled out → the next run only when it has the held run's `logPagerKey` and generation
+(T07-012: the pager and its lines are kept), else none. A null run disposes the pager (its
+requests abort). So a new window, text, variable, direction, refresh (`refreshEpoch`), Run of the
+same text (`runSeq`) or drift's Run again (`driftSeq`) is a new pager: at once on screen, on
+scrolling in off screen. The panel behind its open editor (`editing`) holds none; the preview owns
+one, and Done gives the panel a new one. The order, wrap and `driftSeq` are the hook's state, not
+saved and not in the URL.
+
+The view (`PanelView` kind `stream`) is `LogStream` with `prefetchRows` `PANEL_PREFETCH_ROWS` (50),
+so a board of log panels loads one page each until a reader scrolls near an end. While the panel's
+full screen is open its body shows "Shown at full screen" (`streamHidden`), so one pager has one
+list. A first page that fails is the panel's error (`firstPageError`); later pages and drift are
+`LogStream`'s sentinels. The completeness badge reads `streamMeta(state).completeness` (the
+merged notices of the pages), and `expanded` `streamMeta(state).planned?.expanded`.
+
+### The frame path
+
+One TanStack query under `panelRunKey(tenant, id, {text, vars: JSON.stringify(panelVars(…))},
+path, stepMs, window)` (kind `logs-bars` or `logs-frame`), with PromQL's options: the window epoch,
+the refresh, the placeholder across a window change, and the preview sharing the key. Its function
+is `fetchLogFrame(api, tenant, req, path === 'logs-bars', signal)`:
+
+1. One inner `AbortController` follows `signal` (a listener added once, removed when the fetch
+   settles).
+2. Bars: the volume starts at once; its rejection is always handled.
+3. The probe; a rejection aborts the volume and rejects.
+4. A metric answer (`kind: 'series'`) aborts the volume: `{result: fromRange(probe), logKind:
+   'series'}`.
+5. A log answer without volume: an empty series result, `logKind: 'streams'`.
+6. A log answer with volume: `{result: fromRange(volume), logKind: 'streams', volume}`; the
+   volume's rejection rejects.
+
+Every outcome has `planned: fromLogqlPlanned(probe.planned)` (the LogQL facts, `valueType`
+`unknown`, no rate or histogram facts).
+
+### Panel views
+
+After the blocked and error rows (`empty`, `variable`, `refused` as PromQL's):
+
+| Path | Answer | View | `data-panel-vis` |
+|---|---|---|---|
+| stream | no pager, or pending | `loading` | |
+| stream | `streams` | `stream` | |
+| stream | `series`, Auto | frame `line` of `fromRange(state.series)` (cached per answer) | `line` |
+| stream | `series`, Logs | message `logs`: "A metric query has no log lines. Choose Auto or a chart." | |
+| `logs-bars` | `streams` | frame `volumePlan(volume)`, thresholds, legend, `volume: true` | `bars` |
+| `logs-bars`, `logs-frame` | `series` | frame of the saved vis (PromQL's code) | the vis |
+| `logs-frame` | `streams` | message `notMetric`: "Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines." | |
+| frame | no outcome | `loading` | |
+
+`panelFrame(view, key)` on a volume frame keeps its spec (the level stack, `VOLUME_STACK`) and
+draws only the series of `key` (cached per data and key). The editor's Auto option reads
+"Auto (Logs)" for a stream answer, "Auto (Line)" for any metric answer, else "Auto".
+
+### Tests
+
+`unit:log-panel-path`, `unit:stream-input`, `unit:fetch-log-frame`, `unit:stream-meta` and
+`unit:logql-planned` (`boards/logPanel.test.ts`), the LogQL rows of `unit:panel-view`,
+`unit:explore-link`, `unit:query-language`, `unit:from-range-frame` and
+`unit:log-stream-prefetch`; `unit:board-log-panels` (`pages/board/BoardLogPanels.test.tsx`,
+cases BL1–BL29 on `test/boardLogKit.tsx`: a `StubApi` whose `queryLogs` and `queryVolume` return
+deferreds the test settles, the fake LogQL editor, panel bodies of 1000 × 240). The e2e specs are
+`e2e:board-logql-save`, `-brush` and `-paging` (`e2e/board-logql.spec.ts`, on the fake through the
+http-mode BFF; [Build and CI](../development/build-and-ci.md)), and the board rows of
+`e2e:a11y-rooms`, `e2e:csp-violations` and the keyboard loop L34.
 
 ## The stub
 
@@ -374,7 +474,12 @@ failing 0.05 "SLO breach").
 - [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md): T07-012,
   T07-013.
 - [T09 Query editors](../../designs/technical/T09-query-editors.md): T09-001, T09-004, T09-009,
-  T09-010, T09-015.
+  T09-010, T09-014, T09-015.
+- LogQL panels (#67): [04 Surfaces](../../designs/product/04-surfaces.md) SRF-033, SRF-036 (board
+  subsets); [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md)
+  VIZ-034, VIZ-065; [T03](../../designs/technical/T03-browser-runtime.md) T03-016 (the volume
+  brush); [T08](../../designs/technical/T08-dom-component-kit.md) T08-007, T08-010;
+  [ADR-0018](../../designs/adr/0018-query-language-modules.md) §5 (languages through `LANGUAGES`).
 - [09 Performance contract](../../designs/product/09-performance-contract.md): PRF-030, PRF-031
   (board subsets); [08 Visual language](../../designs/product/08-visual-language.md): VL-015 (the
   shimmer).
