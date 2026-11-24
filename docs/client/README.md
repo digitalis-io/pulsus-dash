@@ -338,10 +338,10 @@ entry carries a comment naming the part(s) that operate it. The lists today (all
 
 | Part | Keys | What they are | Operated by |
 |---|---|---|---|
-| K1, K3 | 0 | | |
-| K4 | 4 | the b-1 `link "Open in Explore: …"` for Request rate, Error ratio, Errors, Request latency | K3 (L24 on b-1) |
-| K2 | 80 | `Add panel`, `Share`, `Full screen: Edge p99` (drain failures); 77 from the coverage-gap rule: 26 board controls (panel menus, legend buttons, Edit board, Save, Done…) and 51 in the Edit panel dialog, its selects and menus, the variable dialogs and the discard guard | K3, K4 |
-| K5 | 74 | `Share` (a drain failure); 73 from the coverage-gap rule (found on webkit): 50 board controls and 23 in the Edit panel, Add filter, Share board, variable and discard dialogs | K1–K4 |
+| K1, K3, K4 | 0 | | |
+| K7 | 1 | the b-1 `link "Open in Explore: Request rate"` (a drain failure; K4's four b-1 link skips were for L25–L26 and became unused when those loops moved to K7) | K1, K3 |
+| K2 | 80 | `Add panel`, `Share`, `Full screen: Edge p99` (drain failures); 77 from the coverage-gap rule: 26 board controls (panel menus, legend buttons, Edit board, Save, Done…) and 51 in the Edit panel dialog, its selects and menus, the variable dialogs and the discard guard | K3, K4, K7 |
+| K5 | 73 | `Share` (a drain failure); 72 from the coverage-gap rule (found on webkit): 49 board controls and 23 in the Edit panel, Add filter, Share board, variable and discard dialogs. The Request latency crosshair was removed when the split left it unbacked (K7 does not operate it), so K5 now operates it itself | K1–K4, K7 |
 
 A list grows only by two rules, applied on Chromium first. `earlier(P)` is the union of the
 `operated` files of the parts before P in `SINGLE_TEST_ORDER`, from one full run of the same
