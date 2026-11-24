@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.33-rc · 2026-11-23 |
+| **Version** | 1.34-rc · 2026-11-24 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -581,7 +581,7 @@ the merge train), nightly (release blocker).
 | `ci:engine-lint` | From #68: `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` on `engine/`, with `unwrap_used`, `expect_used` and `disallowed_types` (`std::sync::Mutex`, `RwLock`: T03-008) denied | PR | yes |
 | `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
 | `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh production build of the client (and, from #68, the engine), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
-| `ci:e2e-complete` | Every test `playwright test --list` names for an engine ran in exactly one CI shard of it and was not skipped, except the skips allowlisted in `client/config/e2eSkips.ts` (`client/scripts/e2e-complete.ts`) | PR | yes |
+| `ci:e2e-complete` | Every test `playwright test --list` names for an engine is assigned to exactly one CI shard of it (retries allowed) and was not skipped, except the skips allowlisted in `client/config/e2eSkips.ts` (`client/scripts/e2e-complete.ts`) | PR | yes |
 
 **Unit, property and fuzz (L1)**
 
@@ -1056,4 +1056,4 @@ Meta-testing:
 | 1.31-rc | 2026-11-23 | #97: §7.1 adds `unit:value-ticks-bounded`, `e2e:ticks-parity` (path parity; F, S and N classes), `unit:ulp-distance` and `e2e:gallery-extreme`; `unit:extreme-ticks` is height-aware; `unit:layout-parity` adds `ticks-extreme.json`; `bench:frame-interim-line` adds the `line-extreme` frame; `bench:rooms-long-tasks` adds the "gallery near-limit" scenario; `golden:interim-gallery` "nine" → "ten" (`line-extreme`) |
 | 1.32-rc | 2026-11-23 | #107: §7.1 adds `unit:promql-completion`, `unit:promql-replace`, `unit:promql-completion-timing`, `unit:promql-cancel`, `unit:editor-probe` (with the completion probe) and `bench:promql-completion-latency`, with its lab-gate row beside `bench:logql-completion-latency`; `unit:suggest-cache`: no in-flight lookup is superseded by another key, and an evicted one is re-joined by its key and still released by its last signalled caller (the #66 clause on PromQL supersession goes); `unit:prom-source` passes the caller's signal; `unit:logql-completion-timing` no longer checks PromQL's 120 ms delay |
 | 1.33-rc | 2026-11-23 | #66 Part C: §7.1 adds `unit:logs-params`, `unit:use-logs-params`, `unit:router-logs-params`, `unit:clock-epoch`, `unit:refresh-epoch`, `unit:step-width`, `unit:logs-volume`, `unit:logs-run`, `unit:logs-page`, `unit:palette-levels`, `unit:log-transcripts`, `e2e:logs-completion`, `e2e:logs-run`, `e2e:logs-brush`, `e2e:logs-paging`, `e2e:logs-metric`, `e2e:logs-cancel`, `e2e:logs-truncation`, `e2e:logs-refresh` and `e2e:logs-error-on-run`; `unit:use-log-pager` adds the generation; `e2e:lazy-load` names the Logs page; `bench:editor-keystroke` adds the Logs page case; the lab benchmark `bench:log-page-load` and its lab-gate row; §4.3 log stream row: `bench:log-page-load` on the Logs page (HTTP decode) |
-| 1.34-rc | 2026-11-23 | #130: §7.1 adds `ci:e2e-complete` (the e2e suite runs as three tag-selected CI shards per engine) |
+| 1.34-rc | 2026-11-24 | #130: §7.1 adds `ci:e2e-complete` (the e2e suite runs as four CI shards per engine, chosen by tag and spec file) |
