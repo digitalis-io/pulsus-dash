@@ -29,6 +29,11 @@ describe('useExploreRun key', () => {
     expect(runKind('up', promql)).toBe('range');
     expect(runKind('  ', promql)).toBeNull();
     expect(runKind('up', null)).toBeNull();
+    // Degraded (#147): without a language every non-blank text is a range query.
+    expect(runKind('up', null, true)).toBe('range');
+    expect(runKind('1 + 1', null, true)).toBe('range');
+    expect(runKind('  ', null, true)).toBeNull();
+    expect(runKind('1 + 1', promql, true)).toBe('instant');
   });
 
   it('U3: refusalOf', () => {
@@ -37,8 +42,11 @@ describe('useExploreRun key', () => {
   });
 
   it('U4: runnable needs the language and the step', () => {
-    expect(runnable({ lang: promql, stepMs: 5000, rate: true })).toBe(true);
-    expect(runnable({ lang: promql, stepMs: null, rate: true })).toBe(false);
-    expect(runnable({ lang: null, stepMs: 5000, rate: true })).toBe(false);
+    expect(runnable({ lang: promql, degraded: false, stepMs: 5000, rate: true })).toBe(true);
+    expect(runnable({ lang: promql, degraded: false, stepMs: null, rate: true })).toBe(false);
+    expect(runnable({ lang: null, degraded: false, stepMs: 5000, rate: true })).toBe(false);
+    // Degraded (#147): the step is still needed, the language is not.
+    expect(runnable({ lang: null, degraded: true, stepMs: 5000, rate: true })).toBe(true);
+    expect(runnable({ lang: null, degraded: true, stepMs: null, rate: true })).toBe(false);
   });
 });

@@ -1,9 +1,9 @@
 /**
  * The Query field of the panel editor for LogQL (plan #67 §3.5; T09-001, T09-004, T09-014): the Run
  * hint and the Run query button, the LogQL editor from Explore › Logs' lazy chunk (its placeholder
- * while it loads, a plain text area if it fails) and one status row, as the PromQL field without
+ * while it loads, `QueryFallback` if it fails; the load-failed alert whenever an import failed) and one status row, as the PromQL field without
  * the metric picker. Its completion source is made once per tenant and reads the board window at
- * each lookup. The run rules are `useQueryFieldRun`'s; the fallback text area has them too: Run
+ * each lookup. The run rules are `useQueryFieldRun`'s; `QueryFallback` has them too: Run
  * query and Shift+Enter or Mod+Enter run it, unchanged text included.
  */
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,8 +15,8 @@ import { useLogqlModules } from '../../explore/useLogqlModules';
 import { t } from '../../i18n/t';
 import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
-import { TextArea } from '../../kit/TextArea';
 import { useTimeContext } from '../../state/useTimeContext';
+import { QueryFallback } from '../explore/QueryFallback';
 import styles from './Board.module.css';
 import type { PanelQueryFieldProps } from './PanelQueryField';
 import { useQueryFieldRun } from './useQueryFieldRun';
@@ -58,7 +58,7 @@ export function PanelLogqlField(p: PanelQueryFieldProps): JSX.Element {
     };
   }, []);
   const Editor = mountable ? (editor?.LogQLEditor ?? null) : null;
-  const fallback = modules.failed && Editor === null;
+  const fallback = modules.editorFailed;
   const unrun = p.value !== p.runText;
   return (
     <div ref={fieldRef} className={cx(styles['queryField'])}>
@@ -92,34 +92,23 @@ export function PanelLogqlField(p: PanelQueryFieldProps): JSX.Element {
           placeholder={t('explore.logs.placeholder')}
         />
       ) : fallback ? (
-        <>
-          <TextArea
-            label={t('editor.query')}
-            value={p.value}
-            onChange={onDraft}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                run();
-              } else {
-                e.continuePropagation();
-              }
-            }}
-            isReadOnly={p.readOnly}
-            mono
-            rows={5}
-            spellCheck="false"
-            autoComplete="off"
-          />
-          <p role="alert" className={cx(styles['queryStatus'])}>
-            {t('explore.query.loadFailed')}
-          </p>
-        </>
+        <QueryFallback
+          label={t('editor.query')}
+          value={p.value}
+          onChange={onDraft}
+          onRun={run}
+          readOnly={p.readOnly}
+        />
       ) : (
         <div className={cx(styles['queryEditor'], styles['queryLoading'])}>
-          <p>{t('explore.query.loading')}</p>
+          {modules.failed ? null : <p>{t('explore.query.loading')}</p>}
         </div>
       )}
+      {modules.failed ? (
+        <p role="alert" className={cx(styles['queryStatus'])}>
+          {t('explore.query.loadFailed')}
+        </p>
+      ) : null}
       <div id={statusId} className={cx(styles['queryStatus'])}>
         {p.error !== null ? (
           <p role="alert">{p.error}</p>

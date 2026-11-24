@@ -44,6 +44,11 @@ export interface PanelRunInput {
   readonly runSeq?: number;
   /** The panel behind its open editor: a LogQL stream panel holds no pager (the preview has one). */
   readonly editing?: boolean;
+  /**
+   * The edited panel's Query field failed to load an import (#147): runs as `runKind`'s degraded
+   * (without a language, the range route). Default false. The LogQL run ignores it.
+   */
+  readonly degraded?: boolean;
 }
 
 export type { PanelOutcome };
@@ -102,6 +107,7 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const { tenant, panel, text, enabled, widthPx } = a;
   const { fromMs, toMs } = window;
   const { lang, failed } = useQueryLanguage(active ? 'promql' : null);
+  const degraded = a.degraded ?? false;
 
   const hint = useMemo(() => referencedVariables(text).filter((n) => !vars.has(n)), [text, vars]);
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
@@ -115,7 +121,7 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
           ? 'refused'
           : hint.length > 0
             ? 'variable'
-            : failed
+            : failed && !degraded
               ? 'langFailed'
               : null;
 
@@ -125,8 +131,8 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       ? (promGrid(fromMs, toMs, widthPx)?.stepMs ?? null)
       : null;
   const kind = useMemo(
-    () => (active && timeReady && pre === null ? runKind(text, lang) : null),
-    [active, timeReady, pre, text, lang],
+    () => (active && timeReady && pre === null ? runKind(text, lang, degraded) : null),
+    [active, timeReady, pre, text, lang, degraded],
   );
   const sentPairs = useMemo(() => panelVars(text, vars), [text, vars]);
   const varsJson = useMemo(() => JSON.stringify(sentPairs), [sentPairs]);

@@ -470,6 +470,8 @@ export interface PanelFrameProps {
   runText?: string;
   /** The edited panel's runs of the same text (plan #67 §3.5). */
   runSeq?: number;
+  /** The edited panel's Query field failed to load an import: its run is degraded (#147). */
+  runDegraded?: boolean;
   onEdit: (id: string) => void;
   onKeyOp: (id: string, op: LayoutOp) => void;
   onDuplicate: (id: string) => void;
@@ -498,6 +500,7 @@ export const PanelFrame = memo(
       selected,
       runText,
       runSeq,
+      runDegraded,
       onEdit,
       onKeyOp,
       onDuplicate,
@@ -529,6 +532,7 @@ export const PanelFrame = memo(
       // The panel behind its open editor: the preview runs (plan #67 §3.3).
       editing: runText !== undefined,
       ...(runSeq === undefined ? {} : { runSeq }),
+      degraded: runDegraded ?? false,
     });
     const title = panelTitle(panel);
     const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);

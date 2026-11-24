@@ -381,17 +381,24 @@ function BoardEditor({
   // The run text of the panel in the dialog (plan #64 §4.4, A.10): the preview and the panel
   // behind run it, so they share one key; typing changes the draft only. Set while rendering.
   // `seq` counts the runs of the same text: a LogQL stream preview's new pager (plan #67 §3.5).
-  const [editRun, setEditRun] = useState<{ id: string; text: string; seq: number } | null>(null);
+  // `degraded`: the dialog's Query field failed to load an import, so the edited panel runs
+  // without a language if it has none (#147); other panels keep `langFailed`.
+  const [editRun, setEditRun] = useState<{
+    id: string;
+    text: string;
+    seq: number;
+    degraded: boolean;
+  } | null>(null);
   const dialogPanel = edit && selected !== undefined ? selected.panel : null;
   if (dialogPanel === null) {
     if (editRun !== null) setEditRun(null);
   } else if (editRun?.id !== dialogPanel.id) {
-    setEditRun({ id: dialogPanel.id, text: dialogPanel.query.text, seq: 0 });
+    setEditRun({ id: dialogPanel.id, text: dialogPanel.query.text, seq: 0, degraded: false });
   }
   const runEdited = (text: string): void => {
     if (editRun === null) return;
     if (text !== editRun.text) {
-      setEditRun({ id: editRun.id, text, seq: editRun.seq });
+      setEditRun({ ...editRun, text });
       return;
     }
     // The same text again: abort the run in flight, first fetch included, and run it again.
@@ -400,6 +407,10 @@ function BoardEditor({
     void queryClient.cancelQueries({ queryKey });
     void queryClient.invalidateQueries({ queryKey });
   };
+  // The same object when unchanged: the field's report causes no render.
+  const onDegraded = useCallback((d: boolean) => {
+    setEditRun((r) => (r === null || r.degraded === d ? r : { ...r, degraded: d }));
+  }, []);
   const full = [t('board.full'), t('board.fullPanels'), t('board.sectionsFull')].includes(
     s.announce,
   )
@@ -455,7 +466,9 @@ function BoardEditor({
     onKeyOp,
     onDuplicate,
     onRemove,
-    ...(editRun?.id === p.id ? { runText: editRun.text, runSeq: editRun.seq } : {}),
+    ...(editRun?.id === p.id
+      ? { runText: editRun.text, runSeq: editRun.seq, runDegraded: editRun.degraded }
+      : {}),
   });
 
   // One grid for both modes (#111): entering or leaving Edit mode changes its props, not the
@@ -620,6 +633,8 @@ function BoardEditor({
             statusText={statusText}
             runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
             runSeq={editRun?.id === selected.panel.id ? editRun.seq : 0}
+            runDegraded={editRun?.id === selected.panel.id ? editRun.degraded : false}
+            onDegraded={onDegraded}
             onRun={runEdited}
             onChange={(patch) => {
               dispatch({ type: 'updatePanel', id: selected.panel.id, patch });

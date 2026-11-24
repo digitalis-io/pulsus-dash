@@ -176,8 +176,11 @@ export function setDraft(value: string): void {
   fireEvent.input(textbox(), { target: { value } });
 }
 
-export function runKey(): void {
-  fireEvent.keyDown(textbox(), { key: 'Enter', shiftKey: true });
+/** A Run key on the query field: Shift+Enter, or Enter with the modifiers of `o`. */
+export function runKey(
+  o: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = { shiftKey: true },
+): void {
+  fireEvent.keyDown(textbox(), { key: 'Enter', ...o });
 }
 
 /** Two rounds of the task queue. */

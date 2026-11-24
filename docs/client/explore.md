@@ -53,8 +53,9 @@ was sent from the result's `planned`.
 | the rate chip | `rate` (`true` unless `rate=off`) | — |
 | the width and step | `widthPx` (the server derives the step) | `stepMs` (the grid step of the window at the chart's width) |
 
-`runKind(q, lang)` picks the route from the Lezer shape: instant for a scalar or string value
-type, else range; it never changes the text sent. The server rewrites a bare counter to
+`runKind(q, lang, degraded)` picks the route from the Lezer shape: instant for a scalar or string
+value type, else range; without a language, a degraded run (an import failed, below) is always a
+range query. It never changes the text sent. The server rewrites a bare counter to
 `rate(<selector>[w])` and a bare histogram bucket to `sum by (le) (rate(<selector>[w]))` behind the
 chip, substitutes `$__interval` and `$__rate_interval` at the step, and refuses a planned text over
 64 KiB with 413. The page reads:
@@ -826,7 +827,8 @@ server, wire or database change.
 | Module | Owns or renders |
 |---|---|
 | `MetricsPage.tsx` | The state owner. The draft in a ref (typing re-renders nothing unless a flag flips), `dirty` (draft ≠ `q`), `draftOver` (`overQueryLimit(draft)`), `runRefusal`, `sort`, `isolatedKey` (D-ISO), the editor and Run button refs, and the `PromSource` (`useMemo` on the editor module, API, query client and tenant; the window is read through a ref on each lookup) |
-| `QueryCard.tsx` | `PromQL` tag, `MetricPicker`, Run hint, **Run** (disabled until `runReady`, described by the status row), the editor or its placeholder (`Loading the editor…`, or an alert when the chunk failed to load), the status row |
+| `QueryCard.tsx` | `PromQL` tag, `MetricPicker`, Run hint, **Run** (disabled until `runReady`, described by the status row), the editor or its placeholder (`Loading the editor…`), or `QueryFallback` when the editor chunk failed (`editorFailed`); the load-failed alert shows whenever either import failed; the status row |
+| `QueryFallback.tsx` | The plain text area of a query field whose editor chunk failed to load (#147), shared by both Explore cards and both panel editor fields: Shift+Enter, Ctrl+Enter or Meta+Enter run it, unchanged text included; it keeps its own text, and a changed `value` replaces it. Imports only React and `kit/TextArea` (main chunk) |
 | `QueryStatus.tsx` | `statusView` and its rendering: `refused` and `error` as `role="alert"` (Narrow for `tooBroad` and `timeout`), `limit`, `waiting` and `ok` as `role="status"`, else nothing |
 | `MetricPicker.tsx` | React Aria `ComboBox` (`Metric`), opens on focus; while its list is open the rest of the page is `inert` as well as `aria-hidden` (`src/kit/inertOutside.ts`), released on close, on Tab and before a pick moves focus to the editor; names are `['prom', tenant, 'pickerNames']` (60 s stale), asked only after the first open; options from `metricOptions` (at most 100, type and help); Enter with no option highlighted picks the first match |
 | `ResultCard.tsx` | Toolbar (`SegmentedControl` *Visualisation*, the **Rate applied** chip, **Sent query** when the server rewrote it (`planned.query`)), `CompletenessNotice`, the chart host (always mounted, so its width is known before the first Run; the 2 px shimmer after 300 ms, `aria-busy`), `<ChartFrame>` or the notice text, `SeriesTable` |
@@ -835,16 +837,18 @@ server, wire or database change.
 | `src/kit/inertOutside.ts` | `inertOutside(keep)`: `inert` on everything outside `keep` (and React Aria's live announcer), new nodes included; an idempotent release removes only its own. React Aria's ComboBox hides the page with `aria-hidden` only, which leaves its controls focusable (axe `aria-hidden-focus`) |
 | `src/kit/SegmentedControl.tsx` | React Aria `ToggleButtonGroup`, single selection: a `radiogroup` whose arrow keys move the one tab stop; the selected option cannot be deselected |
 | `src/explore/useExploreRun.ts` | The run: `runnable`, `runKind`, `refusalOf`, `exploreRunKey`, `useExploreRun` (below) |
-| `src/explore/useEditorModules.ts` | Starts `LANGUAGES.promql()` and `import('../editor/editor')` on mount; a rejection sets `failed` |
+| `src/explore/useEditorModules.ts` | Starts `LANGUAGES.promql()` and `import('../editor/editor')` on mount; a rejection sets `failed`, an editor rejection also `editorFailed` |
 | `src/explore/useDelayedFlag.ts`, `useElementWidth.ts` | True once a flag has been on for a delay; the chart host's content width in whole CSS px through one `ResizeObserver` (`0` is `null`) |
 | `src/explore/statusText.ts`, `metricOptions.ts` | Error, outcome and refusal texts; the picker filter and descriptions |
 
 ### The run hook and D-RUN
 
-`useExploreRun({tenant, q, inputs, widthPx, window})`, `inputs = {lang, stepMs, rate}`:
+`useExploreRun({tenant, q, inputs, widthPx, window})`, `inputs = {lang, degraded, stepMs, rate}`:
 
-- `kind = runKind(q, lang)`: null for blank text or before the language loads.
-  `runnable(inputs)`: the language and the step are known (the step is
+- `kind = runKind(q, lang, degraded)`: null for blank text, or before the language loads unless
+  `degraded`; with `degraded` and no language every query is a range query. A loaded language
+  always wins.
+  `runnable(inputs)`: a language (or `degraded`) and the step are known (the step is
   `promGrid(fromMs, toMs, widthPx).stepMs`).
 - `refusal = refusalOf(q)`: `queryTooLarge` above 128 KB of UTF-8 (T09-015); nothing else is
   refused here, the server checks the planned size.
@@ -867,8 +871,32 @@ server, wire or database change.
 
 ### Run order and refusals
 
-`runReady` = the editor chunk loaded and `runnable(inputs)`. Until then **Run** is disabled and the
-status reads `Run is available once the chart has a size.` The page does not wait for metric types.
+`runReady` = the editor loaded or failed (`editorReady`), and `runnable(inputs)` (a language, or
+`degraded`, and the step). Until then **Run** is disabled and the status reads `Run is available
+once the chart has a size.` The page does not wait for metric types.
+
+### Degraded run (#147)
+
+When an import failed (`modules.failed`) and the field is final (`editorReady`), the run is
+*degraded*: `degraded = modules.failed && editorReady`, so the URL query does not run while an
+editor that may still mount is pending. If the editor chunk failed, the field is `QueryFallback`
+and **Run** stays enabled once the step is known, however the language import ends or stalls. If
+only the language failed, the alert shows without a text area, and the editor that loads later
+runs degraded.
+
+| Aspect | Language loaded | No language |
+|---|---|---|
+| PromQL route | `runKind` from `lang.shape` | always range (`api.queryRange`, never `queryInstant`) |
+| LogQL route | unchanged | unchanged (the language is used only for diagnostics) |
+| 128 KB: `onRun`, `refusalOf`, Logs `urlRefusal`, `draftOver` | refused | refused (none reads `lang`) |
+| Blank text | no request | same |
+| Error diagnostics | `lang.diagnosticsOf` | none; the status shows the server's error text |
+| Scalar or string literal | instant: a stat, or the string notice | range: a constant line, or the server's range error |
+| Cache key | `kind` from the language | `kind = 'range'` |
+
+A language that loads after a degraded run changes `kind` only for scalar or string text (range →
+instant): that query runs again on the instant route, under a new key. Range text keeps its key and
+is not fetched again.
 
 Run (button, Shift+Enter, Mod+Enter), first match, on the draft `d`:
 
@@ -1009,11 +1037,11 @@ are sent; nothing is planned in the browser),
 | Module | What it does |
 |---|---|
 | `src/state/logsParams.ts`, `useLogsParams.ts` | `LogsParams` `{q, dir, wrap}`, `DEFAULT_LOGS`, `readLogsParams` (the first value of each key: `dir=forward` is oldest first, `wrap=on` wraps, anything else is the default), `writeLogsParams` (non-default keys only, sorted with the rest), `normalisedLogsSearch`; the hook's `set(p, {replace})` keeps the time Context |
-| `src/explore/useLogqlModules.ts` | Starts `LANGUAGES.logql()` and `import('../editor/logqlEditor')` on mount; a rejection sets `failed`. The page never imports `editor/editor.ts` |
+| `src/explore/useLogqlModules.ts` | Starts `LANGUAGES.logql()` and `import('../editor/logqlEditor')` on mount; a rejection sets `failed`, an editor rejection also `editorFailed`. The page never imports `editor/editor.ts` |
 | `src/explore/stepWidth.ts` | `StepWidth` `{stepMs, widthPx}`, `stepWidth(prev, window, widthPx)` and `useStepWidth`: the width sent is held per grid step (`promGrid`), so a resize within one step keeps the same object and changes no key |
 | `src/explore/useLogsVolume.ts` | `logsVolumeKey` = `['data', 'logs', 'volume', tenant, q, fromMs, toMs, stepMs]` and `useLogsVolume`: one TanStack query of `Api.queryVolume` (`retry: false`, the previous data as placeholder only from the same tenant), the last success kept per tenant (D-RUN), `rerun()` = cancel, then refetch |
 | `src/explore/logsRun.ts` | `VOLUME_STACK` (critical … unknown, bottom to top), `pagerInput`, `LastLogsResult` and `nextLast`, `layoutOf`, `volumePlan` (stacked bars, `categoryLabel: 'level'`, unit suffix `lines`), `metricPlan` (`framePlan('line', …)`), `firstPageError`, `logsStatusView` |
-| `src/pages/explore/LogsQueryCard.tsx` | `LogQL` tag, Run hint, **Run** (disabled until ready, described by the status row), `LogQLEditor` (label `LogQL query`) or its placeholder, the status row. No metric picker |
+| `src/pages/explore/LogsQueryCard.tsx` | `LogQL` tag, Run hint, **Run** (disabled until ready, described by the status row), `LogQLEditor` (label `LogQL query`) or its placeholder, or `QueryFallback` when the editor chunk failed (`editorFailed`); the load-failed alert shows whenever either import failed; the status row. No metric picker |
 | `src/pages/explore/LogsVolumeCard.tsx` | `CompletenessNotice` of the volume, its alert ("The volume could not be loaded: …", with Narrow when it helps) only while the stream answered, the chart host with the shimmer and `<ChartFrame>` of `volumePlan` |
 | `src/pages/explore/LogsStreamCard.tsx` | The pager's merged `CompletenessNotice`, then `LogStream` (label `Log lines`) in `.streamHost` (`size.log-stream`, 560 px), or `Loading log lines…` until the run's pager exists |
 | `src/pages/explore/LogsMetricCard.tsx` | **Result**: `CompletenessNotice` and `<ChartFrame>` of `metricPlan(last.series)`, with the shimmer after 300 ms while a rerun is pending |
@@ -1029,8 +1057,8 @@ useLogsVolume(tenant, q, window, step, enabled) ── volume
 layoutOf(state.phase, last) ── Volume + Log lines | Result
 ```
 
-The pager and the volume start once the editor chunk, the language and the step are known (the
-step is held back until the modules load, so a failed chunk sends nothing). `pagerInput` is null
+The pager and the volume start once the editor chunk, the language and the step are known (held
+back until the editor is mounted or has failed, and the language has loaded or an import failed). `pagerInput` is null
 for a blank query, a query over 128 KB (the status line then shows the refusal) or no step; the
 volume is enabled under the same conditions.
 
@@ -1156,6 +1184,7 @@ The gates are listed under [Gates](#gates); the benches in
 | `unit:window-keys`                                                                                                                        | `src/state/useWindowKeys.test.tsx`: an editable element in a shadow root, a shadow host in a dialog, and an event without a path                                                                                                                                                                                                                                                                                       |
 | `unit:explore-run-size` | `src/pages/explore/MetricsPage.test.tsx`: R1–R8 (128 KB of draft or URL query refused before sending; drafts whose plan is over 64 KiB sent and answered 413 by the stub; `rate=off`; the width arriving after the draft; metric types the stub's, not a gate) |
 | Page component tests | `src/pages/explore/MetricsPage.test.tsx` (run on load, no metadata wait, scalar, histogram, string, supersede, frame kept, refresh, interval refresh, refresh and rerun during the first fetch, shimmer, errors, partial data, warnings, rate and vis, run keys, escape, picker, away and back, empty query, isolation, tenant switch, heatmap isolation), `SeriesTable`, `MetricPicker`, `CompletenessNotice`, `src/kit/SegmentedControl.test.tsx`, `src/pages/board/BoardPage.test.tsx` (Refresh leaves panel queries) |
+| Fallback (#147) | `src/pages/explore/MetricsPage.fallback.test.tsx` (M1: the editor fails and the language is held: the text area runs on the range route on Run and the three Run keys; a scalar run while pending moves to the instant route once the language loads), `MetricsPage.langFailed.test.tsx` (M2: the language fails while the editor is pending: no text area, no request; the editor that loads later runs degraded), `MetricsPage.bothFailed.test.tsx` (M3: both fail: range route only; the 128 KB refusal and a blank Run send nothing) |
 | Hook and helper tests | `src/explore/useExploreRun.test.tsx`, `useDelayedFlag.test.tsx`, `useElementWidth.test.tsx`, `statusText.test.ts`, `metricOptions.test.ts` |
 | `e2e:explore-sends-inputs` | `e2e/explore-metrics.spec.ts` (in `e2e:metrics-autovis counter`): the request body holds the raw `http_requests_total` and `rate: true`; the fake records `rate(http_requests_total[1m])` |
 | `e2e:explore-completion`, `e2e:metrics-autovis`, `e2e:editor-error-on-run`, `e2e:series-table`, `e2e:explore-cancel`, `e2e:explore-truncation`, `e2e:explore-refresh`, `e2e:lazy-load` (explore) | `e2e/explore-metrics.spec.ts` (against `pulsus-fake` through the http-mode BFF; lazy-load on the stub build) |
@@ -1171,7 +1200,7 @@ The gates are listed under [Gates](#gates); the benches in
 | `unit:logs-params`, `unit:use-logs-params`, `unit:router-logs-params` | `src/state/logsParams.test.ts`, `useLogsParams.test.tsx`, `src/app/router.test.tsx` |
 | `unit:clock-epoch`, `unit:refresh-epoch` | `src/state/clock.test.ts`, `src/state/useTimeContext.test.tsx` |
 | `unit:step-width`, `unit:logs-volume`, `unit:logs-run` | `src/explore/stepWidth.test.ts`, `useLogsVolume.test.tsx`, `logsRun.test.ts` (and `useLogqlModules.test.tsx`) |
-| `unit:logs-page` | `src/pages/explore/LogsPage.test.tsx` LP1–LP23 (LP20, the chunk that fails to load, in `LogsPage.fallback.test.tsx`), over `src/test/logsPageKit.tsx` and the editor mock `src/test/fakeLogqlEditor.tsx` |
+| `unit:logs-page` | `src/pages/explore/LogsPage.test.tsx` LP1–LP23 (LP20, the editor chunk that fails to load while the language never settles, in `LogsPage.fallback.test.tsx`; LP21, the language that fails while the editor is pending, in `LogsPage.langFailed.test.tsx`; LP22, both imports failing, in `LogsPage.bothFailed.test.tsx`), over `src/test/logsPageKit.tsx` and the editor mock `src/test/fakeLogqlEditor.tsx` |
 | `unit:palette-levels` | `src/engine/canvas2d/palette.test.ts`: every Table 8-1a row by value, `unknown` → `series-3` |
 | `unit:log-transcripts` | `scripts/logTranscripts.test.ts` |
 | `e2e:logs-completion`, `e2e:logs-run`, `e2e:logs-brush`, `e2e:logs-paging`, `e2e:logs-metric`, `e2e:logs-cancel`, `e2e:logs-truncation`, `e2e:logs-refresh`, `e2e:logs-error-on-run`, `e2e:lazy-load` (logs) | `e2e/explore-logs.spec.ts` (against `pulsus-fake` through the http-mode BFF; lazy-load on the stub build) |
