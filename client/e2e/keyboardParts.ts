@@ -226,7 +226,6 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('none › button "Variable region: not set"'),
     onBoard('none › checkbox "Save current time range"'),
     onBoard('none › link "Open in Explore: Edge errors"'),
-    onBoard('none › slider "Crosshair: Request latency"'),
     onBoard('none › textbox "Section 1 title"'),
     // Operated by K4 and K2.
     onBoard('dialog "Edit panel" › button "Auto Visualisation"'),
