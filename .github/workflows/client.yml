@@ -79,19 +79,20 @@ jobs:
       - name: 'ci:dep-audit, ci:npm-audit'
         run: npm run audit
 
-  # Each browser runs as three jobs chosen by tag (#130, client/config/e2eShards.ts): `kbd-a` and
-  # `kbd-b` take keyboard parts of e2e:a11y-rooms, `rest` every other test. e2e-report merges them.
+  # Each browser runs as four jobs (#130, client/config/e2eShards.ts): `kbd-a` and `kbd-b` take
+  # keyboard parts of e2e:a11y-rooms by tag, `rest-b` the spec files of REST_B_FILES, `rest` every
+  # other test. e2e-report merges them.
   e2e:
     needs: check
     runs-on: ubuntu-24.04
-    # The longest shard is ~15 min on a slow runner; Playwright's globalTimeout (25 min) ends an
+    # The longest shard's test step is ~20 min (kbd-b); Playwright's globalTimeout (25 min) ends an
     # overrun first, with its artefacts.
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
-        shard: [kbd-a, kbd-b, rest]
+        shard: [kbd-a, kbd-b, rest, rest-b]
     env:
       # For make e2e-build's Go build, as server.yml sets them.
       GOFLAGS: -mod=readonly
@@ -184,9 +185,10 @@ jobs:
           path: client/e2e/__screenshots__/
           retention-days: 14
 
-  # Per browser, after its three shards (also when one failed): the merged HTML report,
-  # ci:e2e-complete (every listed test ran once and was not skipped, T05 §7.1) and e2e:a11y-rooms
-  # over the keyboard parts of all three shards.
+  # Per browser, after its four shards (also when one failed): the merged HTML report,
+  # ci:e2e-complete (every listed test is in exactly one shard, retries allowed, and was not
+  # skipped, T05 §7.1) and e2e:a11y-rooms
+  # over the keyboard parts of all four shards.
   e2e-report:
     needs: e2e
     if: ${{ !cancelled() }}
