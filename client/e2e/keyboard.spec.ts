@@ -1,11 +1,12 @@
 /**
  * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
  * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3; plan #63 L32;
- * plan #66 Part C L33): loops L1–L33, keyboard only, as five independent parts K1–K5 (#130). Input
- * goes through `press` and `type` of `keyboardCoverage.ts` (ESLint bans other input here). Each part
- * that passes writes what it collected, operated and visited (`keyboardParts.ts`); the coverage check
- * over all five (`scripts/keyboard-coverage.ts`, run by the reporter at the end of a full run and by
- * CI over the merged shards) fails on any control never operated and any state never visited.
+ * plan #66 Part C L33): loops L1–L33, keyboard only, as six independent parts, K1–K5 and K7
+ * (#130). Input goes through `press` and `type` of `keyboardCoverage.ts` (ESLint bans other input
+ * here). Each part that passes writes what it collected, operated and visited (`keyboardParts.ts`);
+ * the coverage check over all six (`scripts/keyboard-coverage.ts`, run by the reporter at the end of
+ * a full run and by CI over the merged shards) fails on any control never operated and any state
+ * never visited.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -54,7 +55,7 @@ declare global {
   }
 }
 test.describe('e2e:a11y-rooms keyboard', () => {
-  // Five independent parts (#130), run in parallel and in any CI shard; the coverage rule holds over
+  // Six independent parts (#130), run in parallel and in any CI shard; the coverage rule holds over
   // the union of their files (scripts/keyboard-coverage.ts). No retry: the traversal is
   // deterministic, so a retry only hides a real failure.
   test.describe.configure({ mode: 'parallel', retries: 0 });
@@ -65,18 +66,17 @@ test.describe('e2e:a11y-rooms keyboard', () => {
     await b.boardList();
     await b.viewTools('b-1');
   });
-  part(
-    'K4',
-    'b-3 and b-2 view tools, toolbar, edit layout (L24 b-3 b-2, L25, L26)',
-    ['@kbd', '@kbd-c'],
-    async (s) => {
-      const b = boardSteps(s);
-      await b.viewTools('b-3');
-      await b.viewToolsB2();
-      await b.toolbar();
-      await b.editLayout();
-    },
-  );
+  // K4 and K7 are the two halves of the `kbd-c` shard, split at the L24/L25 boundary (plan §3.5).
+  part('K4', 'b-3 and b-2 view tools (L24 b-3 b-2)', ['@kbd', '@kbd-c'], async (s) => {
+    const b = boardSteps(s);
+    await b.viewTools('b-3');
+    await b.viewToolsB2();
+  });
+  part('K7', 'toolbar, edit layout (L25, L26)', ['@kbd', '@kbd-c'], async (s) => {
+    const b = boardSteps(s);
+    await b.toolbar();
+    await b.editLayout();
+  });
   part('K5', 'guard, sections, variables, filters, Explore (L28–L33)', ['@kbd'], async (s) => {
     const b = boardSteps(s);
     await b.guardAndConflict();
