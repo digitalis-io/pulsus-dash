@@ -1,10 +1,10 @@
 /**
- * The CI shards of the e2e suite (#130): each browser runs as four jobs. `kbd-a` and `kbd-b` take
- * the keyboard parts tagged `@kbd-a` and `@kbd-b`; `rest-b` takes the spec files of `REST_B_FILES`;
- * `rest` takes every other test. The four filters partition the suite, and `ci:e2e-complete` checks
- * that each listed test was in exactly one shard.
+ * The CI shards of the e2e suite (#130): each browser runs as five jobs. `kbd-a`, `kbd-b` and
+ * `kbd-c` take the keyboard parts tagged `@kbd-a`, `@kbd-b` and `@kbd-c`; `rest-b` takes the spec
+ * files of `REST_B_FILES`; `rest` takes every other test. The five filters partition the suite, and
+ * `ci:e2e-complete` checks that each listed test was in exactly one shard.
  */
-export const E2E_SHARDS = ['kbd-a', 'kbd-b', 'rest', 'rest-b'] as const;
+export const E2E_SHARDS = ['kbd-a', 'kbd-b', 'kbd-c', 'rest', 'rest-b'] as const;
 export type E2eShard = (typeof E2E_SHARDS)[number];
 
 export interface ShardFilter {
@@ -44,7 +44,7 @@ export const REST_B_FILES: readonly string[] = [
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A tag ends at a character that cannot continue it: `@kbd-a` is not `@kbd-ab`.
-const KBD = /@kbd-[ab](?![\w-])/;
+const KBD = /@kbd-[abc](?![\w-])/;
 // Playwright matches `project file describe… title tags`: a listed file is a whole space-separated
 // token, so `a<file>` is not `<file>`.
 const FILES = `(^| )(${REST_B_FILES.map(escape).join('|')})( |$)`;
@@ -52,6 +52,7 @@ const FILES = `(^| )(${REST_B_FILES.map(escape).join('|')})( |$)`;
 const FILTERS: Record<E2eShard, ShardFilter> = {
   'kbd-a': { grep: /@kbd-a(?![\w-])/ },
   'kbd-b': { grep: /@kbd-b(?![\w-])/ },
+  'kbd-c': { grep: /@kbd-c(?![\w-])/ },
   'rest-b': { grep: new RegExp(FILES), grepInvert: KBD },
   rest: { grepInvert: new RegExp(`${KBD.source}|${FILES}`) },
 };
