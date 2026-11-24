@@ -429,11 +429,15 @@ the board draft at once, but the query **runs** only when you ask:
   run.
 
 Until then the field says "Press Shift+Enter or Run query to update the preview." A run shows
-**Loading** in the preview and on the panel behind until the result arrives (a query you ran
-before for the same time range shows at once); running the same query again reruns it, and a newer
-run cancels an older one. A query error underlines its place in the editor. **Escape** in the editor
+**Loading** in the preview and on the panel behind until the result arrives (a query you ran before
+for the same time range shows at once); running the same query again reruns it, and a newer run
+cancels an older one. A query error underlines its place in the editor. **Escape** in the editor
 moves to **Run query** (closing the completion list first, if it is open); a second **Escape**
-closes the window. If the editor cannot load, the field is a plain text box and says so.
+closes the window. If the query editor cannot load, the query box is plain text with a message to
+reload. Run and Shift+Enter (or Ctrl/⌘+Enter) still run the query. Without query support, the panel
+you are editing is drawn over time (other panels say "PromQL support could not be loaded. Reload the
+page."): a single value shows as a flat line, and a text value (a string) cannot be shown and
+reports the server's error.
 
 For LogQL the **Query** field is the editor of Explore › Logs, with highlighting and completion of
 label names and values, and no Metric picker; it runs the same way. Changing **Query language**

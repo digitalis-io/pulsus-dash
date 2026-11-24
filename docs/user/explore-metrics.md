@@ -28,6 +28,10 @@ the **Run** button, then the query editor and a status line.
 - **Run keys.** **Shift+Enter**, **Ctrl+Enter** (**⌘+Enter** on macOS) or **Run** run the query.
   Enter alone starts a new line. **Esc** leaves the editor and moves the focus to **Run** (when a
   completion list is open, Esc closes it first). Tab is not taken by the editor.
+- **If the editor cannot load**, the query box is plain text with a message to reload. Run and
+  Shift+Enter (or Ctrl/⌘+Enter) still run the query. Without query support, queries are drawn over
+  time: a single value shows as a flat line, and a text value (a string) cannot be shown and reports
+  the server's error.
 - **Running the same query again** (Run with the text unchanged) cancels a request still in
   flight and starts it again.
 - **Running an empty query** clears the result and shows "Run a query to see a chart".
