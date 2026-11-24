@@ -4,6 +4,8 @@ import { StubApi } from '../api/StubApi';
 import { ApiError } from '../api/types';
 import { locationOf, renderApp } from '../test/renderApp';
 import { seedWith } from '../test/seeds';
+import { t } from '../i18n/t';
+import { initials, userMenuButtonLabel } from './UserMenu';
 
 function mockMatchMedia(light: boolean): void {
   vi.stubGlobal('matchMedia', (q: string) => ({
@@ -24,7 +26,7 @@ describe('user menu', () => {
     const api = new StubApi();
     const signOut = vi.spyOn(api, 'signOut');
     const { router, user } = renderApp('/t/demo/boards', { api });
-    await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+    await user.click(await screen.findByRole('button', { name: 'AA, user menu: Ada Admin' }));
     // The board list shows the name too (Updated by); the menu's identity is a paragraph.
     expect(await screen.findByText('Ada Admin', { selector: 'p' })).toBeInTheDocument();
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
@@ -36,19 +38,19 @@ describe('user menu', () => {
     });
     expect(localStorage.getItem('pulsus-dash.theme')).toBe('light');
 
-    await user.click(screen.getByRole('button', { name: 'User menu: Ada Admin' }));
+    await user.click(screen.getByRole('button', { name: 'AA, user menu: Ada Admin' }));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Dark' }));
     await waitFor(() => {
       expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
     });
-    await user.click(screen.getByRole('button', { name: 'User menu: Ada Admin' }));
+    await user.click(screen.getByRole('button', { name: 'AA, user menu: Ada Admin' }));
     await user.click(await screen.findByRole('menuitemradio', { name: 'System' }));
     await waitFor(() => {
       expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     });
     expect(localStorage.getItem('pulsus-dash.theme')).toBe('system');
 
-    await user.click(screen.getByRole('button', { name: 'User menu: Ada Admin' }));
+    await user.click(screen.getByRole('button', { name: 'AA, user menu: Ada Admin' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
     await waitFor(() => {
       expect(locationOf(router)).toBe('/signed-out');
@@ -70,7 +72,7 @@ describe('sign out rejected', () => {
       .mockImplementationOnce(() => Promise.reject(new ApiError('network', 'down')))
       .mockImplementation(() => Promise.resolve());
     const { router, user, queryClient } = renderApp('/t/demo/boards', { api });
-    await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+    await user.click(await screen.findByRole('button', { name: 'AA, user menu: Ada Admin' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
 
     const alert = await screen.findByRole('alert');
@@ -98,7 +100,7 @@ describe('sign out rejected', () => {
       Promise.reject(new ApiError('network', 'down')),
     );
     const { user } = renderApp('/t/demo/boards', { api });
-    const trigger = await screen.findByRole('button', { name: 'User menu: Ada Admin' });
+    const trigger = await screen.findByRole('button', { name: 'AA, user menu: Ada Admin' });
     await user.click(trigger);
     await user.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
     const alert = await screen.findByRole('alert');
@@ -114,7 +116,7 @@ describe('sign out under the fixed local principal (A2, D12)', () => {
       const seed = seedWith();
       seed.session.canSignOut = canSignOut;
       const { user, view } = renderApp('/t/demo/boards', { api: new StubApi(seed) });
-      await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+      await user.click(await screen.findByRole('button', { name: 'AA, user menu: Ada Admin' }));
       await screen.findByRole('menuitem', { name: 'About Pulsus Dash' });
       expect(screen.queryByRole('menuitem', { name: 'Sign out' }) !== null).toBe(canSignOut);
       view.unmount();
@@ -128,7 +130,7 @@ describe('About shows the server version (A3)', () => {
       const seed = seedWith();
       seed.session.server = server;
       const { user, view } = renderApp('/t/demo/boards', { api: new StubApi(seed) });
-      await user.click(await screen.findByRole('button', { name: 'User menu: Ada Admin' }));
+      await user.click(await screen.findByRole('button', { name: 'AA, user menu: Ada Admin' }));
       await user.click(await screen.findByRole('menuitem', { name: 'About Pulsus Dash' }));
       const dialog = await screen.findByRole('dialog', { name: 'About Pulsus Dash' });
       if (server === null) {
@@ -138,5 +140,35 @@ describe('About shows the server version (A3)', () => {
       }
       view.unmount();
     }
+  });
+});
+
+describe('user menu button label (WCAG 2.5.3, label in name)', () => {
+  it('userMenuButtonLabel puts the visible initials first', () => {
+    const cases: readonly (readonly [string, string])[] = [
+      ['Ada Admin', 'AA, user menu: Ada Admin'],
+      ['Local user', 'LU, user menu: Local user'],
+      ['grace brewster hopper', 'GB, user menu: grace brewster hopper'],
+      ['Zoë', 'Z, user menu: Zoë'],
+      ['   ', t('user.menu', { name: '   ' })],
+    ];
+    for (const [name, label] of cases) {
+      expect(userMenuButtonLabel(name), name).toBe(label);
+      if (initials(name) !== '') {
+        expect(userMenuButtonLabel(name).startsWith(`${initials(name)},`), name).toBe(true);
+      }
+    }
+    expect(userMenuButtonLabel('   ')).toBe('User menu:    ');
+  });
+
+  it("the avatar button's name contains its visible text", async () => {
+    const seed = seedWith();
+    seed.session.user.name = 'Local user';
+    const { user } = renderApp('/t/demo/boards', { api: new StubApi(seed) });
+    const button = await screen.findByRole('button', { name: 'LU, user menu: Local user' });
+    expect(button.textContent).toBe('LU');
+    expect(button.getAttribute('aria-label')).toContain('LU');
+    await user.click(button);
+    expect(await screen.findByRole('menu', { name: 'User menu: Local user' })).toBeInTheDocument();
   });
 });

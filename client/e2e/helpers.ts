@@ -64,7 +64,7 @@ export async function openPicker(page: Page) {
 }
 
 export async function openUserMenu(page: Page) {
-  await page.getByRole('button', { name: 'User menu: Ada Admin' }).click();
+  await page.getByRole('button', { name: 'AA, user menu: Ada Admin' }).click();
   const menu = page.getByRole('menu', { name: 'User menu: Ada Admin' });
   await menu.waitFor();
   return menu;

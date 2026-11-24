@@ -40,11 +40,13 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
   },
 };
 
-async function seriousViolations(page: Page, state = '', include?: string): Promise<string[]> {
+async function seriousViolations(page: Page, state = ''): Promise<string[]> {
   const engine = page.context().browser()?.browserType().name() ?? '';
   const skip = ENGINE_SKIPS[engine]?.[state] ?? [];
-  const axe = new AxeBuilder({ page }).withTags(TAGS).disableRules([...skip]);
-  const r = await (include === undefined ? axe : axe.include(include)).analyze();
+  const r = await new AxeBuilder({ page })
+    .withTags(TAGS)
+    .disableRules([...skip])
+    .analyze();
   return r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
@@ -141,14 +143,34 @@ test.describe('e2e:a11y-rooms axe, board with markers', () => {
         );
         // At least this test's chip; markers other specs post at the same time may show too.
         await expect(page.locator('[data-event-hit][aria-label*="checkout"]')).toHaveCount(1);
-        // The board itself (`main`): the http-mode shell's user menu is outside this change.
-        expect(await seriousViolations(page, 'board with markers', 'main')).toEqual([]);
+        expect(await seriousViolations(page, 'board with markers')).toEqual([]);
       } finally {
         await deleteAnnotations(request, ids);
         await deleteBoard(request, uid);
       }
     });
   }
+
+  // The http-mode user's initials (`LU`) are evaluated by axe's label-in-name rule; the stub's
+  // `AA` is skipped as symbolic text. Each scan is on a fresh page, the menu opened before its scan:
+  // Firefox's page crashes on a pointer click after an axe run in the same page.
+  const httpShell = async (page: Page): Promise<void> => {
+    await page.goto('/t/demo/boards');
+    await page.locator('html[data-shell-ready="true"]').waitFor();
+  };
+
+  test('http shell, user menu closed', async ({ page }) => {
+    await httpShell(page);
+    await page.getByRole('button', { name: 'LU, user menu: Local user' }).waitFor();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('http shell, user menu open', async ({ page }) => {
+    await httpShell(page);
+    await page.getByRole('button', { name: 'LU, user menu: Local user' }).click();
+    await page.getByRole('menu', { name: 'User menu: Local user' }).waitFor();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
 });
 
 /**

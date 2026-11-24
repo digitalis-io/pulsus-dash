@@ -32,7 +32,7 @@ test.describe('e2e:bff-http-shell', () => {
     expect(checks.length).toBeGreaterThanOrEqual(1);
     expect(checks.every((r) => r.transcript === 'runtimeinfo')).toBe(true);
 
-    await page.getByRole('button', { name: 'User menu: Local user' }).click();
+    await page.getByRole('button', { name: 'LU, user menu: Local user' }).click();
     const menu = page.getByRole('menu', { name: 'User menu: Local user' });
     await menu.waitFor();
     await expect(menu.getByRole('menuitem', { name: 'Sign out' })).toHaveCount(0);

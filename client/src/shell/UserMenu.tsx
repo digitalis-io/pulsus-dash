@@ -40,6 +40,11 @@ export function initials(name: string): string {
     .join('');
 }
 
+/** Stub (tests first). */
+export function userMenuButtonLabel(name: string): string {
+  return t('user.menu', { name });
+}
+
 export function UserMenu() {
   const session = useSession();
   const api = useApi();
