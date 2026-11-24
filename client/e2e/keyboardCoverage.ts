@@ -7,9 +7,17 @@
  * or overlay that no loop operates fails without editing a list.
  *
  * Snapshot scope: with an overlay open (a React Aria popover or a modal dialog) the snapshot is the
- * overlay's, because React Aria popovers leave the page behind them in the accessibility tree.
+ * overlay's, because React Aria popovers leave the page behind them in the accessibility tree. With
+ * none open it is `#root` (else `body`): React Aria portals every overlay outside `#root`, so a
+ * dialog's controls are never collected under `+ none` (#130).
+ *
+ * Stable reads (#130): a state and what is read under it (the snapshot, the focused control) come
+ * from one `stableRead`, so a dialog that opens during a read is not attributed to the state before
+ * it. A collect that cannot get a stable read in three tries collects nothing (the next keystroke
+ * collects again); a drain or an operating keystroke that cannot throws.
  */
 import type { Locator, Page } from '@playwright/test';
+import { drainPending, stableRead } from './keyboardParts.ts';
 
 export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
   'link',
@@ -87,32 +95,35 @@ export function parseSnapshot(yaml: string): string[] {
   return keys;
 }
 
-/** The route pattern of the page (§3.4), or `not-found` / `session-error` from the page heading. */
-async function routeState(page: Page): Promise<string> {
-  const h1 = await page.evaluate(() => document.querySelector('h1')?.textContent ?? '');
+const ROUTES: readonly (readonly [RegExp, string])[] = [
+  [/^\/t\/[^/]+\/boards$/, '/t/:tenant/boards'],
+  [/^\/t\/[^/]+\/board\/[^/]+$/, '/t/:tenant/board/:uid'],
+  [/^\/t\/[^/]+\/explore\/metrics$/, '/t/:tenant/explore/metrics'],
+  [/^\/t\/[^/]+\/explore\/logs$/, '/t/:tenant/explore/logs'],
+  [/^\/t\/[^/]+\/admin$/, '/t/:tenant/admin'],
+  [/^\/t\/[^/]+\/dev\/gallery$/, '/t/:tenant/dev/gallery'],
+  [/^\/signed-out$/, '/signed-out'],
+];
+
+/** The route pattern of `path` (§3.4), or `not-found` / `session-error` from the page heading. */
+export function routeOf(path: string, h1: string): string {
   if (h1 === 'Pulsus Dash could not load your session') return 'session-error';
-  const path = new URL(page.url()).pathname;
-  const patterns: [RegExp, string][] = [
-    [/^\/t\/[^/]+\/boards$/, '/t/:tenant/boards'],
-    [/^\/t\/[^/]+\/board\/[^/]+$/, '/t/:tenant/board/:uid'],
-    [/^\/t\/[^/]+\/explore\/metrics$/, '/t/:tenant/explore/metrics'],
-    [/^\/t\/[^/]+\/explore\/logs$/, '/t/:tenant/explore/logs'],
-    [/^\/t\/[^/]+\/admin$/, '/t/:tenant/admin'],
-    [/^\/t\/[^/]+\/dev\/gallery$/, '/t/:tenant/dev/gallery'],
-    [/^\/signed-out$/, '/signed-out'],
-  ];
-  for (const [re, name] of patterns) if (re.test(path)) return name;
+  for (const [re, name] of ROUTES) if (re.test(path)) return name;
   if (h1 === 'Page not found') return path.startsWith('/t/') ? '/t/:tenant/*' : 'not-found';
   return path;
 }
 
 const POPOVER = '[data-trigger]:not([data-trigger="TooltipTrigger"])';
 
-/** The topmost open overlay: `dialog "<name>"`, `menu "<name>"`, `listbox "<name>"` or `none`. */
-async function overlayState(
-  page: Page,
-): Promise<{ key: string; kind: 'none' | 'popover' | 'modal' }> {
+type Overlay = { key: string; kind: 'none' | 'popover' | 'modal' };
+
+/**
+ * One page round trip (#130 plan 7 §3.2): the h1 text and the topmost open overlay, `dialog
+ * "<name>"`, `menu "<name>"`, `listbox "<name>"` or `none`.
+ */
+async function readState(page: Page): Promise<{ h1: string; overlay: Overlay }> {
   return page.evaluate((popover) => {
+    const h1 = document.querySelector('h1')?.textContent ?? '';
     const roots = [
       ...document.querySelectorAll(
         '[data-trigger]:not([data-trigger="TooltipTrigger"]), [role="dialog"]',
@@ -122,7 +133,7 @@ async function overlayState(
         el.closest('#root') === null && el.closest('[data-trigger="TooltipTrigger"]') === null,
     );
     const top = roots.at(-1);
-    if (top === undefined) return { key: 'none', kind: 'none' as const };
+    if (top === undefined) return { h1, overlay: { key: 'none', kind: 'none' as const } };
     // The overlay's own widget: a menu inside a popover, else the dialog, else a list box.
     const el =
       top.querySelector('[role="menu"]') ??
@@ -134,8 +145,11 @@ async function overlayState(
       el?.getAttribute('aria-label') ??
       (labelledBy ? (document.getElementById(labelledBy)?.textContent ?? '') : '');
     return {
-      key: `${role} "${name}"`,
-      kind: top.matches(popover) ? ('popover' as const) : ('modal' as const),
+      h1,
+      overlay: {
+        key: `${role} "${name}"`,
+        kind: top.matches(popover) ? ('popover' as const) : ('modal' as const),
+      },
     };
   }, POPOVER);
 }
@@ -176,15 +190,25 @@ export interface KeyboardHarness {
   state: () => Promise<string>;
   /** The accessible `role "name"` of the focused control. */
   focusName: () => Promise<string>;
-  /** Controls on screen now that have not been operated in the current state. */
+  /** Controls on screen now that have not been operated in the current state, nor are `done`. */
   pendingHere: () => Promise<string[]>;
   collected: () => ReadonlySet<string>;
   operated: () => ReadonlySet<string>;
+  /** Route states seen so far. */
+  visited: () => ReadonlySet<string>;
   uncovered: () => string[];
   unvisited: (required: readonly string[]) => string[];
 }
 
-export function keyboardHarness(page: Page): KeyboardHarness {
+/**
+ * `done`: keys the part's drains treat as operated because an earlier part operates them
+ * (`DRAIN_SKIP`, #130). They only leave `pendingHere`; `collected`, `operated` and `uncovered`
+ * ignore them.
+ */
+export function keyboardHarness(
+  page: Page,
+  done: ReadonlySet<string> = new Set(),
+): KeyboardHarness {
   const collected = new Set<string>();
   const operated = new Set<string>();
   const visited = new Set<string>();
@@ -239,12 +263,15 @@ export function keyboardHarness(page: Page): KeyboardHarness {
   }
 
   async function scope(): Promise<{ state: string; root: Locator }> {
-    const route = await routeState(page);
+    const { h1, overlay } = await readState(page);
+    const route = routeOf(new URL(page.url()).pathname, h1);
     visited.add(route);
-    const overlay = await overlayState(page);
+    const app = page.locator('#root');
     const root =
       overlay.kind === 'none'
-        ? page.locator('body')
+        ? (await app.count()) > 0
+          ? app
+          : page.locator('body')
         : overlay.kind === 'popover'
           ? page.locator(POPOVER).last()
           : page.locator('[role="dialog"]').last();
@@ -265,19 +292,33 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     );
   }
 
+  /** The state now; `last` keeps it for the error of a read that never held still. */
+  let last = '';
+  async function stateNow(): Promise<string> {
+    const { h1, overlay } = await readState(page);
+    last = `${routeOf(new URL(page.url()).pathname, h1)} + ${overlay.key}`;
+    return last;
+  }
+
+  /** Keys in scope now, less the screen-reader-only controls and copies of copies. */
+  async function snapshot(timeout?: number): Promise<{ state: string; value: string[] }> {
+    const { state, root } = await scope();
+    let skip = await screenReaderOnly(root);
+    const yaml = await root.ariaSnapshot(timeout === undefined ? {} : { timeout });
+    skip = [...skip, ...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
+    return { state, value: parseSnapshot(yaml).filter((k) => !skip.includes(k)) };
+  }
+
+  function unstable(): Error {
+    return new Error(`keyboard: state changed during read ×3 (${last})`);
+  }
+
   async function collect(): Promise<void> {
     await settle();
-    const { state, root } = await scope();
-    let yaml = '';
-    let skip: string[] = [];
-    try {
-      skip = await screenReaderOnly(root);
-      yaml = await root.ariaSnapshot({ timeout: 5_000 });
-      skip = [...skip, ...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
-    } catch {
-      return; // the overlay closed between the reads; the next keystroke collects again
-    }
-    for (const k of parseSnapshot(yaml)) if (!skip.includes(k)) collected.add(`${state} › ${k}`);
+    // Undefined: an overlay opened or closed under every read; the next keystroke collects again.
+    const r = await stableRead(() => snapshot(5_000), stateNow, 3, settle);
+    if (r === undefined) return;
+    for (const k of r.value) collected.add(`${r.state} › ${k}`);
   }
 
   /** `role "name"` (with its `#n` among equals in the current scope) of the focused control. */
@@ -335,16 +376,24 @@ export function keyboardHarness(page: Page): KeyboardHarness {
   }
 
   async function record(): Promise<string | null> {
-    const f = await focused();
-    if (f === null) return null;
-    const { state } = await scope();
-    operated.add(`${state} › ${f}`);
-    return f;
+    const r = await stableRead(
+      async () => {
+        const { state } = await scope();
+        return { state, value: await focused() };
+      },
+      stateNow,
+      3,
+      settle,
+    );
+    if (r === undefined) throw unstable();
+    if (r.value === null) return null;
+    operated.add(`${r.state} › ${r.value}`);
+    return r.value;
   }
 
   return {
     async press(keys) {
-      const overlayOpen = (await overlayState(page)).key !== 'none';
+      const overlayOpen = (await readState(page)).overlay.key !== 'none';
       const f = OPERATING.test(keys) || (keys === 'Escape' && overlayOpen) ? await record() : null;
       const dup = f !== null && OPERATING.test(keys) && DUPLICATE.test(f);
       const before = dup ? await panelIds() : [];
@@ -370,13 +419,13 @@ export function keyboardHarness(page: Page): KeyboardHarness {
     },
     async pendingHere() {
       await settle();
-      const { state, root } = await scope();
-      const skip = [...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
-      const keys = parseSnapshot(await root.ariaSnapshot());
-      return keys.filter((k) => !skip.includes(k) && !operated.has(`${state} › ${k}`));
+      const r = await stableRead(() => snapshot(), stateNow, 3, settle);
+      if (r === undefined) throw unstable();
+      return drainPending(r.value, r.state, operated, done);
     },
     collected: () => collected,
     operated: () => operated,
+    visited: () => visited,
     uncovered: () => [...collected].filter((k) => !operated.has(k)).sort(),
     unvisited: (required) => required.filter((r) => !visited.has(r)),
   };

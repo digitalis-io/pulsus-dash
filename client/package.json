@@ -15,6 +15,8 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "e2e:keyboard-coverage": "node scripts/keyboard-coverage.ts",
+    "e2e:complete": "node scripts/e2e-complete.ts",
     "tokens": "node scripts/gen-tokens.ts",
     "engine-fixtures": "node scripts/engine-fixtures.ts",
     "gen:log-transcripts": "node scripts/logTranscripts.ts",

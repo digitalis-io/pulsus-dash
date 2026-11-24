@@ -1,0 +1,85 @@
+/**
+ * The CI shards of the e2e suite (#130): each browser runs as five jobs. `kbd-a`, `kbd-b` and
+ * `kbd-c` take the keyboard parts tagged `@kbd-a`, `@kbd-b` and `@kbd-c`; `rest-b` takes the spec
+ * files of `REST_B_FILES`; `rest` takes every other test. The five filters partition the suite, and
+ * `ci:e2e-complete` checks that each listed test was in exactly one shard.
+ */
+export const E2E_SHARDS = ['kbd-a', 'kbd-b', 'kbd-c', 'rest', 'rest-b'] as const;
+export type E2eShard = (typeof E2E_SHARDS)[number];
+
+export interface ShardFilter {
+  grep?: RegExp;
+  grepInvert?: RegExp;
+}
+
+/**
+ * Spec files (paths relative to testDir) that run in `rest-b`; never keyboard.spec.ts or
+ * golden-gallery.spec.ts (the goldens stay in `rest`). Sorted. Chosen longest first from the webkit
+ * `rest` report of run 45285529104: K5 alone (1 060 s) outweighed every other file together (866 s),
+ * so all of them are here. A new spec file runs in `rest` until it is added.
+ */
+export const REST_B_FILES: readonly string[] = [
+  'a11y-rooms.spec.ts',
+  'app-layout.spec.ts',
+  'asset-origin.spec.ts',
+  'board-edit.spec.ts',
+  'board-prefs.spec.ts',
+  'board-promql.spec.ts',
+  'board-thresholds.spec.ts',
+  'chart-brush.spec.ts',
+  'chart-hover.spec.ts',
+  'chart-zoom.spec.ts',
+  'coverage.spec.ts',
+  'csp-violations.spec.ts',
+  'deep-link.spec.ts',
+  'explore-metrics.spec.ts',
+  'fonts.spec.ts',
+  'gallery-extreme.spec.ts',
+  'log-stream.spec.ts',
+  'panel-editor-dialog.spec.ts',
+  'theme.spec.ts',
+  'ticks-parity.spec.ts',
+];
+
+const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A tag ends at a character that cannot continue it: `@kbd-a` is not `@kbd-ab`.
+const KBD = /@kbd-[abc](?![\w-])/;
+// Playwright matches `project file describe… title tags`: a listed file is a whole space-separated
+// token, so `a<file>` is not `<file>`.
+const FILES = `(^| )(${REST_B_FILES.map(escape).join('|')})( |$)`;
+
+const FILTERS: Record<E2eShard, ShardFilter> = {
+  'kbd-a': { grep: /@kbd-a(?![\w-])/ },
+  'kbd-b': { grep: /@kbd-b(?![\w-])/ },
+  'kbd-c': { grep: /@kbd-c(?![\w-])/ },
+  'rest-b': { grep: new RegExp(FILES), grepInvert: KBD },
+  rest: { grepInvert: new RegExp(`${KBD.source}|${FILES}`) },
+};
+
+const isShard = (name: string): name is E2eShard =>
+  (E2E_SHARDS as readonly string[]).includes(name);
+
+/** `E2E_SHARD` → the Playwright filter. Undefined or '' → {} (the whole suite); unknown → throws. */
+export function shardFilter(name: string | undefined): ShardFilter {
+  if (name === undefined || name === '') return {};
+  if (!isShard(name)) throw new Error(`E2E_SHARD must be one of ${E2E_SHARDS.join(', ')}`);
+  return { ...FILTERS[name] };
+}
+
+/**
+ * The e2e timeouts, in minutes (#130 plan 7 §3.5). A keyboard part may take `partMin`, a whole
+ * shard run `globalMin` (Playwright's `globalTimeout`, on CI), and the e2e job `jobMin` (its
+ * `timeout-minutes`). `setupMaxMin` covers checkout, `npm ci`, Go, the cache restore and
+ * `make e2e-build` (≤ 3 observed) plus one stalled `install-deps` attempt (8) and its retry;
+ * `tailMin` covers the uploads and post-job steps (seconds observed). Firefox varies by up to 1.5×
+ * between runs of one head, so the margins are wide: times are recorded, only a timeout acts.
+ * Invariants (unit test): part < global, setup + global + tail ≤ job.
+ */
+export const E2E_TIMEOUTS = {
+  partMin: 30,
+  globalMin: 35,
+  setupMaxMin: 13,
+  tailMin: 2,
+  jobMin: 50,
+} as const;

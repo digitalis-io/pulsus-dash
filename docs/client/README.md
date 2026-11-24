@@ -281,20 +281,54 @@ Designs: [IA-015, IA-021](../../designs/product/02-information-architecture.md),
 
 ## Keyboard coverage
 
-`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L28) through
+`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L34) through
 `e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
-text, `drain`, `shellAfter`) and the board loops L23–L28 in `e2e/keyboardBoards.ts`, run inside the
-one test. ESLint bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in all three files. After every keystroke the harness collects each interactive control (links, buttons,
+text, `drain`, `shellAfter`), the board loops L23–L31 and L34 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
+one function per step) and the Explore loops L32 (metrics) and L33 (logs) in
+`e2e/keyboardExplore.ts`. The loops run as six
+independent tests, the parts (#130), each in its own browser context from the same preamble (the
+clipboard stub and the fixed clock), in parallel and in any CI shard:
+
+| Part | Tags | Loops |
+|---|---|---|
+| K1 shell and chart frames | `@kbd @kbd-a` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
+| K2 panel editor | `@kbd @kbd-a` | L27 |
+| K3 board list, log panels and b-1 view tools | `@kbd @kbd-b` | L23, L34 (the board log panels, #67), L24 on b-1 |
+| K4 b-3 and b-2 view tools | `@kbd @kbd-c` | L24 on b-3 and b-2 |
+| K7 toolbar, edit layout | `@kbd @kbd-c` | L25, L26 |
+| K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32, L33 |
+
+A part that passes writes what it collected, operated and visited to
+`test-results/keyboard-coverage/<project>-K<n>.json` (`PartCoverage` in `e2e/keyboardParts.ts`;
+nothing is written when the part fails). The coverage rule holds over the union of a project's six
+files: a control collected by one part may be operated by another. The check runs at the end of a
+full `npm run e2e` (the reporter) and, on CI, over the five shards' files in the `e2e-report` job
+(`scripts/keyboard-coverage.ts`; see
+[Build, test and CI](../development/build-and-ci.md#keyboard-coverage-and-e2e-completeness)). ESLint
+bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in the spec, the script and the board
+loops. After every keystroke the harness collects each interactive control (links, buttons,
 fields, menu items, options; a grid counts as one control) from the accessibility snapshot, keyed by
-state: the route pattern plus the open overlay (with an overlay open, only the overlay is read).
+state: the route pattern plus the open overlay (with an overlay open, only the overlay is read;
+with none open, only `#root`, or `body` on a page without it: React Aria portals every overlay
+outside `#root`, so a dialog's controls are never collected under `+ none`). A state and what is
+read under it come from one stable read (`stableRead` in `e2e/keyboardParts.ts`): the harness
+reads the state and the snapshot (or the focused control), then the state again, and keeps the read
+only when both states agree, else waits two animation frames and reads again, three times in all.
+Without it, a dialog that opened during a read put its controls under the state before it (#130).
+When no read holds still, a collect after a keystroke collects nothing (the next keystroke collects
+again), while a drain's work list and an operating keystroke throw `keyboard: state changed during
+read ×3 (<state>)`, so the part fails loudly. The state is one page round trip (`readState`: the
+h1 text and the topmost overlay in one `evaluate`; `routeOf` maps the URL path and the h1 to the
+route pattern without touching the page). The cost of a stable read is that one extra state read
+per collect, per operating keystroke and per drain step.
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
 overlay, it records the focused control as operated; Tab never counts. The test fails if any
-collected control was never operated, or if a required state (every route, Not found, Signed out,
-the session error, and the chart gallery `/t/:tenant/dev/gallery`) was never visited, and prints
-the missing keys. L20 operates the header and sidebar on the gallery too (the time dialog's Keep
+collected control was never operated by any part, or if a required state (every route, Not found,
+Signed out, the session error, and the chart gallery `/t/:tenant/dev/gallery`; `REQUIRED_STATES` in
+`e2e/keyboardParts.ts`) was never visited by any part, and prints the missing keys. L20 operates the header and sidebar on the gallery too (the time dialog's Keep
 relative and Copy link exist only on pages with a view URL pattern, so not there); L22 operates the
 six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
-and the value text. L23–L28 cover the board list and its dialogs, the board in View and Edit mode,
+and the value text. L23–L31 cover the board list and its dialogs, the board in View and Edit mode,
 the panel tools, Share, the layout buttons, the panel editor dialog and its selects, the guard and
 the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
@@ -316,10 +350,67 @@ wrapper (inline `clip-path: inset(50%)`), that is the popover "Dismiss" buttons 
 second "Next"; Escape and the visible buttons are their keyboard equivalents. Any other control, including a visible empty icon button
 with `tabindex="-1"`, is counted (the self-test checks this).
 
-**Adding a control:** run the keyboard script; if it lists the new control as uncovered, add the
-key presses that operate it to the loop for its page (or to `chrome()` in L20 if it is in the
-sidebar or header), with an assertion of what it does. `e2e/coverage.spec.ts` checks the harness
-itself.
+**Adding a control:** run the keyboard script (a full `npm run e2e`, or
+`npx playwright test --grep @kbd --project=chromium` then
+`npm run e2e:keyboard-coverage -- test-results chromium`); if it lists the new control as
+uncovered, add the key presses that operate it to the loop for its page (or to `chrome()` in L20 if
+it is in the sidebar or header), with an assertion of what it does. `e2e/coverage.spec.ts` checks
+the harness itself.
+
+**Adding a loop:** add it to the part whose pages it covers (a board loop as a new function of
+`boardSteps`, called from that part's body in `keyboard.spec.ts`). Each part must pass alone
+(`--grep "K3 "`): a loop starts from its own `goto`, not from the state an earlier loop left. If a
+shard's test step then exceeds 15 minutes, rebalance as
+[E2E shards](../development/build-and-ci.md#e2e-shards) says.
+
+**Drain skips.** Before the split, one test ran the loops in the order K1, K3, K4, K7, K2, K5
+(`SINGLE_TEST_ORDER` in `e2e/keyboardParts.ts`), and a drain skipped what an earlier loop had
+already operated. A part alone lacks those earlier loops, so its drains would try to operate
+controls they cannot reach from their own entry (for example a board's `Share` button from
+K5's edit-sections drain). `DRAIN_SKIP[part]` lists the keys (`state › role "name"`) that part's
+drains treat as done: `keyboardSession` passes them to `keyboardHarness(page, done)`, and
+`pendingHere` (through `drainPending`) leaves them out. They only leave the drains' work list:
+they never enter the part's `operated`, so the union rule still needs some part to operate them.
+The checker fails a key that no part before it in `SINGLE_TEST_ORDER` operated
+(`keyboard-skip-unbacked`) or that the part no longer collects (`keyboard-skip-unused`). Each
+entry carries a comment naming the part(s) that operate it. The lists today (all keys on
+`/t/:tenant/board/:uid`):
+
+| Part | Keys | What they are | Operated by |
+|---|---|---|---|
+| K1, K3 | 0 | | |
+| K4 | 5 | the board log panels' `radio "Oldest first"` options (on the board, its `#2` copy, full screen and the panel editor) and `Full screen: Edge errors (copy)`: drain failures after #67's L34, which runs in K3. A radio group has one tab stop, so a drain cannot reach its second option (K4's four b-1 link skips were for L25–L26 and became unused when those loops moved to K7) | K3 |
+| K7 | 70 | the b-1 `link "Open in Explore: Request rate"` and `radio "Oldest first"` (drain failures), and 68 from the redundant-drain rule: board controls and Edit panel, Share, variable and discard dialog controls that K3 or K4 operate. The rule gave 140; one clean-up removed 70 that K7 no longer collected on any engine, mostly controls inside dialogs whose openers are now skipped, and a later one removed the Edit panel's `Auto Visualisation` and `Query`, unbacked after #67 | K1, K3, K4 |
+| K2 | 78 | `Add panel`, `Share`, `Full screen: Edge p99` (drain failures), `radio "Oldest first"` (a drain failure after #67); 74 from the coverage-gap rule: 26 board controls (panel menus, legend buttons, Edit board, Save, Done…) and 48 in the Edit panel dialog, its selects and menus, the variable dialogs and the discard guard. The Edit panel's `Auto Visualisation`, the `Auto` option and `Query` were removed after #67 (unbacked); K2 operates them itself | K3, K4, K7 |
+| K5 | 73 | `Share` and `radio "Oldest first"` (drain failures; the radio after #67); 71 from the coverage-gap rule (found on webkit): 49 board controls and 22 in the Edit panel, Add filter, Share board, variable and discard dialogs. The Request latency crosshair and, after #67, the Edit panel `Auto Visualisation` were removed when the split left it unbacked (K7 does not operate it), so K5 now operates it itself | K1–K4, K7 |
+
+A list grows only by these rules, the first two applied on Chromium first. `earlier(P)` is the union of the
+`operated` files of the parts before P in `SINGLE_TEST_ORDER`, from one full run of the same
+project.
+
+| Rule | Trigger | Add to `DRAIN_SKIP[P]` |
+|---|---|---|
+| Drain failure | P alone fails `drain <n> › <k1> › … : cannot reach <x>` (or `still pending`) | the first of k1, …, x whose full key (the state at the drain's entry, ` › `, the key) is in `earlier(P)` |
+| Coverage gap | the merged check reports `keyboard-uncovered` keys that only P collected | every key of P's `operated` that is in `earlier(P)` and not yet in the list |
+| Redundant drain (K7 only, #130 plan 7) | K7, split from K4, spent its time draining keys K1, K3 or K4 already operate | every key in `operated(K7) ∩ earlier(K7)` in every (engine, run) pair of the part files used (runs 11 and 12; firefox's run 12 had no K7 file), then the clean-up once. The same rule applies to a new part made by the timeout fallback, from the part files of a run after the part exists |
+
+Each addition carries a comment naming the backing part(s). After it, run P alone and the merged
+check of all six parts, remove every entry that `keyboard-skip-unused` or `keyboard-skip-unbacked`
+reports, and repeat. If a drain failure has no qualifying key, or a coverage-gap round adds no key
+while keys stay uncovered, the part has a real gap: operate the control in a loop instead.
+
+**Engine-specific skips.** Run the clean-up on all three engines. A key that is `skip-unused` on
+every engine is removed. A key that is `skip-unused` on some engines only stays in `DRAIN_SKIP` and
+is also listed in `DRAIN_SKIP_ONLY[P]` with the engines where P does collect it (for example
+`{ K5: { '<key>': ['chromium', 'webkit'] } }`). `drainSkip(part, project)` is the part's skip list
+on one engine: on an engine not listed the key is no skip at all, so the part's drains operate it if
+it ever appears there, and the checker neither expects it collected nor needs it backed. On a listed
+engine both skip rules apply as usual. So every engine's merged check can pass with no skip that
+hides a control on any engine.
+
+Why this is no weaker than the single test: there, L27's drains skipped all of `earlier(K2)`, so a
+K2 that skips a subset of it explores at most what L27 explored, plus K2's own steps. Explicit
+steps (`s.on`, `s.menuItem`) ignore the list.
 
 ## API clients
 

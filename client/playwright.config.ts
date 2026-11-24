@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_TIMEOUTS, shardFilter } from './config/e2eShards.ts';
 
 const viewport = { width: 1440, height: 900 };
 const ci = Boolean(process.env['CI']);
@@ -65,7 +66,20 @@ export default defineConfig({
     },
   },
   retries: ci ? 1 : 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // CI runs each browser as five jobs (#130): `E2E_SHARD` picks the tests by tag or spec file.
+  ...shardFilter(process.env['E2E_SHARD']),
+  // Two workers on CI's four vCPUs; a run that overruns fails with its artefacts, not at the job's
+  // timeout.
+  ...(ci ? { workers: 2, globalTimeout: E2E_TIMEOUTS.globalMin * 60_000 } : {}),
+  reporter: [
+    ['list'],
+    // CI: one blob per shard, merged per browser by the e2e-report job.
+    ci
+      ? ['blob', { outputDir: 'blob-report', fileName: `${process.env['E2E_SHARD'] ?? 'all'}.zip` }]
+      : ['html', { open: 'never' }],
+    // e2e:a11y-rooms over the keyboard parts at the end of a full run (#130).
+    ['./scripts/keyboard-coverage-reporter.ts'],
+  ],
   use: {
     baseURL: 'http://localhost:4173',
     locale: 'en-GB',
