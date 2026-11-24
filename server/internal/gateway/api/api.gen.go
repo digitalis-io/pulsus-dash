@@ -14,7 +14,32 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for AnnotationKind.
+const (
+	AnnotationKindAnnotation AnnotationKind = "annotation"
+	AnnotationKindConfig     AnnotationKind = "config"
+	AnnotationKindDeploy     AnnotationKind = "deploy"
+	AnnotationKindFlag       AnnotationKind = "flag"
+)
+
+// Valid indicates whether the value is a known member of the AnnotationKind enum.
+func (e AnnotationKind) Valid() bool {
+	switch e {
+	case AnnotationKindAnnotation:
+		return true
+	case AnnotationKindConfig:
+		return true
+	case AnnotationKindDeploy:
+		return true
+	case AnnotationKindFlag:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for AuthorKind.
 const (
@@ -487,6 +512,41 @@ func (e VisKind) Valid() bool {
 	}
 }
 
+// Annotation An event marker (ADR-0023), the JSON image of events/1 (T04 §0). end_at is null for a point.
+type Annotation struct {
+	// At ms since the Unix epoch
+	At    EpochMs            `json:"at"`
+	EndAt *int64             `json:"end_at"`
+	Id    openapi_types.UUID `json:"id"`
+	Kind  AnnotationKind     `json:"kind"`
+	Tags  []AnnotationTag    `json:"tags"`
+	Text  string             `json:"text"`
+}
+
+// AnnotationCreate defines model for AnnotationCreate.
+type AnnotationCreate struct {
+	// At ms since the Unix epoch
+	At EpochMs `json:"at"`
+
+	// EndAt at most 31 days after at
+	EndAt *int64           `json:"end_at,omitempty"`
+	Kind  AnnotationKind   `json:"kind"`
+	Tags  *[]AnnotationTag `json:"tags,omitempty"`
+	Text  string           `json:"text"`
+}
+
+// AnnotationKind defines model for AnnotationKind.
+type AnnotationKind string
+
+// AnnotationList defines model for AnnotationList.
+type AnnotationList struct {
+	Items     []Annotation `json:"items"`
+	Truncated bool         `json:"truncated"`
+}
+
+// AnnotationTag defines model for AnnotationTag.
+type AnnotationTag = string
+
 // Author defines model for Author.
 type Author struct {
 	Kind AuthorKind `json:"kind"`
@@ -598,6 +658,9 @@ type DatasourceStatus struct {
 
 // DatasourceStatusState defines model for DatasourceStatus.State.
 type DatasourceStatusState string
+
+// EpochMs ms since the Unix epoch
+type EpochMs = int64
 
 // ErrorBody defines model for ErrorBody.
 type ErrorBody struct {

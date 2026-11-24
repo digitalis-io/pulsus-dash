@@ -15,6 +15,7 @@ const SUMMARY: FrameSummary = {
   plot: { x: 0, y: 0, width: 100, height: 100 },
   valueAxis: { min: 0, max: 2, manual: false },
   thresholdLabels: [],
+  eventLabels: [],
 };
 
 describe('summaryLabel thresholds (#64 Part B §3.9.1)', () => {

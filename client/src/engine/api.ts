@@ -1,5 +1,5 @@
 /**
- * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020 and ADR-0022). Every chart is drawn by a `ChartEngine`
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022 and ADR-0023). Every chart is drawn by a `ChartEngine`
  * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
@@ -133,6 +133,33 @@ export interface ThresholdLabelBox {
   readonly clipped: boolean;
 }
 
+export type EventKind = 'deploy' | 'config' | 'flag' | 'annotation';
+
+/** A deploy or event marker on the time axis (ADR-0023): a vertical line with a label above the plot. */
+export interface EventMarker {
+  readonly id: string;
+  /** ms since the epoch; a non-finite value is not drawn. */
+  readonly atMs: number;
+  /** The end of a ranged event, ms; null for a point. Tooltip only. */
+  readonly endMs: number | null;
+  readonly kind: EventKind;
+  /** Plain text, never markup (T02-019). */
+  readonly title: string;
+}
+
+/** An event label as laid out (ADR-0023), CSS px relative to the canvas. */
+export interface EventLabelBox {
+  readonly box: PlotRect;
+  /** CSS px of the first member's line. */
+  readonly x: number;
+  /** The members, in (atMs, id) order. */
+  readonly ids: readonly string[];
+  /** The full label of each member, joined by '; '. */
+  readonly text: string;
+  /** Truncated, or a `+N` chip: the DOM shows `text` on hover and focus. */
+  readonly clipped: boolean;
+}
+
 export interface FrameSummary {
   readonly kind: VisKind;
   /** Heatmap: buckets; bars: categories; stat: 1. */
@@ -152,6 +179,8 @@ export interface FrameSummary {
   } | null;
   /** The threshold labels in stack order (line, bars; [] otherwise; ADR-0022). */
   readonly thresholdLabels: readonly ThresholdLabelBox[];
+  /** The event labels in x order (line, bars, heatmap; [] for stat; ADR-0023). */
+  readonly eventLabels: readonly EventLabelBox[];
 }
 
 /** The visible canvas was drawn completely at this size (#90, ADR-0019). */
@@ -179,6 +208,8 @@ export interface ChartFrame {
   setData(data: FrameData): void;
   setTimeWindow(w: TimeWindow): void;
   setTheme(t: ThemeName): void;
+  /** Replaces the event markers; [] = none (ADR-0023). */
+  setEvents(events: readonly EventMarker[]): void;
   resize(cssWidth: number, cssHeight: number, dpr: number): void;
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void;
   dispose(): void;

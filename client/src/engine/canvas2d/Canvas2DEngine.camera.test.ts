@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FrameData, VisSpec } from '../api';
 import { gesture, key, pointer, wheel, type Harness } from '../../test/engineHarness';
 import { mulberry32 } from '../../test/random';
+import { colour } from '../../styles/tokens';
 import { brushSnapUnit } from './columns';
 import {
   T0,
@@ -646,5 +647,32 @@ describe('camera', () => {
     h.frame.setTimeWindow(v2);
     h.flush();
     expect(winOf(last(h))).toEqual(v2);
+  });
+
+  it('markers follow the pan preview', () => {
+    const h = setup();
+    const tMid = (T0 + T1) / 2;
+    h.frame.setEvents([{ id: 'a', atMs: tMid, endMs: null, kind: 'deploy', title: 'v2.31' }]);
+    h.flush();
+    const lineXs = (): number[] =>
+      h
+        .layer()
+        .ops.filter((o) => o.op === 'moveTo' && o.strokeStyle === colour.dark['text-muted'])
+        .map((o) => Number(o.args[0]));
+    const s0 = last(h);
+    const x0 = present(s0.eventLabels[0], 'event label').x;
+    expect(lineXs().at(-1)).toBe(x0);
+    const p = at(s0, 0.25);
+    pointer(h.canvas, 'pointerdown', p.x, p.y, { buttons: 1 });
+    pointer(h.canvas, 'pointermove', p.x + 20, p.y, { buttons: 1 });
+    h.layer().clearOps();
+    pointer(h.canvas, 'pointermove', p.x + 40, p.y, { buttons: 1 });
+    h.flush();
+    const s = last(h);
+    expect(h.commit).toEqual([]);
+    expect(Math.abs(present(s.eventLabels[0], 'event label').x - (x0 + 40))).toBeLessThanOrEqual(
+      0.5,
+    );
+    expect(Math.abs((lineXs().at(-1) ?? NaN) - (x0 + 40))).toBeLessThanOrEqual(0.5);
   });
 });

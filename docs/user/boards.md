@@ -187,6 +187,33 @@ single point shows as a dot. With thresholds, the tile also shows:
 - the **threshold text** under it: the threshold the value crossed, in its state's colour, or else
   the next threshold it would reach, muted.
 
+### Event markers
+
+Deploys, configuration changes, feature flag changes and notes show on a board's time charts as
+**event markers**: a thin vertical line at the event's time across the plot, with a label above it
+(INT-031). They are the organisation's annotations: a CI pipeline or a script posts them through
+the [Annotations API](../server/annotations-api.md), and every board of every tenant shows the ones
+in its time range. There is no way to add or edit a note on the board yet.
+
+- **Where.** On line, stacked bars and heatmap panels, in the full screen view and in the panel
+  editor's preview. Stat and logs panels show none. A chart reserves the label strip above its plot
+  as soon as the board has any marker, in view or not, so zooming and panning never move the plot.
+- **Labels.** A label is the kind's glyph and the text: ◆ for a deploy, ⚙ for a config change, ⚑ for
+  a feature flag; a note has no glyph. A label that does not fit before the next one is cut with
+  "…" or shortened to its glyph; near the right edge it sits to the left of its line. Markers less
+  than 24 px apart share one **+N** chip. A marker is never dropped: on a very narrow chart all the
+  markers share one target with no text.
+- **Reading them.** Tab reaches each label or chip after the chart's crosshair; hover or focus
+  shows a tooltip with each event's kind, text and time, and its end time for an event with one,
+  for example `Deploy · v2.31 · 00:15:00`. The chart's description ends "Events in view: N." for
+  screen readers. Clicking a marker does nothing yet.
+- **Time range and refresh.** The markers follow the board's time range, including a zoom or pan
+  while you drag; a new range keeps the old markers until the new ones arrive. **Refresh now**
+  reads them again.
+- **Notices.** Above the panels, "Showing the newest 500 events in this time range." means the range
+  holds more than 500 (zoom in to see the rest), and "Events could not be loaded." means the
+  server did not answer; the panels still load.
+
 ### Open in Explore
 
 **Open in Explore** (the header tool or the panel menu) opens Explore › Metrics with the board's
@@ -420,12 +447,14 @@ but cannot be saved." Leaving the page still asks first.
   refuses a longer one ("The query to send … is over 64 KiB…"), with no request to the data source.
 - Recent shows five boards.
 - At most 8 thresholds per panel, labels up to 200 characters; a legend shows at most 50 series.
+- At most the newest 500 event markers in a time range; marker text up to 500 characters.
 - Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
   touch gestures, and other panels follow a zoom only when it ends.
 - Not yet: undo and history, moving panels between sections, reordering sections, filters changing
   the queries, variable definitions and value lists, LogQL panels (#67), several queries in one
   panel, repeated panels, percentage thresholds, threshold areas, list legends and legend placement,
-  event markers on charts (#64 Part C), the anomaly strip of a
+  adding or editing notes on the board, clicking a marker to compare before and after (INT-030),
+  event markers in Explore, the anomaly strip of a
   collapsed section, folders and tags, viewing or restoring old versions, and permissions (everyone
   can edit every board).
 
@@ -436,7 +465,8 @@ IA-006, IA-021, IA-022, IA-023), [04 Surfaces](../../designs/product/04-surfaces
 SRF-016, SRF-017, SRF-020, SRF-026),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-003, VL-007, VL-017),
 [03 Interaction model](../../designs/product/03-interaction-model.md) §4.1 (INT-001, INT-002,
-INT-007, INT-008, INT-025 for 2D charts),
+INT-007, INT-008, INT-025 for 2D charts; INT-031, event markers on board panels,
+[ADR-0023](../../designs/adr/0023-chart-event-markers.md)),
 [T08 DOM component kit](../../designs/technical/T08-dom-component-kit.md) (T08-008, T08-015, T08-017,
 T08-021, T08-024), [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-011, VIZ-057,
 VIZ-065, VIZ-067, Table 5-13), [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md) (T07-012,

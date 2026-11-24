@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-22 |
+| **Version** | 1.6-rc · 2026-11-23 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -19,6 +19,7 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 | Schemas | §4.3 is authoritative; the machine-readable copy is `wire/schemas/*.yaml` (field names, Arrow types, metadata keys) with golden IPC fixtures in `wire/fixtures/` | The Go writer reproduces the fixtures and the Rust engine decodes them (`unit:codec-roundtrip`, both sides) |
 | BFF conversion (§5.6) | Go: a hand-written streaming JSON tokenizer (`internal/pulsusdb/updec.go`, #62); every decoder of PulsusDB bodies (this one today, Arrow later, behind one source seam) yields strings only through the redactor ([T06](T06-bff-architecture.md) T06-024); `strconv.ParseFloat` for value strings; protobuf via `google.golang.org/protobuf` | Plus Arrow Go (`arrow-go`) builders and IPC writer with 64-byte alignment |
 | `dash-keyhash` | Go in the BFF (`internal/keyhash`), writing `key_hash` into JSON frames. Canonical key bytes: the labels sorted by name, each written as name, `0xFF`, value, `0xFF`, hashed with xxh3-64 (seed 0); corpus `wire/fixtures/keyhash/labels.json` (#62) | Also Rust in the engine and `pulsus-synth`; one fixture corpus fixes the hash of sorted canonical label sets |
+| Event markers (`events/1`, §4.3) | **JSON `AnnotationList`** from `GET /api/dash/v1/annotations` (#64 Part C, [ADR-0023](../adr/0023-chart-event-markers.md)): the JSON image of `events/1` with `ts` → `at` and `end` → `end_at` (ms since the epoch, `end_at` null for a point), `title` → `text`, `attrs` → `tags` (strings); `kind` is one of deploy, config, flag, annotation; Postgres only (`source` 1 implied); no `seq` or `entity_id` until the change feed and M-UI3 | Arrow `events/1` in DSF frames, with the change feed (R8) and alert transitions |
 | `QueryRequest` (§5.2) | Built by the TS client from the OpenAPI types, parsed by the Go BFF | Same |
 | Browser byte path (§4.1, §5.7), T04-015 | Not applicable: `fetch` + JSON decode in TS | Stand, through the engine adapter (the successor of `shim/net.js`, [T03](T03-browser-runtime.md) §0) |
 | IndexedDB chunk cache (§6.1) | Implemented in TS; caches JSON frames; T04-017 and T04-018 stand | Caches Arrow chunks |
@@ -915,3 +916,4 @@ support in the BFF for one release.
 | 1.3-rc | 2026-11-21 | #62: §0 gives the JSON image of `labels/1` + `metric_matrix.grid/1` (`SeriesFrame`, value encoding, absent points as `null`), the hand-written Go tokenizer and the key-hash canonical bytes with their corpus |
 | 1.4-rc | 2026-11-21 | #65 Part A: §4.3 `log_lines/1` `level` code 6 is `critical`, with the value table and the precedence stream labels, structured metadata, parsed fields, and within each `detected_level`, then `level` (else `unknown`); §5.2 `log_volume` row gives the v1 composition on `query_range` |
 | 1.5-rc | 2026-11-22 | #65 Part B: §4.3 `log_lines/1` JSON image (streams by key ascending, `ts_ns` as decimal strings, `level` by name, optional `metadata` and `parsed`; the page window `(from, to]` in ns); §5.3 `truncated` row: a `limit` hit on paged log routes gives a cursor, and a group of 5 000 or more entries at one nanosecond is a documented limit |
+| 1.6-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §0 adds the event-marker row: until the engine, `AnnotationList` (JSON) is the image of `events/1` (`ts` → `at`, `end` → `end_at`, `title` → `text`, `attrs` → `tags`) |

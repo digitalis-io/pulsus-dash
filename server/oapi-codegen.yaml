@@ -3,6 +3,7 @@ output: internal/gateway/api/api.gen.go
 generate: { chi-server: true, strict-server: true, models: true }
 # Keep component schemas no path references (ErrorEnvelope is used by the gateway's error writer).
 # postCspReport (internal/gateway/cspreport.go), the two streamed PromQL query routes
-# (internal/gateway/query.go) and the two LogQL query routes (internal/gateway/logql.go) have
-# hand-written handlers; the client types keep them.
-output-options: { skip-prune: true, exclude-operation-ids: [postCspReport, postPromqlRange, postPromqlInstant, postLogqlRange, postLogqlVolume] }
+# (internal/gateway/query.go), the two LogQL query routes (internal/gateway/logql.go) and the three
+# annotation routes (internal/gateway/annotations.go) have hand-written handlers; the client types
+# keep them.
+output-options: { skip-prune: true, exclude-operation-ids: [postCspReport, postPromqlRange, postPromqlInstant, postLogqlRange, postLogqlVolume, listAnnotations, createAnnotation, deleteAnnotation] }

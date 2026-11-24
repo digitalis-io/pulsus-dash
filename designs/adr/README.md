@@ -15,7 +15,7 @@
 | [0011](0011-terraform-provider-in-go.md) | Terraform provider written in Go | Proposed |
 | [0012](0012-derived-state-in-postgres.md) | Dash-derived state (alert history, baselines, anomaly scores, change events, fallback pyramids) lives in PostgreSQL | **Accepted** (2026-11-18) |
 | [0013](0013-metrics-data-scopes.md) | Data scopes on metrics without promoted resource attributes | Proposed — **open decision** |
-| [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19; amended by 0016, 0017, 0019, 0020, 0022) |
+| [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19; amended by 0016, 0017, 0019, 0020, 0022, 0023) |
 | [0015](0015-go-bff.md) | The BFF is written in Go | **Accepted** (2026-11-19; amended by 0021, query validation) |
 | [0016](0016-asset-integrity-verified-by-bff.md) | Asset integrity is verified by the BFF, not per module in the browser (amends 0014's lazy-chunk SRI) | **Accepted** (2026-11-19) |
 | [0017](0017-react-router.md) | React Router (data mode) replaces TanStack Router | **Accepted** (2026-11-19) |
@@ -24,6 +24,7 @@
 | [0020](0020-chart-camera-commit-and-value-range.md) | The chart engine seam reports camera commits (`commit`) and carries a value-axis range (`valueRange`, `valueAxis`); amends 0014 §3 | **Accepted** (2026-11-21) |
 | [0021](0021-query-planning-is-server-side.md) | Query planning (substitution, rate rewrites, size limits) is server-side, in the Go language modules; the browser sends inputs, not a plan; amends 0015 "Query validation" | **Accepted** (2026-11-21) |
 | [0022](0022-chart-thresholds-and-stat-sparkline.md) | The chart engine seam carries threshold lines (`thresholds`, `thresholdLabels`) and draws a stat sparkline; amends 0014 §3 | **Accepted** (2026-11-22) |
+| [0023](0023-chart-event-markers.md) | The chart engine seam carries event markers (`setEvents`, `eventLabels`), drawn as lines over the series with labels in a band above the plot; amends 0014 §3 | **Accepted** (2026-11-23) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed
 only by a later ADR that supersedes it.

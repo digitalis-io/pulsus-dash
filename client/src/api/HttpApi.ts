@@ -36,6 +36,7 @@ import {
   BoardConflictError,
   type ApiErrorDetail,
   type Board,
+  type AnnotationList,
   type BoardList,
   type BoardRef,
   type BoardSpec,
@@ -443,6 +444,32 @@ export class HttpApi implements Api {
         }),
       204,
     );
+  }
+
+  /** `GET /annotations?from&to` (no `limit`: the server's 500); 503 → `unavailable`. */
+  async listAnnotations(
+    tenant: string,
+    w: { fromMs: number; toMs: number },
+    signal?: AbortSignal,
+  ): Promise<AnnotationList> {
+    this.checkTenant(tenant);
+    let r;
+    try {
+      r = await this.client.GET('/api/dash/v1/annotations', {
+        params: { query: { from: w.fromMs, to: w.toMs } },
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      throw new ApiError('network', 'the BFF could not be reached');
+    }
+    const status = r.response.status;
+    if (status === 200) return required(r.data);
+    if (status === 503) throw new ApiError('unavailable', messageOf(r.error, status));
+    if (status === 400) {
+      throw new ApiError('invalid', messageOf(r.error, status), { fields: fieldsOf(r.error) });
+    }
+    throw new ApiError('unknown', messageOf(r.error, status));
   }
 
   /** Never offered: `canSignOut` is false under the fixed local principal (D12). */

@@ -1,5 +1,5 @@
 /**
- * `golden:interim-gallery` (plan #58 §5, T05 §0): the ten interim Canvas 2D gallery charts in both
+ * `golden:interim-gallery` (plan #58 §5, T05 §0): the eleven interim Canvas 2D gallery charts in both
  * themes, compared with committed baselines. Chromium only; baselines come from CI (`golden-update`).
  */
 import { expect, test, type Page } from '@playwright/test';

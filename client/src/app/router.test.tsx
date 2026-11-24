@@ -116,7 +116,7 @@ describe('current nav item', () => {
 });
 
 describe('gallery route', () => {
-  it('renders the ten gallery charts on stub data', async () => {
+  it('renders the eleven gallery charts on stub data', async () => {
     installResizeObserver();
     const engine = fakeEngine();
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -129,11 +129,11 @@ describe('gallery route', () => {
       await screen.findByRole('heading', { level: 1, name: 'Chart gallery' }),
     ).toBeInTheDocument();
     await waitFor(() => {
-      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(10);
+      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(11);
     });
-    expect(screen.getAllByRole('slider')).toHaveLength(8);
-    expect(document.querySelectorAll('canvas')).toHaveLength(10);
-    expect(engine.frames).toHaveLength(10);
+    expect(screen.getAllByRole('slider')).toHaveLength(9);
+    expect(document.querySelectorAll('canvas')).toHaveLength(11);
+    expect(engine.frames).toHaveLength(11);
   });
 });
 

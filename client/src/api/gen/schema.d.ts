@@ -197,6 +197,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dash/v1/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The organisation's annotations overlapping [from, to] (at <= to AND coalesce(end_at, at) >= from), newest first, at most `limit` (plan */
+        get: operations["listAnnotations"];
+        put?: never;
+        /** @description Records a deploy, configuration change, feature flag change or note, with an annotation.create audit event (T11-017). The body is at most 16 KiB. Hand-written handler; excluded from server generation. */
+        post: operations["createAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dash/v1/annotations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Deletes an annotation, with an annotation.delete audit event. Hand-written handler; excluded from server generation. */
+        delete: operations["deleteAnnotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dash/v1/query/promql/range": {
         parameters: {
             query?: never;
@@ -801,6 +836,40 @@ export interface components {
         };
         BoardRefList: {
             items: components["schemas"]["BoardRef"][];
+        };
+        /**
+         * Format: int64
+         * @description ms since the Unix epoch
+         */
+        EpochMs: number;
+        /** @enum {string} */
+        AnnotationKind: "deploy" | "config" | "flag" | "annotation";
+        AnnotationTag: string;
+        /** @description An event marker (ADR-0023), the JSON image of events/1 (T04 §0). end_at is null for a point. */
+        Annotation: {
+            /** Format: uuid */
+            id: string;
+            at: components["schemas"]["EpochMs"];
+            /** Format: int64 */
+            end_at: number | null;
+            kind: components["schemas"]["AnnotationKind"];
+            text: string;
+            tags: components["schemas"]["AnnotationTag"][];
+        };
+        AnnotationCreate: {
+            at: components["schemas"]["EpochMs"];
+            /**
+             * Format: int64
+             * @description at most 31 days after at
+             */
+            end_at?: number | null;
+            kind: components["schemas"]["AnnotationKind"];
+            text: string;
+            tags?: components["schemas"]["AnnotationTag"][];
+        };
+        AnnotationList: {
+            items: components["schemas"]["Annotation"][];
+            truncated: boolean;
         };
     };
     responses: {
@@ -1464,6 +1533,149 @@ export interface operations {
                 content?: never;
             };
             /** @description Board not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listAnnotations: {
+        parameters: {
+            query: {
+                /** @description ms since the epoch */
+                from: components["schemas"]["EpochMs"];
+                /** @description ms since the epoch; greater than from */
+                to: components["schemas"]["EpochMs"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Annotations in the window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationList"];
+                };
+            };
+            /** @description Invalid window or limit */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Annotation created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Annotation"];
+                };
+            };
+            /** @description Invalid annotation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Configuration store unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A lower-case canonical UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Annotation not found */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -10,11 +10,15 @@
  * pointer up). The value-label band is held from the first camera move until a layout transition,
  * so the plot does not move under the pointer (T02-011 as amended, T02-021). Windows and ranges it
  * proposes go out as `brush` and `commit` events; the application changes the Context and the pin.
+ *
+ * Event markers (ADR-0023, `setEvents`) are drawn with the layer, through the drawn view, so they
+ * follow the preview; their labels' boxes go out in the `a11y` summary (`eventLabels`).
  */
 import type {
   ChartEngine,
   ChartFrame,
   CommitEvent,
+  EventMarker,
   FrameData,
   FrameEvents,
   FrameInit,
@@ -213,6 +217,8 @@ class Canvas2DFrame implements ChartFrame {
   private readonly layerCtx: Ctx2D;
   private spec: VisSpec | null = null;
   private data: FrameData | null = null;
+  /** The last `setEvents` (ADR-0023); [] = none. */
+  private events: readonly EventMarker[] = [];
   /** The base window: the last `setTimeWindow`, or the last committed view. */
   private window: TimeWindow | null = null;
   /** What is drawn, f64: `window` when idle, the gesture's preview otherwise. */
@@ -326,6 +332,19 @@ class Canvas2DFrame implements ChartFrame {
     this.window = win;
     this.view = spanOf(win);
     this.changed();
+  }
+
+  /**
+   * The event markers (ADR-0023), drawn in the layer through the view's time transform, so they
+   * follow a gesture's preview. Gaining or losing every event moves the plot (the label band): the
+   * hover is cleared then, as for any layout input; other changes only redraw the layer.
+   */
+  setEvents(events: readonly EventMarker[]): void {
+    if (this.disposed || events === this.events) return;
+    const band = this.events.length > 0 !== events.length > 0;
+    this.events = events;
+    if (band) this.changed();
+    else this.invalidate();
   }
 
   setTheme(t: ThemeName): void {
@@ -505,6 +524,7 @@ class Canvas2DFrame implements ChartFrame {
       band: this.spec.kind === 'stat' ? null : this.bandHold,
       // T02-011: the band is at least the widest compact label of the unit.
       minBand: this.spec.kind === 'stat' ? 0 : minValueBand(ctx, this.spec.unit),
+      events: this.events,
     });
   }
 

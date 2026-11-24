@@ -7,7 +7,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { StubApi } from '../api/StubApi';
 import { Providers } from '../app/providers';
 import type { RouterDeps } from '../app/router';
-import type { FrameData, FrameSummary, HoverEvent, HoverRow, VisSpec } from '../engine/api';
+import type {
+  EventMarker,
+  FrameData,
+  FrameSummary,
+  HoverEvent,
+  HoverRow,
+  VisSpec,
+} from '../engine/api';
 import { ChartEngineContext } from '../engine/index';
 import { formatTime } from '../i18n/format';
 import { createClock } from '../state/clock';
@@ -45,7 +52,7 @@ function renderFrame(
   engine: FakeEngine,
   spec: VisSpec,
   data: FrameData,
-  o: { strict?: boolean; fill?: boolean } = {},
+  o: { strict?: boolean; fill?: boolean; events?: readonly EventMarker[] } = {},
 ): { router: DataRouter; unmount: () => void } {
   const deps: RouterDeps = {
     api: new StubApi(),
@@ -63,6 +70,7 @@ function renderFrame(
               spec={spec}
               data={data}
               {...(o.fill === undefined ? {} : { fill: o.fill })}
+              {...(o.events === undefined ? {} : { events: o.events })}
             />
           </ChartEngineContext.Provider>
         ),
@@ -104,6 +112,7 @@ function summary(
     plot: PLOT,
     valueAxis: kind === 'line' || kind === 'bars' ? { min, max, manual: false } : null,
     thresholdLabels: [],
+    eventLabels: [],
   };
 }
 
@@ -364,6 +373,65 @@ describe('component threshold labels (#64 Part B)', () => {
     await user.tab();
     expect(hit).toHaveFocus();
     expect(await screen.findByRole('tooltip')).toHaveTextContent(full);
+  });
+});
+
+describe('component event markers (#64 Part C)', () => {
+  it('event hit targets', async () => {
+    const engine = fakeEngine();
+    const at = (h: number, m: number): number => Date.UTC(2026, 0, 1, h, m);
+    const events: EventMarker[] = [
+      { id: 'd', atMs: at(0, 30), endMs: null, kind: 'deploy', title: 'v2.31' },
+      { id: 'c', atMs: at(0, 45), endMs: null, kind: 'config', title: 'flags' },
+      { id: 'n', atMs: at(0, 46), endMs: at(1, 10), kind: 'annotation', title: 'm' },
+    ];
+    renderFrame(engine, LINE7, DATA, { events });
+    await waitFor(() => {
+      expect(engine.frames).toHaveLength(1);
+    });
+    expect(lastFrame(engine).last('setEvents')?.[0]).toBe(events);
+    act(() => {
+      lastFrame(engine).emit('a11y', {
+        ...summary('line', 1, 1, 1, 1),
+        eventLabels: [
+          {
+            box: { x: 100, y: 8, width: 49, height: 14 },
+            x: 104.5,
+            ids: ['d'],
+            text: '◆ v2.31',
+            clipped: false,
+          },
+          {
+            box: { x: 300, y: 8, width: 14, height: 14 },
+            x: 304.5,
+            ids: ['c', 'n'],
+            text: '⚙ flags; m',
+            clipped: true,
+          },
+        ],
+      });
+    });
+    const hits = [...document.querySelectorAll<HTMLElement>('[data-event-hit]')];
+    expect(hits.map((h) => h.getAttribute('aria-label'))).toEqual([
+      'Deploy · v2.31 · 00:30:00',
+      'Config change · flags · 00:45:00; Note · m · 00:46:00–01:10:00',
+    ]);
+    expect(hits.map((h) => h.dataset['eventX'])).toEqual(['104.5', '304.5']);
+    for (const h of hits) {
+      expect(h).toHaveAttribute('tabindex', '0');
+      expect(parseFloat(h.style.width)).toBeGreaterThanOrEqual(24);
+      expect(parseFloat(h.style.height)).toBeGreaterThanOrEqual(24);
+    }
+    const label = document.querySelector('canvas')?.getAttribute('aria-label') ?? '';
+    expect(label.endsWith('Events in view: 3.')).toBe(true);
+    const second = hits[1];
+    if (second === undefined) throw new Error('no second hit');
+    const user = userEvent.setup();
+    for (let i = 0; i < 5 && document.activeElement !== second; i++) await user.tab();
+    expect(second).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Config change · flags · 00:45:00; Note · m · 00:46:00–01:10:00',
+    );
   });
 });
 

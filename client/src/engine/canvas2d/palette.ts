@@ -56,6 +56,8 @@ export interface ThemeColours {
   /** Behind a value label drawn inside the plot under a band hold (#93): the tooltip surface. */
   chip: string;
   text: string;
+  /** Event lines (ADR-0023): `text-muted`, never a state colour (T02-004). */
+  event: string;
   series: readonly string[];
   ramp: readonly string[];
   /** Threshold lines and labels only: `StateEncoding[s].colour[t]` (T02-004, VL-003). */
@@ -72,6 +74,7 @@ export function themeColours(t: ThemeName): ThemeColours {
     brush: c.brush,
     chip: c['surface-2'],
     text: c.text,
+    event: c['text-muted'],
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
     state: {

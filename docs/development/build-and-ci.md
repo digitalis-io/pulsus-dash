@@ -256,9 +256,23 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     and the `line-extreme` draw), with a 15 s test limit, so a search that never finishes fails
     instead of hanging the run. `node scripts/value-ticks-probe.ts ticks <min> <max> <height>
     <label> <base>` prints one result as JSON.
-  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the ten
-    gallery frames (with `line-thresholds` and `stat-sparkline`, #64 Part B, and `line-extreme`,
-    #97) in dark and light, compared with `toHaveScreenshot` against
+  - **`unit:event-marks`** (`src/engine/canvas2d/eventMark.test.ts` and `markers follow the pan
+    preview` in `Canvas2DEngine.camera.test.ts`; #64 Part C, ADR-0023): the label band, one line
+    per event in view (none outside, none for a non-finite time), the layering over heatmap cells,
+    full-height bars and thresholds, `+N` chips, truncation before the next label, the right edge,
+    merges, the narrow-plot box without text, no glyph for a note, nothing on stat, and 200 seeded
+    sets of 1–30 events at widths 40–800 px (boxes inside the band, gaps of at least 4 px, every
+    event in view in exactly one box). Two tests measure text at 6 px per code point instead.
+  - **`unit:board-events`** (`src/boards/boardEvents.test.tsx` and the `event markers` tests of
+    `src/pages/board/BoardPanels.test.tsx`, plus `event hit targets` in `ChartFrame.test.tsx` and
+    `listAnnotations` in `HttpApi.test.ts`): one events request per window for a 30-panel board,
+    the old one aborted; an absolute Refresh now aborts the request in flight and makes one more;
+    markers sorted by `(atMs, id)`; none while disabled; the failed and truncated notices; one
+    markers array for line, bars, heatmap and stat panels; a board with sections only (collapsed
+    too) still asks; the hit targets' labels, size and tooltip.
+  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the eleven
+    gallery frames (with `line-thresholds` and `stat-sparkline`, #64 Part B, `line-extreme`, #97,
+    and `line-events`, #64 Part C) in dark and light, compared with `toHaveScreenshot` against
     `e2e/__screenshots__/golden-gallery.spec.ts/gallery-<id>-<theme>.png` (per-pixel threshold 0.1,
     at most 0.2 % of pixels different, animations off, caret hidden, CSS scale), after the fonts are
     loaded and two animation frames; a reload must give the same pixels. Baselines are never written
@@ -600,6 +614,19 @@ the browser otherwise).
   and threshold text of a stat with thresholds; canvas pixels in the sparkline band of a range stat,
   none for a scalar stat). `e2e:a11y-rooms` adds `b-1 view, legend and stat chip`, `b-1 edit,
   compact legend table` and `b-1 edit, thresholds`.
+- **Board event markers** (`board-events.spec.ts`, #64 Part C, all three engines, on the http-mode
+  BFF, Postgres and the fake, in the same window; the tests run one at a time because annotations
+  are the organisation's, and each deletes its board and annotations): **`e2e:board-event-markers`**,
+  E10 (a deploy at 00:15, a config change at 00:30 and a note at 00:45 show as three
+  `[data-event-hit]` targets on the line panel with their labels, evenly spaced on `data-event-x`;
+  one at 23:00 the day before does not; the stat tile has none; the summary label ends
+  `Events in view: 3.`), E11 (opened on 00:00 – 01:00 with three markers; the time picker then widens the
+  open board to 2025-12-31 22:30 – 01:00, a window that still holds the fake's samples, and the line
+  panel shows four markers, the 23:00 one first; after the API deletes it, Refresh now shows the
+  other three) and E12 (Tab from the panel menu reaches the first marker, whose tooltip reads
+  `Deploy · v2.31 · …`). The annotations API helpers are in `e2e/annotationApi.ts`.
+  `e2e:a11y-rooms` adds `board with markers` (dark and light, on the http-mode BFF: a chip of two
+  markers, no serious or critical axe violation).
 - **Board panels on the stub** (plan #64 A.3, A.5): `e2e:a11y-rooms` adds the states `b-1 edit,
   PromQL editor`, `b-1 edit, metric picker open`, `b-1 edit, partial data popover` and `b-1 view,
   panel error`; `e2e:keyboard-only-rooms` operates the panel menu's Duplicate, Remove and Open in
