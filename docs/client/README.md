@@ -248,7 +248,7 @@ The generated token files and tests are not linted.
 `e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
 text, `drain`, `shellAfter`), the board loops L23–L31 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
 one function per step) and the Explore loops L32 (metrics) and L33 (logs) in
-`e2e/keyboardExplore.ts`. The loops run as five
+`e2e/keyboardExplore.ts`. The loops run as six
 independent tests, the parts (#130), each in its own browser context from the same preamble (the
 clipboard stub and the fixed clock), in parallel and in any CI shard:
 
@@ -257,12 +257,13 @@ clipboard stub and the fixed clock), in parallel and in any CI shard:
 | K1 shell and chart frames | `@kbd @kbd-a` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
 | K2 panel editor | `@kbd @kbd-a` | L27 |
 | K3 board list and b-1 view tools | `@kbd @kbd-b` | L23, L24 on b-1 |
-| K4 b-3 and b-2 view tools, toolbar, edit layout | `@kbd @kbd-c` | L24 on b-3 and b-2, L25, L26 |
+| K4 b-3 and b-2 view tools | `@kbd @kbd-c` | L24 on b-3 and b-2 |
+| K7 toolbar, edit layout | `@kbd @kbd-c` | L25, L26 |
 | K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32, L33 |
 
 A part that passes writes what it collected, operated and visited to
 `test-results/keyboard-coverage/<project>-K<n>.json` (`PartCoverage` in `e2e/keyboardParts.ts`;
-nothing is written when the part fails). The coverage rule holds over the union of a project's five
+nothing is written when the part fails). The coverage rule holds over the union of a project's six
 files: a control collected by one part may be operated by another. The check runs at the end of a
 full `npm run e2e` (the reporter) and, on CI, over the five shards' files in the `e2e-report` job
 (`scripts/keyboard-coverage.ts`; see
@@ -322,7 +323,7 @@ the harness itself.
 shard's test step then exceeds 15 minutes, rebalance as
 [E2E shards](../development/build-and-ci.md#e2e-shards) says.
 
-**Drain skips.** Before the split, one test ran the loops in the order K1, K3, K4, K2, K5
+**Drain skips.** Before the split, one test ran the loops in the order K1, K3, K4, K7, K2, K5
 (`SINGLE_TEST_ORDER` in `e2e/keyboardParts.ts`), and a drain skipped what an earlier loop had
 already operated. A part alone lacks those earlier loops, so its drains would try to operate
 controls they cannot reach from their own entry (for example a board's `Share` button from
@@ -352,7 +353,7 @@ project.
 | Coverage gap | the merged check reports `keyboard-uncovered` keys that only P collected | every key of P's `operated` that is in `earlier(P)` and not yet in the list |
 
 Each addition carries a comment naming the backing part(s). After it, run P alone and the merged
-check of all five parts, remove every entry that `keyboard-skip-unused` or `keyboard-skip-unbacked`
+check of all six parts, remove every entry that `keyboard-skip-unused` or `keyboard-skip-unbacked`
 reports, and repeat. If a drain failure has no qualifying key, or a coverage-gap round adds no key
 while keys stay uncovered, the part has a real gap: operate the control in a loop instead.
 

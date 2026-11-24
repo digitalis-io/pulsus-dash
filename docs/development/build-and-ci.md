@@ -62,11 +62,11 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 
 ### Keyboard coverage and e2e completeness
 
-The keyboard script of `e2e:a11y-rooms` runs as five parts, K1–K5
+The keyboard script of `e2e:a11y-rooms` runs as six parts, K1–K5 and K7
 ([the client page](../client/README.md#keyboard-coverage)). Each part that passes writes
 `test-results/keyboard-coverage/<project>-K<n>.json` (`version: 1`, `project`, `part`, and the
 sorted `collected`, `operated` and `visited` lists). The coverage rule is checked over the union of
-one project's five files:
+one project's six files:
 
 | Rule | When | Subject |
 |---|---|---|
@@ -677,7 +677,7 @@ test is in exactly one of them (a retried test is still one test).
 |---|---|---|---|
 | `kbd-a` | `grep /@kbd-a(?![\w-])/` | K1 and K2, in parallel | ≤ 20 |
 | `kbd-b` | `grep /@kbd-b(?![\w-])/` | K3 alone | ≤ 20 |
-| `kbd-c` | `grep /@kbd-c(?![\w-])/` | K4 alone | ≤ 20 |
+| `kbd-c` | `grep /@kbd-c(?![\w-])/` | K4 and K7, in parallel | ≤ 20 |
 | `rest` | `grepInvert` of the `kbd` tags and the `REST_B_FILES` | K5, `golden-gallery.spec.ts`, the Chromium-only specs and every spec file not in `REST_B_FILES` | ≤ 15 |
 | `rest-b` | `grep` of the `REST_B_FILES`, `grepInvert` of the `kbd` tags | the spec files of `REST_B_FILES` | ≤ 15 |
 
@@ -692,14 +692,15 @@ outweighed every other file together (866 s), so every one of them is in `rest-b
 runs in `rest` until it is added.
 
 **Rebalancing:** if the `rest` or `rest-b` test step exceeds 15 minutes in two runs, redo the choice
-with that run's report. K3 and K4 each run alone because two long parts in one job contend for its
-four vCPUs (together they hit the part timeout in drains). Each part has a 22-minute timeout, under
-the 25-minute `globalTimeout`.
+with that run's report. K3 runs alone because two long parts in one job contend for its four vCPUs
+(K3 and K4 together hit the part timeout in drains). Each part has a 22-minute timeout, under the
+25-minute `globalTimeout`.
 
 **Splitting a keyboard part:** if `kbd-b` or `kbd-c` exceeds 20 minutes in two of three runs, split
-that shard's part at its loop boundary: K3 into K3 `board list (L23)` and K6 `b-1 view tools (L24
-b-1)`, or K4 into K4 `b-3 and b-2 view tools (L24 b-3 b-2)` and K7 `toolbar, edit layout (L25,
-L26)`. Both halves keep the shard's tag and run in parallel in it. Add the new id to
+that shard's part at its loop boundary. K4 was split this way (firefox `kbd-c` took 21.4 and 24.0
+minutes, the second a part timeout, in two of three runs): K4 is now `b-3 and b-2 view tools (L24
+b-3 b-2)` and K7 `toolbar, edit layout (L25, L26)`. K3 would split into K3 `board list (L23)` and
+K6 `b-1 view tools (L24 b-1)`. Both halves keep the shard's tag and run in parallel in it. Add the new id to
 `KEYBOARD_PARTS` and to `SINGLE_TEST_ORDER` right after the part it came from, widen
 `partOfTitle`'s pattern, start its `DRAIN_SKIP` entry at `[]` and apply the
 [drain-skip rules](../client/README.md#keyboard-coverage). No branch protection names the job
