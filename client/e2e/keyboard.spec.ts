@@ -16,7 +16,7 @@ import { keyboardHarness, type KeyboardHarness } from './keyboardCoverage.ts';
 import {
   COVERAGE_DIR,
   coverageFileName,
-  DRAIN_SKIP,
+  drainSkip,
   type KeyboardPart,
   type PartCoverage,
 } from './keyboardParts.ts';
@@ -96,7 +96,7 @@ function part(
 ): void {
   test(`${id} ${title}`, { tag }, async ({ page }, info) => {
     test.setTimeout(22 * 60_000);
-    const s = await keyboardSession(page, new Set(DRAIN_SKIP[id]));
+    const s = await keyboardSession(page, new Set(drainSkip(id, info.project.name)));
     await body(s);
     writeCoverage(info, id, s.h);
   });
@@ -104,7 +104,7 @@ function part(
 
 /**
  * A page with the copy-to-clipboard stub and the fixed clock, and the script over a new harness
- * whose drains treat `done` (the part's `DRAIN_SKIP`) as operated.
+ * whose drains treat `done` (the part's `drainSkip` on this engine) as operated.
  */
 async function keyboardSession(page: Page, done: ReadonlySet<string>): Promise<Script> {
   await page.addInitScript(() => {

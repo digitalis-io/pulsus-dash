@@ -233,22 +233,28 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
   ],
 };
 
-/** Stub (#130): see the implementation commit. */
-export const DRAIN_SKIP_ONLY: Readonly<
+/** Per part, `DRAIN_SKIP` keys that are skips only on the engines (projects) listed. */
+export type DrainSkipOnly = Readonly<
   Partial<Record<KeyboardPart, Readonly<Record<string, readonly string[]>>>>
-> = {};
+>;
 
-/** Stub (#130): see the implementation commit. */
+/**
+ * `DRAIN_SKIP` keys a part collects on some engines but not on others (#130 plan §3.1 clean-up): a
+ * key that is `keyboard-skip-unused` on every engine is removed; one that is unused on only some is
+ * listed here with the engines where the part uses it. Elsewhere it is no skip at all: the part's
+ * drains operate it if it appears, and the checker neither expects it nor needs it backed.
+ */
+export const DRAIN_SKIP_ONLY: DrainSkipOnly = {};
+
+/** The part's drain skips on `project`: `DRAIN_SKIP[part]` less the keys restricted to others. */
 export function drainSkip(
   part: KeyboardPart,
-  _project: string,
+  project: string,
   skip: Readonly<Record<KeyboardPart, readonly string[]>> = DRAIN_SKIP,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _only: Readonly<
-    Partial<Record<KeyboardPart, Readonly<Record<string, readonly string[]>>>>
-  > = DRAIN_SKIP_ONLY,
+  only: DrainSkipOnly = DRAIN_SKIP_ONLY,
 ): string[] {
-  return [...skip[part]];
+  const restricted = only[part] ?? {};
+  return skip[part].filter((k) => restricted[k]?.includes(project) ?? true);
 }
 
 /** `keys` of `state` whose `${state} › ${k}` is neither in `operated` nor in `done`, in order. */

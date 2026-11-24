@@ -3,7 +3,8 @@
  * operated by some part, and every required state was visited by some part, over one project's
  * part files (`e2e/keyboardParts.ts`). Every part must have exactly one file; a part that failed
  * writes none. Every `DRAIN_SKIP` key of a part must be operated by a part before it in
- * `SINGLE_TEST_ORDER` and collected by the part itself.
+ * `SINGLE_TEST_ORDER` and collected by the part itself, on the engines where it is a skip
+ * (`drainSkip`: a `DRAIN_SKIP_ONLY` key is a skip only on the engines it lists).
  *
  * Usage: node scripts/keyboard-coverage.ts <dir> <project>
  *   (<dir> is searched at any depth for `keyboard-coverage/<project>-K*.json`)
@@ -14,9 +15,12 @@ import { basename, dirname, join } from 'node:path';
 import {
   COVERAGE_DIR,
   DRAIN_SKIP,
+  DRAIN_SKIP_ONLY,
+  drainSkip,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
   SINGLE_TEST_ORDER,
+  type DrainSkipOnly,
   type KeyboardPart,
   type PartCoverage,
 } from '../e2e/keyboardParts.ts';
@@ -56,8 +60,7 @@ export function checkKeyboardCoverage(
   parts: readonly unknown[],
   project: string,
   skip: Readonly<Record<KeyboardPart, readonly string[]>> = DRAIN_SKIP,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _only: Readonly<Partial<Record<KeyboardPart, Readonly<Record<string, readonly string[]>>>>> = {},
+  only: DrainSkipOnly = DRAIN_SKIP_ONLY,
 ): Finding[] {
   const file = `${COVERAGE_DIR}/${project}`;
   const parsed = parts.map((p, i) => parsePart(p, project, i));
@@ -117,7 +120,7 @@ export function checkKeyboardCoverage(
       parsed.filter((p) => earlier.includes(p.part)).flatMap((p) => p.operated),
     );
     const mine = new Set(own.flatMap((p) => p.collected));
-    for (const key of skip[id]) {
+    for (const key of drainSkip(id, project, skip, only)) {
       if (!backing.has(key)) {
         findings.push({
           rule: 'keyboard-skip-unbacked',
