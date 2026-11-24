@@ -1,0 +1,10 @@
+{
+  "name": "logs-label-values-app",
+  "provenance": {"synthetic": "the app values the Logs page completion offers"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/label/app/values"]},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-label-values-app-1"},
+    "body": {"status":"success","data":["checkout","paging","slow"]}
+  }
+}

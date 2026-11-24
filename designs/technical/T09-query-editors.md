@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.19-rc · 2026-11-23 |
+| **Version** | 1.20-rc · 2026-11-23 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -460,6 +460,10 @@ an instant query. The result confirms the hint: rows 5, 6, 7 and 14 apply in tha
 with one point. The server refuses a planned text over 64 KiB (413), and a position arrives mapped
 to the editor text (T09-009).
 
+**v1 (#66).** Explore › Logs sends the text as typed to the range and volume routes. Row 4 shows the
+volume and the stream (patterns arrive with SRF-034, M-UI2). Row 14 for LogQL draws every metric
+query as a line in M-UI1; bars for `count_over_time` follow.
+
 ### 4.7 AI "explain / generate query" hook
 
 - **Explain** (the ✦ button in the editor toolbar, or the ⌘K action "Explain query"; the 03 `.` key
@@ -771,3 +775,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.17-rc | 2026-11-23 | #121: T09-002: the server's fail-closed pre-dispatch refusal (LogQL top-level `#`) is not a validity decision |
 | 1.18-rc | 2026-11-23 | #66 Part A: §0 rows `dash-qlex` (the LogQL scanner and `StreamLanguage`, the mode stack), `dash-qctx` (the v1 LogQL contexts) and "Editor-worker suggest cache" (the key by language; PromQL supersession, LogQL release by caller interest); §4.4 LogQL v1 lookups (scope as written, variable references left out, minute window, limit 1 000) and whole-token replacement; T09-007 v1 note (the synchronous local slot and the 120 ms remote slot; release when the caret context leaves the key); §5.1 v1 LogQL `shape` and the shared host |
 | 1.19-rc | 2026-11-23 | #107: §0 "Editor-worker suggest cache": an in-flight entry is tracked by key apart from the LRU and re-joined by its key; no entry is superseded by another key in any language; §4.4 PromQL v1 (filtering by the text before the caret, whole-token replacement, static items above lookup results, T09-008); T09-007 v1 note (PromQL's local and remote slots; every document or selection change releases the PromQL view's interest; another view's interest keeps a shared request); §7 "Local completions" row: `keyWork` measures the work per key with its document update (≤ 2 ms); remote processing bounded per task |
+| 1.20-rc | 2026-11-23 | #66 Part C: §4.6 adds "v1 (#66)": Explore › Logs sends the text as typed to the range and volume routes; row 4 shows the volume and the stream (patterns with SRF-034, M-UI2); row 14 for LogQL draws every metric query as a line in M-UI1, bars for `count_over_time` later |

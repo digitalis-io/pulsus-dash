@@ -14,6 +14,7 @@ pub fn level_colour(value_lower: &str) -> Option<u8> {
         "info" | "informational" | "notice" => Some(0),
         "debug" => Some(4),
         "trace" => Some(3),
+        "unknown" => Some(2),
         _ => None,
     }
 }

@@ -1,11 +1,11 @@
 /**
  * `e2e:a11y-rooms` keyboard script (plan #57 §5.3, IA-015, T01-007, T08-008, INT-032; plan #58 L22;
- * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3): loops L1–L32,
- * keyboard only, as five independent parts K1–K5 (#130). Input goes through `press` and `type` of
- * `keyboardCoverage.ts` (ESLint bans other input here). Each part that passes writes what it collected,
- * operated and visited (`keyboardParts.ts`); the coverage check over all five
- * (`scripts/keyboard-coverage.ts`, run by the reporter at the end of a full run and by CI over the
- * merged shards) fails on any control never operated and any state never visited.
+ * plan #61 Part B L23–L28, Appendix B-A §A.5; Part C L29–L31, Appendix C-A §A.3; plan #63 L32;
+ * plan #66 Part C L33): loops L1–L33, keyboard only, as five independent parts K1–K5 (#130). Input
+ * goes through `press` and `type` of `keyboardCoverage.ts` (ESLint bans other input here). Each part
+ * that passes writes what it collected, operated and visited (`keyboardParts.ts`); the coverage check
+ * over all five (`scripts/keyboard-coverage.ts`, run by the reporter at the end of a full run and by
+ * CI over the merged shards) fails on any control never operated and any state never visited.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -77,7 +77,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
       await b.editLayout();
     },
   );
-  part('K5', 'guard, sections, variables, filters, Explore (L28–L32)', ['@kbd'], async (s) => {
+  part('K5', 'guard, sections, variables, filters, Explore (L28–L33)', ['@kbd'], async (s) => {
     const b = boardSteps(s);
     await b.guardAndConflict();
     await b.sections();

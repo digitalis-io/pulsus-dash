@@ -9,7 +9,7 @@ export type KeyboardPart = (typeof KEYBOARD_PARTS)[number];
 
 /**
  * The parts in the single test's loop order (before #130 split it): L1–L22, L23–L24 b-1,
- * L24 b-3…L26, L27, L28–L32.
+ * L24 b-3…L26, L27, L28–L33.
  */
 export const SINGLE_TEST_ORDER: readonly KeyboardPart[] = ['K1', 'K3', 'K4', 'K2', 'K5'];
 

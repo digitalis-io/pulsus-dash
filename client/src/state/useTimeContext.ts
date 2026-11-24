@@ -31,6 +31,8 @@ export interface TimeContext {
   anchorMs: number;
   dispatch: (a: ContextAction, o?: { replace?: boolean }) => void;
   refreshNow: () => void;
+  /** `useSyncExternalStore(clock.subscribe, clock.epoch)`. */
+  refreshEpoch: number;
 }
 
 export function useTimeContext(): TimeContext {
@@ -38,6 +40,7 @@ export function useTimeContext(): TimeContext {
   const clock = useClock();
   const timeZone = useTimeZone();
   const anchorMs = useSyncExternalStore(clock.subscribe, clock.anchor);
+  const refreshEpoch = useSyncExternalStore(clock.subscribe, clock.epoch);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
@@ -74,7 +77,8 @@ export function useTimeContext(): TimeContext {
   // absolute range, or `now/d`), the keys are the same: the requests in flight, first fetches
   // included, are cancelled (`invalidateQueries` alone would reuse a first fetch), then the active
   // queries rerun and the rest are marked to refetch when they are next observed. `cancelQueries`
-  // aborts synchronously, so no `await` is needed before the new fetch.
+  // aborts synchronously, so no `await` is needed before the new fetch. Then too, the refresh epoch
+  // moves (plan #66 Part C §3.3): a moved window changes every key, so it moves only when none would.
   const refreshNow = useCallback(() => {
     clock.tick();
     const a = clock.anchor();
@@ -82,9 +86,10 @@ export function useTimeContext(): TimeContext {
       resolveTimeString(search.from, a, timeZone) !== window.fromMs ||
       resolveTimeString(search.to, a, timeZone) !== window.toMs;
     if (moved) return;
+    clock.refreshed();
     void queryClient.cancelQueries({ queryKey: ['data'] });
     void queryClient.invalidateQueries({ queryKey: ['data'] });
   }, [clock, queryClient, search, timeZone, window]);
 
-  return { search, rest, window, timeZone, anchorMs, dispatch, refreshNow };
+  return { search, rest, window, timeZone, anchorMs, dispatch, refreshNow, refreshEpoch };
 }

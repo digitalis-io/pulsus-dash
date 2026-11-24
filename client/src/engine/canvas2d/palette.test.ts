@@ -96,6 +96,26 @@ describe('unit:colour-hash', () => {
     expect(seriesColourIndex({ key: 'ffffffffffffffac', labels: { level: 'verbose' } })).toBe(4);
     expect(seriesColourIndex({ key: 'ffffffffffffffac', labels: { severity: 'error' } })).toBe(4);
   });
+
+  it('every Table 8-1a row by value, unknown included (plan #66 Part C §3.10)', () => {
+    // Table 8-1a (VL-002 1.4-rc): token series-N is index N − 1.
+    const rows: readonly (readonly [readonly string[], number])[] = [
+      [['error', 'err', 'critical', 'crit', 'fatal', 'alert', 'emergency'], 5],
+      [['warn', 'warning'], 1],
+      [['info', 'informational', 'notice'], 0],
+      [['debug'], 4],
+      [['trace'], 3],
+      [['unknown'], 2],
+    ];
+    for (const [values, index] of rows) {
+      for (const level of values) {
+        expect(seriesColourIndex({ key: '000000000000000f', labels: { level } }), level).toBe(
+          index,
+        );
+      }
+    }
+    expect(seriesColourIndex({ key: '000000000000000f', labels: { level: 'unknown' } })).toBe(2);
+  });
 });
 
 describe('unit:state-colours (T02-004)', () => {

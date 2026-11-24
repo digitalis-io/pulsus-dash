@@ -151,6 +151,7 @@ pub mod size {
     pub const LOG_LEVEL_BAR: f32 = 3.0;
     pub const LOG_ROW: f32 = 20.0;
     pub const LOG_SENTINEL: f32 = 40.0;
+    pub const LOG_STREAM: f32 = 560.0;
     pub const PAGE_PADDING: f32 = 24.0;
     pub const SIDEBAR_COLLAPSED: f32 = 56.0;
     pub const SIDEBAR_EXPANDED: f32 = 240.0;

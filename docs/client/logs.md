@@ -2,15 +2,20 @@
 
 The client side of a LogQL log query's lines (issue #66 Part B): `src/logs/` holds the in-memory
 log buffer, the cursor pager over `Api.queryLogs`, the virtualised list `LogStream` with its
-severity gutter, wrap and order controls, and the hooks a page mounts it with. The Logs page that
-mounts it (query, volume and stream cards, URL keys) is #66 Part C; in Part B the stream is
-reachable on the dev-only harness `/t/:tenant/dev/log-stream` only.
+severity gutter, wrap and order controls, and the hooks a page mounts it with. Explore › Logs
+(#66 Part C, [Explore: the Logs page](explore.md#logs-page)) mounts it in its **Log lines** card;
+the dev-only harness `/t/:tenant/dev/log-stream` drives it for the gates.
 
 The BFF side (the pager, the `(ts, skip)` cursor and its binding) is in
 [PulsusDB client: Cursor](../server/pulsusdb.md); the decoder `decodeLogs` and `LogFrame` are in
 [Client application: Decoding frames](README.md#decoding-frames-datadecodets).
 
 ## Using it from a page
+
+On Explore › Logs (`src/pages/explore/LogsPage.tsx`) the input is `pagerInput({tenant, q, window,
+step, dir})` (the URL text, the Context window, the width held per grid step and the URL
+direction), the generation is `${refreshEpoch}.${runSeq}`, and `LogsStreamCard` renders `LogStream`
+in a 560 px box (`size.log-stream`) with `wrap` and the order from the URL. A minimal page:
 
 ```tsx
 import { LogStream, useLogPager, type LogPagerInput } from '../logs';
@@ -30,10 +35,16 @@ return pager === null ? null : (
 );
 ```
 
-- `useLogPager(input, api?)` keeps one live pager per `logPagerKey(input)` (every member; `vars`
-  sorted by name). An equal input object keeps the pager; another key, or unmount, disposes it (its
+- `useLogPager(input, api?, generation = '')` keeps one live pager per `generation` and
+  `logPagerKey(input)` (every member; `vars` sorted by name). An equal input object with the same
+  generation keeps the pager; another key, another generation, or unmount, disposes it (its
   requests abort) and starts a new one. It is created in an effect, so StrictMode's second mount
   leaves one live pager. `api` defaults to `useApi()`.
+- **The generation** is how a caller reruns the same input: change it to start again from the first
+  page. Explore › Logs passes `${refreshEpoch}.${runSeq}`: `runSeq` counts its Runs with unchanged
+  text and drift's **Run again**, and the clock's refresh epoch moves on Refresh now and
+  auto-refresh when the window did not move (a moved window is a new input already). Do not change
+  it for anything else: a new generation discards every loaded page.
 - `useLogPagerState(pager)` is `useSyncExternalStore(pager.subscribe, pager.getState)`.
 - `LogStream` renders nothing for a metric result (`phase: 'series'`); the caller draws
   `state.series`. The caller sizes the root (`height: 100%` inside a sized box).
