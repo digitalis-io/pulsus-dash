@@ -47,4 +47,24 @@ test.describe('e2e:deep-link', () => {
       .poll(() => page.locator('[data-chart-frame] canvas').getAttribute('aria-label'))
       .toMatch(/^Query result: stacked bar chart, 3 series/);
   });
+
+  test('explore logs: query, order, wrap and range (plan #66 Part C)', async ({ page }) => {
+    const url =
+      '/t/demo/explore/logs?q=%7Bservice_name%3D%22stub%22%7D&dir=forward&wrap=on&from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z';
+    await open(page, url);
+    await page.reload();
+    await waitReady(page, '/t/demo/explore/logs');
+    const search = searchOf(page);
+    expect(search['q']).toBe('{service_name="stub"}');
+    expect(search['dir']).toBe('forward');
+    expect(search['wrap']).toBe('on');
+    expect(search['from']).toBe('2026-11-19T12:00:00.000Z');
+    expect(search['to']).toBe('2026-11-19T13:00:00.000Z');
+    await expect(page.getByRole('textbox', { name: 'LogQL query' })).toHaveText(
+      '{service_name="stub"}',
+    );
+    await expect(page.getByRole('radio', { name: 'Oldest first' })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Wrap lines' })).toBeChecked();
+    await expect(timeTrigger(page)).toContainText('12:00');
+  });
 });

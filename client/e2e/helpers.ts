@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { brushSnapUnit } from '../src/engine/canvas2d/columns.ts';
 import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/layout.ts';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the suite. */
@@ -19,6 +20,14 @@ export const SHELL_PAGES = [
 /** Explore with a result on the stub (rate applied, three `stub_metric` series; plan #63 C.7). */
 export const EXPLORE_RESULT =
   '/t/demo/explore/metrics?from=now-1h&to=now&refresh=off&q=http_requests_total';
+/** Explore › Logs with a result on the stub: 30 entries, three volume levels (plan #66 Part C). */
+export const LOGS_RESULT =
+  '/t/demo/explore/logs?from=now-1h&to=now&refresh=off&q=%7Bservice_name%3D%22stub%22%7D';
+
+/** Nanoseconds as a decimal string (the fake records log windows in ns). */
+export function ns(ms: number): string {
+  return String(BigInt(ms) * 1000000n);
+}
 
 export const STANDALONE_PAGES = ['/nope', '/signed-out'] as const;
 export const ALL_PAGES = [...SHELL_PAGES, ...STANDALONE_PAGES] as const;
@@ -130,4 +139,29 @@ export async function galleryReady(page: Page): Promise<void> {
         });
       }),
   );
+}
+
+const MIN = 60_000;
+
+/**
+ * The page x of the `fromMs` + 20 min and + 25 min targets of frame `f` over the window
+ * `fromMs`…`toMs`, 0.1–0.4 brush units inside them, and the plot's y (#58; plan #66 Part C).
+ */
+export async function brushTargets(_page: Page, f: Locator, fromMs: number, toMs: number) {
+  const plot = await plotOf(f);
+  const box = await f.boundingBox();
+  if (box === null) throw new Error('the frame has no box');
+  const t = (x: number): number => timeAt(box.x, plot, x, fromMs, toMs);
+  const u = brushSnapUnit((toMs - fromMs) / plot.width);
+  const lo = fromMs + 20 * MIN;
+  const hi = fromMs + 25 * MIN;
+  // Integer page pixels 0.1u–0.4u inside the target boundaries: only snapping gives the exact URL.
+  let x1 = Math.floor(box.x + plot.x);
+  while (t(x1) < lo + 0.1 * u) x1 += 1;
+  let x2 = Math.ceil(box.x + plot.x + plot.width);
+  while (t(x2) > hi - 0.1 * u) x2 -= 1;
+  expect(t(x1)).toBeLessThanOrEqual(lo + 0.4 * u);
+  expect(t(x2)).toBeGreaterThanOrEqual(hi - 0.4 * u);
+  const y = box.y + plot.y + plot.height / 2;
+  return { x1, x2, y, box, plot };
 }

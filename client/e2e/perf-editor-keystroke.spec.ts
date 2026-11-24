@@ -2,7 +2,8 @@
  * `bench:editor-keystroke` (PRF-005, T09-003; plan #63 Part C Appendix C.6 and C.11.2, D-BENCH;
  * Chromium only, stub BFF): 100 keys typed at the end of a 1 KB PromQL query on Explore › Metrics,
  * and 100 keys typed inside the last line filter of a 1 KB LogQL query on the dev-only LogQL editor
- * harness (`/t/demo/dev/logql-editor`, plan #66 Part A A.8.1). Both cases share one body.
+ * harness (`/t/demo/dev/logql-editor`, plan #66 Part A A.8.1) and on Explore › Logs with the stub's
+ * stream shown (plan #66 Part C §5.4). The cases share one body.
  *
  * - **Editor update (T09-003).** The editor's probe (`src/editor/probe.ts`, installed here before
  *   the page loads) times each CodeMirror update in the page; a key's work is the sum of its
@@ -99,6 +100,18 @@ const LOGQL: KeystrokeCase = {
   caret: async (page) => {
     await page.keyboard.press('ControlOrMeta+End');
     await page.keyboard.press('ArrowLeft');
+  },
+};
+
+/** The same LogQL case on Explore › Logs with the stub's stream shown (plan #66 Part C §5.4). */
+const LOGS_PAGE: KeystrokeCase = {
+  ...LOGQL,
+  name: 'bench:editor-keystroke logs page',
+  url: `/t/demo/explore/logs?from=now-1h&to=now&refresh=off&q=${encodeURIComponent(Q1K_LOGQL)}`,
+  report: 'bench-editor-keystroke-logs-page.json',
+  ready: async (page) => {
+    await expect(page.getByRole('textbox', { name: 'LogQL query' })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Log lines' })).toBeVisible();
   },
 };
 
@@ -233,4 +246,8 @@ test('bench:editor-keystroke', async ({ page }, info) => {
 
 test('bench:editor-keystroke logql', async ({ page }, info) => {
   await keystrokeBench(page, info, LOGQL);
+});
+
+test('bench:editor-keystroke logs page', async ({ page }, info) => {
+  await keystrokeBench(page, info, LOGS_PAGE);
 });

@@ -156,6 +156,8 @@ dialog-editor-height = 720
 log-row = 20
 log-sentinel = 40
 log-level-bar = 3
+# The Log lines card of Explore › Logs (#66 Part C): the list's height.
+log-stream = 560
 
 [radius]
 default = 6

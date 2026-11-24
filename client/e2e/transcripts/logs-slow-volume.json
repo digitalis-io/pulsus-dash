@@ -1,0 +1,11 @@
+{
+  "name": "logs-slow-volume",
+  "provenance": {"synthetic": "the volume of the held stream, held as long"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "sum by (level, detected_level) (count_over_time({app=\"slow\"}\n| drop __error__ [5s]))"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-logs-slow-volume-1"},
+    "delay_ms": 2000,
+    "body": {"status":"success","data":{"resultType":"matrix","result":[]}}
+  }
+}

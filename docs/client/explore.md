@@ -1,12 +1,13 @@
-# Explore: metrics (data, rules, the editor chunk and the page)
+# Explore: metrics and logs (data, rules, the editor chunk and the pages)
 
 The Explore metrics page (issue #63) is built in three parts. This page documents **Part A**, the
 modules that decide what the page sends and draws, without drawing it (each rule is a pure,
 table-tested function); **Part B**, the PromQL editor chunk, a library the page loads lazily
 ([Editor chunk](#editor-chunk)); and **Part C**, the page itself ([Page](#page)). The LogQL editor
 of issue #66 Part A shares the editor chunk's host, guard, cache and diagnostics
-([LogQL (`lang/logql`)](#logql-langlogql)). How to use the
-page is in the user guide, [Explore: metrics](../user/explore-metrics.md).
+([LogQL (`lang/logql`)](#logql-langlogql)); the Explore › Logs page of issue #66 Part C is in
+[Logs page](#logs-page). How to use the pages is in the user guide,
+[Explore: metrics](../user/explore-metrics.md) and [Explore: logs](../user/explore-logs.md).
 
 Requirements: [SRF-030](../../designs/product/04-surfaces.md#srf-030--metrics-auto-vis-and-multiple-queries)
 (auto-vis subset), [SRF-031](../../designs/product/04-surfaces.md#srf-031--metric-browser-and-series-table)
@@ -980,6 +981,142 @@ rate behaviour passes the facts the server would give). The chart host has no wi
 calls `resizeAll` (a browser's `ResizeObserver` reports on observe), so tests that render the page
 install the fake `ResizeObserver`.
 
+## Logs page
+
+Explore › Logs (`src/pages/explore/LogsPage.tsx`, issue #66 Part C) mirrors the Metrics page: a
+**Query** card with the LogQL editor from the lazy `editor/logqlEditor.ts` chunk, then one results
+column whose width is the run's. How to use it is in the user guide,
+[Explore: logs](../user/explore-logs.md). It adds no server, wire or database change.
+
+Requirements: [SRF-033](../../designs/product/04-surfaces.md#srf-033--log-volume-histogram) (the
+volume stacked by level; the brush sets the Context window and reruns both),
+[SRF-036](../../designs/product/04-surfaces.md#srf-036--log-stream) (the stream subset),
+[PRF-030](../../designs/product/09-performance-contract.md#prf-030--cancel-superseded-requests),
+[PRF-031](../../designs/product/09-performance-contract.md#prf-031--truncation-honesty),
+[IA-022](../../designs/product/02-information-architecture.md#ia-022--deep-links-reproduce-the-view)
+(`q`, `dir`, `wrap`), IA-020 (Refresh now and auto-refresh rerun the page), VL-002 and T02-005 (the
+`unknown` level colour). Design rules: [T09-001](../../designs/technical/T09-query-editors.md) (the
+page reaches LogQL only through `LANGUAGES`), T09-004, T09-009 (run errors underline), T09-015,
+T03-014, T03-016 (the brush is one history push, through `ChartFrame`);
+[ADR-0018](../../designs/adr/0018-query-language-modules.md) §5,
+[ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) §2 (the raw text and window
+are sent; nothing is planned in the browser),
+[ADR-0007](../../designs/adr/0007-in-house-vis-engine.md) (the volume and metric charts through
+`<ChartFrame>`).
+
+### Modules
+
+| Module | What it does |
+|---|---|
+| `src/state/logsParams.ts`, `useLogsParams.ts` | `LogsParams` `{q, dir, wrap}`, `DEFAULT_LOGS`, `readLogsParams` (the first value of each key: `dir=forward` is oldest first, `wrap=on` wraps, anything else is the default), `writeLogsParams` (non-default keys only, sorted with the rest), `normalisedLogsSearch`; the hook's `set(p, {replace})` keeps the time Context |
+| `src/explore/useLogqlModules.ts` | Starts `LANGUAGES.logql()` and `import('../editor/logqlEditor')` on mount; a rejection sets `failed`. The page never imports `editor/editor.ts` |
+| `src/explore/stepWidth.ts` | `StepWidth` `{stepMs, widthPx}`, `stepWidth(prev, window, widthPx)` and `useStepWidth`: the width sent is held per grid step (`promGrid`), so a resize within one step keeps the same object and changes no key |
+| `src/explore/useLogsVolume.ts` | `logsVolumeKey` = `['data', 'logs', 'volume', tenant, q, fromMs, toMs, stepMs]` and `useLogsVolume`: one TanStack query of `Api.queryVolume` (`retry: false`, the previous data as placeholder only from the same tenant), the last success kept per tenant (D-RUN), `rerun()` = cancel, then refetch |
+| `src/explore/logsRun.ts` | `VOLUME_STACK` (critical … unknown, bottom to top), `pagerInput`, `LastLogsResult` and `nextLast`, `layoutOf`, `volumePlan` (stacked bars, `categoryLabel: 'level'`, unit suffix `lines`), `metricPlan` (`framePlan('line', …)`), `firstPageError`, `logsStatusView` |
+| `src/pages/explore/LogsQueryCard.tsx` | `LogQL` tag, Run hint, **Run** (disabled until ready, described by the status row), `LogQLEditor` (label `LogQL query`) or its placeholder, the status row. No metric picker |
+| `src/pages/explore/LogsVolumeCard.tsx` | `CompletenessNotice` of the volume, its alert ("The volume could not be loaded: …", with Narrow when it helps) only while the stream answered, the chart host with the shimmer and `<ChartFrame>` of `volumePlan` |
+| `src/pages/explore/LogsStreamCard.tsx` | The pager's merged `CompletenessNotice`, then `LogStream` (label `Log lines`) in `.streamHost` (`size.log-stream`, 560 px), or `Loading log lines…` until the run's pager exists |
+| `src/pages/explore/LogsMetricCard.tsx` | **Result**: `CompletenessNotice` and `<ChartFrame>` of `metricPlan(last.series)`, with the shimmer after 300 ms while a rerun is pending |
+
+### The run flow
+
+```
+URL (q, dir, wrap, from, to) ─┬─ useLogsParams ── q, dir, wrap
+                              └─ useTimeContext ─ window, refreshEpoch
+results column width ── useStepWidth(window, widthPx) ── step
+pagerInput(tenant, q, window, step, dir) ── useLogPager(input, api, `${refreshEpoch}.${runSeq}`) ── pager ── useLogPagerState
+useLogsVolume(tenant, q, window, step, enabled) ── volume
+layoutOf(state.phase, last) ── Volume + Log lines | Result
+```
+
+The pager and the volume start once the editor chunk, the language and the step are known (the
+step is held back until the modules load, so a failed chunk sends nothing). `pagerInput` is null
+for a blank query, a query over 128 KB (the status line then shows the refusal) or no step; the
+volume is enabled under the same conditions.
+
+| Event | Pager | Volume |
+|---|---|---|
+| Page opens with `q` | created once the step is known | fetched once the step is known |
+| Run, draft ≠ `q` | URL `q` pushed → new key | new key |
+| Run, draft = `q` | `runSeq + 1` → new generation | `rerun()` (cancel, refetch) |
+| Run, blank draft | URL `q` cleared → input null → disposed | disabled; nothing shown |
+| Run, draft over 128 KB | none: the refusal | none |
+| Brush or camera commit on the volume, window keys, picker, Narrow | window changes → new key | new key |
+| Refresh now / auto-refresh, window moves | new key (new window) | new key |
+| Refresh now / auto-refresh, window does not move | `refreshEpoch + 1` → new generation | the `['data']` cancel and invalidate |
+| Order control | URL `dir` replaced → new key | unchanged |
+| Wrap control | URL `wrap` replaced; no new pager | unchanged |
+| Drift's Run again | `runSeq + 1` | unchanged |
+| Resize within one step | unchanged | unchanged |
+| Resize to another step | new key | new key |
+| Tenant switch | new key; old disposed | new key; the old tenant's volume not shown |
+| Unmount | disposed | query unobserved → aborted |
+
+**The refresh epoch.** The pager is not a TanStack query, so the shell's `['data']` invalidation
+does not reach it. `Clock.epoch()` counts `Clock.refreshed()` calls; `refreshNow` calls it only
+when the window did not move (a moved window changes every key anyway), just before it cancels and
+invalidates `['data']`, and `useTimeContext` exposes it as `refreshEpoch`. The page's generation
+is `${refreshEpoch}.${runSeq}`; `useLogPager` keys its pager by the generation and the input, so a
+new generation with an equal input is a new pager (the old one disposed, its requests aborted).
+
+### Layout, errors and completeness
+
+`LogsPage` keeps `last: LastLogsResult | null`, the last first-page answer of this tenant. Each
+render computes `cur = nextLast(last, tenant, state)` and stores it during render when it changed;
+the render uses `cur`, so a tenant switch shows nothing of the old tenant, not even for one frame.
+`layoutOf(state.phase, cur.layout)`: a `streams` or `series` phase decides; `pending`, `failed` and
+no pager keep the last layout (default `streams`). So a first metric query of a session shows the
+Volume and Log lines cards until its answer; later reruns stay on **Result** with the previous
+series (shimmer while pending; kept on failure).
+
+| Source | Where | Narrow |
+|---|---|---|
+| First page fails (`phase` `failed`) | the status line (`logsStatusView` row 5); the underline from `lang.diagnosticsOf` (identity mapping: the server maps positions to the raw text); `LogStream` shows its failed sentinel with Retry | when the error is `tooBroad` or `timeout` |
+| A later page fails, drift | `LogStream`'s sentinels ([Log stream](logs.md#sentinels)) | — |
+| Volume fails | the Volume card's alert, only while `phase` is `streams` (a range failure already explains it; for `series` the volume is not shown) | when it helps |
+| `truncated`, warnings, infos | `CompletenessNotice` per card: the stream's (merged by the pager), the volume's, the metric's | on `truncated` |
+
+`logsStatusView` (first match): a Run refusal; the draft over 128 KB; the URL query over 128 KB;
+`Run is available once the chart has a size.` while the editor is loaded but no step; the first
+page's error; `{count} log lines · {order}` once the whole window is read, `Log lines · {order}`
+while more pages remain; `{count} series · step {step}` for a metric answer; else nothing.
+
+### URL keys
+
+`q` (pushed by a Run of new text), `dir` (`forward` only; replaced) and `wrap` (`on` only;
+replaced) with the time Context. The `explore/logs` route has a loader like `explore/metrics`':
+a non-canonical search (for example `wrap=yes`, a repeated key, an unsorted order) is replaced by
+`normalisedLogsSearch`.
+
+### Ownership and lifetimes
+
+| Thing | Owner | Ends |
+|---|---|---|
+| `LogPager` | `useLogPager`'s effect | key or generation change, unmount: `dispose()` aborts both ends; late answers change nothing |
+| Volume request | the TanStack query of `logsVolumeKey` | new key or unmount: unobserved, its signal aborts; `rerun()` cancels then refetches |
+| Completion lookups | `createLogSource` (one per tenant, the window read through a ref) and the suggest cache | as on the editor |
+| Refresh epoch | the app's one `Clock` (`ClockContext`) | never; monotonic |
+| `runSeq`, `last`, the draft | `LogsPage` state | unmount; `nextLast` drops `last` on a tenant change |
+
+Everything runs on the main thread (ADR-0014 §2); the page adds no timer.
+
+### e2e transcripts and gates
+
+`client/e2e/transcripts/logs-*.json` (16 files) are the fake's answers for the Logs specs, on the
+1 h window from 2026-01-01T12:00Z (step 5 s at the Playwright viewport; 1 s for the brushed
+12:20–12:25). `logs-checkout-*` serve six lines and their volume, unbrushed and brushed;
+`logs-metric-checkout` a metric query; `logs-slow*` answers held 2 s; `logs-truncated*` a
+truncation warning; `logs-labels`, `logs-label-values-app` the completion; `logs-parse-error` and
+`logs-too-broad` are byte copies of the fake's testdata. `logs-paging-1.json` and
+`logs-paging-2.json` (1 500 entries 2 s apart; page one asked with `limit` 1001 gives 1 000 lines
+and a cursor at entry 1 000) are generated by `client/scripts/logTranscripts.ts`:
+`npm run gen:log-transcripts` writes them and `unit:log-transcripts` compares them byte for byte.
+Every `e2e:logs-*` test checks `720 ≤ width_px < 3600` on its first range request, so a layout
+change fails with that message rather than a missing transcript.
+
+The gates are listed under [Gates](#gates); the benches in
+[Build, test and CI](../development/build-and-ci.md#tests).
+
 ## Gates
 
 | Gate                                                                                                                                      | File                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -1031,6 +1168,15 @@ install the fake `ResizeObserver`.
 | `bench:promql-completion-latency` | `e2e/perf-promql-completion.spec.ts` (Chromium): keydown to popup on Explore › Metrics, local (a 1 KB query) and remote, the work per local key (`keyWork`, the union of the probes' intervals) and long tasks; its arithmetic and enforce gate in `src/test/completionWork.ts`, checked by `src/test/completionWork.test.ts` (W1–W3, G1–G3) ([Build, test and CI](../development/build-and-ci.md#tests)) |
 | `e2e:a11y-rooms`, `e2e:csp-violations` (explore) | `e2e/a11y-rooms.spec.ts`, `e2e/keyboard.spec.ts` (L32, `e2e/keyboardExplore.ts`), `e2e/csp-violations.spec.ts` |
 | `ci:bundle-size` (editor closure) | `scripts/bundle-size.test.ts` (h)–(k) and the real build |
+| `unit:logs-params`, `unit:use-logs-params`, `unit:router-logs-params` | `src/state/logsParams.test.ts`, `useLogsParams.test.tsx`, `src/app/router.test.tsx` |
+| `unit:clock-epoch`, `unit:refresh-epoch` | `src/state/clock.test.ts`, `src/state/useTimeContext.test.tsx` |
+| `unit:step-width`, `unit:logs-volume`, `unit:logs-run` | `src/explore/stepWidth.test.ts`, `useLogsVolume.test.tsx`, `logsRun.test.ts` (and `useLogqlModules.test.tsx`) |
+| `unit:logs-page` | `src/pages/explore/LogsPage.test.tsx` LP1–LP23 (LP20, the chunk that fails to load, in `LogsPage.fallback.test.tsx`), over `src/test/logsPageKit.tsx` and the editor mock `src/test/fakeLogqlEditor.tsx` |
+| `unit:palette-levels` | `src/engine/canvas2d/palette.test.ts`: every Table 8-1a row by value, `unknown` → `series-3` |
+| `unit:log-transcripts` | `scripts/logTranscripts.test.ts` |
+| `e2e:logs-completion`, `e2e:logs-run`, `e2e:logs-brush`, `e2e:logs-paging`, `e2e:logs-metric`, `e2e:logs-cancel`, `e2e:logs-truncation`, `e2e:logs-refresh`, `e2e:logs-error-on-run`, `e2e:lazy-load` (logs) | `e2e/explore-logs.spec.ts` (against `pulsus-fake` through the http-mode BFF; lazy-load on the stub build) |
+| `e2e:deep-link`, `e2e:a11y-rooms`, `e2e:csp-violations` (logs) | `e2e/deep-link.spec.ts`, `e2e/a11y-rooms.spec.ts`, `e2e/keyboard.spec.ts` (L33, `e2e/keyboardExplore.ts`), `e2e/csp-violations.spec.ts` |
+| `bench:log-page-load`, `bench:editor-keystroke logs page` | `e2e/perf-log-page-load.spec.ts`, `e2e/perf-editor-keystroke.spec.ts` (Chromium; [Build, test and CI](../development/build-and-ci.md#tests)) |
 
 The editor's budgets are measured with the page: PRF-005 keystroke work by `bench:editor-keystroke`
 (report only on shared CI) and PRF-009 by the editor closure row of `ci:bundle-size`; its browser

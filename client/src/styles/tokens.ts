@@ -139,6 +139,7 @@ export const size = {
   "log-level-bar": 3,
   "log-row": 20,
   "log-sentinel": 40,
+  "log-stream": 560,
   "page-padding": 24,
   "sidebar-collapsed": 56,
   "sidebar-expanded": 240,

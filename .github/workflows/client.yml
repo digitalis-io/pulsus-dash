@@ -82,8 +82,9 @@ jobs:
   e2e:
     needs: check
     runs-on: ubuntu-24.04
-    # The keyboard script (e2e:a11y-rooms, L1–L28) drains every board state and runs ~20–30 min.
-    timeout-minutes: 60
+    # The keyboard script (e2e:a11y-rooms, L1–L33) drains every board state and runs ~20–30 min.
+    # 90 minutes is a stopgap for the Explore › Logs rows (#66 Part C); the job time is #130.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:

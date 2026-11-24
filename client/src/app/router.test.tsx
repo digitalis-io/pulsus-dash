@@ -49,6 +49,15 @@ describe('router explore canonical', () => {
     });
     expect(router.state.historyAction).toBe('REPLACE');
   });
+
+  it('unit:router-logs-params: the logs route canonicalises q, dir and wrap (REPLACE)', async () => {
+    const { router } = renderApp('/t/demo/explore/logs?wrap=yes&q=a');
+    await settled(router, '/t/demo/explore/logs');
+    await waitFor(() => {
+      expect(locationOf(router)).toBe('/t/demo/explore/logs?from=now-1h&to=now&refresh=off&q=a');
+    });
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
 });
 
 describe('tenant index keeps Context', () => {

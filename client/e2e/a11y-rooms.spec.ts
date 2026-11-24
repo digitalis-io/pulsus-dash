@@ -1,11 +1,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { t } from '../src/i18n/t.ts';
+import { LEVEL_NAME } from '../src/logs/levels.ts';
 import { createAnnotation, deleteAnnotations } from './annotationApi.ts';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { createBoard, deleteBoard } from './boardApi.ts';
 import {
   ALL_PAGES,
   EXPLORE_RESULT,
+  LOGS_RESULT,
   frame,
   GALLERY_URL,
   galleryReady,
@@ -388,6 +391,63 @@ test.describe('e2e:a11y-rooms explore', () => {
   test('explore targets are at least 24 × 24 px', async ({ page }) => {
     await exploreResult(page);
     expect(await smallTargets(page)).toEqual([]);
+  });
+});
+
+/** Explore › Logs with the stub's 30 entries (plan #66 Part C §5.3). */
+async function logsResult(page: Page): Promise<void> {
+  await open(page, LOGS_RESULT);
+  await expect(page.getByRole('list', { name: 'Log lines' }).locator('[data-log-row]')).toHaveCount(
+    30,
+  );
+}
+
+test.describe('e2e:a11y-rooms logs', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} explore logs with a result`, async ({ page }) => {
+      await page.addInitScript((t) => {
+        localStorage.setItem('pulsus-dash.theme', t);
+      }, theme);
+      await logsResult(page);
+      expect(await seriousViolations(page)).toEqual([]);
+    });
+  }
+
+  test('dark, logs completion popup open', async ({ page }) => {
+    await logsResult(page);
+    await page.getByRole('textbox', { name: 'LogQL query' }).click();
+    // Inside the selector, after `{`: the label names.
+    await page.keyboard.press('Home');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Control+Space');
+    await page.locator('.cm-tooltip-autocomplete').waitFor();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('logs targets are at least 24 × 24 px', async ({ page }) => {
+    await logsResult(page);
+    expect(await smallTargets(page)).toEqual([]);
+  });
+
+  test('the first log line is announced with its level; the glyph is hidden', async ({ page }) => {
+    await logsResult(page);
+    const first = page.getByRole('list', { name: 'Log lines' }).locator('[data-log-row]').first();
+    const names = Object.values(LEVEL_NAME).map((id) => t(id));
+    const spoken = await first.evaluate((el) => {
+      const parts: string[] = [];
+      const walk = (n: Node): void => {
+        if (n instanceof Element && n.getAttribute('aria-hidden') === 'true') return;
+        if (n.nodeType === Node.TEXT_NODE) parts.push(n.textContent ?? '');
+        for (const c of n.childNodes) walk(c);
+      };
+      walk(el);
+      return parts.join('');
+    });
+    expect(
+      names.some((n) => spoken.startsWith(n)),
+      spoken,
+    ).toBe(true);
+    await expect(first.locator('[data-log-glyph]')).toHaveAttribute('aria-hidden', 'true');
   });
 });
 
