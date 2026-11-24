@@ -255,6 +255,46 @@ describe('event markers', () => {
     expect(s.eventLabels[0]?.text).toBe('Maintenance');
   });
 
+  it('empty heatmap keeps its markers', () => {
+    const spec: VisSpec = {
+      kind: 'heatmap',
+      title: 'H',
+      unit: { kind: 'none' },
+      countUnit: { kind: 'none' },
+    };
+    const empties: FrameData[] = [
+      {
+        kind: 'heatmap',
+        heatmap: {
+          timestamps: new Float64Array(0),
+          bounds: new Float64Array(0),
+          counts: new Float64Array(0),
+        },
+      },
+      {
+        kind: 'heatmap',
+        heatmap: {
+          timestamps: new Float64Array([0, 30_000]),
+          bounds: new Float64Array(0),
+          counts: new Float64Array(0),
+        },
+      },
+    ];
+    for (const data of empties) {
+      const h = show({ spec, data, events: [ev('a', 30_000, 'v2.31')] });
+      const s = last(h);
+      expect(s.plot.y).toBe(space['2'] + EVENT_BAND);
+      const x = lineX(s, 30_000);
+      expect(eventLines(h.layer()).map((l) => [l.x, l.y0, l.y1])).toEqual([
+        [x, s.plot.y, s.plot.y + s.plot.height],
+      ]);
+      expect(s.eventLabels.map((b) => ({ ids: b.ids, text: b.text, x: b.x }))).toEqual([
+        { ids: ['a'], text: '◆ v2.31', x },
+      ]);
+      expect(bandTexts(h.layer())).toEqual(['◆ v2.31']);
+    }
+  });
+
   it('event line stays above filled series; stat has none', () => {
     const heatmap: { spec: VisSpec; data: FrameData } = {
       spec: {
