@@ -60,7 +60,8 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   // run of this ~32-minute spec does not fit the e2e job's 60-minute timeout.
   test.describe.configure({ retries: 0 });
   test('every control and state by keyboard (L1–L34)', async ({ page }) => {
-    test.setTimeout(3_600_000);
+    // 75 minutes: the board log panels (#67) put Firefox and WebKit near the old hour (#130).
+    test.setTimeout(4_500_000);
     await page.addInitScript(() => {
       window.__copied = [];
       const writeText = (s: string): Promise<void> => {
