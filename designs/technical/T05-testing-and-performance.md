@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.35-rc · 2026-11-24 |
+| **Version** | 1.36-rc · 2026-11-24 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -819,8 +819,8 @@ the merge train), nightly (release blocker).
 | `e2e:rooms-reachable` | The sidebar lists the build's destinations for the user's role (Admin only for administrators) and marks the current page; the collapsed state persists across reload; each destination opens from the sidebar, from `⌘K` and by its `g` chord (IA-021) |
 | `e2e:chrome-every-surface` | Each surface of [04](../product/04-surfaces.md) Table 4-1 in the build shows the sidebar and page header, with the time range picker and refresh control on time-dependent surfaces and the Time Ribbon on the Atlas and Lens; Wall mode shows none of them (SRF-001) |
 | `e2e:chart-brush` | Interim charts: a drag over a line chart sets the absolute window snapped to the brush unit (e.g. 12:20–12:25 from drags 0.1–0.4 units inside it), pushed to the URL; a double-click zooms out (twice the window) and the header shows the new range (IA-020 subset) |
-| `e2e:ticks-parity` | From #97: `valueTicks` equals `ticks.json` and `ticks-extreme.json` in Chromium, Firefox and WebKit, with path parity on every row (each row records `path: 'nice' \| 'fallback'`, and every engine must take it); fallback rows exact everywhere; in WebKit, whose `**` differs from V8's in the last bits (#126), short nice rows (height ≤ 2·(label + 2)) have exact ticks, `min`/`max` within 4 ulps and P1–P7, and other nice rows are exact or hold P1–P7 (#97 plan §10 Q1) |
-| `unit:ulp-distance` | From #97: `ulpDistance` on IEEE-754 bit patterns: (1, 1) → 0, (1, nextUp(1)) → 1, (−0, 0) → 0, (−MIN_VALUE, MIN_VALUE) → 2, the `ticks-extreme.json` row-391 WebKit/V8 max pair → 2 |
+| `e2e:ticks-parity` | From #97, #126: `valueTicks` equals `ticks.json` and `ticks-extreme.json` exactly in Chromium, Firefox and WebKit, with path parity on every row (each row records `path: 'nice' \| 'fallback'`); the page also equals `pow.json` |
+| `unit:js-pow` | From #126: the interim `pow10`/`powBase` equal `pow.json` on all 855 rows and `**` at the edges; `valueTicks.ts` contains no `**` |
 | `e2e:gallery-extreme` | From #97: `line-extreme` ([−MAX, MAX]) draws and the main thread stays responsive |
 | `e2e:chart-hover` | Interim charts: the tooltip shows the time, every series' name and value at the snapped sample in value order; for more than 20 series, sweeping the pointer down the plot shows every series (INT-033 subset) |
 | `e2e:time-range-header` | Header picker offers the relative ranges of IA-020 and absolute ranges with the time zone; choosing a range re-queries visible charts and updates the URL; a brush on any time chart sets the picker to that absolute range; a 30 s auto-refresh re-queries every 30 s and "Off" stops it (IA-020, INT-025) |
@@ -1060,3 +1060,4 @@ Meta-testing:
 | 1.33-rc | 2026-11-23 | #66 Part C: §7.1 adds `unit:logs-params`, `unit:use-logs-params`, `unit:router-logs-params`, `unit:clock-epoch`, `unit:refresh-epoch`, `unit:step-width`, `unit:logs-volume`, `unit:logs-run`, `unit:logs-page`, `unit:palette-levels`, `unit:log-transcripts`, `e2e:logs-completion`, `e2e:logs-run`, `e2e:logs-brush`, `e2e:logs-paging`, `e2e:logs-metric`, `e2e:logs-cancel`, `e2e:logs-truncation`, `e2e:logs-refresh` and `e2e:logs-error-on-run`; `unit:use-log-pager` adds the generation; `e2e:lazy-load` names the Logs page; `bench:editor-keystroke` adds the Logs page case; the lab benchmark `bench:log-page-load` and its lab-gate row; §4.3 log stream row: `bench:log-page-load` on the Logs page (HTTP decode) |
 | 1.34-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §7.1 adds `unit:event-marks`, `unit:board-events` and `e2e:board-event-markers`; `golden:interim-gallery` "ten" → "eleven" (`line-events`) |
 | 1.35-rc | 2026-11-24 | #135: §7.1 `ci:bundle-size` also measures the HTTP build (`dist-http/`) |
+| 1.36-rc | 2026-11-24 | #126: §7.1 `e2e:ticks-parity` exact in every engine (F/S/N classes removed); adds `unit:js-pow`; removes `unit:ulp-distance` |
