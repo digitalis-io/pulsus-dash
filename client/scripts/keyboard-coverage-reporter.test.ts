@@ -106,10 +106,10 @@ describe('keyboard coverage reporter (#130, IA-015, T05-002)', () => {
       'keyboard-coverage p: not checked (E2E_SHARD=kbd-b; run has K3)',
     );
     stderr = [];
-    vi.stubEnv('E2E_SHARD', 'rest');
+    vi.stubEnv('E2E_SHARD', 'rest-b');
     expect(await run(tmp(), [])).toBeUndefined();
     expect(stderr.join('')).toContain(
-      'keyboard-coverage p: not checked (E2E_SHARD=rest; run has no part)',
+      'keyboard-coverage p: not checked (E2E_SHARD=rest-b; run has no part)',
     );
   });
 

@@ -95,7 +95,8 @@ describe('ci:e2e-complete (#130, T05-002)', () => {
       ids(listed(FOUR), [
         ['kbd-a', [a1]],
         ['kbd-b', [{ ...a2, status: 'flaky', results: 2 }]],
-        ['rest', [b1, b2]],
+        ['rest', [b1]],
+        ['rest-b', [b2]],
       ]),
     ).toEqual([]);
   });
@@ -120,8 +121,9 @@ describe('ci:e2e-complete (#130, T05-002)', () => {
       (
         [
           ['kbd-a', [a1, a2]],
-          ['kbd-b', [b1]],
-          ['rest', [b1, b2]],
+          ['kbd-b', []],
+          ['rest', [b1]],
+          ['rest-b', [b1, b2]],
         ] as [string, T[]][]
       ).map(withE6),
       'firefox',
@@ -129,7 +131,7 @@ describe('ci:e2e-complete (#130, T05-002)', () => {
     expect(f.map((x) => `${x.rule} ${x.subject ?? ''}`)).toEqual([
       'e2e-test-duplicate b.spec.ts › three [firefox]',
     ]);
-    expect(f[0]?.message).toContain('kbd-b, rest');
+    expect(f[0]?.message).toContain('rest, rest-b');
   });
 
   it('unintended skip fails', () => {

@@ -4,6 +4,9 @@
  * three filters partition the suite, and `ci:e2e-complete` checks that they did.
  */
 export const E2E_SHARDS = ['kbd-a', 'kbd-b', 'rest'] as const;
+/** Spec files (paths relative to testDir) that run in `rest-b`. */
+export const REST_B_FILES: readonly string[] = [];
+
 export type E2eShard = (typeof E2E_SHARDS)[number];
 
 export interface ShardFilter {
