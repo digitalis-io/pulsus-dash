@@ -4,7 +4,8 @@ The Pulsus Dash server is one Go binary, `pulsus-dash`, in `server/`
 ([ADR-0015](../../designs/adr/0015-go-bff.md)). It loads a strict configuration, checks
 Postgres, applies migrations and seeds the first organisation, verifies and serves the embedded
 web client, and serves health, readiness, the version, the client's bootstrap, CSP reports and the
-[boards API](boards-api.md) (boards with versions and an audit trail, starred and recent boards).
+[boards API](boards-api.md) (boards with versions and an audit trail, starred and recent boards)
+and the [annotations API](annotations-api.md) (the event markers boards draw on their time panels).
 It serves the PromQL query, completion and data-source check routes from PulsusDB through its one
 client ([the PulsusDB page](pulsusdb.md)); start-up and readiness never contact PulsusDB
 ([T06-026](../../designs/technical/T06-bff-architecture.md)). Authentication comes in a later issue.
@@ -188,6 +189,7 @@ Requests are matched in this order:
 |---|---|
 | `GET /healthz`, `/startupz`, `/readyz`, `GET /api/dash/v1/version`, `GET /api/dash/v1/bootstrap` | the API routes below |
 | `/api/dash/v1/boards…`, `/api/dash/v1/me/starred-boards…`, `/api/dash/v1/me/recent-boards…` | the [boards API](boards-api.md) |
+| `GET`, `POST /api/dash/v1/annotations`, `DELETE /api/dash/v1/annotations/{id}` | the [annotations API](annotations-api.md) |
 | `POST /api/dash/v1/csp-report` | [CSP reports](#csp-reports) |
 | `POST /api/dash/v1/query/promql/{range,instant}`, `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}`, `POST /api/dash/v1/query/logql/{range,volume}`, `GET /api/dash/v1/logs/{labels,label/{name}/values,series}`, `GET /api/dash/v1/datasource/check` | [the PulsusDB routes](pulsusdb.md#routes) |
 | `GET`/`HEAD /assets/*` | the file from the verified set with the asset headers; not in the set, or no set → 404 envelope |
@@ -420,10 +422,11 @@ header was written is logged with `status=499`. PulsusDB calls add one `msg=puls
 |---|---|
 | `cmd/pulsus-dash` | the CLI; `run(ctx, runEnv)` makes every command testable in-process |
 | `internal/config` | loading, strictness, secret references, seed settings |
-| `internal/core` | shared types: `OrgID`, tenant bindings, build info, the actor and `RequestCtx` (with the tenant, principal and data scope of PulsusDB calls), the password rule, the `Boards` service interface, `PartitionState` |
+| `internal/core` | shared types: `OrgID`, tenant bindings, build info, the actor and `RequestCtx` (with the tenant, principal and data scope of PulsusDB calls), the password rule, the `Boards` and `Annotations` service interfaces, `PartitionState` |
 | `internal/spec` | the board spec v1: strict decoding, validation, the upcaster, canonical JSON and the JSON Patch ([boards API](boards-api.md#board-spec-v1)) |
 | `internal/boards` | the boards service: versions, ETags, audit events, starred and recent boards |
-| `internal/gateway` | router, error envelope, headers, access log, panic recovery, body limit, health, version and bootstrap routes, board routes, the PulsusDB routes and JSON frames, CSP reports, asset and document serving, the public-URL self-check; `api/` is generated |
+| `internal/annotations` | the annotations service: list by window, create and delete with an audit event each ([annotations API](annotations-api.md)) |
+| `internal/gateway` | router, error envelope, headers, access log, panic recovery, body limit, health, version and bootstrap routes, board routes, the annotations routes, the PulsusDB routes and JSON frames, CSP reports, asset and document serving, the public-URL self-check; `api/` is generated |
 | `internal/keyhash` | the series key (T04-004) |
 | `internal/pulsusdb` | the only PulsusDB client ([PulsusDB page](pulsusdb.md)) |
 | `internal/pulsusfake`, `cmd/pulsus-fake` | the PulsusDB stand-in for tests and the dev stack ([testing against PulsusDB](../development/testing-pulsusdb.md)) |

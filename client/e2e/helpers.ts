@@ -86,6 +86,7 @@ export const GALLERY_IDS = [
   'line-thresholds',
   'stat-sparkline',
   'line-extreme',
+  'line-events',
 ] as const;
 
 /** The chart frame of a gallery entry. */

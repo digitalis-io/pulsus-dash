@@ -171,6 +171,28 @@ every leaf, so the app never sees an audit row older than the retention (T11-010
 hides every row. The chain head lives in `audit_chain_heads`, which has no floor, so the hash chain
 continues across it (T11-017).
 
+## Schema (migration 3)
+
+`server/migrations/00003_annotations.sql` (#64 Part C) adds the events that boards draw as markers
+on their time panels (T11 §4.4,
+[ADR-0023](../../designs/adr/0023-chart-event-markers.md)). It creates one new, empty table, with
+no backfill and no lock on an existing table (T11-012, T11-013).
+
+| Table | Key | Contents |
+|---|---|---|
+| `annotations` | `(org_id, id)`; indexed on `(org_id, at)` (`annotations_at`) | `at`, `end_at` (null for a point), `kind` (`deploy`, `config`, `flag` or `annotation`), `entity_key` (null until M-UI3), `text` (1–500 characters), `tags` (`text[]`, default `{}`, at most 16), `author_kind` (`local`, `user`, `service_account`), `author_id`, `created_at` |
+
+CHECKs repeat the API's rules: the four kinds, the text length, the tag count, and
+`end_at IS NULL OR (end_at >= at AND end_at - at <= interval '31 days')`. A violation is SQLSTATE
+`23514`. Because a range is at most 31 days, the list query's lower bound
+`at >= from − 31 days` is exact and keeps the index scan bounded. The table is not partitioned
+(annotations are few). The API that uses it is described in
+[the annotations API page](annotations-api.md).
+
+`pulsus_app` holds `SELECT`, `INSERT` and `DELETE` on `annotations` (no update: delete and post
+again). RLS is the template of [row-level security](#row-level-security), and every query also
+names `org_id = $1` (T11-002).
+
 ## Row-level security
 
 Every tenant table has the same template (T11-003):
@@ -256,8 +278,8 @@ For each test, the harness (`internal/store/storetest`) runs `postgres-roles.sql
 database `itest_<random>` owned by `pulsus_owner`. It drops the database afterwards. The tests
 cover:
 
-- isolation for every tenant table, as `pulsus_app` and as `pulsus_owner`; a table without a test
-  fixture fails the test; every audit partition carries RLS and refuses `SELECT` and `INSERT` by
+- isolation for every tenant table (`annotations` included), as `pulsus_app` and as
+  `pulsus_owner`; a table without a test fixture fails the test; every audit partition carries RLS and refuses `SELECT` and `INSERT` by
   `pulsus_app` (`itest:rls-isolation`);
 - append-only audit events, versions and boards for `pulsus_app`, the retention floor, and the
   hash chain across it (`itest:audit-append-only`);
@@ -265,6 +287,10 @@ cover:
   kind, a relation planted before `migrate`, direct `CREATE` grants, and the definer function's
   `search_path`;
 - the absence of extensions (`itest:no-extensions`);
+- annotations: the window overlap and newest-first order, the 500 cap and `truncated`, isolation
+  between organisations, the `annotation.create` and `annotation.delete` audit events and their
+  chain, and the CHECKs for a 32-day range and an unknown kind
+  (`server/internal/annotations/annotations_itest_test.go`);
 - the migrate cases, including concurrent runs and the N+1 window (`itest:migrations`);
 - the start-up refusals of `serve`;
 - `/readyz` with PulsusDB absent and with Postgres stopped (through a TCP proxy).

@@ -2,6 +2,9 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { t } from '../src/i18n/t.ts';
 import { LEVEL_NAME } from '../src/logs/levels.ts';
+import { createAnnotation, deleteAnnotations } from './annotationApi.ts';
+import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
+import { createBoard, deleteBoard } from './boardApi.ts';
 import {
   ALL_PAGES,
   EXPLORE_RESULT,
@@ -37,13 +40,11 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
   },
 };
 
-async function seriousViolations(page: Page, state = ''): Promise<string[]> {
+async function seriousViolations(page: Page, state = '', include?: string): Promise<string[]> {
   const engine = page.context().browser()?.browserType().name() ?? '';
   const skip = ENGINE_SKIPS[engine]?.[state] ?? [];
-  const r = await new AxeBuilder({ page })
-    .withTags(TAGS)
-    .disableRules([...skip])
-    .analyze();
+  const axe = new AxeBuilder({ page }).withTags(TAGS).disableRules([...skip]);
+  const r = await (include === undefined ? axe : axe.include(include)).analyze();
   return r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
@@ -103,6 +104,51 @@ test.describe('e2e:a11y-rooms axe', () => {
     await openUserMenu(page);
     expect(await seriousViolations(page)).toEqual([]);
   });
+});
+
+// A board with event markers (plan #64 Part C): the stub has no annotations, so the http-mode BFF.
+// Annotations are the organisation's: these sit at 01:30, after every window other specs open on the
+// same database (`board-events.spec.ts`, `board-thresholds.spec.ts` end at 01:00).
+test.describe('e2e:a11y-rooms axe, board with markers', () => {
+  test.skip(PREVIEW, NEEDS_BFF);
+  test.use({ baseURL: HTTP_BFF });
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme} board with markers`, async ({ page, request }, info) => {
+      const from = Date.parse('2026-01-01T00:00:00.000Z');
+      const uid = await createBoard(request, `A11y ${info.project.name} ${crypto.randomUUID()}`, [
+        {
+          id: 'p-1',
+          title: 'Memory',
+          text: 'node_memory_free_bytes',
+          grid: [0, 0, 8, 10],
+          vis: { kind: 'line' },
+        },
+      ]);
+      const ids = [
+        await createAnnotation(request, { at: from + 90 * 60_000, kind: 'deploy', text: 'v2.31' }),
+        await createAnnotation(request, {
+          at: from + 90 * 60_000 + 1_000,
+          kind: 'flag',
+          text: 'checkout',
+        }),
+      ];
+      try {
+        await page.addInitScript((t) => {
+          localStorage.setItem('pulsus-dash.theme', t);
+        }, theme);
+        await page.goto(
+          `/t/demo/board/${uid}?from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-01T02%3A30%3A00.000Z&refresh=off`,
+        );
+        // At least this test's chip; markers other specs post at the same time may show too.
+        await expect(page.locator('[data-event-hit][aria-label*="checkout"]')).toHaveCount(1);
+        // The board itself (`main`): the http-mode shell's user menu is outside this change.
+        expect(await seriousViolations(page, 'board with markers', 'main')).toEqual([]);
+      } finally {
+        await deleteAnnotations(request, ids);
+        await deleteBoard(request, uid);
+      }
+    });
+  }
 });
 
 /**
@@ -435,7 +481,7 @@ test.describe('e2e:a11y-rooms gallery', () => {
   test('gallery canvases expose their summary', async ({ page }) => {
     await open(page, GALLERY_URL);
     await galleryReady(page);
-    await expect(page.locator('canvas[role="img"]')).toHaveCount(10);
+    await expect(page.locator('canvas[role="img"]')).toHaveCount(11);
     const label = (id: string) => frame(page, id).locator('canvas').getAttribute('aria-label');
     const range = '12:00 – 13:00 GMT';
     expect(await label('line-50')).toMatch(

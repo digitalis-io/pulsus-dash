@@ -110,5 +110,6 @@ export function frameSummary(
     plot,
     valueAxis,
     thresholdLabels: [],
+    eventLabels: [],
   };
 }

@@ -2,8 +2,10 @@
 
 Every chart in the client is one `<ChartFrame>` on one `<canvas>`, drawn by a chart engine behind the
 seam of [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3 (amended by
-[ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md) and
-[ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md)). Until the Rust/WASM
+[ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md),
+[ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md),
+[ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) and
+[ADR-0023](../../designs/adr/0023-chart-event-markers.md)). Until the Rust/WASM
 engine lands (#68), the engine is the in-house **interim Canvas 2D renderer** in
 `client/src/engine/canvas2d/` (ADR-0014 §4; no charting library, VIZ-001, T01-002). It draws four
 kinds: line, stacked bars, heatmap and stat. This page covers the seam, the frame data and its
@@ -20,8 +22,8 @@ application code.
 | `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
 | `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`) or `scalar` (`ScalarFrame`), from `src/data/frames.ts` |
 | `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); `null` for stat |
-| `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, and `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
+| `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
+| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -259,6 +261,28 @@ On line and bars, after the series and before the value-label chips (`engine/can
 
 The layer redraws on every camera preview, so the lines and labels move with the value axis.
 
+### Event markers
+
+On line, bars and heatmap (`engine/canvas2d/eventMark.ts`, [ADR-0023](../../designs/adr/0023-chart-event-markers.md),
+#64 Part C). Stat ignores events. A frame without events draws exactly as before. An empty
+heatmap (no timestamps or no bounds) draws no axes or cells but still draws and reports its events.
+
+| Step | Rule |
+|---|---|
+| Band | Once the last `setEvents` held at least one event, in view or not, the plot starts at `space.2 + EVENT_BAND` (`EVENT_BAND` = `LABEL_HEIGHT + space.1` = 18 px) and is shorter by it (`layoutPlot(…, eventBand)`), so a pan never moves the plot. `setEvents([])` gives today's layout |
+| In view | Events with a finite `atMs` inside the drawn window (the preview's during a gesture), sorted by `(atMs, id)`, at `x = Math.round(xOf(atMs)) + 0.5` of the frame's time transform |
+| Line | Solid, 1 px (`border.hairline`), in `colours.event` (`text-muted`), from the plot's top to its bottom, one per event in view. Order: axes, series (paths, bars, cells), thresholds, **event lines**, value-label chips, **event labels**, overlay. Clipped to the plot when the value axis is pinned |
+| Text | `${glyph} ${title}` with ◆ deploy, ⚙ config, ⚑ flag (`theme/glyphs.ts`, T02-008); a note is its title alone. `AXIS_FONT`, `colours.axisText`, `textBaseline: 'top'`, at `y = space.2`, through `fillText` only (T02-019) |
+| Groups | In order, an event joins the current group while it is less than `size.target-min` (24 px) right of the group's first line, else it starts a group |
+| Bounds | The band is `[L, R] = [plot.x, plot.x + plot.width]`. Group i's anchor is `a_i = max(L, firstX_i − 4)`, its limit `a_{i+1} − 4` (the last's is `R`), and `lo_i` is the previous box's right `+ 4` (the first's is `L`). No box leaves `[L, R]` or comes within 4 px of another |
+| Forms | A single event's forms are the full label, `fitText` (the longest prefix of at least 2 code points with `…`, `engine/canvas2d/text.ts`) and the short form (the glyph, or the first code point with `…`). A group of two or more is a chip: `+N`, or `99+` past 99 |
+| Place | (a) Left-aligned at `a_i` with room `limit − a_i`: the full label, then `fitText`. (b) Else right-aligned at the limit with room `limit − lo_i`: every form. (c) Else the group merges into the previous placed group as a chip, which is placed again from (a); repeated as needed. (d) With no previous group, every group becomes one chip with limit `R`; if neither (a) nor (b) fits it, there is one box `{ x: L, width: R − L }` without text holding every id |
+| Summary | One `EventLabelBox` per placed group: `box` (`y = space.2`, `LABEL_HEIGHT` tall, the drawn width), `x` (its first member's line), `ids` in `(atMs, id)` order, `text` (every member's full label joined by `; `) and `clipped` (anything but a whole single label). Every event in view is in exactly one box. The boxes are part of the summary, so a change emits `a11y` again |
+
+`setEvents` with the same array does nothing. A change that gains or loses every event moves the
+plot, so it clears the hover as any layout input does; other changes redraw the layer only. The
+layer redraws on every camera preview, so the markers follow a pan or a zoom before its commit.
+
 
 ## Interaction (INT-033, IA-020 subset)
 
@@ -417,6 +441,14 @@ shows `Loading`, and a visualisation change redraws the same result.
   `+N` chip) gets a focusable target over the canvas (`[data-threshold-hit]`, `role="img"`, named by
   the full text), at least 24 × 24 px about the box's centre (T08-010), placed through CSSOM from
   the last summary, with a tooltip of the full text on hover and focus. Stat and heatmap have none.
+- With event markers (ADR-0023), every event label box, clipped or not, gets a focusable target
+  (`[data-event-hit]`, `role="img"`, `data-event-x` = the box's first line), at least 24 × 24 px
+  about the box's centre and kept inside the frame, so a box without text at the plot edge stays
+  reachable (T08-010). Its tooltip and accessible name list the box's events,
+  `<kind> · <title> · <time>` (with `–<end>` for a ranged event; kinds "Deploy", "Config change",
+  "Feature flag", "Note"), joined by `; `, in the frame's time zone (`eventText`). The summary
+  label then ends `Events in view: <n>.`. A click on a marker does nothing yet (click-to-compare is
+  INT-030).
 - When more than 500 series arrive, a status notice says "Showing 500 of <n> series".
 - A browser without a 2D canvas context shows "This browser cannot draw charts." instead.
 
@@ -428,6 +460,8 @@ shows `Loading`, and a visualisation change redraws the same result.
   GPU decimation or level of detail until #68.
 - No legend inside the frame (board panels draw theirs in the DOM, [Boards](boards.md)), cursor sync,
   click to select, Inspector, Δ vs baseline or keyboard brushing yet. At most 8 threshold lines.
+  Event markers are points on the time axis: a ranged event shows its end in the tooltip only (no
+  region), and a click on a marker sets no comparison yet.
 - Camera (#93): no inertia after a flick, no wheel zoom on an axis band (the page scrolls), no value
   zoom on heatmaps, no touch gestures, no keyboard value zoom, and no live following by other
   panels during a gesture (they follow at the commit). The band does not shrink after a 500 ms
@@ -438,7 +472,7 @@ shows `Loading`, and a visualisation change redraws the same result.
 `/t/:tenant/dev/gallery` (development and stub builds only: the route is in the router only when
 `import.meta.env.DEV` or `VITE_API_MODE` is not `http`, so `http` builds contain neither the route
 nor its chunk; CI checks the `http` build's manifest). There is no navigation entry. The page draws
-ten charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
+eleven charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
@@ -454,12 +488,13 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `line-thresholds` | Request latency with an SLO threshold, 3 series (s), watch at 250 ms and failing at 300 ms (#64 Part B) |
 | `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
 | `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
+| `line-events` | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C) |
 
 The same window always gives the same pixels; the gallery is the corpus of
 `golden:interim-gallery` and `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
 The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
 baselines were re-baselined once under the `golden-update` label; stat is unchanged. The two #64 Part B
-entries and `line-extreme` (#97) got their baselines from CI under the same label. They are not Rust parity fixtures:
+entries, `line-extreme` (#97) and `line-events` (#64 Part C) got their baselines from CI under the same label. They are not Rust parity fixtures:
 `scripts/engine-fixtures.ts` selects `PARITY_LINE_IDS` (`line-1`, `line-50`, `line-gaps`,
 `line-600`) and projects each summary to its parity fields, so `engine/fixtures/` is unchanged. The
 script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name proxy, so
@@ -469,7 +504,8 @@ script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name
 
 The WASM engine implements the same `ChartEngine` interface and is returned by
 `defaultChartEngine()`; only `engine/index.ts` changes. It implements the threshold lines,
-labels and the stat sparkline (ADR-0022) before it replaces `engine/index.ts`. The canvas is already created per frame
+labels and the stat sparkline (ADR-0022), and the event markers (ADR-0023, as M1 verticals and M9
+glyphs), before it replaces `engine/index.ts`. The canvas is already created per frame
 lifetime, so it can be transferred to the render worker, and `keyTarget` lets the adapter forward key
 presses as the Canvas 2D engine does. Frames from the BFF arrive as Arrow (`FrameData` gains that
 form in #68/#62).
@@ -480,13 +516,15 @@ form in #68/#62).
 [ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md) (`commit`, `valueRange`,
 `valueAxis`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
 (`thresholds`, `thresholdLabels`, the stat sparkline);
+[ADR-0023](../../designs/adr/0023-chart-event-markers.md) (`setEvents`, `eventLabels`, the event
+mark);
 [ADR-0007](../../designs/adr/0007-in-house-vis-engine.md);
 [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-001 library
-clause, VIZ-010 gaps and stacking, VIZ-011 threshold lines, VIZ-013, VIZ-067, VIZ-069, Table 5-1
+clause, VIZ-010 gaps and stacking, VIZ-011 threshold lines and event markers, VIZ-022, VIZ-013, VIZ-067, VIZ-069, Table 5-1
 Stat);
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-002 and Table 8-1a, VL-003,
 VL-006, VL-012); [03 Interaction model](../../designs/product/03-interaction-model.md) (INT-001 and INT-002
-for 2D charts, INT-007, INT-008 subset, INT-025, INT-033, and the §4.1 note of 2026-11-21);
+for 2D charts, INT-007, INT-008 subset, INT-025, INT-031 subset, INT-033, and the §4.1 note of 2026-11-21);
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-020 subset);
 [T01](../../designs/technical/T01-frontend-architecture.md) (T01-002, T01-003, T01-009, T01-010),
 [T02](../../designs/technical/T02-vis-engine.md) (T02-003, T02-004, T02-005, T02-009, T02-011 as

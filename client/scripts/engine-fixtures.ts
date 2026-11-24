@@ -25,7 +25,10 @@ export const FIXTURE_DIR = join(CLIENT_ROOT, '..', 'engine', 'fixtures');
  */
 export const PARITY_LINE_IDS = ['line-1', 'line-50', 'line-gaps', 'line-600'] as const;
 
-/** The `FrameSummary` fields of the parity contract (`thresholdLabels` is TS-only, ADR-0022). */
+/**
+ * The `FrameSummary` fields of the parity contract: the projection omits `thresholdLabels` and
+ * `eventLabels`, which are TS-only (ADR-0022, ADR-0023).
+ */
 const SUMMARY_FIELDS = [
   'kind',
   'seriesTotal',

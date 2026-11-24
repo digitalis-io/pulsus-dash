@@ -25,7 +25,11 @@ export function GalleryPage() {
         {entries.map((e) => (
           <Card key={e.id} title={e.spec.title}>
             <div data-gallery-id={e.id}>
-              <ChartFrame spec={e.spec} data={e.data} />
+              <ChartFrame
+                spec={e.spec}
+                data={e.data}
+                {...(e.events === undefined ? {} : { events: e.events })}
+              />
             </div>
           </Card>
         ))}

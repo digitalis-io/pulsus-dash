@@ -1,6 +1,8 @@
 /** The text of a chart frame (plan #58 §3.5, §3.8): summary label, crosshair, rows, issues. */
 import type { FrameDataIssue } from '../data/frames';
 import type {
+  EventKind,
+  EventMarker,
   FrameSummary,
   HoverEvent,
   HoverRow,
@@ -31,6 +33,32 @@ const STATE_LABEL: Readonly<Record<ThresholdState, MessageId>> = {
   degraded: 'state.degraded',
   failing: 'state.failing',
 };
+
+const EVENT_KIND: Readonly<Record<EventKind, MessageId>> = {
+  deploy: 'event.kind.deploy',
+  config: 'event.kind.config',
+  flag: 'event.kind.flag',
+  annotation: 'event.kind.annotation',
+};
+
+/**
+ * The tooltip and accessible name of an event label box (plan #64 Part C §3.7): per member,
+ * `{kind} · {title} · {time}`, with `–{end}` when it is ranged, joined by '; '.
+ */
+export function eventText(
+  ids: readonly string[],
+  events: ReadonlyMap<string, EventMarker>,
+  tz: string,
+): string {
+  const out: string[] = [];
+  for (const id of ids) {
+    const e = events.get(id);
+    if (e === undefined) continue;
+    const end = e.endMs === null ? '' : `–${formatTime(e.endMs, tz)}`;
+    out.push(`${t(EVENT_KIND[e.kind])} · ${e.title} · ${formatTime(e.atMs, tz)}${end}`);
+  }
+  return out.join('; ');
+}
 
 /** The unit of the values a frame reports: heatmap counts use `countUnit`. */
 export function valueUnit(spec: VisSpec): Unit {
@@ -71,12 +99,16 @@ export function thresholdsText(spec: VisSpec): string {
 
 /**
  * `{title}: {kind}, {count} {noun}, {range}. Min {min}, max {max}, last {last}.`, then
- * `Y axis fixed at {min} to {max}.` while the value axis is pinned (#93), then the thresholds.
+ * `Y axis fixed at {min} to {max}.` while the value axis is pinned (#93), then the thresholds,
+ * then `Events in view: {count}.` when the frame has event labels (ADR-0023).
  */
 export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string {
   const base = summaryBase(spec, s, tz);
   const th = thresholdsText(spec);
-  return th === '' ? base : `${base} ${th}`;
+  const withThresholds = th === '' ? base : `${base} ${th}`;
+  let count = 0;
+  for (const b of s.eventLabels) count += b.ids.length;
+  return count === 0 ? withThresholds : `${withThresholds} ${t('chart.events', { count })}`;
 }
 
 function summaryBase(spec: VisSpec, s: FrameSummary, tz: string): string {

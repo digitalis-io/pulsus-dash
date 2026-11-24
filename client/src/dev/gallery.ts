@@ -1,5 +1,5 @@
 /** The chart gallery's entries (plan #58 Appendix A §A.1): one per chart kind and stress case. */
-import type { FrameData, TimeWindow, VisSpec } from '../engine/api';
+import type { EventMarker, FrameData, TimeWindow, VisSpec } from '../engine/api';
 import { t } from '../i18n/t';
 import { LEVELS, synthHeatmap, synthLevels, synthLines } from './synth';
 
@@ -14,11 +14,14 @@ export type GalleryId =
   | 'stat'
   | 'line-thresholds'
   | 'stat-sparkline'
-  | 'line-extreme';
+  | 'line-extreme'
+  | 'line-events';
 export interface GalleryEntry {
   readonly id: GalleryId;
   readonly spec: VisSpec;
   readonly data: FrameData;
+  /** Event markers (ADR-0023); absent = none. */
+  readonly events?: readonly EventMarker[];
 }
 
 const HEATMAP_BOUNDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, Infinity];
@@ -45,10 +48,21 @@ function nearLimit(d: FrameData): FrameData {
   return { kind: 'series', series };
 }
 
+/** The `line-events` markers: a deploy at 30 % of the window, a config and a flag change 30 s apart at 70 %. */
+function galleryEvents(w: TimeWindow): EventMarker[] {
+  const at = (f: number): number => Math.round(w.fromMs + f * (w.toMs - w.fromMs));
+  return [
+    { id: 'gallery-deploy', atMs: at(0.3), endMs: null, kind: 'deploy', title: 'v2.31' },
+    { id: 'gallery-config', atMs: at(0.7), endMs: null, kind: 'config', title: 'pool size 64' },
+    { id: 'gallery-flag', atMs: at(0.7) + 30_000, endMs: null, kind: 'flag', title: 'checkout-v2' },
+  ];
+}
+
 /**
- * The ten entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7 and
- * 8 show threshold lines and a stat sparkline (#64 Part B, ADR-0022); the last spans values near
- * the largest finite number (#97).
+ * The eleven entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7
+ * and 8 show threshold lines and a stat sparkline (#64 Part B, ADR-0022); entry 9 spans values near
+ * the largest finite number (#97); the last has three event markers, two of them gathered into a
+ * `+2` chip (#64 Part C, ADR-0023).
  */
 export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
   const s0 = seed ?? GALLERY_SEED;
@@ -141,6 +155,16 @@ export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
       id: 'line-extreme',
       spec: { kind: 'line', title: t('gallery.lineExtreme'), unit: { kind: 'none' } },
       data: nearLimit(lines(9, 1, 1_440, 'near_limit_values', 0, 1)),
+    },
+    {
+      id: 'line-events',
+      spec: {
+        kind: 'line',
+        title: t('gallery.lineEvents'),
+        unit: { kind: 'suffix', suffix: 'rps' },
+      },
+      data: lines(10, 1, 1_440, 'checkout_requests_per_second', 1200, 300),
+      events: galleryEvents(win),
     },
   ];
 }

@@ -8,6 +8,7 @@ import type {
   VolumeResult,
 } from '../data/decode';
 import type {
+  AnnotationList,
   Board,
   BoardList,
   BoardRef,
@@ -50,6 +51,15 @@ export interface Api {
    * of the stored and the new time wins). Unknown or deleted → `notFound`. Abort is rethrown.
    */
   recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void>;
+  /**
+   * The organisation's annotations overlapping the window, newest first, at most 500 (plan #64 Part
+   * C §3.5). `tenant` is checked as `listBoards`; the route is org-scoped (D12).
+   */
+  listAnnotations(
+    tenant: string,
+    w: { fromMs: number; toMs: number },
+    signal?: AbortSignal,
+  ): Promise<AnnotationList>;
   signOut(): Promise<void>;
   /** A PromQL range query on the BFF's grid (plan #62 §4.5). */
   queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult>;
