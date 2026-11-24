@@ -443,12 +443,23 @@ describe('unit:log-stream', () => {
       const pager = new LogPager(synth, input, { entries: cap });
       await pager.start();
       await pager.loadTail();
+      // Issue #144: the component's timers (the synth delay, the scroll-reset debounce, the
+      // wrapped restore frames) run on fake time, so every run takes the same path. The shared
+      // `scrollTo()` waits on a timer that fake time never fires, so the scroll is inline here.
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'],
+      });
       mount({ pager, wrap: true });
-      const settle = () => act(() => new Promise((r) => setTimeout(r, 300)));
+      const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+      const settle = () => advance(300);
       await settle();
       const list = (): HTMLElement => screen.getByRole('list');
       for (let i = 0; i < 40 && pager.buffer.firstOrd < 8000; i += 1) {
-        await scrollTo(parseFloat(list().style.height) - 400);
+        act(() => {
+          scroller().scrollTop = parseFloat(list().style.height) - 400;
+          fireEvent.scroll(scroller());
+        });
+        await advance(0);
         await settle();
       }
       expect(pager.buffer.firstOrd).toBeGreaterThanOrEqual(8000);
@@ -457,6 +468,7 @@ describe('unit:log-stream', () => {
       // The held rows and a slice of at most those rows: never every row ever visited.
       expect(cache.size).toBeLessThanOrEqual(2 * cap);
     } finally {
+      vi.useRealTimers();
       set.mockRestore();
     }
   }, 20_000);
