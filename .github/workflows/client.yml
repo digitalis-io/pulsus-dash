@@ -117,7 +117,13 @@ jobs:
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: |
           debs="$RUNNER_TEMP/pw-apt"; mkdir -p "$debs"
-          npx --no-install playwright install-deps ${{ matrix.browser }}
+          # install-deps runs apt-get update, which can stall on a mirror for half an hour: bound
+          # each attempt to 8 minutes (a normal one takes under 2) and try three times.
+          for i in 1 2 3; do
+            timeout -k 10s 8m npx --no-install playwright install-deps ${{ matrix.browser }} && break
+            [ "$i" = 3 ] && { echo "::error::playwright install-deps failed 3 times"; exit 1; }
+            echo "::warning::playwright install-deps attempt $i failed or timed out; retrying"
+          done
           cp /var/cache/apt/archives/*.deb "$debs"/ 2>/dev/null || true
       - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: npx --no-install playwright install ${{ matrix.browser }}
@@ -197,7 +203,13 @@ jobs:
         run: |
           debs="$RUNNER_TEMP/pw-apt"
           if compgen -G "$debs/*.deb" > /dev/null; then sudo cp "$debs"/*.deb /var/cache/apt/archives/; fi
-          npx --no-install playwright install-deps ${{ matrix.browser }}
+          # install-deps runs apt-get update, which can stall on a mirror for half an hour: bound
+          # each attempt to 8 minutes (a normal one takes under 2) and try three times.
+          for i in 1 2 3; do
+            timeout -k 10s 8m npx --no-install playwright install-deps ${{ matrix.browser }} && break
+            [ "$i" = 3 ] && { echo "::error::playwright install-deps failed 3 times"; exit 1; }
+            echo "::warning::playwright install-deps attempt $i failed or timed out; retrying"
+          done
       - run: npx --no-install playwright install ${{ matrix.browser }}
       - name: e2e database
         working-directory: .
