@@ -542,7 +542,7 @@ the browser otherwise).
   scrolled; the wheel reaches **End of results** with one more page, sent with its `cursor`; the
   last row is `paging line 1499` of 1 500). The kind probe is answered by the transcript
   `e2e/transcripts/board-logs-probe-checkout.json` (`{app="checkout"}` with upstream `limit` 2, any
-  window: the newest checkout line), listed in `TestE2ETranscripts`; the other requests by the
+  window: `checkout line D` at 12:24, inside both windows, since the BFF refuses an upstream entry outside the request window), listed in `TestE2ETranscripts`; the other requests by the
   Explore › Logs transcripts. On the stub, `e2e:a11y-rooms` adds `b-1 view, log panel` (the 30 stub
   lines in `Log lines: Errors`) and `b-1 edit, log panel as bars`, `e2e:csp-violations` toggles a
   board log panel's Wrap lines, and the keyboard loop L34 operates the order options, Wrap lines
