@@ -97,6 +97,24 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   queryClient, wrapper })`; `wrapper` provides, for example, a fake chart engine) on a memory router, with the stub API and a fixed clock
   (`T` = 2026-11-19 13:03 UTC, zone Europe/London). Its query client has `retry: false`; tests of
   the production retry pass `createQueryClient()`.
+- **Async settling in unit tests** (issue #144). Two rules keep tests that wait on asynchronous
+  work deterministic:
+  - A test that settles a scripted call waits until the query layer has notified its observers.
+    The query layer delivers in its own 0 ms timer, queued at the end of the microtasks that follow
+    the settlement, so one `setTimeout(0)` after the promise is not enough: when the loop's
+    millisecond clock ticks between the two timers, the test's timer fires first and the assertion
+    sees the old state. The `resolve` and `reject` of `src/test/logsPageKit.tsx` wait two 0 ms
+    timers. The second is created after the query layer's timer, and 0 ms timers run in creation
+    order. `unit:logs-page-kit` (`src/test/logsPageKit.test.tsx`, K1 and K2) holds that contract:
+    on fake `setTimeout`, it ticks the clock 1 ms before a late 0 ms timer and checks that the
+    kit's promise resolves after that timer has fired.
+  - A test whose outcome depends on component timers (debounces, `requestAnimationFrame` loops,
+    simulated latency) runs them on fake time, not on real-time sleeps:
+    `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame',
+    'cancelAnimationFrame'] })`, then `act(() => vi.advanceTimersByTimeAsync(ms))`. Keep
+    `setImmediate` real, because React's `act` resolves through it, and call `vi.useRealTimers()`
+    in a `finally`. Helpers that wait on a real `setTimeout` never resume under fake timers. The
+    example is `L16` in `src/logs/LogStream.test.tsx` (`unit:log-stream`).
 - **End-to-end tests** (`client/e2e/*.spec.ts`) run in Chromium, Firefox and WebKit against the
   BFF, which serves the client with the production headers; see
   [end-to-end tests](#end-to-end-tests). `Date.now()` is frozen with `page.clock.setFixedTime(T)`.
