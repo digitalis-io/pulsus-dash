@@ -320,15 +320,16 @@ drains treat as done: `keyboardSession` passes them to `keyboardHarness(page, do
 `pendingHere` (through `drainPending`) leaves them out. They only leave the drains' work list:
 they never enter the part's `operated`, so the union rule still needs some part to operate them.
 The checker fails a key that no part before it in `SINGLE_TEST_ORDER` operated
-(`keyboard-skip-unbacked`) or that the part no longer collects (`keyboard-skip-unused`). The
-lists today:
+(`keyboard-skip-unbacked`) or that the part no longer collects (`keyboard-skip-unused`). Each
+entry carries a comment naming the part(s) that operate it. The lists today (all keys on
+`/t/:tenant/board/:uid`):
 
-| Part | Skipped keys (on `/t/:tenant/board/:uid + none`) | Operated by |
-|---|---|---|
-| K1, K3 | none | |
-| K4 | `link "Open in Explore: …"` for Request rate, Error ratio, Errors, Request latency | K3 (L24 on b-1) |
-| K2 | `button "Add panel"`; `button "Share"`; `button "Full screen: Edge p99"` | K3, K4; K3 (L24 on b-1); K4 (L24 on b-3) |
-| K5 | `button "Share"` | K3, K4 (L25) |
+| Part | Keys | What they are | Operated by |
+|---|---|---|---|
+| K1, K3 | 0 | | |
+| K4 | 4 | the b-1 `link "Open in Explore: …"` for Request rate, Error ratio, Errors, Request latency | K3 (L24 on b-1) |
+| K2 | 80 | `Add panel`, `Share`, `Full screen: Edge p99` (drain failures); 77 from the coverage-gap rule: 26 board controls (panel menus, legend buttons, Edit board, Save, Done…) and 51 in the Edit panel dialog, its selects and menus, the variable dialogs and the discard guard | K3, K4 |
+| K5 | 74 | `Share` (a drain failure); 73 from the coverage-gap rule (found on webkit): 50 board controls and 23 in the Edit panel, Add filter, Share board, variable and discard dialogs | K1–K4 |
 
 A list grows only by two rules, applied on Chromium first. `earlier(P)` is the union of the
 `operated` files of the parts before P in `SINGLE_TEST_ORDER`, from one full run of the same
