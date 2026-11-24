@@ -103,7 +103,6 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('none › link "Open in Explore: Request latency"'),
     onBoard('none › slider "Crosshair: Request rate"'),
     // Operated by K4.
-    onBoard('dialog "Edit panel" › button "Auto Visualisation"'),
     onBoard('menu "Panel menu: Edge p99" › menuitem "Copy query"'),
     onBoard('menu "Panel menu: Edge p99" › menuitem "Duplicate"'),
     onBoard('menu "Panel menu: Edge p99" › menuitem "Edit panel"'),
@@ -133,7 +132,6 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('dialog "Edit panel" › button "Table Legend"'),
     onBoard('dialog "Edit panel" › combobox "Metric"'),
     onBoard('dialog "Edit panel" › textbox "Label"'),
-    onBoard('dialog "Edit panel" › textbox "Query"'),
     onBoard('dialog "Edit panel" › textbox "Title"'),
     onBoard('dialog "Edit panel" › textbox "Value"'),
     onBoard('dialog "Share board" › button "Copy link"'),
@@ -194,14 +192,12 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('none › button "Panel menu: Request rate"'),
     onBoard('none › button "Series"'),
     // Operated by K4 and K7.
-    onBoard('dialog "Edit panel" › button "Auto Visualisation"'),
     onBoard('dialog "Variable env" › button "Apply"'),
     onBoard('dialog "Variable env" › button "Clear"'),
     onBoard('dialog "Variable env" › textbox "Value"'),
     onBoard('dialog "Variable region" › button "Apply"'),
     onBoard('dialog "Variable region" › button "Clear"'),
     onBoard('dialog "Variable region" › textbox "Value"'),
-    onBoard('dialog "Visualisation" › option "Auto"'),
     onBoard('menu "Panel menu: Edge errors" › menuitem "Edit panel"'),
     onBoard('menu "Panel menu: Edge p99" › menuitem "Duplicate"'),
     onBoard('menu "Panel menu: Edge p99" › menuitem "Edit panel"'),
@@ -227,7 +223,6 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('dialog "Edit panel" › button "Table Legend"'),
     onBoard('dialog "Edit panel" › combobox "Metric"'),
     onBoard('dialog "Edit panel" › textbox "Label"'),
-    onBoard('dialog "Edit panel" › textbox "Query"'),
     onBoard('dialog "Edit panel" › textbox "Title"'),
     onBoard('dialog "Edit panel" › textbox "Value"'),
     onBoard('dialog "Legend" › option "Table"'),
@@ -323,7 +318,6 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
     onBoard('none › button "Panel menu: Request latency"'),
     onBoard('none › button "Panel menu: Request rate"'),
     // Operated by K4 and K7 and K2.
-    onBoard('dialog "Edit panel" › button "Auto Visualisation"'),
     onBoard('none › button "Panel menu: Edge errors"'),
     onBoard('none › button "Panel menu: Edge p99"'),
     // Operated by K3 and K4 and K7 and K2.
