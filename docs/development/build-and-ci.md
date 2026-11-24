@@ -562,6 +562,24 @@ the browser otherwise).
   the board panel editor with the completion popup and the picker. On b-1 at 1440 × 900 only
   Request rate and Error ratio are on screen: Request latency, below the fold, does not query
   (T07-012), so the board specs wait for two drawn charts.
+- **Board LogQL panels** (`board-logql.spec.ts`, plan #67 §5.3, all three engines, on the http-mode
+  BFF and the fake, at 1920 × 1080 in the log transcripts' window 2026-01-01 12:00–13:00 UTC; the
+  requests are read in the browser; each test deletes its board): **`e2e:board-logql-save`** (a
+  PromQL, a LogQL stream and a LogQL Bars panel typed into the panel editor; before and after save
+  and reload: saved vis `auto, auto, bars`, a line, six log lines and the volume's summary; the
+  volume's `width_px` gives the 5 s step), **`e2e:board-logql-brush`** (a right drag 12:20–12:25 on
+  the volume panel sets the board window; one PromQL range, one stream page (`limit` 1 000), one
+  kind probe (`limit` 1) and one volume request for it; the stream lists `checkout line D` and `C`)
+  and **`e2e:board-logql-paging`** (a full-width stream panel sends one page and no more until
+  scrolled; the wheel reaches **End of results** with one more page, sent with its `cursor`; the
+  last row is `paging line 1499` of 1 500). The kind probe is answered by the transcript
+  `e2e/transcripts/board-logs-probe-checkout.json` (`{app="checkout"}` with upstream `limit` 2, any
+  window: `checkout line D` at 12:24, inside both windows, since the BFF refuses an upstream entry outside the request window), listed in `TestE2ETranscripts`; the other requests by the
+  Explore › Logs transcripts. On the stub, `e2e:a11y-rooms` adds `b-1 view, log panel` (the 30 stub
+  lines in `Log lines: Errors`), `b-1 edit, log panel editor on bars` (not in Firefox, whose page crashes inside axe with that editor open) and `b-1 edit, log panel as bars` (after Done), `e2e:csp-violations` toggles a
+  board log panel's Wrap lines, and the keyboard loop L34 operates the order options, Wrap lines
+  and the `Log lines` region of `Errors` and `Edge errors` on the board, at full screen, in the
+  editor's preview and on a copy, before L24's drains run.
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
   shows `Data source: demo · Connected`, and the fake lists at least one completed
@@ -580,7 +598,7 @@ no secrets are used.
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`, stub build) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `size -- dist-http` (`ci:bundle-size`, http build) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
-| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`), with a PostgreSQL 16.16 service on port 55432: `npm ci`, Go 1.27.4 and its toolchain check, install that browser with its system dependencies, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once, except the keyboard coverage spec (`retries: 0` in its `describe`): it is deterministic, and a second run of its ~32 minutes does not fit the job. `timeout-minutes` is 90, a stopgap for the Explore › Logs rows (#66 Part C); the job's run time is #130 |
+| `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`), with a PostgreSQL 16.16 service on port 55432: `npm ci`, Go 1.27.4 and its toolchain check, install that browser with its system dependencies, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once, except the keyboard coverage spec (`retries: 0` in its `describe`): it is deterministic, and a second run of its ~32 minutes does not fit the job. `timeout-minutes` is 90, a stopgap for the Explore › Logs rows (#66 Part C); the job's run time is #130. The keyboard spec's own timeout is 75 minutes: with the board log panels (#67) it takes about 30 minutes in Chromium and about an hour in Firefox and WebKit |
 
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
 image. On a workstation without them, install the packages Playwright names, or run only the

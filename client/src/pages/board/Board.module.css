@@ -360,6 +360,12 @@
   text-align: center;
 }
 
+/* A LogQL stream panel's body (plan #67 §3.5): the LogStream fills it. */
+.streamBody {
+  height: 100%;
+  min-height: 0;
+}
+
 .fullBody {
   display: grid;
   flex: 1 1 auto;

@@ -6,7 +6,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
-import type { InstantRequest, PanelSpec } from '../../api/types';
+import type { InstantRequest } from '../../api/types';
 import type { InstantResult, RangeResult } from '../../data/decode';
 import type { FrameData } from '../../data/frames';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
@@ -172,22 +172,16 @@ describe('panel runs', () => {
   });
 
   it('states without a request', async () => {
-    const logql: PanelSpec = {
-      ...panel('p-2', 'Logs', '{app="a"}'),
-      query: { lang: 'logql', text: '{app="a"}' },
-    };
     const t = openBoard([
       panel('p-1', 'Empty', ''),
-      logql,
       panel('p-3', 'Stream', 'up', 'logs'),
       panel('p-4', 'Region', 'up{r="$region"}'),
     ]);
-    await ready('Empty', 'Logs', 'Stream', 'Region');
-    show('Empty', 'Logs', 'Stream', 'Region');
+    await ready('Empty', 'Stream', 'Region');
+    show('Empty', 'Stream', 'Region');
     const texts = {
       Empty: 'Add a query',
-      Logs: 'Runs when LogQL support lands',
-      Stream: 'The log stream arrives with LogQL panels',
+      Stream: 'A metric query has no log lines. Choose Auto or a chart.',
       Region: 'Set a value for $region to run this panel',
     };
     for (const [title, text] of Object.entries(texts)) {

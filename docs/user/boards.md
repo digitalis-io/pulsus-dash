@@ -117,8 +117,7 @@ What a panel shows:
 | fetching again (new time range, refresh, a resize) | the previous chart stays, and a thin bar moves along the top of the panel after 300 ms |
 | an error | "Something went wrong" and the error; a query error adds where it is, "(line 1, column 7)"; when the time range is too wide, **Narrow the time range** halves it around its centre |
 | partial data | a **Partial data** badge in the header (or **Warnings** when the result is complete but the data source warned); pressing it lists the notices and, for partial data, offers **Narrow the time range** |
-| a LogQL panel | "Runs when LogQL support lands" (LogQL panels come with #67) |
-| visualisation **Logs** | "The log stream arrives with LogQL panels" |
+| visualisation **Logs** | "A metric query has no log lines. Choose Auto or a chart." (Logs draws [LogQL panels](#logql-panels)) |
 | PromQL support failed to load | "PromQL support could not be loaded. Reload the page." |
 
 **Only panels on screen query.** A panel queries when it scrolls into view, and panels in a
@@ -133,6 +132,56 @@ screen refresh when they scroll in.
 
 In the development build (`npm run dev`) the panels run against the in-app stub, which plans the
 query as the server does and answers with seeded synthetic series.
+
+### LogQL panels
+
+A LogQL panel runs its query against the board's time range, as a PromQL panel does: the query as
+you wrote it, with the values of the board variables it uses, which the server puts in. What it
+draws depends on its **visualisation** and on the answer, a log query (such as
+`{app="checkout"} |= "error"`) or a metric query (such as `rate({app="checkout"}[1m])`):
+
+| Visualisation | A log query | A metric query |
+|---|---|---|
+| **Auto** | the log lines | a line chart, one line per series |
+| **Logs** | the log lines | "A metric query has no log lines. Choose Auto or a chart." |
+| **Bars** | the log volume: lines per time step, stacked by level | a bar chart of the series |
+| **Line**, **Heatmap**, **Stat** | "Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines." | that chart of the series |
+
+**The log lines** are the list of Explore › Logs ([Explore: logs](explore-logs.md#the-log-lines)),
+named "Log lines: `<panel>`", **newest first**:
+
+- **Newest first** and **Oldest first** set the order. A new order loads the lines again.
+- **Wrap lines** wraps long lines onto several rows; nothing is loaded again.
+- **Paging.** The lines arrive in pages of 1 000. The next page loads when you scroll within 50
+  lines of the end, so a board of log panels loads one page each until you read on. **End of
+  results** marks the last line. When lines loaded again differ from the first time, the list says
+  "These lines changed since they were loaded." with **Run again**.
+- The order and wrap belong to the panel on this page: they are not saved with the board and not
+  in its address, and the panel starts newest first, unwrapped, each time the board opens.
+- **Full screen** shows the same list, larger; the panel says "Shown at full screen" until you
+  close it. Nothing is loaded again.
+
+**The log volume** (Bars on a log query) is the bar chart of Explore › Logs' Volume card: critical,
+error, warning, info, debug, trace and lines without a level, from the bottom up, in "lines". Its
+legend isolates a level as other legends do (see [Legends](#legends)), and its thresholds are drawn
+on the stacked value axis. A **brush** across it (drag with the right mouse button, or **Alt** and
+drag) sets the board's time range to that span, and every panel runs again for it.
+
+**When it runs.** A log-lines panel loads its first page when it scrolls into view. Scrolled out,
+it keeps its lines; when you scroll back with nothing changed, they show at once without a request.
+A new time range (the picker, the window keys, a brush, **Narrow the time range**), **Refresh
+now** and a change to a variable it uses load the first page again: at once on screen, and when it
+scrolls in off screen. A panel with another visualisation asks the server what the query returns
+(one line at most) and, for **Bars**, the volume at the same time, so it shows one chart; a new
+time range cancels both. A variable the panel does not use changes nothing. While a log-lines
+panel's editor is open, the preview loads the lines and the panel behind waits; **Done** loads them
+again for the panel. A panel with another visualisation shares the preview's request instead, as a
+PromQL panel does: the panel behind shows the same answer, and **Done** asks for nothing new.
+
+The panel's states are those of [PromQL panels](#promql-panels): "Add a query", "Set a value for
+`$name` to run this panel", "Loading", the error with "(line 1, column 7)" and **Narrow the time
+range**, and the **Partial data** badge (the notices of every page loaded so far). **Open in
+Explore** opens Explore › Logs once the panel has its answer (see [Open in Explore](#open-in-explore)).
 
 ### Legends
 
@@ -222,7 +271,8 @@ time range and the panel's query **as the server ran it**: the variables filled 
 is added (Explore adds its own). It is available once the panel has its answer for the current
 time range: while the panel is loading, before its first result, or after an error that the server
 gave no query for, the tool and the menu item are unavailable. A LogQL panel opens Explore › Logs
-with its query as saved. A visualisation other than Auto is carried over.
+the same way: with its query as the server ran it (the variables filled in), once it has an answer.
+A PromQL panel's visualisation other than Auto is carried over.
 
 ### Saved time range
 
@@ -365,8 +415,8 @@ query and the current time range. Under it are the fields:
 |---|---|
 | **Title** | at most 200 characters; empty shows "Untitled panel" |
 | **Query language** | PromQL or LogQL |
-| **Query** | the query text, at most 16 384 bytes; for PromQL, the PromQL editor of Explore (below) |
-| **Visualisation** | **Auto (`<vis>`)**, naming what auto-vis picked for the current result (see [PromQL panels](#promql-panels)), Line, Bars, Heatmap, Stat or Logs |
+| **Query** | the query text, at most 16 384 bytes; the PromQL editor of Explore › Metrics, or the LogQL editor of Explore › Logs (below) |
+| **Visualisation** | **Auto (`<vis>`)**, naming what auto-vis picked for the current result (see [PromQL panels](#promql-panels); a LogQL panel's reads **Auto (Logs)** for log lines and **Auto (Line)** for a metric query), Line, Bars, Heatmap, Stat or Logs |
 | **Thresholds** | **Add threshold** (up to 8; "Up to 8 thresholds" when full), then per threshold **Value**, **State** and **Label**, and **Remove threshold n**; **Worse when** sets the direction (see [Thresholds](#thresholds)) |
 | **Legend** | **Table** (the default) or **Hidden** (see [Legends](#legends)) |
 
@@ -384,6 +434,11 @@ before for the same time range shows at once); running the same query again reru
 run cancels an older one. A query error underlines its place in the editor. **Escape** in the editor
 moves to **Run query** (closing the completion list first, if it is open); a second **Escape**
 closes the window. If the editor cannot load, the field is a plain text box and says so.
+
+For LogQL the **Query** field is the editor of Explore › Logs, with highlighting and completion of
+label names and values, and no Metric picker; it runs the same way. Changing **Query language**
+keeps the text and runs it in the new language. Running the same query again on a log-lines panel
+loads its first page again.
 
 Every other change applies to the draft at once, and the preview follows it: a title shows at
 once, and a visualisation, threshold or legend change redraws the result without a new request.
@@ -431,8 +486,9 @@ but cannot be saved." Leaving the page still asks first.
 | Arrows, **Shift**+arrows | **Move or resize** button | Move, resize |
 | **[**, **]**, **-**, **=** | anywhere but text fields and menus | Step the time window back and forward, zoom out and in |
 | **Escape** | a chart's crosshair, while dragging on the chart | Cancel the drag: the chart returns to where it was |
-| **Shift+Enter**, **⌘/Ctrl+Enter** | the panel editor's PromQL query | Run the query |
-| **Escape** | the panel editor's PromQL query | Move to **Run query**; again: close the panel editor |
+| **Shift+Enter**, **⌘/Ctrl+Enter** | the panel editor's PromQL or LogQL query | Run the query |
+| **Escape** | the panel editor's PromQL or LogQL query | Move to **Run query**; again: close the panel editor |
+| Arrows, then **Space** | a log panel's order options | Move between **Newest first** and **Oldest first**, then choose |
 
 ## Limits
 
@@ -447,30 +503,33 @@ but cannot be saved." Leaving the page still asks first.
   refuses a longer one ("The query to send … is over 64 KiB…"), with no request to the data source.
 - Recent shows five boards.
 - At most 8 thresholds per panel, labels up to 200 characters; a legend shows at most 50 series.
+- Log panels: pages of 1 000 lines and 10⁶ lines held per panel (lines far from the view are let go
+  and loaded again when you scroll back), as Explore › Logs; the order and wrap are not saved.
 - At most the newest 500 event markers in a time range; marker text up to 500 characters.
 - Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
   touch gestures, and other panels follow a zoom only when it ends.
 - Not yet: undo and history, moving panels between sections, reordering sections, filters changing
-  the queries, variable definitions and value lists, LogQL panels (#67), several queries in one
-  panel, repeated panels, percentage thresholds, threshold areas, list legends and legend placement,
-  adding or editing notes on the board, clicking a marker to compare before and after (INT-030),
-  event markers in Explore, the anomaly strip of a
+  the queries, variable definitions and value lists, several queries in one panel, log patterns,
+  saving a log panel's order and wrap, repeated panels, percentage thresholds, threshold areas,
+  list legends and legend placement, adding or editing notes on the board, clicking a marker to
+  compare before and after (INT-030), event markers in Explore, the anomaly strip of a
   collapsed section, folders and tags, viewing or restoring old versions, and permissions (everyone
   can edit every board).
 
 ## Design references
 
 [02 Information architecture](../../designs/product/02-information-architecture.md) (IA-002, IA-003,
-IA-006, IA-021, IA-022, IA-023), [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014,
-SRF-016, SRF-017, SRF-020, SRF-026),
+IA-006, IA-020, IA-021, IA-022, IA-023), [04 Surfaces](../../designs/product/04-surfaces.md) §4.3 (SRF-014,
+SRF-016, SRF-017, SRF-020, SRF-026; SRF-033 and SRF-036 for LogQL panels),
 [08 Visual language](../../designs/product/08-visual-language.md) (VL-003, VL-007, VL-017),
 [03 Interaction model](../../designs/product/03-interaction-model.md) §4.1 (INT-001, INT-002,
 INT-007, INT-008, INT-025 for 2D charts; INT-031, event markers on board panels,
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md)),
 [T08 DOM component kit](../../designs/technical/T08-dom-component-kit.md) (T08-008, T08-015, T08-017,
 T08-021, T08-024), [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-011, VIZ-057,
-VIZ-065, VIZ-067, Table 5-13), [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md) (T07-012,
-T07-013), [T09 Query editors](../../designs/technical/T09-query-editors.md) (T09-004, T09-010,
-T09-015), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
+VIZ-034, VIZ-065, VIZ-067, Table 5-13), [T07 Scene and query planner](../../designs/technical/T07-scene-query-planner.md) (T07-012,
+T07-013), [T09 Query editors](../../designs/technical/T09-query-editors.md) (T09-001, T09-004,
+T09-009, T09-010, T09-014, T09-015), [09 Performance contract](../../designs/product/09-performance-contract.md)
+(PRF-030, PRF-031), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
 server), [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (threshold lines
 and the stat sparkline).

@@ -1,0 +1,10 @@
+{
+  "name": "board-logs-probe-checkout",
+  "provenance": {"synthetic": "the kind probe of a board LogQL frame panel (limit 1, so 2 upstream) over the checkout lines: one line inside both windows (12:24, in 12:00-13:00 and in the brushed 12:20-12:25): an upstream entry outside the request window is a protocol error"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"checkout\"}", "form": {"limit": "2"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-board-logs-probe-checkout-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"checkout"},"values":[["1767270240000000000","checkout line D",{"structuredMetadata":{"detected_level":"error"}}]]}],"stats":{"streams":1,"entries":1}}}
+  }
+}

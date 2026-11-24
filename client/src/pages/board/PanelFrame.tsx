@@ -7,7 +7,8 @@
  * shows the shimmer after 300 ms (VL-015). `PanelPreview` is the panel editor's live preview (#90).
  * A line or bars body has its legend below the chart (a table, or compact on short panels) with
  * local isolation and the threshold highlights; a stat body has the state chip and the threshold
- * text (plan #64 Part B §3.9, §4.4, §4.5).
+ * text (plan #64 Part B §3.9, §4.4, §4.5). A LogQL stream panel's body is its `LogStream` (plan
+ * #67 §3.5), which yields to the full screen dialog while that is open: one pager, one list.
  */
 import {
   forwardRef,
@@ -40,6 +41,7 @@ import {
   type PanelView,
 } from '../../boards/panelRun';
 import { useLegendLayout } from '../../boards/useLegendLayout';
+import { PANEL_PREFETCH_ROWS, streamMeta } from '../../boards/logPanel';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
 import { ChartFrame, type FrameSize } from '../../charts/ChartFrame';
@@ -58,6 +60,7 @@ import { Icon } from '../../kit/Icon';
 import { IconButton } from '../../kit/IconButton';
 import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
+import { LogStream } from '../../logs/LogStream';
 import { StateGlyph } from '../../kit/StateGlyph';
 import { useTimeContext } from '../../state/useTimeContext';
 import { StateEncoding } from '../../theme/stateEncoding';
@@ -287,14 +290,35 @@ export function PanelBody({
   view,
   sizeMemo,
   onNarrow,
+  streamHidden = false,
 }: {
   title: string;
   view: PanelView;
   /** Kept by the caller (board panel, full screen, preview), above the chart (#90). */
   sizeMemo?: SizeMemo;
   onNarrow: () => void;
+  /** The panel's full screen is open: its stream shows there only (plan #67 §3.5). */
+  streamHidden?: boolean;
 }) {
   switch (view.kind) {
+    case 'stream': {
+      const s = view.stream;
+      return streamHidden ? (
+        <p className={cx(styles['message'])}>{t('panel.logs.fullScreen')}</p>
+      ) : (
+        <div className={cx(styles['streamBody'])}>
+          <LogStream
+            pager={s.pager}
+            label={t('panel.logs.label', { title })}
+            wrap={s.wrap}
+            onWrapChange={s.setWrap}
+            onDirectionChange={s.setDirection}
+            onRerun={s.rerun}
+            prefetchRows={PANEL_PREFETCH_ROWS}
+          />
+        </div>
+      );
+    }
     case 'frame':
       return <PanelChart title={title} view={view} sizeMemo={sizeMemo} />;
     case 'loading':
@@ -319,8 +343,16 @@ export function PanelBody({
   }
 }
 
-/** The completeness badge shows with any frame or message view of an outcome (§4.2). */
+/**
+ * The completeness badge shows with any frame or message view of an outcome (§4.2); a LogQL stream
+ * panel's is its pager's (plan #67 §3.4), with its stream view too.
+ */
 function noticesOf(run: PanelRun, view: PanelView) {
+  if (run.stream !== null) {
+    return view.kind === 'stream' || view.kind === 'frame' || view.kind === 'message'
+      ? streamMeta(run.stream.state).completeness
+      : null;
+  }
   return run.outcome !== null && (view.kind === 'frame' || view.kind === 'message')
     ? run.outcome.result.completeness
     : null;
@@ -436,6 +468,8 @@ export interface PanelFrameProps {
   selected: boolean;
   /** §4.4: the edited panel's run text (the dialog's); else the saved text runs. */
   runText?: string;
+  /** The edited panel's runs of the same text (plan #67 §3.5). */
+  runSeq?: number;
   onEdit: (id: string) => void;
   onKeyOp: (id: string, op: LayoutOp) => void;
   onDuplicate: (id: string) => void;
@@ -463,6 +497,7 @@ export const PanelFrame = memo(
       readOnly,
       selected,
       runText,
+      runSeq,
       onEdit,
       onKeyOp,
       onDuplicate,
@@ -491,6 +526,9 @@ export const PanelFrame = memo(
       text: runText ?? panel.query.text,
       enabled: visible || full,
       widthPx,
+      // The panel behind its open editor: the preview runs (plan #67 §3.3).
+      editing: runText !== undefined,
+      ...(runSeq === undefined ? {} : { runSeq }),
     });
     const title = panelTitle(panel);
     const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
@@ -634,7 +672,13 @@ export const PanelFrame = memo(
         </PanelHeader>
         <div ref={bodyRef} className={cx(styles['body'])} aria-busy={shimmer ? true : undefined}>
           {shimmer && <div className={cx(styles['shimmer'])} data-shimmer="" aria-hidden="true" />}
-          <PanelBody title={title} view={view} sizeMemo={frameSize} onNarrow={onNarrow} />
+          <PanelBody
+            title={title}
+            view={view}
+            sizeMemo={frameSize}
+            onNarrow={onNarrow}
+            streamHidden={full}
+          />
         </div>
         <PanelFullScreen
           isOpen={full}

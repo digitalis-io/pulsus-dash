@@ -110,8 +110,11 @@ A DOM list (ADR-0007: no charting library; ADR-0014 §2: main thread) virtualise
 
 After each change the view protects the shown rows (± `OVERSCAN` 10) from eviction, and requests
 the next page when the tail sentinel is in the slice and the last visible row is within
-`PREFETCH_ROWS` 2 000 of the buffer end, or the page before the head when the head sentinel is in
-the slice and the first visible row is within 2 000 of the buffer start. The reader's last scroll
+`prefetchRows` of the buffer end, or the page before the head when the head sentinel is in the
+slice and the first visible row is within `prefetchRows` of the buffer start. `prefetchRows` is a
+prop, `PREFETCH_ROWS` 2 000 by default (Explore › Logs); a board log panel passes
+`PANEL_PREFETCH_ROWS` 50 (plan #67), so a board of log panels loads one page each and the next only
+for the panel a reader scrolls (`unit:log-stream-prefetch`). The reader's last scroll
 direction gates the two ends. It comes from the change of `scrollTop` in each scroll event that no
 programmatic write made (LogStream's restore writes and the virtualiser's measurement corrections
 are recorded and skipped), so a scrollbar drag counts; and from wheel, key (arrow, Page, Home, End,

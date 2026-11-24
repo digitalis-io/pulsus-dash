@@ -10,7 +10,9 @@
  * the Run keys or leaving the field; the dialog owns the preview's run, which shares the board
  * panel's key (the run text and the panel's width). After Visualisation come Thresholds and Legend
  * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
- * them. They change the spec, not the query key: the preview reruns nothing.
+ * them. They change the spec, not the query key: the preview reruns nothing. For LogQL the Query
+ * field is the LogQL editor (plan #67 §3.5) with the same run rules; a language change keeps the
+ * text, and the Auto option names what the preview's answer draws (Logs for log lines).
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { FieldError, PanelSpec, PanelVisKind, QueryLang } from '../../api/types';
@@ -25,11 +27,11 @@ import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
 import { ModalDialog } from '../../kit/Dialog';
 import { Select } from '../../kit/Select';
-import { TextArea } from '../../kit/TextArea';
 import { TextField } from '../../kit/TextField';
 import { autoVis } from '../../vis/autovis';
 import styles from './Board.module.css';
 import { PanelPreview } from './PanelFrame';
+import { PanelLogqlField } from './PanelLogqlField';
 import { PanelQueryField } from './PanelQueryField';
 import { ThresholdsField } from './ThresholdsField';
 
@@ -155,6 +157,8 @@ export interface PanelEditorProps {
   statusText: string;
   /** The text the preview and the panel behind run (§4.4). */
   runText: string;
+  /** Runs of the same text (plan #67 §3.5): a LogQL stream preview's new pager each. */
+  runSeq?: number;
   /** Run `text`: BoardPage sets the run text, or reruns it when it is already the run text. */
   onRun: (text: string) => void;
   onChange: (patch: Partial<Pick<PanelSpec, 'title' | 'query' | 'vis'>>) => void;
@@ -170,6 +174,7 @@ export function PanelEditor({
   readOnly,
   statusText,
   runText,
+  runSeq = 0,
   onRun,
   onChange,
   onRemove,
@@ -188,6 +193,8 @@ export function PanelEditor({
     text: runText,
     enabled: true,
     widthPx: shared ?? ownWidth,
+    runSeq,
+    editing: false,
   });
   const outcome = run.outcome;
   const visFields = useAfterFirstFrame();
@@ -210,9 +217,15 @@ export function PanelEditor({
   }, []);
   const stableUnit = useStable(unit);
   const visErrors = useStable(fields.filter((f) => f.pointer.startsWith(`${pointer}/vis/`)));
+  // A LogQL answer (plan #67 §3.5): a stream answer draws log lines, a metric answer a line.
+  const streamPhase = run.stream?.state?.phase ?? null;
   const autoLabel = useMemo(() => {
+    if (streamPhase === 'streams') return t('explore.vis.auto', { vis: t('editor.vis.logs') });
+    if (streamPhase === 'series' || outcome?.logKind === 'series') {
+      return t('explore.vis.auto', { vis: t(VIS_LABELS.line) });
+    }
     const vis =
-      outcome === null
+      outcome === null || outcome.logKind !== undefined
         ? null
         : autoVis({
             histogram: outcome.planned.histogram,
@@ -220,7 +233,7 @@ export function PanelEditor({
             result: outcome.result,
           }).vis;
     return vis === null ? t('editor.vis.auto') : t('explore.vis.auto', { vis: t(VIS_LABELS[vis]) });
-  }, [outcome]);
+  }, [outcome, streamPhase]);
   return (
     <ModalDialog
       title={t('editor.title')}
@@ -267,21 +280,18 @@ export function PanelEditor({
               onRun={onRun}
             />
           ) : (
-            <div className={cx(styles['editorWide'])}>
-              <TextArea
-                label={t('editor.query')}
-                value={panel.query.text}
-                onChange={(text) => {
-                  onChange({ query: { ...panel.query, text } });
-                }}
-                error={errorAt('/query/text')}
-                isReadOnly={readOnly}
-                mono
-                rows={5}
-                spellCheck="false"
-                autoComplete="off"
-              />
-            </div>
+            <PanelLogqlField
+              tenant={tenant}
+              value={panel.query.text}
+              runText={runText}
+              diagnostics={run.diagnostics}
+              error={errorAt('/query/text')}
+              readOnly={readOnly}
+              onChange={(text) => {
+                onChange({ query: { ...panel.query, text } });
+              }}
+              onRun={onRun}
+            />
           )}
           <Select
             label={t('editor.vis')}

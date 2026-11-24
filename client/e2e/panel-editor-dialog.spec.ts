@@ -138,7 +138,7 @@ function installProbe(): void {
 
 const KINDS = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Logs'] as const;
 type Kind = (typeof KINDS)[number];
-const LOGS = 'The log stream arrives with LogQL panels';
+const LOGS = 'A metric query has no log lines. Choose Auto or a chart.';
 
 function editor(page: Page) {
   const d = page.getByRole('dialog', { name: 'Edit panel' });
@@ -470,7 +470,7 @@ test.describe('panel editor dialog', () => {
     );
   });
 
-  test('E9 language: LogQL makes no request', async ({ page }) => {
+  test('E9 language: LogQL makes no PromQL request', async ({ page }) => {
     await openEditor(page, { delayMs: 400 });
     const { d, pv } = editor(page);
     await previewReady(page);
@@ -481,7 +481,14 @@ test.describe('panel editor dialog', () => {
     await arm(page, 'keydown', 'Enter');
     await page.keyboard.press('Enter');
     const a = await armed(page);
-    await expect(pv.getByText('Runs when LogQL support lands')).toBeVisible();
+    // The text is kept and runs as LogQL (plan #67): the stub answers log lines, which a Line
+    // panel does not draw.
+    await expect(
+      pv.getByText(
+        'Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines.',
+      ),
+    ).toBeVisible();
+    await expect(d.getByRole('button', { name: 'LogQL Query language' })).toBeVisible();
     expect(await marksSince(page, a.t0)).toEqual([]);
   });
 

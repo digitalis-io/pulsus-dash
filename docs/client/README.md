@@ -584,7 +584,7 @@ or leaving the field, not on typing (plan #64 §4.4). What a change shows:
 | Query run, key already fresh in this window epoch | the cached result; no request | drawn in the next frame, also after an error |
 | Same, not cached | one request, shared with the panel behind; `Loading` | the chart, or the error view (no retry) |
 | Run again before a result | the newest key, or the same key cancelled and rerun | only the newest result renders |
-| Language → LogQL | "Runs when LogQL support lands"; no request | — |
+| Language → LogQL | the text kept and run as LogQL ([LogQL panels](boards.md#logql-panels-67)); no PromQL request | the LogQL field mounts a frame after the change |
 
 **Chart readiness** (`ChartFrame.tsx`, #90; [ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md)).
 `ChartFrame` takes `pending` (shown over the frame) and `sizeMemo`. `pending` stays until the

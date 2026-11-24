@@ -3,20 +3,10 @@
  * picker, the Run hint and the Run query button, Explore's PromQL editor from the lazy chunk (its
  * placeholder while it loads, a plain text area if it fails) and one status row. The text goes to
  * the draft on every change; it runs (the preview and the panel behind) on Run, Shift+Enter or
- * Mod+Enter, and when focus leaves the field with a text that has not run.
+ * Mod+Enter, and when focus leaves the field with a text that has not run (`useQueryFieldRun`).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX,
-} from 'react';
-import { flushSync } from 'react-dom';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type JSX } from 'react';
 import { useApi } from '../../app/providers';
 import type { PromMetadata } from '../../data/decode';
 import type { PromQLEditorHandle } from '../../editor/PromQLEditor';
@@ -30,6 +20,7 @@ import { TextArea } from '../../kit/TextArea';
 import { useTimeContext } from '../../state/useTimeContext';
 import { MetricPicker, PICKER_KEEP } from '../explore/MetricPicker';
 import styles from './Board.module.css';
+import { useQueryFieldRun } from './useQueryFieldRun';
 
 export interface PanelQueryFieldProps {
   readonly tenant: string;
@@ -53,7 +44,7 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
   const queryClient = useQueryClient();
   const statusId = useId();
   const modules = useEditorModules();
-  const { tenant, onChange, onRun } = p;
+  const { tenant } = p;
   // The picker's and completion's metadata only (ADR-0021: the server reads metric types).
   const metaQ = useQuery(promMetadataQuery(api, tenant));
   const meta = metaQ.data?.metrics ?? NO_META;
@@ -73,72 +64,13 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
   }, [editor, api, queryClient, tenant]);
   const names = useMemo(() => (source === null ? null : () => source.metricNames()), [source]);
 
-  // The latest text, for the editor's Run keys (they carry no text) and the blur rule.
-  const valueRef = useRef(p.value);
-  const runTextRef = useRef(p.runText);
-  const onRunRef = useRef(onRun);
-  // While the board saves or discards nothing is edited or run (review r1 #2).
-  const readOnlyRef = useRef(p.readOnly);
-  useLayoutEffect(() => {
-    valueRef.current = p.value;
-    runTextRef.current = p.runText;
-    onRunRef.current = onRun;
-    readOnlyRef.current = p.readOnly;
-  });
   const editorRef = useRef<PromQLEditorHandle>(null);
-  const runButtonRef = useRef<HTMLButtonElement>(null);
-  const fieldRef = useRef<HTMLDivElement>(null);
+  const { fieldRef, runButtonRef, onDraft, run, onEscape } = useQueryFieldRun(p, PICKER_KEEP);
 
-  const onDraft = useCallback(
-    (text: string) => {
-      valueRef.current = text;
-      onChange(text);
-    },
-    [onChange],
-  );
-  // The Run keys come from the editor's own (native) key handler: render the run in this task, so
-  // the preview shows it in the next frame (#90 AC2), as the Run button's press does.
-  const run = useCallback(() => {
-    if (readOnlyRef.current) return;
-    flushSync(() => {
-      onRun(valueRef.current);
-    });
-  }, [onRun]);
-  const onEscape = useCallback(() => {
-    runButtonRef.current?.focus();
-  }, []);
   const onPick = useCallback((name: string) => {
     editorRef.current?.insert(name);
     editorRef.current?.focus();
   }, []);
-  // Focus leaving the field (not to its own controls or the picker's list) runs a text not yet run.
-  useEffect(() => {
-    const field = fieldRef.current;
-    if (field === null) return;
-    const onFocusOut = (e: FocusEvent): void => {
-      const next = e.relatedTarget;
-      if (next instanceof Node && field.contains(next)) return;
-      if (next instanceof Element && next.closest(PICKER_KEEP) !== null) return;
-      if (readOnlyRef.current) return;
-      if (valueRef.current !== runTextRef.current) onRunRef.current(valueRef.current);
-    };
-    // Escape the editor handled (T09-004: it closed the completion popup, or moved to Run query)
-    // must not also reach the dialog, which closes on Escape. The editor's key handlers are its
-    // own (native, inside the host), so they have run when the event bubbles here.
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !e.defaultPrevented) return;
-      if (e.target instanceof Element && e.target.closest('[data-editor-host]') !== null) {
-        e.stopPropagation();
-      }
-    };
-    field.addEventListener('focusout', onFocusOut);
-    field.addEventListener('keydown', onKeyDown);
-    return () => {
-      field.removeEventListener('focusout', onFocusOut);
-      field.removeEventListener('keydown', onKeyDown);
-    };
-  }, []);
-
   // The view mounts a frame after the field: the dialog (or a switch to PromQL) paints first, and
   // creating the editor is a task of its own (`bench:rooms-long-tasks`).
   const [mountable, setMountable] = useState(false);

@@ -1,5 +1,6 @@
 /**
- * Keyboard loops L23–L31 (plan #61 Part B, Appendix B-A §A.5; Part C, Appendix C-A §A.3): the board list and its dialogs, the
+ * Keyboard loops L23–L31 and L34 (plan #61 Part B, Appendix B-A §A.5; Part C, Appendix C-A §A.3;
+ * plan #67 §5.3): the board list and its dialogs, the
  * board in View and Edit mode, the panel tools, Share, the layout buttons, the panel editor dialog
  * and its selects, the guard and the conflict dialog. Each loop asserts its behaviours, then drains its
  * states. Run inside the one keyboard test, so the final coverage check covers them.
@@ -171,6 +172,85 @@ export async function boardLoops(s: Script): Promise<void> {
         await s.goto('/t/demo/boards');
         await s.on(`button "Actions for ${title}"`);
       });
+    }
+  });
+
+  // L34 (plan #67 §5.3): the stream panels' order options, Wrap lines and `Log lines` region, in
+  // every state they show in: the board (and a copy of the panel), full screen and the editor's
+  // preview. Before L24, whose drains cannot reach an order option that is not the group's tab stop.
+  await test.step('L34 Board log panels', async () => {
+    const rowsOf = (title: string) =>
+      page.getByRole('list', { name: `Log lines: ${title}` }).locator('[data-log-row]');
+    /** The order options (one tab stop; arrows move, Space selects) and Wrap lines of `n`. */
+    const streamControls = async (title: string, n = ''): Promise<void> => {
+      await expect(rowsOf(title).first()).toBeVisible();
+      await s.focus(`radio "Newest first"${n}`, { max: 160 });
+      await press('Space');
+      await press('ArrowRight');
+      await press('Space');
+      // A new order is a new run: the list remounts, its group's tab stop is found again by Tab.
+      // The list is virtualised (a short preview mounts fewer rows): its first row is the check.
+      await expect(rowsOf(title).first()).toBeVisible();
+      await s.focus(`radio "Newest first"${n}`, { max: 160 });
+      await press('Space');
+      await expect(rowsOf(title).first()).toBeVisible();
+      await s.on(`checkbox "Wrap lines"${n}`, 'Space');
+      await press('Space');
+      await s.focus(`region "Log lines: ${title}"`, { max: 160 });
+    };
+    for (const [uid, title] of [
+      ['b-1', 'Errors'],
+      ['b-3', 'Edge errors'],
+    ] as const) {
+      const url = `/t/demo/board/${uid}`;
+      // The board's and the editor's keys are one state for both boards (and the copy's `#2`):
+      // b-3 adds only its own full screen dialogs.
+      const first = uid === 'b-1';
+      if (first) {
+        await s.goto(url);
+        await showPanel(title);
+        await streamControls(title);
+      }
+
+      await s.goto(url);
+      await showPanel(title);
+      await s.on(`button "Full screen: ${title}"`);
+      const full = page.getByRole('dialog', { name: title });
+      await expect(full).toBeVisible();
+      await streamControls(title);
+      await s.on('button "Close"');
+      await expect(full).toBeHidden();
+
+      if (first) {
+        await s.goto(url);
+        await s.on('button "Edit board"');
+        await showPanel(title);
+        await s.menuItem(`button "Panel menu: ${title}"`, 0);
+        await expect(editor).toBeVisible();
+        await streamControls(title);
+        await closeEditor();
+      }
+
+      // A copy: a second stream panel on the board (its controls are `#2`), and its full screen.
+      const copy = `${title} (copy)`;
+      await s.goto(url);
+      await showPanel(title);
+      await s.menuItem(`button "Panel menu: ${title}"`, 1);
+      await expect(page.getByRole('heading', { level: 3, name: copy })).toBeVisible();
+      // Duplicate enters Edit: wait for the lazy Edit grid's panels (as L24's copy drain).
+      await expect(
+        page
+          .locator('.react-grid-item')
+          .filter({ has: page.getByRole('heading', { level: 3, name: copy }) }),
+      ).toHaveCount(1);
+      await showPanel(copy);
+      if (first) await streamControls(copy, ' #2');
+      await s.on(`button "Full screen: ${copy}"`);
+      const copyFull = page.getByRole('dialog', { name: copy });
+      await expect(copyFull).toBeVisible();
+      await streamControls(copy);
+      await s.on('button "Close"');
+      await expect(copyFull).toBeHidden();
     }
   });
 
