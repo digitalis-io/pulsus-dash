@@ -19,4 +19,10 @@ export const ALLOWED_SKIPS: readonly AllowedSkip[] = [
     projects: ['firefox', 'webkit'],
     reason: 'CDP touch events are Chromium only',
   },
+  {
+    file: 'perf-log-page-load.spec.ts',
+    title: 'bench:log-page-load (checks always; lab threshold with LOG_BENCH_GATE=enforce)',
+    projects: ['firefox', 'webkit'],
+    reason: 'a Chromium trace: the bench skips itself outside Chromium (#66 Part C)',
+  },
 ];

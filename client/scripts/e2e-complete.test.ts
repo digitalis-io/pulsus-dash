@@ -55,17 +55,26 @@ const FOUR: T[] = [
   { file: 'b.spec.ts', path: ['three'] },
   { file: 'b.spec.ts', path: ['B', 'four'] },
 ];
-/** Firefox's one allowed skip (config/e2eSkips.ts): listed, and skipped in `rest`. */
+/** Firefox's allowed skips (config/e2eSkips.ts): listed, and skipped in `rest`. */
 const E6T: T = {
   file: 'log-stream.spec.ts',
   path: ['e2e:log-stream', 'E6 touch: no scroll write during the gesture'],
   status: 'skipped',
 };
+const PLT: T = {
+  file: 'perf-log-page-load.spec.ts',
+  path: [
+    'bench:log-page-load',
+    'bench:log-page-load (checks always; lab threshold with LOG_BENCH_GATE=enforce)',
+  ],
+  status: 'skipped',
+};
+const SKIPS = [E6T, PLT];
 const listed = (tests: readonly T[]) =>
-  report([...tests, E6T].map((t) => ({ ...t, status: 'expected' as const, results: 0 })));
+  report([...tests, ...SKIPS].map((t) => ({ ...t, status: 'expected' as const, results: 0 })));
 const withE6 = ([name, tests]: [string, T[]]): { name: string; report: unknown } => ({
   name,
-  report: report(name === 'rest' ? [...tests, E6T] : tests),
+  report: report(name === 'rest' ? [...tests, ...SKIPS] : tests),
 });
 const ids = (l: unknown, shards: [string, T[]][]): string[] =>
   checkE2eComplete(l, shards.map(withE6), 'firefox').map((f) => `${f.rule} ${f.subject ?? ''}`);
@@ -142,10 +151,18 @@ describe('ci:e2e-complete (#130, T05-002)', () => {
   });
 
   it('allowed skip passes only where allowed', () => {
-    const one = (r: unknown, project: string) =>
-      checkE2eComplete(r, [{ name: 'rest', report: r }], project).map(
+    // The real report holds log-stream.spec.ts only: the other allowed skip is added beside it.
+    const one = (real: unknown, project: string) => {
+      const r = {
+        suites: [
+          ...(real as { suites: unknown[] }).suites,
+          ...(report([PLT]) as { suites: unknown[] }).suites,
+        ],
+      };
+      return checkE2eComplete(r, [{ name: 'rest', report: r }], project).map(
         (f) => `${f.rule} ${f.subject ?? ''}`,
       );
+    };
     expect(one(REAL, 'firefox')).toEqual([]);
     expect(one(realAs({ project: 'chromium' }), 'chromium')).toEqual([
       `e2e-test-skipped ${E6} [chromium]`,
