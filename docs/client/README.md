@@ -242,26 +242,27 @@ The generated token files and tests are not linted.
 
 ## Keyboard coverage
 
-`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L32) through
+`e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L33) through
 `e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
 text, `drain`, `shellAfter`), the board loops L23–L31 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
-one function per step) and the Explore loop L32 in `e2e/keyboardExplore.ts`. The loops run as five
+one function per step) and the Explore loops L32 (metrics) and L33 (logs) in
+`e2e/keyboardExplore.ts`. The loops run as five
 independent tests, the parts (#130), each in its own browser context from the same preamble (the
 clipboard stub and the fixed clock), in parallel and in any CI shard:
 
 | Part | Tags | Loops |
 |---|---|---|
-| K1 shell and chart frames | `@kbd` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
+| K1 shell and chart frames | `@kbd @kbd-a` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
 | K2 panel editor | `@kbd @kbd-a` | L27 |
 | K3 board list and b-1 view tools | `@kbd @kbd-b` | L23, L24 on b-1 |
 | K4 b-3 and b-2 view tools, toolbar, edit layout | `@kbd @kbd-b` | L24 on b-3 and b-2, L25, L26 |
-| K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32 |
+| K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32, L33 |
 
 A part that passes writes what it collected, operated and visited to
 `test-results/keyboard-coverage/<project>-K<n>.json` (`PartCoverage` in `e2e/keyboardParts.ts`;
 nothing is written when the part fails). The coverage rule holds over the union of a project's five
 files: a control collected by one part may be operated by another. The check runs at the end of a
-full `npm run e2e` (the reporter) and, on CI, over the three shards' files in the `e2e-report` job
+full `npm run e2e` (the reporter) and, on CI, over the four shards' files in the `e2e-report` job
 (`scripts/keyboard-coverage.ts`; see
 [Build, test and CI](../development/build-and-ci.md#keyboard-coverage-and-e2e-completeness)). ESLint
 bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in the spec, the script and the board
@@ -329,12 +330,24 @@ lists today:
 | K2 | `button "Add panel"`; `button "Share"`; `button "Full screen: Edge p99"` | K3, K4; K3 (L24 on b-1); K4 (L24 on b-3) |
 | K5 | `button "Share"` | K3, K4 (L25) |
 
-A list grows only when a part fails alone: for a drain failure `drain <n> › <k1> › … : cannot
-reach <x>` (or `still pending`) in part P, take the first of k1, …, x whose full key (the state
-at the drain's entry, ` › `, the key) is in the operated file of a part before P in
-`SINGLE_TEST_ORDER`, and add it with a comment naming that part. If none qualifies, the part has
-a real gap: operate the control in a loop instead. Remove an entry that `keyboard-skip-unused`
-reports.
+A list grows only by two rules, applied on Chromium first. `earlier(P)` is the union of the
+`operated` files of the parts before P in `SINGLE_TEST_ORDER`, from one full run of the same
+project.
+
+| Rule | Trigger | Add to `DRAIN_SKIP[P]` |
+|---|---|---|
+| Drain failure | P alone fails `drain <n> › <k1> › … : cannot reach <x>` (or `still pending`) | the first of k1, …, x whose full key (the state at the drain's entry, ` › `, the key) is in `earlier(P)` |
+| Coverage gap | the merged check reports `keyboard-uncovered` keys that only P collected | every key of P's `operated` that is in `earlier(P)` and not yet in the list |
+
+Each addition carries a comment naming the backing part(s). After it, run P alone and the merged
+check of all five parts, remove every entry that `keyboard-skip-unused` or `keyboard-skip-unbacked`
+reports, and repeat. If a drain failure has no qualifying key, or a coverage-gap round adds no key
+while keys stay uncovered, the part has a real gap: operate the control in a loop instead. A key
+that is `skip-unused` on one engine only stays in the list.
+
+Why this is no weaker than the single test: there, L27's drains skipped all of `earlier(K2)`, so a
+K2 that skips a subset of it explores at most what L27 explored, plus K2's own steps. Explicit
+steps (`s.on`, `s.menuItem`) ignore the list.
 
 ## API clients
 

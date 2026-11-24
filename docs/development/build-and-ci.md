@@ -30,7 +30,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
 | `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)); a full run also checks the keyboard coverage over its parts | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency`, `bench:log-page-load` |
 | `npm run e2e:keyboard-coverage -- <dir> <project>` | The keyboard coverage check over the part files under `<dir>` ([below](#keyboard-coverage-and-e2e-completeness)) | `e2e:a11y-rooms` (CI, merged shards) |
-| `npm run e2e:complete -- <listed.json> <project> <shard.json>...` | Every listed test ran in exactly one shard and was not skipped ([below](#keyboard-coverage-and-e2e-completeness)) | `ci:e2e-complete` |
+| `npm run e2e:complete -- <listed.json> <project> <shard.json>...` | Every listed test is in exactly one shard (retries allowed) and was not skipped ([below](#keyboard-coverage-and-e2e-completeness)) | `ci:e2e-complete` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run gen:log-transcripts` | Writes the generated paging transcripts `e2e/transcripts/logs-paging-1.json` and `logs-paging-2.json` from `scripts/logTranscripts.ts` (#66 Part C) | `unit:log-transcripts` (compares them byte for byte, in `npm test`) |
@@ -414,7 +414,7 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     PRF-005's per-task limit, which the trace gates.
   - **Long tasks.** A Chromium trace from the first local trial to the last remote one, read by
     `scripts/longTasks.ts`.
-  - **Always (blocking in CI's `e2e` Chromium leg):** 30 + 30 samples; remote min ≥ 120 ms; local
+  - **Always (blocking in CI's `e2e` Chromium `rest` shard):** 30 + 30 samples; remote min ≥ 120 ms; local
     p50 < 100 ms (a list held behind the 120 ms typing delay or CodeMirror's 100 ms sync wait gives
     every sample ≥ 100 ms); `ciOver` 0; 30 `keyWork` samples, each with at least one `doc` and one
     `slot0` entry (both probes are wired).
@@ -483,7 +483,7 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   `/api/dash/v1/query/logql/range`, which matches the tenant-scoped `…/range?tenant=…` request)
   holds every request with a `cursor` until `bench:page1` is marked: page two's answer and decode
   fall in window two.
-  - **Always (blocking in CI's `e2e` Chromium leg):** exactly two range requests in the windows,
+  - **Always (blocking in CI's `e2e` Chromium `rest` shard):** exactly two range requests in the windows,
     both `{app="paging"}`, the first without a cursor and the second with one; the gate held one
     request (`cursorHeld === 1`); one volume request with the same text and no other
     `/query/logql/` request; page one's Resource Timing `responseEnd` after `bench:start` and by
@@ -543,8 +543,8 @@ seeded before #63 still points at `http://localhost:9`, and the sidebar then rea
 drop and recreate it (`DROP DATABASE pulsus_e2e;` then `CREATE DATABASE pulsus_e2e OWNER
 pulsus_owner;`). CI creates `pulsus_e2e` per job.
 
-`E2E_SHARD=kbd-a`, `kbd-b` or `rest` runs one CI shard (`client/config/e2eShards.ts`; any other
-value fails at config load with `E2E_SHARD must be one of kbd-a, kbd-b, rest`). Unset or empty runs
+`E2E_SHARD=kbd-a`, `kbd-b`, `rest` or `rest-b` runs one CI shard ([E2E shards](#e2e-shards); any
+other value fails at config load with `E2E_SHARD must be one of kbd-a, kbd-b, rest, rest-b`). Unset or empty runs
 everything. A full run checks the keyboard coverage itself at the end
 ([the reporter](#keyboard-coverage-and-e2e-completeness)); a filtered run (`E2E_SHARD`, `--grep`, a
 file or a line) prints `keyboard-coverage <project>: not checked (<reason>; run has <parts>)`. One
@@ -627,25 +627,39 @@ no secrets are used.
 | Job | Steps (gate) |
 |---|---|
 | `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
-| `e2e` | after `check`, nine jobs: each engine (`chromium`, `firefox`, `webkit`) × each shard (`kbd-a`, `kbd-b`, `rest`, [below](#e2e-shards)), with a PostgreSQL 16.16 service on port 55432 and a 40-minute timeout: `npm ci`, Go 1.27.4 and its toolchain check, the Playwright version and the ISO week, the browser cache (`actions/cache` of `$RUNNER_TEMP/pw-browsers`, the `PLAYWRIGHT_BROWSERS_PATH`, and `$RUNNER_TEMP/pw-apt`, the browser's system packages as `.deb` files; key `pw-<engine>-<version>-ubuntu-24.04-<week>`, restored from the newest key of that engine and version), `playwright install-deps <engine>` from the cached packages (apt fetches only what changed, `autoclean` drops obsolete ones, and the cache keeps what is now in apt's archive), `playwright install <engine>`, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_SHARD=<shard>`, `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium's `rest` shard with the `golden-update` label); `blob-report/` and `test-results/` are uploaded as `e2e-<engine>-<shard>` for 14 days, and Chromium's `rest` shard also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. On CI Playwright runs two workers with a 25-minute `globalTimeout`, so an overrun fails the run with its artefacts before the job's timeout. CI retries a failed test once, except the keyboard parts (`retries: 0` in their `describe`): the traversal is deterministic, so a retry would only hide a failure |
-| `e2e-report` | after all nine `e2e` jobs, even when one failed (not when the run is cancelled), one job per engine with a 10-minute timeout: `npm ci`; download that engine's three artefacts into `client/shards/`; `playwright merge-reports` of the three blobs into one HTML report, and of each shard's blob into `ran/<shard>.json`; **`ci:e2e-complete`** (`playwright test --list --reporter=json --project=<engine>` into `listed.json`, which starts no web server, then `npm run e2e:complete -- listed.json <engine> ran/*.json`); **`e2e:a11y-rooms` (merged keyboard coverage)**, `npm run e2e:keyboard-coverage -- shards <engine>`; the merged HTML report is uploaded as `e2e-report-<engine>` for 14 days. A shard job that died before its upload shows as `e2e-test-missing` for each of its tests, and a failed keyboard part as `e2e-test-failed` and `keyboard-part-missing` |
+| `e2e` | after `check`, twelve jobs: each engine (`chromium`, `firefox`, `webkit`) × each shard (`kbd-a`, `kbd-b`, `rest`, `rest-b`, [below](#e2e-shards)), with a PostgreSQL 16.16 service on port 55432 and a 40-minute timeout: `npm ci`, Go 1.27.4 and its toolchain check, the Playwright version and the ISO week, the browser cache (`actions/cache` of `$RUNNER_TEMP/pw-browsers`, the `PLAYWRIGHT_BROWSERS_PATH`, and `$RUNNER_TEMP/pw-apt`, the browser's system packages as `.deb` files; key `pw-<engine>-<version>-ubuntu-24.04-<week>`, restored from the newest key of that engine and version), `playwright install-deps <engine>` from the cached packages (apt fetches only what changed, `autoclean` drops obsolete ones, and the cache keeps what is now in apt's archive), `playwright install <engine>`, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_SHARD=<shard>`, `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium's `rest` shard with the `golden-update` label); `blob-report/` and `test-results/` are uploaded as `e2e-<engine>-<shard>` for 14 days, and Chromium's `rest` shard also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. On CI Playwright runs two workers with a 25-minute `globalTimeout`, so an overrun fails the run with its artefacts before the job's timeout. CI retries a failed test once, except the keyboard parts (`retries: 0` in their `describe`): the traversal is deterministic, so a retry would only hide a failure |
+| `e2e-report` | after all twelve `e2e` jobs, even when one failed (not when the run is cancelled), one job per engine with a 10-minute timeout: `npm ci`; download that engine's four artefacts into `client/shards/`; `playwright merge-reports` of the four blobs into one HTML report, and of each shard's blob into `ran/<shard>.json`; **`ci:e2e-complete`** (`playwright test --list --reporter=json --project=<engine>` into `listed.json`, which starts no web server, then `npm run e2e:complete -- listed.json <engine> ran/*.json`); **`e2e:a11y-rooms` (merged keyboard coverage)**, `npm run e2e:keyboard-coverage -- shards <engine>`; the merged HTML report is uploaded as `e2e-report-<engine>` for 14 days. A shard job that died before its upload shows as `e2e-test-missing` for each of its tests, and a failed keyboard part as `e2e-test-failed` and `keyboard-part-missing` |
 
 ### E2E shards
 
-Each engine's suite runs as three jobs, chosen by tag (`client/config/e2eShards.ts`, read from
-`E2E_SHARD` in `playwright.config.ts`). The three filters partition the suite, and
-`ci:e2e-complete` checks that every listed test ran in exactly one of them.
+Each engine's suite runs as four jobs (`client/config/e2eShards.ts`, read from `E2E_SHARD` in
+`playwright.config.ts`): two pick keyboard parts by tag, `rest-b` picks whole spec files, and `rest`
+takes the remainder. Playwright matches `grep` against `<project> <file> <describe>… <title>
+<tags>`, so a file of `REST_B_FILES` is matched as a whole space-separated token (`a<file>` is not
+`<file>`). The four filters partition the suite, and `ci:e2e-complete` checks that every listed
+test is in exactly one of them (a retried test is still one test).
 
-| Shard | Filter | Tests | Firefox test step, minutes (normal / 1.37× slow runner) |
+| Shard | Filter | Tests | Webkit test step target, minutes |
 |---|---|---|---|
-| `kbd-a` | `grep /@kbd-a(?![\w-])/` | K2 | 10.3 / 14.1 |
-| `kbd-b` | `grep /@kbd-b(?![\w-])/` | K3 and K4, in parallel | 10.9 / 14.9 |
-| `rest` | `grepInvert /@kbd-[ab](?![\w-])/` | K1, K5 and every other spec | 7.7–9.8 / 13.4 |
+| `kbd-a` | `grep /@kbd-a(?![\w-])/` | K1 and K2, in parallel | ≤ 15 |
+| `kbd-b` | `grep /@kbd-b(?![\w-])/` | K3 and K4, in parallel | ≤ 20 (bounded by K3 alone) |
+| `rest` | `grepInvert` of the `kbd` tags and the `REST_B_FILES` | K5, `golden-gallery.spec.ts`, the Chromium-only specs and every spec file not in `REST_B_FILES` | ≤ 15 |
+| `rest-b` | `grep` of the `REST_B_FILES`, `grepInvert` of the `kbd` tags | the spec files of `REST_B_FILES` | ≤ 15 |
 
-**Rebalancing:** if a shard's test step exceeds 15 minutes, move only K1's or K4's shard tag
-(`@kbd-a`, `@kbd-b`, or none for `rest`) in `e2e/keyboard.spec.ts`; the parts themselves, and the
-coverage rule over their union, do not change. No branch protection names the job names, so a
-change of the matrix needs no settings change.
+**Choosing `REST_B_FILES`:** from the webkit `rest` JSON report of a CI run (`playwright
+merge-reports --reporter=json` of its blob), sum each spec file's test durations
+(`results[].duration`), leaving out `keyboard.spec.ts` and `golden-gallery.spec.ts` (the goldens
+stay in `rest`). Start `rest` at K5's duration plus `golden-gallery.spec.ts`'s and `rest-b` at 0;
+take the files longest first (ties by path) and give each to the shard with the smaller total
+(a tie goes to `rest-b`). The list is sorted and holds only real `*.spec.ts` files of `e2e/` (unit
+test `e2eShards.test.ts`). The current list comes from run 45285529104, where K5 alone (1 060 s)
+outweighed every other file together (866 s), so every one of them is in `rest-b`. A new spec file
+runs in `rest` until it is added.
+
+**Rebalancing:** if the `rest` or `rest-b` test step exceeds 15 minutes in two runs, redo the choice
+with that run's report. If `kbd-a` exceeds 15 minutes or `kbd-b` 20, a keyboard part has to be
+split, which is a change of its own. No branch protection names the job names, so a change of the
+matrix needs no settings change.
 
 The end-to-end jobs need the browsers' system libraries, which `playwright install-deps` installs on
 the CI image. On a workstation without them, install the packages Playwright names, or run only the
