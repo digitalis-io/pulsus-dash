@@ -1,9 +1,12 @@
 /**
  * The Query field of the panel editor for PromQL (plan #64 §3.8, A.10, A.2; T09-004): the metric
  * picker, the Run hint and the Run query button, Explore's PromQL editor from the lazy chunk (its
- * placeholder while it loads, a plain text area if it fails) and one status row. The text goes to
+ * placeholder while it loads, `QueryFallback` if it fails) and one status row. The text goes to
  * the draft on every change; it runs (the preview and the panel behind) on Run, Shift+Enter or
  * Mod+Enter, and when focus leaves the field with a text that has not run (`useQueryFieldRun`).
+ * The fallback has the same run rules: Run query and the Run keys run it, unchanged text included.
+ * Whenever an import failed the field reports it (`onDegraded`), so the edited panel runs degraded
+ * (#147).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type JSX } from 'react';
@@ -16,9 +19,9 @@ import { useEditorModules } from '../../explore/useEditorModules';
 import { t } from '../../i18n/t';
 import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
-import { TextArea } from '../../kit/TextArea';
 import { useTimeContext } from '../../state/useTimeContext';
 import { MetricPicker, PICKER_KEEP } from '../explore/MetricPicker';
+import { QueryFallback } from '../explore/QueryFallback';
 import styles from './Board.module.css';
 import { useQueryFieldRun } from './useQueryFieldRun';
 
@@ -34,6 +37,8 @@ export interface PanelQueryFieldProps {
   readonly readOnly: boolean;
   readonly onChange: (text: string) => void;
   readonly onRun: (text: string) => void;
+  /** The field's imports failed (#147): the edited panel runs degraded. */
+  readonly onDegraded?: (degraded: boolean) => void;
 }
 
 const NO_META: PromMetadata['metrics'] = Object.freeze({});
@@ -83,6 +88,11 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
     };
   }, []);
   const Editor = mountable ? (editor?.PromQLEditor ?? null) : null;
+  const fallback = modules.editorFailed;
+  const { onDegraded } = p;
+  useEffect(() => {
+    onDegraded?.(modules.failed);
+  }, [onDegraded, modules.failed]);
   const unrun = p.value !== p.runText;
   return (
     <div ref={fieldRef} className={cx(styles['queryField'])}>
@@ -100,7 +110,7 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
         <Button
           variant="primary"
           ref={runButtonRef}
-          isDisabled={Editor === null || p.readOnly}
+          isDisabled={(Editor === null && !fallback) || p.readOnly}
           aria-describedby={statusId}
           onPress={run}
         >
@@ -121,27 +131,24 @@ export function PanelQueryField(p: PanelQueryFieldProps): JSX.Element {
           label={t('editor.query')}
           placeholder={t('explore.query.placeholder')}
         />
-      ) : modules.failed ? (
-        <>
-          <TextArea
-            label={t('editor.query')}
-            value={p.value}
-            onChange={onDraft}
-            isReadOnly={p.readOnly}
-            mono
-            rows={5}
-            spellCheck="false"
-            autoComplete="off"
-          />
-          <p role="alert" className={cx(styles['queryStatus'])}>
-            {t('explore.query.loadFailed')}
-          </p>
-        </>
+      ) : fallback ? (
+        <QueryFallback
+          label={t('editor.query')}
+          value={p.value}
+          onChange={onDraft}
+          onRun={run}
+          readOnly={p.readOnly}
+        />
       ) : (
         <div className={cx(styles['queryEditor'], styles['queryLoading'])}>
-          <p>{t('explore.query.loading')}</p>
+          {modules.failed ? null : <p>{t('explore.query.loading')}</p>}
         </div>
       )}
+      {modules.failed ? (
+        <p role="alert" className={cx(styles['queryStatus'])}>
+          {t('explore.query.loadFailed')}
+        </p>
+      ) : null}
       <div id={statusId} className={cx(styles['queryStatus'])}>
         {p.error !== null ? (
           <p role="alert">{p.error}</p>

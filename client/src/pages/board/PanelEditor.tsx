@@ -159,6 +159,10 @@ export interface PanelEditorProps {
   runText: string;
   /** Runs of the same text (plan #67 §3.5): a LogQL stream preview's new pager each. */
   runSeq?: number;
+  /** The Query field failed to load an import: the preview runs degraded (#147). */
+  runDegraded: boolean;
+  /** The PromQL Query field reports whether its imports failed (#147). */
+  onDegraded: (degraded: boolean) => void;
   /** Run `text`: BoardPage sets the run text, or reruns it when it is already the run text. */
   onRun: (text: string) => void;
   onChange: (patch: Partial<Pick<PanelSpec, 'title' | 'query' | 'vis'>>) => void;
@@ -175,6 +179,8 @@ export function PanelEditor({
   statusText,
   runText,
   runSeq = 0,
+  runDegraded,
+  onDegraded,
   onRun,
   onChange,
   onRemove,
@@ -195,6 +201,7 @@ export function PanelEditor({
     widthPx: shared ?? ownWidth,
     runSeq,
     editing: false,
+    degraded: runDegraded,
   });
   const outcome = run.outcome;
   const visFields = useAfterFirstFrame();
@@ -278,6 +285,7 @@ export function PanelEditor({
                 onChange({ query: { ...panel.query, text } });
               }}
               onRun={onRun}
+              onDegraded={onDegraded}
             />
           ) : (
             <PanelLogqlField
