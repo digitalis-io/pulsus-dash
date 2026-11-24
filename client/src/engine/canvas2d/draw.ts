@@ -638,7 +638,14 @@ function drawHeatmap(
   const plot = layoutPlot('heatmap', i.cssW, i.cssH, width, bandOf(i));
   const summary = frameSummary('heatmap', i.window, plot, nb, nb, stats, null);
   const base = { summary, labelW: width, valueDomain: null, bandHeld: held };
-  if (empty || isPlotEmpty(plot)) return { ...base, pick: null };
+  if (isPlotEmpty(plot)) return { ...base, pick: null };
+  if (empty) {
+    // No cells to draw, but every in-view event is still a line, a label and a hit (§4.2).
+    const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
+    drawEventLines(i, plot, events.lines);
+    const eventLabels = drawEventLabels(i, events.labels);
+    return { ...base, summary: { ...summary, eventLabels }, pick: null };
+  }
   const scale = bucketScale(h.bounds, plot, LABEL_HEIGHT);
   const { texts } = axisTexts(i, scale.ticks, spec.unit);
   const labels: AxisLabel[] = scale.ticks.map((t, k) => ({

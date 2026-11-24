@@ -264,7 +264,8 @@ The layer redraws on every camera preview, so the lines and labels move with the
 ### Event markers
 
 On line, bars and heatmap (`engine/canvas2d/eventMark.ts`, [ADR-0023](../../designs/adr/0023-chart-event-markers.md),
-#64 Part C). Stat ignores events. A frame without events draws exactly as before.
+#64 Part C). Stat ignores events. A frame without events draws exactly as before. An empty
+heatmap (no timestamps or no bounds) draws no axes or cells but still draws and reports its events.
 
 | Step | Rule |
 |---|---|
