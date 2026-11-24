@@ -233,6 +233,24 @@ export const DRAIN_SKIP: Readonly<Record<KeyboardPart, readonly string[]>> = {
   ],
 };
 
+/** Stub (#130): see the implementation commit. */
+export const DRAIN_SKIP_ONLY: Readonly<
+  Partial<Record<KeyboardPart, Readonly<Record<string, readonly string[]>>>>
+> = {};
+
+/** Stub (#130): see the implementation commit. */
+export function drainSkip(
+  part: KeyboardPart,
+  _project: string,
+  skip: Readonly<Record<KeyboardPart, readonly string[]>> = DRAIN_SKIP,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _only: Readonly<
+    Partial<Record<KeyboardPart, Readonly<Record<string, readonly string[]>>>>
+  > = DRAIN_SKIP_ONLY,
+): string[] {
+  return [...skip[part]];
+}
+
 /** `keys` of `state` whose `${state} › ${k}` is neither in `operated` nor in `done`, in order. */
 export function drainPending(
   keys: readonly string[],

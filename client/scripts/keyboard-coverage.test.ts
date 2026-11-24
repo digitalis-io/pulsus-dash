@@ -6,7 +6,9 @@ import {
   COVERAGE_DIR,
   coverageFileName,
   DRAIN_SKIP,
+  DRAIN_SKIP_ONLY,
   drainPending,
+  drainSkip,
   KEYBOARD_PARTS,
   REQUIRED_STATES,
   stableRead,
@@ -35,8 +37,13 @@ function covered(): PartCoverage[] {
 
 const NO_SKIP: Record<KeyboardPart, readonly string[]> = { K1: [], K2: [], K3: [], K4: [], K5: [] };
 
-const ids = (parts: readonly unknown[], skip = NO_SKIP): string[] =>
-  checkKeyboardCoverage(parts, P, skip).map((f) => `${f.rule} ${f.subject ?? ''}`);
+const ids = (
+  parts: readonly unknown[],
+  skip = NO_SKIP,
+  only: Partial<Record<KeyboardPart, Record<string, readonly string[]>>> = {},
+  project = P,
+): string[] =>
+  checkKeyboardCoverage(parts, project, skip, only).map((f) => `${f.rule} ${f.subject ?? ''}`);
 
 /** `covered()` with each part collecting its `DRAIN_SKIP` keys, which K1 (first) operates. */
 function backed(): PartCoverage[] {
@@ -106,6 +113,43 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
     // A skip of a key K4 never collected is stale.
     const unused = at({ K3: { operated: ['a › k', 's › x'] } });
     expect(ids(unused, skip)).toEqual(['keyboard-skip-unused K4 s › x']);
+  });
+
+  it('a skip restricted to some engines applies and is checked only there', () => {
+    const skip = { ...NO_SKIP, K4: ['s › x', 's › y'] };
+    const only = { K4: { 's › x': [P] } };
+    const at = (project: string, o: Partial<Record<KeyboardPart, Partial<PartCoverage>>>) =>
+      covered().map((p) => ({ ...p, project, ...o[p.part] }));
+    const k3 = { operated: ['a › k', 's › x', 's › y'] };
+    // On a listed engine the restricted skip is a skip like any: used here, so no finding.
+    expect(ids(at(P, { K3: k3, K4: { collected: ['s › x', 's › y'] } }), skip, only)).toEqual([]);
+    // On a listed engine where K4 no longer collects it, it is stale.
+    expect(ids(at(P, { K3: k3, K4: { collected: ['s › y'] } }), skip, only)).toEqual([
+      'keyboard-skip-unused K4 s › x',
+    ]);
+    // On another engine it is no skip at all: not reported unused, nor unbacked.
+    expect(
+      ids(
+        at('q', { K4: { collected: ['s › y'] }, K3: { operated: ['a › k', 's › y'] } }),
+        skip,
+        only,
+        'q',
+      ),
+    ).toEqual([]);
+    // An unrestricted key is still checked on every engine.
+    expect(ids(at('q', { K3: k3 }), skip, only, 'q')).toEqual(['keyboard-skip-unused K4 s › y']);
+    expect(drainSkip('K4', P, skip, only)).toEqual(['s › x', 's › y']);
+    expect(drainSkip('K4', 'q', skip, only)).toEqual(['s › y']);
+    // The real lists: every restricted key is a skip of its part, on known engines.
+    for (const [id, keys] of Object.entries(DRAIN_SKIP_ONLY) as [
+      KeyboardPart,
+      Record<string, readonly string[]>,
+    ][]) {
+      for (const [key, engines] of Object.entries(keys)) {
+        expect(DRAIN_SKIP[id], key).toContain(key);
+        for (const e of engines) expect(['chromium', 'firefox', 'webkit']).toContain(e);
+      }
+    }
   });
 
   it('drainPending leaves out operated and done keys', () => {

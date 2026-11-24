@@ -56,6 +56,8 @@ export function checkKeyboardCoverage(
   parts: readonly unknown[],
   project: string,
   skip: Readonly<Record<KeyboardPart, readonly string[]>> = DRAIN_SKIP,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _only: Readonly<Partial<Record<KeyboardPart, Readonly<Record<string, readonly string[]>>>>> = {},
 ): Finding[] {
   const file = `${COVERAGE_DIR}/${project}`;
   const parsed = parts.map((p, i) => parsePart(p, project, i));
