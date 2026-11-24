@@ -121,7 +121,7 @@ describe('keyboard coverage reporter (#130, IA-015, T05-002)', () => {
 
   it('reporter fails a full run missing a part', async () => {
     const out = tmp();
-    const parts: KeyboardPart[] = ['K1', 'K2', 'K3', 'K5'];
+    const parts: KeyboardPart[] = KEYBOARD_PARTS.filter((id) => id !== 'K4');
     writeFiles(out, parts, false);
     expect(await run(out, parts)).toEqual({ status: 'failed' });
     expect(stderr.join('')).toContain('keyboard-coverage p: keyboard-part-missing K4');

@@ -10,7 +10,9 @@ import {
   drainPending,
   drainSkip,
   KEYBOARD_PARTS,
+  partOfTitle,
   REQUIRED_STATES,
+  SINGLE_TEST_ORDER,
   stableRead,
   type KeyboardPart,
   type PartCoverage,
@@ -35,7 +37,10 @@ function covered(): PartCoverage[] {
   );
 }
 
-const NO_SKIP: Record<KeyboardPart, readonly string[]> = { K1: [], K2: [], K3: [], K4: [], K5: [] };
+const NO_SKIP = Object.fromEntries(KEYBOARD_PARTS.map((id) => [id, []])) as unknown as Record<
+  KeyboardPart,
+  readonly string[]
+>;
 
 const ids = (
   parts: readonly unknown[],
@@ -150,6 +155,14 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
         for (const e of engines) expect(['chromium', 'firefox', 'webkit']).toContain(e);
       }
     }
+  });
+
+  it('the kbd-c split: K7 runs right after K4 (#130 plan §3.5)', () => {
+    expect(KEYBOARD_PARTS).toEqual(['K1', 'K2', 'K3', 'K4', 'K5', 'K7']);
+    expect(SINGLE_TEST_ORDER).toEqual(['K1', 'K3', 'K4', 'K7', 'K2', 'K5']);
+    expect(partOfTitle('K7 toolbar, edit layout (L25, L26)')).toBe('K7');
+    expect(partOfTitle('K4 b-3 and b-2 view tools (L24 b-3 b-2)')).toBe('K4');
+    expect(partOfTitle('K8 x')).toBeUndefined();
   });
 
   it('drainPending leaves out operated and done keys', () => {
