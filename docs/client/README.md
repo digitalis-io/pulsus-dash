@@ -255,20 +255,29 @@ clipboard stub and the fixed clock), in parallel and in any CI shard:
 | K1 shell and chart frames | `@kbd @kbd-a` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
 | K2 panel editor | `@kbd @kbd-a` | L27 |
 | K3 board list and b-1 view tools | `@kbd @kbd-b` | L23, L24 on b-1 |
-| K4 b-3 and b-2 view tools, toolbar, edit layout | `@kbd @kbd-b` | L24 on b-3 and b-2, L25, L26 |
+| K4 b-3 and b-2 view tools, toolbar, edit layout | `@kbd @kbd-c` | L24 on b-3 and b-2, L25, L26 |
 | K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32, L33 |
 
 A part that passes writes what it collected, operated and visited to
 `test-results/keyboard-coverage/<project>-K<n>.json` (`PartCoverage` in `e2e/keyboardParts.ts`;
 nothing is written when the part fails). The coverage rule holds over the union of a project's five
 files: a control collected by one part may be operated by another. The check runs at the end of a
-full `npm run e2e` (the reporter) and, on CI, over the four shards' files in the `e2e-report` job
+full `npm run e2e` (the reporter) and, on CI, over the five shards' files in the `e2e-report` job
 (`scripts/keyboard-coverage.ts`; see
 [Build, test and CI](../development/build-and-ci.md#keyboard-coverage-and-e2e-completeness)). ESLint
 bans `.press(`, `.click(`, `.fill(`, `.type(` and `page.mouse` in the spec, the script and the board
 loops. After every keystroke the harness collects each interactive control (links, buttons,
 fields, menu items, options; a grid counts as one control) from the accessibility snapshot, keyed by
-state: the route pattern plus the open overlay (with an overlay open, only the overlay is read).
+state: the route pattern plus the open overlay (with an overlay open, only the overlay is read;
+with none open, only `#root`, or `body` on a page without it: React Aria portals every overlay
+outside `#root`, so a dialog's controls are never collected under `+ none`). A state and what is
+read under it come from one stable read (`stableRead` in `e2e/keyboardParts.ts`): the harness
+reads the state and the snapshot (or the focused control), then the state again, and keeps the read
+only when both states agree, else waits two animation frames and reads again, three times in all.
+Without it, a dialog that opened during a read put its controls under the state before it (#130).
+When no read holds still, a collect after a keystroke collects nothing (the next keystroke collects
+again), while a drain's work list and an operating keystroke throw `keyboard: state changed during
+read ×3 (<state>)`, so the part fails loudly.
 Before Enter, Space, the arrow keys, Home, End, PageUp, PageDown, a typed text, and Escape in an
 overlay, it records the focused control as operated; Tab never counts. The test fails if any
 collected control was never operated by any part, or if a required state (every route, Not found,
@@ -343,8 +352,16 @@ project.
 Each addition carries a comment naming the backing part(s). After it, run P alone and the merged
 check of all five parts, remove every entry that `keyboard-skip-unused` or `keyboard-skip-unbacked`
 reports, and repeat. If a drain failure has no qualifying key, or a coverage-gap round adds no key
-while keys stay uncovered, the part has a real gap: operate the control in a loop instead. A key
-that is `skip-unused` on one engine only stays in the list.
+while keys stay uncovered, the part has a real gap: operate the control in a loop instead.
+
+**Engine-specific skips.** Run the clean-up on all three engines. A key that is `skip-unused` on
+every engine is removed. A key that is `skip-unused` on some engines only stays in `DRAIN_SKIP` and
+is also listed in `DRAIN_SKIP_ONLY[P]` with the engines where P does collect it (for example
+`{ K5: { '<key>': ['chromium', 'webkit'] } }`). `drainSkip(part, project)` is the part's skip list
+on one engine: on an engine not listed the key is no skip at all, so the part's drains operate it if
+it ever appears there, and the checker neither expects it collected nor needs it backed. On a listed
+engine both skip rules apply as usual. So every engine's merged check can pass with no skip that
+hides a control on any engine.
 
 Why this is no weaker than the single test: there, L27's drains skipped all of `earlier(K2)`, so a
 K2 that skips a subset of it explores at most what L27 explored, plus K2's own steps. Explicit
