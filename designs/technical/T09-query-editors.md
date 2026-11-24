@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.21-rc · 2026-11-24 |
+| **Version** | 1.22-rc · 2026-11-24 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -240,6 +240,14 @@ Mechanics:
   text for the preview and the panel behind, and so does focus leaving the field with a text that
   has not run; typing changes only the board draft. `Esc` closes an open popup, else moves the
   focus to Run query, and does not reach the dialog: a second `Esc` closes the dialog.
+- **Fallback when the editor chunk fails (#147).** If the editor chunk fails to load, every query
+  field (Explore and the panel editor) shows a native `<textarea>` ([T08](T08-dom-component-kit.md)
+  §4.8) with the load-failed alert. It runs on Run and on Shift/Mod+Enter, unchanged text included;
+  it is a degraded fallback, not an editor surface. A language-only failure shows the alert, never
+  the text area, so a later editor never replaces typed text. While a field's imports have failed
+  its runs are degraded: without a loaded language a PromQL query goes to the range route
+  ([ADR-0021](../adr/0021-query-planning-is-server-side.md): the server plans the text) and errors
+  carry no editor diagnostics. The 128 KB limit (T09-015) still applies.
 - **v1 composition guard (T09-005, #63).** An open or pending completion popup closes at
   `compositionstart`; while composing nothing opens, is looked up or is accepted, and results that
   arrive are held and dropped; completion re-evaluates once, 20 ms after the last `compositionend`.
@@ -780,3 +788,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.19-rc | 2026-11-23 | #107: §0 "Editor-worker suggest cache": an in-flight entry is tracked by key apart from the LRU and re-joined by its key; no entry is superseded by another key in any language; §4.4 PromQL v1 (filtering by the text before the caret, whole-token replacement, static items above lookup results, T09-008); T09-007 v1 note (PromQL's local and remote slots; every document or selection change releases the PromQL view's interest; another view's interest keeps a shared request); §7 "Local completions" row: `keyWork` measures the work per key with its document update (≤ 2 ms); remote processing bounded per task |
 | 1.20-rc | 2026-11-23 | #66 Part C: §4.6 adds "v1 (#66)": Explore › Logs sends the text as typed to the range and volume routes; row 4 shows the volume and the stream (patterns with SRF-034, M-UI2); row 14 for LogQL draws every metric query as a line in M-UI1, bars for `count_over_time` later |
 | 1.21-rc | 2026-11-24 | #67: §4.6 adds "Boards (#67)": a board LogQL panel's Auto draws the stream for a log query and a line for a metric query, Bars the volume by level; the answer's kind decides |
+| 1.22-rc | 2026-11-24 | #147: §4.3 (T09-004) note: when the editor chunk fails, every query field is a native text area that runs on Run and the Run keys; a language-only failure shows the alert only; while a field's imports have failed its runs are degraded (PromQL without a language goes to the range route); T09-015 still applies |

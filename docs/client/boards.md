@@ -318,7 +318,7 @@ are disabled while a save is in flight.
 ## The panel editor's Query field (§3.8, §4.4)
 
 For PromQL the Query field is `PanelQueryField`: the metric picker, the Run hint, **Run query**
-(disabled until the editor chunk loads, or while read-only), Explore's `PromQLEditor` (label
+(disabled while the editor chunk is loading, or while read-only; enabled with the fallback), Explore's `PromQLEditor` (label
 "Query") and one status row (a field error, or "Press Shift+Enter or Run query to update the
 preview."). Typing changes the draft (`updatePanel`) per change; the dialog's **run text**
 (`BoardPage` state `editRun`) is what the preview and the panel behind run:
@@ -339,16 +339,45 @@ in the next frame. The editor view mounts one animation frame after the field, s
 dialog, or switching a panel to PromQL, does not create it in the same task
 (`bench:rooms-long-tasks`). `PromQLEditor`'s inner host is a tab stop that delegates focus into
 its shadow root and on to the text: the dialog's focus containment walks the light DOM only, so
-without it Tab would skip the editor. If the editor chunk fails to load, the field is a plain text area with "The
-query editor could not be loaded. Reload the page to try again." For LogQL the field is
+without it Tab would skip the editor. For LogQL the field is
 `PanelLogqlField`: the same layout without the picker, Explore › Logs' `LogQLEditor` from
 `useLogqlModules` (placeholder `explore.logs.placeholder`), and a completion source made by
 `editor.createLogSource({api, queryClient, tenant, window})` once per editor, api, query client and
-tenant (T09-014; the window is read at each lookup). If the LogQL chunk fails to load, its plain text area keeps Run query enabled and runs on Shift+Enter or Mod+Enter, unchanged text included (`PanelLogqlField.fallback.test.tsx`). Both fields take their run rules (the draft
+tenant (T09-014; the window is read at each lookup). Both fields take their run rules (the draft
 ref, the Run keys through `flushSync`, the run on leaving, the Escape guard) from
 `useQueryFieldRun`. A language change keeps the text, so the field and the run follow it. A Run of
 the same text also adds one to `editRun.seq`, which reaches the edited panel and the editor as
 `runSeq`: a LogQL stream preview's new pager.
+
+### When an import fails (#147)
+
+If the editor chunk fails to load (`modules.editorFailed`), either field (PromQL and LogQL) is
+`QueryFallback` (`pages/explore/QueryFallback.tsx`), a plain text area, with "The query editor
+could not be loaded. Reload the page to try again." Run query stays enabled, and Shift+Enter or
+Mod+Enter run it, unchanged text included; the field's other run rules (`useQueryFieldRun`) hold
+too, and it is read-only while the board saves. A language-only failure (`modules.failed` without
+`editorFailed`) shows the alert, never the text area: the editor that loads later keeps the text.
+
+A field whose imports failed runs the edited panel (the preview and the panel behind) degraded:
+`PanelQueryField` reports `modules.failed` through `onDegraded`, `BoardPage` keeps it as
+`editRun.degraded`, and both runs get `PanelRunInput.degraded`. Without a loaded language a PromQL
+query then goes to the range route (`runKind(text, null, true)`), so a scalar draws as a flat line
+and a string literal gets the server's range error; errors carry no editor diagnostics. Other panels
+keep their `langFailed` state. The 128 KB refusal (T09-015) and blank text still send nothing.
+LogQL runs need no language, so `useLogPanelRun` ignores `degraded`.
+
+| Field modules | Field | Alert | Run query | Edited panel's run |
+|---|---|---|---|---|
+| loading | loading placeholder | — | disabled | as before |
+| editor mounted, nothing failed | editor | — | enabled unless read-only | as before |
+| editor failed (language loaded, pending or failed) | `QueryFallback` | yes | enabled unless read-only | degraded |
+| language failed, editor pending | empty placeholder | yes | disabled | degraded |
+| language failed, editor mounted | editor | yes | enabled unless read-only | degraded |
+
+Tests: `PanelEditorFallback.test.tsx` (B1: the editor fails, the PromQL text area runs on Run
+query and the three Run keys), `PanelEditorFallback.bothFailed.test.tsx` (B2: both imports fail,
+the edited panel runs degraded on the range route; the 128 KB refusal sends nothing) and
+`PanelLogqlField.fallback.test.tsx` (the LogQL text area, Meta+Enter included).
 
 While the board saves or discards (read-only), the editor is read-only (`EditorState.readOnly`
 through a compartment, `aria-readonly`), the metric picker is disabled, and Run query, the Run keys

@@ -59,8 +59,10 @@ export function LogsPage() {
   const modules = useLogqlModules();
   const [resultsRef, widthPx] = useElementWidth<HTMLDivElement>();
   const step = useStepWidth(win, widthPx);
-  // Nothing runs before the editor and the language have loaded (LP20), as on Explore › Metrics.
-  const loaded = modules.editor !== null && modules.lang !== null;
+  // Nothing runs before the field is final (the editor, or the fallback text area when it failed)
+  // and the language has loaded or an import failed (LP20–LP22, #147), as on Explore › Metrics.
+  const editorReady = modules.editor !== null || modules.editorFailed;
+  const loaded = editorReady && (modules.lang !== null || modules.failed);
   const runStep = loaded ? step : null;
   const runReady = runStep !== null;
   const urlRefusal = useMemo(() => (overQueryLimit(q) ? ('queryTooLarge' as const) : null), [q]);
@@ -185,7 +187,7 @@ export function LogsPage() {
     draftOver,
     urlRefusal,
     runReady,
-    editorLoaded: modules.editor !== null,
+    editorLoaded: editorReady,
     state,
     dir,
     diagnostics,

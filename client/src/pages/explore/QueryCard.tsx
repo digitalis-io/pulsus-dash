@@ -1,7 +1,8 @@
 /**
  * The Query card of Explore › Metrics (plan #63 Part C §3.3, C.2): the language tag, the metric
  * picker, the Run hint and button, the PromQL editor from the lazy chunk (or its placeholder while
- * it loads) and the status line, which the Run button is described by.
+ * it loads, `QueryFallback` if it fails; the load-failed alert whenever an import failed) and the
+ * status line, which the Run button is described by.
  */
 import { useId, useMemo, type JSX, type ReactNode, type Ref } from 'react';
 import type { PromQLEditorHandle } from '../../editor/PromQLEditor';
@@ -13,6 +14,7 @@ import { Button } from '../../kit/Button';
 import { Card } from '../../kit/Card';
 import { cx } from '../../kit/cx';
 import styles from './Explore.module.css';
+import { QueryFallback } from './QueryFallback';
 import { MetricPicker } from './MetricPicker';
 
 export interface QueryCardProps {
@@ -71,15 +73,23 @@ export function QueryCard({ editorRef, runButtonRef, ...p }: QueryCardProps): JS
           label={t('explore.query.label')}
           placeholder={t('explore.query.placeholder')}
         />
+      ) : p.modules.editorFailed ? (
+        <QueryFallback
+          label={t('explore.query.label')}
+          value={p.q}
+          onChange={p.onDraft}
+          onRun={p.onRun}
+        />
       ) : (
         <div className={cx(styles['editorPlaceholder'])}>
-          {p.modules.failed ? (
-            <p role="alert">{t('explore.query.loadFailed')}</p>
-          ) : (
-            <p>{t('explore.query.loading')}</p>
-          )}
+          {p.modules.failed ? null : <p>{t('explore.query.loading')}</p>}
         </div>
       )}
+      {p.modules.failed ? (
+        <p role="alert" className={cx(styles['statusRow'])}>
+          {t('explore.query.loadFailed')}
+        </p>
+      ) : null}
       <div id={statusId} className={cx(styles['statusRow'])}>
         {p.status}
       </div>

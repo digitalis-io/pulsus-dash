@@ -23,6 +23,8 @@ the query editor and a status line.
 - **Run keys.** **Shift+Enter**, **Ctrl+Enter** (**⌘+Enter** on macOS) or **Run** run the query.
   Enter alone starts a new line. **Esc** leaves the editor and moves the focus to **Run** (when a
   completion list is open, Esc closes it first).
+- **If the editor cannot load**, the query box is plain text with a message to reload. Run and
+  Shift+Enter (or Ctrl/⌘+Enter) still run the query.
 - **Running the same query again** (Run with the text unchanged) cancels the requests still in
   flight and starts the stream and the volume again.
 - **Running an empty query** clears the result.
