@@ -84,8 +84,9 @@ jobs:
 
   # One job per browser fills the browser cache (#130) before its five shards start: the browser
   # and its system packages as .deb files, keyed by the Playwright version. A hit only looks the
-  # key up; a miss installs once (the webkit packages take ~30 min cold) and saves. `v1` in the key
-  # is a manual bust.
+  # key up; a miss installs once and saves (cold installs took 0.7–7.3 min, webkit 0.7; an
+  # apt-get update mirror stall is bounded by the install-deps retry below). `v1` in the key is a
+  # manual bust.
   e2e-deps:
     runs-on: ubuntu-24.04
     timeout-minutes: 50
