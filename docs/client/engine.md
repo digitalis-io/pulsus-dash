@@ -179,9 +179,13 @@ Values are uploaded as f32 `u = (v − v_ref)·2^−exp` ([T02-014](../../design
 - `value_ticks` ports the client's `niceValueTicks` and `extreme_ticks(lo, hi, height_px,
   label_height_px)` its `extremeTicks` (#97). They equal the TS on the fixture inputs
   (`ticks.json`, `ticks-extreme.json`, including the power and decade edge rows), checked under
-  Node 24.22.3 (`unit:engine-fixtures`) and, for the TS, in the browser engines Playwright pins
-  (`e2e:ticks-parity`, under the rule below); other inputs and runtimes are not claimed. WebKit's
-  `**` differs from V8's in the last bits for some large powers (#126), which the rule allows for.
+  Node 24.22.3 (`unit:engine-fixtures`) and, for the TS, in every browser engine Playwright pins
+  (Chromium, Firefox and WebKit, `e2e:ticks-parity`); other inputs and runtimes are not claimed.
+  The TS takes its integer powers from the same V8 values as `js_pow` (#126): `pow10(k)` and
+  `powBase(1000, p)` parse `1e…` as a decimal (correctly rounded in every engine) with 3
+  overrides where V8's `**` differs (`10 ** 23`, `10 ** 210`, `1000 ** 70`), `powBase(1024, p)`
+  is a table built by exact multiplication, and 2^1022 is a literal. `valueTicks.ts` uses no `**`
+  (`unit:js-pow`), so no engine's own `pow` decides a tick.
   `value_ticks` returns None outside its domain (non-finite input, an end beyond ±1e300, a span of
   2^1023 or more), where the search does not finish in 64 steps (a zero span after
   `min + 1 === min`, or a range straddling zero on a plot under 2·(label + 2) px tall), and when two
@@ -194,21 +198,9 @@ Values are uploaded as f32 `u = (v − v_ref)·2^−exp` ([T02-014](../../design
   `Math.pow` is not correctly rounded (`10 ** -5` is 9.999999999999999e-6); `pow.json` checks the
   table.
 
-The `e2e:ticks-parity` rule (#97 plan §10 Q1):
-
-> **Path parity, every engine, every row.** Every row of `ticks.json` and `ticks-extreme.json`
-> carries `path: 'nice' | 'fallback'`, generated under the pinned Node 24.22.3. `'fallback'`
-> means `fn === 'extremeTicks'` or `niceValueTicks(...) === null`; this includes the collision
-> rejection, which returns null. Each engine computes its own path in-engine the same way. A path
-> that differs from the recorded `path` fails in every engine and every class. Classes are
-> assigned from the recorded `path`, with gap = label + 2:
-> - **F** (`path === 'fallback'`): exact `{min, max, ticks}` in every engine.
-> - **S** (`path === 'nice'`, `height ≤ 2·gap`): exact in Chromium and Firefox. In WebKit, the
->   tick count and every tick are exact (−0 compared numerically); `min` and `max` are each exact
->   or within 4 ulps of the recorded value (`ulpDistance` on the IEEE-754 bit patterns); and P1
->   to P7 hold on WebKit's own result.
-> - **N** (`path === 'nice'`, `height > 2·gap`): exact in Chromium and Firefox. In WebKit, exact,
->   or P1 to P7 hold.
+`e2e:ticks-parity` checks, in every engine, that `pow10` and `powBase` equal all 855 rows of
+`pow.json`, and that every row of `ticks.json` and `ticks-extreme.json` takes its recorded `path`
+(`'nice'` or `'fallback'`) and equals its recorded `{min, max, ticks}` exactly.
 
 Supported domain: every finite axis `lo < hi` (spans 2⁻¹⁰⁷⁴ to 2·MAX) and every f64 value; there is
 no finite input outside it. Timestamps stay f64; samples 1 ms apart at epoch scale land in
@@ -261,7 +253,8 @@ Each Rust port is held to its TypeScript source by a JSON fixture in `engine/fix
 | Fixture | TS source | Rust test |
 |---|---|---|
 | `format.json` | `i18n/format.ts` `formatValue` | `unit:number-format` |
-| `ticks.json`, `pow.json` | `canvas2d/valueTicks.ts`; the JS engine's `**` | `unit:layout-parity` |
+| `ticks.json` | `canvas2d/valueTicks.ts`, whose powers come from `pow10` and `powBase` (no `**`, #126) | `unit:layout-parity` |
+| `pow.json` | the JS engine's `**` under Node 24.22.3 (`10 ** k`, `1000 ** p`, `1024 ** p`), not the helpers it checks | `unit:layout-parity` (Rust `js_pow`), `unit:js-pow` (TS `pow10`, `powBase`) |
 | `ticks-extreme.json` | `canvas2d/valueTicks.ts` `valueTicks` and `extremeTicks`: 32 fixed rows, 8 fallback-fit rows, 57 power and decade edge rows and 300 seeded rows over the whole finite range, short plots included (#97) | `unit:layout-parity` (`value_ticks_or_extreme_match_ts`) |
 | `layout.json` | `canvas2d/layout.ts` `layoutPlot` and draw.ts's value axis (via `drawLayer` with label widths from the monospace advance) | `unit:layout-parity` |
 | `columns.json` | `canvas2d/columns.ts` `lineColumns` (plus each column's first sample) | `unit:columns-parity` |
