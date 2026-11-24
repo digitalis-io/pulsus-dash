@@ -67,11 +67,19 @@ export function shardFilter(name: string | undefined): ShardFilter {
   return { ...FILTERS[name] };
 }
 
-/** Stub (#130 plan 7 §3.5); see the implementation commit. */
+/**
+ * The e2e timeouts, in minutes (#130 plan 7 §3.5). A keyboard part may take `partMin`, a whole
+ * shard run `globalMin` (Playwright's `globalTimeout`, on CI), and the e2e job `jobMin` (its
+ * `timeout-minutes`). `setupMaxMin` covers checkout, `npm ci`, Go, the cache restore and
+ * `make e2e-build` (≤ 3 observed) plus one stalled `install-deps` attempt (8) and its retry;
+ * `tailMin` covers the uploads and post-job steps (seconds observed). Firefox varies by up to 1.5×
+ * between runs of one head, so the margins are wide: times are recorded, only a timeout acts.
+ * Invariants (unit test): part < global, setup + global + tail ≤ job.
+ */
 export const E2E_TIMEOUTS = {
-  partMin: 22,
-  globalMin: 25,
+  partMin: 30,
+  globalMin: 35,
   setupMaxMin: 13,
   tailMin: 2,
-  jobMin: 40,
+  jobMin: 50,
 } as const;

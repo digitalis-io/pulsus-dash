@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { shardFilter } from './config/e2eShards.ts';
+import { E2E_TIMEOUTS, shardFilter } from './config/e2eShards.ts';
 
 const viewport = { width: 1440, height: 900 };
 const ci = Boolean(process.env['CI']);
@@ -70,7 +70,7 @@ export default defineConfig({
   ...shardFilter(process.env['E2E_SHARD']),
   // Two workers on CI's four vCPUs; a run that overruns fails with its artefacts, not at the job's
   // timeout.
-  ...(ci ? { workers: 2, globalTimeout: 25 * 60_000 } : {}),
+  ...(ci ? { workers: 2, globalTimeout: E2E_TIMEOUTS.globalMin * 60_000 } : {}),
   reporter: [
     ['list'],
     // CI: one blob per shard, merged per browser by the e2e-report job.

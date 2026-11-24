@@ -144,9 +144,10 @@ jobs:
   e2e:
     needs: [check, e2e-deps]
     runs-on: ubuntu-24.04
-    # The longest shard's test step is under 20 min (kbd-b, kbd-c); Playwright's globalTimeout
-    # (25 min) ends an overrun first, with its artefacts.
-    timeout-minutes: 40
+    # E2E_TIMEOUTS (client/config/e2eShards.ts): each keyboard part is limited to 30 min and the
+    # shard run to 35 (Playwright's globalTimeout ends an overrun first, with its artefacts); 50
+    # leaves room for setup, one stalled install-deps attempt and the uploads.
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:

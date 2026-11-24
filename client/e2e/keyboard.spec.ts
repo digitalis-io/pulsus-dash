@@ -11,6 +11,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { E2E_TIMEOUTS } from '../config/e2eShards.ts';
 import { boardSteps } from './keyboardBoards.ts';
 import { exploreLoops } from './keyboardExplore.ts';
 import { keyboardHarness, type KeyboardHarness } from './keyboardCoverage.ts';
@@ -95,7 +96,7 @@ function part(
   body: (s: Script) => Promise<void>,
 ): void {
   test(`${id} ${title}`, { tag }, async ({ page }, info) => {
-    test.setTimeout(22 * 60_000);
+    test.setTimeout(E2E_TIMEOUTS.partMin * 60_000);
     const s = await keyboardSession(page, new Set(drainSkip(id, info.project.name)));
     await body(s);
     writeCoverage(info, id, s.h);
