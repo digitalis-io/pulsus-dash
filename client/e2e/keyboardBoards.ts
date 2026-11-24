@@ -203,9 +203,14 @@ export async function boardLoops(s: Script): Promise<void> {
       ['b-3', 'Edge errors'],
     ] as const) {
       const url = `/t/demo/board/${uid}`;
-      await s.goto(url);
-      await showPanel(title);
-      await streamControls(title);
+      // The board's and the editor's keys are one state for both boards (and the copy's `#2`):
+      // b-3 adds only its own full screen dialogs.
+      const first = uid === 'b-1';
+      if (first) {
+        await s.goto(url);
+        await showPanel(title);
+        await streamControls(title);
+      }
 
       await s.goto(url);
       await showPanel(title);
@@ -216,13 +221,15 @@ export async function boardLoops(s: Script): Promise<void> {
       await s.on('button "Close"');
       await expect(full).toBeHidden();
 
-      await s.goto(url);
-      await s.on('button "Edit board"');
-      await showPanel(title);
-      await s.menuItem(`button "Panel menu: ${title}"`, 0);
-      await expect(editor).toBeVisible();
-      await streamControls(title);
-      await closeEditor();
+      if (first) {
+        await s.goto(url);
+        await s.on('button "Edit board"');
+        await showPanel(title);
+        await s.menuItem(`button "Panel menu: ${title}"`, 0);
+        await expect(editor).toBeVisible();
+        await streamControls(title);
+        await closeEditor();
+      }
 
       // A copy: a second stream panel on the board (its controls are `#2`), and its full screen.
       const copy = `${title} (copy)`;
@@ -237,7 +244,7 @@ export async function boardLoops(s: Script): Promise<void> {
           .filter({ has: page.getByRole('heading', { level: 3, name: copy }) }),
       ).toHaveCount(1);
       await showPanel(copy);
-      await streamControls(copy, ' #2');
+      if (first) await streamControls(copy, ' #2');
       await s.on(`button "Full screen: ${copy}"`);
       const copyFull = page.getByRole('dialog', { name: copy });
       await expect(copyFull).toBeVisible();
