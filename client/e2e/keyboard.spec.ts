@@ -639,9 +639,11 @@ async function chrome(s: Script, url: string): Promise<void> {
     await press('Enter');
   }
 
-  // Sidebar toggle.
+  // Sidebar toggle. Collapsed: the org-initial tenant badge (named apart from the expanded
+  // button). Item 0 is the current tenant, so choosing it does not navigate.
   await s.on('button "Collapse sidebar"');
-  await s.on('button "Expand sidebar"', 'Enter', { back: true });
+  await s.menuItem('button "D, switch tenant, current: Demo"', 0);
+  await s.on('button "Expand sidebar"');
 
   // Tenant menu: Demo (current), then Sandbox and back.
   await s.menuItem('button "Switch tenant, current: Demo"', 0);

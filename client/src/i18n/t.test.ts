@@ -10,5 +10,8 @@ describe('i18n typed ids', () => {
     expect(t('user.menuButton', { initials: 'AA', name: 'Ada Admin' })).toBe(
       'AA, user menu: Ada Admin',
     );
+    expect(t('tenant.switchBadge', { initial: 'D', name: 'Demo' })).toBe(
+      'D, switch tenant, current: Demo',
+    );
   });
 });

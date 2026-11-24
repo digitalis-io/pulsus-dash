@@ -3,7 +3,8 @@
  * tenant name is a menu button listing them; choosing one opens that tenant's Boards with the
  * current time Context. With one binding it is static text. Collapsed, it is a 32 px org-initial
  * button (or nothing). The org name and the "Tenant:" prefix stay outside the button, so the
- * button's visible text is part of its accessible name (WCAG 2.5.3).
+ * button's visible text is part of its accessible name (WCAG 2.5.3). Collapsed, the badge's name
+ * starts with the visible org initial (WCAG 2.5.3).
  */
 import { Button, MenuTrigger } from 'react-aria-components';
 import { useNavigate } from 'react-router';
@@ -17,6 +18,20 @@ import { contextSearchString } from '../state/contextSearch';
 import { useTimeContext } from '../state/useTimeContext';
 import { useShellRoute } from './useShellRoute';
 import styles from './TenantSwitcher.module.css';
+
+/** The collapsed badge's visible letter: the org name's first character, upper-cased; '' if blank. */
+export function orgInitial(org: string): string {
+  return org.trim().slice(0, 1).toUpperCase();
+}
+
+/**
+ * The tenant menu button's accessible name. Collapsed, it starts with the visible org initial
+ * (WCAG 2.5.3, label in name); expanded, the visible tenant name is already in it.
+ */
+export function tenantSwitchLabel(name: string, org: string, collapsed: boolean): string {
+  const initial = collapsed ? orgInitial(org) : '';
+  return initial === '' ? t('tenant.switch', { name }) : t('tenant.switchBadge', { initial, name });
+}
 
 export function TenantSwitcher({ collapsed }: { collapsed: boolean }) {
   const session = useSession();
@@ -45,11 +60,11 @@ export function TenantSwitcher({ collapsed }: { collapsed: boolean }) {
   const menu = (
     <MenuTrigger>
       <Button
-        aria-label={t('tenant.switch', { name })}
+        aria-label={tenantSwitchLabel(name, org, collapsed)}
         className={cx(collapsed ? styles['badge'] : styles['trigger'])}
       >
         {collapsed ? (
-          <span aria-hidden="true">{org.slice(0, 1).toUpperCase()}</span>
+          <span aria-hidden="true">{orgInitial(org)}</span>
         ) : (
           <>
             <span className={cx(styles['current'])}>{name}</span>
@@ -58,6 +73,7 @@ export function TenantSwitcher({ collapsed }: { collapsed: boolean }) {
         )}
       </Button>
       <Popover placement={collapsed ? 'end top' : 'bottom start'}>
+        {/* MenuTrigger labels this menu by the trigger (aria-labelledby), which overrides aria-label. */}
         <Menu aria-label={t('tenant.menu')} selectionMode="single" selectedKeys={[tenant]}>
           {session.tenants.map((x) => (
             <MenuItem

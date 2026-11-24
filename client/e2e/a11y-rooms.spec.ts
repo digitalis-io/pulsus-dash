@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { t } from '../src/i18n/t.ts';
 import { LEVEL_NAME } from '../src/logs/levels.ts';
+import { scanLabelInName } from '../src/test/labelInName.ts';
 import { createAnnotation, deleteAnnotations } from './annotationApi.ts';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { createBoard, deleteBoard } from './boardApi.ts';
@@ -19,6 +20,9 @@ import {
 } from './helpers.ts';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+
+/** axe's label-in-name rule (WCAG 2.5.3): it must run in every state (#145). */
+const LABEL_RULE = 'label-content-name-mismatch';
 
 /**
  * Rules not run in one engine and state, with the reason. Firefox's page crashes inside axe's
@@ -47,9 +51,17 @@ async function seriousViolations(page: Page, state = ''): Promise<string[]> {
     .withTags(TAGS)
     .disableRules([...skip])
     .analyze();
-  return r.violations
+  const out = r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  const ran = [r.violations, r.passes, r.incomplete, r.inapplicable].some((l) =>
+    l.some((x) => x.id === LABEL_RULE),
+  );
+  if (!ran) out.push(`${LABEL_RULE}: did not run`);
+  // The strict scan (#145): axe skips one-letter and "aa"/"abc" visible text; this does not.
+  // `undefined` scans the default root, document.body.
+  out.push(...(await page.evaluate(scanLabelInName, undefined)));
+  return out;
 }
 
 async function smallTargets(page: Page): Promise<string[]> {
@@ -500,6 +512,64 @@ test.describe('e2e:a11y-rooms logs', () => {
       spoken,
     ).toBe(true);
     await expect(first.locator('[data-log-glyph]')).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+/**
+ * WCAG 2.5.3, label in name (#145): the checks catch a mismatch axe misses (one letter) and one
+ * it finds, and the collapsed sidebar's org-initial tenant badge passes them.
+ */
+test.describe('e2e:a11y-rooms label in name', () => {
+  test('label in name: the checks catch a mismatch', async ({ page }) => {
+    await open(page, '/t/demo/boards');
+    // Built node by node: the page enforces Trusted Types (T18-004).
+    await page.evaluate(() => {
+      const el = (tag: string, attrs: Record<string, string>, text: string): HTMLElement => {
+        const e = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+        e.textContent = text;
+        return e;
+      };
+      const badge = el('button', { 'aria-label': 'Switch tenant' }, '');
+      badge.append(el('span', { 'aria-hidden': 'true' }, 'Q'));
+      document
+        .querySelector('main')
+        ?.append(
+          el('button', { 'aria-label': 'Open settings' }, 'Edit'),
+          badge,
+          el('span', { id: 'lin-q', 'aria-label': 'Open' }, 'Q'),
+          el('button', { 'aria-labelledby': 'lin-q' }, 'Q'),
+        );
+    });
+    const v = await seriousViolations(page);
+    expect(v.some((e) => e.startsWith(`${LABEL_RULE}:`))).toBe(true);
+    expect(v.filter((e) => e.startsWith('label-in-name:'))).toEqual([
+      'label-in-name: button "Edit" not in "Open settings"',
+      'label-in-name: button "Q" not in "Switch tenant"',
+      'label-in-name: button "Q" not in "Open"',
+    ]);
+  });
+
+  const collapsedDark = async (page: Page): Promise<void> => {
+    await page.addInitScript(() => {
+      localStorage.setItem('pulsus-dash.sidebar', 'collapsed');
+      localStorage.setItem('pulsus-dash.theme', 'dark');
+    });
+    await open(page, '/t/demo/boards');
+  };
+  const BADGE = 'D, switch tenant, current: Demo';
+
+  test('label in name: dark, sidebar collapsed', async ({ page }) => {
+    await collapsedDark(page);
+    await page.getByRole('button', { name: BADGE, exact: true }).waitFor();
+    expect(await seriousViolations(page, 'sidebar collapsed')).toEqual([]);
+  });
+
+  test('label in name: dark, collapsed tenant menu open', async ({ page }) => {
+    await collapsedDark(page);
+    await page.getByRole('button', { name: BADGE, exact: true }).click();
+    await page.getByRole('menu', { name: BADGE, exact: true }).waitFor();
+    expect(await seriousViolations(page, 'collapsed tenant menu')).toEqual([]);
   });
 });
 

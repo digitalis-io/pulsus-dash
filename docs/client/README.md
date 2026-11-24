@@ -45,7 +45,7 @@ Sizes come from the tokens, at a 1440 × 900 reference:
 | Element | Behaviour |
 |---|---|
 | Skip link | First tab stop, "Skip to main content"; moves focus to `<main id="main">` |
-| Sidebar, 240 px (56 px collapsed) | Full height. Top block 56 px, its bottom hairline continuing the header's: product mark (link to Boards) and the org and tenant block. With two or more tenant bindings the tenant name is a menu button (`Switch tenant, current: <name>`) listing the bindings; choosing one opens that tenant's Boards with the current time range (push). With one binding the block is static text. Collapsed: the mark, and a 32 px org-initial menu button when there are two or more bindings |
+| Sidebar, 240 px (56 px collapsed) | Full height. Top block 56 px, its bottom hairline continuing the header's: product mark (link to Boards) and the org and tenant block. With two or more tenant bindings the tenant name is a menu button (`Switch tenant, current: <name>`) listing the bindings; choosing one opens that tenant's Boards with the current time range (push). With one binding the block is static text. Collapsed: the mark, and a 32 px org-initial menu button named "`<initial>`, switch tenant, current: `<name>`", so its name starts with the letter it shows (with a blank org name it is "Switch tenant, current: `<name>`"), when there are two or more bindings |
 | Sidebar navigation (`nav` "Main") | Boards; Explore with Metrics and Logs; Starred (the user's starred boards, from the BFF, in title order, empty text "No starred boards", "Could not load starred boards" on failure); Recent (the last five boards the user opened, from the BFF, newest first, empty text "No recent boards", "Could not load recent boards" on failure). Both are per user, the same in every browser and tenant (IA-021), and refetch on every return to the tab. Collapsed: icon links with tooltips; Starred and Recent hidden. The current page is marked with `aria-current="page"` (Boards also on a board page). Links carry the current `from`, `to` and `refresh`, and preload their page on hover and focus |
 | Sidebar footer | Admin (administrators only); the data-source line "Data source: `<tenant slug>` · `<state>`" for the current tenant (expanded sidebar only, IA-021; nothing when the tenant has no data-source state): the result of the data-source check, "Connected", "Unreachable", "Not authorised" or "Error", and "Not checked" while it is pending or when it fails (`useQuery` key `['datasource', tenant]`, reused for 60 s, no retry); and "Collapse sidebar" / "Expand sidebar" (`aria-expanded`). There is no keyboard shortcut for the toggle: `[` is the window-step key (INT-032). The state persists in `localStorage` |
 | Page header, 56 px | Left: a breadcrumb (`Boards` link on a board, `Explore` text on Explore pages, none elsewhere), the page title `<h1>` (20 px; truncates with an ellipsis, full title in `title`), and on a board the "Star board" toggle. Right, in this order: time range trigger, refresh split control, user menu. No command palette entry until the palette exists |
@@ -241,6 +241,43 @@ those props.
 | `suppressed-token-rule` | a comment that disables a `tokens/` rule                                                                                                                | — (there are no inline exceptions)                                    |
 
 The generated token files and tests are not linted.
+
+## Accessible names (WCAG 2.5.3, IA-015, T08-007)
+
+**Rule.** A control's accessible name contains the words of its visible text, in order. Letters and
+initials count as text (the collapsed tenant badge's `D`, the avatar's `AA`); icons and symbols
+(`★`, `‹`, `›`, SVG icons) do not. Where only a letter or initials show, the name starts with them:
+the avatar button is "`<initials>`, user menu: `<name>`" and the collapsed tenant badge
+"`<initial>`, switch tenant, current: `<name>`". A menu that `MenuTrigger` labels by its trigger
+(`aria-labelledby`) takes the trigger's name too.
+
+**Checks.** `seriousViolations` in `e2e/a11y-rooms.spec.ts` runs in every a11y-rooms state, on
+chromium, firefox and webkit, and adds two checks to the axe run:
+
+- It fails with `label-content-name-mismatch: did not run` if axe's label-in-name rule is absent
+  from every result list (a future axe upgrade that drops, renames or untags it).
+- It runs `scanLabelInName` (`src/test/labelInName.ts`) in the page. For every button, link and
+  widget role whose name can come from its content (`menuitem*`, `tab`, `option`, `checkbox`,
+  `switch`, `radio`, `treeitem`) that has an `aria-label` or `aria-labelledby` and is not hidden,
+  it takes the name from axe-core's own computation (`axe.commons.text.accessibleText`, which
+  follows `aria-labelledby` targets and their own `aria-label`) and the visible text from the text
+  nodes (skipping SVG, hidden and React Aria's visually-hidden content; `aria-hidden` text counts).
+  Both are folded to lower-case letter and digit words (diacritics removed); the visible words must
+  appear contiguously in the name's. Unlike axe's rule it does not skip one-letter, `aa` or `abc`
+  text. Each mismatch is an entry `label-in-name: <tag> "<visible>" not in "<name>"`; with no axe
+  on the page it returns `label-in-name: axe-core not loaded`.
+
+The scan needs axe-core on `globalThis.axe` (`AxeBuilder` injects it; the unit tests in
+`src/test/labelInName.test.ts` set it) and is self-contained, so `page.evaluate` can serialise it.
+The self-test `e2e:a11y-rooms label in name` › `label in name: the checks catch a mismatch` adds
+three mismatched buttons to a page and expects axe's rule and the three scan entries; the same
+describe checks the collapsed sidebar and its open tenant menu.
+
+**Fixing a mismatch:** put the visible text in the message, first when it is a letter or initials
+(`'{initial}, switch tenant, current: {name}'`), and add a unit assertion for the name.
+
+Designs: [IA-015, IA-021](../../designs/product/02-information-architecture.md),
+[T08-007, T08-027](../../designs/technical/T08-dom-component-kit.md).
 
 ## Keyboard coverage
 
