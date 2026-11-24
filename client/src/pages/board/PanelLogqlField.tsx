@@ -3,7 +3,8 @@
  * hint and the Run query button, the LogQL editor from Explore › Logs' lazy chunk (its placeholder
  * while it loads, a plain text area if it fails) and one status row, as the PromQL field without
  * the metric picker. Its completion source is made once per tenant and reads the board window at
- * each lookup. The run rules are `useQueryFieldRun`'s.
+ * each lookup. The run rules are `useQueryFieldRun`'s; the fallback text area has them too: Run
+ * query and Shift+Enter or Mod+Enter run it, unchanged text included.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useRef, useState, type JSX } from 'react';
@@ -57,6 +58,7 @@ export function PanelLogqlField(p: PanelQueryFieldProps): JSX.Element {
     };
   }, []);
   const Editor = mountable ? (editor?.LogQLEditor ?? null) : null;
+  const fallback = modules.failed && Editor === null;
   const unrun = p.value !== p.runText;
   return (
     <div ref={fieldRef} className={cx(styles['queryField'])}>
@@ -68,7 +70,7 @@ export function PanelLogqlField(p: PanelQueryFieldProps): JSX.Element {
         <Button
           variant="primary"
           ref={runButtonRef}
-          isDisabled={Editor === null || p.readOnly}
+          isDisabled={(Editor === null && !fallback) || p.readOnly}
           aria-describedby={statusId}
           onPress={run}
         >
@@ -89,12 +91,20 @@ export function PanelLogqlField(p: PanelQueryFieldProps): JSX.Element {
           label={t('editor.query')}
           placeholder={t('explore.logs.placeholder')}
         />
-      ) : modules.failed ? (
+      ) : fallback ? (
         <>
           <TextArea
             label={t('editor.query')}
             value={p.value}
             onChange={onDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                run();
+              } else {
+                e.continuePropagation();
+              }
+            }}
             isReadOnly={p.readOnly}
             mono
             rows={5}

@@ -344,7 +344,7 @@ query editor could not be loaded. Reload the page to try again." For LogQL the f
 `PanelLogqlField`: the same layout without the picker, Explore › Logs' `LogQLEditor` from
 `useLogqlModules` (placeholder `explore.logs.placeholder`), and a completion source made by
 `editor.createLogSource({api, queryClient, tenant, window})` once per editor, api, query client and
-tenant (T09-014; the window is read at each lookup). Both fields take their run rules (the draft
+tenant (T09-014; the window is read at each lookup). If the LogQL chunk fails to load, its plain text area keeps Run query enabled and runs on Shift+Enter or Mod+Enter, unchanged text included (`PanelLogqlField.fallback.test.tsx`). Both fields take their run rules (the draft
 ref, the Run keys through `flushSync`, the run on leaving, the Escape guard) from
 `useQueryFieldRun`. A language change keeps the text, so the field and the run follow it. A Run of
 the same text also adds one to `editRun.seq`, which reaches the edited panel and the editor as

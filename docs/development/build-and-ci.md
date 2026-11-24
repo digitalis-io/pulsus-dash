@@ -575,7 +575,7 @@ the browser otherwise).
   `e2e/transcripts/board-logs-probe-checkout.json` (`{app="checkout"}` with upstream `limit` 2, any
   window: `checkout line D` at 12:24, inside both windows, since the BFF refuses an upstream entry outside the request window), listed in `TestE2ETranscripts`; the other requests by the
   Explore › Logs transcripts. On the stub, `e2e:a11y-rooms` adds `b-1 view, log panel` (the 30 stub
-  lines in `Log lines: Errors`) and `b-1 edit, log panel as bars`, `e2e:csp-violations` toggles a
+  lines in `Log lines: Errors`), `b-1 edit, log panel editor on bars` (not in Firefox, whose page crashes inside axe with that editor open) and `b-1 edit, log panel as bars` (after Done), `e2e:csp-violations` toggles a
   board log panel's Wrap lines, and the keyboard loop L34 operates the order options, Wrap lines
   and the `Log lines` region of `Errors` and `Edge errors` on the board, at full screen, in the
   editor's preview and on a copy, before L24's drains run.

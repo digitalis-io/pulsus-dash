@@ -244,8 +244,11 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await editor.getByRole('button', { name: /Visualisation$/ }).click();
   await page.getByRole('option', { name: 'Bars', exact: true }).click();
   await expect(editor.locator('[data-panel-preview]')).toHaveAttribute('data-panel-vis', 'bars');
-  // Checked with the editor closed: Firefox's page crashes inside axe with the panel editor open on
-  // a LogQL panel (in any rule set), as in the other editor states above.
+  // With the editor open, except in Firefox: its page crashes inside axe with the panel editor open
+  // on a LogQL panel (in any rule set). Then, in every engine, with the editor closed.
+  if (page.context().browser()?.browserType().name() !== 'firefox') {
+    await check('b-1 edit, log panel editor on bars');
+  }
   await editor.getByRole('button', { name: 'Done' }).click();
   await expect(editor).toBeHidden();
   await expect(errors).toHaveAttribute('data-panel-vis', 'bars');

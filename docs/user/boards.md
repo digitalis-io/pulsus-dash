@@ -173,9 +173,10 @@ A new time range (the picker, the window keys, a brush, **Narrow the time range*
 now** and a change to a variable it uses load the first page again: at once on screen, and when it
 scrolls in off screen. A panel with another visualisation asks the server what the query returns
 (one line at most) and, for **Bars**, the volume at the same time, so it shows one chart; a new
-time range cancels both. A variable the panel does not use changes nothing. While the panel's
-editor is open the preview runs the query and the panel behind waits; **Done** runs the panel
-again.
+time range cancels both. A variable the panel does not use changes nothing. While a log-lines
+panel's editor is open, the preview loads the lines and the panel behind waits; **Done** loads them
+again for the panel. A panel with another visualisation shares the preview's request instead, as a
+PromQL panel does: the panel behind shows the same answer, and **Done** asks for nothing new.
 
 The panel's states are those of [PromQL panels](#promql-panels): "Add a query", "Set a value for
 `$name` to run this panel", "Loading", the error with "(line 1, column 7)" and **Narrow the time
