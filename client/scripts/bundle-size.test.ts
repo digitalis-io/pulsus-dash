@@ -183,6 +183,11 @@ describe('bundle-size required artefacts (T05-002)', () => {
       'missing-artefact:font jetbrains-mono-latin-wght-normal',
     ],
     ['(k)', { files: { 'assets/BoardPage-x.js': null } }, 'missing-artefact:assets/BoardPage-x.js'],
+    [
+      '(l)',
+      { dropKeys: ['src/editor/logqlEditor.ts'] },
+      'missing-artefact:src/editor/logqlEditor.ts',
+    ],
   ] as [string, Overrides, string][])('%s → %s', (_case, overrides, rule) => {
     const r = checkBundle(makeDist(overrides), budgets);
     expect(r.findings.map((f) => f.rule)).toContain(rule);
@@ -222,5 +227,30 @@ describe('bundle-size editor closure (PRF-009)', () => {
     expect(rules(makeDist({ files: { 'assets/editor-x.js': Buffer.from('x') } }))).toEqual([
       'editor-orphan',
     ]);
+  });
+});
+
+describe('ci:bundle-size workflow (#135)', () => {
+  it('measures dist-http after the http build', () => {
+    const lines = readFileSync(
+      new URL('../../.github/workflows/client.yml', import.meta.url),
+      'utf8',
+    ).split('\n');
+    const httpSize = lines.flatMap((l, i) =>
+      l === "      - name: 'ci:bundle-size (http build)'" ? [i] : [],
+    );
+    expect(httpSize).toHaveLength(1);
+    const h = httpSize[0] ?? -1;
+    expect(lines[h + 1]).toBe('        run: npm run size -- dist-http');
+    const httpBuild = lines.findIndex((l) => l.includes('vite build --outDir dist-http'));
+    expect(httpBuild).toBeGreaterThanOrEqual(0);
+    expect(h).toBeGreaterThan(httpBuild);
+    const stubSize = lines.flatMap((l, i) =>
+      l === "      - name: 'ci:bundle-size (stub build)'" ? [i] : [],
+    );
+    expect(stubSize).toHaveLength(1);
+    const st = stubSize[0] ?? -1;
+    expect(lines[st + 1]).toBe('        run: npm run size');
+    expect(st).toBeLessThan(httpBuild);
   });
 });

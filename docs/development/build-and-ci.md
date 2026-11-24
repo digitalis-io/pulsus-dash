@@ -33,7 +33,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run gen:log-transcripts` | Writes the generated paging transcripts `e2e/transcripts/logs-paging-1.json` and `logs-paging-2.json` from `scripts/logTranscripts.ts` (#66 Part C) | `unit:log-transcripts` (compares them byte for byte, in `npm test`) |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
-| `npm run size` | Brotli sizes of `dist/` against `bundle-budgets.json` | `ci:bundle-size` |
+| `npm run size` | Brotli sizes of `dist/` (or the build given as `-- <dir>`, e.g. `-- dist-http`) against `bundle-budgets.json` | `ci:bundle-size` |
 | `npm run check:lockfile` | Exact versions, lockfile v3, registry and integrity of every locked package | `ci:lockfile` |
 | `npm run origins` | No URL of another origin in a resource position of the build, no unlisted URL text | `ci:dep-audit` (build origins) |
 | `npm run audit` | Dependency policy, then `npm audit` (runtime high, all critical) and `npm audit signatures` | `ci:dep-audit`, `ci:npm-audit` |
@@ -58,13 +58,17 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 
 ### Bundle budgets
 
+CI runs the check on the stub build (`dist/`) and on the HTTP build (`dist-http/`). The HTTP build
+is authoritative for required lazy entries, because the stub build's `src/dev/` harness routes can
+keep an entry alive that the app no longer imports (#135).
+
 `bundle-size.ts` (`ci:bundle-size`, PRF-009, PRF-033) reports one row per budget class:
 
 | Class | Measured | Budget (brotli) |
 |---|---|---|
 | `initialJs` | the entry and the initial route module with their static imports | 200 000 |
 | `initialCss` | the CSS of those chunks | 30 000 |
-| `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts`, `src/editor/logqlEditor.ts`; an entry missing from the manifest is skipped, so `logqlEditor.ts`, which only the stub and dev builds' LogQL harness route imports until the Logs page does, counts where it is built) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
+| `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts`, `src/editor/logqlEditor.ts`; every entry is also a required lazy module, so a missing one fails as `missing-artefact`) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
 | `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
 | `fonts`, `totalExceptEngine` | the fonts; every file | 150 000; 1 000 000 |
 
@@ -574,7 +578,7 @@ no secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
-| `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
+| `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`, stub build) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `size -- dist-http` (`ci:bundle-size`, http build) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
 | `e2e` | after `check`, one job per engine (`chromium`, `firefox`, `webkit`), with a PostgreSQL 16.16 service on port 55432: `npm ci`, Go 1.27.4 and its toolchain check, install that browser with its system dependencies, `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium with the `golden-update` label); the HTML report and `test-results/` are uploaded for 14 days, and the Chromium job also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. CI retries a failed test once, except the keyboard coverage spec (`retries: 0` in its `describe`): it is deterministic, and a second run of its ~32 minutes does not fit the job. `timeout-minutes` is 90, a stopgap for the Explore › Logs rows (#66 Part C); the job's run time is #130 |
 
 The end-to-end jobs need the browsers' system libraries, which `--with-deps` installs on the CI
