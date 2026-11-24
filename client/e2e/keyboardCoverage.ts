@@ -95,6 +95,11 @@ export function parseSnapshot(yaml: string): string[] {
   return keys;
 }
 
+/** Stub (#130 plan 7 §3.2); see the implementation commit. */
+export function routeOf(path: string, h1: string): string {
+  return `${h1}${path}`;
+}
+
 /** The route pattern of the page (§3.4), or `not-found` / `session-error` from the page heading. */
 async function routeState(page: Page): Promise<string> {
   const h1 = await page.evaluate(() => document.querySelector('h1')?.textContent ?? '');

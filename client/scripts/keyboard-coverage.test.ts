@@ -17,6 +17,7 @@ import {
   type KeyboardPart,
   type PartCoverage,
 } from '../e2e/keyboardParts.ts';
+import { routeOf } from '../e2e/keyboardCoverage.ts';
 import { checkKeyboardCoverage, checkKeyboardCoverageDir } from './keyboard-coverage.ts';
 import { InputError } from './lib/report.ts';
 
@@ -163,6 +164,15 @@ describe('keyboard coverage over the parts (#130, IA-015, T05-002)', () => {
     expect(partOfTitle('K7 toolbar, edit layout (L25, L26)')).toBe('K7');
     expect(partOfTitle('K4 b-3 and b-2 view tools (L24 b-3 b-2)')).toBe('K4');
     expect(partOfTitle('K8 x')).toBeUndefined();
+  });
+
+  it('routeOf matches the route table', () => {
+    expect(routeOf('/t/acme/board/x1', '')).toBe('/t/:tenant/board/:uid');
+    expect(routeOf('/t/acme/boards', '')).toBe('/t/:tenant/boards');
+    expect(routeOf('/t/acme/nope', 'Page not found')).toBe('/t/:tenant/*');
+    expect(routeOf('/nope', 'Page not found')).toBe('not-found');
+    expect(routeOf('/', 'Pulsus Dash could not load your session')).toBe('session-error');
+    expect(routeOf('/signed-out', '')).toBe('/signed-out');
   });
 
   it('drainPending leaves out operated and done keys', () => {

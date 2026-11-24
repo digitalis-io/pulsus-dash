@@ -1,6 +1,12 @@
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { E2E_SHARDS, REST_B_FILES, shardFilter, type ShardFilter } from './e2eShards.ts';
+import {
+  E2E_SHARDS,
+  E2E_TIMEOUTS,
+  REST_B_FILES,
+  shardFilter,
+  type ShardFilter,
+} from './e2eShards.ts';
 
 /** Playwright's selection: `grep` must match, `grepInvert` must not (title plus tags). */
 const selects = (f: ShardFilter, title: string): boolean =>
@@ -48,5 +54,32 @@ describe('e2e shards (#130)', () => {
     expect(() => shardFilter('kbd-d')).toThrow(
       'E2E_SHARD must be one of kbd-a, kbd-b, kbd-c, rest, rest-b',
     );
+  });
+
+  it('timeouts nest with margin', () => {
+    const t = E2E_TIMEOUTS;
+    expect(t.partMin).toBeLessThan(t.globalMin);
+    expect(t.setupMaxMin + t.globalMin + t.tailMin).toBeLessThanOrEqual(t.jobMin);
+    expect(t.partMin).toBeGreaterThanOrEqual(30);
+    // The e2e job's own timeout-minutes, from its block of the workflow.
+    const yml = readFileSync(
+      new URL('../../.github/workflows/client.yml', import.meta.url),
+      'utf8',
+    );
+    const block = /\n {2}e2e:\n([\s\S]*?)\n {2}[a-z][\w-]*:\n/.exec(yml)?.[1] ?? '';
+    const job = /\n {4}timeout-minutes: (\d+)\n/.exec(`\n${block}\n`)?.[1];
+    expect(Number(job)).toBe(t.jobMin);
+  });
+
+  it('spec and config use E2E_TIMEOUTS', () => {
+    const read = (p: string): string => readFileSync(new URL(p, import.meta.url), 'utf8');
+    const spec = read('../e2e/keyboard.spec.ts');
+    const config = read('../playwright.config.ts');
+    expect(spec).toContain('E2E_TIMEOUTS.partMin');
+    expect(config).toContain('E2E_TIMEOUTS.globalMin');
+    for (const text of [spec, config]) {
+      expect(text).not.toContain('22 * 60_000');
+      expect(text).not.toContain('25 * 60_000');
+    }
   });
 });

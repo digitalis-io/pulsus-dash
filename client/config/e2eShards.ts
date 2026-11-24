@@ -66,3 +66,12 @@ export function shardFilter(name: string | undefined): ShardFilter {
   if (!isShard(name)) throw new Error(`E2E_SHARD must be one of ${E2E_SHARDS.join(', ')}`);
   return { ...FILTERS[name] };
 }
+
+/** Stub (#130 plan 7 §3.5); see the implementation commit. */
+export const E2E_TIMEOUTS = {
+  partMin: 22,
+  globalMin: 25,
+  setupMaxMin: 13,
+  tailMin: 2,
+  jobMin: 40,
+} as const;
