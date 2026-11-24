@@ -58,7 +58,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   // the union of their files (scripts/keyboard-coverage.ts). No retry: the traversal is
   // deterministic, so a retry only hides a real failure.
   test.describe.configure({ mode: 'parallel', retries: 0 });
-  part('K1', 'shell and chart frames (L1–L22)', ['@kbd'], (s) => shellLoops(s));
+  part('K1', 'shell and chart frames (L1–L22)', ['@kbd', '@kbd-a'], (s) => shellLoops(s));
   part('K2', 'panel editor (L27)', ['@kbd', '@kbd-a'], (s) => boardSteps(s).editor());
   part('K3', 'board list and b-1 view tools (L23, L24 b-1)', ['@kbd', '@kbd-b'], async (s) => {
     const b = boardSteps(s);

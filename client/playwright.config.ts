@@ -66,7 +66,7 @@ export default defineConfig({
     },
   },
   retries: ci ? 1 : 0,
-  // CI runs each browser as three jobs (#130): `E2E_SHARD` picks the tests by tag.
+  // CI runs each browser as four jobs (#130): `E2E_SHARD` picks the tests by tag or spec file.
   ...shardFilter(process.env['E2E_SHARD']),
   // Two workers on CI's four vCPUs; a run that overruns fails with its artefacts, not at the job's
   // timeout.
