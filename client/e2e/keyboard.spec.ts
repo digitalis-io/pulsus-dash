@@ -68,7 +68,7 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   part(
     'K4',
     'b-3 and b-2 view tools, toolbar, edit layout (L24 b-3 b-2, L25, L26)',
-    ['@kbd', '@kbd-b'],
+    ['@kbd', '@kbd-c'],
     async (s) => {
       const b = boardSteps(s);
       await b.viewTools('b-3');
@@ -95,7 +95,7 @@ function part(
   body: (s: Script) => Promise<void>,
 ): void {
   test(`${id} ${title}`, { tag }, async ({ page }, info) => {
-    test.setTimeout(20 * 60_000);
+    test.setTimeout(22 * 60_000);
     const s = await keyboardSession(page, new Set(DRAIN_SKIP[id]));
     await body(s);
     writeCoverage(info, id, s.h);

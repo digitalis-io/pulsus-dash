@@ -13,7 +13,7 @@ export type KeyboardPart = (typeof KEYBOARD_PARTS)[number];
  */
 export const SINGLE_TEST_ORDER: readonly KeyboardPart[] = ['K1', 'K3', 'K4', 'K2', 'K5'];
 
-/** The tag every part carries; `@kbd-a` and `@kbd-b` pick the parts of the two keyboard shards. */
+/** The tag every part carries; `@kbd-a`, `@kbd-b` and `@kbd-c` pick the keyboard shards' parts. */
 export const KEYBOARD_TAG = '@kbd';
 
 /** `K3 board list…` → 'K3'; anything else → undefined. */
@@ -246,17 +246,30 @@ export function drainPending(
   });
 }
 
-/** Stub (#130 plan 6 §3.1); see the implementation commit. */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-export function stableRead<T>(
-  _read: () => Promise<{ state: string; value: T }>,
-  _stateNow: () => Promise<string>,
-  _attempts = 3,
-  _between: () => Promise<void> = () => Promise.resolve(),
+/**
+ * Calls `read`, then `stateNow`. Returns `read`'s result when both name the same state. Otherwise,
+ * or when `read` throws, awaits `between` and tries again, `attempts` times in all; then undefined.
+ * The harness takes a state and its snapshot from one stable read, so a dialog that opens during a
+ * read cannot put its controls under the state before it (#130).
+ */
+export async function stableRead<T>(
+  read: () => Promise<{ state: string; value: T }>,
+  stateNow: () => Promise<string>,
+  attempts = 3,
+  between: () => Promise<void> = () => Promise.resolve(),
 ): Promise<{ state: string; value: T } | undefined> {
-  return Promise.resolve(undefined);
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await between();
+    let r: { state: string; value: T };
+    try {
+      r = await read();
+    } catch {
+      continue; // the page changed under the read (an overlay closed); read again
+    }
+    if ((await stateNow()) === r.state) return r;
+  }
+  return undefined;
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /** Under the project's outputDir (test-results/), which Playwright empties at run start. */
 export const COVERAGE_DIR = 'keyboard-coverage';

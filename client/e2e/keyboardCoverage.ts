@@ -7,10 +7,17 @@
  * or overlay that no loop operates fails without editing a list.
  *
  * Snapshot scope: with an overlay open (a React Aria popover or a modal dialog) the snapshot is the
- * overlay's, because React Aria popovers leave the page behind them in the accessibility tree.
+ * overlay's, because React Aria popovers leave the page behind them in the accessibility tree. With
+ * none open it is `#root` (else `body`): React Aria portals every overlay outside `#root`, so a
+ * dialog's controls are never collected under `+ none` (#130).
+ *
+ * Stable reads (#130): a state and what is read under it (the snapshot, the focused control) come
+ * from one `stableRead`, so a dialog that opens during a read is not attributed to the state before
+ * it. A collect that cannot get a stable read in three tries collects nothing (the next keystroke
+ * collects again); a drain or an operating keystroke that cannot throws.
  */
 import type { Locator, Page } from '@playwright/test';
-import { drainPending } from './keyboardParts.ts';
+import { drainPending, stableRead } from './keyboardParts.ts';
 
 export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
   'link',
@@ -253,9 +260,12 @@ export function keyboardHarness(
     const route = await routeState(page);
     visited.add(route);
     const overlay = await overlayState(page);
+    const app = page.locator('#root');
     const root =
       overlay.kind === 'none'
-        ? page.locator('body')
+        ? (await app.count()) > 0
+          ? app
+          : page.locator('body')
         : overlay.kind === 'popover'
           ? page.locator(POPOVER).last()
           : page.locator('[role="dialog"]').last();
@@ -276,19 +286,32 @@ export function keyboardHarness(
     );
   }
 
+  /** The state now; `last` keeps it for the error of a read that never held still. */
+  let last = '';
+  async function stateNow(): Promise<string> {
+    last = (await scope()).state;
+    return last;
+  }
+
+  /** Keys in scope now, less the screen-reader-only controls and copies of copies. */
+  async function snapshot(timeout?: number): Promise<{ state: string; value: string[] }> {
+    const { state, root } = await scope();
+    let skip = await screenReaderOnly(root);
+    const yaml = await root.ariaSnapshot(timeout === undefined ? {} : { timeout });
+    skip = [...skip, ...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
+    return { state, value: parseSnapshot(yaml).filter((k) => !skip.includes(k)) };
+  }
+
+  function unstable(): Error {
+    return new Error(`keyboard: state changed during read ×3 (${last})`);
+  }
+
   async function collect(): Promise<void> {
     await settle();
-    const { state, root } = await scope();
-    let yaml = '';
-    let skip: string[] = [];
-    try {
-      skip = await screenReaderOnly(root);
-      yaml = await root.ariaSnapshot({ timeout: 5_000 });
-      skip = [...skip, ...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
-    } catch {
-      return; // the overlay closed between the reads; the next keystroke collects again
-    }
-    for (const k of parseSnapshot(yaml)) if (!skip.includes(k)) collected.add(`${state} › ${k}`);
+    // Undefined: an overlay opened or closed under every read; the next keystroke collects again.
+    const r = await stableRead(() => snapshot(5_000), stateNow, 3, settle);
+    if (r === undefined) return;
+    for (const k of r.value) collected.add(`${r.state} › ${k}`);
   }
 
   /** `role "name"` (with its `#n` among equals in the current scope) of the focused control. */
@@ -346,11 +369,19 @@ export function keyboardHarness(
   }
 
   async function record(): Promise<string | null> {
-    const f = await focused();
-    if (f === null) return null;
-    const { state } = await scope();
-    operated.add(`${state} › ${f}`);
-    return f;
+    const r = await stableRead(
+      async () => {
+        const { state } = await scope();
+        return { state, value: await focused() };
+      },
+      stateNow,
+      3,
+      settle,
+    );
+    if (r === undefined) throw unstable();
+    if (r.value === null) return null;
+    operated.add(`${r.state} › ${r.value}`);
+    return r.value;
   }
 
   return {
@@ -381,15 +412,9 @@ export function keyboardHarness(
     },
     async pendingHere() {
       await settle();
-      const { state, root } = await scope();
-      const skip = [...(await screenReaderOnly(root)), ...(await beyondFirstCopy(root))];
-      const keys = parseSnapshot(await root.ariaSnapshot());
-      return drainPending(
-        keys.filter((k) => !skip.includes(k)),
-        state,
-        operated,
-        done,
-      );
+      const r = await stableRead(() => snapshot(), stateNow, 3, settle);
+      if (r === undefined) throw unstable();
+      return drainPending(r.value, r.state, operated, done);
     },
     collected: () => collected,
     operated: () => operated,
