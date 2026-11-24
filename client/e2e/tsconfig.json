@@ -16,11 +16,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": [
-    ".",
-    "../scripts/inp.ts",
-    "../scripts/longTasks.ts",
-    "../scripts/eventLatency.ts",
-    "../scripts/ulp.ts"
-  ]
+  "include": [".", "../scripts/inp.ts", "../scripts/longTasks.ts", "../scripts/eventLatency.ts"]
 }
