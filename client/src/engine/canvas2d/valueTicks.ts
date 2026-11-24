@@ -4,7 +4,9 @@
  * three, two or one ticks on short plots so labels never collide, and every result is checked
  * through the renderer's own y mapping (`tickY`). The engine's `dash_scales::value_ticks` and
  * `extreme_ticks` are the same algorithm, equal on the fixture inputs (`ticks.json`,
- * `ticks-extreme.json`).
+ * `ticks-extreme.json`) in every browser engine (#126): the integer powers come from `pow10` and
+ * `powBase`, which return V8's `**` values (`pow.json`, as dash-scales `js_pow` does) through a
+ * correctly rounded decimal parse and exact multiplication, never the engine's own `**`.
  */
 export interface ValueTicks {
   readonly min: number;
@@ -63,34 +65,64 @@ export function ticksFit(
   return true;
 }
 
-/** 2^1022: the half-span limit of the nice search (stub, #126). */
-export const SPAN_HALF_LIMIT = Number.NaN;
+/**
+ * The entries where V8's `10 ** k` (Node 24.22.3, engine/fixtures/pow.json) differs from the
+ * correctly rounded `Number(`1e${k}`)`. `unit:js-pow` checks the whole table against pow.json.
+ */
+const V8_POW10_OVERRIDES: ReadonlyMap<number, number> = new Map([
+  [23, 1.0000000000000001e23],
+  [210, 1.0000000000000001e210],
+]);
+/** Likewise for `1000 ** p` (keyed by p). */
+const V8_POW1000_OVERRIDES: ReadonlyMap<number, number> = new Map([[70, 1.0000000000000001e210]]);
+/** 1024 ** p for p = 0..=102, by repeated exact multiplication (powers of two). */
+const POW1024: readonly number[] = (() => {
+  const t = [1];
+  for (let p = 1; p <= 102; p++) t.push((t[p - 1] ?? NaN) * 1024);
+  return t;
+})();
+/** 2^1022: the half-span limit of the nice search (a literal: no `**`). */
+export const SPAN_HALF_LIMIT = 4.49423283715579e307;
 
-/** `10 ** k` as V8 computes it (stub, #126). */
+/**
+ * `10 ** k` as V8 computes it, for an integral or infinite k (= dash-scales `js_pow::pow10`):
+ * NaN → NaN; k < −340 → 0; k > 308 → +∞; else override ?? Number(`1e${k}`). A decimal parse is
+ * correctly rounded in every engine, so no engine's own `pow` is involved.
+ */
 export function pow10(k: number): number {
-  return Number.NaN + k;
+  if (Number.isNaN(k)) return NaN;
+  if (k < -340) return 0;
+  if (k > 308) return Infinity;
+  return V8_POW10_OVERRIDES.get(k) ?? Number(`1e${String(k)}`);
 }
 
-/** `base ** p` as V8 computes it (stub, #126). */
+/**
+ * `base ** p` as V8 computes it, for base 1000 or 1024 and an integral p ≥ 0
+ * (= dash-scales `js_pow::pow_base`): NaN or p < 0 → NaN; p > 102 → +∞;
+ * 1000: override ?? Number(`1e${3 * p}`); 1024: POW1024[p].
+ */
 export function powBase(base: 1000 | 1024, p: number): number {
-  return Number.NaN + base + p;
+  if (Number.isNaN(p) || p < 0) return NaN;
+  if (p > 102) return Infinity;
+  if (base === 1024) return POW1024[p] ?? NaN;
+  return V8_POW1000_OVERRIDES.get(p) ?? Number(`1e${String(3 * p)}`);
 }
 
 /** The next nice step: 1 → 2 → 5 → 10. */
 function nextNice(step: number): number {
   const k = Math.floor(Math.log10(step) + 1e-9);
-  const m = Math.round(step / 10 ** k);
-  return (m === 1 ? 2 : m === 2 ? 5 : 10) * 10 ** k;
+  const m = Math.round(step / pow10(k));
+  return (m === 1 ? 2 : m === 2 ? 5 : 10) * pow10(k);
 }
 
 /** The smallest of {1, 2, 5} · 10^k at least `x`. */
 function niceAtLeast(x: number): number {
   const k = Math.floor(Math.log10(x));
   for (const m of [1, 2, 5, 10]) {
-    const s = m * 10 ** k;
+    const s = m * pow10(k);
     if (s >= x * (1 - 1e-12)) return s;
   }
-  return 10 ** (k + 1);
+  return pow10(k + 1);
 }
 
 function round12(x: number): number {
@@ -124,7 +156,7 @@ export function niceValueTicks(
   if (dataMin > dataMax || Math.max(Math.abs(dataMin), Math.abs(dataMax)) > NICE_MAX_ABS) {
     return null;
   }
-  if (dataMax / 2 - dataMin / 2 >= 2 ** 1022) return null;
+  if (dataMax / 2 - dataMin / 2 >= SPAN_HALF_LIMIT) return null;
   const lo = dataMin;
   const hi = dataMax === dataMin ? dataMin + 1 : dataMax;
   if (hi <= lo) return null;
@@ -132,7 +164,7 @@ export function niceValueTicks(
     0,
     Math.floor(Math.log(Math.max(Math.abs(lo), Math.abs(hi))) / Math.log(base)),
   );
-  const unit = base ** p;
+  const unit = powBase(base, p);
   const target = (hi - lo) / unit / Math.max(2, Math.floor(heightPx / (2.5 * labelHeightPx)));
   let stepUnits = niceAtLeast(target);
   let { min, max } = snapped(lo, hi, stepUnits * unit);

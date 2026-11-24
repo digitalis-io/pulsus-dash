@@ -20,7 +20,6 @@
     ".",
     "../scripts/inp.ts",
     "../scripts/longTasks.ts",
-    "../scripts/eventLatency.ts",
-    "../scripts/ulp.ts"
+    "../scripts/eventLatency.ts"
   ]
 }
