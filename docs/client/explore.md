@@ -957,9 +957,9 @@ because the route loads first.
 
 `ci:bundle-size` measures the editor closure: the files of the `editorModules` entries
 (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts` and
-`src/editor/logqlEditor.ts`; all but the last in `required.lazyModules`, because `logqlEditor.ts` is
-a manifest entry only in builds with the LogQL harness route until the Logs page imports it, and an
-entry missing from the manifest is skipped) and every `assets/editor-*.js` file reachable from them
+`src/editor/logqlEditor.ts`; all four are also in `required.lazyModules`, so an entry missing from
+the manifest fails as `missing-artefact`, and CI checks both the stub and the HTTP build, where no
+`src/dev/` harness route can keep an entry alive) and every `assets/editor-*.js` file reachable from them
 through static manifest imports, walking only through `editor-*` files; other imported chunks keep
 their own initial or lazy rows, so each byte is counted once. The stub build measures 7 files, about
 135 KB brotli (budget 175 000 for the union, ADR-0014 §8); the route chunk `MetricsPage-*` keeps its
