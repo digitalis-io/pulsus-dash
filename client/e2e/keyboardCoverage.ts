@@ -95,37 +95,35 @@ export function parseSnapshot(yaml: string): string[] {
   return keys;
 }
 
-/** Stub (#130 plan 7 §3.2); see the implementation commit. */
-export function routeOf(path: string, h1: string): string {
-  return `${h1}${path}`;
-}
+const ROUTES: readonly (readonly [RegExp, string])[] = [
+  [/^\/t\/[^/]+\/boards$/, '/t/:tenant/boards'],
+  [/^\/t\/[^/]+\/board\/[^/]+$/, '/t/:tenant/board/:uid'],
+  [/^\/t\/[^/]+\/explore\/metrics$/, '/t/:tenant/explore/metrics'],
+  [/^\/t\/[^/]+\/explore\/logs$/, '/t/:tenant/explore/logs'],
+  [/^\/t\/[^/]+\/admin$/, '/t/:tenant/admin'],
+  [/^\/t\/[^/]+\/dev\/gallery$/, '/t/:tenant/dev/gallery'],
+  [/^\/signed-out$/, '/signed-out'],
+];
 
-/** The route pattern of the page (§3.4), or `not-found` / `session-error` from the page heading. */
-async function routeState(page: Page): Promise<string> {
-  const h1 = await page.evaluate(() => document.querySelector('h1')?.textContent ?? '');
+/** The route pattern of `path` (§3.4), or `not-found` / `session-error` from the page heading. */
+export function routeOf(path: string, h1: string): string {
   if (h1 === 'Pulsus Dash could not load your session') return 'session-error';
-  const path = new URL(page.url()).pathname;
-  const patterns: [RegExp, string][] = [
-    [/^\/t\/[^/]+\/boards$/, '/t/:tenant/boards'],
-    [/^\/t\/[^/]+\/board\/[^/]+$/, '/t/:tenant/board/:uid'],
-    [/^\/t\/[^/]+\/explore\/metrics$/, '/t/:tenant/explore/metrics'],
-    [/^\/t\/[^/]+\/explore\/logs$/, '/t/:tenant/explore/logs'],
-    [/^\/t\/[^/]+\/admin$/, '/t/:tenant/admin'],
-    [/^\/t\/[^/]+\/dev\/gallery$/, '/t/:tenant/dev/gallery'],
-    [/^\/signed-out$/, '/signed-out'],
-  ];
-  for (const [re, name] of patterns) if (re.test(path)) return name;
+  for (const [re, name] of ROUTES) if (re.test(path)) return name;
   if (h1 === 'Page not found') return path.startsWith('/t/') ? '/t/:tenant/*' : 'not-found';
   return path;
 }
 
 const POPOVER = '[data-trigger]:not([data-trigger="TooltipTrigger"])';
 
-/** The topmost open overlay: `dialog "<name>"`, `menu "<name>"`, `listbox "<name>"` or `none`. */
-async function overlayState(
-  page: Page,
-): Promise<{ key: string; kind: 'none' | 'popover' | 'modal' }> {
+type Overlay = { key: string; kind: 'none' | 'popover' | 'modal' };
+
+/**
+ * One page round trip (#130 plan 7 §3.2): the h1 text and the topmost open overlay, `dialog
+ * "<name>"`, `menu "<name>"`, `listbox "<name>"` or `none`.
+ */
+async function readState(page: Page): Promise<{ h1: string; overlay: Overlay }> {
   return page.evaluate((popover) => {
+    const h1 = document.querySelector('h1')?.textContent ?? '';
     const roots = [
       ...document.querySelectorAll(
         '[data-trigger]:not([data-trigger="TooltipTrigger"]), [role="dialog"]',
@@ -135,7 +133,7 @@ async function overlayState(
         el.closest('#root') === null && el.closest('[data-trigger="TooltipTrigger"]') === null,
     );
     const top = roots.at(-1);
-    if (top === undefined) return { key: 'none', kind: 'none' as const };
+    if (top === undefined) return { h1, overlay: { key: 'none', kind: 'none' as const } };
     // The overlay's own widget: a menu inside a popover, else the dialog, else a list box.
     const el =
       top.querySelector('[role="menu"]') ??
@@ -147,8 +145,11 @@ async function overlayState(
       el?.getAttribute('aria-label') ??
       (labelledBy ? (document.getElementById(labelledBy)?.textContent ?? '') : '');
     return {
-      key: `${role} "${name}"`,
-      kind: top.matches(popover) ? ('popover' as const) : ('modal' as const),
+      h1,
+      overlay: {
+        key: `${role} "${name}"`,
+        kind: top.matches(popover) ? ('popover' as const) : ('modal' as const),
+      },
     };
   }, POPOVER);
 }
@@ -262,9 +263,9 @@ export function keyboardHarness(
   }
 
   async function scope(): Promise<{ state: string; root: Locator }> {
-    const route = await routeState(page);
+    const { h1, overlay } = await readState(page);
+    const route = routeOf(new URL(page.url()).pathname, h1);
     visited.add(route);
-    const overlay = await overlayState(page);
     const app = page.locator('#root');
     const root =
       overlay.kind === 'none'
@@ -294,7 +295,8 @@ export function keyboardHarness(
   /** The state now; `last` keeps it for the error of a read that never held still. */
   let last = '';
   async function stateNow(): Promise<string> {
-    last = (await scope()).state;
+    const { h1, overlay } = await readState(page);
+    last = `${routeOf(new URL(page.url()).pathname, h1)} + ${overlay.key}`;
     return last;
   }
 
@@ -391,7 +393,7 @@ export function keyboardHarness(
 
   return {
     async press(keys) {
-      const overlayOpen = (await overlayState(page)).key !== 'none';
+      const overlayOpen = (await readState(page)).overlay.key !== 'none';
       const f = OPERATING.test(keys) || (keys === 'Escape' && overlayOpen) ? await record() : null;
       const dup = f !== null && OPERATING.test(keys) && DUPLICATE.test(f);
       const before = dup ? await panelIds() : [];
