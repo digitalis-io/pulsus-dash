@@ -113,7 +113,8 @@ test.describe('e2e:board-logql (fake)', () => {
         }
         await editor.getByRole('textbox', { name: 'Query' }).click();
         await page.keyboard.insertText(text);
-        await page.keyboard.press('Shift+Enter');
+        // Run query, not the Run keys: a completion list opening on the typed text cannot take it.
+        await editor.getByRole('button', { name: 'Run query' }).click();
         if (vis !== null) {
           await editor.getByRole('button', { name: /Visualisation$/ }).click();
           await page.getByRole('option', { name: vis, exact: true }).click();
