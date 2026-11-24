@@ -79,20 +79,70 @@ jobs:
       - name: 'ci:dep-audit, ci:npm-audit'
         run: npm run audit
 
-  # Each browser runs as four jobs (#130, client/config/e2eShards.ts): `kbd-a` and `kbd-b` take
-  # keyboard parts of e2e:a11y-rooms by tag, `rest-b` the spec files of REST_B_FILES, `rest` every
-  # other test. e2e-report merges them.
-  e2e:
-    needs: check
+  # One job per browser fills the browser cache (#130) before its five shards start: the browser
+  # and its system packages as .deb files, keyed by the Playwright version. A hit only looks the
+  # key up; a miss installs once (the webkit packages take ~30 min cold) and saves. `v1` in the key
+  # is a manual bust.
+  e2e-deps:
     runs-on: ubuntu-24.04
-    # The longest shard's test step is ~20 min (kbd-b); Playwright's globalTimeout (25 min) ends an
-    # overrun first, with its artefacts.
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: client/.nvmrc
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - name: Playwright version, browser path
+        id: pw
+        run: |
+          echo "version=$(node -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/pw-browsers" >> "$GITHUB_ENV"
+      - id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/pw-browsers
+            ${{ runner.temp }}/pw-apt
+          key: pw-${{ matrix.browser }}-${{ steps.pw.outputs.version }}-ubuntu-24.04-v1
+          lookup-only: true
+      - name: browser system packages (as .deb files)
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        run: |
+          debs="$RUNNER_TEMP/pw-apt"; mkdir -p "$debs"
+          npx --no-install playwright install-deps ${{ matrix.browser }}
+          cp /var/cache/apt/archives/*.deb "$debs"/ 2>/dev/null || true
+      - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        run: npx --no-install playwright install ${{ matrix.browser }}
+      - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/pw-browsers
+            ${{ runner.temp }}/pw-apt
+          key: pw-${{ matrix.browser }}-${{ steps.pw.outputs.version }}-ubuntu-24.04-v1
+
+  # Each browser runs as five jobs (#130, client/config/e2eShards.ts): `kbd-a`, `kbd-b` and `kbd-c`
+  # take keyboard parts of e2e:a11y-rooms by tag, `rest-b` the spec files of REST_B_FILES, `rest`
+  # every other test. e2e-report merges them.
+  e2e:
+    needs: [check, e2e-deps]
+    runs-on: ubuntu-24.04
+    # The longest shard's test step is under 20 min (kbd-b, kbd-c); Playwright's globalTimeout
+    # (25 min) ends an overrun first, with its artefacts.
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
-        shard: [kbd-a, kbd-b, rest, rest-b]
+        shard: [kbd-a, kbd-b, kbd-c, rest, rest-b]
     env:
       # For make e2e-build's Go build, as server.yml sets them.
       GOFLAGS: -mod=readonly
@@ -130,28 +180,24 @@ jobs:
           want=$(sed -n 's/^toolchain //p' server/go.mod)
           got=$(go env GOVERSION)
           [ "$got" = "$want" ] || { echo "::error::Go is $got, server/go.mod pins $want"; exit 1; }
-      # The browser and its system packages are cached per Playwright version and ISO week.
-      - name: Playwright version, cache week, browser path
+      # The browser and its system packages, from e2e-deps' cache (same key; no save here).
+      - name: Playwright version, browser path
         id: pw
         run: |
           echo "version=$(node -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
-          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
           echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/pw-browsers" >> "$GITHUB_ENV"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/pw-browsers
             ${{ runner.temp }}/pw-apt
-          key: pw-${{ matrix.browser }}-${{ steps.pw.outputs.version }}-ubuntu-24.04-${{ steps.pw.outputs.week }}
-          restore-keys: pw-${{ matrix.browser }}-${{ steps.pw.outputs.version }}-ubuntu-24.04-
+          key: pw-${{ matrix.browser }}-${{ steps.pw.outputs.version }}-ubuntu-24.04-v1
+          fail-on-cache-miss: true
       - name: browser system packages (cached debs)
         run: |
-          debs="$RUNNER_TEMP/pw-apt"; mkdir -p "$debs"
+          debs="$RUNNER_TEMP/pw-apt"
           if compgen -G "$debs/*.deb" > /dev/null; then sudo cp "$debs"/*.deb /var/cache/apt/archives/; fi
           npx --no-install playwright install-deps ${{ matrix.browser }}
-          sudo apt-get autoclean -y
-          rm -f "$debs"/*.deb
-          cp /var/cache/apt/archives/*.deb "$debs"/ 2>/dev/null || true
       - run: npx --no-install playwright install ${{ matrix.browser }}
       - name: e2e database
         working-directory: .
@@ -185,10 +231,9 @@ jobs:
           path: client/e2e/__screenshots__/
           retention-days: 14
 
-  # Per browser, after its four shards (also when one failed): the merged HTML report,
+  # Per browser, after its five shards (also when one failed): the merged HTML report,
   # ci:e2e-complete (every listed test is in exactly one shard, retries allowed, and was not
-  # skipped, T05 §7.1) and e2e:a11y-rooms
-  # over the keyboard parts of all four shards.
+  # skipped, T05 §7.1) and e2e:a11y-rooms over the keyboard parts of all five shards.
   e2e-report:
     needs: e2e
     if: ${{ !cancelled() }}
