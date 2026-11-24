@@ -10,6 +10,7 @@ import type { PlotRect, ThresholdLabelBox, ThresholdLine, ThresholdState, VisSpe
 import type { Ctx2D } from './ctx';
 import type { LayerInput } from './draw';
 import { AXIS_FONT, LABEL_HEIGHT } from './layout';
+import { truncated } from './text';
 
 /** The most threshold lines a frame draws, in spec order (ADR-0022). */
 const MAX_THRESHOLDS = 8;
@@ -58,26 +59,6 @@ interface PendingLabel {
   /** Where an off-axis line is: the leader goes to that plot edge. */
   readonly edge: number | null;
   top: number;
-}
-
-/** The longest code-point prefix of `text` that fits `room` with `…`; the glyph alone if none. */
-function truncated(ctx: Ctx2D, text: string, room: number): string {
-  const cps = Array.from(text);
-  // Widths grow with the prefix: binary search for the longest that fits (`glyph …` at least).
-  let lo = 2;
-  let hi = cps.length - 1;
-  let best: string | null = null;
-  while (lo <= hi) {
-    const n = Math.floor((lo + hi) / 2);
-    const candidate = `${cps.slice(0, n).join('')}…`;
-    if (ctx.measureText(candidate).width <= room) {
-      best = candidate;
-      lo = n + 1;
-    } else {
-      hi = n - 1;
-    }
-  }
-  return best ?? cps[0] ?? '';
 }
 
 /** Steps 4–5 of the layout: the forward pass, then the whole-box backward shift at the bottom. */

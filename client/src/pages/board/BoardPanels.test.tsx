@@ -33,7 +33,7 @@ import {
   T13,
   windowKey,
 } from '../../test/boardPanelKit';
-import { deferred, panel, panelOf, panelState } from '../../test/boardTestKit';
+import { boardWith, deferred, panel, panelOf, panelState } from '../../test/boardTestKit';
 import { fakeEditorSource } from '../../test/fakeEditor';
 import {
   installIntersectionObserver,
@@ -638,5 +638,122 @@ describe('time changes and refresh', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(shimmer()).toBeNull();
+  });
+});
+
+describe('event markers (#64 Part C)', () => {
+  const marker = {
+    items: [
+      {
+        id: 'a1',
+        at: T12 + 900_000,
+        end_at: null,
+        kind: 'deploy' as const,
+        text: 'v2.31',
+        tags: [],
+      },
+    ],
+    truncated: false,
+  };
+
+  it('events notices', async () => {
+    const failed = openBoard([panel('p-1', 'Mem', 'node_memory_free_bytes')]);
+    vi.spyOn(failed.api, 'listAnnotations').mockRejectedValue(new Error('down'));
+    await ready('Mem');
+    show('Mem');
+    await settled(failed, 'Mem');
+    await waitFor(() => {
+      expect(document.querySelector('[data-board-events-notice]')).toHaveTextContent(
+        'Events could not be loaded.',
+      );
+    });
+    expect(document.querySelector('[data-board-events-notice]')).toHaveAttribute('role', 'status');
+    expect(panelState('Mem')).toBe('frame');
+    cleanup();
+
+    const many = openBoard([panel('p-1', 'Mem', 'node_memory_free_bytes')]);
+    vi.spyOn(many.api, 'listAnnotations').mockResolvedValue({ ...marker, truncated: true });
+    await ready('Mem');
+    show('Mem');
+    await settled(many, 'Mem');
+    await waitFor(() => {
+      expect(document.querySelector('[data-board-events-notice]')).toHaveTextContent(
+        'Showing the newest 500 events in this time range.',
+      );
+    });
+  });
+
+  it('panels receive markers', async () => {
+    const hist = 'sum by (le) (rate(http_request_duration_seconds_bucket[5m]))';
+    const t = openBoard([
+      panel('p-1', 'Line', 'node_memory_free_bytes', 'line'),
+      panel('p-2', 'Bars', 'node_memory_free_bytes', 'bars'),
+      panel('p-3', 'Heat', hist),
+      panel('p-4', 'Stat', 'node_memory_free_bytes', 'stat'),
+    ]);
+    t.range.mockImplementation((tenant, req, s) =>
+      req.query.includes('_bucket')
+        ? Promise.resolve(R_H1)
+        : StubApi.prototype.queryRange.call(t.api, tenant, req, s),
+    );
+    vi.spyOn(t.api, 'listAnnotations').mockResolvedValue(marker);
+    const titles = ['Line', 'Bars', 'Heat', 'Stat'];
+    await ready(...titles);
+    show(...titles);
+    for (const title of titles) await settled(t, title);
+    await waitFor(() => {
+      for (const title of titles) {
+        const m = frameOf(t, title)?.last('setEvents')?.[0] as
+          readonly { id: string }[] | undefined;
+        expect(
+          m?.map((x) => x.id),
+          title,
+        ).toEqual(['a1']);
+      }
+    });
+    const refs = new Set(titles.map((title) => frameOf(t, title)?.last('setEvents')?.[0]));
+    expect(refs.size).toBe(1);
+  });
+
+  it('section-only board loads markers', async () => {
+    const seed = boardWith([], {
+      sections: [
+        {
+          id: 's-1',
+          title: 'Section',
+          collapsed: false,
+          panels: [panel('p-1', 'Inner', 'node_memory_free_bytes', 'line')],
+        },
+      ],
+    });
+    const t = openBoard([], { seed });
+    const spy = vi.spyOn(t.api, 'listAnnotations').mockResolvedValue(marker);
+    await ready('Inner');
+    show('Inner');
+    await settled(t, 'Inner');
+    await waitFor(() => {
+      const m = frameOf(t, 'Inner')?.last('setEvents')?.[0] as
+        readonly { id: string }[] | undefined;
+      expect(m?.map((x) => x.id)).toEqual(['a1']);
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    const collapsed = boardWith([], {
+      sections: [
+        {
+          id: 's-1',
+          title: 'Section',
+          collapsed: true,
+          panels: [panel('p-1', 'Inner', 'node_memory_free_bytes', 'line')],
+        },
+      ],
+    });
+    const c = openBoard([], { seed: collapsed });
+    const cs = vi.spyOn(c.api, 'listAnnotations').mockResolvedValue(marker);
+    await screen.findByRole('button', { name: /Section/ });
+    await waitFor(() => {
+      expect(cs).toHaveBeenCalledTimes(1);
+    });
   });
 });

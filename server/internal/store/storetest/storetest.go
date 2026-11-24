@@ -298,6 +298,28 @@ func OrgQueryInt(t testing.TB, dsn string, org [16]byte, floor time.Time, sql st
 	return n
 }
 
+// OrgExecCode runs a statement in a transaction bound to org (pulsus.org_id set as store.Db.Tx
+// sets it), rolls it back, and returns its SQLSTATE, or "" when it succeeds (for tests outside the
+// store package, which cannot use pgx).
+func OrgExecCode(t testing.TB, dsn string, org [16]byte, sql string, args ...any) string {
+	t.Helper()
+	conn, err := pgx.Connect(ctx(t), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	tx, err := conn.Begin(ctx(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx(t), "SELECT set_config('pulsus.org_id', $1, true)", uuidString(org)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = tx.Exec(ctx(t), sql, args...)
+	return Code(err)
+}
+
 func uuidString(u [16]byte) string {
 	h := hex.EncodeToString(u[:])
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]

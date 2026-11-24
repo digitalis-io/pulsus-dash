@@ -50,6 +50,9 @@ type Deps struct {
 	Types promplan.TypesSource
 	// Boards is the boards service; nil (or a zero Org) answers every board route with 503.
 	Boards core.Boards
+	// Annotations is the annotations service; nil (or a zero Org) answers every annotation route
+	// with 503.
+	Annotations core.Annotations
 	// Org is the organisation of every request until authentication lands (D12).
 	Org core.OrgID
 	// AuditPartitions is the audit partition health for /readyz; nil reports unknown.
@@ -63,7 +66,7 @@ var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 const statusClientClosed = 499
 
 // New returns the HTTP handler of every route: the generated operations, POST csp-report, the
-// PulsusDB data routes (plans #62 and #65), the verified client assets and the document fallback (plan
+// PulsusDB data routes (plans #62 and #65), the annotations routes (plan #64 Part C), the verified client assets and the document fallback (plan
 // #59 §3.4).
 func New(d Deps) http.Handler {
 	if d.Logger == nil {
@@ -83,6 +86,7 @@ func New(d Deps) http.Handler {
 	r.Post("/api/dash/v1/query/logql/range", q.serveLogsRange)
 	r.Post("/api/dash/v1/query/logql/volume", q.serveLogsVolume)
 	r.Method(http.MethodPost, cspReportPath, newCSPReport(d))
+	(&annotationRoutes{d: d}).mount(r)
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusMethodNotAllowed, api.Invalid, "method not allowed")
 	})

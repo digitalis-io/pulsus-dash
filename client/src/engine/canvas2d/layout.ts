@@ -12,18 +12,25 @@ export const STAT_FONT = `${String(font.weight.semibold)} ${String(font.size.dis
 /** The height of one axis label line. */
 export const LABEL_HEIGHT = Math.ceil(font.size.xs * font.lineHeight.tight);
 
+/** The event label band above the plot (ADR-0023): one label line and the gap under it. */
+export const EVENT_BAND = LABEL_HEIGHT + space['1'];
+
 /** The space under the plot: tick, padding above and below the time labels, one label line. */
 const BOTTOM = size['chart-tick'] + 2 * space['1'] + LABEL_HEIGHT;
 
-/** Stat fills the frame; the other kinds leave room for the value labels and the time axis. */
+/**
+ * Stat fills the frame; the other kinds leave room for the value labels, the time axis and, when
+ * the frame has events, the event label band above the plot (`eventBand`, ADR-0023).
+ */
 export function layoutPlot(
   kind: VisKind,
   cssW: number,
   cssH: number,
   valueLabelW: number,
+  eventBand = 0,
 ): PlotRect {
   if (kind === 'stat') return { x: 0, y: 0, width: cssW, height: cssH };
   const x = valueLabelW + space['2'] + size['chart-tick'];
-  const y = space['2'];
+  const y = space['2'] + eventBand;
   return { x, y, width: cssW - x - space['2'], height: cssH - y - BOTTOM };
 }

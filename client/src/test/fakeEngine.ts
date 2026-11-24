@@ -51,6 +51,7 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
         setData: record('setData'),
         setTimeWindow: record('setTimeWindow'),
         setTheme: record('setTheme'),
+        setEvents: record('setEvents'),
         resize: record('resize'),
         on(e, cb) {
           let set = listeners.get(e);

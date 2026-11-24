@@ -73,7 +73,7 @@ func TestSchemaConventions(t *testing.T) {
 			for _, r := range tables {
 				seen[r[0]] = true
 			}
-			for _, want := range []string{"folders", "boards", "board_versions", "audit_events", "audit_events_r13", leaf, "audit_chain_heads", "stars", "recent_views"} {
+			for _, want := range []string{"folders", "boards", "board_versions", "audit_events", "audit_events_r13", leaf, "audit_chain_heads", "stars", "recent_views", "annotations"} {
 				if !seen[want] {
 					t.Errorf("table %s is missing", want)
 				}

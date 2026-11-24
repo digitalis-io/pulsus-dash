@@ -1,8 +1,9 @@
 # Boards: panel runtime
 
-How a board panel runs its PromQL query (#64 Part A) or its LogQL query (#67, [below](#logql-panels-67)):
-the run hook and its key, the window epoch, the time gate on first open, visible-only queries, the
-panel states and menu, and the query field of the panel editor. The board page itself (modes, saving, sections, the filter bar) is in
+How a board panel runs its PromQL query (#64 Part A) or its LogQL query (#67,
+[below](#logql-panels-67)): the run hook and its key, the window epoch, the time gate on first
+open, visible-only queries, the panel states and menu, and the query field of the panel editor;
+and the board's event markers (#64 Part C). The board page itself (modes, saving, sections, the filter bar) is in
 [Client application › Boards](README.md#boards); the user's view is [Boards](../user/boards.md).
 
 | Module | Role |
@@ -14,6 +15,7 @@ panel states and menu, and the query field of the panel editor. The board page i
 | `src/boards/boardRun.tsx`, `boardRunContext.ts` | `BoardRunProvider` and `BoardRunContext` (vars, widths, visibility, `timeReady`); the window epoch |
 | `src/boards/visibility.ts`, `panelWidths.ts` | the shared viewport tracker; the panel width store |
 | `src/boards/boardTime.ts` | `boardTimeInit`, `isTimeReady` (first open) |
+| `src/boards/boardEvents.ts` | `useBoardEvents`, `BoardEventsContext`, `NO_EVENTS`, `toMarkers` (event markers) |
 | `src/boards/exploreLink.ts` | `exploreHref` |
 | `src/boards/useQueryLanguage.ts` | one `LANGUAGES[id]()` per language per page load; `null` loads none |
 | `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome, the completeness badge, the editor |
@@ -252,6 +254,46 @@ animation frame after the dialog, and the threshold rows then appear two per fra
 after that renders at once. `PanelChart` is memoised, so an edit to one panel, or opening the
 editor, does not render the other panels' charts and legends again.
 
+## Event markers
+
+A board reads its event markers once per resolved window, for every panel (#64 Part C, INT-031,
+[ADR-0023](../../designs/adr/0023-chart-event-markers.md)). The annotations come from Postgres
+through `Api.listAnnotations` ([Annotations API](../server/annotations-api.md)); the chart draws
+them ([Charts › Event markers](charts.md#event-markers)).
+
+`useBoardEvents(tenant, enabled)` (`src/boards/boardEvents.ts`) is one `useQuery`:
+
+| Option | Value |
+|---|---|
+| `queryKey` | `['data', 'events', tenant, fromMs, toMs]`: the resolved window, under the `['data']` prefix |
+| `queryFn` | `api.listAnnotations(tenant, { fromMs, toMs }, signal)`: `GET /api/dash/v1/annotations?from&to` (no `limit`: the server's 500) |
+| `enabled` | `timeReady && allPanels(spec).length > 0` in `BoardPage`: the top grid and every section, collapsed ones included |
+| `staleTime`, `refetchOnWindowFocus`, `placeholderData` | `0`, `false`, `keepPreviousData` |
+
+It returns `{ markers, truncated, failed }`. The items become `EventMarker`s
+(`{ id, atMs: at, endMs: end_at, kind, title: text }`), sorted by `(atMs, id)` and memoised on the
+data, so every panel gets the same array. `failed` is a rejection that is not an abort; it carries
+no markers. Outside a board (`BoardEventsContext`'s default, `NO_EVENTS`) there are none.
+
+| Trigger | Events request |
+|---|---|
+| Board open | One, once the board's time is ready |
+| Window change | A new key; the old request is aborted, and the old markers stay until the new ones arrive |
+| Refresh now, absolute window | `refreshNow` cancels the in-flight `['data']` queries, then invalidates `['data']`: the request is aborted and made again |
+| Refresh now, relative window | A new key, as a window change |
+| A panel scrolls in or out | None |
+| Failure | The notice "Events could not be loaded."; no markers; the panels are unaffected |
+
+The panel queries keep their own rules: the window epoch of `BoardRunProvider` marks only
+`['data', 'panel', tenant]`, so the events query is not part of a panel's request count.
+
+`BoardPage` provides the result through `BoardEventsContext` and shows
+`<p role="status" data-board-events-notice>` above the grids: "Events could not be loaded." when
+`failed`, "Showing the newest 500 events in this time range." when `truncated`, and empty
+otherwise. `PanelChart` (`PanelFrame.tsx`) reads the context and passes `markers` to its
+`ChartFrame` as `events`, on line, bars, heatmap and stat panels (stat draws none), and in the full
+screen view and the editor's preview. The stub (`StubApi.listAnnotations`) has no annotations.
+
 ## Open in Explore
 
 `exploreHref(tenant, panel, search, run.expanded)`: for PromQL,
@@ -416,6 +458,9 @@ failing 0.05 "SLO breach").
 - [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md): query planning on the server.
 - [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md): threshold lines and the
   stat sparkline on the seam.
+- [ADR-0023](../../designs/adr/0023-chart-event-markers.md): event markers on the seam;
+  [03 Interaction model](../../designs/product/03-interaction-model.md): INT-031 (subset: markers on
+  board time panels; click-to-compare is INT-030).
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-057 and
   VIZ-011 (subsets: thresholds, legends), VIZ-067 (state glyphs);
   [08 Visual language](../../designs/product/08-visual-language.md): VL-003, VL-007 (the tile);

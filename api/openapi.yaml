@@ -152,6 +152,44 @@ paths:
         '204': { description: Recorded }
         '404': { description: Board not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/annotations:
+    get:
+      operationId: listAnnotations
+      tags: [annotations]
+      description: The organisation's annotations overlapping [from, to] (at <= to AND coalesce(end_at, at) >= from), newest first, at most `limit` (plan #64 Part C §3.4). Organisation-scoped; no tenant parameter (D12). Hand-written handler; excluded from server generation.
+      x-permission: annotation.read
+      parameters:
+        - { name: from, in: query, required: true, description: ms since the epoch, a canonical decimal integer, schema: { $ref: '#/components/schemas/EpochMs' } }
+        - { name: to, in: query, required: true, description: ms since the epoch; greater than from, schema: { $ref: '#/components/schemas/EpochMs' } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 500 } }
+      responses:
+        '200': { description: Annotations in the window, content: { application/json: { schema: { $ref: '#/components/schemas/AnnotationList' } } } }
+        '400': { description: Invalid window or limit, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      operationId: createAnnotation
+      tags: [annotations]
+      description: Records a deploy, configuration change, feature flag change or note, with an annotation.create audit event (T11-017). The body is at most 16 KiB. Hand-written handler; excluded from server generation.
+      x-permission: annotation.write
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnnotationCreate' } } } }
+      responses:
+        '201': { description: Annotation created, content: { application/json: { schema: { $ref: '#/components/schemas/Annotation' } } } }
+        '400': { description: Invalid annotation, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '413': { description: Request body too large, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/annotations/{id}:
+    delete:
+      operationId: deleteAnnotation
+      tags: [annotations]
+      description: Deletes an annotation, with an annotation.delete audit event. Hand-written handler; excluded from server generation.
+      x-permission: annotation.write
+      parameters:
+        - { name: id, in: path, required: true, description: A lower-case canonical UUID, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '400': { description: Invalid id, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: Annotation not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/query/promql/range:
     post:
       operationId: postPromqlRange
@@ -695,3 +733,29 @@ components:
     BoardConflict: { type: object, additionalProperties: false, required: [error, current], properties: { error: { $ref: '#/components/schemas/ErrorBody' }, current: { $ref: '#/components/schemas/Board' }, submitted: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
     BoardRef: { type: object, additionalProperties: false, required: [uid, title], properties: { uid: { type: string }, title: { type: string } } }
     BoardRefList: { type: object, additionalProperties: false, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardRef' } } } }
+    EpochMs: { type: integer, format: int64, minimum: 0, maximum: 253402300799999, description: ms since the Unix epoch, up to 9999-12-31T23:59:59.999Z }
+    AnnotationKind: { type: string, enum: [deploy, config, flag, annotation] }
+    AnnotationTag: { type: string, pattern: '^[a-z0-9][a-z0-9_.:/-]{0,63}$' }
+    Annotation:
+      description: An event marker (ADR-0023), the JSON image of events/1 (T04 §0). end_at is null for a point.
+      type: object
+      additionalProperties: false
+      required: [id, at, end_at, kind, text, tags]
+      properties:
+        id: { type: string, format: uuid }
+        at: { $ref: '#/components/schemas/EpochMs' }
+        end_at: { type: [integer, 'null'], format: int64, minimum: 0, maximum: 253402300799999 }
+        kind: { $ref: '#/components/schemas/AnnotationKind' }
+        text: { type: string, minLength: 1, maxLength: 500 }
+        tags: { type: array, maxItems: 16, items: { $ref: '#/components/schemas/AnnotationTag' } }
+    AnnotationCreate:
+      type: object
+      additionalProperties: false
+      required: [at, kind, text]
+      properties:
+        at: { $ref: '#/components/schemas/EpochMs' }
+        end_at: { type: [integer, 'null'], format: int64, minimum: 0, maximum: 253402300799999, description: at most 31 days after at }
+        kind: { $ref: '#/components/schemas/AnnotationKind' }
+        text: { type: string, minLength: 1, maxLength: 500 }
+        tags: { type: array, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } }
+    AnnotationList: { type: object, additionalProperties: false, required: [items, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/Annotation' } }, truncated: { type: boolean } } }

@@ -29,6 +29,7 @@ import {
 import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-components';
 import { Link, useHref, useNavigate } from 'react-router';
 import type { PanelSpec } from '../../api/types';
+import { BoardEventsContext } from '../../boards/boardEvents';
 import { BoardRunContext } from '../../boards/boardRunContext';
 import { exploreHref } from '../../boards/exploreLink';
 import type { LayoutOp } from '../../boards/layout';
@@ -194,7 +195,8 @@ function StatStack({
  * Line and bars stack the legend under the chart; stat stacks the chip, the chart and the
  * threshold text (§3.9). The isolation and the legend sort are this instance's own, never saved.
  * Memoised: a board change that leaves a panel's view and title alone (an edit to another panel,
- * opening the editor) does not render its chart or legend again.
+ * opening the editor) does not render its chart or legend again. The board's event markers come
+ * from `BoardEventsContext` (plan #64 Part C).
  */
 const PanelChart = memo(function PanelChart({
   title,
@@ -208,6 +210,8 @@ const PanelChart = memo(function PanelChart({
   const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
   const [stackRef, layout, measured] = useLegendLayout();
+  // The board's markers (plan #64 Part C §3.8): one reference for every panel.
+  const { markers } = useContext(BoardEventsContext);
   const cellRef = useRef<HTMLDivElement>(null);
   const rows = legendRows(view.result);
   const legend = view.legend === 'table' && rows.length > 0;
@@ -237,6 +241,7 @@ const PanelChart = memo(function PanelChart({
       data={frame.data}
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
       sizeMemo={memo}
+      events={markers}
     />
   );
   if (view.vis === 'heatmap') return chart;

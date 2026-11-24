@@ -3,7 +3,8 @@
  * grids and their collapsible sections in View or Edit mode, the panel editor dialog, saving with the
  * head's etag and the conflict dialog, and the guard against leaving with unsaved changes. The page
  * holds the loaded head and the draft in one reducer (`editorState.ts`); variables, filters and
- * View-mode section overrides live in the URL (`useBoardParams`).
+ * View-mode section overrides live in the URL (`useBoardParams`). The board's event markers are
+ * read once per window for every panel (`useBoardEvents`, plan #64 Part C §3.8).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,6 +28,7 @@ import {
   type FieldError,
   type PanelSpec,
 } from '../../api/types';
+import { BoardEventsContext, useBoardEvents } from '../../boards/boardEvents';
 import { boardKeyAction } from '../../boards/boardKeys';
 import { BoardRunProvider } from '../../boards/boardRun';
 import { boardTimeInit, isTimeReady, type TimeTarget } from '../../boards/boardTime';
@@ -475,6 +477,14 @@ function BoardEditor({
 
   const empty = s.draft.panels.length === 0 && s.draft.sections.length === 0;
   const livePanels = useMemo(() => allPanels(s.draft).map((x) => x.panel.id), [s.draft]);
+  // One events request for the whole board (plan #64 Part C §3.8): every grid and section counts,
+  // collapsed ones too, and none is made before the board's time is ready.
+  const events = useBoardEvents(tenant, timeReady && livePanels.length > 0);
+  const eventsNotice = events.failed
+    ? t('board.events.failed')
+    : events.truncated
+      ? t('board.events.truncated')
+      : '';
 
   const page = (
     <div className={cx(styles['page'])}>
@@ -543,6 +553,9 @@ function BoardEditor({
       {s.remote !== null && (
         <p className={cx(styles['notice'])}>{t('board.remote', { version: s.remote.version })}</p>
       )}
+      <p role="status" className={cx(styles['status'])} data-board-events-notice="">
+        {eventsNotice}
+      </p>
       <div className={cx(styles['workspace'])}>
         <div className={cx(styles['grids'])}>
           {/* One boundary for every grid: until the grid chunk arrives the board shows none, so
@@ -663,7 +676,9 @@ function BoardEditor({
       timeReady={timeReady}
       livePanels={livePanels}
     >
-      <BoardModeContext.Provider value={s.mode}>{page}</BoardModeContext.Provider>
+      <BoardEventsContext.Provider value={events}>
+        <BoardModeContext.Provider value={s.mode}>{page}</BoardModeContext.Provider>
+      </BoardEventsContext.Provider>
     </BoardRunProvider>
   );
 }
