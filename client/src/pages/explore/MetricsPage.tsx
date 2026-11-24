@@ -66,7 +66,7 @@ export function MetricsPage() {
     widthPx === null ? null : (promGrid(win.fromMs, win.toMs, widthPx)?.stepMs ?? null);
   const rate = params.rate !== 'off';
   const inputs = useMemo<RunInputs>(
-    () => ({ lang: modules.lang, stepMs, rate }),
+    () => ({ lang: modules.lang, degraded: false, stepMs, rate }),
     [modules.lang, stepMs, rate],
   );
   const runReady = modules.editor !== null && runnable(inputs);

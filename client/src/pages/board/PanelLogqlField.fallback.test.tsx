@@ -74,6 +74,13 @@ describe('LogQL field fallback', () => {
     await waitFor(() => {
       expect(t.logs.at(-1)?.req.query).toBe('{app="b"}');
     });
+
+    const n = t.logs.length;
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true });
+    await waitFor(() => {
+      expect(t.logs).toHaveLength(n + 1);
+    });
+    expect(t.logs.at(-1)?.req.query).toBe('{app="b"}');
     expect(screen.getByRole('dialog', { name: 'Edit panel' })).toBeInTheDocument();
   });
 });

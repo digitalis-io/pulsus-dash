@@ -46,6 +46,7 @@ export interface ExploreRun {
 
 export interface RunInputs {
   readonly lang: QueryLanguage | null;
+  readonly degraded: boolean;
   /** `promGrid(fromMs, toMs, widthPx).stepMs`; null while the width is unknown. */
   readonly stepMs: number | null;
   readonly rate: boolean;
@@ -69,7 +70,11 @@ export function runnable(i: RunInputs): boolean {
  * The route of `text`: an instant query when its type is scalar or string (Lezer's shape: the
  * server plans the text either way); null when blank or without a language.
  */
-export function runKind(text: string, lang: QueryLanguage | null): 'range' | 'instant' | null {
+export function runKind(
+  text: string,
+  lang: QueryLanguage | null,
+  _degraded = false,
+): 'range' | 'instant' | null {
   if (text.trim() === '' || lang === null) return null;
   const vt = lang.shape(text).valueType;
   return vt === 'scalar' || vt === 'string' ? 'instant' : 'range';
