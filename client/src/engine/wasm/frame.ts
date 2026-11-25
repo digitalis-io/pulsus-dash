@@ -132,6 +132,12 @@ export class WasmFrame implements ChartFrame {
     }
   }
 
+  /** The worker this frame was on is gone: silent from now on, nothing posted. */
+  detach(): void {
+    this.disposed = true;
+    this.listeners.clear();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.post({ t: 'dispose', id: this.id });

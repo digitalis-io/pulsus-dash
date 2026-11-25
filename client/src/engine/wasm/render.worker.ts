@@ -30,8 +30,8 @@ interface Scope {
 }
 
 interface Faults {
-  failCreate(m: Extract<MainToRender, { t: 'create' }>): boolean;
-  data(id: number, s: readonly SeriesMessage[]): readonly SeriesMessage[];
+  failCreate(id: number): boolean;
+  series(id: number, s: readonly SeriesMessage[]): readonly SeriesMessage[];
   afterEvents(json: string): void;
 }
 
@@ -72,7 +72,7 @@ function apply(m: MainToRender): void {
     case 'boot':
       return;
     case 'create':
-      if (faults?.failCreate(m) === true) {
+      if (faults?.failCreate(m.id) === true) {
         scope.postMessage({
           t: 'events',
           json: JSON.stringify([{ t: 'failed', id: m.id, reason: 'surface' }]),
@@ -103,7 +103,7 @@ function apply(m: MainToRender): void {
       }
       try {
         frame_data_begin(m.id);
-        for (const s of faults?.data(m.id, m.series) ?? m.series) {
+        for (const s of faults?.series(m.id, m.series) ?? m.series) {
           frame_data_series(m.id, s.key, [...s.names], [...s.values], s.t, s.v);
         }
         frame_data_end(m.id);
@@ -129,9 +129,9 @@ function apply(m: MainToRender): void {
 }
 
 async function boot(m: BootMessage): Promise<void> {
-  if (import.meta.env.VITE_ENGINE_FAULTS === '1' && m.fault !== undefined) {
-    const f = await import('./faults');
-    faults = new f.WorkerFaults(m.fault);
+  if (import.meta.env.VITE_ENGINE_FAULTS === '1') {
+    const f = await import('../faults');
+    faults = f.installFaults('__pulsus_engine_fault__:worker', f.asFault(m.fault));
   }
   shift = performance.timeOrigin - m.mainTimeOrigin;
   const out = await init({ module_or_path: m.module });

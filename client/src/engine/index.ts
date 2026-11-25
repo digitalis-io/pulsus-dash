@@ -17,16 +17,31 @@ export function defaultChartEngine(): ChartEngine {
   if (engine !== null) return engine;
   const canvas2d = new Canvas2DEngine();
   const choice = chooseEngine(probe(sessionFailed()));
-  engine =
-    choice.kind === 'wasm'
-      ? new RoutingEngine(
-          () =>
-            import('./wasm/engine').then((m) =>
-              m.loadBackend({ forceT2: choice.forceT2, markFailed: markSessionFailed }),
-            ),
-          canvas2d,
-        )
-      : canvas2d;
+  if (choice.kind === 'wasm') {
+    engine = new RoutingEngine(
+      () =>
+        import('./wasm/engine').then((m) =>
+          m.loadBackend({ forceT2: choice.forceT2, markFailed: markSessionFailed }),
+        ),
+      canvas2d,
+    );
+  } else if (
+    import.meta.env.VITE_ENGINE_FAULTS === '1' &&
+    typeof location !== 'undefined' &&
+    new URLSearchParams(location.search).has('fault')
+  ) {
+    // Fault builds: a Canvas 2D page with a fault goes through the routing frames too, so the
+    // route site's faults (`empty`) apply to it.
+    engine = new RoutingEngine(() => Promise.reject(new Error('canvas2d page')), canvas2d);
+  } else {
+    // `data-engine` names the engine of every chart canvas (plan #68 C1 §3.4).
+    engine = {
+      createFrame(canvas, init) {
+        canvas.dataset['engine'] = 'canvas2d';
+        return canvas2d.createFrame(canvas, init);
+      },
+    };
+  }
   return engine;
 }
 

@@ -98,15 +98,49 @@ describe('RoutingEngine (D-ROUTE)', () => {
     expect(transfers).toBe(1);
     expect(canvas.dataset['engine']).toBe('wasm-webgpu');
     expect(c2d.frames).toHaveLength(0);
-    // After the bind every call goes straight through; a kind change stays on the engine.
-    f.setSpec(BARS);
-    expect(inner.last('setSpec')).toEqual([BARS]);
-    expect(c2d.frames).toHaveLength(0);
     // Events from the bound frame reach the listeners.
     const seen: number[] = [];
     f.on('drawn', (d) => seen.push(d.cssWidth));
     inner.draw();
     expect(seen).toEqual([300]);
+  });
+
+  it('a kind swap moves an engine frame to Canvas 2D on a fresh canvas, for good', async () => {
+    const b = backend();
+    const c2d = fakeEngine();
+    const e = new RoutingEngine(() => Promise.resolve(b), c2d);
+    const host = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    host.append(canvas);
+    const f = e.createFrame(canvas, INIT);
+    f.setSpec(LINE_A);
+    f.setData(D);
+    f.resize(300, 150, 1);
+    await flush();
+    const inner = b.inner.frames[0];
+    if (inner === undefined) throw new Error('not bound');
+    f.setSpec(BARS);
+    expect(inner.disposed).toBe(1);
+    expect(inner.last('setSpec')).toEqual([LINE_A]);
+    const live = host.querySelectorAll('canvas')[1];
+    expect(c2d.createCalls.map((c) => c.canvas)).toEqual([live]);
+    expect(live?.dataset['engine']).toBe('canvas2d');
+    expect(canvas.hasAttribute('data-retired')).toBe(true);
+    expect(c2d.frames[0]?.calls.map((c) => c.method)).toEqual([
+      'setSpec',
+      'setData',
+      'setEvents',
+      'setSelection',
+      'resize',
+    ]);
+    expect(c2d.frames[0]?.last('setSpec')).toEqual([BARS]);
+    expect(host.querySelector('[data-engine-notice]')).toBeNull();
+    // Back to a line: it stays on Canvas 2D, with no second transfer.
+    f.setSpec(LINE_B);
+    await flush();
+    expect(c2d.frames[0]?.last('setSpec')).toEqual([LINE_B]);
+    expect(b.inner.frames).toHaveLength(1);
+    expect(transfers).toBe(1);
   });
 
   it('a non-line frame goes to Canvas 2D at once, on the same canvas', () => {

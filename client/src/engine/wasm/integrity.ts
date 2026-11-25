@@ -43,8 +43,7 @@ async function manifestFiles(f: typeof fetch): Promise<ManifestFile[] | null> {
 
 /** The manifest path of a URL on this origin: `/assets/x.wasm` → `assets/x.wasm`. */
 function pathOf(url: string): string {
-  const base = typeof location === 'undefined' ? 'http://localhost/' : location.href;
-  return new URL(url, base).pathname.replace(/^\//, '');
+  return new URL(url, location.href).pathname.replace(/^\//, '');
 }
 
 export async function fetchEngineWasm(url: string, o: FetchOptions): Promise<WasmFetch> {

@@ -18,7 +18,7 @@ interface TrustedTypesLike {
 let policy: Policy | null | undefined;
 
 function base(): string {
-  return typeof location === 'undefined' ? 'http://localhost/' : location.href;
+  return location.href;
 }
 
 /** `u` iff it is one of the two engine worker scripts. */

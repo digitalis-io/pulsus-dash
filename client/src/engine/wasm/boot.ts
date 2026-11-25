@@ -13,7 +13,7 @@ import {
   CAP_WAIT_ASYNC,
   CAP_WEBGPU,
 } from './layout.gen';
-import type { Fault, MainToRender, PoolMessage, RenderToMain } from './protocol';
+import type { MainToRender, PoolMessage, RenderToMain } from './protocol';
 
 /** What the adapter needs of a `Worker` (tests pass fakes). */
 export interface WorkerLike {
@@ -27,7 +27,7 @@ export type Status = Extract<RenderToMain, { t: 'status' }>;
 export interface RenderOptions {
   readonly module: WebAssembly.Module;
   readonly forceT2: boolean;
-  readonly fault: Fault | undefined;
+  readonly fault: string | undefined;
   readonly spawnRender: () => WorkerLike;
   readonly spawnPool: () => WorkerLike;
   readonly timeoutMs: number;
@@ -73,13 +73,15 @@ export function capabilityBits(): number {
   return bits;
 }
 
-/** The page's test fault (fault builds only; a release build drops `faults.ts`). */
-export async function pageFault(): Promise<Fault | undefined> {
+/** The fault of each boot (fault builds only; a release build drops this block). */
+export async function bootFaults(): Promise<(restart: boolean) => string | undefined> {
   if (import.meta.env.VITE_ENGINE_FAULTS === '1') {
-    const f = await import('./faults');
-    return f.pageFault(typeof location === 'undefined' ? '' : location.search);
+    const f = await import('../faults');
+    const search = typeof location === 'undefined' ? '' : location.search;
+    const site = f.installFaults('__pulsus_engine_fault__:boot', f.faultOf(search));
+    return (restart) => site.bootFault(restart);
   }
-  return undefined;
+  return () => undefined;
 }
 
 export function startRender(o: RenderOptions): RenderHandle {

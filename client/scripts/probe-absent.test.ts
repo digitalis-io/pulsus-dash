@@ -19,23 +19,21 @@ function dist(files: Record<string, string | Buffer>): string {
   return d;
 }
 
+const SENTINEL = '__pulsus_engine_' + 'fault__';
+const WASM = Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
 const CLEAN = {
   'index.html': '<!doctype html>',
   'assets/index-a.js': 'export const a = 1;',
-  'assets/dash-engine-b.wasm': Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]),
+  'assets/dash-engine-b.wasm': WASM,
 };
 
 describe('ci:probe-absent (T03-024)', () => {
-  it('finds each test hook in a release build', () => {
-    const fault = '__pulsus_engine_' + 'fault__';
+  it('finds each test hook anywhere in a release tree', () => {
     const d = dist({
       ...CLEAN,
-      'assets/a-1.js': 'globalThis.__dashProbe = {};',
-      'assets/b-2.js': `console.warn("${fault}")`,
-      'assets/dash-engine-c.wasm': Buffer.concat([
-        Buffer.from([0, 0x61, 0x73, 0x6d]),
-        Buffer.from(fault),
-      ]),
+      'assets/a.js': 'globalThis.__dashProbe = {};',
+      'assets/w/x.js': `console.warn("${SENTINEL}:worker")`,
+      'assets/dash-engine-c.wasm': Buffer.concat([WASM, Buffer.from(`${SENTINEL}:route`)]),
     });
     const r = checkProbeAbsent(d);
     expect(r.map((f) => f.rule)).toEqual([
@@ -44,12 +42,24 @@ describe('ci:probe-absent (T03-024)', () => {
       'probe-in-release',
     ]);
     expect(r.map((f) => f.file).sort()).toEqual([
-      'assets/a-1.js',
-      'assets/b-2.js',
+      'assets/a.js',
       'assets/dash-engine-c.wasm',
+      'assets/w/x.js',
     ]);
   });
-  it('a clean build has none', () => {
+  it('a clean tree has none', () => {
     expect(checkProbeAbsent(dist(CLEAN))).toEqual([]);
+  });
+  it('--expect-faults needs every fault site', () => {
+    const all = {
+      ...CLEAN,
+      'assets/r.js': `x("${SENTINEL}:route")`,
+      'assets/b.js': `x("${SENTINEL}:boot")`,
+      'assets/w/x.js': `x("${SENTINEL}:worker")`,
+    };
+    expect(checkProbeAbsent(dist(all), { expectFaults: true })).toEqual([]);
+    const noBoot = Object.fromEntries(Object.entries(all).filter(([k]) => k !== 'assets/b.js'));
+    const r = checkProbeAbsent(dist(noBoot), { expectFaults: true });
+    expect(r.map((f) => [f.rule, f.subject])).toEqual([['fault-site-missing', 'boot']]);
   });
 });

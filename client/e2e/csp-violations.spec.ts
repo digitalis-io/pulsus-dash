@@ -10,6 +10,7 @@ import {
   openUserMenu,
   SHELL_PAGES,
 } from './helpers.ts';
+import { leg, TIERS } from './engine.ts';
 
 declare global {
   interface Window {
@@ -123,49 +124,53 @@ test.describe('e2e:csp-violations', () => {
 
 /**
  * The engine under the production policy (plan #68 C1 §5, ADR-0026, T03-022): isolated, the
- * engine's workers and wasm admitted, the recovery's CSSOM style allowed. Runs in the `engine`
- * project only (playwright.engine.config.ts: Chromium on lavapipe, the fault build).
+ * engine's workers and wasm admitted, the recovery's CSSOM style allowed. Runs in the engine
+ * projects only (playwright.engine.config.ts: the fault build), each on its tier.
  */
 test.describe('e2e:csp-violations (engine)', () => {
   test('the engine draws and recovers with no CSP or Trusted Types violation', async ({
     page,
   }, info) => {
-    test.skip(info.project.name !== 'engine', 'engine project only');
+    const tier = TIERS[info.project.name];
+    test.skip(tier === undefined, 'engine projects only');
+    if (tier === undefined) return;
     test.setTimeout(90_000);
-    await page.addInitScript(() => {
-      window.__cspViolations = [];
-      document.addEventListener('securitypolicyviolation', (e) => {
-        window.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+    await leg(info, async () => {
+      await page.addInitScript(() => {
+        window.__cspViolations = [];
+        document.addEventListener('securitypolicyviolation', (e) => {
+          window.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+        });
       });
+      const console: string[] = [];
+      page.on('console', (m) => {
+        if (/Content[- ]Security[- ]Policy|Trusted Type/i.test(m.text())) console.push(m.text());
+      });
+      const lineCanvases = page.locator('[data-gallery-id^="line-"] canvas:not([data-retired])');
+
+      await open(page, `${GALLERY_URL}${tier.query}`);
+      await expect(page.locator('html')).toHaveAttribute('data-dash-status', tier.status);
+      await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).not.toHaveCount(0);
+      for (const c of await lineCanvases.all())
+        await expect(c).toHaveAttribute('data-engine', tier.engine);
+      expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
+      expect(await page.evaluate(() => window.__cspViolations), 'gallery').toEqual([]);
+
+      await open(page, `/t/demo/board/b-1?${tier.query.slice(1)}`);
+      await expect(page.locator('html')).toHaveAttribute('data-dash-status', tier.status);
+      await expect(
+        page.locator(`[data-chart-frame] canvas[data-engine="${tier.engine}"]`).first(),
+      ).toBeVisible();
+      expect(await page.evaluate(() => window.__cspViolations), 'board').toEqual([]);
+
+      await open(page, `${GALLERY_URL}${tier.query}&fault=surface`);
+      const recovered = page.locator('[data-gallery-id="line-1"] [data-chart-frame]');
+      await expect(recovered.locator('[data-engine-notice]')).toBeVisible();
+      const retired = recovered.locator('canvas[data-retired]');
+      await expect(retired).toHaveCount(1);
+      expect(await retired.evaluate((c) => getComputedStyle(c).display)).toBe('none');
+      expect(await page.evaluate(() => window.__cspViolations), 'recovery').toEqual([]);
+      expect(console).toEqual([]);
     });
-    const console: string[] = [];
-    page.on('console', (m) => {
-      if (/Content[- ]Security[- ]Policy|Trusted Type/i.test(m.text())) console.push(m.text());
-    });
-    const lineCanvases = page.locator('[data-gallery-id^="line-"] canvas:not([data-retired])');
-
-    await open(page, `${GALLERY_URL}&engine=wasm`);
-    await expect(page.locator('html')).toHaveAttribute('data-dash-status', '1');
-    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).not.toHaveCount(0);
-    for (const c of await lineCanvases.all())
-      await expect(c).toHaveAttribute('data-engine', 'wasm-webgpu');
-    expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
-    expect(await page.evaluate(() => window.__cspViolations), 'gallery').toEqual([]);
-
-    await open(page, '/t/demo/board/b-1?engine=wasm');
-    await expect(page.locator('html')).toHaveAttribute('data-dash-status', '1');
-    await expect(
-      page.locator('[data-chart-frame] canvas[data-engine="wasm-webgpu"]').first(),
-    ).toBeVisible();
-    expect(await page.evaluate(() => window.__cspViolations), 'board').toEqual([]);
-
-    await open(page, `${GALLERY_URL}&engine=wasm&fault=surface`);
-    const recovered = page.locator('[data-gallery-id="line-1"] [data-chart-frame]');
-    await expect(recovered.locator('[data-engine-notice]')).toBeVisible();
-    const retired = recovered.locator('canvas[data-retired]');
-    await expect(retired).toHaveCount(1);
-    expect(await retired.evaluate((c) => getComputedStyle(c).display)).toBe('none');
-    expect(await page.evaluate(() => window.__cspViolations), 'recovery').toEqual([]);
-    expect(console).toEqual([]);
   });
 });

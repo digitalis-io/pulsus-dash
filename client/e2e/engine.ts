@@ -1,15 +1,85 @@
 /**
- * Helpers of the engine specs (plan #68 C1 §5): the live canvas of a gallery frame, the engine's
- * `<html>` status, device-scale canvas screenshots decoded to RGBA, and `dash-golden compare`.
+ * Helpers of the engine specs (plan #68 C1 §5): the two projects' tiers, the WebGPU leg's
+ * report-only switch (`engine-legs.json`), the live canvas of a gallery frame, device-scale canvas
+ * screenshots decoded to RGBA, and `dash-golden compare`.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { inflateSync } from 'node:zlib';
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { frame, GALLERY_IDS, GALLERY_URL, galleryReady } from './helpers.ts';
+import { decodePng } from './png.ts';
 
 export const ENGINE_URL = `${GALLERY_URL}&engine=wasm`;
+
+/** The engine tier a project runs (playwright.engine.config.ts). */
+export interface Tier {
+  /** The engine flags of the gallery URL. */
+  readonly query: string;
+  readonly engine: 'wasm-webgl2' | 'wasm-webgpu';
+  readonly status: '1' | '2';
+  readonly adapter: RegExp;
+  /** Gated pixel goldens (false: report-only). */
+  readonly goldens: boolean;
+}
+
+export const TIERS: Readonly<Record<string, Tier>> = {
+  lavapipe: {
+    query: '&engine=wasm&mode=t2',
+    engine: 'wasm-webgl2',
+    status: '2',
+    adapter: /llvmpipe/,
+    goldens: true,
+  },
+  swiftshader: {
+    query: '&engine=wasm',
+    engine: 'wasm-webgpu',
+    status: '1',
+    adapter: /swiftshader/i,
+    goldens: false,
+  },
+};
+
+export function tierOf(info: TestInfo): Tier {
+  const t = TIERS[info.project.name];
+  if (t === undefined) throw new Error(`no engine tier for project ${info.project.name}`);
+  return t;
+}
+
+/**
+ * `engine-legs.json` (plan #68 C1 §5.1): present only when Dawn's SwiftShader cannot render in the
+ * image; it makes the `swiftshader` project's failures soft, with its reason printed.
+ */
+export const LEGS: { readonly webgpu?: string; readonly reason?: string } = (() => {
+  const p = new URL('engine-legs.json', import.meta.url);
+  return existsSync(p)
+    ? (JSON.parse(readFileSync(p, 'utf8')) as { webgpu?: string; reason?: string })
+    : {};
+})();
+
+/** The WebGPU leg is report-only (`engine-legs.json`). */
+export function webgpuReportOnly(): boolean {
+  return LEGS.webgpu === 'report';
+}
+
+/**
+ * Runs a test body; in the `swiftshader` project with the WebGPU leg report-only, a failure is
+ * printed and annotated instead of failing the test.
+ */
+export async function leg(info: TestInfo, body: () => Promise<void>): Promise<void> {
+  if (info.project.name !== 'swiftshader' || !webgpuReportOnly()) {
+    await body();
+    return;
+  }
+  try {
+    await body();
+  } catch (e) {
+    const msg = (e instanceof Error ? e.message : String(e)).split('\n')[0] ?? '';
+    const line = `WebGPU leg report-only (${LEGS.reason ?? 'no reason'}): ${info.title}: ${msg}`;
+    console.log(line);
+    info.annotations.push({ type: 'report-only', description: line });
+  }
+}
 /** The gallery entries the engine draws (line specs); the rest stay on Canvas 2D (D-ROUTE). */
 export const LINE_IDS = GALLERY_IDS.filter((id) => id.startsWith('line-'));
 export const NOTICE = 'Recovered from an error: this chart uses the basic renderer.';
@@ -40,64 +110,7 @@ export function engineRequests(page: Page): string[] {
   return seen;
 }
 
-export interface Rgba {
-  w: number;
-  h: number;
-  px: Uint8Array;
-}
-
-/** A non-interlaced 8-bit RGB or RGBA PNG (Playwright's screenshots) to RGBA. */
-export function decodePng(png: Buffer): Rgba {
-  let at = 8;
-  let w = 0;
-  let h = 0;
-  let channels = 4;
-  const idat: Buffer[] = [];
-  while (at < png.length) {
-    const len = png.readUInt32BE(at);
-    const type = png.toString('latin1', at + 4, at + 8);
-    const data = png.subarray(at + 8, at + 8 + len);
-    if (type === 'IHDR') {
-      w = data.readUInt32BE(0);
-      h = data.readUInt32BE(4);
-      const colour = data[9];
-      if (data[8] !== 8 || (colour !== 2 && colour !== 6) || data[12] !== 0) {
-        throw new Error('unsupported PNG');
-      }
-      channels = colour === 6 ? 4 : 3;
-    } else if (type === 'IDAT') {
-      idat.push(data);
-    }
-    at += 12 + len;
-  }
-  const raw = inflateSync(Buffer.concat(idat));
-  const stride = w * channels;
-  const rows = new Uint8Array(stride * h);
-  for (let y = 0; y < h; y++) {
-    const f = raw[y * (stride + 1)] ?? 0;
-    const src = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
-    for (let x = 0; x < stride; x++) {
-      const a = x >= channels ? (rows[y * stride + x - channels] ?? 0) : 0;
-      const b = y > 0 ? (rows[(y - 1) * stride + x] ?? 0) : 0;
-      const c = x >= channels && y > 0 ? (rows[(y - 1) * stride + x - channels] ?? 0) : 0;
-      const p = a + b - c;
-      const pr =
-        Math.abs(p - a) <= Math.abs(p - b) && Math.abs(p - a) <= Math.abs(p - c)
-          ? a
-          : Math.abs(p - b) <= Math.abs(p - c)
-            ? b
-            : c;
-      const pred = [0, a, b, (a + b) >> 1, pr][f] ?? 0;
-      rows[y * stride + x] = ((src[x] ?? 0) + pred) & 0xff;
-    }
-  }
-  const px = new Uint8Array(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    for (let k = 0; k < 3; k++) px[i * 4 + k] = rows[i * channels + k] ?? 0;
-    px[i * 4 + 3] = channels === 4 ? (rows[i * channels + 3] ?? 255) : 255;
-  }
-  return { w, h, px };
-}
+export { decodePng, type Rgba } from './png.ts';
 
 /** The plot rect of a ready frame, CSS px (`data-plot`). */
 export async function plotRect(page: Page, id: string): Promise<number[]> {
@@ -152,6 +165,7 @@ export function compareShots(
   b: string,
   plot: number[],
   dpr: number,
+  o: { tileMax?: boolean } = {},
 ): { code: number; out: string } {
   const bin = process.env['DASH_GOLDEN_BIN'];
   if (bin === undefined || bin === '') throw new Error('DASH_GOLDEN_BIN is not set');
@@ -166,7 +180,16 @@ export function compareShots(
   ].join(',');
   const r = spawnSync(
     bin,
-    ['compare', a, b, '--region', region, '--max', '0.005', '--tile-max', '0.25'],
+    [
+      'compare',
+      a,
+      b,
+      '--region',
+      region,
+      '--max',
+      '0.005',
+      ...(o.tileMax === false ? [] : ['--tile-max', '0.25']),
+    ],
     {
       encoding: 'utf8',
     },

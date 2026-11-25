@@ -8,9 +8,6 @@
  */
 import type { DrawnEvent, FrameSummary } from '../api';
 
-/** A test fault of the fault build (`wasm/faults.ts`). */
-export type Fault = 'surface' | 'trap' | 'trap2' | 'gap';
-
 export interface SeriesMessage {
   readonly key: string;
   readonly names: readonly string[];
@@ -29,8 +26,8 @@ export interface BootMessage {
   readonly mainTimeOrigin: number;
   /** Pool threads. */
   readonly pool: number;
-  /** Fault builds only. */
-  readonly fault?: Fault;
+  /** Fault builds only: the fault's name (`engine/faults.ts`). */
+  readonly fault?: string;
 }
 
 export type MainToRender =

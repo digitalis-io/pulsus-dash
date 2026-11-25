@@ -14,7 +14,7 @@
 import type { ChartFrame, FrameInit } from '../api';
 import {
   BOOT_TIMEOUT_MS,
-  pageFault,
+  bootFaults,
   startRender,
   type RenderHandle,
   type Status,
@@ -22,7 +22,7 @@ import {
 } from './boot';
 import { WasmFrame, type Port } from './frame';
 import { fetchEngineWasm } from './integrity';
-import type { Fault, MainToRender, RenderEvent } from './protocol';
+import type { MainToRender, RenderEvent } from './protocol';
 import { spawnPool, spawnRender } from './workers';
 
 export type { WorkerLike } from './boot';
@@ -83,7 +83,7 @@ class EngineHost implements Backend {
   private restarted = false;
   private state: 'booting' | 'ready' | 'restarting' | 'dead' = 'booting';
   private readonly queue: [MainToRender, Transferable[]][] = [];
-  private fault: Fault | undefined;
+  private faultOf: (restart: boolean) => string | undefined = () => undefined;
   private readonly port: Port = {
     postMessage: (msg, transfer = []) => {
       if (this.state === 'ready' && this.render !== null)
@@ -97,7 +97,7 @@ class EngineHost implements Backend {
     private readonly module: WebAssembly.Module,
   ) {}
 
-  private start(fault: Fault | undefined): RenderHandle {
+  private start(fault: string | undefined): RenderHandle {
     return startRender({
       module: this.module,
       forceT2: this.o.forceT2,
@@ -116,8 +116,8 @@ class EngineHost implements Backend {
 
   async boot(): Promise<void> {
     showStatus(0);
-    this.fault = await pageFault();
-    this.render = this.start(this.fault);
+    this.faultOf = await bootFaults();
+    this.render = this.start(this.faultOf(false));
     const s = await this.render.status;
     if (s === null || !ready(s)) {
       this.render.terminate();
@@ -146,7 +146,7 @@ class EngineHost implements Backend {
     this.frames.set(id, { frame, onFail });
     const dispose = frame.dispose.bind(frame);
     frame.dispose = () => {
-      this.frames.delete(id);
+      if (this.frames.get(id)?.frame === frame) this.frames.delete(id);
       dispose();
     };
     return frame;
@@ -185,7 +185,10 @@ class EngineHost implements Backend {
     this.render?.terminate();
     const old = [...this.frames.values()];
     this.frames.clear();
-    this.render = this.start(this.fault === 'trap' ? undefined : this.fault);
+    for (const e of old) e.frame.detach();
+    // A new worker: its frames are numbered afresh.
+    this.nextId = 1;
+    this.render = this.start(this.faultOf(true));
     for (const e of old) e.onFail('restart');
     const s = await this.render.status;
     if (this.isDead()) return;

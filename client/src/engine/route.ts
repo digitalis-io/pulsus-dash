@@ -1,8 +1,10 @@
 /**
- * The routing engine (plan #68 C1 §3.5, §4.1, §4.3; D-ROUTE): one routing frame per ChartFrame,
+ * The routing engine (plan #68 C1 §3.4, §4.1, §4.3; D-ROUTE): one routing frame per ChartFrame,
  * bound to a backend when its first spec arrives. A line frame goes to the WASM engine once it
  * has booted (status 1 or 2: the canvas is transferred); any other kind, or a failed boot, goes
- * to Canvas 2D on the same canvas. A bound frame stays on its backend when its kind changes.
+ * to Canvas 2D on the same canvas. A WASM frame whose spec changes to another kind swaps to
+ * Canvas 2D on a fresh canvas, without a notice, and stays there (the kind swap); a Canvas 2D
+ * frame stays on Canvas 2D whatever its kind.
  *
  * The routing frame keeps the frame's latest state (spec, data, window, theme, events, selection,
  * size) and its listeners, so it can replay them into a backend at bind, after a fallback and
@@ -13,6 +15,7 @@
  * removes its own canvas.
  */
 import { t } from '../i18n/t';
+import { faultOf, installFaults, type FaultSite } from './faults';
 import type {
   ChartEngine,
   ChartFrame,
@@ -51,6 +54,15 @@ const EVENTS: readonly (keyof FrameEvents)[] = [
 ];
 
 type Listener = (ev: never) => void;
+
+/** The route site's faults (fault builds only; a release build drops this block). */
+let faults: FaultSite | null = null;
+if (import.meta.env.VITE_ENGINE_FAULTS === '1') {
+  faults = installFaults(
+    '__pulsus_engine_fault__:route',
+    faultOf(typeof location === 'undefined' ? '' : location.search),
+  );
+}
 
 interface State {
   spec?: VisSpec;
@@ -105,6 +117,8 @@ class RoutingFrame implements ChartFrame {
   private inner: ChartFrame | null = null;
   private innerOffs: (() => void)[] = [];
   private mode: 'unbound' | 'binding' | 'bound' | 'disposed' = 'unbound';
+  /** The backend of the bound frame. */
+  private on2d = false;
   /** Bumped on every (re)bind: callbacks of an older backend frame are ignored. */
   private gen = 0;
   private live: HTMLCanvasElement;
@@ -121,6 +135,12 @@ class RoutingFrame implements ChartFrame {
 
   setSpec(spec: VisSpec): void {
     this.state.spec = spec;
+    if (this.inner !== null && !this.on2d && spec.kind !== 'line') {
+      // The kind swap: the engine draws lines only (until #69).
+      this.unbind();
+      this.bindCanvas2d(this.freshCanvas());
+      return;
+    }
     if (this.inner !== null) {
       this.inner.setSpec(spec);
       return;
@@ -139,8 +159,9 @@ class RoutingFrame implements ChartFrame {
   }
 
   setData(data: FrameData): void {
-    this.state.data = data;
-    this.inner?.setData(data);
+    const d = faults === null ? data : faults.data(data);
+    this.state.data = d;
+    this.inner?.setData(d);
   }
 
   setTimeWindow(w: TimeWindow): void {
@@ -222,6 +243,7 @@ class RoutingFrame implements ChartFrame {
 
   private bindCanvas2d(canvas: HTMLCanvasElement): void {
     this.gen += 1;
+    this.on2d = true;
     canvas.dataset['engine'] = 'canvas2d';
     try {
       this.attach(this.engine.fallback.createFrame(canvas, this.init));
@@ -233,6 +255,7 @@ class RoutingFrame implements ChartFrame {
 
   private bindWasm(b: WasmBackend, canvas: HTMLCanvasElement): void {
     const gen = ++this.gen;
+    this.on2d = false;
     const offscreen = canvas.transferControlToOffscreen();
     canvas.dataset['engine'] = b.tier === 't1' ? 'wasm-webgpu' : 'wasm-webgl2';
     this.attach(

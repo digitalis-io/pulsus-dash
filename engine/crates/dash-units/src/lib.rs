@@ -329,3 +329,22 @@ pub fn format_value(v: f64, unit: &Unit) -> String {
         }
     }
 }
+
+/// The SI prefixes of the TS `formatCompact`, by power of 1000 from 10⁻¹² to 10¹⁸.
+const COMPACT_PREFIXES: [&str; 11] = ["p", "n", "µ", "m", "", "k", "M", "G", "T", "P", "E"];
+
+/// Port of format.ts `compactSamples`: the widest compact label of each SI prefix in `unit`
+/// (`-88.8<prefix><tail>`), whose measured width is the narrowest value band (T02-011, #93).
+pub fn compact_samples(unit: &Unit) -> Vec<String> {
+    let tail = match unit {
+        Unit::None => String::new(),
+        Unit::Suffix { suffix } => format!(" {suffix}"),
+        Unit::Percent | Unit::Percentunit => " %".to_owned(),
+        Unit::Bytes => " B".to_owned(),
+        Unit::Time { .. } => " s".to_owned(),
+    };
+    COMPACT_PREFIXES
+        .iter()
+        .map(|p| format!("-88.8{p}{tail}"))
+        .collect()
+}

@@ -5,19 +5,37 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeEngine } from '../../test/fakeEngine';
-import type { ChartEngine, ChartFrame, VisSpec } from '../api';
+import type { ChartEngine, FrameData, VisSpec } from '../api';
 import { RoutingEngine } from '../route';
 import { loadBackend, type WorkerLike } from './engine';
 
-const LINE: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' } };
+const S: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' } };
+const D: FrameData = {
+  kind: 'series',
+  series: [
+    {
+      key: '00000000000000aa',
+      labels: { job: 'api' },
+      timestamps: new Float64Array([1, 2]),
+      values: new Float64Array([3, 4]),
+    },
+  ],
+};
+const W = { fromMs: 0, toMs: 10 };
 const KEY = 'pulsus-dash.engine-failed';
+const MODULE = { tag: 'module' } as unknown as WebAssembly.Module;
+
+interface Msg {
+  readonly t: string;
+  readonly [k: string]: unknown;
+}
 
 class FakeWorker implements WorkerLike {
-  readonly sent: { t: string; id?: number }[] = [];
+  readonly sent: Msg[] = [];
   terminated = false;
   private readonly listeners = new Map<string, ((e: unknown) => void)[]>();
   postMessage(msg: unknown): void {
-    this.sent.push(msg as { t: string });
+    this.sent.push(msg as Msg);
   }
   terminate(): void {
     this.terminated = true;
@@ -32,7 +50,8 @@ class FakeWorker implements WorkerLike {
     this.emit('message', { data });
   }
   status(status = 1): void {
-    this.message({ t: 'status', status, adapter: 'llvmpipe (LLVM 20)', cb: 64, memory: {} });
+    this.message({ t: 'status', status, adapter: 'swiftshader', cb: 64, memory: {} });
+    this.message({ t: 'spawn-pool', ptr: 8 });
   }
   drawn(id: number): void {
     const ev = { cssWidth: 300, cssHeight: 150, dpr: 1 };
@@ -44,9 +63,6 @@ class FakeWorker implements WorkerLike {
   trap(): void {
     this.emit('error', { message: 'unreachable' });
   }
-  created(): number[] {
-    return this.sent.filter((m) => m.t === 'create').map((m) => m.id ?? -1);
-  }
 }
 
 const flush = async (): Promise<void> => {
@@ -54,66 +70,67 @@ const flush = async (): Promise<void> => {
 };
 
 interface Page {
-  engine: ChartEngine;
-  render: FakeWorker[];
-  c2d: ReturnType<typeof fakeEngine>;
-  hosts: HTMLElement[];
-  frames: ChartFrame[];
-  frame(): ChartFrame;
+  readonly render: FakeWorker[];
+  readonly pools: FakeWorker[];
+  readonly c2d: ReturnType<typeof fakeEngine>;
+  readonly host: HTMLElement;
+  readonly engine: ChartEngine;
 }
 
 async function page(markFailed: () => void): Promise<Page> {
   const render: FakeWorker[] = [];
+  const pools: FakeWorker[] = [];
   const c2d = fakeEngine();
-  const hosts: HTMLElement[] = [];
-  const frames: ChartFrame[] = [];
   const engine = new RoutingEngine(
     () =>
       loadBackend({
         forceT2: false,
         markFailed,
-        compile: () => Promise.resolve({} as WebAssembly.Module),
+        compile: () => Promise.resolve(MODULE),
         spawnRender: () => {
           const w = new FakeWorker();
           render.push(w);
           return w;
         },
-        spawnPool: () => new FakeWorker(),
+        spawnPool: () => {
+          const w = new FakeWorker();
+          pools.push(w);
+          return w;
+        },
         timeoutMs: 10_000,
       }),
     c2d,
   );
-  const frame = (): ChartFrame => {
-    const host = document.createElement('div');
-    const canvas = document.createElement('canvas');
-    host.append(canvas);
-    document.body.append(host);
-    hosts.push(host);
-    const f = engine.createFrame(canvas, { timeZone: 'UTC', keyTarget: null });
-    f.setSpec(LINE);
-    f.resize(300, 150, 1);
-    frames.push(f);
-    return f;
-  };
-  frame();
-  frame();
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  const f = engine.createFrame(canvas, { timeZone: 'UTC', keyTarget: null, id: 'f1' });
+  f.setSpec(S);
+  f.setData(D);
+  f.setTimeWindow(W);
+  f.setTheme('dark');
+  f.resize(300, 150, 1);
   await flush();
   render[0]?.status();
   await flush();
-  return { engine, render, c2d, hosts, frames, frame };
+  return { render, pools, c2d, host, engine };
 }
 
-const live = (h: HTMLElement): HTMLCanvasElement[] => [
-  ...h.querySelectorAll<HTMLCanvasElement>('canvas:not([data-retired])'),
-];
+const canvases = (h: HTMLElement): HTMLCanvasElement[] => [...h.querySelectorAll('canvas')];
 const notices = (h: HTMLElement): number => h.querySelectorAll('[data-engine-notice]').length;
 
+let transferred: unknown[] = [];
 beforeEach(() => {
   sessionStorage.clear();
-  vi.resetModules();
+  transferred = [];
   Object.defineProperty(HTMLCanvasElement.prototype, 'transferControlToOffscreen', {
     configurable: true,
-    value: () => ({ width: 0, height: 0 }) as unknown as OffscreenCanvas,
+    value(this: HTMLCanvasElement) {
+      const off = { from: this } as unknown as OffscreenCanvas;
+      transferred.push(off);
+      return off;
+    },
   });
 });
 afterEach(() => {
@@ -122,88 +139,95 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('engine restart policy (T03 §9.2)', () => {
-  it('a trap after a draw restarts once; a second trap falls back for good', async () => {
-    const { markSessionFailed, sessionFailed } = await import('../failFlag');
-    const p = await page(markSessionFailed);
-    const [w0] = p.render;
-    if (w0 === undefined) throw new Error('no render worker');
-    expect(w0.created()).toHaveLength(2);
-    w0.drawn(w0.created()[0] ?? -1);
-    w0.trap();
-    await flush();
-    expect(w0.terminated).toBe(true);
-    expect(p.render).toHaveLength(2);
-    const w1 = p.render[1];
-    if (w1 === undefined) throw new Error('no restart');
-    w1.status();
-    await flush();
-    expect(w1.created()).toHaveLength(2);
-    for (const h of p.hosts) {
-      expect(h.querySelectorAll('canvas')).toHaveLength(2);
-      expect(live(h).map((c) => c.dataset['engine'])).toEqual(['wasm-webgpu']);
-      expect(notices(h)).toBe(1);
-    }
-    // The state is replayed into the new worker.
-    expect(w1.sent.filter((m) => m.t === 'spec')).toHaveLength(2);
-    expect(w1.sent.filter((m) => m.t === 'resize')).toHaveLength(2);
-    expect(sessionFailed()).toBe(false);
+/** (a) up to the restart: #2 booted with the frame replayed. */
+async function restarted(p: Page): Promise<FakeWorker> {
+  const [w1] = p.render;
+  if (w1 === undefined) throw new Error('no render worker');
+  w1.drawn(1);
+  w1.trap();
+  await flush();
+  expect(w1.terminated).toBe(true);
+  expect(p.pools.map((w) => w.terminated)).toEqual([true]);
+  expect(p.render).toHaveLength(2);
+  const w2 = p.render[1];
+  if (w2 === undefined) throw new Error('no restart');
+  expect(w2.sent[0]).toMatchObject({ t: 'boot', module: MODULE });
+  w2.status();
+  await flush();
+  const after = w2.sent.slice(1);
+  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'window', 'theme', 'resize']);
+  expect(after[0]).toMatchObject({ t: 'create', id: 1, frameId: 'f1' });
+  expect(after[0]?.['canvas']).toBe(transferred[1]);
+  expect(transferred[1]).not.toBe(transferred[0]);
+  expect(after[4]).toEqual({ t: 'theme', id: 1, theme: 0 });
+  expect(after[5]).toEqual({ t: 'resize', id: 1, w: 300, h: 150, dpr: 1 });
+  const [c1, c2] = canvases(p.host);
+  expect(c1?.hasAttribute('data-retired')).toBe(true);
+  expect(c2?.dataset['engine']).toBe('wasm-webgpu');
+  expect(notices(p.host)).toBe(1);
+  return w2;
+}
 
-    w1.trap();
+describe('engine restart policy (T03 §9.2)', () => {
+  it('(a) a trap after a draw restarts once; a second trap falls back for good', async () => {
+    const { markSessionFailed } = await import('../failFlag');
+    const p = await page(markSessionFailed);
+    const w2 = await restarted(p);
+    w2.trap();
     await flush();
     expect(p.render).toHaveLength(2);
-    expect(p.c2d.frames).toHaveLength(2);
-    for (const h of p.hosts) expect(live(h).map((c) => c.dataset['engine'])).toEqual(['canvas2d']);
+    const c3 = canvases(p.host)[2];
+    expect(c3?.dataset['engine']).toBe('canvas2d');
+    expect(p.c2d.createCalls.map((c) => c.canvas)).toEqual([c3]);
+    const fr = p.c2d.frames[0];
+    expect([fr?.last('setSpec'), fr?.last('setData'), fr?.last('setTimeWindow')]).toEqual([
+      [S],
+      [D],
+      [W],
+    ]);
     expect(sessionStorage.getItem(KEY)).toBe('1');
-    // A later frame starts on Canvas 2D.
-    p.frame();
-    await flush();
-    expect(p.c2d.frames).toHaveLength(3);
   });
 
-  it('a trap before any draw falls back without a restart', async () => {
+  it('(b) a trap before any draw falls back without a restart', async () => {
     const { markSessionFailed } = await import('../failFlag');
     const p = await page(markSessionFailed);
     p.render[0]?.trap();
     await flush();
     expect(p.render).toHaveLength(1);
-    expect(p.c2d.frames).toHaveLength(2);
-    for (const h of p.hosts) expect(notices(h)).toBe(1);
+    expect(canvases(p.host)[1]?.dataset['engine']).toBe('canvas2d');
+    expect(notices(p.host)).toBe(1);
     expect(sessionStorage.getItem(KEY)).toBe('1');
   });
 
   it('a restart that does not reach status 1 or 2 falls back', async () => {
-    vi.useFakeTimers();
-    try {
-      const { markSessionFailed } = await import('../failFlag');
-      const p = await page(markSessionFailed);
-      const w0 = p.render[0];
-      w0?.drawn(w0.created()[0] ?? -1);
-      w0?.trap();
-      await flush();
-      expect(p.render).toHaveLength(2);
-      p.render[1]?.status(4);
-      await flush();
-      expect(p.c2d.frames).toHaveLength(2);
-      expect(sessionStorage.getItem(KEY)).toBe('1');
-    } finally {
-      vi.useRealTimers();
-    }
+    const { markSessionFailed } = await import('../failFlag');
+    const p = await page(markSessionFailed);
+    p.render[0]?.drawn(1);
+    p.render[0]?.trap();
+    await flush();
+    p.render[1]?.status(4);
+    await flush();
+    expect(p.c2d.frames).toHaveLength(1);
+    expect(sessionStorage.getItem(KEY)).toBe('1');
   });
 
-  it('with a throwing sessionStorage the page still falls back and later frames use Canvas 2D', async () => {
+  it('(c) with a throwing sessionStorage the page still ends the engine', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied');
     });
-    const { markSessionFailed, sessionFailed } = await import('../failFlag');
+    const { markSessionFailed } = await import('../failFlag');
     const p = await page(markSessionFailed);
-    p.render[0]?.trap();
+    const w2 = await restarted(p);
+    w2.trap();
     await flush();
-    expect(p.c2d.frames).toHaveLength(2);
-    expect(sessionFailed()).toBe(true);
-    p.frame();
+    expect(sessionStorage.getItem(KEY)).toBe(null);
+    expect(p.c2d.frames).toHaveLength(1);
+    const later = document.createElement('canvas');
+    p.host.append(later);
+    const f = p.engine.createFrame(later, { timeZone: 'UTC', keyTarget: null });
+    f.setSpec(S);
     await flush();
-    expect(p.c2d.frames).toHaveLength(3);
-    expect(p.render).toHaveLength(1);
+    expect(p.c2d.createCalls.at(-1)?.canvas).toBe(later);
+    expect(p.render).toHaveLength(2);
   });
 });
