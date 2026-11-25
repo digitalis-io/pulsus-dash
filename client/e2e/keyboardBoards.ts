@@ -1,11 +1,12 @@
 /**
- * Keyboard loops L23–L31 and L34 (plan #61 Part B, Appendix B-A §A.5; Part C, Appendix C-A §A.3;
+ * Keyboard loops L23–L31, L34 and L35 (plan #61 Part B, Appendix B-A §A.5; Part C, Appendix C-A §A.3;
  * plan #67 §5.3): the board list and its dialogs, the board log panels, the board in View and Edit mode, the panel tools, Share, the layout buttons, the panel editor dialog
  * and its selects, the guard and the conflict dialog. Each loop asserts its behaviours, then drains its
  * states. The keyboard parts (keyboard.spec.ts, #130) call them; coverage is checked over all parts.
  */
 import { expect, test } from '@playwright/test';
 import { enc, ORIGIN } from './helpers.ts';
+import { inspectorSheet } from './keyboardInspector.ts';
 import type { Script } from './keyboardScript.ts';
 
 const EDGE = 'Edge gateway, eu-west-1: p99 latency by pod and region after the last deploy';
@@ -29,7 +30,7 @@ const STUB_BUCKETS = [
   '+Inf',
 ];
 
-/** The board loops L23–L31 and L34, one function per step (#130: the keyboard parts call them). */
+/** The board loops L23–L31, L34 and L35 (#192), one function per step (#130: the keyboard parts call them). */
 export function boardSteps(s: Script) {
   const { page, h } = s;
   const { press, type } = h;
@@ -266,6 +267,39 @@ export function boardSteps(s: Script) {
         }
       });
     },
+    /**
+     * L35 (T25, #192): the Inspector by keyboard on b-1, opened from the stat's inspect button
+     * (`keyboardInspector.ts`). Edit query opens the panel editor; the Explore pivot opens the
+     * panel's query in Explore.
+     */
+    async inspector(): Promise<void> {
+      await test.step('L35 Inspector', async () => {
+        const url = '/t/demo/board/b-1';
+        const heading = page.locator('[data-inspector]').getByRole('heading', { level: 2 });
+        await inspectorSheet(s, {
+          open: async () => {
+            await s.goto(url);
+            await settledPanel('Error ratio');
+            await s.on('button "Inspect Error ratio"');
+            await expect(heading).toHaveText('Error ratio');
+            await expect(heading).toBeFocused();
+          },
+          opener: page.getByRole('button', { name: 'Inspect Error ratio' }),
+          query:
+            'sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
+          frame: panelNamed('Error ratio').locator('[data-chart-frame]'),
+          afterEdit: async () => {
+            await expect(editor).toBeVisible();
+            await closeEditor();
+          },
+          explore: async () => {
+            await s.on('link "Explore"');
+            await expect.poll(() => s.path()).toBe('/t/demo/explore/metrics');
+            expect(s.search()['vis']).toBe('stat');
+          },
+        });
+      });
+    },
     async viewTools(uid: 'b-1' | 'b-3'): Promise<void> {
       await test.step(`L24 View tools: ${uid}`, async () => {
         const titles = uid === 'b-1' ? B1_PANELS : B3_PANELS;
@@ -292,6 +326,11 @@ export function boardSteps(s: Script) {
               for (const le of STUB_BUCKETS) {
                 const esc = le.replace(/[.+]/g, (c) => `\\${c}`);
                 await s.on(new RegExp(`^button "stub_bucket\\{le="${esc}"\\}"$`));
+                // T25-016: the row's Select toggle selects its bucket series on the page.
+                await s.on(new RegExp(`^button "Select stub_bucket\\{le="${esc}"\\}"$`));
+                await expect(
+                  page.getByRole('button', { name: `Select stub_bucket{le="${le}"}` }),
+                ).toHaveAttribute('aria-pressed', 'true');
               }
             }
           } else {

@@ -64,12 +64,13 @@ test.describe('e2e:a11y-rooms keyboard', () => {
   part('K2', 'panel editor (L27)', ['@kbd', '@kbd-a'], (s) => boardSteps(s).editor());
   part(
     'K3',
-    'board list, log panels and b-1 view tools (L23, L34, L24 b-1)',
+    'board list, log panels, Inspector and b-1 view tools (L23, L34, L35, L24 b-1)',
     ['@kbd', '@kbd-b'],
     async (s) => {
       const b = boardSteps(s);
       await b.boardList();
       await b.logPanels();
+      await b.inspector();
       await b.viewTools('b-1');
     },
   );

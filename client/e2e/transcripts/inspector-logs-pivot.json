@@ -1,0 +1,10 @@
+{
+  "name": "inspector-logs-pivot",
+  "provenance": {"synthetic": "the Logs pivot of fixture P (#192): the checkout lines of 13:40:20-13:42:20"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{service_name=\"checkout\"}", "form": {"end": "1795095740000000000", "limit": "1001", "direction": "backward"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-inspector-logs-pivot-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"service_name":"checkout"},"values":[["1795095725250000000","retrying payment call (attempt 2 of 3)",{"structuredMetadata":{"detected_level":"warn"}}],["1795095680377000000","payment authorisation timed out after 2.7 s",{"structuredMetadata":{"detected_level":"error"}}],["1795095630000000000","cart priced, items=2",{"structuredMetadata":{"detected_level":"info"}}]]}],"stats":{"streams":1,"entries":3}}}
+  }
+}

@@ -8,9 +8,12 @@
  */
 import { expect, test } from '@playwright/test';
 import { EXPLORE_RESULT, LOGS_RESULT } from './helpers.ts';
+import { inspectorSheet } from './keyboardInspector.ts';
 import type { Script } from './keyboardScript.ts';
 
 const ROW = (i: number): RegExp => new RegExp(`^button "stub_metric\\{series="${String(i)}"\\}"$`);
+const SELECT = (i: number): RegExp =>
+  new RegExp(`^button "Select stub_metric\\{series="${String(i)}"\\}"$`);
 const REGION = 'region "Series. Choose a series to show it alone; choose it again to show all."';
 
 export async function exploreLoops(s: Script): Promise<void> {
@@ -42,6 +45,18 @@ export async function exploreLoops(s: Script): Promise<void> {
       await s.on(ROW(i));
       await press('Enter');
     }
+    // T25-016: each row's Select toggle selects its series on the page (and again clears it).
+    for (const i of [0, 1, 2]) {
+      await s.on(SELECT(i));
+      const toggle = page.getByRole('button', {
+        name: `Select stub_metric{series="${String(i)}"}`,
+      });
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    }
+    await press('Enter');
+    await expect(
+      page.getByRole('button', { name: 'Select stub_metric{series="2"}' }),
+    ).toHaveAttribute('aria-pressed', 'false');
 
     await s.focus(REGION);
 
@@ -51,6 +66,27 @@ export async function exploreLoops(s: Script): Promise<void> {
       await press('ArrowRight');
     }
     await press('Space');
+    await expect.poll(() => s.search()['vis']).toBe('stat');
+    // The stat's inspect button and the Inspector on Explore (T25, #192): no Explore pivot; Edit
+    // query focuses the query editor.
+    const statUrl = page.url();
+    const heading = page.locator('[data-inspector]').getByRole('heading', { level: 2 });
+    await inspectorSheet(s, {
+      open: async () => {
+        if (page.url() !== statUrl) await s.goto(statUrl);
+        await page.locator('[data-chart-frame][data-frame-ready="true"]').waitFor();
+        await s.on('button "Inspect Query result"');
+        await expect(heading).toHaveText('Query result');
+        await expect(heading).toBeFocused();
+      },
+      opener: page.getByRole('button', { name: 'Inspect Query result' }),
+      query: 'http_requests_total',
+      frame: page.locator('[data-chart-frame]'),
+      afterEdit: async () => {
+        await expect.poll(() => h.focusName()).toBe('textbox "PromQL query"');
+      },
+    });
+    await s.focus('radio "Stat"');
     // Back to Auto with the arrows: React Aria's toolbar keys are the arrows only (no Home).
     for (let i = 0; i < 4; i++) await press('ArrowLeft');
     await press('Space');

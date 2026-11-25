@@ -519,6 +519,45 @@ test.describe('e2e:a11y-rooms logs', () => {
  * WCAG 2.5.3, label in name (#145): the checks catch a mismatch axe misses (one letter) and one
  * it finds, and the collapsed sidebar's org-initial tenant badge passes them.
  */
+/** Opens the Inspector on the stub board's "Request rate" chart (T25, #192). */
+async function openInspector(page: Page): Promise<void> {
+  const frame = page.locator('[data-panel-id="p-1"] [data-chart-frame][data-frame-ready="true"]');
+  await frame.waitFor();
+  const box = await frame.boundingBox();
+  const [px = 0, py = 0, pw = 0, ph = 0] =
+    (await frame.getAttribute('data-plot'))?.split(',').map(Number) ?? [];
+  if (box === null) throw new Error('no chart box');
+  for (let f = 0.1; f < 0.95; f += 0.05) {
+    await page.mouse.click(box.x + px + pw * 0.7, box.y + py + ph * f);
+    if ((await page.locator('[data-inspector]').count()) > 0) break;
+  }
+  await expect(page.locator('[data-inspector]')).toHaveCount(1);
+}
+
+test.describe('e2e:a11y-rooms inspector', () => {
+  for (const theme of ['dark', 'light', 'forced'] as const) {
+    for (const collapsed of [false, true]) {
+      test(`${theme} inspector ${collapsed ? 'collapsed' : 'open'}`, async ({ page }) => {
+        if (theme === 'forced') await page.emulateMedia({ forcedColors: 'active' });
+        await page.addInitScript(
+          (t) => {
+            localStorage.setItem('pulsus-dash.theme', t);
+          },
+          theme === 'light' ? 'light' : 'dark',
+        );
+        await open(page, '/t/demo/board/b-1');
+        await openInspector(page);
+        if (collapsed) {
+          await page.getByRole('button', { name: 'Collapse Inspector' }).click();
+          await expect(page.locator('[data-inspector]')).toHaveAttribute('data-collapsed', '');
+        }
+        expect(await seriousViolations(page)).toEqual([]);
+        expect(await smallTargets(page)).toEqual([]);
+      });
+    }
+  }
+});
+
 test.describe('e2e:a11y-rooms label in name', () => {
   test('label in name: the checks catch a mismatch', async ({ page }) => {
     await open(page, '/t/demo/boards');

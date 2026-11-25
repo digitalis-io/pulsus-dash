@@ -1,0 +1,10 @@
+{
+  "name": "inspector-logs-sel",
+  "provenance": {"synthetic": "two streams for the log selection tests (#192): s1 at 12:00:10 and 12:00:40, s2 at 12:00:20, in 12:00-15:00"},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{app=\"inspector\"}", "form": {"end": "1795100400000000000", "limit": "1001", "direction": "backward"}},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-inspector-logs-sel-1"},
+    "body": {"status":"success","data":{"resultType":"streams","encodingFlags":["categorize-labels"],"result":[{"stream":{"app":"inspector","stream":"s1"},"values":[["1795089640000000000","s1 line at 12:00:40",{"structuredMetadata":{"detected_level":"info"}}],["1795089610000000000","s1 line at 12:00:10",{"structuredMetadata":{"detected_level":"info"}}]]},{"stream":{"app":"inspector","stream":"s2"},"values":[["1795089620000000000","s2 line at 12:00:20",{"structuredMetadata":{"detected_level":"warn"}}]]}],"stats":{"streams":2,"entries":3}}}
+  }
+}
