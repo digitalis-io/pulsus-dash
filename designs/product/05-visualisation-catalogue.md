@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-25 |
+| **Version** | 1.7-rc · 2026-11-25 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -438,13 +438,18 @@ enabled).
 
 The Histogram (Table 5-3) MUST bin a numeric result (one value per series, or every sample of a range
 pooled) with auto, count or width bins on a linear or log value axis, stack or overlay groups by a
-label, and overlay a CDF or an exact ECDF. Values it cannot draw (≤ 0 on a log axis, infinite, or
-outside the drawable magnitude 1e−290…1e290) MUST be counted on the coverage meter, which totals them,
+label, and overlay a CDF or an exact ECDF. A result with histogram buckets (`le` series) MUST be drawn
+with one bin per returned bucket from the cumulative counts, never binned as values and never with
+invented counts, and its quantiles MUST be labelled as estimates. Values it cannot draw (≤ 0 or
+crossing 0 on a log axis, infinite, outside the drawable magnitude 1e−290…1e290, or malformed,
+incompatible or invalid bucket families) MUST be counted on the coverage meter, which totals them,
 with the per-group breakdown one action away; every group MUST be told apart without colour.
 
 *Acceptance:* Given latencies for versions A and B grouped by `version` with ECDF, when drawn, then two
 curves show, each ends at 100 %, the tooltip reads the exact share ≤ x for each, and in greyscale the
-groups differ by dash; and given 3 zero values on a log axis, then the meter reads "3 ≤ 0 not shown (log)".
+groups differ by dash; and given 3 zero values on a log axis, then the meter reads "3 ≤ 0 not shown (log)";
+and given buckets 0.1, 0.5, 1 and +Inf with cumulative counts 3, 8, 9 and 10, then the bins read "≤ 0.1",
+"0.1 – 0.5", "0.5 – 1" and "> 1" with counts 3, 5, 1 and 1, and the median reads "≈ 0.26 (estimate)".
 
 ## 3. Topology & space (3D / 2.5D)
 
@@ -1472,6 +1477,7 @@ board.
 | 1.4-rc | 2026-11-24 | #151: VIZ-095 (T22) |
 | 1.5-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
 | 1.6-rc | 2026-11-25 | #154: VIZ-090 (T21) |
+| 1.7-rc | 2026-11-25 | #206: VIZ-090 bucket sources (T21) |
 
 ## Resolved during formalisation
 

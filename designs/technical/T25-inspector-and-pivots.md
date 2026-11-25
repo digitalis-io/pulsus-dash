@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-25 |
+| **Version** | 1.2-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/164 (not tracked) |
@@ -261,6 +261,7 @@ export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173
   | { type: 'bucket'; index: number; tMs: number; toMs: number; lower: number | null; upper: number; count: number; countUnit: Unit }
   | { type: 'value'; key: string | null; labels: Labels; name: string; value: number; tMs: number | null; state: State | null }
   | { type: 'logLine'; streamKey: string; labels: Labels; tsNs: bigint; level: LogLevel; line: string; metadata: Labels | null; parsed: Labels | null };
+// a `bin` from a bucket source: header `bucketRangeText`, members are families (T21-067)
 export interface Selection { keys: string[]; fromMs: number | null; toMs: number | null }
 export interface SelectionSource { kind: 'mark' | 'tableRow' | 'brush' | 'member'; panelId: string | null }
 export interface InspectRequest { origin: InspectOrigin; target: InspectorTarget; selection: Selection;
@@ -387,3 +388,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 |---|---|---|
 | 1.0-rc | 2026-11-25 | #164: created: rules T25-001 to T25-016, the `InspectRequest` union, the shared selection and its highlight, the Esc ladder, pivots with disclosed Context, the look and motion, tests, the implementation issues I1 and I3–I6; mockup 41-inspector. Code review r1: the Profiles and Entity reasons are written in full; the redraw report is the T05 gate `bench:inspector-redraw` |
 | 1.1-rc | 2026-11-25 | #154 ([T21](T21-time-and-distribution-panels.md) part 2a): §5 `InspectorTarget` gains `{type:'bin'; target}` and `HoverItem` gains `bin`; `MemberList.labels?` and `MemberSection.texts.labels?` (parallel to the texts; per-entry chips, T25-009); T25-011 adds the bin rule (one section, resolver ids `binId` and `${binId}:groups`, completeness with labels, `frameSeq` staleness); §4.3: `bin` uses the origin window. Code review r1: `expandMembers` returns the parallel `labels` for the shown and the resolved entries |
+| 1.2-rc | 2026-11-25 | #206 ([T21](T21-time-and-distribution-panels.md) part 2a-ii): §5 comment: a `bin` from a bucket source has the header `bucketRangeText` and lists families as members (T21-067) |
