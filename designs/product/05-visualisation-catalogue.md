@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-24 |
+| **Version** | 1.6-rc · 2026-11-25 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -378,8 +378,8 @@ Every viewport also carries a **coverage meter**.
 | Vis | Use | Milestone |
 |---|---|---|
 | **Compare bars** (selection vs baseline, per attribute value) | Attribute-divergence compare output for spans/logs/metric labels; sorted by significance | M-UI3 |
-| **Histogram** (standalone, any numeric field) | Value distribution of a reduced field (latency of selected spans, request sizes, pod memory); bucket size auto/explicit, stacked by group | M-UI5 |
-| **Histogram / CDF / ECDF overlay** | Latency before vs after; version A vs B | M-UI3 |
+| **Histogram** (standalone, any numeric field) | Value distribution of a reduced field (latency of selected spans, request sizes, pod memory); bucket size auto/explicit, stacked by group (VIZ-090) | M-UI5 |
+| **Histogram / CDF / ECDF overlay** | Latency before vs after; version A vs B (VIZ-090) | M-UI3 |
 | **Box / violin plot** (categorical X) | Distribution per version, region or pod; outliers individually clickable | M-UI5 |
 | **XY chart** (arbitrary X × Y) | Correlation between two non-time fields: CPU vs latency per pod, request size vs duration. Points / lines / both; **bubble** (size field) and colour field; log/symlog axes; regression line + r²; 10⁷ points | M-UI5 |
 | **Trend** (sequential non-time X) | Curves over a numeric axis: latency vs load (RPS), throughput vs concurrency, cost vs replicas. The capacity-planning view for Lee (Platform) | M-UI5 |
@@ -432,6 +432,19 @@ scene.
 *Acceptance:* For each row of Table 5-3 at its milestone, given matching data, when the vis is
 selected, then it renders with the listed options (e.g. XY chart shows a regression line and r² when
 enabled).
+
+#### VIZ-090 — Histogram and cumulative overlay
+**MUST** · M-UI3 · SRE, Engineer, Platform, Business
+
+The Histogram (Table 5-3) MUST bin a numeric result (one value per series, or every sample of a range
+pooled) with auto, count or width bins on a linear or log value axis, stack or overlay groups by a
+label, and overlay a CDF or an exact ECDF. Values it cannot draw (≤ 0 on a log axis, infinite, or
+outside the drawable magnitude 1e−290…1e290) MUST be counted on the coverage meter, which totals them,
+with the per-group breakdown one action away; every group MUST be told apart without colour.
+
+*Acceptance:* Given latencies for versions A and B grouped by `version` with ECDF, when drawn, then two
+curves show, each ends at 100 %, the tooltip reads the exact share ≤ x for each, and in greyscale the
+groups differ by dash; and given 3 zero values on a log axis, then the meter reads "3 ≤ 0 not shown (log)".
 
 ## 3. Topology & space (3D / 2.5D)
 
@@ -1442,6 +1455,7 @@ board.
 | VIZ-084 | Imported 3D models for physical layout | MAY | M-UI6 |
 | VIZ-085 | Fleet line stack | MUST | M-UI3 |
 | VIZ-086 | True 3D only | MUST | M-UI3 |
+| VIZ-090 | Histogram and cumulative overlay | MUST | M-UI3 |
 | VIZ-095 | Stat baseline delta | MUST | M-UI1 |
 | VIZ-105 | 3D flame | MUST | M-UI3 |
 | VIZ-106 | Flame top suspects | MUST | M-UI2 |
@@ -1457,6 +1471,7 @@ board.
 | 1.3-rc | 2026-11-24 | VIZ-086 (owner, #150); T21 |
 | 1.4-rc | 2026-11-24 | #151: VIZ-095 (T22) |
 | 1.5-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
+| 1.6-rc | 2026-11-25 | #154: VIZ-090 (T21) |
 
 ## Resolved during formalisation
 
