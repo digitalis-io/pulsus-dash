@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-21 |
+| **Version** | 1.10-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (headers, CSP, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sessions with authentication (D12), sandboxed WASM modules, compliance) |
 | **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
@@ -376,6 +376,10 @@ nofollow" target="_blank"`) before it is rendered as React elements; no HTML str
 The URL is HMAC-signed so the proxy cannot be used as an open relay, and the proxy enforces the
 egress guard (§4.9), `image/*` content types, ≤ 5 MiB and re-encoding. For **AI-generated Markdown,
 images MUST be disabled entirely** (§4.10).
+
+**Interim, until the proxy ships (M-UI4, T24 A3):** the Markdown renderer MUST NOT load an external
+image; it renders a new-tab link (alt text or host) and records an `image` removal (T24-018). Then
+`board` rewrites to the proxy.
 
 - **Template interpolation** (`{{entity}}`, Context variables) happens on the AST after parsing, so
   values are always text nodes and cannot inject markup.
@@ -755,6 +759,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.7-rc | 2026-11-20 | #59 Part B: §4.3 manifest details (sorted entries, `sha384` in standard base64, variants listed, the signature as 64 raw bytes, the manifest and signature served as the verified bytes, `serve --api-only` serves no client); T18-003 CSP reports are logged only as allowlisted values (directive, disposition, route pattern, blocked category) |
 | 1.8-rc | 2026-11-21 | #68: §4.11 engine leg as built: the cargo-deny licence allow list is the ADR-0014 §7 set with exact-version exceptions for `unicode-ident` (Unicode-3.0), `foldhash` and `slotmap` (Zlib), both AGPL-3.0-compatible (D3); exact crate pins and the 7-day rule apply to the Rust lockfile |
 | 1.9-rc | 2026-11-21 | #59 Part C: T18-026 server bullet adds `ci:go-licenses` (AGPL-3.0-compatible licences, D3) and the third-party notices file shipped with releases |
+| 1.10-rc | 2026-11-25 | #153: T18-014 interim external images (T24 A3) |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's
