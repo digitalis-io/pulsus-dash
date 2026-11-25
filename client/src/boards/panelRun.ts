@@ -350,7 +350,9 @@ export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: stri
     rateApplied: o.planned.rateApplied,
     result: r,
   });
-  // PromQL `logs` is blocked above; any other saved kind overrides the auto vis.
-  const chosen = chooseVis(vis === 'auto' || vis === 'logs' ? 'auto' : vis, auto) ?? 'line';
+  // PromQL `logs` and the pending kinds (barchart, pie) are blocked above; any other saved kind
+  // overrides the auto vis.
+  const saved = vis === 'logs' || vis === 'barchart' || vis === 'pie' ? 'auto' : vis;
+  const chosen = chooseVis(saved, auto) ?? 'line';
   return frameView(chosen, r, o.planned.rateApplied, panelVis, title);
 }

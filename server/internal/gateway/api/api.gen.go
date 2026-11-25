@@ -484,28 +484,241 @@ func (e ThresholdsDirection) Valid() bool {
 
 // Defines values for VisKind.
 const (
-	Auto    VisKind = "auto"
-	Bars    VisKind = "bars"
-	Heatmap VisKind = "heatmap"
-	Line    VisKind = "line"
-	Logs    VisKind = "logs"
-	Stat    VisKind = "stat"
+	VisKindAuto     VisKind = "auto"
+	VisKindBarchart VisKind = "barchart"
+	VisKindBars     VisKind = "bars"
+	VisKindHeatmap  VisKind = "heatmap"
+	VisKindLine     VisKind = "line"
+	VisKindLogs     VisKind = "logs"
+	VisKindPie      VisKind = "pie"
+	VisKindStat     VisKind = "stat"
 )
 
 // Valid indicates whether the value is a known member of the VisKind enum.
 func (e VisKind) Valid() bool {
 	switch e {
-	case Auto:
+	case VisKindAuto:
 		return true
-	case Bars:
+	case VisKindBarchart:
 		return true
-	case Heatmap:
+	case VisKindBars:
 		return true
-	case Line:
+	case VisKindHeatmap:
 		return true
-	case Logs:
+	case VisKindLine:
 		return true
-	case Stat:
+	case VisKindLogs:
+		return true
+	case VisKindPie:
+		return true
+	case VisKindStat:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsBaselineOffset.
+const (
+	N1d  VisOptionsBaselineOffset = "1d"
+	N1h  VisOptionsBaselineOffset = "1h"
+	N28d VisOptionsBaselineOffset = "28d"
+	N7d  VisOptionsBaselineOffset = "7d"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsBaselineOffset enum.
+func (e VisOptionsBaselineOffset) Valid() bool {
+	switch e {
+	case N1d:
+		return true
+	case N1h:
+		return true
+	case N28d:
+		return true
+	case N7d:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsColourMode.
+const (
+	VisOptionsColourModeBackground VisOptionsColourMode = "background"
+	VisOptionsColourModeNone       VisOptionsColourMode = "none"
+	VisOptionsColourModeValue      VisOptionsColourMode = "value"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsColourMode enum.
+func (e VisOptionsColourMode) Valid() bool {
+	switch e {
+	case VisOptionsColourModeBackground:
+		return true
+	case VisOptionsColourModeNone:
+		return true
+	case VisOptionsColourModeValue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsGraphMode.
+const (
+	VisOptionsGraphModeNone      VisOptionsGraphMode = "none"
+	VisOptionsGraphModeSparkline VisOptionsGraphMode = "sparkline"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsGraphMode enum.
+func (e VisOptionsGraphMode) Valid() bool {
+	switch e {
+	case VisOptionsGraphModeNone:
+		return true
+	case VisOptionsGraphModeSparkline:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsLabels.
+const (
+	VisOptionsLabelsName    VisOptionsLabels = "name"
+	VisOptionsLabelsNone    VisOptionsLabels = "none"
+	VisOptionsLabelsPercent VisOptionsLabels = "percent"
+	VisOptionsLabelsValue   VisOptionsLabels = "value"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsLabels enum.
+func (e VisOptionsLabels) Valid() bool {
+	switch e {
+	case VisOptionsLabelsName:
+		return true
+	case VisOptionsLabelsNone:
+		return true
+	case VisOptionsLabelsPercent:
+		return true
+	case VisOptionsLabelsValue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsLayout.
+const (
+	VisOptionsLayoutGrid   VisOptionsLayout = "grid"
+	VisOptionsLayoutSingle VisOptionsLayout = "single"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsLayout enum.
+func (e VisOptionsLayout) Valid() bool {
+	switch e {
+	case VisOptionsLayoutGrid:
+		return true
+	case VisOptionsLayoutSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsOrientation.
+const (
+	VisOptionsOrientationAuto       VisOptionsOrientation = "auto"
+	VisOptionsOrientationHorizontal VisOptionsOrientation = "horizontal"
+	VisOptionsOrientationVertical   VisOptionsOrientation = "vertical"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsOrientation enum.
+func (e VisOptionsOrientation) Valid() bool {
+	switch e {
+	case VisOptionsOrientationAuto:
+		return true
+	case VisOptionsOrientationHorizontal:
+		return true
+	case VisOptionsOrientationVertical:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsReducer.
+const (
+	Count VisOptionsReducer = "count"
+	First VisOptionsReducer = "first"
+	Last  VisOptionsReducer = "last"
+	Max   VisOptionsReducer = "max"
+	Mean  VisOptionsReducer = "mean"
+	Min   VisOptionsReducer = "min"
+	Sum   VisOptionsReducer = "sum"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsReducer enum.
+func (e VisOptionsReducer) Valid() bool {
+	switch e {
+	case Count:
+		return true
+	case First:
+		return true
+	case Last:
+		return true
+	case Max:
+		return true
+	case Mean:
+		return true
+	case Min:
+		return true
+	case Sum:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsSort.
+const (
+	VisOptionsSortLabel     VisOptionsSort = "label"
+	VisOptionsSortNone      VisOptionsSort = "none"
+	VisOptionsSortValueAsc  VisOptionsSort = "valueAsc"
+	VisOptionsSortValueDesc VisOptionsSort = "valueDesc"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsSort enum.
+func (e VisOptionsSort) Valid() bool {
+	switch e {
+	case VisOptionsSortLabel:
+		return true
+	case VisOptionsSortNone:
+		return true
+	case VisOptionsSortValueAsc:
+		return true
+	case VisOptionsSortValueDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsTextMode.
+const (
+	VisOptionsTextModeAuto         VisOptionsTextMode = "auto"
+	VisOptionsTextModeName         VisOptionsTextMode = "name"
+	VisOptionsTextModeValue        VisOptionsTextMode = "value"
+	VisOptionsTextModeValueAndName VisOptionsTextMode = "valueAndName"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsTextMode enum.
+func (e VisOptionsTextMode) Valid() bool {
+	switch e {
+	case VisOptionsTextModeAuto:
+		return true
+	case VisOptionsTextModeName:
+		return true
+	case VisOptionsTextModeValue:
+		return true
+	case VisOptionsTextModeValueAndName:
 		return true
 	default:
 		return false
@@ -1060,11 +1273,58 @@ type Version struct {
 type Vis struct {
 	Kind       VisKind     `json:"kind"`
 	Legend     *Legend     `json:"legend,omitempty"`
+	Options    *VisOptions `json:"options,omitempty"`
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
 }
 
 // VisKind defines model for Vis.Kind.
 type VisKind string
+
+// VisOptions defines model for VisOptions.
+type VisOptions struct {
+	BaselineOffset *VisOptionsBaselineOffset `json:"baselineOffset,omitempty"`
+	CategoryBy     *string                   `json:"categoryBy,omitempty"`
+	ColourMode     *VisOptionsColourMode     `json:"colourMode,omitempty"`
+	Donut          *bool                     `json:"donut,omitempty"`
+	GraphMode      *VisOptionsGraphMode      `json:"graphMode,omitempty"`
+	Labels         *VisOptionsLabels         `json:"labels,omitempty"`
+	Layout         *VisOptionsLayout         `json:"layout,omitempty"`
+	Max            *float64                  `json:"max,omitempty"`
+	Min            *float64                  `json:"min,omitempty"`
+	Orientation    *VisOptionsOrientation    `json:"orientation,omitempty"`
+	Parts          *bool                     `json:"parts,omitempty"`
+	Reducer        *VisOptionsReducer        `json:"reducer,omitempty"`
+	Sort           *VisOptionsSort           `json:"sort,omitempty"`
+	TextMode       *VisOptionsTextMode       `json:"textMode,omitempty"`
+	ValueLabels    *bool                     `json:"valueLabels,omitempty"`
+}
+
+// VisOptionsBaselineOffset defines model for VisOptions.BaselineOffset.
+type VisOptionsBaselineOffset string
+
+// VisOptionsColourMode defines model for VisOptions.ColourMode.
+type VisOptionsColourMode string
+
+// VisOptionsGraphMode defines model for VisOptions.GraphMode.
+type VisOptionsGraphMode string
+
+// VisOptionsLabels defines model for VisOptions.Labels.
+type VisOptionsLabels string
+
+// VisOptionsLayout defines model for VisOptions.Layout.
+type VisOptionsLayout string
+
+// VisOptionsOrientation defines model for VisOptions.Orientation.
+type VisOptionsOrientation string
+
+// VisOptionsReducer defines model for VisOptions.Reducer.
+type VisOptionsReducer string
+
+// VisOptionsSort defines model for VisOptions.Sort.
+type VisOptionsSort string
+
+// VisOptionsTextMode defines model for VisOptions.TextMode.
+type VisOptionsTextMode string
 
 // From defines model for From.
 type From = int64

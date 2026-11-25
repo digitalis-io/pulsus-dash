@@ -1,0 +1,104 @@
+{
+  "title": "Release health",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Requests by version",
+      "grid": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "sum by (version) (rate(http_requests_total[5m]))" },
+      "vis": {
+        "kind": "barchart",
+        "thresholds": {
+          "direction": "above",
+          "steps": [{ "value": 100, "state": "failing", "label": "" }]
+        },
+        "options": {
+          "reducer": "last",
+          "baselineOffset": "1d",
+          "categoryBy": "version",
+          "sort": "valueDesc",
+          "orientation": "horizontal",
+          "valueLabels": true,
+          "min": 0,
+          "max": 500
+        }
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Requests by route",
+      "grid": { "x": 6, "y": 0, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "sum by (route) (rate(http_requests_total[5m]))" },
+      "vis": {
+        "kind": "pie",
+        "options": {
+          "reducer": "sum",
+          "categoryBy": "",
+          "sort": "label",
+          "donut": false,
+          "labels": "value",
+          "parts": true
+        }
+      }
+    },
+    {
+      "id": "p-3",
+      "title": "Error ratio",
+      "grid": { "x": 0, "y": 8, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "sum(rate(http_requests_total{code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))" },
+      "vis": {
+        "kind": "stat",
+        "options": {
+          "reducer": "mean",
+          "baselineOffset": "7d",
+          "sort": "none",
+          "orientation": "auto",
+          "min": -1.5,
+          "max": 2.5,
+          "layout": "grid",
+          "colourMode": "background",
+          "textMode": "valueAndName",
+          "graphMode": "none"
+        }
+      }
+    },
+    {
+      "id": "p-4",
+      "title": "Latency",
+      "grid": { "x": 6, "y": 8, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))" },
+      "vis": { "kind": "line", "options": {} }
+    },
+    {
+      "id": "p-5",
+      "title": "Instances",
+      "grid": { "x": 0, "y": 16, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "up" },
+      "vis": { "kind": "auto", "options": { "reducer": "count", "parts": false } }
+    }
+  ],
+  "sections": [
+    {
+      "id": "s-1",
+      "title": "By version",
+      "collapsed": false,
+      "panels": [
+        {
+          "id": "p-6",
+          "title": "Versions",
+          "grid": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "query": { "lang": "promql", "text": "count by (version) (build_info)" },
+          "vis": { "kind": "barchart", "options": { "reducer": "first", "baselineOffset": "28d", "sort": "valueAsc", "orientation": "vertical", "valueLabels": false } }
+        },
+        {
+          "id": "p-7",
+          "title": "Version share",
+          "grid": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "query": { "lang": "promql", "text": "count by (version) (build_info)" },
+          "vis": { "kind": "pie", "options": { "reducer": "max", "donut": true, "labels": "percent" } }
+        }
+      ]
+    }
+  ]
+}

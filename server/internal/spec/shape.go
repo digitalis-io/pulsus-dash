@@ -282,3 +282,9 @@ func (c *shapeChecker) skipRest() error {
 func escapePointer(key string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
 }
+
+// optionFields are the keys of vis.options, in OPTION_ORDER (stub until #173 Part 1).
+var optionFields []field
+
+// optionShape is the options shape of a vis kind (stub until #173 Part 1).
+func optionShape(string) []field { return nil }
