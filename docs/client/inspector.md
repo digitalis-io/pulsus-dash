@@ -43,7 +43,10 @@ ran another query) or the path changes. Leaving the page (another route, tenant 
 the host, and everything goes with it. A tenant change that keeps the page mounted (Back or Forward
 between two tenants on the same Explore route) resets the host before it renders: the selection, the
 sheet (with no close fade), and the live region's text and pending write all go, so nothing of one
-tenant shows in another (T25 §8). The selection survives a close.
+tenant shows in another (T25 §8). The pages' result areas are keyed by tenant as well (Explore ›
+Metrics' Result card, Explore › Logs' results column), so a cached result of the new tenant is drawn
+on a new canvas and engine frame and in a new log list; a board is keyed by tenant and board, so its
+panels' canvases are new too. The selection survives a close.
 
 ## The payload
 

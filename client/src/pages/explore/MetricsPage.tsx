@@ -249,7 +249,10 @@ export function MetricsPage() {
           editorRef={editorRef}
           runButtonRef={runButtonRef}
         />
+        {/* Keyed by tenant (T25 §8): a tenant change on this route gets a new chart, canvas and
+            engine frame, so no mark or selection of the last tenant is ever drawn in this one. */}
         <ResultCard
+          key={tenant}
           q={q}
           params={params}
           run={run}

@@ -612,8 +612,9 @@ test.describe('e2e:inspector (fake)', () => {
 });
 
 /**
- * T25 §8: nothing of one tenant's Inspector survives a tenant change on the same Explore route
- * (Back or Forward between tenants keeps the page mounted). On the stub: sandbox, then demo.
+ * T25 §8: nothing of one tenant's Inspector, charts or log list survives a tenant change on the same
+ * Explore route (Back or Forward between tenants keeps the page mounted), also when the destination's
+ * result is cached. On the stub: demo, sandbox, then Back to demo.
  */
 test.describe('e2e:inspector-tenant', () => {
   const PAGES = [
@@ -643,8 +644,19 @@ test.describe('e2e:inspector-tenant', () => {
   for (const [kind, path] of PAGES) {
     for (const closed of [false, true]) {
       test(`${kind}, sheet ${closed ? 'closed' : 'open'}`, async ({ page }) => {
-        await page.goto(`/t/sandbox${path}`);
+        // demo first (its result cached), then sandbox in the same page, then Back to demo: the
+        // destination's result is cached, so its chart could draw at once (review r2).
+        await page.goto(`/t/demo${path}`);
         await page.locator('html[data-shell-ready="true"]').waitFor();
+        await expect(
+          page.locator('[data-chart-frame][data-frame-ready="true"]').first(),
+        ).toBeVisible();
+        await page.evaluate(() => {
+          history.pushState(null, '', location.href.replace('/t/demo/', '/t/sandbox/'));
+          dispatchEvent(new PopStateEvent('popstate'));
+        });
+        await expect(page).toHaveURL(/\/t\/sandbox\/explore\//);
+        await expect(page.locator('a[href^="/t/sandbox/"]').first()).toBeAttached();
         await inspectHere(page, kind);
         const before = (await current(page).locator('[data-inspector-value]').textContent()) ?? '';
         expect(before).not.toBe('');
@@ -652,13 +664,20 @@ test.describe('e2e:inspector-tenant', () => {
           await aside(page).getByRole('button', { name: 'Close Inspector' }).click();
           await expect(page.locator('[data-inspector]')).toHaveCount(0);
         }
-        // Every DOM change once the URL is the other tenant's: any trace of the sheet, its
-        // value, the live region's text or a drawn selection.
+        // Marks sandbox's canvases and log rows, then watches every DOM change once the page shows
+        // demo (its links): any of them, the sheet, its live text or a drawn selection is a trace.
         await page.evaluate(() => {
+          for (const el of document.querySelectorAll('canvas, [data-log-row]')) {
+            el.setAttribute('data-old-tenant', '');
+          }
           const w = window as unknown as { __traces: string[] };
           w.__traces = [];
           new MutationObserver(() => {
-            if (!location.pathname.startsWith('/t/demo/')) return;
+            if (document.querySelector('a[href^="/t/demo/"]') === null) return;
+            if (document.querySelector('canvas[data-old-tenant]') !== null)
+              w.__traces.push('old canvas');
+            if (document.querySelector('[data-log-row][data-old-tenant]') !== null)
+              w.__traces.push('old log row');
             if (document.querySelector('[data-inspector]') !== null) w.__traces.push('sheet');
             const live = document.querySelector('[data-inspector-live]')?.textContent ?? '';
             if (live !== '') w.__traces.push(`live ${live}`);
@@ -674,15 +693,18 @@ test.describe('e2e:inspector-tenant', () => {
             attributes: true,
             characterData: true,
           });
-          // The page stays mounted: a history move, as Back or Forward between tenants.
-          history.pushState(null, '', location.href.replace('/t/sandbox/', '/t/demo/'));
-          dispatchEvent(new PopStateEvent('popstate'));
         });
+        // Back: the page stays mounted.
+        await page.goBack();
         await expect(page).toHaveURL(/\/t\/demo\/explore\//);
+        await expect(
+          page.locator('[data-chart-frame][data-frame-ready="true"]').first(),
+        ).toBeVisible();
         await page.waitForTimeout(400);
         expect(
           await page.evaluate(() => (window as unknown as { __traces: string[] }).__traces),
         ).toEqual([]);
+        await expect(page.locator('canvas[data-old-tenant]')).toHaveCount(0);
         await expect(page.locator('[data-inspector]')).toHaveCount(0);
         await expect(page.locator('[data-inspector-live]')).toHaveText('');
       });

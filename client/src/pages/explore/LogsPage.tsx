@@ -223,7 +223,9 @@ export function LogsPage() {
           editorRef={editorRef}
           runButtonRef={runButtonRef}
         />
-        <div ref={resultsRef} className={cx(styles['results'])} data-logs-results="">
+        {/* Keyed by tenant (T25 §8): a tenant change on this route gets new charts, canvases,
+            engine frames and log list, so nothing of the last tenant is ever drawn in this one. */}
+        <div key={tenant} ref={resultsRef} className={cx(styles['results'])} data-logs-results="">
           {q === '' ? (
             <EmptyState title={t('explore.logs.empty')}>
               <p className={cx(pageStyles['muted'])}>{t('explore.logs.emptyDetail')}</p>
