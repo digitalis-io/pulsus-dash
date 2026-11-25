@@ -45,6 +45,11 @@ fn u32_at(buf: &[u8], at: usize) -> Result<usize, IpcError> {
     read::<4>(buf, at).map(|b| u32::from_le_bytes(b) as usize)
 }
 
+/// A string's bytes as UTF-8.
+pub(crate) fn utf8(b: &[u8]) -> Result<&str, IpcError> {
+    std::str::from_utf8(b).map_err(|_| IpcError::Utf8)
+}
+
 /// One flatbuffer being verified: the bytes and the extents of every visited object.
 #[derive(Debug)]
 pub(crate) struct Fb<'a> {
@@ -220,8 +225,10 @@ impl<'a> Table<'a> {
         }
     }
 
-    /// A NUL-terminated, UTF-8 checked string.
-    pub(crate) fn str(&self, id: u16) -> Result<Option<&'a str>, IpcError> {
+    /// A NUL-terminated string, as raw bytes: its extent is recorded, nothing is copied and
+    /// UTF-8 is not checked yet (callers copy and validate only after `Fb::finish`, so an
+    /// aliased string cannot be read more than once).
+    pub(crate) fn str(&self, id: u16) -> Result<Option<&'a [u8]>, IpcError> {
         let Some(t) = self.target(id)? else {
             return Ok(None);
         };
@@ -235,10 +242,7 @@ impl<'a> Table<'a> {
             return Err(FLAT);
         }
         self.fb.record(t, 4 + n + 1, Kind::Str)?;
-        let bytes = self.fb.buf.get(start..end).ok_or(FLAT)?;
-        std::str::from_utf8(bytes)
-            .map(Some)
-            .map_err(|_| IpcError::Utf8)
+        self.fb.buf.get(start..end).map(Some).ok_or(FLAT)
     }
 
     /// A vector's element count and data start, after its prefix alignment and extent checks.
@@ -494,7 +498,7 @@ mod tests {
         let fb = Fb::new(&ok);
         assert!(matches!(
             fb.root(STR).map(|t| t.str(0)),
-            Ok(Ok(Some("abc")))
+            Ok(Ok(Some(b"abc")))
         ));
         assert_eq!(fb.finish(), Ok(32));
         let str_err = |b: &[u8]| match Fb::new(b).root(STR) {
@@ -518,9 +522,9 @@ mod tests {
         let mut b = ok.clone();
         kit::put_u32(&mut b, 20, 6);
         assert_eq!(str_err(&b), flat, "length prefix at % 4 == 2");
-        let mut b = ok.clone();
-        b[28] = 0xFF;
-        assert_eq!(str_err(&b), Some(IpcError::Utf8));
+        // UTF-8 is checked when the string is copied, after `finish`.
+        assert_eq!(utf8(b"abc"), Ok("abc"));
+        assert_eq!(utf8(&[0xFF, b'b', b'c']), Err(IpcError::Utf8));
     }
 
     #[test]

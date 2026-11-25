@@ -4,7 +4,7 @@
 #![deny(clippy::indexing_slicing)]
 
 use crate::bytes::SharedBytes;
-use crate::fb::{Fb, Spec, Table};
+use crate::fb::{Fb, Spec, Table, utf8};
 
 /// `Message`: 0 version (i16), 1 header_type (u8), 2 header, 3 bodyLength (i64).
 pub(crate) const MESSAGE: Spec = &[(0, 2), (1, 1), (2, 4), (3, 8)];
@@ -300,12 +300,14 @@ pub(crate) fn read_message(
     }
     let body_len = usize::try_from(body_len).map_err(|_| IpcError::Bounds)?;
     let end = meta_end.checked_add(body_len).ok_or(IpcError::Bounds)?;
+    // Pass 2: only now are strings and vectors copied out of the verified metadata.
+    let mut budget = meta.len();
     let msg = match (msg, batch) {
-        (Some(s), _) => Msg::Schema(s),
+        (Some(s), _) => Msg::Schema(own_schema(s, &mut budget)?),
         (None, Some((length, nodes, buffers))) => Msg::Batch {
             length,
-            nodes,
-            buffers,
+            nodes: pairs(nodes),
+            buffers: pairs(buffers),
             body: payload.slice(meta_end, body_len).ok_or(IpcError::Bounds)?,
         },
         (None, None) => return Err(IpcError::Messages),
@@ -313,7 +315,26 @@ pub(crate) fn read_message(
     Ok((msg, end))
 }
 
-fn schema(t: &Table<'_>) -> Result<SchemaDesc, IpcError> {
+/// Pass 1 of a Schema: the verified structure, with every string still a borrowed slice of
+/// the metadata (nothing is copied before `Fb::finish` has rejected aliased objects).
+struct RawSchema<'a> {
+    fields: Vec<RawField<'a>>,
+    metadata: Vec<(&'a [u8], &'a [u8])>,
+}
+
+struct RawField<'a> {
+    name: &'a [u8],
+    nullable: bool,
+    ty: RawTy<'a>,
+}
+
+enum RawTy<'a> {
+    Leaf(Ty),
+    List(Box<RawField<'a>>),
+    Fsl(i32, Box<RawField<'a>>),
+}
+
+fn schema<'a>(t: &Table<'a>) -> Result<RawSchema<'a>, IpcError> {
     if t.i16(0, 0)? != 0 {
         return Err(IpcError::Unsupported("big-endian"));
     }
@@ -326,16 +347,51 @@ fn schema(t: &Table<'_>) -> Result<SchemaDesc, IpcError> {
     for kv in t.tables(2, MAX_KEY_VALUES, KEY_VALUE)? {
         let k = kv.str(0)?.ok_or(IpcError::Flatbuffer)?;
         let v = kv.str(1)?.ok_or(IpcError::Flatbuffer)?;
-        metadata.push((k.to_owned(), v.to_owned()));
+        metadata.push((k, v));
     }
+    Ok(RawSchema { fields, metadata })
+}
+
+/// Pass 2, after `Fb::finish`: copies the strings and checks their UTF-8. Because no two
+/// verified objects overlap, each metadata byte backs at most one copied byte, so the copies
+/// total at most the metadata length; `budget` (= that length) enforces it.
+fn own_schema(raw: RawSchema<'_>, budget: &mut usize) -> Result<SchemaDesc, IpcError> {
+    let fields = raw
+        .fields
+        .into_iter()
+        .map(|f| own_field(f, budget))
+        .collect::<Result<Vec<_>, _>>()?;
+    let metadata = raw
+        .metadata
+        .into_iter()
+        .map(|(k, v)| Ok((own_str(k, budget)?, own_str(v, budget)?)))
+        .collect::<Result<Vec<_>, IpcError>>()?;
     Ok(SchemaDesc { fields, metadata })
 }
 
-fn field(f: &Table<'_>, depth: usize) -> Result<FieldDesc, IpcError> {
+fn own_str(b: &[u8], budget: &mut usize) -> Result<String, IpcError> {
+    *budget = budget.checked_sub(b.len()).ok_or(IpcError::Flatbuffer)?;
+    utf8(b).map(str::to_owned)
+}
+
+fn own_field(f: RawField<'_>, budget: &mut usize) -> Result<FieldDesc, IpcError> {
+    let ty = match f.ty {
+        RawTy::Leaf(t) => t,
+        RawTy::List(c) => Ty::List(Box::new(own_field(*c, budget)?)),
+        RawTy::Fsl(n, c) => Ty::Fsl(n, Box::new(own_field(*c, budget)?)),
+    };
+    Ok(FieldDesc {
+        name: own_str(f.name, budget)?,
+        nullable: f.nullable,
+        ty,
+    })
+}
+
+fn field<'a>(f: &Table<'a>, depth: usize) -> Result<RawField<'a>, IpcError> {
     if depth > MAX_DEPTH {
         return Err(IpcError::Flatbuffer);
     }
-    let name = f.str(0)?.unwrap_or_default().to_owned();
+    let name = f.str(0)?.unwrap_or_default();
     let nullable = f.bool(1, false)?;
     let type_type = f.u8(2, 0)?;
     let spec = match type_type {
@@ -352,7 +408,7 @@ fn field(f: &Table<'_>, depth: usize) -> Result<FieldDesc, IpcError> {
     if children.len() != usize::from(nested) {
         return Err(IpcError::Unsupported("children"));
     }
-    let child = || -> Result<Box<FieldDesc>, IpcError> {
+    let child = || -> Result<Box<RawField<'a>>, IpcError> {
         let c = children.first().ok_or(IpcError::Unsupported("children"))?;
         field(c, depth + 1).map(Box::new)
     };
@@ -362,41 +418,41 @@ fn field(f: &Table<'_>, depth: usize) -> Result<FieldDesc, IpcError> {
             if ty_table.bool(1, false)? {
                 return Err(IpcError::Unsupported("signed int"));
             }
-            match width {
+            RawTy::Leaf(match width {
                 8 => Ty::U8,
                 16 => Ty::U16,
                 32 => Ty::U32,
                 64 => Ty::U64,
                 _ => return Err(IpcError::Unsupported("int width")),
-            }
+            })
         }
         3 => {
             if ty_table.i16(0, 0)? != 2 {
                 return Err(IpcError::Unsupported("float precision"));
             }
-            Ty::F64
+            RawTy::Leaf(Ty::F64)
         }
-        5 => Ty::Utf8,
-        6 => Ty::Bool,
+        5 => RawTy::Leaf(Ty::Utf8),
+        6 => RawTy::Leaf(Ty::Bool),
         10 => {
             if ty_table.i16(0, 0)? != 1 {
                 return Err(IpcError::Unsupported("time unit"));
             }
-            if ty_table.str(1)? != Some("UTC") {
+            if ty_table.str(1)? != Some(&b"UTC"[..]) {
                 return Err(IpcError::Unsupported("timezone"));
             }
-            Ty::TsMs
+            RawTy::Leaf(Ty::TsMs)
         }
-        12 => Ty::List(child()?),
+        12 => RawTy::List(child()?),
         _ => {
             let size = ty_table.i32(0, 0)?;
             if size < 1 {
                 return Err(IpcError::Unsupported("list size"));
             }
-            Ty::Fsl(size, child()?)
+            RawTy::Fsl(size, child()?)
         }
     };
-    Ok(FieldDesc { name, nullable, ty })
+    Ok(RawField { name, nullable, ty })
 }
 
 fn pairs(bytes: &[u8]) -> Vec<(i64, i64)> {
@@ -415,12 +471,13 @@ fn pairs(bytes: &[u8]) -> Vec<(i64, i64)> {
         .collect()
 }
 
-type BatchMeta = (i64, Vec<(i64, i64)>, Vec<(i64, i64)>);
+/// Pass 1 of a RecordBatch: the length and the borrowed `FieldNode` and `Buffer` vectors.
+type BatchMeta<'a> = (i64, &'a [u8], &'a [u8]);
 
-fn record_batch(t: &Table<'_>) -> Result<BatchMeta, IpcError> {
+fn record_batch<'a>(t: &Table<'a>) -> Result<BatchMeta<'a>, IpcError> {
     let length = t.i64(0, 0)?;
-    let nodes = pairs(t.structs(1, 16, MAX_NODES)?);
-    let buffers = pairs(t.structs(2, 16, MAX_BUFFERS)?);
+    let nodes = t.structs(1, 16, MAX_NODES)?;
+    let buffers = t.structs(2, 16, MAX_BUFFERS)?;
     if !t.structs(4, 8, MAX_BUFFERS)?.is_empty() {
         return Err(IpcError::Unsupported("variadic buffers"));
     }
