@@ -1,0 +1,353 @@
+{
+ "parts": [
+  {
+   "labels_part": 1,
+   "data_part": 2,
+   "rank": 0,
+   "grid": {
+    "start_ms": 0,
+    "requested_start_ms": 0,
+    "step_ms": 1000,
+    "len": 4
+   },
+   "result": "metric",
+   "source": "pulsusdb",
+   "unit": null,
+   "planned": null,
+   "series": [
+    {
+     "id": 0,
+     "key": "2a82f55392598d86",
+     "labels": [
+      [
+       "i",
+       "0"
+      ]
+     ],
+     "bits": [
+      "0000000000000000",
+      "3ff0000000000000",
+      "4000000000000000",
+      "4008000000000000"
+     ]
+    }
+   ],
+   "coverage": [
+    {
+     "phase": 0,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 0,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    },
+    {
+     "phase": 2,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 1,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    }
+   ],
+   "error": null
+  },
+  {
+   "labels_part": 3,
+   "data_part": 4,
+   "rank": 0,
+   "grid": {
+    "start_ms": 0,
+    "requested_start_ms": 0,
+    "step_ms": 1000,
+    "len": 4
+   },
+   "result": "metric",
+   "source": "pulsusdb",
+   "unit": null,
+   "planned": null,
+   "series": [
+    {
+     "id": 0,
+     "key": "5e96f38efa1877c5",
+     "labels": [
+      [
+       "i",
+       "1"
+      ]
+     ],
+     "bits": [
+      "3ff0000000000000",
+      "4000000000000000",
+      "4008000000000000",
+      "4010000000000000"
+     ]
+    }
+   ],
+   "coverage": [
+    {
+     "phase": 0,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 0,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    },
+    {
+     "phase": 2,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 1,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    }
+   ],
+   "error": null
+  },
+  {
+   "labels_part": 5,
+   "data_part": 6,
+   "rank": 0,
+   "grid": {
+    "start_ms": 0,
+    "requested_start_ms": 0,
+    "step_ms": 1000,
+    "len": 4
+   },
+   "result": "metric",
+   "source": "pulsusdb",
+   "unit": null,
+   "planned": null,
+   "series": [
+    {
+     "id": 0,
+     "key": "df2c9279c04b034f",
+     "labels": [
+      [
+       "i",
+       "2"
+      ]
+     ],
+     "bits": [
+      "4000000000000000",
+      "4008000000000000",
+      "4010000000000000",
+      "4014000000000000"
+     ]
+    }
+   ],
+   "coverage": [
+    {
+     "phase": 0,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 0,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    },
+    {
+     "phase": 2,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 1,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    }
+   ],
+   "error": null
+  },
+  {
+   "labels_part": 7,
+   "data_part": 8,
+   "rank": 0,
+   "grid": {
+    "start_ms": 0,
+    "requested_start_ms": 0,
+    "step_ms": 1000,
+    "len": 4
+   },
+   "result": "metric",
+   "source": "pulsusdb",
+   "unit": null,
+   "planned": null,
+   "series": [
+    {
+     "id": 0,
+     "key": "62aacacfeb80ec02",
+     "labels": [
+      [
+       "i",
+       "3"
+      ]
+     ],
+     "bits": [
+      "4008000000000000",
+      "4010000000000000",
+      "4014000000000000",
+      "4018000000000000"
+     ]
+    }
+   ],
+   "coverage": [
+    {
+     "phase": 0,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 0,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    },
+    {
+     "phase": 2,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 1,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    }
+   ],
+   "error": null
+  }
+ ],
+ "errors": [
+  {
+   "part": 0,
+   "error": {
+    "code": 8,
+    "http_status": 500,
+    "message": "writer refused",
+    "position": null,
+    "retry_after_ms": null,
+    "suggestion": null
+   }
+  }
+ ]
+}

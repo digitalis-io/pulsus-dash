@@ -105,7 +105,8 @@ var mem = memory.NewGoAllocator()
 var eos = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0}
 
 // Writer writes one DSF response body. It keeps the body offset (for alignment), the part ids
-// used, and whether the stream-level ERROR and END were written; an io.Writer error is sticky.
+// used, whether the stream-level ERROR and END were written, and the §3.1 accounting of its
+// limits (plan #68 B3); an io.Writer error is sticky.
 type Writer struct {
 	w        io.Writer
 	off      int64
@@ -114,13 +115,15 @@ type Writer struct {
 	ended    bool
 	used     map[uint32]bool
 	lim      Limits
+	open     int  // open parts (two per open GridPart)
+	openData int  // open data parts (each keeps a part_reserve)
 	spent    int  // body budget used (§3.1 accounting)
 	values   int  // value budget used
 	noBudget bool // test knob: both budget checks off (budget-over.dsf)
 }
 
-// NewWriter returns a Writer on w; the body starts at offset 0.
-func NewWriter(w io.Writer) *Writer { return &Writer{w: w, used: map[uint32]bool{}} }
+// NewWriter returns a Writer on w with DefaultLimits; the body starts at offset 0.
+func NewWriter(w io.Writer) *Writer { return NewWriterLimits(w, DefaultLimits()) }
 
 // End writes END (part 0, rank 0, no flags). Parts still open stay open; the reader fails them.
 func (w *Writer) End() error {
@@ -138,9 +141,11 @@ func (w *Writer) End() error {
 	return f.commit()
 }
 
-// Error writes ERROR|LAST for a part never opened. A zero or already used part id is ErrShape
-// and a payload above MaxPayload ErrFrameTooLarge; either writes the stream-level ERROR instead
-// (outcome (a) of the refusal contract), after which every Grid and Error is ErrOrder.
+// Error writes ERROR|LAST for a part never opened. A zero or already used part id is ErrShape,
+// a payload above MaxPayload ErrFrameTooLarge, and a call past open_parts, distinct_parts or the
+// body budget (with all reserves) ErrLimit; each writes the stream-level ERROR instead (outcome
+// (a) of the refusal contract), after which every Grid and Error is ErrOrder. Message and
+// suggestion are cut to meta_string_bytes (B3 §3.1).
 func (w *Writer) Error(part uint32, rank uint16, e ErrorRow) error {
 	if err := w.callable(); err != nil {
 		return err
@@ -148,12 +153,21 @@ func (w *Writer) Error(part uint32, rank uint16, e ErrorRow) error {
 	if part == 0 || w.used[part] {
 		return w.refuse(ErrShape)
 	}
+	e = cutError(e, w.lim)
+	charge := costPart + errorCost(e)
+	if !w.admit(1, charge, w.openData) {
+		return w.refuse(ErrLimit)
+	}
 	f := w.frames()
 	if err := f.add(Header{Type: FrameError, Flags: FlagLast, PartID: part, Rank: rank}, errorPayload(e)); err != nil {
 		return w.refuse(err)
 	}
 	w.used[part] = true
-	return f.commit()
+	if err := f.commit(); err != nil {
+		return err
+	}
+	w.spent += charge
+	return nil
 }
 
 // callable is the precondition of Grid and Error.
@@ -167,17 +181,19 @@ func (w *Writer) callable() error {
 	return nil
 }
 
-// refuse writes the stream-level ERROR (part 0, once per body: later calls are ErrOrder) and
-// returns err.
+// refuse writes the stream-level ERROR (part 0, once per body: later calls are ErrOrder),
+// charged from the stream reserve, and returns err.
 func (w *Writer) refuse(err error) error {
 	w.refused = true
+	row := refusedRow("writer refused")
 	f := w.frames()
-	if ferr := f.add(Header{Type: FrameError, Flags: FlagLast}, errorPayload(refusedRow("writer refused"))); ferr != nil {
+	if ferr := f.add(Header{Type: FrameError, Flags: FlagLast}, errorPayload(row)); ferr != nil {
 		return errors.Join(err, ferr)
 	}
 	if werr := f.commit(); werr != nil {
 		return werr
 	}
+	w.spent += errorCost(row)
 	return err
 }
 

@@ -13,9 +13,20 @@ import (
 	uni "unicode/utf8"
 )
 
+// liftedLimits are DefaultLimits without the B3 string, label and budget limits, which cut
+// coverage and error strings and refuse label sets far below MaxPayload: with them the B1
+// frame-size paths (bounded close, frame-too-large refusal) are reachable.
+func liftedLimits() Limits {
+	l := DefaultLimits()
+	l.MetaStringBytes, l.MetaListElements, l.LabelBytesPerPart = 1<<30, 1<<30, 1<<30
+	l.BodyBudget, l.ValueBudget = 1<<40, 1<<40
+	return l
+}
+
 // An oversized coverage or error given to Fail still closes the part on the wire (outcome (b)):
 // the closing labels batch, a bounded partial META and the ERROR with the upstream code; the
-// Writer stays usable for the next part.
+// Writer stays usable for the next part. (With DefaultLimits the B3 cut policy keeps both far
+// below MaxPayload: limits-fail and unit:wire-limits.)
 func TestFailOversized(t *testing.T) {
 	big := strings.Repeat("w", 40<<20)
 	cases := []struct {
@@ -29,7 +40,7 @@ func TestFailOversized(t *testing.T) {
 			ErrorRow{Code: 5, HTTPStatus: 504, Message: big + big, Position: ptr(uint32(3))}},
 	}
 	for i, c := range cases {
-		w, buf := completedPart(t)
+		w, buf := completedPartWith(t, liftedLimits())
 		p, err := w.Grid(gridSpec(3, 4, 4), Coverage{})
 		mustOK(t, err)
 		mustOK(t, p.Add(rampSeries(0, 4)))
@@ -170,7 +181,7 @@ func TestStickyWriteError(t *testing.T) {
 // returns the labels BATCH(3) payload length (0 if none), the body and Add's error.
 func labelsFrame(t *testing.T, v int) (int, []byte, error) {
 	t.Helper()
-	w, buf := completedPart(t)
+	w, buf := completedPartWith(t, liftedLimits())
 	p, err := w.Grid(gridSpec(3, 4, 4), Coverage{})
 	mustOK(t, err)
 	s := newSeries([]float64{1, 2, 3, 4}, []bool{true, true, true, true}, "big", strings.Repeat("x", v))
@@ -185,6 +196,8 @@ func labelsFrame(t *testing.T, v int) (int, []byte, error) {
 
 // A series is refused only when its encoded labels frame is larger than MaxPayload: a label
 // that makes the frame exactly MaxPayload is written, 1 byte more is refused (outcome (b)).
+// With DefaultLimits such a label set is above label_bytes_per_part (B3, wire_limit), so this
+// runs with liftedLimits.
 func TestLabelsAtPayloadLimit(t *testing.T) {
 	const v0 = 1 << 20
 	p0, _, err := labelsFrame(t, v0)
