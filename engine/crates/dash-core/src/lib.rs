@@ -6,4 +6,7 @@ pub mod error;
 pub mod events;
 pub mod frames;
 
+#[cfg(target_arch = "wasm32")]
+mod web;
+
 pub use error::CoreError;

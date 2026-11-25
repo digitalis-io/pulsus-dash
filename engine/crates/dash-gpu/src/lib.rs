@@ -28,7 +28,9 @@ pub struct GpuContext {
     pub queue: wgpu::Queue,
     pub tier: Tier,
     pub info: wgpu::AdapterInfo,
-    /// min(max_buffer_size, max_storage_buffer_binding_size) / 16.
+    /// Instances one buffer can hold (16 bytes each): T1 min(max_buffer_size,
+    /// max_storage_buffer_binding_size) / 16, as the compute passes bind the instance buffer; T2
+    /// max_buffer_size / 16 (no storage binding).
     pub max_instances: u64,
     /// Test hook: waits left before `wait` fails (`u64::MAX` = never).
     wait_budget: std::sync::atomic::AtomicU64,
@@ -82,8 +84,10 @@ impl GpuContext {
         info: wgpu::AdapterInfo,
     ) -> Self {
         let l = device.limits();
-        let max_instances = l.max_buffer_size.min(l.max_storage_buffer_binding_size) / 16;
-        let _ = tier;
+        let max_instances = match tier {
+            Tier::T1 => l.max_buffer_size.min(l.max_storage_buffer_binding_size) / 16,
+            Tier::T2 => l.max_buffer_size / 16,
+        };
         Self {
             wait_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
             map_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
@@ -92,6 +96,20 @@ impl GpuContext {
             tier,
             info,
             max_instances,
+        }
+    }
+
+    /// Whether a completed deferred map may be used: false once the `fail_maps_after` budget is
+    /// spent (test hook; always true otherwise).
+    pub fn take_map(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        match self.map_budget.load(Ordering::Relaxed) {
+            0 => false,
+            u64::MAX => true,
+            _ => {
+                self.map_budget.fetch_sub(1, Ordering::Relaxed);
+                true
+            }
         }
     }
 

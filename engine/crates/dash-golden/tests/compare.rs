@@ -39,7 +39,9 @@ fn compare(a: &Path, b: &Path, flags: &[&str]) -> i32 {
         .arg(b)
         .args(flags)
         .output();
-    let Ok(out) = out else { panic!("run dash-golden") };
+    let Ok(out) = out else {
+        panic!("run dash-golden")
+    };
     out.status.code().unwrap_or(-1)
 }
 
@@ -52,8 +54,14 @@ fn one_dark_tile_passes_the_mean_and_fails_the_tile_max() {
     let (pa, pb) = (scratch("white.png"), scratch("tile.png"));
     assert!(a.write_png(&pa).is_ok() && b.write_png(&pb).is_ok());
     assert_eq!(compare(&pa, &pb, &["--max", "0.005"]), 0);
-    assert_eq!(compare(&pa, &pb, &["--max", "0.005", "--tile-max", "0.25"]), 1);
-    assert_eq!(compare(&pa, &pa, &["--max", "0.005", "--tile-max", "0.25"]), 0);
+    assert_eq!(
+        compare(&pa, &pb, &["--max", "0.005", "--tile-max", "0.25"]),
+        1
+    );
+    assert_eq!(
+        compare(&pa, &pa, &["--max", "0.005", "--tile-max", "0.25"]),
+        0
+    );
     let same = flip_stats(&a, &a, &[]);
     assert_eq!((same.mean, same.tile_max), (0.0, 0.0));
 }

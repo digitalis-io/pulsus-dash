@@ -17,7 +17,7 @@ use dash_tokens::Rgba8;
 use dash_wire::Chunk;
 use pulsus_synth::{GALLERY_WINDOW, GalleryLine, gallery_line};
 
-pub use flip::flip_mean;
+pub use flip::{FlipStats, flip_mean, flip_stats};
 pub use reference::{RefFrame, RefMasks, reference_mask};
 
 /// An RGBA8 image, rows without padding.

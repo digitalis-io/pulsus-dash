@@ -53,11 +53,7 @@ fn target(ctx: &GpuContext, list: &DrawList) -> HeadlessTarget {
 /// Lets the device run the submitted work and fire map callbacks, without `GpuContext::wait`
 /// (which the tests make fail).
 fn settle(ctx: &GpuContext) {
-    assert!(
-        ctx.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .is_ok()
-    );
+    assert!(ctx.device.poll(wgpu::PollType::wait_indefinitely()).is_ok());
 }
 
 const DRAWN: DrawnEvent = DrawnEvent {
@@ -79,12 +75,19 @@ fn defer_complete_matches_block() {
 
     let mut r = renderer(&ctx, Sync::Defer, None);
     let mut t = target(&ctx, &l);
-    assert_eq!(r.render(&ctx, &l, &mut t), None, "the total is not known yet");
+    assert_eq!(
+        r.render(&ctx, &l, &mut t),
+        None,
+        "the total is not known yet"
+    );
     settle(&ctx);
     assert_eq!(r.poll(), Pending::Complete(DRAWN));
     assert_eq!(r.poll(), Pending::Idle);
     assert_eq!(r.last_total(), total);
-    assert!(t.read(&ctx) == want, "the deferred frame differs from the blocking one");
+    assert!(
+        t.read(&ctx) == want,
+        "the deferred frame differs from the blocking one"
+    );
     // The total is known now: the next render of the same item is complete at once.
     let mut t2 = target(&ctx, &l);
     assert_eq!(r.render(&ctx, &l, &mut t2), Some(DRAWN));
@@ -112,7 +115,10 @@ fn defer_rerun_over_capacity() {
     assert!(r.last_error().is_none(), "{:?}", r.last_error());
     assert!(r.last_draws() > 1, "batched: {}", r.last_draws());
     ctx1.fail_waits_after(u64::MAX);
-    assert!(t.read(&ctx1) == want, "T1: the rerun frame differs from the blocking one");
+    assert!(
+        t.read(&ctx1) == want,
+        "T1: the rerun frame differs from the blocking one"
+    );
 
     // T2: the CPU path is complete at once, batches included.
     let ctx2 = ctx(Tier::T2);
@@ -125,7 +131,10 @@ fn defer_rerun_over_capacity() {
     assert!(r.last_error().is_none(), "{:?}", r.last_error());
     assert_eq!(r.poll(), Pending::Idle);
     ctx2.fail_waits_after(u64::MAX);
-    assert!(t.read(&ctx2) == want, "T2: the deferred frame differs from the blocking one");
+    assert!(
+        t.read(&ctx2) == want,
+        "T2: the deferred frame differs from the blocking one"
+    );
 }
 
 #[test]
@@ -144,6 +153,11 @@ fn defer_readback_failure_bounded() {
     seen.push(r.poll());
     assert_eq!(
         seen,
-        [Pending::Rerun, Pending::Rerun, Pending::Failed, Pending::Idle]
+        [
+            Pending::Rerun,
+            Pending::Rerun,
+            Pending::Failed,
+            Pending::Idle
+        ]
     );
 }

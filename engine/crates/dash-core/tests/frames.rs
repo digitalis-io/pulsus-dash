@@ -82,7 +82,9 @@ fn a_line_frame_reports_a11y_once_per_change() {
         panic!("no build")
     };
     assert!(
-        list.items.iter().any(|i| matches!(i, MarkItem::Line { .. })),
+        list.items
+            .iter()
+            .any(|i| matches!(i, MarkItem::Line { .. })),
         "{:?}",
         list.items.len()
     );
@@ -127,7 +129,10 @@ fn series_data_builds_a_local_chunk() {
     let Some((list, got)) = f.build(1) else {
         panic!("no build")
     };
-    assert_eq!(got.map(|j| norm(&parse(&j))), want.map(|j| norm(&parse(&j))));
+    assert_eq!(
+        got.map(|j| norm(&parse(&j))),
+        want.map(|j| norm(&parse(&j)))
+    );
     let id = list.items.iter().find_map(|i| match i {
         MarkItem::Line { chunk, .. } => Some(chunk.id.0),
         MarkItem::Guides { .. } => None,
@@ -151,7 +156,10 @@ fn an_unsupported_kind_clears_and_reports_an_empty_summary() {
     assert!(list.items.is_empty());
     let a = parse(&a11y.unwrap_or_default());
     assert_eq!(a["kind"], "bars");
-    assert_eq!((a["seriesTotal"].clone(), a["seriesShown"].clone()), (0.into(), 0.into()));
+    assert_eq!(
+        (a["seriesTotal"].clone(), a["seriesShown"].clone()),
+        (0.into(), 0.into())
+    );
     for k in ["min", "max", "last", "valueAxis"] {
         assert!(a[k].is_null(), "{k}: {a}");
     }
@@ -171,7 +179,14 @@ fn data_and_spec_errors_carry_their_codes() {
     let e = f.data_series(2, "XYZ", vec![], vec![], &[1.0], &[1.0]);
     assert_eq!(e.err().map(|e| e.to_string()).as_deref(), Some("key"));
     f.data_begin(2);
-    let e = f.data_series(2, "00000000000000aa", vec![], vec![], &[1.0, 2.0, 3.0], &[1.0, 2.0]);
+    let e = f.data_series(
+        2,
+        "00000000000000aa",
+        vec![],
+        vec![],
+        &[1.0, 2.0, 3.0],
+        &[1.0, 2.0],
+    );
     assert_eq!(e.err().map(|e| e.to_string()).as_deref(), Some("length"));
     assert!(f.set_spec(2, r#"{"kind":"pie"}"#).is_err());
     assert!(matches!(f.build(2), Some((ref l, None)) if l.items.is_empty()));
@@ -180,7 +195,10 @@ fn data_and_spec_errors_carry_their_codes() {
 #[test]
 fn events_have_the_ts_shapes() {
     let a = parse(&events::a11y(3, r#"{"kind":"line"}"#));
-    assert_eq!(a, serde_json::json!({"t": "a11y", "id": 3, "ev": {"kind": "line"}}));
+    assert_eq!(
+        a,
+        serde_json::json!({"t": "a11y", "id": 3, "ev": {"kind": "line"}})
+    );
     let ev = DrawnEvent {
         css_width: 1118.0,
         css_height: 240.0,
@@ -189,10 +207,15 @@ fn events_have_the_ts_shapes() {
     let d = parse(&events::drawn(3, &ev, 10.5, 12.0, 50));
     assert_eq!(
         norm(&d),
-        norm(&serde_json::json!({"t": "drawn", "id": 3, "ev": {"cssWidth": 1118, "cssHeight": 240, "dpr": 1}, "startMs": 10.5, "endMs": 12, "series": 50}))
+        norm(
+            &serde_json::json!({"t": "drawn", "id": 3, "ev": {"cssWidth": 1118, "cssHeight": 240, "dpr": 1}, "startMs": 10.5, "endMs": 12, "series": 50})
+        )
     );
     let fl = parse(&events::failed(3, events::FailReason::Readback));
-    assert_eq!(fl, serde_json::json!({"t": "failed", "id": 3, "reason": "readback"}));
+    assert_eq!(
+        fl,
+        serde_json::json!({"t": "failed", "id": 3, "reason": "readback"})
+    );
     let s = parse(&events::failed(1, events::FailReason::Surface));
     assert_eq!(s["reason"], "surface");
 }

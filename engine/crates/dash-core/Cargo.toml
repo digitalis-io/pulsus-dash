@@ -35,12 +35,14 @@ js-sys.workspace = true
 rayon.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
+# T03 §5.6: an allow-list.
 web-sys = { workspace = true, features = [
-  "DedicatedWorkerGlobalScope",
+  "console",
   "ImageBitmap",
   "ImageBitmapRenderingContext",
   "OffscreenCanvas",
   "Performance",
+  "WorkerGlobalScope",
 ] }
 wgpu.workspace = true
 

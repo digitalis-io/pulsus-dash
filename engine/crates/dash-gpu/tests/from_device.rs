@@ -47,5 +47,8 @@ fn max_instances_follow_the_tier() {
     let t2 = GpuContext::from_device(device, queue, Tier::T2, info);
     assert_eq!(t2.max_instances, al.max_buffer_size / 16);
     let headless = GpuContext::headless(AdapterChoice::Lavapipe, Tier::T2);
-    assert_eq!(headless.map(|c| c.max_instances).ok(), Some(al.max_buffer_size / 16));
+    assert_eq!(
+        headless.map(|c| c.max_instances).ok(),
+        Some(al.max_buffer_size / 16)
+    );
 }

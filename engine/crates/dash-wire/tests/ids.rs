@@ -57,7 +57,10 @@ fn the_decoder_allocates_stream_ids_only() {
     let e = run(&fixture("promql-range-counter"), LOCAL0);
     assert_eq!(chunk_ids(&e), Vec::<u64>::new(), "{e:?}");
     let reason = failure(&e, 2);
-    assert_eq!(reason.as_ref().map(ToString::to_string).as_deref(), Some("ids"));
+    assert_eq!(
+        reason.as_ref().map(ToString::to_string).as_deref(),
+        Some("ids")
+    );
     // The last stream id is used once; the next chunk fails with `ids` and never reaches 2⁶³.
     let e = run(&fixture("promql-range-counter"), LOCAL0 - 1);
     assert_eq!(chunk_ids(&e), [LOCAL0 - 1]);

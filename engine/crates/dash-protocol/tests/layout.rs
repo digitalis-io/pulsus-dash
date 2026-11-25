@@ -29,7 +29,12 @@ fn offsets_are_the_t03_table() {
     assert_eq!(off::ALL, want);
     // The regions are in order, 64-byte aligned and never overlap; the last ends the block.
     for w in REGIONS.windows(2) {
-        assert!(w[0].offset + w[0].size <= w[1].offset, "{:?} overlaps {:?}", w[0], w[1]);
+        assert!(
+            w[0].offset + w[0].size <= w[1].offset,
+            "{:?} overlaps {:?}",
+            w[0],
+            w[1]
+        );
         assert_eq!(w[1].offset % CB_ALIGN, 0, "{:?}", w[1]);
     }
     assert_eq!(REGIONS.last().map(|r| r.offset), Some(CB_BYTES));
@@ -51,7 +56,18 @@ fn committed_layout_gen_ts_is_generated() {
     let committed = std::fs::read_to_string(&path).unwrap_or_default();
     let generated = gen_ts();
     assert!(generated.starts_with("// Generated"), "{generated:?}");
-    assert!(generated.contains("export const OFF_STATUS = 32;\n"), "{generated}");
-    assert!(generated.contains("export const STATUS_TIER_T2 = 2;\n"), "{generated}");
-    assert_eq!(committed, generated, "{}: run cargo xtask gen-layout", path.display());
+    assert!(
+        generated.contains("export const OFF_STATUS = 32;\n"),
+        "{generated}"
+    );
+    assert!(
+        generated.contains("export const STATUS_TIER_T2 = 2;\n"),
+        "{generated}"
+    );
+    assert_eq!(
+        committed,
+        generated,
+        "{}: run cargo xtask gen-layout",
+        path.display()
+    );
 }

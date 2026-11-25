@@ -57,6 +57,10 @@ fn line_wgsl_translates_to_glsl_es_300() {
         );
         let written = w.and_then(|mut w| w.write());
         assert!(written.is_ok(), "{entry}: {written:?}");
-        assert!(out.starts_with("#version 300 es"), "{entry}: {}", &out[..out.len().min(40)]);
+        assert!(
+            out.starts_with("#version 300 es"),
+            "{entry}: {}",
+            &out[..out.len().min(40)]
+        );
     }
 }

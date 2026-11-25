@@ -3,15 +3,17 @@
 //! ```text
 //! dash-golden render  --page line-1|line-50|line-gaps|line-600 --theme dark|light
 //!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX] --out <png>
-//! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] → prints mean ꟻLIP
+//! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] [--tile-max V]
+//!                     → prints the mean ꟻLIP, then the largest 8×8 tile mean with --tile-max
 //! ```
-//! Exit 0 on success (compare: mean ≤ max), 1 when the comparison exceeds `--max`, 2 on bad
-//! arguments or an I/O, adapter or render error.
+//! Exit 0 on success (compare: mean ≤ max and, with `--tile-max`, every 8×8 tile's mean ≤ V; plan
+//! #68 C1, T05-005), 1 when the comparison exceeds a limit, 2 on bad arguments or an I/O, adapter
+//! or render error.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use dash_golden::{Image, flip_mean, render_page};
+use dash_golden::{Image, flip_stats, render_page};
 use dash_gpu::{AdapterChoice, GpuContext, Tier};
 use dash_scene::{Size64, Theme, ValueRange};
 use pulsus_synth::GalleryLine;
@@ -91,9 +93,16 @@ fn compare(args: &[String]) -> Result<bool, String> {
         .unwrap_or("0.005")
         .parse()
         .map_err(|_| "--max is a number")?;
-    let mean = flip_mean(&a, &b, &regions);
-    println!("{mean}");
-    Ok(mean <= max)
+    let tile_max: Option<f32> = match flag(args, "--tile-max") {
+        Some(v) => Some(v.parse().map_err(|_| "--tile-max is a number")?),
+        None => None,
+    };
+    let s = flip_stats(&a, &b, &regions);
+    println!("{}", s.mean);
+    if tile_max.is_some() {
+        println!("tile max {}", s.tile_max);
+    }
+    Ok(s.mean <= max && tile_max.is_none_or(|t| s.tile_max <= t))
 }
 
 fn main() -> ExitCode {

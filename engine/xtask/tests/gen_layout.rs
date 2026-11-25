@@ -33,7 +33,10 @@ fn a_stale_layout_fails_and_is_rewritten() {
     let root = dir.join("engine");
     let file = dir.join("client/src/engine/wasm/layout.gen.ts");
     assert!(std::fs::create_dir_all(&root).is_ok());
-    assert!(file.parent().is_some_and(|p| std::fs::create_dir_all(p).is_ok()));
+    assert!(
+        file.parent()
+            .is_some_and(|p| std::fs::create_dir_all(p).is_ok())
+    );
     assert!(std::fs::write(&file, "export const LAYOUT_VERSION = 0;\n").is_ok());
     let (code, err) = xtask(&["gen-layout", "--check"], &root);
     assert_eq!(code, 1, "{err}");
