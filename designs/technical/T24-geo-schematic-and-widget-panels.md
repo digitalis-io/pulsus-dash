@@ -3,17 +3,18 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-25 |
+| **Version** | 1.2-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI5 (widgets) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
 | **Source draft** | plans/153, plans/181 (not tracked) |
 
 This document is the board **widgets**, the **geomap** and the **schematic**. It is written in parts
 (§2): part A, here, defines the shared widget rules, the **Text / Markdown** widget with the one
 Markdown renderer every vis and widget uses, and the **Clock / time zones** widget (rules T24-001 to
 T24-018). Part B1 adds the **Board list** widget, the list-widget rules that every list widget shares,
-board tags and the board search of the BFF (rules T24-020 to T24-029). Parts B2–K add their rules in
-their own ID blocks.
+board tags and the board search of the BFF (rules T24-020 to T24-029). Part B2 adds the **Change feed**
+widget, canonical scoped entity ids on annotations, the `change` Inspector target and the log panel
+gap record (rules T24-030 to T24-039). Parts C–K add their rules in their own ID blocks.
 
 ## 1. Context & problem
 
@@ -39,6 +40,21 @@ incidents. The Board list is a DOM list widget, honestly 2D (T24-001), that read
 routes. Its list rules (T24-020, T24-024 to T24-027) are shared with the list widgets of later parts.
 The BFF gains one migration: a `boards.tags` cache with a `tags_version` stamp, repaired on read.
 `/boards` gains `q` and `tag`, and the list answers gain `applied` and `truncated`.
+
+**Part B2.** VIZ-053's Change feed row asks for deploys, config changes, flags and annotations on a
+board, filtered by the entity in Context, and VIZ-060 imports the Annotations list into it. Today
+`/annotations` ([ADR-0023](../adr/0023-chart-event-markers.md), [T11](T11-postgres-schema.md) §4.4)
+serves the board's event markers: one page of at most 500 rows, with no entity and no filter. The
+approach: the **Change feed** is a list widget (T24-020) over the same board-owned query that the
+markers read (T24-030). Annotations gain a canonical, binding-scoped `EntityId`
+([T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id), amended), so the Context
+entity set (`e=`, IA-026) filters them. `/annotations` gains kind, tag and entity filters, keyset
+paging over the overlap set, `applied` and `orgWideHidden`. The data scope
+([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)) is enforced inside
+the one SQL statement of each path, fail closed. A row opens the Inspector on a new `change` target
+([T25-002](T25-inspector-and-pivots.md#t25-002--envelope-and-union)). The log panel's gaps against
+VIZ-034 and VIZ-035 are recorded (§4.9) and filed as follow-ups. Rejected: `kind:name` entity keys,
+stripping `entity` for old servers, and paging by moving `to` (§12).
 
 ## 2. Goals / non-goals
 
@@ -66,13 +82,27 @@ Non-goals (part B1):
 - the board library page;
 - the headless renderer.
 
+Goals (part B2): the Change feed widget (source, entity filter, paging, snapshot and meter, rows,
+selection and Inspector, keys, table, CSV and facts, compatibility, import); the canonical scoped
+`EntityId` on annotations; data-scope enforcement on every annotations path; the `/annotations`
+filters, keyset paging and `applied`; migration 5; board spec v6; the `change` Inspector target; the
+log panel gap record.
+
+Non-goals (part B2):
+- the T12 `/changes` route and derived changes ([T12](T12-entity-catalogue.md) §4.13);
+- [AUD-012](../product/01a-audiences-and-perspectives.md#aud-012--changes-ranked-and-shown-in-three-places)
+  (ranked changes);
+- an entity picker on the widget;
+- a UI to write notes;
+- the log panel follow-ups L1–L4 (§4.9, §11).
+
 **Part map.** Each part is designed under its own issue and adds its rules in its block.
 
 | Part | Scope | Issue | Rules | Requirement ID if needed |
 |---|---|---|---|---|
 | A | Text / Markdown and Clock widgets, sanitiser and link rule (this revision) | #153 | T24-001–019 | VIZ-125 (reserved, unused) |
 | B1 | Board list widget, shared list-widget rules, board tags and the `/boards` search (this revision) | #181 (step 1) | T24-020–029 | — |
-| B2 | Change feed widget, the `change` target and log panel gaps | #181 (step 2) | T24-030–039 | VIZ-126 |
+| B2 | Change feed widget, the `change` target and log panel gaps (this revision) | #181 (step 2) | T24-030–039 | VIZ-126 (reserved, unused) |
 | C | Alert / incident list widget | #182 | T24-040–059 | VIZ-127 |
 | D | Feed widget fetched by the BFF | #183 | T24-060–079 | VIZ-128 |
 | E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter | #184 | T24-080–099 | VIZ-129 |
@@ -84,7 +114,7 @@ Non-goals (part B1):
 | K | Schematic import and auto-schematic | #190 | T24-200–219 | — |
 
 Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused. Part B1 defines T24-020 to
-T24-029.
+T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused.
 
 ## 3. Satisfies
 
@@ -114,6 +144,17 @@ T24-029.
 | [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part B1) | §4.1 (T24-027), §10 | `golden:widget-gallery` |
 | [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part B1) | §4.1 (T24-027) | `e2e:widget-lists-a11y` |
 | [SRF-026](../product/04-surfaces.md#srf-026--board-library) (staged: starred, recent, search and tags; the ranking is I3, §11) | §4.1 (T24-021, T24-023, T24-029), §5.6, §6 | `itest:board-find`; `itest:board-tags`; `unit:board-list-rows` |
+| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Change feed row; part B2) | §4.1 (T24-030 to T24-035), §5.8 to §5.10, §6 | `unit:change-source`; `unit:change-rows`; `itest:annotations-entity`; `e2e:widget-change-feed` |
+| [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (part B2) | §4.1 (T24-032, T24-033, T24-038), §4.7 | `unit:change-pager`; `unit:change-snapshot`; `unit:change-mixed`; `itest:annotations-keyset` |
+| [VIZ-031](../product/05-visualisation-catalogue.md#viz-031--3d-only-when-it-encodes-a-dimension), [VIZ-086](../product/05-visualisation-catalogue.md#viz-086--true-3d-only) (part B2) | §4.1 (T24-020), §5.8 | `unit:board-spec-change-feed` |
+| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity), [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) (part B2) | §4.1 (T24-037: no field options, never auto-picked), §5.8 | `unit:board-spec-change-feed` |
+| [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Annotations list row) | §4.1 (T24-039), §4.8 | `unit:import-change-feed` |
+| [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) (part B2) | §4.1 (T24-036, T24-037) | `unit:change-table-csv`; `unit:change-selection`; `e2e:widget-lists-a11y` |
+| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part B2) | §4.1 (T24-034, T24-035), §10.2 | `unit:change-rows`; `golden:widget-gallery` |
+| [VL-012](../product/08-visual-language.md#vl-012--numbers-for-humans), [VL-020](../product/08-visual-language.md#vl-020--fixed-glyph-language) (part B2) | §4.1 (T24-034: span floor, kind glyphs) | `unit:change-rows` |
+| [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part B2) | §4.1 (T24-027, T24-034) | `e2e:widget-lists-a11y` |
+| [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (`change` target) | §4.1 (T24-035), [T25](T25-inspector-and-pivots.md) §5 | `unit:change-inspect`; `unit:change-selection`; `e2e:widget-change-feed` |
+| [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (entity set `e=`) | §4.1 (T24-031), §5.10 | `unit:change-entity`; `e2e:widget-change-feed` |
 
 ## 4. Design
 
@@ -217,11 +258,12 @@ interim); anything else → alt text. An image not rendered as `<img>` logs `ima
 `image`; links show their host.
 
 #### T24-020 — List widgets
-**MUST** — A list widget (`boardList`; part B2 adds `changeFeed`) has no `query` (T24-003), is never
+**MUST** — A list widget (`boardList`, `changeFeed`) has no `query` (T24-003), is never
 auto-picked (VIZ-065), is DOM with no 3D form, reads only BFF config routes and writes nothing. It has
 a snapshot (T24-024), a coverage meter, a table, CSV and facts (T24-026), and keys (T24-025). Board rows
 have no selection and no Inspector: a board is neither a series key nor an interval
-([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)).
+([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)). Change feed rows select and
+inspect (T24-035).
 
 #### T24-021 — Board list sources
 **MUST** — Each mode reads one route under one react-query key:
@@ -309,6 +351,116 @@ titles client-side; tag mode shows "Filtering by tag needs a newer server", with
 Old binaries cannot move a v5 head (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
 save shows "This server does not accept board tags yet".
 
+#### T24-030 — Feed source
+**MUST** — The board owns one annotations query, `boardAnnotationsQuery(api, tenant, w)` (§5.10): key
+`['data', 'events', tenant, fromMs, toMs]`, `staleTime: Infinity`, no refetch on focus, one page of
+`limit` 500 with no filter. The event markers
+([ADR-0023](../adr/0023-chart-event-markers.md), with `keepPreviousData`) and every Change feed with
+no effective filter (all kinds, no tags, no entity) observe it, so one board window makes one request.
+A feed with an effective filter has its own key `['data', 'changes', tenant, fromMs, toMs, kinds,
+tags, ents, orgWide]`. The board's Refresh refetches each key once. On a new window the markers keep
+the previous events until the answer arrives, and the feed hides the old rows (T24-024). In every
+answer `truncated ⇔ next ≠ null`.
+
+#### T24-031 — Entity filter
+**MUST** — `entityMode: 'context'` filters by the Context entity set `e` (0–16 `EntityId`s,
+[IA-026](../product/02-information-architecture.md#ia-026--context-propagation); any-of); `'all'`
+applies no entity filter. If an entry of `e` is not a lower-case UUID (for example `checkout`), the
+feed is unfiltered and shows "Entity filter unavailable for this context".
+- **Organisation-wide changes.** With full scope (`orgWideHidden` ≠ null) and an effective entity
+  filter, the toggle "Include organisation-wide" sets `orgWide`, which is part of the key and starts at
+  the `orgWide` option. While they are excluded, the line "‹k› organisation-wide change(s) not shown"
+  shows k = `orgWideHidden` ("1 organisation-wide change not shown", "3 organisation-wide changes not
+  shown"); it is hidden when k is 0 or null. A scoped answer (`orgWideHidden` null) shows neither the
+  toggle nor the line.
+- **Subtitle:** the entity labels (T24-034) of the ids in `e`, else an id's first 8 hex digits, or
+  "All entities" with no entity filter.
+
+#### T24-032 — Paging
+**MUST** — A page is taken from the **overlap set** of the window (`at ≤ toMs ∧ coalesce(end_at, at)
+≥ fromMs`), after the data scope and the filters, in (`at` desc, `id` desc) order; an older page takes
+the rows with `(at, id) < before`, where `before` is the previous page's `next`. `olderPage` appends
+and keeps at most 2 000 rows. The snapshot is:
+- **capped** iff the trim discarded rows, or `next ≠ null` with 2 000 rows loaded;
+- **complete** iff `next = null` and nothing was discarded;
+- otherwise it has **more**.
+
+Between page 0 and the last page of one key: a row that persists appears exactly once; a row inserted
+above a passed cursor is not shown (until a refresh), and one inserted below it appears on a later
+page; a row deleted before its page is read never appears.
+
+#### T24-033 — Snapshot and meter
+**MUST** — Each key has one T24-024 `ListSnapshot` (`ChangeSnapshot`, §5.10), holding the rows and
+the number of pages loaded. A new page 0 (a refresh or Retry) replaces the snapshot alone: the older
+pages are dropped and older-page requests in flight are aborted. Consumers follow §4.7. The meter is
+`listCoverage(loaded, loaded, more ≠ 'none', staleAtMs, unknown)`
+([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)):
+- one complete page → `100 %`;
+- complete after k ≥ 2 pages → `unknown: {reason: 'paged', pages: k}`, which reads "all k pages
+  loaded · may have changed while loading", with Refresh;
+- more → `truncated`, with Load older;
+- capped → `truncated` and "Limit of 2,000 changes reached: narrow the time range", with no Load
+  older;
+- an old server (T24-038) → `coverage unknown`.
+
+#### T24-034 — Rows
+**MUST** — A row has two lines and optional chips, with no state colour (T24-027):
+- **Line 1** (12/16, `text-muted`): the kind glyph (◆ deploy, ⚙ config, ⚑ flag; a note has none,
+  [VL-020](../product/08-visual-language.md#vl-020--fixed-glyph-language), ADR-0023) and the word
+  (Deploy, Config change, Feature flag, Note), then, joined by ` · `: the time `HH:mm:ss` in the
+  page's zone, with `EEE d MMM` first when the row is on another date than the window's end; for a
+  range, `‹from›–‹to› · ‹span›` instead, with the span floored as T24-012 (`17 min`) and `< 1 s`
+  below one second; then the entity, `‹kind› ‹ident values joined ' / '›` (absent optional positions
+  are skipped), with ` · ‹binding slug›` added when loaded rows with different ids have the same
+  label, or "organisation-wide".
+- **Line 2** (13/20): the text exactly as authored, plain text, never parsed for entity names (the
+  [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response) note).
+- **Chips** when `showTags`: at most 3 tag chips, then `+k`.
+
+#### T24-035 — Selection, Inspector
+**MUST** — Click, Enter or Space on a row calls `inspect` with the origin `{surface: 'board',
+panelId, title, query: null, window, unit: null}`, the target `change` (`changeTarget`,
+[T25](T25-inspector-and-pivots.md) §5) and the selection `{keys: ['change:' + id], fromMs: at, toMs:
+(end_at ?? at) + 1}`. Time panels draw the interval band and dim nothing, because the key is not in
+their data ([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)). The feed reads
+`useSelection()` through `changeRelevance`, relative to its **loaded ids**:
+- the keys hold `change:‹id›` of loaded rows → those rows are selected (`selection` background, a 2 px
+  `focus` bar, the hidden text "selected") and the others muted;
+- the keys are `[]` and there is an interval → the rows overlapping it (`at < toMs ∧ coalesce(end_at,
+  at) ≥ fromMs`) are selected and the others muted;
+- anything else (null, only foreign keys, foreign keys with an interval) → no effect.
+
+#### T24-036 — Keyboard, SR
+**MUST** — T24-025 applies, with rows as buttons; Enter or Space inspects, and a keyboard open
+focuses the Inspector heading ([T25-008](T25-inspector-and-pivots.md#t25-008--focus-and-sr)). Tab
+order: the "Include organisation-wide" toggle → the list → Load older or Refresh → the meter. A row's
+accessible name is `‹word›, ‹text›, ‹time›[ to ‹end›, ‹span›][, ‹entity›][, tags ‹t1›, ‹t2›…]`.
+`aria-setsize` is the loaded count only for a complete single page with known coverage, else −1. When
+a page loads, one polite announcement reads "‹n› changes loaded", n being the rows it added.
+
+#### T24-037 — Table, CSV, facts, fields
+**MUST** — Shift+T shows the snapshot in the kit table (#173, T24-026). The CSV header is
+`at,end_at,kind,entity_id,entity,text,tags,id`: times in ISO 8601 UTC with milliseconds (`end_at`
+empty for a point); `entity_id` the `EntityId` and `entity` the T24-034 entity label, both empty when
+organisation-wide; tags `;`-joined; every cell through `csvCell`. Facts: `current` = `{text:
+'‹N›[+] changes'` (`+` with more or capped) plus ` (coverage unknown)` or ` (stale)`, `series`: the
+newest row as `'‹word›: ‹text› at HH:mm:ss'`, or `''` when empty`}`; the other members are null, and
+with no snapshot the facts are null.
+[VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity): the Change
+feed has no field options (`fieldConfig`, `thresholds` → `board.json.unknownKey`).
+[VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules): it is never auto-picked.
+
+#### T24-038 — Compatibility
+**MUST** — An answer without `applied` comes from an **old server** (before I5): the meter reads
+`coverage unknown`, there is no Load older, and kinds and tags are filtered client-side over its one
+page; an effective entity filter shows "Filtering by entity needs a newer server" and no rows. A
+create with `entity` is never stripped: an old server's 400 shows "This server cannot record the
+entity yet", with no retry. Migration 5 ships after #215's migration 4 (§6).
+
+#### T24-039 — Change feed import
+**MUST** — Import follows §4.8 exactly, with one report note per dropped (a duplicate included),
+malformed or unmapped option.
+
 ### 4.2 Markdown node table (`commonmark` → output)
 
 | Node | Output |
@@ -382,6 +534,52 @@ unmount.
 - Other modes with search text or tags → "Search text and tags dropped: they apply to search only".
 - `maxItems` is clamped to 1–50 ("Item limit ‹m› clamped to ‹l›"); `keepTime: false` → "Links keep the
   time range"; other keys, sorted → "Option ‹key› not mapped".
+
+### 4.7 Change feed states (part B2; T24-033)
+
+| State | Rows | Meter | Table / CSV | Facts |
+|---|---|---|---|---|
+| key change / pending | the old key's rows hidden at once / "Loading changes…" after 300 ms | `loading` | off | null |
+| empty | "No changes in this time range" (with a kind subset, e.g. "No deploy or config changes in this time range") | `100 %` or `coverage unknown` | header only | `0 changes` |
+| complete | the rows | `100 %` (one page) / the paged text + Refresh | the rows | `‹N› changes` |
+| more / capped | the rows + Load older / the 2 000 rows and the cap text | `truncated` | the loaded rows | `‹N›+ changes` |
+| an older page fails | the rows + "Couldn't load older changes. Retry" | unchanged | unchanged | unchanged |
+| refresh ok / fails | the new page 0 / the rows kept + "Couldn't refresh: showing changes from HH:mm:ss" | recomputed / `… · stale (HH:mm:ss)` | the rows | recomputed / `… (stale)` |
+| error, no snapshot for this key | "Couldn't load changes" + Retry (503: "The configuration store is unavailable") | `unavailable` | off | null |
+
+Older-page requests are aborted on unmount, on a key change and when a new page 0 replaces the
+snapshot.
+
+### 4.8 Change feed import (part B2; VIZ-060; Annotations list → `changeFeed`; #158, #17)
+
+- Fixed: all kinds, `entityMode: 'context'`, `orgWide: false`.
+- `tags`: not an array of strings → "Option tags malformed: default used" (`[]`). Otherwise each tag
+  is lower-cased; an invalid one → "Tag ‘‹t›’ dropped: not a valid tag" (‹t› as written); a repeat →
+  "Duplicate tag ‘‹t›’ dropped"; past 8 → "Tag ‘‹t›’ dropped: at most 8 tags" (both lower-cased).
+- `showTags`, `onlyFromThisDashboard` and `onlyInTimeRange` that are not booleans → "Option ‹key›
+  malformed: default used" (defaults true, false and true).
+- `onlyFromThisDashboard: true` → "The change feed lists the organisation's changes";
+  `onlyInTimeRange: false` → "The change feed lists the board's time range"; `limit` → "Paged by the
+  change feed"; other keys, sorted → "Option ‹key› not mapped".
+- The notes come in the order listed: the tag notes in tag order, then the malformed booleans in the
+  order `showTags`, `onlyFromThisDashboard`, `onlyInTimeRange`, then the three meaning notes, then
+  the unmapped keys.
+
+### 4.9 Log panel gap record (part B2; informative)
+
+The board log panel today against [VIZ-034](../product/05-visualisation-catalogue.md#viz-034--log-stream)
+and [VIZ-035](../product/05-visualisation-catalogue.md#viz-035--log-patterns-with-new-badge). The
+implementation documents it in `docs/client/logs.md`:
+
+| Feature (VIZ) | Today | Follow-up |
+|---|---|---|
+| GPU text (034) | A DOM list | #69 |
+| A 10⁶-line fling at frame rate (034) | **Gap**: the fling stops at each slice end (Q-B1 in `docs/client/logs.md`) | L4, #136 |
+| Minimap of error density (034) | Missing | L1 |
+| JSON tree, prettify (034) | Missing | L1 |
+| Dedupe, context lines (034) | Missing | L2 |
+| Patterns with the NEW badge (035) | Missing | L3 |
+| Severity gutter, wrap, paging (034) | Met | — |
 
 ## 5. Interfaces
 
@@ -546,6 +744,92 @@ export function boardSnapshot(key: readonly unknown[], r: BoardPage | RefPage,
 // importBoardList(src) → { options; notes: string[] }
 ```
 
+### 5.8 Board spec v6 (part B2; OpenAPI, Go, TS)
+
+Spec v6 is the next free version after v5 (§5.5), with an identity upcaster (T11-016). `Vis.kind`
+adds `changeFeed` with the options below. Go decides validity; TS = Go on the fixtures
+`v6-change-feed.json` and `invalid.json`. Other keys (`fieldConfig`, `thresholds`, `depth`, …) →
+`board.json.unknownKey`. Errors are `board.options.‹key›.…`.
+
+| Key | Type / bounds | Default | Error |
+|---|---|---|---|
+| kinds | 1–4 unique of `deploy`, `config`, `flag`, `annotation` | all four | `kinds.invalid`, `kinds.duplicate` |
+| tags | 0–8 unique `AnnotationTag` | `[]` | `tags.invalid`, `tags.duplicate` |
+| entityMode | `context`\|`all` | `context` | `entityMode.invalid` |
+| orgWide | bool | `false` | `board.json.type` |
+| showTags | bool | `true` | `board.json.type` |
+
+`changeFeedOptions` fills the defaults; `isWidgetPanel` includes `changeFeed`, and `<WidgetBody>`
+adds it.
+
+### 5.9 Annotations contract (part B2; spec first, [ADR-0015](../adr/0015-go-bff.md))
+
+Every path runs in `OrgTx` under RLS (T11-003) on the read-write pool. The identity is the amended
+[T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id): `EntityId` is the
+XXH3-128 (`zeebo/xxh3`) of the canonical bytes of (binding, kind, identifying values), as a
+lower-case UUID, and is also the `entityRef` of `e=`. The BFF canonicalises the submitted `attrs` by
+the T12 §4.2 kind table, and stores and reads only the **canonical map** (T12 §4.5).
+
+```yaml
+AnnotationCreate: + entity? { binding: slug of a binding in the org, kind, attrs: { [attr]: string 1–256 } }
+  # → 400 annotations.entity.invalid (canonicalisation, T12-010) / 400 annotations.entity.binding (unknown slug)
+Annotation: + entity (required: { id: EntityId, binding: slug, kind, ident: (string | null)[] in schema order } | null)
+/annotations get: + kind[] ≤ 4 (any-of) · tag[] ≤ 8 (all-of) · entity[] ≤ 16 EntityIds (any-of) · orgWide (only with entity)
+  · beforeAt + beforeId (both or neither) → 400 annotations.‹param›.invalid
+AnnotationList: + applied (required: { kinds?, tags?, entity?, orgWide?, before? }: what was applied)
+  · next (required: { at, id } | null) · orgWideHidden (required: integer ≥ 0, or null when scoped)
+```
+
+`limit` stays 1–500 (default 500). The list reads `limit + 1` rows: more than `limit` → the extra row
+is trimmed, `next` = the last kept row's `(at, id)`, and `truncated` = `next ≠ null`.
+
+**Data scope** ([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response),
+T12 §4.15; fail closed). `core.DataScope.AnnotationScope() (full bool, clauses, err error)`. The
+clauses are OR-ed. Each clause is **compiled per kind** of the T12 §4.2 kind table into `$scope` =
+`[{k: kind, b: [binding id] (absent = any binding), a: {position: [allowed value]}}]`:
+- `b: []` → 403 `scope_denied` at compile time; no SQL runs;
+- an attribute key maps to the kind's position through any of its alternatives, under the position's
+  canonical name (its first alternative): `k8s.cluster.name` is the cluster's second alternative
+  (`k8s.cluster.uid`) and the pod's primary;
+- keys on one position intersect their values; an empty intersection matches nothing;
+- a key with no position in a kind drops the clause for that kind.
+
+The SQL and `ScopeCovers` read only this compiled list. The predicate `P` = `$scope_full OR
+(entity_key IS NOT NULL AND a clause matches the canonical map)`: **organisation-wide rows are
+full-scope only**. An unset or uncompilable scope → 403 `scope_denied` before any statement. `P` is
+inside each path's one statement:
+- **list** (the feed and the markers): in `base` (§6), so no row outside `P` reaches the rows, the
+  cursors, the counts or an export; `orgWideHidden` is null when scoped, and the toggle is hidden;
+- **create**: `ScopeCovers` (= `P`) on the canonical map, or 403 `annotations.entity.scope`; a create
+  without an entity needs full scope, or 403 `annotations.scope`;
+- **delete**: `DELETE … WHERE org_id = $1 AND id = $2 AND P RETURNING …`; a hidden row and an absent
+  row give the same 404, and the audit event is written only when a row is deleted.
+
+There is no get or update route; the Inspector reads the loaded row. Text and tags are free content
+and are never parsed (the T12-018 note). Until authentication (D12) every request has full scope.
+CI posters keep sending `entity` unchanged.
+
+### 5.10 Client change-feed modules (part B2; `api/Api.ts`, `state/contextSearch.ts`, `widgets/changeFeed/`)
+
+```ts
+// ContextSearch gains e: readonly string[] (URL `e=`, a comma list, at most 16; IA-026)
+listAnnotations(tenant: string, w: { fromMs: number; toMs: number; limit?: number; kinds?: readonly EventKind[];
+  tags?: readonly string[]; entities?: readonly string[]; orgWide?: boolean; before?: Cursor }, signal?: AbortSignal): Promise<ChangePage>;
+export interface Cursor { at: number; id: string }
+export interface ChangePage { items: Change[]; truncated: boolean; applied: object | null /* null = old server */;
+  next: Cursor | null; orgWideHidden: number | null }
+export interface Change extends Annotation { entity: { id: string; binding: string; kind: string; ident: (string | null)[] } | null }
+export interface ChangeSnapshot extends ListSnapshot<Change> { next: Cursor | null; more: 'none' | 'more' | 'cap';
+  pages: number; orgWideHidden: number | null; oldServer: boolean }
+export function boardAnnotationsQuery(api: Api, tenant: string, w: TimeWindow): UseQueryOptions<ChangePage>;   // T24-030
+export function firstPage(key: readonly unknown[], p: ChangePage, o: { fetchedAtMs: number }): ChangeSnapshot;
+export function olderPage(s: ChangeSnapshot, p: ChangePage, cap?: number /* 2 000 */): ChangeSnapshot;   // T24-032
+export function changeRelevance(c: Change, sel: Selection | null, loaded: ReadonlySet<string>): boolean | null;  // T24-035; null = no effect
+export function changeTarget(c: Change): Extract<InspectorTarget, { type: 'change' }>;
+// also: changeLabel(c, loaded) (T24-034 entity text), changeRowName(c) (T24-036), changeFeedTable(s),
+// changeFeedFacts(title, s | null) (T24-037), changeFeedOptions(o) (§5.8), importChangeFeed(src) → { options; notes: string[] } (§4.8)
+```
+
 ## 6. Data & storage
 
 Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 upcaster is the identity
@@ -587,6 +871,47 @@ ORDER BY h.created_at DESC NULLS LAST, h.uid;   -- the all-NULL sentinel exists 
 `strpos` (not `LIKE`) means `%` and `_` in `q` are plain characters. `lower(… COLLATE "C")` folds ASCII
 only, so `zürich` does not match `ZÜRICH`.
 
+**Part B2.** Board spec v6 (§5.8) is stored the same way, with an identity upcaster. Migration 5 adds
+the annotation's canonical entity ([T11](T11-postgres-schema.md) §4.4). It is metadata-only, keeps the
+N+1 window (T11-012, T11-013) and is numbered after #215's migration 4. Every path is **one
+statement**:
+
+```sql
+-- migrations/00005_annotation_entity.sql (lock_timeout 5s; metadata-only)
+ALTER TABLE annotations ADD COLUMN entity jsonb;
+ALTER TABLE annotations ADD CONSTRAINT annotations_entity_pair
+  CHECK ((entity_key IS NULL) = (entity IS NULL)) NOT VALID;   -- existing rows are all NULL/NULL; I7 validates it next release
+
+-- name: ListAnnotations :many — ONE statement; always ≥ 1 row; $lim = limit + 1
+WITH base AS (SELECT id, at, end_at, kind, text, tags, entity_key, entity FROM annotations a
+  WHERE org_id = $1
+    AND ($scope_full OR entity_key IS NOT NULL AND EXISTS (           -- the data scope P, fail closed
+      SELECT 1 FROM jsonb_array_elements($scope) c
+      WHERE c->>'k' = a.entity->>'kind'
+        AND (c->'b' IS NULL OR c->'b' ? (a.entity->>'binding_id'))
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(c->'a') kv
+                        WHERE NOT coalesce(kv.value ? (a.entity->'attrs'->>kv.key), false))))
+    AND at <= $to AND at >= $from - interval '31 days' AND coalesce(end_at, at) >= $from   -- the overlap set
+    AND (cardinality($kinds::text[]) = 0 OR kind = ANY ($kinds)) AND tags @> $tags::text[]),
+f AS (SELECT * FROM base
+  WHERE cardinality($ents::text[]) = 0 OR entity_key = ANY ($ents) OR ($org_wide AND entity_key IS NULL)),
+st AS (SELECT CASE WHEN $scope_full THEN count(*) FILTER (
+         WHERE cardinality($ents::text[]) > 0 AND NOT $org_wide AND entity_key IS NULL) END AS org_wide_hidden
+       FROM base)                                                     -- NULL when scoped
+SELECT st.org_wide_hidden, h.* FROM st
+LEFT JOIN LATERAL (SELECT * FROM f WHERE NOT $has_before OR (at, id) < ($before_at, $before_id)
+                   ORDER BY at DESC, id DESC LIMIT $lim) h ON true
+ORDER BY h.at DESC NULLS LAST, h.id DESC;   -- the all-NULL sentinel exists only when nothing matches
+
+-- Go: more than limit rows → trim, next = the last kept row, truncated = next ≠ null.
+-- name: CreateAnnotation — one INSERT; entity_key = the EntityId and entity = {id, binding, binding_id, kind, ident,
+--   attrs (the canonical map)}, or both NULL; the scope check (ScopeCovers) runs before it (§5.9).
+-- name: DeleteAnnotation — DELETE FROM annotations WHERE org_id = $1 AND id = $2 AND P RETURNING …; the audit event only on a row.
+```
+
+`annotations_at (org_id, at)` serves the keyset order; the 31-day lower bound on `at` is exact
+because a range is at most 31 days (T11 §4.4).
+
 ## 7. Performance budget
 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
@@ -595,6 +920,10 @@ Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tic
 
 Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit). Report-only:
 `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95).
+
+Part B2: a Change feed holds at most 2 000 rows, in plain DOM. Each page is one indexed statement
+(`annotations_at`). Report-only: `bench:widget-lists` adds a 2 000-row Change feed render (≤ 50 ms
+p95).
 
 ## 8. Security, tenancy & RBAC
 
@@ -609,6 +938,12 @@ Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit).
   2 s, on the primary); a failed repair leaves rows stale, and its log carries no titles.
 - CSV cells are guarded against formula injection (`csvCell`, T24-026). Search uses `strpos`, so `q`
   has no wildcards; folding is ASCII-only.
+- Part B2: the data scope `P` is inside each annotations statement (list, create, delete), compiled
+  per kind and fail closed (§5.9, T12-018): organisation-wide rows are full-scope only, a scoped
+  answer has `orgWideHidden: null`, and a hidden row and an absent row give the same 404 on delete.
+  Org B is in every itest. Change text and tags are free content shown as authored and never parsed;
+  the user docs say "with scopes, don't name other services in change text". The CSV guards the text
+  (`csvCell`).
 
 ## 9. Failure modes & degradation
 
@@ -621,6 +956,10 @@ Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit).
 | Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a v5 head (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
 | A GET that writes | A separate short transaction, ≤ 200 rows, `SKIP LOCKED`, 2 s, on the primary; a failure leaves rows stale and never fails the list |
 | A failed refetch; a late answer | The snapshot is kept with `staleAtMs`; an answer for an old key never renders (T24-024) |
+| Scope (part B2) | RLS and `P` in one statement per path; an unset scope or `b: []` → 403 before any SQL |
+| Rolling upgrade (part B2) | Migration 5 after #215 (N+1); an old server answers without `applied` (T24-038); `annotations_entity_pair` `NOT VALID` until I7 |
+| Rows change while paging | Keyset order on (`at`, `id`); the T24-032 guarantees; the paged meter text and Refresh |
+| An older page fails | The rows are kept, with Retry (§4.7) |
 
 ## 10. Testing
 
@@ -746,6 +1085,133 @@ I9 {showStarred:false, showSearch:true, query:'a\tb\u0007c'}       → search, q
 Report-only: `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95). `ci:dep-audit` passes. Every
 gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
+### 10.2 Part B2 tests
+
+Written first in I5 and I6 (§11); all fail today: nothing exists yet.
+
+**Entities** (the [T12](T12-entity-catalogue.md) §4.5 vectors): bindings e1 =
+`00000000-0000-4000-8000-0000000000e1` (slug `prod-eu`) and e2 =
+`00000000-0000-4000-8000-0000000000e2` (slug `prod-us`).
+
+| Name | Binding, kind, attrs | EntityId |
+|---|---|---|
+| checkout@e1 | e1, service, `{service.name: checkout}` | `bb7487bd-100d-a998-e0f0-3c65f11da1a7` |
+| checkout@e2 | e2, service, `{service.name: checkout}` | `3d1d4695-d757-d5f8-d6bf-c1b134128742` |
+| payments@e1 | e1, service, `{service.name: payments, service.namespace: shop}` | `854bc89f-5785-b55c-398b-87a03d62a7d9` |
+| gateway@e1 | e1, service, `{service.name: gateway}` | `af71dde5-5f66-4d0b-7ba4-e96eba601d3c` |
+| pod | e1, pod, `{k8s.cluster.name: prod-eu-1, k8s.namespace.name: shop, k8s.pod.name: checkout-7d9f}` | `970888cf-821c-14c3-0155-320ca949dd19` |
+| env prod | e1, environment, `{deployment.environment.name: prod}` (or `deployment.environment`, or both equal) | `f8bdae9d-e739-228c-dd0e-317933242944` |
+| env stage | e1, environment, `{deployment.environment: stage}` | `ac9609b4-95c1-1f31-60b9-bd315336ed95` |
+| cluster A | e1, cluster, `{k8s.cluster.name: prod-eu-1}` (canonical `{k8s.cluster.uid: prod-eu-1}`) | `9454e37d-718e-a60b-cea1-8827d683c0d7` |
+| cluster B | e1, cluster, `{k8s.cluster.uid: c-9f2}` | `136e6b87-b494-b7ea-7873-c976399bcfff` |
+
+**Fixture C:** the window 2026-11-26 12:00–13:00Z; change cN has the id
+`00000000-0000-4000-8000-` + N as 12 decimal digits (c1 `…000000000001`, c11 `…000000000011`); every
+row is created before page 0. c5 and c9 overlap from before the window (c9 ends exactly at `fromMs`),
+and c8 ends before it.
+
+```text
+c1  deploy      12:10:00           "checkout v2.31"                   [pr:4402]  checkout@e1
+c2  config      12:19:02           "payments.psp.timeout 5000→2000"   [pr:4411]  payments@e1
+c3  flag        12:21:30           "new-checkout-flow 10%→50%"        []         checkout@e2
+c4  annotation  12:23:00–12:40:00  "INC-2041 mitigation window"       []         organisation-wide
+c5  deploy      11:50:00–12:05:00  "gateway v1.8 rollout"             []         gateway@e1
+c6  config      12:19:02           "payments.retry 3→1"               []         payments@e1
+c7  annotation  12:30:00           '=HYPERLINK("a")'     []         organisation-wide
+c8  deploy      11:20:00–11:40:00  "checkout v2.30"                   []         checkout@e1
+c9  config      11:30:00–12:00:00  "edge cache ttl 60→30"             []         organisation-wide
+scope fixture adds:
+c10 annotation  12:35:00           "rollback near checkout@e2"        []                       organisation-wide
+c11 config      12:33:00           "retries raised after checkout@e2 timeouts"  [rel:checkout-prod-us]  payments@e1
+keyset (a) inserts after page 1: n1 deploy 12:45:00 (id …000000000020), n2 deploy 12:05:00 (id …000000000021), both org-wide
+```
+
+The full order of C in the window is c7, c4, c3, c6, c2, c1, c5, c9 (8 rows). Its CSV (one page, UTC):
+
+```text
+at,end_at,kind,entity_id,entity,text,tags,id
+2026-11-26T12:30:00.000Z,,annotation,,,"'=HYPERLINK(""a"")",,00000000-0000-4000-8000-000000000007
+2026-11-26T12:23:00.000Z,2026-11-26T12:40:00.000Z,annotation,,,INC-2041 mitigation window,,00000000-0000-4000-8000-000000000004
+2026-11-26T12:21:30.000Z,,flag,3d1d4695-d757-d5f8-d6bf-c1b134128742,service checkout · prod-us,new-checkout-flow 10%→50%,,00000000-0000-4000-8000-000000000003
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.retry 3→1,,00000000-0000-4000-8000-000000000006
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.psp.timeout 5000→2000,pr:4411,00000000-0000-4000-8000-000000000002
+2026-11-26T12:10:00.000Z,,deploy,bb7487bd-100d-a998-e0f0-3c65f11da1a7,service checkout · prod-eu,checkout v2.31,pr:4402,00000000-0000-4000-8000-000000000001
+2026-11-26T11:50:00.000Z,2026-11-26T12:05:00.000Z,deploy,af71dde5-5f66-4d0b-7ba4-e96eba601d3c,service gateway,gateway v1.8 rollout,,00000000-0000-4000-8000-000000000005
+2026-11-26T11:30:00.000Z,2026-11-26T12:00:00.000Z,config,,,edge cache ttl 60→30,,00000000-0000-4000-8000-000000000009
+```
+
+Under P_shop, C + c10 + c11 gives this CSV (c11's text and tag are unchanged; nothing names
+checkout@e2 in a structured field):
+
+```text
+at,end_at,kind,entity_id,entity,text,tags,id
+2026-11-26T12:33:00.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,retries raised after checkout@e2 timeouts,rel:checkout-prod-us,00000000-0000-4000-8000-000000000011
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.retry 3→1,,00000000-0000-4000-8000-000000000006
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.psp.timeout 5000→2000,pr:4411,00000000-0000-4000-8000-000000000002
+```
+
+**Scopes** (clauses OR-ed; `b` binding ids, `a` attribute key → allowed values):
+
+```text
+P_eu    [{b:[e1]}]
+P_shop  [{a:{service.namespace:[shop]}}]
+S1      [{b:[e2]}, {a:{service.namespace:[shop]}}]                                   → checkout@e2, payments@e1
+S2      [{b:[e1], a:{service.name:[checkout, gateway]}}]                             → checkout@e1, gateway@e1
+S3      [{a:{k8s.namespace.name:[shop]}}]                                            → pod
+S4      [{a:{service.namespace:[shop, '']}}]                                         → payments@e1
+S5      [{a:{service.name:[checkout]}}]                                              → checkout@e1, checkout@e2
+S6      [{b:[]}]                                                                     → 403 scope_denied, no SQL
+T1      [{a:{deployment.environment.name:[prod], deployment.environment:[stage]}}]  → none (compiles to environment {deployment.environment.name: []})
+T2      [{a:{deployment.environment.name:[prod, stage], deployment.environment:[prod, dev]}}] → env prod (environment {…name: [prod]})
+T3      [{a:{k8s.cluster.name:[prod-eu-1]}}]                                         → cluster A, pod (cluster {k8s.cluster.uid: [prod-eu-1]}; node, namespace, workload, pod {k8s.cluster.name: [prod-eu-1]})
+```
+
+No scope above covers an organisation-wide row; full scope covers every row.
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:entity-id` | annotations/entityid_test.go + `wire/fixtures/json/entity-id.json` (full UUIDs) | The T12 §4.5 vectors; `{}`; name `''`; namespace `''`; an extra key (`service.version`); kind `spaceship`; a pod without its namespace; name `1` (a number); env `prod` vs `stage` | Every T12 §4.5 id; the rest → 400 `annotations.entity.invalid` | T12-010 |
+| `itest:annotations-entity` | store/annotations_itest_test.go | C in org A; org B with a checkout@e1 change | `entity=` checkout@e1 → c1, `orgWideHidden` 3; checkout@e2 → c3; + payments@e1 → c6, c2, c1; checkout@e1 + `orgWide` → c7, c4, c1, c9; `kind` deploy + config → c6, c2, c1, c5, c9; `tag=pr:4411` → c2; payments@e1 + `flag` → `[]`; B sees none of A; bad parameters → the §5.9 400s | T24-030, T24-031 |
+| `itest:annotations-scope` (+ `unit:change-scope-text`) | same (+ widgets/changeFeed/scope.test.ts) | C + c10 + c11; P_eu, P_shop, unset | Full → 10 rows; P_eu in pages of 3 → `[c11, c6, c2]`, `[c1, c5]`; P_shop → c11, c6, c2, with c11's text and tag unchanged and its entity `service shop / payments`; P_shop with `entity=` checkout@e1 → `[]` and the body has `"orgWideHidden": null`; c10 and checkout@e2 are in no structured field, page, cursor, count, CSV entity cell or Inspector fact (the free-text Tags fact excluded); unset → 403; P_shop creates checkout@e1 → 403 `annotations.entity.scope`, no entity → 403 `annotations.scope`, payments@e1 → 201 | T12-018 |
+| `itest:annotations-scope-compile` | same | Env created via `deployment.environment`, via `deployment.environment.name` and via both (`prod`); `prod` vs `stage`. The entities table above; S1–S6, T1–T3 | Env → `f8bdae9d-e739-228c-dd0e-317933242944`, attrs `{deployment.environment.name: prod}` each time; the conflict → 400; each scope covers exactly the entities listed above on create, list, markers, delete and CSV; the SQL predicate = `ScopeCovers` on every entity; `entity` and `entity_key` are set or NULL together | T12-010, T12-018 |
+| `itest:annotations-delete-scope` | same | P_shop deletes c1 (out of scope), an absent id, then c2; unset | c1 and the absent id → identical 404s, c1 kept, no audit; c2 → 204 and one audit event; unset → 403, no SQL | T12-018 |
+| `itest:annotations-keyset` | same; `limit=3` | (a) p1; insert n1 and n2; p2; p3. (b) p1; p2; delete c5 alone; p3. (c) `limit=500` | (a) p1 c7, c4, c3 (`next` 12:21:30 / c3); p2 c6, c2, c1; p3 n2, c5, c9 (`next` null); n1 absent; no id twice. (b) p3 c9. (c) one page of 8. One SELECT per page | T24-032 |
+| `itest:annotations-entity-validate` (I7) | same | Schema 5 with every row's `entity` and `entity_key` paired; apply the I7 migration | `pg_constraint.convalidated` true; an INSERT with only one of the two fails | T11-013 |
+| `itest:annotations-old-binary` | CI job in I5 | The **previous release** binary (schema 4) beside N on schema 5 | It starts; its answers have no `applied`; its create with `entity` → 400; N reads its rows with `entity: null` | T24-038, T11-015 |
+| `unit:change-source` | widgets/changeFeed/source.test.tsx | A counting stub; a line panel and an unfiltered feed | Concurrent mounts → 1 request; a later mount → 0; Refresh → 1; a failed refresh → the markers' notice and the feed stale; a new window → the feed hides the old rows and the markers keep theirs; an `e` → its own key | T24-030 |
+| `unit:change-pager` | widgets/changeFeed/pager.test.ts | C in pages of 3; cap 5; one page of 500; stubs 1 900 + 150 and 1 500 + 500 (`next` null, then set) | Pages of 3: 3 requests, 8 rows, "all 3 pages loaded · may have changed while loading", setsize −1; after p1 `truncated` + Load older, setsize −1; page 500 → `100 %`, setsize 8; cap 5 → c7, c4, c3, c6, c2, capped; 1 900 + 150 → 2 000, capped; 1 500 + 500 with `next` null → complete, with `next` set → capped | T24-032, T24-036 |
+| `unit:change-snapshot` | same | 2 pages of 3; a refresh whose page 0 lacks c7 and renames c4 "INC-2041 resolved"; a failing refresh; a key change | `[c4′, c3, c6]` with the older request aborted, CSV and facts matching; failure → rows kept, stale; the old key never rendered | T24-033 |
+| `unit:change-entity` | widgets/changeFeed/entity.test.tsx | `e` = [checkout@e1]; [checkout@e1, payments@e1]; [checkout@e2]; ["checkout"]; [] | c1 + "3 organisation-wide changes not shown"; the toggle → 4 rows; the set → 3 rows; e2 → c3; "checkout" → 8 rows + "Entity filter unavailable for this context"; [] → "All entities"; `orgWideHidden` null → no toggle or line | T24-031 |
+| `unit:change-rows` | widgets/changeFeed/rows.test.ts | C, UTC | c1 `◆ Deploy · 12:10:00 · service checkout · prod-eu`; c3 `⚑ Feature flag · 12:21:30 · service checkout · prod-us`; c2 `⚙ Config change · 12:19:02 · service shop / payments`; c4 `Note · 12:23:00–12:40:00 · 17 min · organisation-wide`; c7's text literal; no colour | T24-034 |
+| `unit:change-selection` | same | c1–c7 and c9 loaded | `{[], 12:19:00, 12:22:00}` → c3, c6, c2 selected, the others muted; a series key + that interval → no effect; foreign `change:…000000000099` → no effect; a series key + `change:…000000000004` + c4's interval → c4 only; the line panel bands and dims nothing; Enter/Space on c4 → inspect and focus on the heading; Load older of a 3-row page → "3 changes loaded" | T24-035, T24-036 |
+| `unit:change-inspect` | inspector/model.test.ts | c4; c2; c2 + the filter `job=shop/web`; a service named `a"b\c` + LF + `d` | c4: heading `Note`, Duration `17 min`, Entity `organisation-wide`, Logs disabled ("This change has no service"); c2: Logs `{service_name="payments"}` over 12:18:02–12:20:02; with the filter `{service_name="payments",service_name="web"}` and the T25-010 conflict line; the odd name → `{service_name="a\"b\\c\nd"}` | T24-035 |
+| `unit:change-mixed` | widgets/changeFeed/mixed.test.tsx | No `applied`: C; `[]`; an `e`; a create with `entity` → 400 | `coverage unknown`, setsize −1, no Load older; `[]` → empty, `coverage unknown`; `e` → "Filtering by entity needs a newer server", no rows; the create → "This server cannot record the entity yet", 1 request | T24-038 |
+| `unit:change-table-csv` | widgets/changeFeed/table.test.ts | C | The C CSV above exactly: the T24-037 header; c7's text `"'=HYPERLINK(""a"")"`; c3 `3d1d4695-d757-d5f8-d6bf-c1b134128742`, `service checkout · prod-us`; facts `{'8 changes', 'Note: =HYPERLINK("a") at 12:30:00'}` | T24-037 |
+| `unit:board-spec-change-feed` | boards/spec.test.ts, validate_test.go | `{}`; kinds `[]`, `['deploy','deploy']`, `['release']`; 9 tags; tag `Bad`; `entityMode:'fixed'`; `orgWide:'yes'`; `fieldConfig`; `thresholds`; `depth`; the Table 5-13 rows | Defaults `{kinds: all four, tags: [], entityMode: context, orgWide: false, showTags: true}`; `kinds.invalid`, `kinds.duplicate`, `kinds.invalid`; `tags.invalid` ×2; `entityMode.invalid`; `board.json.type`; `board.json.unknownKey` ×3; TS = Go; v5 upcasts; never auto-picked | T24-037, VIZ-057, VIZ-065 |
+| `unit:import-change-feed` | import/changeFeed.test.ts | J1–J4 (below) | Options and notes exactly as listed | T24-039 |
+| `e2e:widget-change-feed` | e2e/widgets.spec.ts | Stub BFF, C in pages of 3, a line panel, `?e=bb7487bd-100d-a998-e0f0-3c65f11da1a7` | 1 row + "3 organisation-wide changes not shown"; the toggle → 4 rows; without `e`: Load older ×2 → 8 rows, the paged text, setsize −1; Enter on c4 → the Inspector `Note` and the band on the line panel; Esc ×2 clears and closes; Refresh → 1 request | VIZ-053 |
+| `e2e:widget-lists-a11y` (amended), `golden:widget-gallery` (amended) | e2e/ | + Change feeds in the loading, empty, more, capped, paged, stale and old-server states; gallery pages `widget-change-feed`, `widget-change-feed-entity`, `widget-change-feed-states`, `widget-change-feed-inspector` | axe clean in each; setsize per T24-036; CI baseline (0.1, ≤ 0.2 %) | T24-036, VIZ-069 |
+
+Import cases for `unit:import-change-feed` (Annotations list options → `changeFeed` options and
+notes, in order; every result has all kinds, `entityMode: 'context'` and `orgWide: false`):
+
+```text
+J1 {}                                                       → tags [], showTags true; no notes
+J2 {tags:['Deploy','deploy','a b'], onlyFromThisDashboard:true, limit:10, showTags:false}
+                                                            → tags ['deploy'], showTags false; "Duplicate tag ‘deploy’ dropped",
+                                                              "Tag ‘a b’ dropped: not a valid tag", "The change feed lists the organisation's changes",
+                                                              "Paged by the change feed"
+J3 {tags:'x', showTags:'no', onlyFromThisDashboard:1, onlyInTimeRange:false, navigateToPanel:true}
+                                                            → tags [], showTags true; "Option tags malformed: default used",
+                                                              "Option showTags malformed: default used", "Option onlyFromThisDashboard malformed: default used",
+                                                              "The change feed lists the board's time range", "Option navigateToPanel not mapped"
+J4 {tags:['t0','t1',…,'t9'], onlyInTimeRange:'yes'}         → tags t0–t7, showTags true; "Tag ‘t8’ dropped: at most 8 tags",
+                                                              "Tag ‘t9’ dropped: at most 8 tags", "Option onlyInTimeRange malformed: default used"
+```
+
+Report-only: `bench:widget-lists` (a 2 000-row Change feed ≤ 50 ms p95). Every gate is in
+[T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
 ## 11. Rollout
 
 Implementation issues, filed after this design merges:
@@ -775,6 +1241,25 @@ and I4 into the server docs. I2 writes the Board list (modes, options, meter, ke
 versions) into `docs/client/widgets.md`, and adding a Board list and board tags into
 `docs/user/boards.md`.
 
+Part B2 implementation issues, filed with this design:
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| I5 — BFF: annotation entity, data scope, filters, keyset, `applied` | §5.9, §6, migration 5, `unit:entity-id`, the `itest:annotations-*` tests; `docs/server/annotations-api.md`, `docs/server/database.md` | #215 rolled out | T24-030–032, T24-038, T12-010, T12-018 |
+| I6 — Change feed widget, `e=`, the `change` target | §5.8, §5.10, [T25](T25-inspector-and-pivots.md) `change` and `unit:pivot-context` C4 (`e=`), the unit, e2e and golden tests, gallery `widget-change-feed`, `-entity`, `-states`, `-inspector`; `docs/client/widgets.md`, `docs/client/inspector.md`, `docs/client/logs.md` (§4.9), `docs/user/boards.md` | I5, I2, #198, #173 | T24-030–039, T25-002 |
+| I7 — Validate `annotations_entity_pair` (next release) | `ALTER TABLE annotations VALIDATE CONSTRAINT annotations_entity_pair`, `itest:annotations-entity-validate` | I5 released | T11-013 |
+| L1 — Log panel minimap, JSON tree and prettify (needs design) | §4.9 | — | VIZ-034 |
+| L2 — Log panel dedupe and context lines (needs design) | §4.9 | — | VIZ-034 |
+| L3 — Log patterns with the NEW badge (needs design) | §4.9 | — | VIZ-035 |
+| L4 — Log panel fling across slices at frame rate (needs design) | §4.9 | #136 | VIZ-034 |
+
+I5 writes the entity, the scope, the filters, the cursor and `applied` into
+`docs/server/annotations-api.md` (CI posters keep sending `entity`), and migration 5 and I7 into
+`docs/server/database.md`. I6 writes the Change feed (sources, `e=`, the meter, keys, CSV, mixed
+server versions) into `docs/client/widgets.md`, the `change` target into `docs/client/inspector.md`,
+the §4.9 gap record into `docs/client/logs.md`, and adding a Change feed into `docs/user/boards.md`,
+with "with scopes, don't name other services in change text".
+
 ## 12. Alternatives considered
 
 Rejected:
@@ -789,6 +1274,13 @@ Part B1, rejected:
 - two migrations (an N+1 window problem);
 - virtualised list rows (1 000 rows fit plain DOM).
 
+Part B2, rejected:
+- `kind:name` entity keys (not unique across bindings or namespaces, and they name the entity in the
+  key);
+- stripping `entity` from a create for an old server (the change would lose its entity silently);
+- paging by moving `to` (rows sharing an `at` are skipped or repeated; the keyset on (`at`, `id`) is
+  exact).
+
 ## 13. Open questions
 
 None.
@@ -799,3 +1291,4 @@ None.
 |---|---|---|
 | 1.0-rc | 2026-11-25 | #153 part A: created: the part map and ID blocks for parts A–K; rules T24-001 to T24-018; the Markdown node table, clock formats and import mapping; board spec v4, the renderer, wall clock and import conversion interfaces; tests and fixtures; the implementation issues A1–A3; [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
 | 1.1-rc | 2026-11-25 | #181 part B1 (step 1): the part map splits B into B1 (T24-020–029) and B2 (T24-030–039, VIZ-126); T24-002 amended (content widgets; list widgets follow T24-020); rules T24-020 to T24-029 (list widgets, Board list sources, rows, limit and ranking, snapshot and meter, keyboard and focus repair, table, CSV and facts, states and look, import, board tags and compatibility); §4.5 list states, §4.6 Board list import; §5.5 board spec v5, §5.6 the `/boards` contract, §5.7 the client list modules; §6 migration 4 and the repair and list queries; §7–§9, §10.1 tests and fixtures, §11 issues I1–I4, §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains the optional `Coverage` list members; [T11](T11-postgres-schema.md) §4.3 migration 4 |
+| 1.2-rc | 2026-11-25 | #181 part B2 (step 2): rules T24-030 to T24-039 (feed source, entity filter, paging, snapshot and meter, rows, selection and Inspector, keyboard and SR, table, CSV, facts and fields, compatibility, import); T24-020 amended (`changeFeed`; its rows select and inspect); §4.7 Change feed states, §4.8 Change feed import, §4.9 the log panel gap record; §5.8 board spec v6, §5.9 the annotations contract and data scope, §5.10 the client change-feed modules; §6 migration 5 and the list, create and delete statements; §7–§9, §10.2 tests and fixtures, §11 issues I5–I7 and L1–L4, §12. [T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id) gains the canonical form and vectors, and T12-018 a free-text note; [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) the `paged` reason; [T25-002](T25-inspector-and-pivots.md#t25-002--envelope-and-union) the `change` member; [T11](T11-postgres-schema.md) §4.4 migration 5 |
