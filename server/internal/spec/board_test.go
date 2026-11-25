@@ -135,7 +135,7 @@ func TestDecodeBoardUpTo(t *testing.T) {
 // same value, so the two canonical forms are byte-equal.
 const v3CanonicalSHA256 = "293e4cd4027bf9803c3ce2e467f36d8c41fb0f5b102804b496700df48c22d193"
 
-// unit:board-spec v3 (#173 Part 1): v3-full holds every option key of each kind, categoryBy ''
+// unit:board-spec v3 (#173 Part 1): v3-full holds every option key of each kind, categoryBy ”
 // and absent and "version", min 0 with max 500, line with {} and a section.
 func TestV3FixtureRoundTrip(t *testing.T) {
 	raw := fixture(t, "v3-full.json")
