@@ -3,15 +3,17 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-25 |
+| **Version** | 1.1-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI5 (widgets) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
-| **Source draft** | plans/153 (not tracked) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
+| **Source draft** | plans/153, plans/181 (not tracked) |
 
 This document is the board **widgets**, the **geomap** and the **schematic**. It is written in parts
 (§2): part A, here, defines the shared widget rules, the **Text / Markdown** widget with the one
 Markdown renderer every vis and widget uses, and the **Clock / time zones** widget (rules T24-001 to
-T24-018). Parts B–K add their rules in their own ID blocks.
+T24-018). Part B1 adds the **Board list** widget, the list-widget rules that every list widget shares,
+board tags and the board search of the BFF (rules T24-020 to T24-029). Parts B2–K add their rules in
+their own ID blocks.
 
 ## 1. Context & problem
 
@@ -30,6 +32,14 @@ The approach: widgets are DOM, with no query and no 3D form. Markdown is parsed 
 tree and rendered to React elements per a `board` or `ai` policy, with URLs parsed and classified and
 removals recorded without content. Import only appends links. Clock uses one due-time scheduler.
 
+**Part B1.** VIZ-053's Board list row asks for a list of boards on a board: starred, recently viewed,
+found by a search or by a tag. [SRF-026](../product/04-surfaces.md#srf-026--board-library) asks the
+board library for tags, search, starred and recently viewed, and to rank boards used during
+incidents. The Board list is a DOM list widget, honestly 2D (T24-001), that reads only BFF config
+routes. Its list rules (T24-020, T24-024 to T24-027) are shared with the list widgets of later parts.
+The BFF gains one migration: a `boards.tags` cache with a `tags_version` stamp, repaired on read.
+`/boards` gains `q` and `tag`, and the list answers gain `applied` and `truncated`.
+
 ## 2. Goals / non-goals
 
 Goals (part A): the T24 skeleton and its part map; the shared widget rules; the Text / Markdown widget
@@ -44,12 +54,25 @@ Non-goals (part A):
 - Text `renderMode: perRow` rendering;
 - any 3D form.
 
+Goals (part B1): the shared list-widget rules (snapshot, meter, keyboard, table, CSV, facts, states
+and look); the Board list widget with its starred, recent, search and tag modes; board tags in the
+board spec and their cache in Postgres; the `/boards` search and tag filter, `applied` and
+`truncated`; the Dashboard list import; board spec v5.
+
+Non-goals (part B1):
+- part B2 (the Change feed widget, the `change` target and the log panel gaps);
+- the "used during incidents" ranking (I3 in §11; SRF-026 is staged);
+- star toggles on list rows;
+- the board library page;
+- the headless renderer.
+
 **Part map.** Each part is designed under its own issue and adds its rules in its block.
 
 | Part | Scope | Issue | Rules | Requirement ID if needed |
 |---|---|---|---|---|
 | A | Text / Markdown and Clock widgets, sanitiser and link rule (this revision) | #153 | T24-001–019 | VIZ-125 (reserved, unused) |
-| B | Board list and Change feed widgets, and log panel gaps | #181 | T24-020–039 | VIZ-126 |
+| B1 | Board list widget, shared list-widget rules, board tags and the `/boards` search (this revision) | #181 (step 1) | T24-020–029 | — |
+| B2 | Change feed widget, the `change` target and log panel gaps | #181 (step 2) | T24-030–039 | VIZ-126 |
 | C | Alert / incident list widget | #182 | T24-040–059 | VIZ-127 |
 | D | Feed widget fetched by the BFF | #183 | T24-060–079 | VIZ-128 |
 | E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter | #184 | T24-080–099 | VIZ-129 |
@@ -60,7 +83,8 @@ Non-goals (part A):
 | J | Schematic editor | #189 | T24-180–199 | — |
 | K | Schematic import and auto-schematic | #190 | T24-200–219 | — |
 
-Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused.
+Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused. Part B1 defines T24-020 to
+T24-029.
 
 ## 3. Satisfies
 
@@ -81,6 +105,15 @@ Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused.
 | [T18-011](T18-security.md#t18-011--url-scheme-allowlist) (refined) | §4.1 (T24-005, T24-008) | `unit:classify-url`; `unit:markdown-links`; `unit:markdown-interpolate` |
 | [T18-013](T18-security.md#t18-013--markdown-renders-to-nodes-never-to-html-strings) (refined) | §4.1 (T24-004), §5.2 | `unit:markdown-nodes`; `fuzz:markdown-nodes` |
 | [T18-014](T18-security.md#t18-014--external-images-only-through-a-signed-proxy) (amended: interim) | §4.1 (T24-018) | `unit:markdown-images` |
+| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Board list row; part B1) | §4.1 (T24-020 to T24-023), §5.5 | `unit:board-list-source`; `unit:board-list-rows`; `e2e:widget-board-list` |
+| [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (part B1) | §4.1 (T24-024, T24-029), §4.5 | `unit:list-coverage`; `unit:board-list-states`; `unit:board-list-key`; `unit:board-list-mixed`; `itest:board-list-snapshot` |
+| [VIZ-031](../product/05-visualisation-catalogue.md#viz-031--3d-only-when-it-encodes-a-dimension), [VIZ-086](../product/05-visualisation-catalogue.md#viz-086--true-3d-only) (part B1) | §4.1 (T24-020), §5.5 | `unit:board-spec-board-list` |
+| [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Dashboard list row) | §4.1 (T24-028), §4.6 | `unit:import-board-list` |
+| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) (part B1) | §4.1 (T24-002, T24-020: no query, never auto-picked) | `unit:board-spec-board-list` |
+| [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) (part B1) | §4.1 (T24-025, T24-026) | `unit:list-table-csv`; `unit:list-keyboard`; `e2e:widget-lists-a11y` |
+| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part B1) | §4.1 (T24-027), §10 | `golden:widget-gallery` |
+| [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part B1) | §4.1 (T24-027) | `e2e:widget-lists-a11y` |
+| [SRF-026](../product/04-surfaces.md#srf-026--board-library) (staged: starred, recent, search and tags; the ranking is I3, §11) | §4.1 (T24-021, T24-023, T24-029), §5.6, §6 | `itest:board-find`; `itest:board-tags`; `unit:board-list-rows` |
 
 ## 4. Design
 
@@ -93,8 +126,9 @@ is a real dimension (VIZ-031). 2D never fakes depth (bevels, extrusions, shadows
 shading). Text and Clock are 2D.
 
 #### T24-002 — Widgets are furniture
-**MUST** — A widget has no query, `ChartFrame`, selection, `InspectorTarget`, `SummaryFacts`, table or
-CSV. Its DOM text is the content. A widget is never auto-picked.
+**MUST** — A **content** widget (Text, Clock) has no query, `ChartFrame`, selection, `InspectorTarget`,
+`SummaryFacts`, table or CSV; its DOM text is the content. A **list** widget follows T24-020. No widget
+is auto-picked.
 
 #### T24-003 — Widget spec
 **MUST** — Widgets omit `query` (`board.panel.query.forbidden`), and data panels need it
@@ -182,6 +216,99 @@ interim); anything else → alt text. An image not rendered as `<img>` logs `ima
 ([T18](T18-security.md) §4.10): no `<img>` or other auto-loading element; images → alt text and
 `image`; links show their host.
 
+#### T24-020 — List widgets
+**MUST** — A list widget (`boardList`; part B2 adds `changeFeed`) has no `query` (T24-003), is never
+auto-picked (VIZ-065), is DOM with no 3D form, reads only BFF config routes and writes nothing. It has
+a snapshot (T24-024), a coverage meter, a table, CSV and facts (T24-026), and keys (T24-025). Board rows
+have no selection and no Inspector: a board is neither a series key nor an interval
+([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)).
+
+#### T24-021 — Board list sources
+**MUST** — Each mode reads one route under one react-query key:
+- `starred`: `listStarred`, key `['starred', tenant]` (the sidebar's key), in title order;
+- `recent`: `listRecent(tenant, signal, 50)`, key `['recent', tenant, 50]`;
+- `search`: `listBoards(tenant, signal, {q})` (`''` → no `q`), and `tag`: `listBoards(tenant, signal,
+  {tag})`; key `['boards', tenant, 'find', q, tag]`, in `updated` descending order.
+
+`q` is the trimmed search field, committed 250 ms after the last key. There is no `placeholderData`;
+the focus refetch is `'always'`. The field holds at most 100 characters and starts at the `query`
+option. A Cc character shows the inline "Search text cannot contain control characters" and commits
+nothing. The field is marked `data-escape-ladder` and registers the
+[T25-007](T25-inspector-and-pivots.md#t25-007--one-esc-ladder) pre step "clear the field". Case
+folding is ASCII-only.
+
+#### T24-022 — Board rows
+**MUST** — A row is one `<a>` to `/t/<tenant>/board/<uid>` + `contextSearchString(time)`, with
+`BOARD_LINK_STATE`, as in `SidebarBoards`. Loaded rows with equal titles show `‹title› · ‹uid›` (the
+uid in mono, muted). The board that holds the widget has `aria-current="page"` and "this board". Search
+and tag rows show at most 3 tag chips and `+k`, or a muted "tags unknown" when `tags` is null, and
+`updated d MMM HH:mm`.
+
+#### T24-023 — Board limit, ranking
+**MUST** — The list shows `limit` rows. "Show more" adds `limit` rows (up to the loaded rows) and moves
+focus to the first new row. A refresh keeps the shown count, clamped to the loaded rows.
+`sort: 'incidents'` while `CAPABILITIES.investigations` is false gives the default order and the
+caption "Ranking by use during incidents is available with investigations (M-UI4)".
+
+#### T24-024 — List snapshot and meter
+**MUST** — A `ListSnapshot` is keyed by (tenant, source, effective filter), which is the query key.
+Consumers read only the current key's snapshot (§4.5). A key change hides the old snapshot at once:
+the widget is pending, then ok, or an error with no rows. Within a key, a refetch replaces the snapshot
+atomically, and a failed refetch keeps it with `staleAtMs`.
+
+The meter is [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)
+`coverageText` over `Coverage`: `total` = the loaded rows, `drawn` = the shown rows,
+`query.truncated` from the answer, `query.warnings` `[]`, and nothing kept, so the cap text is
+`showing X of N`. The T22-006 list members add a leading part, `coverage unknown` (`unknown` with
+reason `oldServer`) or `tags not yet known for k board(s)` (reason `tagsStale`), and a trailing
+`stale (HH:mm:ss)` (`staleAtMs`). Each suppresses `100 %`. The order is unknown, truncated, cap, stale. With no snapshot the meter reads
+`loading` or `unavailable`. The meter's Narrow focuses the search field (search mode only).
+
+#### T24-025 — List keyboard, SR, focus repair
+**MUST** — Tab order: the search field → the list → "Show more" → the meter. The list is a `<ul>` with
+one roving tab stop: ↑/↓, Home/End, PageUp/PageDown (±10 rows); Enter follows the link.
+- The active row is kept by key. If its row is gone, the row at its old index (clamped) becomes
+  active, and focus follows only if it was in the list.
+- An empty list moves the active element to the empty text `<p tabIndex=-1>`; an error to Retry.
+- A new search makes the first row active, and focus stays in the field.
+- Accessible names are `‹display›[, this board]`. `aria-setsize` is the loaded count, or −1 when the
+  answer is truncated or its coverage is unknown.
+- Polite announcements ([T08-018](T08-dom-component-kit.md#t08-018--announcements-are-rate-limited)):
+  `‹n› boards` or the empty text, once per settled search; on a refresh only "‹display› is no longer
+  listed".
+
+#### T24-026 — Table, CSV, facts
+**MUST** — Shift+T shows the snapshot's rows in the kit table (#173,
+[T22-013](T22-value-categorical-and-table-panels.md#t22-013--table-view-and-csv)). The CSV is RFC 4180
+with the header `title,uid,tags,updated_at`: tags `;`-joined, `unknown` when `tags` is null, empty when
+there are none; `updated_at` in ISO 8601 UTC. A cell that starts with `=`, `+`, `-`, `@`, TAB or CR
+gets a leading `'` first (`csvCell`). Facts: `current` = `{text: '‹N›[+] boards'` plus
+` (coverage unknown)` or ` (stale)`, `series: ‹mode label›}`, and the other members are null; with no
+snapshot the facts are null.
+
+#### T24-027 — List states, look
+**MUST** — States and texts follow §4.5. "Loading…" shows after 300 ms (`useDelayedFlag`). Rows are
+36 px, with the T24-015 type and grid, hairlines, hover `surface-2`, a 2 px `focus` ring and 20 px
+chips, and no state colour. Only rows new on a refresh fade in (150 ms), cut under reduced motion.
+
+#### T24-028 — Board list import
+**MUST** — Import follows §4.6 exactly, with one report note per absent-but-meaningful, malformed,
+dropped, cut or clamped option.
+
+#### T24-029 — Board tags and compatibility
+**MUST** — `BoardSpec.tags` holds 0–16 unique `AnnotationTag`s (`board.tags.invalid`,
+`board.tags.duplicate`). `boards.tags` caches the head spec's tags and is fresh iff
+`tags_version = head_version`; every head move by this binary sets both. A list first repairs at most
+200 stale rows in its own committed transaction (a failure leaves them stale), then reads the rows,
+the truncation and `tagsStale` in one statement (§6). A stale row is returned with `tags: null`
+("tags unknown") and never matches by tag. `tagsStale` counts every live stale row of the org, and
+`tagsStale > 0` sets `unknown`.
+
+**Old server** (no `applied` in the answer): `unknown`; `truncated` is not trusted; search filters the
+titles client-side; tag mode shows "Filtering by tag needs a newer server", with no rows and no chips.
+Old binaries cannot move a v5 head (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
+save shows "This server does not accept board tags yet".
+
 ### 4.2 Markdown node table (`commonmark` → output)
 
 | Node | Output |
@@ -219,6 +346,42 @@ zone.
   `countdownSettings.endCountdownTime` and `endText` → `countdown {to, label, after:'countUp'}`.
 - Other keys are dropped ("Option ‹key› not mapped"); lines matching `^\s*\|.*\|\s*$` are noted
   "Markdown table shown as text".
+
+### 4.5 List widget states (T24-024, T24-027)
+
+| State | Rows | Meter | Table / CSV | Facts |
+|---|---|---|---|---|
+| key change (debounced filter, mode, tenant) | the old key's rows hidden at once | — | — | — |
+| pending, no snapshot for this key | "Loading…" after 300 ms | `loading` | "Loading…" / disabled | null |
+| empty | the empty text (below) | `100 %` or `coverage unknown` | none / header only | `0 boards` |
+| ok | the snapshot | `coverageText` | the snapshot | the snapshot |
+| error, no snapshot for this key | "Couldn't load boards" + Retry (503: "The configuration store is unavailable") | `unavailable` | the error / disabled | null |
+| same-key refetch failed | rows kept, "Couldn't refresh: showing boards from HH:mm:ss" + Retry | `… · stale (HH:mm:ss)` | the snapshot | `… (stale)` |
+| refetch ok | the new snapshot (T24-023, T24-025) | recomputed | new | new |
+
+Empty texts: "No starred boards. Star a board with ☆ in its header" · "No recently viewed boards" ·
+"No boards match ‘‹q›’" · "No boards tagged ‹tag›".
+
+**Cancellation:** on a key change the widget unsubscribes. React-query aborts the request only when no
+observer remains, and the old answer never renders in this widget. The debounce timer is cleared on
+unmount.
+
+### 4.6 Board list import (VIZ-060; Dashboard list → `boardList`; #158, #17)
+
+- Defaults: `showStarred` true, `showRecentlyViewed` and `showSearch` false, `maxItems` 10, `query`
+  `''`, `tags` `[]`. A wrong type → the default and "Option ‹key› malformed: default used". `sort` is
+  `default`.
+- The mode is the first enabled of starred, recent and search. None → starred and "No list enabled:
+  starred used"; more than one → "Only the first list (‹mode›) kept: add another Board list for
+  ‹modes›". The mode note comes first in the report.
+- Search: tags are lower-cased; an invalid one → "Tag ‘‹t›’ dropped: not a valid tag". The first valid
+  tag → tag mode; the other valid tags → "Tags not kept: ‹list› (a board list filters by one tag)";
+  search text → "Search text dropped in tag mode". With no valid tag, Cc characters are removed
+  ("Control characters removed from search text"), then the text is cut to 100 code points ("Search
+  text cut to 100 characters").
+- Other modes with search text or tags → "Search text and tags dropped: they apply to search only".
+- `maxItems` is clamped to 1–50 ("Item limit ‹m› clamped to ‹l›"); `keepTime: false` → "Links keep the
+  time range"; other keys, sorted → "Option ‹key› not mapped".
 
 ## 5. Interfaces
 
@@ -320,17 +483,118 @@ no notes. Otherwise one parse:
    (‹n› links). Shorten or split it in the source and import again." No content is copied; the source
    file is the copy.
 
+### 5.5 Board spec v5 (part B1; OpenAPI, Go, TS)
+
+Spec v5 is the next version after part A's v4 (#198), or the next free version, with an identity
+upcaster (T11-016). `BoardSpec` gains `tags` (T24-029), and `Vis.kind` adds `boardList` with the
+options below. Go decides validity; TS = Go on the fixtures `v5-board-list.json` and `invalid.json`.
+Other keys → `board.json.unknownKey`. Errors are `board.options.‹…›`.
+
+| Key | Type / bounds | Default | Error |
+|---|---|---|---|
+| mode | `starred`\|`recent`\|`search`\|`tag` | `starred` | `mode.invalid` |
+| query | string ≤ 100, no Cc (as `q`, §5.6), only with `search` | `''` | `query.invalid` |
+| tag | `AnnotationTag`, required iff mode `tag` | absent | `tag.invalid` |
+| limit | integer 1–50 | 10 | `limit.invalid` |
+| sort | `default`\|`incidents` | `default` | `sort.invalid` |
+
+`boardListOptions` fills the defaults. `isWidgetPanel` includes `boardList`, and `<WidgetBody>` (#198)
+adds it.
+
+### 5.6 BFF contract (part B1; spec first, [ADR-0015](../adr/0015-go-bff.md))
+
+```yaml
+/boards get: q { 1–100 chars, no Cc (U+0000–001F, U+007F–009F) } → 400 boards.q.invalid; tag { AnnotationTag } → 400 boards.tag.invalid
+BoardList: + applied { q?, tag? } (required; what was applied), + tagsStale (required int ≥ 0)
+BoardSummary: + tags (required, [AnnotationTag] ≤ 16, or null = stale)
+BoardRefList: + applied {} (required), + truncated (required; starred reads 201, recent limit + 1)
+BoardSpec: + tags (optional, ≤ 16, uniqueItems, AnnotationTag)
+```
+
+```go
+type BoardFilter struct{ Q, Tag string } // core; "" = absent
+// OrgTx (RLS): RepairBoardTags(ctx) (int64, error);
+//   ListBoards(ctx, f) ([]BoardSummary, truncated bool, tagsStale int64, error);
+//   ListStarred(ctx, user) and ListRecent(ctx, user, limit) ([]BoardRef, bool, error);
+//   MoveBoardHead and InsertBoard take tags.
+// Service.ListBoards: tx 1 repairs (an error or timeout is logged without content and never fails the
+// list), then tx 2 lists; both on the read-write pool (T11 replicas serve only audit and import dry
+// runs) and the request context (a cancel rolls back).
+```
+
+### 5.7 Client list modules (part B1; `api/Api.ts`, `widgets/lists/`, `widgets/boardList/`)
+
+```ts
+listBoards(tenant: string, signal?: AbortSignal, f?: { q?: string; tag?: string }): Promise<BoardPage>;
+listStarred(tenant: string, signal?: AbortSignal): Promise<RefPage>;   // SidebarBoards reads .items
+listRecent(tenant: string, signal?: AbortSignal, limit?: number): Promise<RefPage>;
+export interface BoardPage { items: (BoardSummary & { tags: string[] | null })[]; truncated: boolean;
+  applied: { q?: string; tag?: string } | null; tagsStale: number }
+export interface RefPage { items: BoardRef[]; truncated: boolean; applied: {} | null }   // applied null = old server
+// widgets/lists/snapshot.ts (shared with part B2)
+export interface ListSnapshot<R> { key: readonly unknown[]; rows: readonly R[]; coverage: Coverage; fetchedAtMs: number }
+export function listCoverage(loaded: number, shown: number, truncated: boolean, staleAtMs: number | null,
+  unknown?: Coverage['unknown']): Coverage;   // no `applied` → oldServer; else tagsStale > 0 → tagsStale
+export function csvCell(v: string): string;   // the T24-026 guard, then RFC 4180
+// widgets/boardList/
+export function boardListOptions(o?: Record<string, unknown>): BoardListOptions;  // { mode; query; tag: string | null; limit; sort }
+export interface BoardRow { uid: string; title: string; display: string; tags: readonly string[] | null;
+  updatedAt: string | null; current: boolean }
+export function boardSnapshot(key: readonly unknown[], r: BoardPage | RefPage,
+  o: { mode; q; tag; currentUid; shown; nowMs }): { snapshot: ListSnapshot<BoardRow>; notice: 'tagNeedsServer' | null };
+// also: repairActive(prevKey, prevIndex, keys), boardListTable(s), boardListFacts(title, mode, s | null),
+// importBoardList(src) → { options; notes: string[] }
+```
+
 ## 6. Data & storage
 
 Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 upcaster is the identity
 (T11-016). There is no new table, route or storage: widgets fetch nothing and make only safe GETs
 (links and `local` images).
 
+**Part B1.** Board spec v5 (§5.5) is stored the same way, with an identity upcaster. Migration 4 adds
+the `boards.tags` cache ([T11](T11-postgres-schema.md) §4.3); it is metadata-only and keeps the N+1
+window (T11-012, T11-013). The repair and the list (T24-029) run as two transactions:
+
+```sql
+-- migrations/00004_board_tags.sql (lock_timeout 5s, statement_timeout 5min; metadata-only)
+ALTER TABLE boards ADD COLUMN tags text[] NOT NULL DEFAULT '{}', ADD COLUMN tags_version bigint NOT NULL DEFAULT 0;
+ALTER TABLE boards ADD CONSTRAINT boards_tags_max CHECK (cardinality(tags) <= 16) NOT VALID;
+-- I4 (next release): ALTER TABLE boards VALIDATE CONSTRAINT boards_tags_max;
+
+-- name: RepairBoardTags :execrows — tx 1, committed alone; SET LOCAL statement_timeout '2s', lock_timeout '500ms'
+WITH s AS (SELECT id FROM boards WHERE org_id = $1 AND deleted_at IS NULL AND tags_version <> head_version
+           ORDER BY id LIMIT 200 FOR UPDATE SKIP LOCKED)          -- locked rows: no head move can interleave
+UPDATE boards b SET tags = coalesce(ARRAY(SELECT jsonb_array_elements_text(v.spec->'tags')), '{}'), tags_version = b.head_version
+FROM s, board_versions v WHERE b.org_id = $1 AND b.id = s.id AND v.org_id = $1 AND v.board_id = b.id AND v.version = b.head_version;
+
+-- name: ListBoards :many — tx 2, ONE statement (one snapshot); always ≥ 1 row
+WITH m AS (
+  SELECT b.uid, b.title, b.tags, b.tags_version = b.head_version AS fresh, b.head_version, v.created_at, v.author_kind, v.author_id,
+         (sqlc.arg(q)::text = '' OR strpos(lower(b.title COLLATE "C"), lower(sqlc.arg(q)::text COLLATE "C")) > 0
+            OR (b.tags_version = b.head_version AND lower(sqlc.arg(q)::text COLLATE "C") = ANY (b.tags)))
+     AND (sqlc.arg(tag)::text = '' OR (b.tags_version = b.head_version AND sqlc.arg(tag)::text = ANY (b.tags))) AS hit
+  FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id AND v.version = b.head_version
+  WHERE b.org_id = $1 AND b.deleted_at IS NULL),
+st AS (SELECT count(*) FILTER (WHERE NOT fresh) AS tags_stale FROM m)   -- every stale row, returned or not
+SELECT st.tags_stale, h.uid, h.title, CASE WHEN h.fresh THEN h.tags END AS tags, h.head_version, h.created_at, h.author_kind, h.author_id
+FROM st LEFT JOIN LATERAL (SELECT * FROM m WHERE hit ORDER BY created_at DESC, uid LIMIT 1001) h ON true
+ORDER BY h.created_at DESC NULLS LAST, h.uid;   -- the all-NULL sentinel exists only when nothing matched
+-- uid NULL = no rows; > 1 000 rows = truncated. MoveBoardHead / InsertBoard: SET tags = $5, tags_version = <new head>.
+-- ListStarred LIMIT 201; ListRecent LIMIT $3 + 1
+```
+
+`strpos` (not `LIKE`) means `%` and `_` in `q` are plain characters. `lower(… COLLATE "C")` folds ASCII
+only, so `zürich` does not match `ZÜRICH`.
+
 ## 7. Performance budget
 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
 Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tick` (20 Clocks × 12 zones
 ≤ 2 ms per tick).
+
+Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit). Report-only:
+`bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95).
 
 ## 8. Security, tenancy & RBAC
 
@@ -340,6 +604,11 @@ Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tic
 - AI output loads no image or other auto-loading element (T24-018, T18 §4.10). Until the image proxy
   ships, no external image is loaded (T18-014 interim).
 - Tenancy: widgets fetch and store nothing; RLS is unchanged.
+- Part B1: every board query runs in `OrgTx` under RLS (T11-003); org B is in every itest. The list
+  GET writes only the tags cache, in a separate short transaction (at most 200 rows, `SKIP LOCKED`,
+  2 s, on the primary); a failed repair leaves rows stale, and its log carries no titles.
+- CSV cells are guarded against formula injection (`csvCell`, T24-026). Search uses `strpos`, so `q`
+  has no wildcards; folding is ASCII-only.
 
 ## 9. Failure modes & degradation
 
@@ -348,6 +617,10 @@ Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tic
 | URL bypass, log or report leaks, AI images | `classifyUrl` and the fuzz gate; content-free removals and errors; `ai` has no `<img>` |
 | Tenancy; spec versions | No fetch or storage; safe GETs; the next spec version |
 | Ticks; zones | The due-time scheduler (T24-011); Go decides zone validity; a bad zone → one row (T24-010) |
+| Tenancy (part B1) | `OrgTx` under RLS; org B in the itests |
+| Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a v5 head (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
+| A GET that writes | A separate short transaction, ≤ 200 rows, `SKIP LOCKED`, 2 s, on the primary; a failure leaves rows stale and never fails the list |
+| A failed refetch; a late answer | The snapshot is kept with `staleAtMs`; an answer for an old key never renders (T24-024) |
 
 ## 10. Testing
 
@@ -421,6 +694,58 @@ f7 lines 1–13 (blank between): <![CDATA[<iframe src="https://c1.test/">]]> · 
    only insert: after 13, after.test; notes [{iframeToLink,13,after.test},{htmlNotRendered,7}]
 ```
 
+### 10.1 Part B1 tests
+
+Written first in I1 and I2 (§11); all fail today: nothing exists yet.
+
+**Fixture B:** 12 starred refs in server order: Checkout (`ck-1`), Checkout (`ck-2`), Edge, Gateway,
+Inventory, NOC overview, Orders, Payments (`pay`), PSP API, Search, Shipping, Web; `truncated: false`.
+**Fixture S:** org A: "Checkout overview" `[team:payments]`, "CHECKOUT latency", "Zürich edge",
+"ZÜRICH core", "payments" `[payments]`, and 1 002 "bulk-n" (distinct `created_at`); org B:
+"checkout b".
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:board-spec-board-list` | boards/spec.test.ts, validate_test.go | `{}`; tag mode, no tag; starred + tag; 101-char query; `query:'a\tb'` (`\t` = U+0009 TAB); recent + query; limit 0/51/2.5; `sort:'care'`; `depth:1`; board tags ×17/`['A']`/`['a','a']` | Defaults `{starred,'',null,10,default}`; `tag.invalid` ×2, `query.invalid` ×3, `limit.invalid` ×3, `sort.invalid`, `board.json.unknownKey`, `board.tags.invalid` ×2, `.duplicate`; TS = Go; v4 upcasts; the editor shows the Cc text for `a\tb` (U+0009) and sends nothing | T24-029, T24-021, VIZ-031 |
+| `unit:board-list-source` | widgets/boardList/source.test.tsx | Stub Api, fake timers | T24-021 calls and keys; `'  Checkout '` → `{q:'Checkout'}`; `''` → no `q`; keys at 0/100/200 ms → one key change and request at 450 ms, the previous rows shown until then | T24-021 |
+| `unit:board-list-rows` | widgets/boardList/rows.test.ts | B, current `pay` | `Checkout · ck-1`, `Checkout · ck-2`, the rest plain; `pay` "this board"; `incidents` → B order + the caption | T24-022, T24-023 |
+| `unit:list-coverage` | widgets/lists/snapshot.test.ts | `listCoverage` → `coverageText`; `unknown` via `boardSnapshot` (no `applied`; `tagsStale` 1, 3) | (12,10) `showing 10 of 12`; (12,12) `100 %`; (1000,10,trunc) `truncated · showing 10 of 1,000`; (0,0) `100 %`; (3,3,oldServer) `coverage unknown`; (3,3,tagsStale 1) `tags not yet known for 1 board`, 3 → `tags not yet known for 3 boards`; stale 12:31:05 `stale (12:31:05)`; Narrow in search only | T24-024, VIZ-027 |
+| `unit:board-list-states` | widgets/boardList/states.test.tsx | Stub: ok B → the refetch fails at 12:31:05 → Retry ok, B minus Orders, Edge → "Edge v2"; also 503 | `Loading…` at 300 ms, `loading`, facts null; 12 rows; failure: rows kept, the notice, `showing 10 of 12 · stale (12:31:05)`, CSV 12 rows, `12 boards (stale)`; Retry: 11 rows, "Edge v2", CSV without Orders, `11 boards`; 503 → the store text, `unavailable` | T24-024, T24-026, T24-027 |
+| `unit:board-list-mixed` | widgets/boardList/mixed.test.tsx | No `applied`: starred `{items:B, truncated:false}`; search `check` → S org-A items / `[]`; tag `team:payments` → S org-A items / `[]`. New server `tagsStale: 3`; a save → 400 at `/tags` | Starred `coverage unknown · showing 10 of 12`, setsize −1; search → 2 checkout rows, no chips / "No boards match ‘check’", both `coverage unknown`; tag (both) → the T24-029 notice, no rows, `coverage unknown`; `tags not yet known for 3 boards`; the editor text | T24-029 |
+| `unit:board-list-key` | widgets/boardList/key.test.tsx | Deferred stub: `check` settled (2 rows); type `pa`→`pay` within 250 ms; a second widget on `check`; tenant `acme` → `beta`; `pay` rejects | At 450 ms (commit) no `check` row, CSV disabled, facts null; `check`'s refetch kept while widget 2 observes, aborted when it leaves; late `check` answers never render in widget 1; no `acme` row after `beta` (render log); `pay` → "Couldn't load boards", no rows, `unavailable` | T24-024 |
+| `unit:list-keyboard` | widgets/lists/keyboard.test.tsx | B, limit 10, focus on row 4 (Gateway) | ↓×3 from 1 → 4; End → 10; Home → 1; PageDown → 10; Show more, Enter → 11 focused. A refetch without Gateway → Inventory (row 4) focused, "Gateway is no longer listed"; focus outside the list stays; empty → the empty text; error → Retry; Esc clears the search, the next Esc reaches the T25 ladder | T24-025 |
+| `unit:list-table-csv` | widgets/lists/table.test.ts | Titles `=SUM(1)`, `+1`, `-prod`, `@x`, `\tx`, `\rx` (`\t` = U+0009 TAB, `\r` = U+000D CR), `a,b`, `say "hi"`, `ok`; B; S | `'=SUM(1)`, `'+1`, `'-prod`, `'@x`, `'\tx`, `"'\rx"`, `"a,b"`, `"say ""hi"""`, `ok`; B rows: empty tags, `updated_at`; S `Checkout overview` tags `team:payments`; a `tags: null` row → `unknown`, and the row shows "tags unknown"; facts `{'12 boards','Starred'}`, S `1,000+ boards` | T24-026, VIZ-066, VIZ-068 |
+| `unit:import-board-list` | import/boardList.test.ts | I1–I9 (below) | Options (`sort:'default'`) and notes exactly as listed | T24-028, VIZ-060 |
+| `itest:board-find` | store/boards_itest_test.go | S | `q=` checkout → 2 org-A rows, updated desc; zürich → Zürich edge; ZÜRICH → ZÜRICH core; payments → payments; `%` → none; bulk → the 1 000 newest in `created_at DESC, uid` order, truncated, the 2 oldest absent; `tag=team:payments` → Checkout overview; 101 chars, `Bad Tag` → the §5.6 400s; org B sees only "checkout b" | T24-021, tenancy |
+| `itest:board-tags` | same | Org A saves `tags:['a','b']`, then none, then v1's spec again. Org B saves and lists | `[a,b]`, `[]`, `[a,b]`; B's save of A's uid → 404; B's repair touches 0 A rows; `tag=a` in B → none | T24-029, tenancy |
+| `itest:board-list-snapshot` | same; two connections, barriers; a labelled fault injection sets `tags_version` 0 on X (head `[a]`, title "X checkout") | (1) Conn 2 row-locks X; conn 1 lists `tag=a`; release; conn 2 lists; conn 1 lists. (2) Between conn 1's repair and read, conn 2 commits a schema-3 head move on Z. (3) `tag=zzz`. (4) X locked: an unfiltered list; `q=checkout`. (5) A repair error (tracer), a timeout (`pg_sleep`). (6) A cancel during the repair | (1) X absent, `tagsStale` 1; then present, 0. (2) Z counted, never `100 %`. (3) the sentinel only: `[]`, stale 1. (4) X returned with `tags: null`, `tagsStale` 1, both times. (5) 200, stale counted, the log without titles. (6) both roll back. One SELECT per list | T24-029 |
+| `itest:board-tags-old-binary` | CI job in I1 | 10 000 boards in 2 orgs at schema 3, a looping reader; migration 4; the base-commit binary beside N. The old service creates Y, saves Z; N saves X `[a]`; the old service saves X | No rewrite (`relfilenode`), the reader waits ≤ 1 s, 17 tags fail; the old binary starts (4 = 3 + 1) and passes `itest:board-crud`; `tag=a`: `tagsStale` 2 (Y, Z); the old save of X → `ErrSchemaTooNew`, nothing written; the next N list: Y, Z `{}`, `tag=a` → X, 0 | T11-012, T11-013, T11-015 |
+| `itest:board-tags-validate` (I4) | same | Schema 4 with all rows ≤ 16 tags; apply the I4 migration | `pg_constraint.convalidated` true; an UPDATE to 17 tags fails | T11-013 |
+| `itest:board-prefs` (amended) | existing | 201 starred; 200; 51 views, limit 50 | `truncated` true, false, true | T24-021 |
+| `e2e:widget-board-list` | e2e/widgets.spec.ts | Stub BFF; B; search over S | 10 rows + Show more; "check" → one request 250 ms after the last key, 2 rows, "2 boards" announced once; hrefs carry `from`/`to`; ⌘-click → a new tab | VIZ-053, T24-021–023 |
+| `e2e:widget-lists-a11y` | same | Widgets in the loading (held 2 s), empty, error 500, stale, unknown, ok B and `bulk` states; view, edit; reduced motion | axe clean in each; focus to the empty `<p>` / Retry; `Payments, this board`; the T24-025 order; setsize 12 / −1 (`bulk`, unknown); no transition when reduced | T24-025, T24-027, VL-016 |
+| `golden:widget-gallery` (amended) | e2e/widget-gallery.spec.ts | + `widget-board-list` (B), `widget-board-list-search` (S), `widget-board-list-states` (loading, stale, unknown, empty); 3 themes | CI baseline (0.1, ≤ 0.2 %) | VIZ-069, VIZ-067 |
+
+Import cases for `unit:import-board-list` (Dashboard list options → `boardList` options and notes, in
+order; every result has `sort:'default'`, and `query:''`, `tag:null`, `limit:10` unless shown):
+
+```text
+I1 {}                                                              → starred; no notes
+I2 {showStarred:true, showRecentlyViewed:true, maxItems:80}        → starred, limit 50; "Only the first list (starred) kept: add another Board list for recent", "Item limit 80 clamped to 50"
+I3 {showStarred:false, showSearch:true, tags:['Team-A','b c','ops'], query:'x'}
+                                                                   → tag, tag 'team-a'; "Tag ‘b c’ dropped: not a valid tag", "Tags not kept: ops (a board list filters by one tag)", "Search text dropped in tag mode"
+I4 {showStarred:false, showSearch:true, query:'a' × 120}           → search, query 'a' × 100; "Search text cut to 100 characters"
+I5 {showStarred:'yes', maxItems:'many', keepTime:false, folderUID:'abc', includeVars:true}
+                                                                   → starred; "Option showStarred malformed: default used", "Option maxItems malformed: default used", "Links keep the time range", "Option folderUID not mapped", "Option includeVars not mapped"
+I6 {showStarred:false, showRecentlyViewed:false, showSearch:false} → starred; "No list enabled: starred used"
+I7 {showStarred:false, showSearch:true, tags:['!!']}               → search; "Tag ‘!!’ dropped: not a valid tag"
+I8 {showRecentlyViewed:false, query:'x', maxItems:0}               → starred, limit 1; "Search text and tags dropped: they apply to search only", "Item limit 0 clamped to 1"
+I9 {showStarred:false, showSearch:true, query:'a\tb\u0007c'}       → search, query 'abc' (removed: U+0009 TAB, U+0007 BEL); "Control characters removed from search text"
+```
+
+Report-only: `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95). `ci:dep-audit` passes. Every
+gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
 ## 11. Rollout
 
 Implementation issues, filed after this design merges:
@@ -436,6 +761,20 @@ A1 needs #173 (board spec v3) and ships v4 (or the next free version). The imple
 `docs/client/boards.md`, `docs/user/boards.md`, `docs/server/boards-api.md` and
 `docs/client/supply-chain.md` (widget panels, the v4 keys, the `markdown` dependencies).
 
+Part B1 implementation issues, filed after this design merges:
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| I1 — BFF: board tags, `/boards` search, `applied`, `truncated` | §5.6, §6, migration 4, the itests, `docs/server/boards-api.md`, `docs/server/database.md` | #198 | T24-021, T24-029 |
+| I2 — Board list widget, list modules, editor tags field | §5.5, §5.7, the unit, e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
+| I3 — Incident-use ranking (needs design) | SRF-026 "used during incidents" | IA-007 | T24-023 |
+| I4 — Validate `boards_tags_max` (next release) | §6 `VALIDATE CONSTRAINT`, `itest:board-tags-validate` | I1 released | T24-029 |
+
+I1 writes the new `/boards` parameters, fields and errors, migration 4, the tags freshness and repair
+and I4 into the server docs. I2 writes the Board list (modes, options, meter, keys, CSV, mixed server
+versions) into `docs/client/widgets.md`, and adding a Board list and board tags into
+`docs/user/boards.md`.
+
 ## 12. Alternatives considered
 
 Rejected:
@@ -443,6 +782,12 @@ Rejected:
 - hand-written HTML scanning;
 - one parser mode (the tree or the tokenizer alone each misses a context, §5.2);
 - `DOMParser` (a Trusted Types sink, T18-005).
+
+Part B1, rejected:
+- client-side board search (it misses boards past 1 000);
+- tags read only from the head spec (a list would detoast specs of up to 2 MiB);
+- two migrations (an N+1 window problem);
+- virtualised list rows (1 000 rows fit plain DOM).
 
 ## 13. Open questions
 
@@ -453,3 +798,4 @@ None.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-25 | #153 part A: created: the part map and ID blocks for parts A–K; rules T24-001 to T24-018; the Markdown node table, clock formats and import mapping; board spec v4, the renderer, wall clock and import conversion interfaces; tests and fixtures; the implementation issues A1–A3; [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
+| 1.1-rc | 2026-11-25 | #181 part B1 (step 1): the part map splits B into B1 (T24-020–029) and B2 (T24-030–039, VIZ-126); T24-002 amended (content widgets; list widgets follow T24-020); rules T24-020 to T24-029 (list widgets, Board list sources, rows, limit and ranking, snapshot and meter, keyboard and focus repair, table, CSV and facts, states and look, import, board tags and compatibility); §4.5 list states, §4.6 Board list import; §5.5 board spec v5, §5.6 the `/boards` contract, §5.7 the client list modules; §6 migration 4 and the repair and list queries; §7–§9, §10.1 tests and fixtures, §11 issues I1–I4, §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains the optional `Coverage` list members; [T11](T11-postgres-schema.md) §4.3 migration 4 |
