@@ -154,7 +154,8 @@ test.describe('e2e:board-thresholds (fake)', () => {
     await expect(button).toBeFocused();
 
     // A row isolates its series locally; a second choice shows all again.
-    const row = legend.getByRole('button', { name: `${GAUGE}{instance="a:9100"}` });
+    // Exact: the row's Select toggle (T25-016) is named "Select <series>".
+    const row = legend.getByRole('button', { name: `${GAUGE}{instance="a:9100"}`, exact: true });
     await row.click();
     await expect(row).toHaveAttribute('aria-pressed', 'true');
     await expect(chartLabel(memory)).toHaveAttribute('aria-label', /, 1 series,/);
