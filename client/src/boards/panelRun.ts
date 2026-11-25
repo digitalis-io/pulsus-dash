@@ -92,6 +92,8 @@ export type PanelState =
   | 'variable'
   | 'notMetric'
   | 'logs'
+  /** A kind this version does not draw yet (`PENDING_KINDS`, plan #173 Part 1): no query. */
+  | 'kindUnavailable'
   | 'refused'
   | 'langFailed'
   | 'noBuckets'
@@ -295,6 +297,8 @@ export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: stri
   switch (run.blocked) {
     case 'logs':
       return message('logs', t('panel.noVis'));
+    case 'kindUnavailable':
+      return message('kindUnavailable', t('panel.kindUnavailable'));
     case 'empty':
       return message('empty', t('panel.empty'));
     case 'variable':

@@ -31,7 +31,9 @@ describe('unit:board-options', () => {
       thresholds: { direction: 'above', steps: [{ value: 1, state: 'watch', label: '' }] },
     });
     expect('options' in line).toBe(false);
-    expect(withKind({ kind: 'stat', options: { reducer: 'max', layout: 'grid' } }, 'barchart')).toEqual({
+    expect(
+      withKind({ kind: 'stat', options: { reducer: 'max', layout: 'grid' } }, 'barchart'),
+    ).toEqual({
       kind: 'barchart',
       options: { reducer: 'max' },
     });

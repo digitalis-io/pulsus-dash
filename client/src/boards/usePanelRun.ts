@@ -18,6 +18,7 @@ import { refusalOf, runKind, type Refusal } from '../explore/useExploreRun';
 import { useTimeContext } from '../state/useTimeContext';
 import { fromInstant, fromRange } from '../vis/autovis';
 import { BoardRunContext } from './boardRunContext';
+import { PENDING_KINDS } from './options';
 import {
   panelIdleKey,
   panelRunKey,
@@ -113,17 +114,19 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
   const pre: PanelState | null = !active
     ? null
-    : panel.vis.kind === 'logs'
-      ? 'logs'
-      : text.trim() === ''
-        ? 'empty'
-        : refusedEarly !== null
-          ? 'refused'
-          : hint.length > 0
-            ? 'variable'
-            : failed && !degraded
-              ? 'langFailed'
-              : null;
+    : PENDING_KINDS.has(panel.vis.kind)
+      ? 'kindUnavailable'
+      : panel.vis.kind === 'logs'
+        ? 'logs'
+        : text.trim() === ''
+          ? 'empty'
+          : refusedEarly !== null
+            ? 'refused'
+            : hint.length > 0
+              ? 'variable'
+              : failed && !degraded
+                ? 'langFailed'
+                : null;
 
   // Nothing is planned before the board's time is set (§4.6).
   const stepMs =

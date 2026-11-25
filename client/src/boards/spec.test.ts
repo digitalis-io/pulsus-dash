@@ -103,7 +103,7 @@ describe('unit:board-spec (TS)', () => {
     ]);
   });
 
-  it('v3 fixture is valid, and its canonical form is the server\'s', () => {
+  it("v3 fixture is valid, and its canonical form is the server's", () => {
     const x = fixture('v3-full.json');
     expect(checkBoardSpec(x)).toEqual([]);
     const c = canonicalJson(x);
