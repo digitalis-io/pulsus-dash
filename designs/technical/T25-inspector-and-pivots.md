@@ -204,7 +204,7 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 |---|---|---|---|
 | Explore | board, and `origin.query` ≠ null | `exploreHref(tenant, panel, ctx.search, text)` (no `f=` until I3) | "Run the panel to open it in Explore" |
 | Logs ±1 min | the logs selector (T25-010) is non-empty | `/t/<tenant>/explore/logs` + `contextSearchString({...ctx.search, from: abs(t−60 000), to: abs(t+60 000), refresh: 'off'}, writeLogsParams([], {q, dir: 'backward', wrap: false}))` | "No log stream label on this series (needs service_name or job)" |
-| Traces · Profiles · Entity | never in I1 | — | "Traces are not available yet" · "Profiles …" · "The entity catalogue …" |
+| Traces · Profiles · Entity | never in I1 | — | "Traces are not available yet" · "Profiles are not available yet" · "The entity catalogue is not available yet" |
 | Label filter | from I3 | Explore with `f=<k>=<v>` added | "Filtering Explore by a label arrives with label filters" |
 
 t is `point` tMs, `logLine` Number(tsNs / 10⁶), `stateRun` atMs, `value` tMs. `bucket` uses
@@ -294,7 +294,7 @@ persisted and there is no new API route.
 
 ## 7. Performance budget
 
-The redraw report runs with a selection and the Inspector open: p95 ≤ +10 % (MINOR). It measures
+The redraw report (`bench:inspector-redraw`) runs with a selection and the Inspector open: p95 ≤ +10 % (MINOR). It measures
 `backdrop-filter` and selection redraws. The sheet never reflows the board, so nothing re-queries.
 
 ## 8. Security, tenancy & RBAC
@@ -339,7 +339,7 @@ Fixture P: a board origin {p1, "p99 latency", promql `histogram_quantile(0.99, x
 | e2e:a11y-rooms (ext.), golden:inspector, e2e:inspector-motion | a11y-rooms, golden-gallery, inspector specs | open and collapsed; dark, light, forced colours; reduced motion on and off | axe 0, targets ≥ 24 px; screenshots match, forced colours opaque; reduce = final styles on the first frame, normal = a 200 ms opacity transition | new | T25-013, VL-014/016 |
 | unit:selection-draw | engine/canvas2d/Canvas2DEngine.selection.test.ts | Recording context; `setSelection({keys:['k1'], fromMs:null, toMs:null})` on line, bars and stat; `{keys:[], fromMs:1000, toMs:2000}` on heatmap | line: k2 stroked at globalAlpha 0.35, then a focus stroke 4 px wider, then k1; bars: k2 segments at 0.35 and a 2 px focus inner stroke on k1; stat: focus ring; heatmap: a `selection` fill over x(1000)–x(2000); `setSelection(null)` → the same calls as without a selection | no `setSelection` | T02-025, T25-006 |
 
-Also: the redraw report with a selection and the Inspector open (p95 ≤ +10 %, MINOR). Every gate is in
+Also: the redraw report with a selection and the Inspector open (`bench:inspector-redraw`, p95 ≤ +10 %, MINOR). Every gate is in
 [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
 ## 11. Rollout
@@ -377,4 +377,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 
 | Version | Date | Change |
 |---|---|---|
-| 1.0-rc | 2026-11-25 | #164: created: rules T25-001 to T25-016, the `InspectRequest` union, the shared selection and its highlight, the Esc ladder, pivots with disclosed Context, the look and motion, tests, the implementation issues I1 and I3–I6; mockup 41-inspector |
+| 1.0-rc | 2026-11-25 | #164: created: rules T25-001 to T25-016, the `InspectRequest` union, the shared selection and its highlight, the Esc ladder, pivots with disclosed Context, the look and motion, tests, the implementation issues I1 and I3–I6; mockup 41-inspector. Code review r1: the Profiles and Entity reasons are written in full; the redraw report is the T05 gate `bench:inspector-redraw` |
