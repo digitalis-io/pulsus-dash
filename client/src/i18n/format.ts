@@ -118,12 +118,19 @@ export type Unit =
   | { readonly kind: 'percentunit' }
   | { readonly kind: 'suffix'; readonly suffix: string };
 
-/** Three significant digits, or the rounded integer from 100; trailing zeros dropped. */
-function sig(x: number): string {
-  if (Math.abs(x) >= 100) return String(Math.round(x));
-  const [mantissa = '', exponent] = x.toPrecision(3).split('e');
+/** `x.toPrecision(d)` with the mantissa's trailing zeros dropped. */
+function precision(x: number, d: number): string {
+  const [mantissa = '', exponent] = x.toPrecision(d).split('e');
   const m = mantissa.includes('.') ? mantissa.replace(/0+$/, '').replace(/\.$/, '') : mantissa;
   return exponent === undefined ? m : `${m}e${exponent}`;
+}
+
+/**
+ * `d` significant digits, trailing zeros dropped; at the default 3, the rounded integer from 100.
+ */
+function sig(x: number, d = 3): string {
+  if (d === 3 && Math.abs(x) >= 100) return String(Math.round(x));
+  return precision(x, d);
 }
 
 interface Scale {
@@ -133,13 +140,13 @@ interface Scale {
 }
 
 /** The largest scale not above `abs`, carried to the next one while the digits reach its size. */
-function scaled(abs: number, scales: readonly Scale[], space: string): string {
+function scaled(abs: number, scales: readonly Scale[], space: string, d: number): string {
   let i = 0;
   while (i + 1 < scales.length && abs >= (scales[i + 1]?.size ?? Infinity)) i += 1;
   for (;;) {
     const s = scales[i];
-    if (s === undefined) return sig(abs);
-    const digits = sig(abs / s.size);
+    if (s === undefined) return sig(abs, d);
+    const digits = sig(abs / s.size, d);
     const next = scales[i + 1];
     if (next !== undefined && Math.abs(Number(digits)) >= Math.round(next.size / s.size)) {
       i += 1;
@@ -173,32 +180,61 @@ const TIME_BASE: Readonly<Record<'ns' | 'us' | 'ms' | 's', number>> = {
   s: 1,
 };
 
+/** The base tail of `unit`'s out-of-range form: the unit of the converted value. */
+function baseTail(unit: Unit): string {
+  switch (unit.kind) {
+    case 'none':
+      return '';
+    case 'suffix':
+      return ` ${unit.suffix}`;
+    case 'bytes':
+      return ' B';
+    case 'percent':
+    case 'percentunit':
+      return ' %';
+    case 'time':
+      return ' s';
+  }
+}
+
+/** A non-negative `v` converted to its base unit: ×100 for percentunit, seconds for time. */
+function baseValue(v: number, unit: Unit): number {
+  if (unit.kind === 'percentunit') return v * 100;
+  if (unit.kind === 'time') return v * TIME_BASE[unit.base];
+  return v;
+}
+
 /**
- * A chart value in its unit (VL-012, T08-027): `2.84 s`, `1.2k rps`, `38 %`, `1.5 GiB`. Three
- * significant digits; SI prefixes for plain numbers, IEC for bytes, the largest time unit whose
- * value is at least 1. `NaN` is `—`.
+ * A chart value in its unit (VL-012, T08-027, T21-013): `2.84 s`, `1.2k rps`, `38 %`, `1.5 GiB`.
+ * SI prefixes for plain numbers, IEC for bytes, the largest time unit whose value is at least 1.
+ * `digits` 3 (the default): three significant digits, or the rounded integer from 100; 4 to 17:
+ * `toPrecision(digits)` at every magnitude. Trailing zeros are dropped. A converted value c ≥ 1e21
+ * or 0 < c < 1e−12 is `toPrecision(digits)` in exponent form plus the base tail (`1e+21`,
+ * `1e-13 s`, `1e+22 B`). `NaN` is `—`.
  */
 export function formatValue(v: number, unit: Unit, digits = 3): string {
-  void digits;
   if (Number.isNaN(v)) return '—';
   if (v === Infinity) return '+Inf';
   if (v === -Infinity) return '-Inf';
-  if (v < 0) return `-${formatValue(-v, unit)}`;
+  if (v < 0) return `-${formatValue(-v, unit, digits)}`;
+  const c = baseValue(v, unit);
+  if (c !== 0 && (c >= 1e21 || c < 1e-12)) return `${precision(c, digits)}${baseTail(unit)}`;
+  const d = digits;
   switch (unit.kind) {
     case 'none':
-      return v < 1 ? sig(v) : scaled(v, SI, '');
+      return v < 1 ? sig(v, d) : scaled(v, SI, '', d);
     case 'suffix':
-      return `${v < 1 ? sig(v) : scaled(v, SI, '')} ${unit.suffix}`;
+      return `${v < 1 ? sig(v, d) : scaled(v, SI, '', d)} ${unit.suffix}`;
     case 'bytes':
-      return v < 1 ? `${sig(v)} B` : scaled(v, IEC, ' ');
+      return v < 1 ? `${sig(v, d)} B` : scaled(v, IEC, ' ', d);
     case 'percent':
-      return `${sig(v)} %`;
+      return `${sig(v, d)} %`;
     case 'percentunit':
-      return `${sig(v * 100)} %`;
+      return `${sig(v * 100, d)} %`;
     case 'time': {
       const seconds = v * TIME_BASE[unit.base];
       if (seconds === 0) return '0 s';
-      return scaled(seconds, TIME, ' ');
+      return scaled(seconds, TIME, ' ', d);
     }
   }
 }

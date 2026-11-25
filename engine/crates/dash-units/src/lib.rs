@@ -149,11 +149,8 @@ fn js_number(s: &str) -> f64 {
     s.parse().unwrap_or(f64::NAN)
 }
 
-/// Three significant digits, or the rounded integer from 100; trailing zeros dropped.
-fn sig(x: f64) -> String {
-    if x.abs() >= 100.0 {
-        return js_number_to_string(js_round(x));
-    }
+/// `to_precision(x, 3)` with the mantissa's trailing zeros dropped.
+fn precision3(x: f64) -> String {
     let p = to_precision(x, 3);
     let (mantissa, exponent) = match p.split_once('e') {
         Some((m, e)) => (m, Some(e)),
@@ -168,6 +165,14 @@ fn sig(x: f64) -> String {
         None => m.to_owned(),
         Some(e) => format!("{m}e{e}"),
     }
+}
+
+/// Three significant digits, or the rounded integer from 100; trailing zeros dropped.
+fn sig(x: f64) -> String {
+    if x.abs() >= 100.0 {
+        return js_number_to_string(js_round(x));
+    }
+    precision3(x)
 }
 
 struct Scale {
@@ -292,7 +297,31 @@ impl TimeBase {
     }
 }
 
-/// A chart value in its unit (VL-012, T08-027), byte-identical to TS `formatValue`.
+impl Unit {
+    /// The value converted to the base unit: ×100 for percentunit, seconds for time.
+    fn base_value(&self, v: f64) -> f64 {
+        match self {
+            Self::Percentunit => v * 100.0,
+            Self::Time { base } => v * base.seconds(),
+            _ => v,
+        }
+    }
+
+    /// The tail of the out-of-range form: the unit of the converted value.
+    fn base_tail(&self) -> String {
+        match self {
+            Self::None => String::new(),
+            Self::Suffix { suffix } => format!(" {suffix}"),
+            Self::Bytes => " B".into(),
+            Self::Percent | Self::Percentunit => " %".into(),
+            Self::Time { .. } => " s".into(),
+        }
+    }
+}
+
+/// A chart value in its unit (VL-012, T08-027, T21-013), byte-identical to TS `formatValue` at its
+/// default three digits: a converted value c ≥ 1e21 or 0 < c < 1e−12 is `toPrecision(3)` in
+/// exponent form plus the base tail (`1e+21`, `1e-13 s`, `1e+22 B`).
 pub fn format_value(v: f64, unit: &Unit) -> String {
     if v.is_nan() {
         return "—".into();
@@ -305,6 +334,10 @@ pub fn format_value(v: f64, unit: &Unit) -> String {
     }
     if v < 0.0 {
         return format!("-{}", format_value(-v, unit));
+    }
+    let c = unit.base_value(v);
+    if c != 0.0 && !(1e-12..1e21).contains(&c) {
+        return format!("{}{}", precision3(c), unit.base_tail());
     }
     let plain = |v: f64| if v < 1.0 { sig(v) } else { scaled(v, &SI, "") };
     match unit {
