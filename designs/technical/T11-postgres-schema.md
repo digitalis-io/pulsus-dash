@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-25 |
+| **Version** | 1.9-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (tenancy, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (identity, Git sync, Terraform) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
@@ -478,6 +478,26 @@ CREATE INDEX annotations_at ON annotations (org_id, at);
   change. `entity_key` stays NULL until M-UI3. Unpartitioned (low volume); a range is at most 31
   days, so the list query's lower bound on `at` is exact. RLS as T11-003; `pulsus_app` holds
   SELECT, INSERT and DELETE.
+
+*#181 step 2 (2026-11-25, migration 5,
+[T24](T24-geo-schematic-and-widget-panels.md) §5.9 and §6):*
+- `annotations` gains `entity jsonb` (nullable; metadata-only, no table rewrite) and the constraint
+  `annotations_entity_pair CHECK ((entity_key IS NULL) = (entity IS NULL)) NOT VALID`; the migration
+  sets `lock_timeout` 5 s. Every existing row is NULL/NULL. Migration 5 is numbered after #215's
+  migration 4.
+- `entity_key` is no longer NULL until M-UI3: a create with an entity sets `entity_key` to the
+  canonical `EntityId` ([T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id))
+  and `entity` to `{id, binding, binding_id, kind, ident, attrs}` (the canonical map) in one INSERT;
+  a create without one leaves both NULL (an organisation-wide change).
+- **Statements** (one each, under RLS on the read-write pool): `ListAnnotations` (the data scope,
+  the overlap set, kinds, tags, entities, `orgWideHidden` and the keyset page in one SELECT);
+  `CreateAnnotation` (one INSERT after `ScopeCovers`); `DeleteAnnotation` (`DELETE … AND P RETURNING
+  …`, the audit event only for a deleted row). The data scope `P` is inside each statement
+  ([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response), fail closed).
+- **Compatibility** (T11-015): a binary at schema 4 runs on schema 5; it never writes `entity`, and
+  its rows read as `entity: null`.
+- **I7 (the next release):** `ALTER TABLE annotations VALIDATE CONSTRAINT annotations_entity_pair`
+  once every binary in the window writes both columns together (T11-013).
 
 - `entities` and `entity_edges` are partitioned on a **day** column: the precise `last_seen` is
   kept in the in-memory catalogue and the `catalogue_snapshots` blob, and `last_seen_day` is
@@ -1405,3 +1425,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 | 1.6-rc | 2026-11-22 | #64 Part B: §4.0 note: board spec schema version 2 (`vis.thresholds`, `vis.legend`); v1 upcasts unchanged (T11-016); no SQL migration (`schema_version` is an existing column) |
 | 1.7-rc | 2026-11-23 | #64 Part C (migration 3, [ADR-0023](../adr/0023-chart-event-markers.md)): §4.4 `annotations` DDL as built: `kind` (deploy, config, flag, annotation), the text, tag-count and 31-day range CHECKs, `created_at`, the named index, RLS and grants; §11 M-UI1 adds `annotations`; §3 ENT-020 row adds it |
 | 1.8-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B1, migration 4): §4.3 adds `boards.tags` (a cache of the head spec's tags, `NOT NULL DEFAULT '{}'`) and `tags_version`, fresh iff equal to `head_version`; `boards_tags_max` `NOT VALID`, validated by I4 in the next release; the bounded repair on read (T24-029); `search` still not added |
+| 1.9-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B2, migration 5): §4.4 `annotations` gains `entity jsonb` and `annotations_entity_pair` (`NOT VALID`, validated by I7 in the next release); `entity_key` is the canonical `EntityId` (T12-010) when the change has an entity; the list, create and delete statements each hold the data scope (T12-018) |
