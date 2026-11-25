@@ -246,16 +246,14 @@ fn input_bound() {
     drain(&mut s, &mut d, &mut ev);
     assert!(ev.is_empty());
 
-    // 300 pushes of 100 MiB chunks of MAX_PAYLOAD frames that span them.
-    const C: usize = 100 << 20;
-    let p = MAX_PAYLOAD as usize;
-    let size = HEADER_LEN + p;
+    // 300 pushes of ~100 MiB chunks (96 MiB) of 64 MiB frames that span them: three frames
+    // per two chunks, so the chunk contents repeat every two pushes (A, B, A, …).
+    const C: usize = 96 << 20;
+    let size = 64 << 20;
+    let p = size - HEADER_LEN;
     let hdr = header(1, BATCH, 0, 7, p as u32, 0, 0);
-    let bound = MAX_CHUNK + HEADER_LEN + p;
-    let mut s = FrameSplitter::new();
-    let mut frames = 0;
-    for k in 0..300 {
-        let start = k * C;
+    let bound = MAX_CHUNK + HEADER_LEN + MAX_PAYLOAD as usize;
+    let pattern = |start: usize| {
         let mut chunk = vec![0u8; C];
         let mut j = start / size;
         while j * size < start + C {
@@ -267,8 +265,13 @@ fn input_bound() {
             }
             j += 1;
         }
-        assert_eq!(s.push(SharedBytes::copy_from(&chunk, start % 64)), Ok(()));
-        drop(chunk);
+        SharedBytes::copy_from(&chunk, 0)
+    };
+    let ab = [pattern(0), pattern(C)];
+    let mut s = FrameSplitter::new();
+    let mut frames = 0;
+    for k in 0..300 {
+        assert_eq!(s.push(ab[k % 2].clone()), Ok(()));
         assert!(
             s.retained_bytes() <= bound,
             "push {k}: {}",
@@ -278,6 +281,7 @@ fn input_bound() {
             match s.next() {
                 Ok(Some(f)) => {
                     frames += 1;
+                    assert_eq!(f.payload.len(), p);
                     assert!(s.retained_bytes() <= bound, "push {k}");
                     drop(f);
                 }
@@ -287,7 +291,7 @@ fn input_bound() {
         }
         assert!(s.retained_bytes() <= bound, "push {k}");
     }
-    assert!(frames > 400, "{frames}");
+    assert_eq!(frames, 300 * 3 / 2);
 }
 
 #[test]

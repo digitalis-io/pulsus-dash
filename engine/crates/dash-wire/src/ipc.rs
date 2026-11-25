@@ -211,6 +211,36 @@ impl Col {
         }
     }
 
+    /// The byte length of Utf8 row `r` (from the validated offsets; nothing is copied).
+    pub(crate) fn str_len(&self, r: usize) -> Option<usize> {
+        match &self.data {
+            ColData::Utf8 { offsets, .. } => {
+                let o = offsets.as_bytes();
+                offset_at(o, r + 1)?.checked_sub(offset_at(o, r)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// `(elements, string bytes)` of `List<Utf8>` row `r`, from the validated offsets.
+    pub(crate) fn list_extent(&self, r: usize) -> Option<(usize, usize)> {
+        match &self.data {
+            ColData::List { offsets, child } => {
+                let o = offsets.as_bytes();
+                let (a, b) = (offset_at(o, r)?, offset_at(o, r + 1)?);
+                let ColData::Utf8 { offsets: co, .. } = &child.data else {
+                    return None;
+                };
+                let co = co.as_bytes();
+                Some((
+                    b.checked_sub(a)?,
+                    offset_at(co, b)?.checked_sub(offset_at(co, a)?)?,
+                ))
+            }
+            _ => None,
+        }
+    }
+
     /// The strings of `List<Utf8>` row `r`.
     pub(crate) fn list_at(&self, r: usize) -> Option<Vec<String>> {
         match &self.data {

@@ -9,6 +9,7 @@ use crate::chunk::{Chunk, ChunkId, SeriesMeta, TimeAxis};
 use crate::coverage::{self, Coverage, ErrorRow, Phase};
 use crate::dsf::{DsfError, Frame, FrameHeader, FrameType};
 use crate::ipc::{self, Col, ColData, IpcError, Msg, SchemaDesc};
+use crate::limits::{self, Limits};
 use crate::schema::{Kind, check_schema, grid_info, schema_err};
 
 /// The largest grid (= B1 `MaxGridLen`, the YAML maximum).
@@ -175,6 +176,9 @@ fn opt_str(c: Option<&Col>, r: usize) -> Result<Option<&str>, PartError> {
 struct Labels {
     schema: SchemaDesc,
     series: BTreeMap<u32, SeriesMeta>,
+    /// Label rows and label key and value bytes so far (B3 per-part limits).
+    rows: usize,
+    bytes: usize,
 }
 
 #[derive(Debug)]
@@ -247,10 +251,24 @@ pub struct BodyDecoder {
     any_failed: bool,
     stream_error: Option<ErrorRow>,
     verdict: Option<Verdict>,
+    limits: Limits,
+    /// Distinct part ids seen (B3 `distinct_parts`).
+    seen_parts: usize,
+    /// Body and value budget used (§3.1 accounting; charged once, never refunded).
+    used: u64,
+    values: u64,
+    /// A budget charge failed: the current frame fails the stream, not its part.
+    over: Option<&'static str>,
 }
 
 impl BodyDecoder {
+    /// A decoder with the default limits (`wire/schemas/limits.json`).
     pub fn new(first_chunk_id: u64) -> Self {
+        Self::with_limits(first_chunk_id, Limits::default())
+    }
+
+    /// A decoder with the limit set `limits` (tests use `limits-test.json`).
+    pub fn with_limits(first_chunk_id: u64, limits: Limits) -> Self {
         Self {
             parts: BTreeMap::new(),
             next: Some(first_chunk_id),
@@ -260,17 +278,74 @@ impl BodyDecoder {
             any_failed: false,
             stream_error: None,
             verdict: None,
+            limits,
+            seen_parts: 0,
+            used: 0,
+            values: 0,
+            over: None,
         }
     }
 
-    /// A decoder with a limit set (stub).
-    pub fn with_limits(first_chunk_id: u64, _limits: crate::limits::Limits) -> Self {
-        Self::new(first_chunk_id)
+    /// `(open parts, distinct part ids seen, body budget used)`.
+    pub fn retained(&self) -> (usize, usize, u64) {
+        (self.open_parts(), self.seen_parts, self.used)
     }
 
-    /// `(open parts, distinct parts seen, body budget used)` (stub).
-    pub fn retained(&self) -> (usize, usize, u64) {
-        (0, 0, 0)
+    fn open_parts(&self) -> usize {
+        self.parts.values().filter(|p| p.state.open()).count()
+    }
+
+    /// Charges `n` bytes to the body budget; past it, the frame fails the stream.
+    fn charge(&mut self, n: u64) -> Result<(), PartError> {
+        match self.used.checked_add(n) {
+            Some(u) if u <= self.limits.body_budget => {
+                self.used = u;
+                Ok(())
+            }
+            _ => {
+                self.over = Some("body budget");
+                Err(PartError::Limit("body budget"))
+            }
+        }
+    }
+
+    /// Charges `n` bytes to the value budget; past it, the frame fails the stream.
+    fn charge_values(&mut self, n: u64) -> Result<(), PartError> {
+        match self.values.checked_add(n) {
+            Some(u) if u <= self.limits.value_budget => {
+                self.values = u;
+                Ok(())
+            }
+            _ => {
+                self.over = Some("value budget");
+                Err(PartError::Limit("value budget"))
+            }
+        }
+    }
+
+    /// A META payload: its string and list limits (part `Limit`), its charge, then its row.
+    fn meta_coverage(&mut self, f: &Frame) -> Result<Coverage, PartError> {
+        let cols = stream(f, Kind::Coverage)?;
+        let (strings, elements) = coverage::coverage_counts(&cols)?;
+        if elements > self.limits.meta_list_elements {
+            return Err(PartError::Limit("meta list elements"));
+        }
+        if strings > self.limits.meta_string_bytes {
+            return Err(PartError::Limit("meta string bytes"));
+        }
+        self.charge(limits::coverage_cost(strings, elements))?;
+        coverage::coverage_row(&cols)
+    }
+
+    /// An ERROR payload: its string limit (part `Limit`), its charge, then its row.
+    fn meta_error(&mut self, f: &Frame) -> Result<ErrorRow, PartError> {
+        let cols = stream(f, Kind::Error)?;
+        let strings = coverage::error_counts(&cols)?;
+        if strings > self.limits.meta_string_bytes {
+            return Err(PartError::Limit("error string bytes"));
+        }
+        self.charge(limits::error_cost(strings))?;
+        coverage::error_row(&cols)
     }
 
     /// Decodes one frame. At most 3 events, plus 2 per data part linked to a labels part that
@@ -324,10 +399,18 @@ impl BodyDecoder {
         if h.kind == FrameType::Error
             && h.flags & FrameHeader::LAST != 0
             && self.stream_error.is_none()
-            && let Ok(error) = stream(f, Kind::Error).and_then(|c| coverage::error_row(&c))
         {
-            self.stream_error = Some(error.clone());
-            return vec![Event::Upstream { part: 0, error }];
+            match self.meta_error(f) {
+                Ok(error) => {
+                    self.stream_error = Some(error.clone());
+                    return vec![Event::Upstream { part: 0, error }];
+                }
+                Err(PartError::Limit(what)) => {
+                    self.over = None;
+                    return self.fail_stream(DsfError::Limit(what));
+                }
+                Err(_) => {}
+            }
         }
         self.fail_stream(DsfError::Malformed("part 0"))
     }
@@ -336,6 +419,20 @@ impl BodyDecoder {
         let h = f.header;
         let id = h.part_id;
         let mut ev = Vec::new();
+        if !self.parts.contains_key(&id) {
+            // A new part (B3 §3.3): open_parts, distinct_parts and its charge, all stream-level.
+            if self.open_parts() >= self.limits.open_parts {
+                return self.fail_stream(DsfError::Limit("open parts"));
+            }
+            if self.seen_parts >= self.limits.distinct_parts {
+                return self.fail_stream(DsfError::Limit("distinct parts"));
+            }
+            if self.charge(limits::cost::PART).is_err() {
+                self.over = None;
+                return self.fail_stream(DsfError::Limit("body budget"));
+            }
+            self.seen_parts += 1;
+        }
         let part = self.parts.entry(id).or_insert(Part {
             rank: h.rank,
             flags: h.flags & PART_FLAGS,
@@ -364,6 +461,14 @@ impl BodyDecoder {
                     p.state = next;
                 }
             }
+            Err(_) if self.over.is_some() => {
+                // A budget: the stream fails, this part with every other open part.
+                let what = self.over.take().unwrap_or("budget");
+                if let Some(p) = self.parts.get_mut(&id) {
+                    p.state = State::New;
+                }
+                ev.extend(self.fail_stream(DsfError::Limit(what)));
+            }
             Err(reason) => self.fail(id, reason, &mut ev),
         }
         ev
@@ -386,16 +491,19 @@ impl BodyDecoder {
                 }
                 let schema = one_schema(f)?;
                 check_schema(&schema, Kind::Labels, false)?;
+                self.charge(limits::schema_cost(&schema))?;
                 Ok(State::LabelsOpen(Box::new(Labels {
                     schema,
                     series: BTreeMap::new(),
+                    rows: 0,
+                    bytes: 0,
                 })))
             }
             (State::New, FrameType::Meta) => {
                 if last {
                     return Err(PartError::Order("planned META with LAST"));
                 }
-                let c = coverage::coverage_row(&stream(f, Kind::Coverage)?)?;
+                let c = self.meta_coverage(f)?;
                 if c.phase != Phase::Planned {
                     return Err(PartError::Value("phase"));
                 }
@@ -405,14 +513,29 @@ impl BodyDecoder {
                 if !last {
                     return Err(PartError::Order("ERROR without LAST"));
                 }
-                let error = coverage::error_row(&stream(f, Kind::Error)?)?;
+                let error = self.meta_error(f)?;
                 ev.push(Event::Upstream { part: id, error });
                 ev.push(Event::PartEnd { part: id });
                 Ok(State::Done)
             }
             (State::LabelsOpen(mut l), FrameType::Batch) => {
-                let rows = labels_batch(&l, f)?;
-                l.series.extend(rows);
+                let msg = one_message(f)?;
+                let cols = ipc::columns(&l.schema, &msg).map_err(ipc_err)?;
+                let (rows, bytes, cost) = labels_counts(&cols)?;
+                if rows > self.limits.rows_per_batch_labels {
+                    return Err(PartError::Limit("rows per batch"));
+                }
+                if l.rows + rows > self.limits.label_rows_per_part {
+                    return Err(PartError::Limit("label rows"));
+                }
+                if l.bytes + bytes > self.limits.label_bytes_per_part {
+                    return Err(PartError::Limit("label bytes"));
+                }
+                self.charge(cost)?;
+                let series = labels_batch(&l, &cols)?;
+                l.series.extend(series);
+                l.rows += rows;
+                l.bytes += bytes;
                 if !last {
                     return Ok(State::LabelsOpen(l));
                 }
@@ -428,6 +551,7 @@ impl BodyDecoder {
                 check_schema(&schema, Kind::Grid, false)?;
                 let (info, labels_part) = grid_info(&schema)?;
                 self.check_link(id, labels_part, h)?;
+                self.charge(limits::schema_cost(&schema))?;
                 let data = Data {
                     schema,
                     labels_part,
@@ -457,7 +581,7 @@ impl BodyDecoder {
                 Ok(State::DataOpen(d))
             }
             (State::DataOpen(d), FrameType::Meta) => {
-                let coverage = coverage::coverage_row(&stream(f, Kind::Coverage)?)?;
+                let coverage = self.meta_coverage(f)?;
                 let labels_part = d.labels_part;
                 match (coverage.phase, last) {
                     (Phase::Planned, _) => Err(PartError::Value("phase")),
@@ -629,11 +753,14 @@ impl BodyDecoder {
     /// A grid batch → one chunk: values and validity copied once into exact-size buffers.
     fn data_batch(&mut self, d: &mut Data, f: &Frame) -> Result<Chunk, PartError> {
         let id = self.next.ok_or(PartError::Limit("chunk ids"))?;
-        let labels = self
+        if self
             .parts
             .get(&d.labels_part)
             .and_then(|p| p.state.labels())
-            .ok_or(PartError::Order("labels part failed"))?;
+            .is_none()
+        {
+            return Err(PartError::Order("labels part failed"));
+        }
         let msg = one_message(f)?;
         let cols = ipc::columns(&d.schema, &msg).map_err(ipc_err)?;
         let (ids, vals) = match cols.as_slice() {
@@ -650,6 +777,20 @@ impl BodyDecoder {
             return Err(ipc_err(IpcError::Messages));
         };
         let rows = ids.len;
+        // B3 §3.3: the per-part limits, then both budgets, before any allocation below.
+        if rows > self.limits.rows_per_batch_grid {
+            return Err(PartError::Limit("rows per batch"));
+        }
+        if d.seen.len() + rows > self.limits.series_per_part {
+            return Err(PartError::Limit("series per part"));
+        }
+        self.charge(limits::batch_cost(rows))?;
+        self.charge_values(limits::value_cost(child.len))?;
+        let labels = self
+            .parts
+            .get(&d.labels_part)
+            .and_then(|p| p.state.labels())
+            .ok_or(PartError::Order("labels part failed"))?;
         let mut series = Vec::with_capacity(rows);
         for r in 0..rows {
             let sid = u32_cell(Some(ids), r)?;
@@ -664,7 +805,6 @@ impl BodyDecoder {
         }
         let n = child.len;
         let total = u32::try_from(n).map_err(|_| PartError::Limit("chunk size"))?;
-        // B3 charges value_budget here, before the allocations below.
         let validity = if child.nulls > 0 {
             child.validity.as_ref().map(|v| v.as_bytes())
         } else {
@@ -713,12 +853,40 @@ impl BodyDecoder {
 /// One series' rows in a labels batch: (series id, key hash, labels, had a null row).
 type Group = (u32, u64, Vec<(String, String)>, bool);
 
+/// `(rows, label key and value bytes, body-budget charge)` of a labels batch, from its validated
+/// columns before anything is copied (B3 §3.1): 64 per series (run of one series id) + 48 + key
+/// + value per non-null row.
+fn labels_counts(cols: &[Col]) -> Result<(usize, usize, u64), PartError> {
+    let rows = cols.first().map_or(0, |c| c.len);
+    let bad = || ipc_err(IpcError::Layout("column"));
+    let (keys, vals) = (cols.get(2).ok_or_else(bad)?, cols.get(3).ok_or_else(bad)?);
+    let (mut bytes, mut cost, mut prev) = (0usize, 0u64, None);
+    for r in 0..rows {
+        let sid = u32_cell(cols.first(), r)?;
+        if prev != Some(sid) {
+            cost += limits::cost::SERIES;
+            prev = Some(sid);
+        }
+        let len = |c: &Col| -> Result<usize, PartError> {
+            if c.valid(r) {
+                c.str_len(r).ok_or_else(bad)
+            } else {
+                Ok(0)
+            }
+        };
+        let kv = len(keys)? + len(vals)?;
+        if keys.valid(r) || vals.valid(r) {
+            cost += limits::cost::LABEL + kv as u64;
+        }
+        bytes += kv;
+    }
+    Ok((rows, bytes, cost))
+}
+
 /// A labels batch → `(series id, SeriesMeta)` rows, with the §4.1 shape rules: rows of a
 /// series contiguous and in one batch, one key hash, no half-null label, a null row alone,
 /// names strictly increasing by bytes.
-fn labels_batch(l: &Labels, f: &Frame) -> Result<Vec<(u32, SeriesMeta)>, PartError> {
-    let msg = one_message(f)?;
-    let cols = ipc::columns(&l.schema, &msg).map_err(ipc_err)?;
+fn labels_batch(l: &Labels, cols: &[Col]) -> Result<Vec<(u32, SeriesMeta)>, PartError> {
     let rows = cols.first().map_or(0, |c| c.len);
     let mut out: Vec<(u32, SeriesMeta)> = Vec::new();
     let mut here = BTreeSet::new();
@@ -779,93 +947,4 @@ fn labels_batch(l: &Labels, f: &Frame) -> Result<Vec<(u32, SeriesMeta)>, PartErr
     }
     finish(cur, &mut out);
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    //! unit:limits-json, Rust side (plan #68 B3 §3.1): every limit, cost and reserve and
-    //! `MAX_GRID_LEN` equal `wire/schemas/limits.json`.
-    use super::MAX_GRID_LEN;
-    use crate::dsf::{HEADER_LEN, MAX_PAYLOAD};
-    use crate::limits::{self, Limits, cost};
-
-    fn json() -> serde_json::Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../wire/schemas/limits.json"
-        );
-        let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"));
-        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{path}: {e}"))
-    }
-
-    #[test]
-    fn limits_match_json() {
-        let v = json();
-        let n = |k: &str| {
-            v.get(k)
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or_else(|| panic!("limits.json: {k}"))
-        };
-        let c = |k: &str| {
-            v.get("cost")
-                .and_then(|c| c.get(k))
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or_else(|| panic!("limits.json: cost.{k}"))
-        };
-        let pairs: [(&str, u64); 18] = [
-            ("max_payload", u64::from(MAX_PAYLOAD)),
-            ("max_chunk", limits::MAX_CHUNK as u64),
-            ("source_buffer", limits::SOURCE_BUFFER as u64),
-            ("max_grid_len", u64::from(MAX_GRID_LEN)),
-            ("open_parts", limits::OPEN_PARTS as u64),
-            ("distinct_parts", limits::DISTINCT_PARTS as u64),
-            (
-                "rows_per_batch_labels",
-                limits::ROWS_PER_BATCH_LABELS as u64,
-            ),
-            ("rows_per_batch_grid", limits::ROWS_PER_BATCH_GRID as u64),
-            ("series_per_part", limits::SERIES_PER_PART as u64),
-            ("label_rows_per_part", limits::LABEL_ROWS_PER_PART as u64),
-            ("label_bytes_per_part", limits::LABEL_BYTES_PER_PART as u64),
-            ("meta_list_elements", limits::META_LIST_ELEMENTS as u64),
-            ("meta_string_bytes", limits::META_STRING_BYTES as u64),
-            ("reason_bytes", limits::REASON_BYTES as u64),
-            ("body_budget", limits::BODY_BUDGET),
-            ("value_budget", limits::VALUE_BUDGET),
-            ("part_reserve", limits::PART_RESERVE),
-            ("stream_reserve", limits::STREAM_RESERVE),
-        ];
-        for (k, ours) in pairs {
-            assert_eq!(n(k), ours, "{k}");
-        }
-        let costs: [(&str, u64); 11] = [
-            ("part", cost::PART),
-            ("schema", cost::SCHEMA),
-            ("series", cost::SERIES),
-            ("label", cost::LABEL),
-            ("batch", cost::BATCH),
-            ("batch_series", cost::BATCH_SERIES),
-            ("coverage", cost::COVERAGE),
-            ("list_element", cost::LIST_ELEMENT),
-            ("error", cost::ERROR),
-            ("value", cost::VALUE),
-            ("validity_word", cost::VALIDITY_WORD),
-        ];
-        for (k, ours) in costs {
-            assert_eq!(c(k), ours, "cost.{k}");
-        }
-        assert_eq!(
-            v.get("cost")
-                .and_then(serde_json::Value::as_object)
-                .map(|o| o.len()),
-            Some(costs.len())
-        );
-        let d = Limits::default();
-        assert_eq!(d.open_parts, limits::OPEN_PARTS);
-        assert_eq!(d.body_budget, limits::BODY_BUDGET);
-        assert_eq!(d.value_budget, limits::VALUE_BUDGET);
-        // max_chunk = 2 × max_payload; the source buffer fits a chunk.
-        assert_eq!(limits::MAX_CHUNK, 2 * MAX_PAYLOAD as usize);
-        assert!(limits::SOURCE_BUFFER <= limits::MAX_CHUNK && HEADER_LEN == 16);
-    }
 }

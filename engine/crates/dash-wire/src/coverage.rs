@@ -118,6 +118,38 @@ fn one_row(cols: &[Col]) -> Result<(), PartError> {
     }
 }
 
+/// `(string bytes, list elements)` of a validated one-row `coverage/1` batch (B3 §3.3): the
+/// truncation reason and the four lists, counted from their offsets before anything is copied.
+pub(crate) fn coverage_counts(cols: &[Col]) -> Result<(usize, usize), PartError> {
+    let bad = || PartError::Ipc(IpcError::Layout("column"));
+    let reason = cols.get(5).ok_or_else(bad)?;
+    let mut strings = if reason.valid(0) {
+        reason.str_len(0).ok_or_else(bad)?
+    } else {
+        0
+    };
+    let mut elements = 0usize;
+    for i in 13..17 {
+        let (e, b) = cols.get(i).and_then(|c| c.list_extent(0)).ok_or_else(bad)?;
+        elements += e;
+        strings += b;
+    }
+    Ok((strings, elements))
+}
+
+/// The string bytes (message and suggestion) of a validated one-row `error/1` batch.
+pub(crate) fn error_counts(cols: &[Col]) -> Result<usize, PartError> {
+    let bad = || PartError::Ipc(IpcError::Layout("column"));
+    let mut n = 0;
+    for i in [2, 5] {
+        let c = cols.get(i).ok_or_else(bad)?;
+        if c.valid(0) {
+            n += c.str_len(0).ok_or_else(bad)?;
+        }
+    }
+    Ok(n)
+}
+
 /// The `coverage/1` row of a validated batch, with the closed value sets checked.
 pub(crate) fn coverage_row(cols: &[Col]) -> Result<Coverage, PartError> {
     one_row(cols)?;
