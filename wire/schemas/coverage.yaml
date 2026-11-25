@@ -1,0 +1,30 @@
+# coverage/1 (T04 §5.3; plan #68 B1 §3.1): one row, sent as META twice per data part (planned,
+# then final or partial). Codes: phase 0 planned, 1 partial, 2 final; exactness 0 raw-exact,
+# 1 rollup, 2 sampled, 3 estimated, 4 unknown; read_cache 0 hit, 1 miss, 2 bypass, 3 other.
+schema: coverage/1
+fields:
+  - {name: phase, type: uint8, nullable: false}
+  - {name: exactness, type: uint8, nullable: false}
+  - {name: rollup_level_s, type: uint32, nullable: true}
+  - {name: sampled_ratio, type: float64, nullable: true}
+  - {name: truncated, type: bool, nullable: false}
+  - {name: truncation_reason, type: utf8, nullable: true}
+  - {name: dropped_count, type: uint64, nullable: true}
+  - {name: series_returned, type: uint32, nullable: false}
+  - {name: rows_read, type: uint64, nullable: true}
+  - {name: bytes_read, type: uint64, nullable: true}
+  - {name: shards_failed, type: uint16, nullable: true}
+  - {name: shards_skipped, type: uint16, nullable: true}
+  - {name: retention_floor, type: timestamp_ms, nullable: true}
+  - {name: excluded_dims, type: "list<utf8>", nullable: false}
+  - {name: warnings, type: "list<utf8>", nullable: false}
+  - {name: infos, type: "list<utf8>", nullable: false}
+  - {name: upstream_query_ids, type: "list<utf8>", nullable: false}
+  - {name: read_cache, type: uint8, nullable: true}
+  - {name: read_cache_through, type: timestamp_ms, nullable: true}
+  - {name: data_end, type: timestamp_ms, nullable: true}
+  - {name: upstream_ms, type: uint32, nullable: false}
+  - {name: convert_ms, type: uint32, nullable: false}
+metadata:
+  dash.schema: {required: true, format: "const:coverage/1"}
+  dash.time_unit: {required: true, format: "const:ms"}

@@ -1,2 +1,3 @@
 web/shim/** -text
 *.png binary
+*.dsf binary

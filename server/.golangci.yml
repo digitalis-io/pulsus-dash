@@ -13,6 +13,8 @@ linters:
       gateway-only: { files: ["$all", "!**/internal/gateway/**"], deny: [
         { pkg: github.com/go-chi/chi, desc: "the router is used only in internal/gateway (T06-001)" },
         { pkg: github.com/digitalis-io/pulsus-dash/server/internal/gateway/api, desc: "the generated server is used only in internal/gateway (T06-001)" } ] },
+      arrow-only: { files: ["$all", "!**/internal/arrowwire/**"], deny: [
+        { pkg: github.com/apache/arrow-go, desc: "arrow-go is used only in internal/arrowwire (ADR-0015, plan #68 B1)" } ] },
       promql-parser: { files: ["$all", "!**/internal/pulsusdb/prom/**"], deny: [
         { pkg: github.com/prometheus/prometheus, desc: "the upstream PromQL parser is used only in internal/pulsusdb/prom (ADR-0021)" } ] },
       # T06-028, ADR-0018 §3, §4: the language modules import no other language module, and only

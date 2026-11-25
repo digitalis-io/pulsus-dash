@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-24 |
+| **Version** | 1.13-rc · 2026-11-25 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -673,7 +673,7 @@ algorithm. Licences and WASM size are checked in M-UI0 ([T03 §7.3](T03-browser-
 | MSDF atlas | Generated at build time (msdf-atlas-gen) for UI fonts, plus a runtime Rust MSDF generator for fallback glyphs (e.g. `fdsm`) |
 | SVG icons | `resvg` / `usvg` (rasterised into the atlas) |
 | Markdown | `pulldown-cmark` (no HTML pass-through) |
-| Columnar data | `arrow-ipc`, `arrow-array`, `arrow-buffer` (no umbrella crate) |
+| Columnar data | `dash-wire` (own Arrow IPC reader for the v1 schemas; no arrow-rs, owner decision 2026-11-25, licence) |
 | Time zones | `chrono` + `chrono-tz` (tz data split and lazy-loaded) |
 | Geo | `geo`, `geojson`, `prost` for MVT tile decoding |
 | Graphs | `petgraph` (algorithms); force and bundling layouts written ourselves |
@@ -831,3 +831,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.10-rc | 2026-11-23 | #66 Part B: Satisfies row PRF-020: the gate is `bench:log-scroll` (the M-UI1 DOM list, #66); `bench:frame-gallery` measures the log page from #69 |
 | 1.11-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §4.5 Overlays row: event markers on line, bars and heatmap in the interim client (the label band, the layering over series and thresholds, the never-dropped labels) |
 | 1.12-rc | 2026-11-24 | #150 ([T21](T21-time-and-distribution-panels.md)): §0 adds the "Interim kinds" row (the T21 2D kinds join the interim renderer as their issues land; 3D forms are engine-only, T21-001) |
+| 1.13-rc | 2026-11-25 | #68 Part B: dependency row "Columnar data" is `dash-wire`'s own Arrow IPC reader; no arrow-rs |

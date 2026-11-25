@@ -425,7 +425,7 @@ failures are in [T04 §9](T04-wire-format-and-data-plane.md#9-failure-modes--deg
 
 1. *(Closed 2026-11-19: ADR-0004 superseded by ADR-0014.)*
 2. When PulsusDB ships R1, whether the BFF moves to pass-through for all numeric results
-   ([T04 §5.6](T04-wire-format-and-data-plane.md#56-json--arrow-conversion-in-the-bff-r1-fallback)).
+   ([T04 §5.6](T04-wire-format-and-data-plane.md#56-json--arrow-conversion-in-the-bff)).
 
 **Resolved during formalisation**
 

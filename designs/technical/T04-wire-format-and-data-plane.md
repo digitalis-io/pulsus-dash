@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-24 |
-| **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
+| **Version** | 1.8-rc · 2026-11-25 |
+| **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness (A1 decode)) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
 
@@ -17,7 +17,7 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 |---|---|---|
 | Results to the browser | **JSON frames** (`application/json`), one schema per result type in `api/openapi.yaml`, carrying the same fields, `key_hash` and coverage block as the §4.3 schemas; decoded in TS at one seam, `client/src/data/decode.ts`. The JSON image of `labels/1` + `metric_matrix.grid/1` is `SeriesFrame {key, labels, timestamps, values}` (#62): `key` is 16 lower-case hex digits; labels sorted by name; timestamps in ms on the grid; a value is a number (the shortest float64 round trip, `-0` kept), `"NaN"`, `"+Inf"`, `"-Inf"`, or `null` for an absent point (T04-005); golden bodies in `wire/fixtures/json/` | Arrow IPC in DSF frames (§4.3–§5.4) for engine-rendered frames, streamed to the engine worker without main-thread parsing; JSON for config, CRUD and DOM-only results |
 | Schemas | §4.3 is authoritative; the machine-readable copy is `wire/schemas/*.yaml` (field names, Arrow types, metadata keys) with golden IPC fixtures in `wire/fixtures/` | The Go writer reproduces the fixtures and the Rust engine decodes them (`unit:codec-roundtrip`, both sides) |
-| BFF conversion (§5.6) | Go: a hand-written streaming JSON tokenizer (`internal/pulsusdb/updec.go`, #62); every decoder of PulsusDB bodies (this one today, Arrow later, behind one source seam) yields strings only through the redactor ([T06](T06-bff-architecture.md) T06-024); `strconv.ParseFloat` for value strings; protobuf via `google.golang.org/protobuf` | Plus Arrow Go (`arrow-go`) builders and IPC writer with 64-byte alignment |
+| BFF conversion (§5.6) | Go: a hand-written streaming JSON tokenizer (`internal/pulsusdb/updec.go`, #62); every decoder of PulsusDB bodies (this one today, Arrow later, behind one source seam) yields strings only through the redactor ([T06](T06-bff-architecture.md) T06-024); `strconv.ParseFloat` for value strings; protobuf via `google.golang.org/protobuf` | Plus the committed JSON → Arrow conversion: arrow-go IPC messages in DSF frames with 64-byte body alignment (`internal/arrowwire`, #68 Part B1; [ADR-0005](../adr/0005-arrow-wire-format.md) as amended 2026-11-25). A columnar output from PulsusDB (R1) is optional |
 | `dash-keyhash` | Go in the BFF (`internal/keyhash`), writing `key_hash` into JSON frames. Canonical key bytes: the labels sorted by name, each written as name, `0xFF`, value, `0xFF`, hashed with xxh3-64 (seed 0); corpus `wire/fixtures/keyhash/labels.json` (#62) | Also Rust in the engine and `pulsus-synth`; one fixture corpus fixes the hash of sorted canonical label sets |
 | Event markers (`events/1`, §4.3) | **JSON `AnnotationList`** from `GET /api/dash/v1/annotations` (#64 Part C, [ADR-0023](../adr/0023-chart-event-markers.md)): the JSON image of `events/1` with `ts` → `at` and `end` → `end_at` (ms since the epoch, `end_at` null for a point), `title` → `text`, `attrs` → `tags` (strings); `kind` is one of deploy, config, flag, annotation; Postgres only (`source` 1 implied); no `seq` or `entity_id` until the change feed and M-UI3 | Arrow `events/1` in DSF frames, with the change feed (R8) and alert transitions |
 | `QueryRequest` (§5.2) | Built by the TS client from the OpenAPI types, parsed by the Go BFF | Same |
@@ -27,10 +27,11 @@ The browser application is TypeScript and the BFF is Go; the Rust/WASM chart eng
 
 ## 1. Context & problem
 
-[ADR-0005](../adr/0005-arrow-wire-format.md) chose Arrow IPC from the BFF to the browser. Until
-PulsusDB emits a columnar format natively (R1 in [pulsusdb-requirements](pulsusdb-requirements.md)),
-the BFF converts PulsusDB's JSON: in M-UI1 into **JSON frames** for the TS client, and from the
-chart engine on (#68) into Arrow (§0). PulsusDB today answers range queries in PromQL-compatible JSON
+[ADR-0005](../adr/0005-arrow-wire-format.md) chose Arrow IPC from the BFF to the browser. The BFF
+converts PulsusDB's JSON: in M-UI1 into **JSON frames** for the TS client, and from the chart
+engine on (#68) into Arrow (§0). This conversion is the committed path and needs nothing from
+PulsusDB; a native columnar output (R1 in [pulsusdb-requirements](pulsusdb-requirements.md)) is an
+optional future (owner direction 2026-11-25). PulsusDB today answers range queries in PromQL-compatible JSON
 (the standard query-API response shape) for metrics and its native logs JSON,
 with sample values as **strings** and log timestamps as nanosecond **strings** (PulsusDB API §2.1,
 §3.2). Trace fetch is OTLP JSON or protobuf by `Accept` (§4.1). Profiles are Connect JSON or proto
@@ -65,8 +66,9 @@ Query *semantics* (what to ask, at which step, and the virtual-source resolution
 ## 2. Goals / non-goals
 
 **Goals**
-- One columnar format end to end in the browser. Every result type decodes with `arrow-ipc` zero-copy
-  into the chunk arena ([T03 §4.3](T03-browser-runtime.md#43-shared-memory-layout-and-ownership)).
+- One columnar format end to end in the browser. Every result type decodes with `dash-wire`'s Arrow
+  IPC reader into the chunk arena ([T03 §4.3](T03-browser-runtime.md#43-shared-memory-layout-and-ownership)),
+  within the copy budget of T04-015.
 - Streaming. The first record batch paints before the response ends.
 - Every request is cancellable, and cancellation reaches PulsusDB (R11).
 - Every answer carries a uniform coverage block, filled from whatever PulsusDB reports today (R10
@@ -125,7 +127,7 @@ the TS decoder.*
                                                   └─ DSF framing (§5.1) ──HTTP/2 body or WS binary──┐
  browser                                                                                          ▼
   native HTTP decompression (zstd/br/gzip) → shim/net.js → [copy 1] chunk arena (SAB, 64-B aligned)
-   → DSF parser (slices) → arrow-ipc decode (zero-copy Buffers) → Chunk published (T03 §4.3)
+   → DSF parser (slices) → dash-wire IPC reader (zero-copy slices) → Chunk published (T03 §4.3)
    → render: f32 render columns → [copy 2] GPU buffer      → local engine (T13, draft) reads the same Chunk
 ```
 
@@ -143,15 +145,18 @@ only for requests and for config/CRUD.
 
 - **Time.** Absolute instants are `Timestamp(Nanosecond, "UTC")` (int64), except where a grid makes
   them implicit (§4.3). Schema metadata `dash.time_unit` is always stated.
-- **Strings.** Repeated strings (label keys and values, service names, span names) are
-  `Dictionary(UInt16|UInt32, Utf8)`. Each stream emits every dictionary once, before its first batch.
-  There are **no delta or replacement dictionaries in v1**: arrow-rs's handling of IPC delta
-  dictionaries must be verified first.
+- **Strings.** Label keys and values in `labels/1` are `Utf8`. No column of `labels/1`,
+  `metric_matrix.grid/1`, `coverage/1` or `error/1` is dictionary-encoded. Repeated strings of the
+  other §4.3 schemas (service names, span names) are `Dictionary(UInt16|UInt32, Utf8)`; each stream
+  emits every dictionary once, before its first batch. There are **no delta or replacement
+  dictionaries in v1**: the engine's reader supports no dictionaries yet; the first schema read by
+  the engine that uses one adds dictionary support (and its tests) to the reader first.
 - **Identity.** Series, streams and entities carry a `key_hash: UInt64`, the `xxh3_64` of the sorted
   canonical label set, computed by `dash-keyhash` in the BFF (Go) and, for synthetic data, in `pulsus-synth`; both match
   one fixture corpus (§0). It drives stable series colours (T02-005) and cache keys.
-- **Alignment.** The BFF writes IPC with 64-byte buffer alignment (an Arrow Go writer option, §0),
-  so float columns are naturally aligned inside the 64-byte-aligned arena slab.
+- **Alignment.** Every IPC message body starts at a multiple of 64 from response-body offset 0, and
+  every `metric_matrix.grid/1` buffer at a multiple of 64 within its body (§5.1), so float columns
+  are naturally aligned inside the 64-byte-aligned arena slab.
 - **Compression.** No Arrow body compression. The browser's native HTTP decompression
   (`Content-Encoding: zstd` where the client advertises it, otherwise `br` or `gzip`) and WS
   `permessage-deflate` do it in native code, off our threads, and keep a zstd decoder out of WASM.
@@ -181,14 +186,15 @@ gaps, and NaN/±Inf MUST round-trip bit-exactly.
 ### 4.3 Result-type schemas (authoritative)
 
 **`labels/1`** is the series, stream and group dictionary shared by metric, log and profile results.
-It is sent as its own part before the data part that references it.
+It is sent as its own part. A series' rows are sent before the first data batch that references the
+series (§4.4).
 
 | Column | Type | Notes |
 |---|---|---|
-| `series_id` | `UInt32` | dense, per request |
+| `series_id` | `UInt32` | dense from 0 per data part, in send order |
 | `key_hash` | `UInt64` | §4.2 |
-| `label_key` | `Dictionary(UInt16, Utf8)` | long form: one row per (series, label) |
-| `label_value` | `Dictionary(UInt32, Utf8)` | |
+| `label_key` | `Utf8` nullable | long form: one row per (series, label), in label-name order; a series' rows are contiguous |
+| `label_value` | `Utf8` nullable | a series with no labels has one row with both label columns null; a row with only one of them null is invalid |
 
 **`metric_matrix.grid/1`**. Used by PromQL `query_range`, LogQL metric queries, TraceQL metrics,
 profile `select_series`, log volume over time, and the Postgres virtual series (`ALERTS`,
@@ -200,11 +206,22 @@ PulsusDB anchors on `start` (API §2.1, §3.2), so timestamps are implicit.
 | `series_id` | `UInt32` | → `labels/1` |
 | `values` | `FixedSizeList(Float64 nullable, N)` | one row per series; the child array is contiguous per series, which is exactly the M1 polyline input |
 
-Metadata: `dash.grid.start_ms`, `dash.grid.step_ms`, `dash.grid.len` (= N),
-`dash.result = metric | log_volume | log_rate | trace_metric | profile_series | virtual`,
-`dash.source = pulsusdb | postgres`, `dash.unit` (from the
-[05 §10](../product/05-visualisation-catalogue.md#10-vis-configuration-field-config-parity)
-unit ids). Batches hold ≤ 64 series or ≤ 1 MiB. Optional negotiated variant
+Metadata (machine-readable in `wire/schemas/metric_matrix.grid.yaml`):
+
+| Key | Required | Value |
+|---|---|---|
+| `dash.grid.start_ms` | required | the step-aligned grid start |
+| `dash.grid.requested_start_ms` | required | the request's start before step alignment; `start_ms ≤ it < start_ms + step_ms`; used for the retention decision (§5.3) |
+| `dash.grid.step_ms` | required | > 0 |
+| `dash.grid.len` | required | N, 1 ≤ N ≤ 2²² (4 194 304), so a one-series batch fits `MAX_PAYLOAD` (§5.1) |
+| `dash.labels_part` | required | the part id of its `labels/1` part |
+| `dash.result` | required | `metric \| log_volume \| log_rate \| trace_metric \| profile_series \| virtual` |
+| `dash.source` | required | `pulsusdb \| postgres` |
+| `dash.unit` | optional | from the [05 §10](../product/05-visualisation-catalogue.md#10-vis-configuration-field-config-parity) unit ids |
+| `dash.planned` | optional | the route's `planned` object (JSON), byte-identical to the JSON route's |
+
+A null value slot holds the bits `0x7FF8000000000000`; every other value keeps its bits. Batches
+hold ≤ 64 series or ≤ 1 MiB. Optional negotiated variant
 `values: FixedSizeList(Float32, N)` (`precision=f32`) for render-only parts such as 10⁴-series
 band + outlier scenes; the Inspector re-fetches exact values on click.
 
@@ -406,11 +423,14 @@ PulsusDB change feed (R8, M-UI3). Columns: `seq UInt64`, `ts`, `end` nullable,
 Within one part, the BFF emits frames in this order:
 
 ```
- SCHEMA(labels) → BATCH(labels)… → META(planned) → SCHEMA(data) → BATCH(data)… → META(final) → END
+ SCHEMA(labels) → META(planned) → SCHEMA(data) → { BATCH(labels) → BATCH(data) }… → BATCH(labels)|LAST → META(final)|LAST → END
 ```
 
-- **The first data batch is small**: ≤ 64 KiB or ≤ 8 series, flushed as soon as it is built. Later
-  batches are ≤ 1 MiB. This keeps time-to-first-paint close to the BFF's first upstream byte.
+- **Interleaving** (#68 Part B1). Labels batches may interleave with data frames. Every series id is
+  in `labels/1` before the first data batch that references it.
+- **The first data batch is small**: one series, flushed as soon as it is built. Later batches hold
+  clamp(⌊1 MiB / (8 · N)⌋, 1, 64) series. This keeps time-to-first-paint close to the BFF's first
+  upstream byte.
 - **Coarse → fine** are *separate parts* with `rank` 0, 1, 2… ([09 §6](../product/09-performance-contract.md#6-progressive-data-strategy)
   steps 2–3). Rank 0 is the planner's coarse query (step ≈ visible range / (pixel width / 4),
   [T07](T07-scene-query-planner.md)). The client keeps the coarse chunk until a finer part covers the
@@ -467,18 +487,31 @@ message is a sequence of frames:
 | 8 | `u32` | `payload_len` |
 | 12 | `u16` | `rank` (resolution rank) |
 | 14 | `u16` | reserved (0) |
-| 16 | … | payload: one Arrow IPC encapsulated message (SCHEMA/BATCH); a single-row `coverage/1` batch (META); a single-row `error/1` batch (ERROR) |
+| 16 | … | payload (≤ `MAX_PAYLOAD` = 64 MiB): exactly one Arrow IPC encapsulated message (SCHEMA: a Schema; BATCH: a RecordBatch); a complete IPC stream of a single-row `coverage/1` (META) or `error/1` (ERROR) batch: schema, batch, end-of-stream marker; END and PING: empty |
 
 All fields are little-endian. The 16-byte header keeps the payload start 8-aligned. The data worker
 reads headers straight out of the arena slab without copying ([T03 §5.2](T03-browser-runtime.md#52-bootstrap-and-the-network-byte-pump)).
-A frame may span `net_commit` chunks. The parser holds a cursor, and only a frame split across two
-slabs is stitched, which costs one small copy of at most the frame tail.
+A frame may span `net_commit` chunks. The parser holds a cursor; for a frame that spans two slabs
+only the payload is copied, once, into a new 64-aligned buffer at its body position mod 64
+(≤ 64 MiB); a frame inside one slab is never copied.
+
+**Alignment** (#68 Part B1). An IPC message at body offset `p` is `FF FF FF FF`, an `i32` length
+`L`, the flatbuffer `Message` (metadata version V5) zero-padded to `L`, then exactly `bodyLength`
+body bytes, where `L` is the least multiple of 8 not below the metadata length with
+`(p + 8 + L) ≡ 0 (mod 64)`. Every IPC body therefore starts at a multiple of 64 from response-body
+offset 0. Every `metric_matrix.grid/1` buffer starts at a multiple of 64 within its body; other
+buffers at multiples of 8. Frame lengths are multiples of 8. There is no body compression.
+
+**End and violations.** A body MUST end with `END`; a body that ends without it fails every part
+still open. A header violation (version, type, reserved field, `payload_len` above `MAX_PAYLOAD`)
+cannot be resynchronised and fails every open part. A stream-level `ERROR` on part 0 says the
+response is incomplete (the BFF writer refused a call).
 
 `error/1`:
 
 | Column | Type | Notes |
 |---|---|---|
-| `code` | `UInt8` | bad_query, too_broad, unauthorised, forbidden_scope, upstream_unavailable, timeout, cancelled, rate_limited, internal |
+| `code` | `UInt8` | 0 bad_query, 1 too_broad, 2 unauthorised, 3 forbidden_scope, 4 upstream_unavailable, 5 timeout, 6 cancelled, 7 rate_limited, 8 internal |
 | `http_status` | `UInt16` | upstream status (e.g. 422, 429) |
 | `message` | `Utf8` | |
 | `position` | `UInt32` nullable | byte offset into the query, for [T09](T09-query-editors.md) |
@@ -553,11 +586,11 @@ This single-row batch is sent as META twice per part: once `planned` before the 
 | Column | Type | Source today (fallback) |
 |---|---|---|
 | `phase` | `UInt8` | 0 planned, 1 partial, 2 final |
-| `exactness` | `UInt8` | 0 raw-exact, 1 rollup, 2 sampled, 3 estimated. From `X-Pulsus-Explain: 1` → `exactness` `"raw-exact"`/`"rollup"` (API headers, §3.6) |
+| `exactness` | `UInt8` | 0 raw-exact, 1 rollup, 2 sampled, 3 estimated, 4 unknown (the BFF did not ask). From `X-Pulsus-Explain: 1` → `exactness` `"raw-exact"`/`"rollup"` (API headers, §3.6); that header bypasses PulsusDB's read cache, so the BFF does not send it and reports 4 |
 | `rollup_level_s` | `UInt32` nullable | inferred from the range → level table (API §3.6) until reported directly |
 | `sampled_ratio` | `Float64` nullable | R2 response; TraceQL exemplar budgets |
 | `truncated` | `Boolean` | `warnings: ["results truncated due to limit"]` (§3.2); `truncated` on service graph (§4.5) and tags (§4.3). On paged log routes a `limit` hit gives a cursor, not `truncated`; `truncated` marks lines cut by the BFF (or PulsusDB's own flag or warning). A group of 5 000 or more entries at one nanosecond is a documented paging limit (owner decision Q5 of #65), not marked |
-| `truncation_reason` | `Dictionary(UInt8, Utf8)` nullable | `limit`, `series_cap` (500 per variant, §2.2), `edges_cap` (1 000 today), `max_nodes` (profiles), `tail_dropped` |
+| `truncation_reason` | `Utf8` nullable | `limit`, `series_cap` (500 per variant, §2.2), `edges_cap` (1 000 today), `max_nodes` (profiles), `tail_dropped` |
 | `dropped_count` | `UInt64` nullable | live tail `dropped_total` (§2.4); edges dropped |
 | `series_returned` | `UInt32` | counted by the BFF |
 | `rows_read`, `bytes_read` | `UInt64` nullable | `stats` where present (logs `stats.bytes`) |
@@ -565,15 +598,25 @@ This single-row batch is sent as META twice per part: once `planned` before the 
 | `retention_floor` | `Timestamp(ms)` nullable | e.g. the profiles look-back floor of 7 days (`PULSUS_PROFILES_MAX_QUERY_LOOKBACK`, §5) |
 | `excluded_dims` | `List(Utf8)` | cardinality-capped keys (compare, inventory); masked fields |
 | `warnings` | `List(Utf8)` | PulsusDB `warnings` verbatim |
-| `upstream_query_ids` | `List(FixedSizeBinary(16))` | `X-Pulsus-Query-Id` per upstream call |
-| `read_cache` | `UInt8` nullable | `X-Pulsus-Read-Cache` hit/miss/bypass (§3.2) |
+| `infos` | `List(Utf8)` | PulsusDB `infos` verbatim |
+| `upstream_query_ids` | `List(Utf8)` | `X-Pulsus-Query-Id` per upstream call (ids are 1–64 characters, `redact.go`) |
+| `read_cache` | `UInt8` nullable | `X-Pulsus-Read-Cache`: 0 hit, 1 miss, 2 bypass, 3 other (§3.2) |
+| `read_cache_through` | `Timestamp(ms)` nullable | `X-Pulsus-Read-Cache-Through`, when sent |
 | `data_end` | `Timestamp(ms)` nullable | newest sample instant in the part (freshness) |
 | `upstream_ms`, `convert_ms` | `UInt32` | BFF timings (RUM, explain view) |
 
 The browser merges `coverage/1` across the parts of a viewport, adds client facts (source ⚡ local or
 ☁ server, cache age, GPU tier, LOD reductions from T02-016) and emits `CoverageChanged` to the shell.
-The badge shows ✓ exact when every part is `final`, `raw-exact`, untruncated and has no excluded
-dimension; it shows "100 %" in that case, never an absent meter. Data age (now − `data_end`, or the
+**Completeness** (#68 Part B1; the same rule as T22-006's `100 %`). A part is *complete* when its
+last coverage is `final`, not truncated, `warnings` and `excluded_dims` are empty, `shards_failed`,
+`shards_skipped` and `dropped_count` are null or 0, `sampled_ratio` is null or 1, and
+`retention_floor` is null or ≤ the part's `dash.grid.requested_start_ms` (not the aligned
+`start_ms`, which can lie up to one step earlier than anything the user asked for). A floor after
+the requested start makes the part *retention-limited*: not complete, and the meter shows
+`limited by retention` ([VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport)).
+The meter shows "100 %" iff every part is complete, never an absent meter. Exactness only adds the
+✓ exact badge ([09 §6](../product/09-performance-contract.md#6-progressive-data-strategy)) when every
+part also has exactness 0; with 4 (unknown) the badge is ☁ server and the meter still shows "100 %". Data age (now − `data_end`, or the
 cache age) is the freshness indicator on every viewport. Requesting `X-Pulsus-Explain: 1` adds
 generated SQL to every PulsusDB response, so the BFF sets it only where it needs `exactness`, until
 R10 offers a cheaper flag.
@@ -633,10 +676,10 @@ Live tail budget: ingest → screen < 2 s (PRF-015, M-UI2), of which BFF re-fram
 **MUST** — The server MUST NOT send more than the granted credit on a subscription. Over credit it
 MUST coalesce metric updates or drop the oldest tail lines and report `dropped_count`.
 
-### 5.6 JSON → Arrow conversion in the BFF (R1 fallback)
+### 5.6 JSON → Arrow conversion in the BFF
 
 - **Parsing.** A streaming `encoding/json` token decoder with hand-written state machines, so no
-  generic tree is built. Value strings are parsed with `strconv.ParseFloat`. Builders flush a batch every 64 series. The
+  generic tree is built. Value strings are parsed with `strconv.ParseFloat`. The first batch holds one series and later ones ≤ 64 (§4.4). The
   matrix `result` array is consumed series by series, so the first batch is emitted before the
   upstream body ends.
 - **Parallelism.** Long ranges are time-split (§4.4) into k ≤ cores sub-requests. Each is parsed on
@@ -646,9 +689,9 @@ MUST coalesce metric updates or drop the oldest tail lines and report `dropped_c
 - **Traces and profiles** come as protobuf (`google.golang.org/protobuf`) into Arrow. That is cheaper than JSON because
   values are already binary.
 - **Budget** (native, per BFF core): ≥ 150 MB/s of Prometheus JSON, about 6 M points/s. 1 000 × 10 000
-  points with k = 4 → ≤ 450 ms added server time. This is the cost R1 removes, and the harness (§10)
-  measures it.
-- **Pass-through.** If R1 ships an Arrow stream, the BFF re-frames record batches as DSF without
+  points with k = 4 → ≤ 450 ms added server time. It is permanent (`bench:json-to-arrow`, T06); R1,
+  if PulsusDB ever offers it, would remove it.
+- **Pass-through.** If PulsusDB ever offers R1 (an Arrow stream), the BFF re-frames record batches as DSF without
   decoding values. It still validates the schema and rewrites `labels/1` for scope masking.
 
 ### 5.7 Zero-copy path from network to GPU
@@ -656,8 +699,8 @@ MUST coalesce metric updates or drop the oldest tail lines and report `dropped_c
 | Step | Thread | Copy? |
 |---|---|---|
 | Browser decompresses the body natively | browser net | (native) |
-| `reader.read()` chunk → `net_alloc` slab in the shared arena | data-k | **copy 1** (fetch never yields SAB-backed chunks, and BYOB readers cannot target a SharedArrayBuffer) |
-| DSF header parse; Arrow IPC decode with `Buffer::from_custom_allocation` over the slab | data-k | none |
+| `reader.read()` chunk → `net_alloc` slab in the shared arena | data-k | the browser's copy (fetch never yields SAB-backed chunks, and BYOB readers cannot target a SharedArrayBuffer) |
+| DSF header parse; Arrow IPC decode as slices of the slab; values and validity copied into the chunk's exact-size owned buffers; the slab released | data-k | **copy 1** (T04-015) |
 | Publish `Arc<Chunk>` | data-k | none |
 | Column ranges: u32 per (series, column) from f64 timestamps, recomputed on every window or plot-width change (one shared table for a grid chunk; no timestamp is uploaded) | pool | transform |
 | Encoded values: `u = (v − v_ref)·2^−exp` per value for the draw's encoding ([T02-014](T02-vis-engine.md#t02-014--precision-f64-on-the-cpu-f32-relative-to-an-encoding-origin); non-finite → gap bits), rebuilt only when the encoding changes, written in slices of ≤ 16 MiB | pool | transform (not a copy of the f64 data) |
@@ -691,8 +734,13 @@ buffers and column ranges plus a re-fetch key; (2) raw chunks of visible viewpor
 immediate parent.
 
 #### T04-015 — At most two copies on the network path
-**MUST** — Value data MUST be copied at most twice between the network and the GPU: once from the
-fetch chunk into the arena slab and once into GPU memory. Decode and publication MUST be zero-copy.
+**MUST** — Value data MUST be copied at most once from the network buffer into the chunk, plus once
+into GPU memory (the fetch chunk → wasm slab copy is the browser's). The decoder copies each
+published chunk's values and validity into exact-size owned buffers; slabs and the transient buffer
+of a frame that spans two slabs (≤ 64 MiB) are released as soon as their frames are decoded, so no
+chunk pins network memory. Trade-off: one extra memcpy of the values (≈ 0.8 GB at 10⁸ points) for a
+retained-memory bound of exactly the published values; `bench:decode-r1` reports the decode
+including that copy.
 
 #### T04-016 — Pressure degrades to rollups within 1 s
 **MUST** — Under arena pressure, data-0 MUST follow the eviction order above, and every affected
@@ -836,7 +884,9 @@ promised in R1; gate `bench:decode-r1`):
   ≤ J + gzip.
 
 **Decision procedure: Arrow vs columnar protobuf for the PulsusDB → BFF leg**
-([ADR-0005](../adr/0005-arrow-wire-format.md)). BFF → browser is Arrow from the engine on regardless (JSON frames before, §0).
+([ADR-0005](../adr/0005-arrow-wire-format.md)), run only if PulsusDB offers R1; until then the BFF
+converts JSON (§5.6). BFF → browser is Arrow from the engine on regardless (JSON frames before, §0).
+`bench:decode-r1` measures the A1 decode in the browser either way.
 
 1. Run the harness and record each metric for A1 and P.
 2. Compute the BFF cost per response for each: P needs transcoding to Arrow, while A1 passes through
@@ -860,7 +910,7 @@ the nightly storyboard run on any non-self-telemetry write (`e2e:no-pulsusdb-wri
 
 | Milestone | Ships |
 |---|---|
-| M-UI0 | DSF v1, `labels`, `metric_matrix.grid/sparse`, `coverage`, `error`; `/query` + cancel; R1 harness and decision. DSF v1 and `/query` + cancel land with #41 and #42 |
+| M-UI0 | DSF v1, `labels`, `metric_matrix.grid/sparse`, `coverage`, `error`; `/query` + cancel; R1 harness (A1 decode). DSF v1 and `/query` + cancel land with #41 and #42 |
 | M-UI1 | `log_lines` (LogQL stream panels, #49); `heatmap`; IDB `chunks` and `scenes` (show cached first); ranks and priorities; generations; time-split conversion; `events` from Postgres (annotations, alert transitions); Postgres virtual series in `metric_matrix.grid`; WS `live_metric` for LIVE charts |
 | M-UI2 | `log_patterns`, `trace_tree` + parts, `span_points` (fallback), `profile_flame(_diff)` (interim JSON until #68 Part B); WS `tail` |
 | M-UI3 | `entities`, `entity_edges`, `health_pyramid` (R4 or Postgres fallback), `compare`, PulsusDB change feed in `events`; WS `changes`; IDB `pyramids` |
@@ -883,14 +933,11 @@ support in the BFF for one release.
 
 ## 13. Open questions
 
-1. Does arrow-rs IPC decode with `FixedSizeList` children of 10⁴ length and a custom allocation stay
-   copy-free in practice? Verify in the harness.
-2. Delta dictionaries for live-tail label strings: worth it if verified in arrow-rs (§4.2).
-3. Should pyramids use `Float16` measures? WGSL `f16` needs the `shader-f16` feature, which is not
+1. Should pyramids use `Float16` measures? WGSL `f16` needs the `shader-f16` feature, which is not
    universal.
-4. Should we ask PulsusDB to add a cheap `exactness` response header without explain SQL (refining
+2. Should we ask PulsusDB to add a cheap `exactness` response header without explain SQL (refining
    R10)?
-5. `Content-Encoding: zstd` support across target browsers and through enterprise proxies. Fall back
+3. `Content-Encoding: zstd` support across target browsers and through enterprise proxies. Fall back
    to `br` or `gzip` per the client's `Accept-Encoding`.
 
 **Resolved during formalisation**
@@ -923,3 +970,4 @@ support in the BFF for one release.
 | 1.5-rc | 2026-11-22 | #65 Part B: §4.3 `log_lines/1` JSON image (streams by key ascending, `ts_ns` as decimal strings, `level` by name, optional `metadata` and `parsed`; the page window `(from, to]` in ns); §5.3 `truncated` row: a `limit` hit on paged log routes gives a cursor, and a group of 5 000 or more entries at one nanosecond is a documented limit |
 | 1.6-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §0 adds the event-marker row: until the engine, `AnnotationList` (JSON) is the image of `events/1` (`ts` → `at`, `end` → `end_at`, `title` → `text`, `attrs` → `tags`) |
 | 1.7-rc | 2026-11-24 | #152: §4.3 `profile_flame/1` adds the `parent` column (`Int32`, −1 for the root) and the interim-format note (JSON with decimal-string counts and explicit parent indices until #68 Part B, mapped in [T23 §5](T23-graph-trace-profile-and-hierarchy-panels.md#5-interfaces)); §5.2 `profile_merge` / `profile_diff` and §11 M-UI2 rows name the interim JSON |
+| 1.8-rc | 2026-11-25 | #68 Part B (owner direction 2026-11-25: PulsusDB is JSON-only; the BFF converts; no arrow-rs in the engine): §0 and §1 conversion committed, R1 optional; §2, §4.1, §5.7 the engine's own Arrow IPC reader (`dash-wire`); §4.2 `labels/1` strings `Utf8`, no dictionary in `labels/1`, `metric_matrix.grid/1`, `coverage/1`, `error/1`, the dictionary note reworded; §4.3 `labels/1` row rules and the grid metadata table (`dash.grid.requested_start_ms`, `len` 1 … 2²², `step_ms` > 0, `dash.labels_part`, `dash.planned`, null slot bits); §4.4 interleaving, first batch one series; §5.1 META/ERROR complete IPC streams, payload-only split-frame copy, alignment, END required, header violations, `error/1` codes; §5.3 completeness and retention rule (replaces ✓ exact ⇒ 100 %), `exactness` 4, `infos`, `read_cache` codes, `read_cache_through`, `truncation_reason: Utf8`, `upstream_query_ids: List(Utf8)`; T04-015 rewritten (one decode copy, nothing pinned); §5.6 retitled, pass-through only with R1; §10 decision procedure only with R1; §11 M-UI0 R1 harness (A1 decode); §13 Q1 and Q2 removed |

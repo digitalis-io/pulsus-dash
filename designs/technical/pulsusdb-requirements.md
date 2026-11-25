@@ -23,6 +23,10 @@
 > later data-scope rewrite (R12 fallback, M-UI6) parses queries is an open question for T10 (draft).
 > No ask changes priority.
 >
+> **Revision 6 (2026-11-25):** Dash converts PulsusDB's JSON to Arrow in the BFF as its committed
+> path (owner direction, [ADR-0005](../adr/0005-arrow-wire-format.md) as amended), so R1 drops from
+> P0 to **P2**: optional, nothing in Dash waits for it.
+>
 > **None of these block Pulsus Dash.** Every requirement has an interim fallback that the Dash
 > backend-for-frontend (BFF) implements first; PulsusDB support replaces the fallback when it lands,
 > usually with a large performance or fidelity gain. Priorities follow the Dash UI milestones
@@ -64,10 +68,12 @@
 
 Priority: **P0** = needed for M-UI0–2 performance targets · **P1** = M-UI3–4 (Atlas, RCA) · **P2** = later.
 
-### R1 (P0) — Columnar binary response format for bulk numeric results
+### R1 (P2, was P0) — Columnar binary response format for bulk numeric results
 
 **Why:** today's Prometheus-style JSON sends sample values as strings. Decoding 10⁷ of those in WASM
-blows the frame and memory budgets ([09](../product/09-performance-contract.md)). This is the single biggest perf item.
+blows the frame and memory budgets ([09](../product/09-performance-contract.md)). *(2026-11-25: Dash
+never decodes that JSON in the browser; the BFF converts it to Arrow, so R1 would save BFF CPU and
+latency only. Optional.)*
 
 **Scope:** `query_range` (PromQL, LogQL metric queries, TraceQL metrics), `volume`, `select_series`
 (profiles), and R2's scatter endpoint.
@@ -84,7 +90,7 @@ blows the frame and memory budgets ([09](../product/09-performance-contract.md))
 **< 50 ms** on an M2 laptop, with ≤ 1 copy of the value data; wire size after zstd ≤ JSON+gzip.
 We will share the benchmark harness from M-UI0.
 
-**Dash fallback:** the BFF parses JSON and re-encodes to Arrow (costs BFF CPU and adds latency, but the browser is fine).
+**Dash fallback (the committed path):** the BFF parses JSON and re-encodes to Arrow (`internal/arrowwire`; costs BFF CPU and adds latency, but the browser is fine).
 
 ### R2 (P0) — Span scatter points
 
@@ -291,7 +297,7 @@ the crates, validation goes through the BFF to PulsusDB, as it does before the W
 
 | # | Pri | Requirement | Dash fallback |
 |---|---|---|---|
-| R1 | P0 | Columnar binary bulk results | BFF JSON → Arrow |
+| R1 | P2 (optional; Dash converts in the BFF) | Columnar binary bulk results | BFF JSON → Arrow (committed) |
 | R2 | P0 | Span scatter points endpoint | Heatmap + brushed fetch |
 | R3 | P0 | Entity inventory | Label-values fan-out |
 | R10 | P0 | Uniform completeness metadata | Per-endpoint parsing |

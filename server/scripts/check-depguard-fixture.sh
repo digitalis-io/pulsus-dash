@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ci:go-lint depguard self-test (T05-002): each fixture uses a package outside the directory its
 # depguard or forbidigo rule allows, so the lint must fail with that rule's message (T11-023,
-# T06-001, T06-005, plan #62 §4.9; the language-module isolation of T06-028, plan #116 §3.6). The lint runs on a copy of server/ in a temporary directory;
+# T06-001, T06-005, plan #62 §4.9; the language-module isolation of T06-028, plan #116 §3.6; arrow-go only in internal/arrowwire, plan #68 B1). The lint runs on a copy of server/ in a temporary directory;
 # the checkout is never written.
 #
 # Usage: check-depguard-fixture.sh   (from any directory inside the repository)
@@ -40,6 +40,7 @@ check jsondecoder json_outside_updec.go.txt pulsusdb-decoder "pulsusdb-decoder: 
 check promInLogs prom_in_logs.go.txt logs-isolation "a language module imports no other language module (T06-028, ADR-0018 §3)" pulsusdb/logs
 check logsInProm logs_in_prom.go.txt prom-isolation "a language module imports no other language module (T06-028, ADR-0018 §3)" pulsusdb/prom
 check logsInCore logs_in_core.go.txt modules-from-callers "only the language modules' callers import a language module: internal/gateway today (T06-028, ADR-0018 §3, §4)" pulsusdb
+check arrow arrow_outside_arrowwire.go.txt arrow-only "arrow-go is used only in internal/arrowwire (ADR-0015, plan #68 B1)"
 check promInStore prom_in_store.go.txt modules-from-callers "only the language modules' callers import a language module: internal/gateway today (T06-028, ADR-0018 §3, §4)" store
 
 if [ "$(git -C "$ROOT" status --porcelain)" != "$before" ]; then
