@@ -51,21 +51,21 @@ func TestFixtures(t *testing.T) {
 			wantJSON = append(wantJSON, '\n')
 			dsf, exp := filepath.Join(fixtureDir, fx.name+".dsf"), filepath.Join(fixtureDir, fx.name+".expect.json")
 			if *update {
-				if err := os.WriteFile(dsf, body, 0o644); err != nil {
+				if err := os.WriteFile(dsf, body, 0o644); err != nil { // #nosec G306 -- a repository fixture
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(exp, wantJSON, 0o644); err != nil {
+				if err := os.WriteFile(exp, wantJSON, 0o644); err != nil { // #nosec G306 -- a repository fixture
 					t.Fatal(err)
 				}
 			}
-			committed, err := os.ReadFile(dsf)
+			committed, err := os.ReadFile(dsf) //nolint:gosec // fixture names are constants of the tests
 			if err != nil {
 				t.Fatalf("%v (run with -update to write the fixtures)", err)
 			}
 			if !bytes.Equal(committed, body) {
 				t.Errorf("%s: the writer's %d bytes differ from the committed %d", dsf, len(body), len(committed))
 			}
-			committedExp, err := os.ReadFile(exp)
+			committedExp, err := os.ReadFile(exp) //nolint:gosec // fixture names are constants of the tests
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -140,7 +140,7 @@ func buildCounter(t *testing.T) ([]byte, expectBody) {
 		series = append(series, s)
 		mustOK(t, p.Add(s))
 	}
-	final := CoverageFrom(rs.Completeness(), PhaseFinal, uint32(len(series)))
+	final := CoverageFrom(rs.Completeness(), PhaseFinal, uint32(len(series))) // #nosec G115 -- 2 series
 	mustOK(t, p.Finish(final))
 	mustOK(t, w.End())
 	return buf.Bytes(), expectBody{Parts: []expectPart{expectPartFor(spec, series, []Coverage{planned, final}, nil)}, Errors: []expectError{}}

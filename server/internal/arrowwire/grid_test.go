@@ -101,7 +101,7 @@ func TestWriterOrder(t *testing.T) {
 		for i := 0; i < c.series; i++ {
 			mustOK(t, p.Add(rampSeries(i, c.n)))
 		}
-		mustOK(t, p.Finish(Coverage{Phase: PhaseFinal, SeriesReturned: uint32(c.series)}))
+		mustOK(t, p.Finish(Coverage{Phase: PhaseFinal, SeriesReturned: uint32(c.series)})) // #nosec G115 -- ≤ 70
 		mustOK(t, w.End())
 		var flags uint16
 		if c.volatile {

@@ -58,7 +58,8 @@ func errorSchema() *arrow.Schema    { return error1 }
 
 // gridType is the values column of a grid of n points.
 func gridType(n int) *arrow.FixedSizeListType {
-	return arrow.FixedSizeListOfField(int32(n), arrow.Field{Name: "item", Type: f64, Nullable: true})
+	return arrow.FixedSizeListOfField(int32(n), // #nosec G115 -- n ≤ MaxGridLen = 2²²
+		arrow.Field{Name: "item", Type: f64, Nullable: true})
 }
 
 // gridSchema is the metric_matrix.grid/1 schema of s with n points; dash.unit and dash.planned

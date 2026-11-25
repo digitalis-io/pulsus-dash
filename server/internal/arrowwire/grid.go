@@ -61,7 +61,7 @@ func gridPoints(s GridSpec) (int, bool) {
 	if d%g.Step != 0 || d/g.Step >= MaxGridLen {
 		return 0, false
 	}
-	if s.RequestedStartMs < g.Start || uint64(s.RequestedStartMs)-uint64(g.Start) >= uint64(g.Step) {
+	if s.RequestedStartMs < g.Start || uint64(s.RequestedStartMs)-uint64(g.Start) >= uint64(g.Step) { // #nosec G115 -- ordered int64s: the unsigned difference cannot overflow; Step > 0
 		return 0, false
 	}
 	return int(d/g.Step) + 1, true
@@ -200,7 +200,7 @@ func (p *GridPart) commitBatches(f *frameSet) error {
 	if err := f.commit(); err != nil {
 		return err
 	}
-	p.sent += uint32(len(p.pending))
+	p.sent += uint32(len(p.pending)) // #nosec G115 -- a batch holds ≤ 64 series (or one frame of labels)
 	p.batches++
 	p.pending, p.pendLab = nil, 0
 	return nil
@@ -345,7 +345,7 @@ func stringColumn(vals []*string) arrow.Array {
 			valid[i/8] |= 1 << (i % 8)
 			data = append(data, *v...)
 		}
-		binary.LittleEndian.PutUint32(offsets[4*(i+1):], uint32(len(data)))
+		binary.LittleEndian.PutUint32(offsets[4*(i+1):], uint32(len(data))) // #nosec G115 -- Add keeps a labels batch ≤ MaxPayload < 2³¹
 	}
 	var validity *memory.Buffer
 	if nulls > 0 {

@@ -110,13 +110,12 @@ func toCoverageJSON(c Coverage) coverageJSON {
 }
 
 func toErrorJSON(e ErrorRow) errorJSON {
-	return errorJSON{Code: e.Code, HTTPStatus: e.HTTPStatus, Message: e.Message, Position: e.Position,
-		RetryAfterMs: e.RetryAfterMs, Suggestion: e.Suggestion}
+	return errorJSON(e)
 }
 
 func ptr[T any](v T) *T { return &v }
 
-func gridLen(g pulsusdb.Grid) uint32 { return uint32((g.End-g.Start)/g.Step + 1) }
+func gridLen(g pulsusdb.Grid) uint32 { return uint32((g.End-g.Start)/g.Step + 1) } // #nosec G115 -- test grids ≤ MaxGridLen
 
 // expectSeriesOf is the expectation of series sent in Add order (ids dense from 0).
 func expectSeriesOf(series []*pulsusdb.Series) []expectSeries {
@@ -472,9 +471,9 @@ func readBody(t *testing.T, b []byte) expectBody {
 		if v, _ := meta(t, s, "dash.schema"); v != "metric_matrix.grid/1" {
 			t.Fatalf("part %d schema %q", id, v)
 		}
-		p.LabelsPart = uint32(metaInt(t, s, "dash.labels_part"))
+		p.LabelsPart = uint32(metaInt(t, s, "dash.labels_part")) // #nosec G115 -- written as u32
 		p.Grid = expectGrid{StartMs: metaInt(t, s, "dash.grid.start_ms"), RequestedStartMs: metaInt(t, s, "dash.grid.requested_start_ms"),
-			StepMs: metaInt(t, s, "dash.grid.step_ms"), Len: uint32(metaInt(t, s, "dash.grid.len"))}
+			StepMs: metaInt(t, s, "dash.grid.step_ms"), Len: uint32(metaInt(t, s, "dash.grid.len"))} // #nosec G115 -- written as u32
 		p.Result, _ = meta(t, s, "dash.result")
 		p.Source, _ = meta(t, s, "dash.source")
 		if v, ok := meta(t, s, "dash.unit"); ok {

@@ -1,0 +1,3 @@
+package core
+
+import _ "github.com/apache/arrow-go/v18/arrow"

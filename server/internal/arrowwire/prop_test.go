@@ -47,7 +47,7 @@ func propValue(r *rand.Rand) string {
 
 // propMatrix is a seeded PulsusDB matrix body: 0–70 series of 1–300 points.
 func propMatrix(seed uint64) (body []byte, start time.Time, n int, step time.Duration) {
-	r := rand.New(rand.NewPCG(seed, 68))
+	r := rand.New(rand.NewPCG(seed, 68)) // #nosec G404 -- seeded test data, not security
 	series, n := r.IntN(71), 1+r.IntN(300)
 	step = time.Duration(1+r.IntN(60)) * time.Second
 	start = time.UnixMilli(1767225600000)
@@ -113,7 +113,7 @@ func propBody(t *testing.T, seed uint64) ([]byte, []*pulsusdb.Series) {
 		series = append(series, s)
 		mustOK(t, p.Add(s))
 	}
-	mustOK(t, p.Finish(CoverageFrom(rs.Completeness(), PhaseFinal, uint32(len(series)))))
+	mustOK(t, p.Finish(CoverageFrom(rs.Completeness(), PhaseFinal, uint32(len(series))))) // #nosec G115 -- ≤ 70 series
 	mustOK(t, w.End())
 	return buf.Bytes(), series
 }

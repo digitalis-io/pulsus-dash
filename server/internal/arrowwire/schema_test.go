@@ -106,7 +106,7 @@ func checkFormat(t *testing.T, key, format, v string, m yamlMeta) {
 		if format == "u32" {
 			var u uint64
 			u, err = strconv.ParseUint(v, 10, bits)
-			n = int64(u)
+			n = int64(u) // #nosec G115 -- u < 2³² (ParseUint with 32 bits)
 		} else {
 			n, err = strconv.ParseInt(v, 10, bits)
 		}
@@ -164,7 +164,7 @@ func TestSchemaYAML(t *testing.T) {
 		t.Fatalf("%d schema files, want %d", len(files), len(writer))
 	}
 	for _, f := range files {
-		raw, err := os.ReadFile(f)
+		raw, err := os.ReadFile(f) //nolint:gosec // the repository's wire/schemas files
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -202,7 +202,7 @@ func (s *frameSet) add(h Header, build func(*payloadBuf) error) error {
 	if n > MaxPayload {
 		return ErrFrameTooLarge
 	}
-	h.PayloadLen = uint32(n)
+	h.PayloadLen = uint32(n) // #nosec G115 -- n ≤ MaxPayload, checked above
 	AppendHeader(p.buf[:0], h)
 	s.frames = append(s.frames, p.buf)
 	s.off += int64(len(p.buf))
@@ -261,7 +261,7 @@ func (p *payloadBuf) message(pl *ipc.Payload) error {
 	for (pos+8+int64(l))%64 != 0 {
 		l += 8
 	}
-	hdr := binary.LittleEndian.AppendUint32([]byte{0xFF, 0xFF, 0xFF, 0xFF}, uint32(l))
+	hdr := binary.LittleEndian.AppendUint32([]byte{0xFF, 0xFF, 0xFF, 0xFF}, uint32(l)) // #nosec G115 -- l < metadata + 64 ≤ MaxPayload
 	for _, b := range [][]byte{hdr, meta.Bytes(), make([]byte, l-ml)} {
 		if _, err := p.Write(b); err != nil {
 			return err
