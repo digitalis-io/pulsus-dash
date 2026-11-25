@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-23 |
+| **Version** | 1.12-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -314,7 +314,7 @@ pixel at the same viewport size.
 | **Dialogs & sheets** | Native `<dialog>` with `showModal()` gives the focus trap, `inert` background and `Esc` for free. Sheets are non-modal side panels (the Inspector and AI dock use the dock host) | `dialog` / `complementary` |
 | **Toasts** | Queue of at most 3 visible, 6 s default, paused on hover or focus, and never the only carrier of an error that needs action (those stay inline). Announced through the live-region scheduler (§4.5) | `status` / `alert` |
 | **Command palette ⌘K** | §4.4.3 | `combobox` in a `dialog` |
-| **Inspector** | Floating, dockable, collapsible panel ([03](../product/03-interaction-model.md) INT-034), driven by `Selection`: labels/attributes, raw values, the underlying query (T09 highlighter, editable ✎), pivot chips, and actions (Pin to investigation, Create alert, Ask AI). Pinned and multiple inspectors in Correlate | `complementary` region |
+| **Inspector** | Floating, dockable, collapsible panel ([03](../product/03-interaction-model.md) INT-034), driven by `Selection`: labels/attributes, raw values, the underlying query (T09 highlighter, editable ✎), pivot chips, and actions (Pin to investigation, Create alert, Ask AI). Pinned and multiple inspectors in Correlate. The host, payload, selection, Esc ladder, pivots and look are [T25](T25-inspector-and-pivots.md); the dock host (VL-018) is not part of T25 | `complementary` region |
 | **Tooltips anchored to GPU marks** | §4.4.2 | `tooltip` (hover) or non-modal `dialog` (pinned) |
 | **Dock host** | IDE-style docking for the Inspector, AI dock and query editor (VL-018): split tree of `DockNode`s, drag handles, persisted per user per Perspective in `Prefs` | `region`s with headings |
 | **Restricted placeholder** | Replaces any object the principal cannot read: neutral shape, no title, "Request access" button that calls the T06 action API to notify the owning team (ENT-010). Disabled controls for missing permissions carry the same link (ENT-003) | `region` + `button` |
@@ -884,3 +884,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.9-rc | 2026-11-21 | #68: §4.7 token contract: the generator is `client/scripts/gen-tokens.ts` → `tokens.css`, `tokens.ts`, `tokens.rs`; colours authored as sRGB hex and emitted to `tokens.rs` as sRGB-encoded `Rgba8([u8; 4])`, the same bytes as CSS; the engine blends in sRGB-encoded space (T02 §4.2). Replaces linear-space `[f32; 4]` and `Lin([..])` |
 | 1.10-rc | 2026-11-21 | #93: §7 `bench:rooms-long-tasks` scenarios include chart gestures |
 | 1.11-rc | 2026-11-23 | #66 Part B: §4.4 v1 note: the M-UI1 log stream virtualises with `@tanstack/react-virtual` over a slice of ≤ 200 000 rows (fixed 20 px rows, measured with wrap), not the Fenwick table virtualiser |
+| 1.12-rc | 2026-11-25 | #164: §4.4 Inspector row links [T25](T25-inspector-and-pivots.md) (host, payload, selection, Esc ladder, pivots, look); the dock host (VL-018) is not part of T25 |
