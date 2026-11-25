@@ -44,13 +44,16 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
   },
 };
 
-async function seriousViolations(page: Page, state = ''): Promise<string[]> {
+async function seriousViolations(
+  page: Page,
+  state = '',
+  o: { include?: string; skip?: readonly string[] } = {},
+): Promise<string[]> {
   const engine = page.context().browser()?.browserType().name() ?? '';
-  const skip = ENGINE_SKIPS[engine]?.[state] ?? [];
-  const r = await new AxeBuilder({ page })
-    .withTags(TAGS)
-    .disableRules([...skip])
-    .analyze();
+  const skip = [...(ENGINE_SKIPS[engine]?.[state] ?? []), ...(o.skip ?? [])];
+  const include = o.include;
+  const builder = new AxeBuilder({ page }).withTags(TAGS).disableRules(skip);
+  const r = await (include === undefined ? builder : builder.include(include)).analyze();
   const out = r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
@@ -551,7 +554,16 @@ test.describe('e2e:a11y-rooms inspector', () => {
           await page.getByRole('button', { name: 'Collapse Inspector' }).click();
           await expect(page.locator('[data-inspector]')).toHaveAttribute('data-collapsed', '');
         }
-        expect(await seriousViolations(page)).toEqual([]);
+        // Under emulated forced colours axe pairs the authored text colour with the forced
+        // background, so its contrast rule reads every text as failing (the whole page does): the
+        // forced scan covers the sheet and every rule but colour-contrast, which dark and light check.
+        expect(
+          await seriousViolations(
+            page,
+            '',
+            theme === 'forced' ? { include: '[data-inspector]', skip: ['color-contrast'] } : {},
+          ),
+        ).toEqual([]);
         expect(await smallTargets(page)).toEqual([]);
       });
     }

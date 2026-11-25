@@ -6,7 +6,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { open } from './helpers.ts';
+import { waitReady } from './helpers.ts';
 
 const RUNS = 40;
 const BOARD = '/t/demo/board/b-1';
@@ -14,6 +14,7 @@ const BOARD = '/t/demo/board/b-1';
 declare global {
   interface Window {
     __inspectorDraws: number[];
+    __inspectorObserver?: PerformanceObserver;
   }
 }
 
@@ -26,13 +27,15 @@ function percentile(sorted: number[], p: number): number {
 async function draws(page: Page, id: string): Promise<number[]> {
   await page.evaluate((f) => {
     window.__inspectorDraws = [];
-    new PerformanceObserver((list) => {
+    window.__inspectorObserver?.disconnect();
+    window.__inspectorObserver = new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
         const detail = (e as PerformanceMeasure).detail as { frame?: string | null } | null;
         if (e.name === 'chart-draw' && detail?.frame === f)
           window.__inspectorDraws.push(e.duration);
       }
-    }).observe({ type: 'measure' });
+    });
+    window.__inspectorObserver.observe({ type: 'measure' });
   }, id);
   for (let i = 0; i < RUNS; i++) {
     await page.evaluate(
@@ -56,7 +59,9 @@ async function draws(page: Page, id: string): Promise<number[]> {
 
 test('bench:inspector-redraw (report only)', async ({ page }, info) => {
   test.setTimeout(60_000);
-  await open(page, BOARD);
+  // No fake clock: it replaces the page's User Timing methods (as perf-chart-redraw).
+  await page.goto(BOARD);
+  await waitReady(page, BOARD);
   const frame = page.locator('[data-panel-id="p-1"] [data-chart-frame][data-frame-ready="true"]');
   await frame.waitFor();
   const id = (await frame.getAttribute('data-frame-id')) ?? '';
