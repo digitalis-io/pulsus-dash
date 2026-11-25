@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-21 |
+| **Version** | 1.8-rc · 2026-11-25 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -601,8 +601,9 @@ decisions, `copy`) or a dedicated thread for latency (input) stay in JS.
   the helper with `rayon::ThreadPoolBuilder::spawn_handler` driven by the shim (§13, Q2).
 - **Build profile.** `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`. Core is optimised with
   `wasm-opt -O3`, satellites with `-Oz`. DWARF is split off and kept server-side to symbolicate RUM panics.
-- **Arrow.** Depend on `arrow-ipc`, `arrow-array`, `arrow-buffer`, `arrow-schema` and `arrow-data`
-  with default features off, not the `arrow` umbrella crate, to keep the compute kernels out of core.
+- **Arrow.** `dash-wire`'s own Arrow IPC reader for the v1 schemas (#68 Part B2); no arrow-rs crate
+  (owner 2026-11-25, licence: arrow-array pulls a CC0-1.0 crate on wasm32, outside the
+  [ADR-0014](../adr/0014-typescript-react-web-client.md) §7 set).
 
 #### T03-021 — Pool reductions are deterministic
 **MUST** — Anything that affects pixels or state MUST use indexed parallel iterators with fixed
@@ -705,7 +706,7 @@ Brotli sizes, checked per PR by gate `ci:bundle-size` ([PRF-009](../product/09-p
 |---|---|---|
 | shim (all files) | ≤ 8 KB | |
 | ~~`dash-shell.wasm` + glue~~ | — | Withdrawn; the application is budgeted as JS in ADR-0014 §8 |
-| `dash-core-mt.wasm` + glue | ≤ 1 900 KB | wgpu (WebGPU + GL), arrow-ipc, marks, scales, text shaping, planner, local engine |
+| `dash-core-mt.wasm` + glue | ≤ 1 900 KB | wgpu (WebGPU + GL), the `dash-wire` reader, marks, scales, text shaping, planner, local engine |
 | `dash-core-st.wasm` + glue | ≤ 1 900 KB | ST fallback (§9.2); loaded instead of core-mt when not isolated (not eager) |
 | **Eager total** | **≤ 2 600 KB** | 400 KB headroom below the 3 MB ceiling of [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) |
 | MSDF atlases (Inter + JetBrains Mono, Latin) | ≤ 250 KB | not WASM; other scripts lazy |
@@ -720,7 +721,7 @@ The artefact → path mapping is `ci/bundle-budgets.toml`: each WASM module is t
 `dash-wb-<workbench>` and `chrono-tz` slices `web/assets/tz/*.bin`, each measured separately;
 atlases are `web/assets/msdf/latin/`.
 
-wgpu, cosmic-text/rustybuzz and arrow-ipc are the size risks. M-UI0 measures each with `twiggy` and
+wgpu, cosmic-text/rustybuzz and the `dash-wire` reader are the size risks. M-UI0 measures each with `twiggy` and
 records the result in this table. A text stack over budget falls back to `rustybuzz` plus our own
 line layout without `cosmic-text`.
 
@@ -891,3 +892,4 @@ which forces a reload.
 | 1.5-rc | 2026-11-21 | #61 Part C: §4.6 the board pattern in the codec list adds `&f=…` (02 §4) |
 | 1.6-rc | 2026-11-21 | #90: `drawn` event (ADR-0019): §4.2 the engine events add `drawn` |
 | 1.7-rc | 2026-11-21 | #93: §4.4 value-axis range is chart view state |
+| 1.8-rc | 2026-11-25 | #68 Part B: §5.6 Arrow is `dash-wire`'s own Arrow IPC reader, no arrow-rs crate (owner decision, licence); §7.3 the size table and its risk sentence name the `dash-wire` reader |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-22 |
+| **Version** | 1.12-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -62,7 +62,7 @@ and the external API surface. Two components get their own documents: the scene 
 - Module boundaries are explicit Go interfaces, so in-process and remote (worker) placement are
   interchangeable without callers changing.
 - The p50 BFF overhead (excluding PulsusDB time) is ≤ 5 ms per physical query, and the JSON→Arrow
-  conversion (until R1) is ≤ 30 ms per 10⁶ points per core (§7).
+  conversion is ≤ 30 ms per 10⁶ points per core (§7).
 - The identity subset (OIDC login, sessions, built-in roles), delivered at M-UI6 (D12), is defined
   here, because T10 (draft) is not yet promoted (blocked on O1). Until then every request runs as a
   fixed local principal of the bootstrap org (§4.11); tenant binding is M-UI1.
@@ -354,20 +354,21 @@ size per (api replica, cluster) is 64 by default. This interacts with PulsusDB's
 (`PULSUS_CH_POOL_SIZE` 8 per process, `PULSUS_QUERY_EVAL_CONCURRENCY` 256), which the operator sizes
 together with the number of Dash replicas ([T19](T19-deployment.md)).
 
-**JSON→Arrow (until R1).** Streaming `simd-json`-style tape parsing straight into Arrow builders
+**JSON→Arrow.** *(2026-11-25, #68 Part B: the conversion is permanent, ADR-0005 as amended; the Go writer is `internal/arrowwire`, from the `pulsusdb.Series` decode.)* Streaming `simd-json`-style tape parsing straight into Arrow builders
 (`Int64Builder` timestamps, `Float64Builder` values, dictionary-encoded labels). The JSON is never
 materialised as a DOM. Prometheus string values are parsed with `lexical-core`. Each series becomes
 a record batch, flushed at 64k rows, so the browser starts painting before PulsusDB's body ends. The
 three buffered cases of T06-011 (a log page, a response whose `result` precedes `resultType`, the log
-volume aggregation) are the exceptions: they are decoded whole and bounded there. When R1 is
-negotiated (`Accept`), the converter is bypassed and batches pass through, re-chunked if necessary.
+volume aggregation) are the exceptions: they are decoded whole and bounded there. Pass-through only
+with R1: if PulsusDB ever offers R1 and it is negotiated (`Accept`), the converter is bypassed and
+batches pass through, re-chunked if necessary.
 
 #### T06-011 — Results are Arrow streams
 **MUST** — Client methods MUST return `ResultStream` (record batches plus a `Completeness` trailer),
 never untyped JSON values; the dated amendments below list the typed exceptions. *(2026-11-19, ADR-0014 §5: until the chart engine lands, the gateway
 serialises the batches as JSON frames for the TS client.)* *(2026-11-20, #62: until #68 the batch
 type is the Go-native `pulsusdb.Series`, the columns of `labels/1` + `metric_matrix.grid/1`, streamed one
-series at a time; Arrow Go builders arrive with the engine, #68.)* Until R1, the converter MUST stream: the first batch MUST leave
+series at a time; Arrow Go builders arrive with the engine, #68.)* The converter MUST stream: the first batch MUST leave
 the BFF ≤ 10 ms after PulsusDB's first byte, and batches MUST be flushed at ≤ 64k rows.
 *(2026-11-21, ADR-0018.)* The completion and metadata methods (series, label names, label values,
 metadata, runtime info) return typed, fully decoded results (§4.3), never untyped JSON values. They
@@ -988,3 +989,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.9-rc | 2026-11-22 | #65 Part A: T06-011 states the typed `LogQueryRange` (`*LogResult`: a `*LogPage` or a `ResultStream`) and `LogVolume` (`[]*Series` with its `Completeness`) returns, as in the §4.3 table of ADR-0018, and the bounds of the three buffered cases; the §4.3 converter paragraph and the §7 "JSON→Arrow conversion" row keep the 10 ms first-batch bound for streamed results and exempt only the three buffered cases |
 | 1.10-rc | 2026-11-22 | #65 Part B: §5.1 adds `POST /api/dash/v1/query/logql/{range,volume}` and `GET /api/dash/v1/logs/{labels,label/{name}/values,series}`; the log routes' time range ends at `maxLogTimeMs`; T06-029 note: `planned` is PromQL-only until `logs.Plan` (#116), so the LogQL bodies carry none |
 | 1.11-rc | 2026-11-22 | #116: T06-029 covers the LogQL range and volume routes (the #65 note is removed); §5.1 rows: the LogQL bodies carry `planned` (`LogqlPlannedQuery`) and the volume route answers `LogqlVolumeResponse`; T06-028 enforced by `depguard` (`logs-isolation`, `prom-isolation`, `modules-from-callers`) |
+| 1.12-rc | 2026-11-25 | #68 Part B (owner direction: PulsusDB is JSON-only, the BFF converts): T06-011 "Until R1, the converter MUST stream" → "The converter MUST stream"; §4.3 the JSON→Arrow conversion is permanent (`internal/arrowwire`) and pass-through applies only with R1; the goal on conversion cost drops "until R1" |
