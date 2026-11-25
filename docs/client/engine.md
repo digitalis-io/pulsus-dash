@@ -495,6 +495,13 @@ from validated offsets and lengths before the `Vec` or `String` it bounds is all
   per accepted schema (charged when the part keeps it; its memory goes with the part, the charge
   stays), per series label set (charged once, when the labels batch builds the `Arc`; chunks
   only clone it), per chunk, per coverage and per error row. Never refunded.
+- **Schemas before copying.** A schema's accounted size is computed from the verified,
+  still-borrowed flatbuffer and checked against the body budget left before any of its strings
+  is copied. A kept SCHEMA is then charged; the schema of a META or ERROR stream is only checked
+  (its row is charged). Past the budget, the stream fails with `Limit("body budget")`.
+- **Bounded diagnostics.** A `PartError::Schema` message quotes at most 64 bytes of the
+  offending value, cut at a UTF-8 boundary and escaped, the quote capped at 128 bytes, so a
+  failed part's diagnostic stays small whatever the input.
 - **Value budget.** Per chunk, its values and validity words (8 × values + 8 × ⌈values / 64⌉),
   charged before they are allocated.
 - **Part 0.** At most one stream-level ERROR; a second fails the stream (`Malformed("part 0")`).
@@ -536,7 +543,7 @@ from validated offsets and lengths before the `Vec` or `String` it bounds is all
 | `unit:arrow-alignment` (Rust) | `tests/arrow_alignment.rs` | every split point pins nothing; 8-but-not-64-aligned grid buffers and bodies are refused |
 | `unit:coverage-complete` (Rust) | `src/coverage.rs` | `complete`, `retention_limited` and `exact` |
 | `unit:limits-json` (Rust) | `src/limits.rs` | every limit, cost and reserve and `MAX_GRID_LEN` = `wire/schemas/limits.json` |
-| `unit:dsf-limits` | `tests/dsf_limits.rs` | the source, input and byte-pump bounds; open and distinct parts, rows, labels, META and ERROR strings, the body and value budgets on built bodies; every writer-valid `limits-*.dsf` fixture and `budget-over.dsf` |
+| `unit:dsf-limits` | `tests/dsf_limits.rs`, `tests/limits_alloc.rs` (counting allocator: near-budget schemas refused before copying, bounded diagnostics) | the source, input and byte-pump bounds; open and distinct parts, rows, labels, META and ERROR strings, the body and value budgets on built bodies; every writer-valid `limits-*.dsf` fixture and `budget-over.dsf` |
 | `ci:spec-lint` (`dash-wire-deps`) | `xtask/tests/spec_lint.rs` | `dash-wire` depends only on `thiserror` and `bytemuck` |
 
 The tests share a test kit (`tests/common/`) that reads and writes the Arrow flatbuffer tables
