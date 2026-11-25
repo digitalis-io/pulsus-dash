@@ -1,0 +1,14 @@
+# labels/1 (T04 §4.3; plan #68 B1 §3.1): the series dictionary of a response, one row per
+# (series, label) in label-name order, a series' rows contiguous; a series with no labels has one
+# row with both label columns null. Written by server/internal/arrowwire; checked by
+# unit:schema-yaml. Types: uint8|16|32|64, float64, bool, utf8, timestamp_ms (UTC), list<utf8>
+# (non-null items), fixed_size_list<T?>[key] (`?` = nullable child, length from metadata `key`).
+schema: labels/1
+fields:
+  - {name: series_id, type: uint32, nullable: false}
+  - {name: key_hash, type: uint64, nullable: false}
+  - {name: label_key, type: utf8, nullable: true}
+  - {name: label_value, type: utf8, nullable: true}
+metadata:
+  dash.schema: {required: true, format: "const:labels/1"}
+  dash.time_unit: {required: true, format: "const:ms"}

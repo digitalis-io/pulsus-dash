@@ -1,0 +1,19 @@
+# metric_matrix.grid/1 (T04 §4.3; plan #68 B1 §3.1): one row per series on the grid
+# start_ms + k·step_ms, k < len. A null value slot holds the bits 0x7FF8000000000000. Every
+# buffer of a batch starts at a body offset ≡ 0 (mod 64) (T04 §4.2).
+schema: metric_matrix.grid/1
+fields:
+  - {name: series_id, type: uint32, nullable: false}
+  - {name: values, type: "fixed_size_list<float64?>[dash.grid.len]", nullable: false}
+metadata:
+  dash.schema: {required: true, format: "const:metric_matrix.grid/1"}
+  dash.time_unit: {required: true, format: "const:ms"}
+  dash.grid.start_ms: {required: true, format: i64}            # the step-aligned grid start
+  dash.grid.requested_start_ms: {required: true, format: i64}  # start_ms ≤ it < start_ms + step_ms
+  dash.grid.step_ms: {required: true, format: i64, min: 1}
+  dash.grid.len: {required: true, format: u32, min: 1, max: 4194304}
+  dash.labels_part: {required: true, format: u32}              # the labels/1 part id
+  dash.result: {required: true, format: text, values: [metric, log_volume, log_rate, trace_metric, profile_series, virtual]}
+  dash.source: {required: true, format: text, values: [pulsusdb, postgres]}
+  dash.unit: {required: false, format: text}
+  dash.planned: {required: false, format: json}                # the route's planned object, byte-identical
