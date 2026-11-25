@@ -317,7 +317,7 @@ mod tests {
 
     fn read(m: &Msg) -> Result<(), IpcError> {
         let payload = kit::encode_pieces(&[Piece::M(m.clone())], P);
-        ipc::read_message(&SharedBytes::copy_from(&payload, P), P as u64, 0).map(|_| ())
+        ipc::read_message(&SharedBytes::copy_from(&payload, P), P as u64, 0, u64::MAX).map(|_| ())
     }
 
     fn run(body: &[u8]) -> Vec<Event> {

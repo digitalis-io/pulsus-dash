@@ -103,6 +103,10 @@ pub enum IpcError {
     Utf8,
     #[error("message, node or buffer count")]
     Messages,
+    /// A schema whose accounted size (B3 §3.1) is above the body budget left: refused before
+    /// any of its strings is copied.
+    #[error("schema past the body budget")]
+    Budget,
 }
 
 /// One decoded column; every slice is cut to its logical length.
@@ -258,11 +262,15 @@ impl Col {
 /// One encapsulated message at `at` in `payload`: `FF FF FF FF`, `i32 L` (0 < L, L ≡ 0 mod 8,
 /// in range), metadata, body of exactly `bodyLength`. The body's response-body offset
 /// `payload_offset + at + 8 + L` must be ≡ 0 (mod 64), and `L` the least such value for the
-/// flatbuffer's length (B1 §3.2), with zero padding. Returns the message and the offset after it.
+/// flatbuffer's length (B1 §3.2), with zero padding. A Schema whose accounted size (256 + field
+/// names + metadata keys and values, B3 §3.1) is above `allowance` is `Budget`, found from the
+/// verified borrowed metadata before any string is copied. Returns the message and the offset
+/// after it.
 pub(crate) fn read_message(
     payload: &SharedBytes,
     payload_offset: u64,
     at: usize,
+    allowance: u64,
 ) -> Result<(Msg, usize), IpcError> {
     let p = payload.as_bytes();
     let head = at.checked_add(8).ok_or(IpcError::Bounds)?;
@@ -333,7 +341,12 @@ pub(crate) fn read_message(
     // Pass 2: only now are strings and vectors copied out of the verified metadata.
     let mut budget = meta.len();
     let msg = match (msg, batch) {
-        (Some(s), _) => Msg::Schema(own_schema(s, &mut budget)?),
+        (Some(s), _) => {
+            if raw_schema_cost(&s) > allowance {
+                return Err(IpcError::Budget);
+            }
+            Msg::Schema(own_schema(s, &mut budget)?)
+        }
         (None, Some((length, nodes, buffers))) => Msg::Batch {
             length,
             nodes: pairs(nodes),
@@ -380,6 +393,26 @@ fn schema<'a>(t: &Table<'a>) -> Result<RawSchema<'a>, IpcError> {
         metadata.push((k, v));
     }
     Ok(RawSchema { fields, metadata })
+}
+
+fn raw_names(f: &RawField<'_>) -> u64 {
+    let own = f.name.len() as u64;
+    match &f.ty {
+        RawTy::Leaf(_) => own,
+        RawTy::List(c) | RawTy::Fsl(_, c) => own + raw_names(c),
+    }
+}
+
+/// The accounted size of a verified, still borrowed schema: equal to `limits::schema_cost` of
+/// its owned copy.
+fn raw_schema_cost(s: &RawSchema<'_>) -> u64 {
+    let fields: u64 = s.fields.iter().map(raw_names).sum();
+    let meta: u64 = s
+        .metadata
+        .iter()
+        .map(|(k, v)| (k.len() + v.len()) as u64)
+        .sum();
+    crate::limits::cost::SCHEMA + fields + meta
 }
 
 /// Pass 2, after `Fb::finish`: copies the strings and checks their UTF-8. Because no two

@@ -109,33 +109,47 @@ const EOS: [u8; 8] = [0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0];
 // ---------------------------------------------------------------------------------------------
 // Payloads
 
+/// `IpcError::Budget` (a schema past the body budget) is the stream-level body budget limit.
 fn ipc_err(e: IpcError) -> PartError {
-    PartError::Ipc(e)
+    match e {
+        IpcError::Budget => PartError::Limit(BODY_BUDGET),
+        e => PartError::Ipc(e),
+    }
 }
 
-/// A SCHEMA/BATCH payload: exactly one message ending at the payload end.
-fn one_message(f: &Frame) -> Result<Msg, PartError> {
-    let (m, end) = ipc::read_message(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
+/// The limit names that fail the stream rather than the part.
+const BODY_BUDGET: &str = "body budget";
+const VALUE_BUDGET: &str = "value budget";
+
+/// A SCHEMA/BATCH payload: exactly one message ending at the payload end. A schema message
+/// above `allowance` (the body budget left) is refused before its strings are copied.
+fn one_message(f: &Frame, allowance: u64) -> Result<Msg, PartError> {
+    let (m, end) =
+        ipc::read_message(&f.payload, f.payload_offset, 0, allowance).map_err(ipc_err)?;
     if end != f.payload.len() {
         return Err(ipc_err(IpcError::Messages));
     }
     Ok(m)
 }
 
-fn one_schema(f: &Frame) -> Result<SchemaDesc, PartError> {
-    match one_message(f)? {
+fn one_schema(f: &Frame, allowance: u64) -> Result<SchemaDesc, PartError> {
+    match one_message(f, allowance)? {
         Msg::Schema(s) => Ok(s),
         Msg::Batch { .. } => Err(ipc_err(IpcError::Messages)),
     }
 }
 
-/// A META/ERROR payload: schema, one-row batch, EOS; checked against `kind`; its columns.
-fn stream(f: &Frame, kind: Kind) -> Result<Vec<Col>, PartError> {
-    let (schema, at) = ipc::read_message(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
+/// A META/ERROR payload: schema, one-row batch, EOS; checked against `kind`; its columns. Its
+/// schema is not kept (the row is charged instead), but one above `allowance` is refused before
+/// its strings are copied.
+fn stream(f: &Frame, kind: Kind, allowance: u64) -> Result<Vec<Col>, PartError> {
+    let (schema, at) =
+        ipc::read_message(&f.payload, f.payload_offset, 0, allowance).map_err(ipc_err)?;
     let Msg::Schema(schema) = schema else {
         return Err(ipc_err(IpcError::Messages));
     };
-    let (batch, at) = ipc::read_message(&f.payload, f.payload_offset, at).map_err(ipc_err)?;
+    let (batch, at) =
+        ipc::read_message(&f.payload, f.payload_offset, at, allowance).map_err(ipc_err)?;
     if !matches!(batch, Msg::Batch { .. }) {
         return Err(ipc_err(IpcError::Messages));
     }
@@ -257,8 +271,6 @@ pub struct BodyDecoder {
     /// Body and value budget used (§3.1 accounting; charged once, never refunded).
     used: u64,
     values: u64,
-    /// A budget charge failed: the current frame fails the stream, not its part.
-    over: Option<&'static str>,
 }
 
 impl BodyDecoder {
@@ -282,7 +294,6 @@ impl BodyDecoder {
             seen_parts: 0,
             used: 0,
             values: 0,
-            over: None,
         }
     }
 
@@ -295,6 +306,11 @@ impl BodyDecoder {
         self.parts.values().filter(|p| p.state.open()).count()
     }
 
+    /// The body budget left: the most a schema may account for before it is copied.
+    fn allowance(&self) -> u64 {
+        self.limits.body_budget.saturating_sub(self.used)
+    }
+
     /// Charges `n` bytes to the body budget; past it, the frame fails the stream.
     fn charge(&mut self, n: u64) -> Result<(), PartError> {
         match self.used.checked_add(n) {
@@ -302,10 +318,7 @@ impl BodyDecoder {
                 self.used = u;
                 Ok(())
             }
-            _ => {
-                self.over = Some("body budget");
-                Err(PartError::Limit("body budget"))
-            }
+            _ => Err(PartError::Limit(BODY_BUDGET)),
         }
     }
 
@@ -316,16 +329,13 @@ impl BodyDecoder {
                 self.values = u;
                 Ok(())
             }
-            _ => {
-                self.over = Some("value budget");
-                Err(PartError::Limit("value budget"))
-            }
+            _ => Err(PartError::Limit(VALUE_BUDGET)),
         }
     }
 
     /// A META payload: its string and list limits (part `Limit`), its charge, then its row.
     fn meta_coverage(&mut self, f: &Frame) -> Result<Coverage, PartError> {
-        let cols = stream(f, Kind::Coverage)?;
+        let cols = stream(f, Kind::Coverage, self.allowance())?;
         let (strings, elements) = coverage::coverage_counts(&cols)?;
         if elements > self.limits.meta_list_elements {
             return Err(PartError::Limit("meta list elements"));
@@ -339,7 +349,7 @@ impl BodyDecoder {
 
     /// An ERROR payload: its string limit (part `Limit`), its charge, then its row.
     fn meta_error(&mut self, f: &Frame) -> Result<ErrorRow, PartError> {
-        let cols = stream(f, Kind::Error)?;
+        let cols = stream(f, Kind::Error, self.allowance())?;
         let strings = coverage::error_counts(&cols)?;
         if strings > self.limits.meta_string_bytes {
             return Err(PartError::Limit("error string bytes"));
@@ -406,7 +416,6 @@ impl BodyDecoder {
                     return vec![Event::Upstream { part: 0, error }];
                 }
                 Err(PartError::Limit(what)) => {
-                    self.over = None;
                     return self.fail_stream(DsfError::Limit(what));
                 }
                 Err(_) => {}
@@ -428,8 +437,7 @@ impl BodyDecoder {
                 return self.fail_stream(DsfError::Limit("distinct parts"));
             }
             if self.charge(limits::cost::PART).is_err() {
-                self.over = None;
-                return self.fail_stream(DsfError::Limit("body budget"));
+                return self.fail_stream(DsfError::Limit(BODY_BUDGET));
             }
             self.seen_parts += 1;
         }
@@ -461,9 +469,8 @@ impl BodyDecoder {
                     p.state = next;
                 }
             }
-            Err(_) if self.over.is_some() => {
+            Err(PartError::Limit(what)) if what == BODY_BUDGET || what == VALUE_BUDGET => {
                 // A budget: the stream fails, this part with every other open part.
-                let what = self.over.take().unwrap_or("budget");
                 if let Some(p) = self.parts.get_mut(&id) {
                     p.state = State::New;
                 }
@@ -489,7 +496,7 @@ impl BodyDecoder {
                 if last {
                     return Err(PartError::Order("SCHEMA with LAST"));
                 }
-                let schema = one_schema(f)?;
+                let schema = one_schema(f, self.allowance())?;
                 check_schema(&schema, Kind::Labels, false)?;
                 self.charge(limits::schema_cost(&schema))?;
                 Ok(State::LabelsOpen(Box::new(Labels {
@@ -519,7 +526,7 @@ impl BodyDecoder {
                 Ok(State::Done)
             }
             (State::LabelsOpen(mut l), FrameType::Batch) => {
-                let msg = one_message(f)?;
+                let msg = one_message(f, self.allowance())?;
                 let cols = ipc::columns(&l.schema, &msg).map_err(ipc_err)?;
                 let (rows, bytes, cost) = labels_counts(&cols)?;
                 if rows > self.limits.rows_per_batch_labels {
@@ -547,7 +554,7 @@ impl BodyDecoder {
                 if last {
                     return Err(PartError::Order("SCHEMA with LAST"));
                 }
-                let schema = one_schema(f)?;
+                let schema = one_schema(f, self.allowance())?;
                 check_schema(&schema, Kind::Grid, false)?;
                 let (info, labels_part) = grid_info(&schema)?;
                 self.check_link(id, labels_part, h)?;
@@ -761,7 +768,7 @@ impl BodyDecoder {
         {
             return Err(PartError::Order("labels part failed"));
         }
-        let msg = one_message(f)?;
+        let msg = one_message(f, self.allowance())?;
         let cols = ipc::columns(&d.schema, &msg).map_err(ipc_err)?;
         let (ids, vals) = match cols.as_slice() {
             [ids, vals] => (ids, vals),
