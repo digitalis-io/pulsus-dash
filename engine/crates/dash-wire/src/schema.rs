@@ -148,6 +148,35 @@ pub(crate) fn schema_err(s: impl Into<String>) -> PartError {
     PartError::Schema(s.into())
 }
 
+/// The most input bytes a diagnostic quotes, and the most bytes of its escaped quote.
+const SNIPPET_INPUT: usize = 64;
+const SNIPPET_ESCAPED: usize = 128;
+
+/// A bounded quote of untrusted input for a diagnostic (B3 review r1): at most 64 bytes of `s`,
+/// cut at a UTF-8 boundary, Debug-escaped, the escaped text capped at 128 bytes, `…` when cut.
+/// A diagnostic is then at most a fixed text plus 134 bytes, whatever the input.
+pub(crate) fn snippet(s: &str) -> String {
+    let mut k = s.len().min(SNIPPET_INPUT);
+    while !s.is_char_boundary(k) {
+        k -= 1;
+    }
+    let mut out = String::with_capacity(SNIPPET_ESCAPED + 6);
+    out.push('"');
+    let mut cut = k < s.len();
+    for c in s.get(..k).unwrap_or_default().escape_debug() {
+        if out.len() + c.len_utf8() > SNIPPET_ESCAPED {
+            cut = true;
+            break;
+        }
+        out.push(c);
+    }
+    if cut {
+        out.push('…');
+    }
+    out.push('"');
+    out
+}
+
 /// Checks `s` is exactly B1 §3.1's `expect` schema: id and major (T04-002), the exact key set,
 /// `dash.time_unit`, and the exact columns. In META/ERROR payloads (`in_stream`) another valid
 /// schema id is a closed-set violation (`Value("dash.schema")`).
@@ -157,28 +186,28 @@ pub(crate) fn check_schema(s: &SchemaDesc, expect: Kind, in_stream: bool) -> Res
         .ok_or_else(|| schema_err("dash.schema missing"))?;
     let (name, major) = id
         .rsplit_once('/')
-        .ok_or_else(|| schema_err(format!("schema id {id:?}")))?;
+        .ok_or_else(|| schema_err(format!("schema id {}", snippet(id))))?;
     let kind = [Kind::Labels, Kind::Grid, Kind::Coverage, Kind::Error]
         .into_iter()
         .find(|k| k.name() == name)
-        .ok_or_else(|| schema_err(format!("unknown schema {name:?}")))?;
+        .ok_or_else(|| schema_err(format!("unknown schema {}", snippet(name))))?;
     if major != "1" {
-        return Err(schema_err(format!("{name} major {major:?}")));
+        return Err(schema_err(format!("{name} major {}", snippet(major))));
     }
     if kind != expect {
         return Err(if in_stream {
             PartError::Value("dash.schema")
         } else {
-            schema_err(format!("expected {}/1, got {id}", expect.name()))
+            schema_err(format!("expected {}/1, got {}", expect.name(), snippet(id)))
         });
     }
     let mut seen = BTreeSet::new();
     for (k, _) in &s.metadata {
         if !seen.insert(k.as_str()) {
-            return Err(schema_err(format!("duplicate key {k:?}")));
+            return Err(schema_err(format!("duplicate key {}", snippet(k))));
         }
         if !kind.required().contains(&k.as_str()) && !kind.optional().contains(&k.as_str()) {
-            return Err(schema_err(format!("unknown key {k:?}")));
+            return Err(schema_err(format!("unknown key {}", snippet(k))));
         }
     }
     if let Some(k) = kind.required().iter().find(|k| !seen.contains(**k)) {
@@ -258,4 +287,27 @@ pub(crate) fn grid_info(s: &SchemaDesc) -> Result<(GridInfo, u32), PartError> {
         },
         labels_part,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::snippet;
+
+    #[test]
+    fn snippets_are_bounded_and_valid() {
+        assert_eq!(snippet("labels"), "\"labels\"");
+        for s in [
+            "a".repeat(1 << 20),
+            "\u{1}".repeat(1 << 16),
+            "é".repeat(1 << 16),
+            "\"\\\n".repeat(1000),
+        ] {
+            let q = snippet(&s);
+            assert!(q.len() <= 128 + 3 + 2, "{} bytes", q.len());
+            assert!(q.ends_with("…\""), "{q}");
+        }
+        // 63 ASCII bytes then "é": cut before the é, never inside it.
+        let s = format!("{}é", "a".repeat(63));
+        assert_eq!(snippet(&s), format!("\"{}…\"", "a".repeat(63)));
+    }
 }
