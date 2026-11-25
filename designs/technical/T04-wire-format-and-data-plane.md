@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-25 |
+| **Version** | 1.9-rc · 2026-11-25 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness (A1 decode)) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -168,7 +168,9 @@ only for requests and for config/CRUD.
 
 #### T04-002 — Schema identity and evolution
 **MUST** — Every schema MUST carry `dash.schema = "<name>/<major>"`. Minor versions MUST be additive
-(new nullable columns or metadata only). The browser MUST reject an unknown major.
+(new nullable columns or metadata only). The browser MUST reject an unknown major. The engine
+reader accepts exactly the columns and metadata keys of its schema version; a minor that adds a
+column or key ships together with the reader that knows it.
 
 #### T04-003 — Dictionaries once, before use
 **MUST** — Every dictionary MUST be emitted once per stream before the first batch that references it.
@@ -971,3 +973,4 @@ support in the BFF for one release.
 | 1.6-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §0 adds the event-marker row: until the engine, `AnnotationList` (JSON) is the image of `events/1` (`ts` → `at`, `end` → `end_at`, `title` → `text`, `attrs` → `tags`) |
 | 1.7-rc | 2026-11-24 | #152: §4.3 `profile_flame/1` adds the `parent` column (`Int32`, −1 for the root) and the interim-format note (JSON with decimal-string counts and explicit parent indices until #68 Part B, mapped in [T23 §5](T23-graph-trace-profile-and-hierarchy-panels.md#5-interfaces)); §5.2 `profile_merge` / `profile_diff` and §11 M-UI2 rows name the interim JSON |
 | 1.8-rc | 2026-11-25 | #68 Part B (owner direction 2026-11-25: PulsusDB is JSON-only; the BFF converts; no arrow-rs in the engine): §0 and §1 conversion committed, R1 optional; §2, §4.1, §5.7 the engine's own Arrow IPC reader (`dash-wire`); §4.2 `labels/1` strings `Utf8`, no dictionary in `labels/1`, `metric_matrix.grid/1`, `coverage/1`, `error/1`, the dictionary note reworded; §4.3 `labels/1` row rules and the grid metadata table (`dash.grid.requested_start_ms`, `len` 1 … 2²², `step_ms` > 0, `dash.labels_part`, `dash.planned`, null slot bits); §4.4 interleaving, first batch one series; §5.1 META/ERROR complete IPC streams, payload-only split-frame copy, alignment, END required, header violations, `error/1` codes; §5.3 completeness and retention rule (replaces ✓ exact ⇒ 100 %), `exactness` 4, `infos`, `read_cache` codes, `read_cache_through`, `truncation_reason: Utf8`, `upstream_query_ids: List(Utf8)`; T04-015 rewritten (one decode copy, nothing pinned); §5.6 retitled, pass-through only with R1; §10 decision procedure only with R1; §11 M-UI0 R1 harness (A1 decode); §13 Q1 and Q2 removed |
+| 1.9-rc | 2026-11-25 | #68 Part B2: T04-002 adds the engine reader rule (exactly the columns and metadata keys of its schema version; a minor that adds a column or key ships with the reader that knows it) |

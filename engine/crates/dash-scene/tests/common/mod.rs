@@ -14,7 +14,7 @@ pub fn chunk_of(values: &[f64]) -> Chunk {
     let ts: Vec<f64> = (0..values.len()).map(|k| T0 + 1000.0 * k as f64).collect();
     let meta = SeriesMeta {
         key_hash: 0x0123_4567_89ab_cdef,
-        labels: vec![("pod".into(), "a".into())],
+        labels: vec![("pod".into(), "a".into())].into(),
     };
     if let Err(e) = b.push_series(meta, Some(&ts), values) {
         panic!("{e}");

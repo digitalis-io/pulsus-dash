@@ -22,7 +22,7 @@ pub struct RefFixture {
 fn meta(s: usize) -> SeriesMeta {
     SeriesMeta {
         key_hash: s as u64,
-        labels: vec![("s".into(), s.to_string())],
+        labels: vec![("s".into(), s.to_string())].into(),
     }
 }
 

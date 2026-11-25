@@ -4,7 +4,7 @@
 messages framed as Dash Stream Frames (DSF). PulsusDB answers only in JSON, so the BFF converts
 them. This is the committed path; it needs nothing from PulsusDB
 ([ADR-0005](../../designs/adr/0005-arrow-wire-format.md)). The browser's chart engine reads the
-result with its own Arrow IPC reader, which is #68 Part B2.
+result with its own Arrow IPC reader ([Reader](#reader), #68 Part B2).
 
 No route uses the writer yet. Part D of #68 serves it on the query routes when the request's
 `Accept` is `application/vnd.pulsus.dash-stream;v=1` (`arrowwire.ContentType`). Until then the
@@ -202,7 +202,34 @@ and has `retention_floor` null or at most `dash.grid.requested_start_ms`.
 - `✓ exact` additionally needs exactness 0 on every part. With exactness 4 the badge is
   `☁ server`.
 
-The browser's decoder makes this decision (Part B2).
+The engine decides this with `Coverage::complete`, `retention_limited` and `exact` against the
+part's `GridInfo.requested_start_ms`. The result stays provisional until the body's
+`Verdict` ([Chart engine](../client/engine.md#end-of-input-and-the-verdict)).
+
+## Reader
+
+The engine reads these bodies with `dash-wire`'s own Arrow IPC reader, not arrow-rs. The reader
+is described on the [Chart engine](../client/engine.md#wire-decoding-dash-wire) page. It accepts
+exactly what this writer emits, so a writer change must stay inside these limits or ship
+together with a reader change:
+
+- **Messages.** Schema and RecordBatch messages with metadata version V5, little-endian. No
+  DictionaryBatch, no dictionary-encoded field, no body compression, no variadic buffers.
+- **Metadata.** No custom metadata on messages or fields, and no schema features.
+- **Types.** `uint8/16/32/64` (unsigned), `float64`, `bool`, `utf8`, `timestamp_ms` in `"UTC"`,
+  `list<utf8>` and `fixed_size_list<float64?>`.
+- **Schemas.** Exactly the four v1 schemas, with their columns in order and their metadata keys,
+  and no others. An added column is refused as `Unsupported("column")`
+  ([T04-002](../../designs/technical/T04-wire-format-and-data-plane.md#t04-002--schema-identity-and-evolution)).
+- **Layout.** The flatbuffer as `Builder.Finish` writes it: forward non-zero references, aligned,
+  no overlapping objects, the minimal `L` and zero padding. Every buffer is 8-aligned, and every
+  grid buffer 64-aligned, in body order and non-overlapping. Offsets start at 0. Every unused
+  body byte is 0.
+- **Frames.** Payload lengths are multiples of 8. Each SCHEMA and BATCH payload holds one
+  message. Each META and ERROR payload holds the schema, one row and the EOS marker.
+
+The committed fixtures pass every rule. `unit:codec-roundtrip` (Rust) decodes all five fixtures
+to their `.expect.json`, so a writer change that breaks a rule fails on both sides.
 
 ## Golden fixtures
 
