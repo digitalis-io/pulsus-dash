@@ -203,6 +203,22 @@ fn byte_pump_copies_out_of_a_larger_buffer() {
     ev.extend(d.finish());
     // The counter's events are its .expect.json (unit:codec-roundtrip).
     assert!(same(&ev, &run(&c, 1)), "{ev:?}");
+
+    // With 4 KiB slabs the same bytes come out as many slabs, none with a larger backing.
+    let mut s = FrameSplitter::new();
+    let mut d = BodyDecoder::new(1);
+    let mut ev = Vec::new();
+    let mut n = 0;
+    for slab in slabs_from(&big[4096..4096 + c.len()], 0, 4096) {
+        assert!(slab.backing_len() <= 4096, "{}", slab.backing_len());
+        n += 1;
+        assert_eq!(s.push(slab), Ok(()));
+        drain(&mut s, &mut d, &mut ev);
+    }
+    assert_eq!(n, c.len().div_ceil(4096));
+    assert_eq!(s.finish(), Ok(()));
+    ev.extend(d.finish());
+    assert!(same(&ev, &run(&c, 1)));
 }
 
 #[test]
@@ -299,8 +315,13 @@ fn ping_frames_keep_no_state() {
     let frames: Vec<F> = (0..100_000)
         .map(|_| F::raw(PING, 0, 0, 0, Vec::new()))
         .collect();
+    // One open labels part first, so retained() has state for the PINGs not to change.
     let mut d = BodyDecoder::new(1);
+    let schema = empty_frames()[0].clone();
+    assert!(feed(&mut d, frames_of(&encode(&[schema])), |_, _, _| {}).is_empty());
     let before = d.retained();
+    assert_eq!((before.0, before.1), (1, 1));
+    assert!(before.2 > cost::PART);
     let ev = feed(&mut d, frames_of(&encode(&frames)), |_, _, _| {});
     assert!(ev.is_empty());
     assert_eq!(d.retained(), before);
@@ -632,11 +653,7 @@ fn shared_labels_cost_once() {
             let ev = d.frame(retarget(f, p, u64::from(p - 2) * span));
             assert!(no_failure(&ev), "part {p}: {ev:?}");
             if k == 2 {
-                assert_eq!(
-                    d.retained().2 - before,
-                    cost::BATCH + cost::BATCH_SERIES * 64,
-                    "part {p}"
-                );
+                assert_eq!(d.retained().2 - before, 64 + 32 * 64, "part {p}");
                 let Some(Event::Chunk { chunk, .. }) = ev.first() else {
                     panic!("part {p}: no chunk")
                 };
