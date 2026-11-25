@@ -957,8 +957,8 @@ renders with the listed notes (e.g. markers cluster at low zoom and separate whe
 
 *Staging (#184, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-091--camera-and-picking)):*
 step 1b ships the Markers row in the 2D geomap: size and colour from fields, a symbol per panel, text
-labels and clustering, with at most 5 000 drawn markers (the 10⁵ target follows the wgpu renderer,
-#68); symbol and rotation from fields follow with part G (#186). The acceptance is unchanged.
+labels and clustering, with at most 5 000 drawn markers (the T22-006 cap, disclosed by the coverage
+meter); symbol and rotation from fields follow with part G (#186). The acceptance is unchanged.
 
 #### VIZ-045 — Location sources
 **MUST** · M-UI3 · NOC, Platform
