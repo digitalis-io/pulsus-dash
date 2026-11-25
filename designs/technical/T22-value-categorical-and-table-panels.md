@@ -144,7 +144,7 @@ Quoted n/a lines are tooltip text.
 |---|---|---|
 | 11 | *reduced categories*: 2 ≤ N ≤ 50 series (any number of varying label keys; names follow T22-005), and either an instant vector or a range result on a panel with an explicit `options.reducer` | `pie` if (`options.parts` or `planned.partition`), N ≤ 6, every value ≥ 0 and total > 0; else `barchart` (always `barchart` until I3 ships) |
 
-Rows 5, 6 and 7 still come first: a histogram gives a heatmap, a rate rewrite a line, and a single value a stat. A range result without a `reducer` falls through to row 14 (line). Row 7 stays `stat`; #165 adds bullet.
+Rows 5, 6 and 7 still come first: a histogram gives a heatmap, a rate rewrite a line, and a single value a stat. A range result without a `reducer` falls through to row 14 (line). Row 7 picks `stat` only while the Bullet kind is not implemented (VIZ-065: auto-vis is limited to the kinds available). Once #165's Bullet ships, a single value with a threshold or a `target` MUST select `bullet` (VIZ-039, T02 §4.7), and a single value with neither still selects `stat`.
 
 **Parts of a whole.** When it is uncertain whether the values are parts of a whole, the panel shows bars. A whole is recognised in two ways:
 - the panel option `parts: true`;
@@ -345,6 +345,7 @@ Validated options, plain-text labels (T02-019), `f=` filters, no storage.
 | `unit:stat-tiles` | `stat3`, grid → keys s1, s2, s3; values 9, 5, 1; states failing, watch, ok; labels kept. 70 series with values 70…1 where only value 3 is failing → 64 tiles, including the value-3, value-1 (min) and value-70 (max) keys |
 | `unit:stat-single-multi` | `layout: 'single'` on `stat3` (3 series), with a baseline run of the same 3 series at 6, 5, 2 → planned as a grid of 3 tiles in sort order s1, s2, s3, with notice `3 series: shown as a grid`. Each tile's baseline is matched by key (s1 9 vs 6 → `▲ 50 %`; s2 5 vs 5 → `= 0 %`; s3 1 vs 2 → `▼ 50 %`). `summaryFacts` focuses on s1 (failing). A single series stays `single`, with no notice |
 | `unit:stat-single-value-multi` | `layout: 'single'` with `textMode: 'value'` (valid) on `stat3` → a 3-tile grid in which every tile shows name and value, with notice `3 series: shown as a grid with names`. The saved options are unchanged: after reload, `textMode` is still `value`. One series → one tile, value only |
+| `unit:autovis-table` (row 7, before #165) | with the available-kinds set lacking `bullet`, a single value with thresholds → `stat` and a single value without → `stat`. The same fixture with `bullet` in the set → `bullet` (this case runs once #165 lands, see `plans/165/draft-from-151.md`) |
 | `e2e:stat-bounds` | An imported stat: `options` {min: 0, max: 200} over series [100, 120, 150]. Save and reload validate. `FrameSummary.valueAxis` = {0, 200, manual true}. The sparkline point for 100 is at half the sparkline height (canvas probe, ±1 px). `min` 300 alone → axis {300, 350} and the outside note |
 | `unit:stat-delta` | 120 vs 100 → `▲ 20 %`; vs 0 → no delta, with the reason; equal → `= 0 %`; unmatched key → null; complete baseline 100 → `▲ 20 %`, ratio 1.2; baseline with 1 warning, not truncated → `▲ 20 % (baseline limited)`, ghost tooltip `baseline limited (1 warning)`, ratio null; truncated baseline → `▲ 20 % (baseline truncated)`, ratio null |
 | `e2e:board-stat-delta` | shifted window stubbed at 100/s → `▲ 20 %`, tooltip `100/s 1 d ago`; baseline HTTP 500 → value kept, delta hidden, `panel.baselineFailed`; a tile click opens the Inspector |
@@ -401,4 +402,4 @@ None.
 
 | Version | Date | Change |
 |---|---|---|
-| 1.0-rc | 2026-11-24 | #151: bar chart, pie and stat; rules T22-001 to T22-014; VIZ-095 |
+| 1.0-rc | 2026-11-24 | #151: bar chart, pie and stat; rules T22-001 to T22-014; VIZ-095. Code review r1: §4.5 row 7 picks Stat only until Bullet ships (VIZ-039); I2 `unit:autovis-table` row 7 case |
