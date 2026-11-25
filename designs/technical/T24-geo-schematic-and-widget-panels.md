@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-25 |
-| **Milestone** | M-UI1 (sanitiser, links) → M-UI5 (widgets) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
-| **Source draft** | plans/153, plans/181 (not tracked) |
+| **Version** | 1.3-rc · 2026-11-25 |
+| **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
+| **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
 
 This document is the board **widgets**, the **geomap** and the **schematic**. It is written in parts
 (§2): part A, here, defines the shared widget rules, the **Text / Markdown** widget with the one
@@ -14,7 +14,9 @@ Markdown renderer every vis and widget uses, and the **Clock / time zones** widg
 T24-018). Part B1 adds the **Board list** widget, the list-widget rules that every list widget shares,
 board tags and the board search of the BFF (rules T24-020 to T24-029). Part B2 adds the **Change feed**
 widget, canonical scoped entity ids on annotations, the `change` Inspector target and the log panel
-gap record (rules T24-030 to T24-039). Parts C–K add their rules in their own ID blocks.
+gap record (rules T24-030 to T24-039). Part E step 1a adds the geomap's data layer: location
+resolution, the bundled basemap and gazetteer assets and their loading (rules T24-080 to T24-087).
+Parts C–K add their rules in their own ID blocks.
 
 ## 1. Context & problem
 
@@ -56,6 +58,21 @@ the one SQL statement of each path, fail closed. A row opens the Inspector on a 
 VIZ-034 and VIZ-035 are recorded (§4.9) and filed as follow-ups. Rejected: `kind:name` entity keys,
 stripping `entity` for old servers, and paging by moving `to` (§12).
 
+**Part E, step 1a.** [VIZ-045](../product/05-visualisation-catalogue.md#viz-045--location-sources)
+asks the geomap to place a series from its labels: coordinates, a geohash, or a lookup of an ISO
+country or region code, an IATA airport code or a cloud region id.
+[VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) asks
+for a low-detail basemap bundled for air-gapped installs. Step 1a is the data layer only. `locate()`
+maps a series' labels to one `LocationResult` by one ladder (T24-081); a clash is `ambiguous` with its
+candidates and never guessed. A deterministic build script that uses only the Python standard
+library makes two same-origin JSON assets, `basemap.json` and `gazetteer.json`, from pinned
+public-domain sources and a curated cloud-region file (§5.13). Natural Earth is already split at
+±180°, so the build **asserts** that and **clamps** latitudes to the Web Mercator limit: there is no
+clipper and the topology is unchanged (T24-086). Any validation failure rejects the whole asset
+(T24-087). Rejected: a polygon clipper, a binary asset format, the raw Natural Earth ISO fields (the
+`_EH` fields are used, T24-085), and downloading the sources in CI (the download location would put
+a host name in the repository).
+
 ## 2. Goals / non-goals
 
 Goals (part A): the T24 skeleton and its part map; the shared widget rules; the Text / Markdown widget
@@ -96,6 +113,18 @@ Non-goals (part B2):
 - a UI to write notes;
 - the log panel follow-ups L1–L4 (§4.9, §11).
 
+Goals (part E, step 1a): the location resolver (label input, the ladder, coordinates, geohash and
+gazetteer lookups); the gazetteer and basemap builds from pinned sources; the two asset formats,
+their delivery and whole-asset validation; the build tool, the curated cloud-region file and the
+source pins; the notices for the bundled data.
+
+Non-goals (part E, step 1a):
+- the geomap frame and drawing: markers, camera, bounds filter and states (step 1b, T24-088–095);
+- part E step 2 (T24-096–099);
+- tiles and pluggable basemap sources (part F, #185);
+- wrapping the map across ±180°;
+- the government and China partitions of the cloud region lists.
+
 **Part map.** Each part is designed under its own issue and adds its rules in its block.
 
 | Part | Scope | Issue | Rules | Requirement ID if needed |
@@ -105,7 +134,7 @@ Non-goals (part B2):
 | B2 | Change feed widget, the `change` target and log panel gaps (this revision) | #181 (step 2) | T24-030–039 | VIZ-126 (reserved, unused) |
 | C | Alert / incident list widget | #182 | T24-040–059 | VIZ-127 |
 | D | Feed widget fetched by the BFF | #183 | T24-060–079 | VIZ-128 |
-| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter | #184 | T24-080–099 | VIZ-129 |
+| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter; step 1a, the data (this revision); step 1b, the frame; step 2 | #184 | T24-080–099 (1a T24-080–087, 1b T24-088–095, 2 T24-096–099) | VIZ-129 (reserved, unused) |
 | F | Geomap basemap pipeline and routes layer | #185 | T24-100–119 | VIZ-130 |
 | G | Geomap M-UI5 layers: heatmap / hexbin, choropleth, network, day/night, track | #186 | T24-120–139 | VIZ-131 |
 | H | Geomap true 3D: globe and extruded regions | #187 | T24-140–159 | VIZ-132–133 |
@@ -114,7 +143,22 @@ Non-goals (part B2):
 | K | Schematic import and auto-schematic | #190 | T24-200–219 | — |
 
 Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused. Part B1 defines T24-020 to
-T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused.
+T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused. Part E step 1a defines T24-080 to
+T24-087; VIZ-129 stays unused.
+
+**Part E step 1b starts from** these decisions (#184, coordinator, round 1):
+- out-of-domain and infinite values are excluded from the marks and disclosed;
+- the marker radius is r ∝ √(|v| / max |v|), within [min, max]; all values zero → min; negative
+  values are sized by |v|, with the sign in the label and the table;
+- zMin = min(computed, 14); the fit inset is min(48 px, 10 % of the smaller side); below a minimum
+  plot size the panel shows "too small"; the anchor is exact unless containment moves it;
+- non-colour identity per series group through `CATEGORY_PATTERNS`, with the overflow in one
+  [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) "other (n)"
+  aggregate;
+- coincident marks stay reachable; one ordering and one hit-test rule;
+- every consumer is defined per state; statuses are independent;
+- `aria-setsize` per T24-025; a full ADR for the ±180° seam; `csvCell` in every CSV;
+- a null basemap → "Map data unavailable" (T24-087).
 
 ## 3. Satisfies
 
@@ -155,6 +199,8 @@ T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused.
 | [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part B2) | §4.1 (T24-027, T24-034) | `e2e:widget-lists-a11y` |
 | [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (`change` target) | §4.1 (T24-035), [T25](T25-inspector-and-pivots.md) §5 | `unit:change-inspect`; `unit:change-selection`; `e2e:widget-change-feed` |
 | [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (entity set `e=`) | §4.1 (T24-031), §5.10 | `unit:change-entity`; `e2e:widget-change-feed` |
+| [VIZ-045](../product/05-visualisation-catalogue.md#viz-045--location-sources) (part E step 1a) | §4.1 (T24-080 to T24-085), §4.10, §5.11, §5.12 | `unit:geo-locate`; `unit:geo-geohash`; `unit:geo-gazetteer-build`; `unit:geo-assets` |
+| [VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) (staged: step 1a bundles the offline data; drawing in step 1b) | §4.1 (T24-086, T24-087), §5.12, §5.13, §6 | `unit:geo-build`; `unit:geo-decode`; `unit:geo-load`; `unit:geo-assets`; `ci:geo-data`; `ci:bundle-size` |
 
 ## 4. Design
 
@@ -461,6 +507,119 @@ entity yet", with no retry. Migration 5 ships after #215's migration 4 (§6).
 **MUST** — Import follows §4.8 exactly, with one report note per dropped (a duplicate included),
 malformed or unmapped option.
 
+#### T24-080 — Label input
+**MUST** — `locate` (§5.11) reads a series' labels. A key is compared in its normal form: ASCII
+letters lower-cased and `.` read as `_` (`cloud.region` is `cloud_region`); other characters are
+kept. An empty value is the same as an absent key. A **collision** is two raw keys with one normal
+form and different values (`Site=LHR` and `site=SIN`); raw keys with equal values merge (L9).
+`locate` is pure, total and deterministic: it never throws, reads only its arguments, and returns the
+same result for the same input.
+
+#### T24-081 — Resolution ladder
+**MUST** — The first outcome wins:
+- **(a) Collisions** count only among the keys that the deciding rule or mode reads: its aliases,
+  and `cloud_provider` for the cloud rules (3 and 7 of §4.10). A collision there →
+  `ambiguous: keyCollision`; a collision on any other key is ignored (C1).
+- **(b) Explicit modes** read only their fields: none present → `noLocation`; one coordinate of the
+  two → `invalid: incompleteCoords`; then T24-082 or T24-083 → `invalid`; a lookup as in (c).
+- **(c) Auto** tries the §4.10 rules in order. The first rule with a present key decides, with no
+  fallback to a later rule (C5, C8).
+  - Coordinates: an axis with no present alias → `invalid: incompleteCoords`; the first invalid
+    alias in precedence order → `invalid: coords` with its key; aliases with different values →
+    `ambiguous: aliasConflict`. A geohash likewise (`invalid: geohash`).
+  - Lookups: no gazetteer → `gazetteerUnavailable`. Each present alias is looked up in precedence
+    order (unknown → hint → ambiguity → row, T24-084), and the first result that is not `placed`
+    wins (C2, C9). Aliases that place different rows → `ambiguous: aliasConflict`.
+- **(d) Hint.** `cloud_provider`, lower-cased, filters the cloud rows after the id resolved: no row
+  left → `providerMismatch` with all the id's rows as candidates; no row for the id → `unknownCode`.
+
+`place.key` is the raw key of the first present alias (for coordinates, the latitude's).
+
+#### T24-082 — Coordinates
+**MUST** — A coordinate is a whole string that matches `^-?\d{1,3}(\.\d{1,12})?$` (a JavaScript
+regular expression without the `m` flag, so `1.5\n` does not match, L13), with |lat| ≤ 90 and |lon| ≤
+180. (0, 0) is placed, and `-0` is placed as `lat` 0 (L10, L32). Two aliases have different values
+when their numbers differ (`10` and `10.0` agree, L16).
+
+#### T24-083 — Geohash
+**MUST** — The lower-cased value matches `^[0-9b-hjkmnp-z]{1,12}$`, else `invalid: geohash` (`U4PA`
+lower-cases to `u4pa`, which holds `a`). It is placed at its cell's centre, with `cell` = (dLat, dLon),
+the cell's height and width in degrees, and `code` = the lower-cased hash. `decodeGeohash` returns
+null for any other string (`''`, 13 characters, `u4pa`).
+
+#### T24-084 — Lookups
+**MUST** — Against the gazetteer (§5.12):
+- **Country:** a 2-letter value is an alpha-2 code and a 3-letter value an alpha-3 code
+  (upper-cased); any other value is an English name, compared after NFC normalisation and
+  `toLowerCase`. Several rows → `ambiguous: sharedCode` for a code, `name` for a name.
+- **Region** and **IATA:** upper-cased. In lookup mode with `country`, a region value without `-` is
+  prefixed `‹country›-` (`CA` → `US-CA`, E6). Several rows → `sharedCode`.
+- **Cloud:** the id is lower-cased; after the hint (T24-081 (d)), several rows → `providers`.
+- **Rule 7** (`region`): the hint-filtered cloud rows ∪ the region rows; rows of both kinds →
+  `regionOrCloud`.
+- No row → `unknownCode` with the rule's source (rule 7 reports `cloud`) and the value as written.
+
+A place has `lat` = y / 100 and `lon` = x / 100 of its row, the canonical `code` (the alpha-2 code for
+a country), `provider` (cloud only) and `name` (the row's name or place). Candidates are sorted by
+UTF-16 code units: country `‹a2› ‹name›`; region and IATA `‹code› ‹name›`; cloud `‹provider› ‹id›`;
+`keyCollision` and `aliasConflict` `‹raw key›=‹value›`.
+
+#### T24-085 — Gazetteer build
+**MUST** — `tools/geo/build.py` (§5.13) builds `gazetteer.json` from the §5.13 sources:
+- **ISO 3166-1** from Natural Earth 10m Admin 0: `ISO_A2_EH`, `ISO_A3_EH`, `NAME_EN` and
+  `LABEL_X`/`LABEL_Y`; a feature with `-99` in a code is dropped. Several features with one alpha-2
+  code → the one whose `ADM0_A3` equals its alpha-3 code if exactly one does, else all of them.
+- **ISO 3166-2** from Natural Earth 10m Admin 1: `iso_3166_2`; the name `name_en`, else `name`, else
+  the code; `longitude`/`latitude`. Codes that do not match §5.12 are dropped; repeated codes are
+  kept.
+- **IATA** from OurAirports `airports.csv`: `type` `large_airport` or `medium_airport`,
+  `scheduled_service` `yes` and `iata_code` matching `^[A-Z]{3}$`; the place `municipality`, else
+  `name`, else the code; repeated codes are kept.
+- **Cloud:** each record of `tools/geo/cloud-regions.csv` joined on `ne_id` with Natural Earth 10m
+  Populated Places for its latitude and longitude. A missing `ne_id`, or an `iso_a2` other than the
+  place's, fails the build.
+
+#### T24-086 — Basemap build
+**MUST** — The build makes `basemap.json` from Natural Earth 110m Admin 0 (`ISO_A2_EH`, `ISO_A3_EH`,
+`NAME_EN`). Shapefile outer rings are clockwise; a hole joins the outer that holds its first vertex.
+- **Assertions** (each fails the build naming the feature, `‹a3›: …`): no edge spans more than 180° of
+  longitude unless both its ends are at |lat| ≥ 85.0511, a polar closure ("edge spans more than 180
+  degrees of longitude"); vertices at |lat| ≥ 85.0511 occur only in `polarFeatures`, `["ATA"]`
+  ("vertex at |lat| >= 85.0511 outside polarFeatures").
+- **Then** latitudes are clamped to ±85.0511 and quantised (§5.12), and consecutive duplicate points
+  are removed cyclically. A ring with fewer than 3 distinct points or zero area is dropped and the drop
+  written to `report.txt`, except that a collapsing outer fails the build if it is its feature's
+  largest polygon by source area ("largest polygon collapses under quantisation") or has a source area
+  ≥ 10⁻⁴ deg² ("polygon of ‹area› sq deg collapses"). Every feature so keeps at least one polygon;
+  there is no exceptions list. Rings are then oriented and rotated (§5.12), and the T24-087 hole check
+  runs ("hole not strictly inside its outer ring").
+- **Strokes:** an edge with both ends on y = ±8505, or on x = ±18000 in a feature with vertices on
+  both the ±18000 lines (the Natural Earth seams), is *artificial* and never stroked. An undirected
+  edge in two or more rings is *border* and emitted once, in the first ring in file order. Every other
+  edge is *coast*. Walking each ring from its start, the maximal runs of one class form the polylines;
+  a run that wraps past the start joins the first run.
+
+#### T24-087 — Delivery, validation
+**MUST** — The client imports both assets with `?url` and `loadGeoData` fetches them from the same
+origin, once per page (`cache: 'force-cache'`); they are listed in the signed asset manifest
+([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md)). An asset that fails any check below is
+null; there is no partial asset:
+- exactly the §5.12 top-level keys; integer `v` 1 and `q` 100; every field's type and pattern (§5.12);
+  exact gazetteer row lengths;
+- integers only, with |x| ≤ 18000 and |y| ≤ 8505 (basemap) or 9000 (gazetteer);
+- even delta-array lengths; every ring ≥ 3 distinct points, with no consecutive repeat (the closing
+  edge included); outer area > 0, hole area < 0; non-empty polygon lists;
+- **holes**, exact on the integers: each hole vertex strictly inside its outer (even-odd, with cross
+  products; a point on the boundary fails); no hole edge shares a point with an outer or another
+  hole's edge (orientation tests, collinear overlap and touching included); no hole inside another.
+  The cost per polygon is hole edges × (outer + other hole edges) + hole vertices × outer edges (the
+  real asset: 1 hole, 880 pair tests);
+- ring edges |Δx| ≤ 18000, except polar closures on y = ±8505; polylines ≥ 2 points, with no
+  consecutive repeat and |Δx| ≤ 18000.
+
+A null asset logs one `console.debug` line naming the file. Step 1b: a null basemap shows "Map data
+unavailable" and still lists the rows; a null gazetteer gives `gazetteerUnavailable` (T24-081).
+
 ### 4.2 Markdown node table (`commonmark` → output)
 
 | Node | Output |
@@ -580,6 +739,20 @@ implementation documents it in `docs/client/logs.md`:
 | Dedupe, context lines (034) | Missing | L2 |
 | Patterns with the NEW badge (035) | Missing | L3 |
 | Severity gutter, wrap, paging (034) | Met | — |
+
+### 4.10 Geomap auto rules (part E; T24-081)
+
+Normalised aliases (T24-080), in precedence order within each rule:
+
+| # | Aliases | Source |
+|---|---|---|
+| 1 | lat `lat`, `latitude`, `geo_location_lat`; lon `lon`, `lng`, `longitude`, `geo_location_lon` | coords |
+| 2 | `geohash`, `geo_hash` | geohash |
+| 3 | `cloud_region` (hint `cloud_provider`) | cloud |
+| 4 | `geo_region_iso_code`, `region_iso_code` | region |
+| 5 | `geo_country_iso_code`, `country_code`, `country` | country |
+| 6 | `iata`, `iata_code`, `airport` | iata |
+| 7 | `region` (hint `cloud_provider`) | cloud or region |
 
 ## 5. Interfaces
 
@@ -830,6 +1003,99 @@ export function changeTarget(c: Change): Extract<InspectorTarget, { type: 'chang
 // changeFeedFacts(title, s | null) (T24-037), changeFeedOptions(o) (§5.8), importChangeFeed(src) → { options; notes: string[] } (§4.8)
 ```
 
+### 5.11 Geo resolver and loader (part E; `client/src/vis/geo/locate.ts`, `assets.ts`)
+
+`locate` is pure, and every field is `readonly`:
+
+```ts
+export type GeoSource = 'coords' | 'geohash' | 'country' | 'region' | 'iata' | 'cloud';
+export interface GeoPlace { lat: number; lon: number; source: GeoSource; key: string /* raw label key */;
+  code: string | null /* canonical; null for coords */; provider: string | null;
+  name: string | null; cell: { dLat: number; dLon: number } | null /* geohash only */ }
+export type LocationResult =
+  | { status: 'placed'; place: GeoPlace } | { status: 'noLocation' } | { status: 'gazetteerUnavailable' }
+  | { status: 'invalid'; reason: 'coords' | 'incompleteCoords' | 'geohash'; key: string }
+  | { status: 'unknownCode'; source: GeoSource; key: string; value: string }
+  | { status: 'providerMismatch'; key: string; provider: string /* lower-cased hint */; candidates: string[] }
+  | { status: 'ambiguous'; reason: 'keyCollision' | 'aliasConflict' | 'sharedCode' | 'name' | 'providers' | 'regionOrCloud'; candidates: string[] };
+export type LocationOption = { mode: 'auto' } | { mode: 'coords'; lat: string; lon: string } | { mode: 'geohash'; field: string }
+  | { mode: 'lookup'; field: string; gazetteer: 'country' | 'region' | 'iata' | 'cloud'; country?: string /* [A-Z]{2}, region only */ };
+export function locate(labels: Labels, o: LocationOption, g: Gazetteer | null): LocationResult;
+export function decodeGeohash(h: string): { lat: number; lon: number; dLat: number; dLon: number } | null;
+// assets.ts: whole-asset validation; null on any violation (T24-087)
+export function decodeBasemap(j: unknown): Basemap | null; export function decodeGazetteer(j: unknown): Gazetteer | null;
+export function loadGeoData(): Promise<{ basemap: Basemap | null; gazetteer: Gazetteer | null }>; // one promise per page
+```
+
+`loadGeoData` makes two parallel GETs, shared by every later call on the page; a failed GET, a
+response that is not JSON or an asset that does not validate nulls that asset only. The asset file
+names are content-hashed by the build.
+
+### 5.12 Asset formats (part E; `basemap.json`, `gazetteer.json`, version 1)
+
+Coordinates are integers x = round(lon · 100) and y = round(lat · 100), rounded half away from zero,
+always in the order (x, y). A **delta array** is `[x0, y0, dx1, dy1, …]`: the first pair absolute,
+the rest differences, restarting for each ring and each polyline. Both files are compact UTF-8 JSON
+with sorted keys and a trailing LF.
+
+```text
+basemap.json
+{ "v": 1, "q": 100,
+  "countries": [[a2, a3, nameEn, [polygon, …]], …]  a2 [A-Z]{2}|-99, a3 [A-Z]{3}|-99, name 1–100 chars; sorted (a3, nameEn)
+  polygon = [outer, hole, …]   ring = delta array, implicitly closed, ≥ 3 distinct points, no repeated consecutive point
+            outer counter-clockwise (signed area > 0), holes clockwise; each starts at its smallest (x, y);
+            polygons sorted by (min x, min y) of the outer
+  "coast": [polyline, …], "border": [polyline, …]   polyline = open delta array, ≥ 2 points }
+
+gazetteer.json (rows may repeat a code: ambiguous at lookup, T24-084)
+{ "v": 1, "q": 100,
+  "country": [[a2 [A-Z]{2}, a3 [A-Z]{3}, nameEn, x, y], …]          sorted by (a2, a3, name)
+  "region":  [[code [A-Z]{2}-[A-Z0-9]{1,3}, name, x, y], …]         sorted by (code, name)
+  "iata":    [[code [A-Z]{3}, place, x, y], …]                      sorted by (code, place)
+  "cloud":   [[provider [a-z][a-z0-9]{1,15}, id [a-z0-9-]{1,40}, place, x, y], …] sorted by (provider, id) }
+```
+
+Every name and place is 1–100 characters.
+
+### 5.13 Build tool, cloud regions and sources (part E; `tools/geo/`)
+
+`tools/geo/build.py SRC_DIR` uses only the Python standard library. It checks each source file's
+SHA-256 against `tools/geo/sources.json`, then writes both assets, `report.txt` (the T24-086 drops)
+and `manifest.json` (each asset's SHA-256 and the source digests it was built from). `--check`
+rebuilds and compares byte for byte, exiting 1 on any difference. A PR that changes an asset attaches
+the `--check` output; the procedure is in `docs/client/supply-chain.md`. The sources are never
+committed and never downloaded by CI; `ci:geo-data` checks the committed assets against the manifest
+and decodes them.
+
+`tools/geo/cloud-regions.csv` is curated and tracked (AGPL-3.0), one record per region:
+
+```text
+provider,id,place,iso_a2,ne_id,source,retrieved
+aws,eu-west-1,Dublin,IE,1159151309,aws public region list,2026-11-25
+gcp,europe-west1,Mons,BE,1159120321,gcp public region list,2026-11-25
+azure,westeurope,Amsterdam,NL,1159151519,azure public region list,2026-11-25
+```
+
+It covers every generally available region of the standard partition of the aws, gcp and azure
+region lists on its `retrieved` date; the government and China partitions are excluded and listed in
+the docs. `ne_id` is a Natural Earth populated place, which gives the latitude and longitude
+(T24-085).
+
+**Sources.** `tools/geo/sources.json` holds the dataset, version, file, SHA-256, licence and
+retrieval date of each; it holds no download location.
+
+| Class | Dataset, version (file date) | File · SHA-256 | Licence |
+|---|---|---|---|
+| Outlines | Natural Earth 110m Admin 0 Countries 5.1.1 (2022-05-09) | `ne_110m_admin_0_countries.zip` · `0f243aeac8ac6cf26f0417285b0bd33ac47f1b5bdb719fd3e0df37d03ea37110` | public domain |
+| ISO 3166-1 | Natural Earth 10m Admin 0 Countries 5.1.1 (2022-05-09) | `ne_10m_admin_0_countries.zip` · `ce1ac7036499a0edd641fbc093cd209a98f96a49d2eca8480aaacad35138a7f6` | public domain |
+| ISO 3166-2 | Natural Earth 10m Admin 1 States, Provinces 5.1.1 (2022-05-09) | `ne_10m_admin_1_states_provinces.zip` · `efc59726337323058f9446210adc96673179cd344e053666ee3d28cb58ba2b05` | public domain |
+| Cloud metros | Natural Earth 10m Populated Places simple 5.1.2 (2022-05-13) | `ne_10m_populated_places_simple.zip` · `2963ee08f7743f13f37d5243acd77a2f7a510e26a36c7e04b920f1b381f2b251` | public domain |
+| IATA | OurAirports `airports.csv`, snapshot 2026-11-25 | `airports.csv` · `ceba1cef67fb7ddeeb8aebf52cfca29d678f0599fd46cd93b8974f9a6a67ea16` | public domain |
+| Cloud ids | `tools/geo/cloud-regions.csv` | in the repository | AGPL-3.0 (facts, each record dated) |
+
+**Notices.** No source requires a notice. `build/THIRD_PARTY_NOTICES.txt` gains a "Data" section
+that names each dataset and its version.
+
 ## 6. Data & storage
 
 Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 upcaster is the identity
@@ -912,6 +1178,18 @@ ORDER BY h.at DESC NULLS LAST, h.id DESC;   -- the all-NULL sentinel exists only
 `annotations_at (org_id, at)` serves the keyset order; the 31-day lower bound on `at` is exact
 because a range is at most 31 days (T11 §4.4).
 
+**Part E, step 1a.** The two assets (§5.12) are static files committed in the client tree and
+built into the client like any other asset, so they are in the signed manifest of
+[ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md). There is no table, route, migration or
+browser storage. A data refresh is a rebuild from new pinned sources (§5.13): the PR updates
+`sources.json`, the assets and `manifest.json`, with the `--check` output attached. In the
+prototype the basemap has 287 polygons with 1 hole, and the gazetteer (without cloud rows) 238 ISO
+3166-1 rows (14 `-99` features dropped, 4 shared alpha-2 codes resolved by `ADM0_A3`), 4 313 ISO 3166-2
+rows (188 malformed codes dropped, 60 repeated) and 3 245 IATA rows. All 177 features keep their
+largest polygon; the one drop is a PRK sliver (3 points, 4.5·10⁻¹² deg², a border artefact near the
+Tumen; PRK's 43-point polygon is kept); ZAF's Lesotho hole passes; the polar vertices are only in ATA
+and the seams only in ATA, FJI and RUS; two runs are byte-identical; both assets validate.
+
 ## 7. Performance budget
 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
@@ -924,6 +1202,13 @@ Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit).
 Part B2: a Change feed holds at most 2 000 rows, in plain DOM. Each page is one indexed statement
 (`annotations_at`). Report-only: `bench:widget-lists` adds a 2 000-row Change feed render (≤ 50 ms
 p95).
+
+Part E, step 1a: in the prototype the basemap is 31 441 B and the gazetteer (without cloud rows)
+90 501 B brotli. `ci:bundle-size` gains the rows `geo-basemap` ≤ 40 000 B and `geo-gazetteer`
+≤ 104 000 B within the 1 000 000 B total; origin/main at 3fb02ce is 575 005 B (stub build) and
+558 708 B (HTTP build), so ≥ 280 KB of the total stays free. The assets load once per page, in
+parallel, on the first `loadGeoData` call. Hole validation is bounded by the T24-087 cost (880 pair
+tests on the real basemap).
 
 ## 8. Security, tenancy & RBAC
 
@@ -944,6 +1229,11 @@ p95).
   Org B is in every itest. Change text and tags are free content shown as authored and never parsed;
   the user docs say "with scopes, don't name other services in change text". The CSV guards the text
   (`csvCell`).
+- Part E, step 1a: the assets are static public data, fetched from the same origin and verified
+  through the signed manifest (ADR-0016). There is no route, storage, RLS change or request to
+  another origin, and [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)
+  is untouched. Labels are only read by a pure function. The build checks every source's SHA-256
+  before reading it, and each asset is validated whole before use (T24-087).
 
 ## 9. Failure modes & degradation
 
@@ -960,6 +1250,10 @@ p95).
 | Rolling upgrade (part B2) | Migration 5 after #215 (N+1); an old server answers without `applied` (T24-038); `annotations_entity_pair` `NOT VALID` until I7 |
 | Rows change while paging | Keyset order on (`at`, `id`); the T24-032 guarantees; the paged meter text and Refresh |
 | An older page fails | The rows are kept, with Retry (§4.7) |
+| Stale geo data (part E) | A label the data does not know is `unknownCode`, never placed elsewhere; refreshes go through `--check` (§5.13) |
+| A source changes (part E) | A crossing ring, polar land outside `polarFeatures` or a collapsing country fails the build (T24-086); nothing is drawn wrong |
+| An asset fails to load or validate (part E) | That asset alone is null, with one `console.debug` line; a null gazetteer → `gazetteerUnavailable`, and coordinates and geohashes still place (G0) |
+| Bundle growth (part E) | 122 KB measured against 144 KB of new rows; ≥ 280 KB of the total stays free (§7) |
 
 ## 10. Testing
 
@@ -1212,6 +1506,150 @@ J4 {tags:['t0','t1',…,'t9'], onlyInTimeRange:'yes'}         → tags t0–t7, 
 Report-only: `bench:widget-lists` (a 2 000-row Change feed ≤ 50 ms p95). Every gate is in
 [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
+### 10.3 Part E step 1a tests
+
+Written first in E1 (§11); all fail today: nothing exists yet. Every value below was computed by a
+reference implementation of T24-080 to T24-087.
+
+**Gazetteer T** (`vis/geo/fixtures/gaz-t.json`; x,y as stored):
+
+```text
+country GE GEO Georgia 4350,4200 · JP JPN Japan 13800,3600 · XA XAA Atlantis 0,100 · XB XBB Atlantis 100,100 ·
+        ZZ ZZZ "Zed North" 500,500 · ZZ ZZZ "Zed South" 500,-500
+region  KZ-ALA Almaty 7690,4325 · KZ-ALA "Almaty City" 7695,4328 · US-CA California -12000,3700 · XX-DUP Dupland 4000,4000
+iata    QQQ Alpha 100,100 · QQQ Beta 200,200 · SIN Singapore 10399,135
+cloud   aws eu-west-1 Dublin -625,5334 · aws eu-west-2 London -12,5150 · aws us-east-1 "Washington, D.C." -7701,3890 ·
+        azure westeurope Amsterdam 491,5235 · gcp europe-west1 Mons 394,5045 · ta xx-dup-1 T1 1000,1000 ·
+        tb xx-dup-1 T2 2000,2000 · tc xx-dup T3 3000,3000
+```
+
+**Fixture L** (auto mode, gazetteer T; L–C), **E** (explicit modes) and **G0** (no gazetteer). Each
+expected value is the complete object (`toStrictEqual`): `P(source, key, code, provider, name, lat,
+lon[, dLat×dLon])` is `placed` (`-` = null, `cell` null unless given); `I(reason, key)` is
+`invalid`; `U(source, key, value)` is `unknownCode`; `M(key, provider, [candidates])` is
+`providerMismatch`; `A(reason, [candidates])` is `ambiguous`; `N` is `noLocation`.
+
+```text
+L1  cloud_region=eu-west-1  P(cloud, cloud_region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L2  cloud.region=EU-WEST-2  P(cloud, cloud.region, eu-west-2, aws, London, 51.5, -0.12)
+L3  cloud_provider=gcp cloud_region=europe-west1  P(cloud, cloud_region, europe-west1, gcp, Mons, 50.45, 3.94)
+L4  cloud_provider=gcp cloud_region=eu-west-1  M(cloud_region, gcp, [aws eu-west-1])
+L5  cloud_region=xx-dup-1  A(providers, [ta xx-dup-1, tb xx-dup-1])
+L6  cloud_provider=ta cloud_region=xx-dup-1  P(cloud, cloud_region, xx-dup-1, ta, T1, 10, 10)
+L7  cloud_region=mars-north-1  U(cloud, cloud_region, mars-north-1)
+L8  cloud.region=eu-west-1 cloud_region=eu-west-2  A(keyCollision, [cloud.region=eu-west-1, cloud_region=eu-west-2])
+L9  cloud.region=eu-west-1 cloud_region=eu-west-1  P(cloud, cloud.region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L10 lat=0 lon=0  P(coords, lat, -, -, -, 0, 0)
+L11 lat=40.7128 lon=-74.0060  P(coords, lat, -, -, -, 40.7128, -74.006)
+L12 lat=91 lon=0 → I(coords, lat) · L13 lat="1.5\n" lon=2 → I(coords, lat) · L33 lat=1 lon=180.0001 → I(coords, lon)
+L14 latitude=10  I(incompleteCoords, latitude)
+L15 lat=10 latitude=11 lon=5  A(aliasConflict, [lat=10, latitude=11])
+L16 lat=10 latitude=10.0 lon=5 → P(coords, lat, -, -, -, 10, 5) · L32 lat=-0 lon=180 → P(coords, lat, -, -, -, 0, 180)
+L17 lat="" lon="" cloud_region=eu-west-1  P(cloud, cloud_region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L18 geohash=u4pruydqqvj  P(geohash, geohash, u4pruydqqvj, -, -, 57.64911063015461, 10.407439693808556, 1.341104507446289e-06×1.341104507446289e-06)
+L19 geohash=U4PA  I(geohash, geohash)
+L20 geo_country_iso_code=jp  P(country, geo_country_iso_code, JP, -, Japan, 36, 138)
+L21 country=atlantis  A(name, [XA Atlantis, XB Atlantis])
+L22 country_code=JP country=Georgia  A(aliasConflict, [country=Georgia, country_code=JP])
+L23 geo_region_iso_code=us-ca  P(region, geo_region_iso_code, US-CA, -, California, 37, -120)
+L24 region_iso_code=KZ-ALA  A(sharedCode, [KZ-ALA Almaty, KZ-ALA Almaty City])
+L25 airport=QQQ  A(sharedCode, [QQQ Alpha, QQQ Beta])
+L26 region=xx-dup  A(regionOrCloud, [XX-DUP Dupland, tc xx-dup])
+L27 region=eu-west-1  P(cloud, region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L28 service=web → N · L31 cloud_provider=oci cloud_region=us-ashburn-1 → U(cloud, cloud_region, us-ashburn-1)
+L34 country=ZZ → A(sharedCode, [ZZ Zed North, ZZ Zed South]) · L35 country=zzz → the same
+C1  Service=a service=b cloud_region=eu-west-1  P(cloud, cloud_region, eu-west-1, aws, Dublin, 53.34, -6.25)  (collision not read)
+C2  iata=SIN airport=ZZZ → U(iata, airport, ZZZ) · C9 iata=ZZZ airport=QQQ → U(iata, iata, ZZZ)
+C3  iata=SIN airport=QQQ  A(sharedCode, [QQQ Alpha, QQQ Beta])
+C4  lat=10 latitude=x lon=5 → I(coords, latitude) · C5 lat=91 lon=0 cloud_region=eu-west-1 → I(coords, lat) (no fallback)
+C6  cloud_provider=tz cloud_region=xx-dup-1  M(cloud_region, tz, [ta xx-dup-1, tb xx-dup-1])
+C7  cloud.provider=aws cloud_provider=gcp cloud_region=eu-west-1  A(keyCollision, [cloud.provider=aws, cloud_provider=gcp])
+C8  geohash=u4pr cloud_region=eu-west-1  P(geohash, geohash, u4pr, -, -, 57.568359375, 10.37109375, 0.17578125×0.3515625)
+E1  coords{y,x}: y=0 x=0 → P(coords, y, -, -, -, 0, 0) · E2 y=1 → I(incompleteCoords, y) · E3 lat=1 lon=2 → N · E4 y=1 x=east → I(coords, x)
+E5  lookup{site, iata}: site=SIN Site=LHR  A(keyCollision, [Site=LHR, site=SIN])
+E6  lookup{state, region, US}: state=CA and E7 state=US-CA → P(region, state, US-CA, -, California, 37, -120)
+E8  geohash{gh}: gh=u4pa → I(geohash, gh) · E9 {} → N
+G0  g = null: cloud_region=eu-west-1 → gazetteerUnavailable; lat=1 lon=2 → P(coords, lat, -, -, -, 1, 2)
+```
+
+**Build fixtures** (`tools/geo/fixtures/`; sources in lon/lat degrees; `polarFeatures` `["ATA"]`
+unless given). A square (x0,y0)-(x1,y1) is the ring (x0,y0), (x1,y0), (x1,y1), (x0,y1); a hole
+written as a square is that ring reversed. Outputs are the exact `basemap.json` content (compact; RT
+in full, the others by member):
+
+```text
+RT        AA AAA Alpha: square (0,0)-(10,10) with hole (2,2)-(4,4); triangle (20,0),(30,0),(25,5). BB BBB Beta: (10,0)-(15,10)
+          → {"v":1,"q":100,"countries":[["AA","AAA","Alpha",[[[0,0,1000,0,0,1000,-1000,0],[200,200,0,200,200,0,0,-200]],
+            [[2000,0,1000,0,-500,500]]]],["BB","BBB","Beta",[[[1000,0,500,0,0,1000,-500,0]]]]],
+            "coast":[[1000,1000,-1000,0,0,-1000,1000,0],[200,200,0,200,200,0,0,-200,-200,0],[2000,0,1000,0,-500,500,-500,-500],
+            [1000,0,500,0,0,1000,-500,0]],"border":[[1000,0,0,1000]]}; report empty
+ROT       AA AAA Alpha (10,10),(10,0),(0,0),(0,10) (clockwise)
+          → countries [["AA","AAA","Alpha",[[[0,0,1000,0,0,1000,-1000,0]]]]], coast [[0,0,1000,0,0,1000,-1000,0,0,-1000]], border []
+HOLECLAMP PP PPP Polar: outer (-10,80)-(10,89), hole (-5,82)-(5,85); polarFeatures ["PPP"]
+          → countries [["PP","PPP","Polar",[[[-1000,8000,2000,0,0,505,-2000,0],[-500,8200,0,300,1000,0,0,-300]]]]],
+            coast [[-1000,8505,0,-505,2000,0,0,505],[-500,8200,0,300,1000,0,0,-300,-1000,0]], border []
+          with hole (-5,82)-(5,88) (clamped onto the outer) → fails "PPP: hole not strictly inside its outer ring"
+COLLINEAR QQ QQQ Square: outer (0,0)-(30,30), holes (2,2)-(8,8) and (8,4)-(12,6) (a shared x = 8 segment) → fails
+          "QQQ: hole not strictly inside its outer ring"; the ×100 asset
+          [[[0,0,3000,0,0,3000,-3000,0],[200,200,0,600,600,0,0,-600],[800,400,0,200,400,0,0,-200]]] → null
+NESTED    QQ QQQ Square: outer (0,0)-(30,30), holes (2,2)-(20,20) and (5,5)-(8,8) → fails as COLLINEAR; the ×100 asset
+          [[[0,0,3000,0,0,3000,-3000,0],[200,200,0,1800,1800,0,0,-1800],[500,500,0,300,300,0,0,-300]]] → null
+POLE      PP PPP Polar: outer (-10,80)-(10,89), polarFeatures ["ATA"] → fails "PPP: vertex at |lat| >= 85.0511 outside polarFeatures"
+ANT       AQ ATA Antarctica (180,-90),(-180,-90),(-180,-70),(0,-60),(180,-70)
+          → countries [["AQ","ATA","Antarctica",[[[-18000,-8505,36000,0,0,1505,-18000,1000,-18000,-1000]]]]],
+            coast [[18000,-7000,-18000,1000,-18000,-1000]], border []
+SPAN      XX XXX Span (170,0),(-170,0),(-170,10),(170,10) → fails "XXX: edge spans more than 180 degrees of longitude"
+ENCLAVE   ZA ZAF South: (0,0)-(30,30) with hole (10,10)-(20,20); LS LSO Enclave: (10,10)-(20,20)
+          → countries [["LS","LSO","Enclave",[[[1000,1000,1000,0,0,1000,-1000,0]]]],
+            ["ZA","ZAF","South",[[[0,0,3000,0,0,3000,-3000,0],[1000,1000,0,1000,1000,0,0,-1000]]]]],
+            coast [[0,0,3000,0,0,3000,-3000,0,0,-3000]], border [[1000,1000,1000,0,0,1000,-1000,0,0,-1000]] (once)
+SLIVER    AA AAA Alpha: (0,0)-(1,1) + triangle (5,5),(5.001,5),(5,5.001)
+          → countries [["AA","AAA","Alpha",[[[0,0,100,0,0,100,-100,0]]]]], coast [[0,0,100,0,0,100,-100,0,0,-100]], border [];
+            report "dropped sliver polygon AAA (3 points, 5.0e-07 sq deg)"
+COLLAPSE  SL SLV Sliver: (0,0),(0.001,0),(0,0.001) only → fails "SLV: largest polygon collapses under quantisation"
+BIGDROP   AA AAA Alpha: (0,0)-(1,1) + (20,20),(30,20),(30,20.00003) → fails "AAA: polygon of 1.50e-04 sq deg collapses"
+L-holes   LL LLL Ell: outer (0,0),(20,0),(20,10),(10,10),(10,20),(0,20) and one hole:
+          OK (2,12),(2,18),(8,18),(8,12) → countries [["LL","LLL","Ell",[[[0,0,2000,0,0,1000,-1000,0,0,1000,-1000,0],
+            [200,1200,0,600,600,0,0,-600]]]]], coast [[0,0,2000,0,0,1000,-1000,0,0,1000,-1000,0,0,-2000],
+            [200,1200,0,600,600,0,0,-600,-600,0]], border []; its ×100 asset decodes
+          CORNER (12,12),(12,18),(18,18),(18,12) (in the missing corner), CROSS (6,6),(6,16),(16,6) (edges cross), TOUCH (5,5),(5,15),(15,5)
+            (through the reflex vertex) → each fails "LLL: hole not strictly inside its outer ring"; each ×100 asset → null
+```
+
+Every report is empty except SLIVER's. Building any fixture twice gives identical bytes. On the real
+basemap, ZAF's one hole costs 880 pair tests.
+
+**Round trip:** RT's output decodes; Alpha's first outer is (0,0), (1000,0), (1000,1000), (0,1000).
+
+**Malformed basemaps** (each → null): M1 `null`; M2 `[]`; RT with: M3 `v` 2; M4 an extra key
+`"x": 1`; M5 Alpha's outer `[0,0,1000,0,0,1000,-1000]` (odd length); M6 Alpha's triangle
+`[2000,0,1000,0,-1000,0]` (2 distinct points); M7 Alpha's hole `[200,200,200,0,0,200,-200,0]`
+(counter-clockwise); M8 Alpha's hole `[1200,200,0,200,200,0,0,-200]` (outside its outer); M9 Alpha's
+triangle `[2000.5,0,1000,0,-500,500]` (a float); M10 Beta's outer `[1000,0,500,0,0,8506,-500,0]`
+(y 8506); M11 coast 0 `[-9000,100,18001,0]` (Δx 18001); M12 Beta's polygons `[]`; M13 Alpha's a2
+`aa`; M14 border 0 `[1000,0]` (1 point); M15 coast 0 `[-18000,-8505,36000,0]` (an edge of 36000 on
+y = −8505); and the ×100 assets of CORNER, CROSS, TOUCH, COLLINEAR and NESTED.
+
+**Malformed gazetteers** (each → null), from the valid G0 `{"v":1,"q":100,"country":[["JP","JPN",
+"Japan",13800,3600]],"region":[["US-CA","California",-12000,3700]],"iata":[["SIN","Singapore",10399,
+135]],"cloud":[["aws","eu-west-1","Dublin",-625,5334]]}`: G1 country `["JP","JPN","Japan",13800]` (4
+fields); G2 region `usca`; G3 IATA x 18001; G4 provider `AWS`; G5 IATA place `""`; G6 no `cloud`;
+G7 country y 36.5 (a float); G8 `"x"`.
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:geo-locate` | client/src/vis/geo/locate.test.ts | Gazetteer T; L, C, E, G0 | each object exactly (`toStrictEqual`) | VIZ-045, T24-080–084 |
+| `unit:geo-geohash` | client/src/vis/geo/geohash.test.ts | strings | the L18 and C8 values; `''`, 13 characters, `u4pa` → null | T24-083 |
+| `unit:geo-decode` | client/src/vis/geo/assets.test.ts | the build outputs; the malformed assets | the valid outputs decode (the round trip); each malformed asset → null | T24-087 |
+| `unit:geo-build` | tools/geo/test_build.py | the build fixtures | the exact outputs and failures above; building twice → identical bytes | T24-086 |
+| `unit:geo-gazetteer-build` | tools/geo/test_build.py | DBF and CSV fixtures | France + Clipperton (one alpha-2) → FR France; two ZZ features, neither main → both; `-99` dropped; a repeated region → 2 rows; no name → the code; a heliport, an unscheduled airport and `ab` left out; a bad `ne_id` → the build fails | T24-085 |
+| `unit:geo-assets` | client/src/vis/geo/assets.test.ts | the bundled files | they decode; 238 countries, ≥ 4 300 regions, ≥ 3 200 IATA rows; aws, gcp and azure rows; `cloud_region=eu-west-1` → L1's object; Mons and Amsterdam placed; SHA-256 = the manifest | VIZ-045, VIZ-046 |
+| `unit:geo-load` | client/src/vis/geo/assets.test.ts | a stub: ok, 404, bad JSON, invalid | 2 requests, then 0 on later calls; a failure nulls that asset only; one debug line | T24-087 |
+| `ci:geo-data` | CI client job | the committed assets | SHA-256 = the manifest; both decode | T24-087 |
+| `ci:bundle-size` (amended) | client/bundle-budgets.json | both builds | `geo-basemap` ≤ 40 000 B, `geo-gazetteer` ≤ 104 000 B, total ≤ 1 000 000 B | T24-087 |
+
+Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
 ## 11. Rollout
 
 Implementation issues, filed after this design merges:
@@ -1260,6 +1698,17 @@ server versions) into `docs/client/widgets.md`, the `change` target into `docs/c
 the §4.9 gap record into `docs/client/logs.md`, and adding a Change feed into `docs/user/boards.md`,
 with "with scopes, don't name other services in change text".
 
+Part E step 1a implementation issue, filed with this design:
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| E1 — Geo data and resolver | `tools/geo` (`build.py`, `--check`, `test_build.py` and fixtures, `sources.json`, `cloud-regions.csv`, `manifest.json`), the two assets, `client/src/vis/geo` (§5.11), `ci:geo-data`, the `ci:bundle-size` rows, the §10.3 tests; `docs/client/geomap.md` (new), `docs/client/supply-chain.md` | — | T24-080–087 |
+
+E1 writes `docs/client/geomap.md` (the ladder, the statuses, the precision of each source and the
+gazetteer's coverage, with the excluded cloud partitions) and adds the sources, digests, licences and
+the `--check` procedure to `docs/client/supply-chain.md`. Steps 1b and 2 are designed next under
+#184.
+
 ## 12. Alternatives considered
 
 Rejected:
@@ -1292,3 +1741,4 @@ None.
 | 1.0-rc | 2026-11-25 | #153 part A: created: the part map and ID blocks for parts A–K; rules T24-001 to T24-018; the Markdown node table, clock formats and import mapping; board spec v4, the renderer, wall clock and import conversion interfaces; tests and fixtures; the implementation issues A1–A3; [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
 | 1.1-rc | 2026-11-25 | #181 part B1 (step 1): the part map splits B into B1 (T24-020–029) and B2 (T24-030–039, VIZ-126); T24-002 amended (content widgets; list widgets follow T24-020); rules T24-020 to T24-029 (list widgets, Board list sources, rows, limit and ranking, snapshot and meter, keyboard and focus repair, table, CSV and facts, states and look, import, board tags and compatibility); §4.5 list states, §4.6 Board list import; §5.5 board spec v5, §5.6 the `/boards` contract, §5.7 the client list modules; §6 migration 4 and the repair and list queries; §7–§9, §10.1 tests and fixtures, §11 issues I1–I4, §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains the optional `Coverage` list members; [T11](T11-postgres-schema.md) §4.3 migration 4 |
 | 1.2-rc | 2026-11-25 | #181 part B2 (step 2): rules T24-030 to T24-039 (feed source, entity filter, paging, snapshot and meter, rows, selection and Inspector, keyboard and SR, table, CSV, facts and fields, compatibility, import); T24-020 amended (`changeFeed`; its rows select and inspect); §4.7 Change feed states, §4.8 Change feed import, §4.9 the log panel gap record; §5.8 board spec v6, §5.9 the annotations contract and data scope, §5.10 the client change-feed modules; §6 migration 5 and the list, create and delete statements; §7–§9, §10.2 tests and fixtures, §11 issues I5–I7 and L1–L4, §12. [T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id) gains the canonical form and vectors, and T12-018 a free-text note; [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) the `paged` reason; [T25-002](T25-inspector-and-pivots.md#t25-002--envelope-and-union) the `change` member; [T11](T11-postgres-schema.md) §4.4 migration 5 |
+| 1.3-rc | 2026-11-25 | #184 part E step 1a (geomap data): the intro, §1, §2 (goals, the part map splits E into 1a T24-080–087, 1b T24-088–095 and 2 T24-096–099, VIZ-129 unused; the decisions step 1b starts from) and §3; rules T24-080 to T24-087 (label input, the resolution ladder, coordinates, geohash, lookups, the gazetteer and basemap builds, delivery and validation); §4.10 the auto rules; §5.11 the resolver and loader, §5.12 the asset formats, §5.13 the build tool, cloud regions, sources and notices; §6–§9; §10.3 tests and fixtures; §11 issue E1 |
