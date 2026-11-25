@@ -165,3 +165,13 @@ export function statValue(data: FrameData): number {
   }
   return NaN;
 }
+
+/**
+ * The end of bucket `i`: the next bucket's start; for the last bucket its start plus the previous
+ * step (the frame's step), or `fallbackEnd` when there is only one bucket.
+ */
+export function bucketEnd(ts: Float64Array, i: number, fallbackEnd: number): number {
+  const t = ts[i] ?? NaN;
+  if (i + 1 < ts.length) return ts[i + 1] ?? t;
+  return ts.length > 1 ? t + (t - (ts[i - 1] ?? t)) : fallbackEnd;
+}

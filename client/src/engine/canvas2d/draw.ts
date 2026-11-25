@@ -24,6 +24,7 @@ import { statValue, type FrameData, type HeatmapFrame, type SeriesFrame } from '
 import { compactSamples, formatCompact, formatValue, type Unit } from '../../i18n/format';
 import type {
   EventMarker,
+  FrameSelection,
   FrameSummary,
   HoverEvent,
   PlotRect,
@@ -46,6 +47,7 @@ import {
   type Stats,
 } from './summary';
 import { drawEventLabels, drawEventLines, eventBandOf, layoutEventLabels } from './eventMark';
+import { drawFocusRing, drawSelectionBand, matchedKeys } from './selection';
 import { drawThresholds, thresholdsOf, withThresholds } from './thresholdMark';
 import { timeTicks } from './timeTicks';
 import { tickY, valueTicks } from './valueTicks';
@@ -82,6 +84,10 @@ export interface LayerInput {
   readonly minBand: number;
   /** The frame's event markers (ADR-0023); absent or [] = none, and no label band. */
   readonly events?: readonly EventMarker[];
+  /** The page selection (ADR-0025); absent or null = none. */
+  readonly selection?: FrameSelection | null;
+  /** Device px per CSS px, for the band's 1 device px minimum; absent = 1. */
+  readonly dpr?: number;
 }
 
 /** What picking and the overlay need from the last layer draw. */
@@ -97,6 +103,14 @@ export type PickModel =
       readonly ref: Float64Array;
       readonly series: readonly SeriesFrame[];
       readonly categoryLabel: string;
+      readonly y: (v: number) => number;
+      /** The buckets as drawn (merged to one per CSS px when there are more): click picking. */
+      readonly drawn: {
+        readonly ts: Float64Array;
+        /** In stack (shown) order, with the shown series' keys. */
+        readonly series: readonly SeriesFrame[];
+        readonly lastEnd: number | undefined;
+      };
     }
   | {
       readonly kind: 'heatmap';
@@ -446,19 +460,31 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
   });
   if (isPlotEmpty(plot)) return model(base);
   drawAxes(i, plot, labels, true);
+  const matched = matchedKeys(
+    i.selection,
+    shown.map((s) => s.key),
+  );
   clipped(i, plot, () => {
-    for (const s of shown) {
+    const draw = (s: SeriesFrame, colour: string, width: number): void => {
       const cols = lineColumns(s.timestamps, s.values, i.window, plot);
-      drawLineSeries(
-        i.ctx,
-        cols,
-        plot,
-        y,
-        i.colours.series[seriesColourIndex(s)] ?? '',
-        size['chart-line'],
-      );
+      drawLineSeries(i.ctx, cols, plot, y, colour, width);
+    };
+    const colourOf = (s: SeriesFrame): string => i.colours.series[seriesColourIndex(s)] ?? '';
+    if (matched === null) {
+      for (const s of shown) draw(s, colourOf(s), size['chart-line']);
+      return;
+    }
+    // T25-006: the others at `dimmed`, then each selected series over a focus underlay 4 px wider.
+    i.ctx.globalAlpha = i.colours.dimmed;
+    for (const s of shown) if (!matched.has(s.key)) draw(s, colourOf(s), size['chart-line']);
+    i.ctx.globalAlpha = 1;
+    for (const s of shown) {
+      if (!matched.has(s.key)) continue;
+      draw(s, i.colours.focus, size['chart-line'] + 4);
+      draw(s, colourOf(s), size['chart-line']);
     }
   });
+  drawSelectionBand(i.ctx, i.colours, plot, i.window, i.selection, i.dpr ?? 1);
   const thresholdLabels = drawThresholds(i, plot, y, thresholdsOf(i.spec));
   const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
   clipped(i, plot, () => {
@@ -473,7 +499,7 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
  * Bars and heatmap columns: [x, width] of bucket `k` of `ts`, clamped to the plot; null outside.
  * `lastEnd` overrides the last bucket's end (the clipped end reported by `mergeBuckets`).
  */
-function bucketSpan(
+export function bucketSpan(
   plot: PlotRect,
   w: TimeWindow,
   ts: Float64Array,
@@ -574,7 +600,14 @@ function drawBars(
     stats,
     axisSummary(i, axis),
   );
-  const pick: PickModel = { kind: 'bars', ref, series: shown, categoryLabel: spec.categoryLabel };
+  const pick: PickModel = {
+    kind: 'bars',
+    ref,
+    series: shown,
+    categoryLabel: spec.categoryLabel,
+    y,
+    drawn: { ts, series: merged, lastEnd },
+  };
   const model = (summary: FrameSummary): LayerModel => ({
     summary,
     pick,
@@ -584,6 +617,10 @@ function drawBars(
   });
   if (isPlotEmpty(plot)) return model(base);
   drawAxes(i, plot, labels, true);
+  const matched = matchedKeys(
+    i.selection,
+    shown.map((s) => s.key),
+  );
   clipped(i, plot, () => {
     for (let t = 0; t < ts.length; t++) {
       const span = bucketSpan(plot, i.window, ts, t, lastEnd);
@@ -593,11 +630,17 @@ function drawBars(
         const v = s.values[t] ?? 0;
         if (!(v > 0)) return;
         const top = y(acc + v);
+        const h = y(acc) - top;
+        // T25-006: unselected segments at `dimmed`; a selected one gets a 2 px inner focus stroke.
+        const hit = matched?.has(s.key) === true;
+        if (matched !== null) i.ctx.globalAlpha = hit ? 1 : i.colours.dimmed;
         i.ctx.fillStyle = i.colours.series[seriesColourIndex(shown[k] ?? s)] ?? '';
-        i.ctx.fillRect(span[0], top, span[1], y(acc) - top);
+        i.ctx.fillRect(span[0], top, span[1], h);
+        if (hit) drawFocusRing(i.ctx, i.colours, span[0], top, span[1], h);
         acc += v;
       });
     }
+    if (matched !== null) i.ctx.globalAlpha = 1;
   });
   const thresholdLabels = drawThresholds(i, plot, y, thresholdsOf(spec));
   const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
@@ -676,6 +719,7 @@ function drawHeatmap(
       i.ctx.fillRect(span[0], band.y0, span[1], band.y1 - band.y0);
     }
   }
+  drawSelectionBand(i.ctx, i.colours, plot, i.window, i.selection, i.dpr ?? 1);
   const events = layoutEventLabels(i.ctx, plot, i.window, i.events ?? []);
   drawEventLines(i, plot, events.lines);
   drawChips(i, plot, labels);
@@ -719,6 +763,10 @@ function drawStat(i: LayerInput): LayerModel {
       width: i.cssW - 2 * space['3'],
       height: size['chart-sparkline'],
     });
+  }
+  // T25-006: the tile's own key (its first series) selected → a 2 px focus ring inside the tile.
+  if (first !== undefined && matchedKeys(i.selection, [first.key]) !== null) {
+    drawFocusRing(ctx, i.colours, 0, 0, i.cssW, i.cssH);
   }
   return { summary, pick: null, labelW: 0, valueDomain: null, bandHeld: false };
 }

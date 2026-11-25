@@ -4,7 +4,7 @@
  * log-level series, else `key_hash mod 8`. State colours are never used for series (VL-003): they
  * reach the marks only through `StateEncoding` (threshold lines and labels, T02-004).
  */
-import { colour, sequentialRamp, seriesPalette } from '../../styles/tokens';
+import { colour, opacity, sequentialRamp, seriesPalette } from '../../styles/tokens';
 import { StateEncoding, type State } from '../../theme/stateEncoding';
 import type { ThemeName } from '../api';
 
@@ -82,8 +82,8 @@ export function themeColours(t: ThemeName): ThemeColours {
     text: c.text,
     event: c['text-muted'],
     focus: c.focus,
-    selection: '',
-    dimmed: 1,
+    selection: c.selection,
+    dimmed: opacity.dimmed,
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
     state: {

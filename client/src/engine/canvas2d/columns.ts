@@ -4,6 +4,7 @@
  * runs inside it, and whether a gap precedes its last sample; bucketed data is merged to at most
  * one bucket per CSS px. Work is linear in the input.
  */
+import { bucketEnd } from '../../data/frames';
 import type { PlotRect, TimeWindow } from '../api';
 
 export interface Run {
@@ -129,15 +130,8 @@ export function lineColumns(
   return out;
 }
 
-/**
- * The end of bucket `i`: the next bucket's start; for the last bucket its start plus the previous
- * step (the frame's step), or `fallbackEnd` when there is only one bucket.
- */
-export function bucketEnd(ts: Float64Array, i: number, fallbackEnd: number): number {
-  const t = ts[i] ?? NaN;
-  if (i + 1 < ts.length) return ts[i + 1] ?? t;
-  return ts.length > 1 ? t + (t - (ts[i - 1] ?? t)) : fallbackEnd;
-}
+/** Defined with the frame data (#192: the Inspector's bucket targets use it too). */
+export { bucketEnd } from '../../data/frames';
 
 /**
  * `'zero'`: a non-finite count adds 0 (bars). `'missing'`: a merged cell is NaN when any of its

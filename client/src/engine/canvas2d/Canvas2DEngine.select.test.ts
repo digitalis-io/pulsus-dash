@@ -143,7 +143,8 @@ describe('unit:engine-select', () => {
       seriesFrame('000000000000000b', t6, one, { level: 'b' }),
       seriesFrame('000000000000000c', t6, one, { level: 'c' }),
     );
-    const { h, sel } = frame(bars(), data);
+    // A pinned range above the stack's top keeps 6 px above it inside the plot.
+    const { h, sel } = frame(bars({ valueRange: { min: 0, max: 5 } }), data);
     const s = last(h);
     const x = xOf(s, 25_000);
     press(h, { x, y: yOf(s, 1.5) });

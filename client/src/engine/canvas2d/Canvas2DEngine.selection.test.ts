@@ -44,6 +44,16 @@ function plain(spec: VisSpec, data: FrameData): RecordedOp[] {
   return [...h.layer().ops];
 }
 
+/** The calls and the style each one uses (state left over from an earlier draw is not a call). */
+const calls = (ops: readonly RecordedOp[]) =>
+  ops.map((o) => ({
+    op: o.op,
+    args: o.args,
+    alpha: o.globalAlpha,
+    fill: o.op.startsWith('fill') ? o.fillStyle : null,
+    stroke: o.op.startsWith('stroke') ? `${o.strokeStyle} ${String(o.lineWidth)}` : null,
+  }));
+
 const LINE: VisSpec = { kind: 'line', title: 'T', unit: NONE };
 const LINES = seriesData(
   seriesFrame(
@@ -110,8 +120,8 @@ describe('unit:selection-draw', () => {
     expect(foreign.some((o) => o.globalAlpha !== 1)).toBe(false);
     expect(foreign.some((o) => o.op === 'stroke' && o.strokeStyle === C.focus)).toBe(false);
     drawWith(h, sel([K1]));
-    expect(drawWith(h, null)).toEqual(base);
-    expect(drawWith(h, sel([]))).toEqual(base);
+    expect(calls(drawWith(h, null))).toEqual(calls(base));
+    expect(calls(drawWith(h, sel([])))).toEqual(calls(base));
   });
 
   it('line: an interval draws a band of at least one device px', () => {
