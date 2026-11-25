@@ -39,3 +39,27 @@ fn ecmascript_rounding_rules() {
     assert_eq!(js_round(-2.5), -2.0);
     assert_eq!(js_round(2.5), 3.0);
 }
+
+/// T21-013: a converted value c ≥ 1e21 or 0 < c < 1e−12 takes the exponent form plus the base
+/// tail; every other output is unchanged (plan #208 §5).
+#[test]
+fn out_of_range_form() {
+    let rps = Unit::Suffix {
+        suffix: "rps".into(),
+    };
+    let ns = Unit::Time {
+        base: dash_units::TimeBase::Ns,
+    };
+    for (v, unit, want) in [
+        (1e21, &Unit::None, "1e+21"),
+        (2.5e22, &Unit::None, "2.5e+22"),
+        (1e-4, &ns, "1e-13 s"),
+        (1e22, &Unit::Bytes, "1e+22 B"),
+        (5e21, &rps, "5e+21 rps"),
+        (1e19, &Unit::Percentunit, "1e+21 %"),
+        (1e-13, &Unit::None, "1e-13"),
+        (-2.5e22, &Unit::None, "-2.5e+22"),
+    ] {
+        assert_eq!(format_value(v, unit), want, "{v:e} {unit:?}");
+    }
+}

@@ -178,7 +178,8 @@ const TIME_BASE: Readonly<Record<'ns' | 'us' | 'ms' | 's', number>> = {
  * significant digits; SI prefixes for plain numbers, IEC for bytes, the largest time unit whose
  * value is at least 1. `NaN` is `—`.
  */
-export function formatValue(v: number, unit: Unit): string {
+export function formatValue(v: number, unit: Unit, digits = 3): string {
+  void digits;
   if (Number.isNaN(v)) return '—';
   if (v === Infinity) return '+Inf';
   if (v === -Infinity) return '-Inf';
