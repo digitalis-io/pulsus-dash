@@ -1117,7 +1117,7 @@ c3  flag        12:21:30           "new-checkout-flow 10%→50%"        []      
 c4  annotation  12:23:00–12:40:00  "INC-2041 mitigation window"       []         organisation-wide
 c5  deploy      11:50:00–12:05:00  "gateway v1.8 rollout"             []         gateway@e1
 c6  config      12:19:02           "payments.retry 3→1"               []         payments@e1
-c7  annotation  12:30:00           '=HYPERLINK("https://x.test")'     []         organisation-wide
+c7  annotation  12:30:00           '=HYPERLINK("a")'     []         organisation-wide
 c8  deploy      11:20:00–11:40:00  "checkout v2.30"                   []         checkout@e1
 c9  config      11:30:00–12:00:00  "edge cache ttl 60→30"             []         organisation-wide
 scope fixture adds:
@@ -1130,7 +1130,7 @@ The full order of C in the window is c7, c4, c3, c6, c2, c1, c5, c9 (8 rows). It
 
 ```text
 at,end_at,kind,entity_id,entity,text,tags,id
-2026-11-26T12:30:00.000Z,,annotation,,,"'=HYPERLINK(""https://x.test"")",,00000000-0000-4000-8000-000000000007
+2026-11-26T12:30:00.000Z,,annotation,,,"'=HYPERLINK(""a"")",,00000000-0000-4000-8000-000000000007
 2026-11-26T12:23:00.000Z,2026-11-26T12:40:00.000Z,annotation,,,INC-2041 mitigation window,,00000000-0000-4000-8000-000000000004
 2026-11-26T12:21:30.000Z,,flag,3d1d4695-d757-d5f8-d6bf-c1b134128742,service checkout · prod-us,new-checkout-flow 10%→50%,,00000000-0000-4000-8000-000000000003
 2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.retry 3→1,,00000000-0000-4000-8000-000000000006
@@ -1186,7 +1186,7 @@ No scope above covers an organisation-wide row; full scope covers every row.
 | `unit:change-selection` | same | c1–c7 and c9 loaded | `{[], 12:19:00, 12:22:00}` → c3, c6, c2 selected, the others muted; a series key + that interval → no effect; foreign `change:…000000000099` → no effect; a series key + `change:…000000000004` + c4's interval → c4 only; the line panel bands and dims nothing; Enter/Space on c4 → inspect and focus on the heading; Load older of a 3-row page → "3 changes loaded" | T24-035, T24-036 |
 | `unit:change-inspect` | inspector/model.test.ts | c4; c2; c2 + the filter `job=shop/web`; a service named `a"b\c` + LF + `d` | c4: heading `Note`, Duration `17 min`, Entity `organisation-wide`, Logs disabled ("This change has no service"); c2: Logs `{service_name="payments"}` over 12:18:02–12:20:02; with the filter `{service_name="payments",service_name="web"}` and the T25-010 conflict line; the odd name → `{service_name="a\"b\\c\nd"}` | T24-035 |
 | `unit:change-mixed` | widgets/changeFeed/mixed.test.tsx | No `applied`: C; `[]`; an `e`; a create with `entity` → 400 | `coverage unknown`, setsize −1, no Load older; `[]` → empty, `coverage unknown`; `e` → "Filtering by entity needs a newer server", no rows; the create → "This server cannot record the entity yet", 1 request | T24-038 |
-| `unit:change-table-csv` | widgets/changeFeed/table.test.ts | C | The C CSV above exactly: the T24-037 header; c7's text `"'=HYPERLINK(""https://x.test"")"`; c3 `3d1d4695-d757-d5f8-d6bf-c1b134128742`, `service checkout · prod-us`; facts `{'8 changes', 'Note: =HYPERLINK("https://x.test") at 12:30:00'}` | T24-037 |
+| `unit:change-table-csv` | widgets/changeFeed/table.test.ts | C | The C CSV above exactly: the T24-037 header; c7's text `"'=HYPERLINK(""a"")"`; c3 `3d1d4695-d757-d5f8-d6bf-c1b134128742`, `service checkout · prod-us`; facts `{'8 changes', 'Note: =HYPERLINK("a") at 12:30:00'}` | T24-037 |
 | `unit:board-spec-change-feed` | boards/spec.test.ts, validate_test.go | `{}`; kinds `[]`, `['deploy','deploy']`, `['release']`; 9 tags; tag `Bad`; `entityMode:'fixed'`; `orgWide:'yes'`; `fieldConfig`; `thresholds`; `depth`; the Table 5-13 rows | Defaults `{kinds: all four, tags: [], entityMode: context, orgWide: false, showTags: true}`; `kinds.invalid`, `kinds.duplicate`, `kinds.invalid`; `tags.invalid` ×2; `entityMode.invalid`; `board.json.type`; `board.json.unknownKey` ×3; TS = Go; v5 upcasts; never auto-picked | T24-037, VIZ-057, VIZ-065 |
 | `unit:import-change-feed` | import/changeFeed.test.ts | J1–J4 (below) | Options and notes exactly as listed | T24-039 |
 | `e2e:widget-change-feed` | e2e/widgets.spec.ts | Stub BFF, C in pages of 3, a line panel, `?e=bb7487bd-100d-a998-e0f0-3c65f11da1a7` | 1 row + "3 organisation-wide changes not shown"; the toggle → 4 rows; without `e`: Load older ×2 → 8 rows, the paged text, setsize −1; Enter on c4 → the Inspector `Note` and the band on the line panel; Esc ×2 clears and closes; Refresh → 1 request | VIZ-053 |
@@ -1246,7 +1246,7 @@ Part B2 implementation issues, filed with this design:
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
 | I5 — BFF: annotation entity, data scope, filters, keyset, `applied` | §5.9, §6, migration 5, `unit:entity-id`, the `itest:annotations-*` tests; `docs/server/annotations-api.md`, `docs/server/database.md` | #215 rolled out | T24-030–032, T24-038, T12-010, T12-018 |
-| I6 — Change feed widget, `e=`, the `change` target | §5.8, §5.10, [T25](T25-inspector-and-pivots.md) `change`, the unit, e2e and golden tests, gallery `widget-change-feed`, `-entity`, `-states`, `-inspector`; `docs/client/widgets.md`, `docs/client/inspector.md`, `docs/client/logs.md` (§4.9), `docs/user/boards.md` | I5, I2, #198, #173 | T24-030–039, T25-002 |
+| I6 — Change feed widget, `e=`, the `change` target | §5.8, §5.10, [T25](T25-inspector-and-pivots.md) `change` and `unit:pivot-context` C4 (`e=`), the unit, e2e and golden tests, gallery `widget-change-feed`, `-entity`, `-states`, `-inspector`; `docs/client/widgets.md`, `docs/client/inspector.md`, `docs/client/logs.md` (§4.9), `docs/user/boards.md` | I5, I2, #198, #173 | T24-030–039, T25-002 |
 | I7 — Validate `annotations_entity_pair` (next release) | `ALTER TABLE annotations VALIDATE CONSTRAINT annotations_entity_pair`, `itest:annotations-entity-validate` | I5 released | T11-013 |
 | L1 — Log panel minimap, JSON tree and prettify (needs design) | §4.9 | — | VIZ-034 |
 | L2 — Log panel dedupe and context lines (needs design) | §4.9 | — | VIZ-034 |

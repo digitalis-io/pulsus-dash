@@ -466,7 +466,8 @@ time change from a brush MUST be undoable ([03](03-interaction-model.md) §9).
 resulting value; brushing then `⌘Z` restores the previous window.
 
 *Pivot row (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-010--pivot-context)):* per T25-010. Entity set and baseline travel as
-`ContextSearch` members from the issues that add them: the T12 entity set (Epic #6) and I6. Until then
+`ContextSearch` members from the issues that add them: the entity set `e=` (canonical `EntityId`s) from
+#223 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part B2 I6) and the baseline from T25's I6. Until then
 the Context line names them as not carried; the acceptance is C1 now and C3–C4 at delivery
 (`unit:pivot-context`).
 
@@ -560,4 +561,4 @@ tenant table, with the acceptance unchanged.
 | 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19, mockup 35): §3.1 cites mockup 35 and its table and diagram show the tenant switcher, the Starred and Recent groups, the breadcrumb and star toggle; IA-021 revised in place (org and tenant switcher, Starred, Recent, Admin and the collapse control in the footer, a data-source status line once a health call exists); IA-016 header left is breadcrumb, title and star toggle, and the command palette entry appears once the palette exists; acceptance criteria extended to match |
 | 1.3-rc | 2026-11-21 | #61 Part C: IA-021 revised in place: Recent is the last five boards the user opened, and Starred and Recent are stored per user by the server (the same after reload, in every browser and under every tenant), with the ordering guarantee of decision D-RECENT-window; its acceptance adds a fresh browser profile. §4 board pattern adds `f`, `collapse` and `expand`, with a note on their form and the 4 096-byte link budget |
 | 1.4-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): IA-026 pivot row note (per T25-010; entity set and baseline travel as `ContextSearch` members from the T12 entity-set issue and I6, named as not carried until then; acceptance C1 now, C3–C4 at delivery); IA-027 staging note (interim built-in seed in I1, the tenant table in I5, acceptance unchanged) |
-| 1.5-rc | 2026-11-25 | #181 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part B2): §4 the board pattern gains `e={entityRef,...}`, and an `entityRef` is a canonical `EntityId` (T12-010), at most 16; IA-026 entity-set note (`ContextSearch.e`; the Change feed filters by it; a non-canonical entry is never guessed) |
+| 1.5-rc | 2026-11-25 | #181 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part B2): §4 the board pattern gains `e={entityRef,...}`, and an `entityRef` is a canonical `EntityId` (T12-010), at most 16; IA-026 entity-set note (`ContextSearch.e`; the Change feed filters by it; a non-canonical entry is never guessed); the pivot row note's entity set comes from #223 |
