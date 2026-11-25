@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-23 |
+| **Version** | 1.8-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (tenancy, prefs, boards v0) → M-UI3 (entities, derived state) → M-UI4 (alerting, investigations, alert history) → M-UI5 (versions UI, dashboard import) → M-UI6 (identity, Git sync, Terraform) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (Go BFF), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0009](../adr/0009-optional-object-storage.md), [ADR-0011](../adr/0011-terraform-provider-in-go.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T11-postgres-schema.md (not tracked) |
@@ -396,6 +396,25 @@ are small, unversioned tables.
   use the server transaction start time (`now()`), best effort.
 - Every organisation has a root folder (`uid` `root`, path `/`): seeded with the organisation and
   ensured on its first board.
+
+*#181 subset (2026-11-25, migration 4,
+[T24-029](T24-geo-schematic-and-widget-panels.md#t24-029--board-tags-and-compatibility)):*
+- `boards` gains `tags text[] NOT NULL DEFAULT '{}'` and `tags_version bigint NOT NULL DEFAULT 0`
+  (metadata-only: no table rewrite), and the constraint `boards_tags_max CHECK (cardinality(tags) <=
+  16) NOT VALID`; the migration sets `lock_timeout` 5 s and `statement_timeout` 5 min. `search` is
+  still not added: the board search is `strpos` on the title and exact tags
+  ([T24](T24-geo-schematic-and-widget-panels.md) §6).
+- `boards.tags` is a cache of the head version's `spec.tags`, fresh iff `tags_version =
+  head_version`. Every head move (`InsertBoard`, `MoveBoardHead`) by a binary at schema 4 or later
+  sets both in the same transaction. A head move by an older binary leaves the row stale.
+- **Repair on read:** a board list first runs `RepairBoardTags` in its own committed transaction (at
+  most 200 stale rows, `FOR UPDATE SKIP LOCKED`, `statement_timeout` 2 s, `lock_timeout` 500 ms, on the
+  primary). A failure leaves the rows stale and never fails the list. The list then reads its rows and
+  the org's stale count in one statement; stale rows have no tags and never match a tag filter. This
+  is not a backfill job (T11-014): it is bounded per request, and stale rows are shown as unknown, not
+  hidden.
+- **I4 (the next release):** `ALTER TABLE boards VALIDATE CONSTRAINT boards_tags_max` once every
+  binary in the window writes at most 16 tags (T11-013).
 
 #### T11-006 — Versions are immutable
 **MUST** — A save MUST insert version `n+1` and move `head_version` in one transaction, with an
@@ -1385,3 +1404,4 @@ row, field)`, so ciphertext moved between rows fails to decrypt. Exports exclude
 | 1.5-rc | 2026-11-21 | [ADR-0021](../adr/0021-query-planning-is-server-side.md): §4.6 `alert_rule_versions.spec` query entries gain `vars`, `rate` and an optional `plan_step_ms` (the panel's planning step for a rule created from a panel; T16 §4.2); `expr` is the raw query |
 | 1.6-rc | 2026-11-22 | #64 Part B: §4.0 note: board spec schema version 2 (`vis.thresholds`, `vis.legend`); v1 upcasts unchanged (T11-016); no SQL migration (`schema_version` is an existing column) |
 | 1.7-rc | 2026-11-23 | #64 Part C (migration 3, [ADR-0023](../adr/0023-chart-event-markers.md)): §4.4 `annotations` DDL as built: `kind` (deploy, config, flag, annotation), the text, tag-count and 31-day range CHECKs, `created_at`, the named index, RLS and grants; §11 M-UI1 adds `annotations`; §3 ENT-020 row adds it |
+| 1.8-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B1, migration 4): §4.3 adds `boards.tags` (a cache of the head spec's tags, `NOT NULL DEFAULT '{}'`) and `tags_version`, fresh iff equal to `head_version`; `boards_tags_max` `NOT VALID`, validated by I4 in the next release; the bounded repair on read (T24-029); `search` still not added |
