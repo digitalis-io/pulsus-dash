@@ -23,7 +23,6 @@
   box-shadow: 0 var(--space-2) var(--space-6) var(--backdrop);
   color: var(--text);
   opacity: 1;
-  translate: 0 0;
   transition:
     opacity var(--motion-float-open) var(--motion-easing-out),
     translate var(--motion-float-open) var(--motion-easing-out);

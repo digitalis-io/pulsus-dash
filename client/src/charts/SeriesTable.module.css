@@ -209,6 +209,9 @@
 }
 
 .selectToggle {
+  /* Above the row button's whole-row hit area (`.rowButton::after`). */
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -392,11 +392,7 @@ function ValueSection({
     <section className={cx(styles['section'])} data-section="value">
       <div className={cx(styles['valueRow'])}>
         {m.primaryKind === 'line' ? (
-          // A scrolling region must be reachable by keyboard (WCAG 2.1.1).
-          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-          <pre className={cx(styles['line'])} tabIndex={0} data-inspector-value="">
-            {m.primary}
-          </pre>
+          <LogLine text={m.primary} />
         ) : (
           <p
             className={cx(styles['value'], state?.className)}
@@ -433,6 +429,22 @@ function ValueSection({
         {copyFailed ? t('inspector.copyFailed') : ''}
       </p>
     </section>
+  );
+}
+
+/** A log line: a tab stop only when it overflows its 120 px and scrolls (WCAG 2.1.1). */
+function LogLine({ text }: { text: string }) {
+  const ref = useRef<HTMLPreElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    if (el.scrollHeight > el.clientHeight) el.tabIndex = 0;
+    else el.removeAttribute('tabindex');
+  }, [text]);
+  return (
+    <pre ref={ref} className={cx(styles['line'])} data-inspector-value="">
+      {text}
+    </pre>
   );
 }
 
