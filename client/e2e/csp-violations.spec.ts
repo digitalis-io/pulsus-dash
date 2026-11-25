@@ -3,6 +3,7 @@ import { productionHeaders } from '../config/headers.ts';
 import {
   ALL_PAGES,
   EXPLORE_RESULT,
+  GALLERY_URL,
   LOGS_RESULT,
   open,
   openPicker,
@@ -146,7 +147,8 @@ test.describe('e2e:csp-violations (engine)', () => {
     await open(page, `${GALLERY_URL}&engine=wasm`);
     await expect(page.locator('html')).toHaveAttribute('data-dash-status', '1');
     await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).not.toHaveCount(0);
-    for (const c of await lineCanvases.all()) await expect(c).toHaveAttribute('data-engine', 'wasm-webgpu');
+    for (const c of await lineCanvases.all())
+      await expect(c).toHaveAttribute('data-engine', 'wasm-webgpu');
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
     expect(await page.evaluate(() => window.__cspViolations), 'gallery').toEqual([]);
 

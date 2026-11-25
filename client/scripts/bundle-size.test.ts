@@ -243,7 +243,10 @@ describe('bundle-size engine row (PRF-009, plan #68 C1)', () => {
     const { brotliSize } = await import('./bundle-size.ts');
     const wasm = randomBytes(1_000_000, 3);
     const worker = Buffer.from('export const w = 1;'.repeat(50));
-    const r = checkBundle(makeDist({ files: { [ENGINE_WASM]: wasm, [ENGINE_WORKER]: worker } }), budgets);
+    const r = checkBundle(
+      makeDist({ files: { [ENGINE_WASM]: wasm, [ENGINE_WORKER]: worker } }),
+      budgets,
+    );
     expect(r.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
     const engine = r.rows.filter((row) => (row.cls as string) === 'engine');
@@ -270,9 +273,9 @@ describe('bundle-size engine row (PRF-009, plan #68 C1)', () => {
     expect(rules(dist)).toEqual(['engine-in-initial']);
   });
   it('no engine wasm', () => {
-    expect(
-      rules(makeDist({ files: { [ENGINE_WASM]: null, [ENGINE_WORKER]: null } })),
-    ).toEqual(['missing-artefact:engine']);
+    expect(rules(makeDist({ files: { [ENGINE_WASM]: null, [ENGINE_WORKER]: null } }))).toEqual([
+      'missing-artefact:engine',
+    ]);
   });
 });
 

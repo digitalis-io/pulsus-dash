@@ -1,9 +1,9 @@
 /// <reference types="vitest/config" />
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { devHeaders, productionHeaders } from './config/headers.ts';
 
 /**
@@ -16,13 +16,43 @@ const EDITOR_MODULE =
   /\/src\/editor\/(?!lang\/(?:index|types)\.ts$)|\/node_modules\/(?:@codemirror|@lezer|@marijn|@prometheus-io|crelt|lru-cache|style-mod|w3c-keyname)\//;
 
 const root = fileURLToPath(new URL('.', import.meta.url));
+
+/**
+ * `virtual:dash-engine` (plan #68 C1 §2): the wasm-bindgen glue of `cargo xtask build-wasm` in the
+ * git-ignored `src/engine/wasm/gen/` with the URL of its wasm, or `src/engine/wasm/absent.ts` in a
+ * build without the engine (every frame stays on Canvas 2D). Types: `wasm/engine-module.d.ts`.
+ */
+function dashEngine(): Plugin {
+  const id = 'virtual:dash-engine';
+  const resolved = `\0${id}`;
+  const gen = `${root}src/engine/wasm/gen/`;
+  return {
+    name: 'dash-engine',
+    resolveId(source) {
+      return source === id ? resolved : null;
+    },
+    load(source) {
+      if (source !== resolved) return null;
+      if (!existsSync(`${gen}dash_core_mt.js`) || !existsSync(`${gen}dash_core_mt_bg.wasm`)) {
+        return `export * from '${root}src/engine/wasm/absent.ts';
+export { default } from '${root}src/engine/wasm/absent.ts';`;
+      }
+      return `export * from '${gen}dash_core_mt.js';
+export { default } from '${gen}dash_core_mt.js';
+export { default as wasmUrl } from '${gen}dash_core_mt_bg.wasm?url';`;
+    },
+  };
+}
+
+/** Engine modules: their chunks are `dash-engine-*` (`ci:bundle-size` engine row). */
+const ENGINE_MODULE = /\/src\/engine\/wasm\/|dash-engine/;
 const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version: string };
 
 // The BFF the dev server proxies to (ADR-0014 §6). Never logged.
 const bff = process.env['PULSUS_DASH_DEV_BFF'] ?? 'http://localhost:8080';
 
 export default defineConfig({
-  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] })],
+  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] }), dashEngine()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -35,7 +65,25 @@ export default defineConfig({
         chunkFileNames: (c) =>
           c.moduleIds.some((id) => EDITOR_MODULE.test(id))
             ? 'assets/editor-[hash].js'
-            : 'assets/[name]-[hash].js',
+            : c.moduleIds.some((id) => ENGINE_MODULE.test(id))
+              ? 'assets/dash-engine-[hash].js'
+              : 'assets/[name]-[hash].js',
+        assetFileNames: (a) =>
+          a.names.some((n) => n.endsWith('.wasm'))
+            ? 'assets/dash-engine-[hash][extname]'
+            : 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
+  // The engine's workers (plan #68 C1 §3.5): ES modules named `dash-engine-[name]-[hash].js`.
+  worker: {
+    format: 'es',
+    plugins: () => [dashEngine()],
+    rolldownOptions: {
+      output: {
+        entryFileNames: 'assets/dash-engine-[name]-[hash].js',
+        chunkFileNames: 'assets/dash-engine-[hash].js',
+        assetFileNames: 'assets/dash-engine-[hash][extname]',
       },
     },
   },

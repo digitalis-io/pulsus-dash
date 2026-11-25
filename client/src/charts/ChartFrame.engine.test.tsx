@@ -96,7 +96,13 @@ function mount(engine: RoutingEngine) {
     if (h === null) throw new Error('no frame');
     return h;
   };
-  return { view, host, setTitle: (title: string) => setSpec({ ...LINE, title }) };
+  return {
+    view,
+    host,
+    setTitle: (title: string) => {
+      setSpec({ ...LINE, title });
+    },
+  };
 }
 
 function expectRetired(c: HTMLCanvasElement | undefined): void {

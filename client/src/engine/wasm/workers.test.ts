@@ -31,8 +31,8 @@ describe('the pulsus-engine Trusted Types policy (ADR-0026)', () => {
       },
     });
     const w = await load();
-    expect(String(w.scriptUrl(RENDER))).toBe(RENDER);
-    expect(String(w.scriptUrl(POOL))).toBe(POOL);
+    expect(w.scriptUrl(RENDER)).toBe(RENDER);
+    expect(w.scriptUrl(POOL)).toBe(POOL);
     expect(created.map((c) => c.name)).toEqual(['pulsus-engine']);
     const rules = created[0]?.rules;
     if (rules === undefined) throw new Error('no policy');

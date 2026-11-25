@@ -118,14 +118,25 @@ export async function plotInk(page: Page, id: string): Promise<number> {
   for (let yy = y0; yy < Math.min(shot.h, Math.ceil((y + h) * dpr)); yy++) {
     for (let xx = x0; xx < Math.min(shot.w, Math.ceil((x + w) * dpr)); xx++) {
       const i = (yy * shot.w + xx) * 4;
-      if (Math.abs((shot.px[i] ?? 0) - (bg[0] ?? 0)) + Math.abs((shot.px[i + 1] ?? 0) - (bg[1] ?? 0)) + Math.abs((shot.px[i + 2] ?? 0) - (bg[2] ?? 0)) > 24) n++;
+      if (
+        Math.abs((shot.px[i] ?? 0) - (bg[0] ?? 0)) +
+          Math.abs((shot.px[i + 1] ?? 0) - (bg[1] ?? 0)) +
+          Math.abs((shot.px[i + 2] ?? 0) - (bg[2] ?? 0)) >
+        24
+      )
+        n++;
     }
   }
   return n;
 }
 
 /** A device-scale screenshot of a frame's live canvas, written under the test's output. */
-export async function canvasShot(page: Page, id: string, info: TestInfo, name: string): Promise<string> {
+export async function canvasShot(
+  page: Page,
+  id: string,
+  info: TestInfo,
+  name: string,
+): Promise<string> {
   const path = info.outputPath(`${name}.png`);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, await liveCanvas(page, id).screenshot({ scale: 'device' }));
@@ -136,15 +147,29 @@ export async function canvasShot(page: Page, id: string, info: TestInfo, name: s
  * `dash-golden compare` over the plot rect (edges included) with the engine golden limits
  * (T05-005): the exit code, 0 = within both.
  */
-export function compareShots(a: string, b: string, plot: number[], dpr: number): { code: number; out: string } {
+export function compareShots(
+  a: string,
+  b: string,
+  plot: number[],
+  dpr: number,
+): { code: number; out: string } {
   const bin = process.env['DASH_GOLDEN_BIN'];
   if (bin === undefined || bin === '') throw new Error('DASH_GOLDEN_BIN is not set');
   const [x = 0, y = 0, w = 0, h = 0] = plot;
   const x0 = Math.floor(x * dpr);
   const y0 = Math.floor(y * dpr);
-  const region = [x0, y0, Math.ceil((x + w) * dpr) - x0 + 1, Math.ceil((y + h) * dpr) - y0 + 1].join(',');
-  const r = spawnSync(bin, ['compare', a, b, '--region', region, '--max', '0.005', '--tile-max', '0.25'], {
-    encoding: 'utf8',
-  });
+  const region = [
+    x0,
+    y0,
+    Math.ceil((x + w) * dpr) - x0 + 1,
+    Math.ceil((y + h) * dpr) - y0 + 1,
+  ].join(',');
+  const r = spawnSync(
+    bin,
+    ['compare', a, b, '--region', region, '--max', '0.005', '--tile-max', '0.25'],
+    {
+      encoding: 'utf8',
+    },
+  );
   return { code: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
 }

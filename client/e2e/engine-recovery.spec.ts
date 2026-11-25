@@ -52,7 +52,9 @@ test.describe('e2e:engine-recovery', () => {
       await expect(frame(page, id).locator('[data-engine-notice]')).toHaveText(NOTICE);
     }
     await expect(page.locator('html')).toHaveAttribute('data-dash-status', '1');
-    expect(await page.evaluate(() => sessionStorage.getItem('pulsus-dash.engine-failed'))).toBe(null);
+    expect(await page.evaluate(() => sessionStorage.getItem('pulsus-dash.engine-failed'))).toBe(
+      null,
+    );
   });
 
   test('trap2: every engine frame falls back, also after a reload', async ({ page }) => {
@@ -62,7 +64,9 @@ test.describe('e2e:engine-recovery', () => {
       await expect(liveCanvas(page, id)).toHaveAttribute('data-engine', 'canvas2d');
     }
     await framesReady(page);
-    expect(await page.evaluate(() => sessionStorage.getItem('pulsus-dash.engine-failed'))).toBe('1');
+    expect(await page.evaluate(() => sessionStorage.getItem('pulsus-dash.engine-failed'))).toBe(
+      '1',
+    );
     await page.reload();
     await waitReady(page, url);
     await framesReady(page);

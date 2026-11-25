@@ -28,7 +28,11 @@ describe('chooseEngine (D-SEL, T03-025)', () => {
       { search: '?engine=wasm', webgpu: false, webgl2: false },
       { kind: 'canvas2d' },
     ],
-    ['(10) no Atomics.waitAsync', { search: '?engine=wasm', waitAsync: false }, { kind: 'canvas2d' }],
+    [
+      '(10) no Atomics.waitAsync',
+      { search: '?engine=wasm', waitAsync: false },
+      { kind: 'canvas2d' },
+    ],
     [
       '(11) failed this session',
       { search: '?engine=wasm', failedThisSession: true },

@@ -32,10 +32,17 @@ describe('ci:probe-absent (T03-024)', () => {
       ...CLEAN,
       'assets/a-1.js': 'globalThis.__dashProbe = {};',
       'assets/b-2.js': `console.warn("${fault}")`,
-      'assets/dash-engine-c.wasm': Buffer.concat([Buffer.from([0, 0x61, 0x73, 0x6d]), Buffer.from(fault)]),
+      'assets/dash-engine-c.wasm': Buffer.concat([
+        Buffer.from([0, 0x61, 0x73, 0x6d]),
+        Buffer.from(fault),
+      ]),
     });
     const r = checkProbeAbsent(d);
-    expect(r.map((f) => f.rule)).toEqual(['probe-in-release', 'probe-in-release', 'probe-in-release']);
+    expect(r.map((f) => f.rule)).toEqual([
+      'probe-in-release',
+      'probe-in-release',
+      'probe-in-release',
+    ]);
     expect(r.map((f) => f.file).sort()).toEqual([
       'assets/a-1.js',
       'assets/b-2.js',

@@ -75,7 +75,9 @@ for (const leg of [
       }
     });
 
-    test('negatives: a 1 % shift and the gap fault fail the comparison', async ({ browser }, info) => {
+    test('negatives: a 1 % shift and the gap fault fail the comparison', async ({
+      browser,
+    }, info) => {
       test.setTimeout(120_000);
       const shift = (TO - FROM) / 100;
       const base = { id: 'line-50', theme: 'dark', scale: 1 };
