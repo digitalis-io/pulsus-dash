@@ -208,7 +208,8 @@ export function emptyFrameData(spec: VisSpec): FrameData {
   }
 }
 
-function quoted(v: string): string {
+/** A label value as `seriesName` writes it: `"…"` with `\\`, `"` and LF escaped (T22-004). */
+export function quoted(v: string): string {
   return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
 }
 

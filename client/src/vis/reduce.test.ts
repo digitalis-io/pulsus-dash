@@ -163,9 +163,9 @@ describe('unit:category-tiny', () => {
 describe('unit:coverage-text', () => {
   it('the meter parts', () => {
     expect(coverageText(coverage())).toBe('100 %');
-    expect(coverageText(coverage({ query: { ...COMPLETE, warnings: ['series limit reached'] } }))).toBe(
-      'limited (1 warning)',
-    );
+    expect(
+      coverageText(coverage({ query: { ...COMPLETE, warnings: ['series limit reached'] } })),
+    ).toBe('limited (1 warning)');
     expect(coverageText(coverage({ query: TRUNCATED }))).toBe('truncated');
     expect(coverageText(coverage({ baseline: TRUNCATED }))).toBe('baseline truncated');
     expect(coverageText(coverage({ baseline: withWarnings(2) }))).toBe(
@@ -330,11 +330,15 @@ describe('unit:category-unique-names', () => {
       ],
       'version',
     );
-    expect(names).toEqual(['2.31 · region="eu" (1)', '2.31 · region="us"', '2.31 · region="eu" (2)']);
+    expect(names).toEqual([
+      '2.31 · region="eu" (1)',
+      '2.31 · region="us"',
+      '2.31 · region="eu" (2)',
+    ]);
     expect(new Set(names).size).toBe(3);
-    expect(markNames([{ key: fkey(1), labels: { version: 'other' } }], 'version', ['other (4)'])).toEqual(
-      ['"other"'],
-    );
+    expect(
+      markNames([{ key: fkey(1), labels: { version: 'other' } }], 'version', ['other (4)']),
+    ).toEqual(['"other"']);
     expect(markNames([{ key: fkey(1), labels: { version: '2.31 (1)' } }], 'version')).toEqual([
       '"2.31 (1)"',
     ]);
@@ -375,7 +379,9 @@ describe('unit:category-summary-facts', () => {
       extent: { min: 7, max: 120 },
       baselineRatio: 2,
     });
-    expect(summaryFacts('barchart', 'Requests', r, rows, NONE, withWarnings(1)).baselineRatio).toBeNull();
+    expect(
+      summaryFacts('barchart', 'Requests', r, rows, NONE, withWarnings(1)).baselineRatio,
+    ).toBeNull();
   });
 
   it('instant, empty and no finite mark', () => {

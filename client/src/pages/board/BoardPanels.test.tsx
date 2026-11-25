@@ -216,7 +216,9 @@ describe('panel runs', () => {
     show('Versions', 'Share');
     for (const title of ['Versions', 'Share']) {
       expect(
-        await within(panelOf(title)).findByText("This chart type isn't available in this version yet."),
+        await within(panelOf(title)).findByText(
+          "This chart type isn't available in this version yet.",
+        ),
         title,
       ).toBeInTheDocument();
       expect(panelState(title)).toBe('kindUnavailable');
