@@ -865,7 +865,7 @@ rows.
 Defaults: w = [0, 6 000) ms, step 1 000 ms. A run is written (text, [from, to)). Every I-A unit row fails
 today because `client/src/vis/transforms/` does not exist.
 
-I-F rows (H1 to H26): values come from running the T21-013 operations in Node, not by hand. They are
+I-F rows (H1 to H26, with H8a): values come from running the T21-013 operations in Node, not by hand. They are
 linear, and in `count` mode when c is given. The file and gate are `histogram.test.ts` ·
 `unit:dist-bins` unless named. All fail today: `client/src/vis/transforms/histogram.ts` does not exist.
 
@@ -915,6 +915,7 @@ script in Node, which I-G ports as the fixture generator. The file and gate are 
 | I-F | H6 "zero-drawable group and panel" | log; groups A [1,10], C [0] → C not drawn, legend "C (no values shown)", no C curve. Log; A [0,0], B [0,+Inf] → `noneShown` with A {nonPositive 2}, B {nonPositive 1, infinite 1}: plot "No values shown: 3 ≤ 0 not shown (log) · 1 infinite values not shown"; legend A, B "(no values shown)"; popover "A: 2 ≤ 0", "B: 1 ≤ 0, 1 infinite"; table rows A ≤ 0 2, B ≤ 0 1, B infinite 1 |
 | I-F | H6c "exclusion precedence" (`unit:dist-bins`; `e2e:hist-inspect`, `e2e:table-csv`) | log; A [−1e−300, −1, 0, 1, 10, +Inf, 1e300] → infinite 1, outOfRange 2 (−1e−300, 1e300), nonPositive 2, drawable 2; meter "2 ≤ 0 not shown (log) · 1 infinite values not shown · 2 values out of range not shown"; popover "A: 2 ≤ 0, 1 infinite, 2 out of range"; table rows A ≤ 0 (log) 2, infinite 1, out of range 2 |
 | I-F | H7 "non-finite and duplicates" | range A ts 0…3 [1,NaN,+Inf,2], A′ (same labels) ts [0] [5], B [−Inf,3] → values {5,2,3}, received 5, drawable 3; meter "2 infinite values not shown · 1 duplicate series combined; 1 conflicts (max kept)" |
+| I-F | H8a "empty, too many, interim buckets notice" (`histogram.test.ts` · `unit:dist-bins`; until I-G replaces the notice) | no series → `empty`, meter `100 %`; truncated → meter "truncated"; 2 000 001 samples → `tooMany`, no worker started, no legend, table = 1 notice row; instant series with `le` and differing timestamps → the interim `buckets` result (main thread, no worker) with the plot text "Histogram buckets: choose Heatmap; bucket histograms come with #206", no legend, meter query parts, table = 1 notice row; one `le` series among others → the same `buckets` result, never binned as values |
 | I-G | H8 "empty, too many, buckets" (rewritten by #206; `histogram.test.ts` · `unit:dist-bins`) | no series; truncated; 95 families `{pod="p00"…"p94"}` × the 21 H22 bounds = 1 995 series, the first 1 994 with 1 002 samples and the last with 2 013 (2 000 001); instant families with differing timestamps; one B1 family among 2 plain series → `empty`, "truncated"; `tooMany`, no worker, table = notice row + 95 "not processed" rows; the instant result → a `buckets` frame (never values); the mixed one → B1 counts and "2 series without le not shown". Covers T21-012, T21-060, T21-068 |
 | I-F | H9 "groups and other" (+ gallery `histogram-groups-other` · `golden:interim-gallery`, `golden:greyscale`) | version v1…v9 (drawable 10…2) plus one series without it (1) → v1…v7 with patterns and dashes [0…6]; `other (3)` = v8, v9, "version absent", `grid`, last; value `other` → `"other"`; greyscale: 8 marks distinct |
 | I-F | H10 "other payload and rows" | in H9 (c 1), click `other` → target `group` {key 'other', name 'other (3)', other true}, `members` [{v8,3},{v9,2},{version absent,1}], count 6; table: v8, v9, "version absent" rows, shown as `other (3)` |
@@ -977,7 +978,7 @@ Part 2a (#154), filed after merge:
 
 | # | Title | Mode | Depends | Requirement IDs | Acceptance (tests in §10) |
 |---|---|---|---|---|---|
-| I-F | Histogram panel: bins, groups, CDF/ECDF, value brush, bin Inspector target | 2D-now, M-UI3 | #192, #173 (`Vis.options`) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-012 to T21-016; H1 to H26 (with H1b, H1c); a seam ADR amending ADR-0014 §3 (§5); board spec next version; gallery; docs |
+| I-F | Histogram panel: bins, groups, CDF/ECDF, value brush, bin Inspector target | 2D-now, M-UI3 | #192, #173 (`Vis.options`) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-012 to T21-016; H1 to H26 (with H1b, H1c, and H8a for the interim `buckets` notice until I-G); a seam ADR amending ADR-0014 §3 (§5); board spec next version; gallery; docs |
 | I-F2 | Engine port of the histogram | Engine | #68, #69, I-F | VIZ-001, VIZ-004 | Same fixtures; the §7 row on `bench:frame-gallery` |
 | #206 | Design: histogram of histogram buckets (T21 part 2a-ii) | design | #154 | VIZ-028 | Per-partition detection and alignment, one terminal +Inf, zero-crossing buckets on log, bucket-family selection; rules T21-060 to T21-069 |
 
@@ -985,7 +986,7 @@ Part 2a-ii (#206), filed after merge:
 
 | # | Title | Mode | Depends | Requirement IDs | Acceptance (tests in §10) |
 |---|---|---|---|---|---|
-| I-G | Histogram of histogram buckets: families, shared bounds, open bins, estimates, family selection | 2D-now, M-UI3 | #208 (I-F) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-060 to T21-069; B1 to B22, H8, H21b and the H22 scenario; gallery `histogram-buckets`; docs |
+| I-G (#212) | Histogram of histogram buckets: families, shared bounds, open bins, estimates, family selection | 2D-now, M-UI3 | #208 (I-F) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-060 to T21-069; B1 to B22, H8, H21b and the H22 scenario; gallery `histogram-buckets`; docs |
 
 I-F2 (#209), the engine port, runs the B fixtures too.
 
@@ -1008,7 +1009,7 @@ How this design relates to the other issues:
 | #164 | MUST accept `StateInspectorTarget`: [T25](T25-inspector-and-pivots.md) `{type:'stateRun', target}` |
 | #170, #173 | Board-spec options per §5 (1.2-rc): the stateTimeline keys live in `vis.options` |
 | #201, #202 | Reuse `XRangeEvent`, `setXRange`, the nullable `tMs` and the T21-016 worker |
-| #206 | Bucket histograms: T21-060 to T21-069, implemented by I-G |
+| #206 | Bucket histograms: T21-060 to T21-069, implemented by I-G (#212) |
 
 **IDs.** Part 1 uses VIZ-086 and T21-001 to T21-011. Part 2a (#154) uses VIZ-090 and T21-012 to
 T21-016 of its range T21-012 to T21-029, #161 owns T21-030 to T21-039, and #206 owns T21-060 to
@@ -1037,4 +1038,4 @@ None.
 | 1.0-rc | 2026-11-24 | #150 |
 | 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): T21-009 writes the T25 `Selection` and opens the Inspector with `{type:'stateRun', target}`; Esc per T25-007, and an empty click clears only the selection; members per T25-011. §5: T25 `Selection`; nullable `SelectEvent.item`; `MemberFacts` from `inspector/members.ts` |
 | 1.2-rc | 2026-11-25 | #154 (Part 2a): the histogram over raw values ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)): T21-012 to T21-016 (values and exclusions, bins with the display guard and the terminal log rule, groups and "other (n)", CDF and exact ECDF, non-time interactions with the value brush and the `bin` Inspector target, the per-panel worker, the coverage meter and the notices); §3, §4.2, §4.3, §4.5, §4.6 and §7 rows; §5 histogram seam and transforms; the board spec moves the stateTimeline keys into T22's `Vis.options` and adds the histogram keys (T21-011, F7, F10 and the state-spec row follow); §10 H1 to H26; §11 I-F, I-F2 and #206; mockup 42-histogram. Code review r1: `SummaryFacts.extent` is `{ min; max } | null`, as T22-014 and T21-015 fill it |
-| 1.3-rc | 2026-11-25 | #206 (Part 2a-ii): histograms of histogram buckets ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay) amended): T21-060 to T21-069 (bucket sources and families with a strict `parseLe`, the shared bound set by drawable valid mass, snapshots validated on the original bounds and never repaired, one bin per bound with display extents and true-bound text, log exclusions of the open first bucket and of buckets crossing 0, groups and the CDF from cumulative counts, labelled estimates and facts, family selection and the Inspector, the meter, notices and table rows, validation); T21-012 sends `le` results to the bucket path and the `buckets` notice is removed (T21-016 notices, §5 `HistogramResult`); §1, §2 (the non-goal removed), §3 rows, §4.2 row; §5 bucket seam additions and `buckets.ts`; §10 H8 rewritten, B1 to B22, H21b and the H22 scenario; §11 I-G; mockup 43-bucket-histogram |
+| 1.3-rc | 2026-11-25 | #206 (Part 2a-ii): histograms of histogram buckets ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay) amended): T21-060 to T21-069 (bucket sources and families with a strict `parseLe`, the shared bound set by drawable valid mass, snapshots validated on the original bounds and never repaired, one bin per bound with display extents and true-bound text, log exclusions of the open first bucket and of buckets crossing 0, groups and the CDF from cumulative counts, labelled estimates and facts, family selection and the Inspector, the meter, notices and table rows, validation); T21-012 sends `le` results to the bucket path and the `buckets` notice is removed (T21-016 notices, §5 `HistogramResult`); §1, §2 (the non-goal removed), §3 rows, §4.2 row; §5 bucket seam additions and `buckets.ts`; §10 H8 rewritten for I-G and the former H8 kept as I-F H8a (the interim `buckets` notice until I-G), B1 to B22, H21b and the H22 scenario; §11 I-G (#212); mockup 43-bucket-histogram |
