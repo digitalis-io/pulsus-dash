@@ -86,6 +86,29 @@ describe('unit:number-format', () => {
   ])('formatValue(%s, %o) = %s', (v, unit, want) => {
     expect(formatValue(v, unit)).toBe(want);
   });
+
+  // T21-013: a converted value c ≥ 1e21 or 0 < c < 1e−12 takes the exponent form plus the base tail.
+  it.each<[number, Unit, string]>([
+    [1e21, NONE, '1e+21'],
+    [2.5e22, NONE, '2.5e+22'],
+    [1e-4, { kind: 'time', base: 'ns' }, '1e-13 s'],
+    [1e22, BYTES, '1e+22 B'],
+    [5e21, { kind: 'suffix', suffix: 'rps' }, '5e+21 rps'],
+    [1e19, { kind: 'percentunit' }, '1e+21 %'],
+    [1e-13, NONE, '1e-13'],
+  ])('out-of-range form: formatValue(%s, %o) = %s', (v, unit, want) => {
+    expect(formatValue(v, unit)).toBe(want);
+  });
+
+  it.each<[number, number, string]>([
+    [6.999999999999999, 3, '7'],
+    [6.999999999999999, 17, '6.9999999999999991'],
+    [1 + 2 ** -52, 17, '1.0000000000000002'],
+    [1234, 4, '1.234k'],
+    [123.456, 5, '123.46'],
+  ])('digits: formatValue(%s, none, %s) = %s', (v, digits, want) => {
+    expect(formatValue(v, NONE, digits)).toBe(want);
+  });
 });
 
 describe('formatCompact examples, zero and rounding boundaries', () => {

@@ -205,6 +205,24 @@ export interface FrameSummary {
   readonly eventLabels: readonly EventLabelBox[];
 }
 
+/**
+ * The facts a panel's summary states (T21 §5): `extent` is null for kinds without one; the
+ * histogram fills it with the drawable minimum and maximum (T21-015).
+ */
+export interface SummaryFacts {
+  readonly subject: string;
+  readonly current: { readonly text: string; readonly series: string } | null;
+  readonly change: {
+    readonly series: string;
+    readonly from: string;
+    readonly to: string;
+    readonly atMs: number;
+  } | null;
+  readonly extent: { readonly min: number; readonly max: number } | null;
+  /** Null until baselines (ADR-0012). */
+  readonly baselineRatio: number | null;
+}
+
 /** The visible canvas was drawn completely at this size (#90, ADR-0019). */
 export interface DrawnEvent {
   readonly cssWidth: number;

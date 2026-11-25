@@ -466,8 +466,12 @@ describe('camera', () => {
       expect(x.right).toBeLessThanOrEqual(s.plot.x + s.plot.width);
     };
 
+    // #208: with the out-of-range form (T21-013) a tick ≥ 1e21 reads the same in full and compact
+    // form (`1.5e+21`, 49 px), so a chip whose full form is wider than the plot can no longer occur
+    // (it is omitted instead). The case keeps the 60 px plot and data from −30 to 30, whose zoom-out
+    // reaches chipped `1.5e+NN` ticks: wider than the band, held whole inside the plot.
     it('during a Y zoom', () => {
-      const h = setup({ size: NARROW });
+      const h = setup({ size: NARROW, data: lineData(-30, 30) });
       const s0 = last(h);
       expect(s0.plot.width).toBe(60);
       const band = s0.plot.x - GAP_X;
@@ -481,10 +485,10 @@ describe('camera', () => {
         frames.push(f);
         const ticks = f.l.length > 1 ? tickValues(f.s, f.l) : [];
         narrowed += f.l.filter(
-          (x, k) => x.chip && CHAR_WIDTH * formatValue(ticks[k] ?? NaN, NONE).length > 60,
+          (x, k) => x.chip && CHAR_WIDTH * formatValue(ticks[k] ?? NaN, NONE).length > band,
         ).length;
       }
-      // Some chipped tick's full form is wider than the plot.
+      // Some chipped tick's full form is wider than the band.
       expect(narrowed).toBeGreaterThan(0);
       for (const { s, l } of frames) {
         expect(s.plot).toEqual(s0.plot);
