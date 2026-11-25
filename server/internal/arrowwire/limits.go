@@ -61,7 +61,7 @@ func NewWriterLimits(w io.Writer, l Limits) *Writer {
 const (
 	costPart         = 256 // per part
 	costSchema       = 256 // per accepted schema, plus field names and metadata keys and values
-	costSeries       = 64  // per series label set
+	costSeries       = 96  // per series label set (B2 keeps a 32-byte entry, its label Arc and the batch list)
 	costLabel        = 48  // per label of a set, plus its key and value
 	costBatch        = 64  // per data batch
 	costBatchSeries  = 32  // per series of a data batch
@@ -101,8 +101,8 @@ func schemaCost(s *arrow.Schema) int {
 	return n
 }
 
-// labelSetCost is the charge of one series' labels: 64 + Σ(48 + key + value); a series
-// without labels (one null row) is 64.
+// labelSetCost is the charge of one series' labels: 96 + Σ(48 + key + value); a series
+// without labels (one null row) is 96.
 func labelSetCost(s *pulsusdb.Series) int {
 	n := costSeries
 	for _, l := range s.Labels {

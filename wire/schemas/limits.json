@@ -21,7 +21,7 @@
   "cost": {
     "part": 256,
     "schema": 256,
-    "series": 64,
+    "series": 96,
     "label": 48,
     "batch": 64,
     "batch_series": 32,
