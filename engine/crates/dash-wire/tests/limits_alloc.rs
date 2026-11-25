@@ -10,6 +10,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use common::*;
+use dash_wire::limits::BODY_BUDGET;
 use dash_wire::{BodyDecoder, DsfError, Event, Frame, Limits, PartError};
 use limits::*;
 
@@ -91,17 +92,27 @@ fn retained_schema_past_the_budget_is_refused_before_copying() {
     assert!(n < 64 << 10, "{n} bytes allocated");
     assert!(d.retained().2 <= 64 << 10);
 
-    // At exactly the cost left it is accepted (and charged).
+    // At exactly the cost left it is accepted (and debited once).
     let cost = schema_cost(&grid_schema(5, Some(&big)));
     let (_, _, probe) = near_budget(fr.clone(), 2, u64::MAX);
-    // The probe accepted and charged the schema: what was used before it.
+    // The probe accepted and debited the schema: what was used before it.
     let used = probe.retained().2 - cost;
-    let (ev, _, d) = near_budget(fr.clone(), 2, used + cost);
-    assert!(
-        ev.iter().any(|e| matches!(e, Event::Grid { part: 2, .. })),
-        "{ev:?}"
-    );
+    let (ev, n, d) = near_budget(fr.clone(), 2, used + cost);
+    let Some(Event::Grid { info, .. }) =
+        ev.iter().find(|e| matches!(e, Event::Grid { part: 2, .. }))
+    else {
+        panic!("no grid: {ev:?}")
+    };
+    // Holding the decoder and the grid event: one copy of the schema's strings, no second
+    // copy of dash.planned for the event (it shares the schema's string).
+    assert_eq!(info.planned.as_deref().map(str::len), Some(BIG));
     assert_eq!(d.retained().2, used + cost);
+    assert!(
+        (n as u64) <= cost + (64 << 10),
+        "{n} bytes allocated for a schema of cost {cost} (budget {})",
+        used + cost
+    );
+    drop((ev, d));
     let (ev, _, _) = near_budget(fr, 2, used + cost - 1);
     assert!(budget_failure(&ev), "{ev:?}");
 }
@@ -115,14 +126,30 @@ fn with_big_schema(f: &F) -> F {
     g
 }
 
+/// One frame of `f` (encoded alone at body offset 0).
+fn one_frame(f: &F) -> Frame {
+    frames_of(&encode(std::slice::from_ref(f)))
+        .pop()
+        .unwrap_or_else(|| panic!("no frame"))
+}
+
 #[test]
-fn meta_and_error_schemas_past_the_budget_are_refused_before_copying() {
-    // The planned META of grid-empty.
+fn meta_and_error_schemas_are_checked_without_copying() {
+    // The planned META of grid-empty with a 1 MiB embedded schema: the part fails, nothing of
+    // the schema is copied and nothing is debited for it.
     let mut fr = empty_frames();
     fr[1] = with_big_schema(&fr[1]);
-    let (ev, n, _) = near_budget(fr, 1, 64 << 10);
-    assert!(budget_failure(&ev), "{ev:?}");
+    let (ev, n, d) = near_budget(fr, 1, u64::MAX);
+    assert!(
+        matches!(failure_of(&ev, 2), Some(PartError::Schema(_))),
+        "{ev:?}"
+    );
     assert!(n < 64 << 10, "META: {n} bytes allocated");
+    let (_, _, before) = near_budget(empty_frames(), 1, u64::MAX);
+    assert!(
+        d.retained().2 <= before.retained().2,
+        "the embedded schema was debited"
+    );
 
     // A part ERROR and the stream-level ERROR.
     let er = parse(&fixture("grid-error"));
@@ -130,23 +157,106 @@ fn meta_and_error_schemas_past_the_budget_are_refused_before_copying() {
     for part in [5, 0] {
         let mut f = with_big_schema(&like);
         f.part = part;
-        let (ev, n, mut d) = near_budget(vec![f], 0, 64 << 10);
+        let (ev, n, mut d) = near_budget(vec![f], 0, u64::MAX);
         assert!(n < 64 << 10, "ERROR({part}): {n} bytes allocated");
         assert!(
             ev.iter().all(|e| !matches!(e, Event::Upstream { .. })),
             "{ev:?}"
         );
         if part != 0 {
-            assert!(budget_failure(&ev), "{ev:?}");
+            assert!(
+                matches!(failure_of(&ev, 5), Some(PartError::Schema(_))),
+                "{ev:?}"
+            );
+        } else {
+            assert_eq!(
+                d.finish().last(),
+                Some(&Event::Verdict(dash_wire::Verdict::Incomplete(
+                    "stream failed"
+                )))
+            );
         }
-        assert_eq!(
-            d.finish().last(),
-            Some(&Event::Verdict(dash_wire::Verdict::Incomplete(
-                "stream failed"
-            ))),
-            "ERROR({part})"
+    }
+}
+
+fn failure_of(ev: &[Event], part: u32) -> Option<PartError> {
+    ev.iter().find_map(|e| match e {
+        Event::Failed { part: p, reason } if *p == part => Some(reason.clone()),
+        _ => None,
+    })
+}
+
+#[test]
+fn repeated_rejected_schemas_exhaust_the_budget() {
+    // Distinct parts, each a labels SCHEMA with a 1 MiB unknown key: each is rejected, its
+    // debit stays, and the body budget ends the stream; the copies total at most the budget.
+    let big = "k".repeat(BIG);
+    let f = one_frame(&F::new(
+        SCHEMA,
+        0,
+        1,
+        0,
+        vec![Piece::M(labels_schema("labels/1", &[(&big, "v")]))],
+    ));
+    let mut d = BodyDecoder::new(1);
+    let (mut total, mut parts) = (0usize, 0u32);
+    for p in 1..=200u32 {
+        let g = retarget(&f, p, 0);
+        let (ev, n) = counted(&mut d, g);
+        total += n;
+        parts = p;
+        if budget_failure(&ev) {
+            break;
+        }
+        assert!(
+            matches!(failure_of(&ev, p), Some(PartError::Schema(_))),
+            "part {p}: {ev:?}"
         );
     }
+    let per = BIG as u64 + 256;
+    assert!(
+        parts < 200 && u64::from(parts) <= BODY_BUDGET / per + 1,
+        "{parts} parts"
+    );
+    assert!(
+        total as u64 <= BODY_BUDGET + u64::from(parts) * (64 << 10),
+        "{total} bytes allocated over {parts} parts"
+    );
+    assert!(d.retained().2 <= BODY_BUDGET);
+}
+
+#[test]
+fn repeated_embedded_schemas_allocate_nothing_proportional() {
+    // 1 025 distinct parts alternating a planned META and an ERROR, each with a 1 MiB embedded
+    // schema (1 GiB in all): none is copied; the stream ends at distinct_parts.
+    let mut meta = empty_frames()[1].clone();
+    meta = with_big_schema(&meta);
+    let er = parse(&fixture("grid-error"));
+    let error = with_big_schema(&er[find_frame(&er, ERROR, 5, 0)]);
+    let frames = [one_frame(&meta), one_frame(&error)];
+    let mut d = BodyDecoder::new(1);
+    let mut total = 0usize;
+    let mut ended = false;
+    for p in 1..=1025u32 {
+        let g = retarget(&frames[p as usize % 2], p, 0);
+        let (ev, n) = counted(&mut d, g);
+        total += n;
+        if p == 1025 {
+            ended = ev.is_empty()
+                && d.finish().last()
+                    == Some(&Event::Verdict(dash_wire::Verdict::Incomplete(
+                        "stream failed",
+                    )));
+        } else {
+            assert!(
+                matches!(failure_of(&ev, p), Some(PartError::Schema(_))),
+                "part {p}: {ev:?}"
+            );
+        }
+    }
+    assert!(ended, "no distinct_parts limit");
+    // Per frame: the verifier's extents, the events and the part entry (≪ the 1 MiB schema).
+    assert!(total <= 1025 * (16 << 10), "{total} bytes allocated");
 }
 
 /// A labels SCHEMA message with its `dash.schema` value replaced by `id` and extra metadata.

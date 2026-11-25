@@ -91,8 +91,8 @@ fn project(body: &[u8], ev: &[Event]) -> Value {
                     },
                     "result": info.result,
                     "source": info.source,
-                    "unit": opt(info.unit.clone()),
-                    "planned": opt(info.planned.clone()),
+                    "unit": opt(info.unit.as_deref()),
+                    "planned": opt(info.planned.as_deref()),
                 }),
             )),
             Event::Chunk { part, chunk, .. } => {
