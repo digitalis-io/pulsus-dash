@@ -215,7 +215,7 @@ never refunded:
 | Item | Body budget | Value budget |
 |---|---|---|
 | a part | 256 | |
-| an accepted SCHEMA | 256 + field names (children included) + metadata keys and values | |
+| a SCHEMA (the reader debits it before copying it, also when it then rejects it; the writer's are always accepted) | 256 + field names (children included) + metadata keys and values | |
 | a series' label set | 64 + Σ(48 + key + value); a series without labels: 64 | |
 | a data batch of `k` series of `n` points | 64 + 32 × `k` | 8 × `k` × `n` + 8 × ⌈`k` × `n` / 64⌉ |
 | a coverage row | 256 + string bytes + 16 × list elements | |
