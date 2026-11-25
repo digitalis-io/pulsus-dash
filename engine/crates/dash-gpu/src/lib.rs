@@ -32,6 +32,8 @@ pub struct GpuContext {
     pub max_instances: u64,
     /// Test hook: waits left before `wait` fails (`u64::MAX` = never).
     wait_budget: std::sync::atomic::AtomicU64,
+    /// Test hook: deferred maps left before they report failure (`u64::MAX` = never).
+    map_budget: std::sync::atomic::AtomicU64,
 }
 
 fn instance() -> wgpu::Instance {
@@ -69,15 +71,35 @@ impl GpuContext {
         };
         let (device, queue) = pollster::block_on(adapter.request_device(&desc))
             .map_err(|e| GpuError::Device(e.to_string()))?;
-        let max_instances = al.max_buffer_size.min(al.max_storage_buffer_binding_size) / 16;
-        Ok(Self {
+        Ok(Self::from_device(device, queue, tier, adapter.get_info()))
+    }
+
+    /// A context on a device the caller requested (the render worker's path).
+    pub fn from_device(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        tier: Tier,
+        info: wgpu::AdapterInfo,
+    ) -> Self {
+        let l = device.limits();
+        let max_instances = l.max_buffer_size.min(l.max_storage_buffer_binding_size) / 16;
+        let _ = tier;
+        Self {
             wait_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
+            map_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
             device,
             queue,
             tier,
-            info: adapter.get_info(),
+            info,
             max_instances,
-        })
+        }
+    }
+
+    /// Test hook: every deferred map after the next `n` successful ones reports failure.
+    #[cfg(feature = "test-hooks")]
+    pub fn fail_maps_after(&self, n: u64) {
+        self.map_budget
+            .store(n, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// The Vulkan adapters this process sees (name, driver, driver info), for error messages.

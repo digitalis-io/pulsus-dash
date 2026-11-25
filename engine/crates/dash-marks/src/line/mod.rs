@@ -3,4 +3,4 @@
 mod gpu;
 mod pipeline;
 
-pub use gpu::{DebugCounters, Renderer, RendererOptions};
+pub use gpu::{DebugCounters, Pending, Renderer, RendererOptions, Sync};

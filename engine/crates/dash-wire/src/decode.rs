@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::chunk::{Chunk, ChunkId, SeriesMeta, TimeAxis};
+use crate::chunk::{Chunk, ChunkError, ChunkId, SeriesMeta, TimeAxis};
 use crate::coverage::{self, Coverage, ErrorRow, Phase};
 use crate::dsf::{DsfError, Frame, FrameHeader, FrameType};
 use crate::ipc::{self, Col, ColData, IpcError, Msg, SchemaDesc};
@@ -54,6 +54,9 @@ pub enum PartError {
     Limit(&'static str),
     #[error("stream: {0}")]
     Stream(DsfError),
+    /// No chunk id left in the stream space (plan #68 C1 §3.4).
+    #[error("{0}")]
+    Chunk(ChunkError),
 }
 
 /// The body-level result: `Complete` only if END arrived and nothing failed.

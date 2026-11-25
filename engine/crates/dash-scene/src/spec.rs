@@ -52,3 +52,17 @@ pub enum VisSpec {
     Line(LineSpec),
     Unsupported(VisKind),
 }
+
+/// A spec the engine cannot read (plan #68 C1 §3.4).
+#[derive(Debug, PartialEq, thiserror::Error)]
+#[error("spec: {0}")]
+pub struct SpecError(pub String);
+
+impl VisSpec {
+    /// The TS `VisSpec` JSON: `line` → [`LineSpec`] (unknown fields ignored), `bars`, `heatmap`
+    /// and `stat` → `Unsupported`, anything else → [`SpecError`].
+    pub fn from_json(json: &str) -> Result<Self, SpecError> {
+        let _ = json;
+        Err(SpecError("unimplemented".into()))
+    }
+}

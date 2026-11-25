@@ -8,7 +8,7 @@ mod summary;
 
 pub use build::build;
 pub use camera::{Camera, PlotCamera, YRange};
-pub use spec::{LineSpec, ValueRange, VisSpec};
+pub use spec::{LineSpec, SpecError, ValueRange, VisSpec};
 pub use summary::{CommitEvent, FrameSummary, Gesture, TimeWindow, ValueAxisSummary, ValueCommit};
 
 pub use dash_axes::{Band, PlotRect, VisKind};

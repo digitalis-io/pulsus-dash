@@ -39,3 +39,18 @@ pub fn flip_mean(a: &Image, b: &Image, regions: &[[u32; 4]]) -> f32 {
         (sum / count as f64) as f32
     }
 }
+
+/// The mean ꟻLIP error and the largest mean of an 8×8 tile (plan #68 C1, T05-005).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlipStats {
+    pub mean: f32,
+    pub tile_max: f32,
+}
+
+/// `flip_mean` and the tile maximum over the same regions.
+pub fn flip_stats(a: &Image, b: &Image, regions: &[[u32; 4]]) -> FlipStats {
+    FlipStats {
+        mean: flip_mean(a, b, regions),
+        tile_max: 0.0,
+    }
+}

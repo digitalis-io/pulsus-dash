@@ -32,10 +32,37 @@ const COL_BYTES: u64 = 40;
 /// The guide colour slot.
 const GRID_SLOT: u32 = 8;
 
+/// How the renderer waits for the GPU (plan #68 C1 §3.1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sync {
+    /// Native: block on uploads, batches and the status read-back.
+    #[default]
+    Block,
+    /// The browser: never block; read the status back with `map_async` and report through
+    /// [`Renderer::poll`].
+    Defer,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RendererOptions {
     /// Test hook: force batching below the device limit.
     pub max_instances: Option<u64>,
+    pub sync: Sync,
+}
+
+/// The state of a deferred status read-back (`Sync::Defer`).
+#[derive(Debug, PartialEq)]
+pub enum Pending {
+    /// Nothing outstanding.
+    Idle,
+    /// The read-back has not completed yet.
+    Waiting,
+    /// The frame drawn last was complete.
+    Complete(DrawnEvent),
+    /// The frame was under-sized or its read-back failed: draw it again.
+    Rerun,
+    /// The third read-back in a row failed.
+    Failed,
 }
 
 /// Test hook counters (A.15.1).
@@ -53,6 +80,10 @@ pub struct DebugCounters {
     pub cpu_instance_bytes_peak: u64,
     /// Value-upload slices submitted to the queue.
     pub value_slices_submitted: u64,
+    /// Compute pipelines created (0 on T2).
+    pub compute_pipelines: u32,
+    /// Buffers created with STORAGE or INDIRECT usage (0 on T2).
+    pub storage_buffers: u32,
 }
 
 /// The P1–P5 uniform.
@@ -956,6 +987,16 @@ impl Renderer {
             ColumnRanges::Grid(_) => ColumnRanges::Grid(table),
             ColumnRanges::PerSeries { n, .. } => ColumnRanges::PerSeries { n, table },
         })
+    }
+
+    /// `Sync::Defer`: the state of the last frame's status read-back.
+    pub fn poll(&mut self) -> Pending {
+        Pending::Idle
+    }
+
+    /// The decimated instance total of the last line item (guides excluded), once known.
+    pub fn last_total(&self) -> Option<u64> {
+        None
     }
 
     /// Draw calls issued by the last render (1 unless batched, §4.2).

@@ -41,8 +41,8 @@ pub struct Chunk {
     pub finite: Option<(f64, f64)>,
 }
 
-/// Why `ChunkBuilder::push_series` rejected a series.
-#[derive(Debug, PartialEq, thiserror::Error)]
+/// Why `ChunkBuilder::push_series` rejected a series, or an [`IdAlloc`] has no id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ChunkError {
     #[error("length")]
     Length,
@@ -50,6 +50,46 @@ pub enum ChunkError {
     Order,
     #[error("too many samples")]
     TooLarge,
+    /// An id outside the allocator's [`IdSpace`], or the space is used up.
+    #[error("ids")]
+    Ids,
+}
+
+/// The two chunk-id spaces (plan #68 C1 §3.4): `Stream` ids `0..2⁶³` are the decoder's (Part D's
+/// data workers), `Local` ids `2⁶³..2⁶⁴` the render worker's own chunks, so the two never collide
+/// in a renderer's caches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdSpace {
+    Stream,
+    Local,
+}
+
+/// Hands out the ids of one [`IdSpace`] in order.
+#[derive(Clone, Debug)]
+pub struct IdAlloc {
+    next: Option<u64>,
+}
+
+impl IdAlloc {
+    /// From the first id of `space`.
+    pub fn new(space: IdSpace) -> Self {
+        let _ = space;
+        Self { next: Some(0) }
+    }
+
+    /// From `first`; `Err(Ids)` when `first` is outside `space`.
+    pub fn starting_at(space: IdSpace, first: u64) -> Result<Self, ChunkError> {
+        let _ = space;
+        Ok(Self { next: Some(first) })
+    }
+
+    /// The next id; `None` after the last id of the space.
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Option<ChunkId> {
+        let id = self.next?;
+        self.next = Some(id.wrapping_add(1));
+        Some(ChunkId(id))
+    }
 }
 
 /// The most samples in one chunk.

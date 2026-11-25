@@ -259,6 +259,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "dash-core"
+version = "0.0.0"
+dependencies = [
+ "dash-gpu",
+ "dash-marks",
+ "dash-protocol",
+ "dash-scales",
+ "dash-scene",
+ "dash-tokens",
+ "dash-wire",
+ "js-sys",
+ "pulsus-synth",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+]
+
+[[package]]
 name = "dash-golden"
 version = "0.0.0"
 dependencies = [
@@ -306,6 +329,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dash-protocol"
+version = "0.0.0"
+
+[[package]]
 name = "dash-scales"
 version = "0.0.0"
 dependencies = [
@@ -333,6 +360,7 @@ dependencies = [
  "pulsus-synth",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
