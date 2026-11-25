@@ -1,0 +1,230 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Histogram: request latency by version as an overlaid ECDF with the tooltip open, and pod memory by region stacked on a log axis with other (2) and the coverage meter popover</title>
+<desc id="d">Mockup 42 (T21 part 2a, #154). Dark theme, 1440 by 900. The board release health with two histogram panels. Panel 1, Request latency by version: auto bins of 50 ms from 0 s to 800 ms over samples pooled over the last hour, grouped by version and overlaid: each version is a 1.5 px step outline in its colour and dash (v2.30 solid, v2.31 dashed) over a 12 percent fill, with its exact ECDF curve in the same dash on the right axis from 0 to 100 percent with ticks at 25 percent. The pointer is on the 250 to 300 ms bin of v2.31 and the tooltip reads the bin count and share for each version, the exact share at or below 300 ms for each, and the footer Values pooled over Last 1 hour. Coverage 100 percent. Panel 2, Pod memory by region: an instant result, one value per series, on a log value axis from 53.6 MiB to 9.31 GiB, stacked by region with the seven largest regions in natural name order, each with its own pattern, and other (2) drawn last in the grid pattern and the category-other colour; bins have a 1 px gap, a 72 percent fill and a full-strength top edge. The coverage meter reads 2 at or below 0 not shown (log) as a focused button, and its popover lists ca-central-1 (in other (2)): 1 at or below 0 and eu-west-1: 1 at or below 0. Callouts: 1 exact ECDF, 2 dash and pattern channels, 3 no time axis, 4 log axis and other (2), 5 meter exclusions.</desc>
+<defs>
+<style>
+text{font-family:Inter, system-ui, sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB;font-size:13px}
+.m{font-family:JetBrains Mono, ui-monospace, monospace}
+.mu{fill:#8A919C} .ac{fill:#5B9BFF}
+.b{font-weight:600} .sb{font-weight:500}
+.s11{font-size:11px} .s12{font-size:12px} .s13{font-size:13px} .s16{font-size:16px} .s20{font-size:20px}
+.e{text-anchor:end} .c{text-anchor:middle}
+.h{font-size:11px;font-weight:600;letter-spacing:0.66px;fill:#8A919C}
+.ctl{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.pn{fill:#12151A;stroke:#FFFFFF14;stroke-width:1}
+.chip{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.rule{stroke:#FFFFFF14;stroke-width:1}
+.grid{stroke:#FFFFFF0A;stroke-width:1}
+.co{stroke:#5B9BFF;stroke-width:1.5;stroke-dasharray:4 3;fill:none}
+</style>
+<filter id="pop" x="-20%" y="-10%" width="140%" height="120%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/></filter>
+<pattern id="p-backDiagonal" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M-1,1 l2,-2 M0,6 l6,-6 M5,7 l2,-2" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-horizontal" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,3 h6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-vertical" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M3,0 v6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-dots" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1" fill="#0B0D10" fill-opacity="0.6"/></pattern>
+<pattern id="p-crossHatch" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,3 h6 M3,0 v6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-checker" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,0 h3 v3 h-3z M3,3 h3 v3 h-3z" fill="#0B0D10" fill-opacity="0.45"/></pattern>
+<pattern id="p-dashes" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,1.5 h3 M3,4.5 h3" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-grid" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,0.5 h6 M0.5,0 v6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+</defs>
+<rect width="1440" height="900" fill="#0B0D10"/>
+<g id="sidebar">
+<rect x="0" y="0" width="240" height="900" fill="#12151A"/>
+<line x1="239.5" y1="0" x2="239.5" y2="900" stroke="#FFFFFF14"/>
+<path d="M20,28 L25,28 L28,20 L32,36 L35,28 L40,28" fill="none" stroke="#5B9BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="25" class="s13 b">Demo Org</text>
+<text x="56" y="43" class="s12 mu">Tenant:</text><text x="100" y="43" class="s12">acme</text><text x="136" y="43" class="s11 mu">▾</text>
+<line x1="0" y1="55.5" x2="240" y2="55.5" stroke="#FFFFFF14"/>
+<rect x="8" y="68" width="224" height="32" rx="6" fill="#191D24"/><rect x="8" y="68" width="2" height="32" fill="#5B9BFF"/>
+<text x="20" y="88" class="s13 ac">▦</text><text x="44" y="88" class="s13 sb">Boards</text>
+<text x="16" y="124" class="s11 mu b">Explore</text>
+<text x="44" y="148" class="s13 mu">⌁</text><text x="64" y="148" class="s13 mu">Metrics</text>
+<text x="44" y="184" class="s13 mu">≡</text><text x="64" y="184" class="s13 mu">Logs</text>
+<text x="16" y="220" class="s11 mu b">Starred</text>
+<text x="32" y="244" class="s13 ac">★</text><text x="52" y="244" class="s13 mu">release health</text>
+<text x="16" y="280" class="s11 mu b">Recent</text>
+<text x="32" y="304" class="s13 mu">release health</text>
+<line x1="0" y1="820.5" x2="240" y2="820.5" stroke="#FFFFFF14"/>
+<text x="20" y="848" class="s13 mu">⚙</text><text x="44" y="848" class="s13 mu">Admin</text>
+<text x="20" y="884" class="s13 mu">⇤</text><text x="44" y="884" class="s13 mu">Collapse sidebar</text>
+</g>
+<g id="page-header">
+<rect x="240" y="0" width="1200" height="56" fill="#12151A"/>
+<line x1="240" y1="55.5" x2="1440" y2="55.5" stroke="#FFFFFF14"/>
+<text x="264" y="33" class="s13 mu">Boards</text><text x="314" y="33" class="s13 mu">/</text>
+<text x="330" y="35" class="s20 b">release health</text>
+<text x="500" y="35" class="s16 ac">★</text>
+<rect x="948" y="12" width="280" height="32" rx="6" class="ctl"/>
+<text x="960" y="33" class="s13 mu">◷</text><text x="980" y="33" class="s13 sb">Last 1 hour</text>
+<text x="1064" y="33" class="s12 m mu">12:44 – 13:44 UTC</text><text x="1214" y="33" class="s11 mu e">▾</text>
+<rect x="1236" y="12" width="120" height="32" rx="6" class="ctl"/>
+<text x="1256" y="33" class="s13 mu c">⟳</text>
+<line x1="1276.5" y1="12" x2="1276.5" y2="44" stroke="#FFFFFF14"/>
+<circle cx="1292" cy="28" r="4" fill="#5B9BFF"/><text x="1304" y="33" class="s13">30s</text>
+<text x="1346" y="33" class="s11 mu e">▾</text>
+<circle cx="1402" cy="28" r="14" fill="#7AA2D6"/><text x="1402" y="32" class="s12 b c" fill="#0B0D10">AA</text>
+</g>
+<g id="panel-latency">
+<rect x="264" y="80" width="872" height="392" rx="6" class="pn"/>
+<text x="280" y="104" class="s13 sb">Request latency by version</text><text x="476" y="104" class="s12 mu m">checkout_request_seconds{service="checkout"}</text><text x="1120" y="104" class="s12 mu e">⋯</text>
+<rect x="870" y="89" width="226" height="20" rx="4" class="chip"/><text x="880" y="103" class="s11 mu">auto bins · overlay by version · ECDF</text>
+<line x1="328.0" y1="404.0" x2="1072.0" y2="404.0" class="grid"/><text x="322.0" y="408.0" class="s11 mu e m">0</text>
+<line x1="328.0" y1="361.0" x2="1072.0" y2="361.0" class="grid"/><text x="322.0" y="365.0" class="s11 mu e m">150</text>
+<line x1="328.0" y1="318.0" x2="1072.0" y2="318.0" class="grid"/><text x="322.0" y="322.0" class="s11 mu e m">300</text>
+<line x1="328.0" y1="275.0" x2="1072.0" y2="275.0" class="grid"/><text x="322.0" y="279.0" class="s11 mu e m">450</text>
+<line x1="328.0" y1="232.0" x2="1072.0" y2="232.0" class="grid"/><text x="322.0" y="236.0" class="s11 mu e m">600</text>
+<line x1="328.0" y1="189.0" x2="1072.0" y2="189.0" class="grid"/><text x="322.0" y="193.0" class="s11 mu e m">750</text>
+<line x1="328.0" y1="146.0" x2="1072.0" y2="146.0" class="grid"/><text x="322.0" y="150.0" class="s11 mu e m">900</text>
+<text x="322.0" y="136.0" class="s11 mu e">samples</text>
+<line x1="1072.0" y1="404.0" x2="1076.0" y2="404.0" stroke="#8A919C"/><text x="1080.0" y="408.0" class="s11 mu m">0 %</text>
+<line x1="1072.0" y1="339.5" x2="1076.0" y2="339.5" stroke="#8A919C"/><text x="1080.0" y="343.5" class="s11 mu m">25 %</text>
+<line x1="1072.0" y1="275.0" x2="1076.0" y2="275.0" stroke="#8A919C"/><text x="1080.0" y="279.0" class="s11 mu m">50 %</text>
+<line x1="1072.0" y1="210.5" x2="1076.0" y2="210.5" stroke="#8A919C"/><text x="1080.0" y="214.5" class="s11 mu m">75 %</text>
+<line x1="1072.0" y1="146.0" x2="1076.0" y2="146.0" stroke="#8A919C"/><text x="1080.0" y="150.0" class="s11 mu m">100 %</text>
+<text x="328.0" y="422.0" class="s11 mu c m">0 s</text>
+<text x="421.0" y="422.0" class="s11 mu c m">100 ms</text>
+<text x="514.0" y="422.0" class="s11 mu c m">200 ms</text>
+<text x="607.0" y="422.0" class="s11 mu c m">300 ms</text>
+<text x="700.0" y="422.0" class="s11 mu c m">400 ms</text>
+<text x="793.0" y="422.0" class="s11 mu c m">500 ms</text>
+<text x="886.0" y="422.0" class="s11 mu c m">600 ms</text>
+<text x="979.0" y="422.0" class="s11 mu c m">700 ms</text>
+<text x="1072.0" y="422.0" class="s11 mu c m">800 ms</text>
+<path d="M328.0,404.0 L328.0,400.8 L374.5,400.8 L374.5,291.9 L421.0,291.9 L421.0,175.2 L467.5,175.2 L467.5,229.7 L514.0,229.7 L514.0,311.4 L560.5,311.4 L560.5,361.0 L607.0,361.0 L607.0,385.1 L653.5,385.1 L653.5,395.7 L700.0,395.7 L700.0,400.3 L746.5,400.3 L746.5,402.3 L793.0,402.3 L793.0,403.1 L839.5,403.1 L839.5,403.7 L886.0,403.7 L886.0,403.7 L932.5,403.7 L932.5,404.0 L979.0,404.0 L979.0,404.0 L1025.5,404.0 L1025.5,404.0 L1072.0,404.0 L1072.0,404.0 Z" fill="#7AA2D6" fill-opacity="0.12"/>
+<path d="M328.0,404.0 L328.0,400.8 L374.5,400.8 L374.5,291.9 L421.0,291.9 L421.0,175.2 L467.5,175.2 L467.5,229.7 L514.0,229.7 L514.0,311.4 L560.5,311.4 L560.5,361.0 L607.0,361.0 L607.0,385.1 L653.5,385.1 L653.5,395.7 L700.0,395.7 L700.0,400.3 L746.5,400.3 L746.5,402.3 L793.0,402.3 L793.0,403.1 L839.5,403.1 L839.5,403.7 L886.0,403.7 L886.0,403.7 L932.5,403.7 L932.5,404.0 L979.0,404.0 L979.0,404.0 L1025.5,404.0 L1025.5,404.0 L1072.0,404.0 L1072.0,404.0 Z" fill="none" stroke="#7AA2D6" stroke-width="1.5"/>
+<path d="M328.0,404.0 L328.0,404.0 L374.5,404.0 L374.5,392.5 L421.0,392.5 L421.0,349.2 L467.5,349.2 L467.5,310.3 L514.0,310.3 L514.0,293.9 L560.5,293.9 L560.5,313.4 L607.0,313.4 L607.0,332.6 L653.5,332.6 L653.5,351.0 L700.0,351.0 L700.0,366.2 L746.5,366.2 L746.5,377.6 L793.0,377.6 L793.0,385.7 L839.5,385.7 L839.5,391.4 L886.0,391.4 L886.0,395.4 L932.5,395.4 L932.5,398.0 L979.0,398.0 L979.0,399.7 L1025.5,399.7 L1025.5,401.1 L1072.0,401.1 L1072.0,404.0 Z" fill="#C9A36B" fill-opacity="0.12"/>
+<path d="M328.0,404.0 L328.0,404.0 L374.5,404.0 L374.5,392.5 L421.0,392.5 L421.0,349.2 L467.5,349.2 L467.5,310.3 L514.0,310.3 L514.0,293.9 L560.5,293.9 L560.5,313.4 L607.0,313.4 L607.0,332.6 L653.5,332.6 L653.5,351.0 L700.0,351.0 L700.0,366.2 L746.5,366.2 L746.5,377.6 L793.0,377.6 L793.0,385.7 L839.5,385.7 L839.5,391.4 L886.0,391.4 L886.0,395.4 L932.5,395.4 L932.5,398.0 L979.0,398.0 L979.0,399.7 L1025.5,399.7 L1025.5,401.1 L1072.0,401.1 L1072.0,404.0 Z" fill="none" stroke="#C9A36B" stroke-width="1.5" stroke-dasharray="6 3"/>
+<line x1="328.0" y1="404.5" x2="1072.0" y2="404.5" stroke="#FFFFFF14"/>
+<polyline points="328.0,404.0 339.6,403.7 351.2,403.4 362.9,403.1 374.5,402.8 386.1,392.3 397.8,381.8 409.4,371.3 421.0,360.8 432.6,339.3 444.2,317.9 455.9,296.4 467.5,275.0 479.1,258.7 490.8,242.3 502.4,226.0 514.0,209.6 525.6,201.0 537.2,192.3 548.9,183.6 560.5,174.9 572.1,170.9 583.8,166.9 595.4,162.8 607.0,158.8 618.6,157.0 630.2,155.2 641.9,153.5 653.5,151.7 665.1,150.9 676.8,150.1 688.4,149.4 700.0,148.6 711.6,148.2 723.2,147.9 734.9,147.5 746.5,147.2 758.1,147.0 769.8,146.9 781.4,146.7 793.0,146.5 804.6,146.5 816.2,146.4 827.9,146.3 839.5,146.2 851.1,146.2 862.8,146.2 874.4,146.1 886.0,146.1 897.6,146.1 909.2,146.1 920.9,146.0 932.5,146.0 944.1,146.0 955.8,146.0 967.4,146.0 979.0,146.0 990.6,146.0 1002.2,146.0 1013.9,146.0 1025.5,146.0 1037.1,146.0 1048.8,146.0 1060.4,146.0 1072.0,146.0" fill="none" stroke="#7AA2D6" stroke-width="2"/>
+<polyline points="328.0,404.0 339.6,404.0 351.2,404.0 362.9,404.0 374.5,404.0 386.1,402.8 397.8,401.5 409.4,400.3 421.0,399.1 432.6,393.2 444.2,387.4 455.9,381.5 467.5,375.6 479.1,365.6 490.8,355.5 502.4,345.5 514.0,335.4 525.6,323.7 537.2,311.9 548.9,300.1 560.5,288.3 572.1,278.6 583.8,268.9 595.4,259.2 607.0,249.4 618.6,241.8 630.2,234.2 641.9,226.5 653.5,218.9 665.1,213.2 676.8,207.5 688.4,201.8 700.0,196.1 711.6,192.1 723.2,188.0 734.9,184.0 746.5,179.9 758.1,177.1 769.8,174.3 781.4,171.4 793.0,168.6 804.6,166.6 816.2,164.7 827.9,162.7 839.5,160.7 851.1,159.4 862.8,158.0 874.4,156.7 886.0,155.3 897.6,154.4 909.2,153.5 920.9,152.6 932.5,151.7 944.1,151.0 955.8,150.4 967.4,149.7 979.0,149.1 990.6,148.6 1002.2,148.2 1013.9,147.7 1025.5,147.2 1037.1,146.9 1048.8,146.6 1060.4,146.3 1072.0,146.0" fill="none" stroke="#C9A36B" stroke-width="2" stroke-dasharray="6 3"/>
+<rect x="560.5" y="313.4" width="46.5" height="90.6" fill="none" stroke="#E6E8EB" stroke-width="1"/>
+<line x1="588.4" y1="146.0" x2="588.4" y2="404.0" stroke="#8A919C" stroke-dasharray="3 3"/>
+<rect x="621.0" y="160" width="268" height="134" rx="8" fill="#191D24" stroke="#FFFFFF14" filter="url(#pop)"/>
+<text x="633.0" y="182" class="s13 sb m">250 – 300 ms</text>
+<line x1="633.0" y1="193" x2="643.0" y2="193" stroke="#C9A36B" stroke-width="2" stroke-dasharray="6 3"/><text x="651.0" y="197" class="s12">v2.31</text><text x="877.0" y="197" class="s12 m e">316 of 2100 · 15.0 %</text>
+<line x1="633.0" y1="213" x2="643.0" y2="213" stroke="#7AA2D6" stroke-width="2"/><text x="651.0" y="217" class="s12">v2.30</text><text x="877.0" y="217" class="s12 m e">150 of 2400 · 6.2 %</text>
+<line x1="633.0" y1="227.5" x2="877.0" y2="227.5" class="rule"/>
+<text x="633.0" y="246" class="s12">v2.31 ≤ 300 ms</text><text x="877.0" y="246" class="s12 m e">59.9 %</text>
+<text x="633.0" y="264" class="s12">v2.30 ≤ 300 ms</text><text x="877.0" y="264" class="s12 m e">95.0 %</text>
+<text x="633.0" y="284" class="s11 mu">Values pooled over Last 1 hour</text>
+<line x1="280" y1="448" x2="300" y2="448" stroke="#7AA2D6" stroke-width="2"/><text x="306" y="452" class="s12">v2.30 (2400)</text>
+<line x1="400" y1="448" x2="420" y2="448" stroke="#C9A36B" stroke-width="2" stroke-dasharray="6 3"/><text x="426" y="452" class="s12">v2.31 (2100)</text>
+<text x="530" y="452" class="s12 mu">bars: samples per bin · curves: ECDF (right axis)</text>
+<text x="1120" y="452" class="s12 mu e">Coverage <tspan class="m" fill="#E6E8EB">100 %</tspan></text>
+</g>
+<g id="panel-memory">
+<rect x="264" y="488" width="872" height="388" rx="6" class="pn"/>
+<text x="280" y="512" class="s13 sb">Pod memory by region</text><text x="446" y="512" class="s12 mu m">container_memory_working_set_bytes</text><text x="1120" y="512" class="s12 mu e">⋯</text>
+<rect x="848" y="497" width="248" height="20" rx="4" class="chip"/><text x="858" y="511" class="s11 mu">instant · log · auto bins · stack by region</text>
+<line x1="328.0" y1="790.0" x2="1072.0" y2="790.0" class="grid"/><text x="322.0" y="794.0" class="s11 mu e m">0</text>
+<line x1="328.0" y1="741.2" x2="1072.0" y2="741.2" class="grid"/><text x="322.0" y="745.2" class="s11 mu e m">10</text>
+<line x1="328.0" y1="692.4" x2="1072.0" y2="692.4" class="grid"/><text x="322.0" y="696.4" class="s11 mu e m">20</text>
+<line x1="328.0" y1="643.6" x2="1072.0" y2="643.6" class="grid"/><text x="322.0" y="647.6" class="s11 mu e m">30</text>
+<line x1="328.0" y1="594.8" x2="1072.0" y2="594.8" class="grid"/><text x="322.0" y="598.8" class="s11 mu e m">40</text>
+<line x1="328.0" y1="546.0" x2="1072.0" y2="546.0" class="grid"/><text x="322.0" y="550.0" class="s11 mu e m">50</text>
+<text x="322.0" y="538.0" class="s11 mu e">series</text>
+<text x="328.0" y="808.0" class="s11 mu c m">53.6 MiB</text>
+<text x="410.7" y="808.0" class="s11 mu c m">95.4 MiB</text>
+<text x="493.3" y="808.0" class="s11 mu c m">170 MiB</text>
+<text x="576.0" y="808.0" class="s11 mu c m">302 MiB</text>
+<text x="658.7" y="808.0" class="s11 mu c m">536 MiB</text>
+<text x="741.3" y="808.0" class="s11 mu c m">954 MiB</text>
+<text x="824.0" y="808.0" class="s11 mu c m">1.66 GiB</text>
+<text x="906.7" y="808.0" class="s11 mu c m">2.94 GiB</text>
+<text x="989.3" y="808.0" class="s11 mu c m">5.24 GiB</text>
+<text x="1072.0" y="808.0" class="s11 mu c m">9.31 GiB</text>
+<rect x="328.5" y="785.1" width="81.7" height="4.9" fill="#8FBF8F" fill-opacity="0.72"/><rect x="328.5" y="785.1" width="81.7" height="4.9" fill="url(#p-vertical)"/><line x1="328.5" y1="785.6" x2="410.2" y2="785.6" stroke="#8FBF8F"/>
+<rect x="328.5" y="780.2" width="81.7" height="4.9" fill="#A8A8D9" fill-opacity="0.72"/><rect x="328.5" y="780.2" width="81.7" height="4.9" fill="url(#p-dashes)"/><line x1="328.5" y1="780.7" x2="410.2" y2="780.7" stroke="#A8A8D9"/>
+<rect x="411.2" y="785.1" width="81.7" height="4.9" fill="#7AA2D6" fill-opacity="0.72"/><rect x="411.2" y="785.1" width="81.7" height="4.9" fill="url(#p-backDiagonal)"/><line x1="411.2" y1="785.6" x2="492.8" y2="785.6" stroke="#7AA2D6"/>
+<rect x="411.2" y="775.4" width="81.7" height="9.8" fill="#8FBF8F" fill-opacity="0.72"/><rect x="411.2" y="775.4" width="81.7" height="9.8" fill="url(#p-vertical)"/><line x1="411.2" y1="775.9" x2="492.8" y2="775.9" stroke="#8FBF8F"/>
+<rect x="411.2" y="770.5" width="81.7" height="4.9" fill="#B48FC9" fill-opacity="0.72"/><rect x="411.2" y="770.5" width="81.7" height="4.9" fill="url(#p-dots)"/><line x1="411.2" y1="771.0" x2="492.8" y2="771.0" stroke="#B48FC9"/>
+<rect x="411.2" y="760.7" width="81.7" height="9.8" fill="#6FB8B8" fill-opacity="0.72"/><rect x="411.2" y="760.7" width="81.7" height="9.8" fill="url(#p-crossHatch)"/><line x1="411.2" y1="761.2" x2="492.8" y2="761.2" stroke="#6FB8B8"/>
+<rect x="411.2" y="746.1" width="81.7" height="14.6" fill="#A8A8D9" fill-opacity="0.72"/><rect x="411.2" y="746.1" width="81.7" height="14.6" fill="url(#p-dashes)"/><line x1="411.2" y1="746.6" x2="492.8" y2="746.6" stroke="#A8A8D9"/>
+<rect x="411.2" y="741.2" width="81.7" height="4.9" fill="#7C8490" fill-opacity="0.72"/><rect x="411.2" y="741.2" width="81.7" height="4.9" fill="url(#p-grid)"/><line x1="411.2" y1="741.7" x2="492.8" y2="741.7" stroke="#7C8490"/>
+<rect x="493.8" y="775.4" width="81.7" height="14.6" fill="#7AA2D6" fill-opacity="0.72"/><rect x="493.8" y="775.4" width="81.7" height="14.6" fill="url(#p-backDiagonal)"/><line x1="493.8" y1="775.9" x2="575.5" y2="775.9" stroke="#7AA2D6"/>
+<rect x="493.8" y="765.6" width="81.7" height="9.8" fill="#C9A36B" fill-opacity="0.72"/><rect x="493.8" y="765.6" width="81.7" height="9.8" fill="url(#p-horizontal)"/><line x1="493.8" y1="766.1" x2="575.5" y2="766.1" stroke="#C9A36B"/>
+<rect x="493.8" y="751.0" width="81.7" height="14.6" fill="#8FBF8F" fill-opacity="0.72"/><rect x="493.8" y="751.0" width="81.7" height="14.6" fill="url(#p-vertical)"/><line x1="493.8" y1="751.5" x2="575.5" y2="751.5" stroke="#8FBF8F"/>
+<rect x="493.8" y="731.4" width="81.7" height="19.5" fill="#B48FC9" fill-opacity="0.72"/><rect x="493.8" y="731.4" width="81.7" height="19.5" fill="url(#p-dots)"/><line x1="493.8" y1="731.9" x2="575.5" y2="731.9" stroke="#B48FC9"/>
+<rect x="493.8" y="707.0" width="81.7" height="24.4" fill="#6FB8B8" fill-opacity="0.72"/><rect x="493.8" y="707.0" width="81.7" height="24.4" fill="url(#p-crossHatch)"/><line x1="493.8" y1="707.5" x2="575.5" y2="707.5" stroke="#6FB8B8"/>
+<rect x="493.8" y="702.2" width="81.7" height="4.9" fill="#C98F8F" fill-opacity="0.72"/><rect x="493.8" y="702.2" width="81.7" height="4.9" fill="url(#p-checker)"/><line x1="493.8" y1="702.7" x2="575.5" y2="702.7" stroke="#C98F8F"/>
+<rect x="493.8" y="672.9" width="81.7" height="29.3" fill="#A8A8D9" fill-opacity="0.72"/><rect x="493.8" y="672.9" width="81.7" height="29.3" fill="url(#p-dashes)"/><line x1="493.8" y1="673.4" x2="575.5" y2="673.4" stroke="#A8A8D9"/>
+<rect x="493.8" y="668.0" width="81.7" height="4.9" fill="#7C8490" fill-opacity="0.72"/><rect x="493.8" y="668.0" width="81.7" height="4.9" fill="url(#p-grid)"/><line x1="493.8" y1="668.5" x2="575.5" y2="668.5" stroke="#7C8490"/>
+<rect x="576.5" y="760.7" width="81.7" height="29.3" fill="#7AA2D6" fill-opacity="0.72"/><rect x="576.5" y="760.7" width="81.7" height="29.3" fill="url(#p-backDiagonal)"/><line x1="576.5" y1="761.2" x2="658.2" y2="761.2" stroke="#7AA2D6"/>
+<rect x="576.5" y="741.2" width="81.7" height="19.5" fill="#C9A36B" fill-opacity="0.72"/><rect x="576.5" y="741.2" width="81.7" height="19.5" fill="url(#p-horizontal)"/><line x1="576.5" y1="741.7" x2="658.2" y2="741.7" stroke="#C9A36B"/>
+<rect x="576.5" y="726.6" width="81.7" height="14.6" fill="#8FBF8F" fill-opacity="0.72"/><rect x="576.5" y="726.6" width="81.7" height="14.6" fill="url(#p-vertical)"/><line x1="576.5" y1="727.1" x2="658.2" y2="727.1" stroke="#8FBF8F"/>
+<rect x="576.5" y="692.4" width="81.7" height="34.2" fill="#B48FC9" fill-opacity="0.72"/><rect x="576.5" y="692.4" width="81.7" height="34.2" fill="url(#p-dots)"/><line x1="576.5" y1="692.9" x2="658.2" y2="692.9" stroke="#B48FC9"/>
+<rect x="576.5" y="648.5" width="81.7" height="43.9" fill="#6FB8B8" fill-opacity="0.72"/><rect x="576.5" y="648.5" width="81.7" height="43.9" fill="url(#p-crossHatch)"/><line x1="576.5" y1="649.0" x2="658.2" y2="649.0" stroke="#6FB8B8"/>
+<rect x="576.5" y="633.8" width="81.7" height="14.6" fill="#C98F8F" fill-opacity="0.72"/><rect x="576.5" y="633.8" width="81.7" height="14.6" fill="url(#p-checker)"/><line x1="576.5" y1="634.3" x2="658.2" y2="634.3" stroke="#C98F8F"/>
+<rect x="576.5" y="585.0" width="81.7" height="48.8" fill="#A8A8D9" fill-opacity="0.72"/><rect x="576.5" y="585.0" width="81.7" height="48.8" fill="url(#p-dashes)"/><line x1="576.5" y1="585.5" x2="658.2" y2="585.5" stroke="#A8A8D9"/>
+<rect x="576.5" y="575.3" width="81.7" height="9.8" fill="#7C8490" fill-opacity="0.72"/><rect x="576.5" y="575.3" width="81.7" height="9.8" fill="url(#p-grid)"/><line x1="576.5" y1="575.8" x2="658.2" y2="575.8" stroke="#7C8490"/>
+<rect x="659.2" y="765.6" width="81.7" height="24.4" fill="#7AA2D6" fill-opacity="0.72"/><rect x="659.2" y="765.6" width="81.7" height="24.4" fill="url(#p-backDiagonal)"/><line x1="659.2" y1="766.1" x2="740.8" y2="766.1" stroke="#7AA2D6"/>
+<rect x="659.2" y="736.3" width="81.7" height="29.3" fill="#C9A36B" fill-opacity="0.72"/><rect x="659.2" y="736.3" width="81.7" height="29.3" fill="url(#p-horizontal)"/><line x1="659.2" y1="736.8" x2="740.8" y2="736.8" stroke="#C9A36B"/>
+<rect x="659.2" y="726.6" width="81.7" height="9.8" fill="#8FBF8F" fill-opacity="0.72"/><rect x="659.2" y="726.6" width="81.7" height="9.8" fill="url(#p-vertical)"/><line x1="659.2" y1="727.1" x2="740.8" y2="727.1" stroke="#8FBF8F"/>
+<rect x="659.2" y="687.5" width="81.7" height="39.0" fill="#B48FC9" fill-opacity="0.72"/><rect x="659.2" y="687.5" width="81.7" height="39.0" fill="url(#p-dots)"/><line x1="659.2" y1="688.0" x2="740.8" y2="688.0" stroke="#B48FC9"/>
+<rect x="659.2" y="633.8" width="81.7" height="53.7" fill="#6FB8B8" fill-opacity="0.72"/><rect x="659.2" y="633.8" width="81.7" height="53.7" fill="url(#p-crossHatch)"/><line x1="659.2" y1="634.3" x2="740.8" y2="634.3" stroke="#6FB8B8"/>
+<rect x="659.2" y="619.2" width="81.7" height="14.6" fill="#C98F8F" fill-opacity="0.72"/><rect x="659.2" y="619.2" width="81.7" height="14.6" fill="url(#p-checker)"/><line x1="659.2" y1="619.7" x2="740.8" y2="619.7" stroke="#C98F8F"/>
+<rect x="659.2" y="560.6" width="81.7" height="58.6" fill="#A8A8D9" fill-opacity="0.72"/><rect x="659.2" y="560.6" width="81.7" height="58.6" fill="url(#p-dashes)"/><line x1="659.2" y1="561.1" x2="740.8" y2="561.1" stroke="#A8A8D9"/>
+<rect x="659.2" y="550.9" width="81.7" height="9.8" fill="#7C8490" fill-opacity="0.72"/><rect x="659.2" y="550.9" width="81.7" height="9.8" fill="url(#p-grid)"/><line x1="659.2" y1="551.4" x2="740.8" y2="551.4" stroke="#7C8490"/>
+<rect x="741.8" y="780.2" width="81.7" height="9.8" fill="#7AA2D6" fill-opacity="0.72"/><rect x="741.8" y="780.2" width="81.7" height="9.8" fill="url(#p-backDiagonal)"/><line x1="741.8" y1="780.7" x2="823.5" y2="780.7" stroke="#7AA2D6"/>
+<rect x="741.8" y="765.6" width="81.7" height="14.6" fill="#C9A36B" fill-opacity="0.72"/><rect x="741.8" y="765.6" width="81.7" height="14.6" fill="url(#p-horizontal)"/><line x1="741.8" y1="766.1" x2="823.5" y2="766.1" stroke="#C9A36B"/>
+<rect x="741.8" y="760.7" width="81.7" height="4.9" fill="#8FBF8F" fill-opacity="0.72"/><rect x="741.8" y="760.7" width="81.7" height="4.9" fill="url(#p-vertical)"/><line x1="741.8" y1="761.2" x2="823.5" y2="761.2" stroke="#8FBF8F"/>
+<rect x="741.8" y="736.3" width="81.7" height="24.4" fill="#B48FC9" fill-opacity="0.72"/><rect x="741.8" y="736.3" width="81.7" height="24.4" fill="url(#p-dots)"/><line x1="741.8" y1="736.8" x2="823.5" y2="736.8" stroke="#B48FC9"/>
+<rect x="741.8" y="702.2" width="81.7" height="34.2" fill="#6FB8B8" fill-opacity="0.72"/><rect x="741.8" y="702.2" width="81.7" height="34.2" fill="url(#p-crossHatch)"/><line x1="741.8" y1="702.7" x2="823.5" y2="702.7" stroke="#6FB8B8"/>
+<rect x="741.8" y="692.4" width="81.7" height="9.8" fill="#C98F8F" fill-opacity="0.72"/><rect x="741.8" y="692.4" width="81.7" height="9.8" fill="url(#p-checker)"/><line x1="741.8" y1="692.9" x2="823.5" y2="692.9" stroke="#C98F8F"/>
+<rect x="741.8" y="648.5" width="81.7" height="43.9" fill="#A8A8D9" fill-opacity="0.72"/><rect x="741.8" y="648.5" width="81.7" height="43.9" fill="url(#p-dashes)"/><line x1="741.8" y1="649.0" x2="823.5" y2="649.0" stroke="#A8A8D9"/>
+<rect x="741.8" y="643.6" width="81.7" height="4.9" fill="#7C8490" fill-opacity="0.72"/><rect x="741.8" y="643.6" width="81.7" height="4.9" fill="url(#p-grid)"/><line x1="741.8" y1="644.1" x2="823.5" y2="644.1" stroke="#7C8490"/>
+<rect x="824.5" y="785.1" width="81.7" height="4.9" fill="#7AA2D6" fill-opacity="0.72"/><rect x="824.5" y="785.1" width="81.7" height="4.9" fill="url(#p-backDiagonal)"/><line x1="824.5" y1="785.6" x2="906.2" y2="785.6" stroke="#7AA2D6"/>
+<rect x="824.5" y="780.2" width="81.7" height="4.9" fill="#C9A36B" fill-opacity="0.72"/><rect x="824.5" y="780.2" width="81.7" height="4.9" fill="url(#p-horizontal)"/><line x1="824.5" y1="780.7" x2="906.2" y2="780.7" stroke="#C9A36B"/>
+<rect x="824.5" y="770.5" width="81.7" height="9.8" fill="#B48FC9" fill-opacity="0.72"/><rect x="824.5" y="770.5" width="81.7" height="9.8" fill="url(#p-dots)"/><line x1="824.5" y1="771.0" x2="906.2" y2="771.0" stroke="#B48FC9"/>
+<rect x="824.5" y="755.8" width="81.7" height="14.6" fill="#6FB8B8" fill-opacity="0.72"/><rect x="824.5" y="755.8" width="81.7" height="14.6" fill="url(#p-crossHatch)"/><line x1="824.5" y1="756.3" x2="906.2" y2="756.3" stroke="#6FB8B8"/>
+<rect x="824.5" y="751.0" width="81.7" height="4.9" fill="#C98F8F" fill-opacity="0.72"/><rect x="824.5" y="751.0" width="81.7" height="4.9" fill="url(#p-checker)"/><line x1="824.5" y1="751.5" x2="906.2" y2="751.5" stroke="#C98F8F"/>
+<rect x="824.5" y="731.4" width="81.7" height="19.5" fill="#A8A8D9" fill-opacity="0.72"/><rect x="824.5" y="731.4" width="81.7" height="19.5" fill="url(#p-dashes)"/><line x1="824.5" y1="731.9" x2="906.2" y2="731.9" stroke="#A8A8D9"/>
+<rect x="907.2" y="785.1" width="81.7" height="4.9" fill="#B48FC9" fill-opacity="0.72"/><rect x="907.2" y="785.1" width="81.7" height="4.9" fill="url(#p-dots)"/><line x1="907.2" y1="785.6" x2="988.8" y2="785.6" stroke="#B48FC9"/>
+<rect x="907.2" y="780.2" width="81.7" height="4.9" fill="#6FB8B8" fill-opacity="0.72"/><rect x="907.2" y="780.2" width="81.7" height="4.9" fill="url(#p-crossHatch)"/><line x1="907.2" y1="780.7" x2="988.8" y2="780.7" stroke="#6FB8B8"/>
+<rect x="907.2" y="770.5" width="81.7" height="9.8" fill="#A8A8D9" fill-opacity="0.72"/><rect x="907.2" y="770.5" width="81.7" height="9.8" fill="url(#p-dashes)"/><line x1="907.2" y1="771.0" x2="988.8" y2="771.0" stroke="#A8A8D9"/>
+<rect x="989.8" y="785.1" width="81.7" height="4.9" fill="#6FB8B8" fill-opacity="0.72"/><rect x="989.8" y="785.1" width="81.7" height="4.9" fill="url(#p-crossHatch)"/><line x1="989.8" y1="785.6" x2="1071.5" y2="785.6" stroke="#6FB8B8"/>
+<line x1="328.0" y1="790.5" x2="1072.0" y2="790.5" stroke="#FFFFFF14"/>
+<rect x="280" y="833" width="12" height="12" fill="#7AA2D6" fill-opacity="0.72"/><rect x="280" y="833" width="12" height="12" fill="url(#p-backDiagonal)"/><text x="298" y="843" class="s12">ap-northeast-1</text>
+<rect x="410" y="833" width="12" height="12" fill="#C9A36B" fill-opacity="0.72"/><rect x="410" y="833" width="12" height="12" fill="url(#p-horizontal)"/><text x="428" y="843" class="s12">ap-south-1</text>
+<rect x="540" y="833" width="12" height="12" fill="#8FBF8F" fill-opacity="0.72"/><rect x="540" y="833" width="12" height="12" fill="url(#p-vertical)"/><text x="558" y="843" class="s12">ap-southeast-2</text>
+<rect x="670" y="833" width="12" height="12" fill="#B48FC9" fill-opacity="0.72"/><rect x="670" y="833" width="12" height="12" fill="url(#p-dots)"/><text x="688" y="843" class="s12">eu-central-1</text>
+<rect x="280" y="851" width="12" height="12" fill="#6FB8B8" fill-opacity="0.72"/><rect x="280" y="851" width="12" height="12" fill="url(#p-crossHatch)"/><text x="298" y="861" class="s12">eu-west-1</text>
+<rect x="410" y="851" width="12" height="12" fill="#C98F8F" fill-opacity="0.72"/><rect x="410" y="851" width="12" height="12" fill="url(#p-checker)"/><text x="428" y="861" class="s12">sa-east-1</text>
+<rect x="540" y="851" width="12" height="12" fill="#A8A8D9" fill-opacity="0.72"/><rect x="540" y="851" width="12" height="12" fill="url(#p-dashes)"/><text x="558" y="861" class="s12">us-east-1</text>
+<rect x="670" y="851" width="12" height="12" fill="#7C8490" fill-opacity="0.72"/><rect x="670" y="851" width="12" height="12" fill="url(#p-grid)"/><text x="688" y="861" class="s12">other (2): ca-central-1, me-south-1</text>
+<text x="950" y="864" class="s12 mu e">Coverage</text>
+<rect x="958" y="850" width="164" height="20" rx="4" class="ctl"/><text x="1040" y="864" class="s12 m c">2 ≤ 0 not shown (log)</text>
+<rect x="836" y="752" width="286" height="80" rx="8" fill="#191D24" stroke="#FFFFFF14" filter="url(#pop)"/>
+<text x="848" y="772" class="s11 h">NOT SHOWN, BY REGION</text>
+<text x="848" y="794" class="s12">ca-central-1 (in other (2)): 1 ≤ 0</text>
+<text x="848" y="814" class="s12">eu-west-1: 1 ≤ 0</text>
+<rect x="956" y="848" width="168" height="24" rx="5" fill="none" stroke="#5B9BFF" stroke-width="2"/>
+</g>
+<g id="callouts">
+<polyline points="1152,156 1060,148" class="co"/>
+<rect x="1152" y="146" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="166" class="s12">① Exact ECDF per version: every</text>
+<text x="1162" y="182" class="s12">curve ends at 100 %, read in the</text>
+<text x="1162" y="198" class="s12">tooltip as the share ≤ x</text>
+<polyline points="1152,236 1040,396" class="co"/>
+<rect x="1152" y="226" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="246" class="s12">② Groups differ by dash and</text>
+<text x="1162" y="262" class="s12">pattern, never by colour alone</text>
+<text x="1162" y="278" class="s12">(greyscale-safe)</text>
+<polyline points="1152,316 889,280" class="co"/>
+<rect x="1152" y="306" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="326" class="s12">③ No time axis: the window only</text>
+<text x="1162" y="342" class="s12">scopes the query; the footer</text>
+<text x="1162" y="358" class="s12">says what was pooled</text>
+<polyline points="1152,570 742,568" class="co"/>
+<rect x="1152" y="560" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="580" class="s12">④ Log value axis; the 7 largest</text>
+<text x="1162" y="596" class="s12">regions drawn, the rest merged</text>
+<text x="1162" y="612" class="s12">as other (2): grid, drawn last</text>
+<polyline points="1152,700 1124,860" class="co"/>
+<rect x="1152" y="690" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="710" class="s12">⑤ Values a log axis cannot draw</text>
+<text x="1162" y="726" class="s12">are counted on the meter; the</text>
+<text x="1162" y="742" class="s12">popover breaks them down by group</text>
+</g>
+</svg>

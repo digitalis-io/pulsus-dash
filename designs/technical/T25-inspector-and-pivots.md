@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-25 |
+| **Version** | 1.1-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/164 (not tracked) |
@@ -163,6 +163,13 @@ everything (scrolling at ≤ 240 px) with "Show fewer", and the other list keeps
 or mismatched result is **stale**: both lists keep 8, and "The full list is no longer available: the
 panel has new data" replaces the buttons. A new target resets the state.
 
+**Bins (#154).** A `bin` target has one section: texts (≤ 8 shown of `count`) with parallel
+`labels`, and `runs` null. Its `resolve.runId` is the target's `binId` (the bin's series) or
+`${binId}:groups` (an `other` bin's member groups). A result is complete iff texts.length = count
+and, when `labels` is present, labels.length = texts.length. The panel's resolver returns null when
+the `frameSeq` in the id is not its current frame; null or incomplete is stale, as above. Each
+resolved entry with labels gets its own chips (T25-009). `expandMembers` keeps the labels parallel to the texts, for the entries shown first (`texts.labels`) and for the resolved list (`MemberList.labels`), so expanding never drops a chip.
+
 #### T25-012 — Lifetime
 **MUST** — A snapshot, kept through refresh and window changes. It closes when the origin panel is
 removed or its query or vis changes, when Explore runs a different query, and on route change.
@@ -208,7 +215,7 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 | Label filter | from I3 | Explore with `f=<k>=<v>` added | "Filtering Explore by a label arrives with label filters" |
 
 t is `point` tMs, `logLine` Number(tsNs / 10⁶), `stateRun` atMs, `value` tMs. `bucket` uses
-[tMs − 60 s, toMs + 60 s). `mark`, `flame` and a null tMs use the origin window.
+[tMs − 60 s, toMs + 60 s). `mark`, `flame` and a null tMs use the origin window, and `bin` uses the origin window.
 
 ### 4.4 Look (T25-013; tokens added by I1 in `design/tokens.toml`)
 
@@ -249,7 +256,7 @@ Types in `client/src/inspector/`; every field is `readonly`.
 type Labels = Readonly<Record<string, string>>;
 export interface InspectOrigin { surface: 'board' | 'explore'; panelId: string | null; title: string;
   query: { lang: 'promql' | 'logql'; text: string } | null /* board run.expanded; Explore q */; window: TimeWindow; unit: Unit | null }
-export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173 'mark', #177 'flame'
+export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173 'mark', #177 'flame'; #154 adds {type:'bin'; target}
   | { type: 'point'; vis: 'line' | 'bars'; key: string; labels: Labels; name: string; tMs: number; value: number }
   | { type: 'bucket'; index: number; tMs: number; toMs: number; lower: number | null; upper: number; count: number; countUnit: Unit }
   | { type: 'value'; key: string | null; labels: Labels; name: string; value: number; tMs: number | null; state: State | null }
@@ -260,10 +267,11 @@ export interface InspectRequest { origin: InspectOrigin; target: InspectorTarget
   source: 'pointer' | 'keyboard'; returnFocus: HTMLElement | null }
 // members.ts (State = T21 HealthState)
 export interface MemberFacts { fromMs: number; toMs: number; text: string; state: State | null }
-export interface MemberList { texts: string[]; members: MemberFacts[] }
-export interface MemberSection { texts: { shown: string[]; count: number }; runs: { shown: MemberFacts[]; count: number } | null;
+export interface MemberList { texts: string[]; members: MemberFacts[]; labels?: Labels[] /* parallel to texts; per-entry chips (T25-009) */ }
+export interface MemberSection { texts: { shown: string[]; count: number; labels?: Labels[] /* parallel to shown; per-entry chips (T25-009) */ }; runs: { shown: MemberFacts[]; count: number } | null;
   resolve: { panelId: string; runId: string } | null /* null = complete */ }
-export function expandMembers(m: MemberSection, r: MemberList | null): { texts: string[]; runs: MemberFacts[] } | 'stale';
+export function expandMembers(m: MemberSection, r: MemberList | null): { texts: string[]; runs: MemberFacts[]; labels: Labels[] | null } | 'stale';
+// labels: parallel to texts; from m.texts.labels for the shown entries and from r.labels once resolved; null when the section has none (T25-011)
 // host.tsx (InspectorContext null → no host: kinds neither inspect nor select)
 export interface EscapeProvider { pre(): (() => void) | null; post(): (() => void) | null }   // the next step, or null
 export interface InspectorHostApi { inspect(r: InspectRequest): void; select(s: Selection | null, src: SelectionSource): void;
@@ -282,7 +290,7 @@ export function inspectorModel(req: InspectRequest, env: { tenant: string; ctx: 
 // InspectorModel: heading, subheading, primary, facts, labels (by key), members: MemberSection | null, pivots, actions, query, announce
 // engine/api.ts
 export type HoverItem = { kind: 'point'; key: string; tMs: number; value: number }
-  | { kind: 'bucket'; index: number; tMs: number; toMs: number; count: number };   // T21 adds 'segment'
+  | { kind: 'bucket'; index: number; tMs: number; toMs: number; count: number };   // T21 adds 'segment', 'bin'
 export interface SelectEvent { source: 'pointer' | 'keyboard'; item: HoverItem | null }   // replaces the reserved type
 // ChartFrame, LogStream: onInspect?(t, source, returnFocus); ChartFrame: onEmptyClick?() → select(null)
 ```
@@ -378,3 +386,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-25 | #164: created: rules T25-001 to T25-016, the `InspectRequest` union, the shared selection and its highlight, the Esc ladder, pivots with disclosed Context, the look and motion, tests, the implementation issues I1 and I3–I6; mockup 41-inspector. Code review r1: the Profiles and Entity reasons are written in full; the redraw report is the T05 gate `bench:inspector-redraw` |
+| 1.1-rc | 2026-11-25 | #154 ([T21](T21-time-and-distribution-panels.md) part 2a): §5 `InspectorTarget` gains `{type:'bin'; target}` and `HoverItem` gains `bin`; `MemberList.labels?` and `MemberSection.texts.labels?` (parallel to the texts; per-entry chips, T25-009); T25-011 adds the bin rule (one section, resolver ids `binId` and `${binId}:groups`, completeness with labels, `frameSeq` staleness); §4.3: `bin` uses the origin window. Code review r1: `expandMembers` returns the parallel `labels` for the shown and the resolved entries |
