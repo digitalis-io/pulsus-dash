@@ -111,6 +111,7 @@ it reads `100 %`. Counts are en-GB grouped (`1,000`).
 |---|---|
 | list widgets (`unknown`) | `coverage unknown`, `tags not yet known for k board(s)`, `all k pages loaded · may have changed while loading` |
 | the run | `truncated`; `limited (N warning(s))` |
+| geomap counts (`geo`, #184; zeros omitted) | `k not placed`, `k ambiguous`, `locations unavailable`, `k outside the map`, `k without a usable value (a missing, b infinite, c out of range)` |
 | the baseline run | `baseline truncated`, else `baseline limited (N warning(s))` |
 | the cap (drawn < total) | `showing X of N`, then `; kept min, max, K <state>` (only what was kept), then `; J <state> not shown` |
 | fixed bounds | `K value(s) outside the fixed range` |

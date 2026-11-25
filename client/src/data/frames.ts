@@ -82,7 +82,19 @@ export interface Coverage {
     | { readonly reason: 'tagsStale'; readonly count: number }
     | { readonly reason: 'paged'; readonly pages: number };
   readonly staleAtMs?: number | null;
+  /** Geomap counts before the cap (T24 §4.11, #184); absent = none. */
+  readonly geo?: Readonly<Record<GeoCoverageCount, number>>;
 }
+
+/** The geomap's coverage counts (T22-006, T22 §5.1 `Coverage.geo`). */
+export type GeoCoverageCount =
+  | 'notPlaced'
+  | 'ambiguous'
+  | 'locationsUnavailable'
+  | 'outsideMap'
+  | 'noValue'
+  | 'infinite'
+  | 'outOfRange';
 
 export interface HeatmapFrame {
   /** Column starts, strictly increasing, length T ≥ 1. */

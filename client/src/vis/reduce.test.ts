@@ -194,6 +194,51 @@ describe('unit:coverage-text', () => {
     expect(coverageText(coverage({ staleAtMs: 0 }), 'UTC')).toBe('stale (00:00:00)');
     expect(coverageText(coverage({ outside: 5 }))).toBe('5 values outside the fixed range');
   });
+
+  it('geomap counts (T22-006, T24 §4.11)', () => {
+    const geo = {
+      notPlaced: 3,
+      ambiguous: 1,
+      locationsUnavailable: 0,
+      outsideMap: 1,
+      noValue: 2,
+      infinite: 1,
+      outOfRange: 1,
+    };
+    expect(
+      coverageText(
+        coverage({
+          geo,
+          query: { ...TRUNCATED, warnings: ['a', 'b'] },
+          duplicates: 1,
+          conflicts: 1,
+        }),
+      ),
+    ).toBe(
+      'truncated · limited (2 warnings) · 3 not placed · 1 ambiguous · 1 outside the map · ' +
+        '4 without a usable value (2 missing, 1 infinite, 1 out of range) · ' +
+        '1 duplicate series combined; 1 conflicts (max kept)',
+    );
+    const none = {
+      ...geo,
+      notPlaced: 0,
+      ambiguous: 0,
+      outsideMap: 0,
+      noValue: 0,
+      infinite: 0,
+      outOfRange: 0,
+    };
+    expect(coverageText(coverage({ geo: none }))).toBe('100 %');
+    expect(coverageText(coverage({ geo: { ...none, locationsUnavailable: 1 } }))).toBe(
+      'locations unavailable',
+    );
+    expect(coverageText(coverage({ geo: { ...none, infinite: 2 } }))).toBe(
+      '2 without a usable value (2 infinite)',
+    );
+    expect(coverageText(coverage({ geo: { ...none, ambiguous: 1 }, baseline: TRUNCATED }))).toBe(
+      '1 ambiguous · baseline truncated',
+    );
+  });
 });
 
 describe('unit:category-label', () => {

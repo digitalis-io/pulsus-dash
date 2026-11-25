@@ -470,6 +470,29 @@ function unknownText(u: Coverage['unknown']): string | null {
   }
 }
 
+/**
+ * The geomap parts (T22-006, T24 §4.11), in order with zeros omitted: `k not placed`,
+ * `k ambiguous`, `locations unavailable`, `k outside the map`, and
+ * `k without a usable value (a missing, b infinite, c out of range)`.
+ */
+function geoParts(g: Coverage['geo']): string[] {
+  if (g === undefined) return [];
+  const parts: string[] = [];
+  if (g.notPlaced > 0) parts.push(t('coverage.geo.notPlaced', { n: count(g.notPlaced) }));
+  if (g.ambiguous > 0) parts.push(t('coverage.geo.ambiguous', { n: count(g.ambiguous) }));
+  if (g.locationsUnavailable > 0) parts.push(t('coverage.geo.locationsUnavailable'));
+  if (g.outsideMap > 0) parts.push(t('coverage.geo.outsideMap', { n: count(g.outsideMap) }));
+  const unusable = g.noValue + g.infinite + g.outOfRange;
+  if (unusable > 0) {
+    const why: string[] = [];
+    if (g.noValue > 0) why.push(t('coverage.geo.missing', { n: count(g.noValue) }));
+    if (g.infinite > 0) why.push(t('coverage.geo.infinite', { n: count(g.infinite) }));
+    if (g.outOfRange > 0) why.push(t('coverage.geo.outOfRange', { n: count(g.outOfRange) }));
+    parts.push(t('coverage.geo.noValue', { n: count(unusable), parts: why.join(', ') }));
+  }
+  return parts;
+}
+
 /** The cap text (T22-006 (4)): `showing X of N`, `; kept …` and `; J <state> not shown`. */
 function capText(c: Coverage): string {
   let text = t('coverage.showing', { x: count(c.drawn), n: count(c.total) });
@@ -486,7 +509,8 @@ function capText(c: Coverage): string {
 
 /**
  * The VIZ-027 meter text (T22-006): the applicable parts joined by ` · `, or `100 %` with none —
- * the list widgets' leading part, `truncated`, `limited (N warnings)`, the baseline run's
+ * the list widgets' leading part, `truncated`, `limited (N warnings)`, the geomap counts, the
+ * baseline run's
  * truncation or warnings, the cap text, the values outside the fixed range, the duplicate merge,
  * and the list widgets' `stale (HH:mm:ss)` in `timeZone` (default the browser's). Counts are en-GB
  * grouped.
@@ -498,6 +522,7 @@ export function coverageText(c: Coverage, timeZone: string = browserTimeZone()):
   if (c.query.truncated) parts.push(t('coverage.truncated'));
   const w = c.query.warnings.length;
   if (w > 0) parts.push(t(w === 1 ? 'coverage.limitedOne' : 'coverage.limited', { n: count(w) }));
+  parts.push(...geoParts(c.geo));
   const b = c.baseline;
   if (b !== null && b.truncated) parts.push(t('coverage.baselineTruncated'));
   else if (b !== null && b.warnings.length > 0) {
