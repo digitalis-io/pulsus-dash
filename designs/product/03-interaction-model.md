@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-25 |
+| **Version** | 1.4-rc · 2026-11-25 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -61,6 +61,12 @@ Orbit the default in every 3D scene, including every estate view at every estate
 
 *Acceptance:* Each 3D scene, including the Landscape of a 10k-node estate, opens in Orbit mode; `` ` `` toggles Fly and back; in Map mode
 the camera cannot tilt and `Q`/`E` rotate it; in a 2D chart, X and Y zoom independently.
+
+*Note (#184, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-091--camera-and-picking)):*
+a 2D map (the geomap) is a 2D scene whose orthographic camera has one zoom for both axes, because a
+Web Mercator map has no independent axes; it pans and zooms within one world that never repeats
+([ADR-0027](../adr/0027-geomap-frame-seam.md)). The acceptance's independent zoom applies
+to 2D charts.
 
 #### INT-002 — Cursor-anchored zoom
 **MUST** · M-UI0 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -147,6 +153,12 @@ through each pose in reverse; `Alt+→` replays forward.
 > way, which is accepted). Right drag (and `Alt`+left drag) box-zooms the time span, replacing
 > the earlier left-drag brush; on the plot, neither a right drag nor a right click opens the
 > browser menu, and outside the plot right click is unchanged.
+
+> **Note (#184, 2D maps):** On a 2D map ([T24-091](../technical/T24-geo-schematic-and-widget-panels.md#t24-091--camera-and-picking))
+> the wheel zooms both axes about the pointer (over the map only; a panel can turn wheel zoom off,
+> so the page scrolls), a left drag pans, a right drag box-fits, `Alt`+left drag selects the marks
+> it covers (not a time range), and a double-click zooms ×2, or fits a cluster's members when it is
+> on a cluster. A map move commits a view, never the time window.
 
 #### INT-007 — Mouse and trackpad bindings
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -808,3 +820,4 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 | 1.1-rc | 2026-11-19 | Application layout (D9, roadmap Q13): the time window lives in the page header ([02](02-information-architecture.md) IA-020) and the Time Ribbon only in Space scenes (IA-028); §6 intro, INT-015 (F6 regions), INT-017, INT-025 (brush on any time chart), INT-029 and INT-031 revised in place; key table `F6` row |
 | 1.2-rc | 2026-11-21 | #93, owner decisions 2026-11-21: §4.1 2D double-click zooms the window out; note on time commits, the local value axis, wheel over the plot only, pinch heuristic, right click on the plot; INT-025 brushes by right drag or Alt+left drag (left drag pans) |
 | 1.3-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): INT-034, INT-035 and INT-036 gain staging notes with interim acceptance and their delivering issues (M-UI4 actions; I6 baseline; I4 split and `\`); INT-016 note: a kind's steps go before and after the host's (T25-007) |
+| 1.4-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 1b): INT-001 note (a 2D map has one zoom for both axes in one unrepeated world, ADR-0027); §4.1 note on the 2D map's wheel, drag, right drag, `Alt`+drag and double-click |

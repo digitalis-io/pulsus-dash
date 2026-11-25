@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-25 |
+| **Version** | 1.4-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
 
 This document is the board **widgets**, the **geomap** and the **schematic**. It is written in parts
@@ -16,7 +16,10 @@ board tags and the board search of the BFF (rules T24-020 to T24-029). Part B2 a
 widget, canonical scoped entity ids on annotations, the `change` Inspector target and the log panel
 gap record (rules T24-030 to T24-039). Part E step 1a adds the geomap's data layer: location
 resolution, the bundled basemap and gazetteer assets and their loading (rules T24-080 to T24-087).
-Parts C–K add their rules in their own ID blocks.
+Part E step 1b adds the geomap frame: rows and their statuses, group identity, the camera, picking,
+selection and the Inspector, the keyboard mark list, the table, CSV and facts, and the states (rules
+T24-088 to T24-095, [ADR-0027](../adr/0027-geomap-frame-seam.md)). Parts C–K add their rules in their
+own ID blocks.
 
 ## 1. Context & problem
 
@@ -73,6 +76,22 @@ clipper and the topology is unchanged (T24-086). Any validation failure rejects 
 `_EH` fields are used, T24-085), and downloading the sources in CI (the download location would put
 a host name in the repository).
 
+**Part E, step 1b.** [VIZ-044](../product/05-visualisation-catalogue.md#viz-044--geospatial-layers)
+asks for markers whose size and colour come from fields, with labels and clustering at low zoom;
+VIZ-046 for the basemap drawn by Dash's own renderer; and INT-002 to INT-004 for a cursor-anchored,
+inertial camera with eased programmatic moves. The approach: a `geomap` kind draws step 1a's
+`LocationResult`s through `ChartFrame` in one Web Mercator world that never repeats
+([ADR-0027](../adr/0027-geomap-frame-seam.md)). A row has three independent statuses (location,
+value and drawing), and only usable values become marks; every other row is still in the table, the
+CSV and the meter (T24-089). Groups carry colour and pattern, never colour alone (VIZ-067, T24-090),
+and the engine owns the camera, the clusters and the pick (T24-091). Selection and the Inspector reuse
+T25 with four `geo` target kinds and an in-request navigation stack, so an aggregate's group and a
+group's marker open without a new request (T24-092). A hidden mark list gives every in-view mark a
+keyboard stop (T24-093), the table and CSV list every row (T24-094), and every state has a focus
+target and an announcement (T24-095). Rejected: a neutral marker colour, rings as the only state cue,
+spreading coincident marks apart, a repeated world, nested member lists, inspecting an ordinary group
+from its legend, `aria-activedescendant`, and a host request per navigation step (§12).
+
 ## 2. Goals / non-goals
 
 Goals (part A): the T24 skeleton and its part map; the shared widget rules; the Text / Markdown widget
@@ -125,6 +144,19 @@ Non-goals (part E, step 1a):
 - wrapping the map across ±180°;
 - the government and China partitions of the cloud region lists.
 
+Goals (part E, step 1b): the `geomap` kind and its seam (ADR-0027); the host and plan; rows with
+their value, location and draw statuses; group identity, legend and sizes; the basemap drawing, the
+camera, clusters and picking; selection, the four Inspector target kinds and the in-request
+navigation stack (T25); the mark list and keys; the table, CSV (with the `csvCell` numeric
+exemption) and facts; every state; board spec v7.
+
+Non-goals (part E, step 1b):
+- part E step 2 (T24-096–099): view sync, the bounds filter, auto-vis and import;
+- symbol and rotation from fields (part G, #186);
+- spiderfying clusters and legend filters;
+- wrapping across ±180° (ADR-0027);
+- drawing with the wgpu renderer (#68).
+
 **Part map.** Each part is designed under its own issue and adds its rules in its block.
 
 | Part | Scope | Issue | Rules | Requirement ID if needed |
@@ -134,7 +166,7 @@ Non-goals (part E, step 1a):
 | B2 | Change feed widget, the `change` target and log panel gaps (this revision) | #181 (step 2) | T24-030–039 | VIZ-126 (reserved, unused) |
 | C | Alert / incident list widget | #182 | T24-040–059 | VIZ-127 |
 | D | Feed widget fetched by the BFF | #183 | T24-060–079 | VIZ-128 |
-| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter; step 1a, the data (this revision); step 1b, the frame; step 2 | #184 | T24-080–099 (1a T24-080–087, 1b T24-088–095, 2 T24-096–099) | VIZ-129 (reserved, unused) |
+| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter; step 1a, the data; step 1b, the frame (this revision); step 2 | #184 | T24-080–099 (1a T24-080–087, 1b T24-088–095, 2 T24-096–099) | VIZ-129 (reserved, unused) |
 | F | Geomap basemap pipeline and routes layer | #185 | T24-100–119 | VIZ-130 |
 | G | Geomap M-UI5 layers: heatmap / hexbin, choropleth, network, day/night, track | #186 | T24-120–139 | VIZ-131 |
 | H | Geomap true 3D: globe and extruded regions | #187 | T24-140–159 | VIZ-132–133 |
@@ -144,7 +176,7 @@ Non-goals (part E, step 1a):
 
 Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused. Part B1 defines T24-020 to
 T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused. Part E step 1a defines T24-080 to
-T24-087; VIZ-129 stays unused.
+T24-087, and step 1b T24-088 to T24-095; VIZ-129 stays unused.
 
 **Part E step 1b starts from** these decisions (#184, coordinator, round 1):
 - out-of-domain and infinite values are excluded from the marks and disclosed;
@@ -201,6 +233,17 @@ T24-087; VIZ-129 stays unused.
 | [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (entity set `e=`) | §4.1 (T24-031), §5.10 | `unit:change-entity`; `e2e:widget-change-feed` |
 | [VIZ-045](../product/05-visualisation-catalogue.md#viz-045--location-sources) (part E step 1a) | §4.1 (T24-080 to T24-085), §4.10, §5.11, §5.12 | `unit:geo-locate`; `unit:geo-geohash`; `unit:geo-gazetteer-build`; `unit:geo-assets` |
 | [VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) (staged: step 1a bundles the offline data; drawing in step 1b) | §4.1 (T24-086, T24-087), §5.12, §5.13, §6 | `unit:geo-build`; `unit:geo-decode`; `unit:geo-load`; `unit:geo-assets`; `ci:geo-data`; `ci:bundle-size` |
+| [VIZ-044](../product/05-visualisation-catalogue.md#viz-044--geospatial-layers) (staged: the Markers row in part E step 1b; symbol and rotation from fields in part G) | §4.1 (T24-089 to T24-091), §4.11, §5.14, §5.15 | `unit:geo-marks`; `unit:geo-radius-project`; `unit:geo-rows`; `golden:gallery` |
+| [VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) (part E step 1b: the drawing) | §4.1 (T24-091) | `unit:geo-basemap-draw`; `e2e:geomap-offline` |
+| [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (part E step 1b) | §4.1 (T24-089, T24-095), §4.11, §4.12 | `unit:geo-coverage`; `unit:geo-states` |
+| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (part E step 1b) | §5.15 (board spec v7) | `unit:board-spec-geomap` |
+| [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis) (part E step 1b) | §4.1 (T24-094), §4.14 | `unit:geo-table-csv`; `unit:list-table-csv`; `e2e:geomap` |
+| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel) (amended), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part E step 1b) | §4.1 (T24-090), §10.4 | `unit:geo-identity`; `golden:gallery` |
+| [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) (part E step 1b) | §4.1 (T24-093 to T24-095) | `unit:geo-facts`; `unit:geo-list`; `e2e:geomap-a11y` |
+| [INT-002](../product/03-interaction-model.md#int-002--cursor-anchored-zoom), [INT-004](../product/03-interaction-model.md#int-004--smooth-programmatic-transitions) (part E step 1b) | §4.1 (T24-091) | `unit:geo-camera`; `unit:geo-ownership`; `unit:geo-keys-engine` |
+| [INT-003](../product/03-interaction-model.md#int-003--inertia) (part E step 1b) | §4.1 (T24-091: a drag pans with the shared T02 camera inertia) | `unit:geo-inertia`; `unit:camera-controller` (shared) |
+| [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (`geo` targets) | §4.1 (T24-092), §4.13, [T25](T25-inspector-and-pivots.md) §4.8, §4.9 | `unit:geo-select-hover`; `unit:geo-targets`; `unit:geo-nav`; `unit:geo-inspect`; `e2e:geomap` |
+| [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part E step 1b) | §4.1 (T24-091, T24-095) | `unit:inspector-viewkey`; `e2e:geomap-a11y` |
 
 ## 4. Design
 
@@ -370,7 +413,11 @@ one roving tab stop: ↑/↓, Home/End, PageUp/PageDown (±10 rows); Enter follo
 [T22-013](T22-value-categorical-and-table-panels.md#t22-013--table-view-and-csv)). The CSV is RFC 4180
 with the header `title,uid,tags,updated_at`: tags `;`-joined, `unknown` when `tags` is null, empty when
 there are none; `updated_at` in ISO 8601 UTC. A cell that starts with `=`, `+`, `-`, `@`, TAB or CR
-gets a leading `'` first (`csvCell`). Facts: `current` = `{text: '‹N›[+] boards'` plus
+gets a leading `'` first (`csvCell`), unless it is a number: the whole cell matches
+`^[+-]?(?:\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|Infinity)$` (a JavaScript regular expression without the
+`m` flag) and holds no line terminator (LF, CR, U+0085, U+2028, U+2029), so `-6.25`, `+1`, `1e5` and
+`-Infinity` stay as they are and `-1+2` and `-1` followed by LF are guarded (amended by #184 step 1b, T24-094).
+Facts: `current` = `{text: '‹N›[+] boards'` plus
 ` (coverage unknown)` or ` (stale)`, `series: ‹mode label›}`, and the other members are null; with no
 snapshot the facts are null.
 
@@ -620,6 +667,192 @@ null; there is no partial asset:
 A null asset logs one `console.debug` line naming the file. Step 1b: a null basemap shows "Map data
 unavailable" and still lists the rows; a null gazetteer gives `gazetteerUnavailable` (T24-081).
 
+#### T24-088 — Host and plan
+**MUST** — The geomap is honest 2D (T24-001) with one spec
+([T21-002](T21-time-and-distribution-panels.md#t21-002--one-spec-per-kind)). `PanelFrame` routes `geomap` (`vis/framePlan.ts`:
+`'geomap'` → `{ kind: 'geomap' }`) to `GeoMapFrame`, which calls `planGeo` (§5.14) and renders
+`<ChartFrame surface="geo" onFrame>` ([ADR-0027](../adr/0027-geomap-frame-seam.md)).
+- **Plan order** (the first that holds): a pending run → `loading`; a failed run → `error`;
+  `validateGeoRows` fails → `invalid`, "Invalid map data (‹detail›)"; a null basemap →
+  `mapDataUnavailable` (the rows, no frame); plot W < 160 or H < 120 CSS px → `tooSmall`; 0 rows →
+  `empty`; 0 `shown` rows → `noneShown`; else `ok`. Only `empty`, `noneShown` and `ok` build a frame.
+  `tooSmall` follows `invalid`, so its rows are always validated (`rows: GeoRowSet`, never null).
+- **Events.** `ChartFrame` owns `select` and `hover` (`targetOf` for `geo` items, §5.14).
+  `GeoMapFrame` subscribes to exactly `geoCommit`, `geoBrush` and `geoMarks` of each engine frame,
+  and disposes those subscriptions with it.
+- **View.** The host keeps `lastView` (the latest commit) and `applied` (the last applied
+  `options.view`). If `options.view` differs from `applied` by value (null included): `spec.view =
+  options.view`, `lastView` = null and `applied` = it (null → refit). Otherwise `spec.view =
+  lastView ?? options.view`. A new engine frame (an engine swap) starts at that view.
+- The mark list's active mark is passed to `setFocusMark` (T24-093).
+
+#### T24-089 — Rows
+**MUST** — `geoRowSet` (§5.15) makes one `GeoRow` per series. **Value:** an instant result gives the
+one value of each series; a range result reduces by `reducer`
+([T22-003](T22-value-categorical-and-table-panels.md#t22-003--one-reduction-path); duplicate series
+combined, the max on a conflict). `valueStatus` follows
+[T21-012](T21-time-and-distribution-panels.md#t21-012--values) (`ok`, `noValue`, `infinite`,
+`outOfRange`). **Location:** the 1a `locate` (T24-081). **Draw status** (zoom-independent), the
+first that holds:
+1. `notPlaced`: the location is not `placed`;
+2. `outsideMap`: \|lat\| > 85.0511;
+3. `excluded`: the value is not `ok` (the row is in the table and the meter only);
+4. `capped`: the row is left out by `capMarks`
+   ([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)) above 5 000
+   drawable rows, with (c) in key order;
+5. `shown`.
+
+The three statuses are independent: a row can be placed with no usable value, or have a value and
+no place. `geoFrame.shown` holds the indices of the `shown` rows.
+
+**`validateGeoRows`** checks a row set (the first failure wins, its detail named):
+- `order`: keys non-empty and strictly increasing (UTF-16 code units, §4.11);
+- `value`: each `valueStatus` is the T21-012 status of its value (`ok` exactly for a usable value);
+- `state`: all null without thresholds; with thresholds, a non-`ok` value has `unknown` and an `ok`
+  value its threshold state;
+- `draw`: each draw status is the one derived above;
+- `group`: 0 ≤ group < groups.length ≤ 8; patterns and colours per T24-090; the `{other}` group
+  exists iff there are ≥ 8 group ids, and its members are the distinct ids of its rows in
+  first-appearance order; every other row's `groupId` is its group's id; no row has the id
+  `{other}`;
+- `coverage`: every count equals a recount.
+
+#### T24-090 — Identity
+**MUST** — **Groups.** A group's identity is its tagged `GroupId`, never its label: `{series: key}`
+(no `groupBy`), `{present: true, value}` or `{present: false}` (the `groupBy` label is absent);
+`{other: true}` is the aggregate's alone. Group j is numbered by first appearance in key order.
+- **Labels** (injective): a series group → the series name; absent → `‹L› absent`; the aggregate →
+  `other (n)`. A present value is shown plain unless it starts with `"`, equals `other` or
+  `‹L› absent`, ends with ` (‹digits›)` or holds a control character; then it is
+  `JSON.stringify(value)`.
+  Plain labels never start with `"` and quoted ones always do, JSON quoting is injective and the
+  reserved forms are never plain, so `groupBy` labels never collide. This amends
+  [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity)'s unescaped
+  quoting.
+- **Final pass** over every legend label: T22-004's disambiguation (the shortest key set,
+  ` · k="v"` / ` · k absent`); a label still shared gets ` (n)`, n from 1 in key order, skipping
+  labels in use; the aggregate is never suffixed.
+- **Colour:** `seriesColourIndex` (T22-004) when `groupBy` is null, else j mod 8
+  ([T21-003](T21-time-and-distribution-panels.md#t21-003--encoded-twice)).
+- **One group** → the `solid` pattern and no legend. **Several:** j ≤ 6 → `CATEGORY_PATTERNS[j]`;
+  j ≥ 7 → one aggregate **other (n)** (`OTHER_PATTERN`, `category-other`, `members` = the ids).
+  Legend: each group (swatch, label, and "(not shown)" if none of its rows is shown), and `other
+  (n): ‹first 8 member labels›, +k more`.
+- **State** (with thresholds): `colour: 'group'` (the default) keeps the group fill and pattern and
+  adds a 2 px state outline and the state glyph (inside the marker at r ≥ 8, else at its upper
+  right); `colour: 'state'` uses the state fill and glyph with the pattern over it (`pattern-ink`).
+  A cluster shows a chip of its worst state.
+- **Grouped marks** ([T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity),
+  amended): with `groupBy`, colour and pattern are the group's; its series differ in the tooltip, the
+  table and the Inspector; state stays on every marker.
+- **Overflow** (T22-004 and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters),
+  amended): the aggregate's members keep their positions and marks; the aggregate is the legend
+  entry and the target `other:geo` (T24-092); a click on a member's mark targets that member.
+- **Sizes:** with a pattern, min′ = max(min, 8) and max′ = max(max, min′); with one group, min′ =
+  min and max′ = max. M = the max \|v\| over the `shown` rows. `size.by: 'value'` → r =
+  max(min′, max′·√(\|v\|/M)), and M = 0 → min′; `'fixed'` → max′. Negative values are sized by \|v\|,
+  with the sign in the labels.
+
+#### T24-091 — Camera and picking
+**MUST** — The engine owns the camera ([ADR-0027](../adr/0027-geomap-frame-seam.md)).
+- **One world:** a row's longitude → [−180, 180) by `((lon+180) mod 360 + 360) mod 360 − 180`; u =
+  (lon+180)/360, v = ½ − ln((1+sin φ)/(1−sin φ))/(4π); inverse lon = 360u − 180, lat =
+  atan(sinh(π(1−2v))); the world is 256·2^z CSS px; basemap x as stored; no repeat; everything is
+  clipped to the plot.
+- **Basemap:** one path per polygon (the outer and its holes), filled `map-land` with the `nonzero`
+  rule by the asset's orientations, so holes stay water; strokes only from `coast` (1 px) and `border`
+  (0.5 px, `map-border`), each once, never ring outlines (so no artificial edge is drawn).
+- **Zoom range:** zMin = clamp(log2(max(W, H)/256), 0, 14), zMax = 14; the inset p = min(48, 10 % of
+  min(W, H)) CSS px. A view below zMin is raised to zMin.
+- **Contain:** per axis inside the world, else centred and letterboxed (the world is 4 194 304 px
+  wide at zoom 14); never across ±180°; bounds never wrap.
+- **Fit** (view null): the box of the `shown` rows with inset p, z = clamp(fitted, zMin, max(6,
+  zMin)); no shown row → (20, 0, zMin); then contained.
+- **Wheel** (over the plot only; `wheelZoom: false` → the page scrolls): Δz = −log2(factor); a
+  `panX` wheel pans by its fraction × the width (contained); a `null` wheel is ignored. A drag pans
+  ([INT-003](../product/03-interaction-model.md#int-003--inertia)); a right drag box-fits;
+  Alt+drag emits `geoBrush`; a double-click zooms ×2, or fits a cluster's members when on a cluster.
+- **Anchor** ([INT-002](../product/03-interaction-model.md#int-002--cursor-anchored-zoom)): the
+  lat/lon under the pointer stays under it unless containment shifts the view (the drift equals the
+  shift).
+- **Keys** (`cameraKey`, called by the focused surface and by the mark list, T24-093): `+`/`=` zoom
+  ×2 (`in`), `-` ÷2 (`out`), about the `setFocusMark` mark if it is in view, else the centre; `0`
+  fits; Shift+arrows pan 25 % of the plot. Each key commits once; programmatic moves ease in ≤ 250
+  ms ([INT-004](../product/03-interaction-model.md#int-004--smooth-programmatic-transitions)).
+- **Ownership:** `setSpec` moves the camera only when `spec.view` changes (by more than 1e−9) and
+  differs from the camera; non-null → null refits at once; a null view refits on `setData` until the
+  next commit.
+- **Clusters:** at Z = ⌊zoom⌋, seeds (seed order, §4.11) take the unassigned `shown` rows within 40
+  world px; ≥ 2 rows → a cluster `cluster:` + seed key, drawn at the seed. `cluster: false` still
+  joins identical positions. A cluster is a `surface-2` disc of r 14, 16, 18 or 20 (n < 10, < 100, <
+  1 000, more) with its count and, at worst rank ≥ 2, the worst-state chip. Level changes crossfade
+  in 150 ms, and only the new marks are pickable; reduced motion
+  ([VL-016](../product/08-visual-language.md#vl-016--reduced-motion)) cuts every ease and fade.
+- **Pick:** the last-drawn mark (draw order, §4.11) whose disc of radius max(r + 4, 12) holds the
+  pointer.
+- **Labels** `auto`: the names are drawn when there are ≤ 50 marks (greedy, in seed order).
+
+#### T24-092 — Selection and Inspector
+**MUST** — Targets are snapshots built by `geoTarget` (§5.16); a refetch never changes an open one.
+- **Entry:** a marker click or Enter → a `marker` target, `select([key])`; a cluster → a `cluster`
+  target with its keys and no filter (T22-007). With ≥ 2 groups, an ordinary legend entry →
+  `select(group keys, member)` only; `other (n)` → its rows' keys and an `aggregate` target; an
+  Inspector member entry → `push` ([T25](T25-inspector-and-pivots.md) §4.8); `geoBrush` →
+  `select(keys, brush)` (`[]` → no change); an empty click → `select(null)`; a table toggle
+  ([T25-016](T25-inspector-and-pivots.md#t25-016--table-row-source)) → `select([key], tableRow)` or
+  `select(null)`; a table row's Inspect → a `marker` target (any row, drawn or not).
+- **Read** ([ADR-0025](../adr/0025-chart-frame-selection.md)): the selection is relevant iff one of
+  its keys is among the keys of all loaded rows (shown or not). Then the shown marks that do not match
+  are `dimmed` and a match gets the 2 px `focus` ring (a cluster also "‹k› selected"); a selected
+  undrawn row is highlighted in the table ("Not placed"). Only foreign keys → nothing dims.
+- **Lifetime** ([T25-012](T25-inspector-and-pivots.md#t25-012--lifetime)): kept through refreshes
+  and window changes; closed (with its `nav`) by panel removal, a query or vis change and a route
+  change (focus: `returnFocus`).
+
+#### T24-093 — Mark list and keys
+**MUST** — A hidden `<ul aria-label="‹title›: map marks">` of `<button>`s holds the in-view marks in
+keyboard order (§4.11) with one roving tab stop (T24-025).
+- **Names:** a marker `‹name›, ‹formatValue›[, ‹state›], ‹geoPlace›[, selected]`; a cluster `Cluster
+  of ‹n›, near ‹seed place›[, worst ‹state›][, ‹k› selected]`. `aria-posinset` = index + 1;
+  `aria-setsize` = the count iff `complete` (the meter reads `100 %`) and every mark is in view, else
+  −1.
+- **Keys** (handled keys are prevented and stopped): unmodified ↑/← and ↓/→, Home/End,
+  PageUp/PageDown (±10, clamped); Enter/Space inspect (a keyboard open focuses the Inspector
+  heading); Shift+arrows → `cameraKey(pan…)`; `+`/`=` → `in`, `-` → `out`, `0` → `fit`. Other keys,
+  Esc included ([T25-007](T25-inspector-and-pivots.md#t25-007--one-esc-ladder)), propagate. The
+  active mark → `setFocusMark(id)`; focus leaving both the list and the surface →
+  `setFocusMark(null)`.
+- **None in view** (`ok`): one item "No marks in view · Fit" (no posinset or setsize); Enter/Space →
+  `cameraKey('fit')`. While it is focused it stays when marks return; ↓/→/Home then go to the first
+  mark and ↑/←/End to the last.
+- **Repair** on `geoMarks`: the same id, else the mark holding the old seed or key, else the old
+  index clamped, else the placeholder. Focus moves only if it was inside the list. A refetch that
+  drops the active mark announces "‹old name› is no longer shown".
+- **Legend** (≥ 2 groups): a button per entry. Tab order: surface → list → legend → meter.
+
+#### T24-094 — Table, CSV and facts
+**MUST** — **Table** (Shift+T,
+[T22-013](T22-value-categorical-and-table-panels.md#t22-013--table-view-and-csv)): every row,
+ordered by name then key (UTF-16), with the §4.14 columns (values unguarded), a T25-016 toggle and
+Inspect per row; selected rows have the `selection` background and the hidden text "selected".
+**CSV:** the same columns, order and header, RFC 4180; every cell through `csvCell` (T24-026, with
+its numeric exemption). **Facts**
+([T22-014](T22-value-categorical-and-table-panels.md#t22-014--summary-facts), unchanged): the marks
+are the rows with an `ok` value (before the cap, any draw status); the focus mark is the worst state
+(with thresholds), then the higher value, then the lower key; `current` = {`formatValue`, the series
+name}; `change` (range results) = the focus series' largest \|Δ\| between consecutive finite samples,
+the first on ties, {from, to, atMs of the later}; `extent` = the min and max of the marks;
+`baselineRatio` null. #160 renders them
+([VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport)).
+
+#### T24-095 — States
+**MUST** — Every consumer follows §4.12 in each T24-088 state. A `role="status"` region
+(`tabIndex=-1`) exists at once in the states other than `ok`, with `aria-busy` while loading and its
+text after 300 ms. On a state change focus moves to the new state's target only if it was inside the
+panel (the surface, the list, the legend, the status, Show table or Retry), then a polite announcement
+follows ([T08-018](T08-dom-component-kit.md#t08-018--announcements-are-rate-limited)). A state change
+never changes the selection.
+
 ### 4.2 Markdown node table (`commonmark` → output)
 
 | Node | Output |
@@ -753,6 +986,66 @@ Normalised aliases (T24-080), in precedence order within each rule:
 | 5 | `geo_country_iso_code`, `country_code`, `country` | country |
 | 6 | `iata`, `iata_code`, `airport` | iata |
 | 7 | `region` (hint `cloud_provider`) | cloud or region |
+
+### 4.11 Geomap orders and coverage (part E step 1b; T24-089 to T24-093)
+
+Strings compare by UTF-16 code units (JavaScript `<`). Series keys are hashes and never start with
+`cluster:`.
+
+| Order | Key (ascending) | Use |
+|---|---|---|
+| seed | (−rank, −\|v\|, key) | clusters |
+| draw (bottom → top) | (−r, rank, \|v\|, id); a cluster takes its members' max | drawing, pick |
+| keyboard | (y, x, id) of the centres (CSS px, exact) | the mark list (T24-093) |
+
+rank: failing 4, degraded 3, watch 2, else 0.
+
+**Coverage** ([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal),
+amended: `Coverage.geo`), counted before the cap, in this order with zeros omitted: `k not placed`
+(not counting the ambiguous), `k ambiguous`, `locations unavailable`, `k outside the map`, `k without
+a usable value (a missing, b infinite, c out of range)`.
+
+### 4.12 Geomap states (part E step 1b; T24-095), on entry
+
+| State | Map | List | Table | Facts | Meter | Focus target | Announce |
+|---|---|---|---|---|---|---|---|
+| loading | status, "Loading…" at 300 ms | none | disabled | null | `loading` | the status (at once) | — |
+| error | "Couldn't load data" + Retry | none | disabled | null | `unavailable` | Retry | "Couldn't load data" |
+| invalid | "Invalid map data (‹detail›)" | none | disabled | null | `unavailable` | the status | the text |
+| mapDataUnavailable | "Map data unavailable" + Show table | none | every row | T24-094 | the parts | Show table | the text |
+| tooSmall | "Too small to show a map: ‹N› series" + Show table | none | every row (or the header) | T24-094 | the parts | Show table | the text |
+| empty | the basemap + "No series in this window" | `<p tabIndex=-1>` | the header | null | `100 %` | the `<p>` | the text |
+| noneShown | the basemap + "No series could be placed: ‹parts›" + Show table | the `<p>` | every row | T24-094 | the parts | the `<p>` | the text |
+| ok | the marks | T24-093 | every row | T24-094 | the parts or `100 %` | the first item (or the placeholder) | "‹n› marks" |
+| refetch ok / failed | new / kept | repaired / kept | new / kept | new / kept | new / `… · stale (HH:mm:ss)` | repaired / the same | the removal / "Couldn't refresh" |
+
+Show table focuses the first row toggle (else the header). When loading ends before 300 ms, focus
+goes straight to the new target.
+
+### 4.13 Geomap Inspector targets (part E step 1b; T24-092, [T25](T25-inspector-and-pivots.md) §4.9)
+
+Value statuses read No value, Infinite and Out of range; draw statuses read On the map, Not placed,
+Outside the map, Not drawn: no usable value and Not drawn: cap.
+
+| Kind | Header | Details | Members | Pivots |
+|---|---|---|---|---|
+| marker | the name; `geoPlace` or the location status; `formatValue` and the state | Value status; Location (4 dp); Source `‹key› ‹code›[ (‹provider›)]` (coordinates: `lat, lon`); Location detail; Group (`… (in other (n))`); Draw | — | T25 `mark` (the origin window), labels |
+| cluster | `Cluster of n`; `near ‹seed place›` | Worst state; Values min – max | the rows (label chips) | — |
+| aggregate | `other (n)`; `‹n› groups, ‹m› series` | — | the groups (label-map chips) | — |
+| group | the group label; `‹m› series` | Worst state; Values min – max | the rows | — |
+
+`announce` = `Inspector: ` + (at depth d > 0, `Level ‹d + 1›: `) + a marker `‹name›, ‹formatValue›[,
+‹state›]` · a cluster `Cluster of ‹n›, near ‹seed place›[, worst ‹state›]` · the aggregate `other (n),
+‹n› groups, ‹m› series` · a group `‹label›, ‹m› series[, worst ‹state›]` (T25-008).
+
+### 4.14 Geomap table and CSV columns (part E step 1b; T24-094)
+
+`name,key,value,value_status,state,location_status,location_detail,source,code,provider,place,lat,lon,group,group_member,draw_status`
+
+- `place` = `geoPlace` (§5.16); `group` = the drawn group's label (`other (n)` for its members);
+  `group_member` = the row's own group label when it is aggregated, else empty.
+- `location_detail`: invalid → `‹reason› ‹key›`; unknownCode → `‹source› ‹key›=‹value›`;
+  providerMismatch → `‹provider›: c1; c2`; ambiguous → `‹reason›: c1; c2`; else empty.
 
 ## 5. Interfaces
 
@@ -1096,6 +1389,107 @@ retrieval date of each; it holds no download location.
 **Notices.** No source requires a notice. `build/THIRD_PARTY_NOTICES.txt` gains a "Data" section
 that names each dataset and its version.
 
+### 5.14 Geomap seam and host (part E step 1b; `engine/api.ts`, `charts/`, `vis/geo/plan.ts`)
+
+The seam additions are [ADR-0027](../adr/0027-geomap-frame-seam.md)'s, verbatim (every field
+`readonly`): `VisKind` `'geomap'`, `GeoView`, `GeoBounds`, `GeoMapSpec`, the `geo` `FrameData` and
+`HoverItem` members, `GeoCommitEvent`, `GeoBrushEvent`, `GeoMarksEvent`, `setFocusMark`, `cameraKey`
+and `FrameSummary.geo`. The host and the plan:
+
+```ts
+export interface GeoMapFrameProps { panelId: string; title: string; unit: Unit; options: GeomapOptions;
+  thresholds: readonly ThresholdLine[] | null; run: PanelRun;
+  geoData: { basemap: Basemap | null; gazetteer: Gazetteer | null } | 'loading';
+  fill?: boolean; sizeMemo?: { current: FrameSize | null }; onInspect?: ChartFrameProps['onInspect'] }
+// ChartFrameProps += onFrame?(f: EngineFrame | null) (null before dispose), surface?: 'chart' | 'geo'. With 'geo': no crosshair
+//   and no label targets; the canvas wrapper is the plot surface (tabIndex 0, role="application", aria-roledescription="map",
+//   aria-label = the title) and the key target; its keys call frame.cameraKey (T24-091)
+// ChartFrame owns `select` and `hover`. targetOf: item.kind 'geo' → { type: 'geo', target: geoTarget(rows, data.geo.seq,
+//   { kind: id starts 'cluster:' ? 'cluster' : 'marker', id, keys: item.keys }) } (§5.16); selectionOf → { keys: the target
+//   rows' keys, fromMs: null, toMs: null }
+// geoTooltip: a marker "‹name›\n‹value› · ‹state›\n‹geoPlace›"; a cluster "Cluster of ‹n›\nworst ‹state›\n‹5 names, seed
+//   order›[, +k more]" (the state parts only with thresholds)
+// vis/framePlan.ts: 'geomap' → { kind: 'geomap' } → PanelFrame renders <GeoMapFrame>
+export type GeoPlan = // vis/geo/plan.ts
+  | { state: 'loading' | 'error'; rows: GeoRowSet | null }
+  | { state: 'invalid'; issue: FrameDataIssue }
+  | { state: 'mapDataUnavailable' | 'tooSmall'; rows: GeoRowSet }   // validated (T24-088)
+  | { state: 'empty' | 'noneShown' | 'ok'; rows: GeoRowSet; spec: GeoMapSpec; data: { kind: 'geo'; geo: GeoFrame } };
+export function planGeo(p: GeoMapFrameProps, size: FrameSize, view: GeoView | null /* T24-088 */): GeoPlan;
+```
+
+### 5.15 Geomap rows and board spec v7 (part E step 1b; `vis/geo/frame.ts`, OpenAPI, Go, TS)
+
+`vis/geo/frame.ts` is pure:
+
+```ts
+export type ValueStatus = 'ok' | 'noValue' | 'infinite' | 'outOfRange'; // T21-012
+export type DrawStatus = 'shown' | 'notPlaced' | 'outsideMap' | 'excluded' | 'capped'; // zoom-independent
+export interface GeoRow { key: string; labels: Labels; name: string; value: number; valueStatus: ValueStatus;
+  state: State | null; location: LocationResult /* §5.11 */; draw: DrawStatus; group: number; groupId: GroupId }
+export type GroupId = { series: string } | { present: true; value: string } | { present: false } | { other: true }
+export interface GeoGroup { id: GroupId; label: string; pattern: string; colourIndex: number | null; members: GroupId[] | null }
+export interface GeoRowSet { rows: readonly GeoRow[] /* by key */; groups: readonly GeoGroup[]; coverage: Coverage }
+export interface GeoFrame extends GeoRowSet { seq: number; shown: Uint32Array; basemap: Basemap }
+// T22 Coverage += geo?: Record<'notPlaced' | 'ambiguous' | 'locationsUnavailable' | 'outsideMap' | 'noValue' | 'infinite' | 'outOfRange', number>
+export function geoRowSet(series: readonly SeriesFrame[], o: GeomapOptions, th: readonly ThresholdLine[] | null,
+  g: Gazetteer | null, q: Completeness): GeoRowSet;
+export function validateGeoRows(s: GeoRowSet, th: boolean): FrameDataIssue | null;
+export function geoFrame(s: GeoRowSet, b: Basemap, seq: number): GeoFrame;
+```
+
+**Board spec v7** is the next free version after v6 (§5.8), with an identity upcaster (T11-016).
+`Vis.kind` adds `geomap` with the options below. Go decides validity; TS = Go on the fixtures
+`v7-geomap.json` and `invalid.json`. Errors are `board.options.‹key›.invalid` unless noted.
+`depth`, `tilt`, `projection`, `perspective`, `shadow` and `3d` → `board.json.unknownKey`
+([T22-002](T22-value-categorical-and-table-panels.md#t22-002--no-depth-options-on-2d-kinds)). A save
+to an older server → 400, shown as "This server does not support map panels yet"; old binaries
+cannot move a v7 head (`ErrSchemaTooNew`,
+[T11-015](T11-postgres-schema.md#t11-015--migration-runner-and-compatibility-window)).
+
+| Key | Type / bounds | Default | Error |
+|---|---|---|---|
+| location | the 1a `LocationOption` (§5.11) | `{mode: 'auto'}` | `location.invalid` |
+| reducer | T22 `Reducer` | `last` | `reducer.invalid` |
+| size | `{by: 'value'\|'fixed', min 2–40, max min–40}` | `{by: 'value', min: 4, max: 20}` | `size.invalid` |
+| colour | `group`\|`state` (`state` needs thresholds) | `group` | `colour.invalid` |
+| groupBy | a label key \| null | null | `groupBy.invalid` |
+| symbol | `circle`\|`square`\|`triangle`\|`diamond` | `circle` | `symbol.invalid` |
+| labels | `auto`\|`none` | `auto` | `labels.invalid` |
+| cluster, wheelZoom | bool | `true` | `board.json.type` |
+| view | null \| `GeoView` (ADR-0027 bounds) | null | `view.invalid` |
+
+### 5.16 Geomap targets, mark list and rows (part E step 1b; `vis/geo/targets.ts`, `charts/geo/`, `vis/geo/rows.ts`)
+
+```ts
+// vis/geo/targets.ts: every geo Inspector target comes from geoTarget
+export interface GeoMemberEntry { text: string; labels: Labels; keys: readonly string[] }
+export interface GeoInspectorTarget { kind: 'marker' | 'cluster' | 'aggregate' | 'group'; id: string; frameSeq: number;
+  title: string; rows: readonly GeoRow[] /* a snapshot, key order */; members: readonly GeoMemberEntry[] | null /* marker: null */ }
+export function geoTarget(s: GeoRowSet, frameSeq: number, ref: { kind: 'marker' | 'cluster'; id: string; keys: readonly string[] }
+  | { kind: 'aggregate' } | { kind: 'group'; from: GeoInspectorTarget; entry: number }): GeoInspectorTarget;
+//   cluster, group: one entry per row {text: its name, labels, keys: [key]}; aggregate (id 'other:geo'): one entry per group
+//   {text: its final label, labels: {[L]: value} | {} (absent) | the series labels (no groupBy), keys: its rows};
+//   group: id 'group:' + JSON.stringify(GroupId), built from `from`'s snapshot only. selectionOf = {keys: the rows' keys, null, null}
+// T25 MemberSection = { texts: { shown: the texts of entries 0–7, count: n, labels: their label maps }, runs: null,
+//   resolve: n > 8 ? { panelId, runId: 'geo:' + target.id } : null,
+//   next: i → { target: cluster or group → the marker of rows[i]; aggregate → geoTarget({kind: 'group', from, entry: i}),
+//     selection: its keys, title } }
+// GeoMapFrame: views = its last root target + every view its `next` built (reset per root); registerMembers(panelId,
+//   'geo:' + id → { texts: all n, members: [], labels: all n } of that view, else null); unmount disposes
+export function geoPlace(r: GeoRow): string; // the gazetteer name, else lat, lon toFixed(4); '' if not placed
+// charts/geo/GeoMarkList.tsx
+export interface GeoMarkListProps { title: string; marks: GeoMarksEvent['marks']; rows: ReadonlyMap<string, GeoRow>; unit: Unit;
+  complete: boolean /* the meter reads '100 %' */; selection: Selection | null; frame: EngineFrame | null;
+  onInspect(t: GeoInspectorTarget, f: HTMLElement): void }
+export function geoMarkName(m: GeoMarksEvent['marks'][number], rows: GeoMarkListProps['rows'], unit: Unit, sel: Selection | null): string;
+// vis/geo/rows.ts
+export function geoTable(s: GeoRowSet, unit: Unit): PanelRows; export function geoCsv(s: GeoRowSet, unit: Unit): string;
+export function geoFacts(title: string, s: GeoRowSet, series: readonly SeriesFrame[], instant: boolean, unit: Unit): SummaryFacts | null;
+// csvCell (T24-026, amended): exempt iff /^[+-]?(?:\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|Infinity)$/ (no m flag) matches and the
+//   cell holds no \n, \r, U+0085, U+2028 or U+2029
+```
+
 ## 6. Data & storage
 
 Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 upcaster is the identity
@@ -1190,6 +1584,12 @@ largest polygon; the one drop is a PRK sliver (3 points, 4.5·10⁻¹² deg², a
 Tumen; PRK's 43-point polygon is kept); ZAF's Lesotho hole passes; the polar vertices are only in ATA
 and the seams only in ATA, FJI and RUS; two runs are byte-identical; both assets validate.
 
+**Part E, step 1b.** Board spec v7 (§5.15) is stored as the board document is today, with an
+identity upcaster (T11-016). There is no new table, route, migration or browser storage. The camera
+view lives in the engine frame and the host (`lastView`), so it is lost on unmount unless it was
+saved into `options.view`; the selection, the Inspector and its `nav` stack are in memory only, per
+page ([T25](T25-inspector-and-pivots.md) §6).
+
 ## 7. Performance budget
 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
@@ -1209,6 +1609,11 @@ Part E, step 1a: in the prototype the basemap is 31 441 B and the gazetteer (wit
 558 708 B (HTTP build), so ≥ 280 KB of the total stays free. The assets load once per page, in
 parallel, on the first `loadGeoData` call. Hole validation is bounded by the T24-087 cost (880 pair
 tests on the real basemap).
+
+Part E, step 1b: a frame draws at most 5 000 rows (the T22-006 cap, disclosed by the meter); the
+clusters are rebuilt only when the level ⌊zoom⌋ or the data changes, and the hidden mark list holds
+only the in-view marks. Report-only: `bench:geomap-markers` (5 000 rows, 10 s of pan and zoom,
+Chromium at 1×) p95 ≤ 16 ms per frame.
 
 ## 8. Security, tenancy & RBAC
 
@@ -1234,6 +1639,10 @@ tests on the real basemap).
   another origin, and [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)
   is untouched. Labels are only read by a pure function. The build checks every source's SHA-256
   before reading it, and each asset is validated whole before use (T24-087).
+- Part E, step 1b: no route or storage; the frame shows only the tenant's own query labels, and
+  targets, members and pivots carry nothing else (T12-018). Every CSV cell goes through `csvCell`;
+  its numeric exemption needs the whole cell to be a number with no line terminator, so a cell such
+  as `-1+2` or `=SUM(1)` is still guarded (T24-026).
 
 ## 9. Failure modes & degradation
 
@@ -1254,6 +1663,12 @@ tests on the real basemap).
 | A source changes (part E) | A crossing ring, polar land outside `polarFeatures` or a collapsing country fails the build (T24-086); nothing is drawn wrong |
 | An asset fails to load or validate (part E) | That asset alone is null, with one `console.debug` line; a null gazetteer → `gazetteerUnavailable`, and coordinates and geohashes still place (G0) |
 | Bundle growth (part E) | 122 KB measured against 144 KB of new rows; ≥ 280 KB of the total stays free (§7) |
+| Spec versions (part E step 1b) | v7 with an identity upcaster; an older server's 400 → "This server does not support map panels yet"; old binaries cannot move a v7 head (§5.15) |
+| Too many rows (part E step 1b) | The 5 000-row cap keeps min, max and the worst states (T22-006); the meter, the table and the CSV disclose and list every row |
+| Rows that cannot be drawn (part E step 1b) | Each status is independent and disclosed (T24-089, §4.11); `noneShown`, `mapDataUnavailable` and `tooSmall` still offer the table (§4.12) |
+| A stale Inspector step (part E step 1b) | `push` checks `seq` and `depth`, and the content unmounts with its request; a push before the `originChanged` effect hits the open request and the selection stays (T25 §4.8) |
+| Camera lost on unmount (part E step 1b) | Only `options.view` persists; a new frame starts at `lastView ?? options.view` (T24-088) |
+| CSV injection (part E step 1b) | `csvCell` on every cell, the numeric exemption only for whole numbers without line terminators (T24-026) |
 
 ## 10. Testing
 
@@ -1347,7 +1762,7 @@ Inventory, NOC overview, Orders, Payments (`pay`), PSP API, Search, Shipping, We
 | `unit:board-list-mixed` | widgets/boardList/mixed.test.tsx | No `applied`: starred `{items:B, truncated:false}`; search `check` → S org-A items / `[]`; tag `team:payments` → S org-A items / `[]`. New server `tagsStale: 3`; a save → 400 at `/tags` | Starred `coverage unknown · showing 10 of 12`, setsize −1; search → 2 checkout rows, no chips / "No boards match ‘check’", both `coverage unknown`; tag (both) → the T24-029 notice, no rows, `coverage unknown`; `tags not yet known for 3 boards`; the editor text | T24-029 |
 | `unit:board-list-key` | widgets/boardList/key.test.tsx | Deferred stub: `check` settled (2 rows); type `pa`→`pay` within 250 ms; a second widget on `check`; tenant `acme` → `beta`; `pay` rejects | At 450 ms (commit) no `check` row, CSV disabled, facts null; `check`'s refetch kept while widget 2 observes, aborted when it leaves; late `check` answers never render in widget 1; no `acme` row after `beta` (render log); `pay` → "Couldn't load boards", no rows, `unavailable` | T24-024 |
 | `unit:list-keyboard` | widgets/lists/keyboard.test.tsx | B, limit 10, focus on row 4 (Gateway) | ↓×3 from 1 → 4; End → 10; Home → 1; PageDown → 10; Show more, Enter → 11 focused. A refetch without Gateway → Inventory (row 4) focused, "Gateway is no longer listed"; focus outside the list stays; empty → the empty text; error → Retry; Esc clears the search, the next Esc reaches the T25 ladder | T24-025 |
-| `unit:list-table-csv` | widgets/lists/table.test.ts | Titles `=SUM(1)`, `+1`, `-prod`, `@x`, `\tx`, `\rx` (`\t` = U+0009 TAB, `\r` = U+000D CR), `a,b`, `say "hi"`, `ok`; B; S | `'=SUM(1)`, `'+1`, `'-prod`, `'@x`, `'\tx`, `"'\rx"`, `"a,b"`, `"say ""hi"""`, `ok`; B rows: empty tags, `updated_at`; S `Checkout overview` tags `team:payments`; a `tags: null` row → `unknown`, and the row shows "tags unknown"; facts `{'12 boards','Starred'}`, S `1,000+ boards` | T24-026, VIZ-066, VIZ-068 |
+| `unit:list-table-csv` | widgets/lists/table.test.ts | Titles `=SUM(1)`, `+1`, `-prod`, `@x`, `\tx`, `\rx` (`\t` = U+0009 TAB, `\r` = U+000D CR), `a,b`, `say "hi"`, `ok`; B; S | `'=SUM(1)`, `+1` (a number, unchanged since #184 step 1b), `'-prod`, `'@x`, `'\tx`, `"'\rx"`, `"a,b"`, `"say ""hi"""`, `ok`; B rows: empty tags, `updated_at`; S `Checkout overview` tags `team:payments`; a `tags: null` row → `unknown`, and the row shows "tags unknown"; facts `{'12 boards','Starred'}`, S `1,000+ boards`; amended by #184 step 1b: the §10.5 guard block, each result | T24-026, VIZ-066, VIZ-068 |
 | `unit:import-board-list` | import/boardList.test.ts | I1–I9 (below) | Options (`sort:'default'`) and notes exactly as listed | T24-028, VIZ-060 |
 | `itest:board-find` | store/boards_itest_test.go | S | `q=` checkout → 2 org-A rows, updated desc; zürich → Zürich edge; ZÜRICH → ZÜRICH core; payments → payments; `%` → none; bulk → the 1 000 newest in `created_at DESC, uid` order, truncated, the 2 oldest absent; `tag=team:payments` → Checkout overview; 101 chars, `Bad Tag` → the §5.6 400s; org B sees only "checkout b" | T24-021, tenancy |
 | `itest:board-tags` | same | Org A saves `tags:['a','b']`, then none, then v1's spec again. Org B saves and lists | `[a,b]`, `[]`, `[a,b]`; B's save of A's uid → 404; B's repair touches 0 A rows; `tag=a` in B → none | T24-029, tenancy |
@@ -1650,6 +2065,214 @@ G7 country y 36.5 (a float); G8 `"x"`.
 
 Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
+### 10.4 Part E step 1b tests: the frame
+
+Written first in E2 (§11); all fail today: nothing is built yet. Every value below was computed by a
+reference implementation of T24-088 to T24-095.
+
+**Fixture G** (an instant result, unit ms; thresholds 150 watch, 200 degraded, 250 failing where a
+test says so; gazetteer T of §10.3; plot 1024 × 512 CSS px):
+
+```text
+k01 cloud_region=eu-west-1 120 · k02 cloud_region=eu-west-2 95, and k02 again 97 · k03 cloud_provider=gcp cloud_region=europe-west1 210
+k04 cloud_region=westeurope 180 · k05 geo_country_iso_code=jp 60 · k06 iata=sin 40 · k07 lat=40.7128 lon=-74.0060 300
+k08 geohash=u4pruydqqvj 75 · k09 cloud_region=mars-north-1 50 · k10 lat=91 lon=0 NaN · k11 cloud_region=xx-dup-1 20
+k12 lat=10 lon=10 NaN · k13 lat=-89.9 lon=0 5 · k14 lat=0 lon=0 -30 · k15 service=web 1 · k16 lat=20 lon=20 +Inf
+k17 lat=25 lon=25 5e-300 · k18 lat=40.7128 lon=-74.0060 site=b 150
+```
+
+**Expected:**
+
+```text
+statuses value: k10, k12 noValue; k16 infinite; k17 outOfRange. state: k10, k12, k16, k17 unknown. location: k09 unknownCode,
+         k10 invalid, k11 ambiguous, k15 noLocation. draw: k09, k10, k11, k15 notPlaced; k13 outsideMap; k12, k16, k17 excluded;
+         k01–k08, k14, k18 shown. k02 = 97 (1 dup, 1 conflict). No thresholds: all states null
+         with thresholds: k01, k02, k05, k06, k08, k09, k11, k13, k14, k15 ok; k03 degraded; k04, k18 watch; k07 failing
+groups   k01 backDiagonal 1 · k02 horizontal 2 · k03 vertical 3 · k04 dots 4 · k05 crossHatch 5 · k06 checker 6 · k07 dashes 7 ·
+         other (11) grid: k08–k18 names, key order; legend `other (11): {geohash="u4pruydqqvj"}, {cloud_region="mars-north-1"}, …` (8), `+3 more`
+radii    M 300: k07 20, k03 16.733, k04 15.492, k18 14.142, k01 12.649, k02 11.372, k08 10, k05 8.944, k06 8, k14 8.
+         min 2 max 4: patterned → 8 for 0, 75, 300, all-zero and fixed; one group → 2, 2, 4, all-zero 2, fixed 4
+fit      (33.388480626497824, 31.996999999999986, 2.6218728064801105), Z 2; bounds (−84.97182758620691, −22.432008240607896,
+         148.9658275862069, 68.035106748586)
+marks    draw: cluster:k03 [k01,k02,k03,k04,k08] (389.19,154.65) r14 · cluster:k07 [k07,k18] (48.00,215.77) r14 · k05 (976.00,242.09)
+         r8.944 · k14 (371.94,411.20) r8 · k06 (827.13,405.29) r8; keyboard: cluster:k03, cluster:k07, k05, k06, k14
+levels   Z3 cluster:k03 3, cluster:k07 2 · Z4 both 2 · Z5, Z6 cluster:k07 2 only; cluster:false → cluster:k07 only, 9 marks
+pick     (389.19,154.65) cluster:k03 · (979.00,242.09) k05 · (374.94,411.20) k14 · (830.13,405.29) k06 · (700,60) none ·
+         tie: k20, k21 (r10, rank 0, |v| 5) at (100,100) → k21 · crossfade: old-only mark at (100,100) → none
+camera   zMin 0 (160×120: inset 12, fit (33.388480626497824, 31.996999999999986, 0)), 2 (1024×512), 1.2288186904958809 (300×600),
+         14 (5e6×100: fit (33.388480626497824, 0, 14), letterboxed); 4096² fit z 4.729676096014625; one row on 40 000² → (0, 0,
+         7.28771237954945); persisted (50,5,1) → (50, 0, 2) on 1024×512, (50, 0, 14) on 5e6×100;
+         wheel −100 at (10,256) on (0,0,2) → (0, −31.99118974975306, 2.2885390081777928), drift 0; wheel +100 at (10,10) on (60,−150,3) →
+         (54.85601631006218, −70.07375176558472, 2.7114609918222072), drift 281.27 px; 100 steps i = 0…99 at (100+8i, 100+3i),
+         deltaY 60·(−1)^i on (50,5,4): every anchor drift < 1e−9, no containment, final (48.907393645219365, 9.482311188337547, 4)
+project  lon 179.9 → u 0.9997222222222222; −179.9 → 0.000277777777777762; 180 → −180 → u 0; lat 85.0511 → v 9.26703349835023e−07;
+         (0.5, 0) → lat 85.0511287798066; (0,179.9,4) → centre lon 135, bounds (90, −21.943045533438177, 180, 21.943045533438177)
+meter    + truncated, 2 warnings: truncated · limited (2 warnings) · 3 not placed · 1 ambiguous · 1 outside the map ·
+         4 without a usable value (2 missing, 1 infinite, 1 out of range) · 1 duplicate series combined; 1 conflicts (max kept);
+         5 003 rows: showing 5,000 of 5,003; kept min, max
+order    UTF-16: kA < k_b < ka < k+U+00E9 < k+U+1F600 (D83D DE00) < k+U+FFFD
+```
+
+The radii use the default size (min 4, max 20); a point (x,y) is in CSS px of the plot.
+
+**Group fixtures** (`groupBy: env` for H to Q):
+- **H:** h0…h8 with env e0…e8 at lat = lon = 10·j, value 10(j + 1) → the patterns of T24-090, colours
+  0–6 and `other (2)` [e7, e8]; with h9 (no `env`) added → `other (3)` [e7, e8, env absent].
+- **A:** a1 no `env`, a2 env=`env absent`, a3 env=prod → `env absent` (`{present:false}`,
+  backDiagonal, colour 0, [a1]), `"env absent"` (horizontal, 1, [a2]), `prod` (vertical, 2, [a3]).
+- **O:** q0…q9 with env e0…e6, `other (2)`, e8, e9 → `other (3)` (`{other}`, [q7, q8, q9]), members
+  [`"other (2)"`, e8, e9].
+- **Q:** p1 env=`env absent`, p2 env=`"env absent"` (with the quotes), p3 no `env` → `"env absent"`
+  [p1], `"\"env absent\""` [p2], `env absent` [p3].
+- **D** (no groupBy): d1 `{lat="1", lon="2"}`, d2 the same + `__name__=""` → `{lat="1", lon="2"} ·
+  __name__ absent` [d1], `{lat="1", lon="2"} · __name__=""` [d2].
+- **U** (the final pass only): u1, u2 named `A` {x=1}, u3 `A (1)`, u4 the aggregate `other (2)`, u5
+  `other (2)` → `A (2)`, `A (3)`, `A (1)`, `other (2)`, `other (2) (1)`.
+- **H′** = H with h3 NaN and h8 +Inf → h3, h8 `excluded`; the groups are kept; the legend shows `e3
+  (not shown)` and `other (2): e7, e8`; shown h0–h2, h4–h7. One row only → `solid`, no legend.
+- **S** (`labels: none`): s1 prod 100 at (10,10), s2 prod 300 at (10,20), s3 dev 50 at (20,10) → s1, s2
+  backDiagonal 0, s3 horizontal 1; with thresholds: s1 ok; s2 failing outlines and glyphs; one fill.
+  G with thresholds: k03 degraded, k04 watch, k01 ok; `colour: 'state'` → state fills.
+
+**Invalid row sets** (G mutated) → the `validateGeoRows` detail: k01 and k02 swapped → `order`; k12
+`ok` → `value`; k05 state `failing` → `state`; no thresholds but k12 `unknown` → `state`; k13 or k12
+draw `shown` → `draw`; k01 group 9, groups[0] pattern `dots`, or the other members without k08's id →
+`group`; `coverage.geo.notPlaced` 2 → `coverage`.
+
+**Cap:** c0000…c5002 with lat (i mod 100) − 50, lon 3⌊i/100⌋ − 75, value i, no thresholds.
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:geo-rows` | vis/geo/frame.test.ts | G with and without thresholds; the invalid sets | the statuses block; G → null; each invalid set → its detail | T24-089 |
+| `unit:geo-identity` | vis/geo/frame.test.ts | G, H (+h9), H′, A, O, Q, D, U, one row, S | the groups block (k08–k18 → other (11)); the rest as written (ids, labels, patterns, colours, keys; labels distinct) | VIZ-067, T22-004, T24-090 |
+| `unit:geo-basemap-draw` | engine/canvas2d/geo/basemap.test.ts | 1a's RT and ANT outputs (§10.3), apart; a recording context | RT: Alpha's square is one `fill('nonzero')` path, winding (1,1) ±1 and the hole (3,3) 0; 4 coast and 1 border stroke (once, 0.5 px). ANT: 1 coast, 0 border, no stroke on y = ±8505 or x = ±18000 | VIZ-046, T24-091 |
+| `unit:geo-radius-project` | engine/canvas2d/geo/marks.test.ts | G; min 2 max 4; the projections | the radii block; the project block ±1e−12 | T24-090, T24-091 |
+| `unit:geo-camera` | engine/canvas2d/geo/camera.test.ts | the camera block; a 159 × 200 plot | the camera block; `tooSmall` | INT-002, T24-091 |
+| `unit:geo-ownership` | engine/canvas2d/geo/camera.test.ts | G at fit, no commit; data k05, k06; pan +100 px (a commit); data G; a new title; view (10,10,4); view = the camera | refit (19.59791091785336, 120.995, 3.971846219329485); lon 129.95726302107312, lat and zoom the same; kept; kept; moves; no move | T24-091 |
+| `unit:geo-keys-engine` | engine/canvas2d/geo/input.test.ts | G, the surface focused, `setFocusMark('k05')`; every case from fit | `+` → z 3.6218728064801105, k05 fixed; `+` then `-` → 2.6218728064801105; `0` → fit; Shift+→ → +256 px; a wheel deltaX 100 → lon 54.84247413793099; a `null` wheel, other elements → none | T24-091 |
+| `unit:geo-inertia` | engine/canvas2d/geo/input.test.ts | G at fit, fake clock; a fling (pointer released while moving); a fling then a pointer-down during the decay | the view keeps panning after release with the shared T02 inertia and settles in 300 ± 50 ms with no overshoot; exactly one `geoCommit` (`gesture: 'pan'`), emitted after it settles, none during the decay; the pointer-down stops the motion on the next frame and the gesture still commits once | INT-003, T24-091 |
+| `unit:geo-host` | charts/GeoMapFrame.test.tsx | G; (a) commit C; (b) option view (10,10,4); (c) commit D; (d) option null; (e) commit E and a new title; (f) an engine swap | 3 subscriptions; spec.view (a) C, (b) (10,10,4), moves, (c) D, (d) null, refits, (e) E kept; (f) 3 disposers, frame 2 at E, which gets `setFocusMark('k05')`; (b) then a swap → (10,10,4); no event after dispose | T24-088 |
+| `unit:geo-select-hover` | charts/ChartFrame.inspect.test.tsx | G at fit, a T25 host | `select` at cluster:k03 → `{type:'geo', kind:'cluster', id:'cluster:k03', rows k01–k04, k08}` and those keys selected; `hover` on k05 → `{geo_country_iso_code="jp"}` / `60 ms · ok` / `Japan` | INT-034, T24-088 |
+| `unit:geo-plan` | vis/geo/plan.test.ts | (a) loading, no basemap; (b) failed, 0 rows; (c) G with k12 `ok`, no basemap; (d) G, no basemap; (e) G at 100 × 100; (f) 0 rows; (g) k09–k11, k15; (h) G | loading; error; invalid `value`; mapDataUnavailable with 18 rows; tooSmall; empty; noneShown; ok | T24-088 |
+| `unit:geo-marks` | engine/canvas2d/geo/pick.test.ts | G at fit and Z2–6, `cluster:false`, shuffled input; the tie; the crossfade; the strings | at fit: the draw ids, members, centres ±0.01 px, radii ±0.001, the keyboard order, each pick → its id; the tie → k21; the old-only crossfade point → none; Z2–6: cluster ids and member counts; the order line | VIZ-044, T24-091 |
+| `unit:geo-coverage` | vis/reduce.test.ts | G, `truncated`, the warnings `shard 3 timed out` and `series limit 500 reached`; Cap | the meter block; Narrow; the popover lists the 2 warnings; Cap: c0000 (min) and c5002 (max) kept, c0001–c4998 kept, c4999–c5001 `capped` | VIZ-027, T22-006 |
+| `unit:board-spec-geomap` | boards/spec.test.ts, validate_test.go | `{}`; size {min:1}, {min:5,max:4}; `colour:'state'` without thresholds; groupBy `1x`; view zoom 15, lon 180; `depth` | the defaults; size ×2, colour, groupBy and view ×2 invalid; unknownKey; TS = Go | VIZ-057, §5.15 |
+| `e2e:geomap-offline` | e2e/geomap.spec.ts | no rows, view (53.34, −6.25, 6), 1024 × 512, dark, every other origin aborted | `getImageData` at DPR 1: (432,256) = dark `map-land`, (560,256) = `map-water`, ±2 per channel; 0 requests to another origin | VIZ-046 |
+| `golden:gallery` (amended) | e2e/gallery | the pages `geomap-markers` (G), `geomap-groups` (H) and `geomap-states` (G with thresholds) × the 3 themes | the CI baseline | VIZ-069, VIZ-067 |
+
+Report-only: `bench:geomap-markers` (5 000 rows, 10 s of pan and zoom, Chromium at 1×): p95 ≤ 16 ms.
+Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
+### 10.5 Part E step 1b tests: interaction
+
+Written first in E2 (§11), with §10.4; all fail today.
+
+**Fixtures** (with §10.4's G, unit ms with thresholds, plot 1024 × 512, at fit):
+- **G3** = k01, k05, k06 of G.
+- **O2** = §10.4's O + q10 {env=e8, pod=b}.
+- **S1** = s1 and s2 of S (env=prod, one group).
+- **F1** (no thresholds): x1 lat=1 lon=1 −30, x2 lat=2 lon=2 10, x3 lat=3 lon=3 10.
+- **R** (a range result, `reducer: last`): r1 lat=1 lon=1 (0 s: 100, 60 s: 300, 120 s: 250) and r2 lat=2 lon=2
+  (0 s: 10, 60 s: 20, 120 s: 30).
+- **V:** v1 service_name=checkout and v2 service_name=payments, both cloud_region=eu-west-1.
+- **M12:** m01–m12 with lat=10 lon=10, pod p01–p12, value i.
+- **N** (`groupBy: env`, unit ms, no thresholds): n00–n18 with env e0–e18; n19–n29 with env e18 and pod
+  p19–p29; value i.
+- **X** (no thresholds): x1 cloud_region=`a,b` 1; x2 cloud_region=`say "hi"` 2; x3 cloud_region=`x` +
+  LF + `y` 3; x4 cloud_region=`=1` −4.
+
+```text
+list      cluster:k03 "Cluster of 5, near Mons, worst degraded" · cluster:k07 "Cluster of 2, near 40.7128, -74.0060, worst failing" ·
+          k05 "{geo_country_iso_code="jp"}, 60 ms, ok, Japan" · k06 "{iata="sin"}, 40 ms, ok, Singapore" ·
+          k14 "{lat="0", lon="0"}, -30 ms, ok, 0.0000, 0.0000"; setsize −1. {[k03]} → item 1 "…, 1 selected"; {[k05]} → "…, Japan, selected"
+G3        fit (30.733727227695173, 65.875, 3.1774065828117646): k01 (48.00,56.74), k05 (976.00,215.41), k06 (757.20,455.26), setsize 3;
+          pan 200 px north → k06 out, list k01, k05, setsize −1; pan until none in view → placeholder "No marks in view · Fit"
+repair    (a) cluster:k03, view (50.45, 3.94, 5) → list k01, k04, k02, k03 → k03; (b) k01, back to fit → cluster:k03;
+          (c) k06, refetch without k06 (camera kept) → cluster:k03, cluster:k07, k05, k14 → k14, "{iata="sin"}, 40 ms, ok, Singapore is no longer shown"
+keys      on button k05: Shift+→ → centre +256 px; `+` → zoom 3.6218728064801105, k05 fixed; `0` → fit; a parent sees none
+brush     (300,80)–(500,200) at fit → select [k01, k02, k03, k04, k08]; `[]` → no change
+targets   O2 legend `other (3)` → select [q7, q8, q9, q10], aggregate members `"other (2)"` {env: "other (2)"} [q7] · `e8` {env: "e8"} [q8, q10]
+          · `e9` {env: "e9"} [q9]; entry `e8` → select [q8, q10], group `group:{"present":true,"value":"e8"}` rows `{env="e8"}` (q8),
+          `{env="e8", pod="b"}` (q10); its entry q10 → marker q10. A refetch dropping q10: group still lists q8, q10
+select    G {[k10]} (not placed): relevant → all 5 marks `dimmed`, table row k10 highlighted "Not placed"; {[k03]} → cluster:k03 ring
+          "1 selected", the rest dimmed; {[zz, k10]} as {[k10]}; {[zz]} → nothing dims
+members   M12 → cluster:m12, shown m01–m08 + "+4 more", resolve `geo:cluster:m12` → 12; entry 10 → marker m11; N `other (12)` → e7–e14
+          + "+4 more" → 12; entry 11 (e18) → group with n18–n25 + "+4 more" → 12; its entry 9 → marker n27; a refresh removing
+          m11, n27: entries 10, 9 act on the snapshot
+inspect   cluster:k03 members k01–k04, k08, Values 75 ms – 210 ms; table k10 → No value, `invalid: coords lat`, Not placed
+facts     G {current: {text: "300 ms", series: '{lat="40.7128", lon="-74.0060"}'}, change: null, extent: {-30, 300}, baselineRatio: null};
+          G with k13 = 900 → current "900 ms" '{lat="-89.9", lon="0"}' (off the map), extent {-30, 900}; F1 → "10 ms" x2 (higher value, lower
+          key), extent {-30, 10}; Cap (§10.4) extent {0, 5002}; R → "250 ms" r1, change {from "100 ms", to "300 ms", atMs 60000}
+```
+
+In the list block the cluster of 5 is k01–k04 and k08, seeded by k03 (Mons); the M12 entries read
+`{lat="10", lon="10", pod="p01"}` … `{lat="10", lon="10", pod="p08"}`; the N aggregate's members are
+e7…e18 (12 groups, 23 series) and e18's rows n18…n29 (n27 = `{env="e18", pod="p27"}`).
+
+**CSV G** (the §4.14 header and all 18 rows, in the table order: by name, then key; RFC 4180, through
+`csvCell`):
+
+```text
+name,key,value,value_status,state,location_status,location_detail,source,code,provider,place,lat,lon,group,group_member,draw_status
+"{cloud_provider=""gcp"", cloud_region=""europe-west1""}",k03,210,ok,degraded,placed,,cloud,europe-west1,gcp,Mons,50.45,3.94,"{cloud_provider=""gcp"", cloud_region=""europe-west1""}",,shown
+"{cloud_region=""eu-west-1""}",k01,120,ok,ok,placed,,cloud,eu-west-1,aws,Dublin,53.34,-6.25,"{cloud_region=""eu-west-1""}",,shown
+"{cloud_region=""eu-west-2""}",k02,97,ok,ok,placed,,cloud,eu-west-2,aws,London,51.5,-0.12,"{cloud_region=""eu-west-2""}",,shown
+"{cloud_region=""mars-north-1""}",k09,50,ok,ok,unknownCode,cloud cloud_region=mars-north-1,,,,,,,other (11),"{cloud_region=""mars-north-1""}",notPlaced
+"{cloud_region=""westeurope""}",k04,180,ok,watch,placed,,cloud,westeurope,azure,Amsterdam,52.35,4.91,"{cloud_region=""westeurope""}",,shown
+"{cloud_region=""xx-dup-1""}",k11,20,ok,ok,ambiguous,providers: ta xx-dup-1; tb xx-dup-1,,,,,,,other (11),"{cloud_region=""xx-dup-1""}",notPlaced
+"{geo_country_iso_code=""jp""}",k05,60,ok,ok,placed,,country,JP,,Japan,36,138,"{geo_country_iso_code=""jp""}",,shown
+"{geohash=""u4pruydqqvj""}",k08,75,ok,ok,placed,,geohash,u4pruydqqvj,,"57.6491, 10.4074",57.64911063015461,10.407439693808556,other (11),"{geohash=""u4pruydqqvj""}",shown
+"{iata=""sin""}",k06,40,ok,ok,placed,,iata,SIN,,Singapore,1.35,103.99,"{iata=""sin""}",,shown
+"{lat=""-89.9"", lon=""0""}",k13,5,ok,ok,placed,,coords,,,"'-89.9000, 0.0000",-89.9,0,other (11),"{lat=""-89.9"", lon=""0""}",outsideMap
+"{lat=""0"", lon=""0""}",k14,-30,ok,ok,placed,,coords,,,"0.0000, 0.0000",0,0,other (11),"{lat=""0"", lon=""0""}",shown
+"{lat=""10"", lon=""10""}",k12,,noValue,unknown,placed,,coords,,,"10.0000, 10.0000",10,10,other (11),"{lat=""10"", lon=""10""}",excluded
+"{lat=""20"", lon=""20""}",k16,Infinity,infinite,unknown,placed,,coords,,,"20.0000, 20.0000",20,20,other (11),"{lat=""20"", lon=""20""}",excluded
+"{lat=""25"", lon=""25""}",k17,5e-300,outOfRange,unknown,placed,,coords,,,"25.0000, 25.0000",25,25,other (11),"{lat=""25"", lon=""25""}",excluded
+"{lat=""40.7128"", lon=""-74.0060"", site=""b""}",k18,150,ok,watch,placed,,coords,,,"40.7128, -74.0060",40.7128,-74.006,other (11),"{lat=""40.7128"", lon=""-74.0060"", site=""b""}",shown
+"{lat=""40.7128"", lon=""-74.0060""}",k07,300,ok,failing,placed,,coords,,,"40.7128, -74.0060",40.7128,-74.006,"{lat=""40.7128"", lon=""-74.0060""}",,shown
+"{lat=""91"", lon=""0""}",k10,,noValue,unknown,invalid,coords lat,,,,,,,other (11),"{lat=""91"", lon=""0""}",notPlaced
+"{service=""web""}",k15,1,ok,ok,noLocation,,,,,,,,other (11),"{service=""web""}",notPlaced
+```
+
+**CSV X** (the rows after the header; ⏎ is a real LF inside the quoted cell):
+
+```text
+"{cloud_region=""=1""}",x4,-4,ok,,unknownCode,cloud cloud_region==1,,,,,,,"{cloud_region=""=1""}",,notPlaced
+"{cloud_region=""a,b""}",x1,1,ok,,unknownCode,"cloud cloud_region=a,b",,,,,,,"{cloud_region=""a,b""}",,notPlaced
+"{cloud_region=""say \""hi\""""}",x2,2,ok,,unknownCode,"cloud cloud_region=say ""hi""",,,,,,,"{cloud_region=""say \""hi\""""}",,notPlaced
+"{cloud_region=""x\ny""}",x3,3,ok,,unknownCode,"cloud cloud_region=x⏎y",,,,,,,"{cloud_region=""x\ny""}",,notPlaced
+```
+
+**Guard** (`csvCell`, T24-026 amended; ⏎ is a real LF):
+
+```text
+-1+2 → '-1+2 · 1⏎ → "1⏎" · -1⏎ → "'-1⏎" · 1 U+2028 → unchanged · +1, +Infinity, -Infinity, -6.25, 1e5 → unchanged ·
+=SUM(1) → '=SUM(1) · @x → '@x · TAB x → 'TAB x
+```
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:geo-list` | charts/geo/GeoMarkList.test.tsx | G; G3 and its pans | the list and G3 blocks; the placeholder focused, marks return → it stays, ↓ → k01 | T24-093 |
+| `unit:geo-list-keys` | same | focused buttons | ↓ → cluster:k07 and `setFocusMark('cluster:k07')`; End → k14; Home → item 1; PageDown → k14; Enter on item 1 → the cluster target, heading focused; the keys block; Esc → the ladder | T24-093 |
+| `unit:geo-list-repair` | same | repair (a)–(c); focus outside the list | the repair block; outside: focus unmoved; (c) announced once | T24-093 |
+| `unit:geo-targets` | charts/GeoMapFrame.test.tsx | G, O2; k05, cluster:k03; the legend `other (3)`; e8, q10 | the select, targets and brush blocks; a marker's `members` null; an empty click → `select(null)`; the T25-016 toggle twice → [k10], null | T24-092, T25-006 |
+| `unit:geo-members` | inspector/members.test.ts, charts/GeoMapFrame.test.tsx | M12, N; a refresh; a `bin`; a `stateRun` (8 of 10, 8 of 12) | the members block; entries are buttons (`next`), labels parallel; `bin`, `stateRun`: `next` null, plain, as `unit:inspector-members` | T25-011 |
+| `unit:inspector-nav` | inspector/store.test.ts, inspector/host.test.tsx | a fake `next`; push A, then B | `nav` [A, B], selection B's; an old `seq`, a wrong `depth`, or closed → no-op; reopened → the new seq works; `pop {to: 0}` → [] and `req.selection`; close, a matching `originChanged`, `reset` → `nav` []; Esc with no `pre`: pop, pop, clear selection, close (focus `returnFocus`), `post`; a `pre` runs first; Back and the crumb names | T25-007, T25 §4.8 |
+| `unit:inspector-viewkey` | inspector/Inspector.test.tsx | a fake `next`; pointer and keyboard opens; push, pop; 3 quick pushes; reduced motion; `point` P, then Q | one inert leaving layer for 150 ms; reduced: none; 3 pushes: ≤ 1 leaving layer, the 3rd on top; the `h2` focused per step. `point` (key `1:0:root`) as today: a pointer open keeps focus, a keyboard open focuses the `h2`; P → Q one leaving layer (reduced: none); each announced, P again later too | T25-008, T25 §4.4 |
+| `unit:geo-announce` | charts/GeoMapFrame.test.tsx, the real host, a fake clock | N, 600 ms apart: `other (12)`, e18, n27, Back, Back, e18; then n27, Back, n27 within 100 ms | `Inspector: other (12), 12 groups, 23 series` · `Inspector: Level 2: e18, 12 series` · `Inspector: Level 3: {env="e18", pod="p27"}, 27 ms` · the 2nd · the 1st · the 2nd (the same text, rewritten); the quick run: only the last, at 500 ms | T25-008 |
+| `unit:geo-nav` | charts/GeoMapFrame.test.tsx, the real host | N, by keys: the legend `other (12)` → entry 11 (e18) → entry 9 (n27) → Back → Back → close | one request; the selection 23 keys → 12 (n18–n29) → [n27] → 12 → 23; the breadcrumb `other (12)` › `e18` › n27's name; the `h2` focused per step; close → the legend button | T24-092 |
+| `unit:geo-nav-life` | same | at n27: (a) a refresh removing n27; (b) V: cluster:v1 at W1, entry v1, the window → W2; (c) close, a query edit, the panel removed, a route change, a tenant reset; (d) e18 and e17 in one tick; (e) unmount; (f) the aggregate expanded, e18, Back | (a) n27 kept; Back → n18–n29; the resolver `geo:group:{"present":true,"value":"e18"}` → 12; (b) Logs `{service_name="checkout"}` over W1; (c) closed, `nav` [], nothing dispatched; (d) e18 accepted, e17 rejected; (e) disposed; (f) e18: n18–n25 + "+4 more", buttons → their rows; Back: e7–e14 + "+4 more", buttons → the groups | T25-011, T25-012 |
+| `unit:geo-inspect` | inspector/model.test.ts | the targets above; k01; the context `f=env=prod` | the inspect block; §4.13; k01 chips: Explore on, Logs off "No log stream label on this series (needs service_name or job)" | T25-002, T25-009 to T25-011 |
+| `unit:geo-single-group` | charts/GeoMapFrame.test.tsx | S1 | no legend; Tab surface → list → meter; selects | T24-093 |
+| `unit:geo-table-csv` | vis/geo/rows.test.ts | G; X; G's table | CSV G and CSV X exactly; the table shows the unguarded values (k13's place `-89.9000, 0.0000`, x3's detail with its LF, x4's `cloud cloud_region==1`); the CSV parsed (RFC 4180) gives the guarded ones (`'-89.9000, 0.0000`) | VIZ-066, T24-094 |
+| `unit:list-table-csv` (amended) | widgets/lists/table.test.ts | the guard block | each result | T24-026 |
+| `unit:geo-facts` | vis/geo/rows.test.ts | G, G (k13 = 900), F1, Cap, R | the facts block | T22-014, T24-094 |
+| `unit:geo-states` | charts/GeoMapFrame.test.tsx | from `ok` G (focus on item 2, selection [k03], cluster:k03 open): (a) a new window, answered at 100 ms; (b) at 400 ms; (c) HTTP 500; (d) k12 `ok`; (e) the basemap 404; (f) 100 × 100, G / 0 rows; (g) 0 series; (h) k09–k11, k15; (i) a refetch failing at 12:31:05; (j) (c) with focus in the board header; (k) (c) with focus in the Inspector | (a) the status, then item 1, no text; (b) an `aria-busy` status, "Loading…" at 300 ms, then item 1, "5 marks"; (c) Retry, "Couldn't load data"; (d) "Invalid map data (value)"; (e) Show table, §10.4's G meter, no query parts; (f) Show table, 18 rows / the header; (g) the `<p>`, `100 %`; (h) the `<p>`, "3 not placed · 1 ambiguous · 1 without a usable value (1 missing)"; (i) "… · stale (12:31:05)", "Couldn't refresh"; (j) no focus move or announcement; (k) focus stays in the Inspector; the selection and the Inspector are kept throughout | T24-095 |
+| `e2e:geomap-a11y` | e2e/geomap.spec.ts | a stub BFF, G; states (a)–(h); reduced motion | axe clean; the Tab order; the keys; no transitions | VIZ-068, VL-016 |
+| `e2e:geomap` | same | G | a click on cluster:k03 → `Cluster of 5`; Esc ×2 clears, then closes; Shift+T → 18 rows; the CSV = CSV G | VIZ-066, INT-034 |
+
+Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
 ## 11. Rollout
 
 Implementation issues, filed after this design merges:
@@ -1709,6 +2332,18 @@ gazetteer's coverage, with the excluded cloud partitions) and adds the sources, 
 the `--check` procedure to `docs/client/supply-chain.md`. Steps 1b and 2 are designed next under
 #184.
 
+Part E step 1b implementation issue, filed with this design (one issue for the frame and its
+interaction):
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| E2 — Geomap frame | §5.14 to §5.16 (the ADR-0027 seam in the Canvas 2D engine, `GeoMapFrame`, `planGeo`, `vis/geo/frame.ts`, `targets.ts`, `rows.ts`, `GeoMarkList`), board spec v7, the T25 `geo` targets and navigation stack, the `csvCell` exemption, the §10.4 and §10.5 tests, the gallery pages `geomap-markers`, `geomap-groups` and `geomap-states`; `docs/client/geomap.md`, `docs/client/inspector.md`, `docs/user/boards.md` | E1, #173 (T22 I1) | T24-088–095, T24-026 (amended), T25 §4.8, §4.9 |
+
+E2 writes the statuses, the groups, the camera, the targets, the keys, the states and the CSV into
+`docs/client/geomap.md`, the navigation stack and the `geo` targets into `docs/client/inspector.md`,
+and map inspection into `docs/user/boards.md`. Step 2 (T24-096–099: view sync, the bounds filter,
+auto-vis and import) is designed next under #184.
+
 ## 12. Alternatives considered
 
 Rejected:
@@ -1730,6 +2365,19 @@ Part B2, rejected:
 - paging by moving `to` (rows sharing an `at` are skipped or repeated; the keyset on (`at`, `id`) is
   exact).
 
+Part E step 1b, rejected:
+- a neutral marker colour (identity needs a visible second channel, VIZ-067);
+- rings as the only state cue (not distinguishable in greyscale at small radii);
+- spreading coincident marks apart (it moves marks off their place; clusters and the pick order
+  keep each reachable);
+- a horizontally repeated world (ADR-0027);
+- nested member lists in the Inspector (T25-011 is flat; the aggregate lists its groups, as #154's
+  `other` bin);
+- inspecting an ordinary group from its legend entry (it selects only; groups open from the
+  aggregate's members);
+- `aria-activedescendant` for the mark list (a roving tab stop, as T24-025);
+- a new host request per navigation step (requests race; the stack lives in one request, T25 §4.8).
+
 ## 13. Open questions
 
 None.
@@ -1742,3 +2390,4 @@ None.
 | 1.1-rc | 2026-11-25 | #181 part B1 (step 1): the part map splits B into B1 (T24-020–029) and B2 (T24-030–039, VIZ-126); T24-002 amended (content widgets; list widgets follow T24-020); rules T24-020 to T24-029 (list widgets, Board list sources, rows, limit and ranking, snapshot and meter, keyboard and focus repair, table, CSV and facts, states and look, import, board tags and compatibility); §4.5 list states, §4.6 Board list import; §5.5 board spec v5, §5.6 the `/boards` contract, §5.7 the client list modules; §6 migration 4 and the repair and list queries; §7–§9, §10.1 tests and fixtures, §11 issues I1–I4, §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains the optional `Coverage` list members; [T11](T11-postgres-schema.md) §4.3 migration 4 |
 | 1.2-rc | 2026-11-25 | #181 part B2 (step 2): rules T24-030 to T24-039 (feed source, entity filter, paging, snapshot and meter, rows, selection and Inspector, keyboard and SR, table, CSV, facts and fields, compatibility, import); T24-020 amended (`changeFeed`; its rows select and inspect); §4.7 Change feed states, §4.8 Change feed import, §4.9 the log panel gap record; §5.8 board spec v6, §5.9 the annotations contract and data scope, §5.10 the client change-feed modules; §6 migration 5 and the list, create and delete statements; §7–§9, §10.2 tests and fixtures, §11 issues I5–I7 and L1–L4, §12. [T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id) gains the canonical form and vectors, and T12-018 a free-text note; [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) the `paged` reason; [T25-002](T25-inspector-and-pivots.md#t25-002--envelope-and-union) the `change` member; [T11](T11-postgres-schema.md) §4.4 migration 5 |
 | 1.3-rc | 2026-11-25 | #184 part E step 1a (geomap data): the intro, §1, §2 (goals, the part map splits E into 1a T24-080–087, 1b T24-088–095 and 2 T24-096–099, VIZ-129 unused; the decisions step 1b starts from) and §3; rules T24-080 to T24-087 (label input, the resolution ladder, coordinates, geohash, lookups, the gazetteer and basemap builds, delivery and validation); §4.10 the auto rules; §5.11 the resolver and loader, §5.12 the asset formats, §5.13 the build tool, cloud regions, sources and notices; §6–§9; §10.3 tests and fixtures; §11 issue E1 |
+| 1.4-rc | 2026-11-25 | #184 part E step 1b (geomap frame and interaction): the intro, §1, §2 (goals, non-goals; the part map marks step 1b) and §3; rules T24-088 to T24-095 (host and plan, rows, identity, camera and picking, selection and Inspector, mark list and keys, table, CSV and facts, states); T24-026 amended (the `csvCell` numeric exemption; `unit:list-table-csv` amended); §4.11 orders and coverage, §4.12 states, §4.13 Inspector targets, §4.14 columns; §5.14 the seam and host, §5.15 rows and board spec v7, §5.16 targets, mark list and rows; §6–§9; §10.4 and §10.5 tests and fixtures (code review r1: `unit:geo-inertia`); §11 issue E2; §12. [ADR-0027](../adr/0027-geomap-frame-seam.md); [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) (grouped spatial marks, JSON quoting, spatial overflow), [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.geo`) and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters) amended; [T25](T25-inspector-and-pivots.md) gains the `geo` target and the in-request navigation stack |

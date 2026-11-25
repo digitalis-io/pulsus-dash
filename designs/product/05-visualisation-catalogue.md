@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-25 |
+| **Version** | 1.9-rc · 2026-11-25 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -939,7 +939,7 @@ targets and sorting by a column completes without a long task over 16 ms on the 
 
 | Layer | Use | Notes | Milestone |
 |---|---|---|---|
-| **Markers** | Sites, PoPs, data centres, edge nodes | Size/colour/symbol/rotation from fields; text labels; clustering at low zoom | M-UI3 |
+| **Markers** | Sites, PoPs, data centres, edge nodes | Size/colour/symbol/rotation from fields; text labels; clustering at low zoom; target 10⁵ markers, with at most 5 000 drawn in the 2D core and the rest disclosed by the coverage meter (VIZ-027) | M-UI3 |
 | **Heatmap / hexbin** | User error density, RUM latency by geo | GPU splat; re-binned per zoom | M-UI5 |
 | **Choropleth (GeoJSON regions)** | Country/state/region health, revenue at risk by market | Style rules by feature property; bundled world/country shapes | M-UI5 |
 | **Routes / arcs** | Traffic between regions, replication lag, CDN → origin | Great-circle arcs with flow particles (same pipeline as Atlas edges) | M-UI3 |
@@ -954,6 +954,11 @@ The geomap MUST support each layer in Table 5-8 from its listed milestone.
 
 *Acceptance:* For each row at its milestone, given matching data, when the layer is enabled, then it
 renders with the listed notes (e.g. markers cluster at low zoom and separate when zoomed in).
+
+*Staging (#184, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-091--camera-and-picking)):*
+step 1b ships the Markers row in the 2D geomap: size and colour from fields, a symbol per panel, text
+labels and clustering, with at most 5 000 drawn markers (the T22-006 cap, disclosed by the coverage
+meter); symbol and rotation from fields follow with part G (#186). The acceptance is unchanged.
 
 #### VIZ-045 — Location sources
 **MUST** · M-UI3 · NOC, Platform
@@ -1304,11 +1309,12 @@ table, and "Export CSV" downloads it.
 #### VIZ-067 — Colour is never the only channel
 **MUST** · M-UI1 · NOC, SRE, Business
 
-State and series identity MUST be encoded by a second channel (shape, ring, pattern or glyph) in
-addition to colour ([08](08-visual-language.md)).
+State and series identity (per group for spatial marks grouped by `groupBy`; the series of a group
+then differ in the tooltip, the table and the Inspector) MUST be encoded by a second channel (shape,
+ring, pattern or glyph) in addition to colour ([08](08-visual-language.md)).
 
 *Acceptance:* Given any vis showing state, when rendered with a greyscale filter, then every state
-is still distinguishable.
+and every series or group is still distinguishable.
 
 #### VIZ-068 — Screen-reader summary per viewport
 **MUST** · M-UI6 · Business, Engineer
@@ -1484,6 +1490,7 @@ board.
 | 1.6-rc | 2026-11-25 | #154: VIZ-090 (T21) |
 | 1.7-rc | 2026-11-25 | #206: VIZ-090 bucket sources (T21) |
 | 1.8-rc | 2026-11-25 | #184: VIZ-046 staging (offline data in step 1a, drawing in step 1b, sources in part F, wgpu with #68; T24) |
+| 1.9-rc | 2026-11-25 | #184 step 1b: VIZ-067 identity per group for grouped spatial marks, and its acceptance covers every series or group; Table 5-8 Markers: target 10⁵, 5 000 drawn in the 2D core; VIZ-044 staging (markers in step 1b, symbol and rotation from fields in part G; T24) |
 
 ## Resolved during formalisation
 
