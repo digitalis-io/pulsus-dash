@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-23 |
+| **Version** | 1.12-rc · 2026-11-24 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -24,6 +24,7 @@ budgets stand, with these readings:
 | Shell overlays (tooltips, DOM controls) | Rendered by the React application from engine events (`hover`, `brush`, `select`, `a11y`, `drawn`, `commit`; ADR-0014 §3, amended by [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md) and [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md)) |
 | Interim cap | The engine line keeps the interim 500-series cap (ADR-0014 §4) until band + outliers (§4.4) lands |
 | Interim 2D camera (#93) | The Canvas 2D frame holds the 2D camera of §4.6 as render-local state: a view (time window, value range) previewed per frame from resident data, committed by a `commit` event at gesture end (wheel idle 300 ms, pointer up). Time commits become the Context window; a value range is held by the chart component and returned in the spec as `valueRange` ([03](../product/03-interaction-model.md) §4.1 note). The value-label band is held from the first camera move until a layout transition (resize, kind or unit change, a value-axis reset, an outside time change while idle, the pointer leaving the chart), so neither a gesture, its commit nor the refetched data moves the plot under the pointer (T02-021); labels wider than the held band are drawn in compact form (T02-011). The minimum time span is max(1 s, 1 ms per plot px), so whole-ms commits keep the anchor below 0.51 px. Band shrink hysteresis (T02-011), inertia (T02-022) and wheel on an axis band arrive with the engine |
+| Interim kinds | Line, bars, heatmap and stat, plus the T21 2D kinds as their issues land ([T21](T21-time-and-distribution-panels.md)); 3D forms are engine-only (T21-001) |
 
 ## 1. Context & problem
 
@@ -829,3 +830,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.9-rc | 2026-11-22 | #64 Part B code (decision 2026-11-22): §4.8 Stat row: the sparkline joins its finite points across absent and non-finite ones and draws a single finite point as a dot (ADR-0022 decision 4); the M1 polyline still breaks at null validity elsewhere |
 | 1.10-rc | 2026-11-23 | #66 Part B: Satisfies row PRF-020: the gate is `bench:log-scroll` (the M-UI1 DOM list, #66); `bench:frame-gallery` measures the log page from #69 |
 | 1.11-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §4.5 Overlays row: event markers on line, bars and heatmap in the interim client (the label band, the layering over series and thresholds, the never-dropped labels) |
+| 1.12-rc | 2026-11-24 | #150 ([T21](T21-time-and-distribution-panels.md)): §0 adds the "Interim kinds" row (the T21 2D kinds join the interim renderer as their issues land; 3D forms are engine-only, T21-001) |
