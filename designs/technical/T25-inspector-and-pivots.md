@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-25 |
+| **Version** | 1.5-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md) |
-| **Source draft** | plans/164 (not tracked) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
+| **Source draft** | plans/164, plans/184 (not tracked) |
 
 This document is the chart **Inspector**, the shared **selection**, the **Esc ladder** and the **pivot
 chips** for every vis (rules T25-001 to T25-016, mockup [41-inspector](../mockups/41-inspector.svg)).
@@ -48,6 +48,7 @@ Non-goals (out of scope):
 |---|---|---|
 | [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | §4.1 (T25-001, T25-005, T25-009) | `e2e:inspector-open` |
 | [INT-016](../product/03-interaction-model.md#int-016--esc-and-enter-ladder) | §4.1 (T25-007) | `unit:escape-ladder`; `e2e:inspector-escape` |
+| [INT-016](../product/03-interaction-model.md#int-016--esc-and-enter-ladder), [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (#184: the navigation stack and the `geo` target) | §4.1 (T25-007, T25-008, T25-011), §4.8, §4.9 | `unit:inspector-nav`; `unit:inspector-viewkey`; `unit:geo-inspect` |
 | [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (staged) | §4.1 (T25-003, T25-004, T25-015) | `e2e:inspector-sections`; `unit:inspector-model` |
 | [INT-035](../product/03-interaction-model.md#int-035--pivot-chips-keep-context), [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (staged) | §4.1 (T25-009, T25-010) | `unit:inspector-pivots`; `unit:pivot-context`; `e2e:pivot-destination` |
 | [INT-036](../product/03-interaction-model.md#int-036--pivot-opens-as-a-split) (staged) | §4.1 (T25-009) | `e2e:inspector-pivot-nav` (with sections) |
@@ -118,17 +119,20 @@ A kind's own search or filter field is marked `data-escape-ladder`. It registers
 kind's pre step ("clear the field", which applies while the field is non-empty), and focus stays in the
 field.
 
-Each Esc runs the first step that applies: the **active kind's `pre`** → clear selection → close
-Inspector → the **active kind's `post`**; then `preventDefault`. The active kind is the Inspector's
+Each Esc runs the first step that applies: the **active kind's `pre`** → **pop** (`pop {to: nav.length
+− 1}`, while the navigation stack is non-empty, §4.8) → clear selection → close Inspector → the
+**active kind's `post`**; then `preventDefault`. The active kind is the Inspector's
 origin when focus is inside it; else the panel holding focus; else the last panel pressed. Kinds
 register with `registerEscape`. Only a press cancel and the keyboard crosshair stay local in
 `ChartFrame`. T23-011 = pre [exit Fly, clear brush, clear search], post [re-root, overview].
 
 #### T25-008 — Focus and SR
 **MUST** — `<aside role="complementary">` labelled by an `h2` (`tabIndex=-1`). A pointer open keeps
-focus; a keyboard open focuses the heading. Close focuses `returnFocus` if it is connected, else the
+focus; a keyboard open focuses the heading, and so does every `push` and `pop` (§4.8), whatever the
+open's source. Close focuses `returnFocus` if it is connected, else the
 origin `[data-panel-id]`, else `main`. `model.announce` goes to one polite region (≤ 1 per 500 ms,
-latest wins; T08-018). Tab order: collapse, close, copies, members, pivots, ✎, actions. Disabled items
+latest wins; T08-018), written once per `viewKey` change (§4.8); a text equal to the last one is
+cleared and rewritten on the next frame, so it is announced again. Tab order: collapse, close, copies, members, pivots, ✎, actions. Disabled items
 stay focusable (`aria-disabled`, `aria-describedby` = the reason).
 
 #### T25-009 — Pivot chips
@@ -156,7 +160,9 @@ unavailable chip is listed, disabled, with its reason as visible text.
 
 #### T25-011 — Members, two lists
 **MUST** — **texts** (≤ 8 shown of `textCount`) and **runs** (≤ 8 shown of `memberCount`; omitted when
-0), each with its own "+k more" (k = count − shown). The first press resolves once:
+0), each with its own "+k more" (k = count − shown). With a non-null `next` (§5; `geo` targets only),
+every text entry, shown or expanded, is a `<button>` that pushes `next(i)` (§4.8); with `next` null the
+entries stay plain. The first press resolves once:
 `resolveMembers(panelId, runId)` for `stateRun`; `mark` lists are already complete. A result is
 **complete** iff texts.length = textCount and members.length = memberCount. The pressed list then shows
 everything (scrolling at ≤ 240 px) with "Show fewer", and the other list keeps its own button. A `null`
@@ -172,7 +178,8 @@ resolved entry with labels gets its own chips (T25-009). `expandMembers` keeps t
 
 #### T25-012 — Lifetime
 **MUST** — A snapshot, kept through refresh and window changes. It closes when the origin panel is
-removed or its query or vis changes, when Explore runs a different query, and on route change.
+removed or its query or vis changes, when Explore runs a different query, and on route change; its
+navigation stack (§4.8) goes with it.
 
 #### T25-013 — Look and motion
 **MUST** — §4.4. It floats over the content and never reflows it; it collapses to a 40 px tab. Under
@@ -205,6 +212,7 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 | stat | A transparent `<button>` "Inspect <title>" over the frame | Enter/Space | `value`: the first series' last finite sample, or the scalar (key null); state = the `statState` chip |
 | logs | A row click (not while a text selection is anchored in the row) | Rows `tabIndex=-1`; Enter on the scroller focuses the first visible row; ↑/↓; Enter/Space inspects; if the focused row unmounts, focus goes to the scroller | `logLine` · {[streamKey], tsMs, tsMs + 1} |
 | Change feed ([T24-035](T24-geo-schematic-and-widget-panels.md#t24-035--selection-inspector)) | A row click | Enter/Space on the row button | `change` · {['change:' + id], atMs, (endMs ?? atMs) + 1} |
+| geomap ([T24-092](T24-geo-schematic-and-widget-panels.md#t24-092--selection-and-inspector)) | The last-drawn mark under the pointer (T24-091); `other (n)` in the legend | Enter/Space on a mark-list button or the legend entry | `geo` `marker` · {[key], null, null}; `cluster` · {its keys, null, null}; `aggregate` · {the aggregate's keys, null, null} |
 
 ### 4.3 Pivots (T25-009, T25-010); t = pivot instant
 
@@ -216,7 +224,10 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 | Label filter | from I3 | Explore with `f=<k>=<v>` added | "Filtering Explore by a label arrives with label filters" |
 
 t is `point` tMs, `logLine` Number(tsNs / 10⁶), `stateRun` atMs, `value` tMs, `change` atMs. `bucket` uses
-[tMs − 60 s, toMs + 60 s). `mark`, `flame` and a null tMs use the origin window, and `bin` uses the origin window.
+[tMs − 60 s, toMs + 60 s). `mark`, `flame` and a null tMs use the origin window, and `bin` and `geo` use the origin window.
+
+**`geo` (#184, T24 part E step 1b).** A `marker` has the `mark` pivots over the origin window, from its
+labels (T25-010 unchanged); a `cluster`, the `aggregate` and a `group` have no pivots (§4.9).
 
 **`change` (#181, T24 part B2).** The Explore chip is omitted (the origin has no query). Logs ±1 min
 takes its identity from `pivots.ts` `identity()`, which gains `change`: an entity of kind `service`
@@ -232,7 +243,7 @@ applies T25-010 unchanged (the translated filters, conflicts and LogQL escaping)
 | Material | `surface-float` (dark `#12151AF0`, light `#FFFFFFF0`) + `backdrop-filter: blur(20px) saturate(140%)`; 1 px `hairline`; the kit Popover's shadow; `radius.float` 10 |
 | Type and rhythm | Padding 20, with 20 between sections and hairline rules. Headings 11 px semibold, +0.06 em, upper case, `text-muted`. Title 16 semibold with an ellipsis. Value 32 `display`, tabular, with its unit at 16 muted; state colour and glyph only for a crossed threshold. Labels mono 12 |
 | Chips | 28 px pill, `surface-2`, hairline, 16 px icon, 13 px label, ↗. Hover: border `accent` at 40 %. Unavailable: dashed and `text-muted`, with the reasons in 12 px below |
-| Motion | Open: opacity and translateX 16→0 over 200 ms `easing-out`. Close 150 ms. New target: 150 ms crossfade. Reduced motion: instant |
+| Motion | Open: opacity and translateX 16→0 over 200 ms `easing-out`. Close 150 ms. New target, and each `push` or `pop` (a new `viewKey`, §4.8): 150 ms crossfade, the leaving layer inert, at most one leaving layer (the newest wins). Reduced motion: instant, no leaving layer |
 | Tokens (I1) | `color.surface-float`, `color.selection`, `size.inspector` 360, `size.inspector-tab` 40, `size.inspector-inset` 12, `radius.float` 10, `motion.float-open` 200, and the `[opacity]` table (`dimmed` 0.35), emitted to CSS, TypeScript and Rust |
 
 ### 4.5 Mockup 41
@@ -251,7 +262,11 @@ overview", with 2 enabled and 4 disabled chips, the 3 staged actions and the ori
 | Esc | no pre, selection ≠ null | selection null |
 | Esc | no pre, no selection, open | closed; focus per T25-008 |
 | Esc | none of the above | the provider's `post` step, if any |
-| open | originChanged(origin), close | closed |
+| open | push {seq, depth, view} with `seq` = the current seq and `depth` = nav.length | nav + view; selection = view.selection |
+| any | any other push | no-op |
+| open, nav non-empty | pop {to} (to < nav.length) | nav.slice(0, to); selection = the new top's (or `req.selection`) |
+| open | originChanged(origin), close | closed; nav [] |
+| any | inspect, reset | nav [] |
 
 The host owns the state (`useReducer`) and the registries (`Map`s in refs). There is no I/O, so
 nothing needs cancelling.
@@ -271,6 +286,44 @@ nothing needs cancelling.
 
 `announce` is `‹word›: ‹text›, HH:mm:ss`.
 
+### 4.8 The in-request navigation stack (#184, T25-007, T25-008, T25-011)
+
+A member entry can open a deeper view inside the open request: the geomap's aggregate lists its
+groups, a group lists its rows, and a row opens its marker. The views are a stack in the host's
+state, never new requests, so there is nothing to race.
+
+- **State.** `InspectorState.nav` holds `NavView`s `{target, selection, title}` (§5); [] at rest. The
+  **top** is the last of `nav`, else `req.target`.
+- **Push.** `push {seq, depth, view}` applies iff a request is open, `seq` equals the state's `seq`
+  and `depth` equals `nav.length`: `nav` gains the view and the selection becomes its selection.
+  Anything else is a no-op, so a stale entry (an older request, a double press in one tick) does
+  nothing.
+- **Pop.** `pop {to}` (`to < nav.length`) keeps `nav.slice(0, to)`, and the selection becomes the new
+  top's (`req.selection` at `to` 0).
+- **Reset.** `inspect`, `close`, a matching `originChanged` and `reset` empty `nav`.
+- **Content.** The sheet renders `inspectorModel({...req, target: top}, env)`. With `nav` non-empty
+  it shows "Back to ‹previous title›" (a `pop` to `nav.length − 1`) and a breadcrumb `<nav
+  aria-label="Inspector path"><ol>` of the titles, the earlier ones as `pop` buttons.
+- **`viewKey`** = `${seq}:${depth}:${topKey}`, where `topKey` is the top's id for a `geo` target and
+  `'root'` for every other kind (so for them it changes iff `seq` does). It replaces `seq` as the
+  per-view identity of: the content key (a remount resets the members' state); the layers (§4.4: an
+  inert leaving layer for 150 ms, instant under reduced motion, at most one leaving); the `h2` focus
+  (each push and pop, from any open source, T25-008); and the live region (one write per change, ≤ 1
+  per 500 ms, the latest wins; the same text is cleared and rewritten on the next frame).
+- **Esc** pops before it clears the selection (T25-007).
+
+### 4.9 The `geo` target (#184, T25-002)
+
+`inspectorModel` for `{type: 'geo'; target: GeoInspectorTarget}`
+([T24](T24-geo-schematic-and-widget-panels.md) §5.16, `geoTarget`) follows T24 §4.13: the four
+kinds `marker`, `cluster`, `aggregate` and `group`, their header, details, members and pivots, and
+the `announce` text (with `Level ‹d + 1›: ` at depth d > 0). Its members section (T25-011) has
+`texts` (entries 0–7 of n, with parallel `labels`), `runs` null, `resolve` `{panelId, runId: 'geo:'
++ target.id}` when n > 8 (else null), and `next`: a `cluster` or `group` entry i → the `marker` of
+row i; an `aggregate` entry i → the `group` of entry i (`geoTarget({kind: 'group', from, entry:
+i})`); each with its keys as the selection and its title. A target is a snapshot: a refresh that
+removes a row leaves the open views and their entries as they were (T25-012).
+
 ## 5. Interfaces
 
 Types in `client/src/inspector/`; every field is `readonly`.
@@ -285,7 +338,8 @@ export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173
   | { type: 'value'; key: string | null; labels: Labels; name: string; value: number; tMs: number | null; state: State | null }
   | { type: 'logLine'; streamKey: string; labels: Labels; tsNs: bigint; level: LogLevel; line: string; metadata: Labels | null; parsed: Labels | null }
   | { type: 'change'; id: string; kind: EventKind; text: string; atMs: number; endMs: number | null; tags: readonly string[];
-      entity: Change['entity'] /* T24 §5.10; null = organisation-wide */ };
+      entity: Change['entity'] /* T24 §5.10; null = organisation-wide */ }
+  | { type: 'geo'; target: GeoInspectorTarget /* T24 §5.16; #184 */ };
 // a `bin` from a bucket source: header `bucketRangeText`, members are families (T21-067)
 export interface Selection { keys: string[]; fromMs: number | null; toMs: number | null }
 export interface SelectionSource { kind: 'mark' | 'tableRow' | 'brush' | 'member'; panelId: string | null }
@@ -295,7 +349,9 @@ export interface InspectRequest { origin: InspectOrigin; target: InspectorTarget
 export interface MemberFacts { fromMs: number; toMs: number; text: string; state: State | null }
 export interface MemberList { texts: string[]; members: MemberFacts[]; labels?: Labels[] /* parallel to texts; per-entry chips (T25-009) */ }
 export interface MemberSection { texts: { shown: string[]; count: number; labels?: Labels[] /* parallel to shown; per-entry chips (T25-009) */ }; runs: { shown: MemberFacts[]; count: number } | null;
-  resolve: { panelId: string; runId: string } | null /* null = complete */ }
+  resolve: { panelId: string; runId: string } | null /* null = complete */;
+  next: ((i: number) => NavView | null) | null /* #184: geo targets only; null for every other kind (plain entries) */ }
+export interface NavView { target: InspectorTarget; selection: Selection; title: string }   // §4.8
 export function expandMembers(m: MemberSection, r: MemberList | null): { texts: string[]; runs: MemberFacts[]; labels: Labels[] | null } | 'stale';
 // labels: parallel to texts; from m.texts.labels for the shown entries and from r.labels once resolved; null when the section has none (T25-011)
 // host.tsx (InspectorContext null → no host: kinds neither inspect nor select)
@@ -305,8 +361,12 @@ export interface InspectorHostApi { inspect(r: InspectRequest): void; select(s: 
   resolveMembers(panelId: string, runId: string): MemberList | null; registerEscape(panelId: string, p: EscapeProvider): () => void }
 export function useSelection(): Selection | null;
 // store.ts
+export interface InspectorState { req: InspectRequest | null; seq: number; selection: Selection | null; collapsed: boolean;
+  nav: readonly NavView[] /* §4.8; [] at rest */ }
 export type InspectorAction = { type: 'inspect'; req: InspectRequest } | { type: 'select'; sel: Selection | null }
-  | { type: 'close' } | { type: 'toggleCollapsed' } | { type: 'originChanged'; panelId: string | null };
+  | { type: 'close' } | { type: 'toggleCollapsed' } | { type: 'originChanged'; panelId: string | null } | { type: 'reset' }
+  | { type: 'push'; seq: number; depth: number; view: NavView } | { type: 'pop'; to: number };   // push, pop: #184 (§4.8)
+// viewKey = `${seq}:${depth}:${topKey}` (§4.8): the content key, the layers, the h2 focus and the live region
 // model.ts
 export interface Pivot { id: 'explore' | 'logs' | 'traces' | 'profiles' | 'entity' | 'labelFilter'; label: string;
   href: string | null; reason: string | null /* set ⇔ href null */; notCarried: string[];
@@ -368,6 +428,8 @@ Fixture P: a board origin {p1, "p99 latency", promql `histogram_quantile(0.99, x
 | unit:inspector-members | inspector/members.test.ts | texts 8 of 10, runs 8 of 12, resolve {P2, P2:K:r0}; resolver (a) 10 texts and 12 members, (b) null, (c) 10 and 11 | (a) "+2 more" and "+4 more"; pressing runs → 12 rows with "Show fewer", while texts stay 8 with "+2 more"; pressing that → 10. (b), (c) → `'stale'`: both keep 8, the note shows, no buttons. A new target resets. `resolveMembers('P1','P2:K:r0')` → null | no members | T25-011, T21-005 |
 | unit:engine-select | engine/canvas2d/Canvas2DEngine.select.test.ts | line series at y 40 and 120: a click at y 110, a 10 px drag, a gap; 3 stacked bars: the middle, then 6 px above the top; heatmap bucket 2 | k2; none; `null`; middle; top; bucket 2 | no `select` | T25-005 |
 | unit:change-inspect (#181) | inspector/model.test.ts | [T24](T24-geo-schematic-and-widget-panels.md) §10.2 fixture C: c4; c2; c2 + f=job=shop/web; a service named `a"b\c` + LF + `d` | c4: heading `Note`, Duration `17 min`, Entity `organisation-wide`, Logs disabled ("This change has no service"); c2: Logs `{service_name="payments"}` over 12:18:02–12:20:02; with the filter `{service_name="payments",service_name="web"}` and the T25-010 conflict line; the odd name → `{service_name="a\"b\\c\nd"}` | no `change` member | T25-002, T25-010 |
+| unit:inspector-nav (#184) | inspector/store.test.ts, inspector/host.test.tsx | [T24](T24-geo-schematic-and-widget-panels.md) §10.5 | as T24 §10.5: push and pop rules, the stale and closed no-ops, reset, the Esc ladder with pop, Back and the breadcrumb | no `nav` | T25-007, §4.8 |
+| unit:inspector-viewkey (#184) | inspector/Inspector.test.tsx | T24 §10.5 | as T24 §10.5: one inert leaving layer, focus and announcements per `viewKey`; `point` behaves as today | no `viewKey` | T25-008, §4.4 |
 | unit:clipboard-denied | inspector/Inspector.test.tsx | `writeText` rejects; Copy value; fake timers | "Couldn't copy" shown, then gone at 4 000 ms | new | T25-015 |
 | e2e:inspector-open | e2e/inspector.spec.ts | stub board with line, bars, heatmap, stat and logs; Explore › Metrics and › Logs | per kind, a click opens the "Inspector" aside within 250 ms + 1 frame, with heading and value; Enter does the same and focuses the heading; the board origin is outlined; Explore has no Explore chip | new | VIZ-003, T25-001/014 |
 | e2e:inspector-sections, e2e:inspector-pivot-nav | same | P's stub series, clicked at 13:41:20 | sections in order; 2 chips enabled and 4 disabled with visible reasons; 3 actions disabled. Logs opens Explore › Logs at ±1 min with q `{service_name="checkout"}`; a plain click and Shift-click navigate and Back restores the board; Ctrl-click opens a new page with the same href | new | INT-034, INT-035, INT-036 |
@@ -399,7 +461,9 @@ the selection first, and closing is a separate step.
 | I6 Context baseline (INT-030, M-UI2, Epic #5) | `ContextSearch.baseline` (URL `base`), carried by pivots; `unit:pivot-context` C3 | I1 | INT-035 in full |
 
 The `change` target (§4.7, §5) is delivered by [T24](T24-geo-schematic-and-widget-panels.md) §11 I6
-(the Change feed), which documents it in `docs/client/inspector.md`.
+(the Change feed), which documents it in `docs/client/inspector.md`. The navigation stack and the
+`geo` target (§4.8, §4.9) are delivered by T24 §11 E2 (the geomap frame), which documents them there
+too.
 
 I1 writes `docs/client/inspector.md` (host, payload, selection, Esc providers, adding a kind, pivots,
 staging, tokens, T25 map) and updates the user pages for boards, Explore › Metrics and Explore › Logs
@@ -411,7 +475,9 @@ Rejected:
 - a panel per kind (it drifts);
 - a reflowing column (widths drive the query step);
 - a modal (it hides the chart);
-- kind-local Esc (it fails when focus is in the Inspector).
+- kind-local Esc (it fails when focus is in the Inspector);
+- (#184) a new host request per member step (requests race; the stack is in one request), and nested
+  member lists (T25-011 stays flat).
 
 ## 13. Open questions
 
@@ -426,3 +492,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.2-rc | 2026-11-25 | #206 ([T21](T21-time-and-distribution-panels.md) part 2a-ii): §5 comment: a `bin` from a bucket source has the header `bucketRangeText` and lists families as members (T21-067) |
 | 1.3-rc | 2026-11-25 | #192 (I1): §4.4 lists the tokens I1 adds (`size.inspector-tab`, `size.inspector-inset`, `motion.float-open`, the `[opacity]` table); §5 gives `Pivot.context` and the `InspectorModel` fields; `MemberList` and `expandMembers` in code follow #154's labels; ADR-0025 records the seam's `setSelection` and `select` item |
 | 1.4-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B2), per T25-002: §5 `InspectorTarget` gains `{type:'change'; id; kind; text; atMs; endMs; tags; entity}`; §4.2 adds the Change feed row (selection `{['change:' + id], atMs, (endMs ?? atMs) + 1}`); §4.3 t = `atMs` for `change`, no Explore chip, Logs ±1 min from a `service` entity (`identity()` + `change`) or disabled "This change has no service"; §4.7 the `change` model; §10 `unit:change-inspect`, and `unit:pivot-context` C4 uses the canonical `e=` entity set (added by #223) instead of `ent=service:checkout`; §11 delivered by T24's I6 |
+| 1.5-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap), per T25-002: §5 `InspectorTarget` gains `{type:'geo'; target}`, `MemberSection` gains `next`, `InspectorState` gains `nav` (`NavView`) and `InspectorAction` `push` and `pop`; §4.8 the in-request navigation stack and `viewKey` (content key, layers, `h2` focus, live region); §4.9 the `geo` target; T25-007 (Esc pops before it clears), T25-008, T25-011 (entries as buttons with `next`) and T25-012 amended; §4.2 the geomap row, §4.3 `geo` pivots, §4.4 the navigation motion, §4.6 push and pop; §10 `unit:inspector-nav`, `unit:inspector-viewkey`; §11 delivered by T24's E2 |
