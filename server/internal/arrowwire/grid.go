@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	uni "unicode/utf8"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -229,11 +230,15 @@ func (p *GridPart) Finish(c Coverage) error {
 	if err != nil {
 		return p.refuse(err)
 	}
-	p.closed = true
 	if len(p.pending) > 0 {
-		return p.commitBatches(f)
+		err = p.commitBatches(f)
+	} else {
+		err = f.commit()
 	}
-	return f.commit()
+	if err == nil {
+		p.closed = true
+	}
+	return err
 }
 
 func (p *GridPart) addEmptyLabels(f *frameSet) error {
@@ -264,9 +269,31 @@ func (p *GridPart) refuse(err error) error {
 	return p.close(c, refusedRow(msg), err)
 }
 
-// close writes the failure close of the part and returns cause (or a write error).
+// close writes the failure close of the part: a 0-row BATCH(L)|LAST, META(D, c) and
+// ERROR(D, e)|LAST, and returns cause (or a write error). If c or e makes a frame larger than
+// MaxPayload, the close is written with boundCoverage(c) and boundError(e) instead, which keep
+// the phase, the counts and the error's code and status, and it returns ErrFrameTooLarge. The
+// part is closed only once its closing frames are written.
 func (p *GridPart) close(c Coverage, e ErrorRow, cause error) error {
-	p.pending, p.pendLab, p.closed = nil, 0, true
+	p.pending, p.pendLab = nil, 0
+	f, err := p.closeFrames(c, e)
+	if errors.Is(err, ErrFrameTooLarge) {
+		f, err = p.closeFrames(boundCoverage(c), boundError(e))
+		if cause == nil {
+			cause = ErrFrameTooLarge
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if werr := f.commit(); werr != nil {
+		return werr
+	}
+	p.closed = true
+	return cause
+}
+
+func (p *GridPart) closeFrames(c Coverage, e ErrorRow) (*frameSet, error) {
 	f := p.w.frames()
 	err := p.addEmptyLabels(f)
 	if err == nil {
@@ -275,17 +302,67 @@ func (p *GridPart) close(c Coverage, e ErrorRow, cause error) error {
 	if err == nil {
 		err = f.add(p.header(FrameError, p.spec.DataPart, FlagLast), errorPayload(e))
 	}
-	if err != nil && cause == nil {
-		// The ERROR itself is too large: close with the refusal row instead.
-		return p.close(c, refusedRow("writer refused: frame too large"), ErrFrameTooLarge)
+	return f, err
+}
+
+// The bounds of a close written after an oversized coverage or error (outcome (b)): far below
+// MaxPayload, so the bounded frames always fit.
+const (
+	boundListBytes  = 1 << 20 // string bytes kept over the four coverage lists
+	boundListItems  = 4096    // list elements kept
+	boundReason     = 64      // truncation_reason bytes
+	boundMessage    = 1 << 20 // error message bytes
+	boundSuggestion = 256 << 10
+	cutMarker       = "…(truncated)"
+)
+
+// cutUTF8 cuts s to at most n bytes at a UTF-8 boundary, ending with cutMarker when cut.
+func cutUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
 	}
-	if err != nil {
-		return err
+	k := max(n-len(cutMarker), 0)
+	for k > 0 && !uni.RuneStart(s[k]) {
+		k--
 	}
-	if werr := f.commit(); werr != nil {
-		return werr
+	return s[:k] + cutMarker
+}
+
+// boundCoverage is c as a partial, truncated coverage whose lists and reason are cut to the
+// bounds above (reason "coverage_cut" if c had none).
+func boundCoverage(c Coverage) Coverage {
+	c.Phase, c.Truncated = PhasePartial, true
+	reason := "coverage_cut"
+	if c.TruncationReason != nil {
+		reason = cutUTF8(*c.TruncationReason, boundReason)
 	}
-	return cause
+	c.TruncationReason = &reason
+	bytes, items := 0, 0
+	cut := func(xs []string) []string {
+		out := []string{}
+		for _, x := range xs {
+			if items >= boundListItems || bytes >= boundListBytes {
+				break
+			}
+			x = cutUTF8(x, boundListBytes-bytes)
+			bytes, items = bytes+len(x), items+1
+			out = append(out, x)
+		}
+		return out
+	}
+	c.ExcludedDims, c.Warnings, c.Infos, c.UpstreamQueryIDs = cut(c.ExcludedDims), cut(c.Warnings), cut(c.Infos), cut(c.UpstreamQueryIDs)
+	return c
+}
+
+// boundError is e with its message and suggestion cut to the bounds above; code, status,
+// position and retry are kept.
+func boundError(e ErrorRow) ErrorRow {
+	e.Message = cutUTF8(e.Message, boundMessage)
+	if e.Suggestion != nil {
+		s := cutUTF8(*e.Suggestion, boundSuggestion)
+		e.Suggestion = &s
+	}
+	return e
 }
 
 // pad64 rounds n up to a multiple of 64 (grid buffers, §3.2).

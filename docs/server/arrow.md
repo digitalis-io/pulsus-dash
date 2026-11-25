@@ -166,10 +166,12 @@ L is the labels part and D the data part.
 |---|---|---|
 | `Grid` or `Error` refused (`ErrShape`, or `ErrFrameTooLarge` for a frame over 64 MiB) | one stream-level `ERROR(part 0)\|LAST`: code 8, status 500, message `writer refused` | every later `Grid` or `Error` returns `ErrOrder` and writes nothing. Open parts still close normally, and `End` still works |
 | `Add` refused: a series whose `Values` or `Present` length is not the grid's (`ErrShape`), or whose labels cannot fit one 64 MiB frame (`ErrFrameTooLarge`); or a flush whose frame is too large | closes that part: 0-row `BATCH(L)\|LAST`, `META(D)` partial, `ERROR(D)\|LAST` with code 8 and message `writer refused: shape` or `writer refused: frame too large` | later calls on the part return `ErrOrder`. Other parts are unaffected |
-| the `io.Writer` fails | nothing more | the write error is sticky. The body is cut mid-frame, so the caller must abort the transport (reset the connection) |
+| `Fail` (or an `Add` close) whose coverage or error would make a frame over 64 MiB | closes that part all the same: 0-row `BATCH(L)\|LAST`, a bounded `META(D)` (partial, `truncated`, `truncation_reason` cut to 64 B or `coverage_cut`, the four lists cut to 1 MiB and 4 096 elements in total), then `ERROR(D)\|LAST` with the original code, status, position and retry, and the message and suggestion cut to 1 MiB and 256 KiB (a cut ends in `…(truncated)`) | returns `ErrFrameTooLarge`; the part is closed and other parts are unaffected |
+| the `io.Writer` fails, or returns a short count (`io.ErrShortWrite`) | nothing more | the write error is sticky: every later call returns it and writes nothing. The body is cut mid-frame, so the caller must abort the transport (reset the connection) |
 
 `ErrOrder` also means a caller bug: a call after `Finish`, `Fail` or `End`. `Finish` with a
-planned-phase coverage returns `ErrShape` and writes nothing.
+planned-phase coverage returns `ErrShape` and writes nothing. A part counts as closed only once its
+closing frames are written.
 
 The shared wire limits (the per-part and per-body budgets, coverage and error-string cuts, and
 the writer's auto-close) arrive with #68 Part B3. B1 bounds only `MaxPayload`, `MaxGridLen`, the
@@ -239,6 +241,7 @@ change that B2's reader must accept too.
 | `unit:part-ids` | `TestPartIDs` | zero, equal and reused ids are refused with the stream-level ERROR |
 | `unit:dsf-header` (Go) | `TestHeader` | the header bytes, and the rejected headers |
 | `unit:arrow-alignment` (Go) | `TestAlignment` | 64-byte bodies and grid buffers, and 8-byte frame lengths |
+| `unit:dsf-writer-order` (failure paths) | `TestFailOversized`, `TestStickyWriteError` | an oversized `Fail` still closes its part with a bounded META and the upstream code; write errors and short writes are sticky and stop all writing |
 | `unit:coverage-complete` (Go) | `TestCoverageFrom` | the `CoverageFrom` mapping, and `series_returned` in the encoded row |
 | `ci:go-lint` (depguard `arrow-only`) | `check-depguard-fixture.sh` | arrow-go is imported only in `internal/arrowwire` |
 
