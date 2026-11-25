@@ -65,6 +65,31 @@ impl SharedBytes {
     pub fn strong_count(&self) -> usize {
         Arc::strong_count(&self.buf)
     }
+
+    /// The size of the whole backing allocation, not of the slice (B3 §3.3: the splitter's
+    /// input bound and memory accounting).
+    pub fn backing_len(&self) -> usize {
+        self.buf.len() * 64
+    }
+}
+
+/// The byte pump (plan #68 B3 §3.3): copies `data`, which starts at response-body offset
+/// `body_offset`, into fresh slabs whose backing allocations are at most `max` bytes, each
+/// keeping its body offset mod 64. A slab at body offset `o` has `lead = o mod 64` and takes
+/// `min(remaining, max − lead)` bytes, so its backing `⌈(lead + len)/64⌉ × 64` is ≤ `max`.
+/// `max` is rounded down to a multiple of 64 (at least 64). Part D feeds every fetch chunk
+/// through it and never hands the splitter a slice of a larger buffer.
+pub fn slabs_from(data: &[u8], body_offset: u64, max: usize) -> impl Iterator<Item = SharedBytes> {
+    let max = (max / 64).max(1) * 64;
+    let mut pos = 0usize;
+    std::iter::from_fn(move || {
+        let rest = data.get(pos..).filter(|r| !r.is_empty())?;
+        let lead = (body_offset.wrapping_add(pos as u64) % 64) as usize;
+        let take = rest.len().min(max - lead);
+        let slab = SharedBytes::copy_from(rest.get(..take)?, lead);
+        pos += take;
+        Some(slab)
+    })
 }
 
 impl PartialEq for SharedBytes {
@@ -120,6 +145,11 @@ impl PayloadBuf {
             }
         }
         0
+    }
+
+    /// The size of the backing allocation.
+    pub(crate) fn backing_len(&self) -> usize {
+        self.buf.len() * 64
     }
 
     pub(crate) fn freeze(self) -> SharedBytes {

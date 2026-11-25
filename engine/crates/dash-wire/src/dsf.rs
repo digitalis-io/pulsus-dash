@@ -1,6 +1,7 @@
 //! DSF frames (T04 §5.1, T04-009; plan #68 B2 §3.2): the 16-byte header and a pull splitter.
 
 use crate::bytes::{PayloadBuf, SharedBytes};
+use crate::limits::MAX_CHUNK;
 
 pub const VERSION: u8 = 1;
 pub const HEADER_LEN: usize = 16;
@@ -171,12 +172,21 @@ impl FrameSplitter {
             .map_or(0, |c| c.len().saturating_sub(self.pos))
     }
 
+    /// Stores one chunk. A chunk whose backing allocation is above `MAX_CHUNK` fails the
+    /// stream with `Limit("chunk")` (B3 §3.3 input bound: measured by the allocation, not the
+    /// slice, so a small slice of a large buffer is refused too).
     pub fn push(&mut self, chunk: SharedBytes) -> Result<(), DsfError> {
         if let Some(e) = &self.failed {
             return Err(e.clone());
         }
         if self.remaining() > 0 {
             return Err(DsfError::Busy);
+        }
+        if chunk.backing_len() > MAX_CHUNK {
+            self.failed = Some(DsfError::Limit("chunk"));
+            self.cur = None;
+            self.pending = None;
+            return Err(DsfError::Limit("chunk"));
         }
         self.cur = Some(chunk);
         self.pos = 0;
@@ -274,6 +284,15 @@ impl FrameSplitter {
         });
         self.cur = None;
         Ok(None)
+    }
+
+    /// The bytes the splitter holds: the current chunk's backing, a split payload's buffer and
+    /// the header buffer. At most `MAX_CHUNK + HEADER_LEN + MAX_PAYLOAD` plus the payload
+    /// buffer's alignment rounding (< 128 bytes).
+    pub fn retained_bytes(&self) -> usize {
+        self.cur.as_ref().map_or(0, SharedBytes::backing_len)
+            + self.pending.as_ref().map_or(0, |p| p.buf.backing_len())
+            + HEADER_LEN
     }
 
     /// End of input: `Truncated` if any byte of an unfinished frame remains.

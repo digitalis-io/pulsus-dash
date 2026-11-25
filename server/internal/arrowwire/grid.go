@@ -52,6 +52,10 @@ type GridPart struct {
 	pending []*pulsusdb.Series
 	pendLab int // label bytes pending
 	closed  bool
+	limited bool // auto-closed for a limit: later calls are ErrLimit (outcome (c))
+	cut     bool // a coverage of the part was cut: later ones are truncated (B3 §3.1)
+	lrows   int  // label rows sent
+	lbytes  int  // label key and value bytes sent
 }
 
 // gridPoints checks the grid of s (§3.3 "Grid checks") and returns its number of points.
@@ -71,8 +75,10 @@ func gridPoints(s GridSpec) (int, bool) {
 }
 
 // Grid opens a part pair and writes SCHEMA(L), META(D, planned) and SCHEMA(D); planned is
-// written with PhasePlanned. A bad part id or grid is ErrShape and frames above MaxPayload
-// are ErrFrameTooLarge: either writes the stream-level ERROR instead (outcome (a)).
+// written with PhasePlanned, after the coverage cut policy. A bad part id or grid is ErrShape,
+// frames above MaxPayload are ErrFrameTooLarge, and a pair past open_parts, distinct_parts or the
+// body budget (its charge plus every part_reserve, its own included, and the stream reserve) is
+// ErrLimit: each writes the stream-level ERROR instead (outcome (a)).
 func (w *Writer) Grid(s GridSpec, planned Coverage) (*GridPart, error) {
 	if err := w.callable(); err != nil {
 		return nil, err
@@ -85,7 +91,13 @@ func (w *Writer) Grid(s GridSpec, planned Coverage) (*GridPart, error) {
 		return nil, w.refuse(ErrShape)
 	}
 	planned.Phase = PhasePlanned
-	p := &GridPart{w: w, spec: s, n: n, schema: gridSchema(s, n), planned: planned}
+	p := &GridPart{w: w, spec: s, n: n, schema: gridSchema(s, n)}
+	planned = p.cutCov(planned)
+	p.planned = planned
+	charge := 2*costPart + schemaCost(labels1) + schemaCost(p.schema) + coverageCost(planned)
+	if !w.admit(2, charge, w.openData+1) {
+		return nil, w.refuse(ErrLimit)
+	}
 	if s.Volatile {
 		p.flags = FlagVolatile
 	}
@@ -106,6 +118,9 @@ func (w *Writer) Grid(s GridSpec, planned Coverage) (*GridPart, error) {
 	if err := f.commit(); err != nil {
 		return nil, err
 	}
+	w.spent += charge
+	w.open += 2
+	w.openData++
 	return p, nil
 }
 
@@ -118,6 +133,8 @@ func (p *GridPart) usable() error {
 	switch {
 	case p.w.err != nil:
 		return p.w.err
+	case p.limited:
+		return ErrLimit
 	case p.closed || p.w.ended:
 		return ErrOrder
 	}
@@ -144,15 +161,23 @@ func labelBytes(s *pulsusdb.Series) int {
 
 // Add adds one series: len(Values) == len(Present) == the grid's length, else ErrShape; a
 // series whose encoded labels batch alone is larger than MaxPayload is ErrFrameTooLarge. Either
-// closes the part (outcome (b), dropping the pending series). Otherwise the pending batch is
-// sent first when the series might not fit beside it (labelBytes bound), and a batch is sent
-// when it is full.
+// closes the part (outcome (b), dropping the pending series). A series with more label rows than
+// rows_per_batch is ErrLimit: the pending series are flushed first, then the part auto-closes
+// with wire_limit (outcome (c)) and nothing of the series is written. Otherwise the pending
+// batch is sent first when the series might not fit beside it (labelBytes bound), and a batch
+// is sent when it is full.
 func (p *GridPart) Add(s *pulsusdb.Series) error {
 	if err := p.usable(); err != nil {
 		return err
 	}
 	if s == nil || len(s.Values) != p.n || len(s.Present) != p.n {
 		return p.refuse(ErrShape)
+	}
+	if labelRows(s) > p.w.lim.RowsPerBatchLabels {
+		if err := p.Flush(); err != nil {
+			return err
+		}
+		return p.autoClose(p.planned, reasonWireLimit)
 	}
 	lb := labelBytes(s)
 	if lb+labelsOverhead > MaxPayload && !p.labelsFit(s) {
@@ -179,7 +204,9 @@ func (p *GridPart) labelsFit(s *pulsusdb.Series) bool {
 	return p.w.frames().add(p.header(FrameBatch, p.spec.LabelsPart, 0), batchPayload(rec)) == nil
 }
 
-// Flush sends the pending series: BATCH(L) with their label rows, then BATCH(D).
+// Flush sends the pending series: their BATCH(L) frames (split between series at
+// rows_per_batch), then BATCH(D). A flush past a per-part limit or a budget auto-closes the part
+// instead (B3 §3.2) and returns ErrLimit.
 func (p *GridPart) Flush() error {
 	if err := p.usable(); err != nil {
 		return err
@@ -187,33 +214,50 @@ func (p *GridPart) Flush() error {
 	if len(p.pending) == 0 {
 		return nil
 	}
+	reason, body, values := p.flushCost()
+	if reason != "" {
+		return p.autoClose(p.planned, reason)
+	}
 	f := p.w.frames()
 	if err := p.addBatches(f, false); err != nil {
 		return p.refuse(err)
 	}
-	return p.commitBatches(f)
+	return p.commitBatches(f, body, values)
 }
 
-// addBatches adds BATCH(L) and BATCH(D) of the pending series; last sets LAST on BATCH(L).
+// addBatches adds the BATCH(L) frames and BATCH(D) of the pending series; last sets LAST on
+// the last BATCH(L).
 func (p *GridPart) addBatches(f *frameSet, last bool) error {
-	var lf uint16
-	if last {
-		lf = FlagLast
+	groups := p.labelGroups()
+	first := p.sent
+	for i, g := range groups {
+		var lf uint16
+		if last && i == len(groups)-1 {
+			lf = FlagLast
+		}
+		lrec := labelsRecord(g, first)
+		err := f.add(p.header(FrameBatch, p.spec.LabelsPart, lf), batchPayload(lrec))
+		lrec.Release()
+		if err != nil {
+			return err
+		}
+		first += uint32(len(g)) // #nosec G115 -- a batch holds ≤ 64 series
 	}
-	lrec := labelsRecord(p.pending, p.sent)
-	defer lrec.Release()
 	drec := gridRecord(p.schema, p.pending, p.sent, p.n)
 	defer drec.Release()
-	if err := f.add(p.header(FrameBatch, p.spec.LabelsPart, lf), batchPayload(lrec)); err != nil {
-		return err
-	}
 	return f.add(p.header(FrameBatch, p.spec.DataPart, 0), batchPayload(drec))
 }
 
-func (p *GridPart) commitBatches(f *frameSet) error {
+// commitBatches writes the batches and charges them (body and value budgets, per-part counts).
+func (p *GridPart) commitBatches(f *frameSet, body, values int) error {
 	if err := f.commit(); err != nil {
 		return err
 	}
+	for _, s := range p.pending {
+		p.lrows, p.lbytes = p.lrows+labelRows(s), p.lbytes+labelBytesOf(s)
+	}
+	p.w.spent += body
+	p.w.values += values
 	p.sent += uint32(len(p.pending)) // #nosec G115 -- a batch holds ≤ 64 series (or one frame of labels)
 	p.batches++
 	p.pending, p.pendLab = nil, 0
@@ -222,7 +266,8 @@ func (p *GridPart) commitBatches(f *frameSet) error {
 
 // Finish sends the pending series with LAST on the labels batch (or a 0-row labels batch),
 // then META(D, c)|LAST. c must be PhaseFinal or PhasePartial, else ErrShape and nothing is
-// written.
+// written. If the pending series would pass a limit, the part auto-closes from c instead
+// (ErrLimit). c goes through the coverage cut policy and is charged from the part's reserve.
 func (p *GridPart) Finish(c Coverage) error {
 	if err := p.usable(); err != nil {
 		return err
@@ -230,6 +275,14 @@ func (p *GridPart) Finish(c Coverage) error {
 	if c.Phase != PhaseFinal && c.Phase != PhasePartial {
 		return ErrShape
 	}
+	var body, values int
+	if len(p.pending) > 0 {
+		var reason string
+		if reason, body, values = p.flushCost(); reason != "" {
+			return p.autoClose(c, reason)
+		}
+	}
+	c = p.cutCov(c)
 	f := p.w.frames()
 	var err error
 	if len(p.pending) > 0 {
@@ -244,12 +297,13 @@ func (p *GridPart) Finish(c Coverage) error {
 		return p.refuse(err)
 	}
 	if len(p.pending) > 0 {
-		err = p.commitBatches(f)
+		err = p.commitBatches(f, body, values)
 	} else {
 		err = f.commit()
 	}
 	if err == nil {
-		p.closed = true
+		p.w.spent += coverageCost(c)
+		p.markClosed()
 	}
 	return err
 }
@@ -261,7 +315,8 @@ func (p *GridPart) addEmptyLabels(f *frameSet) error {
 }
 
 // Fail drops the pending series and writes a 0-row BATCH(L)|LAST, META(D, c) with
-// PhasePartial and ERROR(D, e)|LAST.
+// PhasePartial and ERROR(D, e)|LAST; c and e are cut (B3 §3.1) and charged from the part's
+// reserve, so a Fail always fits.
 func (p *GridPart) Fail(c Coverage, e ErrorRow) error {
 	if err := p.usable(); err != nil {
 		return err
@@ -289,9 +344,11 @@ func (p *GridPart) refuse(err error) error {
 // part is closed only once its closing frames are written.
 func (p *GridPart) close(c Coverage, e ErrorRow, cause error) error {
 	p.pending, p.pendLab = nil, 0
+	c, e = p.cutCov(c), cutError(e, p.w.lim)
 	f, err := p.closeFrames(c, e)
 	if errors.Is(err, ErrFrameTooLarge) {
-		f, err = p.closeFrames(boundCoverage(c), boundError(e))
+		c, e = boundCoverage(c), boundError(e)
+		f, err = p.closeFrames(c, e)
 		if cause == nil {
 			cause = ErrFrameTooLarge
 		}
@@ -302,7 +359,8 @@ func (p *GridPart) close(c Coverage, e ErrorRow, cause error) error {
 	if werr := f.commit(); werr != nil {
 		return werr
 	}
-	p.closed = true
+	p.w.spent += coverageCost(c) + errorCost(e)
+	p.markClosed()
 	return cause
 }
 

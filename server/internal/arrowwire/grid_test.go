@@ -50,8 +50,14 @@ func oneMessage(t *testing.T, b []byte) {
 // completedPart writes one finished grid (parts 1/2, one series) on a fresh Writer.
 func completedPart(t *testing.T) (*Writer, *bytes.Buffer) {
 	t.Helper()
+	return completedPartWith(t, DefaultLimits())
+}
+
+// completedPartWith is completedPart on a Writer with the limits l.
+func completedPartWith(t *testing.T, l Limits) (*Writer, *bytes.Buffer) {
+	t.Helper()
 	var buf bytes.Buffer
-	w := NewWriter(&buf)
+	w := NewWriterLimits(&buf, l)
 	p, err := w.Grid(gridSpec(1, 2, 4), Coverage{})
 	mustOK(t, err)
 	mustOK(t, p.Add(rampSeries(0, 4)))

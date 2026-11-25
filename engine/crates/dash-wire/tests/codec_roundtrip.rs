@@ -23,7 +23,7 @@ fn coverage_json(c: &Coverage) -> Value {
         "rollup_level_s": opt(c.rollup_level_s),
         "sampled_ratio": opt(c.sampled_ratio),
         "truncated": c.truncated,
-        "truncation_reason": opt(c.truncation_reason.clone()),
+        "truncation_reason": opt(c.truncation_reason.as_deref()),
         "dropped_count": opt(c.dropped_count),
         "series_returned": c.series_returned,
         "rows_read": opt(c.rows_read),
@@ -31,10 +31,10 @@ fn coverage_json(c: &Coverage) -> Value {
         "shards_failed": opt(c.shards_failed),
         "shards_skipped": opt(c.shards_skipped),
         "retention_floor": opt(c.retention_floor),
-        "excluded_dims": c.excluded_dims,
-        "warnings": c.warnings,
-        "infos": c.infos,
-        "upstream_query_ids": c.upstream_query_ids,
+        "excluded_dims": c.excluded_dims.iter().collect::<Vec<_>>(),
+        "warnings": c.warnings.iter().collect::<Vec<_>>(),
+        "infos": c.infos.iter().collect::<Vec<_>>(),
+        "upstream_query_ids": c.upstream_query_ids.iter().collect::<Vec<_>>(),
         "read_cache": opt(c.read_cache),
         "read_cache_through": opt(c.read_cache_through),
         "data_end": opt(c.data_end),
@@ -47,10 +47,10 @@ fn error_json(e: &ErrorRow) -> Value {
     json!({
         "code": e.code,
         "http_status": e.http_status,
-        "message": e.message,
+        "message": &*e.message,
         "position": opt(e.position),
         "retry_after_ms": opt(e.retry_after_ms),
-        "suggestion": opt(e.suggestion.clone()),
+        "suggestion": opt(e.suggestion.as_deref()),
     })
 }
 
@@ -91,8 +91,8 @@ fn project(body: &[u8], ev: &[Event]) -> Value {
                     },
                     "result": info.result,
                     "source": info.source,
-                    "unit": opt(info.unit.clone()),
-                    "planned": opt(info.planned.clone()),
+                    "unit": opt(info.unit.as_deref()),
+                    "planned": opt(info.planned.as_deref()),
                 }),
             )),
             Event::Chunk { part, chunk, .. } => {

@@ -3,6 +3,8 @@
 //! metadata V5, little-endian, no dictionaries, no compression, and the types of `Ty`.
 #![deny(clippy::indexing_slicing)]
 
+use std::sync::Arc;
+
 use crate::bytes::SharedBytes;
 use crate::fb::{Fb, Spec, Table, utf8};
 
@@ -62,7 +64,8 @@ pub(crate) struct FieldDesc {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SchemaDesc {
     pub(crate) fields: Vec<FieldDesc>,
-    pub(crate) metadata: Vec<(String, String)>,
+    /// Values are shared (`GridInfo` holds `dash.unit` and `dash.planned` without a copy).
+    pub(crate) metadata: Vec<(String, Arc<str>)>,
 }
 
 impl SchemaDesc {
@@ -71,19 +74,25 @@ impl SchemaDesc {
         self.metadata
             .iter()
             .find(|(k, _)| k == key)
-            .map(|(_, v)| v.as_str())
+            .map(|(_, v)| &**v)
+    }
+
+    /// The shared value of metadata `key` (the first, if repeated).
+    pub(crate) fn meta_shared(&self, key: &str) -> Option<Arc<str>> {
+        self.metadata
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| Arc::clone(v))
     }
 }
 
+/// A RecordBatch message: its length, nodes, buffers and body (a slice of the payload).
 #[derive(Debug)]
-pub(crate) enum Msg {
-    Schema(SchemaDesc),
-    Batch {
-        length: i64,
-        nodes: Vec<(i64, i64)>,
-        buffers: Vec<(i64, i64)>,
-        body: SharedBytes,
-    },
+pub(crate) struct Msg {
+    length: i64,
+    nodes: Vec<(i64, i64)>,
+    buffers: Vec<(i64, i64)>,
+    body: SharedBytes,
 }
 
 /// Why an IPC message was rejected.
@@ -211,29 +220,74 @@ impl Col {
         }
     }
 
-    /// The strings of `List<Utf8>` row `r`.
-    pub(crate) fn list_at(&self, r: usize) -> Option<Vec<String>> {
+    /// The byte length of Utf8 row `r` (from the validated offsets; nothing is copied).
+    pub(crate) fn str_len(&self, r: usize) -> Option<usize> {
         match &self.data {
-            ColData::List { offsets, child } => {
+            ColData::Utf8 { offsets, .. } => {
                 let o = offsets.as_bytes();
-                (offset_at(o, r)?..offset_at(o, r + 1)?)
-                    .map(|k| child.str_at(k).map(str::to_owned))
-                    .collect()
+                offset_at(o, r + 1)?.checked_sub(offset_at(o, r)?)
             }
             _ => None,
         }
     }
+
+    /// `(elements, string bytes)` of `List<Utf8>` row `r`, from the validated offsets.
+    pub(crate) fn list_extent(&self, r: usize) -> Option<(usize, usize)> {
+        match &self.data {
+            ColData::List { offsets, child } => {
+                let o = offsets.as_bytes();
+                let (a, b) = (offset_at(o, r)?, offset_at(o, r + 1)?);
+                let ColData::Utf8 { offsets: co, .. } = &child.data else {
+                    return None;
+                };
+                let co = co.as_bytes();
+                Some((
+                    b.checked_sub(a)?,
+                    offset_at(co, b)?.checked_sub(offset_at(co, a)?)?,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// The strings of `List<Utf8>` row `r`, packed in one exact-size allocation (validated
+    /// UTF-8 per element by `columns`).
+    pub(crate) fn packed_list_at(&self, r: usize) -> Option<crate::coverage::StrList> {
+        let ColData::List { offsets, child } = &self.data else {
+            return None;
+        };
+        let ColData::Utf8 { offsets: co, bytes } = &child.data else {
+            return None;
+        };
+        let o = offsets.as_bytes();
+        let (a, b) = (offset_at(o, r)?, offset_at(o, r + 1)?);
+        let co = co.as_bytes();
+        let (first, last) = (offset_at(co, a)?, offset_at(co, b)?);
+        let text = bytes.as_bytes().get(first..last)?;
+        let ends = (a + 1..=b)
+            .map(|k| offset_at(co, k).and_then(|e| u32::try_from(e.checked_sub(first)?).ok()))
+            .collect::<Option<Vec<u32>>>()?;
+        Some(crate::coverage::StrList::pack(ends.into_iter(), text))
+    }
+}
+
+/// A verified message whose schema strings are still borrowed from the payload.
+pub(crate) enum Raw<'a> {
+    Schema(RawSchema<'a>),
+    Batch(Msg),
 }
 
 /// One encapsulated message at `at` in `payload`: `FF FF FF FF`, `i32 L` (0 < L, L ≡ 0 mod 8,
 /// in range), metadata, body of exactly `bodyLength`. The body's response-body offset
 /// `payload_offset + at + 8 + L` must be ≡ 0 (mod 64), and `L` the least such value for the
-/// flatbuffer's length (B1 §3.2), with zero padding. Returns the message and the offset after it.
-pub(crate) fn read_message(
+/// flatbuffer's length (B1 §3.2), with zero padding. A Schema comes back borrowed (`Raw::Schema`):
+/// nothing of it is copied until the caller has debited its cost (B3: debit first, copy
+/// second) and calls `RawSchema::own`. Returns the message and the offset after it.
+pub(crate) fn read_raw(
     payload: &SharedBytes,
     payload_offset: u64,
     at: usize,
-) -> Result<(Msg, usize), IpcError> {
+) -> Result<(Raw<'_>, usize), IpcError> {
     let p = payload.as_bytes();
     let head = at.checked_add(8).ok_or(IpcError::Bounds)?;
     let prefix: [u8; 8] = p
@@ -300,26 +354,43 @@ pub(crate) fn read_message(
     }
     let body_len = usize::try_from(body_len).map_err(|_| IpcError::Bounds)?;
     let end = meta_end.checked_add(body_len).ok_or(IpcError::Bounds)?;
-    // Pass 2: only now are strings and vectors copied out of the verified metadata.
-    let mut budget = meta.len();
     let msg = match (msg, batch) {
-        (Some(s), _) => Msg::Schema(own_schema(s, &mut budget)?),
-        (None, Some((length, nodes, buffers))) => Msg::Batch {
+        (Some(mut s), _) => {
+            s.meta_len = meta.len();
+            Raw::Schema(s)
+        }
+        (None, Some((length, nodes, buffers))) => Raw::Batch(Msg {
             length,
             nodes: pairs(nodes),
             buffers: pairs(buffers),
             body: payload.slice(meta_end, body_len).ok_or(IpcError::Bounds)?,
-        },
+        }),
         (None, None) => return Err(IpcError::Messages),
     };
     Ok((msg, end))
 }
 
+/// `read_raw` with a schema copied (unit tests of the flatbuffer reader); the end offset.
+#[cfg(test)]
+pub(crate) fn read_message(
+    payload: &SharedBytes,
+    payload_offset: u64,
+    at: usize,
+) -> Result<usize, IpcError> {
+    let (raw, end) = read_raw(payload, payload_offset, at)?;
+    if let Raw::Schema(s) = raw {
+        s.own()?;
+    }
+    Ok(end)
+}
+
 /// Pass 1 of a Schema: the verified structure, with every string still a borrowed slice of
 /// the metadata (nothing is copied before `Fb::finish` has rejected aliased objects).
-struct RawSchema<'a> {
+pub(crate) struct RawSchema<'a> {
     fields: Vec<RawField<'a>>,
     metadata: Vec<(&'a [u8], &'a [u8])>,
+    /// The metadata length: the most its copied strings can total.
+    meta_len: usize,
 }
 
 struct RawField<'a> {
@@ -334,7 +405,7 @@ enum RawTy<'a> {
     Fsl(i32, Box<RawField<'a>>),
 }
 
-fn schema<'a>(t: &Table<'a>) -> Result<RawSchema<'a>, IpcError> {
+fn schema<'a>(t: &Table<'_, 'a>) -> Result<RawSchema<'a>, IpcError> {
     if t.i16(0, 0)? != 0 {
         return Err(IpcError::Unsupported("big-endian"));
     }
@@ -349,7 +420,77 @@ fn schema<'a>(t: &Table<'a>) -> Result<RawSchema<'a>, IpcError> {
         let v = kv.str(1)?.ok_or(IpcError::Flatbuffer)?;
         metadata.push((k, v));
     }
-    Ok(RawSchema { fields, metadata })
+    Ok(RawSchema {
+        fields,
+        metadata,
+        meta_len: 0,
+    })
+}
+
+fn raw_names(f: &RawField<'_>) -> u64 {
+    let own = f.name.len() as u64;
+    match &f.ty {
+        RawTy::Leaf(_) => own,
+        RawTy::List(c) | RawTy::Fsl(_, c) => own + raw_names(c),
+    }
+}
+
+fn raw_field_is(r: &RawField<'_>, d: &FieldDesc) -> bool {
+    r.name == d.name.as_bytes()
+        && r.nullable == d.nullable
+        && match (&r.ty, &d.ty) {
+            (RawTy::Leaf(a), b) => a == b && !matches!(b, Ty::List(_) | Ty::Fsl(..)),
+            (RawTy::List(c), Ty::List(dc)) => raw_field_is(c, dc),
+            (RawTy::Fsl(n, c), Ty::Fsl(m, dc)) => n == m && raw_field_is(c, dc),
+            _ => false,
+        }
+}
+
+impl RawSchema<'_> {
+    /// The accounted size (B3 §3.1): 256 + field names (children included) + metadata keys and
+    /// values, from the borrowed strings.
+    pub(crate) fn cost(&self) -> u64 {
+        let fields: u64 = self.fields.iter().map(raw_names).sum();
+        let meta: u64 = self
+            .metadata
+            .iter()
+            .map(|(k, v)| (k.len() + v.len()) as u64)
+            .sum();
+        crate::limits::cost::SCHEMA + fields + meta
+    }
+
+    /// The value of metadata `key` (the first, if repeated), borrowed.
+    pub(crate) fn meta(&self, key: &[u8]) -> Option<&[u8]> {
+        self.metadata
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| *v)
+    }
+
+    /// Whether this schema is exactly `d`: the same fields in order and the same metadata
+    /// pairs (each key once), compared without copying.
+    pub(crate) fn is(&self, d: &SchemaDesc) -> bool {
+        self.fields.len() == d.fields.len()
+            && self
+                .fields
+                .iter()
+                .zip(&d.fields)
+                .all(|(r, f)| raw_field_is(r, f))
+            && self.metadata.len() == d.metadata.len()
+            && d.metadata.iter().all(|(k, v)| {
+                self.metadata
+                    .iter()
+                    .filter(|(rk, _)| *rk == k.as_bytes())
+                    .map(|(_, rv)| *rv == v.as_bytes())
+                    .eq([true])
+            })
+    }
+
+    /// Pass 2: the owned copy. Call it only after its `cost` was debited.
+    pub(crate) fn own(self) -> Result<SchemaDesc, IpcError> {
+        let mut budget = self.meta_len;
+        own_schema(self, &mut budget)
+    }
 }
 
 /// Pass 2, after `Fb::finish`: copies the strings and checks their UTF-8. Because no two
@@ -364,7 +505,11 @@ fn own_schema(raw: RawSchema<'_>, budget: &mut usize) -> Result<SchemaDesc, IpcE
     let metadata = raw
         .metadata
         .into_iter()
-        .map(|(k, v)| Ok((own_str(k, budget)?, own_str(v, budget)?)))
+        .map(|(k, v)| {
+            let k = own_str(k, budget)?;
+            *budget = budget.checked_sub(v.len()).ok_or(IpcError::Flatbuffer)?;
+            Ok((k, Arc::<str>::from(utf8(v)?)))
+        })
         .collect::<Result<Vec<_>, IpcError>>()?;
     Ok(SchemaDesc { fields, metadata })
 }
@@ -387,7 +532,7 @@ fn own_field(f: RawField<'_>, budget: &mut usize) -> Result<FieldDesc, IpcError>
     })
 }
 
-fn field<'a>(f: &Table<'a>, depth: usize) -> Result<RawField<'a>, IpcError> {
+fn field<'a>(f: &Table<'_, 'a>, depth: usize) -> Result<RawField<'a>, IpcError> {
     if depth > MAX_DEPTH {
         return Err(IpcError::Flatbuffer);
     }
@@ -474,7 +619,7 @@ fn pairs(bytes: &[u8]) -> Vec<(i64, i64)> {
 /// Pass 1 of a RecordBatch: the length and the borrowed `FieldNode` and `Buffer` vectors.
 type BatchMeta<'a> = (i64, &'a [u8], &'a [u8]);
 
-fn record_batch<'a>(t: &Table<'a>) -> Result<BatchMeta<'a>, IpcError> {
+fn record_batch<'a>(t: &Table<'_, 'a>) -> Result<BatchMeta<'a>, IpcError> {
     let length = t.i64(0, 0)?;
     let nodes = t.structs(1, 16, MAX_NODES)?;
     let buffers = t.structs(2, 16, MAX_BUFFERS)?;
@@ -700,17 +845,17 @@ fn zero_padding(body: &[u8], bufs: &[(usize, usize)], used: &[Used]) -> Result<(
 
 /// Walks the fields depth-first, consuming nodes and buffers, with the §3.4 layout checks.
 /// `align64`: every buffer offset ≡ 0 (mod 64) (`metric_matrix.grid/1`, B1 §3.2).
-pub(crate) fn columns(schema: &SchemaDesc, batch: &Msg) -> Result<Vec<Col>, IpcError> {
-    let Msg::Batch {
+pub(crate) fn columns(
+    fields: &[FieldDesc],
+    align64: bool,
+    batch: &Msg,
+) -> Result<Vec<Col>, IpcError> {
+    let Msg {
         length,
         nodes,
         buffers,
         body,
-    } = batch
-    else {
-        return Err(IpcError::Messages);
-    };
-    let align64 = schema.meta("dash.schema") == Some("metric_matrix.grid/1");
+    } = batch;
     let blen = body.len();
     let mut bufs = Vec::with_capacity(buffers.len());
     let mut prev_end = 0usize;
@@ -739,8 +884,7 @@ pub(crate) fn columns(schema: &SchemaDesc, batch: &Msg) -> Result<Vec<Col>, IpcE
         body,
         length,
     };
-    let cols = schema
-        .fields
+    let cols = fields
         .iter()
         .map(|f| w.col(f, true))
         .collect::<Result<Vec<_>, _>>()?;

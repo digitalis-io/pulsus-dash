@@ -2,14 +2,15 @@
 //! §3.5, §4.1; T04-001, T04-002, T04-009, T04-010).
 #![deny(clippy::indexing_slicing)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::chunk::{Chunk, ChunkId, SeriesMeta, TimeAxis};
 use crate::coverage::{self, Coverage, ErrorRow, Phase};
 use crate::dsf::{DsfError, Frame, FrameHeader, FrameType};
 use crate::ipc::{self, Col, ColData, IpcError, Msg, SchemaDesc};
-use crate::schema::{Kind, check_schema, grid_info, schema_err};
+use crate::limits::{self, Limits};
+use crate::schema::{Kind, canonical, check_schema, check_stream_schema, grid_info, schema_err};
 
 /// The largest grid (= B1 `MaxGridLen`, the YAML maximum).
 pub const MAX_GRID_LEN: u32 = 1 << 22;
@@ -23,8 +24,9 @@ pub struct GridInfo {
     pub len: u32,
     pub result: String,
     pub source: String,
-    pub unit: Option<String>,
-    pub planned: Option<String>,
+    /// Shared with the part's schema (one copy, charged once).
+    pub unit: Option<Arc<str>>,
+    pub planned: Option<Arc<str>>,
 }
 
 /// Why one part failed; the caller reports `internal`.
@@ -112,38 +114,40 @@ fn ipc_err(e: IpcError) -> PartError {
     PartError::Ipc(e)
 }
 
-/// A SCHEMA/BATCH payload: exactly one message ending at the payload end.
+/// The limit names that fail the stream rather than the part.
+const BODY_BUDGET: &str = "body budget";
+const VALUE_BUDGET: &str = "value budget";
+
+/// A BATCH payload: exactly one RecordBatch message ending at the payload end (a schema
+/// message is refused without being copied).
 fn one_message(f: &Frame) -> Result<Msg, PartError> {
-    let (m, end) = ipc::read_message(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
+    let (m, end) = ipc::read_raw(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
     if end != f.payload.len() {
         return Err(ipc_err(IpcError::Messages));
     }
-    Ok(m)
-}
-
-fn one_schema(f: &Frame) -> Result<SchemaDesc, PartError> {
-    match one_message(f)? {
-        Msg::Schema(s) => Ok(s),
-        Msg::Batch { .. } => Err(ipc_err(IpcError::Messages)),
+    match m {
+        ipc::Raw::Batch(m) => Ok(m),
+        ipc::Raw::Schema(_) => Err(ipc_err(IpcError::Messages)),
     }
 }
 
-/// A META/ERROR payload: schema, one-row batch, EOS; checked against `kind`; its columns.
+/// A META/ERROR payload: schema, one-row batch, EOS. The schema is checked against `kind`
+/// from the borrowed message (never copied); the columns are read with the canonical schema.
 fn stream(f: &Frame, kind: Kind) -> Result<Vec<Col>, PartError> {
-    let (schema, at) = ipc::read_message(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
-    let Msg::Schema(schema) = schema else {
+    let (raw, at) = ipc::read_raw(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
+    let ipc::Raw::Schema(raw) = raw else {
         return Err(ipc_err(IpcError::Messages));
     };
-    let (batch, at) = ipc::read_message(&f.payload, f.payload_offset, at).map_err(ipc_err)?;
-    if !matches!(batch, Msg::Batch { .. }) {
+    let schema = check_stream_schema(&raw, kind)?;
+    let (batch, at) = ipc::read_raw(&f.payload, f.payload_offset, at).map_err(ipc_err)?;
+    let ipc::Raw::Batch(batch) = batch else {
         return Err(ipc_err(IpcError::Messages));
-    }
+    };
     let tail = f.payload.as_bytes().get(at..);
     if tail != Some(&EOS[..]) {
         return Err(ipc_err(IpcError::Messages));
     }
-    check_schema(&schema, kind, true)?;
-    ipc::columns(&schema, &batch).map_err(ipc_err)
+    ipc::columns(&schema.fields, false, &batch).map_err(ipc_err)
 }
 
 fn u32_cell(c: Option<&Col>, r: usize) -> Result<u32, PartError> {
@@ -173,18 +177,45 @@ fn opt_str(c: Option<&Col>, r: usize) -> Result<Option<&str>, PartError> {
 
 #[derive(Debug)]
 struct Labels {
-    schema: SchemaDesc,
-    series: BTreeMap<u32, SeriesMeta>,
+    /// One exact-size, id-ordered slice per labels batch; ids rise across the part (B1 writes
+    /// them dense from 0), so a series costs one 32-byte entry, never a map node (B3 §3.1).
+    batches: Vec<Box<[(u32, SeriesMeta)]>>,
+    /// Label rows and label key and value bytes so far (B3 per-part limits).
+    rows: usize,
+    bytes: usize,
+}
+
+impl Labels {
+    fn get(&self, sid: u32) -> Option<&SeriesMeta> {
+        let b = self
+            .batches
+            .partition_point(|b| b.first().is_some_and(|(first, _)| *first <= sid));
+        let batch = self.batches.get(b.checked_sub(1)?)?;
+        let i = batch.binary_search_by_key(&sid, |(id, _)| *id).ok()?;
+        batch.get(i).map(|(_, m)| m)
+    }
+
+    fn last(&self) -> Option<u32> {
+        self.batches
+            .last()
+            .and_then(|b| b.last())
+            .map(|(id, _)| *id)
+    }
 }
 
 #[derive(Debug)]
 struct Data {
-    schema: SchemaDesc,
+    /// The two accepted grid columns only (the schema's metadata is not kept: `GridInfo`
+    /// shares `dash.unit` and `dash.planned`).
+    fields: Box<[ipc::FieldDesc]>,
     labels_part: u32,
     start_ms: i64,
     step_ms: i64,
     len: u32,
-    seen: BTreeSet<u32>,
+    /// Series sent so far and the last id: ids rise across the part's batches (B1), so a
+    /// repeated id is found without a set.
+    sent: usize,
+    last: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -247,10 +278,24 @@ pub struct BodyDecoder {
     any_failed: bool,
     stream_error: Option<ErrorRow>,
     verdict: Option<Verdict>,
+    limits: Limits,
+    /// Distinct part ids seen (B3 `distinct_parts`).
+    seen_parts: usize,
+    /// Body and value budget used (§3.1 accounting; charged once, never refunded).
+    used: u64,
+    values: u64,
+    /// The one label set of every series without labels (shared; no allocation per series).
+    no_labels: Arc<[(String, String)]>,
 }
 
 impl BodyDecoder {
+    /// A decoder with the default limits (`wire/schemas/limits.json`).
     pub fn new(first_chunk_id: u64) -> Self {
+        Self::with_limits(first_chunk_id, Limits::default())
+    }
+
+    /// A decoder with the limit set `limits` (tests use `limits-test.json`).
+    pub fn with_limits(first_chunk_id: u64, limits: Limits) -> Self {
         Self {
             parts: BTreeMap::new(),
             next: Some(first_chunk_id),
@@ -260,7 +305,83 @@ impl BodyDecoder {
             any_failed: false,
             stream_error: None,
             verdict: None,
+            limits,
+            seen_parts: 0,
+            used: 0,
+            values: 0,
+            no_labels: Arc::from(Vec::new()),
         }
+    }
+
+    /// `(open parts, distinct part ids seen, body budget used)`.
+    pub fn retained(&self) -> (usize, usize, u64) {
+        (self.open_parts(), self.seen_parts, self.used)
+    }
+
+    fn open_parts(&self) -> usize {
+        self.parts.values().filter(|p| p.state.open()).count()
+    }
+
+    /// A SCHEMA payload: exactly one Schema message. Its cost is debited from the body budget
+    /// from the borrowed message before anything is copied (B3: debit first, copy second); the
+    /// debit stays if the schema is then rejected.
+    fn kept_schema(&mut self, f: &Frame) -> Result<SchemaDesc, PartError> {
+        let (raw, end) = ipc::read_raw(&f.payload, f.payload_offset, 0).map_err(ipc_err)?;
+        if end != f.payload.len() {
+            return Err(ipc_err(IpcError::Messages));
+        }
+        let ipc::Raw::Schema(raw) = raw else {
+            return Err(ipc_err(IpcError::Messages));
+        };
+        self.charge(raw.cost())?;
+        raw.own().map_err(ipc_err)
+    }
+
+    /// Charges `n` bytes to the body budget; past it, the frame fails the stream.
+    fn charge(&mut self, n: u64) -> Result<(), PartError> {
+        match self.used.checked_add(n) {
+            Some(u) if u <= self.limits.body_budget => {
+                self.used = u;
+                Ok(())
+            }
+            _ => Err(PartError::Limit(BODY_BUDGET)),
+        }
+    }
+
+    /// Charges `n` bytes to the value budget; past it, the frame fails the stream.
+    fn charge_values(&mut self, n: u64) -> Result<(), PartError> {
+        match self.values.checked_add(n) {
+            Some(u) if u <= self.limits.value_budget => {
+                self.values = u;
+                Ok(())
+            }
+            _ => Err(PartError::Limit(VALUE_BUDGET)),
+        }
+    }
+
+    /// A META payload: its string and list limits (part `Limit`), its charge, then its row.
+    fn meta_coverage(&mut self, f: &Frame) -> Result<Coverage, PartError> {
+        let cols = stream(f, Kind::Coverage)?;
+        let (strings, elements) = coverage::coverage_counts(&cols)?;
+        if elements > self.limits.meta_list_elements {
+            return Err(PartError::Limit("meta list elements"));
+        }
+        if strings > self.limits.meta_string_bytes {
+            return Err(PartError::Limit("meta string bytes"));
+        }
+        self.charge(limits::coverage_cost(strings, elements))?;
+        coverage::coverage_row(&cols)
+    }
+
+    /// An ERROR payload: its string limit (part `Limit`), its charge, then its row.
+    fn meta_error(&mut self, f: &Frame) -> Result<ErrorRow, PartError> {
+        let cols = stream(f, Kind::Error)?;
+        let strings = coverage::error_counts(&cols)?;
+        if strings > self.limits.meta_string_bytes {
+            return Err(PartError::Limit("error string bytes"));
+        }
+        self.charge(limits::error_cost(strings))?;
+        coverage::error_row(&cols)
     }
 
     /// Decodes one frame. At most 3 events, plus 2 per data part linked to a labels part that
@@ -314,10 +435,17 @@ impl BodyDecoder {
         if h.kind == FrameType::Error
             && h.flags & FrameHeader::LAST != 0
             && self.stream_error.is_none()
-            && let Ok(error) = stream(f, Kind::Error).and_then(|c| coverage::error_row(&c))
         {
-            self.stream_error = Some(error.clone());
-            return vec![Event::Upstream { part: 0, error }];
+            match self.meta_error(f) {
+                Ok(error) => {
+                    self.stream_error = Some(error.clone());
+                    return vec![Event::Upstream { part: 0, error }];
+                }
+                Err(PartError::Limit(what)) => {
+                    return self.fail_stream(DsfError::Limit(what));
+                }
+                Err(_) => {}
+            }
         }
         self.fail_stream(DsfError::Malformed("part 0"))
     }
@@ -326,6 +454,19 @@ impl BodyDecoder {
         let h = f.header;
         let id = h.part_id;
         let mut ev = Vec::new();
+        if !self.parts.contains_key(&id) {
+            // A new part (B3 §3.3): open_parts, distinct_parts and its charge, all stream-level.
+            if self.open_parts() >= self.limits.open_parts {
+                return self.fail_stream(DsfError::Limit("open parts"));
+            }
+            if self.seen_parts >= self.limits.distinct_parts {
+                return self.fail_stream(DsfError::Limit("distinct parts"));
+            }
+            if self.charge(limits::cost::PART).is_err() {
+                return self.fail_stream(DsfError::Limit(BODY_BUDGET));
+            }
+            self.seen_parts += 1;
+        }
         let part = self.parts.entry(id).or_insert(Part {
             rank: h.rank,
             flags: h.flags & PART_FLAGS,
@@ -354,6 +495,13 @@ impl BodyDecoder {
                     p.state = next;
                 }
             }
+            Err(PartError::Limit(what)) if what == BODY_BUDGET || what == VALUE_BUDGET => {
+                // A budget: the stream fails, this part with every other open part.
+                if let Some(p) = self.parts.get_mut(&id) {
+                    p.state = State::New;
+                }
+                ev.extend(self.fail_stream(DsfError::Limit(what)));
+            }
             Err(reason) => self.fail(id, reason, &mut ev),
         }
         ev
@@ -374,18 +522,21 @@ impl BodyDecoder {
                 if last {
                     return Err(PartError::Order("SCHEMA with LAST"));
                 }
-                let schema = one_schema(f)?;
+                let schema = self.kept_schema(f)?;
                 check_schema(&schema, Kind::Labels, false)?;
+                // Accepted: it is exactly the canonical labels/1 schema, which reads the batches.
+                drop(schema);
                 Ok(State::LabelsOpen(Box::new(Labels {
-                    schema,
-                    series: BTreeMap::new(),
+                    batches: Vec::new(),
+                    rows: 0,
+                    bytes: 0,
                 })))
             }
             (State::New, FrameType::Meta) => {
                 if last {
                     return Err(PartError::Order("planned META with LAST"));
                 }
-                let c = coverage::coverage_row(&stream(f, Kind::Coverage)?)?;
+                let c = self.meta_coverage(f)?;
                 if c.phase != Phase::Planned {
                     return Err(PartError::Value("phase"));
                 }
@@ -395,14 +546,32 @@ impl BodyDecoder {
                 if !last {
                     return Err(PartError::Order("ERROR without LAST"));
                 }
-                let error = coverage::error_row(&stream(f, Kind::Error)?)?;
+                let error = self.meta_error(f)?;
                 ev.push(Event::Upstream { part: id, error });
                 ev.push(Event::PartEnd { part: id });
                 Ok(State::Done)
             }
             (State::LabelsOpen(mut l), FrameType::Batch) => {
-                let rows = labels_batch(&l, f)?;
-                l.series.extend(rows);
+                let msg = one_message(f)?;
+                let cols =
+                    ipc::columns(&canonical(Kind::Labels).fields, false, &msg).map_err(ipc_err)?;
+                let (rows, groups, bytes, cost) = labels_counts(&cols)?;
+                if rows > self.limits.rows_per_batch_labels {
+                    return Err(PartError::Limit("rows per batch"));
+                }
+                if l.rows + rows > self.limits.label_rows_per_part {
+                    return Err(PartError::Limit("label rows"));
+                }
+                if l.bytes + bytes > self.limits.label_bytes_per_part {
+                    return Err(PartError::Limit("label bytes"));
+                }
+                self.charge(cost)?;
+                let series = labels_batch(&l, &cols, groups, &self.no_labels)?;
+                if !series.is_empty() {
+                    l.batches.push(series);
+                }
+                l.rows += rows;
+                l.bytes += bytes;
                 if !last {
                     return Ok(State::LabelsOpen(l));
                 }
@@ -414,17 +583,18 @@ impl BodyDecoder {
                 if last {
                     return Err(PartError::Order("SCHEMA with LAST"));
                 }
-                let schema = one_schema(f)?;
+                let schema = self.kept_schema(f)?;
                 check_schema(&schema, Kind::Grid, false)?;
                 let (info, labels_part) = grid_info(&schema)?;
                 self.check_link(id, labels_part, h)?;
                 let data = Data {
-                    schema,
+                    fields: schema.fields.into_boxed_slice(),
                     labels_part,
                     start_ms: info.start_ms,
                     step_ms: info.step_ms,
                     len: info.len,
-                    seen: BTreeSet::new(),
+                    sent: 0,
+                    last: None,
                 };
                 ev.push(Event::Grid {
                     part: id,
@@ -447,7 +617,7 @@ impl BodyDecoder {
                 Ok(State::DataOpen(d))
             }
             (State::DataOpen(d), FrameType::Meta) => {
-                let coverage = coverage::coverage_row(&stream(f, Kind::Coverage)?)?;
+                let coverage = self.meta_coverage(f)?;
                 let labels_part = d.labels_part;
                 match (coverage.phase, last) {
                     (Phase::Planned, _) => Err(PartError::Value("phase")),
@@ -619,13 +789,16 @@ impl BodyDecoder {
     /// A grid batch → one chunk: values and validity copied once into exact-size buffers.
     fn data_batch(&mut self, d: &mut Data, f: &Frame) -> Result<Chunk, PartError> {
         let id = self.next.ok_or(PartError::Limit("chunk ids"))?;
-        let labels = self
+        if self
             .parts
             .get(&d.labels_part)
             .and_then(|p| p.state.labels())
-            .ok_or(PartError::Order("labels part failed"))?;
+            .is_none()
+        {
+            return Err(PartError::Order("labels part failed"));
+        }
         let msg = one_message(f)?;
-        let cols = ipc::columns(&d.schema, &msg).map_err(ipc_err)?;
+        let cols = ipc::columns(&d.fields, true, &msg).map_err(ipc_err)?;
         let (ids, vals) = match cols.as_slice() {
             [ids, vals] => (ids, vals),
             _ => return Err(ipc_err(IpcError::Messages)),
@@ -640,21 +813,33 @@ impl BodyDecoder {
             return Err(ipc_err(IpcError::Messages));
         };
         let rows = ids.len;
+        // B3 §3.3: the per-part limits, then both budgets, before any allocation below.
+        if rows > self.limits.rows_per_batch_grid {
+            return Err(PartError::Limit("rows per batch"));
+        }
+        if d.sent + rows > self.limits.series_per_part {
+            return Err(PartError::Limit("series per part"));
+        }
+        self.charge(limits::batch_cost(rows))?;
+        self.charge_values(limits::value_cost(child.len))?;
+        let labels = self
+            .parts
+            .get(&d.labels_part)
+            .and_then(|p| p.state.labels())
+            .ok_or(PartError::Order("labels part failed"))?;
         let mut series = Vec::with_capacity(rows);
         for r in 0..rows {
             let sid = u32_cell(Some(ids), r)?;
-            let meta = labels
-                .series
-                .get(&sid)
-                .ok_or(PartError::MissingLabels(sid))?;
-            if !d.seen.insert(sid) {
+            let meta = labels.get(sid).ok_or(PartError::MissingLabels(sid))?;
+            if d.last.is_some_and(|last| sid <= last) {
                 return Err(PartError::DuplicateSeries(sid));
             }
+            d.last = Some(sid);
             series.push(meta.clone());
         }
+        d.sent += rows;
         let n = child.len;
         let total = u32::try_from(n).map_err(|_| PartError::Limit("chunk size"))?;
-        // B3 charges value_budget here, before the allocations below.
         let validity = if child.nulls > 0 {
             child.validity.as_ref().map(|v| v.as_bytes())
         } else {
@@ -703,25 +888,59 @@ impl BodyDecoder {
 /// One series' rows in a labels batch: (series id, key hash, labels, had a null row).
 type Group = (u32, u64, Vec<(String, String)>, bool);
 
+/// `(rows, label key and value bytes, body-budget charge)` of a labels batch, from its validated
+/// columns before anything is copied (B3 §3.1): 96 per series (run of one series id) + 48 + key
+/// + value per non-null row.
+fn labels_counts(cols: &[Col]) -> Result<(usize, usize, usize, u64), PartError> {
+    let rows = cols.first().map_or(0, |c| c.len);
+    let bad = || ipc_err(IpcError::Layout("column"));
+    let (keys, vals) = (cols.get(2).ok_or_else(bad)?, cols.get(3).ok_or_else(bad)?);
+    let (mut bytes, mut cost, mut prev, mut groups) = (0usize, 0u64, None, 0usize);
+    for r in 0..rows {
+        let sid = u32_cell(cols.first(), r)?;
+        if prev != Some(sid) {
+            cost += limits::cost::SERIES;
+            groups += 1;
+            prev = Some(sid);
+        }
+        let len = |c: &Col| -> Result<usize, PartError> {
+            if c.valid(r) {
+                c.str_len(r).ok_or_else(bad)
+            } else {
+                Ok(0)
+            }
+        };
+        let kv = len(keys)? + len(vals)?;
+        if keys.valid(r) || vals.valid(r) {
+            cost += limits::cost::LABEL + kv as u64;
+        }
+        bytes += kv;
+    }
+    Ok((rows, groups, bytes, cost))
+}
+
 /// A labels batch → `(series id, SeriesMeta)` rows, with the §4.1 shape rules: rows of a
 /// series contiguous and in one batch, one key hash, no half-null label, a null row alone,
 /// names strictly increasing by bytes.
-fn labels_batch(l: &Labels, f: &Frame) -> Result<Vec<(u32, SeriesMeta)>, PartError> {
-    let msg = one_message(f)?;
-    let cols = ipc::columns(&l.schema, &msg).map_err(ipc_err)?;
+fn labels_batch(
+    l: &Labels,
+    cols: &[Col],
+    groups: usize,
+    no_labels: &Arc<[(String, String)]>,
+) -> Result<Box<[(u32, SeriesMeta)]>, PartError> {
     let rows = cols.first().map_or(0, |c| c.len);
-    let mut out: Vec<(u32, SeriesMeta)> = Vec::new();
-    let mut here = BTreeSet::new();
+    // Exactly `groups` series (counted by `labels_counts`): no growth slack is retained.
+    let mut out: Vec<(u32, SeriesMeta)> = Vec::with_capacity(groups);
     let mut cur: Option<Group> = None;
+    let last = l.last();
     let finish = |cur: Option<Group>, out: &mut Vec<(u32, SeriesMeta)>| {
         if let Some((sid, key_hash, labels, _)) = cur {
-            out.push((
-                sid,
-                SeriesMeta {
-                    key_hash,
-                    labels: Arc::from(labels),
-                },
-            ));
+            let labels = if labels.is_empty() {
+                Arc::clone(no_labels)
+            } else {
+                Arc::from(labels)
+            };
+            out.push((sid, SeriesMeta { key_hash, labels }));
         }
     };
     for r in 0..rows {
@@ -731,11 +950,16 @@ fn labels_batch(l: &Labels, f: &Frame) -> Result<Vec<(u32, SeriesMeta)>, PartErr
         let v = opt_str(cols.get(3), r)?;
         if cur.as_ref().is_none_or(|c| c.0 != sid) {
             finish(cur.take(), &mut out);
-            if l.series.contains_key(&sid) {
+            if l.get(sid).is_some() {
                 return Err(PartError::DuplicateSeries(sid));
             }
-            if !here.insert(sid) {
-                return Err(PartError::Shape("non-contiguous rows"));
+            let prev = out.last().map(|(id, _)| *id).or(last);
+            if prev.is_some_and(|p| sid <= p) {
+                return Err(if out.binary_search_by_key(&sid, |(id, _)| *id).is_ok() {
+                    PartError::Shape("non-contiguous rows")
+                } else {
+                    PartError::Shape("series order")
+                });
             }
             cur = Some((sid, key, Vec::new(), false));
         }
@@ -768,5 +992,25 @@ fn labels_batch(l: &Labels, f: &Frame) -> Result<Vec<(u32, SeriesMeta)>, PartErr
         }
     }
     finish(cur, &mut out);
-    Ok(out)
+    Ok(out.into_boxed_slice())
+}
+
+#[cfg(test)]
+mod tests {
+    //! The retained part state against its charges (B3 §3.1; review r4).
+    use super::*;
+    use crate::limits::cost;
+    use std::mem::size_of;
+
+    #[test]
+    fn part_state_fits_its_charges() {
+        // A labels part keeps its boxed state only: its accepted schema is the canonical one.
+        assert!(size_of::<Labels>() <= cost::SCHEMA as usize);
+        // A data part keeps its boxed state and its two grid columns plus the values child;
+        // their names are charged byte for byte with the schema.
+        assert!(size_of::<Data>() + 3 * size_of::<ipc::FieldDesc>() <= cost::SCHEMA as usize);
+        // A part's map slot: a B-tree leaf holds 11 slots and, below the root, at least 5, so a
+        // part takes at most (11 slots + node header and edges) / 5.
+        assert!((11 * size_of::<(u32, Part)>() + 112) / 5 <= cost::PART as usize);
+    }
 }
