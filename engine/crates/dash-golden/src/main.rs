@@ -1,7 +1,7 @@
 //! `dash-golden render` and `dash-golden compare` (plan #68 A.11 §3.12).
 //!
 //! ```text
-//! dash-golden render  --page line-1|line-50|line-gaps|line-600 --theme dark|light
+//! dash-golden render  --page line-1|line-50|line-gaps|line-600|line-extreme --theme dark|light
 //!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX] --out <png>
 //! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] [--tile-max V]
 //!                     → prints the mean ꟻLIP, then the largest 8×8 tile mean with --tile-max
@@ -32,7 +32,7 @@ fn pair(s: &str, sep: char) -> Option<(f64, f64)> {
 
 fn render(args: &[String]) -> Result<(), String> {
     let page = flag(args, "--page").ok_or("--page is required")?;
-    let line = GalleryLine::ALL
+    let line = GalleryLine::RENDERABLE
         .into_iter()
         .find(|g| g.id() == page)
         .ok_or(format!("unknown page {page}"))?;

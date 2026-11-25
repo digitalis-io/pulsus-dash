@@ -7,15 +7,16 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
 import { GALLERY_IDS, GALLERY_URL, open } from './helpers.ts';
 import {
+  canvasPng,
   ENGINE_URL,
   engineRequests,
   engines,
   framesReady,
   leg,
   LINE_IDS,
-  liveCanvas,
   plotInk,
   plotRect,
+  tierOf,
   TIERS,
 } from './engine.ts';
 import { decodePng, type Rgba } from './png.ts';
@@ -137,58 +138,75 @@ test.describe('e2e:mode-matrix', () => {
   });
 });
 
-/** `line-1`'s canvas (dark) on `query`, device px. */
-async function shot(
+/** The five line pages of `canvas2d parity`. */
+const PARITY_PAGES = ['line-1', 'line-50', 'line-gaps', 'line-600', 'line-extreme'] as const;
+
+interface Shot {
+  img: Rgba;
+  plot: number[];
+}
+
+/** Every parity page's canvas and plot on one gallery load of `query` in `theme`, device px. */
+async function frames(
   browser: Browser,
   query: string,
-): Promise<{ img: Rgba; plot: number[]; dpr: number }> {
+  theme: string,
+): Promise<{ shots: Map<string, Shot>; dpr: number }> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   try {
     const page = await ctx.newPage();
+    await page.addInitScript((t) => {
+      localStorage.setItem('pulsus-dash.theme', t);
+    }, theme);
     await open(page, `${GALLERY_URL}${query}`);
     await framesReady(page);
-    return {
-      img: decodePng(await liveCanvas(page, 'line-1').screenshot({ scale: 'device' })),
-      plot: await plotRect(page, 'line-1'),
-      dpr: await page.evaluate(() => devicePixelRatio),
-    };
+    const shots = new Map<string, Shot>();
+    for (const id of PARITY_PAGES) {
+      shots.set(id, { img: decodePng(await canvasPng(page, id)), plot: await plotRect(page, id) });
+    }
+    return { shots, dpr: await page.evaluate(() => devicePixelRatio) };
   } finally {
     await ctx.close();
   }
 }
 
-/** The largest channel difference at (x, y), or over its 3 × 3 neighbourhood with `around`. */
+/** The largest channel difference at (x, y), or over its 3 × 3 neighbourhood (±1 device px). */
 function diff(a: Rgba, b: Rgba, x: number, y: number, around = false): number {
   let m = 0;
   for (let dy = around ? -1 : 0; dy <= (around ? 1 : 0); dy++) {
     for (let dx = around ? -1 : 0; dx <= (around ? 1 : 0); dx++) {
       const i = ((y + dy) * a.w + (x + dx)) * 4;
-      for (let k = 0; k < 3; k++)
+      for (let k = 0; k < 3; k++) {
         m = Math.max(m, Math.abs((a.px[i + k] ?? 0) - (b.px[i + k] ?? 0)));
+      }
     }
   }
   return m;
 }
 
-/** 32 line points evenly in x and 32 background points ≥ 4 px from the line (the Canvas 2D mask). */
+/**
+ * The Canvas 2D line mask (the frame with and without data differs by ≥ 64 in a channel): 32
+ * line points evenly in x, and 32 background points at least 4 px from the mask.
+ */
 function probes(withLine: Rgba, without: Rgba, plot: number[], dpr: number) {
   const [x = 0, y = 0, w = 0, h = 0] = plot.map((v) => Math.round(v * dpr));
   const mask = (px: number, py: number): boolean => diff(withLine, without, px, py) >= 64;
   const near = (px: number, py: number): boolean => {
-    for (let dy = -4; dy <= 4; dy++)
+    for (let dy = -4; dy <= 4; dy++) {
       for (let dx = -4; dx <= 4; dx++) if (mask(px + dx, py + dy)) return true;
+    }
     return false;
   };
   const line: [number, number][] = [];
   const background: [number, number][] = [];
   for (let k = 0; k < 32; k++) {
-    const px = x + 2 + Math.floor(((w - 4) * (k + 0.5)) / 32);
+    const px = x + 4 + Math.floor(((w - 8) * (k + 0.5)) / 32);
     const ys: number[] = [];
     for (let py = y + 1; py < y + h - 1; py++) if (mask(px, py)) ys.push(py);
     const mid = ys[ys.length >> 1];
     if (mid !== undefined) line.push([px, mid]);
-    for (let j = 0; j < h; j += 7) {
-      const py = y + 4 + ((j + k * 13) % Math.max(1, h - 8));
+    for (let j = 0; j < h - 8; j++) {
+      const py = y + 4 + ((j * 37 + k * 13) % Math.max(1, h - 8));
       if (!near(px, py)) {
         background.push([px, py]);
         break;
@@ -198,25 +216,54 @@ function probes(withLine: Rgba, without: Rgba, plot: number[], dpr: number) {
   return { line, background };
 }
 
-test.describe('webgpu line presence (VIZ-001)', () => {
-  test('the WebGPU engine draws line-1 where Canvas 2D does', async ({ browser }, info) => {
-    only(info, 'swiftshader');
-    test.setTimeout(120_000);
-    await leg(info, async () => {
-      const ref = await shot(browser, '&engine=canvas2d');
-      const refEmpty = await shot(browser, '&engine=canvas2d&fault=empty');
-      const p = probes(ref.img, refEmpty.img, ref.plot, ref.dpr);
-      expect(p.line.length).toBe(32);
-      expect(p.background.length).toBe(32);
-      const count = (a: Rgba, b: Rgba, pts: [number, number][], around: boolean): number =>
-        pts.filter(([x, y]) => diff(a, b, x, y, around) >= 64).length;
-      const empty = await shot(browser, '&engine=wasm&fault=empty');
-      const wasm = await shot(browser, '&engine=wasm');
-      expect(count(wasm.img, empty.img, p.line, true)).toBeGreaterThanOrEqual(28);
-      expect(count(wasm.img, empty.img, p.background, false)).toBeLessThanOrEqual(8);
-      // The negative: with no line drawn the same check fails.
-      const noline = await shot(browser, '&engine=wasm&fault=noline');
-      expect(count(noline.img, empty.img, p.line, true)).toBeLessThan(28);
+const count = (a: Rgba, b: Rgba, pts: [number, number][], around: boolean): number =>
+  pts.filter(([x, y]) => diff(a, b, x, y, around) >= 64).length;
+
+/**
+ * `canvas2d parity` (plan #68 C1 §5; VIZ-001): sampled geometric parity with Canvas 2D. The
+ * engine's plot rects equal Canvas 2D's, and the engine draws a line where Canvas 2D does (the
+ * sampled line mask, ±1 device px); anti-aliasing differs by design, so pixel identity is gated
+ * against the native renderer instead (`golden:engine-line`). Negative: `noline` (no line drawn)
+ * must fail the mask.
+ */
+test.describe('canvas2d parity (VIZ-001)', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`sampled geometric parity with Canvas 2D (${theme})`, async ({ browser }, info) => {
+      test.setTimeout(180_000);
+      const tier = tierOf(info);
+      await leg(info, async () => {
+        const c2 = await frames(browser, '&engine=canvas2d', theme);
+        const c2e = await frames(browser, '&engine=canvas2d&fault=empty', theme);
+        const wa = await frames(browser, tier.query, theme);
+        const wae = await frames(browser, `${tier.query}&fault=empty`, theme);
+        const get = (f: { shots: Map<string, Shot> }, id: string): Shot => {
+          const s = f.shots.get(id);
+          if (s === undefined) throw new Error(`${id}: no shot`);
+          return s;
+        };
+        for (const id of PARITY_PAGES) {
+          const [a, ae, w, we] = [c2, c2e, wa, wae].map((f) => get(f, id));
+          if (a === undefined || ae === undefined || w === undefined || we === undefined) {
+            throw new Error(id);
+          }
+          expect(w.plot, `${id} ${theme}: data-plot`).toEqual(a.plot);
+          const p = probes(a.img, ae.img, a.plot, c2.dpr);
+          expect([p.line.length, p.background.length], `${id} ${theme}: probes`).toEqual([32, 32]);
+          expect(count(w.img, we.img, p.line, true), `${id} ${theme}: line`).toBeGreaterThanOrEqual(
+            28,
+          );
+          expect(
+            count(w.img, we.img, p.background, false),
+            `${id} ${theme}: background`,
+          ).toBeLessThanOrEqual(8);
+        }
+        if (theme !== 'dark') return;
+        // The negative: with no line drawn the same check fails.
+        const id = 'line-1';
+        const n = get(await frames(browser, `${tier.query}&fault=noline`, theme), id);
+        const p = probes(get(c2, id).img, get(c2e, id).img, get(c2, id).plot, c2.dpr);
+        expect(count(n.img, get(wae, id).img, p.line, true), 'noline').toBeLessThan(28);
+      });
     });
-  });
+  }
 });

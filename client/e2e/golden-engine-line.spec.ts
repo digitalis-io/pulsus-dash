@@ -1,105 +1,89 @@
 /**
- * `golden:engine-line` (plan #68 C1 §5; T05-005, VIZ-001): the engine's line frames against the
- * Canvas 2D render of the same page, inside the plot (edges included): mean ꟻLIP ≤ 0.005 and no
- * 8 × 8 tile above 0.25; equal plot rects. Gated in `lavapipe` (WebGL2, `&engine=wasm&mode=t2`);
- * report-only in `swiftshader` (WebGPU). Before any comparison the captured canvas must be on the
- * project's tier, status and adapter. A window shifted by 1 % and the `gap` fault must fail.
+ * `golden:engine-line` (plan #68 C1 §5; T05-005, VIZ-001): the browser engine against the native
+ * renderer (`dash-golden render`) of the same page, theme, CSS size and DPR. Gated in `lavapipe`
+ * (WebGL2, `&engine=wasm&mode=t2`, native T2); report-only in `swiftshader` (WebGPU, native T1).
+ * Before any comparison the captured canvas must be on the project's tier, status and adapter;
+ * both images are `round(css × dpr)`; `compare --max 0.001 --tile-max 0.05` must pass. A window
+ * shifted by 1 % and the `gap` fault must fail it. Canvas 2D parity is `canvas2d parity`
+ * (engine-mode-matrix.spec.ts): anti-aliasing differs between the two renderers by design.
  */
-import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { expect, test, type Browser, type TestInfo } from '@playwright/test';
 import { enc, GALLERY, open } from './helpers.ts';
 import {
   canvasShot,
-  compareShots,
+  compareImages,
   framesReady,
   leg,
   liveCanvas,
-  plotRect,
+  nativeRender,
   tierOf,
-  type Tier,
 } from './engine.ts';
+import { decodePng } from './png.ts';
 
 const PAGES = ['line-1', 'line-50', 'line-gaps', 'line-600', 'line-extreme'] as const;
 const FROM = Date.UTC(2026, 10, 19, 12);
 const TO = Date.UTC(2026, 10, 19, 13);
+const LIMITS = { max: 0.001, tileMax: 0.05 };
 
 function url(query: string, shiftMs = 0, extra = ''): string {
   const iso = (ms: number): string => enc(new Date(ms).toISOString());
   return `${GALLERY}?from=${iso(FROM + shiftMs)}&to=${iso(TO + shiftMs)}&refresh=off${query}${extra}`;
 }
 
-interface Shot {
-  path: string;
-  plot: number[];
-  dpr: number;
-}
-
-async function shoot(
-  page: Page,
+/** The engine's canvas of `id` and the native render of the same frame; their comparison. */
+async function versusNative(
+  browser: Browser,
   info: TestInfo,
-  theme: string,
-  target: string,
-  id: string,
-  name: string,
-  tier: Tier | null,
-): Promise<Shot> {
-  await page.addInitScript((t) => {
-    localStorage.setItem('pulsus-dash.theme', t);
-  }, theme);
-  await open(page, target);
-  await framesReady(page);
-  if (tier !== null) {
-    // The captured canvas is the engine's, on the project's tier.
-    await expect(liveCanvas(page, id)).toHaveAttribute('data-engine', tier.engine);
+  o: { id: string; theme: string; scale: number; target: string },
+): Promise<{ code: number; out: string }> {
+  const tier = tierOf(info);
+  const ctx = await browser.newContext({
+    deviceScaleFactor: o.scale,
+    viewport: { width: 1440, height: 900 },
+  });
+  try {
+    const page = await ctx.newPage();
+    await page.addInitScript((t) => {
+      localStorage.setItem('pulsus-dash.theme', t);
+    }, o.theme);
+    await open(page, o.target);
+    await framesReady(page);
+    await expect(liveCanvas(page, o.id)).toHaveAttribute('data-engine', tier.engine);
     const html = page.locator('html');
     await expect(html).toHaveAttribute('data-dash-status', tier.status);
     await expect(html).toHaveAttribute('data-dash-adapter', tier.adapter);
-  }
-  return {
-    path: await canvasShot(page, id, info, name),
-    plot: await plotRect(page, id),
-    dpr: await page.evaluate(() => devicePixelRatio),
-  };
-}
-
-async function pair(
-  browser: Browser,
-  info: TestInfo,
-  o: { id: string; theme: string; scale: number; wasm: string },
-): Promise<{ code: number; out: string }> {
-  const ctx = async () =>
-    browser.newContext({ deviceScaleFactor: o.scale, viewport: { width: 1440, height: 900 } });
-  const c2 = await ctx();
-  const w = await ctx();
-  try {
+    const box = await liveCanvas(page, o.id).boundingBox();
+    if (box === null) throw new Error(`${o.id}: no box`);
+    const css = [Math.round(box.width), Math.round(box.height)] as const;
     const tag = `${o.id}@${o.theme}-${String(o.scale)}`;
-    const ref = await shoot(
-      await c2.newPage(),
-      info,
-      o.theme,
-      url('&engine=canvas2d'),
-      o.id,
-      `${tag}-canvas2d`,
-      null,
-    );
-    const got = await shoot(
-      await w.newPage(),
-      info,
-      o.theme,
-      o.wasm,
-      o.id,
-      `${tag}-wasm`,
-      tierOf(info),
-    );
-    expect(got.plot, `${tag}: data-plot`).toEqual(ref.plot);
-    return compareShots(ref.path, got.path, ref.plot, ref.dpr);
+    const got = await canvasShot(page, o.id, info, `${tag}-browser`);
+    const want = info.outputPath(`${tag}-native.png`);
+    nativeRender({
+      page: o.id,
+      theme: o.theme,
+      css,
+      dpr: o.scale,
+      tier: tier.engine === 'wasm-webgl2' ? 't2' : 't1',
+      out: want,
+    });
+    const size = (p: string): [number, number] => {
+      const i = decodePng(readFileSync(p));
+      return [i.w, i.h];
+    };
+    const device = css.map((c) => Math.round(c * o.scale));
+    expect(size(got), `${tag}: browser image size`).toEqual(device);
+    expect(size(want), `${tag}: native image size`).toEqual(device);
+    return compareImages(want, got, LIMITS);
   } finally {
-    await c2.close();
-    await w.close();
+    await ctx.close();
   }
 }
 
 test.describe('golden:engine-line', () => {
-  test('line pages × themes, and line-50 at scale 2', async ({ browser }, info) => {
+  test('line pages × themes, and line-50 at scale 2, against the native render', async ({
+    browser,
+  }, info) => {
     test.setTimeout(300_000);
     const tier = tierOf(info);
     await leg(info, async () => {
@@ -108,7 +92,7 @@ test.describe('golden:engine-line', () => {
         { id: 'line-50', theme: 'dark', scale: 2 },
       ];
       for (const c of cases) {
-        const r = await pair(browser, info, { ...c, wasm: url(tier.query) });
+        const r = await versusNative(browser, info, { ...c, target: url(tier.query) });
         const what = `${c.id} ${c.theme} ×${String(c.scale)}: ${r.out.trim()}`;
         if (tier.goldens) expect.soft(r.code, what).toBe(0);
         else console.log(`golden:engine-line report-only (${info.project.name}): ${what}`);
@@ -123,12 +107,17 @@ test.describe('golden:engine-line', () => {
     const tier = tierOf(info);
     await leg(info, async () => {
       const shift = (TO - FROM) / 100;
-      const base = { id: 'line-50', theme: 'dark', scale: 1 };
-      const shifted = await pair(browser, info, { ...base, wasm: url(tier.query, shift) });
-      const gap = await pair(browser, info, {
-        ...base,
+      const shifted = await versusNative(browser, info, {
+        id: 'line-50',
+        theme: 'dark',
+        scale: 1,
+        target: url(tier.query, shift),
+      });
+      const gap = await versusNative(browser, info, {
         id: 'line-1',
-        wasm: url(tier.query, 0, '&fault=gap'),
+        theme: 'dark',
+        scale: 1,
+        target: url(tier.query, 0, '&fault=gap'),
       });
       if (tier.goldens) {
         expect(shifted.code, shifted.out).toBe(1);

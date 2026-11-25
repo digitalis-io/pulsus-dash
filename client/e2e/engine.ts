@@ -121,7 +121,7 @@ export async function plotRect(page: Page, id: string): Promise<number[]> {
 
 /** Pixels of the plot that differ from its first pixel (the background), device px. */
 export async function plotInk(page: Page, id: string): Promise<number> {
-  const shot = decodePng(await liveCanvas(page, id).screenshot({ scale: 'device' }));
+  const shot = decodePng(await canvasPng(page, id));
   const dpr = await page.evaluate(() => devicePixelRatio);
   const [x = 0, y = 0, w = 0, h = 0] = await plotRect(page, id);
   const x0 = Math.floor(x * dpr);
@@ -144,6 +144,40 @@ export async function plotInk(page: Page, id: string): Promise<number> {
 }
 
 /** A device-scale screenshot of a frame's live canvas, written under the test's output. */
+/**
+ * A device-scale screenshot of a frame's live canvas, clipped to its box rounded to whole CSS px,
+ * so the image is `round(css × dpr)` even when the box starts at a fractional page position (an
+ * element screenshot would take the extra partly covered row).
+ */
+export async function canvasPng(page: Page, id: string): Promise<Buffer> {
+  const canvas = liveCanvas(page, id);
+  // The clip is in viewport coordinates: the whole canvas must be in view.
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  if (box === null) throw new Error(`${id}: the canvas has no box`);
+  // The canvas alone: ChartFrame's overlays (notices, the crosshair) hidden through CSSOM.
+  const hide = (on: boolean) =>
+    canvas.evaluate((c, hidden) => {
+      for (const el of c.parentElement?.children ?? []) {
+        if (el !== c) (el as HTMLElement).style.visibility = hidden ? 'hidden' : '';
+      }
+    }, on);
+  await hide(true);
+  try {
+    return await page.screenshot({
+      scale: 'device',
+      clip: {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+      },
+    });
+  } finally {
+    await hide(false);
+  }
+}
+
 export async function canvasShot(
   page: Page,
   id: string,
@@ -152,47 +186,66 @@ export async function canvasShot(
 ): Promise<string> {
   const path = info.outputPath(`${name}.png`);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, await liveCanvas(page, id).screenshot({ scale: 'device' }));
+  writeFileSync(path, await canvasPng(page, id));
   return path;
 }
 
-/**
- * `dash-golden compare` over the plot rect (edges included) with the engine golden limits
- * (T05-005): the exit code, 0 = within both.
- */
-export function compareShots(
-  a: string,
-  b: string,
-  plot: number[],
-  dpr: number,
-  o: { tileMax?: boolean } = {},
-): { code: number; out: string } {
+function goldenBin(): string {
   const bin = process.env['DASH_GOLDEN_BIN'];
   if (bin === undefined || bin === '') throw new Error('DASH_GOLDEN_BIN is not set');
-  const [x = 0, y = 0, w = 0, h = 0] = plot;
-  const x0 = Math.floor(x * dpr);
-  const y0 = Math.floor(y * dpr);
-  const region = [
-    x0,
-    y0,
-    Math.ceil((x + w) * dpr) - x0 + 1,
-    Math.ceil((y + h) * dpr) - y0 + 1,
-  ].join(',');
-  const r = spawnSync(
-    bin,
-    [
-      'compare',
-      a,
-      b,
-      '--region',
-      region,
-      '--max',
-      '0.005',
-      ...(o.tileMax === false ? [] : ['--tile-max', '0.25']),
-    ],
-    {
-      encoding: 'utf8',
-    },
-  );
+  return bin;
+}
+
+/**
+ * `dash-golden compare a b` with `--max`, optionally `--tile-max` and a region (CSS px rect,
+ * edges included, at `dpr`): the exit code (0 = within) and the printed means.
+ */
+export function compareImages(
+  a: string,
+  b: string,
+  o: { max: number; tileMax?: number; plot?: number[]; dpr?: number },
+): { code: number; out: string } {
+  const args = ['compare', a, b, '--max', String(o.max)];
+  if (o.tileMax !== undefined) args.push('--tile-max', String(o.tileMax));
+  if (o.plot !== undefined) {
+    const dpr = o.dpr ?? 1;
+    const [x = 0, y = 0, w = 0, h = 0] = o.plot;
+    const x0 = Math.floor(x * dpr);
+    const y0 = Math.floor(y * dpr);
+    const region = [x0, y0, Math.ceil((x + w) * dpr) - x0 + 1, Math.ceil((y + h) * dpr) - y0 + 1];
+    args.push('--region', region.join(','));
+  }
+  const r = spawnSync(goldenBin(), args, { encoding: 'utf8' });
   return { code: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
+}
+
+/** `dash-golden render` of a gallery line page (the native lavapipe renderer, plan #68 C1). */
+export function nativeRender(o: {
+  page: string;
+  theme: string;
+  css: readonly [number, number];
+  dpr: number;
+  tier: 't1' | 't2';
+  out: string;
+}): void {
+  const r = spawnSync(
+    goldenBin(),
+    [
+      'render',
+      '--page',
+      o.page,
+      '--theme',
+      o.theme,
+      '--size',
+      `${String(o.css[0])}x${String(o.css[1])}`,
+      '--dpr',
+      String(o.dpr),
+      '--tier',
+      o.tier,
+      '--out',
+      o.out,
+    ],
+    { encoding: 'utf8' },
+  );
+  if (r.status !== 0) throw new Error(`dash-golden render ${o.page}: ${r.stdout}${r.stderr}`);
 }

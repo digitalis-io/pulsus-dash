@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 import { frame, GALLERY_URL, open, waitReady } from './helpers.ts';
 import {
   canvasShot,
-  compareShots,
+  compareImages,
   engines,
   framesReady,
   leg,
@@ -43,7 +43,7 @@ test.describe('e2e:engine-recovery', () => {
         const plot = await plotRect(ref, 'line-1');
         // The mean only: the notice lies over the fallback's plot (plan: ≤ 0.005).
         const dpr = await ref.evaluate(() => devicePixelRatio);
-        const r = compareShots(want, got, plot, dpr, { tileMax: false });
+        const r = compareImages(want, got, { max: 0.005, plot, dpr });
         expect(r.code, r.out).toBe(0);
       } finally {
         await ref.close();

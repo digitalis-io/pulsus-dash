@@ -143,7 +143,8 @@ keep an entry alive that the app no longer imports (#135).
 | `initialCss` | the CSS of those chunks | 30 000 |
 | `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts`, `src/editor/logqlEditor.ts`; every entry is also a required lazy module, so a missing one fails as `missing-artefact`) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
 | `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
-| `fonts`, `totalExceptEngine` | the fonts; every file | 150 000; 1 000 000 |
+| `fonts`, `totalExceptEngine` | the fonts; every file except the engine's | 150 000; 1 000 000 |
+| `engine` | one row, `engine (<n> files)`: every `assets/dash-engine-*.js` and `.wasm` (the wasm, its worker bundles and adapter chunks; PRF-009, ADR-0014 §8). Required: no engine wasm fails `missing-artefact:engine`; an engine file in the initial JS fails `engine-in-initial` | 1 900 000 |
 
 Every chunk holding an editor module is named `editor-<hash>.js` by `vite.config.ts`, so the
 closure and `e2e:lazy-load` can name the editor's files. `editor-in-initial` fails when a closure
@@ -817,6 +818,46 @@ file ownership with `ENGINE_RUN_FLAGS=--userns=keep-id`). The image keeps its bu
 
 Outside the image, `cargo test --workspace` in `engine/` runs everything on the host's lavapipe;
 `golden_gallery` then fails its pinned-Mesa assertion by design.
+
+### The engine in the browser (Part C1)
+
+The browser engine needs a second image, `engine/ci/web.Dockerfile`, built on the lavapipe image
+(`--build-arg BASE`). It copies nothing; every literal equals `engine/tools.toml` `[web]`
+(`cargo xtask spec-lint`): the nightly `nightly-2026-11-15` with `rust-src` and wasm32 (the threaded
+build needs `build-std`), `wasm-bindgen-cli` 0.2.130 (equal to `Cargo.lock`), binaryen
+`version_133`, Node 24.22.3 and Go 1.27.4 (each verified by sha256), and Playwright 1.65.0's
+Chromium, whose system packages come from the same apt snapshot, so Mesa stays at its pin. It sets
+`ENGINE_IN_IMAGE=1`; outside it, each target below re-runs itself in the image (host network, the
+repository at `/w`, git's common directory mounted where a worktree's `.git` file points).
+
+| Target | What it runs | Gate |
+|---|---|---|
+| `make engine-web-image` | builds `pulsus-engine-web:local` (after `make engine-image`) | — |
+| `make engine-wasm` | `cargo xtask build-wasm` into the git-ignored `client/src/engine/wasm/gen/`; `make build` (so `make e2e-build`) needs it | — |
+| `make engine-wasm-check` | two builds from separate target directories, byte-equal; the generated `dash_core_mt.d.ts` equal to the committed one; `cargo xtask gen-layout --check` | `ci:engine-gen` |
+| `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
+| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` and `probe-absent.ts` on each; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine) |
+
+**Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
+--ignore-gpu-blocklist --disable-vulkan-surface`, WebGL2 through ANGLE on lavapipe.
+`swiftshader`: `--enable-unsafe-webgpu --enable-unsafe-swiftshader
+--use-webgpu-adapter=swiftshader`, WebGPU on Dawn's CPU adapter (Dawn lists no lavapipe adapter).
+SwiftShader cannot render in the pinned image (`onSubmittedWorkDone` and `mapAsync` reject), so
+`client/e2e/engine-legs.json` (`{"webgpu": "report", "reason": …}`) makes the `swiftshader`
+project's failures soft; the run, `make engine-e2e` and `make engine-gpu-smoke` print
+`WebGPU leg report-only: <reason>`. Remove the file when the leg renders. Real-GPU WebGPU is a
+hardware-runner follow-up.
+
+**Goldens in the browser.** `golden:engine-line` compares the browser engine's canvas
+(`&engine=wasm&mode=t2`, status 2, llvmpipe) with `dash-golden render` of the same page, theme, CSS
+size and DPR: both images `round(css × dpr)`, `compare --max 0.001 --tile-max 0.05`. `canvas2d
+parity` is sampled geometric parity with Canvas 2D (equal plot rects, a sampled line mask); the two
+renderers anti-alias differently by design.
+
+**`ci:probe-absent`.** `node scripts/probe-absent.ts [--expect-faults] <dist>` scans every file of
+the tree, recursively: `__dashProbe` or `__pulsus_engine_fault__` in a release tree is
+`probe-in-release`; with `--expect-faults` each of the three fault sites
+(`__pulsus_engine_fault__:route|boot|worker`) missing is `fault-site-missing`.
 
 ### Engine CI
 
