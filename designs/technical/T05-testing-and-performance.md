@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.50-rc · 2026-11-25 |
+| **Version** | 1.51-rc · 2026-11-25 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -804,7 +804,7 @@ the merge train), nightly (release blocker).
 | `unit:board-list-mixed` | An answer without `applied`: starred `coverage unknown · showing 10 of 12`, setsize −1; search filters titles client-side, no chips; tag mode → the T24-029 notice, no rows; `tagsStale: 3` → `tags not yet known for 3 boards`; a 400 at `/tags` → the editor text (T24-029); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.1, #181) |
 | `unit:board-list-key` | Deferred stub: at the 450 ms commit no old-key row, CSV disabled, facts null; the old key's refetch is kept while a second widget observes it and aborted when it leaves; late answers never render; no `acme` row after the tenant becomes `beta`; a rejected new key → "Couldn't load boards", no rows, `unavailable` (T24-024); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.1, #181) |
 | `unit:list-keyboard` | Fixture B, limit 10: ↓, End, Home, PageDown; Show more + Enter focuses row 11; a refetch without the active row focuses the row at its index and announces "Gateway is no longer listed"; focus outside the list stays; empty → the empty text; error → Retry; Esc clears the search, the next Esc reaches the T25 ladder (T24-025); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.1, #181) |
-| `unit:list-table-csv` | `csvCell`: `=SUM(1)`, `-prod`, `@x`, TAB (U+0009) and CR (U+000D) leading cells get `'`; from #184 step 1b numbers are exempt, so `+1` is unchanged, with each result of the guard block of [T24](T24-geo-schematic-and-widget-panels.md) §10.5 (`-1+2` → `'-1+2`, `+Infinity`, `-6.25` and `1e5` unchanged); `a,b` and `say "hi"` quoted per RFC 4180; B and S rows with tags and `updated_at`; a `tags: null` row → `unknown` and "tags unknown"; facts `{'12 boards', 'Starred'}`, S `1,000+ boards` (T24-026, VIZ-066, VIZ-068); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.1, #181) |
+| `unit:list-table-csv` | `csvCell`: `=SUM(1)`, `-prod`, `@x`, TAB (U+0009) and CR (U+000D) leading cells get `'`; from #184 step 1b numbers are exempt, so `+1` is unchanged (and `+x` gets `'`), with each result of the guard block of [T24](T24-geo-schematic-and-widget-panels.md) §10.5 (`-1+2` → `'-1+2`, `+Infinity`, `-6.25` and `1e5` unchanged); `a,b` and `say "hi"` quoted per RFC 4180; B and S rows with tags and `updated_at`; a `tags: null` row → `unknown` and "tags unknown"; facts `{'12 boards', 'Starred'}`, S `1,000+ boards` (T24-026, VIZ-066, VIZ-068); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.1, #181) |
 | `unit:import-board-list` | Dashboard list cases I1–I9 of T24 §10.1: options and notes exactly as listed (I9's query `a\tb\u0007c` holds U+0009 TAB and U+0007 BEL → `abc`) (T24-028, VIZ-060); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.1, #181) |
 | `unit:entity-id` | Go `annotations/entityid_test.go` and the shared `wire/fixtures/json/entity-id.json` (full UUIDs): every [T12](T12-entity-catalogue.md) §4.5 vector (bindings `00000000-0000-4000-8000-0000000000e1`, `…e2`), e.g. service checkout @e1 → `bb7487bd-100d-a998-e0f0-3c65f11da1a7`, the 128 / 129 / 240 / 241 / 306-byte inputs; `{}`, an empty name or namespace, an extra key, kind `spaceship`, a pod without its namespace, a number and an environment conflict → 400 `annotations.entity.invalid` (T12-010); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.2, #181) |
 | `unit:change-source` | A counting stub, a line panel and an unfiltered feed: concurrent mounts → 1 request, a later mount → 0, Refresh → 1; a failed refresh → the markers' notice and the feed stale; a new window → the feed hides the old rows and the markers keep theirs; an `e` → its own key (T24-030); PR, blocking ([T24](T24-geo-schematic-and-widget-panels.md) §10.2, #181) |
@@ -1114,6 +1114,27 @@ The existing gates `bench:rooms-long-tasks` (the "histogram 2·10⁶ values" sce
 `golden:interim-gallery`, `golden:greyscale`, `e2e:table-csv`, `unit:board-spec`,
 `unit:summary-facts`, `unit:selection-draw` and `unit:inspector-model` gain the T21 H rows (#154).
 
+**Value, categorical and table panels ([T22](T22-value-categorical-and-table-panels.md))**
+
+| Gate | Checks | Stage |
+|---|---|---|
+| `unit:category-reduce` | T22-003: each reducer over finite samples; all NaN → NaN, `count` 0 | PR |
+| `unit:category-cap` | T22-006: `capMarks(many, 200)` keeps min, max and the failing row; the coverage and its meter text | PR |
+| `unit:category-tiny` | T22-006: caps 3 and 2, `tooSmallText`, every row in `panelRows`, `barCap` | PR |
+| `unit:coverage-text` | T22-006, VIZ-027: every meter part, including the list-widget members, and `100 %` | PR |
+| `unit:category-label` | T22-005, T22-007: the effective label, the filter pairs and their texts, the names | PR |
+| `unit:category-duplicates` | T22-003, T21: the instant and range merges, their conflicts (equal to the histogram's), the facts change, the baseline match and delta | PR |
+| `unit:category-subset-names` | T22-004: the shortest distinguishing set, breadth-first; absent keys | PR |
+| `unit:category-unique-names` | T22-004: the final uniqueness pass, quoted raw values, aggregates | PR |
+| `unit:category-bounds` | T22 §6.1, ADR-0022: `resolveBounds` and `outsideCount` | PR |
+| `unit:category-summary-facts` | T22-014, VIZ-068: focus, change, extent and ratio; instant, warning baseline, no finite mark | PR |
+| `unit:category-table` | T22-013, T24-026: `panelRows` (aggregates), `panelCsv`, `csvCell` and `csvFileName` | PR |
+| `unit:board-options` | T22 §6.1: `withKind`, `keepOptions`, the bar chart defaults, the key tables against `option-keys.json` | PR |
+
+`unit:board-spec` covers board spec v3 (#173 Part 1): `v3-full.json` round-trips with the same
+canonical SHA-256 on both sides, the `options-*` rows of `invalid.json` match on both, and the
+previous release (`max` 2) refuses a v3 row.
+
 **Inspector and pivots ([T25](T25-inspector-and-pivots.md))**
 
 | Gate | Checks | Stage |
@@ -1293,3 +1314,4 @@ Meta-testing:
 | 1.48-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B2): §7.1 adds `unit:entity-id`, `unit:change-source`, `unit:change-pager`, `unit:change-snapshot`, `unit:change-entity`, `unit:change-rows`, `unit:change-selection`, `unit:change-inspect`, `unit:change-mixed`, `unit:change-table-csv`, `unit:change-scope-text`, `unit:board-spec-change-feed`, `unit:import-change-feed`, `itest:annotations-entity`, `itest:annotations-scope`, `itest:annotations-scope-compile`, `itest:annotations-delete-scope`, `itest:annotations-keyset`, `itest:annotations-old-binary`, `itest:annotations-entity-validate` (I7) and `e2e:widget-change-feed` (PR, blocking); `e2e:widget-lists-a11y` and `golden:widget-gallery` gain the Change feed states and pages, and the report-only `bench:widget-lists` a 2 000-row Change feed (≤ 50 ms p95); `unit:pivot-context` C4 is the canonical `e=` entity set, added by #223 |
 | 1.49-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1a, geomap data): §7.1 adds `unit:geo-locate`, `unit:geo-geohash`, `unit:geo-decode`, `unit:geo-build`, `unit:geo-gazetteer-build`, `unit:geo-assets`, `unit:geo-load` and `ci:geo-data` (PR, blocking); `ci:bundle-size` adds the rows `geo-basemap` ≤ 40 000 B and `geo-gazetteer` ≤ 104 000 B |
 | 1.50-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap frame): §7.1 adds `unit:geo-rows`, `unit:geo-identity`, `unit:geo-basemap-draw`, `unit:geo-radius-project`, `unit:geo-camera`, `unit:geo-ownership`, `unit:geo-keys-engine`, `unit:geo-inertia`, `unit:geo-host`, `unit:geo-select-hover`, `unit:geo-plan`, `unit:geo-marks`, `unit:geo-coverage`, `unit:board-spec-geomap`, `unit:geo-list`, `unit:geo-list-keys`, `unit:geo-list-repair`, `unit:geo-targets`, `unit:geo-members`, `unit:inspector-nav`, `unit:inspector-viewkey`, `unit:geo-announce`, `unit:geo-nav`, `unit:geo-nav-life`, `unit:geo-inspect`, `unit:geo-single-group`, `unit:geo-table-csv`, `unit:geo-facts`, `unit:geo-states`, `e2e:geomap-offline`, `e2e:geomap-a11y` and `e2e:geomap` (PR, blocking) and the report-only `bench:geomap-markers` (≤ 16 ms p95); `golden:gallery` gains the three geomap pages; `unit:list-table-csv` is amended for the `csvCell` numeric exemption (T24-026) |
+| 1.51-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1, the categorical foundations): §7.1 adds the T22 block (`unit:category-reduce`, `unit:category-cap`, `unit:category-tiny`, `unit:coverage-text`, `unit:category-label`, `unit:category-duplicates`, `unit:category-subset-names`, `unit:category-unique-names`, `unit:category-bounds`, `unit:category-summary-facts`, `unit:category-table`, `unit:board-options`; PR); `unit:board-spec` covers board spec v3; `unit:list-table-csv` names `+x` as guarded |
