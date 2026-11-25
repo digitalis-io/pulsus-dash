@@ -7,7 +7,7 @@ of the interim Canvas 2D renderer ([Charts](charts.md)). It is built in four par
 | Part | Scope | State |
 |---|---|---|
 | A | The `engine/` workspace and the native core: tokens, units, colour, scales, value encoding, decimation, plot layout, scene, line mark, headless goldens and the parity fixtures | this page |
-| B | Wire schemas, the Go DSF/Arrow writer, the Rust DSF parser and Arrow decode into `Chunk` | planned |
+| B | Wire schemas and the Go DSF/Arrow writer (B1, [Arrow wire writer](../server/arrow.md)); the Rust DSF splitter, Arrow IPC reader and decoder into `Chunk` (B2, [below](#wire-decoding-dash-wire)); the shared wire limits (B3) | B1, B2 done; B3 planned |
 | C | The browser runtime: WASM builds, workers, the `WasmEngine` adapter, input, CSP | planned |
 | D | Arrow responses on the query routes and the data worker's byte pump | planned |
 
@@ -24,7 +24,7 @@ in `engine/xtask/`), edition 2024, toolchain pinned in `engine/rust-toolchain.to
 | `dash-tokens` | The design tokens as Rust constants (`tokens.rs`, generated) | shared |
 | `dash-units` | `Unit` and `format_value`, byte-identical to the client's `formatValue` | L2 |
 | `dash-colour` | `series_colour_index` (the client's `palette.ts` rule), `SeriesColour`, `GuideColour` | L2 |
-| `dash-wire` | `Chunk`, `ChunkBuilder`, `ChunkId` (Part B adds the decoders) | data |
+| `dash-wire` | `Chunk`, `ChunkBuilder`, `ChunkId`; `SharedBytes`, the DSF `FrameSplitter`, its own Arrow IPC reader and `BodyDecoder` | data |
 | `dash-scales` | `value_ticks` (the client's `valueTicks`), value encoding and segment clipping, column ranges, the CPU decimation passes | L2 |
 | `dash-axes` | `layout_plot` (the client's `layoutPlot`), `value_axis` (auto, manual, held band) | L3 |
 | `dash-scene` | `Scene`, `Viewport`, `Camera`, camera primitives, `LineSpec`, `FrameSummary`, `CommitEvent`, `build` | L4/L5 |
@@ -292,12 +292,207 @@ pipeline (zero differing pixels), and `golden:decimation-ref` compares it with a
 rasteriser of the ADR-0014 §4 model (every sample pixel covered, nothing outside the shapes dilated
 by one pixel, empty gap bands, the far crossing at the right column).
 
+## Wire decoding (`dash-wire`)
+
+`dash-wire` turns a DSF response body ([Arrow wire writer](../server/arrow.md#dsf-frames)) into
+engine events. The path is:
+
+```
+fetch chunk ─► SharedBytes ─► FrameSplitter.push / next ─► Frame ─► BodyDecoder.frame ─► Vec<Event>
+                                                                       end of input ─► finish ─► Verdict
+```
+
+### Why its own reader
+
+The engine reads Arrow IPC with a small reader of its own, written for exactly the four v1
+schemas B1 writes. It does not use the arrow-rs crates. On wasm32, `arrow-array` enables
+`ahash/compile-time-rng`, which pulls in `tiny-keccak` (CC0-1.0). That licence is outside the
+[ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §7 set (owner decision
+2026-11-25). The only normal dependencies of `dash-wire` are `thiserror` and `bytemuck`. The
+`dash-wire-deps` rule of `cargo xtask spec-lint` fails on any other one. CI also checks the crate
+for `wasm32-unknown-unknown`.
+
+### What it reads
+
+| Item | Accepted |
+|---|---|
+| Messages | Schema and RecordBatch, metadata V5, little-endian; never DictionaryBatch |
+| Types | `uint8/16/32/64` (unsigned), `float64` (DOUBLE), `bool`, `utf8`, `timestamp_ms` (MILLISECOND, `"UTC"`), `list<utf8>`, `fixed_size_list<float64?>` |
+| Not accepted | dictionaries, body compression, variadic buffers, custom metadata on messages or fields, schema features, any other type |
+| Schemas | `labels/1`, `metric_matrix.grid/1`, `coverage/1`, `error/1`: exactly B1's columns (count, order, name, type, nullability) and exactly their metadata keys |
+
+An extra column is `Unsupported("column")`. A minor version that adds a column or key ships
+together with the reader that knows it
+([T04-002](../../designs/technical/T04-wire-format-and-data-plane.md#t04-002--schema-identity-and-evolution)).
+
+### Flatbuffer bounds (`fb.rs`)
+
+The Arrow metadata is a flatbuffer. The reader verifies every table it opens and treats any
+violation as `IpcError::Flatbuffer`. It never panics.
+
+- **Bounds.** Every read is a checked `get` with checked arithmetic. A table's vtable and object
+  lie inside the buffer, with `vt_len` even and at least 4 and `obj_len` at least 4. A present
+  field starts at offset 4 or later and ends inside the object. The fields of one table do not
+  overlap.
+- **Closed field set.** A field that the table's spec does not list is rejected as
+  `Unsupported`, and the reader never follows it. This covers unknown vtable entries,
+  `Message.custom_metadata`, `Schema.features`, `Field.custom_metadata`, `Field.dictionary` and
+  `RecordBatch.compression`. A non-empty `variadicBufferCounts` is rejected too.
+- **References.** Every `uoffset` is non-zero and points forward. The target's minimum size is
+  in range before its contents are read.
+- **Alignment.** Tables and the length prefixes of vectors and strings sit at 4-byte positions.
+  Vtables sit at 2-byte positions. The data of `FieldNode` and `Buffer` vectors sits at 8-byte
+  positions. Each scalar is aligned to its own size.
+- **Strings and bools.** A string ends with a NUL byte and is valid UTF-8. A present bool is the
+  byte 0 or 1.
+- **No aliasing.** The reader records the extent of every object it visits and rejects any
+  overlap. A vtable that several tables share counts once.
+- **Metadata length and padding.** `L` must be the least value B1 would write for the
+  flatbuffer's own length (the high-water mark rounded up to 8), else
+  `Layout("metadata length")`. Every byte after the high-water mark must be 0, else
+  `Layout("padding")`.
+- **Work bounds.** At most 512 tables per message, 64 fields, 64 metadata pairs, nesting depth 4,
+  128 nodes and 256 buffers.
+
+### Layout checks (`ipc.rs`)
+
+- **Message.** A message is `FF FF FF FF`, `L` (positive, a multiple of 8, in range), then the
+  metadata and a body of exactly `bodyLength`. The body starts at a response-body offset that
+  is a multiple of 64 (`Layout("body align")`). A Schema has `bodyLength` 0 and a RecordBatch a
+  multiple of 8 (`Layout("body length")`).
+- **Buffers.** Buffers are in body order and do not overlap (`Layout("overlap")`). They lie
+  inside the body (`Bounds`). Their offsets are multiples of 8, and multiples of 64 in a
+  `metric_matrix.grid/1` batch (`Layout("align")`).
+- **Nodes.** Each node has `0 ≤ length ≤ 2³¹` and `0 ≤ null_count ≤ length`. A top-level node's
+  length equals the batch length. Nodes and buffers must be consumed exactly (`Messages`).
+- **Validity.** An empty bitmap is allowed only when `null_count` is 0. A non-empty bitmap covers
+  `⌈length/8⌉` bytes, and its 0 bits equal `null_count` exactly. A non-nullable column has no
+  nulls. Any of these failing is `Layout("nulls")`.
+- **Offsets.** Offsets cover `(length + 1) × 4` bytes, start at exactly 0
+  (`Layout("first offset")`) and never decrease. A list's child length equals the last offset
+  (`Layout("list child")`). A fixed-size list's child length equals `length × size`.
+- **Values.** Every value slice is cut to its logical length. Every UTF-8 value is validated.
+- **Zero padding.** Every body byte outside a buffer's logical extent must be 0
+  (`Layout("nonzero padding")`). This covers buffer tails, unused bitmap bits, the gaps between
+  buffers and the tail after the last buffer.
+
+### Decoder states (`decode.rs`)
+
+Each part follows B2's state table:
+
+| State | Frame | Result |
+|---|---|---|
+| new | `SCHEMA` (`labels/1`) | labels-open |
+| new | `META` planned | data-planned (validated, no event) |
+| new | `ERROR\|LAST` | `Upstream`, `PartEnd` (a part that never opened) |
+| labels-open | `BATCH` | rows added; with `LAST`: `PartEnd`, labels-done |
+| data-planned | `SCHEMA` (`metric_matrix.grid/1`) | `Grid` |
+| data-open | `BATCH` | `Chunk` |
+| data-open | `META` partial or final with `LAST` | `Coverage`, `PartEnd`; held until the labels part finishes |
+| data-open | `META` partial without `LAST` | `Coverage`, then closing |
+| data-open or closing | `ERROR\|LAST` | `Upstream`, `PartEnd` |
+
+Any other frame fails the part with `Failed(Order)`. Other checks also fail only their own part
+(T04-010), and the part's later frames are discarded:
+
+- an unknown schema or a major other than 1 (`Schema`);
+- bad grid metadata (`Schema`): `step_ms ≤ 0`, `len` of 0 or over `MAX_GRID_LEN` (2²²), or a
+  `requested_start_ms` outside `[start_ms, start_ms + step_ms)` (computed as B1's unsigned
+  difference, so no addition can overflow);
+- a grid end that overflows i64 (`Schema`);
+- a list size other than `len` (`Shape`);
+- label rows that are not contiguous per series, a series with mixed key hashes, a half-null
+  label, a null row next to a named row, or names that are not strictly increasing by bytes
+  (`Shape`);
+- a series spread over two labels batches, or repeated in the data (`DuplicateSeries`);
+- a series with no labels (`MissingLabels`);
+- a null slot whose bits are not `0x7FF8000000000000` (`NullBits`);
+- a rank change (`Rank`);
+- `VOLATILE` and `CACHED` bits that differ from the part's first frame, or from its linked part
+  (`Order("flags")`);
+- a value outside its closed set (`Value(field)`): phase, exactness, `read_cache`, error code,
+  `dash.result`, `dash.source`, `dash.time_unit` or `dash.schema`.
+
+`dash.labels_part` is checked at the data `SCHEMA`. It must name a labels part already seen in
+the body that is not failed and is not the data part itself (`Schema("labels_part")`). It must
+also have the same rank (`Schema("labels_part rank")`). When a labels part fails, every data part
+linked to it fails in the same call with `Order("labels part failed")`, and any coverage it was
+holding is discarded.
+
+**Stream-level checks.** These fail every open part through `fail_stream`:
+- an unknown flag bit (`Flags`);
+- an END with a payload, a part, a rank or any flag (`Malformed("end")`);
+- a PING with a payload or a part (`Malformed("ping")`);
+- a PROGRESS or EVENT frame (`FrameType`);
+- a payload length that is not a multiple of 8 (`Malformed("frame length")`);
+- any part-0 frame other than END, PING and the one stream-level ERROR (`Malformed("part 0")`).
+
+The stream-level `ERROR|LAST` on part 0 gives `Upstream { part: 0 }` and sets `stream_error()`.
+A frame after END gives `Failed(Stream(AfterEnd))`.
+
+### End of input and the verdict
+
+At the end of input, call `FrameSplitter::finish()` first. If bytes remain, call
+`fail_stream(Truncated)`. Then always call `BodyDecoder::finish()`.
+
+- **END with open parts.** Each open part gets `Failed(Order("open at END"))` before `End`.
+- **`finish`.** It fails every still-open part with `Stream(Truncated)` in part-id order. It
+  emits `Truncated` if END never arrived, then always ends with `Event::Verdict`.
+- **The verdict.** It is `Complete` only if END arrived, the stream did not fail, no part-0 ERROR
+  came and no part failed. Otherwise it is `Incomplete(reason)`.
+- **Coverage.** Every `Coverage` is provisional until the verdict. A response is complete for the
+  meter only when the verdict is `Complete` and every part's last coverage is complete
+  (`Coverage::complete`, `retention_limited`, `exact`; the rule is on the
+  [Arrow page](../server/arrow.md#coverage)).
+- **Repeated calls.** A second `finish` returns nothing. Frames after `finish` or `fail_stream`
+  are ignored.
+
+### Chunk ownership and the copy budget
+
+- **Chunks own their data.** A published `Chunk` owns exact-size copies of its values
+  (`Vec<f64>`, cut to the child length) and validity (`Vec<u64>` words, LSB first, trailing bits
+  0; `None` when nothing is null). Chunk ids rise from `first_chunk_id`. A batch after
+  `u64::MAX` fails its part with `Limit("chunk ids")`.
+- **Shared labels.** `SeriesMeta.labels` is an `Arc<[(String, String)]>`. It is built once per
+  series from its labels batch, and every chunk holds an `Arc` clone of it.
+- **Slabs.** A frame inside one pushed chunk is a slice of it. For a frame that spans chunks,
+  only the payload is copied, once, into a buffer that keeps its response-body position mod 64.
+- **Nothing pinned.** The decoder drops every frame when `frame` returns. Once a slab's frames
+  are consumed, its only owner is the caller, so slabs can be recycled at once. `push` returns
+  `Busy` until the previous chunk is drained.
+- **The copy budget**
+  ([T04-015](../../designs/technical/T04-wire-format-and-data-plane.md#t04-015--at-most-two-copies-on-the-network-path)).
+  The values are copied once into the chunk and once into GPU memory. This is one memcpy more
+  than a zero-copy view. In exchange, retained memory is exactly the published values.
+  `bench:decode-r1` will report the cost.
+
+The aggregate limits and budgets (`with_limits`, `retained()`, part-0 limits) are Part B3.
+
+### Gates
+
+| Gate | Test | Checks |
+|---|---|---|
+| `unit:codec-roundtrip` (Rust) | `tests/codec_roundtrip.rs` | the five B1 fixtures decode to their `.expect.json`, plus the spot checks |
+| `unit:dsf-header` (Rust) | `src/dsf.rs` | the B1 header bytes; version, reserved, type, flags and length faults |
+| `unit:fb-reader` | `src/fb.rs` | hand-built and mutated flatbuffers: defaults, bounds, alignment, references, closed field set, aliasing, depth and table counts, metadata and frame lengths |
+| `unit:dsf-bounds` | `tests/dsf_bounds.rs`, `tests/dsf_bounds_layout.rs` | split points, header and frame faults, state rules, links, padding, offsets, closed sets, IPC corruptions, arithmetic boundaries, end of input |
+| `unit:dsf-fuzz-smoke` | `tests/fuzz_smoke.rs` | 25 000 seeded mutants per fixture: no panic, consistent chunks |
+| `unit:arrow-alignment` (Rust) | `tests/arrow_alignment.rs` | every split point pins nothing; 8-but-not-64-aligned grid buffers and bodies are refused |
+| `unit:coverage-complete` (Rust) | `src/coverage.rs` | `complete`, `retention_limited` and `exact` |
+| `ci:spec-lint` (`dash-wire-deps`) | `xtask/tests/spec_lint.rs` | `dash-wire` depends only on `thiserror` and `bytemuck` |
+
+The tests share a test kit (`tests/common/`) that reads and writes the Arrow flatbuffer tables
+and DSF bodies used for the mutations. `dash-wire` is built with `opt-level = 2` in the dev
+profile so that the split-point and fuzz tests stay fast.
+
 ## Limits
 
 - 500 series per line while the interim cap holds; at most 65 535 lanes.
 - Columns are CSS px (≤ 65 535); a viewport past `max_instances` is batched, never truncated.
 - A chunk holds at most 2³¹ samples (`ChunkError::TooLarge`); timestamps must be finite and
   strictly increasing per series (`ChunkError::Order`).
+- Wire decoding: a frame payload of at most 64 MiB (`MAX_PAYLOAD`), a grid of at most 2²² points
+  (`MAX_GRID_LEN`), and the flatbuffer and IPC work bounds above.
 - The native renderer blocks on the status read after P3; Part C re-runs an under-sized frame
   instead and never reports it as drawn.
 
@@ -314,3 +509,7 @@ by one pixel, empty gap bands, the far crossing at the right column).
 | T03-008 | no `std::sync::Mutex`/`RwLock` | `ci:engine-lint` |
 | T03-021 | fixed chunking on rayon | `unit:decimation-prop` |
 | T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery` |
+| T04-001, T04-002, T04-005, T04-012 (subset) | Arrow decode into `Chunk`; exact schemas; coverage rule | `unit:codec-roundtrip`, `unit:coverage-complete` |
+| T04-009, T04-010 | DSF header, splitter and decoder bounds | `unit:dsf-header`, `unit:fb-reader`, `unit:dsf-bounds`, `unit:dsf-fuzz-smoke` |
+| T04-015 (as amended) | one decode copy, nothing pinned | `unit:arrow-alignment` |
+| ADR-0014 §7 | no arrow-rs; `thiserror` and `bytemuck` only | `ci:spec-lint` (`dash-wire-deps`) |
