@@ -163,6 +163,7 @@ See the sections below. They are completed as documents are promoted.
 | T16 | [Alert evaluator & notification service](technical/T16-alert-evaluator.md) | Review |
 | T18 | [Security](technical/T18-security.md) | Review |
 | T19 | [Deployment & operations](technical/T19-deployment.md) | Review |
+| T22 | [Value, categorical and table panels](technical/T22-value-categorical-and-table-panels.md) | Review |
 | — | [PulsusDB requirements](technical/pulsusdb-requirements.md) | Sent; rev. 5 (2026-11-19) records the Go and TS stack change |
 
 **Not yet promoted:** these remain drafts in `plans/tech/`.
