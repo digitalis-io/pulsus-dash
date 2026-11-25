@@ -1,6 +1,6 @@
 //! DSF frames (T04 §5.1, T04-009; plan #68 B2 §3.2): the 16-byte header and a pull splitter.
 
-use crate::bytes::SharedBytes;
+use crate::bytes::{PayloadBuf, SharedBytes};
 
 pub const VERSION: u8 = 1;
 pub const HEADER_LEN: usize = 16;
@@ -58,10 +58,67 @@ impl FrameHeader {
     pub const LAST: u16 = 1;
     pub const VOLATILE: u16 = 2;
     pub const CACHED: u16 = 4;
+    /// The flag bits wire v1 defines.
+    pub const KNOWN_FLAGS: u16 = Self::LAST | Self::VOLATILE | Self::CACHED;
 
-    /// Parses the first `HEADER_LEN` bytes of `b`.
-    pub fn parse(_b: &[u8]) -> Result<Self, DsfError> {
-        Err(DsfError::Malformed("not implemented"))
+    /// Parses the first `HEADER_LEN` bytes of `b` (T04-009): version 1, a known type, known
+    /// flag bits only, a zero reserved field and a payload of at most `MAX_PAYLOAD`.
+    pub fn parse(b: &[u8]) -> Result<Self, DsfError> {
+        let h: &[u8; HEADER_LEN] = b
+            .get(..HEADER_LEN)
+            .and_then(|h| h.try_into().ok())
+            .ok_or(DsfError::Truncated)?;
+        let [
+            version,
+            kind,
+            f0,
+            f1,
+            p0,
+            p1,
+            p2,
+            p3,
+            l0,
+            l1,
+            l2,
+            l3,
+            r0,
+            r1,
+            z0,
+            z1,
+        ] = *h;
+        if version != VERSION {
+            return Err(DsfError::Version(version));
+        }
+        let reserved = u16::from_le_bytes([z0, z1]);
+        if reserved != 0 {
+            return Err(DsfError::Reserved(reserved));
+        }
+        let kind = match kind {
+            1 => FrameType::Schema,
+            2 => FrameType::Batch,
+            3 => FrameType::Meta,
+            4 => FrameType::End,
+            5 => FrameType::Error,
+            6 => FrameType::Progress,
+            7 => FrameType::Event,
+            8 => FrameType::Ping,
+            other => return Err(DsfError::FrameType(other)),
+        };
+        let flags = u16::from_le_bytes([f0, f1]);
+        if flags & !Self::KNOWN_FLAGS != 0 {
+            return Err(DsfError::Flags(flags));
+        }
+        let payload_len = u32::from_le_bytes([l0, l1, l2, l3]);
+        if payload_len > MAX_PAYLOAD {
+            return Err(DsfError::PayloadTooLarge(payload_len));
+        }
+        Ok(Self {
+            kind,
+            flags,
+            part_id: u32::from_le_bytes([p0, p1, p2, p3]),
+            payload_len,
+            rank: u16::from_le_bytes([r0, r1]),
+        })
     }
 }
 
@@ -74,24 +131,159 @@ pub struct Frame {
     pub payload_offset: u64,
 }
 
-/// Pull splitter: `push` stores one chunk, `next` yields one frame at a time.
+/// A frame whose header is known and whose payload spans chunks.
+#[derive(Debug)]
+struct Pending {
+    header: FrameHeader,
+    payload_offset: u64,
+    buf: PayloadBuf,
+}
+
+/// Pull API: `push` stores one chunk (`Err(Busy)` unless the previous one is drained to at most
+/// a partial frame); `next` yields one frame at a time, so no frame list is ever queued.
+///
+/// A frame inside one chunk is a slice (no copy). A frame spanning chunks: only its payload is
+/// copied, once, into a buffer that keeps the payload's response-body position mod 64
+/// (T04-015 as amended). The pending state is at most `HEADER_LEN + MAX_PAYLOAD` bytes.
+/// After a header error every later call returns the same error: the stream cannot be
+/// resynchronised.
 #[derive(Debug, Default)]
-pub struct FrameSplitter {}
+pub struct FrameSplitter {
+    /// Response-body offset of `cur[pos]` (or of the next byte to arrive).
+    offset: u64,
+    cur: Option<SharedBytes>,
+    pos: usize,
+    /// A header split across chunks.
+    head: [u8; HEADER_LEN],
+    head_len: usize,
+    pending: Option<Pending>,
+    failed: Option<DsfError>,
+}
 
 impl FrameSplitter {
     pub fn new() -> Self {
-        Self {}
+        Self::default()
     }
 
-    pub fn push(&mut self, _chunk: SharedBytes) -> Result<(), DsfError> {
+    fn remaining(&self) -> usize {
+        self.cur
+            .as_ref()
+            .map_or(0, |c| c.len().saturating_sub(self.pos))
+    }
+
+    pub fn push(&mut self, chunk: SharedBytes) -> Result<(), DsfError> {
+        if let Some(e) = &self.failed {
+            return Err(e.clone());
+        }
+        if self.remaining() > 0 {
+            return Err(DsfError::Busy);
+        }
+        self.cur = Some(chunk);
+        self.pos = 0;
         Ok(())
     }
 
+    /// Takes up to `n` bytes of the current chunk.
+    fn take(&mut self, n: usize) -> &[u8] {
+        let n = n.min(self.remaining());
+        let start = self.pos;
+        self.pos += n;
+        self.offset += n as u64;
+        self.cur
+            .as_ref()
+            .and_then(|c| c.as_bytes().get(start..start + n))
+            .unwrap_or_default()
+    }
+
+    fn fail(&mut self, e: DsfError) -> Result<Option<Frame>, DsfError> {
+        self.failed = Some(e.clone());
+        self.cur = None;
+        self.pending = None;
+        Err(e)
+    }
+
+    /// The next whole frame, or `None` until more bytes are pushed.
+    #[allow(clippy::should_implement_trait)] // fallible pull, not an Iterator (plan §3.2)
     pub fn next(&mut self) -> Result<Option<Frame>, DsfError> {
+        if let Some(e) = &self.failed {
+            return Err(e.clone());
+        }
+        // A payload being filled across chunks.
+        if let Some(mut p) = self.pending.take() {
+            let missing = p.buf.missing();
+            let src = self.take(missing);
+            p.buf.extend(src);
+            if p.buf.missing() == 0 {
+                return Ok(Some(Frame {
+                    header: p.header,
+                    payload: p.buf.freeze(),
+                    payload_offset: p.payload_offset,
+                }));
+            }
+            self.pending = Some(p);
+            self.cur = None;
+            return Ok(None);
+        }
+        // The header, possibly split across chunks.
+        let header = if self.head_len > 0 || self.remaining() < HEADER_LEN {
+            let want = HEADER_LEN - self.head_len;
+            let got = self.take(want).to_vec();
+            let end = self.head_len + got.len();
+            if let Some(dst) = self.head.get_mut(self.head_len..end) {
+                dst.copy_from_slice(&got);
+            }
+            self.head_len = end;
+            if self.head_len < HEADER_LEN {
+                self.cur = None;
+                return Ok(None);
+            }
+            self.head_len = 0;
+            FrameHeader::parse(&self.head)
+        } else {
+            FrameHeader::parse(self.take(HEADER_LEN))
+        };
+        let header = match header {
+            Ok(h) => h,
+            Err(e) => return self.fail(e),
+        };
+        let len = header.payload_len as usize;
+        let payload_offset = self.offset;
+        if self.remaining() >= len {
+            let start = self.pos;
+            self.pos += len;
+            self.offset += len as u64;
+            let payload = self.cur.as_ref().and_then(|c| c.slice(start, len));
+            return match payload {
+                Some(payload) => Ok(Some(Frame {
+                    header,
+                    payload,
+                    payload_offset,
+                })),
+                None => self.fail(DsfError::Malformed("splitter")),
+            };
+        }
+        // The payload spans chunks: one copy, at its body position mod 64.
+        let lead = (payload_offset % 64) as usize;
+        let mut buf = PayloadBuf::new(len, lead);
+        let src = self.take(len);
+        buf.extend(src);
+        self.pending = Some(Pending {
+            header,
+            payload_offset,
+            buf,
+        });
+        self.cur = None;
         Ok(None)
     }
 
+    /// End of input: `Truncated` if any byte of an unfinished frame remains.
     pub fn finish(&self) -> Result<(), DsfError> {
+        if let Some(e) = &self.failed {
+            return Err(e.clone());
+        }
+        if self.head_len > 0 || self.pending.is_some() || self.remaining() > 0 {
+            return Err(DsfError::Truncated);
+        }
         Ok(())
     }
 }

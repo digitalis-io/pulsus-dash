@@ -5,7 +5,7 @@ mod support;
 
 use common::{BATCH, F, FIXTURES, fixture};
 use dash_wire::{BodyDecoder, Event, FrameSplitter, IpcError, PartError, SharedBytes, Verdict};
-use support::{chunks, failure, fingerprint, run};
+use support::{chunks, failure, run};
 
 /// Drains `s` into `d`; every frame is dropped when `frame` returns.
 fn drain(s: &mut FrameSplitter, d: &mut BodyDecoder, ev: &mut Vec<Event>) {
@@ -31,7 +31,6 @@ fn i_every_split_point_same_events_nothing_pinned() {
             Some(&Event::Verdict(Verdict::Complete)),
             "{name}"
         );
-        let whole = fingerprint(&base);
         for k in 0..=body.len() {
             let a = SharedBytes::copy_from(&body[..k], 0);
             let b = SharedBytes::copy_from(&body[k..], k % 64);
@@ -49,7 +48,7 @@ fn i_every_split_point_same_events_nothing_pinned() {
                 ev.extend(d.fail_stream(e));
             }
             ev.extend(d.finish());
-            assert_eq!(fingerprint(&ev), whole, "{name} split at {k}");
+            assert!(support::same(&ev, &base), "{name} split at {k}");
         }
     }
 }

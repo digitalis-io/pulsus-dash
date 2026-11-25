@@ -109,10 +109,10 @@ fn mutants_never_panic_and_chunks_stay_consistent() {
                 "{name} mutant {i}: no verdict"
             );
             for e in &ev {
-                if let Event::Chunk { chunk, .. } = e {
-                    if let Err(why) = check_chunk(chunk) {
-                        panic!("{name} mutant {i}: {why}");
-                    }
+                if let Event::Chunk { chunk, .. } = e
+                    && let Err(why) = check_chunk(chunk)
+                {
+                    panic!("{name} mutant {i}: {why}");
                 }
             }
         }

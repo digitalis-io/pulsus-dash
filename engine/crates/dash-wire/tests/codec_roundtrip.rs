@@ -219,7 +219,7 @@ fn counter_spot_checks() {
     assert!(bits.contains(&0x8000_0000_0000_0000), "-0");
     assert!(bits.contains(&0x0000_0000_0000_0001), "5e-324");
     // Absent slots: present bit 0 and the canonical NaN bits.
-    let present = chunks[0].present.as_ref().map(Vec::as_slice).unwrap_or(&[]);
+    let present = chunks[0].present.as_deref().unwrap_or(&[]);
     assert_eq!(present.len(), chunks[0].values.len().div_ceil(64));
     let absent: Vec<usize> = (0..chunks[0].values.len())
         .filter(|i| present[i / 64] >> (i % 64) & 1 == 0)

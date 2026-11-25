@@ -154,3 +154,40 @@ pub fn fingerprint(ev: &[Event]) -> Vec<String> {
         })
         .collect()
 }
+
+/// Event lists equal, chunk values compared by their bits (NaN payloads included).
+pub fn same(a: &[Event], b: &[Event]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| match (x, y) {
+            (
+                Event::Chunk {
+                    part: p1,
+                    rank: r1,
+                    flags: f1,
+                    chunk: c1,
+                },
+                Event::Chunk {
+                    part: p2,
+                    rank: r2,
+                    flags: f2,
+                    chunk: c2,
+                },
+            ) => {
+                (p1, r1, f1) == (p2, r2, f2)
+                    && c1.id == c2.id
+                    && c1.time == c2.time
+                    && c1.series == c2.series
+                    && c1.offsets == c2.offsets
+                    && c1.present == c2.present
+                    && c1.finite.map(|(l, h)| (l.to_bits(), h.to_bits()))
+                        == c2.finite.map(|(l, h)| (l.to_bits(), h.to_bits()))
+                    && c1.values.len() == c2.values.len()
+                    && c1
+                        .values
+                        .iter()
+                        .zip(&c2.values)
+                        .all(|(u, v)| u.to_bits() == v.to_bits())
+            }
+            _ => x == y,
+        })
+}

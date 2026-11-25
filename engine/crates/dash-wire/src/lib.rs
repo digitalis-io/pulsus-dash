@@ -11,6 +11,7 @@ pub mod decode;
 pub mod dsf;
 pub(crate) mod fb;
 pub(crate) mod ipc;
+pub(crate) mod schema;
 
 #[cfg(test)]
 #[path = "../tests/common/mod.rs"]

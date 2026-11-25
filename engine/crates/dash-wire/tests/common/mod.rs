@@ -227,12 +227,17 @@ pub enum Piece {
 }
 
 /// The least `L ≥ m` with `L ≡ 0 (mod 8)` and `(p + 8 + L) ≡ 0 (mod 64)` (B1 §3.2).
+/// When `p + 8 + m` is not ≡ 0 (mod 8) (a body already misaligned by a mutation), no such `L`
+/// exists and `m` is returned.
 pub fn min_l(m: usize, p: usize) -> usize {
     let mut l = m;
-    while (p + 8 + l) % 64 != 0 {
+    for _ in 0..8 {
+        if (p + 8 + l).is_multiple_of(64) {
+            return l;
+        }
         l += 8;
     }
-    l
+    m
 }
 
 /// Splits a payload into messages and EOS markers.

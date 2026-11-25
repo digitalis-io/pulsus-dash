@@ -1,6 +1,15 @@
 //! A bounds-checked flatbuffers reader for the Arrow `Message.fbs`/`Schema.fbs` tables the
 //! engine reads (plan #68 B2 §3.3, T04-010).
+//!
+//! Every read is `buf.get(a..b)` with checked arithmetic. Tables are verified when opened:
+//! alignment, the vtable and object extents, and every present field against the table's
+//! closed `Spec` (offset ≥ 4, inside the object, aligned to its width, pairwise disjoint);
+//! a field outside the spec is `Unsupported` and never followed. References are non-zero and
+//! forward. Every visited object's extent is recorded; `finish` rejects any overlap (a vtable
+//! shared by several tables counts once) and returns the high-water mark.
 #![deny(clippy::indexing_slicing)]
+
+use std::cell::{Cell, RefCell};
 
 use crate::ipc::IpcError;
 
@@ -10,26 +19,132 @@ pub(crate) type Spec = &'static [(u16, usize)];
 /// The most tables in one message.
 pub(crate) const MAX_TABLES: usize = 512;
 
+const FLAT: IpcError = IpcError::Flatbuffer;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Kind {
+    Root,
+    VTable,
+    Table,
+    Vector,
+    Str,
+}
+
+fn read<const N: usize>(buf: &[u8], at: usize) -> Result<[u8; N], IpcError> {
+    let end = at.checked_add(N).ok_or(FLAT)?;
+    buf.get(at..end)
+        .and_then(|s| <[u8; N]>::try_from(s).ok())
+        .ok_or(FLAT)
+}
+
+fn u16_at(buf: &[u8], at: usize) -> Result<u16, IpcError> {
+    read::<2>(buf, at).map(u16::from_le_bytes)
+}
+
+fn u32_at(buf: &[u8], at: usize) -> Result<usize, IpcError> {
+    read::<4>(buf, at).map(|b| u32::from_le_bytes(b) as usize)
+}
+
 /// One flatbuffer being verified: the bytes and the extents of every visited object.
 #[derive(Debug)]
 pub(crate) struct Fb<'a> {
     buf: &'a [u8],
+    extents: RefCell<Vec<(usize, usize, Kind)>>,
+    tables: Cell<usize>,
 }
 
 impl<'a> Fb<'a> {
     pub(crate) fn new(buf: &'a [u8]) -> Self {
-        Self { buf }
+        Self {
+            buf,
+            extents: RefCell::new(Vec::new()),
+            tables: Cell::new(0),
+        }
+    }
+
+    fn record(&self, start: usize, len: usize, kind: Kind) -> Result<(), IpcError> {
+        let end = start.checked_add(len).ok_or(FLAT)?;
+        if end > self.buf.len() {
+            return Err(FLAT);
+        }
+        self.extents.borrow_mut().push((start, end, kind));
+        Ok(())
     }
 
     /// The root table (the `uoffset` at byte 0).
-    pub(crate) fn root(&self, _spec: Spec) -> Result<Table<'_>, IpcError> {
-        let _ = self.buf;
-        Err(IpcError::Flatbuffer)
+    pub(crate) fn root(&self, spec: Spec) -> Result<Table<'_>, IpcError> {
+        let off = u32_at(self.buf, 0)?;
+        self.record(0, 4, Kind::Root)?;
+        if off < 4 {
+            return Err(FLAT);
+        }
+        self.table_at(off, spec)
     }
 
-    /// After every object was visited: rejects overlapping extents; returns the high-water mark.
+    fn table_at(&self, pos: usize, spec: Spec) -> Result<Table<'_>, IpcError> {
+        let n = self.tables.get() + 1;
+        if n > MAX_TABLES {
+            return Err(FLAT);
+        }
+        self.tables.set(n);
+        if !pos.is_multiple_of(4) {
+            return Err(FLAT);
+        }
+        let soffset = i64::from(i32::from_le_bytes(read::<4>(self.buf, pos)?));
+        let vt =
+            usize::try_from((pos as i64).checked_sub(soffset).ok_or(FLAT)?).map_err(|_| FLAT)?;
+        if !vt.is_multiple_of(2) {
+            return Err(FLAT);
+        }
+        let vt_len = usize::from(u16_at(self.buf, vt)?);
+        let obj_len = usize::from(u16_at(self.buf, vt + 2)?);
+        if vt_len < 4 || !vt_len.is_multiple_of(2) || obj_len < 4 {
+            return Err(FLAT);
+        }
+        self.record(vt, vt_len, Kind::VTable)?;
+        self.record(pos, obj_len, Kind::Table)?;
+        let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(spec.len());
+        for i in 0..(vt_len - 4) / 2 {
+            let off = usize::from(u16_at(self.buf, vt + 4 + 2 * i)?);
+            if off == 0 {
+                continue;
+            }
+            let width = spec
+                .iter()
+                .find(|(id, _)| usize::from(*id) == i)
+                .map(|(_, w)| *w)
+                .ok_or(IpcError::Unsupported("field"))?;
+            if off < 4 || off + width > obj_len || !(pos + off).is_multiple_of(width) {
+                return Err(FLAT);
+            }
+            ranges.push((off, off + width));
+        }
+        ranges.sort_unstable();
+        if ranges.windows(2).any(|w| matches!(w, [a, b] if b.0 < a.1)) {
+            return Err(FLAT);
+        }
+        Ok(Table {
+            fb: self,
+            pos,
+            vt,
+            vt_len,
+        })
+    }
+
+    /// After every object was visited: rejects overlapping extents (a vtable shared by several
+    /// tables, with the same start and length, counts once); returns the high-water mark.
     pub(crate) fn finish(&self) -> Result<usize, IpcError> {
-        Err(IpcError::Flatbuffer)
+        let mut e = self.extents.borrow_mut();
+        e.sort_unstable();
+        e.dedup_by(|b, a| a.2 == Kind::VTable && *a == *b);
+        let mut high = 0;
+        for &(start, end, _) in e.iter() {
+            if start < high {
+                return Err(FLAT);
+            }
+            high = end;
+        }
+        Ok(high)
     }
 }
 
@@ -37,50 +152,152 @@ impl<'a> Fb<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Table<'a> {
     fb: &'a Fb<'a>,
+    pos: usize,
+    vt: usize,
+    vt_len: usize,
 }
 
 impl<'a> Table<'a> {
-    pub(crate) fn u8(&self, _id: u16, _default: u8) -> Result<u8, IpcError> {
-        let _ = self.fb;
-        Err(IpcError::Flatbuffer)
+    /// The absolute position of field `id`, if present (validated when the table was opened).
+    fn field(&self, id: u16) -> Result<Option<usize>, IpcError> {
+        let e = 4 + 2 * usize::from(id);
+        if e + 2 > self.vt_len {
+            return Ok(None);
+        }
+        let off = usize::from(u16_at(self.fb.buf, self.vt + e)?);
+        Ok((off != 0).then_some(self.pos + off))
     }
-    pub(crate) fn i16(&self, _id: u16, _default: i16) -> Result<i16, IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    fn scalar<const N: usize>(&self, id: u16) -> Result<Option<[u8; N]>, IpcError> {
+        match self.field(id)? {
+            Some(at) => read::<N>(self.fb.buf, at).map(Some),
+            None => Ok(None),
+        }
     }
-    pub(crate) fn i32(&self, _id: u16, _default: i32) -> Result<i32, IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    pub(crate) fn u8(&self, id: u16, default: u8) -> Result<u8, IpcError> {
+        Ok(self.scalar::<1>(id)?.map_or(default, u8::from_le_bytes))
     }
-    pub(crate) fn i64(&self, _id: u16, _default: i64) -> Result<i64, IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    pub(crate) fn i16(&self, id: u16, default: i16) -> Result<i16, IpcError> {
+        Ok(self.scalar::<2>(id)?.map_or(default, i16::from_le_bytes))
     }
-    pub(crate) fn bool(&self, _id: u16, _default: bool) -> Result<bool, IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    pub(crate) fn i32(&self, id: u16, default: i32) -> Result<i32, IpcError> {
+        Ok(self.scalar::<4>(id)?.map_or(default, i32::from_le_bytes))
     }
-    pub(crate) fn table(&self, _id: u16, _spec: Spec) -> Result<Option<Table<'a>>, IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    pub(crate) fn i64(&self, id: u16, default: i64) -> Result<i64, IpcError> {
+        Ok(self.scalar::<8>(id)?.map_or(default, i64::from_le_bytes))
     }
-    pub(crate) fn str(&self, _id: u16) -> Result<Option<&'a str>, IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    /// A present bool must be the byte 0 or 1.
+    pub(crate) fn bool(&self, id: u16, default: bool) -> Result<bool, IpcError> {
+        match self.scalar::<1>(id)? {
+            None => Ok(default),
+            Some([0]) => Ok(false),
+            Some([1]) => Ok(true),
+            Some(_) => Err(FLAT),
+        }
     }
+
+    /// The target of a present `uoffset` field: non-zero and forward.
+    fn target(&self, id: u16) -> Result<Option<usize>, IpcError> {
+        let Some(fp) = self.field(id)? else {
+            return Ok(None);
+        };
+        let u = u32_at(self.fb.buf, fp)?;
+        if u == 0 {
+            return Err(FLAT);
+        }
+        fp.checked_add(u).map(Some).ok_or(FLAT)
+    }
+
+    pub(crate) fn table(&self, id: u16, spec: Spec) -> Result<Option<Table<'a>>, IpcError> {
+        match self.target(id)? {
+            Some(t) => self.fb.table_at(t, spec).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// A NUL-terminated, UTF-8 checked string.
+    pub(crate) fn str(&self, id: u16) -> Result<Option<&'a str>, IpcError> {
+        let Some(t) = self.target(id)? else {
+            return Ok(None);
+        };
+        if !t.is_multiple_of(4) {
+            return Err(FLAT);
+        }
+        let n = u32_at(self.fb.buf, t)?;
+        let start = t + 4;
+        let end = start.checked_add(n).ok_or(FLAT)?;
+        if read::<1>(self.fb.buf, end)? != [0] {
+            return Err(FLAT);
+        }
+        self.fb.record(t, 4 + n + 1, Kind::Str)?;
+        let bytes = self.fb.buf.get(start..end).ok_or(FLAT)?;
+        std::str::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| IpcError::Utf8)
+    }
+
+    /// A vector's element count and data start, after its prefix alignment and extent checks.
+    fn vector(
+        &self,
+        id: u16,
+        elem: usize,
+        max: usize,
+        data_align: usize,
+    ) -> Result<Option<(usize, usize)>, IpcError> {
+        let Some(t) = self.target(id)? else {
+            return Ok(None);
+        };
+        if !t.is_multiple_of(4) || !(t + 4).is_multiple_of(data_align) {
+            return Err(FLAT);
+        }
+        let n = u32_at(self.fb.buf, t)?;
+        if n > max {
+            return Err(FLAT);
+        }
+        let bytes = n.checked_mul(elem).ok_or(FLAT)?;
+        self.fb
+            .record(t, bytes.checked_add(4).ok_or(FLAT)?, Kind::Vector)?;
+        Ok(Some((n, t + 4)))
+    }
+
+    /// A vector of at most `max` tables, each verified against `spec`.
     pub(crate) fn tables(
         &self,
-        _id: u16,
-        _max: usize,
-        _spec: Spec,
+        id: u16,
+        max: usize,
+        spec: Spec,
     ) -> Result<Vec<Table<'a>>, IpcError> {
-        Err(IpcError::Flatbuffer)
+        let Some((n, data)) = self.vector(id, 4, max, 4)? else {
+            return Ok(Vec::new());
+        };
+        let mut out = Vec::with_capacity(n);
+        for k in 0..n {
+            let e = data + 4 * k;
+            let u = u32_at(self.fb.buf, e)?;
+            if u == 0 {
+                return Err(FLAT);
+            }
+            out.push(self.fb.table_at(e.checked_add(u).ok_or(FLAT)?, spec)?);
+        }
+        Ok(out)
     }
-    pub(crate) fn structs(
-        &self,
-        _id: u16,
-        _size: usize,
-        _max: usize,
-    ) -> Result<&'a [u8], IpcError> {
-        Err(IpcError::Flatbuffer)
+
+    /// A vector of at most `max` structs of `size` bytes with 8-aligned data: `len·size` bytes.
+    pub(crate) fn structs(&self, id: u16, size: usize, max: usize) -> Result<&'a [u8], IpcError> {
+        let Some((n, data)) = self.vector(id, size, max, 8)? else {
+            return Ok(&[]);
+        };
+        self.fb.buf.get(data..data + n * size).ok_or(FLAT)
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 mod tests {
     //! unit:fb-reader (plan #68 B2 §5; T04-010): hand-built buffers and single mutations of
     //! B1 messages. Every rejection is an error, never a panic, and comes before any event.
