@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-19 |
+| **Version** | 1.2-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (catalogue, schema, R3 fallback) → M-UI3 (graph diffs, change feed, health, classes, Kubernetes model, three clouds) → M-UI5 (connectors, network inventory, devices, further clouds) → M-UI6 (remaining clouds, reachability, facilities) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T12-entity-catalogue.md (not tracked) |
@@ -376,6 +376,47 @@ wire-id uniqueness per tenant on insert; on a collision (≈ 5·10⁻⁸ at 1.3M
 gets `xxh3_64(id ‖ 1)`, recorded in the snapshot as an alias, and `catalogue_wire_id_collisions_total`
 is raised.
 
+*Canonical form (#181, [T24](T24-geo-schematic-and-widget-panels.md) §5.9, 2026-11-25).* The hash is
+XXH3-128 with the default secret and seed (`github.com/zeebo/xxh3` `Hash128`), written big-endian (the
+high 64 bits, then the low 64 bits) as a lower-case UUID; that UUID is also the `entityRef` of `e=`
+([02](../product/02-information-architecture.md) §4). Its input is the byte string
+
+`canon` = `enc(binding UUID's 16 bytes)` ‖ `enc(kind)` ‖, for each identifying position in schema
+order, `enc(value)`, or the single byte `0x00` if an optional position is absent;
+
+where `enc(x)` = `0x01` ‖ uvarint(len x) ‖ x (uvarint as Go `binary.AppendUvarint`), and strings are their exact UTF-8 bytes (no
+normalisation). For example, checkout@e1 below is the 38 bytes
+`0110000000000000400080000000000000e1010773657276696365000108636865636b6f7574`.
+
+**Canonicalisation** (the §4.2 kind table, version 8). From a submitted attribute map, each position
+takes its present alternative (`a|b`; if both are present they must be equal, else it is a conflict; a
+quoted literal is its constant). A required position needs a non-empty string, and an optional one is
+absent or a non-empty string. An unknown kind, an attribute that is no alternative of the kind, a
+conflict, a missing required position, an empty value or a non-string value is invalid (the BFF
+answers 400 `annotations.entity.invalid`). Only the **canonical map** is stored: each present position
+under its first alternative's name, with the chosen value. The id, the label, the scope predicate and
+`ScopeCovers` all read the canonical map, never the submitted one.
+
+Vectors (production hash; bindings e1 = `00000000-0000-4000-8000-0000000000e1` "prod-eu" and e2 =
+`00000000-0000-4000-8000-0000000000e2` "prod-us"):
+
+| Identity | `canon` length | EntityId |
+|---|---|---|
+| service `{service.name: checkout}` @e1 | 38 B | `bb7487bd-100d-a998-e0f0-3c65f11da1a7` |
+| the same @e2 | 38 B | `3d1d4695-d757-d5f8-d6bf-c1b134128742` |
+| service `{service.name: payments, service.namespace: shop}` @e1, in any key order | 43 B | `854bc89f-5785-b55c-398b-87a03d62a7d9` |
+| service `{service.name: gateway}` @e1 | 37 B | `af71dde5-5f66-4d0b-7ba4-e96eba601d3c` |
+| environment `prod` @e1 via `deployment.environment.name`, `deployment.environment` or both equal | 37 B | `f8bdae9d-e739-228c-dd0e-317933242944` |
+| environment `stage` @e1 | 38 B | `ac9609b4-95c1-1f31-60b9-bd315336ed95` |
+| service name `a` × 98 / 99 / 209 / 210 @e1 | 128 / 129 / 240 / 241 B | `a8e1fb45-80e1-e472-a1ed-ab67c5b576d4` / `95750f96-d723-0643-f7f3-8e724cf14590` / `23c110a8-13f7-a9fa-317a-43225690cf0d` / `8dbfe8f1-be3c-3fd1-0494-267a7a1e3f64` |
+| pod `{k8s.cluster.name: prod-eu-1, k8s.namespace.name: shop, k8s.pod.name: checkout-7d9f}` @e1 | 55 B | `970888cf-821c-14c3-0155-320ca949dd19` |
+| cluster `{k8s.cluster.name: prod-eu-1}` @e1 (canonical `{k8s.cluster.uid: prod-eu-1}`) | 38 B | `9454e37d-718e-a60b-cea1-8827d683c0d7` |
+| cluster `{k8s.cluster.uid: c-9f2}` @e1 | 34 B | `136e6b87-b494-b7ea-7873-c976399bcfff` |
+| workload `{k8s.cluster.name: c, k8s.namespace.name: ns, $k8s.workload_kind: Deployment, $k8s.workload_name: w × 256}` @e1 | 306 B | `ef38677d-0910-f997-7822-cc2ebf03d9ad` |
+
+The lengths cover the hash's 17–128, 129–240 and over-240 byte paths. An id re-identified by a schema
+change (T12-003) is a new id, so an annotation or `e=` entry holding the old id matches nothing.
+
 ### 4.6 Harvesting (R3 and fallback)
 
 **With R3** (preferred): one request per signal per refresh for the distinct combinations of the
@@ -718,6 +759,11 @@ Visibility bitsets are cached per `(tenant, scope_hash, seq)` (≈ 30 ms over 1.
 native type or attribute of an entity outside that principal's scope. Unscoped access is reserved for
 the leader's harvest and the background jobs of T06-002.
 
+*Note (#181, [T24](T24-geo-schematic-and-widget-panels.md) §5.9):* this applies to structured entity
+data; free text in a visible record (annotation text and tags, log lines) is not parsed for entity
+names. The annotations paths enforce the scope inside their one SQL statement, fail closed, and
+organisation-wide annotations are visible with full scope only.
+
 ### 4.16 Coverage model
 
 Per entity: `signals` (4-part glyph), `blind` (a signal expected for its class is missing),
@@ -951,3 +997,4 @@ Packs ship with the binary; a pack update is a patch release.
 |---|---|---|
 | 1.0-rc | 2026-11-18 | Promoted from draft; extended for [16 Infrastructure model](../product/16-infrastructure-model.md): class taxonomy, mapping packs and org overrides, cloud hierarchy and metric joins, Kubernetes model from both cluster-state sources, read-only connectors with network inventory and flows, on-prem devices, shape columns for T02. Aligned with ADR-0012 (no PulsusDB writes), T06 leases and T11 DDL |
 | 1.1-rc | 2026-11-19 | [ADR-0015](../adr/0015-go-bff.md): new §0; the catalogue, change feed and health are Go packages; class and shape tables are one data file generated into Go and Rust; connectors use the Go SDKs |
+| 1.2-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B2): T12-010 gains the canonical form (the `canon` bytes, XXH3-128 big-endian as a lower-case UUID, also the `entityRef`), canonicalisation against the §4.2 kind table, the stored canonical map and the vectors; a re-identified id matches nothing. T12-018 gains a note: it applies to structured entity data, and free text in a visible record (annotation text and tags, log lines) is not parsed for entity names |
