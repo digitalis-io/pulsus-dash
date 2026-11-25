@@ -7,7 +7,7 @@
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
-| **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T01 Frontend architecture](../technical/T01-frontend-architecture.md) · [T05 Testing & performance](../technical/T05-testing-and-performance.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) |
+| **Technical designs** | [T02 Vis engine](../technical/T02-vis-engine.md) · [T01 Frontend architecture](../technical/T01-frontend-architecture.md) · [T05 Testing & performance](../technical/T05-testing-and-performance.md) · [T07 Scene query planner](../technical/T07-scene-query-planner.md) · [T21 Time, distribution & comparison panels](../technical/T21-time-and-distribution-panels.md) |
 | **Mockups** | [06-metrics-workbench](../mockups/06-metrics-workbench.svg) · [05-service-lens](../mockups/05-service-lens.svg) · [07-logs-workbench](../mockups/07-logs-workbench.svg) · [08-traces-workbench](../mockups/08-traces-workbench.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [03-infra-cluster](../mockups/03-infra-cluster.svg) · [14-board](../mockups/14-board.svg) · [16-gallery](../mockups/16-gallery.svg) · [19-estate-3d-landscape](../mockups/19-estate-3d-landscape.svg) · [20-city-cluster-3d](../mockups/20-city-cluster-3d.svg) · [21-floors-3d](../mockups/21-floors-3d.svg) · [22-topology-3d](../mockups/22-topology-3d.svg) · [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg) |
 
 Section numbers §1–§14 are kept identical to the source draft because other documents cite them
@@ -497,6 +497,21 @@ charts.
 *Acceptance:* Given any 3D vis in Table 5-4, when the user presses `T`, then the 2D equivalent shows
 the same data and selection; and the vis spec schema rejects 3D or perspective on pie, bar and line
 vis.
+
+#### VIZ-086 — True 3D only
+**MUST** · M-UI3 · SRE, Platform, NOC, Engineer
+
+Every 3D vis MUST be a real 3D scene: geometry with depth in world space, a camera the user can
+orbit, pan and dolly (perspective by default; the orthographic toggle of VIZ-078 is a projection of
+the same scene), depth-tested occlusion, and lighting per [08](08-visual-language.md) VL-023. A 2D vis
+MUST NOT imitate depth: no bevels, extruded-looking fills or textures, drop shadows, isometric skins
+or lighting-like gradient shading. Gradients that encode data (VIZ-010 gradient fill, ramps of VL-006)
+are not shading. A vis type either has a true 3D form under VIZ-031 or stays 2D.
+
+*Acceptance:* Given each 3D vis at its milestone, when the camera orbits between two poses, then a mark
+that occludes another at the first pose no longer occludes it at the second, and the per-pixel depth
+order matches the scene geometry; and given any 2D vis spec carrying a depth, perspective, bevel,
+shadow or shading property, when validated, then it is rejected.
 
 #### VIZ-032 — Heat grid semantic zoom
 **MUST** · M-UI3 · Platform, NOC
@@ -1414,6 +1429,7 @@ board.
 | VIZ-083 | 3D scatter | SHOULD | M-UI5 |
 | VIZ-084 | Imported 3D models for physical layout | MAY | M-UI6 |
 | VIZ-085 | Fleet line stack | MUST | M-UI3 |
+| VIZ-086 | True 3D only | MUST | M-UI3 |
 | VIZ-105 | 3D flame | MUST | M-UI3 |
 | VIZ-106 | Flame top suspects | MUST | M-UI2 |
 
@@ -1425,6 +1441,7 @@ board.
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 intro, Table 5-4 rows (Graph, City, Globe, Heat grid, 3D surface; Floors added), VIZ-031 and VIZ-032 edited in place; VIZ-073 to VIZ-077 added; §3.1 3D signal views (Table 5-4a, VIZ-078 to VIZ-085, incl. the fleet line stack) added (R11–R13) |
 | 1.1-rc | 2026-11-19 | Decisions D7 and D8 (roadmap Q13): GPU vis and DOM vis definitions; VIZ-001 revised in place (one shared engine and GPU device, one canvas per viewport, DOM vis in React, interim-renderer note); VIZ-057 parity by shared fixtures instead of one shared Rust implementation (the BFF is Go); VIZ-063 rationale no longer cites the JS shim (R14) |
 | 1.2-rc | 2026-11-21 | VIZ-006: CPU fallback for lines beyond the value encoding's clip box (same first/last/min/max, same acceptance test); reference placement stated (#68) |
+| 1.3-rc | 2026-11-24 | VIZ-086 (owner, #150); T21 |
 | 1.3-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
 
 ## Resolved during formalisation

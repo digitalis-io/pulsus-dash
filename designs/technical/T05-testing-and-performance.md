@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.39-rc · 2026-11-24 |
+| **Version** | 1.40-rc · 2026-11-24 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -577,7 +577,7 @@ the merge train), nightly (release blocker).
 | `ci:migrations` | `squawk` on `server/migrations/*.sql` (T11-013), proven by the failing fixture `server/testdata/squawk/create_index_not_concurrently.sql` (`require-concurrent-index-creation`), and an up-from-empty run on Postgres (`itest:migrations`); on pull requests, no merged migration is modified, deleted or renamed (append-only, T11-012) | PR | yes |
 | `ci:palette-check` | CVD simulation (deuteranopia, protanopia, tritanopia) for every palette in every theme; series palette within ±3 L*; wall variant ≥ 7:1 text, ≥ 3:1 state marks | PR | yes |
 | `ci:keymap-check` | T03-011 over the default table and every preset | PR | yes |
-| `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis. Subset from #68 (`cargo xtask spec-lint`): `dash-scene` has no dependency, direct or transitive, on `wgpu`, `naga` or `dash-gpu` and its `dash-marks` edge enables no feature; `.wgsl` files only in `dash-marks`; the literals of `engine/ci/lavapipe.Dockerfile` and the toolchain channel equal `engine/tools.toml` | PR | yes |
+| `ci:spec-lint` | T02-001 (no pipeline outside L1); diverging ramps only on delta encodings; glyphs only through `Glyph`; every overlay declares an axis. Subset from #68 (`cargo xtask spec-lint`): `dash-scene` has no dependency, direct or transitive, on `wgpu`, `naga` or `dash-gpu` and its `dash-marks` edge enables no feature; `.wgsl` files only in `dash-marks`; the literals of `engine/ci/lavapipe.Dockerfile` and the toolchain channel equal `engine/tools.toml`; T21-001: no depth, perspective, bevel, shadow or shading property on a 2D kind | PR | yes |
 | `ci:engine-lint` | From #68: `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` on `engine/`, with `unwrap_used`, `expect_used` and `disallowed_types` (`std::sync::Mutex`, `RwLock`: T03-008) denied | PR | yes |
 | `ci:gallery-manifest` | T05-003 for the build's milestone | PR | yes |
 | `ci:probe-absent` | No test probe, no globals, no ungated upload endpoint in release artefacts. Scans a fresh production build of the client (and, from #68, the engine), never files on disk; `e2e` checks the marker is found in the test build | PR | yes |
@@ -981,6 +981,17 @@ to gate at 3 %.
 | `bench:catalogue-mixed-estate-cycle` | Mixed-estate cycle within §7 (INF-032) | nightly | yes |
 | `bench:change-rank` | Onset ranking ≤ 20 ms | nightly | yes |
 
+**Time and distribution panels ([T21](T21-time-and-distribution-panels.md))**
+
+| Gate | Checks | Stage |
+|---|---|---|
+| `unit:state-runs` | T21-003, T21-004, T21-005, T21-011 | PR |
+| `unit:summary-facts` | T21-010 | PR |
+| `e2e:chart-select` | T21-009 against the #164 Inspector | PR |
+| `bench:frame-interim-time-kinds` | Until #68: scripted pan and zoom over each T21 kind at its cap. Reports p50 and p95. A change to the draw path records a local before/after run, and the p95 regression must be ≤ 10 % | PR (report) |
+| `golden:3d-occlusion` | From the engine, for each 3D view: two poses invert one occlusion, and the depth order equals the geometry | merge |
+| `replay:3d-linked-2d` | From the engine: `T` swaps 2D and 3D with the same data and selection, and hovering in 3D drives the docked 2D slice | merge |
+
 ## 8. Security, tenancy & RBAC
 
 - Lean bug-report replays contain no telemetry values. Full replays are scope-checked on playback,
@@ -1121,4 +1132,5 @@ Meta-testing:
 | 1.36-rc | 2026-11-24 | #126: §7.1 `e2e:ticks-parity` exact in every engine (F/S/N classes removed); adds `unit:js-pow`; removes `unit:ulp-distance` |
 | 1.37-rc | 2026-11-24 | #67: §7.1 adds `unit:log-stream-prefetch`, `unit:log-panel-path`, `unit:stream-input`, `unit:fetch-log-frame`, `unit:stream-meta`, `unit:logql-planned`, `unit:from-range-frame`, `unit:panel-view`, `unit:explore-link`, `unit:query-language`, `unit:board-log-panels`, `e2e:board-logql-save`, `e2e:board-logql-brush` and `e2e:board-logql-paging`; `e2e:a11y-rooms` adds the board log panels (axe, targets and the keyboard loop L34) |
 | 1.38-rc | 2026-11-24 | #130: §7.1 adds `ci:e2e-complete` (the e2e suite runs as five CI shards per engine, chosen by tag and spec file) |
-| 1.39-rc | 2026-11-24 | #152 ([T23](T23-graph-trace-profile-and-hierarchy-panels.md), flame graph): §7.1 adds `unit:flame-decode`, `unit:flame-suspects`, `unit:flame-suspects-nobase`, `unit:flame-suspects-diff`, `unit:flame-merge`, `unit:flame-search-dense`, `unit:flame-options`, `unit:autovis-profile`, `unit:flame-diff`, `unit:flame-diff-sign`, `unit:flame-diff-exact`, `unit:flame-diff-self`, `unit:flame-diff-cost`, `unit:flame-diff-empty`, `unit:flame-gap`, `unit:flame-layout`, `unit:flame-multiparent`, `unit:flame-zero-self`, `unit:flame-sandwich`, `unit:flame-labels`, `golden:flame3d`, `golden:flame-greyscale`, `e2e:flame-two-actions`, `e2e:flame-escape`, `e2e:flame-merge-pick`, `e2e:flame-search-levels`, `e2e:flame-2d`, `e2e:flame-types`, `e2e:flame-states`, `e2e:flame-baseline`, `e2e:flame-baseline-range`, `e2e:flame-identity`, `e2e:flame-a11y`, `e2e:flame-diff-nobaseline`, `e2e:flame-diff-none`, `e2e:flame-mode-switch`, `e2e:flame-diff-fly`, `e2e:flame3d-nav`, `e2e:flame3d-controls`, `e2e:flame3d-modes` (PR, blocking), and the lab gates `bench:frame-flame-1e5` (CI report-only, lab-enforced with `FLAME_BENCH_GATE=enforce`), `bench:frame-flame3d-1e5` (lab, enforced) and `bench:flame-fly` (merge) |
+| 1.39-rc | 2026-11-24 | #150 ([T21](T21-time-and-distribution-panels.md)): §7.1 adds `unit:state-runs`, `unit:summary-facts`, `e2e:chart-select`, `bench:frame-interim-time-kinds`, `golden:3d-occlusion` and `replay:3d-linked-2d`; `ci:spec-lint` adds the T21-001 2D-kind check |
+| 1.40-rc | 2026-11-24 | #152 ([T23](T23-graph-trace-profile-and-hierarchy-panels.md), flame graph): §7.1 adds `unit:flame-decode`, `unit:flame-suspects`, `unit:flame-suspects-nobase`, `unit:flame-suspects-diff`, `unit:flame-merge`, `unit:flame-search-dense`, `unit:flame-options`, `unit:autovis-profile`, `unit:flame-diff`, `unit:flame-diff-sign`, `unit:flame-diff-exact`, `unit:flame-diff-self`, `unit:flame-diff-cost`, `unit:flame-diff-empty`, `unit:flame-gap`, `unit:flame-layout`, `unit:flame-multiparent`, `unit:flame-zero-self`, `unit:flame-sandwich`, `unit:flame-labels`, `golden:flame3d`, `golden:flame-greyscale`, `e2e:flame-two-actions`, `e2e:flame-escape`, `e2e:flame-merge-pick`, `e2e:flame-search-levels`, `e2e:flame-2d`, `e2e:flame-types`, `e2e:flame-states`, `e2e:flame-baseline`, `e2e:flame-baseline-range`, `e2e:flame-identity`, `e2e:flame-a11y`, `e2e:flame-diff-nobaseline`, `e2e:flame-diff-none`, `e2e:flame-mode-switch`, `e2e:flame-diff-fly`, `e2e:flame3d-nav`, `e2e:flame3d-controls`, `e2e:flame3d-modes` (PR, blocking), and the lab gates `bench:frame-flame-1e5` (CI report-only, lab-enforced with `FLAME_BENCH_GATE=enforce`), `bench:frame-flame3d-1e5` (lab, enforced) and `bench:flame-fly` (merge) |
