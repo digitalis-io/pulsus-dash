@@ -1,6 +1,7 @@
 // unit:inspector-members (T25-011, T25 §10, plan #192 §5).
 import { describe, expect, it } from 'vitest';
 import {
+  expandMembers,
   membersView,
   NO_MEMBERS_STATE,
   pressFewer,
@@ -99,5 +100,46 @@ describe('unit:inspector-members', () => {
       throw new Error('no resolve for complete lists');
     });
     expect(membersView(complete, s).texts.items).toHaveLength(10);
+  });
+});
+
+describe('unit:inspector-members labels (#154)', () => {
+  const lab = (i: number) => ({ le: String(i) });
+  const BIN: MemberSection = {
+    texts: { shown: range(8).map(text), count: 10, labels: range(8).map(lab) },
+    runs: null,
+    resolve: { panelId: 'P3', runId: 'b1' },
+  };
+
+  it('the labels stay parallel to the texts, shown and resolved', () => {
+    expect(membersView(BIN, NO_MEMBERS_STATE).labels).toEqual(range(8).map(lab));
+    const full: MemberList = {
+      texts: range(10).map(text),
+      members: [],
+      labels: range(10).map(lab),
+    };
+    expect(expandMembers(BIN, full)).toEqual({
+      texts: range(10).map(text),
+      runs: [],
+      labels: range(10).map(lab),
+    });
+    const s = pressMore(BIN, NO_MEMBERS_STATE, 'texts', () => full);
+    expect(membersView(BIN, s).labels).toEqual(range(10).map(lab));
+  });
+
+  it('labels of another length are stale; no labels give null', () => {
+    const short: MemberList = {
+      texts: range(10).map(text),
+      members: [],
+      labels: range(9).map(lab),
+    };
+    expect(expandMembers(BIN, short)).toBe('stale');
+    const plain: MemberList = { texts: range(10).map(text), members: [] };
+    expect(expandMembers(BIN, plain)).toEqual({
+      texts: range(10).map(text),
+      runs: [],
+      labels: null,
+    });
+    expect(membersView(SECTION, NO_MEMBERS_STATE).labels).toBeNull();
   });
 });
