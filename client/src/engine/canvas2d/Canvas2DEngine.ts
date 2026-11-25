@@ -22,6 +22,7 @@ import type {
   FrameData,
   FrameEvents,
   FrameInit,
+  FrameSelection,
   HoverEvent,
   PlotRect,
   ThemeName,
@@ -345,6 +346,10 @@ class Canvas2DFrame implements ChartFrame {
     this.events = events;
     if (band) this.changed();
     else this.invalidate();
+  }
+
+  setSelection(sel: FrameSelection | null): void {
+    void sel;
   }
 
   setTheme(t: ThemeName): void {

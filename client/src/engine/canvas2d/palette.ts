@@ -58,6 +58,12 @@ export interface ThemeColours {
   text: string;
   /** Event lines (ADR-0023): `text-muted`, never a state colour (T02-004). */
   event: string;
+  /** The selection underlay and rings (ADR-0025, T25-006). */
+  focus: string;
+  /** The selection band: `accent` at 16 % (T25-006). */
+  selection: string;
+  /** The alpha of unselected marks while a selection is relevant (T25-006). */
+  dimmed: number;
   series: readonly string[];
   ramp: readonly string[];
   /** Threshold lines and labels only: `StateEncoding[s].colour[t]` (T02-004, VL-003). */
@@ -75,6 +81,9 @@ export function themeColours(t: ThemeName): ThemeColours {
     chip: c['surface-2'],
     text: c.text,
     event: c['text-muted'],
+    focus: c.focus,
+    selection: '',
+    dimmed: 1,
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
     state: {

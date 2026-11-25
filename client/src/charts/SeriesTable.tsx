@@ -37,6 +37,11 @@ export interface SeriesTableProps {
   readonly maxRows: number;
   /** The threshold state of a value; absent = no highlight. */
   readonly cellState?: (v: number | null) => ThresholdState | null;
+  /**
+   * The panel the rows select for (T25-016): a leading "Select <name>" toggle per row inside an
+   * Inspector host; null on Explore; absent = no toggles.
+   */
+  readonly selectPanelId?: string | null;
 }
 
 /** A value cell: highlighted with its state's colour, glyph and hidden name when it has one. */

@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { SeriesRow } from '../explore/seriesRows';
+import { InspectorApiContext, SelectionContext, type InspectorHostApi } from '../inspector/host';
+import type { Selection } from '../inspector/types';
 import { TABLE_ROWS } from '../explore/seriesRows';
 import { SeriesTable, type SeriesTableProps } from './SeriesTable';
 
@@ -112,5 +114,54 @@ describe('SeriesTable', () => {
     expect(first.querySelector('[aria-hidden="true"]')?.textContent).toBe('◉');
     expect(within(first).getByText('Degraded')).toBeInTheDocument();
     expect(table.querySelectorAll('td[data-state]')).toHaveLength(3);
+  });
+});
+
+describe('unit:series-select', () => {
+  function hosted(p: SeriesTableProps, sel: Selection | null, api: Partial<InspectorHostApi>) {
+    const host: InspectorHostApi = {
+      inspect: vi.fn(),
+      select: vi.fn(),
+      registerMembers: vi.fn(() => () => undefined),
+      resolveMembers: vi.fn(() => null),
+      registerEscape: vi.fn(() => () => undefined),
+      ...api,
+    };
+    return (
+      <InspectorApiContext.Provider value={host}>
+        <SelectionContext.Provider value={sel}>
+          <SeriesTable {...p} />
+        </SelectionContext.Provider>
+      </InspectorApiContext.Provider>
+    );
+  }
+
+  it('a leading "Select <name>" toggle writes the selection; the name still isolates', () => {
+    const select = vi.fn();
+    const p = props({ selectPanelId: 'p1' });
+    const k1 = ROWS[1]?.key ?? '';
+    const view = render(hosted(p, null, { select }));
+    const toggle = screen.getByRole('button', { name: 'Select up{job="1"}' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(select).toHaveBeenCalledWith(
+      { keys: [k1], fromMs: null, toMs: null },
+      { kind: 'tableRow', panelId: 'p1' },
+    );
+    view.rerender(hosted(p, { keys: [k1], fromMs: null, toMs: null }, { select }));
+    const pressed = screen.getByRole('button', { name: 'Select up{job="1"}' });
+    expect(pressed).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(pressed);
+    expect(select).toHaveBeenLastCalledWith(null, { kind: 'tableRow', panelId: 'p1' });
+    fireEvent.click(screen.getByRole('button', { name: 'up{job="1"}' }));
+    expect(p.onIsolate).toHaveBeenCalledWith(k1);
+  });
+
+  it('no host, or no selectPanelId: no toggle column', () => {
+    render(<SeriesTable {...props({ selectPanelId: 'p1' })} />);
+    expect(screen.queryByRole('button', { name: /^Select / })).toBeNull();
+    cleanup();
+    render(hosted(props(), null, {}));
+    expect(screen.queryByRole('button', { name: /^Select / })).toBeNull();
   });
 });

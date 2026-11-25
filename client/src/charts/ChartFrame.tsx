@@ -51,6 +51,7 @@ import type {
 import { ChartUnsupportedError } from '../engine/canvas2d/Canvas2DEngine';
 import { ChartEngineContext } from '../engine/index';
 import { t } from '../i18n/t';
+import type { InspectorTarget } from '../inspector/types';
 import { Button } from '../kit/Button';
 import { cx } from '../kit/cx';
 import { Tooltip } from '../kit/Tooltip';
@@ -79,6 +80,17 @@ export interface ChartFrameProps {
   readonly sizeMemo?: { current: FrameSize | null };
   /** Event markers on the time axis (ADR-0023); absent = none. */
   readonly events?: readonly EventMarker[];
+  /**
+   * A click on a mark or Enter/Space on the crosshair (T25-005): the target, how it was chosen and
+   * where focus returns when the Inspector closes. Absent without an Inspector host.
+   */
+  readonly onInspect?: (
+    t: InspectorTarget,
+    source: 'pointer' | 'keyboard',
+    returnFocus: HTMLElement | null,
+  ) => void;
+  /** A click on the plot with no mark under it: clears the selection (T25 §4.2). */
+  readonly onEmptyClick?: () => void;
 }
 
 interface HoverState {

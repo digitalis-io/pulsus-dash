@@ -3,6 +3,7 @@ export type Ctx2D = Pick<
   CanvasRenderingContext2D,
   | 'setTransform'
   | 'fillRect'
+  | 'strokeRect'
   | 'clearRect'
   | 'beginPath'
   | 'moveTo'
@@ -19,6 +20,7 @@ export type Ctx2D = Pick<
   | 'restore'
   | 'setLineDash'
   | 'fillStyle'
+  | 'globalAlpha'
   | 'strokeStyle'
   | 'lineWidth'
   | 'lineJoin'

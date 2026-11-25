@@ -1,5 +1,5 @@
 /**
- * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022 and ADR-0023). Every chart is drawn by a `ChartEngine`
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022, ADR-0023 and ADR-0025). Every chart is drawn by a `ChartEngine`
  * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
@@ -118,10 +118,32 @@ export interface CommitEvent {
   readonly gesture: 'wheel' | 'pan' | 'axis' | 'fit';
 }
 
-/** Reserved; the Canvas 2D engine never emits it. */
+/**
+ * The page selection a frame draws (ADR-0025, T25-006): series or stream keys and an optional
+ * interval [fromMs, toMs). Empty keys and a null interval leave every mark as it was.
+ */
+export interface FrameSelection {
+  readonly keys: readonly string[];
+  readonly fromMs: number | null;
+  readonly toMs: number | null;
+}
+
+/** The mark under a click or the keyboard crosshair (ADR-0025; T21 adds `segment`). */
+export type HoverItem =
+  | { readonly kind: 'point'; readonly key: string; readonly tMs: number; readonly value: number }
+  | {
+      readonly kind: 'bucket';
+      /** The bound index. */
+      readonly index: number;
+      readonly tMs: number;
+      readonly toMs: number;
+      readonly count: number;
+    };
+
+/** A click on the plot (ADR-0025): the mark under it, or null for an empty click. */
 export interface SelectEvent {
-  readonly key: string;
-  readonly tMs: number;
+  readonly source: 'pointer' | 'keyboard';
+  readonly item: HoverItem | null;
 }
 
 /** A threshold label as laid out (ADR-0022), CSS px relative to the canvas. */
@@ -210,6 +232,8 @@ export interface ChartFrame {
   setTheme(t: ThemeName): void;
   /** Replaces the event markers; [] = none (ADR-0023). */
   setEvents(events: readonly EventMarker[]): void;
+  /** The page selection drawn in the next frame; null = none; an equal value is ignored (ADR-0025). */
+  setSelection(sel: FrameSelection | null): void;
   resize(cssWidth: number, cssHeight: number, dpr: number): void;
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void;
   dispose(): void;

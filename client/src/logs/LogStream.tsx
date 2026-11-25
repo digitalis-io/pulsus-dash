@@ -24,6 +24,7 @@ import {
 import { LOG_LEVELS } from '../data/logFrame';
 import { formatLogTime } from '../i18n/format';
 import { t } from '../i18n/t';
+import type { InspectorTarget } from '../inspector/types';
 import { Button } from '../kit/Button';
 import { Checkbox } from '../kit/Checkbox';
 import { cx } from '../kit/cx';
@@ -92,6 +93,12 @@ export interface LogStreamProps {
   /** 'bound' (default): `wrapLines`; 'row': every wrapped row estimated 20 px (the harness's E7 only). */
   readonly wrapEstimate?: 'bound' | 'row';
   readonly ref?: Ref<LogStreamHandle>;
+  /** A row click or Enter/Space on a focused row (T25-005); absent without an Inspector host. */
+  readonly onInspect?: (
+    t: InspectorTarget,
+    source: 'pointer' | 'keyboard',
+    returnFocus: HTMLElement | null,
+  ) => void;
 }
 
 interface Restore {

@@ -6,6 +6,7 @@
  * current answer to Explore › Logs (plan #67 §2), and has no link without one.
  */
 import type { PanelSpec } from '../api/types';
+import type { VisKind } from '../engine/api';
 import { contextSearchString, type ContextSearch } from '../state/contextSearch';
 
 export function exploreHref(
@@ -22,4 +23,20 @@ export function exploreHref(
   const k = panel.vis.kind;
   const vis = k === 'auto' || k === 'logs' ? '' : `&vis=${k}`;
   return `/t/${tenant}/explore/metrics${time}&q=${encodeURIComponent(expanded)}${vis}`;
+}
+
+/** Explore's address for a query: Logs for LogQL, else Metrics with `vis` (none for `auto`). */
+export function exploreHrefFor(
+  tenant: string,
+  lang: 'promql' | 'logql',
+  vis: VisKind | 'auto',
+  search: ContextSearch,
+  text: string,
+): string {
+  void tenant;
+  void lang;
+  void vis;
+  void search;
+  void text;
+  throw new Error('todo');
 }
