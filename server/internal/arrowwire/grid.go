@@ -23,7 +23,9 @@ const nullBits = 0x7FF8000000000000
 // batchBytes is the value bytes a later data batch aims at (T04 §4.3: ≤ 1 MiB, ≤ 64 series).
 const batchBytes, batchSeries = 1 << 20, 64
 
-// labelsOverhead bounds a labels batch's metadata and padding in the Add size check.
+// labelsOverhead bounds a labels batch's message header, metadata and padding: with
+// labelBytes it gives an upper bound of the encoded labels frame payload, used only to decide
+// when a batch must be sent early. Refusal is always on the encoded size.
 const labelsOverhead = 64 << 10
 
 // GridSpec describes one labels/1 + metric_matrix.grid/1 part pair.
@@ -131,6 +133,7 @@ func (p *GridPart) batchSize() int {
 	return min(max(batchBytes/(8*p.n), 1), batchSeries)
 }
 
+// labelBytes is an upper bound of the label rows' bytes of s in a labels/1 batch.
 func labelBytes(s *pulsusdb.Series) int {
 	n := 0
 	for _, l := range s.Labels {
@@ -140,8 +143,10 @@ func labelBytes(s *pulsusdb.Series) int {
 }
 
 // Add adds one series: len(Values) == len(Present) == the grid's length, else ErrShape; a
-// series whose labels cannot fit one labels frame is ErrFrameTooLarge. Either closes the part
-// (outcome (b)). A batch is sent when it is full.
+// series whose encoded labels batch alone is larger than MaxPayload is ErrFrameTooLarge. Either
+// closes the part (outcome (b), dropping the pending series). Otherwise the pending batch is
+// sent first when the series might not fit beside it (labelBytes bound), and a batch is sent
+// when it is full.
 func (p *GridPart) Add(s *pulsusdb.Series) error {
 	if err := p.usable(); err != nil {
 		return err
@@ -150,7 +155,7 @@ func (p *GridPart) Add(s *pulsusdb.Series) error {
 		return p.refuse(ErrShape)
 	}
 	lb := labelBytes(s)
-	if lb+labelsOverhead > MaxPayload {
+	if lb+labelsOverhead > MaxPayload && !p.labelsFit(s) {
 		return p.refuse(ErrFrameTooLarge)
 	}
 	if len(p.pending) > 0 && p.pendLab+lb+labelsOverhead > MaxPayload {
@@ -164,6 +169,14 @@ func (p *GridPart) Add(s *pulsusdb.Series) error {
 		return p.Flush()
 	}
 	return nil
+}
+
+// labelsFit encodes the labels batch of s alone at the Writer's offset and reports whether its
+// payload is at most MaxPayload. A flush re-checks the encoded size where it is written.
+func (p *GridPart) labelsFit(s *pulsusdb.Series) bool {
+	rec := labelsRecord([]*pulsusdb.Series{s}, p.sent+uint32(len(p.pending))) // #nosec G115 -- ≤ 64 pending
+	defer rec.Release()
+	return p.w.frames().add(p.header(FrameBatch, p.spec.LabelsPart, 0), batchPayload(rec)) == nil
 }
 
 // Flush sends the pending series: BATCH(L) with their label rows, then BATCH(D).
@@ -316,16 +329,22 @@ const (
 	cutMarker       = "…(truncated)"
 )
 
-// cutUTF8 cuts s to at most n bytes at a UTF-8 boundary, ending with cutMarker when cut.
+// cutUTF8 cuts s to at most n bytes at a UTF-8 boundary. A cut string ends with cutMarker
+// when n leaves room for it; with fewer than len(cutMarker) bytes the marker is omitted and the
+// prefix alone is returned (possibly empty), so the result never exceeds n.
 func cutUTF8(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	k := max(n-len(cutMarker), 0)
+	marker := cutMarker
+	if n < len(marker) {
+		marker = ""
+	}
+	k := max(n-len(marker), 0)
 	for k > 0 && !uni.RuneStart(s[k]) {
 		k--
 	}
-	return s[:k] + cutMarker
+	return s[:k] + marker
 }
 
 // boundCoverage is c as a partial, truncated coverage whose lists and reason are cut to the

@@ -547,3 +547,102 @@ func wantSeq(l, d uint32, flags uint16, batches int, pending bool) []seqItem {
 	}
 	return append(s, seqItem{FrameMeta, d, flags | FlagLast}, seqItem{FrameEnd, 0, 0})
 }
+
+// fbReader reads the few flatbuffer fields the layout check needs, failing the test on any
+// out-of-range offset.
+type fbReader struct {
+	t *testing.T
+	b []byte
+}
+
+func (r fbReader) at(o, n int) []byte {
+	r.t.Helper()
+	if o < 0 || n < 0 || o+n > len(r.b) {
+		r.t.Fatalf("flatbuffer read [%d, %d) outside %d bytes", o, o+n, len(r.b))
+	}
+	return r.b[o : o+n]
+}
+
+// field is the position of field i of the table at pos, or -1 when absent.
+func (r fbReader) field(pos, i int) int {
+	r.t.Helper()
+	vt := pos - int(int32(binary.LittleEndian.Uint32(r.at(pos, 4)))) // #nosec G115 -- a flatbuffer soffset is an i32
+	vlen := int(binary.LittleEndian.Uint16(r.at(vt, 2)))
+	if 4+2*i+2 > vlen {
+		return -1
+	}
+	off := int(binary.LittleEndian.Uint16(r.at(vt+4+2*i, 2)))
+	if off == 0 {
+		return -1
+	}
+	return pos + off
+}
+
+func (r fbReader) ref(fp int) int { return fp + int(binary.LittleEndian.Uint32(r.at(fp, 4))) }
+
+// checkLayout checks every IPC message of a payload at body offset base against B2's
+// structural rules: metadata version V5, an 8-aligned body length, no compression, and record
+// batch buffers that start at 0, are 8-aligned, ascending and non-overlapping, stay inside the
+// body, with every byte between and after them zero.
+func checkLayout(t *testing.T, name string, payload []byte, base int64) {
+	t.Helper()
+	for i := 0; i+8 <= len(payload); {
+		l := int(binary.LittleEndian.Uint32(payload[i+4:]))
+		if binary.LittleEndian.Uint32(payload[i:]) != 0xFFFFFFFF || l == 0 {
+			return // EOS
+		}
+		if i+8+l > len(payload) {
+			t.Fatalf("%s: message at %d: metadata past the payload", name, base+int64(i))
+		}
+		r := fbReader{t, payload[i+8 : i+8+l]}
+		msg := int(binary.LittleEndian.Uint32(r.at(0, 4)))
+		if fp := r.field(msg, 0); fp < 0 || binary.LittleEndian.Uint16(r.at(fp, 2)) != 4 {
+			t.Errorf("%s: message at %d is not metadata version V5", name, base+int64(i))
+		}
+		var bodyLen int64
+		if fp := r.field(msg, 3); fp >= 0 {
+			bodyLen = int64(binary.LittleEndian.Uint64(r.at(fp, 8))) // #nosec G115 -- bodyLength is an i64
+		}
+		if bodyLen%8 != 0 || int64(i+8+l)+bodyLen > int64(len(payload)) {
+			t.Fatalf("%s: message at %d: body length %d", name, base+int64(i), bodyLen)
+		}
+		body := payload[i+8+l : int64(i+8+l)+bodyLen]
+		ht := -1
+		if fp := r.field(msg, 1); fp >= 0 {
+			ht = int(r.at(fp, 1)[0])
+		}
+		if ht == 1 && bodyLen != 0 {
+			t.Errorf("%s: schema message at %d has a body", name, base+int64(i))
+		}
+		if hp := r.field(msg, 2); ht == 3 && hp >= 0 {
+			rb := r.ref(hp)
+			if r.field(rb, 3) >= 0 {
+				t.Errorf("%s: record batch at %d is compressed", name, base+int64(i))
+			}
+			var end int64
+			if vp := r.field(rb, 2); vp >= 0 {
+				v := r.ref(vp)
+				n := int(binary.LittleEndian.Uint32(r.at(v, 4)))
+				for k := 0; k < n; k++ {
+					e := r.at(v+4+16*k, 16)
+					off, ln := int64(binary.LittleEndian.Uint64(e)), int64(binary.LittleEndian.Uint64(e[8:])) // #nosec G115 -- Buffer fields are i64
+					if (k == 0 && off != 0) || off%8 != 0 || off < end || ln < 0 || off+ln > bodyLen {
+						t.Fatalf("%s: message at %d buffer %d: offset %d length %d after %d (body %d)", name, base+int64(i), k, off, ln, end, bodyLen)
+					}
+					for _, z := range body[end:off] {
+						if z != 0 {
+							t.Fatalf("%s: message at %d: non-zero padding before buffer %d", name, base+int64(i), k)
+						}
+					}
+					end = off + ln
+				}
+			}
+			for _, z := range body[end:] {
+				if z != 0 {
+					t.Fatalf("%s: message at %d: non-zero padding after the last buffer", name, base+int64(i))
+				}
+			}
+		}
+		i += 8 + l + int(bodyLen)
+	}
+}

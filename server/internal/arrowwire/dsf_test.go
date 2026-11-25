@@ -67,6 +67,7 @@ func checkAlignment(t *testing.T, name string, b []byte) {
 		if len(f.Payload) == 0 {
 			continue
 		}
+		checkLayout(t, name, f.Payload, f.Off+HeaderLen)
 		ms, _ := messages(t, f.Payload, f.Off+HeaderLen)
 		for _, m := range ms {
 			if m.BodyOff%64 != 0 {
