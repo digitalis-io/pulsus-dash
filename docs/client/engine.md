@@ -509,7 +509,12 @@ from validated offsets and lengths before the `Vec` or `String` it bounds is all
   series without labels shares one empty label set. A coverage list is a packed `StrList`
   (one allocation: 4 B per element plus its bytes). An `ErrorRow`'s message and suggestion are
   `Arc<str>`, so the decoder's stream-level copy and the emitted event share one allocation.
-  Unit tests assert each form against its charge (`cost::SERIES` is 96 for this reason).
+  A labels part keeps no copy of its accepted schema (its batches are read with the canonical
+  `labels/1` columns) and a data part keeps only its two grid columns. Unit tests assert each
+  form against its charge (`cost::SERIES` is 96 for this reason): the boxed labels and data
+  state and their columns against the schema's fixed 256 B, a part's map slot against the part's
+  256 B; `tests/limits_live.rs` also measures parts and schemas alone (live ≤ body budget used
+  after every frame).
 - **The bound.** With the decoder and every emitted event held, the heap they retain is at most
   the body budget used plus the value budget used (`tests/limits_live.rs`, live-byte counting
   allocator). The `Event` values themselves live in the caller's container
