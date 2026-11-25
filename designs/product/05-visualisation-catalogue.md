@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-25 |
+| **Version** | 1.10-rc · 2026-11-25 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -996,6 +996,14 @@ across viewports, and MUST be able to write the visible bounds into Context as a
 as filter" on, when the user zooms to Europe, then other viewports filter to entities inside the
 bounds.
 
+*Note (#184 step 2, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-097--sync)):* on
+a board, maps with `sync` on share one view in the board URL (`map=*_…`) and follow each other's
+committed moves; with `boundsFilter` on, a map writes its visible bounds as the board's map area
+(`geo=`), a filter like `f=`. The other panels keep only the returned series inside the area, by the
+same location rules as the geomap, and disclose the rest on the coverage meter; log lines, traces,
+profiles and scalars are not filtered yet and say so (T24-098, §4.15). Explore has no maps yet. The
+acceptance is unchanged.
+
 ## 8. Schematics (canvas and flowchart panel equivalent)
 
 NOC and operations teams draw their own diagrams: a factory line, a payment rail, a network rack, a
@@ -1222,6 +1230,12 @@ Dashboard import ([04](04-surfaces.md) §4.3) MUST map each standard panel type 
 imported, then the import report shows 25 of 25 mapped, and each panel renders with the listed
 equivalent vis.
 
+*Staging (#184 step 2, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-099--auto-vis-row-8-import)):*
+the Geomap row's options mapping is designed in T24 §4.19 and ships at M-UI3 as a pure function
+(`importGeomap`, every output valid board spec v8, with ordered import notes); the corpus acceptance
+runs at M-UI5 with the dashboard import (#158). Layers other than markers are noted as not mapped
+yet (part G). The acceptance is unchanged.
+
 #### VIZ-061 — Common plugins import
 **MUST** · M-UI5 · Admin, NOC
 
@@ -1295,6 +1309,13 @@ be able to override the choice, and the override MUST persist with the viewport.
 
 *Acceptance:* Given a fixture query per row of Table 5-13, when each is run with vis "auto", then
 the listed vis is chosen; and after the user switches one to Table, reloading keeps Table.
+
+*Staging (#184 step 2, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-099--auto-vis-row-8-import)):*
+row 8 ships at M-UI3 on boards, after rows 5–7: at least 2 series, at least half of them with a
+non-empty location label (the T24 §4.10 aliases; no gazetteer lookup, so the choice never changes
+when the map data loads) → Geomap. Panels stored before board spec v8 are marked `legacyAuto` and
+keep their vis until the panel is edited and saved (the editor previews row 8 first), so no stored
+board switches silently. Explore does not apply row 8 yet. The acceptance is unchanged.
 
 ## 13. Accessibility of data vis
 
@@ -1491,6 +1512,7 @@ board.
 | 1.7-rc | 2026-11-25 | #206: VIZ-090 bucket sources (T21) |
 | 1.8-rc | 2026-11-25 | #184: VIZ-046 staging (offline data in step 1a, drawing in step 1b, sources in part F, wgpu with #68; T24) |
 | 1.9-rc | 2026-11-25 | #184 step 1b: VIZ-067 identity per group for grouped spatial marks, and its acceptance covers every series or group; Table 5-8 Markers: target 10⁵, 5 000 drawn in the 2D core; VIZ-044 staging (markers in step 1b, symbol and rotation from fields in part G; T24) |
+| 1.10-rc | 2026-11-25 | #184 step 2: VIZ-047 note (sync through `map=*`, the bounds filter as the `geo=` map area, the panels it filters and those it does not yet); VIZ-065 row 8 staging (a synchronous label test after rows 5–7; `legacyAuto` keeps stored boards; not in Explore yet); VIZ-060 Geomap staging (the T24 §4.19 mapping at M-UI3, the corpus at M-UI5; T24) |
 
 ## Resolved during formalisation
 

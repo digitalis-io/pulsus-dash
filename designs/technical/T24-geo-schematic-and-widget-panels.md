@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-25 |
+| **Version** | 1.6-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -18,8 +18,9 @@ gap record (rules T24-030 to T24-039). Part E step 1a adds the geomap's data lay
 resolution, the bundled basemap and gazetteer assets and their loading (rules T24-080 to T24-087).
 Part E step 1b adds the geomap frame: rows and their statuses, group identity, the camera, picking,
 selection and the Inspector, the keyboard mark list, the table, CSV and facts, and the states (rules
-T24-088 to T24-095, [ADR-0027](../adr/0027-geomap-frame-seam.md)). Parts C–K add their rules in their
-own ID blocks.
+T24-088 to T24-095, [ADR-0027](../adr/0027-geomap-frame-seam.md)). Part E step 2 adds the map's URL
+state and camera history, view sync, the map area filter, auto-vis row 8 and the import of the
+standard geomap panel (rules T24-096 to T24-099). Parts C–K add their rules in their own ID blocks.
 
 ## 1. Context & problem
 
@@ -92,6 +93,25 @@ target and an announcement (T24-095). Rejected: a neutral marker colour, rings a
 spreading coincident marks apart, a repeated world, nested member lists, inspecting an ordinary group
 from its legend, `aria-activedescendant`, and a host request per navigation step (§12).
 
+**Part E, step 2.** [VIZ-047](../product/05-visualisation-catalogue.md#viz-047--maps-share-the-camera-and-context)
+asks maps to sync their view and to write the visible bounds into Context as a filter;
+[INT-006](../product/03-interaction-model.md#int-006--camera-history) asks for camera history;
+[VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) row 8 picks a geomap for
+geo fields; and [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11)
+imports the standard geomap panel. The approach: map state is board URL state written from
+`geoCommit` ([ADR-0027](../adr/0027-geomap-frame-seam.md): one per gesture, view and bounds):
+`map=` holds the view of a scope (the sync group `*` or a panel) and, for a writer, `geo=` holds the
+map area, a filter like `f=`. One serialised store writes the board URL. Followers move by `setSpec`,
+which emits no `geoCommit`, so sync cannot loop. The area is applied in the client to the returned
+series: it only removes and counts them
+([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)). Row 8 is a
+synchronous label test (no gazetteer, so the choice never flips when assets arrive), placed after
+rows 5–7. Stored boards keep their choice: the board spec v8 upcaster marks every stored `auto`
+panel `legacyAuto`, which skips row 8 until the panel is edited and saved. Import is one pure
+function from the source JSON to v8 geomap options plus ordered notes; every output passes the v8
+validator. Rejected: label-matcher rewrites, an in-memory camera, a board variable, wrapped bounds,
+a gazetteer-based row 8, a board-level version gate and hidden unmapped options (§12).
+
 ## 2. Goals / non-goals
 
 Goals (part A): the T24 skeleton and its part map; the shared widget rules; the Text / Markdown widget
@@ -157,6 +177,18 @@ Non-goals (part E, step 1b):
 - wrapping across ±180° (ADR-0027);
 - drawing with the wgpu renderer (#68).
 
+Goals (part E, step 2): the board URL store; the `map=` and `geo=` codecs and the URL budget; the
+map's input view, its camera history and `Alt+←`/`Alt+→`; view sync; the map area filter, its
+writers, its effective area and its consumers; the pivot disclosure of the area; board spec v8;
+auto-vis row 8 and `legacyAuto`; the import of the standard geomap panel.
+
+Non-goals (part E, step 2):
+- maps in Explore (Explore never picks row 8);
+- the map area on log lines, traces and profiles;
+- server-side area filters;
+- polygon areas;
+- layers other than markers (part G) and field-driven symbols and rotation.
+
 **Part map.** Each part is designed under its own issue and adds its rules in its block.
 
 | Part | Scope | Issue | Rules | Requirement ID if needed |
@@ -166,7 +198,7 @@ Non-goals (part E, step 1b):
 | B2 | Change feed widget, the `change` target and log panel gaps (this revision) | #181 (step 2) | T24-030–039 | VIZ-126 (reserved, unused) |
 | C | Alert / incident list widget | #182 | T24-040–059 | VIZ-127 |
 | D | Feed widget fetched by the BFF | #183 | T24-060–079 | VIZ-128 |
-| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter; step 1a, the data; step 1b, the frame (this revision); step 2 | #184 | T24-080–099 (1a T24-080–087, 1b T24-088–095, 2 T24-096–099) | VIZ-129 (reserved, unused) |
+| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter; step 1a, the data; step 1b, the frame; step 2, URL state, sync, the map area, auto-vis and import (this revision) | #184 | T24-080–099 (1a T24-080–087, 1b T24-088–095, 2 T24-096–099) | VIZ-129 (reserved, unused) |
 | F | Geomap basemap pipeline and routes layer | #185 | T24-100–119 | VIZ-130 |
 | G | Geomap M-UI5 layers: heatmap / hexbin, choropleth, network, day/night, track | #186 | T24-120–139 | VIZ-131 |
 | H | Geomap true 3D: globe and extruded regions | #187 | T24-140–159 | VIZ-132–133 |
@@ -176,7 +208,7 @@ Non-goals (part E, step 1b):
 
 Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused. Part B1 defines T24-020 to
 T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused. Part E step 1a defines T24-080 to
-T24-087, and step 1b T24-088 to T24-095; VIZ-129 stays unused.
+T24-087, step 1b T24-088 to T24-095, and step 2 T24-096 to T24-099; VIZ-129 stays unused.
 
 **Part E step 1b starts from** these decisions (#184, coordinator, round 1):
 - out-of-domain and infinite values are excluded from the marks and disclosed;
@@ -244,6 +276,14 @@ T24-087, and step 1b T24-088 to T24-095; VIZ-129 stays unused.
 | [INT-003](../product/03-interaction-model.md#int-003--inertia) (part E step 1b) | §4.1 (T24-091: a drag pans with the shared T02 camera inertia) | `unit:geo-inertia`; `unit:camera-controller` (shared) |
 | [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (`geo` targets) | §4.1 (T24-092), §4.13, [T25](T25-inspector-and-pivots.md) §4.8, §4.9 | `unit:geo-select-hover`; `unit:geo-targets`; `unit:geo-nav`; `unit:geo-inspect`; `e2e:geomap` |
 | [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part E step 1b) | §4.1 (T24-091, T24-095) | `unit:inspector-viewkey`; `e2e:geomap-a11y` |
+| [VIZ-047](../product/05-visualisation-catalogue.md#viz-047--maps-share-the-camera-and-context) (part E step 2) | §4.1 (T24-096 to T24-098), §4.15 to §4.18, §5.17 | `unit:geo-sync`; `unit:geo-sync-save`; `unit:geo-writers`; `unit:geo-area-consumers`; `e2e:geomap-sync` |
+| [INT-006](../product/03-interaction-model.md#int-006--camera-history) (maps; part E step 2) | §4.1 (T24-096), §4.18, §5.17 | `unit:geo-history`; `unit:map-params`; `unit:board-url-store`; `unit:board-url-queue`; `unit:url-budget`; `unit:url-echo`; `unit:url-time-init`; `unit:url-atomic`; `e2e:geomap-sync` |
+| [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (the map area `geo=`) | §4.1 (T24-098), §4.15, [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) | `unit:geo-writers`; `unit:geo-area-consumers`; `unit:pivot-context` |
+| [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (the map area; part E step 2) | §4.1 (T24-098), §4.15, [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.area`) | `unit:geo-area`; `unit:geo-area-results` |
+| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (part E step 2) | §5.15 (board spec v8) | `unit:board-spec-geomap-v8` |
+| [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) (row 8; part E step 2) | §4.1 (T24-099), §5.17 | `unit:autovis-table`; `unit:autovis-legacy`; `unit:autovis-logql`; `unit:autovis-explore`; `unit:editor-preview-legacy` |
+| [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Geomap row) | §4.1 (T24-099), §4.19, §5.17 | `unit:import-geomap`; `unit:import-geomap-fuzz` |
+| [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response) (the map area; part E step 2) | §4.1 (T24-098), §8 | `unit:geo-area-scope` |
 
 ## 4. Design
 
@@ -683,7 +723,8 @@ unavailable" and still lists the rows; a null gazetteer gives `gazetteerUnavaila
 - **View.** The host keeps `lastView` (the latest commit) and `applied` (the last applied
   `options.view`). If `options.view` differs from `applied` by value (null included): `spec.view =
   options.view`, `lastView` = null and `applied` = it (null → refit). Otherwise `spec.view =
-  lastView ?? options.view`. A new engine frame (an engine swap) starts at that view.
+  lastView ?? options.view`. A new engine frame (an engine swap) starts at that view. From part E
+  step 2, a non-local map's input view in place of `options.view` here is T24-096's (its URL entry).
 - The mark list's active mark is passed to `setFocusMark` (T24-093).
 
 #### T24-089 — Rows
@@ -852,6 +893,75 @@ text after 300 ms. On a state change focus moves to the new state's target only 
 panel (the surface, the list, the legend, the status, Show table or Retry), then a polite announcement
 follows ([T08-018](T08-dom-component-kit.md#t08-018--announcements-are-rate-limited)). A state change
 never changes the selection.
+
+#### T24-096 — View state and history
+**MUST** — A map's view and the map area are board URL state (§4.18, §5.17): `map=` holds the view
+of a scope (`*` for the synced maps, else the panel id) and `geo=` the map area (T24-098).
+`mapRoles` (§5.17) gives each geomap its role and scope.
+- **Input view** (amends T24-088): a `local` map uses T24-088 only (no URL or history; on reload and
+  back it shows `options.view`). Any other map takes the URL entry of its scope; synced maps with no
+  `*` entry use their own `options.view`. An entry equal to `encodeView(scope, lastView)` passes
+  `lastView` (exact, no snap).
+- **Writes:** every `geoCommit` of a non-local frame in `empty`, `noneShown` or `ok` (§4.16) → one
+  `update(push)` with `withMap(scope, view)` (and `withArea(scope, bounds)` for a writer, T24-098);
+  keyboard commits too ([INT-006](../product/03-interaction-model.md#int-006--camera-history)). A
+  writer's view and area are written together or not at all (`kind: 'map'`). `'url.tooLong'` → both
+  stay local (`lastView`; consumers keep the URL's area) with the notice "Link too long — map changes
+  not saved in the link" until a write lands; an evicted map likewise, until its next write or an
+  applied location.
+- **History** (INT-006 as implemented,
+  [T03-016](T03-browser-runtime.md#t03-016--browser-history-is-camera-history)): one entry per
+  distinct encoded state; a commit whose encoding equals the URL (below URL precision, ≤ 0.28 px at
+  zoom 14) writes nothing. No write on the first draw, a refit, a follow or a popstate.
+- **Reads:** the URL is read in full and never rewritten by the map feature; entries of unknown,
+  non-geomap, local or other-scope panels are ignored. On every applied location (§4.18) each map
+  takes its entry (absent → `options.view`, `lastView` cleared) with its `motion` (reduced motion: a
+  cut). A URL change is no route change ([T25-012](T25-inspector-and-pivots.md#t25-012--lifetime):
+  the pathname).
+- **Keys:** the shell binds `Alt+←`/`Alt+→` (no other modifier; not in editable targets;
+  `preventDefault`,
+  [T03-013](T03-browser-runtime.md#t03-013--preventdefault-is-decided-synchronously)) to
+  `history.back()`/`forward()`; the mouse back and forward buttons are the browser's.
+
+#### T24-097 — Sync
+**MUST** — Synced maps share the `*` entry (§4.17; `*` always wins for synced maps). Followers in a
+frame-building state (§4.16) move by `setSpec` (with their own containment); the others start at `*`
+when their frame builds. Unsynced maps ignore `*`. There is no loop: `setSpec` emits no `geoCommit`
+([ADR-0027](../adr/0027-geomap-frame-seam.md) §4), and only `geoCommit` writes.
+
+#### T24-098 — Map area
+**MUST** — **Writers** (`mapRoles`): a commit writes `geo=` = `encodeArea(scope, commit.bounds)`;
+the last commit wins; writers never apply the area. A `local` map is no writer; with `boundsFilter`
+on it shows "Map area filter off: more than 8 unsynced maps on this board".
+- **Effective area** (provenance): the URL's `geo=` applies only while its scope is a current writer
+  scope (`*` iff a synced map has `boundsFilter`; a panel id iff that unsynced, non-local map has
+  it); otherwise it is inactive: no chip, no filtering and no pivot disclosure (and no rewrite). An
+  old entry's area applies only while its writer is one.
+- **Cleanup:** when a scope stops being a writer (option, deletion, sync), `geo=` is removed in that
+  update (a removal, replace) only if its scope is that scope. Roles are recomputed per spec change
+  and per read; a former writer applies the area from its next plan.
+- **Consumers** (§4.15) apply `applyArea` after the run and before planning, with the panel's
+  `location` (geomap) or `{mode: 'auto'}`; they are `loading` while `geoData` is. 0 kept → "No series
+  in the map area", the meter parts and **Clear map area** (removes `geo=`, push; focus: the filter
+  bar). The filter bar shows `areaChip` of the effective area only, with "Remove map area filter"
+  (push). Filtered-out series are not loaded ([ADR-0025](../adr/0025-chart-frame-selection.md)); the
+  Inspector keeps its snapshot.
+- **Scope** ([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)):
+  only returned series are kept or counted; `geo=` and `map=` never reach the BFF.
+- **Pivots** ([T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context), effective area only):
+  the filter "map area": Explore "Filters not applied in Explore yet: ‹keys›, map area"; logs,
+  traces and profiles "Not carried to ‹dest›: …, map area".
+
+#### T24-099 — Auto-vis row 8, import
+**MUST** — With vis `auto` and no `legacyAuto`, after rows 5–7, `hasGeoFields` (§5.17) → `geomap`
+with the v8 defaults; never over an explicit vis (`chooseVis`). A `legacyAuto` panel skips row 8, so
+a stored board keeps today's vis; its editor preview renders the draft without `legacyAuto` (row 8,
+"Auto (Map)"), and the editor's save drops `legacyAuto`; saving another panel or the board layout
+keeps it. LogQL panels: for a panel without `legacyAuto` (and the editor's draft), a metric-series
+answer takes the ordered auto-vis decision (rows 5–8, then the rest) and its editor label is that
+decision's; a `legacyAuto` panel keeps exactly today's result (the fixed line, label Line) until
+edited and saved; a log-line answer keeps today's handling. Explore never picks row 8 (no geomap kind
+there yet). Import follows §4.19; its output passes the v8 validator.
 
 ### 4.2 Markdown node table (`commonmark` → output)
 
@@ -1046,6 +1156,113 @@ Outside the map, Not drawn: no usable value and Not drawn: cap.
   `group_member` = the row's own group label when it is aggregated, else empty.
 - `location_detail`: invalid → `‹reason› ‹key›`; unknownCode → `‹source› ‹key›=‹value›`;
   providerMismatch → `‹provider›: c1; c2`; ambiguous → `‹reason›: c1; c2`; else empty.
+
+### 4.15 Map area results (part E step 2; T24-098)
+
+With an effective area and the panel not a writer:
+
+| Result | Filtering | Disclosure |
+|---|---|---|
+| series: PromQL, LogQL metric, log volume | each by `areaDecision` | the meter parts; 0 kept → the T24-098 empty state |
+| histogram buckets (heatmap, histogram) | each bucket series, before binning | as above (series counts) |
+| baseline series | its primary's decision (same key); no primary → its own labels | counted once, by the primary |
+| geomap consumer, any state with rows | the series before `geoRowSet` | the meter; table, CSV: the kept rows |
+| scalar, string | no | the notice "Map area not applied (no series)" |
+| log lines, traces, profiles | no | the notice "Map area not applied to ‹log lines \| traces \| profiles› yet" |
+| widgets, text, Explore | — | — |
+
+### 4.16 Writer per state (part E step 2; T24-096, T24-097)
+
+| State | Commit, write, follow | Start |
+|---|---|---|
+| `loading`, `error`, `invalid`, `mapDataUnavailable`, `tooSmall` (no frame) | none | at its input view when its frame builds |
+| `empty`, `noneShown`, `ok` | commits write; it follows | — |
+
+### 4.17 Sync and saved views (part E step 2; T24-097)
+
+`*` always wins for synced maps.
+
+| Event | URL | Maps |
+|---|---|---|
+| a commit by a synced map | `*` (push) | all synced maps follow |
+| a board save changing a synced map's `options.view` | `*` kept | the URL has `*`: it stays at `*`; no `*`: it applies the saved view at once (null: fit) |
+| a board save changing an unsynced map's `options.view` | its entry removed (replace) | it moves to the saved view (null: fit) |
+| sync turned off | two updates, in order: (1) if `*` stops being a writer and `geo=`'s scope is `*`, `withArea('*', null)` (a removal, always written); (2) its entry := the frame's displayed camera (`FrameSummary.geo.view`, a fitted view included; no frame: `*` if present, else nothing), replace, `kind: 'map'`; refused → `lastView` := that camera, with the notice | it stays where it was and no longer refits on new data |
+| sync turned on | its own entry removed (replace) | it adopts `*`, else its saved view |
+
+### 4.18 Board URL store, budget and reads (part E step 2; T24-096)
+
+One `BoardUrlStore` (§5.17, a provider per board page) is the only board URL writer. Its writers:
+time (dispatch and init), `useBoardParams` (variables, filters, sections), map commits and the area
+chip. Copy link reads `latest()`. `fitsUrlBudget` is unchanged; `map=` and `geo=` count as ordinary
+pairs.
+- **Update:** next = f(`latest()`); null or encoded-equal → `'unchanged'`. A removal (it only
+  removes pairs) is always written. Otherwise, if `!fitsUrlBudget(next)`, `evictMaps` removes `map=`
+  entries one at a time (panel scopes last-first in layout order, then `*`, never the scope being
+  written; then `geo=` only if it is not effective) until it fits. `'map'`: still over →
+  `'url.tooLong'`, nothing written. `'other'`: today's behaviour on that next (`check`; time writes
+  have none), so there is no new failure. `'timeInit'` (the first-open `boardTimeInit`, the one
+  exception): only `from`/`to` (replace), no eviction or removal and no budget check; it opens the
+  time gate.
+- **Queue:** a written update sets `latest()` := next at once and is enqueued (FIFO) with the tag
+  `{ boardUrl: id, seq }` (seq increasing). The data router's `navigate(…, { replace: !push, state:
+  tag })` runs only after the previous one's promise resolves (one entry per push). A tagged location
+  older than the newest seq is ignored (`latest()` never rolls back); the current seq's echo is
+  skipped.
+- **External navigation** (POP, an untagged PUSH or REPLACE, a route change, unmount) cancels the
+  queue: pending and in-flight writes are dropped (a late completion is ignored by its stale seq) and
+  `latest()` := the external location. A route change and unmount dispose the store, so nothing
+  navigates afterwards.
+- **Eviction:** an evicted scope keeps its camera with the notice "Link too long — map changes not
+  saved in the link" (T24-096).
+- **Reads:** every location change applies the URL's full map state (present and absent entries),
+  except the store's immediate echo (a non-POP location with the current tag): a load, a POP
+  (tagged or not) and an untagged link all apply.
+
+### 4.19 Geomap import (part E step 2; VIZ-060; `type: 'geomap'` → `geomap`; #158, #17)
+
+**Precedence:**
+0. Each object's mode is decided first, after the field fallbacks (size: a series value field →
+   value, else fixed; symbol: `mode`; color: `field` non-empty → field, else fixed; text: `mode` or
+   inferred). The selector itself (`size.field`, `symbol.mode`, `color.field`, `text.mode`) is
+   validated by (3) and, if malformed, treated as absent.
+1. Members the mode does not use (size fixed mode: `min`, `max`; value mode: `fixed`; color field
+   mode: `fixed`), and fields meaningful only in another mode or view, are ignored silently, even
+   when malformed.
+2. A required location field (below) absent, empty, not a string or not a label key → only
+   "Location fields missing (‹path›)".
+3. A wrong JSON type or a non-finite number → the stated default and "Option ‹path› malformed:
+   default used".
+4. The row's own notes.
+
+Absent → the stated default, silently. A **series value field** matches `^Value( #.+)?$`; a
+**series name field** is `name`, `Name` or `Series`. Output defaults not listed: `cluster: false`,
+`reducer: last`, `groupBy: null`, `colour: group`.
+
+| Source (shape; absent → default) | Pulsus | Validation and notes |
+|---|---|---|
+| `options`, `view`, `controls`, `tooltip`, `layers[i].location`, `.config`, `.config.style`, `.style.*` (objects) | — | not an object → its whole subtree defaults, one malformed note |
+| `view.id` (string; `zero`) | `fit` → `view` null; `zero` → (0, 0, zoom); `coords` → (lat, lon, zoom); north-america 40, −100, 4 · south-america −20, −60, 3 · europe 46, 14, 4 · africa 0, 30, 3 · west-asia 26, 53, 4 · s-asia 19.5, 80, 4 · se-asia 10, 106, 4 · e-asia 33, 120, 4 · australia −25, 135, 4 · oceania −10, −140, 3 | other string → null, "View ‹id› not mapped: fit used" |
+| `view.lat`, `view.lon` (numbers; 0, coords only) | lat, lon | \|lat\| > 85.0511 → ±85.0511, "Latitude ‹v› clamped to ‹c›"; lon ∉ [−180, 180) → `lonNorm`, "Longitude ‹v› normalised to ‹n›" (no note for 180 → −180) |
+| `view.zoom` (number; 1; zero and coords only) | zoom | < 0 → 0, > 14 → 14, "Zoom ‹z› clamped to ‹c›" |
+| `view.shared`, `view.dashboardVariable` (bools; false) | `sync`, `boundsFilter` | `dashboardVariable` true → "View bounds go to the map area filter, not variable ‹name›" (`dashboardVariableName` a string, else "…filter, not a variable") |
+| `controls.mouseWheelZoom` (bool; true) | `wheelZoom` | — |
+| `tooltip.mode` (`details`; `none`) | — | `none` → "Tooltips are always shown"; other → malformed |
+| `basemap` (any) | the offline basemap | present → "Basemap replaced by the built-in offline map" |
+| `layers` (array; []) | the first `markers` layer; none → the source default layer (all its defaults below) | a non-object element or a non-string `type` → "Layer ‹i› malformed: skipped"; another type → "Layer ‹type› not mapped yet"; a 2nd markers layer → "Only the first markers layer kept" |
+| `location.mode` (`auto`; `coords`, `geohash`, `lookup`) | `{mode: 'auto'}` / `{coords, lat: latitude, lon: longitude}` / `{geohash, field: geohash}` / `{lookup, field: lookup, gazetteer}` | other → auto, "Location mode ‹m› not mapped: auto-detected"; required: `latitude` then `longitude` / `geohash` / `lookup`, each matching `^[A-Za-z_][A-Za-z0-9_.]{0,99}$`; the first failing → auto, "Location fields missing (‹path›)" |
+| `location.gazetteer` (string; countries) | `…/countries.json` → `country`; `…/usa-states.json` → `region`, `country: 'US'`; `…/airports.geojson` → `iata` | other → auto, "Gazetteer ‹basename› not available: auto-detected" |
+| `style.size` `{fixed: 5, min: 2, max: 15, field: ''}` (numbers, string) | a series value field → `{by: 'value', min, max}`; else `{by: 'fixed', min: f, max: f}` | another field → fixed, "size field ‹f› not mapped; using fixed size ‹fixed›"; min > max → swapped, "Size limits reversed: swapped"; then each into 2–40 (max ≥ min), "Size ‹a›–‹b› clamped to ‹c›–‹d›" (fixed: "Size ‹f› clamped to ‹c›") |
+| `style.symbol` `{mode: 'fixed', fixed: 'img/icons/marker/circle.svg'}` (strings) | basename `circle` / `square` / `triangle` → that | `mode` ≠ `fixed` → circle, "Symbol mode ‹v› not supported; using circle"; another basename → circle, "Symbol ‹name› not mapped: circle used" |
+| `style.color` `{fixed: '', field: ''}` (strings) | a series value field → `state` iff `hasThresholds`, else `group`; else `group` | a series value field without thresholds → "colour field ‹f› not mapped without thresholds; using group colours"; another field → "colour field ‹f› not mapped; using group colours"; `fixed` only → "Fixed colour not kept: colours follow groups" |
+| `style.text` `{mode: inferred, fixed: '', field: ''}` (strings; mode `fixed`, `field`; absent → `field` if non-empty, else `fixed` if non-empty, else none) | none → `labels: 'none'`; else `auto` | a `field` other than a series name field → "text field ‹f› not mapped; using series names"; `fixed` → "Fixed label text not kept: labels show series names"; another mode → "Text mode ‹v› not supported; using series names" |
+| `config.showLegend` (bool; true) | — | false → "The legend shows with 2 or more groups" |
+| any other present key | — | "Option ‹path› not mapped" (last, sorted) |
+
+**Notes** come in source order: view → controls → tooltip → basemap → layers (per layer: type,
+location, size, symbol, color, text, showLegend); then every "Option ‹path› not mapped", sorted by
+path (UTF-16). Paths read `view.lat`, `layers[0].config.style.size.min`. Text values in notes have
+their Cc characters removed and are cut to 40 code points.
 
 ## 5. Interfaces
 
@@ -1459,6 +1676,19 @@ cannot move a v7 head (`ErrSchemaTooNew`,
 | cluster, wheelZoom | bool | `true` | `board.json.type` |
 | view | null \| `GeoView` (ADR-0027 bounds) | null | `view.invalid` |
 
+**Board spec v8** (part E step 2) is the next free version after v7 (T11-016). Go decides validity;
+TS = Go on the fixture `v8-geomap.json`. The geomap options gain:
+
+| Key | Type / bounds | Default | Error |
+|---|---|---|---|
+| sync | bool | `false` | `board.json.type` |
+| boundsFilter | bool | `false` | `board.json.type` |
+
+`Vis` gains `legacyAuto?: true`, valid only with `kind: 'auto'` (else `board.vis.legacyAuto.invalid`;
+its use is T24-099). The upcaster v7 → v8 sets `legacyAuto: true` on every `auto` panel and changes
+nothing else. A v8 save to a v7 server → 400, shown as "This server does not support map sync yet"
+(`ErrSchemaTooNew`, as for v7).
+
 ### 5.16 Geomap targets, mark list and rows (part E step 1b; `vis/geo/targets.ts`, `charts/geo/`, `vis/geo/rows.ts`)
 
 ```ts
@@ -1488,6 +1718,64 @@ export function geoTable(s: GeoRowSet, unit: Unit): PanelRows; export function g
 export function geoFacts(title: string, s: GeoRowSet, series: readonly SeriesFrame[], instant: boolean, unit: Unit): SummaryFacts | null;
 // csvCell (T24-026, amended): exempt iff /^[+-]?(?:\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|Infinity)$/ (no m flag) matches and the
 //   cell holds no \n, \r, U+0085, U+2028 or U+2029
+```
+
+### 5.17 Map URL state, map area, auto-vis row 8 and import (part E step 2; `state/`, `vis/geo/`, `vis/autovis.ts`, `import/geomap.ts`)
+
+```ts
+// state/boardUrl.ts — the one board URL writer (a provider per board page; §4.18)
+export interface BoardUrlState { context: ContextSearch; rest: readonly SearchParamPair[] }
+export interface BoardUrlStore {
+  latest(): BoardUrlState; // advanced synchronously on enqueue and by external locations (load, POP, untagged)
+  update(f: (s: BoardUrlState) => BoardUrlState | null, o: { push: boolean; kind: 'map' | 'other' | 'timeInit';
+    check?: (s: BoardUrlState) => ParamError | null /* the caller's existing check, unchanged */ }): 'ok' | 'unchanged' | ParamError;
+}
+
+// state/mapParams.ts — pure codecs over rest pairs
+export const MAP_PARAM = 'map', AREA_PARAM = 'geo', MAX_URL_MAPS = 8 /* unsynced, layout order */;
+export interface MapParams { views: ReadonlyMap<string /* '*' | panel id */, GeoView>; area: { scope: string; bounds: GeoBounds } | null }
+export function readMapParams(rest: readonly SearchParamPair[]): MapParams; // invalid pairs skipped; then the first valid per scope / geo wins
+export function withMap(rest: readonly SearchParamPair[], scope: string, v: GeoView | null): SearchParamPair[];
+export function withArea(rest: readonly SearchParamPair[], scope: string, b: GeoBounds | null): SearchParamPair[];
+//   b → geo= encodeArea(scope, b) (replacing any geo=); null → geo= removed; canonical, sorted
+export function encodeView(scope: string, v: GeoView): string;
+//   `${scope}_${n(lat,5)}_${n(L,5)}_${n(zoom,3)}`: L = round5(lonNorm(lon)); L ≥ 180 → L − 360 (canonical after rounding)
+export function encodeArea(scope: string, b: GeoBounds): string; // `${scope}_` + ⌊w⌋ ⌊s⌋ ⌈e⌉ ⌈n⌉ at 1e-4, clamped to ±180 / ±85.0511, '_'-joined, n(x, 4)
+// n(x, d): x.toFixed(d), trailing zeros and a bare '.' removed, '-0' → '0'. Read: map
+//   /^(\*|[a-z0-9-]{1,40})_(-?\d{1,3}(?:\.\d{1,5})?)_(-?\d{1,3}(?:\.\d{1,5})?)_(\d{1,2}(?:\.\d{1,3})?)$/, |lat| ≤ 85.0511,
+//   −180 ≤ lon < 180, 0 ≤ zoom ≤ 14; geo the writer's scope then four /-?\d{1,3}(?:\.\d{1,4})?/, all by '_', −180 ≤ w < e ≤ 180, −85.0511 ≤ s < n ≤ 85.0511
+export function evictMaps(s: BoardUrlState, order: readonly string[] /* scopes, layout order */, keep: string | null,
+  areaEffective: boolean, fits: (s: BoardUrlState) => boolean): { state: BoardUrlState; evicted: string[] }; // the §4.18 order
+export function areaChip(b: GeoBounds): string; // "Map area: 28.2°N–59.5°N, 31.0°W–59.0°E"
+
+// vis/geo/area.ts — pure
+export type AreaDecision = 'in' | 'outside' | 'unlocated' | 'unapplied';
+export function areaDecision(labels: Labels, o: LocationOption, g: Gazetteer | null, b: GeoBounds): AreaDecision;
+//   locate: placed → in iff w ≤ lon ≤ e and s ≤ lat ≤ n (geohash: the cell centre), else outside;
+//   gazetteerUnavailable → unapplied (kept); any other status → unlocated (removed)
+export interface AreaResult { series: readonly SeriesFrame[]; outside: number; unlocated: number; unapplied: number }
+export function applyArea(series: readonly SeriesFrame[], b: GeoBounds, o: LocationOption, g: Gazetteer | null,
+  primaryOf?: (s: SeriesFrame) => SeriesFrame | null /* baseline → its primary by key */): AreaResult;
+// T22 Coverage += area?: { outside; unlocated; unapplied }; meter parts after the existing ones, zeros omitted:
+//   `k outside the map area` · `k without a location` · `map area not applied to k (locations unavailable)`
+
+// vis/geo/writers.ts
+export function mapRoles(spec: BoardSpec): { local: Set<string>; writers: Set<string>; scopes: Map<string, string> };
+//   local = unsynced geomaps after the 8th (layout order); writers = non-local with boundsFilter, plus every synced
+//   geomap when a synced one has boundsFilter; scope = '*' if sync else the panel id
+
+// vis/autovis.ts
+export function hasGeoFields(series: readonly SeriesFrame[]): boolean;
+//   N = series.length ≥ 2 and 2·h ≥ N, h = series with a §4.10 alias key (T24-080 normal form) whose value is non-empty
+// autoVis input += geo: boolean; AutoVis.rule += 8; order: 5, 6, 7, 8, then the later rows
+// panelRun: geo = !vis.legacyAuto && hasGeoFields(result series). streamView (LogQL panels): T24-099
+// PanelEditor: draft = { ...panel, vis: withoutLegacyAuto(panel.vis) }; <PanelPreview panel={draft}> and its auto label use
+//   panelView(run, draft.vis); the stored board panel is untouched until save. Save drops vis.legacyAuto.
+// Explore: geo = false (no geomap kind there yet)
+
+// import/geomap.ts
+export function importGeomap(src: unknown /* the panel's `options` */, hasThresholds: boolean):
+  { options: GeomapOptions /* v8 */; notes: string[] };   // §4.19
 ```
 
 ## 6. Data & storage
@@ -1590,6 +1878,11 @@ view lives in the engine frame and the host (`lastView`), so it is lost on unmou
 saved into `options.view`; the selection, the Inspector and its `nav` stack are in memory only, per
 page ([T25](T25-inspector-and-pivots.md) §6).
 
+**Part E, step 2.** Board spec v8 (§5.15) is stored as the board document is today; its upcaster
+marks every stored `auto` panel `legacyAuto` (T11-016). There is no new table, route, migration or
+browser storage. A map's view and the map area live in the board URL (`map=`, `geo=`, §4.18), so a
+link, a reload and history reproduce them; they are never stored and never sent to the BFF.
+
 ## 7. Performance budget
 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
@@ -1614,6 +1907,11 @@ Part E, step 1b: a frame draws at most 5 000 rows (the T22-006 cap, disclosed by
 clusters are rebuilt only when the level ⌊zoom⌋ or the data changes, and the hidden mark list holds
 only the in-view marks. Report-only: `bench:geomap-markers` (5 000 rows, 10 s of pan and zoom,
 Chromium at 1×) p95 ≤ 16 ms per frame.
+
+Part E, step 2: the area runs once per result, after the run and before planning, with no request.
+`bench:geo-area` (5 000 series: 4 000 `cloud_region` labels cycling gazetteer ids and 1 000
+coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p50 and p95 on PR
+(report-only) and is enforced at p95 ≤ 2 ms once the lab exists (`GEO_BENCH_GATE=enforce`).
 
 ## 8. Security, tenancy & RBAC
 
@@ -1643,6 +1941,11 @@ Chromium at 1×) p95 ≤ 16 ms per frame.
   targets, members and pivots carry nothing else (T12-018). Every CSV cell goes through `csvCell`;
   its numeric exemption needs the whole cell to be a number with no line terminator, so a cell such
   as `-1+2` or `=SUM(1)` is still guarded (T24-026).
+- Part E, step 2: the map area only removes and counts the series a query returned; `geo=` and
+  `map=` never reach the BFF, so no request and no RLS scope changes (T12-018). The pivots name the
+  area as not carried and never put `geo=` in an href (T25-010). URL values are read only through the
+  §5.17 patterns; an invalid pair is skipped, never rewritten. Import notes strip Cc characters and
+  are cut to 40 code points, and imported options hold only validated values (§4.19).
 
 ## 9. Failure modes & degradation
 
@@ -1669,6 +1972,11 @@ Chromium at 1×) p95 ≤ 16 ms per frame.
 | A stale Inspector step (part E step 1b) | `push` checks `seq` and `depth`, and the content unmounts with its request; a push before the `originChanged` effect hits the open request and the selection stays (T25 §4.8) |
 | Camera lost on unmount (part E step 1b) | Only `options.view` persists; a new frame starts at `lastView ?? options.view` (T24-088) |
 | CSV injection (part E step 1b) | `csvCell` on every cell, the numeric exemption only for whole numbers without line terminators (T24-026) |
+| Lost URL writes (part E step 2) | One store and one FIFO queue; a stale seq is ignored and an external navigation cancels the queue (§4.18) |
+| Link length (part E step 2) | Map pairs are evicted first; removals always succeed; other writers behave as today; a refused map write stays local, with a notice (§4.18, T24-096) |
+| A silent vis switch (part E step 2) | Stored `auto` panels are `legacyAuto` and keep their vis; only an edited-and-saved or new panel gets row 8, previewed first (T24-099) |
+| Generic `region` labels (part E step 2) | Rule 7 of §4.10 can pick a map for non-geographic regions; the unknown codes are disclosed and the user can pick another vis (persisted, VIZ-065) |
+| Spec versions (part E step 2) | v8; a v7 server's 400 → "This server does not support map sync yet" (§5.15) |
 
 ## 10. Testing
 
@@ -2271,6 +2579,92 @@ name,key,value,value_status,state,location_status,location_detail,source,code,pr
 | `e2e:geomap-a11y` | e2e/geomap.spec.ts | a stub BFF, G; states (a)–(h); reduced motion | axe clean; the Tab order; the keys; no transitions | VIZ-068, VL-016 |
 | `e2e:geomap` | same | G | a click on cluster:k03 → `Cluster of 5`; Esc ×2 clears, then closes; Shift+T → 18 rows; the CSV = CSV G | VIZ-066, INT-034 |
 
+### 10.6 Part E step 2 tests
+
+Written first in E3a (URL state, sync, the map area, board spec v8) and E3b (auto-vis row 8 and
+import) (§11); all fail today: nothing is built yet. The codec, bounds, area and row 8 values below
+were computed by a reference implementation of T24-096, T24-098 and `hasGeoFields`.
+
+**Board BD** (layout order): **P1** synced, `boundsFilter`, saved view null, 1024 × 512; **P2**
+synced, saved (10, 10, 3), 512 × 256; **P3** unsynced; **P4** unsynced, `boundsFilter`; **L** a line
+over **G** (§10.4, 18 series); **K1–K9** unsynced maps (BD9). **EU** = (46, 14, 4); **B** = b1
+{job=a}, b2 {job=b}.
+
+```text
+codec    G fit (30.733727227695173, 65.875, 3.1774065828117646) → *_30.73373_65.875_3.177, G3 marks ≤ 0.143 px after decoding;
+         (51.500004, -0.120004, 13.9995004) → p-2_51.5_-0.12_14, corners ≤ 0.277 px; lon 179.999996 → *_0_-180_1;
+         179.999994 → *_0_179.99999_1; -179.999996, -180, 540 → *_0_-180_1; lat ±85.0511, 85.05109999 → ±85.0511; each reads back
+reject   *_86_0_2 · *_1_180_2 · *_1_2_15 · *_1_2 · P_1_2_3 · *_1.123456_0_1 · geo *_5_1_5_2 · geo *_1_2_3 · geo 1_2_3_4 (no scope);
+         map=*_99_0_1&map=*_1_2_3 → (1, 2, 3); two valid `*` → the first
+bounds   EU 1024×512, scope * → geo=*_-31_28.2114_59_59.4808, "Map area: 28.2°N–59.5°N, 31.0°W–59.0°E"; 512×256 → -8.5_37.635_36.5_53.2679;
+         (0, 0, 2) → -180_-66.5133_180_66.5133
+area     G ∩ EU: in k01 k02 k03 k04 k08; outside 9; unlocated 4 (k09 k10 k11 k15) → "9 outside the map area · 4 without a location";
+         gazetteer null: kept k01–k06 k08 k09 k11, outside 7, unlocated 2, unapplied 8 → "… · map area not applied to 8
+         (locations unavailable)"; B → 0 kept, "No series in the map area", "2 without a location"; geohash `er` (cell
+         −33.75…−22.5, centre −28.125) in; `tr` (56.25…67.5, centre 61.875) outside; a point on w → in
+results  heatmap {cloud_region=eu-west-1|us-east-1} × le 0.1, +Inf → eu-west-1 buckets binned, "2 outside the map area";
+         log volume {level=error}, {level=info} → empty, "2 without a location"; LogQL `sum by (cloud_region)` eu-west-1,
+         us-east-1 → 1 kept; baseline of k01 and k07 → k01 and its baseline, "1 outside the map area"; scalar → notice
+```
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:map-params` | state/mapParams.test.ts | codec, reject, bounds; `withArea` with `*`, with `p4`, with null | each text exactly; read(write(x)) = x; `withArea` gives `geo=*_…` / `geo=p4_…` replacing any `geo`, null removes it | T24-096 |
+| `unit:board-url-store` | state/boardUrl.test.ts | BD; in one tick: P3 commits V3, P1 commits EU, P4 commits V4, `setFilter(env, prod)`; then a time dispatch | the URL has `map=*…` (EU), `map=p3…`, `map=p4…`, `f=env=prod`, `geo=` = V4's bounds; 4 entries, each cumulative; the time write keeps every pair | T24-096, T24-098 |
+| `unit:board-url-queue` | same, data router, loader delayed 50 ms | 4 writes 5 ms apart; then, each with 3 writes pending (one in flight): a POP; a same-board link to `map=p3_20_0_2`; a link to another page | 4 entries in order; `navigate` only after the previous resolves; `latest()` never regresses; POP and link: pending and in-flight writes dropped, `latest()` and the maps = that location, and it stays current (no stale write restores the old state); away: the destination stays current, the store disposed, no navigation back | T24-096 |
+| `unit:url-budget` | same | (a) `f=` pairs to 40 bytes under the budget, `map=p4…`; (b) an incoming link: `f=` pairs 4 200 bytes, `map=p3_10_10_3`, no time params, without and with a saved board time; (c) as (b) with time params | (a) a filter add → `p4` evicted, the filter written (today's check passes), the P4 notice; (b) load: one replace adds from/to (default or saved), every other pair kept, the time gate opens, P3 at (10, 10, 3); P3 pans → refused (own scope kept), URL and `history.length` unchanged, camera local, the notice "Link too long — map changes not saved in the link"; a filter add → `p3` evicted, then today's check refuses (`'url.tooLong'`), URL unchanged; a filter removal → written; (c) a time change → `p3` evicted, written as today; P3 keeps its camera, the notice | T24-096 |
+| `unit:url-echo` | same, memory router | (a) E0 `map=p3_10_10_3`; P3 commits V (E1); a filter add evicts `p3` (E2); another filter add (E3); back ×3; forward ×3; (b) a fresh E0, E1; an untagged same-board link to `map=p3_20_0_2` (E4); back; forward | (a) after E2, E3 (echoes) P3 stays at V, the notice; back to E2 (a tagged POP, no `p3`) → `options.view`; E1 → V; E0 → (10, 10, 3); forward: V, `options.view`, `options.view`; (b) E4 → P3 moves to (20, 0, 2); back → V; forward → (20, 0, 2) | T24-096 |
+| `unit:url-time-init` | boards/boardTime.test.ts, BoardPage.test.tsx | an oversized link: no time params, `map=p3_10_10_3`, `geo=*_…`, `f=` pairs 4 200 bytes | one replace adds from/to only; every map and area pair remains; `latest()` equals the new URL at once; the time gate opens | T24-096 |
+| `unit:url-atomic` | same, memory router | entries E1 `*_1_1_2` + `geo` b1, E2 `*_5_5_3` + `geo` b2 (current); a P1 commit refused | the URL still E2; back → (1, 1, 2) and b1 together; forward → (5, 5, 3) and b2; reload at E2 → (5, 5, 3), b2; never the view of one entry with the area of another | T24-096 |
+| `unit:geo-history` | charts/GeoMapFrame.test.tsx, memory router | P3 at `p3_51.5_-0.12_14`: the first draw; commits 0.05 px east, then 2 px east; then `+`, `+`, pan, `-` | the first draw writes nothing; 0.05 px → the same encoding, no navigation; 2 px → push A `p3_51.5_-0.11983_14`; then 4 pushes B–E; `Alt+←` ×5 → D, C, B, A, then the initial entry (51.5, −0.12, 14); `Alt+→` ×5 → A–E; in an input → nothing | INT-006 |
+| `unit:geo-sync` | pages/board/BoardGeoSync.test.tsx | BD; P2 `tooSmall`, then resized; reduced motion | pan P1 → one `*` push; P2 `setSpec`, no commit or 2nd navigation; P3 unmoved; P2 builds at `*`; a cut; the own echo → the exact `lastView` | VIZ-047, T24-097 |
+| `unit:geo-sync-save` | same | (a) no `*`: P1 fitted over G (saved null), P2 at its saved (10, 10, 3): P1 off, P2 off; new data for P1 (G without k07, k18); reload; (b) no `*`: save P2 view (20, 0, 2); P1 commits EU; save P2 view (5, 5, 5); reload without `*`; (c) `*` = EU: P2 off, reload; P2 on; (d) the oversized link of `unit:url-budget` (b) plus `map=*_46_14_4` and `geo=*_…`, P1 the only synced writer: P1 sync off; P1 sync on; back; forward; (e) `geo=p4_…` effective (on BD, then on the oversized link): P1 sync off | (a) `map=p1_…` = P1's displayed fitted view (its `FrameSummary.geo.view`), `map=p2_10_10_3`, both unmoved; the new data does not refit P1; reload: both at those views; (b) P2 moves to (20, 0, 2) at once; EU: both EU; the second save: `*` kept, both stay EU; reload: P1 fit, P2 (5, 5, 5); (c) `map=p2_46_14_4`, P2 unmoved; reload: P2 EU; on: `p2` removed, P2 at `*`; (d) off: `geo=*` removed (written), then `map=p1` refused: the notice, P1 unmoved, new data does not refit it; on: no area (none in the URL), P1 at `*`; back → the link's entry: `*` is a writer again, so its area applies (provenance); forward → no area; (e) `geo=p4_…` kept, P3 and L still filtered, both times | T24-097 |
+| `unit:geo-writers` | pages/board/BoardGeoArea.test.tsx | (a) BD; the steps in order; (b) history: P1 commits A (E1 `geo=*_A`), EU (E2); P1 `boundsFilter` off; back; forward; P1 on; back; forward; P1 commits B; (c) the oversized link of `unit:url-budget` (b) plus `geo=*_…`, P1 without `boundsFilter`; (d) BD9 | (a) P4 commits: `geo=p4_…`, P3 and L filtered (P1, P2, P4 are writers); P1 commits: `geo=*_…`; P4 `boundsFilter` off → nothing removed (the area is `*`'s); P1 off → `geo` removed in that update, all unfiltered; P1 on, a commit; delete P1 → removed; (b) off: E2 replaced without `geo`; back to E1: `*` no writer → no chip, nothing filtered, URL unchanged; forward; P1 on: nothing filtered (E2 has no `geo`); back to E1: area A and its chip apply, views at A; forward: none; B → E3, area B; (c) load: nothing filtered, no chip, URL kept; P1 on → the link's `*` area applies, the chip back; (d) K9 local: `boundsFilter` on → the notice; off → none; reload shows its saved view | T24-098 |
+| `unit:geo-area` | vis/geo/area.test.ts | the area block | decisions, counts and the meter text exactly | T24-098, T22-006 |
+| `unit:geo-area-results` | boards/panelRun.test.ts, charts/GeoMapFrame.test.tsx | the results block; P3 in `mapDataUnavailable`; P1 in `tooSmall` | as listed; P3's table = the kept rows; P1 writes nothing | T24-098 |
+| `unit:geo-area-consumers` | pages/board/BoardGeoArea.test.tsx | BD, P1 at EU; a logs panel, a text widget | P1, P2 unfiltered; P3, L filtered; logs "Map area not applied to log lines yet"; the widget unchanged; the chip's remove → `geo` gone (push); Clear map area → restored, focus: the filter bar; `geoData` loading → L `loading` | VIZ-047 |
+| `unit:geo-area-scope` | same, a stub BFF | a scoped response with k01 only | L shows k01 and counts only the returned rows; no request has `geo` or `map` | T12-018 |
+| `unit:pivot-context` (amended) | inspector/pivots.test.ts | C5: `f=env=prod`, `geo` effective; C6: its scope not a writer, then a writer again | C5: Explore "Filters not applied in Explore yet: env, map area"; logs "Not carried to logs: map area"; no `geo` in the href; C6: no map-area disclosure, then C5's lines back | T25-010 |
+| `unit:board-spec-geomap-v8` | boards/spec.test.ts, validate_test.go | `{}`; `sync: 'yes'`; `boundsFilter: 1`; `legacyAuto` on `line`; a v7 doc with `auto` and `line`; a v8 save to a v7 stub | false defaults; `board.json.type`; `board.vis.legacyAuto.invalid`; the upcast marks only `auto`; 400 with the message; TS = Go | T24-096 |
+| `e2e:geomap-sync` | e2e/geomap.spec.ts (Chromium) | a stub BFF; BD | drag P1 → P2 follows; EU → L 5 series; 3 moves, then real keys `page.keyboard.press('Alt+ArrowLeft')` ×3 and `('Alt+ArrowRight')` ×3: after each press the expected distinct URL and camera, the history index ±1 exactly, no second navigation; reload → the same views and area; axe clean | VIZ-047, INT-006 |
+| `bench:geo-area` | vis/geo/area.bench.ts | 5 000 series (4 000 `cloud_region` cycling gazetteer ids, 1 000 coordinates); EU; 20 warm-up, 200 timed | the p95 of `applyArea` (§7) | T05 §7.1 |
+
+**Row 8 fixtures:** **A1** 3 series `cloud.region` = eu-west-1, eu-west-2, us-east-1; **A2** 1 of 4
+with lat/lon; **A3** 2 × `Region`; **A4** country=fr, country='', iata=lhr, job=x; **A5** 2 × lat
+only; **A6** 1 series country=fr, 1 value; **A7** A1 with the rate rewrite applied; **A8** a histogram
+with `region`; **A9** A1 with vis `line`.
+
+```text
+row8   A1 → geomap (8) · A2 → line (14) · A3 → geomap · A4 → geomap (2 of 4) · A5 → geomap (invalid rows disclosed) ·
+       A6 → stat (7) · A7 → line (6) · A8 → heatmap (5) · A9 → line (explicit)
+```
+
+**Import fixtures** (`options` given; the outputs list only what differs from M1; notes in order):
+- **M1** `{}` → view (0, 0, 1), `sync`/`boundsFilter` false, `wheelZoom` true, location auto, size `{fixed, 5, 5}`, `circle`, `group`, labels `none`, `cluster` false; no notes.
+- **M2** view `{id: 'europe', shared: true, lat: 1}`, controls `{mouseWheelZoom: false, showZoom: true}`, a markers layer `{location: {mode: 'lookup', lookup: 'country', gazetteer: 'public/gazetteer/countries.json', latitude: 'x'}, config: {style: {size: {field: 'Value', min: 3, max: 30}, symbol: {fixed: 'img/icons/marker/square.svg'}, text: {field: 'name'}}}}` → view (46, 14, 4), `sync`, `wheelZoom` false, `{lookup, country, country}`, `{value, 3, 30}`, `square`, `auto`; "Option controls.showZoom not mapped".
+- **M3** coords lat 90, lon 190, zoom −1 → (85.0511, −170, 0); "Latitude 90 clamped to 85.0511", "Longitude 190 normalised to -170", "Zoom -1 clamped to 0".
+- **M4** coords lat `"x"`, lon `1e999`, zoom `null` → (0, 0, 1); malformed `view.lat`, `view.lon`, `view.zoom`.
+- **M5** coords lat −85.0511, lon 180, zoom 14 → (−85.0511, −180, 14); no notes. zero with zoom 20 → (0, 0, 14), "Zoom 20 clamped to 14".
+- **M6** `{dashboardVariable: true, dashboardVariableName: 'bounds', id: 'fit'}` → `boundsFilter`, view null; "View bounds go to the map area filter, not variable bounds".
+- **M7** layers `[{type: 'heatmap'}, {type: 'markers', location: {mode: 'geohash', geohash: 'gh'}}, {type: 'markers'}, 'x', {type: 5}, {type: 'route'}]` → `{geohash, gh}`; "Layer heatmap not mapped yet", "Only the first markers layer kept", "Layer 3 malformed: skipped", "Layer 4 malformed: skipped", "Layer route not mapped yet".
+- **M8** lookups `usa-states.json` (field `st`) / `airports.geojson` (`iata`) / `x.json` → `{lookup, st, region, US}` / `{lookup, iata, iata}` / auto + "Gazetteer x.json not available: auto-detected".
+- **M9** size field `Value` min 30, max 3 → `{value, 3, 30}`, "Size limits reversed: swapped"; min 1, max 60 → `{value, 2, 40}`, "Size 1–60 clamped to 2–40"; fixed 50 → `{fixed, 40, 40}`, "Size 50 clamped to 40".
+- **M10** `{view: 'x', controls: [], tooltip: {mode: 'multi'}, layers: [{type: 'markers', location: 'auto', config: {style: {size: 'big'}}}]}` → M1's options; malformed `view`, `controls`, `tooltip.mode`, `layers[0].location`, `layers[0].config.style.size`.
+- **M11** location `{mode: 'wkt'}`; coords with `latitude` only; symbol `{mode: 'field'}`; symbol `star.svg`; color `{fixed: 'red'}`; text `{fixed: 'x'}`; `showLegend: false`; `tooltip.mode: 'none'`; `basemap: {type: 'xyz'}`; `view.minZoom: 2` (ten imports, one per item) → in order: "Location mode wkt not mapped: auto-detected", "Location fields missing (layers[0].location.longitude)", "Symbol mode field not supported; using circle", "Symbol star not mapped: circle used", "Fixed colour not kept: colours follow groups", "Fixed label text not kept: labels show series names", "The legend shows with 2 or more groups", "Tooltips are always shown", "Basemap replaced by the built-in offline map", "Option view.minZoom not mapped".
+- **M12** (location, each a separate import) coords `{latitude: 5, longitude: 'lon'}` / `{latitude: '', longitude: 'lon'}` → auto, "Location fields missing (layers[0].location.latitude)"; geohash `{geohash: null}` → "… (layers[0].location.geohash)"; lookup `{lookup: 'iso', gazetteer: 7}` → `{lookup, iso, country}`, "Option layers[0].location.gazetteer malformed: default used"; lookup with `latitude: 'x'` and auto with `geohash: 'gh'` → no notes.
+- **M13** (style members) size `{fixed: '5', min: null, field: 3}` → field malformed → fixed mode: `{fixed, 5, 5}`, malformed `size.field`, `size.fixed` (`min` ignored); fixed mode `{fixed: 8, min: 'a', max: []}` → `{fixed, 8, 8}`, no notes; value mode `{field: 'Value', fixed: 'x', min: 3, max: 'y'}` → `{value, 3, 15}`, malformed `size.max` only; color `{field: 'Value', fixed: 7}`, no thresholds → `group`, only "colour field Value not mapped without thresholds; using group colours" (`fixed` ignored); with thresholds → `state`, no notes; symbol `{mode: 'svg'}` → circle, "Symbol mode svg not supported; using circle"; symbol `{fixed: 3}` → circle, malformed `symbol.fixed`; color `{field: 5}` → `group`, malformed `color.field`; text `{mode: 'template', fixed: 'x'}` → `auto`, "Text mode template not supported; using series names" (the paths in the notes are full, `layers[0].config.style.…`).
+- **M14** (selected fields) size `{field: 'cpu', fixed: 7}` → `{fixed, 7, 7}`, "size field cpu not mapped; using fixed size 7"; size `{field: 'Value #A'}` → `{value, 2, 15}`; color `{field: 'region'}` → `group`, "colour field region not mapped; using group colours"; color `{field: 'Value'}` with thresholds → `state`; text `{field: 'job'}` → `auto`, "text field job not mapped; using series names"; text `{field: 'name'}` → `auto`, no note.
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:autovis-table` (amended) | vis/autovis.test.ts | the row8 block | each vis and rule | VIZ-065 |
+| `unit:autovis-legacy` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a v7 board: an `auto` panel over A1 | board: line (14); editor opened: preview "Auto (Map)", geomap; saved: `legacyAuto` gone, board geomap (8); a save of another panel or of the layout keeps it a line | VIZ-065, T24-099 |
+| `unit:autovis-logql` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a LogQL `auto` panel, `sum by (cloud_region) (count_over_time({job="x"}[5m]))` answering a range result of 3 series eu-west-1, eu-west-2, us-east-1 (today's stream path); the same stored at v7; a log-line answer | v8: board geomap (8), label "Auto (Map)", preview geomap; v7 (3 series): board line, label Line; editor preview geomap, "Auto (Map)"; cancel → line; save → geomap; log lines: today's stream view | T24-099 |
+| `unit:autovis-explore` | pages/explore/MetricsPage.test.tsx | A1 on Explore | line (14) | T24-099 |
+| `unit:import-geomap` | import/geomap.test.ts | M1–M14 | options and notes exactly; every output passes `validateBoardSpec` (TS) and `validate.go` | VIZ-060 |
+| `unit:import-geomap-fuzz` | same; tools/fixtures/geomap-fuzz.ts; validate_test.go | seed 184 (mulberry32); 500 documents; the §4.19 leaf paths sorted (UTF-16), each independently absent (p ½) or drawn uniformly from {null, true, false, 0, −1, 1.5, 100, 1e300, "", "x", "Value", "img/icons/marker/square.svg", [], {}, [1], {"a": 1}}; a drawn leaf creates its absent parents as objects (`layers[0]` as a one-element array); the generator writes `api/fixtures/import/geomap-fuzz.json` ([{src, options, notes}]) | TS: never throws, regenerating equals the committed file; TS and Go: every `options` valid; a hand-written TS case feeds `Infinity`, `-Infinity` and `NaN` at each numeric path (not representable in JSON), once in each mode: where the mode consumes the path, its malformed note and default; where the mode ignores it (size `min`/`max` in fixed mode, `fixed` in value mode, `view.lat`/`lon` outside `coords`, `view.zoom` outside `zero`/`coords`), no note | VIZ-060 |
+| `unit:editor-preview-legacy` | pages/board/PanelEditor.test.tsx | the v7 board's `auto` panel over A1, the editor open | the preview renders a geomap frame and the label "Auto (Map)"; the board panel behind still renders a line; cancel → no change; save → board geomap | T24-099 |
+
 Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
 ## 11. Rollout
@@ -2344,6 +2738,19 @@ E2 writes the statuses, the groups, the camera, the targets, the keys, the state
 and map inspection into `docs/user/boards.md`. Step 2 (T24-096–099: view sync, the bounds filter,
 auto-vis and import) is designed next under #184.
 
+Part E step 2 implementation issues, filed after this design merges:
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| E3a — Map URL state, sync and the map area | §4.15 to §4.18, §5.17 (`state/boardUrl.ts`, `state/mapParams.ts`, `vis/geo/area.ts`, `vis/geo/writers.ts`), board spec v8 (§5.15), `Coverage.area` ([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)), the T25-010 map-area disclosure, the §10.6 step 2a tests and `bench:geo-area`; `docs/client/geomap.md`, `docs/user/boards.md` | E2 (#234), E1 (#231) | T24-096–098, T24-088 (amended), T25-010 |
+| E3b — Auto-vis row 8 and geomap import | §4.19, §5.17 (`hasGeoFields`, `importGeomap`), `legacyAuto` in the panel run, the stream view and the editor, the §10.6 step 2b tests; `docs/client/boards.md`, `docs/client/import.md` (new) | E3a (board spec v8) | T24-099 |
+
+E3a writes the store and its queue, the codecs, the scopes, the URL budget, history, sync, the
+roles, the area per result and the limits into `docs/client/geomap.md`, and sync, the map area,
+history and the 8-map limit into `docs/user/boards.md`. E3b writes row 8, `legacyAuto` and when it is
+dropped into `docs/client/boards.md`, and the geomap mapping, its defaults and notes into the new
+`docs/client/import.md`.
+
 ## 12. Alternatives considered
 
 Rejected:
@@ -2378,6 +2785,16 @@ Part E step 1b, rejected:
 - `aria-activedescendant` for the mark list (a roving tab stop, as T24-025);
 - a new host request per navigation step (requests race; the stack lives in one request, T25 §4.8).
 
+Part E step 2, rejected:
+- label-matcher rewrites for the map area (there is no matcher form for coordinates);
+- an in-memory camera (no link reproduces it);
+- a board variable for the bounds (the area is a filter, like `f=`, IA-026);
+- wrapped bounds (ADR-0027: one world that never repeats);
+- a gazetteer-based row 8 (asynchronous, so the choice would flip when the assets arrive);
+- a board-level version gate for row 8 (one panel's save would flip every `auto` panel on the
+  board);
+- keeping unmapped source values in hidden options (no consumer, unvalidated).
+
 ## 13. Open questions
 
 None.
@@ -2392,3 +2809,4 @@ None.
 | 1.3-rc | 2026-11-25 | #184 part E step 1a (geomap data): the intro, §1, §2 (goals, the part map splits E into 1a T24-080–087, 1b T24-088–095 and 2 T24-096–099, VIZ-129 unused; the decisions step 1b starts from) and §3; rules T24-080 to T24-087 (label input, the resolution ladder, coordinates, geohash, lookups, the gazetteer and basemap builds, delivery and validation); §4.10 the auto rules; §5.11 the resolver and loader, §5.12 the asset formats, §5.13 the build tool, cloud regions, sources and notices; §6–§9; §10.3 tests and fixtures; §11 issue E1 |
 | 1.4-rc | 2026-11-25 | #184 part E step 1b (geomap frame and interaction): the intro, §1, §2 (goals, non-goals; the part map marks step 1b) and §3; rules T24-088 to T24-095 (host and plan, rows, identity, camera and picking, selection and Inspector, mark list and keys, table, CSV and facts, states); T24-026 amended (the `csvCell` numeric exemption; `unit:list-table-csv` amended); §4.11 orders and coverage, §4.12 states, §4.13 Inspector targets, §4.14 columns; §5.14 the seam and host, §5.15 rows and board spec v7, §5.16 targets, mark list and rows; §6–§9; §10.4 and §10.5 tests and fixtures (code review r1: `unit:geo-inertia`); §11 issue E2; §12. [ADR-0027](../adr/0027-geomap-frame-seam.md); [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) (grouped spatial marks, JSON quoting, spatial overflow), [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.geo`) and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters) amended; [T25](T25-inspector-and-pivots.md) gains the `geo` target and the in-request navigation stack |
 | 1.5-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1): §5.7 `csvCell` is defined in `client/src/data/csv.ts`, shared by the panel tables, and re-exported by `widgets/lists/snapshot.ts` |
+| 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
