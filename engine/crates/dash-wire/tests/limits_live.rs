@@ -305,3 +305,65 @@ fn one_series_labels_batches_fit_their_charges() {
         "retained {retained} > body budget used {used}"
     );
 }
+
+#[test]
+fn schemas_and_part_state_fit_their_charges() {
+    // Only parts and schemas, so no other charge can cover them: a labels part, 400 data
+    // parts opened and closed in turn, then 60 data parts left open with their grid kept.
+    // After every frame, live ≤ body budget used (part 256 + schema 256 + its strings).
+    let e = empty_frames();
+    let unit = "bytes".repeat(10);
+    let planned = "{}".repeat(20);
+    let schema = F::new(
+        SCHEMA,
+        0,
+        2,
+        0,
+        vec![Piece::M(grid_schema(5, Some(&planned)))],
+    );
+    let schema = {
+        let mut s = schema;
+        let m = s.msg(0).edit(|t| set_kv(t, "dash.unit", &unit));
+        *s.msg_mut(0) = m;
+        s
+    };
+    let mut fr = vec![e[0].clone(), e[3].clone()];
+    for p in 2..402u32 {
+        for f in [&e[1], &schema, &e[4]] {
+            let mut g = f.clone();
+            g.part = p;
+            fr.push(g);
+        }
+    }
+    for p in 402..462u32 {
+        for f in [&e[1], &schema] {
+            let mut g = f.clone();
+            g.part = p;
+            fr.push(g);
+        }
+    }
+    let frames = frames_of(&encode(&fr));
+    // The canonical schemas are process-wide statics built on first use: build them first.
+    let mut warm = BodyDecoder::new(1);
+    for f in frames_of(&fixture("grid-error")) {
+        warm.frame(f);
+    }
+    drop(warm);
+    let mut held: Vec<Event> = Vec::with_capacity(4 * frames.len());
+    let base = live();
+    let mut d = BodyDecoder::new(1);
+    for (i, f) in frames.iter().enumerate() {
+        let ev = d.frame(f.clone());
+        assert!(
+            !ev.iter().any(|e| matches!(e, Event::Failed { .. })),
+            "{ev:?}"
+        );
+        held.extend(ev);
+        let (retained, used) = (live() - base, d.retained().2);
+        assert!(
+            retained as u64 <= used,
+            "frame {i}: retained {retained} > used {used}"
+        );
+    }
+    assert_eq!(d.retained().0, 60);
+}

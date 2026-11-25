@@ -276,13 +276,17 @@ fn build(kind: Kind) -> SchemaDesc {
     }
 }
 
-/// The one schema a META (`coverage/1`) or ERROR (`error/1`) stream may carry, built once.
-fn stream_schema(kind: Kind) -> &'static SchemaDesc {
+/// The canonical `labels/1`, `coverage/1` or `error/1` schema, built once: the one a META
+/// (`coverage/1`) or ERROR (`error/1`) stream may carry, and the columns a labels part reads
+/// its batches with once its own schema was accepted (so a labels part keeps no schema copy).
+pub(crate) fn canonical(kind: Kind) -> &'static SchemaDesc {
+    static LABELS: OnceLock<SchemaDesc> = OnceLock::new();
     static COVERAGE: OnceLock<SchemaDesc> = OnceLock::new();
     static ERROR: OnceLock<SchemaDesc> = OnceLock::new();
     match kind {
+        Kind::Labels | Kind::Grid => LABELS.get_or_init(|| build(Kind::Labels)),
         Kind::Error => ERROR.get_or_init(|| build(Kind::Error)),
-        _ => COVERAGE.get_or_init(|| build(Kind::Coverage)),
+        Kind::Coverage => COVERAGE.get_or_init(|| build(Kind::Coverage)),
     }
 }
 
@@ -293,7 +297,7 @@ pub(crate) fn check_stream_schema(
     raw: &RawSchema<'_>,
     kind: Kind,
 ) -> Result<&'static SchemaDesc, PartError> {
-    let expect = stream_schema(kind);
+    let expect = canonical(kind);
     if raw.is(expect) {
         return Ok(expect);
     }

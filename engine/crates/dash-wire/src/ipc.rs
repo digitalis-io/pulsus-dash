@@ -845,14 +845,17 @@ fn zero_padding(body: &[u8], bufs: &[(usize, usize)], used: &[Used]) -> Result<(
 
 /// Walks the fields depth-first, consuming nodes and buffers, with the §3.4 layout checks.
 /// `align64`: every buffer offset ≡ 0 (mod 64) (`metric_matrix.grid/1`, B1 §3.2).
-pub(crate) fn columns(schema: &SchemaDesc, batch: &Msg) -> Result<Vec<Col>, IpcError> {
+pub(crate) fn columns(
+    fields: &[FieldDesc],
+    align64: bool,
+    batch: &Msg,
+) -> Result<Vec<Col>, IpcError> {
     let Msg {
         length,
         nodes,
         buffers,
         body,
     } = batch;
-    let align64 = schema.meta("dash.schema") == Some("metric_matrix.grid/1");
     let blen = body.len();
     let mut bufs = Vec::with_capacity(buffers.len());
     let mut prev_end = 0usize;
@@ -881,8 +884,7 @@ pub(crate) fn columns(schema: &SchemaDesc, batch: &Msg) -> Result<Vec<Col>, IpcE
         body,
         length,
     };
-    let cols = schema
-        .fields
+    let cols = fields
         .iter()
         .map(|f| w.col(f, true))
         .collect::<Result<Vec<_>, _>>()?;

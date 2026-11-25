@@ -10,7 +10,7 @@ use crate::coverage::{self, Coverage, ErrorRow, Phase};
 use crate::dsf::{DsfError, Frame, FrameHeader, FrameType};
 use crate::ipc::{self, Col, ColData, IpcError, Msg, SchemaDesc};
 use crate::limits::{self, Limits};
-use crate::schema::{Kind, check_schema, check_stream_schema, grid_info, schema_err};
+use crate::schema::{Kind, canonical, check_schema, check_stream_schema, grid_info, schema_err};
 
 /// The largest grid (= B1 `MaxGridLen`, the YAML maximum).
 pub const MAX_GRID_LEN: u32 = 1 << 22;
@@ -147,7 +147,7 @@ fn stream(f: &Frame, kind: Kind) -> Result<Vec<Col>, PartError> {
     if tail != Some(&EOS[..]) {
         return Err(ipc_err(IpcError::Messages));
     }
-    ipc::columns(schema, &batch).map_err(ipc_err)
+    ipc::columns(&schema.fields, false, &batch).map_err(ipc_err)
 }
 
 fn u32_cell(c: Option<&Col>, r: usize) -> Result<u32, PartError> {
@@ -177,7 +177,6 @@ fn opt_str(c: Option<&Col>, r: usize) -> Result<Option<&str>, PartError> {
 
 #[derive(Debug)]
 struct Labels {
-    schema: SchemaDesc,
     /// One exact-size, id-ordered slice per labels batch; ids rise across the part (B1 writes
     /// them dense from 0), so a series costs one 32-byte entry, never a map node (B3 §3.1).
     batches: Vec<Box<[(u32, SeriesMeta)]>>,
@@ -206,7 +205,9 @@ impl Labels {
 
 #[derive(Debug)]
 struct Data {
-    schema: SchemaDesc,
+    /// The two accepted grid columns only (the schema's metadata is not kept: `GridInfo`
+    /// shares `dash.unit` and `dash.planned`).
+    fields: Box<[ipc::FieldDesc]>,
     labels_part: u32,
     start_ms: i64,
     step_ms: i64,
@@ -523,8 +524,9 @@ impl BodyDecoder {
                 }
                 let schema = self.kept_schema(f)?;
                 check_schema(&schema, Kind::Labels, false)?;
+                // Accepted: it is exactly the canonical labels/1 schema, which reads the batches.
+                drop(schema);
                 Ok(State::LabelsOpen(Box::new(Labels {
-                    schema,
                     batches: Vec::new(),
                     rows: 0,
                     bytes: 0,
@@ -551,7 +553,8 @@ impl BodyDecoder {
             }
             (State::LabelsOpen(mut l), FrameType::Batch) => {
                 let msg = one_message(f)?;
-                let cols = ipc::columns(&l.schema, &msg).map_err(ipc_err)?;
+                let cols =
+                    ipc::columns(&canonical(Kind::Labels).fields, false, &msg).map_err(ipc_err)?;
                 let (rows, groups, bytes, cost) = labels_counts(&cols)?;
                 if rows > self.limits.rows_per_batch_labels {
                     return Err(PartError::Limit("rows per batch"));
@@ -585,7 +588,7 @@ impl BodyDecoder {
                 let (info, labels_part) = grid_info(&schema)?;
                 self.check_link(id, labels_part, h)?;
                 let data = Data {
-                    schema,
+                    fields: schema.fields.into_boxed_slice(),
                     labels_part,
                     start_ms: info.start_ms,
                     step_ms: info.step_ms,
@@ -795,7 +798,7 @@ impl BodyDecoder {
             return Err(PartError::Order("labels part failed"));
         }
         let msg = one_message(f)?;
-        let cols = ipc::columns(&d.schema, &msg).map_err(ipc_err)?;
+        let cols = ipc::columns(&d.fields, true, &msg).map_err(ipc_err)?;
         let (ids, vals) = match cols.as_slice() {
             [ids, vals] => (ids, vals),
             _ => return Err(ipc_err(IpcError::Messages)),
@@ -990,4 +993,24 @@ fn labels_batch(
     }
     finish(cur, &mut out);
     Ok(out.into_boxed_slice())
+}
+
+#[cfg(test)]
+mod tests {
+    //! The retained part state against its charges (B3 §3.1; review r4).
+    use super::*;
+    use crate::limits::cost;
+    use std::mem::size_of;
+
+    #[test]
+    fn part_state_fits_its_charges() {
+        // A labels part keeps its boxed state only: its accepted schema is the canonical one.
+        assert!(size_of::<Labels>() <= cost::SCHEMA as usize);
+        // A data part keeps its boxed state and its two grid columns plus the values child;
+        // their names are charged byte for byte with the schema.
+        assert!(size_of::<Data>() + 3 * size_of::<ipc::FieldDesc>() <= cost::SCHEMA as usize);
+        // A part's map slot: a B-tree leaf holds 11 slots and, below the root, at least 5, so a
+        // part takes at most (11 slots + node header and edges) / 5.
+        assert!((11 * size_of::<(u32, Part)>() + 112) / 5 <= cost::PART as usize);
+    }
 }
