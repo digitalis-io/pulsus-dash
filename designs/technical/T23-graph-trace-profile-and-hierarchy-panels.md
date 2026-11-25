@@ -533,7 +533,7 @@ Already filed: #162 (profiles data plane: routes, schemas, errors, types; it mus
 None. Owner decisions of 2026-11-24:
 - Profiles opens in 2D, with 3D one key (`T`) away. The choice is remembered in the panel's `view`,
   and on the Profiles page in the user's prefs.
-- VIZ-078 exempts partition X axes from log (05 change log 1.3-rc).
+- VIZ-078 exempts partition X axes from log (05 change log 1.5-rc).
 - New panels wait for #164.
 
 ## 14. Change log

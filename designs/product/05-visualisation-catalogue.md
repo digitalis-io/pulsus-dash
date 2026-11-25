@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-24 |
+| **Version** | 1.5-rc · 2026-11-24 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -846,6 +846,18 @@ remain available when chosen explicitly or imported.
 *Acceptance:* Given a single-value query with a threshold, when the auto-vis runs, then a Bullet is
 shown; and given an imported gauge panel, then a Gauge is shown.
 
+#### VIZ-095 — Stat baseline delta
+**MUST** · M-UI1 · SRE, NOC, Business
+
+A stat with a baseline offset MUST show the change of its value against the same query over the
+window shifted back by that offset: an arrow and a signed percentage in a neutral colour, with the
+baseline value and offset in its tooltip. When the baseline is missing, zero or not finite, the stat
+MUST show its value without a delta and say why in its tooltip.
+
+*Acceptance:* Given a stat at 120/s with baseline offset 1d where the shifted window gives 100/s,
+then it shows `▲ 20 %` and the tooltip says `100/s 1 d ago`; and given a shifted value of 0, then no
+delta is shown and the tooltip says `No baseline: 0 1 d ago`.
+
 ## 6. Tables
 
 The table is a first-class vis, not an afterthought. In practice it is the most-used panel type in
@@ -1430,6 +1442,7 @@ board.
 | VIZ-084 | Imported 3D models for physical layout | MAY | M-UI6 |
 | VIZ-085 | Fleet line stack | MUST | M-UI3 |
 | VIZ-086 | True 3D only | MUST | M-UI3 |
+| VIZ-095 | Stat baseline delta | MUST | M-UI1 |
 | VIZ-105 | 3D flame | MUST | M-UI3 |
 | VIZ-106 | Flame top suspects | MUST | M-UI2 |
 
@@ -1442,7 +1455,8 @@ board.
 | 1.1-rc | 2026-11-19 | Decisions D7 and D8 (roadmap Q13): GPU vis and DOM vis definitions; VIZ-001 revised in place (one shared engine and GPU device, one canvas per viewport, DOM vis in React, interim-renderer note); VIZ-057 parity by shared fixtures instead of one shared Rust implementation (the BFF is Go); VIZ-063 rationale no longer cites the JS shim (R14) |
 | 1.2-rc | 2026-11-21 | VIZ-006: CPU fallback for lines beyond the value encoding's clip box (same first/last/min/max, same acceptance test); reference placement stated (#68) |
 | 1.3-rc | 2026-11-24 | VIZ-086 (owner, #150); T21 |
-| 1.3-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
+| 1.4-rc | 2026-11-24 | #151: VIZ-095 (T22) |
+| 1.5-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
 
 ## Resolved during formalisation
 
