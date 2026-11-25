@@ -17,11 +17,12 @@ pub enum TimeAxis {
     Explicit { t_ms: Vec<f64> },
 }
 
-/// One series' identity.
+/// One series' identity. Labels are shared and immutable: built once per series by the
+/// decoder, then only `Arc`-cloned into every chunk that references the series.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SeriesMeta {
     pub key_hash: u64,
-    pub labels: Vec<(String, String)>,
+    pub labels: std::sync::Arc<[(String, String)]>,
 }
 
 /// An immutable chunk (T03-007).

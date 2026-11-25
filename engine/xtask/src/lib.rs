@@ -2,6 +2,8 @@
 //!
 //! - `dash-scene` has no dependency, direct or transitive, on `wgpu`, `naga` or `dash-gpu`, and its
 //!   `dash-marks` edge enables no feature (the scene model stays GPU-free, T02-001);
+//! - `dash-wire`'s normal dependencies are exactly `thiserror` and `bytemuck` (plan #68 B2,
+//!   ADR-0014 §7: no arrow-rs crate);
 //! - only `dash-marks` contains `.wgsl` files;
 //! - the literals of `ci/lavapipe.Dockerfile` (and the toolchain channel) equal `tools.toml`.
 
@@ -34,6 +36,7 @@ pub fn metadata(root: &Path) -> Result<Value, String> {
 /// literal. Empty when the workspace conforms.
 pub fn spec_lint(root: &Path, meta: &Value) -> Vec<String> {
     let mut out = crate_graph(meta);
+    out.extend(dash_wire_deps(meta));
     out.extend(wgsl_files(root));
     out.extend(image_literals(root));
     out
@@ -191,6 +194,37 @@ impl<'a> Graph<'a> {
             }
         }
     }
+}
+
+/// The only normal dependencies of `dash-wire` (its own Arrow IPC reader, no arrow-rs).
+const DASH_WIRE_DEPS: [&str; 2] = ["thiserror", "bytemuck"];
+
+/// `dash-wire-deps` (plan #68 B2 §2, ADR-0014 §7): the normal (and build) dependencies of
+/// `dash-wire` are exactly `DASH_WIRE_DEPS`, so its transitive set is theirs. Each extra or
+/// missing edge is one violation naming the crate.
+pub fn dash_wire_deps(meta: &Value) -> Vec<String> {
+    let g = Graph::new(meta);
+    let Some(wire) = g.members.get("dash-wire") else {
+        return vec!["workspace: no dash-wire package".into()];
+    };
+    let got: BTreeSet<String> = wire["dependencies"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| is_normal(&d["kind"]))
+        .filter_map(|d| d["name"].as_str())
+        .map(str::to_owned)
+        .collect();
+    let want: BTreeSet<String> = DASH_WIRE_DEPS.iter().map(|d| (*d).to_owned()).collect();
+    let mut out: Vec<String> = got
+        .difference(&want)
+        .map(|d| format!("dash-wire depends on {d}; only thiserror and bytemuck are allowed"))
+        .collect();
+    out.extend(
+        want.difference(&got)
+            .map(|d| format!("dash-wire no longer depends on {d}; update dash-wire-deps")),
+    );
+    out
 }
 
 fn crate_graph(meta: &Value) -> Vec<String> {

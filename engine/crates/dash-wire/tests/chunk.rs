@@ -4,7 +4,7 @@ use dash_wire::{ChunkBuilder, ChunkError, ChunkId, SeriesMeta};
 fn meta(k: u64) -> SeriesMeta {
     SeriesMeta {
         key_hash: k,
-        labels: vec![("pod".into(), format!("p{k}"))],
+        labels: vec![("pod".into(), format!("p{k}"))].into(),
     }
 }
 

@@ -39,7 +39,7 @@ fn data(seed: u32) -> Chunk {
             .collect();
         let meta = SeriesMeta {
             key_hash: s as u64,
-            labels: Vec::new(),
+            labels: Vec::new().into(),
         };
         ok(
             b.push_series(meta, explicit.then_some(&ts[..]), &vs),

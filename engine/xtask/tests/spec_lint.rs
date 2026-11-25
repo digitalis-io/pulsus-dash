@@ -97,3 +97,44 @@ fn dockerfile_literal_must_equal_tools_toml() {
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("25.2.7-0ubuntu0.24.04.1"), "{err}");
 }
+
+#[test]
+fn dash_wire_dependencies_are_exactly_thiserror_and_bytemuck() {
+    let Ok(meta) = xtask::metadata(&engine()) else {
+        panic!("cargo metadata")
+    };
+    assert_eq!(xtask::dash_wire_deps(&meta), Vec::<String>::new());
+    // A metadata fixture: the real metadata with `arrow-buffer` added to dash-wire.
+    let mut fixture = meta.clone();
+    let Some(packages) = fixture["packages"].as_array_mut() else {
+        panic!("no packages")
+    };
+    let Some(wire) = packages.iter_mut().find(|p| p["name"] == "dash-wire") else {
+        panic!("no dash-wire")
+    };
+    let Some(deps) = wire["dependencies"].as_array_mut() else {
+        panic!("no dependencies")
+    };
+    deps.push(serde_json::json!({
+        "name": "arrow-buffer",
+        "req": "^58",
+        "kind": null,
+        "optional": false,
+        "features": [],
+    }));
+    let errors = xtask::dash_wire_deps(&fixture);
+    assert!(
+        errors.iter().any(|e| e.contains("arrow-buffer")),
+        "{errors:?}"
+    );
+    // A dev-dependency does not count.
+    let mut dev = meta.clone();
+    if let Some(d) = dev["packages"]
+        .as_array_mut()
+        .and_then(|p| p.iter_mut().find(|p| p["name"] == "dash-wire"))
+        .and_then(|w| w["dependencies"].as_array_mut())
+    {
+        d.push(serde_json::json!({"name": "arrow-buffer", "kind": "dev", "optional": false}));
+    }
+    assert_eq!(xtask::dash_wire_deps(&dev), Vec::<String>::new());
+}

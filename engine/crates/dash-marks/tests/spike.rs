@@ -21,7 +21,7 @@ fn spike_is_drawn() {
         b.push_series(
             SeriesMeta {
                 key_hash: 3,
-                labels: Vec::new(),
+                labels: Vec::new().into(),
             },
             None,
             &vs,

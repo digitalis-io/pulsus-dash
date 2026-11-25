@@ -43,6 +43,12 @@ dbg_macro = "deny"
 todo = "deny"
 disallowed_types = "deny"
 
+# dash-wire's split-point and fuzz-smoke tests decode about 10⁵ bodies each; optimising the
+# crate in the dev/test profile keeps unit:dsf-fuzz-smoke under its 30 s (plan #68 B2 §5).
+# Overflow checks and debug assertions stay on.
+[profile.dev.package.dash-wire]
+opt-level = 2
+
 # T03 §5.6; used by Part C.
 [profile.wasm-release]
 inherits = "release"

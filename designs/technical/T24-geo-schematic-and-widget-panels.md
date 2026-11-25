@@ -3,17 +3,20 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.1-rc · 2026-11-25 |
-| **Milestone** | M-UI1 (sanitiser, links) → M-UI5 (widgets) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
-| **Source draft** | plans/153, plans/181 (not tracked) |
+| **Version** | 1.3-rc · 2026-11-25 |
+| **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
+| **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
 
 This document is the board **widgets**, the **geomap** and the **schematic**. It is written in parts
 (§2): part A, here, defines the shared widget rules, the **Text / Markdown** widget with the one
 Markdown renderer every vis and widget uses, and the **Clock / time zones** widget (rules T24-001 to
 T24-018). Part B1 adds the **Board list** widget, the list-widget rules that every list widget shares,
-board tags and the board search of the BFF (rules T24-020 to T24-029). Parts B2–K add their rules in
-their own ID blocks.
+board tags and the board search of the BFF (rules T24-020 to T24-029). Part B2 adds the **Change feed**
+widget, canonical scoped entity ids on annotations, the `change` Inspector target and the log panel
+gap record (rules T24-030 to T24-039). Part E step 1a adds the geomap's data layer: location
+resolution, the bundled basemap and gazetteer assets and their loading (rules T24-080 to T24-087).
+Parts C–K add their rules in their own ID blocks.
 
 ## 1. Context & problem
 
@@ -39,6 +42,36 @@ incidents. The Board list is a DOM list widget, honestly 2D (T24-001), that read
 routes. Its list rules (T24-020, T24-024 to T24-027) are shared with the list widgets of later parts.
 The BFF gains one migration: a `boards.tags` cache with a `tags_version` stamp, repaired on read.
 `/boards` gains `q` and `tag`, and the list answers gain `applied` and `truncated`.
+
+**Part B2.** VIZ-053's Change feed row asks for deploys, config changes, flags and annotations on a
+board, filtered by the entity in Context, and VIZ-060 imports the Annotations list into it. Today
+`/annotations` ([ADR-0023](../adr/0023-chart-event-markers.md), [T11](T11-postgres-schema.md) §4.4)
+serves the board's event markers: one page of at most 500 rows, with no entity and no filter. The
+approach: the **Change feed** is a list widget (T24-020) over the same board-owned query that the
+markers read (T24-030). Annotations gain a canonical, binding-scoped `EntityId`
+([T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id), amended), so the Context
+entity set (`e=`, IA-026) filters them. `/annotations` gains kind, tag and entity filters, keyset
+paging over the overlap set, `applied` and `orgWideHidden`. The data scope
+([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)) is enforced inside
+the one SQL statement of each path, fail closed. A row opens the Inspector on a new `change` target
+([T25-002](T25-inspector-and-pivots.md#t25-002--envelope-and-union)). The log panel's gaps against
+VIZ-034 and VIZ-035 are recorded (§4.9) and filed as follow-ups. Rejected: `kind:name` entity keys,
+stripping `entity` for old servers, and paging by moving `to` (§12).
+
+**Part E, step 1a.** [VIZ-045](../product/05-visualisation-catalogue.md#viz-045--location-sources)
+asks the geomap to place a series from its labels: coordinates, a geohash, or a lookup of an ISO
+country or region code, an IATA airport code or a cloud region id.
+[VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) asks
+for a low-detail basemap bundled for air-gapped installs. Step 1a is the data layer only. `locate()`
+maps a series' labels to one `LocationResult` by one ladder (T24-081); a clash is `ambiguous` with its
+candidates and never guessed. A deterministic build script that uses only the Python standard
+library makes two same-origin JSON assets, `basemap.json` and `gazetteer.json`, from pinned
+public-domain sources and a curated cloud-region file (§5.13). Natural Earth is already split at
+±180°, so the build **asserts** that and **clamps** latitudes to the Web Mercator limit: there is no
+clipper and the topology is unchanged (T24-086). Any validation failure rejects the whole asset
+(T24-087). Rejected: a polygon clipper, a binary asset format, the raw Natural Earth ISO fields (the
+`_EH` fields are used, T24-085), and downloading the sources in CI (the download location would put
+a host name in the repository).
 
 ## 2. Goals / non-goals
 
@@ -66,16 +99,42 @@ Non-goals (part B1):
 - the board library page;
 - the headless renderer.
 
+Goals (part B2): the Change feed widget (source, entity filter, paging, snapshot and meter, rows,
+selection and Inspector, keys, table, CSV and facts, compatibility, import); the canonical scoped
+`EntityId` on annotations; data-scope enforcement on every annotations path; the `/annotations`
+filters, keyset paging and `applied`; migration 5; board spec v6; the `change` Inspector target; the
+log panel gap record.
+
+Non-goals (part B2):
+- the T12 `/changes` route and derived changes ([T12](T12-entity-catalogue.md) §4.13);
+- [AUD-012](../product/01a-audiences-and-perspectives.md#aud-012--changes-ranked-and-shown-in-three-places)
+  (ranked changes);
+- an entity picker on the widget;
+- a UI to write notes;
+- the log panel follow-ups L1–L4 (§4.9, §11).
+
+Goals (part E, step 1a): the location resolver (label input, the ladder, coordinates, geohash and
+gazetteer lookups); the gazetteer and basemap builds from pinned sources; the two asset formats,
+their delivery and whole-asset validation; the build tool, the curated cloud-region file and the
+source pins; the notices for the bundled data.
+
+Non-goals (part E, step 1a):
+- the geomap frame and drawing: markers, camera, bounds filter and states (step 1b, T24-088–095);
+- part E step 2 (T24-096–099);
+- tiles and pluggable basemap sources (part F, #185);
+- wrapping the map across ±180°;
+- the government and China partitions of the cloud region lists.
+
 **Part map.** Each part is designed under its own issue and adds its rules in its block.
 
 | Part | Scope | Issue | Rules | Requirement ID if needed |
 |---|---|---|---|---|
 | A | Text / Markdown and Clock widgets, sanitiser and link rule (this revision) | #153 | T24-001–019 | VIZ-125 (reserved, unused) |
 | B1 | Board list widget, shared list-widget rules, board tags and the `/boards` search (this revision) | #181 (step 1) | T24-020–029 | — |
-| B2 | Change feed widget, the `change` target and log panel gaps | #181 (step 2) | T24-030–039 | VIZ-126 |
+| B2 | Change feed widget, the `change` target and log panel gaps (this revision) | #181 (step 2) | T24-030–039 | VIZ-126 (reserved, unused) |
 | C | Alert / incident list widget | #182 | T24-040–059 | VIZ-127 |
 | D | Feed widget fetched by the BFF | #183 | T24-060–079 | VIZ-128 |
-| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter | #184 | T24-080–099 | VIZ-129 |
+| E | Geomap 2D core: location sources, markers, offline basemap, camera and bounds filter; step 1a, the data (this revision); step 1b, the frame; step 2 | #184 | T24-080–099 (1a T24-080–087, 1b T24-088–095, 2 T24-096–099) | VIZ-129 (reserved, unused) |
 | F | Geomap basemap pipeline and routes layer | #185 | T24-100–119 | VIZ-130 |
 | G | Geomap M-UI5 layers: heatmap / hexbin, choropleth, network, day/night, track | #186 | T24-120–139 | VIZ-131 |
 | H | Geomap true 3D: globe and extruded regions | #187 | T24-140–159 | VIZ-132–133 |
@@ -84,7 +143,22 @@ Non-goals (part B1):
 | K | Schematic import and auto-schematic | #190 | T24-200–219 | — |
 
 Part A defines T24-001 to T24-018; T24-019 and VIZ-125 stay unused. Part B1 defines T24-020 to
-T24-029.
+T24-029. Part B2 defines T24-030 to T24-039; VIZ-126 stays unused. Part E step 1a defines T24-080 to
+T24-087; VIZ-129 stays unused.
+
+**Part E step 1b starts from** these decisions (#184, coordinator, round 1):
+- out-of-domain and infinite values are excluded from the marks and disclosed;
+- the marker radius is r ∝ √(|v| / max |v|), within [min, max]; all values zero → min; negative
+  values are sized by |v|, with the sign in the label and the table;
+- zMin = min(computed, 14); the fit inset is min(48 px, 10 % of the smaller side); below a minimum
+  plot size the panel shows "too small"; the anchor is exact unless containment moves it;
+- non-colour identity per series group through `CATEGORY_PATTERNS`, with the overflow in one
+  [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) "other (n)"
+  aggregate;
+- coincident marks stay reachable; one ordering and one hit-test rule;
+- every consumer is defined per state; statuses are independent;
+- `aria-setsize` per T24-025; a full ADR for the ±180° seam; `csvCell` in every CSV;
+- a null basemap → "Map data unavailable" (T24-087).
 
 ## 3. Satisfies
 
@@ -114,6 +188,19 @@ T24-029.
 | [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part B1) | §4.1 (T24-027), §10 | `golden:widget-gallery` |
 | [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part B1) | §4.1 (T24-027) | `e2e:widget-lists-a11y` |
 | [SRF-026](../product/04-surfaces.md#srf-026--board-library) (staged: starred, recent, search and tags; the ranking is I3, §11) | §4.1 (T24-021, T24-023, T24-029), §5.6, §6 | `itest:board-find`; `itest:board-tags`; `unit:board-list-rows` |
+| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Change feed row; part B2) | §4.1 (T24-030 to T24-035), §5.8 to §5.10, §6 | `unit:change-source`; `unit:change-rows`; `itest:annotations-entity`; `e2e:widget-change-feed` |
+| [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (part B2) | §4.1 (T24-032, T24-033, T24-038), §4.7 | `unit:change-pager`; `unit:change-snapshot`; `unit:change-mixed`; `itest:annotations-keyset` |
+| [VIZ-031](../product/05-visualisation-catalogue.md#viz-031--3d-only-when-it-encodes-a-dimension), [VIZ-086](../product/05-visualisation-catalogue.md#viz-086--true-3d-only) (part B2) | §4.1 (T24-020), §5.8 | `unit:board-spec-change-feed` |
+| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity), [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) (part B2) | §4.1 (T24-037: no field options, never auto-picked), §5.8 | `unit:board-spec-change-feed` |
+| [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Annotations list row) | §4.1 (T24-039), §4.8 | `unit:import-change-feed` |
+| [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) (part B2) | §4.1 (T24-036, T24-037) | `unit:change-table-csv`; `unit:change-selection`; `e2e:widget-lists-a11y` |
+| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part B2) | §4.1 (T24-034, T24-035), §10.2 | `unit:change-rows`; `golden:widget-gallery` |
+| [VL-012](../product/08-visual-language.md#vl-012--numbers-for-humans), [VL-020](../product/08-visual-language.md#vl-020--fixed-glyph-language) (part B2) | §4.1 (T24-034: span floor, kind glyphs) | `unit:change-rows` |
+| [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) (part B2) | §4.1 (T24-027, T24-034) | `e2e:widget-lists-a11y` |
+| [INT-034](../product/03-interaction-model.md#int-034--click-selects-and-opens-the-inspector) (`change` target) | §4.1 (T24-035), [T25](T25-inspector-and-pivots.md) §5 | `unit:change-inspect`; `unit:change-selection`; `e2e:widget-change-feed` |
+| [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (entity set `e=`) | §4.1 (T24-031), §5.10 | `unit:change-entity`; `e2e:widget-change-feed` |
+| [VIZ-045](../product/05-visualisation-catalogue.md#viz-045--location-sources) (part E step 1a) | §4.1 (T24-080 to T24-085), §4.10, §5.11, §5.12 | `unit:geo-locate`; `unit:geo-geohash`; `unit:geo-gazetteer-build`; `unit:geo-assets` |
+| [VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) (staged: step 1a bundles the offline data; drawing in step 1b) | §4.1 (T24-086, T24-087), §5.12, §5.13, §6 | `unit:geo-build`; `unit:geo-decode`; `unit:geo-load`; `unit:geo-assets`; `ci:geo-data`; `ci:bundle-size` |
 
 ## 4. Design
 
@@ -217,11 +304,12 @@ interim); anything else → alt text. An image not rendered as `<img>` logs `ima
 `image`; links show their host.
 
 #### T24-020 — List widgets
-**MUST** — A list widget (`boardList`; part B2 adds `changeFeed`) has no `query` (T24-003), is never
+**MUST** — A list widget (`boardList`, `changeFeed`) has no `query` (T24-003), is never
 auto-picked (VIZ-065), is DOM with no 3D form, reads only BFF config routes and writes nothing. It has
 a snapshot (T24-024), a coverage meter, a table, CSV and facts (T24-026), and keys (T24-025). Board rows
 have no selection and no Inspector: a board is neither a series key nor an interval
-([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)).
+([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)). Change feed rows select and
+inspect (T24-035).
 
 #### T24-021 — Board list sources
 **MUST** — Each mode reads one route under one react-query key:
@@ -309,6 +397,229 @@ titles client-side; tag mode shows "Filtering by tag needs a newer server", with
 Old binaries cannot move a v5 head (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
 save shows "This server does not accept board tags yet".
 
+#### T24-030 — Feed source
+**MUST** — The board owns one annotations query, `boardAnnotationsQuery(api, tenant, w)` (§5.10): key
+`['data', 'events', tenant, fromMs, toMs]`, `staleTime: Infinity`, no refetch on focus, one page of
+`limit` 500 with no filter. The event markers
+([ADR-0023](../adr/0023-chart-event-markers.md), with `keepPreviousData`) and every Change feed with
+no effective filter (all kinds, no tags, no entity) observe it, so one board window makes one request.
+A feed with an effective filter has its own key `['data', 'changes', tenant, fromMs, toMs, kinds,
+tags, ents, orgWide]`. The board's Refresh refetches each key once. On a new window the markers keep
+the previous events until the answer arrives, and the feed hides the old rows (T24-024). In every
+answer `truncated ⇔ next ≠ null`.
+
+#### T24-031 — Entity filter
+**MUST** — `entityMode: 'context'` filters by the Context entity set `e` (0–16 `EntityId`s,
+[IA-026](../product/02-information-architecture.md#ia-026--context-propagation); any-of); `'all'`
+applies no entity filter. If an entry of `e` is not a lower-case UUID (for example `checkout`), the
+feed is unfiltered and shows "Entity filter unavailable for this context".
+- **Organisation-wide changes.** With full scope (`orgWideHidden` ≠ null) and an effective entity
+  filter, the toggle "Include organisation-wide" sets `orgWide`, which is part of the key and starts at
+  the `orgWide` option. While they are excluded, the line "‹k› organisation-wide change(s) not shown"
+  shows k = `orgWideHidden` ("1 organisation-wide change not shown", "3 organisation-wide changes not
+  shown"); it is hidden when k is 0 or null. A scoped answer (`orgWideHidden` null) shows neither the
+  toggle nor the line.
+- **Subtitle:** the entity labels (T24-034) of the ids in `e`, else an id's first 8 hex digits, or
+  "All entities" with no entity filter.
+
+#### T24-032 — Paging
+**MUST** — A page is taken from the **overlap set** of the window (`at ≤ toMs ∧ coalesce(end_at, at)
+≥ fromMs`), after the data scope and the filters, in (`at` desc, `id` desc) order; an older page takes
+the rows with `(at, id) < before`, where `before` is the previous page's `next`. `olderPage` appends
+and keeps at most 2 000 rows. The snapshot is:
+- **capped** iff the trim discarded rows, or `next ≠ null` with 2 000 rows loaded;
+- **complete** iff `next = null` and nothing was discarded;
+- otherwise it has **more**.
+
+Between page 0 and the last page of one key: a row that persists appears exactly once; a row inserted
+above a passed cursor is not shown (until a refresh), and one inserted below it appears on a later
+page; a row deleted before its page is read never appears.
+
+#### T24-033 — Snapshot and meter
+**MUST** — Each key has one T24-024 `ListSnapshot` (`ChangeSnapshot`, §5.10), holding the rows and
+the number of pages loaded. A new page 0 (a refresh or Retry) replaces the snapshot alone: the older
+pages are dropped and older-page requests in flight are aborted. Consumers follow §4.7. The meter is
+`listCoverage(loaded, loaded, more ≠ 'none', staleAtMs, unknown)`
+([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)):
+- one complete page → `100 %`;
+- complete after k ≥ 2 pages → `unknown: {reason: 'paged', pages: k}`, which reads "all k pages
+  loaded · may have changed while loading", with Refresh;
+- more → `truncated`, with Load older;
+- capped → `truncated` and "Limit of 2,000 changes reached: narrow the time range", with no Load
+  older;
+- an old server (T24-038) → `coverage unknown`.
+
+#### T24-034 — Rows
+**MUST** — A row has two lines and optional chips, with no state colour (T24-027):
+- **Line 1** (12/16, `text-muted`): the kind glyph (◆ deploy, ⚙ config, ⚑ flag; a note has none,
+  [VL-020](../product/08-visual-language.md#vl-020--fixed-glyph-language), ADR-0023) and the word
+  (Deploy, Config change, Feature flag, Note), then, joined by ` · `: the time `HH:mm:ss` in the
+  page's zone, with `EEE d MMM` first when the row is on another date than the window's end; for a
+  range, `‹from›–‹to› · ‹span›` instead, with the span floored as T24-012 (`17 min`) and `< 1 s`
+  below one second; then the entity, `‹kind› ‹ident values joined ' / '›` (absent optional positions
+  are skipped), with ` · ‹binding slug›` added when loaded rows with different ids have the same
+  label, or "organisation-wide".
+- **Line 2** (13/20): the text exactly as authored, plain text, never parsed for entity names (the
+  [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response) note).
+- **Chips** when `showTags`: at most 3 tag chips, then `+k`.
+
+#### T24-035 — Selection, Inspector
+**MUST** — Click, Enter or Space on a row calls `inspect` with the origin `{surface: 'board',
+panelId, title, query: null, window, unit: null}`, the target `change` (`changeTarget`,
+[T25](T25-inspector-and-pivots.md) §5) and the selection `{keys: ['change:' + id], fromMs: at, toMs:
+(end_at ?? at) + 1}`. Time panels draw the interval band and dim nothing, because the key is not in
+their data ([T25-006](T25-inspector-and-pivots.md#t25-006--shared-selection)). The feed reads
+`useSelection()` through `changeRelevance`, relative to its **loaded ids**:
+- the keys hold `change:‹id›` of loaded rows → those rows are selected (`selection` background, a 2 px
+  `focus` bar, the hidden text "selected") and the others muted;
+- the keys are `[]` and there is an interval → the rows overlapping it (`at < toMs ∧ coalesce(end_at,
+  at) ≥ fromMs`) are selected and the others muted;
+- anything else (null, only foreign keys, foreign keys with an interval) → no effect.
+
+#### T24-036 — Keyboard, SR
+**MUST** — T24-025 applies, with rows as buttons; Enter or Space inspects, and a keyboard open
+focuses the Inspector heading ([T25-008](T25-inspector-and-pivots.md#t25-008--focus-and-sr)). Tab
+order: the "Include organisation-wide" toggle → the list → Load older or Refresh → the meter. A row's
+accessible name is `‹word›, ‹text›, ‹time›[ to ‹end›, ‹span›][, ‹entity›][, tags ‹t1›, ‹t2›…]`.
+`aria-setsize` is the loaded count only for a complete single page with known coverage, else −1. When
+a page loads, one polite announcement reads "‹n› changes loaded", n being the rows it added.
+
+#### T24-037 — Table, CSV, facts, fields
+**MUST** — Shift+T shows the snapshot in the kit table (#173, T24-026). The CSV header is
+`at,end_at,kind,entity_id,entity,text,tags,id`: times in ISO 8601 UTC with milliseconds (`end_at`
+empty for a point); `entity_id` the `EntityId` and `entity` the T24-034 entity label, both empty when
+organisation-wide; tags `;`-joined; every cell through `csvCell`. Facts: `current` = `{text:
+'‹N›[+] changes'` (`+` with more or capped) plus ` (coverage unknown)` or ` (stale)`, `series`: the
+newest row as `'‹word›: ‹text› at HH:mm:ss'`, or `''` when empty`}`; the other members are null, and
+with no snapshot the facts are null.
+[VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity): the Change
+feed has no field options (`fieldConfig`, `thresholds` → `board.json.unknownKey`).
+[VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules): it is never auto-picked.
+
+#### T24-038 — Compatibility
+**MUST** — An answer without `applied` comes from an **old server** (before I5): the meter reads
+`coverage unknown`, there is no Load older, and kinds and tags are filtered client-side over its one
+page; an effective entity filter shows "Filtering by entity needs a newer server" and no rows. A
+create with `entity` is never stripped: an old server's 400 shows "This server cannot record the
+entity yet", with no retry. Migration 5 ships after #215's migration 4 (§6).
+
+#### T24-039 — Change feed import
+**MUST** — Import follows §4.8 exactly, with one report note per dropped (a duplicate included),
+malformed or unmapped option.
+
+#### T24-080 — Label input
+**MUST** — `locate` (§5.11) reads a series' labels. A key is compared in its normal form: ASCII
+letters lower-cased and `.` read as `_` (`cloud.region` is `cloud_region`); other characters are
+kept. An empty value is the same as an absent key. A **collision** is two raw keys with one normal
+form and different values (`Site=LHR` and `site=SIN`); raw keys with equal values merge (L9).
+`locate` is pure, total and deterministic: it never throws, reads only its arguments, and returns the
+same result for the same input.
+
+#### T24-081 — Resolution ladder
+**MUST** — The first outcome wins:
+- **(a) Collisions** count only among the keys that the deciding rule or mode reads: its aliases,
+  and `cloud_provider` for the cloud rules (3 and 7 of §4.10). A collision there →
+  `ambiguous: keyCollision`; a collision on any other key is ignored (C1).
+- **(b) Explicit modes** read only their fields: none present → `noLocation`; one coordinate of the
+  two → `invalid: incompleteCoords`; then T24-082 or T24-083 → `invalid`; a lookup as in (c).
+- **(c) Auto** tries the §4.10 rules in order. The first rule with a present key decides, with no
+  fallback to a later rule (C5, C8).
+  - Coordinates: an axis with no present alias → `invalid: incompleteCoords`; the first invalid
+    alias in precedence order → `invalid: coords` with its key; aliases with different values →
+    `ambiguous: aliasConflict`. A geohash likewise (`invalid: geohash`).
+  - Lookups: no gazetteer → `gazetteerUnavailable`. Each present alias is looked up in precedence
+    order (unknown → hint → ambiguity → row, T24-084), and the first result that is not `placed`
+    wins (C2, C9). Aliases that place different rows → `ambiguous: aliasConflict`.
+- **(d) Hint.** `cloud_provider`, lower-cased, filters the cloud rows after the id resolved: no row
+  left → `providerMismatch` with all the id's rows as candidates; no row for the id → `unknownCode`.
+
+`place.key` is the raw key of the first present alias (for coordinates, the latitude's).
+
+#### T24-082 — Coordinates
+**MUST** — A coordinate is a whole string that matches `^-?\d{1,3}(\.\d{1,12})?$` (a JavaScript
+regular expression without the `m` flag, so `1.5\n` does not match, L13), with |lat| ≤ 90 and |lon| ≤
+180. (0, 0) is placed, and `-0` is placed as `lat` 0 (L10, L32). Two aliases have different values
+when their numbers differ (`10` and `10.0` agree, L16).
+
+#### T24-083 — Geohash
+**MUST** — The lower-cased value matches `^[0-9b-hjkmnp-z]{1,12}$`, else `invalid: geohash` (`U4PA`
+lower-cases to `u4pa`, which holds `a`). It is placed at its cell's centre, with `cell` = (dLat, dLon),
+the cell's height and width in degrees, and `code` = the lower-cased hash. `decodeGeohash` returns
+null for any other string (`''`, 13 characters, `u4pa`).
+
+#### T24-084 — Lookups
+**MUST** — Against the gazetteer (§5.12):
+- **Country:** a 2-letter value is an alpha-2 code and a 3-letter value an alpha-3 code
+  (upper-cased); any other value is an English name, compared after NFC normalisation and
+  `toLowerCase`. Several rows → `ambiguous: sharedCode` for a code, `name` for a name.
+- **Region** and **IATA:** upper-cased. In lookup mode with `country`, a region value without `-` is
+  prefixed `‹country›-` (`CA` → `US-CA`, E6). Several rows → `sharedCode`.
+- **Cloud:** the id is lower-cased; after the hint (T24-081 (d)), several rows → `providers`.
+- **Rule 7** (`region`): the hint-filtered cloud rows ∪ the region rows; rows of both kinds →
+  `regionOrCloud`.
+- No row → `unknownCode` with the rule's source (rule 7 reports `cloud`) and the value as written.
+
+A place has `lat` = y / 100 and `lon` = x / 100 of its row, the canonical `code` (the alpha-2 code for
+a country), `provider` (cloud only) and `name` (the row's name or place). Candidates are sorted by
+UTF-16 code units: country `‹a2› ‹name›`; region and IATA `‹code› ‹name›`; cloud `‹provider› ‹id›`;
+`keyCollision` and `aliasConflict` `‹raw key›=‹value›`.
+
+#### T24-085 — Gazetteer build
+**MUST** — `tools/geo/build.py` (§5.13) builds `gazetteer.json` from the §5.13 sources:
+- **ISO 3166-1** from Natural Earth 10m Admin 0: `ISO_A2_EH`, `ISO_A3_EH`, `NAME_EN` and
+  `LABEL_X`/`LABEL_Y`; a feature with `-99` in a code is dropped. Several features with one alpha-2
+  code → the one whose `ADM0_A3` equals its alpha-3 code if exactly one does, else all of them.
+- **ISO 3166-2** from Natural Earth 10m Admin 1: `iso_3166_2`; the name `name_en`, else `name`, else
+  the code; `longitude`/`latitude`. Codes that do not match §5.12 are dropped; repeated codes are
+  kept.
+- **IATA** from OurAirports `airports.csv`: `type` `large_airport` or `medium_airport`,
+  `scheduled_service` `yes` and `iata_code` matching `^[A-Z]{3}$`; the place `municipality`, else
+  `name`, else the code; repeated codes are kept.
+- **Cloud:** each record of `tools/geo/cloud-regions.csv` joined on `ne_id` with Natural Earth 10m
+  Populated Places for its latitude and longitude. A missing `ne_id`, or an `iso_a2` other than the
+  place's, fails the build.
+
+#### T24-086 — Basemap build
+**MUST** — The build makes `basemap.json` from Natural Earth 110m Admin 0 (`ISO_A2_EH`, `ISO_A3_EH`,
+`NAME_EN`). Shapefile outer rings are clockwise; a hole joins the outer that holds its first vertex.
+- **Assertions** (each fails the build naming the feature, `‹a3›: …`): no edge spans more than 180° of
+  longitude unless both its ends are at |lat| ≥ 85.0511, a polar closure ("edge spans more than 180
+  degrees of longitude"); vertices at |lat| ≥ 85.0511 occur only in `polarFeatures`, `["ATA"]`
+  ("vertex at |lat| >= 85.0511 outside polarFeatures").
+- **Then** latitudes are clamped to ±85.0511 and quantised (§5.12), and consecutive duplicate points
+  are removed cyclically. A ring with fewer than 3 distinct points or zero area is dropped and the drop
+  written to `report.txt`, except that a collapsing outer fails the build if it is its feature's
+  largest polygon by source area ("largest polygon collapses under quantisation") or has a source area
+  ≥ 10⁻⁴ deg² ("polygon of ‹area› sq deg collapses"). Every feature so keeps at least one polygon;
+  there is no exceptions list. Rings are then oriented and rotated (§5.12), and the T24-087 hole check
+  runs ("hole not strictly inside its outer ring").
+- **Strokes:** an edge with both ends on y = ±8505, or on x = ±18000 in a feature with vertices on
+  both the ±18000 lines (the Natural Earth seams), is *artificial* and never stroked. An undirected
+  edge in two or more rings is *border* and emitted once, in the first ring in file order. Every other
+  edge is *coast*. Walking each ring from its start, the maximal runs of one class form the polylines;
+  a run that wraps past the start joins the first run.
+
+#### T24-087 — Delivery, validation
+**MUST** — The client imports both assets with `?url` and `loadGeoData` fetches them from the same
+origin, once per page (`cache: 'force-cache'`); they are listed in the signed asset manifest
+([ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md)). An asset that fails any check below is
+null; there is no partial asset:
+- exactly the §5.12 top-level keys; integer `v` 1 and `q` 100; every field's type and pattern (§5.12);
+  exact gazetteer row lengths;
+- integers only, with |x| ≤ 18000 and |y| ≤ 8505 (basemap) or 9000 (gazetteer);
+- even delta-array lengths; every ring ≥ 3 distinct points, with no consecutive repeat (the closing
+  edge included); outer area > 0, hole area < 0; non-empty polygon lists;
+- **holes**, exact on the integers: each hole vertex strictly inside its outer (even-odd, with cross
+  products; a point on the boundary fails); no hole edge shares a point with an outer or another
+  hole's edge (orientation tests, collinear overlap and touching included); no hole inside another.
+  The cost per polygon is hole edges × (outer + other hole edges) + hole vertices × outer edges (the
+  real asset: 1 hole, 880 pair tests);
+- ring edges |Δx| ≤ 18000, except polar closures on y = ±8505; polylines ≥ 2 points, with no
+  consecutive repeat and |Δx| ≤ 18000.
+
+A null asset logs one `console.debug` line naming the file. Step 1b: a null basemap shows "Map data
+unavailable" and still lists the rows; a null gazetteer gives `gazetteerUnavailable` (T24-081).
+
 ### 4.2 Markdown node table (`commonmark` → output)
 
 | Node | Output |
@@ -382,6 +693,66 @@ unmount.
 - Other modes with search text or tags → "Search text and tags dropped: they apply to search only".
 - `maxItems` is clamped to 1–50 ("Item limit ‹m› clamped to ‹l›"); `keepTime: false` → "Links keep the
   time range"; other keys, sorted → "Option ‹key› not mapped".
+
+### 4.7 Change feed states (part B2; T24-033)
+
+| State | Rows | Meter | Table / CSV | Facts |
+|---|---|---|---|---|
+| key change / pending | the old key's rows hidden at once / "Loading changes…" after 300 ms | `loading` | off | null |
+| empty | "No changes in this time range" (with a kind subset, e.g. "No deploy or config changes in this time range") | `100 %` or `coverage unknown` | header only | `0 changes` |
+| complete | the rows | `100 %` (one page) / the paged text + Refresh | the rows | `‹N› changes` |
+| more / capped | the rows + Load older / the 2 000 rows and the cap text | `truncated` | the loaded rows | `‹N›+ changes` |
+| an older page fails | the rows + "Couldn't load older changes. Retry" | unchanged | unchanged | unchanged |
+| refresh ok / fails | the new page 0 / the rows kept + "Couldn't refresh: showing changes from HH:mm:ss" | recomputed / `… · stale (HH:mm:ss)` | the rows | recomputed / `… (stale)` |
+| error, no snapshot for this key | "Couldn't load changes" + Retry (503: "The configuration store is unavailable") | `unavailable` | off | null |
+
+Older-page requests are aborted on unmount, on a key change and when a new page 0 replaces the
+snapshot.
+
+### 4.8 Change feed import (part B2; VIZ-060; Annotations list → `changeFeed`; #158, #17)
+
+- Fixed: all kinds, `entityMode: 'context'`, `orgWide: false`.
+- `tags`: not an array of strings → "Option tags malformed: default used" (`[]`). Otherwise each tag
+  is lower-cased; an invalid one → "Tag ‘‹t›’ dropped: not a valid tag" (‹t› as written); a repeat →
+  "Duplicate tag ‘‹t›’ dropped"; past 8 → "Tag ‘‹t›’ dropped: at most 8 tags" (both lower-cased).
+- `showTags`, `onlyFromThisDashboard` and `onlyInTimeRange` that are not booleans → "Option ‹key›
+  malformed: default used" (defaults true, false and true).
+- `onlyFromThisDashboard: true` → "The change feed lists the organisation's changes";
+  `onlyInTimeRange: false` → "The change feed lists the board's time range"; `limit` → "Paged by the
+  change feed"; other keys, sorted → "Option ‹key› not mapped".
+- The notes come in the order listed: the tag notes in tag order, then the malformed booleans in the
+  order `showTags`, `onlyFromThisDashboard`, `onlyInTimeRange`, then the three meaning notes, then
+  the unmapped keys.
+
+### 4.9 Log panel gap record (part B2; informative)
+
+The board log panel today against [VIZ-034](../product/05-visualisation-catalogue.md#viz-034--log-stream)
+and [VIZ-035](../product/05-visualisation-catalogue.md#viz-035--log-patterns-with-new-badge). The
+implementation documents it in `docs/client/logs.md`:
+
+| Feature (VIZ) | Today | Follow-up |
+|---|---|---|
+| GPU text (034) | A DOM list | #69 |
+| A 10⁶-line fling at frame rate (034) | **Gap**: the fling stops at each slice end (Q-B1 in `docs/client/logs.md`) | L4, #136 |
+| Minimap of error density (034) | Missing | L1 |
+| JSON tree, prettify (034) | Missing | L1 |
+| Dedupe, context lines (034) | Missing | L2 |
+| Patterns with the NEW badge (035) | Missing | L3 |
+| Severity gutter, wrap, paging (034) | Met | — |
+
+### 4.10 Geomap auto rules (part E; T24-081)
+
+Normalised aliases (T24-080), in precedence order within each rule:
+
+| # | Aliases | Source |
+|---|---|---|
+| 1 | lat `lat`, `latitude`, `geo_location_lat`; lon `lon`, `lng`, `longitude`, `geo_location_lon` | coords |
+| 2 | `geohash`, `geo_hash` | geohash |
+| 3 | `cloud_region` (hint `cloud_provider`) | cloud |
+| 4 | `geo_region_iso_code`, `region_iso_code` | region |
+| 5 | `geo_country_iso_code`, `country_code`, `country` | country |
+| 6 | `iata`, `iata_code`, `airport` | iata |
+| 7 | `region` (hint `cloud_provider`) | cloud or region |
 
 ## 5. Interfaces
 
@@ -546,6 +917,185 @@ export function boardSnapshot(key: readonly unknown[], r: BoardPage | RefPage,
 // importBoardList(src) → { options; notes: string[] }
 ```
 
+### 5.8 Board spec v6 (part B2; OpenAPI, Go, TS)
+
+Spec v6 is the next free version after v5 (§5.5), with an identity upcaster (T11-016). `Vis.kind`
+adds `changeFeed` with the options below. Go decides validity; TS = Go on the fixtures
+`v6-change-feed.json` and `invalid.json`. Other keys (`fieldConfig`, `thresholds`, `depth`, …) →
+`board.json.unknownKey`. Errors are `board.options.‹key›.…`.
+
+| Key | Type / bounds | Default | Error |
+|---|---|---|---|
+| kinds | 1–4 unique of `deploy`, `config`, `flag`, `annotation` | all four | `kinds.invalid`, `kinds.duplicate` |
+| tags | 0–8 unique `AnnotationTag` | `[]` | `tags.invalid`, `tags.duplicate` |
+| entityMode | `context`\|`all` | `context` | `entityMode.invalid` |
+| orgWide | bool | `false` | `board.json.type` |
+| showTags | bool | `true` | `board.json.type` |
+
+`changeFeedOptions` fills the defaults; `isWidgetPanel` includes `changeFeed`, and `<WidgetBody>`
+adds it.
+
+### 5.9 Annotations contract (part B2; spec first, [ADR-0015](../adr/0015-go-bff.md))
+
+Every path runs in `OrgTx` under RLS (T11-003) on the read-write pool. The identity is the amended
+[T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id): `EntityId` is the
+XXH3-128 (`zeebo/xxh3`) of the canonical bytes of (binding, kind, identifying values), as a
+lower-case UUID, and is also the `entityRef` of `e=`. The BFF canonicalises the submitted `attrs` by
+the T12 §4.2 kind table, and stores and reads only the **canonical map** (T12 §4.5).
+
+```yaml
+AnnotationCreate: + entity? { binding: slug of a binding in the org, kind, attrs: { [attr]: string 1–256 } }
+  # → 400 annotations.entity.invalid (canonicalisation, T12-010) / 400 annotations.entity.binding (unknown slug)
+Annotation: + entity (required: { id: EntityId, binding: slug, kind, ident: (string | null)[] in schema order } | null)
+/annotations get: + kind[] ≤ 4 (any-of) · tag[] ≤ 8 (all-of) · entity[] ≤ 16 EntityIds (any-of) · orgWide (only with entity)
+  · beforeAt + beforeId (both or neither) → 400 annotations.‹param›.invalid
+AnnotationList: + applied (required: { kinds?, tags?, entity?, orgWide?, before? }: what was applied)
+  · next (required: { at, id } | null) · orgWideHidden (required: integer ≥ 0, or null when scoped)
+```
+
+`limit` stays 1–500 (default 500). The list reads `limit + 1` rows: more than `limit` → the extra row
+is trimmed, `next` = the last kept row's `(at, id)`, and `truncated` = `next ≠ null`.
+
+**Data scope** ([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response),
+T12 §4.15; fail closed). `core.DataScope.AnnotationScope() (full bool, clauses, err error)`. The
+clauses are OR-ed. Each clause is **compiled per kind** of the T12 §4.2 kind table into `$scope` =
+`[{k: kind, b: [binding id] (absent = any binding), a: {position: [allowed value]}}]`:
+- `b: []` → 403 `scope_denied` at compile time; no SQL runs;
+- an attribute key maps to the kind's position through any of its alternatives, under the position's
+  canonical name (its first alternative): `k8s.cluster.name` is the cluster's second alternative
+  (`k8s.cluster.uid`) and the pod's primary;
+- keys on one position intersect their values; an empty intersection matches nothing;
+- a key with no position in a kind drops the clause for that kind.
+
+The SQL and `ScopeCovers` read only this compiled list. The predicate `P` = `$scope_full OR
+(entity_key IS NOT NULL AND a clause matches the canonical map)`: **organisation-wide rows are
+full-scope only**. An unset or uncompilable scope → 403 `scope_denied` before any statement. `P` is
+inside each path's one statement:
+- **list** (the feed and the markers): in `base` (§6), so no row outside `P` reaches the rows, the
+  cursors, the counts or an export; `orgWideHidden` is null when scoped, and the toggle is hidden;
+- **create**: `ScopeCovers` (= `P`) on the canonical map, or 403 `annotations.entity.scope`; a create
+  without an entity needs full scope, or 403 `annotations.scope`;
+- **delete**: `DELETE … WHERE org_id = $1 AND id = $2 AND P RETURNING …`; a hidden row and an absent
+  row give the same 404, and the audit event is written only when a row is deleted.
+
+There is no get or update route; the Inspector reads the loaded row. Text and tags are free content
+and are never parsed (the T12-018 note). Until authentication (D12) every request has full scope.
+CI posters keep sending `entity` unchanged.
+
+### 5.10 Client change-feed modules (part B2; `api/Api.ts`, `state/contextSearch.ts`, `widgets/changeFeed/`)
+
+```ts
+// ContextSearch gains e: readonly string[] (URL `e=`, a comma list, at most 16; IA-026)
+listAnnotations(tenant: string, w: { fromMs: number; toMs: number; limit?: number; kinds?: readonly EventKind[];
+  tags?: readonly string[]; entities?: readonly string[]; orgWide?: boolean; before?: Cursor }, signal?: AbortSignal): Promise<ChangePage>;
+export interface Cursor { at: number; id: string }
+export interface ChangePage { items: Change[]; truncated: boolean; applied: object | null /* null = old server */;
+  next: Cursor | null; orgWideHidden: number | null }
+export interface Change extends Annotation { entity: { id: string; binding: string; kind: string; ident: (string | null)[] } | null }
+export interface ChangeSnapshot extends ListSnapshot<Change> { next: Cursor | null; more: 'none' | 'more' | 'cap';
+  pages: number; orgWideHidden: number | null; oldServer: boolean }
+export function boardAnnotationsQuery(api: Api, tenant: string, w: TimeWindow): UseQueryOptions<ChangePage>;   // T24-030
+export function firstPage(key: readonly unknown[], p: ChangePage, o: { fetchedAtMs: number }): ChangeSnapshot;
+export function olderPage(s: ChangeSnapshot, p: ChangePage, cap?: number /* 2 000 */): ChangeSnapshot;   // T24-032
+export function changeRelevance(c: Change, sel: Selection | null, loaded: ReadonlySet<string>): boolean | null;  // T24-035; null = no effect
+export function changeTarget(c: Change): Extract<InspectorTarget, { type: 'change' }>;
+// also: changeLabel(c, loaded) (T24-034 entity text), changeRowName(c) (T24-036), changeFeedTable(s),
+// changeFeedFacts(title, s | null) (T24-037), changeFeedOptions(o) (§5.8), importChangeFeed(src) → { options; notes: string[] } (§4.8)
+```
+
+### 5.11 Geo resolver and loader (part E; `client/src/vis/geo/locate.ts`, `assets.ts`)
+
+`locate` is pure, and every field is `readonly`:
+
+```ts
+export type GeoSource = 'coords' | 'geohash' | 'country' | 'region' | 'iata' | 'cloud';
+export interface GeoPlace { lat: number; lon: number; source: GeoSource; key: string /* raw label key */;
+  code: string | null /* canonical; null for coords */; provider: string | null;
+  name: string | null; cell: { dLat: number; dLon: number } | null /* geohash only */ }
+export type LocationResult =
+  | { status: 'placed'; place: GeoPlace } | { status: 'noLocation' } | { status: 'gazetteerUnavailable' }
+  | { status: 'invalid'; reason: 'coords' | 'incompleteCoords' | 'geohash'; key: string }
+  | { status: 'unknownCode'; source: GeoSource; key: string; value: string }
+  | { status: 'providerMismatch'; key: string; provider: string /* lower-cased hint */; candidates: string[] }
+  | { status: 'ambiguous'; reason: 'keyCollision' | 'aliasConflict' | 'sharedCode' | 'name' | 'providers' | 'regionOrCloud'; candidates: string[] };
+export type LocationOption = { mode: 'auto' } | { mode: 'coords'; lat: string; lon: string } | { mode: 'geohash'; field: string }
+  | { mode: 'lookup'; field: string; gazetteer: 'country' | 'region' | 'iata' | 'cloud'; country?: string /* [A-Z]{2}, region only */ };
+export function locate(labels: Labels, o: LocationOption, g: Gazetteer | null): LocationResult;
+export function decodeGeohash(h: string): { lat: number; lon: number; dLat: number; dLon: number } | null;
+// assets.ts: whole-asset validation; null on any violation (T24-087)
+export function decodeBasemap(j: unknown): Basemap | null; export function decodeGazetteer(j: unknown): Gazetteer | null;
+export function loadGeoData(): Promise<{ basemap: Basemap | null; gazetteer: Gazetteer | null }>; // one promise per page
+```
+
+`loadGeoData` makes two parallel GETs, shared by every later call on the page; a failed GET, a
+response that is not JSON or an asset that does not validate nulls that asset only. The asset file
+names are content-hashed by the build.
+
+### 5.12 Asset formats (part E; `basemap.json`, `gazetteer.json`, version 1)
+
+Coordinates are integers x = round(lon · 100) and y = round(lat · 100), rounded half away from zero,
+always in the order (x, y). A **delta array** is `[x0, y0, dx1, dy1, …]`: the first pair absolute,
+the rest differences, restarting for each ring and each polyline. Both files are compact UTF-8 JSON
+with sorted keys and a trailing LF.
+
+```text
+basemap.json
+{ "v": 1, "q": 100,
+  "countries": [[a2, a3, nameEn, [polygon, …]], …]  a2 [A-Z]{2}|-99, a3 [A-Z]{3}|-99, name 1–100 chars; sorted (a3, nameEn)
+  polygon = [outer, hole, …]   ring = delta array, implicitly closed, ≥ 3 distinct points, no repeated consecutive point
+            outer counter-clockwise (signed area > 0), holes clockwise; each starts at its smallest (x, y);
+            polygons sorted by (min x, min y) of the outer
+  "coast": [polyline, …], "border": [polyline, …]   polyline = open delta array, ≥ 2 points }
+
+gazetteer.json (rows may repeat a code: ambiguous at lookup, T24-084)
+{ "v": 1, "q": 100,
+  "country": [[a2 [A-Z]{2}, a3 [A-Z]{3}, nameEn, x, y], …]          sorted by (a2, a3, name)
+  "region":  [[code [A-Z]{2}-[A-Z0-9]{1,3}, name, x, y], …]         sorted by (code, name)
+  "iata":    [[code [A-Z]{3}, place, x, y], …]                      sorted by (code, place)
+  "cloud":   [[provider [a-z][a-z0-9]{1,15}, id [a-z0-9-]{1,40}, place, x, y], …] sorted by (provider, id) }
+```
+
+Every name and place is 1–100 characters.
+
+### 5.13 Build tool, cloud regions and sources (part E; `tools/geo/`)
+
+`tools/geo/build.py SRC_DIR` uses only the Python standard library. It checks each source file's
+SHA-256 against `tools/geo/sources.json`, then writes both assets, `report.txt` (the T24-086 drops)
+and `manifest.json` (each asset's SHA-256 and the source digests it was built from). `--check`
+rebuilds and compares byte for byte, exiting 1 on any difference. A PR that changes an asset attaches
+the `--check` output; the procedure is in `docs/client/supply-chain.md`. The sources are never
+committed and never downloaded by CI; `ci:geo-data` checks the committed assets against the manifest
+and decodes them.
+
+`tools/geo/cloud-regions.csv` is curated and tracked (AGPL-3.0), one record per region:
+
+```text
+provider,id,place,iso_a2,ne_id,source,retrieved
+aws,eu-west-1,Dublin,IE,1159151309,aws public region list,2026-11-25
+gcp,europe-west1,Mons,BE,1159120321,gcp public region list,2026-11-25
+azure,westeurope,Amsterdam,NL,1159151519,azure public region list,2026-11-25
+```
+
+It covers every generally available region of the standard partition of the aws, gcp and azure
+region lists on its `retrieved` date; the government and China partitions are excluded and listed in
+the docs. `ne_id` is a Natural Earth populated place, which gives the latitude and longitude
+(T24-085).
+
+**Sources.** `tools/geo/sources.json` holds the dataset, version, file, SHA-256, licence and
+retrieval date of each; it holds no download location.
+
+| Class | Dataset, version (file date) | File · SHA-256 | Licence |
+|---|---|---|---|
+| Outlines | Natural Earth 110m Admin 0 Countries 5.1.1 (2022-05-09) | `ne_110m_admin_0_countries.zip` · `0f243aeac8ac6cf26f0417285b0bd33ac47f1b5bdb719fd3e0df37d03ea37110` | public domain |
+| ISO 3166-1 | Natural Earth 10m Admin 0 Countries 5.1.1 (2022-05-09) | `ne_10m_admin_0_countries.zip` · `ce1ac7036499a0edd641fbc093cd209a98f96a49d2eca8480aaacad35138a7f6` | public domain |
+| ISO 3166-2 | Natural Earth 10m Admin 1 States, Provinces 5.1.1 (2022-05-09) | `ne_10m_admin_1_states_provinces.zip` · `efc59726337323058f9446210adc96673179cd344e053666ee3d28cb58ba2b05` | public domain |
+| Cloud metros | Natural Earth 10m Populated Places simple 5.1.2 (2022-05-13) | `ne_10m_populated_places_simple.zip` · `2963ee08f7743f13f37d5243acd77a2f7a510e26a36c7e04b920f1b381f2b251` | public domain |
+| IATA | OurAirports `airports.csv`, snapshot 2026-11-25 | `airports.csv` · `ceba1cef67fb7ddeeb8aebf52cfca29d678f0599fd46cd93b8974f9a6a67ea16` | public domain |
+| Cloud ids | `tools/geo/cloud-regions.csv` | in the repository | AGPL-3.0 (facts, each record dated) |
+
+**Notices.** No source requires a notice. `build/THIRD_PARTY_NOTICES.txt` gains a "Data" section
+that names each dataset and its version.
+
 ## 6. Data & storage
 
 Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 upcaster is the identity
@@ -587,6 +1137,59 @@ ORDER BY h.created_at DESC NULLS LAST, h.uid;   -- the all-NULL sentinel exists 
 `strpos` (not `LIKE`) means `%` and `_` in `q` are plain characters. `lower(… COLLATE "C")` folds ASCII
 only, so `zürich` does not match `ZÜRICH`.
 
+**Part B2.** Board spec v6 (§5.8) is stored the same way, with an identity upcaster. Migration 5 adds
+the annotation's canonical entity ([T11](T11-postgres-schema.md) §4.4). It is metadata-only, keeps the
+N+1 window (T11-012, T11-013) and is numbered after #215's migration 4. Every path is **one
+statement**:
+
+```sql
+-- migrations/00005_annotation_entity.sql (lock_timeout 5s; metadata-only)
+ALTER TABLE annotations ADD COLUMN entity jsonb;
+ALTER TABLE annotations ADD CONSTRAINT annotations_entity_pair
+  CHECK ((entity_key IS NULL) = (entity IS NULL)) NOT VALID;   -- existing rows are all NULL/NULL; I7 validates it next release
+
+-- name: ListAnnotations :many — ONE statement; always ≥ 1 row; $lim = limit + 1
+WITH base AS (SELECT id, at, end_at, kind, text, tags, entity_key, entity FROM annotations a
+  WHERE org_id = $1
+    AND ($scope_full OR entity_key IS NOT NULL AND EXISTS (           -- the data scope P, fail closed
+      SELECT 1 FROM jsonb_array_elements($scope) c
+      WHERE c->>'k' = a.entity->>'kind'
+        AND (c->'b' IS NULL OR c->'b' ? (a.entity->>'binding_id'))
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(c->'a') kv
+                        WHERE NOT coalesce(kv.value ? (a.entity->'attrs'->>kv.key), false))))
+    AND at <= $to AND at >= $from - interval '31 days' AND coalesce(end_at, at) >= $from   -- the overlap set
+    AND (cardinality($kinds::text[]) = 0 OR kind = ANY ($kinds)) AND tags @> $tags::text[]),
+f AS (SELECT * FROM base
+  WHERE cardinality($ents::text[]) = 0 OR entity_key = ANY ($ents) OR ($org_wide AND entity_key IS NULL)),
+st AS (SELECT CASE WHEN $scope_full THEN count(*) FILTER (
+         WHERE cardinality($ents::text[]) > 0 AND NOT $org_wide AND entity_key IS NULL) END AS org_wide_hidden
+       FROM base)                                                     -- NULL when scoped
+SELECT st.org_wide_hidden, h.* FROM st
+LEFT JOIN LATERAL (SELECT * FROM f WHERE NOT $has_before OR (at, id) < ($before_at, $before_id)
+                   ORDER BY at DESC, id DESC LIMIT $lim) h ON true
+ORDER BY h.at DESC NULLS LAST, h.id DESC;   -- the all-NULL sentinel exists only when nothing matches
+
+-- Go: more than limit rows → trim, next = the last kept row, truncated = next ≠ null.
+-- name: CreateAnnotation — one INSERT; entity_key = the EntityId and entity = {id, binding, binding_id, kind, ident,
+--   attrs (the canonical map)}, or both NULL; the scope check (ScopeCovers) runs before it (§5.9).
+-- name: DeleteAnnotation — DELETE FROM annotations WHERE org_id = $1 AND id = $2 AND P RETURNING …; the audit event only on a row.
+```
+
+`annotations_at (org_id, at)` serves the keyset order; the 31-day lower bound on `at` is exact
+because a range is at most 31 days (T11 §4.4).
+
+**Part E, step 1a.** The two assets (§5.12) are static files committed in the client tree and
+built into the client like any other asset, so they are in the signed manifest of
+[ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md). There is no table, route, migration or
+browser storage. A data refresh is a rebuild from new pinned sources (§5.13): the PR updates
+`sources.json`, the assets and `manifest.json`, with the `--check` output attached. In the
+prototype the basemap has 287 polygons with 1 hole, and the gazetteer (without cloud rows) 238 ISO
+3166-1 rows (14 `-99` features dropped, 4 shared alpha-2 codes resolved by `ADM0_A3`), 4 313 ISO 3166-2
+rows (188 malformed codes dropped, 60 repeated) and 3 245 IATA rows. All 177 features keep their
+largest polygon; the one drop is a PRK sliver (3 points, 4.5·10⁻¹² deg², a border artefact near the
+Tumen; PRK's 43-point polygon is kept); ZAF's Lesotho hole passes; the polar vertices are only in ATA
+and the seams only in ATA, FJI and RUS; two runs are byte-identical; both assets validate.
+
 ## 7. Performance budget
 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
@@ -595,6 +1198,17 @@ Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tic
 
 Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit). Report-only:
 `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95).
+
+Part B2: a Change feed holds at most 2 000 rows, in plain DOM. Each page is one indexed statement
+(`annotations_at`). Report-only: `bench:widget-lists` adds a 2 000-row Change feed render (≤ 50 ms
+p95).
+
+Part E, step 1a: in the prototype the basemap is 31 441 B and the gazetteer (without cloud rows)
+90 501 B brotli. `ci:bundle-size` gains the rows `geo-basemap` ≤ 40 000 B and `geo-gazetteer`
+≤ 104 000 B within the 1 000 000 B total; origin/main at 3fb02ce is 575 005 B (stub build) and
+558 708 B (HTTP build), so ≥ 280 KB of the total stays free. The assets load once per page, in
+parallel, on the first `loadGeoData` call. Hole validation is bounded by the T24-087 cost (880 pair
+tests on the real basemap).
 
 ## 8. Security, tenancy & RBAC
 
@@ -609,6 +1223,17 @@ Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit).
   2 s, on the primary); a failed repair leaves rows stale, and its log carries no titles.
 - CSV cells are guarded against formula injection (`csvCell`, T24-026). Search uses `strpos`, so `q`
   has no wildcards; folding is ASCII-only.
+- Part B2: the data scope `P` is inside each annotations statement (list, create, delete), compiled
+  per kind and fail closed (§5.9, T12-018): organisation-wide rows are full-scope only, a scoped
+  answer has `orgWideHidden: null`, and a hidden row and an absent row give the same 404 on delete.
+  Org B is in every itest. Change text and tags are free content shown as authored and never parsed;
+  the user docs say "with scopes, don't name other services in change text". The CSV guards the text
+  (`csvCell`).
+- Part E, step 1a: the assets are static public data, fetched from the same origin and verified
+  through the signed manifest (ADR-0016). There is no route, storage, RLS change or request to
+  another origin, and [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)
+  is untouched. Labels are only read by a pure function. The build checks every source's SHA-256
+  before reading it, and each asset is validated whole before use (T24-087).
 
 ## 9. Failure modes & degradation
 
@@ -621,6 +1246,14 @@ Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit).
 | Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a v5 head (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
 | A GET that writes | A separate short transaction, ≤ 200 rows, `SKIP LOCKED`, 2 s, on the primary; a failure leaves rows stale and never fails the list |
 | A failed refetch; a late answer | The snapshot is kept with `staleAtMs`; an answer for an old key never renders (T24-024) |
+| Scope (part B2) | RLS and `P` in one statement per path; an unset scope or `b: []` → 403 before any SQL |
+| Rolling upgrade (part B2) | Migration 5 after #215 (N+1); an old server answers without `applied` (T24-038); `annotations_entity_pair` `NOT VALID` until I7 |
+| Rows change while paging | Keyset order on (`at`, `id`); the T24-032 guarantees; the paged meter text and Refresh |
+| An older page fails | The rows are kept, with Retry (§4.7) |
+| Stale geo data (part E) | A label the data does not know is `unknownCode`, never placed elsewhere; refreshes go through `--check` (§5.13) |
+| A source changes (part E) | A crossing ring, polar land outside `polarFeatures` or a collapsing country fails the build (T24-086); nothing is drawn wrong |
+| An asset fails to load or validate (part E) | That asset alone is null, with one `console.debug` line; a null gazetteer → `gazetteerUnavailable`, and coordinates and geohashes still place (G0) |
+| Bundle growth (part E) | 122 KB measured against 144 KB of new rows; ≥ 280 KB of the total stays free (§7) |
 
 ## 10. Testing
 
@@ -746,6 +1379,277 @@ I9 {showStarred:false, showSearch:true, query:'a\tb\u0007c'}       → search, q
 Report-only: `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95). `ci:dep-audit` passes. Every
 gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
+### 10.2 Part B2 tests
+
+Written first in I5 and I6 (§11); all fail today: nothing exists yet.
+
+**Entities** (the [T12](T12-entity-catalogue.md) §4.5 vectors): bindings e1 =
+`00000000-0000-4000-8000-0000000000e1` (slug `prod-eu`) and e2 =
+`00000000-0000-4000-8000-0000000000e2` (slug `prod-us`).
+
+| Name | Binding, kind, attrs | EntityId |
+|---|---|---|
+| checkout@e1 | e1, service, `{service.name: checkout}` | `bb7487bd-100d-a998-e0f0-3c65f11da1a7` |
+| checkout@e2 | e2, service, `{service.name: checkout}` | `3d1d4695-d757-d5f8-d6bf-c1b134128742` |
+| payments@e1 | e1, service, `{service.name: payments, service.namespace: shop}` | `854bc89f-5785-b55c-398b-87a03d62a7d9` |
+| gateway@e1 | e1, service, `{service.name: gateway}` | `af71dde5-5f66-4d0b-7ba4-e96eba601d3c` |
+| pod | e1, pod, `{k8s.cluster.name: prod-eu-1, k8s.namespace.name: shop, k8s.pod.name: checkout-7d9f}` | `970888cf-821c-14c3-0155-320ca949dd19` |
+| env prod | e1, environment, `{deployment.environment.name: prod}` (or `deployment.environment`, or both equal) | `f8bdae9d-e739-228c-dd0e-317933242944` |
+| env stage | e1, environment, `{deployment.environment: stage}` | `ac9609b4-95c1-1f31-60b9-bd315336ed95` |
+| cluster A | e1, cluster, `{k8s.cluster.name: prod-eu-1}` (canonical `{k8s.cluster.uid: prod-eu-1}`) | `9454e37d-718e-a60b-cea1-8827d683c0d7` |
+| cluster B | e1, cluster, `{k8s.cluster.uid: c-9f2}` | `136e6b87-b494-b7ea-7873-c976399bcfff` |
+
+**Fixture C:** the window 2026-11-26 12:00–13:00Z; change cN has the id
+`00000000-0000-4000-8000-` + N as 12 decimal digits (c1 `…000000000001`, c11 `…000000000011`); every
+row is created before page 0. c5 and c9 overlap from before the window (c9 ends exactly at `fromMs`),
+and c8 ends before it.
+
+```text
+c1  deploy      12:10:00           "checkout v2.31"                   [pr:4402]  checkout@e1
+c2  config      12:19:02           "payments.psp.timeout 5000→2000"   [pr:4411]  payments@e1
+c3  flag        12:21:30           "new-checkout-flow 10%→50%"        []         checkout@e2
+c4  annotation  12:23:00–12:40:00  "INC-2041 mitigation window"       []         organisation-wide
+c5  deploy      11:50:00–12:05:00  "gateway v1.8 rollout"             []         gateway@e1
+c6  config      12:19:02           "payments.retry 3→1"               []         payments@e1
+c7  annotation  12:30:00           '=HYPERLINK("a")'     []         organisation-wide
+c8  deploy      11:20:00–11:40:00  "checkout v2.30"                   []         checkout@e1
+c9  config      11:30:00–12:00:00  "edge cache ttl 60→30"             []         organisation-wide
+scope fixture adds:
+c10 annotation  12:35:00           "rollback near checkout@e2"        []                       organisation-wide
+c11 config      12:33:00           "retries raised after checkout@e2 timeouts"  [rel:checkout-prod-us]  payments@e1
+keyset (a) inserts after page 1: n1 deploy 12:45:00 (id …000000000020), n2 deploy 12:05:00 (id …000000000021), both org-wide
+```
+
+The full order of C in the window is c7, c4, c3, c6, c2, c1, c5, c9 (8 rows). Its CSV (one page, UTC):
+
+```text
+at,end_at,kind,entity_id,entity,text,tags,id
+2026-11-26T12:30:00.000Z,,annotation,,,"'=HYPERLINK(""a"")",,00000000-0000-4000-8000-000000000007
+2026-11-26T12:23:00.000Z,2026-11-26T12:40:00.000Z,annotation,,,INC-2041 mitigation window,,00000000-0000-4000-8000-000000000004
+2026-11-26T12:21:30.000Z,,flag,3d1d4695-d757-d5f8-d6bf-c1b134128742,service checkout · prod-us,new-checkout-flow 10%→50%,,00000000-0000-4000-8000-000000000003
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.retry 3→1,,00000000-0000-4000-8000-000000000006
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.psp.timeout 5000→2000,pr:4411,00000000-0000-4000-8000-000000000002
+2026-11-26T12:10:00.000Z,,deploy,bb7487bd-100d-a998-e0f0-3c65f11da1a7,service checkout · prod-eu,checkout v2.31,pr:4402,00000000-0000-4000-8000-000000000001
+2026-11-26T11:50:00.000Z,2026-11-26T12:05:00.000Z,deploy,af71dde5-5f66-4d0b-7ba4-e96eba601d3c,service gateway,gateway v1.8 rollout,,00000000-0000-4000-8000-000000000005
+2026-11-26T11:30:00.000Z,2026-11-26T12:00:00.000Z,config,,,edge cache ttl 60→30,,00000000-0000-4000-8000-000000000009
+```
+
+Under P_shop, C + c10 + c11 gives this CSV (c11's text and tag are unchanged; nothing names
+checkout@e2 in a structured field):
+
+```text
+at,end_at,kind,entity_id,entity,text,tags,id
+2026-11-26T12:33:00.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,retries raised after checkout@e2 timeouts,rel:checkout-prod-us,00000000-0000-4000-8000-000000000011
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.retry 3→1,,00000000-0000-4000-8000-000000000006
+2026-11-26T12:19:02.000Z,,config,854bc89f-5785-b55c-398b-87a03d62a7d9,service shop / payments,payments.psp.timeout 5000→2000,pr:4411,00000000-0000-4000-8000-000000000002
+```
+
+**Scopes** (clauses OR-ed; `b` binding ids, `a` attribute key → allowed values):
+
+```text
+P_eu    [{b:[e1]}]
+P_shop  [{a:{service.namespace:[shop]}}]
+S1      [{b:[e2]}, {a:{service.namespace:[shop]}}]                                   → checkout@e2, payments@e1
+S2      [{b:[e1], a:{service.name:[checkout, gateway]}}]                             → checkout@e1, gateway@e1
+S3      [{a:{k8s.namespace.name:[shop]}}]                                            → pod
+S4      [{a:{service.namespace:[shop, '']}}]                                         → payments@e1
+S5      [{a:{service.name:[checkout]}}]                                              → checkout@e1, checkout@e2
+S6      [{b:[]}]                                                                     → 403 scope_denied, no SQL
+T1      [{a:{deployment.environment.name:[prod], deployment.environment:[stage]}}]  → none (compiles to environment {deployment.environment.name: []})
+T2      [{a:{deployment.environment.name:[prod, stage], deployment.environment:[prod, dev]}}] → env prod (environment {…name: [prod]})
+T3      [{a:{k8s.cluster.name:[prod-eu-1]}}]                                         → cluster A, pod (cluster {k8s.cluster.uid: [prod-eu-1]}; node, namespace, workload, pod {k8s.cluster.name: [prod-eu-1]})
+```
+
+No scope above covers an organisation-wide row; full scope covers every row.
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:entity-id` | annotations/entityid_test.go + `wire/fixtures/json/entity-id.json` (full UUIDs) | The T12 §4.5 vectors; `{}`; name `''`; namespace `''`; an extra key (`service.version`); kind `spaceship`; a pod without its namespace; name `1` (a number); env `prod` vs `stage` | Every T12 §4.5 id; the rest → 400 `annotations.entity.invalid` | T12-010 |
+| `itest:annotations-entity` | store/annotations_itest_test.go | C in org A; org B with a checkout@e1 change | `entity=` checkout@e1 → c1, `orgWideHidden` 3; checkout@e2 → c3; + payments@e1 → c6, c2, c1; checkout@e1 + `orgWide` → c7, c4, c1, c9; `kind` deploy + config → c6, c2, c1, c5, c9; `tag=pr:4411` → c2; payments@e1 + `flag` → `[]`; B sees none of A; bad parameters → the §5.9 400s | T24-030, T24-031 |
+| `itest:annotations-scope` (+ `unit:change-scope-text`) | same (+ widgets/changeFeed/scope.test.ts) | C + c10 + c11; P_eu, P_shop, unset | Full → 10 rows; P_eu in pages of 3 → `[c11, c6, c2]`, `[c1, c5]`; P_shop → c11, c6, c2, with c11's text and tag unchanged and its entity `service shop / payments`; P_shop with `entity=` checkout@e1 → `[]` and the body has `"orgWideHidden": null`; c10 and checkout@e2 are in no structured field, page, cursor, count, CSV entity cell or Inspector fact (the free-text Tags fact excluded); unset → 403; P_shop creates checkout@e1 → 403 `annotations.entity.scope`, no entity → 403 `annotations.scope`, payments@e1 → 201 | T12-018 |
+| `itest:annotations-scope-compile` | same | Env created via `deployment.environment`, via `deployment.environment.name` and via both (`prod`); `prod` vs `stage`. The entities table above; S1–S6, T1–T3 | Env → `f8bdae9d-e739-228c-dd0e-317933242944`, attrs `{deployment.environment.name: prod}` each time; the conflict → 400; each scope covers exactly the entities listed above on create, list, markers, delete and CSV; the SQL predicate = `ScopeCovers` on every entity; `entity` and `entity_key` are set or NULL together | T12-010, T12-018 |
+| `itest:annotations-delete-scope` | same | P_shop deletes c1 (out of scope), an absent id, then c2; unset | c1 and the absent id → identical 404s, c1 kept, no audit; c2 → 204 and one audit event; unset → 403, no SQL | T12-018 |
+| `itest:annotations-keyset` | same; `limit=3` | (a) p1; insert n1 and n2; p2; p3. (b) p1; p2; delete c5 alone; p3. (c) `limit=500` | (a) p1 c7, c4, c3 (`next` 12:21:30 / c3); p2 c6, c2, c1; p3 n2, c5, c9 (`next` null); n1 absent; no id twice. (b) p3 c9. (c) one page of 8. One SELECT per page | T24-032 |
+| `itest:annotations-entity-validate` (I7) | same | Schema 5 with every row's `entity` and `entity_key` paired; apply the I7 migration | `pg_constraint.convalidated` true; an INSERT with only one of the two fails | T11-013 |
+| `itest:annotations-old-binary` | CI job in I5 | The **previous release** binary (schema 4) beside N on schema 5 | It starts; its answers have no `applied`; its create with `entity` → 400; N reads its rows with `entity: null` | T24-038, T11-015 |
+| `unit:change-source` | widgets/changeFeed/source.test.tsx | A counting stub; a line panel and an unfiltered feed | Concurrent mounts → 1 request; a later mount → 0; Refresh → 1; a failed refresh → the markers' notice and the feed stale; a new window → the feed hides the old rows and the markers keep theirs; an `e` → its own key | T24-030 |
+| `unit:change-pager` | widgets/changeFeed/pager.test.ts | C in pages of 3; cap 5; one page of 500; stubs 1 900 + 150 and 1 500 + 500 (`next` null, then set) | Pages of 3: 3 requests, 8 rows, "all 3 pages loaded · may have changed while loading", setsize −1; after p1 `truncated` + Load older, setsize −1; page 500 → `100 %`, setsize 8; cap 5 → c7, c4, c3, c6, c2, capped; 1 900 + 150 → 2 000, capped; 1 500 + 500 with `next` null → complete, with `next` set → capped | T24-032, T24-036 |
+| `unit:change-snapshot` | same | 2 pages of 3; a refresh whose page 0 lacks c7 and renames c4 "INC-2041 resolved"; a failing refresh; a key change | `[c4′, c3, c6]` with the older request aborted, CSV and facts matching; failure → rows kept, stale; the old key never rendered | T24-033 |
+| `unit:change-entity` | widgets/changeFeed/entity.test.tsx | `e` = [checkout@e1]; [checkout@e1, payments@e1]; [checkout@e2]; ["checkout"]; [] | c1 + "3 organisation-wide changes not shown"; the toggle → 4 rows; the set → 3 rows; e2 → c3; "checkout" → 8 rows + "Entity filter unavailable for this context"; [] → "All entities"; `orgWideHidden` null → no toggle or line | T24-031 |
+| `unit:change-rows` | widgets/changeFeed/rows.test.ts | C, UTC | c1 `◆ Deploy · 12:10:00 · service checkout · prod-eu`; c3 `⚑ Feature flag · 12:21:30 · service checkout · prod-us`; c2 `⚙ Config change · 12:19:02 · service shop / payments`; c4 `Note · 12:23:00–12:40:00 · 17 min · organisation-wide`; c7's text literal; no colour | T24-034 |
+| `unit:change-selection` | same | c1–c7 and c9 loaded | `{[], 12:19:00, 12:22:00}` → c3, c6, c2 selected, the others muted; a series key + that interval → no effect; foreign `change:…000000000099` → no effect; a series key + `change:…000000000004` + c4's interval → c4 only; the line panel bands and dims nothing; Enter/Space on c4 → inspect and focus on the heading; Load older of a 3-row page → "3 changes loaded" | T24-035, T24-036 |
+| `unit:change-inspect` | inspector/model.test.ts | c4; c2; c2 + the filter `job=shop/web`; a service named `a"b\c` + LF + `d` | c4: heading `Note`, Duration `17 min`, Entity `organisation-wide`, Logs disabled ("This change has no service"); c2: Logs `{service_name="payments"}` over 12:18:02–12:20:02; with the filter `{service_name="payments",service_name="web"}` and the T25-010 conflict line; the odd name → `{service_name="a\"b\\c\nd"}` | T24-035 |
+| `unit:change-mixed` | widgets/changeFeed/mixed.test.tsx | No `applied`: C; `[]`; an `e`; a create with `entity` → 400 | `coverage unknown`, setsize −1, no Load older; `[]` → empty, `coverage unknown`; `e` → "Filtering by entity needs a newer server", no rows; the create → "This server cannot record the entity yet", 1 request | T24-038 |
+| `unit:change-table-csv` | widgets/changeFeed/table.test.ts | C | The C CSV above exactly: the T24-037 header; c7's text `"'=HYPERLINK(""a"")"`; c3 `3d1d4695-d757-d5f8-d6bf-c1b134128742`, `service checkout · prod-us`; facts `{'8 changes', 'Note: =HYPERLINK("a") at 12:30:00'}` | T24-037 |
+| `unit:board-spec-change-feed` | boards/spec.test.ts, validate_test.go | `{}`; kinds `[]`, `['deploy','deploy']`, `['release']`; 9 tags; tag `Bad`; `entityMode:'fixed'`; `orgWide:'yes'`; `fieldConfig`; `thresholds`; `depth`; the Table 5-13 rows | Defaults `{kinds: all four, tags: [], entityMode: context, orgWide: false, showTags: true}`; `kinds.invalid`, `kinds.duplicate`, `kinds.invalid`; `tags.invalid` ×2; `entityMode.invalid`; `board.json.type`; `board.json.unknownKey` ×3; TS = Go; v5 upcasts; never auto-picked | T24-037, VIZ-057, VIZ-065 |
+| `unit:import-change-feed` | import/changeFeed.test.ts | J1–J4 (below) | Options and notes exactly as listed | T24-039 |
+| `e2e:widget-change-feed` | e2e/widgets.spec.ts | Stub BFF, C in pages of 3, a line panel, `?e=bb7487bd-100d-a998-e0f0-3c65f11da1a7` | 1 row + "3 organisation-wide changes not shown"; the toggle → 4 rows; without `e`: Load older ×2 → 8 rows, the paged text, setsize −1; Enter on c4 → the Inspector `Note` and the band on the line panel; Esc ×2 clears and closes; Refresh → 1 request | VIZ-053 |
+| `e2e:widget-lists-a11y` (amended), `golden:widget-gallery` (amended) | e2e/ | + Change feeds in the loading, empty, more, capped, paged, stale and old-server states; gallery pages `widget-change-feed`, `widget-change-feed-entity`, `widget-change-feed-states`, `widget-change-feed-inspector` | axe clean in each; setsize per T24-036; CI baseline (0.1, ≤ 0.2 %) | T24-036, VIZ-069 |
+
+Import cases for `unit:import-change-feed` (Annotations list options → `changeFeed` options and
+notes, in order; every result has all kinds, `entityMode: 'context'` and `orgWide: false`):
+
+```text
+J1 {}                                                       → tags [], showTags true; no notes
+J2 {tags:['Deploy','deploy','a b'], onlyFromThisDashboard:true, limit:10, showTags:false}
+                                                            → tags ['deploy'], showTags false; "Duplicate tag ‘deploy’ dropped",
+                                                              "Tag ‘a b’ dropped: not a valid tag", "The change feed lists the organisation's changes",
+                                                              "Paged by the change feed"
+J3 {tags:'x', showTags:'no', onlyFromThisDashboard:1, onlyInTimeRange:false, navigateToPanel:true}
+                                                            → tags [], showTags true; "Option tags malformed: default used",
+                                                              "Option showTags malformed: default used", "Option onlyFromThisDashboard malformed: default used",
+                                                              "The change feed lists the board's time range", "Option navigateToPanel not mapped"
+J4 {tags:['t0','t1',…,'t9'], onlyInTimeRange:'yes'}         → tags t0–t7, showTags true; "Tag ‘t8’ dropped: at most 8 tags",
+                                                              "Tag ‘t9’ dropped: at most 8 tags", "Option onlyInTimeRange malformed: default used"
+```
+
+Report-only: `bench:widget-lists` (a 2 000-row Change feed ≤ 50 ms p95). Every gate is in
+[T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
+### 10.3 Part E step 1a tests
+
+Written first in E1 (§11); all fail today: nothing exists yet. Every value below was computed by a
+reference implementation of T24-080 to T24-087.
+
+**Gazetteer T** (`vis/geo/fixtures/gaz-t.json`; x,y as stored):
+
+```text
+country GE GEO Georgia 4350,4200 · JP JPN Japan 13800,3600 · XA XAA Atlantis 0,100 · XB XBB Atlantis 100,100 ·
+        ZZ ZZZ "Zed North" 500,500 · ZZ ZZZ "Zed South" 500,-500
+region  KZ-ALA Almaty 7690,4325 · KZ-ALA "Almaty City" 7695,4328 · US-CA California -12000,3700 · XX-DUP Dupland 4000,4000
+iata    QQQ Alpha 100,100 · QQQ Beta 200,200 · SIN Singapore 10399,135
+cloud   aws eu-west-1 Dublin -625,5334 · aws eu-west-2 London -12,5150 · aws us-east-1 "Washington, D.C." -7701,3890 ·
+        azure westeurope Amsterdam 491,5235 · gcp europe-west1 Mons 394,5045 · ta xx-dup-1 T1 1000,1000 ·
+        tb xx-dup-1 T2 2000,2000 · tc xx-dup T3 3000,3000
+```
+
+**Fixture L** (auto mode, gazetteer T; L–C), **E** (explicit modes) and **G0** (no gazetteer). Each
+expected value is the complete object (`toStrictEqual`): `P(source, key, code, provider, name, lat,
+lon[, dLat×dLon])` is `placed` (`-` = null, `cell` null unless given); `I(reason, key)` is
+`invalid`; `U(source, key, value)` is `unknownCode`; `M(key, provider, [candidates])` is
+`providerMismatch`; `A(reason, [candidates])` is `ambiguous`; `N` is `noLocation`.
+
+```text
+L1  cloud_region=eu-west-1  P(cloud, cloud_region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L2  cloud.region=EU-WEST-2  P(cloud, cloud.region, eu-west-2, aws, London, 51.5, -0.12)
+L3  cloud_provider=gcp cloud_region=europe-west1  P(cloud, cloud_region, europe-west1, gcp, Mons, 50.45, 3.94)
+L4  cloud_provider=gcp cloud_region=eu-west-1  M(cloud_region, gcp, [aws eu-west-1])
+L5  cloud_region=xx-dup-1  A(providers, [ta xx-dup-1, tb xx-dup-1])
+L6  cloud_provider=ta cloud_region=xx-dup-1  P(cloud, cloud_region, xx-dup-1, ta, T1, 10, 10)
+L7  cloud_region=mars-north-1  U(cloud, cloud_region, mars-north-1)
+L8  cloud.region=eu-west-1 cloud_region=eu-west-2  A(keyCollision, [cloud.region=eu-west-1, cloud_region=eu-west-2])
+L9  cloud.region=eu-west-1 cloud_region=eu-west-1  P(cloud, cloud.region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L10 lat=0 lon=0  P(coords, lat, -, -, -, 0, 0)
+L11 lat=40.7128 lon=-74.0060  P(coords, lat, -, -, -, 40.7128, -74.006)
+L12 lat=91 lon=0 → I(coords, lat) · L13 lat="1.5\n" lon=2 → I(coords, lat) · L33 lat=1 lon=180.0001 → I(coords, lon)
+L14 latitude=10  I(incompleteCoords, latitude)
+L15 lat=10 latitude=11 lon=5  A(aliasConflict, [lat=10, latitude=11])
+L16 lat=10 latitude=10.0 lon=5 → P(coords, lat, -, -, -, 10, 5) · L32 lat=-0 lon=180 → P(coords, lat, -, -, -, 0, 180)
+L17 lat="" lon="" cloud_region=eu-west-1  P(cloud, cloud_region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L18 geohash=u4pruydqqvj  P(geohash, geohash, u4pruydqqvj, -, -, 57.64911063015461, 10.407439693808556, 1.341104507446289e-06×1.341104507446289e-06)
+L19 geohash=U4PA  I(geohash, geohash)
+L20 geo_country_iso_code=jp  P(country, geo_country_iso_code, JP, -, Japan, 36, 138)
+L21 country=atlantis  A(name, [XA Atlantis, XB Atlantis])
+L22 country_code=JP country=Georgia  A(aliasConflict, [country=Georgia, country_code=JP])
+L23 geo_region_iso_code=us-ca  P(region, geo_region_iso_code, US-CA, -, California, 37, -120)
+L24 region_iso_code=KZ-ALA  A(sharedCode, [KZ-ALA Almaty, KZ-ALA Almaty City])
+L25 airport=QQQ  A(sharedCode, [QQQ Alpha, QQQ Beta])
+L26 region=xx-dup  A(regionOrCloud, [XX-DUP Dupland, tc xx-dup])
+L27 region=eu-west-1  P(cloud, region, eu-west-1, aws, Dublin, 53.34, -6.25)
+L28 service=web → N · L31 cloud_provider=oci cloud_region=us-ashburn-1 → U(cloud, cloud_region, us-ashburn-1)
+L34 country=ZZ → A(sharedCode, [ZZ Zed North, ZZ Zed South]) · L35 country=zzz → the same
+C1  Service=a service=b cloud_region=eu-west-1  P(cloud, cloud_region, eu-west-1, aws, Dublin, 53.34, -6.25)  (collision not read)
+C2  iata=SIN airport=ZZZ → U(iata, airport, ZZZ) · C9 iata=ZZZ airport=QQQ → U(iata, iata, ZZZ)
+C3  iata=SIN airport=QQQ  A(sharedCode, [QQQ Alpha, QQQ Beta])
+C4  lat=10 latitude=x lon=5 → I(coords, latitude) · C5 lat=91 lon=0 cloud_region=eu-west-1 → I(coords, lat) (no fallback)
+C6  cloud_provider=tz cloud_region=xx-dup-1  M(cloud_region, tz, [ta xx-dup-1, tb xx-dup-1])
+C7  cloud.provider=aws cloud_provider=gcp cloud_region=eu-west-1  A(keyCollision, [cloud.provider=aws, cloud_provider=gcp])
+C8  geohash=u4pr cloud_region=eu-west-1  P(geohash, geohash, u4pr, -, -, 57.568359375, 10.37109375, 0.17578125×0.3515625)
+E1  coords{y,x}: y=0 x=0 → P(coords, y, -, -, -, 0, 0) · E2 y=1 → I(incompleteCoords, y) · E3 lat=1 lon=2 → N · E4 y=1 x=east → I(coords, x)
+E5  lookup{site, iata}: site=SIN Site=LHR  A(keyCollision, [Site=LHR, site=SIN])
+E6  lookup{state, region, US}: state=CA and E7 state=US-CA → P(region, state, US-CA, -, California, 37, -120)
+E8  geohash{gh}: gh=u4pa → I(geohash, gh) · E9 {} → N
+G0  g = null: cloud_region=eu-west-1 → gazetteerUnavailable; lat=1 lon=2 → P(coords, lat, -, -, -, 1, 2)
+```
+
+**Build fixtures** (`tools/geo/fixtures/`; sources in lon/lat degrees; `polarFeatures` `["ATA"]`
+unless given). A square (x0,y0)-(x1,y1) is the ring (x0,y0), (x1,y0), (x1,y1), (x0,y1); a hole
+written as a square is that ring reversed. Outputs are the exact `basemap.json` content (compact; RT
+in full, the others by member):
+
+```text
+RT        AA AAA Alpha: square (0,0)-(10,10) with hole (2,2)-(4,4); triangle (20,0),(30,0),(25,5). BB BBB Beta: (10,0)-(15,10)
+          → {"v":1,"q":100,"countries":[["AA","AAA","Alpha",[[[0,0,1000,0,0,1000,-1000,0],[200,200,0,200,200,0,0,-200]],
+            [[2000,0,1000,0,-500,500]]]],["BB","BBB","Beta",[[[1000,0,500,0,0,1000,-500,0]]]]],
+            "coast":[[1000,1000,-1000,0,0,-1000,1000,0],[200,200,0,200,200,0,0,-200,-200,0],[2000,0,1000,0,-500,500,-500,-500],
+            [1000,0,500,0,0,1000,-500,0]],"border":[[1000,0,0,1000]]}; report empty
+ROT       AA AAA Alpha (10,10),(10,0),(0,0),(0,10) (clockwise)
+          → countries [["AA","AAA","Alpha",[[[0,0,1000,0,0,1000,-1000,0]]]]], coast [[0,0,1000,0,0,1000,-1000,0,0,-1000]], border []
+HOLECLAMP PP PPP Polar: outer (-10,80)-(10,89), hole (-5,82)-(5,85); polarFeatures ["PPP"]
+          → countries [["PP","PPP","Polar",[[[-1000,8000,2000,0,0,505,-2000,0],[-500,8200,0,300,1000,0,0,-300]]]]],
+            coast [[-1000,8505,0,-505,2000,0,0,505],[-500,8200,0,300,1000,0,0,-300,-1000,0]], border []
+          with hole (-5,82)-(5,88) (clamped onto the outer) → fails "PPP: hole not strictly inside its outer ring"
+COLLINEAR QQ QQQ Square: outer (0,0)-(30,30), holes (2,2)-(8,8) and (8,4)-(12,6) (a shared x = 8 segment) → fails
+          "QQQ: hole not strictly inside its outer ring"; the ×100 asset
+          [[[0,0,3000,0,0,3000,-3000,0],[200,200,0,600,600,0,0,-600],[800,400,0,200,400,0,0,-200]]] → null
+NESTED    QQ QQQ Square: outer (0,0)-(30,30), holes (2,2)-(20,20) and (5,5)-(8,8) → fails as COLLINEAR; the ×100 asset
+          [[[0,0,3000,0,0,3000,-3000,0],[200,200,0,1800,1800,0,0,-1800],[500,500,0,300,300,0,0,-300]]] → null
+POLE      PP PPP Polar: outer (-10,80)-(10,89), polarFeatures ["ATA"] → fails "PPP: vertex at |lat| >= 85.0511 outside polarFeatures"
+ANT       AQ ATA Antarctica (180,-90),(-180,-90),(-180,-70),(0,-60),(180,-70)
+          → countries [["AQ","ATA","Antarctica",[[[-18000,-8505,36000,0,0,1505,-18000,1000,-18000,-1000]]]]],
+            coast [[18000,-7000,-18000,1000,-18000,-1000]], border []
+SPAN      XX XXX Span (170,0),(-170,0),(-170,10),(170,10) → fails "XXX: edge spans more than 180 degrees of longitude"
+ENCLAVE   ZA ZAF South: (0,0)-(30,30) with hole (10,10)-(20,20); LS LSO Enclave: (10,10)-(20,20)
+          → countries [["LS","LSO","Enclave",[[[1000,1000,1000,0,0,1000,-1000,0]]]],
+            ["ZA","ZAF","South",[[[0,0,3000,0,0,3000,-3000,0],[1000,1000,0,1000,1000,0,0,-1000]]]]],
+            coast [[0,0,3000,0,0,3000,-3000,0,0,-3000]], border [[1000,1000,1000,0,0,1000,-1000,0,0,-1000]] (once)
+SLIVER    AA AAA Alpha: (0,0)-(1,1) + triangle (5,5),(5.001,5),(5,5.001)
+          → countries [["AA","AAA","Alpha",[[[0,0,100,0,0,100,-100,0]]]]], coast [[0,0,100,0,0,100,-100,0,0,-100]], border [];
+            report "dropped sliver polygon AAA (3 points, 5.0e-07 sq deg)"
+COLLAPSE  SL SLV Sliver: (0,0),(0.001,0),(0,0.001) only → fails "SLV: largest polygon collapses under quantisation"
+BIGDROP   AA AAA Alpha: (0,0)-(1,1) + (20,20),(30,20),(30,20.00003) → fails "AAA: polygon of 1.50e-04 sq deg collapses"
+L-holes   LL LLL Ell: outer (0,0),(20,0),(20,10),(10,10),(10,20),(0,20) and one hole:
+          OK (2,12),(2,18),(8,18),(8,12) → countries [["LL","LLL","Ell",[[[0,0,2000,0,0,1000,-1000,0,0,1000,-1000,0],
+            [200,1200,0,600,600,0,0,-600]]]]], coast [[0,0,2000,0,0,1000,-1000,0,0,1000,-1000,0,0,-2000],
+            [200,1200,0,600,600,0,0,-600,-600,0]], border []; its ×100 asset decodes
+          CORNER (12,12),(12,18),(18,18),(18,12) (in the missing corner), CROSS (6,6),(6,16),(16,6) (edges cross), TOUCH (5,5),(5,15),(15,5)
+            (through the reflex vertex) → each fails "LLL: hole not strictly inside its outer ring"; each ×100 asset → null
+```
+
+Every report is empty except SLIVER's. Building any fixture twice gives identical bytes. On the real
+basemap, ZAF's one hole costs 880 pair tests.
+
+**Round trip:** RT's output decodes; Alpha's first outer is (0,0), (1000,0), (1000,1000), (0,1000).
+
+**Malformed basemaps** (each → null): M1 `null`; M2 `[]`; RT with: M3 `v` 2; M4 an extra key
+`"x": 1`; M5 Alpha's outer `[0,0,1000,0,0,1000,-1000]` (odd length); M6 Alpha's triangle
+`[2000,0,1000,0,-1000,0]` (2 distinct points); M7 Alpha's hole `[200,200,200,0,0,200,-200,0]`
+(counter-clockwise); M8 Alpha's hole `[1200,200,0,200,200,0,0,-200]` (outside its outer); M9 Alpha's
+triangle `[2000.5,0,1000,0,-500,500]` (a float); M10 Beta's outer `[1000,0,500,0,0,8506,-500,0]`
+(y 8506); M11 coast 0 `[-9000,100,18001,0]` (Δx 18001); M12 Beta's polygons `[]`; M13 Alpha's a2
+`aa`; M14 border 0 `[1000,0]` (1 point); M15 coast 0 `[-18000,-8505,36000,0]` (an edge of 36000 on
+y = −8505); and the ×100 assets of CORNER, CROSS, TOUCH, COLLINEAR and NESTED.
+
+**Malformed gazetteers** (each → null), from the valid G0 `{"v":1,"q":100,"country":[["JP","JPN",
+"Japan",13800,3600]],"region":[["US-CA","California",-12000,3700]],"iata":[["SIN","Singapore",10399,
+135]],"cloud":[["aws","eu-west-1","Dublin",-625,5334]]}`: G1 country `["JP","JPN","Japan",13800]` (4
+fields); G2 region `usca`; G3 IATA x 18001; G4 provider `AWS`; G5 IATA place `""`; G6 no `cloud`;
+G7 country y 36.5 (a float); G8 `"x"`.
+
+| Test | File | Setup | Expected | Covers |
+|---|---|---|---|---|
+| `unit:geo-locate` | client/src/vis/geo/locate.test.ts | Gazetteer T; L, C, E, G0 | each object exactly (`toStrictEqual`) | VIZ-045, T24-080–084 |
+| `unit:geo-geohash` | client/src/vis/geo/geohash.test.ts | strings | the L18 and C8 values; `''`, 13 characters, `u4pa` → null | T24-083 |
+| `unit:geo-decode` | client/src/vis/geo/assets.test.ts | the build outputs; the malformed assets | the valid outputs decode (the round trip); each malformed asset → null | T24-087 |
+| `unit:geo-build` | tools/geo/test_build.py | the build fixtures | the exact outputs and failures above; building twice → identical bytes | T24-086 |
+| `unit:geo-gazetteer-build` | tools/geo/test_build.py | DBF and CSV fixtures | France + Clipperton (one alpha-2) → FR France; two ZZ features, neither main → both; `-99` dropped; a repeated region → 2 rows; no name → the code; a heliport, an unscheduled airport and `ab` left out; a bad `ne_id` → the build fails | T24-085 |
+| `unit:geo-assets` | client/src/vis/geo/assets.test.ts | the bundled files | they decode; 238 countries, ≥ 4 300 regions, ≥ 3 200 IATA rows; aws, gcp and azure rows; `cloud_region=eu-west-1` → L1's object; Mons and Amsterdam placed; SHA-256 = the manifest | VIZ-045, VIZ-046 |
+| `unit:geo-load` | client/src/vis/geo/assets.test.ts | a stub: ok, 404, bad JSON, invalid | 2 requests, then 0 on later calls; a failure nulls that asset only; one debug line | T24-087 |
+| `ci:geo-data` | CI client job | the committed assets | SHA-256 = the manifest; both decode | T24-087 |
+| `ci:bundle-size` (amended) | client/bundle-budgets.json | both builds | `geo-basemap` ≤ 40 000 B, `geo-gazetteer` ≤ 104 000 B, total ≤ 1 000 000 B | T24-087 |
+
+Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
+
 ## 11. Rollout
 
 Implementation issues, filed after this design merges:
@@ -775,6 +1679,36 @@ and I4 into the server docs. I2 writes the Board list (modes, options, meter, ke
 versions) into `docs/client/widgets.md`, and adding a Board list and board tags into
 `docs/user/boards.md`.
 
+Part B2 implementation issues, filed with this design:
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| I5 — BFF: annotation entity, data scope, filters, keyset, `applied` | §5.9, §6, migration 5, `unit:entity-id`, the `itest:annotations-*` tests; `docs/server/annotations-api.md`, `docs/server/database.md` | #215 rolled out | T24-030–032, T24-038, T12-010, T12-018 |
+| I6 — Change feed widget, `e=`, the `change` target | §5.8, §5.10, [T25](T25-inspector-and-pivots.md) `change` and `unit:pivot-context` C4 (`e=`), the unit, e2e and golden tests, gallery `widget-change-feed`, `-entity`, `-states`, `-inspector`; `docs/client/widgets.md`, `docs/client/inspector.md`, `docs/client/logs.md` (§4.9), `docs/user/boards.md` | I5, I2, #198, #173 | T24-030–039, T25-002 |
+| I7 — Validate `annotations_entity_pair` (next release) | `ALTER TABLE annotations VALIDATE CONSTRAINT annotations_entity_pair`, `itest:annotations-entity-validate` | I5 released | T11-013 |
+| L1 — Log panel minimap, JSON tree and prettify (needs design) | §4.9 | — | VIZ-034 |
+| L2 — Log panel dedupe and context lines (needs design) | §4.9 | — | VIZ-034 |
+| L3 — Log patterns with the NEW badge (needs design) | §4.9 | — | VIZ-035 |
+| L4 — Log panel fling across slices at frame rate (needs design) | §4.9 | #136 | VIZ-034 |
+
+I5 writes the entity, the scope, the filters, the cursor and `applied` into
+`docs/server/annotations-api.md` (CI posters keep sending `entity`), and migration 5 and I7 into
+`docs/server/database.md`. I6 writes the Change feed (sources, `e=`, the meter, keys, CSV, mixed
+server versions) into `docs/client/widgets.md`, the `change` target into `docs/client/inspector.md`,
+the §4.9 gap record into `docs/client/logs.md`, and adding a Change feed into `docs/user/boards.md`,
+with "with scopes, don't name other services in change text".
+
+Part E step 1a implementation issue, filed with this design:
+
+| Issue | Scope | Depends on | Covers |
+|---|---|---|---|
+| E1 — Geo data and resolver | `tools/geo` (`build.py`, `--check`, `test_build.py` and fixtures, `sources.json`, `cloud-regions.csv`, `manifest.json`), the two assets, `client/src/vis/geo` (§5.11), `ci:geo-data`, the `ci:bundle-size` rows, the §10.3 tests; `docs/client/geomap.md` (new), `docs/client/supply-chain.md` | — | T24-080–087 |
+
+E1 writes `docs/client/geomap.md` (the ladder, the statuses, the precision of each source and the
+gazetteer's coverage, with the excluded cloud partitions) and adds the sources, digests, licences and
+the `--check` procedure to `docs/client/supply-chain.md`. Steps 1b and 2 are designed next under
+#184.
+
 ## 12. Alternatives considered
 
 Rejected:
@@ -789,6 +1723,13 @@ Part B1, rejected:
 - two migrations (an N+1 window problem);
 - virtualised list rows (1 000 rows fit plain DOM).
 
+Part B2, rejected:
+- `kind:name` entity keys (not unique across bindings or namespaces, and they name the entity in the
+  key);
+- stripping `entity` from a create for an old server (the change would lose its entity silently);
+- paging by moving `to` (rows sharing an `at` are skipped or repeated; the keyset on (`at`, `id`) is
+  exact).
+
 ## 13. Open questions
 
 None.
@@ -799,3 +1740,5 @@ None.
 |---|---|---|
 | 1.0-rc | 2026-11-25 | #153 part A: created: the part map and ID blocks for parts A–K; rules T24-001 to T24-018; the Markdown node table, clock formats and import mapping; board spec v4, the renderer, wall clock and import conversion interfaces; tests and fixtures; the implementation issues A1–A3; [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) |
 | 1.1-rc | 2026-11-25 | #181 part B1 (step 1): the part map splits B into B1 (T24-020–029) and B2 (T24-030–039, VIZ-126); T24-002 amended (content widgets; list widgets follow T24-020); rules T24-020 to T24-029 (list widgets, Board list sources, rows, limit and ranking, snapshot and meter, keyboard and focus repair, table, CSV and facts, states and look, import, board tags and compatibility); §4.5 list states, §4.6 Board list import; §5.5 board spec v5, §5.6 the `/boards` contract, §5.7 the client list modules; §6 migration 4 and the repair and list queries; §7–§9, §10.1 tests and fixtures, §11 issues I1–I4, §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains the optional `Coverage` list members; [T11](T11-postgres-schema.md) §4.3 migration 4 |
+| 1.2-rc | 2026-11-25 | #181 part B2 (step 2): rules T24-030 to T24-039 (feed source, entity filter, paging, snapshot and meter, rows, selection and Inspector, keyboard and SR, table, CSV, facts and fields, compatibility, import); T24-020 amended (`changeFeed`; its rows select and inspect); §4.7 Change feed states, §4.8 Change feed import, §4.9 the log panel gap record; §5.8 board spec v6, §5.9 the annotations contract and data scope, §5.10 the client change-feed modules; §6 migration 5 and the list, create and delete statements; §7–§9, §10.2 tests and fixtures, §11 issues I5–I7 and L1–L4, §12. [T12-010](T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id) gains the canonical form and vectors, and T12-018 a free-text note; [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) the `paged` reason; [T25-002](T25-inspector-and-pivots.md#t25-002--envelope-and-union) the `change` member; [T11](T11-postgres-schema.md) §4.4 migration 5 |
+| 1.3-rc | 2026-11-25 | #184 part E step 1a (geomap data): the intro, §1, §2 (goals, the part map splits E into 1a T24-080–087, 1b T24-088–095 and 2 T24-096–099, VIZ-129 unused; the decisions step 1b starts from) and §3; rules T24-080 to T24-087 (label input, the resolution ladder, coordinates, geohash, lookups, the gazetteer and basemap builds, delivery and validation); §4.10 the auto rules; §5.11 the resolver and loader, §5.12 the asset formats, §5.13 the build tool, cloud regions, sources and notices; §6–§9; §10.3 tests and fixtures; §11 issue E1 |

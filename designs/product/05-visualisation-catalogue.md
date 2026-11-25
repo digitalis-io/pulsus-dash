@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-25 |
+| **Version** | 1.8-rc · 2026-11-25 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -975,6 +975,11 @@ be bundled for air-gapped installs ([11](11-enterprise.md)).
 *Acceptance:* Given an install with no outbound network, when a map opens, then the bundled basemap
 renders with country outlines and no failed network requests.
 
+*Staging (#184, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-087--delivery-validation)):*
+step 1a bundles the offline data (country outlines, coast and border lines, and the gazetteer) as
+same-origin assets; step 1b draws it in the 2D geomap; the pluggable basemap sources are part F
+(#185); drawing with the wgpu renderer follows #68. The acceptance is unchanged.
+
 #### VIZ-047 — Maps share the camera and Context
 **MUST** · M-UI3 · NOC, Platform
 
@@ -1478,6 +1483,7 @@ board.
 | 1.5-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
 | 1.6-rc | 2026-11-25 | #154: VIZ-090 (T21) |
 | 1.7-rc | 2026-11-25 | #206: VIZ-090 bucket sources (T21) |
+| 1.8-rc | 2026-11-25 | #184: VIZ-046 staging (offline data in step 1a, drawing in step 1b, sources in part F, wgpu with #68; T24) |
 
 ## Resolved during formalisation
 

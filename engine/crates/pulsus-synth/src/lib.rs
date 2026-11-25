@@ -148,7 +148,7 @@ pub fn gallery_line(which: GalleryLine, window: (f64, f64)) -> (Chunk, LineSpec)
             .collect();
         let meta = SeriesMeta {
             key_hash: key_hash(&labels),
-            labels,
+            labels: labels.into(),
         };
         // Grid series of exactly `points` values always fit.
         if b.push_series(meta, None, &values).is_err() {

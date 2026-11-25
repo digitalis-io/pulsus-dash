@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-25 |
+| **Version** | 1.4-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md) |
 | **Source draft** | plans/164 (not tracked) |
@@ -204,6 +204,7 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 | heatmap | The bucket under the pointer | The selected keyboard row | `bucket`: lower = bounds[i−1], null for i = 0; toMs = the next column start, or tMs + the last column width · {[], tMs, toMs} |
 | stat | A transparent `<button>` "Inspect <title>" over the frame | Enter/Space | `value`: the first series' last finite sample, or the scalar (key null); state = the `statState` chip |
 | logs | A row click (not while a text selection is anchored in the row) | Rows `tabIndex=-1`; Enter on the scroller focuses the first visible row; ↑/↓; Enter/Space inspects; if the focused row unmounts, focus goes to the scroller | `logLine` · {[streamKey], tsMs, tsMs + 1} |
+| Change feed ([T24-035](T24-geo-schematic-and-widget-panels.md#t24-035--selection-inspector)) | A row click | Enter/Space on the row button | `change` · {['change:' + id], atMs, (endMs ?? atMs) + 1} |
 
 ### 4.3 Pivots (T25-009, T25-010); t = pivot instant
 
@@ -214,8 +215,14 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 | Traces · Profiles · Entity | never in I1 | — | "Traces are not available yet" · "Profiles are not available yet" · "The entity catalogue is not available yet" |
 | Label filter | from I3 | Explore with `f=<k>=<v>` added | "Filtering Explore by a label arrives with label filters" |
 
-t is `point` tMs, `logLine` Number(tsNs / 10⁶), `stateRun` atMs, `value` tMs. `bucket` uses
+t is `point` tMs, `logLine` Number(tsNs / 10⁶), `stateRun` atMs, `value` tMs, `change` atMs. `bucket` uses
 [tMs − 60 s, toMs + 60 s). `mark`, `flame` and a null tMs use the origin window, and `bin` uses the origin window.
+
+**`change` (#181, T24 part B2).** The Explore chip is omitted (the origin has no query). Logs ±1 min
+takes its identity from `pivots.ts` `identity()`, which gains `change`: an entity of kind `service`
+gives `service_name` = its last ident value; anything else (organisation-wide or another kind)
+disables the chip with "This change has no service". `pivotInstant` is `atMs`, and `logsSelector`
+applies T25-010 unchanged (the translated filters, conflicts and LogQL escaping).
 
 ### 4.4 Look (T25-013; tokens added by I1 in `design/tokens.toml`)
 
@@ -249,6 +256,21 @@ overview", with 2 enabled and 4 disabled chips, the 3 staged actions and the ori
 The host owns the state (`useReducer`) and the registries (`Map`s in refs). There is no I/O, so
 nothing needs cancelling.
 
+### 4.7 The `change` target (#181, T25-002)
+
+`inspectorModel` for `change` ([T24](T24-geo-schematic-and-widget-panels.md) §5.10, `changeTarget`):
+
+| Section | Content |
+|---|---|
+| Header | Heading: the kind glyph and word (`◆ Deploy`, `⚙ Config change`, `⚑ Feature flag`, `Note`); subheading `HH:mm:ss.SSS` of `atMs` |
+| Value | Primary: the text as authored (`primaryKind: 'line'`, plain text) |
+| Details | At; Ends and Duration (T24-012 floor) for a range; Entity (the T24-034 entity text, or `organisation-wide`); Tags; Id |
+| Labels | `kind` and `ident` of the entity (the ident values joined ` / `); "No labels" when organisation-wide |
+| Pivots | §4.3 (`change`) |
+| Query | null: "No query: changes are recorded, not queried" |
+
+`announce` is `‹word›: ‹text›, HH:mm:ss`.
+
 ## 5. Interfaces
 
 Types in `client/src/inspector/`; every field is `readonly`.
@@ -257,11 +279,13 @@ Types in `client/src/inspector/`; every field is `readonly`.
 type Labels = Readonly<Record<string, string>>;
 export interface InspectOrigin { surface: 'board' | 'explore'; panelId: string | null; title: string;
   query: { lang: 'promql' | 'logql'; text: string } | null /* board run.expanded; Explore q */; window: TimeWindow; unit: Unit | null }
-export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173 'mark', #177 'flame'; #154 adds {type:'bin'; target}
+export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173 'mark', #177 'flame'; #154 adds {type:'bin'; target}; #181 adds 'change' (below)
   | { type: 'point'; vis: 'line' | 'bars'; key: string; labels: Labels; name: string; tMs: number; value: number }
   | { type: 'bucket'; index: number; tMs: number; toMs: number; lower: number | null; upper: number; count: number; countUnit: Unit }
   | { type: 'value'; key: string | null; labels: Labels; name: string; value: number; tMs: number | null; state: State | null }
-  | { type: 'logLine'; streamKey: string; labels: Labels; tsNs: bigint; level: LogLevel; line: string; metadata: Labels | null; parsed: Labels | null };
+  | { type: 'logLine'; streamKey: string; labels: Labels; tsNs: bigint; level: LogLevel; line: string; metadata: Labels | null; parsed: Labels | null }
+  | { type: 'change'; id: string; kind: EventKind; text: string; atMs: number; endMs: number | null; tags: readonly string[];
+      entity: Change['entity'] /* T24 §5.10; null = organisation-wide */ };
 // a `bin` from a bucket source: header `bucketRangeText`, members are families (T21-067)
 export interface Selection { keys: string[]; fromMs: number | null; toMs: number | null }
 export interface SelectionSource { kind: 'mark' | 'tableRow' | 'brush' | 'member'; panelId: string | null }
@@ -339,10 +363,11 @@ Fixture P: a board origin {p1, "p99 latency", promql `histogram_quantile(0.99, x
 | unit:inspector-model | inspector/model.test.ts | P | heading "p99 latency"; subheading 13:41:20.000; primary `formatValue(2.84,'s')`; facts include "Raw 2.84"; labels [job, quantile]; explore and logs **enabled**; the other 4 null with the §4.3 reasons; the 3 staged actions show the M-UI4 reasons; announce `Inspector: p99 latency, ${formatValue(2.84,'s')} at 13:41:20` | no `inspector/` | INT-034, T25-003/004/015 |
 | unit:inspector-model edge | same | value {NaN, {}} with query null; bucket {0, upper 0.1}; bucket {3, 1, +Inf}; logLine {tsNs 1763559680123456789n} | "no value", "No labels", "No query: run the panel first"; `Range ≤ ${formatValue(0.1,'s')}`; `Range > ${formatValue(1,'s')}`; "Time 1763559680123456789 ns" | same | T25-003/004 |
 | unit:inspector-pivots | same | P; labels {service_name `pay"ments`}, {job checkout}, {job `shop/`}; logLine {service_name a, env x} | logs href path `/t/acme/explore/logs`, from 2026-11-19T13:40:20.000Z, to 2026-11-19T13:42:20.000Z, refresh off, q `{service_name="checkout"}`; then `{service_name="pay\"ments"}`; `checkout`; null with the job reason; `{env="x",service_name="a"}` | same | INT-035, T25-010 |
-| unit:pivot-context | same | C1: P with f=env=prod, f=instance=10.0.0.1:9090, f=job=shop/web. C2: each `DEFAULT_CONTEXT` key set to a non-default value. **C3 (added by I6):** `base=-7d`. **C4 (added by the T12 entity-set issue):** `ent=service:checkout` | C1: logs q `{env="prod",service_name="checkout",service_name="web"}`, notCarried ["instance"], and the line reads "Context filter job=shop/web conflicts with this target: no logs can match". C1′ (f=job=shop/checkout instead): q `{env="prod",service_name="checkout"}`, with no conflict line; the Explore href has no `f`, and its line reads "Filters not applied in Explore yet: env, instance, job"; the logs line reads "Not carried yet: baseline". C2: every key other than from, to and refresh is carried by both hrefs. C3: both hrefs have `base=-7d`, and no line names the baseline. C4: both have `ent=service:checkout` | same | IA-026, IA-027, INT-035 |
+| unit:pivot-context | same | C1: P with f=env=prod, f=instance=10.0.0.1:9090, f=job=shop/web. C2: each `DEFAULT_CONTEXT` key set to a non-default value. **C3 (added by I6):** `base=-7d`. **C4 (added by #223, T24 part B2 I6):** `e=bb7487bd-100d-a998-e0f0-3c65f11da1a7` (checkout@e1, [T12](T12-entity-catalogue.md) §4.5) | C1: logs q `{env="prod",service_name="checkout",service_name="web"}`, notCarried ["instance"], and the line reads "Context filter job=shop/web conflicts with this target: no logs can match". C1′ (f=job=shop/checkout instead): q `{env="prod",service_name="checkout"}`, with no conflict line; the Explore href has no `f`, and its line reads "Filters not applied in Explore yet: env, instance, job"; the logs line reads "Not carried yet: baseline". C2: every key other than from, to and refresh is carried by both hrefs. C3: both hrefs have `base=-7d`, and no line names the baseline. C4: both hrefs have `e=bb7487bd-100d-a998-e0f0-3c65f11da1a7` unchanged (the canonical `EntityId`, never a name), and no line names the entity set | same | IA-026, IA-027, INT-035 |
 | unit:escape-ladder | inspector/host.test.tsx | (a) provider p1: pre [exitFly, clearBrush, clearSearch], post [reroot, overview]; inspect(P); focus on the Inspector heading; 8 × Esc. (b) a fake flame search `<input data-escape-ladder>` with value "foo", registered as pre clearSearch; P inspected; focus in the input; 5 × Esc. (c) an unmarked `<input>` | (a) exitFly, clearBrush, clearSearch, clearSelection, close, reroot, overview; the 8th Esc is not `defaultPrevented`; after close, focus is on `returnFocus`. (b) Esc 1: value "" and focus still in the input; then clearSelection, close, reroot, overview. (c) no step runs | no ladder | INT-016, T23-011, T25-007 |
 | unit:inspector-members | inspector/members.test.ts | texts 8 of 10, runs 8 of 12, resolve {P2, P2:K:r0}; resolver (a) 10 texts and 12 members, (b) null, (c) 10 and 11 | (a) "+2 more" and "+4 more"; pressing runs → 12 rows with "Show fewer", while texts stay 8 with "+2 more"; pressing that → 10. (b), (c) → `'stale'`: both keep 8, the note shows, no buttons. A new target resets. `resolveMembers('P1','P2:K:r0')` → null | no members | T25-011, T21-005 |
 | unit:engine-select | engine/canvas2d/Canvas2DEngine.select.test.ts | line series at y 40 and 120: a click at y 110, a 10 px drag, a gap; 3 stacked bars: the middle, then 6 px above the top; heatmap bucket 2 | k2; none; `null`; middle; top; bucket 2 | no `select` | T25-005 |
+| unit:change-inspect (#181) | inspector/model.test.ts | [T24](T24-geo-schematic-and-widget-panels.md) §10.2 fixture C: c4; c2; c2 + f=job=shop/web; a service named `a"b\c` + LF + `d` | c4: heading `Note`, Duration `17 min`, Entity `organisation-wide`, Logs disabled ("This change has no service"); c2: Logs `{service_name="payments"}` over 12:18:02–12:20:02; with the filter `{service_name="payments",service_name="web"}` and the T25-010 conflict line; the odd name → `{service_name="a\"b\\c\nd"}` | no `change` member | T25-002, T25-010 |
 | unit:clipboard-denied | inspector/Inspector.test.tsx | `writeText` rejects; Copy value; fake timers | "Couldn't copy" shown, then gone at 4 000 ms | new | T25-015 |
 | e2e:inspector-open | e2e/inspector.spec.ts | stub board with line, bars, heatmap, stat and logs; Explore › Metrics and › Logs | per kind, a click opens the "Inspector" aside within 250 ms + 1 frame, with heading and value; Enter does the same and focuses the heading; the board origin is outlined; Explore has no Explore chip | new | VIZ-003, T25-001/014 |
 | e2e:inspector-sections, e2e:inspector-pivot-nav | same | P's stub series, clicked at 13:41:20 | sections in order; 2 chips enabled and 4 disabled with visible reasons; 3 actions disabled. Logs opens Explore › Logs at ±1 min with q `{service_name="checkout"}`; a plain click and Shift-click navigate and Back restores the board; Ctrl-click opens a new page with the same href | new | INT-034, INT-035, INT-036 |
@@ -373,6 +398,9 @@ the selection first, and closing is a separate step.
 | I5 Tenant translation table (M-UI2, Epic #7) | IA-027 in full: Postgres (RLS), BFF route, admin editor; it replaces the seed | I1 | IA-027 |
 | I6 Context baseline (INT-030, M-UI2, Epic #5) | `ContextSearch.baseline` (URL `base`), carried by pivots; `unit:pivot-context` C3 | I1 | INT-035 in full |
 
+The `change` target (§4.7, §5) is delivered by [T24](T24-geo-schematic-and-widget-panels.md) §11 I6
+(the Change feed), which documents it in `docs/client/inspector.md`.
+
 I1 writes `docs/client/inspector.md` (host, payload, selection, Esc providers, adding a kind, pivots,
 staging, tokens, T25 map) and updates the user pages for boards, Explore › Metrics and Explore › Logs
 (inspect, select, keyboard, pivots).
@@ -397,3 +425,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.1-rc | 2026-11-25 | #154 ([T21](T21-time-and-distribution-panels.md) part 2a): §5 `InspectorTarget` gains `{type:'bin'; target}` and `HoverItem` gains `bin`; `MemberList.labels?` and `MemberSection.texts.labels?` (parallel to the texts; per-entry chips, T25-009); T25-011 adds the bin rule (one section, resolver ids `binId` and `${binId}:groups`, completeness with labels, `frameSeq` staleness); §4.3: `bin` uses the origin window. Code review r1: `expandMembers` returns the parallel `labels` for the shown and the resolved entries |
 | 1.2-rc | 2026-11-25 | #206 ([T21](T21-time-and-distribution-panels.md) part 2a-ii): §5 comment: a `bin` from a bucket source has the header `bucketRangeText` and lists families as members (T21-067) |
 | 1.3-rc | 2026-11-25 | #192 (I1): §4.4 lists the tokens I1 adds (`size.inspector-tab`, `size.inspector-inset`, `motion.float-open`, the `[opacity]` table); §5 gives `Pivot.context` and the `InspectorModel` fields; `MemberList` and `expandMembers` in code follow #154's labels; ADR-0025 records the seam's `setSelection` and `select` item |
+| 1.4-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B2), per T25-002: §5 `InspectorTarget` gains `{type:'change'; id; kind; text; atMs; endMs; tags; entity}`; §4.2 adds the Change feed row (selection `{['change:' + id], atMs, (endMs ?? atMs) + 1}`); §4.3 t = `atMs` for `change`, no Explore chip, Logs ±1 min from a `service` entity (`identity()` + `change`) or disabled "This change has no service"; §4.7 the `change` model; §10 `unit:change-inspect`, and `unit:pivot-context` C4 uses the canonical `e=` entity set (added by #223) instead of `ent=service:checkout`; §11 delivered by T24's I6 |

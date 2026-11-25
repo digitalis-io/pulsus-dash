@@ -4,7 +4,7 @@
 messages framed as Dash Stream Frames (DSF). PulsusDB answers only in JSON, so the BFF converts
 them. This is the committed path; it needs nothing from PulsusDB
 ([ADR-0005](../../designs/adr/0005-arrow-wire-format.md)). The browser's chart engine reads the
-result with its own Arrow IPC reader, which is #68 Part B2.
+result with its own Arrow IPC reader ([Reader](#reader), #68 Part B2).
 
 No route uses the writer yet. Part D of #68 serves it on the query routes when the request's
 `Accept` is `application/vnd.pulsus.dash-stream;v=1` (`arrowwire.ContentType`). Until then the
@@ -114,7 +114,7 @@ schema metadata is:
 ## API
 
 ```go
-w := arrowwire.NewWriter(body)                  // one Writer per response and tenant
+w := arrowwire.NewWriter(body)                  // one Writer per response and tenant; DefaultLimits()
 p, err := w.Grid(arrowwire.GridSpec{
 	LabelsPart: 1, DataPart: 2, Grid: grid,     // pulsusdb.Grid (PromGrid)
 	RequestedStartMs: from, Result: "metric", Source: "pulsusdb",
@@ -150,7 +150,8 @@ L is the labels part and D the data part.
 
 ### Checks and errors
 
-`Grid` and `Error` check their inputs before writing anything. Any failure is `ErrShape`.
+`Grid` and `Error` check their inputs before writing anything. A bad input is `ErrShape`; a call
+past a wire limit is `ErrLimit` ([Limits](#limits)).
 - **Part ids.** Every id is non-zero; 0 is END's and the stream-level ERROR's. A `Grid`'s labels
   and data ids differ. No id may be used twice in one body, whether its part is open or finished.
 - **Grid** (`Grid` only).
@@ -164,18 +165,93 @@ L is the labels part and D the data part.
 
 | Case | The writer writes | Then |
 |---|---|---|
-| `Grid` or `Error` refused (`ErrShape`, or `ErrFrameTooLarge` for a frame over 64 MiB) | one stream-level `ERROR(part 0)\|LAST`: code 8, status 500, message `writer refused` | every later `Grid` or `Error` returns `ErrOrder` and writes nothing. Open parts still close normally, and `End` still works |
+| `Grid` or `Error` refused (`ErrShape`, `ErrFrameTooLarge` for a frame over 64 MiB, or `ErrLimit` past `open_parts`, `distinct_parts` or the body budget) | one stream-level `ERROR(part 0)\|LAST`: code 8, status 500, message `writer refused` | every later `Grid` or `Error` returns `ErrOrder` and writes nothing. Open parts still close normally, and `End` still works |
 | `Add` refused: a series whose `Values` or `Present` length is not the grid's (`ErrShape`), or whose labels batch, encoded alone, is larger than 64 MiB (`ErrFrameTooLarge`; the size is measured, so a labels frame of exactly 64 MiB is written); or a flush whose frame is too large | closes that part: 0-row `BATCH(L)\|LAST`, `META(D)` partial, `ERROR(D)\|LAST` with code 8 and message `writer refused: shape` or `writer refused: frame too large` | later calls on the part return `ErrOrder`. Other parts are unaffected |
-| `Fail` (or an `Add` close) whose coverage or error would make a frame over 64 MiB | closes that part all the same: 0-row `BATCH(L)\|LAST`, a bounded `META(D)` (partial, `truncated`, `truncation_reason` cut to 64 B or `coverage_cut`, the four lists cut to 1 MiB and 4 096 elements in total), then `ERROR(D)\|LAST` with the original code, status, position and retry, and the message and suggestion cut to 1 MiB and 256 KiB (a cut ends in `…(truncated)`; when fewer than its 14 bytes remain the marker is omitted, so a cut never exceeds its budget) | returns `ErrFrameTooLarge`; the part is closed and other parts are unaffected |
+| a limit crossed inside an open part (`ErrLimit`, [Limits](#limits)) | auto-closes that part: the pending series are dropped, then a 0-row `BATCH(L)\|LAST` and a final `META(D)\|LAST` with `truncated` and `truncation_reason` `wire_limit` or `wire_budget`; no ERROR | the part is closed for good: `Add`, `Flush`, `Finish` and `Fail` return `ErrLimit` and write nothing. Other parts are unaffected |
+| `Fail` (or an `Add` close) whose coverage or error would make a frame over 64 MiB (reachable only with limits above the defaults: the [cut policy](#limits) keeps both far below it) | closes that part all the same: 0-row `BATCH(L)\|LAST`, a bounded `META(D)` (partial, `truncated`, `truncation_reason` cut to 64 B or `coverage_cut`, the four lists cut to 1 MiB and 4 096 elements in total), then `ERROR(D)\|LAST` with the original code, status, position and retry, and the message and suggestion cut to 1 MiB and 256 KiB (a cut ends in `…(truncated)`; when fewer than its 14 bytes remain the marker is omitted, so a cut never exceeds its budget) | returns `ErrFrameTooLarge`; the part is closed and other parts are unaffected |
 | the `io.Writer` fails, or returns a short count (`io.ErrShortWrite`) | nothing more | the write error is sticky: every later call returns it and writes nothing. The body is cut mid-frame, so the caller must abort the transport (reset the connection) |
 
 `ErrOrder` also means a caller bug: a call after `Finish`, `Fail` or `End`. `Finish` with a
 planned-phase coverage returns `ErrShape` and writes nothing. A part counts as closed only once its
 closing frames are written.
 
-The shared wire limits (the per-part and per-body budgets, coverage and error-string cuts, and
-the writer's auto-close) arrive with #68 Part B3. B1 bounds only `MaxPayload`, `MaxGridLen`, the
-grid and the part ids.
+## Limits
+
+One table of limits, in one file,
+[`wire/schemas/limits.json`](../../wire/schemas/limits.json), bounds every body on both sides
+(plan #68 B3,
+[T04-010](../../designs/technical/T04-wire-format-and-data-plane.md#t04-010--decoders-bound-and-validate-everything)).
+`DefaultLimits()` equals it, and so do the `dash-wire` reader's constants
+([Chart engine](../client/engine.md#limits-and-budgets)); `unit:limits-json` checks both sides.
+The writer enforces every limit first and turns each one it reaches into an explicit outcome, so
+a body the writer produces never fails in the reader
+([T04-012](../../designs/technical/T04-wire-format-and-data-plane.md#t04-012--every-part-carries-coverage), PRF-031: a cut is
+`truncated` coverage, never silent).
+
+| Key | Default | Writer | Reader |
+|---|---|---|---|
+| `max_payload` | 64 MiB | `ErrFrameTooLarge` | `PayloadTooLarge` |
+| `max_chunk` | 128 MiB | — | a pushed chunk with a larger backing allocation fails the stream |
+| `source_buffer` | 1 MiB | — | Part D's BYOB read buffer |
+| `max_grid_len` | 2²² | `ErrShape` in `Grid` | `Schema` |
+| `open_parts`, `distinct_parts` | 64, 1 024 (part 0 exempt) | `Grid` counts two parts, `Error` one; a call past either is refused with the stream-level ERROR (`ErrLimit`) | stream `Limit` |
+| `rows_per_batch_labels`, `rows_per_batch_grid` | 1 048 576, 65 536 | labels batches are split between series; a single series with more label rows is refused in `Add` and the part auto-closes with `wire_limit`. Grid batches hold ≤ 64 series | part `Limit` |
+| `series_per_part`, `label_rows_per_part`, `label_bytes_per_part` | 1 048 576, 4 194 304, 16 MiB | auto-close with `wire_limit` | part `Limit` |
+| `meta_list_elements`, `meta_string_bytes` | 4 096, 1 MiB | the cut policy (below) | part `Limit` |
+| `reason_bytes` | 64 | `truncation_reason` is always cut to it | — |
+| `body_budget` | 64 MiB | the accounting below; auto-close with `wire_budget` | stream `Limit` |
+| `value_budget` | 1 GiB | values and validity of every data batch; auto-close with `wire_budget` | stream `Limit` |
+| `part_reserve` | 2 163 200 | kept free per open data part (its worst-case `Fail`) | — |
+| `stream_reserve` | 1 048 832 | kept free for the stream-level ERROR | — |
+
+`part_reserve` = one coverage of maximal strings and list elements plus one error of maximal
+strings: 256 + `meta_string_bytes` + 16 × `meta_list_elements` + 256 + `meta_string_bytes`.
+`stream_reserve` = 256 + `meta_string_bytes`. `wire/schemas/limits-test.json` is a small set
+(the same keys) for the fixtures and tests only.
+
+**Accounting.** Both sides count the bytes the reader creates, the same way, charged once and
+never refunded:
+
+| Item | Body budget | Value budget |
+|---|---|---|
+| a part | 256 | |
+| a SCHEMA (the reader debits it before copying it, also when it then rejects it; the writer's are always accepted) | 256 + field names (children included) + metadata keys and values | |
+| a series' label set | 96 + Σ(48 + key + value); a series without labels: 96 | |
+| a data batch of `k` series of `n` points | 64 + 32 × `k` | 8 × `k` × `n` + 8 × ⌈`k` × `n` / 64⌉ |
+| a coverage row | 256 + string bytes + 16 × list elements | |
+| an error row | 256 + string bytes | |
+
+**Admission.** `Grid` is admitted when its two parts fit `open_parts` and `distinct_parts`, and
+its charge (two parts, both schemas, the planned coverage) fits the body budget with a
+`part_reserve` for every open data part, its own included, and the `stream_reserve`. `Error`
+counts one part and its row. A refused call consumes no part id.
+
+**Auto-close.** Before each flush (in `Add`, `Flush` or `Finish`), the writer checks the
+per-part limits, then the budgets with the reserves. If the batch would pass one, it drops the
+pending series and closes the part with `wire_limit` or `wire_budget`; the closing coverage is
+the planned one (or `Finish`'s) as final, with `series_returned` = the series sent. Closing
+frames come out of the part's reserve, so `Finish` and `Fail` always fit.
+
+**Cut policy** (every coverage: planned, final, partial, auto-close):
+1. `truncation_reason` longer than 64 B is cut at a UTF-8 boundary to 50 B plus the 14-byte
+   marker `…(truncated)`, and the coverage becomes `truncated`.
+2. If the strings (reason included) would pass `meta_string_bytes`, or the list elements
+   `meta_list_elements`: `truncated` is set; the reason is the coverage's own or `coverage_cut`;
+   14 bytes are kept for the marker; the lists are filled in column order (`excluded_dims`,
+   `warnings`, `infos`, `upstream_query_ids`) from what is left, the string that crosses it is
+   cut with the marker, and later elements are dropped.
+3. A cut is sticky for its part: every later coverage of the part is `truncated`, with its own
+   reason or `coverage_cut`, so the part can never read as complete.
+
+An error row whose message and suggestion pass `meta_string_bytes` is cut: the suggestion to at
+most a quarter of it, then the message to the rest, each at a UTF-8 boundary ending with the
+marker, so an explicit error always goes out.
+
+**The stream-level ERROR.** A refused `Grid` or `Error` writes `ERROR(part 0)|LAST` (code 8,
+`writer refused`) once per body, from the stream reserve. The reader then reports the body as
+incomplete (`stream_error()` is `Some`), whatever its parts say.
+
+`NewWriterLimits(w, l)` takes another set (tests use `limits-test.json`).
 
 ## Coverage
 
@@ -202,13 +278,40 @@ and has `retention_floor` null or at most `dash.grid.requested_start_ms`.
 - `✓ exact` additionally needs exactness 0 on every part. With exactness 4 the badge is
   `☁ server`.
 
-The browser's decoder makes this decision (Part B2).
+The engine decides this with `Coverage::complete`, `retention_limited` and `exact` against the
+part's `GridInfo.requested_start_ms`. The result stays provisional until the body's
+`Verdict` ([Chart engine](../client/engine.md#end-of-input-and-the-verdict)).
+
+## Reader
+
+The engine reads these bodies with `dash-wire`'s own Arrow IPC reader, not arrow-rs. The reader
+is described on the [Chart engine](../client/engine.md#wire-decoding-dash-wire) page. It accepts
+exactly what this writer emits, so a writer change must stay inside these limits or ship
+together with a reader change:
+
+- **Messages.** Schema and RecordBatch messages with metadata version V5, little-endian. No
+  DictionaryBatch, no dictionary-encoded field, no body compression, no variadic buffers.
+- **Metadata.** No custom metadata on messages or fields, and no schema features.
+- **Types.** `uint8/16/32/64` (unsigned), `float64`, `bool`, `utf8`, `timestamp_ms` in `"UTC"`,
+  `list<utf8>` and `fixed_size_list<float64?>`.
+- **Schemas.** Exactly the four v1 schemas, with their columns in order and their metadata keys,
+  and no others. An added column is refused as `Unsupported("column")`
+  ([T04-002](../../designs/technical/T04-wire-format-and-data-plane.md#t04-002--schema-identity-and-evolution)).
+- **Layout.** The flatbuffer as `Builder.Finish` writes it: forward non-zero references, aligned,
+  no overlapping objects, the minimal `L` and zero padding. Every buffer is 8-aligned, and every
+  grid buffer 64-aligned, in body order and non-overlapping. Offsets start at 0. Every unused
+  body byte is 0.
+- **Frames.** Payload lengths are multiples of 8. Each SCHEMA and BATCH payload holds one
+  message. Each META and ERROR payload holds the schema, one row and the EOS marker.
+
+The committed fixtures pass every rule. `unit:codec-roundtrip` (Rust) decodes all five fixtures
+to their `.expect.json`, so a writer change that breaks a rule fails on both sides.
 
 ## Golden fixtures
 
-[`wire/fixtures/arrow/`](../../wire/fixtures/arrow/) holds five DSF bodies (`*.dsf`, marked
-binary in `.gitattributes`). Each has an `.expect.json` built from the writer's inputs, not from
-its output. B2's Rust reader decodes the same files to the same expectations.
+[`wire/fixtures/arrow/`](../../wire/fixtures/arrow/) holds DSF bodies (`*.dsf`, marked binary
+in `.gitattributes`). Each has an `.expect.json` built from the writer's inputs, not from its
+output. B2's Rust reader decodes the same files to the same expectations. The five B1 fixtures:
 
 | Fixture | What it holds |
 |---|---|
@@ -217,6 +320,24 @@ its output. B2's Rust reader decodes the same files to the same expectations.
 | `grid-error` | Parts 3/4 failed after one sent and one pending series (`too_broad`, 422, with a suggestion), then `ERROR(5)` for a part that never opened (`bad_query`, 400, position 7) |
 | `grid-empty` | A part pair finished without series |
 | `part-ids` | Parts 1/2 and 3/4 open together, both finished, then `ERROR(5)` and END: a valid body with no stream-level ERROR |
+
+The limits fixtures are written with `limits-test.json` (`distinct_parts` 8 allows four part
+pairs per body, so the cases are spread over several bodies). Their boundaries are derived with
+the writer's accounting, not hand-picked:
+
+| Fixture | What it holds |
+|---|---|
+| `limits-budget` | Four one-series part pairs whose schemas carry a derived `dash.planned` padding: three fit the body budget, the fourth series is past it (`wire_budget`) |
+| `budget-over` | The same input with the writer's budget checks off (a test knob): the reader fails it with `Limit` |
+| `limits-value` | One-series grids of a derived length: three fit `value_budget`, the fourth auto-closes (`wire_budget`) |
+| `limits-open-parts` | 1/2 and 3/4 open, `Grid(5, 6)` refused (stream-level ERROR); 1–4 still close normally |
+| `limits-distinct-parts` | Four part pairs in turn (8 ids), `Grid(9, 10)` refused |
+| `limits-refused` | 1/2, `Error(3)`, 4/5 and 6/7 (7 ids), then `Grid(8, 9)` refused |
+| `limits-series` | 1/2 at every per-part limit (100 series, 300 label rows, 4 096 label bytes, a 50-row series, a 25 + 25 + 1-row batch split into two labels batches); 3/4, 5/6 and 7/8 one past each (`wire_limit`) |
+| `limits-rows` | A single 51-row series: refused in `Add`, the part auto-closes (`wire_limit`) |
+| `limits-strings` | The cut policy: 20 warnings, 1 025 B (cut inside `é`), exactly 1 024 B (unchanged), a 100-B reason, 20 `excluded_dims`, and a cut planned coverage that keeps the clean final `truncated` |
+| `limits-errors` | `Error` with a 1 024-B message (unchanged) and with 1 100 B + a 300-B suggestion (cut to 768 B and 256 B) |
+| `limits-fail` | A part filled until the body budget leaves exactly its reserves, then `Fail` with maximal strings: the body ends at `body_budget` − `stream_reserve` |
 
 `TestFixtures` (`unit:codec-roundtrip`, Go side) rebuilds every fixture and compares the bytes.
 It then reads the committed bytes back with arrow-go, compares them to `.expect.json`, and checks
@@ -241,7 +362,9 @@ change that B2's reader must accept too.
 | `unit:part-ids` | `TestPartIDs` | zero, equal and reused ids are refused with the stream-level ERROR |
 | `unit:dsf-header` (Go) | `TestHeader` | the header bytes, and the rejected headers |
 | `unit:arrow-alignment` (Go) | `TestAlignment` | 64-byte bodies and grid buffers, and 8-byte frame lengths |
-| `unit:dsf-writer-order` (failure paths) | `TestFailOversized`, `TestStickyWriteError`, `TestLabelsAtPayloadLimit`, `TestCutUTF8` | an oversized `Fail` still closes its part with a bounded META and the upstream code; write errors and short writes are sticky and stop all writing |
+| `unit:dsf-writer-order` (failure paths) | `TestFailOversized`, `TestStickyWriteError`, `TestLabelsAtPayloadLimit`, `TestCutUTF8` | an oversized `Fail` still closes its part with a bounded META and the upstream code (with limits above the defaults); write errors and short writes are sticky and stop all writing |
+| `unit:limits-json` (Go) | `TestLimitsJSON` | `DefaultLimits`, `MaxGridLen`, `MaxPayload` and the costs = `limits.json`; both files' reserves follow their formula |
+| `unit:wire-limits` | `TestWireLimits`, the limits fixtures in `TestFixtures` | labels batches split between series; a too-long series refused; error and coverage cuts; `distinct_parts` with `Error`; the derived budget boundaries and the writer's `used` |
 | `unit:coverage-complete` (Go) | `TestCoverageFrom` | the `CoverageFrom` mapping, and `series_returned` in the encoded row |
 | `ci:go-lint` (depguard `arrow-only`) | `check-depguard-fixture.sh` | arrow-go is imported only in `internal/arrowwire` |
 

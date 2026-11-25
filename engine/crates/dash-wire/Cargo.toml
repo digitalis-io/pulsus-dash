@@ -1,6 +1,6 @@
 [package]
 name = "dash-wire"
-description = "Engine data chunks; Part B adds the DSF and Arrow decoders"
+description = "Engine data chunks, the DSF splitter and the Arrow IPC reader and decoder"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,7 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+bytemuck.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
