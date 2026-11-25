@@ -347,6 +347,11 @@ violation as `IpcError::Flatbuffer`. It never panics.
   byte 0 or 1.
 - **No aliasing.** The reader records the extent of every object it visits and rejects any
   overlap. A vtable that several tables share counts once.
+- **Two passes.** The first pass walks the whole message and records every extent, leaving
+  strings and struct vectors as borrowed slices. Field names, metadata strings, nodes and
+  buffers are copied (and strings UTF-8 checked) only after the overlap check passes. Objects
+  are then disjoint, so the copies total at most the metadata length, and a byte budget enforces
+  that. Many references to one large string are refused before anything is copied.
 - **Metadata length and padding.** `L` must be the least value B1 would write for the
   flatbuffer's own length (the high-water mark rounded up to 8), else
   `Layout("metadata length")`. Every byte after the high-water mark must be 0, else
@@ -474,7 +479,7 @@ The aggregate limits and budgets (`with_limits`, `retained()`, part-0 limits) ar
 |---|---|---|
 | `unit:codec-roundtrip` (Rust) | `tests/codec_roundtrip.rs` | the five B1 fixtures decode to their `.expect.json`, plus the spot checks |
 | `unit:dsf-header` (Rust) | `src/dsf.rs` | the B1 header bytes; version, reserved, type, flags and length faults |
-| `unit:fb-reader` | `src/fb.rs` | hand-built and mutated flatbuffers: defaults, bounds, alignment, references, closed field set, aliasing, depth and table counts, metadata and frame lengths |
+| `unit:fb-reader` | `src/fb.rs`, `tests/alias_alloc.rs` | hand-built and mutated flatbuffers; aliased strings refused without copying (counting allocator): defaults, bounds, alignment, references, closed field set, aliasing, depth and table counts, metadata and frame lengths |
 | `unit:dsf-bounds` | `tests/dsf_bounds.rs`, `tests/dsf_bounds_layout.rs` | split points, header and frame faults, state rules, links, padding, offsets, closed sets, IPC corruptions, arithmetic boundaries, end of input |
 | `unit:dsf-fuzz-smoke` | `tests/fuzz_smoke.rs` | 25 000 seeded mutants per fixture: no panic, consistent chunks |
 | `unit:arrow-alignment` (Rust) | `tests/arrow_alignment.rs` | every split point pins nothing; 8-but-not-64-aligned grid buffers and bodies are refused |
