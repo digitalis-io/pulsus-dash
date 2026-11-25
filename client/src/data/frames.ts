@@ -3,6 +3,11 @@
  * component validates; the engine assumes valid data.
  */
 import type { VisSpec } from '../engine/api';
+import type { CATEGORY_PATTERNS } from '../engine/patterns';
+import type { Completeness } from './decode';
+
+/** A series' labels. */
+export type Labels = Readonly<Record<string, string>>;
 
 /** key_hash (T04-004) as 16 lower-case hex digits. */
 export const KEY_PATTERN = /^[0-9a-f]{16}$/;
@@ -174,4 +179,108 @@ export function bucketEnd(ts: Float64Array, i: number, fallbackEnd: number): num
   const t = ts[i] ?? NaN;
   if (i + 1 < ts.length) return ts[i + 1] ?? t;
   return ts.length > 1 ? t + (t - (ts[i - 1] ?? t)) : fallbackEnd;
+}
+
+/**
+ * A histogram source group (T21-014, T21 §5): every series with the same `groupBy` value, or every
+ * series without `groupBy`. Counts are values after the T22-003 merge.
+ */
+export interface SourceGroup {
+  readonly key: string;
+  readonly name: string;
+  /** `{[L]: raw v}`; `{}` when the label is absent or there is no `groupBy`. */
+  readonly labels: Labels;
+  readonly received: number;
+  /** received − nonPositive − infinite − outOfRange. */
+  readonly drawable: number;
+  readonly nonPositive: number;
+  readonly infinite: number;
+  readonly outOfRange: number;
+  /** The drawn group index (`other`'s for its members); −1 when not drawn. */
+  readonly drawnAs: number;
+}
+
+/** A drawn histogram group, in draw order (T21-014). */
+export interface HistogramGroup {
+  /** A `groupKey`, `all`, or `other`. */
+  readonly key: string;
+  readonly name: string;
+  /** The series-N token index; −1 for `other` (token `category-other`). */
+  readonly colourIndex: number;
+  readonly pattern: (typeof CATEGORY_PATTERNS)[number] | 'solid' | 'grid';
+  readonly dash: readonly number[];
+  /** Source group indices. */
+  readonly members: readonly number[];
+  readonly drawable: number;
+}
+
+/** What a histogram counted and left out (T21-016). */
+export interface HistogramCoverage {
+  readonly query: Completeness;
+  readonly received: number;
+  readonly drawable: number;
+  readonly nonPositive: number;
+  readonly infinite: number;
+  readonly outOfRange: number;
+  readonly duplicates: number;
+  readonly conflicts: number;
+  /** The width used when a user or auto width was widened. */
+  readonly widenedTo: number | null;
+  /** k after the T21-013 guard or fallback. */
+  readonly adjusted: number | null;
+}
+
+/** A histogram over raw values (T21-012 to T21-015; T21 §5, #154 fields). */
+export interface HistogramFrame {
+  /** Value units on every axis; k + 1 finite and increasing, 1 ≤ k ≤ 200. */
+  readonly edges: Float64Array;
+  /** Name order. */
+  readonly sourceGroups: readonly SourceGroup[];
+  /** Drawn, in draw order. */
+  readonly groups: readonly HistogramGroup[];
+  /** groups × k: counts[g·k + i]. */
+  readonly counts: Float64Array;
+  /** By key; labels raw. */
+  readonly series: readonly {
+    readonly key: string;
+    readonly name: string;
+    readonly labels: Labels;
+    readonly sourceGroup: number;
+  }[];
+  /** CSR per series: bins ascending with count > 0; ≤ 2·10⁶ entries. */
+  readonly contrib: {
+    readonly offsets: Uint32Array;
+    readonly bins: Uint16Array;
+    readonly counts: Float64Array;
+  };
+  /** Drawable values, source groups contiguous in name order, each ascending. */
+  readonly sorted: { readonly values: Float64Array; readonly offsets: Uint32Array };
+  /** Type-7 over all drawable values; null when drawable is 0. */
+  readonly quantiles: { readonly p25: number; readonly p50: number; readonly p75: number } | null;
+  readonly countBasis: 'series' | 'samples';
+  /** One bin whose edges are equal on display. */
+  readonly collapsed: boolean;
+  readonly coverage: HistogramCoverage;
+}
+
+/**
+ * Whether `f` is a well-formed histogram frame: 1 ≤ k ≤ 200 finite increasing edges, groups × k
+ * non-negative counts, CSR offsets from 0 to the entry count, non-decreasing, with bins below k and
+ * non-negative counts, and sorted offsets ending at the value count.
+ */
+export function histogramFrameValid(f: HistogramFrame): boolean {
+  const k = f.edges.length - 1;
+  if (k < 1 || k > 200 || !isIncreasing(f.edges)) return false;
+  const nonNegative = (a: Float64Array): boolean => a.every((c) => Number.isFinite(c) && c >= 0);
+  if (f.counts.length !== f.groups.length * k || !nonNegative(f.counts)) return false;
+  const { offsets, bins, counts } = f.contrib;
+  if (offsets.length !== f.series.length + 1 || offsets[0] !== 0) return false;
+  for (let i = 1; i < offsets.length; i++)
+    if ((offsets[i] ?? 0) < (offsets[i - 1] ?? 0)) return false;
+  const entries = offsets[offsets.length - 1];
+  if (entries !== bins.length || entries !== counts.length || !nonNegative(counts)) return false;
+  if (bins.some((b) => b >= k)) return false;
+  const sorted = f.sorted.offsets;
+  if (sorted.length !== f.sourceGroups.length + 1 || sorted[0] !== 0) return false;
+  return sorted[sorted.length - 1] === f.sorted.values.length;
 }
