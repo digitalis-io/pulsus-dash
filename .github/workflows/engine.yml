@@ -9,6 +9,7 @@ on:
     types: [opened, synchronize, reopened, labeled]
     paths:
       - 'engine/**'
+      - 'wire/fixtures/arrow/**'
       - 'design/tokens.toml'
       - 'client/scripts/gen-tokens.ts'
       - 'client/scripts/engine-fixtures.ts'
@@ -74,11 +75,12 @@ jobs:
           key: ${{ needs.image.outputs.key }}
           fail-on-cache-miss: true
       - run: docker load -i "$IMAGE_TAR"
-      - name: 'ci:engine-lint (fmt, clippy), ci:spec-lint'
+      - name: 'ci:engine-lint (fmt, clippy, dash-wire on wasm32), ci:spec-lint'
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/w -w /w/engine "pulsus-engine-ci:${{ needs.image.outputs.key }}" bash -euo pipefail -c '
             cargo fmt --all --check
             cargo clippy --workspace --all-targets --locked -- -D warnings
+            cargo check -p dash-wire --target wasm32-unknown-unknown --locked
             cargo xtask spec-lint'
 
   deny:
