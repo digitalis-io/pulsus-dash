@@ -472,7 +472,8 @@ export interface SelectEvent { source: 'pointer' | 'keyboard'; item: HoverItem |
 // ChartFrame gains setSelection(s: Selection | null): void (every kind). FrameSummary gains facts.
 export interface SummaryFacts { subject: string; current: { text: string; series: string } | null;
   change: { series: string; from: string; to: string; atMs: number } | null;
-  extent: null; baselineRatio: number | null /* null until baselines (ADR-0012) */ }
+  extent: { min: number; max: number } | null /* null for kinds without one (stateTimeline); T22-014 marks; histogram T21-015 */;
+  baselineRatio: number | null /* null until baselines (ADR-0012) */ }
 
 // The Inspector target handed to T25 as the InspectorTarget member {type:'stateRun'; target: StateInspectorTarget}
 export interface StateInspectorTarget { kind: 'stateRun'; panelId: string; seriesKey: string;
@@ -777,4 +778,4 @@ None.
 |---|---|---|
 | 1.0-rc | 2026-11-24 | #150 |
 | 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): T21-009 writes the T25 `Selection` and opens the Inspector with `{type:'stateRun', target}`; Esc per T25-007, and an empty click clears only the selection; members per T25-011. §5: T25 `Selection`; nullable `SelectEvent.item`; `MemberFacts` from `inspector/members.ts` |
-| 1.2-rc | 2026-11-25 | #154 (Part 2a): the histogram over raw values ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)): T21-012 to T21-016 (values and exclusions, bins with the display guard and the terminal log rule, groups and "other (n)", CDF and exact ECDF, non-time interactions with the value brush and the `bin` Inspector target, the per-panel worker, the coverage meter and the notices); §3, §4.2, §4.3, §4.5, §4.6 and §7 rows; §5 histogram seam and transforms; the board spec moves the stateTimeline keys into T22's `Vis.options` and adds the histogram keys (T21-011, F7, F10 and the state-spec row follow); §10 H1 to H26; §11 I-F, I-F2 and #206; mockup 42-histogram |
+| 1.2-rc | 2026-11-25 | #154 (Part 2a): the histogram over raw values ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)): T21-012 to T21-016 (values and exclusions, bins with the display guard and the terminal log rule, groups and "other (n)", CDF and exact ECDF, non-time interactions with the value brush and the `bin` Inspector target, the per-panel worker, the coverage meter and the notices); §3, §4.2, §4.3, §4.5, §4.6 and §7 rows; §5 histogram seam and transforms; the board spec moves the stateTimeline keys into T22's `Vis.options` and adds the histogram keys (T21-011, F7, F10 and the state-spec row follow); §10 H1 to H26; §11 I-F, I-F2 and #206; mockup 42-histogram. Code review r1: `SummaryFacts.extent` is `{ min; max } | null`, as T22-014 and T21-015 fill it |
