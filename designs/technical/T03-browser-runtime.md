@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-25 |
+| **Version** | 1.9-rc · 2026-11-25 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
-| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -546,6 +546,9 @@ multiplies by `dpr`.
 | `0x40` | Paste | 24 + n | 16 `u32` len · 20 `u8` mime (0 text) · 24 UTF-8 (≤ 16 KiB inline; longer is truncated with flag bit3) |
 | `0x7F` | Marker | 24 | 16 `u64` tag (replay sync, [T05 §4.4](T05-testing-and-performance.md#44-deterministic-input-replay-pdrec)) |
 
+*Part C1 of #68:* until Part C2 writes the input ring, `resize` reaches the render worker as a
+`resize{id, w, h, dpr}` message, and engine frames take no input.
+
 `0x00` Wrap: one byte; continue at offset 0. Head and tail are free-running `u32` byte counters; no
 record straddles the end.
 
@@ -616,7 +619,8 @@ chunk sizes, so results are independent of thread count and scheduling (T02-015,
 | `Cross-Origin-Opener-Policy` | `same-origin` | cross-origin isolation, needed for SAB |
 | `Cross-Origin-Embedder-Policy` | `require-corp` (default); `credentialless` as a per-deployment option | as above; `credentialless` eases third-party images, but browser support varies (Q5) |
 | `Cross-Origin-Resource-Policy` | `same-origin` on all Dash assets | `require-corp` |
-| CSP (minimum; full policy in [T18](T18-security.md)) | `script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; font-src 'self'` | WASM compile, same-origin workers, BFF only, self-hosted fonts |
+| `Cross-Origin-Embedder-Policy` on assets | `require-corp` on every non-document file (#68 Part C1) | a dedicated worker is cross-origin isolated only if its script carries COEP |
+| CSP (minimum; full policy in [T18](T18-security.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md)) | `script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; font-src 'self'; trusted-types … pulsus-engine` | WASM compile, same-origin workers through the `pulsus-engine` policy, BFF only, self-hosted fonts |
 | `Cache-Control` | `public, max-age=31536000, immutable` on hashed artefacts; `no-cache` on `index.html` | warm-cache startup (§7.1) |
 
 Consequences: every subresource (avatars, map tiles, runbook images) is served or proxied
@@ -627,7 +631,8 @@ single-threaded mode.
 
 #### T03-022 — Required headers
 **MUST** — The BFF MUST serve every Dash document with COOP, COEP, CORP and the CSP, and every
-asset with CORP and `nosniff` ([T18](T18-security.md) T18-002). A deployment that strips them MUST still work, in ST mode (§9), with the banner.
+asset with CORP, COEP `require-corp` and `nosniff` ([T18](T18-security.md) T18-002; asset COEP
+from #68 Part C1, so the engine's workers are isolated). A deployment that strips them MUST still work, in ST mode (§9), with the banner.
 
 ## 6. Data & storage
 
@@ -769,6 +774,18 @@ line layout without `cosmic-text`.
 | HTTP/1.1 to the BFF (proxy downgrade) | degrade | works, 6-connection limit | RUM flags `nextHopProtocol`; admin diagnostic |
 | Stale shim after deploy (layout version mismatch) | reload | T03-005 | "Pulsus was updated — reload" |
 
+*Part C1 of #68 (as built).* Until `dash-core-st`, the modes without the shared-memory engine
+(not cross-origin isolated, MT-R, Static, and no `Atomics.waitAsync`) draw with the interim Canvas
+2D engine, and the engine is opt-in (`?engine=wasm`). Engine frames are bound per frame by a
+routing engine that keeps each frame's state on the main thread:
+
+| Condition | Behaviour |
+|---|---|
+| A frame's surface or status read-back fails (three read-backs in a row) | that frame alone moves to Canvas 2D on a fresh canvas (the transferred one stays, retired and hidden), its state replayed, with the notice "Recovered from an error: this chart uses the basic renderer." |
+| The render worker traps after a `drawn`, the first time on the page | one restart: new render and pool workers from the same compiled module; every engine frame moves to a fresh transferred canvas, replayed, with the notice |
+| A trap before any `drawn`, a second trap, a restart without status 1 or 2 in 10 s, or a second device loss within 60 s | the session is marked (`sessionStorage`, and in memory for the page); every engine frame moves to Canvas 2D; later frames and pages start on Canvas 2D |
+| An engine frame's spec changes to a kind the engine does not draw (until #69) | it moves to Canvas 2D on a fresh canvas, without a notice, and stays there |
+
 Supported browsers: current and previous Chrome/Edge (T1), Firefox stable and ESR, Safari 17+.
 WebGPU availability in Firefox and Safari differs by OS and version, so the matrix is re-verified at
 each milestone and the probe never hard-codes version numbers.
@@ -893,3 +910,4 @@ which forces a reload.
 | 1.6-rc | 2026-11-21 | #90: `drawn` event (ADR-0019): §4.2 the engine events add `drawn` |
 | 1.7-rc | 2026-11-21 | #93: §4.4 value-axis range is chart view state |
 | 1.8-rc | 2026-11-25 | #68 Part B: §5.6 Arrow is `dash-wire`'s own Arrow IPC reader, no arrow-rs crate (owner decision, licence); §7.3 the size table and its risk sentence name the `dash-wire` reader |
+| 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |
