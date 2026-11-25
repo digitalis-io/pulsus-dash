@@ -509,7 +509,8 @@ units, or null), `scale` `linear` | `log`, `groupBy` (a label, or null), `groupM
    buckets: choose Heatmap; …") until bucket histograms (#212); nothing is binned.
 2. More than `MAX_HIST_SAMPLES` = 2 000 000 samples (NaN included) → `{kind: 'tooMany', samples}`.
 3. Per key: ±∞ samples count as `infinite`; the rest merge (T22-003): range by timestamp, the max
-   on a shared timestamp (+1 conflict); instant the latest finite sample, the max on a tie (+1).
+   on a shared timestamp (each shared timestamp is one conflict); instant the latest finite sample,
+   the max on a tie (one conflict only when the tie is at the latest timestamp).
    Each extra series of a key is a duplicate.
 4. Source groups: no `groupBy` → one group "all values"; else the raw label value, "`<L>` absent"
    without it. A value equal to `other`, ending in ` (<digits>)` or equal to "`<L>` absent" is

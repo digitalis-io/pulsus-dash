@@ -128,8 +128,9 @@ function coverageOf(q: Completeness, c: Partial<HistogramCoverage> = {}): Histog
 
 /**
  * The merged finite values of one key (T22-003) and its ±∞ samples, counted before the merge.
- * Range: finite samples by timestamp, max on a shared one (+1 conflict). Instant: the latest
- * finite sample, max on a tie (+1 conflict).
+ * Range: finite samples by timestamp, the max on a shared one; each timestamp shared by two or more
+ * series is one conflict. Instant: each series' latest finite sample; the latest timestamp wins,
+ * the max on a tie, and a tie at that latest timestamp is one conflict (an older tie is not).
  */
 function mergeKey(
   series: readonly SeriesFrame[],
@@ -141,7 +142,7 @@ function mergeKey(
   if (source === 'instant') {
     let at = -Infinity;
     let value: number | null = null;
-    let conflicts = 0;
+    let tied = false;
     for (const s of series) {
       for (let i = s.values.length - 1; i >= 0; i--) {
         const v = s.values[i] ?? NaN;
@@ -150,14 +151,15 @@ function mergeKey(
         if (value === null || ts > at) {
           at = ts;
           value = v;
+          tied = false;
         } else if (ts === at) {
-          conflicts += 1;
+          tied = true;
           value = Math.max(value, v);
         }
         break;
       }
     }
-    return { values: value === null ? [] : [value], conflicts, infinite };
+    return { values: value === null ? [] : [value], conflicts: tied ? 1 : 0, infinite };
   }
   const only = series.length === 1 ? series[0] : undefined;
   if (only !== undefined) {
@@ -165,22 +167,24 @@ function mergeKey(
     for (const v of only.values) if (Number.isFinite(v)) values.push(v);
     return { values, conflicts: 0, infinite };
   }
-  const byTs = new Map<number, number>();
-  let conflicts = 0;
+  const byTs = new Map<number, { v: number; shared: boolean }>();
   for (const s of series) {
     for (let i = 0; i < s.values.length; i++) {
       const v = s.values[i] ?? NaN;
       if (!Number.isFinite(v)) continue;
       const ts = s.timestamps[i] ?? NaN;
       const was = byTs.get(ts);
-      if (was === undefined) byTs.set(ts, v);
-      else {
-        conflicts += 1;
-        byTs.set(ts, Math.max(was, v));
-      }
+      if (was === undefined) byTs.set(ts, { v, shared: false });
+      else byTs.set(ts, { v: Math.max(was.v, v), shared: true });
     }
   }
-  return { values: [...byTs.values()], conflicts, infinite };
+  let conflicts = 0;
+  const values: number[] = [];
+  for (const x of byTs.values()) {
+    values.push(x.v);
+    if (x.shared) conflicts += 1;
+  }
+  return { values, conflicts, infinite };
 }
 
 /**

@@ -329,6 +329,39 @@ describe('unit:dist-bins', () => {
     );
   });
 
+  it('T22-003 conflicts: each conflicting timestamp once; instant only at the latest', () => {
+    const at = (v: number, ts: number): SeriesFrame => series({ s: 'a' }, [v], [ts]);
+    const cov = (input: SeriesFrame[], source: 'instant' | 'range') => {
+      const f = frameOf(run(input, opt(), source));
+      return [f.coverage.duplicates, f.coverage.conflicts, Array.from(f.sorted.values)];
+    };
+    // Three duplicates at one timestamp: one conflict, the max kept.
+    expect(cov([at(1, 0), at(3, 0), at(2, 0)], 'instant')).toEqual([2, 1, [3]]);
+    // An older tie superseded by a newer sample is no conflict, in any order.
+    const older = [at(1, 0), at(2, 0), at(5, 1000)];
+    for (const p of [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ])
+      expect(
+        cov(
+          p.map((i) => older[i] as SeriesFrame),
+          'instant',
+        ),
+      ).toEqual([2, 0, [5]]);
+    // Range: a triple at ts 0 is one conflict; ts 1000 is not shared.
+    const r = [
+      series({ s: 'a' }, [1, 7], [0, 1000]),
+      series({ s: 'a' }, [4], [0]),
+      series({ s: 'a' }, [2], [0]),
+    ];
+    expect(cov(r, 'range')).toEqual([2, 1, [4, 7]]);
+  });
+
   it('H8a empty, truncated, too many and the interim buckets notice', () => {
     const e = run([], opt());
     expect(e.kind).toBe('empty');
