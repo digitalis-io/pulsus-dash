@@ -80,6 +80,20 @@ The **Log lines** card lists the lines, **newest first** by default.
   says "These lines changed since they were loaded." with **Run again**, which starts the lines
   from the first page (the volume is left as it is).
 
+## Inspect and select
+
+Click a log line (or select a bar in the volume, or a point of a metric query's chart) to open the
+**Inspector** over the right of the page, as on [boards](boards.md#inspect-and-select): the line
+itself, its level, its exact time in nanoseconds and in your time zone, its stream labels, metadata
+and parsed fields, pivots and the query. Selecting text in a line does not open it. The clicked line
+is the page's **selection**: matching lines are highlighted with a bar in the gutter, the other
+lines of the same stream go grey, and the volume shows the instant as a band.
+
+By keyboard: Tab to the log lines, press **Enter** to focus the first visible line, move with ↑ and
+↓, and press **Enter** (or **Space**) to inspect it. **Escape** clears the selection, then closes
+the Inspector. **Edit query** (✎) moves the focus to the query editor. The **Logs ±1 min** chip
+opens the lines one minute either side of this one, for the same stream labels.
+
 ## Metric queries
 
 A metric query (a range aggregation such as `count_over_time`, `rate` or `sum by (…)`) draws a line

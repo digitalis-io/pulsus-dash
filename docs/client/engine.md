@@ -243,6 +243,7 @@ sRGB-encoded space, so token alphas composite as in CSS and Canvas 2D (T02 §4.2
 | camera arithmetic | `camera::{zoom_about, pan_by, contain, fx, fy, to_window}` |
 | held band | `Band::Fixed(w)`, `AxisLabel.fits` |
 | #94 3D | `Camera` enum, f64 `view_proj`, a 16-bit lane in every instance, extrusion after the divide |
+| `setSelection`, `select` (ADR-0025, #192) | not yet ported: the WASM engine must draw the selection in its layer pass (relevance, `opacity.dimmed`, the `focus` underlay, ring and inner stroke, the `selection` band) and emit `select` with the `HoverItem` under a click before it replaces `engine/index.ts`; the `opacity` module of `dash-tokens` carries `DIMMED` |
 
 ## Parity with the TS sources
 

@@ -22,8 +22,8 @@ application code.
 | `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
 | `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`) or `scalar` (`ScalarFrame`), from `src/data/frames.ts` |
 | `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); `null` for stat |
-| `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (reserved; never emitted by the interim engine), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
+| `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `setSelection(sel)` (ADR-0025: the page selection `{ keys, fromMs, toMs }` drawn in the next frame; `null` = none; an equal value redraws nothing), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
+| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -292,6 +292,19 @@ layer redraws on every camera preview, so the markers follow a pan or a zoom bef
 | Zoom and pan | The 2D camera, below |
 | Focus the crosshair slider, then `→` / `Home` or `←` / `End` | The crosshair starts at the first or last sample (bucket). Then `←` `→` move by one, `PageUp` / `PageDown` by ten, `Home` / `End` to the ends; `Escape` or leaving the slider hides it. Ctrl, Meta and Alt combinations are left to the browser |
 | `↑` / `↓` on the slider | Selects the previous or next row of the tooltip; the slider's value text reads it |
+| A click on the plot (left, no modifier, < 4 px of travel, no camera move) | The engine emits `select` with the mark under it; `ChartFrame` calls `onInspect(target, 'pointer', slider)`, or `onEmptyClick()` when nothing is under it ([the Inspector](inspector.md)) |
+| `Enter` or `Space` on the slider (keyboard crosshair) | `onInspect` with the slider's selected row, source `keyboard` |
+| A stat tile with `onInspect` | A transparent "Inspect <title>" button over the tile inspects its value |
+
+`ChartFrame` takes two optional props from `useChartInspect` ([the Inspector](inspector.md)):
+`onInspect(target, source, returnFocus)` and `onEmptyClick()`; without them a click selects
+nothing, Enter is ignored and a stat has no inspect button. It reads the page selection
+(`useSelection()`), passes it to the engine with `setSelection`, and mirrors its keys in
+`data-selection-keys` (`''` for none). The engine draws the selection in the layer pass
+(ADR-0025): unselected line series and bar segments at `opacity.dimmed` when the selection names one
+of the frame's own series, a `focus` underlay under a selected line, a 2 px inner `focus` stroke on
+a selected bar segment, a 2 px `focus` ring on a selected stat, and a `selection` band for an
+interval on line and heatmap.
 
 The tooltip is DOM, beside the crosshair (flipped left at the frame's right edge), positioned with
 CSSOM (`style.translate`, allowed by the CSP, T18-004). It shows the time and the rows sorted by value
@@ -459,7 +472,7 @@ shows `Loading`, and a visualisation change redraws the same result.
 - Drawing is on the main thread (T01-003 interim exception) with a cached layer; there is no worker,
   GPU decimation or level of detail until #68.
 - No legend inside the frame (board panels draw theirs in the DOM, [Boards](boards.md)), cursor sync,
-  click to select, Inspector, Δ vs baseline or keyboard brushing yet. At most 8 threshold lines.
+  Δ vs baseline or keyboard brushing yet. At most 8 threshold lines.
   Event markers are points on the time axis: a ranged event shows its end in the tooltip only (no
   region), and a click on a marker sets no comparison yet.
 - Camera (#93): no inertia after a flick, no wheel zoom on an axis band (the page scrolls), no value
@@ -505,7 +518,7 @@ script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name
 The WASM engine implements the same `ChartEngine` interface and is returned by
 `defaultChartEngine()`; only `engine/index.ts` changes. It implements the threshold lines,
 labels and the stat sparkline (ADR-0022), and the event markers (ADR-0023, as M1 verticals and M9
-glyphs), before it replaces `engine/index.ts`. The canvas is already created per frame
+glyphs), and the selection and the `select` item (ADR-0025), before it replaces `engine/index.ts`. The canvas is already created per frame
 lifetime, so it can be transferred to the render worker, and `keyTarget` lets the adapter forward key
 presses as the Canvas 2D engine does. Frames from the BFF arrive as Arrow (`FrameData` gains that
 form in #68/#62).
@@ -514,7 +527,8 @@ form in #68/#62).
 
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3, §4;
 [ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md) (`commit`, `valueRange`,
-`valueAxis`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
+`valueAxis`); [ADR-0025](../../designs/adr/0025-chart-frame-selection.md) (`setSelection`,
+`select`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
 (`thresholds`, `thresholdLabels`, the stat sparkline);
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md) (`setEvents`, `eventLabels`, the event
 mark);
