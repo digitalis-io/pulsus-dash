@@ -131,6 +131,7 @@ First match; the text is from `messages.en-GB.ts`.
 
 | Condition | View | Text |
 |---|---|---|
+| a pending kind (Bar chart, Pie; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
 | PromQL, visualisation Logs | message `logs` | "A metric query has no log lines. Choose Auto or a chart." |
 | blank text | message `empty` | "Add a query" |
 | a referenced variable without a value | message `variable` | "Set a value for `$a, $b` to run this panel" |
@@ -163,6 +164,17 @@ bars its spec has `thresholds = thresholdLines(thresholds, spec.unit)` (the seam
 never carry them. `panelFrame(view, key)` is the frame with series `key` isolated (the cached
 `framePlan` isolation, thresholds carried over), and `legendRows(result)` the legend rows
 (`seriesRows`, cached per result).
+
+### Pending kinds
+
+Board spec v3 (#173 Part 1, [the boards API](../server/boards-api.md#visoptions-v3)) stores the
+kinds `barchart` and `pie` and their `vis.options`, before this version can draw them (the bar
+chart comes with #173 Part 2, the pie with T22 I3). `PENDING_KINDS` (`boards/options.ts`) lists
+them. Such a panel is blocked before anything is sent, in both languages
+(`usePanelRun`/`useLogPanelRun` set `pre` to `kindUnavailable`, ahead of every other check), so it
+makes no request, and shows the message above. Its saved spec, options included, is kept as it
+is. Open in Explore opens such a panel's query on Auto, and a LogQL panel of a pending kind maps to
+the `logs-frame` path (unused while it is blocked).
 
 `data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
 the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
@@ -235,7 +247,12 @@ the stat chip and the threshold labels all use it.
 ### The editor's Thresholds and Legend
 
 `ThresholdsField` and the Legend select follow Visualisation. Every vis edit is one `updatePanel`
-of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend;
+of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend.
+A kind change goes through `withKind(vis, kind)`, which also keeps only the `vis.options` keys the
+new kind allows (`keepOptions`, the `OPTION_KEYS` table) and drops the `options` member when none
+is left, so the draft stays valid. A stored pending kind (Bar chart, Pie) shows in the
+Visualisation select as a disabled option: the select names it, and it cannot be chosen for another
+panel;
 Legend Table and the last threshold's removal delete their member (the saved spec has no key).
 **Add threshold** starts at `{ direction: 'above', steps: [{ value: 0, state: 'degraded' }] }`, then
 adds the largest finite value + 1 (above) or the smallest − 1 (below); it is disabled at 8.
@@ -512,3 +529,7 @@ failing 0.05 "SLO breach").
 - [09 Performance contract](../../designs/product/09-performance-contract.md): PRF-030, PRF-031
   (board subsets); [08 Visual language](../../designs/product/08-visual-language.md): VL-015 (the
   shimmer).
+- Board spec v3 and the pending kinds (#173 Part 1):
+  [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`)
+  and T22-002; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v2 upcast); the
+  categorical transforms are on [the panels page](panels.md).
