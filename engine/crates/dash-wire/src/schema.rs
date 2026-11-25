@@ -4,8 +4,10 @@
 
 use std::collections::BTreeSet;
 
+use std::sync::{Arc, OnceLock};
+
 use crate::decode::{GridInfo, MAX_GRID_LEN, PartError};
-use crate::ipc::{IpcError, SchemaDesc, Ty};
+use crate::ipc::{FieldDesc, IpcError, RawSchema, SchemaDesc, Ty};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
@@ -231,6 +233,82 @@ pub(crate) fn check_schema(s: &SchemaDesc, expect: Kind, in_stream: bool) -> Res
     Ok(())
 }
 
+fn ty_of(t: T) -> Ty {
+    let item = |ty, nullable| {
+        Box::new(FieldDesc {
+            name: "item".to_owned(),
+            nullable,
+            ty,
+        })
+    };
+    match t {
+        T::U8 => Ty::U8,
+        T::U16 => Ty::U16,
+        T::U32 => Ty::U32,
+        T::U64 => Ty::U64,
+        T::F64 => Ty::F64,
+        T::Bool => Ty::Bool,
+        T::Utf8 => Ty::Utf8,
+        T::TsMs => Ty::TsMs,
+        T::ListUtf8 => Ty::List(item(Ty::Utf8, false)),
+        T::FslF64 => Ty::Fsl(1, item(Ty::F64, true)),
+    }
+}
+
+fn build(kind: Kind) -> SchemaDesc {
+    SchemaDesc {
+        fields: kind
+            .cols()
+            .iter()
+            .map(|(name, t, nullable)| FieldDesc {
+                name: (*name).to_owned(),
+                nullable: *nullable,
+                ty: ty_of(*t),
+            })
+            .collect(),
+        metadata: vec![
+            (
+                "dash.schema".to_owned(),
+                Arc::from(format!("{}/1", kind.name())),
+            ),
+            ("dash.time_unit".to_owned(), Arc::from("ms")),
+        ],
+    }
+}
+
+/// The one schema a META (`coverage/1`) or ERROR (`error/1`) stream may carry, built once.
+fn stream_schema(kind: Kind) -> &'static SchemaDesc {
+    static COVERAGE: OnceLock<SchemaDesc> = OnceLock::new();
+    static ERROR: OnceLock<SchemaDesc> = OnceLock::new();
+    match kind {
+        Kind::Error => ERROR.get_or_init(|| build(Kind::Error)),
+        _ => COVERAGE.get_or_init(|| build(Kind::Coverage)),
+    }
+}
+
+/// The schema of a META or ERROR stream, checked from the borrowed message without copying it
+/// (B3: a stream schema is not kept, so nothing of it is copied): it must be exactly `kind`'s
+/// v1 schema. Another valid v1 schema id is a closed-set violation (`Value("dash.schema")`).
+pub(crate) fn check_stream_schema(
+    raw: &RawSchema<'_>,
+    kind: Kind,
+) -> Result<&'static SchemaDesc, PartError> {
+    let expect = stream_schema(kind);
+    if raw.is(expect) {
+        return Ok(expect);
+    }
+    let known = [Kind::Labels, Kind::Grid, Kind::Coverage, Kind::Error]
+        .into_iter()
+        .any(|k| {
+            k != kind && raw.meta(b"dash.schema") == Some(format!("{}/1", k.name()).as_bytes())
+        });
+    Err(if known {
+        PartError::Value("dash.schema")
+    } else {
+        schema_err(format!("not the {}/1 schema", kind.name()))
+    })
+}
+
 /// The grid of a checked `metric_matrix.grid/1` schema, and its labels part.
 pub(crate) fn grid_info(s: &SchemaDesc) -> Result<(GridInfo, u32), PartError> {
     fn num<N: std::str::FromStr>(s: &SchemaDesc, k: &'static str) -> Result<N, PartError> {
@@ -282,8 +360,8 @@ pub(crate) fn grid_info(s: &SchemaDesc) -> Result<(GridInfo, u32), PartError> {
             len,
             result: result.to_owned(),
             source: source.to_owned(),
-            unit: s.meta("dash.unit").map(str::to_owned),
-            planned: s.meta("dash.planned").map(str::to_owned),
+            unit: s.meta_shared("dash.unit"),
+            planned: s.meta_shared("dash.planned"),
         },
         labels_part,
     ))

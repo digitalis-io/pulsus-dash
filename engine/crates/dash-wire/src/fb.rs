@@ -77,7 +77,7 @@ impl<'a> Fb<'a> {
     }
 
     /// The root table (the `uoffset` at byte 0).
-    pub(crate) fn root(&self, spec: Spec) -> Result<Table<'_>, IpcError> {
+    pub(crate) fn root(&self, spec: Spec) -> Result<Table<'_, 'a>, IpcError> {
         let off = u32_at(self.buf, 0)?;
         self.record(0, 4, Kind::Root)?;
         if off < 4 {
@@ -86,7 +86,7 @@ impl<'a> Fb<'a> {
         self.table_at(off, spec)
     }
 
-    fn table_at(&self, pos: usize, spec: Spec) -> Result<Table<'_>, IpcError> {
+    fn table_at(&self, pos: usize, spec: Spec) -> Result<Table<'_, 'a>, IpcError> {
         let n = self.tables.get() + 1;
         if n > MAX_TABLES {
             return Err(FLAT);
@@ -155,14 +155,15 @@ impl<'a> Fb<'a> {
 
 /// A verified table.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Table<'a> {
-    fb: &'a Fb<'a>,
+/// `'f` borrows the verifier, `'a` the flatbuffer bytes (strings and vectors live for `'a`).
+pub(crate) struct Table<'f, 'a> {
+    fb: &'f Fb<'a>,
     pos: usize,
     vt: usize,
     vt_len: usize,
 }
 
-impl<'a> Table<'a> {
+impl<'f, 'a> Table<'f, 'a> {
     /// The absolute position of field `id`, if present (validated when the table was opened).
     fn field(&self, id: u16) -> Result<Option<usize>, IpcError> {
         let e = 4 + 2 * usize::from(id);
@@ -218,7 +219,7 @@ impl<'a> Table<'a> {
         fp.checked_add(u).map(Some).ok_or(FLAT)
     }
 
-    pub(crate) fn table(&self, id: u16, spec: Spec) -> Result<Option<Table<'a>>, IpcError> {
+    pub(crate) fn table(&self, id: u16, spec: Spec) -> Result<Option<Table<'f, 'a>>, IpcError> {
         match self.target(id)? {
             Some(t) => self.fb.table_at(t, spec).map(Some),
             None => Ok(None),
@@ -275,7 +276,7 @@ impl<'a> Table<'a> {
         id: u16,
         max: usize,
         spec: Spec,
-    ) -> Result<Vec<Table<'a>>, IpcError> {
+    ) -> Result<Vec<Table<'f, 'a>>, IpcError> {
         let Some((n, data)) = self.vector(id, 4, max, 4)? else {
             return Ok(Vec::new());
         };
@@ -317,7 +318,7 @@ mod tests {
 
     fn read(m: &Msg) -> Result<(), IpcError> {
         let payload = kit::encode_pieces(&[Piece::M(m.clone())], P);
-        ipc::read_message(&SharedBytes::copy_from(&payload, P), P as u64, 0, u64::MAX).map(|_| ())
+        ipc::read_message(&SharedBytes::copy_from(&payload, P), P as u64, 0).map(|_| ())
     }
 
     fn run(body: &[u8]) -> Vec<Event> {

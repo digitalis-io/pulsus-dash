@@ -4,8 +4,6 @@
 //! before the allocation it bounds; a writer-valid body never reaches one.
 #![deny(clippy::indexing_slicing)]
 
-use crate::ipc::{FieldDesc, SchemaDesc, Ty};
-
 /// The largest chunk `FrameSplitter::push` accepts, by backing allocation (2 × `MAX_PAYLOAD`).
 pub const MAX_CHUNK: usize = 128 << 20;
 /// Part D's BYOB read buffer (one per response).
@@ -102,25 +100,6 @@ impl Default for Limits {
             value_budget: VALUE_BUDGET,
         }
     }
-}
-
-fn names(f: &FieldDesc) -> u64 {
-    let own = f.name.len() as u64;
-    match &f.ty {
-        Ty::List(c) | Ty::Fsl(_, c) => own + names(c),
-        _ => own,
-    }
-}
-
-/// An accepted schema: 256 + field names (children included) + metadata keys and values.
-pub(crate) fn schema_cost(s: &SchemaDesc) -> u64 {
-    let fields: u64 = s.fields.iter().map(names).sum();
-    let meta: u64 = s
-        .metadata
-        .iter()
-        .map(|(k, v)| (k.len() + v.len()) as u64)
-        .sum();
-    cost::SCHEMA + fields + meta
 }
 
 /// A data batch of `series` rows (body budget).
