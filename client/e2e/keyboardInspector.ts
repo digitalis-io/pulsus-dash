@@ -40,9 +40,8 @@ export async function inspectorSheet(s: Script, o: SheetSteps): Promise<void> {
   const { press } = h;
   const sheet = page.locator('[data-inspector]:not([data-closing])');
   const copied = () => page.evaluate(() => window.__copied.at(-1) ?? '');
-  const path = s.path();
-
   await o.open();
+  const path = s.path();
   await s.on('button "Copy value"');
   await expect.poll(copied).toMatch(/^[\d.e+-]+$/);
   await s.on('button "Copy query"');

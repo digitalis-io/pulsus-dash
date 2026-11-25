@@ -119,7 +119,8 @@ test.describe('e2e:explore (fake)', () => {
     await expect(page.getByRole('radio', { name: 'Auto (Stat)' })).toBeChecked();
     const rows = page.getByRole('table').getByRole('row');
     await expect(rows).toHaveCount(2);
-    await expect(rows.nth(1).getByRole('cell').first()).toHaveText('scalar');
+    // The first cell is the row's Select toggle (T25-016); the series name follows.
+    await expect(rows.nth(1).getByRole('cell').nth(1)).toHaveText('scalar');
     const recs = await fakeRequests(request, {
       path: '/api/v1/query',
       query: 'scalar(vector(1)) / 0',
@@ -158,7 +159,11 @@ test.describe('e2e:explore (fake)', () => {
     await expect(ready(page)).toBeVisible();
     const table = page.getByRole('table');
     await table.getByRole('button', { name: 'Max' }).click();
-    const first = table.getByRole('row').nth(1).getByRole('button');
+    // The row's series button (the Select toggle before it selects, T25-016).
+    const first = table
+      .getByRole('row')
+      .nth(1)
+      .getByRole('button', { name: /^node_memory_free_bytes/ });
     await expect(first).toHaveText('node_memory_free_bytes{instance="a:9100"}');
     await first.click();
     await expect.poll(() => label(page)).toContain('1 series');
