@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-25 |
+| **Version** | 1.4-rc · 2026-11-25 |
 | **Milestone** | M-UI3 (state timeline; histogram CDF/ECDF overlay) · M-UI5 (standalone histogram) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) |
 | **Source draft** | plans (not tracked) |
@@ -729,7 +729,7 @@ export interface HistogramOptions { binMode: 'auto' | 'count' | 'width'; binCoun
   scale: 'linear' | 'log'; groupBy: string | null; groupMode: 'stack' | 'overlay'; cumulative: 'none' | 'cdf' | 'ecdf';
   unit: Unit /* the panel unit, as every kind gets it from `framePlan` (client/src/vis/framePlan.ts: '/s' after a rate rewrite, else none; #158's unit option later); used by the T21-013 display guard */ }
 // Worker message (histogramClient.ts → histogram.worker.ts): { runId: number; source: 'instant' | 'range'; o: HistogramOptions /* incl. unit */;
-//   q: Completeness; batch: { key: string; labels: Labels; timestamps: Float64Array; values: Float64Array }[]; last: boolean }
+//   q: Completeness; batch: { key: string; labels: Labels; timestamps: Float64Array; values: Float64Array; cont: boolean /* continues the previous entry's series */ }[]; last: boolean }
 export type HistogramResult = { kind: 'frame'; frame: HistogramFrame }
   | { kind: 'empty'; coverage: HistogramCoverage }                                         // received 0
   | { kind: 'noneShown'; coverage: HistogramCoverage; sourceGroups: readonly SourceGroup[] } // drawable 0
@@ -737,17 +737,17 @@ export type HistogramResult = { kind: 'frame'; frame: HistogramFrame }
 // Part 2a-ii (#206) removes the 'buckets' kind; `le` results take the bucket path (T21-060, below).
 export function histogram(input: readonly SeriesFrame[], source: 'instant' | 'range', o: HistogramOptions /* incl. unit */,
   q: Completeness): HistogramResult;
-export function binEdges(sortedAxis: Float64Array, o: HistogramOptions /* o.unit for the guard */): { edges: Float64Array; widenedTo: number | null; adjusted: number | null };
+export function binEdges(sortedValues: Float64Array /* drawable, ascending, value units */, o: HistogramOptions /* o.unit for the guard */): { edges: Float64Array; widenedTo: number | null; adjusted: number | null };
 export function scaleOf(min: number, max: number): number;  // E with S = 10^E, E = ⌈log10 max(|min|,|max|)⌉ clamped to [−307, 308]; 0 when both are 0
 export function binIndex(edges: Float64Array, x: number): number;                  // −1 outside; last bin closed
 export function ecdfAt(f: HistogramFrame, sourceGroups: readonly number[], x: number): number; // Σ upperBound / Σ length over the slices (= a merge)
-export function groupKey(label: string, value: string | null): string;  // FNV-1a 64 hex; absent → `${label}\u0001`
+export function groupKey(label: string, value: string | null): string;  // FNV-1a 64 hex over the UTF-8 of `${label}\u0000${value}`; absent → of `${label}\u0001`
 export function selectedCounts(f: HistogramFrame, keys: ReadonlySet<string>, s: Slicer): Promise<Float64Array | null>; // groups × k; null = no match
 export function binSeries(f: HistogramFrame, groups: readonly number[], from: number, to: number, s: Slicer): Promise<string[]>; // sorted
-// Slicer (histogramClient.ts) = { now(): number; signal: AbortSignal }: work yields when a step reaches 8 ms; abort rejects
+// Slicer (slice.ts) = { now(): number; signal: AbortSignal; yieldNow?(): Promise<void> /* default: one MessageChannel round trip */ }: work yields when a step reaches 8 ms; abort rejects
 export function hitTestBin(f: HistogramFrame, l: BinLayout, xCss: number, yCss: number): { index: number; group: number } | null; // via l.edgePx
 export function binLabels(edges: Float64Array, unit: Unit): string[]; // T21-013 display digits
-// also histogramRows(f, unit): PanelRows; histogramCoverageText(c): string; summaryFacts(title, f): SummaryFacts
+// also histogramRows(f, unit): PanelRows; histogramCoverageText(c, unit): string /* unit for the widened width */; summaryFacts(title, f, unit): SummaryFacts
 // BinLayout = plot rect, edgePx (forward scale of each edge), count-axis max, per-group bar tops in CSS px.
 // histogramClient.ts (main thread)
 export function runHistogram(panelId: string, runId: number, input: readonly SeriesFrame[], source: 'instant' | 'range',
@@ -978,7 +978,7 @@ Part 2a (#154), filed after merge:
 
 | # | Title | Mode | Depends | Requirement IDs | Acceptance (tests in §10) |
 |---|---|---|---|---|---|
-| I-F | Histogram panel: bins, groups, CDF/ECDF, value brush, bin Inspector target | 2D-now, M-UI3 | #192, #173 (`Vis.options`) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-012 to T21-016; H1 to H26 (with H1b, H1c, and H8a for the interim `buckets` notice until I-G); a seam ADR amending ADR-0014 §3 (§5); board spec next version; gallery; docs |
+| I-F | Histogram panel: bins, groups, CDF/ECDF, value brush, bin Inspector target | 2D-now, M-UI3 | #192, #173 (`Vis.options`) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-012 to T21-016; H1 to H26 (with H1b, H1c, and H8a for the interim `buckets` notice until I-G); a seam ADR amending ADR-0014 §3 (§5); board spec next version; gallery; docs. In two parts on #208: **I-F-a** (`formatValue` digits and the out-of-range form with the Rust parity, `patterns.ts`, the frame types, the transforms, the worker and its client, the fixtures; the unit parts of the H rows) and **I-F-b** (the seam ADR, Canvas 2D drawing, tooltip, meter popover, notices, table and CSV, the panel run, the board spec, the `bin` Inspector target, the gallery; the e2e, golden, bench and spec parts) |
 | I-F2 | Engine port of the histogram | Engine | #68, #69, I-F | VIZ-001, VIZ-004 | Same fixtures; the §7 row on `bench:frame-gallery` |
 | #206 | Design: histogram of histogram buckets (T21 part 2a-ii) | design | #154 | VIZ-028 | Per-partition detection and alignment, one terminal +Inf, zero-crossing buckets on log, bucket-family selection; rules T21-060 to T21-069 |
 
@@ -1039,3 +1039,4 @@ None.
 | 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): T21-009 writes the T25 `Selection` and opens the Inspector with `{type:'stateRun', target}`; Esc per T25-007, and an empty click clears only the selection; members per T25-011. §5: T25 `Selection`; nullable `SelectEvent.item`; `MemberFacts` from `inspector/members.ts` |
 | 1.2-rc | 2026-11-25 | #154 (Part 2a): the histogram over raw values ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)): T21-012 to T21-016 (values and exclusions, bins with the display guard and the terminal log rule, groups and "other (n)", CDF and exact ECDF, non-time interactions with the value brush and the `bin` Inspector target, the per-panel worker, the coverage meter and the notices); §3, §4.2, §4.3, §4.5, §4.6 and §7 rows; §5 histogram seam and transforms; the board spec moves the stateTimeline keys into T22's `Vis.options` and adds the histogram keys (T21-011, F7, F10 and the state-spec row follow); §10 H1 to H26; §11 I-F, I-F2 and #206; mockup 42-histogram. Code review r1: `SummaryFacts.extent` is `{ min; max } | null`, as T22-014 and T21-015 fill it |
 | 1.3-rc | 2026-11-25 | #206 (Part 2a-ii): histograms of histogram buckets ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay) amended): T21-060 to T21-069 (bucket sources and families with a strict `parseLe`, the shared bound set by drawable valid mass, snapshots validated on the original bounds and never repaired, one bin per bound with display extents and true-bound text, log exclusions of the open first bucket and of buckets crossing 0, groups and the CDF from cumulative counts, labelled estimates and facts, family selection and the Inspector, the meter, notices and table rows, validation); T21-012 sends `le` results to the bucket path and the `buckets` notice is removed (T21-016 notices, §5 `HistogramResult`); §1, §2 (the non-goal removed), §3 rows, §4.2 row; §5 bucket seam additions and `buckets.ts`; §10 H8 rewritten for I-G and the former H8 kept as I-F H8a (the interim `buckets` notice until I-G), B1 to B22, H21b and the H22 scenario; §11 I-G (#212); mockup 43-bucket-histogram |
+| 1.4-rc | 2026-11-25 | #208 Part 1 (I-F-a): §5 `histogramCoverageText(c, unit)` (the unit formats the widened width) and `summaryFacts(title, f, unit)`; `Slicer` in `slice.ts` with an optional `yieldNow`; `binEdges` takes the sorted drawable values in value units; the `groupKey` hash input; the worker batch entry's `cont` field (a chunk continuing the previous entry's series); §11 I-F in two parts (I-F-a, I-F-b) |
