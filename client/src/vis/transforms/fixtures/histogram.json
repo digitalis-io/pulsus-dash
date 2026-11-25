@@ -1,5 +1,5 @@
 {
-  "source": "T21-013 and T21-015 reference values (#154); numbers are exact String(x), Number() on load",
+  "source": "T21-013 and T21-015 reference values (#154, #208 option B: exact powers of ten); numbers are exact String(x), Number() on load; interior edges, terminal-log-rule edges (terminalLog) and log-axis brush endpoints compare at a relative 1e-12, other end edges exactly",
   "bins": [
     {
       "name": "H1",
@@ -14,7 +14,8 @@
       "counts": [4, 1, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H2a",
@@ -29,7 +30,8 @@
       "counts": [1, 2, 1, 0, 0, 0, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H2b",
@@ -44,7 +46,8 @@
       "counts": [1, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H3a",
@@ -269,7 +272,8 @@
       ],
       "widenedTo": "5",
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H3b",
@@ -494,7 +498,8 @@
       ],
       "widenedTo": "0.005",
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H4a",
@@ -610,7 +615,8 @@
       "counts": [19, 20, 20, 20, 21],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H4b",
@@ -625,7 +631,8 @@
       "counts": [1, 0, 0, 1, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H4c",
@@ -640,7 +647,8 @@
       "counts": [4, 0, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H4d",
@@ -655,7 +663,8 @@
       "counts": [3],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H4e",
@@ -670,7 +679,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H4f",
@@ -793,7 +803,8 @@
       ],
       "widenedTo": "2",
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24a",
@@ -808,7 +819,8 @@
       "counts": [1, 0, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24b",
@@ -823,7 +835,8 @@
       "counts": [1, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24c",
@@ -838,7 +851,8 @@
       "counts": [2],
       "widenedTo": null,
       "adjusted": 1,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24d",
@@ -853,7 +867,8 @@
       "counts": [2],
       "widenedTo": null,
       "adjusted": 1,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24e",
@@ -868,7 +883,8 @@
       "counts": [2],
       "widenedTo": null,
       "adjusted": 1,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24f",
@@ -883,7 +899,8 @@
       "counts": [1, 0, 0, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24g",
@@ -898,7 +915,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24h",
@@ -913,7 +931,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24i",
@@ -928,7 +947,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24j",
@@ -943,7 +963,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H24k",
@@ -958,7 +979,8 @@
       "counts": [1, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 2
+      "outOfRange": 2,
+      "terminalLog": false
     },
     {
       "name": "H25",
@@ -979,7 +1001,8 @@
       "counts": [1, 0, 0, 1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H26a",
@@ -994,7 +1017,8 @@
       "counts": [2],
       "widenedTo": null,
       "adjusted": 1,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": true
     },
     {
       "name": "H26b",
@@ -1009,7 +1033,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     },
     {
       "name": "H26c",
@@ -1024,7 +1049,8 @@
       "counts": [1],
       "widenedTo": null,
       "adjusted": null,
-      "outOfRange": 0
+      "outOfRange": 0,
+      "terminalLog": false
     }
   ],
   "pixels": [

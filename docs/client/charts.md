@@ -533,7 +533,9 @@ group with no drawable value is not drawn (`drawnAs` −1).
 
 Edges are in value units, k + 1 finite and strictly increasing, 1 ≤ k ≤ 200, e₀ = min and e_k = max
 exactly; [eᵢ, eᵢ₊₁), the last bin closed. Binning runs on v (linear) or log10 v (log), with every
-span and width normalised by S = 10^`scaleOf(min, max)`.
+span and width normalised by S = 10^`scaleOf(min, max)`. S and every nice width use the exact power
+`Number('1e' + e)`, which is the same in every JS engine (`10 ** 290` is not); only log-axis edges
+10^x and the terminal log rule use `10 ** x`.
 
 | Mode | Rule |
 |---|---|
@@ -600,8 +602,9 @@ combined; c conflicts (max kept)", "bin width widened to W (200-bin cap)", "bins
 
 `src/vis/transforms/fixtures/histogram.json` holds the T21 §10 bin rows (H1–H4, H24–H26: values,
 options, edges, counts, `widenedTo`, `adjusted`, `outOfRange`) and pixel rows (edge px, hits,
-brushes), every number as its exact `String(x)`; interior edges compare at a relative 1e−12, end
-edges exactly. The engine port (#209) runs the same file. Gates: `unit:dist-bins`,
+brushes), every number as its exact `String(x)`; interior edges, edges of the terminal log rule
+(`terminalLog`) and brush endpoints compare at a relative 1e−12, other end edges exactly, and a
+brush's `from`/`to` equal the frame's own edges exactly. The engine port (#209) runs the same file. Gates: `unit:dist-bins`,
 `unit:summary-facts`, `unit:selection-draw`, `unit:hist-worker`, `unit:number-format`.
 
 ## Limits

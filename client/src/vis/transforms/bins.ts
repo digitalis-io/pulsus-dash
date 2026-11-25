@@ -39,6 +39,15 @@ const MAX_WIDEN_STEPS = 4;
 /** The count of the only fallback (T21-013). */
 const FALLBACK_COUNT = 20;
 
+/**
+ * 10^e exactly (correctly rounded), the same in every JS engine and in the Rust port: `10 ** e` is
+ * not (one engine gives 10 ** 290 = 9.999999999999999e+289). Only log-axis edges 10^x and the
+ * terminal rule use `10 ** x` (fixtures compare those at a relative 1e−12).
+ */
+function pow10(e: number): number {
+  return Number(`1e${e}`);
+}
+
 interface Nice {
   readonly m: number;
   readonly e: number;
@@ -51,7 +60,7 @@ function nice(x: number): Nice | null {
   let e = Math.floor(Math.log10(x));
   for (let step = 0; step < 3; step++) {
     for (const m of NICE_MANTISSAS) {
-      const v = m * 10 ** e;
+      const v = m * pow10(e);
       if (v >= x) return { m, e, v };
     }
     e++;
@@ -63,8 +72,8 @@ function nextNice(n: Nice): Nice {
   const i = NICE_MANTISSAS.indexOf(n.m as (typeof NICE_MANTISSAS)[number]);
   const m = NICE_MANTISSAS[i + 1];
   return m !== undefined
-    ? { m, e: n.e, v: m * 10 ** n.e }
-    : { m: 1, e: n.e + 1, v: 10 ** (n.e + 1) };
+    ? { m, e: n.e, v: m * pow10(n.e) }
+    : { m: 1, e: n.e + 1, v: pow10(n.e + 1) };
 }
 
 /** E with S = 10^E: ⌈log10 max(|min|, |max|)⌉ clamped to [−307, 308]; 0 when both are 0. */
@@ -96,7 +105,7 @@ function aligned(
   niceW: Nice | null,
   userW: number | null,
 ): Aligned {
-  const S = 10 ** E;
+  const S = pow10(E);
   const a = min / S / wn;
   const b = max / S / wn;
   const q0 = Math.floor(a);
@@ -108,7 +117,7 @@ function aligned(
   if (k > MAX_BINS) return { kind: 'tooMany' };
   const e = new Float64Array(k + 1);
   for (let i = 0; i <= k; i++)
-    e[i] = niceW ? (q0 + i) * niceW.m * 10 ** (niceW.e + E) : (q0 + i) * (userW ?? NaN);
+    e[i] = niceW ? (q0 + i) * niceW.m * pow10(niceW.e + E) : (q0 + i) * (userW ?? NaN);
   e[0] = Math.min(e[0] ?? NaN, min);
   e[k] = Math.max(e[k] ?? NaN, max);
   return { kind: 'edges', edges: e };
@@ -176,7 +185,7 @@ export function binEdges(
     return e;
   };
   const E = scaleOf(min, max);
-  const S = 10 ** E;
+  const S = pow10(E);
   let widened = false;
   let widenedTo: number | null = null;
   let adjusted: number | null = null;
@@ -210,7 +219,7 @@ export function binEdges(
       res = aligned(
         min,
         max,
-        niceW ? niceW.m * 10 ** niceW.e : (userW ?? NaN) / S,
+        niceW ? niceW.m * pow10(niceW.e) : (userW ?? NaN) / S,
         E,
         niceW,
         niceW ? null : userW,

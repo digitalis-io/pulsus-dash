@@ -109,6 +109,10 @@ const groupCounts = (f: HistogramFrame, j: number): number[] => {
 };
 const sourceIndex = (f: HistogramFrame, name: string): number =>
   f.sourceGroups.findIndex((s) => s.name === name);
+/** |got − want| ≤ |want|·1e-12 (exact for 0). */
+const nearRel = (got: number, want: number): void => {
+  expect(Math.abs(got - want)).toBeLessThanOrEqual(Math.abs(want) * 1e-12);
+};
 const near = (a: readonly number[] | Float64Array, b: readonly number[], tol = 1e-4): void => {
   expect(a.length).toBe(b.length);
   Array.from(a).forEach((x, i) => {
@@ -125,6 +129,8 @@ interface BinFixture {
   widenedTo: string | null;
   adjusted: number | null;
   outOfRange: number;
+  /** The edges come from the terminal log rule (10^(L ± 0.5)): compared at relative 1e-12. */
+  terminalLog: boolean;
 }
 interface PixelFixture {
   name: string;
@@ -150,14 +156,12 @@ describe('unit:dist-bins', () => {
       const want = b.edges.map(Number);
       const k = want.length - 1;
       expect(f.edges.length).toBe(want.length);
-      // End edges exact; interior edges at relative 1e-12 (T21-013).
-      expect(f.edges[0]).toBe(want[0]);
-      expect(f.edges[k]).toBe(want[k]);
-      for (let i = 1; i < k; i++) {
-        const w = want[i] ?? NaN;
-        const got = f.edges[i] ?? NaN;
-        expect(Math.abs(got - w)).toBeLessThanOrEqual(Math.abs(w) * 1e-12);
+      // Interior edges and terminal-log-rule edges at relative 1e-12; other end edges exact.
+      if (!b.terminalLog) {
+        expect(f.edges[0]).toBe(want[0]);
+        expect(f.edges[k]).toBe(want[k]);
       }
+      for (let i = 0; i <= k; i++) nearRel(f.edges[i] ?? NaN, want[i] ?? NaN);
       expect(panelCounts(f)).toEqual(b.counts);
       expect(f.coverage.widenedTo).toBe(b.widenedTo === null ? null : Number(b.widenedTo));
       expect(f.coverage.adjusted).toBe(b.adjusted);
@@ -176,14 +180,17 @@ describe('unit:dist-bins', () => {
       for (const [x, bin] of p.hits) expect(binAtPx(l.edgePx, Number(x))).toBe(bin);
       for (const [a, b, r] of p.brushes) {
         const got = brushBins(f, l, Number(a), Number(b));
-        if (r === null) expect(got).toBeNull();
-        else
-          expect(got).toEqual({
-            first: r.first,
-            last: r.last,
-            from: Number(r.from),
-            to: Number(r.to),
-          });
+        if (r === null) {
+          expect(got).toBeNull();
+          continue;
+        }
+        expect([got?.first, got?.last]).toEqual([r.first, r.last]);
+        // Brush endpoints are the frame's own raw edges, and match the fixture at relative 1e-12
+        // (log-axis edges are 10^x).
+        expect(got?.from).toBe(f.edges[r.first]);
+        expect(got?.to).toBe(f.edges[r.last + 1]);
+        nearRel(got?.from ?? NaN, Number(r.from));
+        nearRel(got?.to ?? NaN, Number(r.to));
       }
     });
   });
@@ -209,15 +216,7 @@ describe('unit:dist-bins', () => {
   it('H1c unit labels at the domain bounds', () => {
     const wide = (unit: Unit): string[] =>
       binLabels(frame([series({}, [-1e290, 1e290])], opt({ unit })).edges, unit);
-    expect(wide(NS)).toEqual([
-      '-1.5e+281 s',
-      '-1e+281 s',
-      '-5e+280 s',
-      '0 s',
-      '5e+280 s',
-      '1e+281 s',
-      '1.5e+281 s',
-    ]);
+    expect(wide(NS)).toEqual(['-1e+281 s', '-5e+280 s', '0 s', '5e+280 s', '1e+281 s']);
     expect(binLabels(frame([series({}, [1e-290, 1e-289])], opt({ unit: NS })).edges, NS)).toEqual([
       '0 s',
       '2e-299 s',
@@ -230,15 +229,7 @@ describe('unit:dist-bins', () => {
       '9.999999999999999e+280 s',
       '1e+281 s',
     ]);
-    expect(wide(PU)).toEqual([
-      '-1.5e+292 %',
-      '-1e+292 %',
-      '-5e+291 %',
-      '0 %',
-      '5e+291 %',
-      '1e+292 %',
-      '1.5e+292 %',
-    ]);
+    expect(wide(PU)).toEqual(['-1e+292 %', '-5e+291 %', '0 %', '5e+291 %', '1e+292 %']);
     expect(binLabels(Float64Array.from([ND, 1e290]), PU)).toEqual([
       '9.999999999999998e+291 %',
       '1e+292 %',
