@@ -27,7 +27,7 @@ pub fn explicit(series: &[(Vec<f64>, Vec<f64>)]) -> Chunk {
     for (k, (ts, vs)) in series.iter().enumerate() {
         let meta = SeriesMeta {
             key_hash: k as u64,
-            labels: Vec::new(),
+            labels: Vec::new().into(),
         };
         if let Err(e) = b.push_series(meta, Some(ts), vs) {
             panic!("series {k}: {e}");

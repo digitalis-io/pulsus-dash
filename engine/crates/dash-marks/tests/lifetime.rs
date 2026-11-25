@@ -155,7 +155,7 @@ fn value_upload_keeps_one_slice_outstanding() {
         b.push_series(
             dash_wire::SeriesMeta {
                 key_hash: 1,
-                labels: Vec::new(),
+                labels: Vec::new().into(),
             },
             None,
             &vs,
@@ -245,7 +245,7 @@ fn failed_upload_wait_stops_and_discards() {
         b.push_series(
             dash_wire::SeriesMeta {
                 key_hash: 1,
-                labels: Vec::new(),
+                labels: Vec::new().into(),
             },
             None,
             &vs,

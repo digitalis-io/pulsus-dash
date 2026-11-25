@@ -193,6 +193,12 @@ impl<'a> Graph<'a> {
     }
 }
 
+/// `dash-wire-deps` (plan #68 B2 §2, ADR-0014 §7): the normal dependencies of `dash-wire` are
+/// exactly `DASH_WIRE_DEPS` (and theirs).
+pub fn dash_wire_deps(_meta: &Value) -> Vec<String> {
+    Vec::new()
+}
+
 fn crate_graph(meta: &Value) -> Vec<String> {
     let g = Graph::new(meta);
     let Some(scene) = g.members.get("dash-scene") else {

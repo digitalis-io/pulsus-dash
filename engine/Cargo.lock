@@ -354,6 +354,8 @@ dependencies = [
 name = "dash-wire"
 version = "0.0.0"
 dependencies = [
+ "bytemuck",
+ "serde_json",
  "thiserror",
 ]
 
