@@ -503,6 +503,20 @@ from validated offsets and lengths before the `Vec` or `String` it bounds is all
   borrowed message and never copied (its row is charged). `GridInfo.unit` and
   `GridInfo.planned` are `Arc<str>` shared with the part's schema, so a held grid event adds no
   second copy.
+- **Retained forms that fit their charges.** A labels part keeps its series in one exact-size,
+  id-ordered slice per labels batch (32 B per series; series ids must rise across the part, as
+  B1 writes them, and a repeated or out-of-order id in a data part is `DuplicateSeries`); every
+  series without labels shares one empty label set. A coverage list is a packed `StrList`
+  (one allocation: 4 B per element plus its bytes). An `ErrorRow`'s message and suggestion are
+  `Arc<str>`, so the decoder's stream-level copy and the emitted event share one allocation.
+  Unit tests assert each form against its charge (`cost::SERIES` is 96 for this reason).
+- **The bound.** With the decoder and every emitted event held, the heap they retain is at most
+  the body budget used plus the value budget used (`tests/limits_live.rs`, live-byte counting
+  allocator). The `Event` values themselves live in the caller's container
+  (`size_of::<Event>()` each, at most 3 + 2 × linked parts per frame). On top, each frame uses
+  scratch released before the next one, at most 4 × its payload length + 64 KiB: the column
+  descriptors, the flatbuffer verifier's extents, a labels batch's series slice and one series'
+  label vector, a list's end offsets, and the returned event vector.
 - **Bounded diagnostics.** A `PartError::Schema` message quotes at most 64 bytes of the
   offending value, cut at a UTF-8 boundary and escaped, the quote capped at 128 bytes, so a
   failed part's diagnostic stays small whatever the input.
