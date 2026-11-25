@@ -79,15 +79,17 @@ func TestWriterOrder(t *testing.T) {
 	cases := []struct {
 		series, n int
 		batches   []int
+		pending   bool // the last batch is sent by Finish
 		volatile  bool
 		rank      uint16
 	}{
-		{0, 4, nil, false, 0},
-		{1, 4, []int{1}, false, 0},
-		{2, 4, []int{1, 1}, false, 0},
-		{9, 4, []int{1, 8}, false, 0},
-		{70, 4, []int{1, 64, 5}, true, 3},
-		{9, 11001, []int{1, 8}, false, 0},
+		{0, 4, nil, false, false, 0},
+		{1, 4, []int{1}, false, false, 0},
+		{2, 4, []int{1, 1}, true, false, 0},
+		{9, 4, []int{1, 8}, true, false, 0},
+		{65, 4, []int{1, 64}, false, false, 0},
+		{70, 4, []int{1, 64, 5}, true, true, 3},
+		{9, 11001, []int{1, 8}, true, false, 0},
 	}
 	for _, c := range cases {
 		var buf bytes.Buffer
@@ -105,7 +107,7 @@ func TestWriterOrder(t *testing.T) {
 		if c.volatile {
 			flags = FlagVolatile
 		}
-		if got, want := frameSeq(t, buf.Bytes()), wantSeq(7, 8, flags, len(c.batches)); !reflect.DeepEqual(got, want) {
+		if got, want := frameSeq(t, buf.Bytes()), wantSeq(7, 8, flags, len(c.batches), c.pending); !reflect.DeepEqual(got, want) {
 			t.Errorf("%d×%d: frames %v, want %v", c.series, c.n, got, want)
 			continue
 		}
@@ -168,7 +170,7 @@ func TestWriterBoundaryGrid(t *testing.T) {
 	mustOK(t, p.Add(rampSeries(0, MaxGridLen)))
 	mustOK(t, p.Finish(Coverage{Phase: PhaseFinal, SeriesReturned: 1}))
 	mustOK(t, w.End())
-	if got, want := frameSeq(t, buf.Bytes()), wantSeq(1, 2, 0, 1); !reflect.DeepEqual(got, want) {
+	if got, want := frameSeq(t, buf.Bytes()), wantSeq(1, 2, 0, 1, false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("frames %v, want %v", got, want)
 	}
 	for _, f := range splitFrames(t, buf.Bytes()) {

@@ -531,17 +531,19 @@ func frameSeq(t *testing.T, b []byte) []seqItem {
 	return out
 }
 
-// wantSeq is the §3.4 sequence of one GridPart finished after the given data batches, then END.
-func wantSeq(l, d uint32, flags uint16, batches int) []seqItem {
+// wantSeq is the §3.4 sequence of one GridPart finished after the given data batches, then
+// END. pending: the last batch was still pending at Finish, so its labels batch carries LAST;
+// otherwise Finish writes a 0-row labels batch with LAST.
+func wantSeq(l, d uint32, flags uint16, batches int, pending bool) []seqItem {
 	s := []seqItem{{FrameSchema, l, flags}, {FrameMeta, d, flags}, {FrameSchema, d, flags}}
 	for i := 0; i < batches; i++ {
 		lf := flags
-		if i == batches-1 {
+		if pending && i == batches-1 {
 			lf |= FlagLast
 		}
 		s = append(s, seqItem{FrameBatch, l, lf}, seqItem{FrameBatch, d, flags})
 	}
-	if batches == 0 {
+	if !pending {
 		s = append(s, seqItem{FrameBatch, l, flags | FlagLast})
 	}
 	return append(s, seqItem{FrameMeta, d, flags | FlagLast}, seqItem{FrameEnd, 0, 0})

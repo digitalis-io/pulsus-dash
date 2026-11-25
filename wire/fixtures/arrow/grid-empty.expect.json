@@ -1,0 +1,72 @@
+{
+ "parts": [
+  {
+   "labels_part": 1,
+   "data_part": 2,
+   "rank": 0,
+   "grid": {
+    "start_ms": 0,
+    "requested_start_ms": 0,
+    "step_ms": 15000,
+    "len": 5
+   },
+   "result": "metric",
+   "source": "pulsusdb",
+   "unit": null,
+   "planned": null,
+   "series": [],
+   "coverage": [
+    {
+     "phase": 0,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 0,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    },
+    {
+     "phase": 2,
+     "exactness": 4,
+     "rollup_level_s": null,
+     "sampled_ratio": null,
+     "truncated": false,
+     "truncation_reason": null,
+     "dropped_count": null,
+     "series_returned": 0,
+     "rows_read": null,
+     "bytes_read": null,
+     "shards_failed": null,
+     "shards_skipped": null,
+     "retention_floor": null,
+     "excluded_dims": [],
+     "warnings": [],
+     "infos": [],
+     "upstream_query_ids": [],
+     "read_cache": null,
+     "read_cache_through": null,
+     "data_end": null,
+     "upstream_ms": 0,
+     "convert_ms": 0
+    }
+   ],
+   "error": null
+  }
+ ],
+ "errors": []
+}
