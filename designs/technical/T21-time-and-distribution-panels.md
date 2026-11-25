@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-24 |
+| **Version** | 1.1-rc · 2026-11-25 |
 | **Milestone** | M-UI3 |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) |
 | **Source draft** | plans (not tracked) |
@@ -194,15 +194,16 @@ rule that missing data is never healthy.
 
 #### T21-009 — Selection and Inspector
 **MUST** — A click, or Enter or Space on the keyboard-focused segment, emits `select` with the
-`hitTest` result. The board page writes one board selection { panelId, item, seriesKey = item.key,
-fromMs and toMs = **selectedRun**'s interval } (T02-025). It opens the #164 Inspector with
-`StateInspectorTarget`. `selected` is the covering part, labelled "At <time>". `displayed` is what is
+`hitTest` result. The page host writes the [T25](T25-inspector-and-pivots.md) `Selection` { keys =
+[item.key], fromMs and toMs = **selectedRun**'s interval } (T25-006, T02-025). It opens the T25
+Inspector with `{type:'stateRun', target}`, where target is `StateInspectorTarget`. `selected` is the covering part, labelled "At <time>". `displayed` is what is
 drawn at that point (the run, or the reduction mark "n states" with its members), labelled "Shown as",
 and when `reason` is `reduced` it is suffixed "(reduced: <n> parts)". On the next frame `setSelection`
 reaches every panel: the key's series gets a 2 px `focus` ring, the other series dim to the `dimmed`
 alpha (a new token, T01-010), and every time kind draws the selection interval as a `selection` band.
-Esc, or a click on empty plot, clears both the selection and the Inspector target. Nothing is
-persisted. Pivot chips come from `labels` through #164.
+Esc follows the T25-007 ladder: clearing the selection and closing the Inspector are separate steps. A
+click on empty plot clears only the selection. Nothing is persisted. Pivot chips come from `labels`
+through T25 (T25-009, T25-010), and the member lists follow T25-011.
 
 #### T21-010 — Summary facts
 **MUST** — `current` is the highest-ranked display state (T21-005 rank) at the last covered instant
@@ -284,21 +285,21 @@ export interface RunFacts { fromMs: number; toMs: number; text: string /* the di
   runId: string /* `${panelId}:${seriesKey}:${fromMs}`, or `${panelId}:${seriesKey}:r${fromMs}` for a reduction. panelId is a transform parameter from the board page, not a spec field, so ids are unique per panel */;
   members: readonly MemberFacts[] /* a reduction's first 8 member runs; [] for a run */; memberCount: number /* 0 for a run */;
   samples: number }
-export interface MemberFacts { fromMs: number; toMs: number; text: string; state: HealthState | null }
-// The board page exposes resolveMembers(panelId, runId): { texts: string[]; members: MemberFacts[] } (the complete lists)
-// to #164, which calls it when the user opens "+k more". Bounded lists always show "+k more" where k = count − shown.
+// MemberFacts and MemberList come from client/src/inspector/members.ts (T25 §5).
+// The panel registers its resolver with the T25 host (registerMembers); the Inspector calls resolveMembers(panelId, runId)
+// for the complete lists when the user opens "+k more", and shows them per T25-011 (k = count − shown).
 export type HoverItem =    // #154, #161 and the status-history issue add members
   { kind: 'segment'; key: string; atMs: number; part: PartFacts; run: RunFacts;
     displayed: RunFacts; reason: 'covers' | 'reduced' };
 // HoverEvent gains item: HoverItem | null.
-export interface SelectEvent { item: HoverItem; source: 'pointer' | 'keyboard' }   // replaces the reserved type
-export interface Selection { seriesKey: string | null; fromMs: number; toMs: number }
+export interface SelectEvent { source: 'pointer' | 'keyboard'; item: HoverItem | null }   // T25 §5: item null = empty click
+// Selection is T25's { keys: string[]; fromMs: number | null; toMs: number | null } (client/src/inspector/).
 // ChartFrame gains setSelection(s: Selection | null): void (every kind). FrameSummary gains facts.
 export interface SummaryFacts { subject: string; current: { text: string; series: string } | null;
   change: { series: string; from: string; to: string; atMs: number } | null;
   extent: null; baselineRatio: number | null /* null until baselines (ADR-0012) */ }
 
-// The Inspector target handed to #164 (its union MUST include this member)
+// The Inspector target handed to T25 as the InspectorTarget member {type:'stateRun'; target: StateInspectorTarget}
 export interface StateInspectorTarget { kind: 'stateRun'; panelId: string; seriesKey: string;
   labels: Readonly<Record<string, string>>; query: { lang: 'promql' | 'logql'; expanded: string };
   atMs: number;            // pointer: the clicked instant; keyboard: the focused mark's start
@@ -436,7 +437,7 @@ How this design relates to the other issues:
 | #159 | Uses the T21-001 lint |
 | #160 | Consumes T21-010 |
 | #161 | Depends on I-A |
-| #164 | MUST accept `StateInspectorTarget` |
+| #164 | MUST accept `StateInspectorTarget`: [T25](T25-inspector-and-pivots.md) `{type:'stateRun', target}` |
 
 **IDs.** This part uses VIZ-086 and T21-001 to T21-011. #154 owns T21-012 to T21-029, and #161 owns
 T21-030 to T21-039.
@@ -460,3 +461,4 @@ None.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-24 | #150 |
+| 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): T21-009 writes the T25 `Selection` and opens the Inspector with `{type:'stateRun', target}`; Esc per T25-007, and an empty click clears only the selection; members per T25-011. §5: T25 `Selection`; nullable `SelectEvent.item`; `MemberFacts` from `inspector/members.ts` |

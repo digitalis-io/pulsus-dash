@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-23 |
+| **Version** | 1.5-rc · 2026-11-25 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -248,6 +248,7 @@ Perspective user starts in Compact; Wall mode renders 13 px body text at 20.8 px
 | Traffic | Edge particles |
 | Loading | No spinners on data; thin progress shimmer on the viewport edge only after 300 ms |
 | Semantic-zoom flight (3D) | Continuous, each leg ≤ 250 ms, ease-out ([15](15-estate-navigation.md) EST-060) |
+| Floating panel open / close / content change | 200 / 150 / 150 ms crossfade, ease-out; reduced motion: instant ([T25](../technical/T25-inspector-and-pivots.md#t25-013--look-and-motion)) |
 | `prefers-reduced-motion` | Instant cuts; particles replaced by static dashes with thickness; estate opens in its 2D equivalent ([15](15-estate-navigation.md) EST-063) |
 
 #### VL-014 — Purposeful motion only
@@ -257,7 +258,8 @@ Motion MUST be limited to the kinds in the table, with the durations and rates s
 MUST be no bouncing and no decorative animation.
 
 *Acceptance:* Frame captures show camera transitions ≤ 250 ms with ease-out, refresh crossfades of
-150 ms ± 1 frame, alert rings pulsing at 1 Hz, and no other animation.
+150 ms ± 1 frame, alert rings pulsing at 1 Hz, floating panels opening in 200 ms and closing or
+changing content in 150 ms with ease-out, and no other animation.
 
 #### VL-015 — No spinners on data
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -535,3 +537,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19): VL-017 adds the 56 px sidebar top block aligned with the header, title truncation before any header control moves, and the time trigger's absolute window from 1520 px |
 | 1.3-rc | 2026-11-20 | #58, owner decision 2026-11-20: VL-002 gives log-level series the fixed colours of the new Table 8-1a (error `series-6`, warn `series-2`, info `series-1`, debug `series-5`, trace `series-4`; key hash for everything else); acceptance extended |
 | 1.4-rc | 2026-11-23 | #66 Part B: Table 8-1a adds `unknown` → `series-3`; the `level-*` tokens hold the table's hues (Q2) |
+| 1.5-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): §6 motion row for floating panels (open / close / content change 200 / 150 / 150 ms, ease-out; reduced motion instant); VL-014's acceptance adds floating panels |

@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Inspector: a floating sheet for the p99 latency point on the board checkout overview, with pivots and staged actions</title>
+<desc id="d">Mockup 41 (T25, #164). Dark theme, 1440 by 900. The board checkout overview with the Inspector open on fixture P: the p99 latency panel, the series job shop/checkout, quantile 0.99, clicked at 13:41:20, value 2.84 s. The origin panel has a 2 px focus outline at a 2 px offset. The selected series is drawn last over a focus underlay and the other two series are dimmed to 0.35 alpha. The Inspector floats over the right of the content column, inset 12 px, 360 px wide, as a translucent surface-float sheet with a background blur, a 1 px hairline, one shadow and a 10 px radius. Its sections in order: header with the title p99 latency, the time 13:41:20.000 and the collapse and close buttons; the value 2.84 s with a copy button; details with Raw 2.84 and the time in UTC; labels job shop/checkout and quantile 0.99; pivots with two enabled chips, Explore and Logs plus or minus 1 min, each with its Context line, and four disabled dashed chips, Traces, Profiles, Entity and Label filter, with their reasons in visible text; the query histogram_quantile(0.99, x) in PromQL with edit and copy; and the actions Pin, Create alert and Ask AI, disabled with their M-UI4 reasons. Callouts: 1 material, 2 disclosed pivots, 3 the Esc ladder, 4 collapse.</desc>
+<defs>
+<style>
+text{font-family:Inter, system-ui, sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB;font-size:13px}
+.m{font-family:JetBrains Mono, ui-monospace, monospace}
+.mu{fill:#8A919C} .ac{fill:#5B9BFF}
+.b{font-weight:600} .sb{font-weight:500}
+.s11{font-size:11px} .s12{font-size:12px} .s13{font-size:13px} .s16{font-size:16px} .s20{font-size:20px} .s32{font-size:32px}
+.e{text-anchor:end} .c{text-anchor:middle}
+.h{font-size:11px;font-weight:600;letter-spacing:0.66px;fill:#8A919C}
+.ctl{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.pn{fill:#12151A;stroke:#FFFFFF14;stroke-width:1}
+.chip{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.chipx{fill:none;stroke:#8A919C;stroke-width:1;stroke-dasharray:3 3}
+.rule{stroke:#FFFFFF14;stroke-width:1}
+.grid{stroke:#FFFFFF0A;stroke-width:1}
+.co{stroke:#5B9BFF;stroke-width:1.5;stroke-dasharray:4 3;fill:none}
+.cn{fill:#5B9BFF;font-size:12px;font-weight:600}
+</style>
+<filter id="pop" x="-20%" y="-10%" width="140%" height="120%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/></filter>
+<clipPath id="p1clip"><rect x="300" y="112" width="512" height="236"/></clipPath>
+</defs>
+<rect width="1440" height="900" fill="#0B0D10"/>
+<g id="sidebar">
+<rect x="0" y="0" width="240" height="900" fill="#12151A"/>
+<line x1="239.5" y1="0" x2="239.5" y2="900" stroke="#FFFFFF14"/>
+<path d="M20,28 L25,28 L28,20 L32,36 L35,28 L40,28" fill="none" stroke="#5B9BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="25" class="s13 b">Demo Org</text>
+<text x="56" y="43" class="s12 mu">Tenant:</text><text x="100" y="43" class="s12">acme</text><text x="136" y="43" class="s11 mu">▾</text>
+<line x1="0" y1="55.5" x2="240" y2="55.5" stroke="#FFFFFF14"/>
+<rect x="8" y="68" width="224" height="32" rx="6" fill="#191D24"/><rect x="8" y="68" width="2" height="32" fill="#5B9BFF"/>
+<text x="20" y="88" class="s13 ac">▦</text><text x="44" y="88" class="s13 sb">Boards</text>
+<text x="16" y="124" class="s11 mu b">Explore</text>
+<text x="44" y="148" class="s13 mu">⌁</text><text x="64" y="148" class="s13 mu">Metrics</text>
+<text x="44" y="184" class="s13 mu">≡</text><text x="64" y="184" class="s13 mu">Logs</text>
+<text x="16" y="220" class="s11 mu b">Starred</text>
+<text x="32" y="244" class="s13 ac">★</text><text x="52" y="244" class="s13 mu">checkout overview</text>
+<text x="16" y="280" class="s11 mu b">Recent</text>
+<text x="32" y="304" class="s13 mu">checkout overview</text>
+<line x1="0" y1="820.5" x2="240" y2="820.5" stroke="#FFFFFF14"/>
+<text x="20" y="848" class="s13 mu">⚙</text><text x="44" y="848" class="s13 mu">Admin</text>
+<text x="20" y="884" class="s13 mu">⇤</text><text x="44" y="884" class="s13 mu">Collapse sidebar</text>
+</g>
+<g id="page-header">
+<rect x="240" y="0" width="1200" height="56" fill="#12151A"/>
+<line x1="240" y1="55.5" x2="1440" y2="55.5" stroke="#FFFFFF14"/>
+<text x="264" y="33" class="s13 mu">Boards</text><text x="314" y="33" class="s13 mu">/</text>
+<text x="330" y="35" class="s20 b">checkout overview</text>
+<text x="520" y="35" class="s16 ac">★</text>
+<rect x="948" y="12" width="280" height="32" rx="6" class="ctl"/>
+<text x="960" y="33" class="s13 mu">◷</text><text x="980" y="33" class="s13 sb">Last 1 hour</text>
+<text x="1064" y="33" class="s12 m mu">12:44 – 13:44 UTC</text><text x="1214" y="33" class="s11 mu e">▾</text>
+<rect x="1236" y="12" width="120" height="32" rx="6" class="ctl"/>
+<text x="1256" y="33" class="s13 mu c">⟳</text>
+<line x1="1276.5" y1="12" x2="1276.5" y2="44" stroke="#FFFFFF14"/>
+<circle cx="1292" cy="28" r="4" fill="#5B9BFF"/><text x="1304" y="33" class="s13">30s</text>
+<text x="1346" y="33" class="s11 mu e">▾</text>
+<circle cx="1402" cy="28" r="14" fill="#7AA2D6"/><text x="1402" y="32" class="s12 b c" fill="#0B0D10">AA</text>
+</g>
+<g id="panel-p1">
+<rect x="264" y="80" width="568" height="300" rx="6" class="pn"/>
+<rect x="261" y="77" width="574" height="306" rx="8" fill="none" stroke="#5B9BFF" stroke-width="2"/>
+<text x="280" y="104" class="s13 sb">p99 latency</text><text x="816" y="104" class="s12 mu e">⋯</text>
+<line x1="300" y1="340.0" x2="812" y2="340.0" class="grid"/><text x="294" y="344.0" class="s11 mu e m">0 s</text>
+<line x1="300" y1="285.0" x2="812" y2="285.0" class="grid"/><text x="294" y="289.0" class="s11 mu e m">1 s</text>
+<line x1="300" y1="230.0" x2="812" y2="230.0" class="grid"/><text x="294" y="234.0" class="s11 mu e m">2 s</text>
+<line x1="300" y1="175.0" x2="812" y2="175.0" class="grid"/><text x="294" y="179.0" class="s11 mu e m">3 s</text>
+<line x1="300" y1="120.0" x2="812" y2="120.0" class="grid"/><text x="294" y="124.0" class="s11 mu e m">4 s</text>
+<text x="300.0" y="358" class="s11 mu c m">12:44</text>
+<text x="436.5" y="358" class="s11 mu c m">13:00</text>
+<text x="564.5" y="358" class="s11 mu c m">13:15</text>
+<text x="692.5" y="358" class="s11 mu c m">13:30</text>
+<g clip-path="url(#p1clip)">
+<path d="M300.0,303.7 L308.5,305.3 L317.1,305.2 L325.6,304.2 L334.1,304.2 L342.7,306.3 L351.2,309.0 L359.7,310.0 L368.3,308.8 L376.8,306.9 L385.3,306.5 L393.9,307.4 L402.4,307.9 L410.9,306.5 L419.5,303.8 L428.0,302.0 L436.5,302.5 L445.1,304.3 L453.6,305.3 L462.1,304.7 L470.7,303.7 L479.2,304.4 L487.7,306.9 L496.3,309.3 L504.8,309.7 L513.3,308.1 L521.9,306.7 L530.4,306.9 L538.9,308.0 L547.5,308.0 L556.0,306.0 L564.5,303.2 L573.1,302.0 L581.6,303.1 L590.1,304.7 L598.7,305.1 L607.2,304.1 L615.7,303.4 L624.3,304.8 L632.8,307.6 L641.3,309.5 L649.9,309.2 L658.4,307.6 L666.9,306.7 L675.5,307.4 L684.0,308.5 L692.5,307.9 L701.1,305.3 L709.6,302.8 L718.1,302.3 L726.7,303.7 L735.2,305.0 L743.7,304.7 L752.3,303.5 L760.8,303.3 L769.3,305.3 L777.9,308.1 L786.4,309.5 L794.9,308.6 L803.5,307.1 L812.0,306.9" fill="none" stroke="#C9A36B" stroke-width="1.5" opacity="0.35"/>
+<path d="M300.0,293.5 L308.5,292.3 L317.1,292.7 L325.6,295.3 L334.1,298.1 L342.7,298.5 L351.2,296.2 L359.7,293.6 L368.3,292.9 L376.8,294.0 L385.3,294.4 L393.9,292.4 L402.4,289.3 L410.9,287.8 L419.5,289.2 L428.0,292.0 L436.5,293.5 L445.1,292.8 L453.6,291.8 L462.1,293.0 L470.7,296.1 L479.2,298.5 L487.7,298.1 L496.3,295.5 L504.8,293.4 L513.3,293.5 L521.9,294.7 L530.4,294.4 L538.9,291.7 L547.5,288.7 L556.0,288.0 L564.5,290.0 L573.1,292.5 L581.6,293.1 L590.1,292.0 L598.7,291.6 L607.2,293.5 L615.7,296.8 L624.3,298.6 L632.8,297.4 L641.3,294.8 L649.9,293.5 L658.4,294.2 L666.9,295.2 L675.5,294.1 L684.0,290.9 L692.5,288.3 L701.1,288.4 L709.6,290.8 L718.1,292.7 L726.7,292.5 L735.2,291.3 L743.7,291.6 L752.3,294.3 L760.8,297.5 L769.3,298.4 L777.9,296.6 L786.4,294.3 L794.9,293.8 L803.5,295.0 L812.0,295.5" fill="none" stroke="#8FBF8F" stroke-width="1.5" opacity="0.35"/>
+<path d="M300.0,278.8 L308.5,277.0 L317.1,278.4 L325.6,280.6 L334.1,280.6 L342.7,278.7 L351.2,277.7 L359.7,279.9 L368.3,284.2 L376.8,287.1 L385.3,286.7 L393.9,284.5 L402.4,283.6 L410.9,285.2 L419.5,286.9 L428.0,285.9 L436.5,282.0 L445.1,278.3 L453.6,277.5 L462.1,279.4 L470.7,280.9 L479.2,280.0 L487.7,277.9 L496.3,277.7 L504.8,280.8 L513.3,285.0 L521.9,287.0 L530.4,285.8 L538.9,283.8 L547.5,284.0 L556.0,286.1 L564.5,287.3 L573.1,285.3 L581.6,281.1 L590.1,278.0 L598.7,278.2 L607.2,280.2 L615.7,280.9 L624.3,279.1 L632.8,277.2 L641.3,277.9 L649.9,281.7 L658.4,285.6 L666.9,286.5 L675.5,284.9 L684.0,283.5 L692.5,284.6 L701.1,287.0 L709.6,287.4 L718.1,284.5 L726.7,280.2 L735.2,278.1 L743.7,279.1 L752.3,256.8 L760.8,232.4 L769.3,206.0 L777.9,180.5 L786.4,182.3 L789.2,183.8 L794.9,186.4 L803.5,189.6 L812.0,189.6" fill="none" stroke="#5B9BFF" stroke-width="5.5" stroke-linejoin="round" opacity="0.5"/>
+<path d="M300.0,278.8 L308.5,277.0 L317.1,278.4 L325.6,280.6 L334.1,280.6 L342.7,278.7 L351.2,277.7 L359.7,279.9 L368.3,284.2 L376.8,287.1 L385.3,286.7 L393.9,284.5 L402.4,283.6 L410.9,285.2 L419.5,286.9 L428.0,285.9 L436.5,282.0 L445.1,278.3 L453.6,277.5 L462.1,279.4 L470.7,280.9 L479.2,280.0 L487.7,277.9 L496.3,277.7 L504.8,280.8 L513.3,285.0 L521.9,287.0 L530.4,285.8 L538.9,283.8 L547.5,284.0 L556.0,286.1 L564.5,287.3 L573.1,285.3 L581.6,281.1 L590.1,278.0 L598.7,278.2 L607.2,280.2 L615.7,280.9 L624.3,279.1 L632.8,277.2 L641.3,277.9 L649.9,281.7 L658.4,285.6 L666.9,286.5 L675.5,284.9 L684.0,283.5 L692.5,284.6 L701.1,287.0 L709.6,287.4 L718.1,284.5 L726.7,280.2 L735.2,278.1 L743.7,279.1 L752.3,256.8 L760.8,232.4 L769.3,206.0 L777.9,180.5 L786.4,182.3 L789.2,183.8 L794.9,186.4 L803.5,189.6 L812.0,189.6" fill="none" stroke="#7AA2D6" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+<line x1="789.2" y1="112" x2="789.2" y2="340" stroke="#8A919C" stroke-width="1" stroke-dasharray="3 3"/>
+<circle cx="789.2" cy="183.8" r="4.5" fill="#0B0D10" stroke="#7AA2D6" stroke-width="2"/>
+<text x="789.2" y="108" class="s11 m c">13:41:20</text>
+<circle cx="284" cy="370" r="4" fill="#7AA2D6"/><text x="294" y="374" class="s12">shop/checkout</text>
+<circle cx="404" cy="370" r="4" fill="#C9A36B" opacity="0.35"/><text x="414" y="374" class="s12 mu">shop/cart</text>
+<circle cx="494" cy="370" r="4" fill="#8FBF8F" opacity="0.35"/><text x="504" y="374" class="s12 mu">shop/payments</text>
+</g>
+<g id="panel-p2">
+<rect x="848" y="80" width="568" height="300" rx="6" class="pn"/>
+<text x="864" y="104" class="s13 sb">Request rate</text>
+<path d="M864.0,336.0 L873.0,333.3 L882.0,331.1 L891.0,329.6 L900.0,329.0 L909.0,329.3 L918.0,330.1 L927.0,331.2 L936.0,332.1 L945.0,332.7 L954.0,332.8 L963.0,332.5 L972.0,332.1 L981.0,331.9 L990.0,332.3 L999.0,333.4 L1008.0,335.2 L1017.0,337.5 L1026.0,340.1 L1035.0,342.4 L1044.0,344.0 L1053.0,344.7 L1062.0,344.4 L1071.0,343.2 L1080.0,341.6 L1089.0,339.7 L1098.0,338.1 L1107.0,337.0 L1116.0,336.4 L1125.0,336.3 L1134.0,336.4 L1143.0,336.4 L1152.0,335.9 L1161.0,334.8 L1170.0,333.2 L1179.0,331.3 L1188.0,329.4 L1197.0,327.9 L1206.0,327.2 L1215.0,327.4 L1224.0,328.7 L1233.0,330.7 L1242.0,333.1 L1251.0,335.5 L1260.0,337.5 L1269.0,338.7 L1278.0,339.3 L1287.0,339.3 L1296.0,339.0 L1305.0,338.8 L1314.0,338.9 L1323.0,339.5 L1332.0,340.5 L1341.0,341.7 L1350.0,342.8 L1359.0,343.4 L1368.0,343.2 L1377.0,342.1 L1386.0,340.1 L1395.0,337.5 L1404.0,334.8" fill="none" stroke="#7AA2D6" stroke-width="1.5"/>
+</g>
+<g id="panel-logs">
+<rect x="264" y="396" width="1152" height="480" rx="6" class="pn"/>
+<text x="280" y="420" class="s13 sb">checkout logs</text><text x="400" y="420" class="s12 mu m">{service_name="checkout"}</text>
+<rect x="280" y="436" width="2" height="14" fill="#C98F8F"/>
+<text x="290" y="448" class="s12 m mu">13:41:22.118</text><text x="392" y="448" class="s12 m" fill="#C98F8F">ERROR</text><text x="446" y="448" class="s12 m">payment authorisation timed out after 2.8 s</text>
+<rect x="280" y="457" width="2" height="14" fill="#C9A36B"/>
+<text x="290" y="469" class="s12 m mu">13:41:21.904</text><text x="392" y="469" class="s12 m" fill="#C9A36B">WARN</text><text x="446" y="469" class="s12 m">retrying payment call (attempt 2 of 3)</text>
+<rect x="280" y="478" width="2" height="14" fill="#C98F8F"/>
+<text x="290" y="490" class="s12 m mu">13:41:20.377</text><text x="392" y="490" class="s12 m" fill="#C98F8F">ERROR</text><text x="446" y="490" class="s12 m">payment authorisation timed out after 2.7 s</text>
+<rect x="280" y="499" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="511" class="s12 m mu">13:41:19.802</text><text x="392" y="511" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="511" class="s12 m">order accepted, items=3</text>
+<rect x="280" y="520" width="2" height="14" fill="#C9A36B"/>
+<text x="290" y="532" class="s12 m mu">13:41:18.240</text><text x="392" y="532" class="s12 m" fill="#C9A36B">WARN</text><text x="446" y="532" class="s12 m">slow response from payments: 2.6 s</text>
+<rect x="280" y="541" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="553" class="s12 m mu">13:41:16.551</text><text x="392" y="553" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="553" class="s12 m">order accepted, items=1</text>
+<rect x="280" y="562" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="574" class="s12 m mu">13:41:15.009</text><text x="392" y="574" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="574" class="s12 m">cart priced, items=2</text>
+<rect x="280" y="583" width="2" height="14" fill="#C9A36B"/>
+<text x="290" y="595" class="s12 m mu">13:41:12.730</text><text x="392" y="595" class="s12 m" fill="#C9A36B">WARN</text><text x="446" y="595" class="s12 m">slow response from payments: 2.4 s</text>
+<rect x="280" y="604" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="616" class="s12 m mu">13:41:10.415</text><text x="392" y="616" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="616" class="s12 m">order accepted, items=4</text>
+<rect x="280" y="625" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="637" class="s12 m mu">13:41:08.996</text><text x="392" y="637" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="637" class="s12 m">cart priced, items=1</text>
+<rect x="280" y="646" width="2" height="14" fill="#C98F8F"/>
+<text x="290" y="658" class="s12 m mu">13:41:06.183</text><text x="392" y="658" class="s12 m" fill="#C98F8F">ERROR</text><text x="446" y="658" class="s12 m">payment authorisation timed out after 2.9 s</text>
+<rect x="280" y="667" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="679" class="s12 m mu">13:41:03.620</text><text x="392" y="679" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="679" class="s12 m">order accepted, items=2</text>
+<rect x="280" y="688" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="700" class="s12 m mu">13:41:01.274</text><text x="392" y="700" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="700" class="s12 m">cart priced, items=5</text>
+<rect x="280" y="709" width="2" height="14" fill="#C9A36B"/>
+<text x="290" y="721" class="s12 m mu">13:40:58.811</text><text x="392" y="721" class="s12 m" fill="#C9A36B">WARN</text><text x="446" y="721" class="s12 m">retrying payment call (attempt 2 of 3)</text>
+<rect x="280" y="730" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="742" class="s12 m mu">13:40:56.042</text><text x="392" y="742" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="742" class="s12 m">order accepted, items=1</text>
+<rect x="280" y="751" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="763" class="s12 m mu">13:40:53.507</text><text x="392" y="763" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="763" class="s12 m">cart priced, items=3</text>
+<rect x="280" y="772" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="784" class="s12 m mu">13:40:50.938</text><text x="392" y="784" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="784" class="s12 m">order accepted, items=2</text>
+<rect x="280" y="793" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="805" class="s12 m mu">13:40:48.366</text><text x="392" y="805" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="805" class="s12 m">cart priced, items=1</text>
+<rect x="280" y="814" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="826" class="s12 m mu">13:40:45.120</text><text x="392" y="826" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="826" class="s12 m">order accepted, items=3</text>
+<rect x="280" y="835" width="2" height="14" fill="#7AA2D6"/>
+<text x="290" y="847" class="s12 m mu">13:40:42.874</text><text x="392" y="847" class="s12 m" fill="#7AA2D6">INFO</text><text x="446" y="847" class="s12 m">cart priced, items=2</text>
+</g>
+<g id="inspector">
+<rect x="1068" y="68" width="360" height="820" rx="10" fill="#12151A" fill-opacity="0.94" stroke="#FFFFFF14" stroke-width="1" filter="url(#pop)"/>
+<text x="1088" y="106" class="s16 b">p99 latency</text>
+<text x="1088" y="126" class="s12 m mu">13:41:20.000</text>
+<rect x="1344" y="88" width="28" height="28" rx="6" class="ctl"/><text x="1358" y="107" class="s13 mu c">⇥</text>
+<rect x="1380" y="88" width="28" height="28" rx="6" class="ctl"/><text x="1394" y="107" class="s16 mu c">×</text>
+<line x1="1068" y1="142.5" x2="1428" y2="142.5" class="rule"/>
+<text x="1088" y="186" class="s32 b">2.84</text><text x="1168" y="186" class="s16 mu">s</text>
+<rect x="1380" y="160" width="28" height="28" rx="6" class="ctl"/><text x="1394" y="179" class="s13 mu c">⧉</text>
+<line x1="1068" y1="202.5" x2="1428" y2="202.5" class="rule"/>
+<text x="1088" y="222" class="h">DETAILS</text>
+<text x="1088" y="242" class="s12 mu">Raw</text><text x="1160" y="242" class="s12 m">2.84</text>
+<text x="1088" y="260" class="s12 mu">Time</text><text x="1160" y="260" class="s12 m">2026-11-19 13:41:20.000 UTC</text>
+<line x1="1068" y1="276.5" x2="1428" y2="276.5" class="rule"/>
+<text x="1088" y="296" class="h">LABELS</text>
+<rect x="1380" y="282" width="28" height="24" rx="6" class="ctl"/><text x="1394" y="299" class="s12 mu c">⧉</text>
+<text x="1088" y="316" class="s12 m mu">job</text><text x="1160" y="316" class="s12 m">shop/checkout</text>
+<text x="1088" y="334" class="s12 m mu">quantile</text><text x="1160" y="334" class="s12 m">0.99</text>
+<line x1="1068" y1="350.5" x2="1428" y2="350.5" class="rule"/>
+<text x="1088" y="370" class="h">PIVOTS</text>
+<rect x="1088" y="380" width="112" height="28" rx="14" class="chip"/>
+<text x="1100" y="399" class="s13 ac">⌁</text><text x="1120" y="399" class="s13">Explore</text><text x="1188" y="399" class="s12 mu e">↗</text>
+<text x="1088" y="424" class="s12 mu">Carried: time, filters · Not carried yet: baseline</text>
+<rect x="1088" y="434" width="140" height="28" rx="14" class="chip"/>
+<text x="1100" y="453" class="s13 ac">≡</text><text x="1120" y="453" class="s13">Logs ±1 min</text><text x="1216" y="453" class="s12 mu e">↗</text>
+<text x="1088" y="478" class="s12 mu">Carried: time, filters · Not carried yet: baseline</text>
+<rect x="1088.5" y="490.5" width="83" height="27" rx="14" class="chipx"/>
+<text x="1100" y="509" class="s13 mu">⋔</text><text x="1120" y="509" class="s13 mu">Traces</text>
+<rect x="1180.5" y="490.5" width="91" height="27" rx="14" class="chipx"/>
+<text x="1192" y="509" class="s13 mu">▤</text><text x="1212" y="509" class="s13 mu">Profiles</text>
+<rect x="1280.5" y="490.5" width="79" height="27" rx="14" class="chipx"/>
+<text x="1292" y="509" class="s13 mu">◇</text><text x="1312" y="509" class="s13 mu">Entity</text>
+<rect x="1088.5" y="526.5" width="111" height="27" rx="14" class="chipx"/>
+<text x="1100" y="545" class="s13 mu">⊕</text><text x="1120" y="545" class="s13 mu">Label filter</text>
+<text x="1088" y="572" class="s12 mu">Traces: Traces are not available yet</text>
+<text x="1088" y="588" class="s12 mu">Profiles: Profiles are not available yet</text>
+<text x="1088" y="604" class="s12 mu">Entity: The entity catalogue is not available yet</text>
+<text x="1088" y="620" class="s12 mu">Label filter: Filtering Explore by a label arrives</text>
+<text x="1088" y="636" class="s12 mu">with label filters</text>
+<line x1="1068" y1="652.5" x2="1428" y2="652.5" class="rule"/>
+<text x="1088" y="672" class="h">QUERY</text><text x="1140" y="672" class="s11 mu">PromQL</text>
+<rect x="1088" y="682" width="320" height="36" rx="6" fill="#191D24" stroke="#FFFFFF14"/>
+<text x="1098" y="705" class="s12 m">histogram_quantile(0.99, x)</text>
+<text x="1370" y="705" class="s13 mu c">✎</text><text x="1394" y="705" class="s13 mu c">⧉</text>
+<line x1="1068" y1="734.5" x2="1428" y2="734.5" class="rule"/>
+<text x="1088" y="754" class="h">ACTIONS</text>
+<rect x="1088.5" y="764.5" width="69" height="27" rx="6" class="chipx"/><text x="1123.0" y="783" class="s13 mu c">Pin</text>
+<rect x="1166.5" y="764.5" width="107" height="27" rx="6" class="chipx"/><text x="1220.0" y="783" class="s13 mu c">Create alert</text>
+<rect x="1282.5" y="764.5" width="95" height="27" rx="6" class="chipx"/><text x="1330.0" y="783" class="s13 mu c">Ask AI ✦</text>
+<text x="1088" y="810" class="s12 mu">Pin: Available with investigations (M-UI4)</text>
+<text x="1088" y="826" class="s12 mu">Create alert: Available with alerting (M-UI4)</text>
+<text x="1088" y="842" class="s12 mu">Ask AI: Available with the AI assistant (M-UI4)</text>
+</g>
+<g id="callouts">
+<rect x="860" y="132" width="196" height="40" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="868" y="149" class="s12">① Floating translucent sheet:</text>
+<text x="868" y="165" class="s12">blur, hairline, radius 10</text>
+<polyline points="1056,152.0 1068,156" class="co"/>
+<rect x="860" y="452" width="196" height="40" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="868" y="469" class="s12">② Pivots: Context carried,</text>
+<text x="868" y="485" class="s12">reasons disclosed</text>
+<polyline points="1056,472.0 1068,468" class="co"/>
+<rect x="860" y="196" width="196" height="40" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="868" y="213" class="s12">③ Esc: kind pre → clear</text>
+<text x="868" y="229" class="s12">selection → close → kind post</text>
+<polyline points="1056,216.0 1060,216 1060,78 1394,78 1394,88" class="co"/>
+<rect x="860" y="260" width="196" height="24" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="868" y="277" class="s12">④ Collapse to a 40 px tab</text>
+<polyline points="1056,272.0 1056,272 1056,74 1358,74 1358,88" class="co"/>
+</g>
+</svg>

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-21 |
+| **Version** | 1.4-rc · 2026-11-25 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
@@ -461,6 +461,11 @@ time change from a brush MUST be undoable ([03](03-interaction-model.md) §9).
 *Acceptance:* For each row, a scripted test performs the action and asserts each Context member's
 resulting value; brushing then `⌘Z` restores the previous window.
 
+*Pivot row (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-010--pivot-context)):* per T25-010. Entity set and baseline travel as
+`ContextSearch` members from the issues that add them: the T12 entity set (Epic #6) and I6. Until then
+the Context line names them as not carried; the acceptance is C1 now and C3–C4 at delivery
+(`unit:pivot-context`).
+
 #### IA-027 — Label ⇄ attribute translation
 **MUST** · M-UI2 · SRE, Engineer, Platform, Admin
 
@@ -472,6 +477,9 @@ OTLP translation rules PulsusDB implements, and MUST be editable per tenant.
 *Acceptance:* A filter `service.name=checkout` on traces pivots to metrics as `job=~".*/checkout"`
 (or the tenant's mapped form) and to logs as `service_name="checkout"`; adding a custom mapping
 changes the translation on the next pivot.
+
+*Staging (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-010--pivot-context)):* interim built-in seed (I1); I5 (M-UI2) adds the
+tenant table, with the acceptance unchanged.
 
 ## 6. Requirements summary
 
@@ -541,3 +549,4 @@ changes the translation on the next pivot.
 | 1.1-rc | 2026-11-19 | Decisions D7–D9 (roadmap Q13): §4 adds the Explore and Boards-list routes; §3.1 becomes the application layout with mockup 34; IA-016 (application layout), IA-020 (time range in the page header) and IA-021 (left navigation sidebar) revised in place; IA-028 Time Ribbon in Space scenes added (M-UI3); IA-003, IA-014 and the Scene definition no longer make Boards and workbenches GPU scenes; IA-018 Context badge sits in the page header; review r3: third-party product names replaced by generic wording |
 | 1.2-rc | 2026-11-20 | #57, owner-approved shell (2026-11-19, mockup 35): §3.1 cites mockup 35 and its table and diagram show the tenant switcher, the Starred and Recent groups, the breadcrumb and star toggle; IA-021 revised in place (org and tenant switcher, Starred, Recent, Admin and the collapse control in the footer, a data-source status line once a health call exists); IA-016 header left is breadcrumb, title and star toggle, and the command palette entry appears once the palette exists; acceptance criteria extended to match |
 | 1.3-rc | 2026-11-21 | #61 Part C: IA-021 revised in place: Recent is the last five boards the user opened, and Starred and Recent are stored per user by the server (the same after reload, in every browser and under every tenant), with the ordering guarantee of decision D-RECENT-window; its acceptance adds a fresh browser profile. §4 board pattern adds `f`, `collapse` and `expand`, with a note on their form and the 4 096-byte link budget |
+| 1.4-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): IA-026 pivot row note (per T25-010; entity set and baseline travel as `ContextSearch` members from the T12 entity-set issue and I6, named as not carried until then; acceptance C1 now, C3–C4 at delivery); IA-027 staging note (interim built-in seed in I1, the tenant table in I5, acceptance unchanged) |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-24 |
+| **Version** | 1.1-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (stat delta), M-UI2 (bar chart), M-UI5 (pie, stat grid) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md) (no new ADR in this document) |
 | **Source draft** | plans/151/plan.md (not tracked) |
@@ -90,9 +90,9 @@ Quoted n/a lines are tooltip text.
 | pie | n/a (as above) | n/a "A pie has no axis to brush" | n/a "Compare parts in the table view" | name, value, percent, state, drawn, shown as |
 | stat | sparkline value at the crosshair instant | grid: tiles in the rectangle; single: n/a "One value: nothing to brush" | delta (T22-012) | name, value, baseline, delta, state, drawn, shown as |
 
-- **Inspector and pivot chips (#164):** Click or Enter emits `InspectTarget` to #164's host. #164 owns the host, the chips and the shared payload, and `InspectTarget` maps onto that payload field by field. Acceptance once #164 lands (`e2e:bars-inspect`; tiles in I2, wedges in I3):
+- **Inspector and pivot chips ([T25](T25-inspector-and-pivots.md), #164):** Click or Enter sends `{type:'mark', target}` (target = `InspectTarget`) to the T25 host's `inspect`. T25 owns the host, the chips and the shared payload, and `InspectTarget` travels unchanged under `type:'mark'` (T25-002). Aggregate members are listed per T25-011. Acceptance once T25 I1 lands (`e2e:bars-inspect`; tiles in I2, wedges in I3):
   - the Inspector shows the labels, the value with its unit, the state and the baseline;
-  - each label pair is a chip that opens Explore with `{k="v"}` added.
+  - each label pair is a chip that opens Explore with `{k="v"}` added. This label chip is T25's Label filter chip, so this part of `e2e:bars-inspect` needs T25 I3 (label filters in Explore).
 - **Anomaly toggle:** a VL-004 glow on marks with `anomaly` > 0. Without scores, the tooltip reads `No anomaly scores for this query`.
 
 ### 4.4 Design rules
@@ -119,7 +119,7 @@ Quoted n/a lines are tooltip text.
 **MUST** — A click or Enter on a mark MUST set the Context selection to the mark's key (T22-008) and send `InspectTarget` to the #164 Inspector. On a bar or wedge it MUST also apply the mark's effective-label pair: if it is already a board filter it is removed; otherwise it is set, replacing any filter with the same key. The board re-runs once. With no pair the click does not filter, and the tooltip says `Can't filter: no category label` or `Can't filter: <label> missing on this series`. On Explore the tooltip says `Filters apply on boards`. **Aggregates:** clicking `other (n)` sets the Context selection to all member keys and sends `InspectTarget` with `members`. It applies **no** filter, and the tooltip says `Can't filter: other (n) — pick a member from the legend or table`. Each member entry in the legend and each table row is clickable and acts as that member's own click
 
 #### T22-008 — Selection
-**MUST** — Panels MUST use the shared Context selection (T02 §4.6, T02-025), which is a set of keys; #150's T21-009 board store holds it. Key mapping: a mark's key is its source series key (`key_hash`). That same key is the `PanelRows` row key, `InspectTarget.mark.key` and #164's payload series key. A click writes {key}, a brush writes the covered keys, and a selection written by any other source (a line panel, a table row, the Inspector) is read the same way. A mark matches only when its key is in the set; labels are never compared. **An empty selection (the initial state, and after Esc) MUST leave every mark undimmed.** Otherwise, marks that do not match are drawn at `dim` alpha. An aggregate matches when **any** of its member keys is in the set
+**MUST** — Panels MUST use the shared Context selection (T02 §4.6, T02-025), which is a set of keys; #150's T21-009 board store holds it. Key mapping: a mark's key is its source series key (`key_hash`). That same key is the `PanelRows` row key, `InspectTarget.mark.key` and #164's payload series key. A click writes {key}, a brush writes the covered keys, and a selection written by any other source (a line panel, a table row, the Inspector) is read the same way. A brush and a legend or table member selection write through the T25 host's `select` (T25-006). A mark matches only when its key is in the set; labels are never compared. **An empty selection (the initial state, and after Esc) MUST leave every mark undimmed.** **Relevance (T25-006):** a frame with no selected key in its own data does not dim. Otherwise, marks that do not match are drawn at the `dimmed` alpha (0.35, T25-006). An aggregate matches when **any** of its member keys is in the set
 
 #### T22-009 — Pie guard
 **MUST** — The guard MUST run on **all** reduced parts, before any cap. A pie MUST be planned as a barchart, with a notice, in three cases: more than 6 parts (`N parts: shown as bars`, where N is the pre-cap count); a negative or non-finite part (`Negative or missing parts: shown as bars`); or a total of 0 (`All parts are 0: shown as bars`). On fallback the barchart cap and `capMarks` (T22-006) apply. `validateFrameData` returns `parts`
@@ -200,7 +200,7 @@ export interface PickEvent { keys: string[]; gesture: 'click' | 'brush' }
 // FrameSummary.valueAxis: a stat with a sparkline reports its sparkline axis (was null for stat)
 // FrameSummary gains coverage: Coverage | null (copied from categories/stats data; null for other kinds)
 
-// Payload for #164's Inspector host
+// Payload for the T25 Inspector host: the InspectorTarget member {type:'mark'; target: InspectTarget}; members per T25-011
 export interface InspectTarget { panelId: string; kind: VisKind; title: string; mark: Mark;
   members: CategoryRow['members'];   // aggregate: the Inspector shows members[0] as `<name> (in other)` plus the list
   unit: Unit; window: TimeWindow; query: { lang: 'promql' | 'logql'; text: string } }
@@ -328,7 +328,7 @@ Validated options, plain-text labels (T02-019), `f=` filters, no storage.
 | `e2e:bars-bounds` | A board fixture shaped like import output: a barchart, `options` {min: 0, max: 500}, data `byVersion`. Save and reload → `FrameSummary.valueAxis` = {0, 500, manual true}. Only `max` 500 → {0, 500}. Only `min` 500 → {500, 620}, with the note `5 values outside the fixed range` |
 | `unit:autovis-table` | instant `byVersion` → barchart (rule 11; pie not yet available); instant `threeKeys` → barchart, named by `seriesName`; range `byVersion` with `reducer: 'last'` → barchart; the same range without `reducer` → line (rule 14); a range histogram with `reducer` → heatmap (rule 5); a rate-rewritten bare counter with `reducer` → line (rule 6) |
 | `e2e:bars-filter` | `byVersion`: bars ordered 120, 40, 15, 7, 3; click `2.31` → `f=version=2.31` with one re-run; click again → removed. With `f=version=2.30` set, clicking `2.31` → `f=version=2.31` (replaced) |
-| `e2e:bars-inspect` | clicking `2.31` opens the Inspector with `version=2.31` and `120`; its chip opens Explore with `{version="2.31"}` |
+| `e2e:bars-inspect` | clicking `2.31` opens the Inspector with `version=2.31` and `120`; its chip opens Explore with `{version="2.31"}` (the label chip needs T25 I3) |
 | `e2e:categorical-interactions` | `byVersion` focused with Tab → focus index 0 (`2.31`); ArrowRight ×2 → `mark` index 2 (`2.33`) and the mirror's `aria-activedescendant` follows; Home → 0; End → 4 (`2.32`); Shift+ArrowRight ×2 from 0 → `pick` {[2.31, 2.29, 2.33], brush} and a second `byVersion` barchart dims the other two; Esc clears; Enter on `2.31` → `f=version=2.31`; a line panel's crosshair → `Values are reduced over`; ghost on with the baseline stub at half of `byVersion` → a canvas probe at bar `2.31`, value 60, finds the dashed `text-secondary` outline, and the tooltip shows `baseline 60` |
 | `e2e:selection-empty` | Two `byVersion` barcharts. On load, a canvas probe at each bar's centre equals the bar colour at full alpha in both panels. A brush over [2.31, 2.29] dims the other three bars in the second panel. After Esc, all five bars are back at full alpha |
 | `e2e:selection-keys` | Two series share labels: A {version=2.31, region=eu} = 50 and B {version=2.31, region=us} = 70. Panel 1 is a barchart with `categoryBy: version`, whose bars read `2.31 · region="eu"` and `2.31 · region="us"`; panel 2 is a line panel of the same query. Clicking A in panel 1 dims B in panel 1 (label inclusion would have matched both). Selecting B in the line panel (T21-009 `select`) dims A and highlights B in panel 1. The Inspector opened from A shows series key `A.key`, and the `Shift+T` row for A has `A.key` |
@@ -403,3 +403,4 @@ None.
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-24 | #151: bar chart, pie and stat; rules T22-001 to T22-014; VIZ-095. Code review r1: §4.5 row 7 picks Stat only until Bullet ships (VIZ-039); I2 `unit:autovis-table` row 7 case |
+| 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): §4.3 and §5.1 send `{type:'mark', target}`; T22-008 gains the T25-006 relevance rule (a frame with no selected key does not dim) and writes brush and legend selection through `select`; aggregate members per T25-011; the `e2e:bars-inspect` label chip needs T25 I3. Code review r1: T22-008 uses the T25-006 `dimmed` token |

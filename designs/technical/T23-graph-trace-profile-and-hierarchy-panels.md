@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.0-rc · 2026-11-24 |
+| **Version** | 1.1-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (2D flame, suspects) → M-UI3 (3D flame) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md) (I1 adds a seam ADR at the next free number) |
 | **Source draft** | plans/152 (not tracked) |
@@ -167,7 +167,9 @@ flight on that frame; reduced motion cuts. 2D animates the view to [x, x+width] 
 
 #### T23-011 — Zoom out
 **MUST** — `Esc`, first applicable: exit Fly → clear brush, then search → clear selection → close
-Inspector → re-root to the parent (if re-rooted) → fly to the overview. One-gesture outs: `Shift+F`,
+Inspector → re-root to the parent (if re-rooted) → fly to the overview. The flame registers with the
+[T25](T25-inspector-and-pivots.md) host's ladder (T25-007): pre steps [exit Fly, clear brush, clear
+search] and post steps [re-root, overview]; clear selection and close Inspector are the host's. One-gesture outs: `Shift+F`,
 the "all" crumb, a minimap click, wheel, `Alt+←` / mouse back (prior pose). Crumbs = ancestors of the
 selection (else of the focus); a crumb selects and flies. `Enter` re-roots.
 
@@ -301,9 +303,10 @@ automatically.
   for `leftQuery`. Both persist in the board JSON and the URL view state.
 
 #### T23-024 — Inspector payload (#164)
-**MUST** — A click emits `{kind:'flame', key: xxh3(path), title, detail:{path, self, total,
-selfShare, totalShare, delta, occurrences, callers[5], callees[5]},
-actions:['sandwich','findInTable','copyName']}`. Pivots per #164; logs and traces are shown as
+**MUST** — A click sends `{type:'flame', target}` to the [T25](T25-inspector-and-pivots.md) host, where
+target is `{kind:'flame', key: xxh3(path), title, detail:{path, self, total, selfShare, totalShare,
+delta, occurrences, callers[5], callees[5]}, actions:['sandwich','findInTable','copyName']}`, unchanged
+(T25-002). The actions follow T25-015. Pivots per T25-009 and T25-010; logs and traces are shown as
 unavailable (SRF-048).
 
 #### T23-025 — Diff cues without colour (VIZ-067)
@@ -541,3 +544,4 @@ None. Owner decisions of 2026-11-24:
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-24 | #152: created for the flame graph: rules T23-001 to T23-025, interfaces and the interim JSON mapping to T04 §4.3, budget and gates, tests, the implementation issues I1–I4; VIZ-105, VIZ-106; mockup 40-flame-3d |
+| 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): T23-024 sends `{type:'flame', target}`, with actions per T25-015 and pivots per T25-009 and T25-010; T23-011 registers its pre steps (exit Fly, clear brush, clear search) and post steps (re-root, overview) with T25-007 |

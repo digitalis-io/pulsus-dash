@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.40-rc · 2026-11-24 |
+| **Version** | 1.41-rc · 2026-11-25 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -861,7 +861,7 @@ the merge train), nightly (release blocker).
 | `e2e:gallery-extreme` | From #97: `line-extreme` ([−MAX, MAX]) draws and the main thread stays responsive |
 | `e2e:chart-hover` | Interim charts: the tooltip shows the time, every series' name and value at the snapped sample in value order; for more than 20 series, sweeping the pointer down the plot shows every series (INT-033 subset) |
 | `e2e:time-range-header` | Header picker offers the relative ranges of IA-020 and absolute ranges with the time zone; choosing a range re-queries visible charts and updates the URL; a brush on any time chart sets the picker to that absolute range; a 30 s auto-refresh re-queries every 30 s and "Off" stops it (IA-020, INT-025) |
-| `e2e:a11y-rooms` | axe-core WCAG 2.2 AA checks on every room; keyboard-only traversal reaches and operates every control. Board log panels (#67): axe and 24 × 24 px targets with a stream panel's lines, with its editor open on Bars (not in Firefox, whose page crashes inside axe with that editor open) and with the panel saved to Bars in Edit mode; the keyboard reaches the order options, Wrap lines and the `Log lines` region of every stream panel on a board, at full screen, in the editor's preview and on a copy (T08-007, T08-010) |
+| `e2e:a11y-rooms` | axe-core WCAG 2.2 AA checks on every room; keyboard-only traversal reaches and operates every control. Board log panels (#67): axe and 24 × 24 px targets with a stream panel's lines, with its editor open on Bars (not in Firefox, whose page crashes inside axe with that editor open) and with the panel saved to Bars in Edit mode; the keyboard reaches the order options, Wrap lines and the `Log lines` region of every stream panel on a board, at full screen, in the editor's preview and on a copy (T08-007, T08-010). Inspector (#164, [T25](T25-inspector-and-pivots.md)): open and collapsed, in dark, light and forced colours, axe 0 and targets ≥ 24 px |
 | `e2e:focus-regions` | `F6`/`Shift+F6` cycle sidebar → page header → page content → open panels (→ Time Ribbon in Space scenes) and back; focus never trapped (INT-015) |
 | `e2e:chrome-layout` | Space scenes, from M-UI3: at 1440×900 the Time Ribbon is 40 px and translucent (canvas visible beneath), the minimap is present in scenes with a camera extent, and no persistent chrome other than IA-016's is shown (IA-028, VL-017) |
 | `e2e:deep-link` | Every URL pattern opened in a fresh session reproduces Context, scene, focus and camera; browser back steps camera history; saved Context and vis overrides restored |
@@ -991,6 +991,31 @@ to gate at 3 %.
 | `bench:frame-interim-time-kinds` | Until #68: scripted pan and zoom over each T21 kind at its cap. Reports p50 and p95. A change to the draw path records a local before/after run, and the p95 regression must be ≤ 10 % | PR (report) |
 | `golden:3d-occlusion` | From the engine, for each 3D view: two poses invert one occlusion, and the depth order equals the geometry | merge |
 | `replay:3d-linked-2d` | From the engine: `T` swaps 2D and 3D with the same data and selection, and hovering in 3D drives the docked 2D slice | merge |
+
+**Inspector and pivots ([T25](T25-inspector-and-pivots.md))**
+
+| Gate | Checks | Stage |
+|---|---|---|
+| `unit:inspector-model` | T25-003, T25-004, T25-015: fixture P sections, raw values, pivot reasons, staged actions and `announce`; the edge cases (no value, no labels, no query, bucket ranges, ns log time) | PR |
+| `unit:inspector-pivots` | T25-010: the Logs ±1 min href, LogQL escaping, `job` translation and the job reason | PR |
+| `unit:pivot-context` | T25-010, IA-026, IA-027, INT-035: rows C1, C1′ and C2; C3 (added by I6) and C4 (added by the T12 entity-set issue) | PR |
+| `unit:escape-ladder` | T25-007, T23-011: pre and post steps, `data-escape-ladder` fields, unmarked inputs skipped | PR |
+| `unit:inspector-members` | T25-011, T21-005: two lists, complete and stale results, reset | PR |
+| `unit:engine-select` | T25-005: pointer hit rules for line, bars and heatmap | PR |
+| `unit:clipboard-denied` | T25-015: "Couldn't copy" for 4 s on refusal | PR |
+| `unit:log-selection` | T25-006: LogStream matching and muting under the relevance rule | PR |
+| `unit:selection-draw` | T25-006, T02-025: line, bars, stat and heatmap selection drawing; a null selection draws as none | PR |
+| `e2e:inspector-open` | VIZ-003, T25-001, T25-014: a click and Enter open the Inspector per kind on boards and Explore; the origin outline | PR |
+| `e2e:inspector-sections` | INT-034 (staged): sections in order, 2 chips enabled and 4 disabled with visible reasons, 3 actions disabled | PR |
+| `e2e:inspector-pivot-nav` | INT-036 (staged), INT-035: Logs ±1 min destination; plain and Shift-click navigate and Back restores; Ctrl-click opens a new page | PR |
+| `e2e:inspector-escape` | INT-016: crosshair, then selection, then close, with focus returned; the panel editor's Esc stays its own | PR |
+| `e2e:selection-sources` | T02-025, T25-006, T25-016: a legend-table "Select" highlights in every panel on the next frame (screenshots `selection-b`, `selection-none`) | PR |
+| `e2e:selection-logs` | T02-025, T25-006: log selection in both directions, foreign keys mute nothing | PR |
+| `e2e:pivot-destination` | IA-026, INT-035, T25-010: the Explore › Logs request carries the filters; Explore › Metrics has no `f`, and the line disclosed it | PR |
+| `e2e:inspector-keyboard` | T25-008: keyboard inspect of a log row, Tab order, disabled chips described, the live region | PR |
+| `e2e:inspector-motion` | T25-013, VL-014, VL-016: reduced motion shows the final styles on the first frame; normal motion is a 200 ms opacity transition | PR |
+| `golden:inspector` | T25-013, VL-014, VL-016: open and collapsed, dark, light and forced colours (opaque) | PR |
+| `bench:inspector-redraw` | The redraw comparison with a selection and the Inspector open against neither: p95 ≤ +10 % (MINOR); measures `backdrop-filter` and selection redraws | PR (report) |
 
 ## 8. Security, tenancy & RBAC
 
@@ -1134,3 +1159,4 @@ Meta-testing:
 | 1.38-rc | 2026-11-24 | #130: §7.1 adds `ci:e2e-complete` (the e2e suite runs as five CI shards per engine, chosen by tag and spec file) |
 | 1.39-rc | 2026-11-24 | #150 ([T21](T21-time-and-distribution-panels.md)): §7.1 adds `unit:state-runs`, `unit:summary-facts`, `e2e:chart-select`, `bench:frame-interim-time-kinds`, `golden:3d-occlusion` and `replay:3d-linked-2d`; `ci:spec-lint` adds the T21-001 2D-kind check |
 | 1.40-rc | 2026-11-24 | #152 ([T23](T23-graph-trace-profile-and-hierarchy-panels.md), flame graph): §7.1 adds `unit:flame-decode`, `unit:flame-suspects`, `unit:flame-suspects-nobase`, `unit:flame-suspects-diff`, `unit:flame-merge`, `unit:flame-search-dense`, `unit:flame-options`, `unit:autovis-profile`, `unit:flame-diff`, `unit:flame-diff-sign`, `unit:flame-diff-exact`, `unit:flame-diff-self`, `unit:flame-diff-cost`, `unit:flame-diff-empty`, `unit:flame-gap`, `unit:flame-layout`, `unit:flame-multiparent`, `unit:flame-zero-self`, `unit:flame-sandwich`, `unit:flame-labels`, `golden:flame3d`, `golden:flame-greyscale`, `e2e:flame-two-actions`, `e2e:flame-escape`, `e2e:flame-merge-pick`, `e2e:flame-search-levels`, `e2e:flame-2d`, `e2e:flame-types`, `e2e:flame-states`, `e2e:flame-baseline`, `e2e:flame-baseline-range`, `e2e:flame-identity`, `e2e:flame-a11y`, `e2e:flame-diff-nobaseline`, `e2e:flame-diff-none`, `e2e:flame-mode-switch`, `e2e:flame-diff-fly`, `e2e:flame3d-nav`, `e2e:flame3d-controls`, `e2e:flame3d-modes` (PR, blocking), and the lab gates `bench:frame-flame-1e5` (CI report-only, lab-enforced with `FLAME_BENCH_GATE=enforce`), `bench:frame-flame3d-1e5` (lab, enforced) and `bench:flame-fly` (merge) |
+| 1.41-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): §7.1 adds `unit:inspector-model`, `unit:inspector-pivots`, `unit:pivot-context`, `unit:escape-ladder`, `unit:inspector-members`, `unit:engine-select`, `unit:clipboard-denied`, `unit:log-selection`, `unit:selection-draw`, `e2e:inspector-open`, `e2e:inspector-sections`, `e2e:inspector-pivot-nav`, `e2e:inspector-escape`, `e2e:selection-sources`, `e2e:selection-logs`, `e2e:pivot-destination`, `e2e:inspector-keyboard`, `e2e:inspector-motion`, `golden:inspector` (PR, blocking) and `bench:inspector-redraw` (PR, report); `e2e:a11y-rooms` adds the Inspector |
