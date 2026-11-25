@@ -315,3 +315,42 @@ fn schema_diagnostics_stay_bounded() {
     }
     assert!(total <= parts as usize * 200);
 }
+
+#[test]
+fn a_near_budget_stream_error_is_held_once() {
+    // A stream-level ERROR of 1 MiB − 1 KiB at exactly the budget left: accepted, and its
+    // strings allocated once although the decoder keeps it and the event carries it.
+    let er = parse(&fixture("grid-error"));
+    let msg = vec![b'm'; (1 << 20) - 1024];
+    let mut f = stream_frame(
+        &er[find_frame(&er, ERROR, 5, 0)],
+        LAST,
+        0,
+        error_batch(&msg, None),
+    );
+    f.part = 0;
+    let cost = 256 + msg.len() as u64;
+    let (ev, n, d) = near_budget(vec![f.clone()], 0, cost);
+    let Some(Event::Upstream { error, .. }) = ev.first() else {
+        panic!("{ev:?}")
+    };
+    let kept = d
+        .stream_error()
+        .unwrap_or_else(|| panic!("no stream error"));
+    assert!(std::sync::Arc::ptr_eq(&error.message, &kept.message));
+    assert_eq!(d.retained().2, cost);
+    // One copy of the message plus the frame's bounded scratch (< 64 KiB, released).
+    assert!(
+        (n as u64) <= cost + (64 << 10) && n < 2 * msg.len(),
+        "{n} bytes allocated for an error of cost {cost}"
+    );
+    // One byte less: refused with the body budget, nothing of the message copied.
+    let (_, n, mut d) = near_budget(vec![f], 0, cost - 1);
+    assert!(n < 64 << 10, "{n}");
+    assert_eq!(
+        d.finish().last(),
+        Some(&Event::Verdict(dash_wire::Verdict::Incomplete(
+            "stream failed"
+        )))
+    );
+}

@@ -394,7 +394,7 @@ fn a_labels_part_above_label_rows_per_part() {
     }
     fr.push(F::raw(END, 0, 0, 0, Vec::new()));
     let body = encode(&fr);
-    // Default limits: the body budget is reached first (64 + 48 B per row).
+    // Default limits: the body budget is reached first (96 + 48 B per row).
     let (ev, d) = decode_with(&body, Limits::default());
     assert!(any_limit(&ev, 1), "{:?}", failure(&ev, 1));
     assert!(d.retained().2 <= BODY_BUDGET);
@@ -725,9 +725,10 @@ fn field<'a>(v: &'a serde_json::Value, k: &str) -> &'a serde_json::Value {
 
 fn coverage_view(c: &dash_wire::Coverage) -> serde_json::Value {
     serde_json::json!({
-        "phase": c.phase as u8, "truncated": c.truncated, "truncation_reason": c.truncation_reason,
-        "series_returned": c.series_returned, "excluded_dims": c.excluded_dims, "warnings": c.warnings,
-        "infos": c.infos, "upstream_query_ids": c.upstream_query_ids,
+        "phase": c.phase as u8, "truncated": c.truncated, "truncation_reason": c.truncation_reason.as_deref(),
+        "series_returned": c.series_returned, "excluded_dims": c.excluded_dims.iter().collect::<Vec<_>>(),
+        "warnings": c.warnings.iter().collect::<Vec<_>>(), "infos": c.infos.iter().collect::<Vec<_>>(),
+        "upstream_query_ids": c.upstream_query_ids.iter().collect::<Vec<_>>(),
     })
 }
 
