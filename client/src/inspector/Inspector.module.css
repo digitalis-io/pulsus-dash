@@ -69,6 +69,16 @@
   }
 }
 
+/* Forced colours drop background colours, and the icons are masks over one: draw them in the
+   system button text colour, so the icon-only buttons and the chips keep their glyphs. */
+@media (forced-colors: active) {
+  .iconButton > span,
+  .chip > span {
+    forced-color-adjust: none;
+    background-color: ButtonText;
+  }
+}
+
 .chrome {
   position: absolute;
   top: var(--space-3);
