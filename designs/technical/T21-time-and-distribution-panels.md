@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-25 |
+| **Version** | 1.3-rc · 2026-11-25 |
 | **Milestone** | M-UI3 (state timeline; histogram CDF/ECDF overlay) · M-UI5 (standalone histogram) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) |
 | **Source draft** | plans (not tracked) |
@@ -13,8 +13,8 @@
 Part 1 of T21 is the **state timeline** of [05](../product/05-visualisation-catalogue.md)
 Table 5-11 (#150). Part 2a (#154) adds the **histogram** of Table 5-3
 ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)) and the
-**non-time interactions** that the XY chart (#201) and the trend panel (#202) reuse. Bucket histograms
-are Part 2a-ii (#206).
+**non-time interactions** that the XY chart (#201) and the trend panel (#202) reuse. Part 2a-ii (#206)
+adds histograms of histogram buckets (T21-060 to T21-069).
 
 The histogram bins raw values: one value per series for an instant result, or every sample of a range
 result pooled. Bins are auto, count or width, on a linear or log value axis. Groups by a label are
@@ -22,6 +22,17 @@ stacked or overlaid, with "other (n)" beyond seven, and a CDF or an exact ECDF c
 per-panel worker computes the frame, and the frame carries each series' contribution, so selection,
 the Inspector and the table are exact. The histogram has no time axis: the window only scopes the
 query. Mockup [42-histogram](../mockups/42-histogram.svg) shows both group modes.
+
+A result with an `le` label is a **bucket source** (Part 2a-ii). The worker splits it into **families**
+(the labels without `le`), drops malformed families, picks the **shared bound set** whose valid
+snapshots draw the most observations, and turns valid cumulative snapshots into per-bin counts with no
+shared timestamp grid. Invalid snapshots are excluded and disclosed, never repaired. There is one bin
+per returned bound, `+Inf` last; open bins get finite **display extents**, while every text shows the
+**true bounds**, and quantiles are labelled as estimates. Everything else reuses Part 2a (frame,
+worker, hit regions, brush, groups, meter, notices, the `bin` target and the table); the frame gains a
+nullable `buckets` block, and every result kind carries the family list. Native histograms are skipped
+by the BFF with a warning, shown as `limited (N warnings)`. Mockup
+[43-bucket-histogram](../mockups/43-bucket-histogram.svg) shows a bucket source on a log axis.
 
 The state timeline is a `VisSpec` variant. The interim Canvas 2D frame draws it now, and the engine
 draws it later. 3D forms are engine-only and true 3D
@@ -38,11 +49,11 @@ pointer, and the run as drawn.
 
 **Goals:** the state timeline (§4, §5), the true-3D rule (T21-001) and its gates
 ([T05](T05-testing-and-performance.md) §7.1). Part 2a: the histogram over raw values (T21-012 to
-T21-016), the non-time interactions, and the `Vis.options` keys of both kinds (§5).
+T21-016), the non-time interactions, and the `Vis.options` keys of both kinds (§5). Part 2a-ii:
+histograms of histogram buckets (T21-060 to T21-069).
 
 **Non-goals**
 - XY (#201) and trend (#202); Part 2a defines the non-time forms they reuse.
-- Histograms of histogram buckets (#206).
 - A baseline-distribution outline (follow-up); value-axis zoom; a log count axis.
 - Universal Compare (VIZ-025); violin and box plots.
 - Candlestick (#161).
@@ -72,6 +83,11 @@ T21-016), the non-time interactions, and the `Vis.options` keys of both kinds (�
 | [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | T21-015 | `e2e:hist-inspect`; `unit:inspector-model` |
 | [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel) | T21-014, T21-015 | `e2e:table-csv`; `golden:greyscale` |
 | [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | T21-016 | `unit:hist-worker`; `bench:rooms-long-tasks` |
+| [VIZ-028](../product/05-visualisation-catalogue.md#viz-028--distribution-vis-available), [VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay), [VIZ-005](../product/05-visualisation-catalogue.md#viz-005--lod-never-hides-signal-silently) | T21-060 to T21-066, T21-068, T21-069 (bucket sources) | `unit:dist-bins`; `golden:interim-gallery` |
+| [VIZ-003](../product/05-visualisation-catalogue.md#viz-003--universal-interactions-on-every-vis) | T21-067 (bucket sources) | `e2e:hist-inspect`; `unit:inspector-model`; `unit:selection-draw` |
+| [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel) | T21-065, T21-068 (bucket sources) | `e2e:table-csv`; `golden:greyscale` |
+| [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) | T21-066 (facts; the text is #160) | `unit:summary-facts` |
+| [PRF-005](../product/09-performance-contract.md#prf-005--no-main-thread-long-tasks-during-interaction) | T21-069 | `unit:hist-worker`; `bench:rooms-long-tasks` |
 
 ## 4. Design
 
@@ -238,8 +254,7 @@ make missing data look OK, while the hatch and the Unknown glyph keep the second
 
 #### T21-012 — Values
 **MUST**
-- Any series with an `le` label → `buckets` (main thread, no worker) "Histogram buckets: choose Heatmap; bucket
-  histograms come with #206"; never binned as values. Scalar or string → `{code:'kind'}`.
+- Any series with an `le` label → the bucket source (T21-060). Scalar or string → `{code:'kind'}`.
 - Instant: one value per series (`countBasis:'series'`); range: every sample (`'samples'`).
 - NaN is a gap, not received. Each received sample takes the **first** exclusion that applies:
   (1) non-finite → `infinite` (counted before the T22-003 merge, which keeps finite samples, max on
@@ -383,7 +398,164 @@ give edges as exact JS strings and compare interior edges with a relative tolera
 |---|---|---|---|---|
 | `empty` | "No values in this window" | none | query parts, or `100 %` | one notice row |
 | `noneShown` | "No values shown: " + the exclusion parts | each source group "<name> (no values shown)" | the parts and their popover | the exclusion rows per group |
-| `tooMany`, `buckets` | the T21-012 text | none | query parts | one notice row |
+| `tooMany` | the T21-012 text | none | query parts | one notice row |
+
+#### T21-060 — Bucket source and families
+**MUST**
+- `histogram()` takes the bucket path when any series has an `le` label. Series without `le` are
+  `withoutLe`, never binned. A family is the series with equal labels without `le`.
+- **`parseLe`:** +∞ only from the exact spellings `+Inf` and `Inf`. Otherwise the value must match
+  `^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$`, and `Number(s)` must be finite and either 0 with a
+  zero significand (every digit before the exponent is 0; the exponent is ignored: `0.0e5`, `-0`,
+  `0e-999`) or of magnitude in [1e−290, 1e290]. Anything else → `null`: `inf`, `-Inf`, `NaN`, `''`,
+  `abc`, `1e999` (overflow), `1e-999` (nonzero significand underflowing to 0), `1e300`.
+- **Malformed** (first reason; never binned): `le` (any `parseLe` null), `noInf` (no +∞ series),
+  `noFinite` (only +∞), `tooMany` (> 199 distinct finite bounds, so k > 200).
+- **Duplicate bounds** (same family, same `parseLe` value, e.g. `1` and `1.0`) are one bound; every key
+  stays in `familyKeys`. Instant: timestamps are ignored for alignment; the bound takes the finite sample
+  with the latest timestamp, and equal latest timestamps follow T22-003 (max kept, one conflict). Range:
+  T22-003 per timestamp. Both count in `duplicates` and `conflicts`.
+- `groupBy` `le` acts as none (menu "Group by le: not used: le defines the bins"); non-default `binMode`,
+  `binCount`, `binWidth` are unused (menu "Bin count / width: not used: the bins are the returned buckets").
+
+#### T21-061 — Shared bounds
+**MUST** — Candidates are the distinct finite bound sets of well-formed families. For a candidate S,
+mass(S) = Σ over the families whose own bounds ⊇ S of their **drawable** observations on S: T21-062
+evaluated with the needed set N = S ∪ {+∞} (snapshot times, validity on their own bounds, counts),
+after T21-064 on a log axis (finite by the T21-062 bound). B = the candidate with the largest mass;
+ties → more bounds; then the lower first differing bound. Own bounds ⊇ B → drawn on B (`coarsened`
+when ⊋ B: the extra bounds are dropped, which is exact); otherwise `incompatible`, with `missing` = B
+minus its bounds.
+
+#### T21-062 — Snapshots and counts
+**MUST** — Needed bounds N = S ∪ {+∞} for a candidate S in T21-061; every final family result
+(status, steps, counts, coverage) is evaluated with the chosen B, N = B ∪ {+∞}.
+- **Instant:** one snapshot per family from each needed bound's merged sample.
+- **Range:** snapshot times = the sorted union of the family's needed series' timestamps; families need
+  no common grid.
+- A snapshot is **valid** iff, checked in this order on the family's **original** bounds (before the
+  shared-bound choice and before coarsening): every needed bound has a sample at that time (else
+  `incompleteSteps`); every **present** bound (needed or dropped, a non-NaN sample at that time) is
+  finite and ≥ 0 (else `incompleteSteps`) and ≤ 1e290, as for values (T21-012; else
+  `countRangeSteps`); the present bounds' values never decrease in bound order (else
+  `nonMonotonicSteps`). A snapshot missing only a dropped bound is validated over the bounds it has.
+  Invalid snapshots are excluded whole and never repaired.
+- A family with no valid snapshot is not drawn: `nonMonotonic` or `countRange` when every snapshot
+  failed for that one reason, else `noSteps`.
+- Per valid snapshot C: c₀ = C₀, cᵢ = Cᵢ − Cᵢ₋₁ (all in [0, 1e290], Σ = C(+∞)). Family count per bin =
+  sum / n over its n valid snapshots (instant: c). Source group counts = Σ of its drawn families, in
+  `countUnit`.
+- **Bound:** a result holds ≤ 2·10⁶ samples (T21-012) of ≤ 1e290 each, so every sum here, in T21-061,
+  T21-065 and T21-066 (masses, step sums, group and panel totals, cumulative counts) is ≤ 2·10²⁹⁶ and
+  finite, and every quotient of them is finite.
+- The panel bins the values the query returns. Counter resets over time are the query's concern
+  (`rate`, `increase`); the panel does not detect them.
+
+#### T21-063 — Bins and display extents
+**MUST** — Bins i = 0…m (m = \|B\|): true (loᵢ, hiᵢ] with lo₀ = −∞, loᵢ = Bᵢ₋₁, hiᵢ = Bᵢ,
+hi_m = +∞.
+- **Linear** (all bins drawn): w₁ = B₁ − B₀ (m ≥ 2), else \|B₀\| or 1 when B₀ = 0; w_m = B_{m−1} − B_{m−2}
+  (m ≥ 2), else w₁. e₀ = B₀ − w₁, raised to 0 when B₀ > 0; e_{m+1} = B_{m−1} + w_m; interior eᵢ = Bᵢ₋₁.
+- **Log** (the drawn suffix of T21-064, whose first bin always has a returned lower bound ≥ 0): r(a, b) =
+  clamp(b/a, 10^0.01, 10). The display lower is that bound when > 0; when it is 0, h / r(h, next bound
+  above h), or h / 10 when none (h = the bin's upper bound). The open last bin's display upper is
+  B_{m−1} · r(B_{m−2}, B_{m−1}) when B_{m−2} > 0, else B_{m−1} · 10.
+- **Range of values:** \|B\| ≤ 1e290 keeps linear extents within ±3e290 and log extents in [1e−291, 1e291].
+- **Guard (T21-013, re-enabled):** while some adjacent display edges are not strictly increasing, or
+  (log) their log10 values are not, or they give the same `formatValue(e, none, 17)`, the degenerate bin
+  merges with its right neighbour (with its left one when it is last): counts summed, true bounds spanning
+  both, the shared edge removed from `edges` and `trueEdges`. Each removal adds 1 to `merged`, and the
+  meter reads "k buckets merged (number limits)".
+- **Text:** d = `bucketLabels(trueEdges)`: the least d in 3…17 at which adjacent finite true edges differ
+  under `formatValue(b, none, d)` (it exists: the guard leaves adjacent edges distinct at 17).
+  `bucketRangeText`: lo = −∞ → "≤ hi"; hi = +∞ → "> lo"; else "lo – hi". Tooltip, table, Inspector and facts use it; display edges are never printed.
+- **Axis:** tick labels only at display edges equal to a true edge; an open end shows "−∞" or "+∞" in
+  `text-tertiary` at the plot end.
+
+#### T21-064 — Log axis exclusions
+**MUST** — On a log axis, bin i is:
+1. `nonPositive` when hiᵢ ≤ 0;
+2. `crossesZero` otherwise when its range has no known positive lower end: the open first bucket
+   (−∞, B₀] whatever B₀ (also counted in `openLower`), (loᵢ, hiᵢ] with loᵢ < 0 < hiᵢ, and (0, +∞) when
+   B_{m−1} = 0;
+3. drawn otherwise. The drawn bins are a contiguous suffix.
+
+Excluded amounts are observations per source group; drawable = received − nonPositive − crossesZero.
+CDF, shares and estimates divide by drawable.
+
+#### T21-065 — Groups, totals, cumulative
+**MUST** — As T21-014 with observations for values: the 7 largest drawn groups by drawable,
+`other (n)`, patterns, dashes and colours unchanged; a source group with drawable 0 → legend "<name>
+(no observations shown)". CDF = Σ counts of bins ≤ i / drawable (finite by the T21-062 bound), exact
+at each upper bound. `cumulative: 'ecdf'` draws that CDF, named "CDF" in the legend, and the tooltip and
+menu read "ECDF: not available on bucket data: CDF from cumulative counts shown". Tooltip cumulative
+lines read "<group> ≤ <hi>: p" ("<group>: 100 % (all)" on the last bin).
+
+#### T21-066 — Estimates and facts
+**MUST** — Over the panel's drawn counts (total T): rank r = q·T; bin i = the first with
+cumulative ≥ r and count > 0. Lower −∞ → `atMost` hiᵢ; upper +∞ → `above` loᵢ; else `interpolated` in
+this order: f = clamp((r − cumᵢ₋₁)/countᵢ, 0, 1), then loᵢ·(1 − f) + hiᵢ·f (no width × count product, so
+the estimate stays within [loᵢ, hiᵢ] and finite). Texts "≈ v (estimate)", "≤ v (estimate)", "> v
+(estimate)". Facts `current` = {"median <p50 text>; mode <bucketRangeText> (<count> of <drawable>)",
+title}, counts in `countUnit`; `extent` {first, last finite true edge}; `change`, `baselineRatio` null.
+The tooltip footer adds "median <p50 text>". `estimates` null when T = 0; T, r and every cumulative
+are finite by the T21-062 bound.
+
+#### T21-067 — Interactions and family selection
+**MUST** — Hit regions, keys, Esc and the brush follow T21-015 on display `edges`; `xRange` carries display edges (the band), text carries true bounds.
+- **Click** (T21-015 `binSeries` with the hit group only): the sorted union of the `familyKeys` of the
+  hit drawn group's families with count > 0 in the bin; for `other`, the families of its member source
+  groups. **Brush:** the same over every drawn group in the brushed bins.
+  Selection read: a drawn family is selected iff any of its keys is; keys of families not drawn match
+  nothing, so a selection of only those dims nothing.
+- `BinInspectorTarget` (source `buckets`): header "Bin " + `bucketRangeText`; count in `countUnit`;
+  `members` = its families (texts "<name>: <count>", range "<name>: <count> (<n> steps)"; `labels` =
+  family labels; resolver `binId`). An `other` bin lists member groups as T21-015.
+- Tooltip footer: instant "Buckets at <time>"; range "Mean per valid step over <window>".
+
+#### T21-068 — Meter, notices, table
+**MUST** — Every bucket result carries `BucketSummary`, `sourceGroups` and coverage, so these work
+when every family is excluded. `tooMany` runs `bucketFamilies` only: every family is `notProcessed`.
+- **Meter** (in order): `truncated`; `limited (N warnings)`; `k series without le not shown`; `k
+  malformed families not shown`; `k families with different bounds not shown`; instant `k families
+  with a missing bucket value not shown` / range `k families with no valid step not shown`; `k families
+  with non-monotonic counts not shown`; `k families with counts out of range not shown`; `k incomplete
+  steps not shown`; `k non-monotonic steps not shown`; `k steps with counts out of range not shown`;
+  `k families merged to the shared bounds`; `k buckets merged (number limits)`; `x ≤ 0 not shown
+  (log)`; `x in (−∞, B₀] not shown (log)`; `x in buckets crossing 0 not shown (log)` (crossesZero
+  − openLower); `k duplicate series combined; c conflicts (max kept)`; none → `100 %`. x =
+  `formatValue(x, countUnit)`.
+- Parts after `limited` are popover buttons: per source group a line of observation parts ("A: 2 ≤ 0,
+  3 crossing 0"); per affected family (≤ 8, then "+k more" opens the table) "<name>: <reason>": "le is
+  not a drawable number", "no +Inf bucket", "no finite bucket", "more than 200 buckets", "missing shared
+  bounds 0.1, 1" (≤ 4, then "…"), "missing bucket value", "no valid step", "counts decrease across
+  bounds", "count above 1e290", "k incomplete steps", "k non-monotonic steps", "k steps with counts
+  out of range", "merged to the shared bounds (drops 0.5)".
+- **Notices:** `empty` (every drawn count 0 and no exclusion) "No observations in this window";
+  `noneShown` (drawable 0 otherwise) "No observations shown: " + the parts; `tooMany` the T21-012 text.
+- **Table and CSV** (same rows): per source group, each drawn bin with count > 0: group, shown as, from,
+  to, count, share, group share, cumulative; table from/to "−∞", "+∞" or `formatValue(b, none, d)`, CSV
+  raw `String(v)` ("-Infinity", "Infinity"). Then its exclusion rows: `≤ 0 (log)`, `(−∞, B₀] (log)`,
+  `crossing 0 (log)`, then per family not drawn or with excluded steps a row (group, kind "<status>:
+  <name>", reason = its popover reason text, count = 1 per family or its step count). Last, the panel
+  row `series without le`, k.
+  `tooMany`: the notice row, then "not processed: <name>" per family.
+
+#### T21-069 — Work and validation
+**MUST** — T21-016 batching, abort and stale drop apply; the 2 000 000-sample check counts every
+input series. `validateFrameData` returns `{code:'bins'}` unless: `trueEdges.length` =
+`edges.length`; `trueEdges` strictly increasing, last +∞, no other non-finite except a first −∞;
+`edges[i]` = `trueEdges[i]` for 0 < i < k, and at 0 unless `trueEdges[0]` is −∞ or (log) 0;
+`familyKeys.offsets.length` = series + 1.
+
+**Consumers per result kind (bucket source):**
+
+| Result | Plot | Legend | Meter | Tooltip | Table / CSV | Inspector · selection | Facts |
+|---|---|---|---|---|---|---|---|
+| `frame` | display edges, "−∞"/"+∞" | groups, `other (n)` | T21-068 | true text, cumulative, median | bins + exclusions | `bin` · family keys | T21-066 |
+| `empty` | "No observations in this window" | none | query parts / `100 %` | none | notice row | none | null |
+| `noneShown` | "No observations shown: " + parts | "(no observations shown)" each | parts + popover (families) | none | exclusion and family rows | none | null |
+| `tooMany` | T21-012 text | none | query parts | none | notice + "not processed" rows | none | null |
 
 ### 4.2 Interactions (VIZ-003, VIZ-066, VIZ-067)
 
@@ -391,6 +563,7 @@ give edges as exact JS strings and compare interior edges with a relative tolera
 |---|---|---|---|---|
 | segment: the covering `part` and its `run`, plus `displayed` and `reason` (T21-005) | Inspector + selection (T21-009) | time → Context window | ←/→ segment, ↑/↓ row, Esc clears | one row per part: series, run index, from, to, value, text (original, with "(in other)" for members), display text, state |
 | histogram: the `bin` under the pointer (T21-015 hit regions), `tMs` null | Inspector `{type:'bin', target}` + selection of the bin's series (T21-015) | value → `xRange` over whole bins, `setXRange` band, selection of their series | ←/→ bin, ↑/↓ drawn group, Home/End, Shift+←/→ extends the brush, Esc per T25-007 | per source group, one row per bin with count > 0: group, shown as, from, to, count, share, group share, cumulative; then its exclusion rows (T21-015) |
+| histogram (bucket source): the `bin` under the pointer on display `edges`, text in true bounds (`bucketRangeText`), `tMs` null | Inspector `{type:'bin', target}` with header "Bin " + `bucketRangeText` and families as members + selection of the bin's family keys (T21-067) | value → `xRange` over whole bins in display edges, `setXRange` band, selection of the family keys of every drawn group | as the histogram | per source group, one row per drawn bin with count > 0 (from/to "−∞", "+∞" or the true bound); then its exclusion rows and one row per family not drawn or with excluded steps; last, `series without le` (T21-068) |
 
 The crosshair, coverage meter and event markers ([ADR-0023](../adr/0023-chart-event-markers.md)) all
 apply. A `validateFrameData` issue shows the existing notice.
@@ -560,8 +733,8 @@ export interface HistogramOptions { binMode: 'auto' | 'count' | 'width'; binCoun
 export type HistogramResult = { kind: 'frame'; frame: HistogramFrame }
   | { kind: 'empty'; coverage: HistogramCoverage }                                         // received 0
   | { kind: 'noneShown'; coverage: HistogramCoverage; sourceGroups: readonly SourceGroup[] } // drawable 0
-  | { kind: 'tooMany'; samples: number; query: Completeness }                              // main thread, no worker
-  | { kind: 'buckets'; leSeries: number; query: Completeness };                            // main thread, no worker
+  | { kind: 'tooMany'; samples: number; query: Completeness };                             // main thread, no worker
+// Part 2a-ii (#206) removes the 'buckets' kind; `le` results take the bucket path (T21-060, below).
 export function histogram(input: readonly SeriesFrame[], source: 'instant' | 'range', o: HistogramOptions /* incl. unit */,
   q: Completeness): HistogramResult;
 export function binEdges(sortedAxis: Float64Array, o: HistogramOptions /* o.unit for the guard */): { edges: Float64Array; widenedTo: number | null; adjusted: number | null };
@@ -589,6 +762,53 @@ export interface BinInspectorTarget { kind: 'bin'; panelId: string; index: numbe
                            // other → its member groups (texts "name: count", labels), resolve `${binId}:groups`; runs null
   binId: string /* `${panelId}:${frameSeq}:${group key or 'all'}:${index}` */; query: { lang: 'promql' | 'logql'; expanded: string } }
 ```
+
+**Bucket histograms (Part 2a-ii, #206).** Every field is `readonly`; the I-F seam ADR (#208) adopts
+these additions with the types above.
+
+```ts
+// client/src/data/frames.ts
+export interface HistogramFrame { /* #154 fields */ source: 'values' | 'buckets';
+  countBasis: 'series' | 'samples' | 'buckets' /* instant */ | 'bucketSteps' /* range: mean per valid step */;
+  buckets: BucketFrame | null }  // non-null iff source 'buckets'; quantiles null then
+// Bucket frames: `edges` = display edges (hit-test, edgePx, brush, xRange); `series` = drawn families (name order, family key).
+export interface BucketSummary {   // on every bucket result kind (T21-068)
+  shared: Float64Array;            // B: finite shared bounds, increasing; empty when none was chosen
+  families: readonly BucketFamily[] }  // every family, drawn or not, name order
+export interface BucketFrame extends BucketSummary {
+  trueEdges: Float64Array;   // k+1: [true lower of the first drawn bin (-Infinity when open), then each kept bound once]; last = +Infinity, exactly once
+  familyKeys: { offsets: Uint32Array /* series+1 */; keys: readonly string[] /* every le series key of each drawn family, duplicates included, sorted */ };
+  estimates: { p25: BucketQuantile; p50: BucketQuantile; p75: BucketQuantile } | null;
+  digits: number; countUnit: Unit }   // T21-063 label digits; o.unit (bounds are unit none)
+export interface BucketQuantile { value: number; bound: 'interpolated' | 'atMost' | 'above' }
+export type FamilyStatus = 'drawn' | 'coarsened' | 'malformed' | 'incompatible' | 'noSteps' | 'nonMonotonic' | 'countRange' | 'notProcessed';
+export interface BucketFamily { key: string /* familyKey */; name: string /* seriesName(labels) */; labels: Labels /* without le */;
+  sourceGroup: number; status: FamilyStatus; reason: 'le' | 'noInf' | 'noFinite' | 'tooMany' | null /* malformed only */;
+  bounds: Float64Array /* own finite bounds */; missing: Float64Array /* incompatible: shared bounds it lacks */;
+  steps: number /* valid snapshots used */; incompleteSteps: number; nonMonotonicSteps: number; countRangeSteps: number }
+export interface SourceGroup { /* #154 fields */ crossesZero: number }  // 0 on values; bucket sources: received/drawable/nonPositive/crossesZero in observations
+export interface HistogramCoverage { /* #154 fields */ buckets: BucketCoverage | null }  // nonPositive, received, drawable: observations on buckets
+export interface BucketCoverage { withoutLe: number; malformed: number; incompatible: number; noSteps: number; nonMonotonic: number; countRange: number /* families */;
+  coarsened: number; incompleteSteps: number; nonMonotonicSteps: number; countRangeSteps: number /* drawn families' excluded steps */; merged: number /* T21-063 guard */;
+  openLower: number; crossesZero: number /* observations; crossesZero includes openLower */ }
+// HistogramResult: 'frame' | 'empty' | 'noneShown' | 'tooMany'; 'buckets' REMOVED. empty, noneShown and tooMany gain
+//   source: 'values' | 'buckets'; buckets: BucketSummary | null; noneShown keeps sourceGroups; empty and tooMany gain sourceGroups.
+// FrameDataIssue { code: 'bins' } also covers T21-069.
+
+// client/src/vis/transforms/buckets.ts (worker; pure; JSON fixtures shared with I-F2)
+export function parseLe(s: string): number | null;   // T21-060
+export function familyKey(labels: Labels): string;    // FNV-1a 64 hex of seriesName(labels without le)
+export function bucketFamilies(input: readonly SeriesFrame[]): BucketSummary;  // labels only, O(series); main thread for tooMany
+export function bucketHistogram(input: readonly SeriesFrame[], source: 'instant' | 'range', o: HistogramOptions, q: Completeness): HistogramResult;
+export function bucketRangeText(lo: number, hi: number, digits: number): string; // T21-063
+export function bucketLabels(trueEdges: Float64Array): number;                   // digits d
+// selectedCounts / binSeries on bucket frames match through familyKeys (T21-067).
+
+// HoverItem 'bin', BinInspectorTarget: from/to = true bounds on buckets (±Infinity when open), closed false.
+// BinInspectorTarget gains source: 'values' | 'buckets'; countUnit: Unit | null; countBasis: HistogramFrame['countBasis'].
+```
+
+Unchanged: the worker message, `runHistogram`, `binIndex`, `hitTestBin`, `binId` and the board spec.
 
 The XY chart (#201) and the trend panel (#202) reuse `XRangeEvent`, `setXRange`, the nullable `tMs`
 and the T21-016 worker pattern.
@@ -649,6 +869,12 @@ I-F rows (H1 to H26): values come from running the T21-013 operations in Node, n
 linear, and in `count` mode when c is given. The file and gate are `histogram.test.ts` ·
 `unit:dist-bins` unless named. All fail today: `client/src/vis/transforms/histogram.ts` does not exist.
 
+I-G rows (#206: H8 rewritten, B1 to B22, H21b and the H22 scenario): values come from a reference
+script in Node, which I-G ports as the fixture generator. The file and gate are `buckets.test.ts` ·
+`unit:dist-bins` unless named. Instant unless "range"; 400 px; fam(x) = the family `{j="x"}`; B1 data
+= le 0.1, 0.5, 1, +Inf with cumulative counts 3, 8, 9, 10. All fail today:
+`client/src/vis/transforms/buckets.ts` does not exist and an `le` result has no bucket path.
+
 | Issue | Test name (file · gate) | Setup → expected |
 |---|---|---|
 | I-A | "F1 merges equal states and marks NaN" (`stateRuns.test.ts` · `unit:state-runs`) | ts 0…5 000, values [0,0,1,1,NaN,1], no mappings → ('0',[0,2000)), ('1',[2000,4000)), ('no data',[4000,5000)), ('1',[5000,6000)) Fails today: `stateRuns` does not exist. |
@@ -689,7 +915,7 @@ linear, and in `count` mode when c is given. The file and gate are `histogram.te
 | I-F | H6 "zero-drawable group and panel" | log; groups A [1,10], C [0] → C not drawn, legend "C (no values shown)", no C curve. Log; A [0,0], B [0,+Inf] → `noneShown` with A {nonPositive 2}, B {nonPositive 1, infinite 1}: plot "No values shown: 3 ≤ 0 not shown (log) · 1 infinite values not shown"; legend A, B "(no values shown)"; popover "A: 2 ≤ 0", "B: 1 ≤ 0, 1 infinite"; table rows A ≤ 0 2, B ≤ 0 1, B infinite 1 |
 | I-F | H6c "exclusion precedence" (`unit:dist-bins`; `e2e:hist-inspect`, `e2e:table-csv`) | log; A [−1e−300, −1, 0, 1, 10, +Inf, 1e300] → infinite 1, outOfRange 2 (−1e−300, 1e300), nonPositive 2, drawable 2; meter "2 ≤ 0 not shown (log) · 1 infinite values not shown · 2 values out of range not shown"; popover "A: 2 ≤ 0, 1 infinite, 2 out of range"; table rows A ≤ 0 (log) 2, infinite 1, out of range 2 |
 | I-F | H7 "non-finite and duplicates" | range A ts 0…3 [1,NaN,+Inf,2], A′ (same labels) ts [0] [5], B [−Inf,3] → values {5,2,3}, received 5, drawable 3; meter "2 infinite values not shown · 1 duplicate series combined; 1 conflicts (max kept)" |
-| I-F | H8 "empty, too many, buckets" | no series → `empty`, meter `100 %`; truncated → meter "truncated"; 2 000 001 samples → `tooMany`, no worker started, no legend, table = 1 notice row; instant series with `le` and differing timestamps → `buckets`, the same consumers; one `le` series among others → `buckets` |
+| I-G | H8 "empty, too many, buckets" (rewritten by #206; `histogram.test.ts` · `unit:dist-bins`) | no series; truncated; 95 families `{pod="p00"…"p94"}` × the 21 H22 bounds = 1 995 series, the first 1 994 with 1 002 samples and the last with 2 013 (2 000 001); instant families with differing timestamps; one B1 family among 2 plain series → `empty`, "truncated"; `tooMany`, no worker, table = notice row + 95 "not processed" rows; the instant result → a `buckets` frame (never values); the mixed one → B1 counts and "2 series without le not shown". Covers T21-012, T21-060, T21-068 |
 | I-F | H9 "groups and other" (+ gallery `histogram-groups-other` · `golden:interim-gallery`, `golden:greyscale`) | version v1…v9 (drawable 10…2) plus one series without it (1) → v1…v7 with patterns and dashes [0…6]; `other (3)` = v8, v9, "version absent", `grid`, last; value `other` → `"other"`; greyscale: 8 marks distinct |
 | I-F | H10 "other payload and rows" | in H9 (c 1), click `other` → target `group` {key 'other', name 'other (3)', other true}, `members` [{v8,3},{v9,2},{version absent,1}], count 6; table: v8, v9, "version absent" rows, shown as `other (3)` |
 | I-F | H11 "ECDF is exact" | overlay A [1,2,2,3], B [2,4]: A at 0.9/1.5/2/3 → 0/0.25/0.75/1; B at 2/3.9/4 → 0.5/0.5/1; stack-wide at 2 → 4/6; tooltip at 2 "A ≤ 2: 75 %", "B ≤ 2: 50 %" |
@@ -710,6 +936,30 @@ linear, and in `count` mode when c is given. The file and gate are `histogram.te
 | I-F | H26 "terminal log rule" (`unit:dist-bins`) | log, 400 px. [nextDown(1e290), 1e290] (equal log10) → [3.1622776601683795e+289, 3.1622776601683794e+290], counts [2], `adjusted` 1; px 0 and px 400 → bin 0; brush px 0–400 → the whole bin. Singles 1e290 → [9.5e+289, 1.0500000000000001e+290] and 1e−290 → [9.000000000000001e-291, 1.1e-290], `adjusted` null |
 | I-F | H21 "stale runs are dropped" (`histogramClient.test.ts` · `unit:hist-worker`) | runs R1 then R2 before R1 returns → R1 worker terminated, R1 rejects AbortError, only R2 applied; a late R1 message → ignored. Fake clock +1 ms per 25 000 values copied → batches cut at 200 000 values; `selectedCounts` over 2·10⁶ CSR entries at +1 ms per 10⁵ yields ≥ 2 times and equals the synchronous reference; a newer selection aborts the older scan |
 | I-F | H22 "no long tasks" (`e2e/perf-rooms-long-tasks.spec.ts` · `bench:rooms-long-tasks`), gallery | scenario "histogram 2·10⁶ values" (run, hover, brush, click a bin, select all keys from a line panel): CI no task > 50 ms wall with > 16 ms thread; lab none > 16 ms (PRF-005). Gallery `histogram-latency-ecdf` dark/light = baselines |
+| I-G | B1 "one edge per bound" (`buckets.test.ts` · `unit:dist-bins`) | fam(api) B1 → `trueEdges` [−Inf, 0.1, 0.5, 1, +Inf]; edges [0, 0.1, 0.5, 1, 1.5]; counts [3,5,1,1]; CDF [0.3,0.8,0.9,1]; texts "≤ 0.1", "0.1 – 0.5", "0.5 – 1", "> 1"; edgePx [0, 26.6667, 133.3333, 266.6667, 400]; tick labels 0.1, 0.5, 1 only; "−∞", "+∞" at the ends. Covers T21-063, VIZ-090 |
+| I-G | B2 "estimates" (`summaryFacts.test.ts` · `unit:summary-facts`) | B1 → p25 `atMost` 0.1, p50 0.26, p75 0.46; facts "median ≈ 0.26 (estimate); mode 0.1 – 0.5 (5 of 10)", extent {0.1, 1}; footer "median ≈ 0.26 (estimate)". Covers T21-066 |
+| I-G | B3 "log excludes the open first bucket" (`buckets.test.ts` · `unit:dist-bins`) | B1, log; le 0.005, 0.01, 0.025, +Inf = 10, 30, 35, 40, log → B1: openLower 3, drawable 7, edges [0.1, 0.5, 1, 2], trueEdges [0.1, 0.5, 1, +Inf], counts [5,1,1], CDF [0.7142857142857143, 0.8571428571428571, 1], p50 0.38, meter "3 in (−∞, 0.1] not shown (log)"; second: edges [0.005, 0.01, 0.025, 0.0625], counts [20,5,5], p50 0.008749999999999999, meter "10 in (−∞, 0.005] not shown (log)". Covers T21-064, T21-063 |
+| I-G | B4 "range alignment without a grid" (`buckets.test.ts` · `unit:dist-bins`) | range; fam(a) ts 0, 1000, 2000: le 0.1 [1,2,3], 1 [2,4,NaN], +Inf [3,5,6]; fam(b) ts 500, 1500: [0,1], [1,1], [1,3] → a [1.5,1.5,1] (2 steps), b [0.5,0.5,1] (2 steps); panel [2,2,2]; meter "1 incomplete steps not shown"; popover "{i="a"}: 1 incomplete steps"; p50 0.55, p75 `above` 1 ("> 1 (estimate)"); `countBasis` `bucketSteps`. Covers T21-062 |
+| I-G | B5 "malformed never binned" (`buckets.test.ts` · `unit:dist-bins`) | groupBy f: ok (B1); c le 0.1, 1 (no +Inf); d `abc`, +Inf; e +Inf only; g `''`, +Inf; h `1e999`, +Inf; u `1e-999`, +Inf; one series without le → counts from ok only; c `noInf`, d g h u `le`, e `noFinite`; meter "1 series without le not shown · 6 malformed families not shown"; popover "{f="h"}: le is not a drawable number" …; table rows "malformed: {f="c"}" "no +Inf bucket" 1 …, "series without le" 1; legend c…u "(no observations shown)"; `parseLe` `inf`, `-Inf`, `NaN`, `1e300` → null; `0.0e5`, `-0`, `0e-999` → 0. Covers T21-060, T21-068 |
+| I-G | B6 "shared bounds by drawable mass" (`buckets.test.ts` · `unit:dist-bins`) | groupBy s: a le 0.1, 0.5, 1, +Inf = 2, 6, 8, 10; b 0.1, 1, +Inf = 5, 15, 20; c 0.2, 2, +Inf = 1, 4, 5 → B [0.1, 1]; a `coarsened` [2,6,2]; b [5,10,5]; c `incompatible`, missing [0.1, 1]; meter "1 families with different bounds not shown · 1 families merged to the shared bounds"; popover "{s="c"}: missing shared bounds 0.1, 1", "{s="a"}: merged to the shared bounds (drops 0.5)"; p25 0.128125. Covers T21-061 |
+| I-G | B7 "high mass but incomplete" (`buckets.test.ts` · `unit:dist-bins`) | groupBy s: hi le 0.1 NaN, 1 = 90, +Inf = 100; lo le 0.2, 2, +Inf = 1, 4, 5 → B [0.2, 2] (hi has no valid snapshot, mass 0); lo drawn [1,3,1]; hi `incompatible`, missing [0.2, 2]; p50 1.1; not `noneShown`. Covers T21-061 |
+| I-G | B8 "missing value on instant" (`buckets.test.ts` · `unit:dist-bins`) | fam(x) B1; fam(y) le 0.1, 0.5, 1, +Inf = 1, NaN, 2, 3 → y `noSteps`; meter "1 families with a missing bucket value not shown"; counts [3,5,1,1]. Covers T21-062 |
+| I-G | B9 "crossing 0 on log" (`buckets.test.ts` · `unit:dist-bins`) | log; le −1, 0.1, 1, +Inf = 2, 5, 9, 10; le −1, 0, 0.1, 1, +Inf = 2, 3, 5, 9, 10 → 1: edges [0.1, 1, 10], trueEdges [0.1, 1, +Inf], counts [4,1], nonPositive 2, crossesZero 3, openLower 0, meter "2 ≤ 0 not shown (log) · 3 in buckets crossing 0 not shown (log)", CDF [0.8,1]; 2: edges [0.01, 0.1, 1, 10], trueEdges [0, 0.1, 1, +Inf], first text "0 – 0.1", no tick at 0.01, nonPositive 3; linear 1: edges [−2.1, −1, 0.1, 1, 1.9], counts [2,3,4,1]. Covers T21-064 |
+| I-G | B10 "no positive bound" (`buckets.test.ts` · `unit:dist-bins`) | log; le −1, 0, +Inf = 2, 3, 10 → `noneShown`: nonPositive 3, crossesZero 7; plot "No observations shown: 3 ≤ 0 not shown (log) · 7 in buckets crossing 0 not shown (log)"; table rows "≤ 0 (log)" 3, "crossing 0 (log)" 7. Covers T21-064, T21-068 |
+| I-G | B11 "non-monotonic never invented" (`buckets.test.ts` · `unit:dist-bins`) | instant B1 with le 0.5 = 2; range fam(x) ts 0, 1000: le 0.1 [3,3], 0.5 [8,2], 1 [9,9], +Inf [10,10] → instant: family `nonMonotonic`, `noneShown`, meter "1 families with non-monotonic counts not shown", popover "{j="x"}: counts decrease across bounds", estimates null; range: counts [3,5,1,1] (step 0 only), drawable 10 = C(+∞), CDF [0.3,0.8,0.9,1], p50 0.26, meter "1 non-monotonic steps not shown". Covers T21-062 |
+| I-G | B12 "duplicate bounds" (`buckets.test.ts` · `unit:dist-bins`) | le 0.1 = 3; `1` = 8 at ts 1000; `1.0` = 7 at ts 2000; +Inf = 10; then both `1` at ts 1000 → latest: counts [3,4,3], duplicates 1, conflicts 0; equal ts: counts [3,5,2], meter "1 duplicate series combined; 1 conflicts (max kept)"; a click on bin 1 selects 4 keys (both le 1 keys). Covers T21-060, T21-067 |
+| I-G | B13 "extremes" (`buckets.test.ts` · `unit:dist-bins`) | values 1, 2, 3 (singles 1, 3): linear le −1e290, 1e290, +Inf; log 1e−290, 1e290, +Inf; log 1, 1.0000000000000002, +Inf; linear single 0 / 2 / −2; log le 0, 2, +Inf → [−3e+290, −1e+290, 1e+290, 3e+290]; [1e−290, 1e+290, 1.0000000000000001e+291] (openLower 1); [1, 1.0000000000000002, 1.0232929922807543], d 17, texts "1 – 1.0000000000000002", "> 1.0000000000000002"; [−1,0,1], [0,2,4], [−4,−2,0]; [0.2, 2, 20], trueEdges [0, 2, +Inf], nonPositive 1; every case finite and increasing, `merged` 0. Covers T21-063, T21-069 |
+| I-G | B14 "display guard merges" (`buckets.test.ts` · `unit:dist-bins`) | linear le 0.9999999999999999, 1, +Inf = 1, 2, 3 → e_{m+1} rounds to 1, so the last two bins merge: edges [0.9999999999999998, 0.9999999999999999, 1], trueEdges [−Inf, 0.9999999999999999, +Inf], counts [1,2], meter "1 buckets merged (number limits)"; one finite true edge, so d 3 and texts "≤ 1", "> 1" (CSV keeps 0.9999999999999999); px 400 → bin 1; brush px 300–400 → bin 1, `xRange` {0.9999999999999999, 1}. Covers T21-063 |
+| I-G | B15 "ECDF unavailable" (`buckets.test.ts` · `unit:dist-bins`) | B1, `cumulative: 'ecdf'`, `binCount` 50 → curve = CDF [0.3,0.8,0.9,1], legend "CDF"; tooltip and menu "ECDF: not available on bucket data: CDF from cumulative counts shown"; bin 3 "all values: 100 % (all)"; menu "Bin count / width: not used: the bins are the returned buckets". Covers T21-065 |
+| I-G | B16 "family selection and Inspector" (`buckets.test.ts` and `e2e/hist-inspect.spec.ts` · `e2e:hist-inspect`; `unit:selection-draw`, `unit:inspector-model`) | B6 without groupBy; line panel L on b's le 1 series → px 10 → bin 0 "Bin ≤ 0.1", count 7, members "{s="a"}: 2", "{s="b"}: 5"; selection = the 7 le keys of a and b (a's le 0.5 included), none of c; L rings b's series; {b's le 1 key} → `selectedCounts` [5,10,5]; {c's le 2 key} → null, nothing dims; brush px 0–20 → `xRange` {0, 0.1}, band from 0, table "≤ 0.1"; px 400 → bin 2 "> 1". **Grouped** (B6 with groupBy s, stack): a click on a's segment of bin 0 → the 4 a keys only (b's 3 keys excluded), members "{s="a"}: 2"; a brush over bins 0–1 → the 7 a and b keys; B17 click on `other` bin 1 → the keys of v8, v9 and "version absent" only (no v1…v7 key). Covers T21-067, T25-011 |
+| I-G | B17 "groups, other, greyscale" (`buckets.test.ts` and `e2e/golden-gallery.spec.ts` · `unit:dist-bins`; gallery `histogram-buckets` · `golden:interim-gallery`, `golden:greyscale`) | groupBy version: v1…v9 on le 0.5, 1, 2, +Inf, cumulative (0.2, 0.6, 0.9, 1) × mass, masses 10…2, plus a family without version (mass 1); log, overlay, cdf → v1…v7 drawn with patterns and dashes [0…6]; `other (3)` = v8, v9, "version absent"; "+∞" at the right; meter part "(−∞, 0.5]"; greyscale 8 distinct marks; baselines dark/light. Covers T21-065, VIZ-067 |
+| I-G | B18 "table, CSV, all excluded, warning" (`buckets.test.ts` and `e2e/chart-select.spec.ts` · `unit:dist-bins`, `e2e:table-csv`) | B1; B9 case 1; B1 with all 0; B5 without ok; B1 with warning "pulsus-dash: native histogram samples skipped in 2 series" → B1 rows ("−∞", "0.1", 3) … ("1", "+∞", 1), CSV from "-Infinity", to "Infinity"; B9 rows + "≤ 0 (log)" 2, "crossing 0 (log)" 3; all 0 → `empty`, `100 %`; no ok → `noneShown`, rows (group, kind, reason, count): (c, "malformed: {f="c"}", "no +Inf bucket", 1), (d, "malformed: {f="d"}", "le is not a drawable number", 1), (e, "malformed: {f="e"}", "no finite bucket", 1), (g, "malformed: {f="g"}", "le is not a drawable number", 1), (h, "malformed: {f="h"}", same, 1), (u, "malformed: {f="u"}", same, 1), then ("", "series without le", "", 1); CSV the same; meter "1 series without le not shown · 6 malformed families not shown"; popover "{f="c"}: no +Inf bucket", "{f="d"}: le is not a drawable number", "{f="e"}: no finite bucket", "{f="g"}: le is not a drawable number", "{f="h"}: le is not a drawable number", "{f="u"}: le is not a drawable number"; warning → "limited (1 warnings)", popover line verbatim. Covers T21-068 |
+| I-G | B19 "counts within the bound" (`buckets.test.ts` · `unit:dist-bins`) | fam(x), fam(y) each le 0.1, 0.5, 1, +Inf = 3e289, 8e289, 9e289, 1e290; range fam(x) ts 0, 1000: le 1 [1e290, 1e290], +Inf [1e290, 1e290]; fam(x) B1 plus fam(y) le … = 1, 2, 3, 1e300 → total 2e290 (finite), counts [6e+289, 1e+290, 1.9999999999999984e+289, 2.000000000000002e+289], CDF [0.3, 0.8, 0.8999999999999999, 1], p50 0.26; range mean 1e290 (sum 2e290 / 2); y `countRange`, counts = B1, meter "1 families with counts out of range not shown", popover "{j="y"}: count above 1e290". Covers T21-062 |
+| I-G | B20 "finite estimates at large bounds" (`buckets.test.ts` · `unit:dist-bins`) | le −1e290, 1e290, +Inf = 0, 1e290, 1e290; le −1e290, −1e289, 1e290, +Inf = 0, 5e289, 1e290, 1e290 → 1: counts [0, 1e+290, 0], p25 −4.9999999999999994e+289, p50 0 (finite), p75 4.9999999999999994e+289; 2: counts [0, 5e+289, 5e+289, 0], p25 −5.5e+289, p50 −1e+289, p75 4.499999999999999e+289; every estimate finite. Covers T21-066 |
+| I-G | B21 "guard on equal 17-digit labels" (`buckets.test.ts` · `unit:dist-bins`) | linear le 1000.0000000000001, 1000.0000000000002, +Inf = 1, 2, 3 → both bounds read "1.0000000000000002k" at 17 digits (`formatValue` SI scaling), so bin 1 merges right: edges [1000, 1000.0000000000001, 1000.0000000000003], trueEdges [−Inf, 1000.0000000000001, +Inf], counts [1,2], `merged` 1, meter "1 buckets merged (number limits)"; edgePx [0, 133.3333, 400]. Covers T21-063 |
+| I-G | B22 "validation on original bounds" (`buckets.test.ts` · `unit:dist-bins`) | groupBy s, instant: a le 0.1, 0.5, 1, +Inf = 5, 2, 10, 12; b le 0.1, 1, +Inf = 1, 2, 3. Range: a ts 0, 1000, 2000: le 0.1 [1,2,3], 0.5 [2,1,NaN], 1 [3,3,5], +Inf [4,4,6]; b ts 0: le 0.1 [1], 1 [5], +Inf [6] → instant: B [0.1, 1]; a `nonMonotonic` (5 > 2 at the dropped 0.5), not drawn; b [1,1,1]; meter "1 families with non-monotonic counts not shown"; popover "{s="a"}: counts decrease across bounds". Range: B [0.1, 1]; a `coarsened`, ts 1000 excluded (decrease at the dropped 0.5 only), ts 2000 valid over the bounds it has; a [2,2,1] (2 steps), b [1,4,1]; panel [3,6,2]; p50 0.47500000000000003; meter "1 non-monotonic steps not shown · 1 families merged to the shared bounds". Covers T21-062, T21-061 |
+| I-G | H21b "bucket worker" (`histogramClient.test.ts` · `unit:hist-worker`) | the H22 data; H21 fake clock (+1 ms per 25 000 values copied; +1 ms per 100 family keys scanned) → batches cut at 200 000 values; R1 then R2 → R1 worker terminated, R1 rejects AbortError, a late R1 message is ignored, only R2 applied; R2 = synchronous `bucketHistogram` (k 21, bin 0 = 379.7150000000009, total 7974.015000000021, relative 1e−12); `selectedCounts` for p00's 21 keys over 1 995 family keys yields ≥ 2 times and equals p00's counts; a newer selection aborts it (AbortError) and the frame keeps its last drawn selection. Covers T21-069, PRF-005 |
+| I-G | H22 scenario "bucket histogram 1 995 000 samples" (`e2e/perf-rooms-long-tasks.spec.ts` · `bench:rooms-long-tasks`) | range, step 1 s, ts 0…999 000; 95 families `{pod="p00"…"p94"}`, le 0.001·2^j (j 0…19) and +Inf; C_j(t) = (j + 1)·(1 + t/1000 mod 7) (+Inf j = 20); line panel on the p00 series → frame k 21, B₀ 0.001, B₁₉ 524.288, last display edge 786.432, bin 0 = 379.7150000000009, p50 "≈ 0.768 (estimate)"; hover emits `bin`; brush bins 0–1 emits `xRange` {0, 0.002}; a click on bin 0 opens "Bin ≤ 0.001" with 95 members; selecting p00's le 0.001 key in the line panel dims all but p00; the H22 limits hold. Covers PRF-005 |
 | I-E | "engine state timeline at 5 000 rows" (`bench:frame-gallery`, (b)) | Page `state-timeline-5000`: 5 000 series × 1 440 steps, same generator and script. Median ≥ 60 fps and p99 ≥ 45 fps (VIZ-004, PRF-001, PRF-002). Fails today because the engine has no state timeline |
 | #94 | "3D forms occlude and link" (`golden:3d-occlusion`, `replay:3d-linked-2d`, `bench:frame-gallery`) | The VIZ-086 acceptance holds. At the §4.3 scales, median ≥ 60 fps and p99 ≥ 45 fps on (b). Fails today because there are no 3D forms |
 
@@ -731,6 +981,14 @@ Part 2a (#154), filed after merge:
 | I-F2 | Engine port of the histogram | Engine | #68, #69, I-F | VIZ-001, VIZ-004 | Same fixtures; the §7 row on `bench:frame-gallery` |
 | #206 | Design: histogram of histogram buckets (T21 part 2a-ii) | design | #154 | VIZ-028 | Per-partition detection and alignment, one terminal +Inf, zero-crossing buckets on log, bucket-family selection; rules T21-060 to T21-069 |
 
+Part 2a-ii (#206), filed after merge:
+
+| # | Title | Mode | Depends | Requirement IDs | Acceptance (tests in §10) |
+|---|---|---|---|---|---|
+| I-G | Histogram of histogram buckets: families, shared bounds, open bins, estimates, family selection | 2D-now, M-UI3 | #208 (I-F) | VIZ-090, VIZ-028, VIZ-003, VIZ-005, VIZ-066, VIZ-067, PRF-005 | T21-060 to T21-069; B1 to B22, H8, H21b and the H22 scenario; gallery `histogram-buckets`; docs |
+
+I-F2 (#209), the engine port, runs the B fixtures too.
+
 A new design issue, to be filed: **"Design: status history panel (worst-wins grid)"**. It covers VIZ-009,
 VIZ-065 (row 9 regular step), VIZ-066 and VIZ-067, depends on #150 and #164, and starts from a draft
 (not tracked). That draft carries the open items:
@@ -750,7 +1008,7 @@ How this design relates to the other issues:
 | #164 | MUST accept `StateInspectorTarget`: [T25](T25-inspector-and-pivots.md) `{type:'stateRun', target}` |
 | #170, #173 | Board-spec options per §5 (1.2-rc): the stateTimeline keys live in `vis.options` |
 | #201, #202 | Reuse `XRangeEvent`, `setXRange`, the nullable `tMs` and the T21-016 worker |
-| #206 | Bucket histograms; the `buckets` notice (T21-012) points there |
+| #206 | Bucket histograms: T21-060 to T21-069, implemented by I-G |
 
 **IDs.** Part 1 uses VIZ-086 and T21-001 to T21-011. Part 2a (#154) uses VIZ-090 and T21-012 to
 T21-016 of its range T21-012 to T21-029, #161 owns T21-030 to T21-039, and #206 owns T21-060 to
@@ -779,3 +1037,4 @@ None.
 | 1.0-rc | 2026-11-24 | #150 |
 | 1.1-rc | 2026-11-25 | #164 ([T25](T25-inspector-and-pivots.md)): T21-009 writes the T25 `Selection` and opens the Inspector with `{type:'stateRun', target}`; Esc per T25-007, and an empty click clears only the selection; members per T25-011. §5: T25 `Selection`; nullable `SelectEvent.item`; `MemberFacts` from `inspector/members.ts` |
 | 1.2-rc | 2026-11-25 | #154 (Part 2a): the histogram over raw values ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)): T21-012 to T21-016 (values and exclusions, bins with the display guard and the terminal log rule, groups and "other (n)", CDF and exact ECDF, non-time interactions with the value brush and the `bin` Inspector target, the per-panel worker, the coverage meter and the notices); §3, §4.2, §4.3, §4.5, §4.6 and §7 rows; §5 histogram seam and transforms; the board spec moves the stateTimeline keys into T22's `Vis.options` and adds the histogram keys (T21-011, F7, F10 and the state-spec row follow); §10 H1 to H26; §11 I-F, I-F2 and #206; mockup 42-histogram. Code review r1: `SummaryFacts.extent` is `{ min; max } | null`, as T22-014 and T21-015 fill it |
+| 1.3-rc | 2026-11-25 | #206 (Part 2a-ii): histograms of histogram buckets ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay) amended): T21-060 to T21-069 (bucket sources and families with a strict `parseLe`, the shared bound set by drawable valid mass, snapshots validated on the original bounds and never repaired, one bin per bound with display extents and true-bound text, log exclusions of the open first bucket and of buckets crossing 0, groups and the CDF from cumulative counts, labelled estimates and facts, family selection and the Inspector, the meter, notices and table rows, validation); T21-012 sends `le` results to the bucket path and the `buckets` notice is removed (T21-016 notices, §5 `HistogramResult`); §1, §2 (the non-goal removed), §3 rows, §4.2 row; §5 bucket seam additions and `buckets.ts`; §10 H8 rewritten, B1 to B22, H21b and the H22 scenario; §11 I-G; mockup 43-bucket-histogram |
