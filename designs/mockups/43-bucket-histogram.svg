@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="t d">
+<title id="t">Bucket histogram: request latency by version from histogram buckets on a log axis, overlaid with a CDF from cumulative counts, the tooltip open on the 0.005 to 0.01 bucket and the coverage meter popover open</title>
+<desc id="d">Mockup 43 (T21 part 2a-ii, #206). Dark theme, 1440 by 900. The board release health with one histogram panel, Request latency by version, over checkout_request_seconds_bucket, an instant result. The le series form one family per version and pod; the shared bounds are 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5 and 1 seconds plus +Inf, one bin per bucket on a log value axis. Tick labels sit only at the true bounds, and the open last bucket ends at +∞ in the tertiary text colour. Versions are overlaid: v1 a solid 1.5 px step outline, v2 dashed, each over a 12 percent fill, with each version's CDF from cumulative counts on the right axis from 0 to 100 percent, exact at each upper bound. The pointer is on the 0.005 to 0.01 bin; the tooltip reads v1 310 of 500 and v2 190 of 260, v1 at or below 0.01: 62 percent, v2 at or below 0.01: 73 percent, and the footer Buckets at 12:00:00, median approximately 0.0088 (estimate). The coverage meter reads 120 in (minus infinity, 0.005] not shown (log) as a focused button and 1 families with different bounds not shown; the popover lists v1 and v2 with their counts in the open first bucket and the family with pod api-7 and version v2 with its missing shared bounds. No gradients or shadows on marks. Callouts: 1 CDF from cumulative counts, 2 true bounds and estimates, 3 dash channel, 4 one bin per bucket and the open end, 5 meter and popover.</desc>
+<defs>
+<style>
+text{font-family:Inter, system-ui, sans-serif;font-variant-numeric:tabular-nums;fill:#E6E8EB;font-size:13px}
+.m{font-family:JetBrains Mono, ui-monospace, monospace}
+.mu{fill:#8A919C} .ac{fill:#5B9BFF}
+.b{font-weight:600} .sb{font-weight:500}
+.s11{font-size:11px} .s12{font-size:12px} .s13{font-size:13px} .s16{font-size:16px} .s20{font-size:20px}
+.e{text-anchor:end} .c{text-anchor:middle}
+.h{font-size:11px;font-weight:600;letter-spacing:0.66px;fill:#8A919C}
+.ctl{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.pn{fill:#12151A;stroke:#FFFFFF14;stroke-width:1}
+.chip{fill:#191D24;stroke:#FFFFFF14;stroke-width:1}
+.rule{stroke:#FFFFFF14;stroke-width:1}
+.grid{stroke:#FFFFFF0A;stroke-width:1}
+.co{stroke:#5B9BFF;stroke-width:1.5;stroke-dasharray:4 3;fill:none}
+</style>
+<filter id="pop" x="-20%" y="-10%" width="140%" height="120%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/></filter>
+<pattern id="p-backDiagonal" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M-1,1 l2,-2 M0,6 l6,-6 M5,7 l2,-2" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-horizontal" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,3 h6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-vertical" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M3,0 v6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-dots" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1" fill="#0B0D10" fill-opacity="0.6"/></pattern>
+<pattern id="p-crossHatch" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,3 h6 M3,0 v6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-checker" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,0 h3 v3 h-3z M3,3 h3 v3 h-3z" fill="#0B0D10" fill-opacity="0.45"/></pattern>
+<pattern id="p-dashes" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,1.5 h3 M3,4.5 h3" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+<pattern id="p-grid" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,0.5 h6 M0.5,0 v6" stroke="#0B0D10" stroke-opacity="0.6" stroke-width="1"/></pattern>
+</defs>
+<rect width="1440" height="900" fill="#0B0D10"/>
+<g id="sidebar">
+<rect x="0" y="0" width="240" height="900" fill="#12151A"/>
+<line x1="239.5" y1="0" x2="239.5" y2="900" stroke="#FFFFFF14"/>
+<path d="M20,28 L25,28 L28,20 L32,36 L35,28 L40,28" fill="none" stroke="#5B9BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="25" class="s13 b">Demo Org</text>
+<text x="56" y="43" class="s12 mu">Tenant:</text><text x="100" y="43" class="s12">acme</text><text x="136" y="43" class="s11 mu">▾</text>
+<line x1="0" y1="55.5" x2="240" y2="55.5" stroke="#FFFFFF14"/>
+<rect x="8" y="68" width="224" height="32" rx="6" fill="#191D24"/><rect x="8" y="68" width="2" height="32" fill="#5B9BFF"/>
+<text x="20" y="88" class="s13 ac">▦</text><text x="44" y="88" class="s13 sb">Boards</text>
+<text x="16" y="124" class="s11 mu b">Explore</text>
+<text x="44" y="148" class="s13 mu">⌁</text><text x="64" y="148" class="s13 mu">Metrics</text>
+<text x="44" y="184" class="s13 mu">≡</text><text x="64" y="184" class="s13 mu">Logs</text>
+<text x="16" y="220" class="s11 mu b">Starred</text>
+<text x="32" y="244" class="s13 ac">★</text><text x="52" y="244" class="s13 mu">release health</text>
+<text x="16" y="280" class="s11 mu b">Recent</text>
+<text x="32" y="304" class="s13 mu">release health</text>
+<line x1="0" y1="820.5" x2="240" y2="820.5" stroke="#FFFFFF14"/>
+<text x="20" y="848" class="s13 mu">⚙</text><text x="44" y="848" class="s13 mu">Admin</text>
+<text x="20" y="884" class="s13 mu">⇤</text><text x="44" y="884" class="s13 mu">Collapse sidebar</text>
+</g>
+<g id="page-header">
+<rect x="240" y="0" width="1200" height="56" fill="#12151A"/>
+<line x1="240" y1="55.5" x2="1440" y2="55.5" stroke="#FFFFFF14"/>
+<text x="264" y="33" class="s13 mu">Boards</text><text x="314" y="33" class="s13 mu">/</text>
+<text x="330" y="35" class="s20 b">release health</text>
+<text x="500" y="35" class="s16 ac">★</text>
+<rect x="948" y="12" width="280" height="32" rx="6" class="ctl"/>
+<text x="960" y="33" class="s13 mu">◷</text><text x="980" y="33" class="s13 sb">Last 1 hour</text>
+<text x="1064" y="33" class="s12 m mu">11:00 – 12:00 UTC</text><text x="1214" y="33" class="s11 mu e">▾</text>
+<rect x="1236" y="12" width="120" height="32" rx="6" class="ctl"/>
+<text x="1256" y="33" class="s13 mu c">⟳</text>
+<line x1="1276.5" y1="12" x2="1276.5" y2="44" stroke="#FFFFFF14"/>
+<circle cx="1292" cy="28" r="4" fill="#5B9BFF"/><text x="1304" y="33" class="s13">30s</text>
+<text x="1346" y="33" class="s11 mu e">▾</text>
+<circle cx="1402" cy="28" r="14" fill="#7AA2D6"/><text x="1402" y="32" class="s12 b c" fill="#0B0D10">AA</text>
+</g>
+<g id="panel-latency">
+<rect x="264" y="80" width="872" height="796" rx="6" class="pn"/>
+<text x="280" y="104" class="s13 sb">Request latency by version</text><text x="476" y="104" class="s12 mu m">checkout_request_seconds_bucket{service="checkout"}</text><text x="1120" y="104" class="s12 mu e">⋯</text>
+<rect x="864" y="89" width="232" height="20" rx="4" class="chip"/><text x="874" y="103" class="s11 mu">buckets · log · overlay by version · CDF</text>
+<line x1="336.0" y1="640.0" x2="1064.0" y2="640.0" class="grid"/><text x="330.0" y="644.0" class="s11 mu e m">0</text>
+<line x1="336.0" y1="570.0" x2="1064.0" y2="570.0" class="grid"/><text x="330.0" y="574.0" class="s11 mu e m">50</text>
+<line x1="336.0" y1="500.0" x2="1064.0" y2="500.0" class="grid"/><text x="330.0" y="504.0" class="s11 mu e m">100</text>
+<line x1="336.0" y1="430.0" x2="1064.0" y2="430.0" class="grid"/><text x="330.0" y="434.0" class="s11 mu e m">150</text>
+<line x1="336.0" y1="360.0" x2="1064.0" y2="360.0" class="grid"/><text x="330.0" y="364.0" class="s11 mu e m">200</text>
+<line x1="336.0" y1="290.0" x2="1064.0" y2="290.0" class="grid"/><text x="330.0" y="294.0" class="s11 mu e m">250</text>
+<line x1="336.0" y1="220.0" x2="1064.0" y2="220.0" class="grid"/><text x="330.0" y="224.0" class="s11 mu e m">300</text>
+<line x1="336.0" y1="150.0" x2="1064.0" y2="150.0" class="grid"/><text x="330.0" y="154.0" class="s11 mu e m">350</text>
+<text x="280" y="136.0" class="s11 mu">observations</text>
+<line x1="1064.0" y1="640.0" x2="1068.0" y2="640.0" stroke="#8A919C"/><text x="1072.0" y="644.0" class="s11 mu m">0 %</text>
+<line x1="1064.0" y1="517.5" x2="1068.0" y2="517.5" stroke="#8A919C"/><text x="1072.0" y="521.5" class="s11 mu m">25 %</text>
+<line x1="1064.0" y1="395.0" x2="1068.0" y2="395.0" stroke="#8A919C"/><text x="1072.0" y="399.0" class="s11 mu m">50 %</text>
+<line x1="1064.0" y1="272.5" x2="1068.0" y2="272.5" stroke="#8A919C"/><text x="1072.0" y="276.5" class="s11 mu m">75 %</text>
+<line x1="1064.0" y1="150.0" x2="1068.0" y2="150.0" stroke="#8A919C"/><text x="1072.0" y="154.0" class="s11 mu m">100 %</text>
+<line x1="336.0" y1="640.0" x2="336.0" y2="644.0" stroke="#8A919C"/><text x="336.0" y="658.0" class="s11 mu c m">0.005</text>
+<line x1="420.2" y1="640.0" x2="420.2" y2="644.0" stroke="#8A919C"/><text x="420.2" y="658.0" class="s11 mu c m">0.01</text>
+<line x1="531.6" y1="640.0" x2="531.6" y2="644.0" stroke="#8A919C"/><text x="531.6" y="658.0" class="s11 mu c m">0.025</text>
+<line x1="615.8" y1="640.0" x2="615.8" y2="644.0" stroke="#8A919C"/><text x="615.8" y="658.0" class="s11 mu c m">0.05</text>
+<line x1="700.0" y1="640.0" x2="700.0" y2="644.0" stroke="#8A919C"/><text x="700.0" y="658.0" class="s11 mu c m">0.1</text>
+<line x1="811.3" y1="640.0" x2="811.3" y2="644.0" stroke="#8A919C"/><text x="811.3" y="658.0" class="s11 mu c m">0.25</text>
+<line x1="895.6" y1="640.0" x2="895.6" y2="644.0" stroke="#8A919C"/><text x="895.6" y="658.0" class="s11 mu c m">0.5</text>
+<line x1="979.8" y1="640.0" x2="979.8" y2="644.0" stroke="#8A919C"/><text x="979.8" y="658.0" class="s11 mu c m">1</text>
+<text x="1064.0" y="658.0" class="s12 c m" fill="#5F6672">+∞</text>
+<text x="700.0" y="678.0" class="s11 mu c">request duration (s), bucket upper bounds</text>
+<path d="M336.0,640.0 L336.0,206.0 L420.2,206.0 L420.2,486.0 L531.6,486.0 L531.6,584.0 L615.8,584.0 L615.8,612.0 L700.0,612.0 L700.0,626.0 L811.3,626.0 L811.3,633.0 L895.6,633.0 L895.6,635.8 L979.8,635.8 L979.8,637.2 L1064.0,637.2 L1064.0,640.0 Z" fill="#7AA2D6" fill-opacity="0.12"/>
+<path d="M336.0,640.0 L336.0,206.0 L420.2,206.0 L420.2,486.0 L531.6,486.0 L531.6,584.0 L615.8,584.0 L615.8,612.0 L700.0,612.0 L700.0,626.0 L811.3,626.0 L811.3,633.0 L895.6,633.0 L895.6,635.8 L979.8,635.8 L979.8,637.2 L1064.0,637.2 L1064.0,640.0 Z" fill="none" stroke="#7AA2D6" stroke-width="1.5"/>
+<path d="M336.0,640.0 L336.0,374.0 L420.2,374.0 L420.2,598.0 L531.6,598.0 L531.6,612.0 L615.8,612.0 L615.8,626.0 L700.0,626.0 L700.0,633.0 L811.3,633.0 L811.3,635.8 L895.6,635.8 L895.6,638.6 L979.8,638.6 L979.8,638.6 L1064.0,638.6 L1064.0,640.0 Z" fill="#C9A36B" fill-opacity="0.12"/>
+<path d="M336.0,640.0 L336.0,374.0 L420.2,374.0 L420.2,598.0 L531.6,598.0 L531.6,612.0 L615.8,612.0 L615.8,626.0 L700.0,626.0 L700.0,633.0 L811.3,633.0 L811.3,635.8 L895.6,635.8 L895.6,638.6 L979.8,638.6 L979.8,638.6 L1064.0,638.6 L1064.0,640.0 Z" fill="none" stroke="#C9A36B" stroke-width="1.5" stroke-dasharray="6 3"/>
+<line x1="336.0" y1="640.5" x2="1064.0" y2="640.5" stroke="#FFFFFF14"/>
+<polyline points="336.0,640.0 420.2,640.0 420.2,336.2 531.6,336.2 531.6,228.4 615.8,228.4 615.8,189.2 700.0,189.2 700.0,169.6 811.3,169.6 811.3,159.8 895.6,159.8 895.6,154.9 979.8,154.9 979.8,152.0 1064.0,152.0 1064.0,150.0" fill="none" stroke="#7AA2D6" stroke-width="2"/>
+<circle cx="420.2" cy="336.2" r="2.5" fill="#7AA2D6"/>
+<circle cx="531.6" cy="228.4" r="2.5" fill="#7AA2D6"/>
+<circle cx="615.8" cy="189.2" r="2.5" fill="#7AA2D6"/>
+<circle cx="700.0" cy="169.6" r="2.5" fill="#7AA2D6"/>
+<circle cx="811.3" cy="159.8" r="2.5" fill="#7AA2D6"/>
+<circle cx="895.6" cy="154.9" r="2.5" fill="#7AA2D6"/>
+<circle cx="979.8" cy="152.0" r="2.5" fill="#7AA2D6"/>
+<circle cx="1064.0" cy="150.0" r="2.5" fill="#7AA2D6"/>
+<polyline points="336.0,640.0 420.2,640.0 420.2,281.9 531.6,281.9 531.6,225.4 615.8,225.4 615.8,187.7 700.0,187.7 700.0,168.8 811.3,168.8 811.3,159.4 895.6,159.4 895.6,153.8 979.8,153.8 979.8,151.9 1064.0,151.9 1064.0,150.0" fill="none" stroke="#C9A36B" stroke-width="2" stroke-dasharray="6 3"/>
+<circle cx="420.2" cy="281.9" r="2.5" fill="#C9A36B"/>
+<circle cx="531.6" cy="225.4" r="2.5" fill="#C9A36B"/>
+<circle cx="615.8" cy="187.7" r="2.5" fill="#C9A36B"/>
+<circle cx="700.0" cy="168.8" r="2.5" fill="#C9A36B"/>
+<circle cx="811.3" cy="159.4" r="2.5" fill="#C9A36B"/>
+<circle cx="895.6" cy="153.8" r="2.5" fill="#C9A36B"/>
+<circle cx="979.8" cy="151.9" r="2.5" fill="#C9A36B"/>
+<circle cx="1064.0" cy="150.0" r="2.5" fill="#C9A36B"/>
+<rect x="336.0" y="206.0" width="84.2" height="434.0" fill="none" stroke="#E6E8EB" stroke-width="1"/>
+<line x1="382.3" y1="150.0" x2="382.3" y2="640.0" stroke="#8A919C" stroke-dasharray="3 3"/>
+<rect x="436.2" y="214" width="300" height="150" rx="8" fill="#191D24" stroke="#FFFFFF14" filter="url(#pop)"/>
+<text x="448.2" y="236" class="s13 sb m">0.005 – 0.01</text>
+<line x1="448.2" y1="251" x2="458.2" y2="251" stroke="#7AA2D6" stroke-width="2"/><text x="466.2" y="255" class="s12">v1</text><text x="724.2" y="255" class="s12 m e">310 of 500 · 62.0 %</text>
+<line x1="448.2" y1="271" x2="458.2" y2="271" stroke="#C9A36B" stroke-width="2" stroke-dasharray="6 3"/><text x="466.2" y="275" class="s12">v2</text><text x="724.2" y="275" class="s12 m e">190 of 260 · 73.1 %</text>
+<line x1="448.2" y1="285.5" x2="724.2" y2="285.5" class="rule"/>
+<text x="448.2" y="304" class="s12">v1 ≤ 0.01: <tspan class="m">62 %</tspan></text>
+<text x="448.2" y="322" class="s12">v2 ≤ 0.01: <tspan class="m">73 %</tspan></text>
+<line x1="448.2" y1="333.5" x2="724.2" y2="333.5" class="rule"/>
+<text x="448.2" y="352" class="s11 mu">Buckets at 12:00:00 · median ≈ 0.0088 (estimate)</text>
+<line x1="280" y1="712" x2="300" y2="712" stroke="#7AA2D6" stroke-width="2"/><text x="306" y="716" class="s12">v1 (500)</text>
+<line x1="380" y1="712" x2="400" y2="712" stroke="#C9A36B" stroke-width="2" stroke-dasharray="6 3"/><text x="406" y="716" class="s12">v2 (260)</text>
+<text x="480" y="716" class="s12 mu">bars: observations per bucket · curves: CDF from cumulative counts (right axis)</text>
+<text x="560" y="864" class="s12 mu e">Coverage</text>
+<rect x="568" y="850" width="276" height="20" rx="4" class="ctl"/><text x="706" y="864" class="s12 m c">120 in (−∞, 0.005] not shown (log)</text>
+<text x="852" y="864" class="s12 mu">·</text>
+<rect x="862" y="850" width="262" height="20" rx="4" class="ctl"/><text x="993" y="864" class="s12 c">1 families with different bounds not shown</text>
+<rect x="566" y="848" width="280" height="24" rx="5" fill="none" stroke="#5B9BFF" stroke-width="2"/>
+<rect x="568" y="744" width="420" height="100" rx="8" fill="#191D24" stroke="#FFFFFF14" filter="url(#pop)"/>
+<text x="580" y="764" class="s11 h">NOT SHOWN, BY VERSION AND FAMILY</text>
+<text x="580" y="786" class="s12">v1: <tspan class="m">70</tspan> in (−∞, 0.005]</text>
+<text x="580" y="806" class="s12">v2: <tspan class="m">50</tspan> in (−∞, 0.005]</text>
+<text x="580" y="826" class="s12">{pod="api-7", version="v2"}: missing shared bounds 0.005, 0.01, 0.025, 0.05 …</text>
+</g>
+<g id="callouts">
+<polyline points="1152,160 645.8,189.2" class="co"/>
+<rect x="1152" y="150" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="170" class="s12">① CDF from cumulative counts,</text>
+<text x="1162" y="186" class="s12">exact at each upper bound; ECDF</text>
+<text x="1162" y="202" class="s12">is not available on bucket data</text>
+<polyline points="1152,250 736.2,352.0" class="co"/>
+<rect x="1152" y="240" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="260" class="s12">② Text always shows true bounds;</text>
+<text x="1162" y="276" class="s12">the median is an estimate from</text>
+<text x="1162" y="292" class="s12">the cumulative counts</text>
+<polyline points="1152,340 484.7,598.0" class="co"/>
+<rect x="1152" y="330" width="264" height="44" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="350" class="s12">③ Groups differ by dash, never</text>
+<text x="1162" y="366" class="s12">by colour alone (greyscale-safe)</text>
+<polyline points="1152,570 1072.0,652.0" class="co"/>
+<rect x="1152" y="560" width="264" height="60" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="580" class="s12">④ One bin per returned bucket; the</text>
+<text x="1162" y="596" class="s12">open last bucket gets a display</text>
+<text x="1162" y="612" class="s12">extent, the axis ends at +∞</text>
+<polyline points="1152,710 846.0,860.0" class="co"/>
+<rect x="1152" y="700" width="264" height="76" rx="4" fill="#0B0D10" fill-opacity="0.85" class="co"/>
+<text x="1162" y="720" class="s12">⑤ A log axis cannot draw the open</text>
+<text x="1162" y="736" class="s12">first bucket; the meter counts it,</text>
+<text x="1162" y="752" class="s12">and the popover names the family</text>
+<text x="1162" y="768" class="s12">whose bounds differ</text>
+</g>
+</svg>
