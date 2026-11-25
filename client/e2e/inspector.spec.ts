@@ -738,3 +738,82 @@ test.describe('e2e:inspector (fake)', () => {
     );
   });
 });
+
+/**
+ * T25 §8: nothing of one tenant's Inspector survives a tenant change on the same Explore route
+ * (Back or Forward between tenants keeps the page mounted). On the stub: sandbox, then demo.
+ */
+test.describe('e2e:inspector-tenant', () => {
+  const PAGES = [
+    ['metrics', '/explore/metrics?from=now-1h&to=now&refresh=off&q=http_requests_total'],
+    ['logs', `/explore/logs?from=now-1h&to=now&refresh=off&q=${e('{service_name="stub"}')}`],
+  ] as const;
+
+  /** Opens the Inspector on the page's chart (metrics) or its third log line (logs). */
+  async function inspectHere(page: Page, kind: 'metrics' | 'logs'): Promise<void> {
+    if (kind === 'logs') {
+      await page.locator('[data-log-row]').nth(2).click();
+    } else {
+      const frame = page.locator('[data-chart-frame][data-frame-ready="true"]');
+      await expect(page.getByRole('table').getByRole('row')).toHaveCount(4);
+      const box = await frame.boundingBox();
+      const [px = 0, py = 0, pw = 0, ph = 0] =
+        (await frame.getAttribute('data-plot'))?.split(',').map(Number) ?? [];
+      if (box === null) throw new Error('no chart');
+      for (let f = 0.1; f < 0.95; f += 0.05) {
+        await page.mouse.click(box.x + px + pw * 0.5, box.y + py + ph * f);
+        if ((await page.locator('[data-inspector]').count()) > 0) break;
+      }
+    }
+    await expect(aside(page)).toBeVisible();
+  }
+
+  for (const [kind, path] of PAGES) {
+    for (const closed of [false, true]) {
+      test(`${kind}, sheet ${closed ? 'closed' : 'open'}`, async ({ page }) => {
+        await page.goto(`/t/sandbox${path}`);
+        await page.locator('html[data-shell-ready="true"]').waitFor();
+        await inspectHere(page, kind);
+        const before = (await current(page).locator('[data-inspector-value]').textContent()) ?? '';
+        expect(before).not.toBe('');
+        if (closed) {
+          await aside(page).getByRole('button', { name: 'Close Inspector' }).click();
+          await expect(page.locator('[data-inspector]')).toHaveCount(0);
+        }
+        // Every DOM change once the URL is the other tenant's: any trace of the sheet, its
+        // value, the live region's text or a drawn selection.
+        await page.evaluate(() => {
+          const w = window as unknown as { __traces: string[] };
+          w.__traces = [];
+          new MutationObserver(() => {
+            if (!location.pathname.startsWith('/t/demo/')) return;
+            if (document.querySelector('[data-inspector]') !== null) w.__traces.push('sheet');
+            const live = document.querySelector('[data-inspector-live]')?.textContent ?? '';
+            if (live !== '') w.__traces.push(`live ${live}`);
+            for (const f of document.querySelectorAll('[data-chart-frame]')) {
+              const k = f.getAttribute('data-selection-keys') ?? '';
+              if (k !== '') w.__traces.push(`selection ${k}`);
+            }
+            if (document.querySelector('[data-log-row][data-selected]') !== null)
+              w.__traces.push('log selection');
+          }).observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true,
+          });
+          // The page stays mounted: a history move, as Back or Forward between tenants.
+          history.pushState(null, '', location.href.replace('/t/sandbox/', '/t/demo/'));
+          dispatchEvent(new PopStateEvent('popstate'));
+        });
+        await expect(page).toHaveURL(/\/t\/demo\/explore\//);
+        await page.waitForTimeout(400);
+        expect(
+          await page.evaluate(() => (window as unknown as { __traces: string[] }).__traces),
+        ).toEqual([]);
+        await expect(page.locator('[data-inspector]')).toHaveCount(0);
+        await expect(page.locator('[data-inspector-live]')).toHaveText('');
+      });
+    }
+  }
+});

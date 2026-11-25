@@ -17,7 +17,9 @@ export type InspectorAction =
   | { readonly type: 'select'; readonly sel: Selection | null }
   | { readonly type: 'close' }
   | { readonly type: 'toggleCollapsed' }
-  | { readonly type: 'originChanged'; readonly panelId: string | null };
+  | { readonly type: 'originChanged'; readonly panelId: string | null }
+  /** Another tenant: nothing of the last one survives (T25 §8). */
+  | { readonly type: 'reset' };
 
 export const INITIAL_INSPECTOR: InspectorState = Object.freeze({
   req: null,
@@ -40,5 +42,7 @@ export function inspectorReducer(s: InspectorState, a: InspectorAction): Inspect
     case 'originChanged':
       // The selection stays: only the snapshot goes (T25-012).
       return s.req === null || s.req.origin.panelId !== a.panelId ? s : { ...s, req: null };
+    case 'reset':
+      return INITIAL_INSPECTOR;
   }
 }

@@ -257,3 +257,62 @@ describe('unit:inspector-collapse', () => {
     expect(heading()).toHaveTextContent('C');
   });
 });
+
+describe('unit:inspector-tenant', () => {
+  const URL_B = '/t/other/board/b1?from=now-1h&to=now&refresh=30s';
+
+  /** Each DOM change once the router is on the other tenant: any Inspector trace in the DOM. */
+  function watch(onOther: () => boolean): { seen: string[]; stop: () => void } {
+    const seen: string[] = [];
+    const mo = new MutationObserver(() => {
+      if (!onOther()) return;
+      const aside = document.querySelector('[data-inspector]');
+      const live = document.querySelector('[data-inspector-live]')?.textContent ?? '';
+      const text = document.body.textContent;
+      if (aside !== null) seen.push('aside');
+      if (live !== '') seen.push(`live:${live}`);
+      if (text.includes('shop/checkout')) seen.push('label');
+    });
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return {
+      seen,
+      stop: () => {
+        mo.disconnect();
+      },
+    };
+  }
+
+  for (const reduced of [true, false]) {
+    it(`an open sheet: nothing of the last tenant survives (${reduced ? 'reduced' : 'full'} motion)`, async () => {
+      restore();
+      restore = stubReducedMotion(reduced);
+      const h = renderHost();
+      h.inspect(pRequest());
+      expect(h.aside()).not.toBeNull();
+      expect(document.body.textContent).toContain('shop/checkout');
+      const w = watch(() => h.router.state.location.pathname.startsWith('/t/other/'));
+      await act(async () => {
+        await h.router.navigate(URL_B);
+      });
+      w.stop();
+      expect(w.seen).toEqual([]);
+      expect(document.querySelector('[data-inspector]')).toBeNull();
+      expect(document.querySelector('[data-inspector-live]')?.textContent).toBe('');
+      expect(h.selection()).toBe('null');
+      expect(document.body.textContent).not.toContain('shop/checkout');
+    });
+  }
+
+  it('a closed sheet: the selection and the live text go too', async () => {
+    const h = renderHost();
+    h.inspect(pRequest());
+    fireEvent.click(screen.getByRole('button', { name: 'Close Inspector' }));
+    expect(h.selection()).toBe(`${K1}|null|null`);
+    expect(document.querySelector('[data-inspector-live]')?.textContent).not.toBe('');
+    await act(async () => {
+      await h.router.navigate(URL_B);
+    });
+    expect(h.selection()).toBe('null');
+    expect(document.querySelector('[data-inspector-live]')?.textContent).toBe('');
+  });
+});

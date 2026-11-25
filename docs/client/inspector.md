@@ -40,7 +40,10 @@ Kinds reach the host only through hooks:
 **Lifetime (T25-012).** The Inspector shows a snapshot. A refresh or a window change keeps it; it
 closes when `originKey` of its panel changes (the panel removed, its query or vis edited, Explore
 ran another query) or the path changes. Leaving the page (another route, tenant or board) unmounts
-the host, and everything goes with it. The selection survives a close.
+the host, and everything goes with it. A tenant change that keeps the page mounted (Back or Forward
+between two tenants on the same Explore route) resets the host before it renders: the selection, the
+sheet (with no close fade), and the live region's text and pending write all go, so nothing of one
+tenant shows in another (T25 §8). The selection survives a close.
 
 ## The payload
 

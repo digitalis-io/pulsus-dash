@@ -96,7 +96,19 @@ function closeTarget(req: InspectRequest, doc: Document): HTMLElement | null {
   return panel ?? doc.getElementById('main');
 }
 
-/** The one polite region: at most one write per 500 ms, the latest text wins. */
+/**
+ * The one polite region: at most one write per 500 ms, the latest text wins. Keyed by tenant by the
+ * host, so a tenant change drops its text and its pending write.
+ */
+function LiveRegion({ text, seq }: { text: string | null; seq: number }) {
+  const live = useLiveText(text, seq);
+  return (
+    <p aria-live="polite" className={cx(styles['srOnly'])} data-inspector-live="">
+      {live}
+    </p>
+  );
+}
+
 function useLiveText(text: string | null, seq: number): string {
   const [live, setLive] = useState('');
   const last = useRef(-Infinity);
@@ -138,6 +150,15 @@ export function InspectorHost({
 }: InspectorHostProps) {
   const [state, dispatch] = useReducer(inspectorReducer, INITIAL_INSPECTOR);
   const { tenant } = useShellRoute();
+  // T25 §8: a tenant change (Back or Forward between tenants on one route keeps the page mounted)
+  // drops the selection and the Inspector before this render commits, so nothing of the last
+  // tenant shows, not even during the close; the sheet drops its layers for the new scope and the live region is keyed by tenant.
+  const [tenantSeen, setTenantSeen] = useState(tenant);
+  if (tenantSeen !== tenant) {
+    setTenantSeen(tenant);
+    dispatch({ type: 'reset' });
+  }
+  const current = tenantSeen === tenant ? state : INITIAL_INSPECTOR;
   const { search, timeZone } = useTimeContext();
   const { pathname } = useLocation();
   const asideRef = useRef<HTMLElement | null>(null);
@@ -249,12 +270,13 @@ export function InspectorHost({
     [tenant, search, filters, timeZone],
   );
   const model = useMemo(
-    () => (state.req === null ? null : inspectorModel(state.req, env)),
-    [state.req, env],
+    () => (current.req === null ? null : inspectorModel(current.req, env)),
+    [current.req, env],
   );
-  const live = useLiveText(model?.announce ?? null, state.seq);
   const origin =
-    surface === 'board' && state.req?.origin.surface === 'board' ? state.req.origin.panelId : null;
+    surface === 'board' && current.req?.origin.surface === 'board'
+      ? current.req.origin.panelId
+      : null;
 
   const onEdit = useCallback(() => {
     const req = latest.current.state.req;
@@ -263,15 +285,16 @@ export function InspectorHost({
 
   return (
     <InspectorApiContext.Provider value={api}>
-      <SelectionContext.Provider value={state.selection}>
+      <SelectionContext.Provider value={current.selection}>
         <OriginContext.Provider value={origin}>
           {children}
           <Inspector
             ref={asideRef}
             model={model}
-            seq={state.seq}
-            focusHeading={state.req?.source === 'keyboard' ? state.seq : null}
-            collapsed={state.collapsed}
+            scope={tenant}
+            seq={current.seq}
+            focusHeading={current.req?.source === 'keyboard' ? current.seq : null}
+            collapsed={current.collapsed}
             onToggleCollapsed={() => {
               dispatch({ type: 'toggleCollapsed' });
             }}
@@ -281,9 +304,7 @@ export function InspectorHost({
             onEditQuery={onEdit}
             resolveMembers={(panelId, runId) => api.resolveMembers(panelId, runId)}
           />
-          <p aria-live="polite" className={cx(styles['srOnly'])} data-inspector-live="">
-            {live}
-          </p>
+          <LiveRegion key={tenant} text={model?.announce ?? null} seq={current.seq} />
         </OriginContext.Provider>
       </SelectionContext.Provider>
     </InspectorApiContext.Provider>

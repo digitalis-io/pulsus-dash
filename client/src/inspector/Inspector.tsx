@@ -44,6 +44,11 @@ const COPY_FAILED_MS = 4_000;
 export interface InspectorProps {
   readonly ref?: Ref<HTMLElement | null>;
   readonly model: InspectorModel | null;
+  /**
+   * The tenant: when it changes, every layer goes at once (no close fade, no outgoing layer), so
+   * nothing of the last tenant shows (T25 §8).
+   */
+  readonly scope: string;
   /** +1 per inspect. */
   readonly seq: number;
   /** The `seq` of a keyboard open, whose heading takes focus; null otherwise. */
@@ -70,12 +75,18 @@ interface Layer {
 }
 
 interface Layers {
+  readonly scope: string;
   readonly current: Layer | null;
   readonly leaving: Layer | null;
   readonly closing: boolean;
 }
 
-const NO_LAYERS: Layers = { current: null, leaving: null, closing: false };
+const noLayers = (scope: string): Layers => ({
+  scope,
+  current: null,
+  leaving: null,
+  closing: false,
+});
 
 const PIVOT_ICON: Readonly<Record<Pivot['id'], IconName>> = {
   explore: 'chart-line',
@@ -87,17 +98,29 @@ const PIVOT_ICON: Readonly<Record<Pivot['id'], IconName>> = {
 };
 
 /** The layers to show for `model` and `seq`, from the last ones (a render-time state update). */
-function nextLayers(l: Layers, model: InspectorModel | null, seq: number): Layers {
+function nextLayers(l: Layers, model: InspectorModel | null, seq: number, scope: string): Layers {
+  if (l.scope !== scope) {
+    return model === null
+      ? noLayers(scope)
+      : { scope, current: { seq, model }, leaving: null, closing: false };
+  }
   if (model === null) {
     if (l.current === null || l.closing) return l;
-    return reducedMotion() ? NO_LAYERS : { current: l.current, leaving: null, closing: true };
+    return reducedMotion()
+      ? noLayers(scope)
+      : { scope, current: l.current, leaving: null, closing: true };
   }
   if (l.current === null || l.closing) {
-    return { current: { seq, model }, leaving: null, closing: false };
+    return { scope, current: { seq, model }, leaving: null, closing: false };
   }
   if (l.current.seq !== seq) {
     // A third target drops the older outgoing layer at once: at most two layers.
-    return { current: { seq, model }, leaving: reducedMotion() ? null : l.current, closing: false };
+    return {
+      scope,
+      current: { seq, model },
+      leaving: reducedMotion() ? null : l.current,
+      closing: false,
+    };
   }
   return l.current.model === model ? l : { ...l, current: { seq, model } };
 }
@@ -105,6 +128,7 @@ function nextLayers(l: Layers, model: InspectorModel | null, seq: number): Layer
 export function Inspector({
   ref,
   model,
+  scope,
   seq,
   focusHeading,
   collapsed,
@@ -113,8 +137,8 @@ export function Inspector({
   onEditQuery,
   resolveMembers,
 }: InspectorProps) {
-  const [layers, setLayers] = useState<Layers>(NO_LAYERS);
-  const next = nextLayers(layers, model, seq);
+  const [layers, setLayers] = useState<Layers>(() => noLayers(scope));
+  const next = nextLayers(layers, model, seq, scope);
   if (next !== layers) setLayers(next);
   const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -138,7 +162,7 @@ export function Inspector({
   useEffect(() => {
     if (!closing) return;
     const id = setTimeout(() => {
-      setLayers((l) => (l.closing ? NO_LAYERS : l));
+      setLayers((l) => (l.closing ? noLayers(l.scope) : l));
     }, FADE_MS);
     return () => {
       clearTimeout(id);
