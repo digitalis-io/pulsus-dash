@@ -7,7 +7,7 @@ of the interim Canvas 2D renderer ([Charts](charts.md)). It is built in four par
 | Part | Scope | State |
 |---|---|---|
 | A | The `engine/` workspace and the native core: tokens, units, colour, scales, value encoding, decimation, plot layout, scene, line mark, headless goldens and the parity fixtures | this page |
-| B | Wire schemas and the Go DSF/Arrow writer (B1, [Arrow wire writer](../server/arrow.md)); the Rust DSF splitter, Arrow IPC reader and decoder into `Chunk` (B2, [below](#wire-decoding-dash-wire)); the shared wire limits (B3) | B1, B2 done; B3 planned |
+| B | Wire schemas and the Go DSF/Arrow writer (B1, [Arrow wire writer](../server/arrow.md)); the Rust DSF splitter, Arrow IPC reader and decoder into `Chunk` (B2, [below](#wire-decoding-dash-wire)); the shared wire limits (B3, [below](#limits-and-budgets)) | done |
 | C | The browser runtime: WASM builds, workers, the `WasmEngine` adapter, input, CSP | planned |
 | D | Arrow responses on the query routes and the data worker's byte pump | planned |
 
@@ -471,7 +471,58 @@ At the end of input, call `FrameSplitter::finish()` first. If bytes remain, call
   than a zero-copy view. In exchange, retained memory is exactly the published values.
   `bench:decode-r1` will report the cost.
 
-The aggregate limits and budgets (`with_limits`, `retained()`, part-0 limits) are Part B3.
+### Limits and budgets
+
+The reader enforces the shared limits of
+[`wire/schemas/limits.json`](../../wire/schemas/limits.json) (plan #68 B3,
+[T04-010](../../designs/technical/T04-wire-format-and-data-plane.md#t04-010--decoders-bound-and-validate-everything)).
+The values, the accounting and the writer's side are on the
+[Arrow page](../server/arrow.md#limits). `dash_wire::limits` holds them as `pub const`s (plus
+`cost::*`), and `unit:limits-json` checks every one against the file. Each count is computed
+from validated offsets and lengths before the `Vec` or `String` it bounds is allocated.
+
+| Limit | Default | Past it |
+|---|---|---|
+| open parts | 64 | the stream fails: every open part `Failed(Stream(Limit))` |
+| distinct part ids per body | 1 024 | the stream fails |
+| rows per batch | labels 1 048 576, grid 65 536 | the part fails (`Limit`) |
+| series per data part, label rows per labels part, label bytes per labels part | 1 048 576, 4 194 304, 16 MiB | the part fails |
+| META list elements (all lists), META or ERROR string bytes | 4 096, 1 MiB | the part fails (a part-0 ERROR fails the stream) |
+| body budget | 64 MiB | the stream fails (`Limit("body budget")`) |
+| value budget | 1 GiB | the stream fails (`Limit("value budget")`) |
+
+- **Body budget.** A monotonic count of the bytes the decoder creates for the body: per part,
+  per accepted schema (charged when the part keeps it; its memory goes with the part, the charge
+  stays), per series label set (charged once, when the labels batch builds the `Arc`; chunks
+  only clone it), per chunk, per coverage and per error row. Never refunded.
+- **Value budget.** Per chunk, its values and validity words (8 × values + 8 × ⌈values / 64⌉),
+  charged before they are allocated.
+- **Part 0.** At most one stream-level ERROR; a second fails the stream (`Malformed("part 0")`).
+  It is charged as an error row and is not a part.
+- **API.** `BodyDecoder::new(first)` uses the defaults; `BodyDecoder::with_limits(first,
+  Limits)` takes another set (tests use `limits-test.json`). `retained()` returns
+  `(open parts, distinct part ids seen, body budget used)`.
+- **The writer-valid guarantee.** The Go writer enforces the same limits first and turns each
+  into an explicit outcome (split batches, `truncated` coverage, the stream-level ERROR), so a
+  body it writes never fails here. `unit:dsf-limits` decodes every `limits-*.dsf` fixture with
+  `limits-test.json` without a `Failed`, and `budget-over.dsf` (the same input written with the
+  writer's budget check off) fails with `Limit`.
+
+**Input and source bounds** (for Part D's byte pump):
+- `FrameSplitter::push` measures a chunk by `SharedBytes::backing_len()`, the whole allocation,
+  and refuses one above `MAX_CHUNK` (128 MiB) with `Limit("chunk")`, sticky.
+  `FrameSplitter::retained_bytes()` (the current chunk, a split payload's buffer and the header
+  buffer) stays at most `MAX_CHUNK + HEADER_LEN + MAX_PAYLOAD`, plus under 128 bytes of the
+  payload buffer's alignment rounding.
+- `slabs_from(data, body_offset, max)` copies a fetch chunk into fresh slabs whose backing
+  allocations are at most `max` (a multiple of 64), each keeping its body offset mod 64. A slab
+  at body offset `o` takes `min(remaining, max − o mod 64)` bytes. Part D feeds every fetch chunk
+  through it with `max = MAX_CHUNK`, and never hands the splitter a slice of a larger buffer.
+- Part D reads the Arrow body only with a BYOB reader into one `SOURCE_BUFFER` (1 MiB) buffer,
+  rebinding to the buffer each read returns. Without BYOB support it uses the JSON route; if
+  `getReader({ mode: "byob" })` throws on an Arrow response, it cancels the body unread and
+  repeats the query as JSON. Memory per response is then bounded by the source buffer, the slab
+  being filled, `retained_bytes()` and the two budgets.
 
 ### Gates
 
@@ -484,6 +535,8 @@ The aggregate limits and budgets (`with_limits`, `retained()`, part-0 limits) ar
 | `unit:dsf-fuzz-smoke` | `tests/fuzz_smoke.rs` | 25 000 seeded mutants per fixture: no panic, consistent chunks |
 | `unit:arrow-alignment` (Rust) | `tests/arrow_alignment.rs` | every split point pins nothing; 8-but-not-64-aligned grid buffers and bodies are refused |
 | `unit:coverage-complete` (Rust) | `src/coverage.rs` | `complete`, `retention_limited` and `exact` |
+| `unit:limits-json` (Rust) | `src/limits.rs` | every limit, cost and reserve and `MAX_GRID_LEN` = `wire/schemas/limits.json` |
+| `unit:dsf-limits` | `tests/dsf_limits.rs` | the source, input and byte-pump bounds; open and distinct parts, rows, labels, META and ERROR strings, the body and value budgets on built bodies; every writer-valid `limits-*.dsf` fixture and `budget-over.dsf` |
 | `ci:spec-lint` (`dash-wire-deps`) | `xtask/tests/spec_lint.rs` | `dash-wire` depends only on `thiserror` and `bytemuck` |
 
 The tests share a test kit (`tests/common/`) that reads and writes the Arrow flatbuffer tables
@@ -497,7 +550,8 @@ profile so that the split-point and fuzz tests stay fast.
 - A chunk holds at most 2³¹ samples (`ChunkError::TooLarge`); timestamps must be finite and
   strictly increasing per series (`ChunkError::Order`).
 - Wire decoding: a frame payload of at most 64 MiB (`MAX_PAYLOAD`), a grid of at most 2²² points
-  (`MAX_GRID_LEN`), and the flatbuffer and IPC work bounds above.
+  (`MAX_GRID_LEN`), the flatbuffer and IPC work bounds above, and the shared limits and budgets
+  ([above](#limits-and-budgets)).
 - The native renderer blocks on the status read after P3; Part C re-runs an under-sized frame
   instead and never reports it as drawn.
 
@@ -515,6 +569,6 @@ profile so that the split-point and fuzz tests stay fast.
 | T03-021 | fixed chunking on rayon | `unit:decimation-prop` |
 | T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery` |
 | T04-001, T04-002, T04-005, T04-012 (subset) | Arrow decode into `Chunk`; exact schemas; coverage rule | `unit:codec-roundtrip`, `unit:coverage-complete` |
-| T04-009, T04-010 | DSF header, splitter and decoder bounds | `unit:dsf-header`, `unit:fb-reader`, `unit:dsf-bounds`, `unit:dsf-fuzz-smoke` |
+| T04-009, T04-010 | DSF header, splitter and decoder bounds; the shared limits and budgets | `unit:dsf-header`, `unit:fb-reader`, `unit:dsf-bounds`, `unit:dsf-fuzz-smoke`, `unit:limits-json`, `unit:dsf-limits` |
 | T04-015 (as amended) | one decode copy, nothing pinned | `unit:arrow-alignment` |
 | ADR-0014 §7 | no arrow-rs; `thiserror` and `bytemuck` only | `ci:spec-lint` (`dash-wire-deps`) |
