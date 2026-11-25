@@ -96,8 +96,11 @@ there are no other labels.
 
 ## Numbers (VL-012, T08-027)
 
-`formatValue(v, unit)` in `src/i18n/format.ts` formats every number the charts show, with three
-significant digits (from 100 the rounded integer) and trailing zeros dropped.
+`formatValue(v, unit, digits = 3)` in `src/i18n/format.ts` formats every number the charts show.
+At the default three digits: three significant digits (from 100 the rounded integer), trailing
+zeros dropped. `digits` 4 to 17 gives `toPrecision(digits)` at every magnitude, trailing zeros
+dropped (`1234` at 4 → `1.234k`, `123.456` at 5 → `123.46`, `6.999999999999999` at 17 →
+`6.9999999999999991`); the histogram's edge labels use it (T21-013).
 
 | Unit | Examples |
 |---|---|
@@ -108,7 +111,16 @@ significant digits (from 100 the rounded integer) and trailing zeros dropped.
 | `percent` / `percentunit` | `38 %` from 38 / from 0.38 |
 
 A value that rounds up to the next unit is carried (`999.6 ms` → `1 s`, `59.99 s` → `1 min`,
-`1048575 B` → `1 MiB`). `NaN` is `—`, infinities `+Inf` and `-Inf`. `formatHourMinute` and
+`1048575 B` → `1 MiB`). `NaN` is `—`, infinities `+Inf` and `-Inf`.
+
+**Out-of-range form (T21-013, #208).** When the value converted to the unit's base (×100 for
+`percentunit`, seconds for `time`) is c ≥ 1e21 or 0 < c < 1e−12, it is written as
+`toPrecision(digits)` in exponent form plus the base tail, as `formatCompact` does: `1e21` →
+`1e+21` (was `1000000P`), `2.5e22` → `2.5e+22`, `1e-4` ns → `1e-13 s` (was `0.0001 ns`), `1e22` B →
+`1e+22 B` (was `8881784 PiB`), `5e21` rps → `5e+21 rps`. Every other output is unchanged
+(`1e19` percentunit stays `1e+21 %`, `1e-13` stays `1e-13`). Axis tick labels follow, so a value
+axis of such ticks can be narrower; the Rust port (`dash-units` `format_value`, three digits only)
+matches byte for byte on `engine/fixtures/format.json`, and `dash-axes` on `layout.json`. `formatHourMinute` and
 `formatDayMonth` are the axis label formats (`14:05`, `19 Nov`).
 
 `formatCompact(v, unit)` (#93) is the form of a value label under a held band: the sign, at most
@@ -465,6 +477,133 @@ shows `Loading`, and a visualisation change redraws the same result.
 - When more than 500 series arrive, a status notice says "Showing 500 of <n> series".
 - A browser without a 2D canvas context shows "This browser cannot draw charts." instead.
 
+## Histogram transforms (#208 Part 1)
+
+The transforms of the histogram panel over raw values live in `src/vis/transforms/`
+([T21](../../designs/technical/T21-time-and-distribution-panels.md) T21-012 to T21-016). Nothing in
+the app calls them yet: the panel, its Canvas 2D drawing, tooltip, meter popover, table and the
+`bin` Inspector target come with #208 Part 2. They are pure and run in a per-panel worker.
+
+| Module | What it does |
+|---|---|
+| `histogram.ts` | `histogram(input, source, o, q)`: the whole pipeline; hit regions, brush, selection reads, CDF/ECDF, meter, popover lines, summary facts |
+| `bins.ts` | `binEdges`, `scaleOf`, `binIndex`, `displayCollapsed` (T21-013), re-exported by `histogram.ts` |
+| `slice.ts` | `Slicer`, `checkStep`, `yieldToMain`: 8 ms steps (`STEP_MS`) for scans on the main thread |
+| `histogram.worker.ts` | the worker: `onHistogramMessage`, `resultTransfer` |
+| `histogramClient.ts` | the main thread: `runHistogram`, `disposeHistogram` |
+
+The frame types (`HistogramFrame`, `SourceGroup`, `HistogramGroup`, `HistogramCoverage`, `Labels`)
+and `histogramFrameValid` are in `src/data/frames.ts`; `LINE_DASHES`, `OTHER_DASH` and the four
+pattern constants in `src/engine/patterns.ts`; `SummaryFacts` in `src/engine/api.ts`. No seam
+member uses them yet.
+
+### Options
+
+`HistogramOptions`: `binMode` `auto` | `count` | `width`, `binCount` (1…200), `binWidth` (value
+units, or null), `scale` `linear` | `log`, `groupBy` (a label, or null), `groupMode` `stack` |
+`overlay`, `cumulative` `none` | `cdf` | `ecdf`, and the panel `unit` (for the display guard).
+
+### Pipeline
+
+1. Any series with an `le` label → `{kind: 'buckets', leSeries}`: an interim notice ("Histogram
+   buckets: choose Heatmap; …") until bucket histograms (#212); nothing is binned.
+2. More than `MAX_HIST_SAMPLES` = 2 000 000 samples (NaN included) → `{kind: 'tooMany', samples}`.
+3. Per key: ±∞ samples count as `infinite`; the rest merge (T22-003): range by timestamp, the max
+   on a shared timestamp (+1 conflict); instant the latest finite sample, the max on a tie (+1).
+   Each extra series of a key is a duplicate.
+4. Source groups: no `groupBy` → one group "all values"; else the raw label value, "`<L>` absent"
+   without it. A value equal to `other`, ending in ` (<digits>)` or equal to "`<L>` absent" is
+   shown quoted; names still equal get ` (1)`, ` (2)`, … in key order. Name order is
+   `Intl.Collator('en', {numeric: true})`, then code-unit order. `groupKey` is FNV-1a 64 over
+   `${L}\u0000${v}` (absent: `${L}\u0001`).
+5. The first exclusion that applies: outside the drawable domain (0, or 1e−290 ≤ |v| ≤ 1e290) →
+   `outOfRange`; on `log`, ≤ 0 → `nonPositive`.
+6. received 0 → `{kind: 'empty'}`; drawable 0 → `{kind: 'noneShown', sourceGroups}`.
+7. Bins (below) over the pooled drawable values; counts per drawn group (`counts[g·k + i]`), a CSR
+   of each series' counts per bin (`contrib`, by key), the sorted values per source group
+   (`sorted`, for the exact ECDF) and type-7 quartiles.
+
+**Drawn groups (T21-014).** Without `groupBy`: one group, `solid`, `LINE_DASHES[0]`, colour 0.
+With it: the 7 largest source groups by drawable (ties by name), in name order, with
+`CATEGORY_PATTERNS[j]`, `LINE_DASHES[j]` and `seriesColourIndex`; the rest are one group
+`other (n)` (key `other`, `grid`, `OTHER_DASH`, colour index −1 = `category-other`), last. A source
+group with no drawable value is not drawn (`drawnAs` −1).
+
+### Bins (T21-013)
+
+Edges are in value units, k + 1 finite and strictly increasing, 1 ≤ k ≤ 200, e₀ = min and e_k = max
+exactly; [eᵢ, eᵢ₊₁), the last bin closed. Binning runs on v (linear) or log10 v (log), with every
+span and width normalised by S = 10^`scaleOf(min, max)`.
+
+| Mode | Rule |
+|---|---|
+| `count` c | c ≤ 200 evenly spaced edges |
+| `width` w | aligned to multiples of w; a width that is 0, subnormal or gives k > 200 widens to nice(span/200), then the next nice value (1, 2, 2.5, 5 × 10ᵉ) while k > 200; `widenedTo` is the width used |
+| `auto` | Freedman–Diaconis h = 2·IQR·n^(−1/3) (Sturges when IQR = 0), clamped to 5…200 bins, a nice width, then as `width` |
+| min = max | one bin of width nice(\|v\|·0.1) (1 at 0) around v |
+
+Anything else invalid (|q| > 2⁵², or still k > 200 after the widening steps) falls back to `count`
+20. The guard then checks every edge is finite, increasing, positive on log and that adjacent
+edges differ at `formatValue(e, unit, 17)`; if not, k is reduced to the largest that passes, down to
+one bin [min, max] (`adjusted` = k; `collapsed` when its two edges still read the same). Finally, on
+log, a bin whose log10 edges are equal becomes one decade centred on log10 min (`adjusted` 1).
+`binLabels(edges, unit)` picks the least digits 3…17 at which every adjacent label differs; a
+collapsed frame has one label "≈ " + `formatValue(e₀)`. `binRangeText` is "from – to".
+
+### Hit regions and the value brush (T21-015)
+
+`binLayout(f, scale, mode, width, height)` gives the edges in plot CSS px (`edgePx`: px[0] = 0, px[k]
+= W exactly), the count maximum and each group's bar top and bottom. `binAtPx`: outside [0, W] →
+−1, else the largest i with px[i] ≤ px, and W → the last bin. `hitTestBin`: stacked segments are
+hit at least 4 px tall (grown upward), the column's top segment 3 px higher, top-down; overlaid
+bars by the nearest top within 4 px, else the containing bar with the smallest count (ties: the
+lower group). `brushBins(f, l, p₀, p₁)` selects the bins whose pixel extent overlaps [p₀, p₁] and
+returns the raw edges `from`, `to`. `binSeries` (the keys of the series with a value in [from, to))
+and `selectedCounts` (the selection's counts per group and bin, null when no key matches) scan the
+CSR and call `checkStep` every 10 000 entries, so a long scan yields every 8 ms and an aborted one
+rejects with an `AbortError`.
+
+### Worker and lifecycle (T21-016, PRF-005)
+
+`runHistogram(panelId, runId, input, source, o, q, signal)` keeps one worker per panel:
+
+1. A pending run of the panel is rejected with an `AbortError` and its worker terminated — always
+   first, so an early result also supersedes it.
+2. `le` series, the sample cap and an empty input are answered on the main thread, without a
+   worker.
+3. Otherwise each series is copied in chunks of ≤ 25 000 samples (an empty series as one empty
+   entry; later chunks carry `cont: true`). When a step reaches 8 ms after an entry, the batch is
+   posted with its buffers transferred, and the run yields (`MessageChannel`). The last batch is
+   posted with `last: true` and no yield.
+4. The worker appends the entries per `runId` and, on the last, replies with the result, its
+   frame buffers transferred. The reply of an older run, or to a terminated worker, is dropped; an
+   error reply or a worker `error` rejects with an `Error` and terminates the worker; a result
+   resolves the run and the worker stays for the next run.
+5. Aborting `signal` terminates the worker and rejects with an `AbortError`;
+   `disposeHistogram(panelId)` (on unmount, Part 2) does the same and forgets the panel.
+
+Memory at the cap is about 64 MB in the worker. Tests replace the clock, the yield and the worker
+with `setHistogramEnv` (`src/test/fakeHistogramWorker.ts`).
+
+### Meter, popover and facts
+
+`histogramMeterParts(c, unit)` lists, in order: `truncated`, `limited (N warnings)`, "k ≤ 0 not shown
+(log)", "k infinite values not shown", "k values out of range not shown", "k duplicate series
+combined; c conflicts (max kept)", "bin width widened to W (200-bin cap)", "bins adjusted to k
+(number limits)"; none → `100 %`. `histogramCoverageText` joins them with " · ". Counts go through
+`formatValue(n, none)` (2 000 000 → `2M`); the widened width through the panel unit.
+`exclusionLines` gives the popover lines per source group ("B: 1 ≤ 0, 1 infinite", members of
+`other (n)` as "B (in other (3)): …"), `noneShownText` the plot text of `noneShown`, and
+`summaryFacts` "median <p50>; mode <bin> (<count> of <drawable>)" with the drawable extent.
+
+### Fixtures
+
+`src/vis/transforms/fixtures/histogram.json` holds the T21 §10 bin rows (H1–H4, H24–H26: values,
+options, edges, counts, `widenedTo`, `adjusted`, `outOfRange`) and pixel rows (edge px, hits,
+brushes), every number as its exact `String(x)`; interior edges compare at a relative 1e−12, end
+edges exactly. The engine port (#209) runs the same file. Gates: `unit:dist-bins`,
+`unit:summary-facts`, `unit:selection-draw`, `unit:hist-worker`, `unit:number-format`.
+
 ## Limits
 
 - At most 500 series per frame (the rest are dropped with the notice), at most one polyline point
@@ -545,5 +684,6 @@ for 2D charts, INT-007, INT-008 subset, INT-025, INT-031 subset, INT-033, and th
 amended, T02-021, §4.5, §4.6),
 [T03](../../designs/technical/T03-browser-runtime.md) (T03-009, T03-013, T03-016 subset, §4.4),
 [T05](../../designs/technical/T05-testing-and-performance.md) (T05-002),
+[T21](../../designs/technical/T21-time-and-distribution-panels.md) (T21-012 to T21-016, §5, §10; #208 Part 1),
 [T08](../../designs/technical/T08-dom-component-kit.md) (T08-010, T08-027),
 [T18](../../designs/technical/T18-security.md) (T18-004).
