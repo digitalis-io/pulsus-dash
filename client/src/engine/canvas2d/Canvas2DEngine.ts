@@ -22,6 +22,7 @@ import type {
   FrameData,
   FrameEvents,
   FrameInit,
+  FrameSelection,
   HoverEvent,
   PlotRect,
   ThemeName,
@@ -55,6 +56,21 @@ import {
 } from './input';
 import { bucketIndex, hoverRows, nearestIndex } from './pick';
 import { themeColours } from './palette';
+import {
+  gestureScale,
+  listen,
+  rangeOf,
+  sameRange,
+  sameSelection,
+  spanOf,
+  type Changed,
+  type Gesture,
+  type Handler,
+  type Listener,
+  type PressGesture,
+  type WheelGesture,
+} from './gesture';
+import { pickItem } from './select';
 
 export { MAX_SERIES };
 
@@ -147,70 +163,6 @@ export class Canvas2DEngine implements ChartEngine {
   }
 }
 
-type Listener = (ev: never) => void;
-type Handler = readonly [string, (e: Event) => void, AddEventListenerOptions | undefined];
-
-/** A DOM listener entry; `fn` receives the event type it is registered for. */
-function listen(type: string, fn: (e: never) => unknown, opts?: AddEventListenerOptions): Handler {
-  const f = fn as (e: Event) => unknown;
-  return [
-    type,
-    (e) => {
-      f(e);
-    },
-    opts,
-  ];
-}
-
-/** The axes a gesture moved; set by its preview steps, never reset during the gesture. */
-interface Changed {
-  x: boolean;
-  y: boolean;
-}
-
-/** A wheel, swipe or pinch gesture; `scale` is the last Safari gesture scale while one runs. */
-interface WheelGesture {
-  readonly kind: 'wheel';
-  timer: number;
-  x: number;
-  y: number;
-  readonly changed: Changed;
-  scale: number | null;
-}
-
-/** A handled press: time pan, value pan or box zoom. */
-interface PressGesture {
-  readonly kind: 'press';
-  readonly press: 'pan' | 'pan-y' | 'box';
-  readonly zone: Zone;
-  readonly pointerId: number;
-  readonly x0: number;
-  readonly y0: number;
-  x: number;
-  y: number;
-  moved: boolean;
-  readonly view0: Span;
-  readonly value0: ValueRange | null;
-  readonly domain0: ValueRange | null;
-  readonly changed: Changed;
-}
-
-type Gesture = WheelGesture | PressGesture;
-
-const spanOf = (w: TimeWindow): Span => ({ lo: w.fromMs, hi: w.toMs });
-
-/** A spec's value-axis pin when it is one the engine draws (line, bars; finite, min < max). */
-function rangeOf(spec: VisSpec | null): ValueRange | null {
-  if (spec === null || (spec.kind !== 'line' && spec.kind !== 'bars')) return null;
-  const r = spec.valueRange;
-  if (r === undefined || !Number.isFinite(r.min) || !Number.isFinite(r.max) || !(r.min < r.max))
-    return null;
-  return r;
-}
-
-const sameRange = (a: ValueRange | null, b: ValueRange | null): boolean =>
-  a === b || (a !== null && b !== null && a.min === b.min && a.max === b.max);
-
 class Canvas2DFrame implements ChartFrame {
   private readonly ctx: Ctx2D;
   private readonly layer: HTMLCanvasElement;
@@ -219,6 +171,8 @@ class Canvas2DFrame implements ChartFrame {
   private data: FrameData | null = null;
   /** The last `setEvents` (ADR-0023); [] = none. */
   private events: readonly EventMarker[] = [];
+  /** The last `setSelection` (ADR-0025); null = none. */
+  private selection: FrameSelection | null = null;
   /** The base window: the last `setTimeWindow`, or the last committed view. */
   private window: TimeWindow | null = null;
   /** What is drawn, f64: `window` when idle, the gesture's preview otherwise. */
@@ -345,6 +299,14 @@ class Canvas2DFrame implements ChartFrame {
     this.events = events;
     if (band) this.changed();
     else this.invalidate();
+  }
+
+  /** ADR-0025: drawn in the layer pass of the next frame; an equal selection redraws nothing. */
+  setSelection(sel: FrameSelection | null): void {
+    if (this.disposed || sameSelection(sel, this.selection)) return;
+    this.selection =
+      sel === null ? null : { keys: [...sel.keys], fromMs: sel.fromMs, toMs: sel.toMs };
+    this.invalidate();
   }
 
   setTheme(t: ThemeName): void {
@@ -525,6 +487,8 @@ class Canvas2DFrame implements ChartFrame {
       // T02-011: the band is at least the widest compact label of the unit.
       minBand: this.spec.kind === 'stat' ? 0 : minValueBand(ctx, this.spec.unit),
       events: this.events,
+      selection: this.selection,
+      dpr: this.dpr,
     });
   }
 
@@ -767,6 +731,7 @@ class Canvas2DFrame implements ChartFrame {
   private pressMove(g: PressGesture, p: { x: number; y: number }): void {
     g.x = p.x;
     g.y = p.y;
+    g.travel = Math.max(g.travel, Math.hypot(p.x - g.x0, p.y - g.y0));
     if (!g.moved) {
       const d = g.press === 'pan-y' ? Math.abs(p.y - g.y0) : Math.abs(p.x - g.x0);
       if (d < DRAG_MIN_PX) return;
@@ -841,6 +806,9 @@ class Canvas2DFrame implements ChartFrame {
       x: p.x,
       y: p.y,
       moved: false,
+      click:
+        e.button === 0 && zone === 'plot' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey,
+      travel: 0,
       view0: this.view ?? s.view,
       value0: this.valueView,
       domain0: s.model.valueDomain,
@@ -860,7 +828,15 @@ class Canvas2DFrame implements ChartFrame {
     this.gesture = null;
     delete this.canvas.dataset['gesture'];
     this.schedule();
-    if (!g.moved) return;
+    if (!g.moved) {
+      const p = this.local(e);
+      const travel = Math.max(g.travel, Math.hypot(p.x - g.x0, p.y - g.y0));
+      // T25-005: a click selects the mark under it (null: an empty click).
+      if (g.click && travel < DRAG_MIN_PX && this.model !== null && this.view !== null) {
+        this.emit('select', { source: 'pointer', item: pickItem(this.model, this.view, p) });
+      }
+      return;
+    }
     if (g.press === 'box') {
       this.box(g.x0, this.local(e).x);
       return;
@@ -989,10 +965,4 @@ class Canvas2DFrame implements ChartFrame {
     this.keyIndex = null;
     this.hoverChanged();
   }
-}
-
-/** Safari's `GestureEvent.scale` (not in the DOM types); 1 when absent. */
-function gestureScale(e: Event): number {
-  const s = (e as Event & { scale?: unknown }).scale;
-  return typeof s === 'number' && s > 0 ? s : 1;
 }

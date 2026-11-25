@@ -44,6 +44,7 @@ const NUMERIC: readonly { path: string; prefix: string; unit: string }[] = [
   { path: 'font.weight', prefix: 'font-weight', unit: '' },
   { path: 'font.advance', prefix: 'font-advance', unit: '' },
   { path: 'line-height', prefix: 'line-height', unit: '' },
+  { path: 'opacity', prefix: 'opacity', unit: '' },
 ];
 
 export interface Tokens {
@@ -51,6 +52,8 @@ export interface Tokens {
   space: Record<string, number>;
   size: Record<string, number>;
   radius: Record<string, number>;
+  /** Alphas, 0..1 (T25-006). */
+  opacity: Record<string, number>;
   border: Record<string, number>;
   font: {
     family: Record<string, string>;
@@ -157,6 +160,7 @@ export function parseTokens(tomlText: string): Tokens {
     'space',
     'size',
     'radius',
+    'opacity',
     'border',
     'font',
     'line-height',
@@ -187,6 +191,7 @@ export function parseTokens(tomlText: string): Tokens {
     space: numbers(root, 'space'),
     size: numbers(root, 'size'),
     radius: numbers(root, 'radius'),
+    opacity: numbers(root, 'opacity'),
     border: numbers(root, 'border'),
     font: {
       family: texts(root, 'font.family'),
@@ -255,6 +260,7 @@ export function generateTs(tk: Tokens): string {
   out.push(`export const space = ${literal(tk.space, '')} as const;`, '');
   out.push(`export const size = ${literal(tk.size, '')} as const;`, '');
   out.push(`export const radius = ${literal(tk.radius, '')} as const;`, '');
+  out.push(`export const opacity = ${literal(tk.opacity, '')} as const;`, '');
   out.push(`export const border = ${literal(tk.border, '')} as const;`, '');
   out.push(`export const font = ${literal(tk.font, '')} as const;`, '');
   out.push(`export const motion = ${literal(tk.motion, '')} as const;`, '');
@@ -335,6 +341,7 @@ export function generateRs(tk: Tokens): string {
   out.push(rustModule('space', rustNumbers(tk.space), ''), '');
   out.push(rustModule('size', rustNumbers(tk.size), ''), '');
   out.push(rustModule('radius', rustNumbers(tk.radius), ''), '');
+  out.push(rustModule('opacity', rustNumbers(tk.opacity), ''), '');
   out.push(rustModule('border', rustNumbers(tk.border), ''), '');
   out.push('pub mod font {');
   out.push(rustModule('family', rustTexts(tk.font.family), '    '));

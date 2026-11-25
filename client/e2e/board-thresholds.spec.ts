@@ -45,13 +45,12 @@ const MATRIX = [
 ];
 
 async function states(table: Locator): Promise<string[][]> {
-  return table
-    .locator('tbody tr')
-    .evaluateAll((rows) =>
-      rows.map((r) =>
-        [...r.querySelectorAll('td')].slice(1).map((c) => c.getAttribute('data-state') ?? ''),
-      ),
-    );
+  return table.locator('tbody tr').evaluateAll((rows) =>
+    rows.map((r) =>
+      // After the Select toggle (T25-016) and the series name.
+      [...r.querySelectorAll('td')].slice(2).map((c) => c.getAttribute('data-state') ?? ''),
+    ),
+  );
 }
 
 async function headers(table: Locator): Promise<string[]> {
@@ -116,7 +115,7 @@ test.describe('e2e:board-thresholds (fake)', () => {
     const legend = memory.locator('[data-panel-legend="table"]');
     const table = legend.getByRole('table');
     await expect(table.locator('tbody tr')).toHaveCount(3);
-    expect(await headers(table)).toEqual(['Series', 'Mean', 'Max', 'Last']);
+    expect(await headers(table)).toEqual(['Select', 'Series', 'Mean', 'Max', 'Last']);
     expect(await states(table)).toEqual(MATRIX);
     await expect(table.locator('td[data-state="degraded"]').first()).toHaveText(/^◉/);
 
@@ -148,14 +147,15 @@ test.describe('e2e:board-thresholds (fake)', () => {
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: /^Legend\. / });
     const popoverTable = dialog.getByRole('table');
-    expect(await headers(popoverTable)).toEqual(['Series', 'Mean', 'Max', 'Last']);
+    expect(await headers(popoverTable)).toEqual(['Select', 'Series', 'Mean', 'Max', 'Last']);
     expect(await states(popoverTable)).toEqual(MATRIX);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(button).toBeFocused();
 
     // A row isolates its series locally; a second choice shows all again.
-    const row = legend.getByRole('button', { name: `${GAUGE}{instance="a:9100"}` });
+    // Exact: the row's Select toggle (T25-016) is named "Select <series>".
+    const row = legend.getByRole('button', { name: `${GAUGE}{instance="a:9100"}`, exact: true });
     await row.click();
     await expect(row).toHaveAttribute('aria-pressed', 'true');
     await expect(chartLabel(memory)).toHaveAttribute('aria-label', /, 1 series,/);

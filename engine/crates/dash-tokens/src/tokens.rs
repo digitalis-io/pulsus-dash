@@ -30,6 +30,7 @@ pub mod colour {
         pub const RAMP_7: Rgba8 = Rgba8([0x8D, 0xBB, 0xEB, 0xFF]);
         pub const RAMP_8: Rgba8 = Rgba8([0xB1, 0xD3, 0xF7, 0xFF]);
         pub const RAMP_9: Rgba8 = Rgba8([0xD8, 0xEA, 0xFE, 0xFF]);
+        pub const SELECTION: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0x29]);
         pub const SERIES_1: Rgba8 = Rgba8([0x7A, 0xA2, 0xD6, 0xFF]);
         pub const SERIES_2: Rgba8 = Rgba8([0xC9, 0xA3, 0x6B, 0xFF]);
         pub const SERIES_3: Rgba8 = Rgba8([0x8F, 0xBF, 0x8F, 0xFF]);
@@ -40,6 +41,7 @@ pub mod colour {
         pub const SERIES_8: Rgba8 = Rgba8([0xBF, 0xB0, 0x7A, 0xFF]);
         pub const SURFACE_1: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xFF]);
         pub const SURFACE_2: Rgba8 = Rgba8([0x19, 0x1D, 0x24, 0xFF]);
+        pub const SURFACE_FLOAT: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xF0]);
         pub const SURFACE_HOVER: Rgba8 = Rgba8([0x22, 0x27, 0x31, 0xFF]);
         pub const SYN_FUNC: Rgba8 = Rgba8([0x7A, 0xA2, 0xD6, 0xFF]);
         pub const SYN_KEYWORD: Rgba8 = Rgba8([0xB4, 0x8F, 0xC9, 0xFF]);
@@ -79,6 +81,7 @@ pub mod colour {
         pub const RAMP_7: Rgba8 = Rgba8([0x3C, 0x69, 0x95, 0xFF]);
         pub const RAMP_8: Rgba8 = Rgba8([0x36, 0x53, 0x71, 0xFF]);
         pub const RAMP_9: Rgba8 = Rgba8([0x31, 0x3F, 0x4D, 0xFF]);
+        pub const SELECTION: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0x29]);
         pub const SERIES_1: Rgba8 = Rgba8([0x3F, 0x6F, 0xA8, 0xFF]);
         pub const SERIES_2: Rgba8 = Rgba8([0x93, 0x70, 0x3A, 0xFF]);
         pub const SERIES_3: Rgba8 = Rgba8([0x4E, 0x87, 0x4E, 0xFF]);
@@ -89,6 +92,7 @@ pub mod colour {
         pub const SERIES_8: Rgba8 = Rgba8([0x85, 0x76, 0x40, 0xFF]);
         pub const SURFACE_1: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
         pub const SURFACE_2: Rgba8 = Rgba8([0xEC, 0xEE, 0xF2, 0xFF]);
+        pub const SURFACE_FLOAT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xF0]);
         pub const SURFACE_HOVER: Rgba8 = Rgba8([0xE2, 0xE5, 0xEA, 0xFF]);
         pub const SYN_FUNC: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0xFF]);
         pub const SYN_KEYWORD: Rgba8 = Rgba8([0x6B, 0x4A, 0x84, 0xFF]);
@@ -148,6 +152,9 @@ pub mod size {
     pub const FOCUS_RING: f32 = 2.0;
     pub const HEADER: f32 = 56.0;
     pub const ICON: f32 = 16.0;
+    pub const INSPECTOR: f32 = 360.0;
+    pub const INSPECTOR_INSET: f32 = 12.0;
+    pub const INSPECTOR_TAB: f32 = 40.0;
     pub const LOG_LEVEL_BAR: f32 = 3.0;
     pub const LOG_ROW: f32 = 20.0;
     pub const LOG_SENTINEL: f32 = 40.0;
@@ -159,7 +166,12 @@ pub mod size {
     pub const TENANT_BADGE: f32 = 32.0;
 }
 
-pub mod radius { pub const DEFAULT: f32 = 6.0; }
+pub mod radius {
+    pub const DEFAULT: f32 = 6.0;
+    pub const FLOAT: f32 = 10.0;
+}
+
+pub mod opacity { pub const DIMMED: f32 = 0.35; }
 
 pub mod border { pub const HAIRLINE: f32 = 1.0; }
 
@@ -192,5 +204,6 @@ pub mod line_height {
 pub mod motion {
     pub const EASING_OUT: &str = "cubic-bezier(0.2, 0, 0, 1)";
     pub const FAST: f32 = 150.0;
+    pub const FLOAT_OPEN: f32 = 200.0;
     pub const STANDARD: f32 = 250.0;
 }

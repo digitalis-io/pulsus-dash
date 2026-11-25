@@ -524,3 +524,57 @@ describe('unit:logs-page', () => {
     expect(d?.kind === 'series' ? d.series : null).toBe(S2.series);
   });
 });
+
+describe('unit:explore-tenant-canvas (T25 §8)', () => {
+  it('a switch to a tenant with a cached volume: new canvases and list, no selection drawn', async () => {
+    const q = '{service_name="stub"}';
+    const { router, engine } = openLogs(logsUrl(q, '', 'sandbox'));
+    let first = true;
+    const visit = async (tenant: string): Promise<void> => {
+      if (!first) {
+        await act(async () => {
+          await router.navigate(logsUrl(q, '', tenant));
+        });
+      }
+      first = false;
+      await sized();
+      await waitFor(() => {
+        expect(listItems().length).toBeGreaterThan(2);
+      });
+      await waitFor(() => {
+        expect(document.querySelector('[data-chart-frame]')).not.toBeNull();
+      });
+    };
+    await visit('sandbox');
+    await visit('demo');
+    await visit('sandbox');
+    // A selection drawn in sandbox: a log line inspected.
+    const row = document.querySelectorAll<HTMLElement>('[data-log-row]')[2];
+    if (row === undefined) throw new Error('no row');
+    fireEvent.click(row);
+    const before = engine.frames.at(-1);
+    await waitFor(() => {
+      expect(before?.last('setSelection')?.[0]).not.toBeNull();
+    });
+    const oldCanvas = document.querySelector('[data-chart-frame] canvas');
+    const seen: string[] = [];
+    const mo = new MutationObserver(() => {
+      // Once the page shows the other tenant (its links), whatever the router state says.
+      if (document.querySelector('a[href^="/t/demo/"]') === null) return;
+      if (oldCanvas?.isConnected === true) seen.push('old canvas');
+      if (row.isConnected) seen.push('old row');
+      if (document.querySelector('[data-log-row][data-selected]') !== null)
+        seen.push('selected row');
+    });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+    await visit('demo');
+    mo.disconnect();
+    expect(seen).toEqual([]);
+    const after = engine.frames.at(-1);
+    expect(after).not.toBe(before);
+    expect(before?.disposed).toBe(1);
+    const selections = (after?.calls ?? []).filter((c) => c.method === 'setSelection');
+    expect(selections.length).toBeGreaterThan(0);
+    expect(selections.every((c) => c.args[0] === null)).toBe(true);
+  });
+});

@@ -26,6 +26,10 @@ export interface LogRow {
   readonly level: number;
   readonly line: string;
   readonly stream: LogStreamInfo;
+  /** The row's structured metadata, or null (the Inspector, #192). */
+  readonly metadata: Readonly<Record<string, string>> | null;
+  /** The row's parsed fields, or null (the Inspector, #192). */
+  readonly parsed: Readonly<Record<string, string>> | null;
   /** Wrap width units: per code point, tab 8, U+1100 and above 2, LF 0, else 1. */
   readonly wrapUnits: number;
   /** LF count. Both computed per page on accept, in the fingerprint's pass. */
@@ -223,6 +227,11 @@ export class LogBuffer {
     return this.records[k - 1]?.next ?? undefined;
   }
 
+  /** A held page has a row of stream `key` (the selection's relevance, T25-006). */
+  hasStream(key: string): boolean {
+    return this.held.some((p) => p.frame.streams.some((s) => s.key === key));
+  }
+
   /** O(log pages). Null outside [firstOrd, endOrd). */
   rowAt(ord: number): LogRow | null {
     const held = this.held;
@@ -245,6 +254,8 @@ export class LogBuffer {
           level: f.levels[r] ?? 0,
           line: f.lines[r] ?? '',
           stream,
+          metadata: f.metadata[r] ?? null,
+          parsed: f.parsed[r] ?? null,
           wrapUnits: p.wrapUnits[r] ?? 0,
           breaks: p.breaks[r] ?? 0,
         };

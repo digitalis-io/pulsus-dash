@@ -7,7 +7,9 @@ import { LOG_LEVELS } from '../data/logFrame';
 import { createSynthLogApi } from '../dev/logSynth';
 import { TimeZoneContext } from '../state/timeZone';
 import { installLayout } from '../test/fakeLayout';
-import { logFrame, pageRows, seriesResult, streamsResult } from '../test/logFrames';
+import { logFrame, pageRows, seriesResult, streamInfo, streamsResult } from '../test/logFrames';
+import { SelectionContext } from '../inspector/host';
+import type { Selection } from '../inspector/types';
 import { scriptedLogsApi } from '../test/scriptedLogsApi';
 import { RowEstimates } from './estimates';
 import { LogPager, type LogPagerInput } from './logPager';
@@ -500,5 +502,129 @@ describe('unit:log-stream-prefetch (plan #67)', () => {
     await waitFor(() => {
       expect(b.synth.calls.length - before).toBe(1);
     });
+  });
+});
+
+describe('unit:log-selection, unit:log-inspect', () => {
+  const S1 = streamInfo({ app: 's1' });
+  const S2 = streamInfo({ app: 's2' });
+  const ms = (n: number): bigint => BigInt(n) * 1_000_000n;
+  const ROWS = [
+    { ts: ms(1000), level: 'info' as const, line: 'r0', stream: 0 },
+    { ts: ms(1500), level: 'warn' as const, line: 'r1', stream: 1 },
+    { ts: ms(2500), level: 'error' as const, line: 'r2', stream: 0 },
+  ];
+
+  async function selected(sel: Selection | null, onInspect?: LogStreamProps['onInspect']) {
+    const api = scriptedLogsApi();
+    const pager = new LogPager(api, input);
+    void pager.start();
+    const props: LogStreamProps = {
+      pager,
+      label: 'Log lines',
+      wrap: false,
+      onWrapChange: vi.fn(),
+      onDirectionChange: vi.fn(),
+      onRerun: vi.fn(),
+      ...(onInspect === undefined ? {} : { onInspect }),
+    };
+    const ui = (s: Selection | null) => (
+      <TimeZoneContext.Provider value="UTC">
+        <SelectionContext.Provider value={s}>
+          <LogStream {...props} />
+        </SelectionContext.Provider>
+      </TimeZoneContext.Provider>
+    );
+    const r = render(ui(sel));
+    await act(() =>
+      api.resolve(
+        0,
+        streamsResult(logFrame(ROWS, { streams: [{ app: 's1' }, { app: 's2' }] }), null),
+      ),
+    );
+    return {
+      ...r,
+      rerenderSel: (s: Selection | null) => {
+        r.rerender(ui(s));
+      },
+    };
+  }
+
+  const rowsWith = (attr: string): number[] =>
+    [...document.querySelectorAll<HTMLElement>('[data-log-row]')]
+      .filter((el) => el.hasAttribute(attr))
+      .map((el) => Number(el.dataset['ord']));
+
+  it('selected and muted rows per T25 §10', async () => {
+    const v = await selected({ keys: [S1.key], fromMs: null, toMs: null });
+    expect(rowsWith('data-selected')).toEqual([0, 2]);
+    expect(rowsWith('data-muted')).toEqual([1]);
+    expect(document.querySelector('[data-ord="1"]')?.textContent).not.toContain('selected');
+    expect(document.querySelector('[data-ord="0"]')?.textContent).toContain('selected');
+    v.rerenderSel({ keys: [], fromMs: 1000, toMs: 2000 });
+    expect(rowsWith('data-selected')).toEqual([0, 1]);
+    expect(rowsWith('data-muted')).toEqual([2]);
+    v.rerenderSel({ keys: [S1.key], fromMs: 1000, toMs: 1001 });
+    expect(rowsWith('data-selected')).toEqual([0]);
+    expect(rowsWith('data-muted')).toEqual([1, 2]);
+    v.rerenderSel({ keys: ['x'], fromMs: null, toMs: null });
+    expect(rowsWith('data-selected')).toEqual([]);
+    expect(rowsWith('data-muted')).toEqual([]);
+    v.rerenderSel(null);
+    expect(rowsWith('data-selected')).toEqual([]);
+    expect(rowsWith('data-muted')).toEqual([]);
+    expect(S2.key).not.toBe(S1.key);
+  });
+
+  it('a row click inspects it, unless a text selection is anchored in the row', async () => {
+    const onInspect = vi.fn();
+    await selected(null, onInspect);
+    const row1 = document.querySelector<HTMLElement>('[data-ord="1"]');
+    if (row1 === null) throw new Error('no row 1');
+    fireEvent.click(row1);
+    expect(onInspect).toHaveBeenCalledTimes(1);
+    expect(onInspect.mock.calls[0]?.[0]).toEqual({
+      type: 'logLine',
+      streamKey: S2.key,
+      labels: { app: 's2' },
+      tsNs: 1500000000n,
+      level: 'warn',
+      line: 'r1',
+      metadata: null,
+      parsed: null,
+    });
+    expect(onInspect.mock.calls[0]?.[1]).toBe('pointer');
+    expect(onInspect.mock.calls[0]?.[2]).toBe(row1);
+    const text = row1.querySelector('[data-log-line]')?.firstChild ?? row1;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 1);
+    const s = window.getSelection();
+    s?.removeAllRanges();
+    s?.addRange(range);
+    fireEvent.click(row1);
+    expect(onInspect).toHaveBeenCalledTimes(1);
+    s?.removeAllRanges();
+  });
+
+  it('keyboard: Enter focuses the first row, ↓ moves, Enter inspects', async () => {
+    const onInspect = vi.fn();
+    await selected(null, onInspect);
+    const sc = scroller();
+    act(() => {
+      sc.focus();
+    });
+    fireEvent.keyDown(sc, { key: 'Enter' });
+    const row0 = document.querySelector<HTMLElement>('[data-ord="0"]');
+    const row1 = document.querySelector<HTMLElement>('[data-ord="1"]');
+    expect(document.activeElement).toBe(row0);
+    expect(row0).toHaveAttribute('tabindex', '-1');
+    fireEvent.keyDown(document.activeElement ?? sc, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(row1);
+    fireEvent.keyDown(document.activeElement ?? sc, { key: 'Enter' });
+    expect(onInspect).toHaveBeenCalledTimes(1);
+    expect(onInspect.mock.calls[0]?.[0]).toMatchObject({ type: 'logLine', line: 'r1' });
+    expect(onInspect.mock.calls[0]?.[1]).toBe('keyboard');
+    expect(onInspect.mock.calls[0]?.[2]).toBe(row1);
   });
 });

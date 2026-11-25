@@ -47,6 +47,22 @@
   cursor: crosshair;
 }
 
+/* A stat's inspect target (T25 §4.2): a transparent button over the whole frame. */
+.inspect {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+}
+
+.inspect:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
 /* Over the plot's top-left corner while the value axis is pinned (#93); placed through CSSOM. */
 .resetValue {
   position: absolute;

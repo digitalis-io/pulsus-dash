@@ -283,7 +283,7 @@ Designs: [IA-015, IA-021](../../designs/product/02-information-architecture.md),
 
 `e2e/keyboard.spec.ts` drives the app by keyboard only (loops L1–L34) through
 `e2e/keyboardCoverage.ts`; its steps are in `e2e/keyboardScript.ts` (focus by Tab, operate, menus,
-text, `drain`, `shellAfter`), the board loops L23–L31 and L34 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
+text, `drain`, `shellAfter`), the board loops L23–L31, L34 and L35 in `e2e/keyboardBoards.ts` (`boardSteps(s)`,
 one function per step) and the Explore loops L32 (metrics) and L33 (logs) in
 `e2e/keyboardExplore.ts`. The loops run as six
 independent tests, the parts (#130), each in its own browser context from the same preamble (the
@@ -293,7 +293,7 @@ clipboard stub and the fixed clock), in parallel and in any CI shard:
 |---|---|---|
 | K1 shell and chart frames | `@kbd @kbd-a` | L1–L19, L21, L20, L22 (`shellLoops`, with `chrome()` for L20) |
 | K2 panel editor | `@kbd @kbd-a` | L27 |
-| K3 board list, log panels and b-1 view tools | `@kbd @kbd-b` | L23, L34 (the board log panels, #67), L24 on b-1 |
+| K3 board list, log panels, Inspector and b-1 view tools | `@kbd @kbd-b` | L23, L34 (the board log panels, #67), L35 (the Inspector on b-1, #192), L24 on b-1 |
 | K4 b-3 and b-2 view tools | `@kbd @kbd-c` | L24 on b-3 and b-2 |
 | K7 toolbar, edit layout | `@kbd @kbd-c` | L25, L26 |
 | K5 guard, sections, variables, filters, Explore | `@kbd` | L28–L31, L32, L33 |
@@ -330,7 +330,9 @@ relative and Copy link exist only on pages with a view URL pattern, so not there
 six chart crosshair sliders (End, ←, Home, →, ↓, Escape) and checks the crosshair time, the tooltip
 and the value text. L23–L31 cover the board list and its dialogs, the board in View and Edit mode,
 the panel tools, Share, the layout buttons, the panel editor dialog and its selects, the guard and
-the conflict dialog; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
+the conflict dialog; L35 opens the Inspector from b-1's stat by keyboard and operates every control
+of the sheet (the copies, the pivots, the staged actions, Collapse and Expand, Edit query, Close
+and the Esc ladder), since a drain cannot re-open it; each loop asserts its behaviours, then `drain(name, enter)` re-enters one state
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
 Space for checkboxes and radios; End then Escape for sliders; End for text fields; ArrowDown then

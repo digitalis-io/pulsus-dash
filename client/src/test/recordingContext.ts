@@ -12,6 +12,7 @@ export interface RecordedOp {
   readonly lineWidth: number;
   readonly font: string;
   readonly textAlign: string;
+  readonly globalAlpha: number;
 }
 
 export interface RecordingContext extends Ctx2D {
@@ -34,6 +35,7 @@ export function recordingContext(): RecordingContext {
     font: '10px sans-serif',
     textAlign: 'start' as CanvasTextAlign,
     textBaseline: 'alphabetic' as CanvasTextBaseline,
+    globalAlpha: 1,
   };
   const stack: (typeof state)[] = [];
   const text = (v: string | CanvasGradient | CanvasPattern): string =>
@@ -49,6 +51,7 @@ export function recordingContext(): RecordingContext {
         lineWidth: state.lineWidth,
         font: state.font,
         textAlign: state.textAlign,
+        globalAlpha: state.globalAlpha,
       });
     };
   const ctx = {
@@ -63,6 +66,12 @@ export function recordingContext(): RecordingContext {
     },
     set strokeStyle(v) {
       state.strokeStyle = v;
+    },
+    get globalAlpha() {
+      return state.globalAlpha;
+    },
+    set globalAlpha(v) {
+      state.globalAlpha = v;
     },
     get lineWidth() {
       return state.lineWidth;
@@ -102,6 +111,7 @@ export function recordingContext(): RecordingContext {
     },
     setTransform: rec('setTransform'),
     fillRect: rec('fillRect'),
+    strokeRect: rec('strokeRect'),
     clearRect: rec('clearRect'),
     beginPath: rec('beginPath'),
     moveTo: rec('moveTo'),

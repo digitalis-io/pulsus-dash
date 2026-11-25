@@ -112,3 +112,39 @@
 .squareArrowOutUpRight {
   mask-image: url('../icons/square-arrow-out-up-right.svg');
 }
+
+.copy {
+  mask-image: url('../icons/copy.svg');
+}
+
+.pencil {
+  mask-image: url('../icons/pencil.svg');
+}
+
+.panelRightClose {
+  mask-image: url('../icons/panel-right-close.svg');
+}
+
+.panelRightOpen {
+  mask-image: url('../icons/panel-right-open.svg');
+}
+
+.arrowUpRight {
+  mask-image: url('../icons/arrow-up-right.svg');
+}
+
+.gitBranch {
+  mask-image: url('../icons/git-branch.svg');
+}
+
+.flame {
+  mask-image: url('../icons/flame.svg');
+}
+
+.box {
+  mask-image: url('../icons/box.svg');
+}
+
+.filter {
+  mask-image: url('../icons/filter.svg');
+}

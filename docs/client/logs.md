@@ -133,6 +133,8 @@ small cap, or very long lines filling the text cap) would load a page at one end
 | Timestamp | `formatLogTime(ms, tz)`: `2026-01-01 00:58:20.000` in the browser's zone (`useTimeZone()`), milliseconds truncated from the nanosecond timestamp |
 | Line | a text node in JetBrains Mono (`--font-mono`); never parsed as HTML |
 | Placement | each row's `translateY` and the list's height are set through CSSOM in layout effects (T08-023) |
+| Selection (T25-006) | `logRowMatch(row, selection, loaded)`: a row whose stream is among the page selection's keys (if any) and whose time is in its `[fromMs, toMs)` (if any) is `data-selected`, with the `selection` background, a 2 px `focus` bar and the hidden word "selected"; when the selection is relevant to this stream (a key among the buffer's streams, `LogBuffer.hasStream`, or an interval with no keys) the other rows are `data-muted` and show their line in `text-muted`. A selection whose keys are all foreign changes nothing |
+| Inspect (T25-005) | with `onInspect` (from `useChartInspect`): a row click inspects it (not while a text selection is anchored in the row); rows are `tabIndex=-1`; Enter on the scroller focuses the first visible row, ↑ and ↓ move by one mounted row, Enter or Space inspects; when the focused row unmounts, focus goes to the scroller. The target carries the row's stream labels, level, exact `tsNs`, line, structured metadata and parsed fields (`LogRow.metadata`, `LogRow.parsed`) |
 | Screen readers | the scroller is a named `region` and a tab stop; the list is a named `list`; each row is a `listitem` with `aria-posinset` (ordinal + 1) and `aria-setsize` (the total once known, else −1). The arrow, Page, Home and End keys scroll natively |
 
 ### Sentinels
@@ -199,4 +201,6 @@ T08-019, T08-022, T08-023, T08-027), [T05](../../designs/technical/T05-testing-a
 §7.1 (the gates), [ADR-0007](../../designs/adr/0007-in-house-vis-engine.md),
 [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §2 and §7,
 [ADR-0015](../../designs/adr/0015-go-bff.md),
-[ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) §2.
+[ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) §2;
+[T25](../../designs/technical/T25-inspector-and-pivots.md) (T25-005, T25-006: inspect and the
+selection).

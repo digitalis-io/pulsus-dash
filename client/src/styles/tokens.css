@@ -27,6 +27,7 @@
   --ramp-7: #8DBBEB;
   --ramp-8: #B1D3F7;
   --ramp-9: #D8EAFE;
+  --selection: #5B9BFF29;
   --series-1: #7AA2D6;
   --series-2: #C9A36B;
   --series-3: #8FBF8F;
@@ -37,6 +38,7 @@
   --series-8: #BFB07A;
   --surface-1: #12151A;
   --surface-2: #191D24;
+  --surface-float: #12151AF0;
   --surface-hover: #222731;
   --syn-func: #7AA2D6;
   --syn-keyword: #B48FC9;
@@ -76,6 +78,7 @@
   --ramp-7: #3C6995;
   --ramp-8: #365371;
   --ramp-9: #313F4D;
+  --selection: #2563C929;
   --series-1: #3F6FA8;
   --series-2: #93703A;
   --series-3: #4E874E;
@@ -86,6 +89,7 @@
   --series-8: #857640;
   --surface-1: #FFFFFF;
   --surface-2: #ECEEF2;
+  --surface-float: #FFFFFFF0;
   --surface-hover: #E2E5EA;
   --syn-func: #2563C9;
   --syn-keyword: #6B4A84;
@@ -117,8 +121,11 @@
   --line-height-tight: 1.25;
   --motion-easing-out: cubic-bezier(0.2, 0, 0, 1);
   --motion-fast: 150ms;
+  --motion-float-open: 200ms;
   --motion-standard: 250ms;
+  --opacity-dimmed: 0.35;
   --radius: 6px;
+  --radius-float: 10px;
   --size-avatar: 28px;
   --size-board-cols: 12px;
   --size-board-legend-table-min: 240px;
@@ -140,6 +147,9 @@
   --size-focus-ring: 2px;
   --size-header: 56px;
   --size-icon: 16px;
+  --size-inspector: 360px;
+  --size-inspector-inset: 12px;
+  --size-inspector-tab: 40px;
   --size-log-level-bar: 3px;
   --size-log-row: 20px;
   --size-log-sentinel: 40px;
@@ -164,6 +174,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 0ms;
+    --motion-float-open: 0ms;
     --motion-standard: 0ms;
   }
 }

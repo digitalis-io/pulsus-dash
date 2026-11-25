@@ -4,7 +4,7 @@
  * log-level series, else `key_hash mod 8`. State colours are never used for series (VL-003): they
  * reach the marks only through `StateEncoding` (threshold lines and labels, T02-004).
  */
-import { colour, sequentialRamp, seriesPalette } from '../../styles/tokens';
+import { colour, opacity, sequentialRamp, seriesPalette } from '../../styles/tokens';
 import { StateEncoding, type State } from '../../theme/stateEncoding';
 import type { ThemeName } from '../api';
 
@@ -58,6 +58,12 @@ export interface ThemeColours {
   text: string;
   /** Event lines (ADR-0023): `text-muted`, never a state colour (T02-004). */
   event: string;
+  /** The selection underlay and rings (ADR-0025, T25-006). */
+  focus: string;
+  /** The selection band: `accent` at 16 % (T25-006). */
+  selection: string;
+  /** The alpha of unselected marks while a selection is relevant (T25-006). */
+  dimmed: number;
   series: readonly string[];
   ramp: readonly string[];
   /** Threshold lines and labels only: `StateEncoding[s].colour[t]` (T02-004, VL-003). */
@@ -75,6 +81,9 @@ export function themeColours(t: ThemeName): ThemeColours {
     chip: c['surface-2'],
     text: c.text,
     event: c['text-muted'],
+    focus: c.focus,
+    selection: c.selection,
+    dimmed: opacity.dimmed,
     series: seriesPalette[t],
     ramp: sequentialRamp[t],
     state: {

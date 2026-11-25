@@ -29,6 +29,7 @@ import type { Refusal } from '../../explore/useExploreRun';
 import { useLogqlModules } from '../../explore/useLogqlModules';
 import { useLogsVolume } from '../../explore/useLogsVolume';
 import { t } from '../../i18n/t';
+import { InspectorHost } from '../../inspector/host';
 import { cx } from '../../kit/cx';
 import { EmptyState } from '../../kit/EmptyState';
 import { useLogPager, useLogPagerState } from '../../logs/useLogPager';
@@ -46,6 +47,8 @@ import { LogsVolumeCard } from './LogsVolumeCard';
 import { QueryStatus } from './QueryStatus';
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
+/** Explore applies no board filters (T25-010, until I3). */
+const NO_FILTERS = Object.freeze([]);
 
 export function LogsPage() {
   usePageTitle(t('explore.logs.title'));
@@ -152,6 +155,11 @@ export function LogsPage() {
   const onEscape = useCallback(() => {
     runButtonRef.current?.focus();
   }, []);
+  // The Inspector closes when Explore runs another query (T25-012); ✎ focuses the editor (T25-015).
+  const originKey = useCallback(() => q, [q]);
+  const onEditQuery = useCallback(() => {
+    editorRef.current?.focus();
+  }, []);
   const onNarrow = useCallback(() => {
     dispatch({ type: 'zoom', dir: 'in' });
   }, [dispatch]);
@@ -194,51 +202,63 @@ export function LogsPage() {
   });
 
   return (
-    <div className={cx(pageStyles['page'])}>
-      <ContextSummary />
-      <LogsQueryCard
-        modules={modules}
-        q={q}
-        source={source}
-        diagnostics={diagnostics}
-        onDraft={onDraft}
-        onRun={onRun}
-        onEscape={onEscape}
-        status={<QueryStatus view={view} onNarrow={onNarrow} />}
-        runReady={runReady}
-        editorRef={editorRef}
-        runButtonRef={runButtonRef}
-      />
-      <div ref={resultsRef} className={cx(styles['results'])} data-logs-results="">
-        {q === '' ? (
-          <EmptyState title={t('explore.logs.empty')}>
-            <p className={cx(pageStyles['muted'])}>{t('explore.logs.emptyDetail')}</p>
-          </EmptyState>
-        ) : layout === 'series' ? (
-          <LogsMetricCard
-            series={cur?.series ?? null}
-            fetching={state === null || state.phase === 'pending'}
-            onNarrow={onNarrow}
-          />
-        ) : (
-          <>
-            <LogsVolumeCard
-              volume={volume}
-              showError={state?.phase === 'streams'}
+    <InspectorHost
+      surface="explore"
+      filters={NO_FILTERS}
+      originKey={originKey}
+      onEditQuery={onEditQuery}
+    >
+      <div className={cx(pageStyles['page'])}>
+        <ContextSummary />
+        <LogsQueryCard
+          modules={modules}
+          q={q}
+          source={source}
+          diagnostics={diagnostics}
+          onDraft={onDraft}
+          onRun={onRun}
+          onEscape={onEscape}
+          status={<QueryStatus view={view} onNarrow={onNarrow} />}
+          runReady={runReady}
+          editorRef={editorRef}
+          runButtonRef={runButtonRef}
+        />
+        {/* Keyed by tenant (T25 §8): a tenant change on this route gets new charts, canvases,
+            engine frames and log list, so nothing of the last tenant is ever drawn in this one. */}
+        <div key={tenant} ref={resultsRef} className={cx(styles['results'])} data-logs-results="">
+          {q === '' ? (
+            <EmptyState title={t('explore.logs.empty')}>
+              <p className={cx(pageStyles['muted'])}>{t('explore.logs.emptyDetail')}</p>
+            </EmptyState>
+          ) : layout === 'series' ? (
+            <LogsMetricCard
+              q={q}
+              series={cur?.series ?? null}
+              fetching={state === null || state.phase === 'pending'}
               onNarrow={onNarrow}
             />
-            <LogsStreamCard
-              pager={pager}
-              state={state}
-              wrap={wrap}
-              onWrapChange={onWrapChange}
-              onDirectionChange={onDirectionChange}
-              onRerun={onRerun}
-              onNarrow={onNarrow}
-            />
-          </>
-        )}
+          ) : (
+            <>
+              <LogsVolumeCard
+                q={q}
+                volume={volume}
+                showError={state?.phase === 'streams'}
+                onNarrow={onNarrow}
+              />
+              <LogsStreamCard
+                q={q}
+                pager={pager}
+                state={state}
+                wrap={wrap}
+                onWrapChange={onWrapChange}
+                onDirectionChange={onDirectionChange}
+                onRerun={onRerun}
+                onNarrow={onNarrow}
+              />
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </InspectorHost>
   );
 }

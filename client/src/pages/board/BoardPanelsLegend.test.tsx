@@ -94,7 +94,8 @@ function states(table: HTMLElement): string[][] {
     .map((r) =>
       within(r)
         .getAllByRole('cell')
-        .slice(1)
+        // The Select toggle (T25-016) and Series cells come first.
+        .slice(2)
         .map((c) => c.getAttribute('data-state') ?? ''),
     );
 }
@@ -119,7 +120,7 @@ describe('board legend (#64 Part B §4.5)', () => {
       return el;
     });
     const table = within(legend).getByRole('table');
-    expect(headers(table)).toEqual(['Series', 'Mean', 'Max', 'Last']);
+    expect(headers(table)).toEqual(['Select', 'Series', 'Mean', 'Max', 'Last']);
     expect(states(table)).toEqual(MATRIX);
     const degraded = table.querySelector<HTMLElement>('td[data-state="degraded"]');
     expect(degraded?.textContent.startsWith('◉')).toBe(true);
@@ -161,7 +162,7 @@ describe('board legend (#64 Part B §4.5)', () => {
       name: 'Legend. Choose a series to show it alone; choose it again to show all.',
     });
     const table = within(dialog).getByRole('table');
-    expect(headers(table)).toEqual(['Series', 'Mean', 'Max', 'Last']);
+    expect(headers(table)).toEqual(['Select', 'Series', 'Mean', 'Max', 'Last']);
     expect(states(table)).toEqual(MATRIX);
     await user.keyboard('{Escape}');
     await waitFor(() => {

@@ -41,6 +41,10 @@ ramp-7 = "#8DBBEB"
 ramp-8 = "#B1D3F7"
 ramp-9 = "#D8EAFE"
 brush = "#5B9BFF29"
+# The Inspector's floating sheet (T25 §4.4): surface-1 at 94 %, under a backdrop blur.
+surface-float = "#12151AF0"
+# The shared selection's band and log-row background (T25-006): accent at 16 %.
+selection = "#5B9BFF29"
 # Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
 syn-keyword = "#B48FC9"
 syn-func = "#7AA2D6"
@@ -91,6 +95,10 @@ ramp-7 = "#3C6995"
 ramp-8 = "#365371"
 ramp-9 = "#313F4D"
 brush = "#2563C929"
+# The Inspector's floating sheet (T25 §4.4): surface-1 at 94 %, under a backdrop blur.
+surface-float = "#FFFFFFF0"
+# The shared selection's band and log-row background (T25-006): accent at 16 %.
+selection = "#2563C929"
 # Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
 syn-keyword = "#6B4A84"
 syn-func = "#2563C9"
@@ -158,9 +166,19 @@ log-sentinel = 40
 log-level-bar = 3
 # The Log lines card of Explore › Logs (#66 Part C): the list's height.
 log-stream = 560
+# The Inspector (T25 §4.4): the sheet's width, its collapsed tab and its inset from the content.
+inspector = 360
+inspector-tab = 40
+inspector-inset = 12
 
 [radius]
 default = 6
+# Floating sheets (the Inspector, T25 §4.4).
+float = 10
+
+# Alphas (0..1): unselected marks while a selection is relevant (T25-006).
+[opacity]
+dimmed = 0.35
 
 [border]
 hairline = 1
@@ -195,4 +213,6 @@ normal = 1.5
 [motion]
 fast = 150
 standard = 250
+# The Inspector opening (T25 §4.4).
+float-open = 200
 easing-out = "cubic-bezier(0.2, 0, 0, 1)"

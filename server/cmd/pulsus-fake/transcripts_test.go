@@ -26,7 +26,11 @@ func TestE2ETranscripts(t *testing.T) {
 	want := []string{
 		// The board LogQL frame panel's kind probe (plan #67 §5.3).
 		"board-logs-probe-checkout",
-		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram", "labels",
+		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram",
+		// The Inspector set (#192).
+		"inspector-hist-sel", "inspector-hist", "inspector-logs-checkout", "inspector-logs-pivot-prod",
+		"inspector-logs-pivot", "inspector-logs-sel", "inspector-p99", "inspector-two",
+		"labels",
 		// The Explore › Logs set (plan #66 Part C §3.13).
 		"logs-checkout-1h", "logs-checkout-brushed", "logs-checkout-volume-1h",
 		"logs-checkout-volume-brushed", "logs-label-values-app", "logs-labels", "logs-metric-checkout",

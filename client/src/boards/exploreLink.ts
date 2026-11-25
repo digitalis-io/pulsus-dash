@@ -6,6 +6,7 @@
  * current answer to Explore › Logs (plan #67 §2), and has no link without one.
  */
 import type { PanelSpec } from '../api/types';
+import type { VisKind } from '../engine/api';
 import { contextSearchString, type ContextSearch } from '../state/contextSearch';
 
 export function exploreHref(
@@ -14,12 +15,24 @@ export function exploreHref(
   search: ContextSearch,
   expanded: string | null,
 ): string | null {
-  const time = contextSearchString(search);
   if (expanded === null) return null;
-  if (panel.query.lang === 'logql') {
-    return `/t/${tenant}/explore/logs${time}&q=${encodeURIComponent(expanded)}`;
-  }
   const k = panel.vis.kind;
-  const vis = k === 'auto' || k === 'logs' ? '' : `&vis=${k}`;
-  return `/t/${tenant}/explore/metrics${time}&q=${encodeURIComponent(expanded)}${vis}`;
+  return exploreHrefFor(tenant, panel.query.lang, k === 'logs' ? 'auto' : k, search, expanded);
+}
+
+/**
+ * Explore's address for a query in the Context (also the Inspector's Explore pivot, T25 §4.3):
+ * Explore › Logs for LogQL, else Explore › Metrics with `vis` (none for `auto`).
+ */
+export function exploreHrefFor(
+  tenant: string,
+  lang: 'promql' | 'logql',
+  vis: VisKind | 'auto',
+  search: ContextSearch,
+  text: string,
+): string {
+  const time = contextSearchString(search);
+  if (lang === 'logql') return `/t/${tenant}/explore/logs${time}&q=${encodeURIComponent(text)}`;
+  const v = vis === 'auto' ? '' : `&vis=${vis}`;
+  return `/t/${tenant}/explore/metrics${time}&q=${encodeURIComponent(text)}${v}`;
 }

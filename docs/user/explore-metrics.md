@@ -99,6 +99,17 @@ Under the chart, one row per series shows its name, its last value and its large
   that series.
 - At most 500 rows are listed ("Showing the first 500 of … series").
 
+## Inspect and select
+
+Click a point, a bar segment or a heatmap cell in the chart (or, on a stat, **Inspect Query
+result**) to open the **Inspector** over the right of the page: the value, its raw details and
+labels, pivots and the query, as on [boards](boards.md#inspect-and-select). By keyboard: focus the
+chart's crosshair, move with the arrow keys and press **Enter**. In the series table, the round
+**Select `<series>`** toggle before each name selects that series without opening the Inspector.
+**Edit query** (✎) moves the focus to the query editor. Explore has no **Explore** chip; the
+**Logs ±1 min** chip opens Explore › Logs around the point for the series' service. **Escape**
+clears the selection, then closes the Inspector. The Inspector closes when you run another query.
+
 ## Partial data and notes
 
 When PulsusDB returns only part of the result, the **Partial data** badge shows with its message

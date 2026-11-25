@@ -44,7 +44,7 @@ import { useLegendLayout } from '../../boards/useLegendLayout';
 import { PANEL_PREFETCH_ROWS, streamMeta } from '../../boards/logPanel';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
-import { ChartFrame, type FrameSize } from '../../charts/ChartFrame';
+import { ChartFrame, type ChartFrameProps, type FrameSize } from '../../charts/ChartFrame';
 import type { SeriesTableProps } from '../../charts/SeriesTable';
 import { SeriesTable } from '../../charts/SeriesTable';
 import { statValue } from '../../data/frames';
@@ -53,6 +53,9 @@ import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explo
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { useElementWidth } from '../../explore/useElementWidth';
 import { t } from '../../i18n/t';
+import { useInspectedPanelId } from '../../inspector/host';
+import type { InspectOrigin } from '../../inspector/types';
+import { useChartInspect } from '../../inspector/useChartInspect';
 import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
 import { EmptyState } from '../../kit/EmptyState';
@@ -198,14 +201,21 @@ function StatStack({
  * opening the editor) does not render its chart or legend again. The board's event markers come
  * from `BoardEventsContext` (plan #64 Part C).
  */
+/** The inspect props a board panel passes down (absent at full screen and in the preview). */
+export type PanelInspect = Pick<ChartFrameProps, 'onInspect' | 'onEmptyClick'>;
+
 const PanelChart = memo(function PanelChart({
   title,
   view,
   sizeMemo,
+  inspect,
+  selectPanelId,
 }: {
   title: string;
   view: FrameView;
   sizeMemo: SizeMemo | undefined;
+  inspect: PanelInspect | undefined;
+  selectPanelId: string | undefined;
 }) {
   const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -234,6 +244,19 @@ const PanelChart = memo(function PanelChart({
   const frame = useMemo(() => panelFrame(view, isolation), [view, isolation]);
   const spec = useMemo(() => ({ ...frame.spec, title }), [frame.spec, title]);
   const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
+  // A stat's value target carries its chip's state (plan #192 §3).
+  const baseInspect = inspect?.onInspect;
+  const onInspect = useMemo<ChartFrameProps['onInspect']>(() => {
+    const th = view.thresholds;
+    if (baseInspect === undefined || view.vis !== 'stat' || th === null) return baseInspect;
+    return (target, source, returnFocus) => {
+      baseInspect(
+        target.type === 'value' ? { ...target, state: statState(th, view).chip } : target,
+        source,
+        returnFocus,
+      );
+    };
+  }, [baseInspect, view]);
   const chart = (
     <ChartFrame
       fill
@@ -242,6 +265,8 @@ const PanelChart = memo(function PanelChart({
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
       sizeMemo={memo}
       events={markers}
+      {...(onInspect === undefined ? {} : { onInspect })}
+      {...(inspect?.onEmptyClick === undefined ? {} : { onEmptyClick: inspect.onEmptyClick })}
     />
   );
   if (view.vis === 'heatmap') return chart;
@@ -262,6 +287,7 @@ const PanelChart = memo(function PanelChart({
     onSort: (c) => {
       setSort((s) => nextSort(s, c));
     },
+    ...(selectPanelId === undefined ? {} : { selectPanelId }),
     unit: spec.unit,
     rows: sorted,
     total: rows.length,
@@ -291,6 +317,8 @@ export function PanelBody({
   sizeMemo,
   onNarrow,
   streamHidden = false,
+  inspect,
+  selectPanelId,
 }: {
   title: string;
   view: PanelView;
@@ -299,6 +327,10 @@ export function PanelBody({
   onNarrow: () => void;
   /** The panel's full screen is open: its stream shows there only (plan #67 §3.5). */
   streamHidden?: boolean;
+  /** The board panel's inspect props (T25-005); absent at full screen and in the preview. */
+  inspect?: PanelInspect;
+  /** The legend table's Select toggles select for this panel (T25-016). */
+  selectPanelId?: string;
 }) {
   switch (view.kind) {
     case 'stream': {
@@ -315,12 +347,21 @@ export function PanelBody({
             onDirectionChange={s.setDirection}
             onRerun={s.rerun}
             prefetchRows={PANEL_PREFETCH_ROWS}
+            {...(inspect?.onInspect === undefined ? {} : { onInspect: inspect.onInspect })}
           />
         </div>
       );
     }
     case 'frame':
-      return <PanelChart title={title} view={view} sizeMemo={sizeMemo} />;
+      return (
+        <PanelChart
+          title={title}
+          view={view}
+          sizeMemo={sizeMemo}
+          inspect={inspect}
+          selectPanelId={selectPanelId}
+        />
+      );
     case 'loading':
       return <p className={cx(styles['message'])}>{t('panel.loading')}</p>;
     case 'message':
@@ -543,6 +584,22 @@ export const PanelFrame = memo(
     const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
     const g = panel.grid;
     const explore = exploreHref(tenant, panel, search, run.expanded);
+    // The Inspector's origin (T25 §5), memoised on its fields so the chart's props stay stable.
+    const lang = panel.query.lang;
+    const expanded = run.expanded;
+    const originUnit = view.kind === 'frame' ? view.spec.unit : null;
+    const origin = useMemo<Omit<InspectOrigin, 'window'>>(
+      () => ({
+        surface: 'board',
+        panelId: panel.id,
+        title,
+        query: expanded === null ? null : { lang, text: expanded },
+        unit: originUnit,
+      }),
+      [panel.id, title, expanded, lang, originUnit],
+    );
+    const inspect = useChartInspect(origin);
+    const inspected = useInspectedPanelId() === panel.id;
     const onNarrow = useCallback(() => {
       dispatch({ type: 'zoom', dir: 'in' });
     }, [dispatch]);
@@ -568,7 +625,11 @@ export const PanelFrame = memo(
         ref={rootRef}
         className={cx(styles['panel'], className)}
         aria-labelledby={headingId}
+        // The Inspector's focus fallback when its return target is gone (T25-008).
+        tabIndex={-1}
         data-panel={panel.id}
+        data-panel-id={panel.id}
+        data-inspector-origin={inspected ? '' : undefined}
         data-grid={[g.x, g.y, g.w, g.h].join(',')}
         data-vis={panel.vis.kind}
         data-panel-state={stateOf(view)}
@@ -682,6 +743,8 @@ export const PanelFrame = memo(
             sizeMemo={frameSize}
             onNarrow={onNarrow}
             streamHidden={full}
+            inspect={inspect}
+            selectPanelId={panel.id}
           />
         </div>
         <PanelFullScreen

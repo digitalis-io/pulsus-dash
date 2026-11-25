@@ -92,6 +92,31 @@
   background: var(--level-trace);
 }
 
+/* T25-005: a row inspects on click and on Enter. */
+.inspectable {
+  cursor: pointer;
+}
+
+.inspectable:hover {
+  background: var(--surface-hover);
+}
+
+.inspectable:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+/* T25-006: a selected row has the selection background and a 2 px focus bar at the gutter's edge;
+   a muted one shows its line in text-muted (never alpha on text, VL-009). */
+.row[data-selected] {
+  background: var(--selection);
+  box-shadow: inset var(--size-focus-ring) 0 0 var(--focus);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
 /* Three monospace columns. */
 .glyph {
   width: calc(var(--font-size-sm) * var(--font-advance-mono) * 3);

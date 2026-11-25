@@ -53,6 +53,61 @@ save; focus moves to **Add panel** after a removal. While a save is in flight bo
 Charts have a keyboard crosshair: focus the chart (**Crosshair: `<panel>`**) and use the arrow keys
 to read values ([Charts](../client/charts.md#accessibility-t01-007)).
 
+### Inspect and select
+
+**Click** a point on a line, a bar segment, a heatmap cell or a log line, or **Inspect `<panel>`**
+on a stat tile, and the **Inspector** opens over the right of the board: a floating sheet that
+never moves the panels. It shows, in order:
+
+- the panel's title and the time of what you clicked, to the millisecond, in your time zone;
+- the **value** in the panel's unit (a log line shows the line itself), with **Copy value**;
+- **Details**: the raw value, the exact time (a log line also gives its time in nanoseconds), a
+  bucket's range, a stat's threshold state;
+- **Labels** (or "No labels"); a log line also shows its metadata and parsed fields;
+- **Pivots** (below);
+- **Query**: the panel's query as it ran, with **Copy query** and **Edit query** (✎, which opens
+  the panel editor), or "No query: run the panel first";
+- **Actions**: **Pin**, **Create alert** and **Ask AI ✦**, which arrive later; each says why.
+
+What you clicked is also the board's **selection**, which every panel shows at once: on line and
+bar panels the selected series stands out over a focus-coloured outline and the others fade; a time
+(a heatmap cell, a log line) shows as a highlighted band; matching log lines are highlighted with a
+bar in the gutter, and the other lines of the same stream go grey. A click on an empty part of a
+chart clears the selection. The panel you inspected has a focus-coloured outline.
+
+In a legend table, the round **Select `<series>`** toggle before each name selects that series
+on every panel without opening the Inspector; choose it again to clear it. The name itself still
+isolates the series in its own panel.
+
+**Collapse Inspector** shrinks the sheet to a small tab at the right edge (**Expand Inspector**
+brings it back); **Close Inspector** closes it. Clicking something else replaces what it shows,
+with a short crossfade. The Inspector keeps what you clicked while the board refreshes or you change
+the time; it closes when that panel is removed or its query or visualisation changes. Nothing of
+the selection or the Inspector is saved or shared.
+
+**Keyboard:** on a chart's crosshair, move to a time with the arrow keys, choose a row with ↑ and
+↓, then press **Enter** (or **Space**): the Inspector opens and its heading takes the focus. In a
+log panel, press **Enter** on the list to focus its first visible line, move with ↑ and ↓, and
+press **Enter** to inspect the line. **Escape** steps back one thing at a time: first the crosshair
+(if shown), then the selection, then the Inspector (focus returns to where you were).
+
+**Pivots** take what you clicked elsewhere, with the board's time and filters, and say what they
+carry under each chip:
+
+- **Explore** opens the panel's query in Explore › Metrics (or Logs for LogQL) with the board's
+  time range. Explore does not apply board filters yet: the line under the chip names them.
+- **Logs ±1 min** opens Explore › Logs one minute either side of the point, for the series'
+  service: its `service_name` label, or its `job` label's part after the last `/`; a log line uses
+  its stream labels. Board filters are added to the selector (`instance` is not carried, and is
+  named). When a filter contradicts the series (`job=shop/web` on a `checkout` series), both stay and
+  the line warns that no logs can match. Without any label to go on, the chip is disabled and says
+  why.
+- **Traces**, **Profiles**, **Entity** and **Label filter** are listed but not available yet; their
+  reasons are written under the chips.
+
+A plain click or Shift-click on a chip opens the page in place (Back returns to the board); ⌘-click,
+Ctrl-click or a middle click opens it in a new tab.
+
 ### Zoom and pan a chart
 
 Point at a chart's plot (the area with the lines or bars) and:
@@ -192,6 +247,8 @@ are more).
 - **Columns:** a colour swatch and the series name, then **Mean**, **Max** and **Last**, in tabular
   numbers in the panel's unit. Choose a column header to sort by it (descending first; choose it
   again to flip).
+- **Select.** The round toggle before a name selects the series on every panel
+  ([Inspect and select](#inspect-and-select)).
 - **Click to isolate.** Choose a series name to draw that series alone; choose it again to show all
   of them. The legend is local to the panel: isolating or sorting never makes a new request, and is
   never saved. When a refresh no longer returns the isolated series, all series show again.
@@ -490,6 +547,8 @@ but cannot be saved." Leaving the page still asks first.
 | Arrows, **Shift**+arrows | **Move or resize** button | Move, resize |
 | **[**, **]**, **-**, **=** | anywhere but text fields and menus | Step the time window back and forward, zoom out and in |
 | **Escape** | a chart's crosshair, while dragging on the chart | Cancel the drag: the chart returns to where it was |
+| **Enter**, **Space** | a chart's crosshair, a focused log line, a stat's **Inspect** | [Inspect](#inspect-and-select) it |
+| **Escape** | anywhere on the board but text fields, menus and dialogs | Clear the selection, then close the Inspector |
 | **Shift+Enter**, **⌘/Ctrl+Enter** | the panel editor's PromQL or LogQL query | Run the query |
 | **Escape** | the panel editor's PromQL or LogQL query | Move to **Run query**; again: close the panel editor |
 | Arrows, then **Space** | a log panel's order options | Move between **Newest first** and **Oldest first**, then choose |

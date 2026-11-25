@@ -90,6 +90,19 @@ export function formatLogTime(ms: number, tz: string): string {
   return `${v('year')}-${v('month')}-${v('day')} ${v('hour')}:${v('minute')}:${v('second')}.${v('fractionalSecond')}`;
 }
 
+/** `13:41:20.000`: the time of day in `tz` to the millisecond (the Inspector, T25-004). */
+export function formatClockMs(ms: number, tz: string): string {
+  const p: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+  for (const part of formatter('logTime', tz).formatToParts(ms)) p[part.type] = part.value;
+  const v = (k: Intl.DateTimeFormatPartTypes): string => p[k] ?? '';
+  return `${v('hour')}:${v('minute')}:${v('second')}.${v('fractionalSecond')}`;
+}
+
+/** The zone's short name at `atMs`: `UTC`, `GMT`, `BST`, `GMT+1`. */
+export function formatZoneShort(tz: string, atMs: number): string {
+  return zonePart('zoneShort', tz, atMs);
+}
+
 /** 'Europe/London (GMT)', 'America/New_York (GMT-05:00)'; a zero offset is shown as plain GMT. */
 export function formatZone(tz: string, atMs: number): string {
   const offset = zonePart('zoneLong', tz, atMs).replace(/^GMT[+-−]00:00$/, 'GMT');

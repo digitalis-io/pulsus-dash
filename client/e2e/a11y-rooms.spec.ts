@@ -44,13 +44,16 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
   },
 };
 
-async function seriousViolations(page: Page, state = ''): Promise<string[]> {
+async function seriousViolations(
+  page: Page,
+  state = '',
+  o: { include?: string; skip?: readonly string[] } = {},
+): Promise<string[]> {
   const engine = page.context().browser()?.browserType().name() ?? '';
-  const skip = ENGINE_SKIPS[engine]?.[state] ?? [];
-  const r = await new AxeBuilder({ page })
-    .withTags(TAGS)
-    .disableRules([...skip])
-    .analyze();
+  const skip = [...(ENGINE_SKIPS[engine]?.[state] ?? []), ...(o.skip ?? [])];
+  const include = o.include;
+  const builder = new AxeBuilder({ page }).withTags(TAGS).disableRules(skip);
+  const r = await (include === undefined ? builder : builder.include(include)).analyze();
   const out = r.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
@@ -519,6 +522,54 @@ test.describe('e2e:a11y-rooms logs', () => {
  * WCAG 2.5.3, label in name (#145): the checks catch a mismatch axe misses (one letter) and one
  * it finds, and the collapsed sidebar's org-initial tenant badge passes them.
  */
+/** Opens the Inspector on the stub board's "Request rate" chart (T25, #192). */
+async function openInspector(page: Page): Promise<void> {
+  const frame = page.locator('[data-panel-id="p-1"] [data-chart-frame][data-frame-ready="true"]');
+  await frame.waitFor();
+  const box = await frame.boundingBox();
+  const [px = 0, py = 0, pw = 0, ph = 0] =
+    (await frame.getAttribute('data-plot'))?.split(',').map(Number) ?? [];
+  if (box === null) throw new Error('no chart box');
+  for (let f = 0.1; f < 0.95; f += 0.05) {
+    await page.mouse.click(box.x + px + pw * 0.7, box.y + py + ph * f);
+    if ((await page.locator('[data-inspector]').count()) > 0) break;
+  }
+  await expect(page.locator('[data-inspector]')).toHaveCount(1);
+}
+
+test.describe('e2e:a11y-rooms inspector', () => {
+  for (const theme of ['dark', 'light', 'forced'] as const) {
+    for (const collapsed of [false, true]) {
+      test(`${theme} inspector ${collapsed ? 'collapsed' : 'open'}`, async ({ page }) => {
+        if (theme === 'forced') await page.emulateMedia({ forcedColors: 'active' });
+        await page.addInitScript(
+          (t) => {
+            localStorage.setItem('pulsus-dash.theme', t);
+          },
+          theme === 'light' ? 'light' : 'dark',
+        );
+        await open(page, '/t/demo/board/b-1');
+        await openInspector(page);
+        if (collapsed) {
+          await page.getByRole('button', { name: 'Collapse Inspector' }).click();
+          await expect(page.locator('[data-inspector]')).toHaveAttribute('data-collapsed', '');
+        }
+        // Under emulated forced colours axe pairs the authored text colour with the forced
+        // background, so its contrast rule reads every text as failing (the whole page does): the
+        // forced scan covers the sheet and every rule but colour-contrast, which dark and light check.
+        expect(
+          await seriousViolations(
+            page,
+            '',
+            theme === 'forced' ? { include: '[data-inspector]', skip: ['color-contrast'] } : {},
+          ),
+        ).toEqual([]);
+        expect(await smallTargets(page)).toEqual([]);
+      });
+    }
+  }
+});
+
 test.describe('e2e:a11y-rooms label in name', () => {
   test('label in name: the checks catch a mismatch', async ({ page }) => {
     await open(page, '/t/demo/boards');

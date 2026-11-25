@@ -32,6 +32,7 @@ import {
   type RunInputs,
 } from '../../explore/useExploreRun';
 import { t } from '../../i18n/t';
+import { InspectorHost } from '../../inspector/host';
 import { cx } from '../../kit/cx';
 import { ContextSummary } from '../../shell/ContextSummary';
 import { usePageTitle } from '../../shell/PageTitle';
@@ -47,6 +48,8 @@ import { ResultCard } from './ResultCard';
 
 const NO_META: PromMetadata['metrics'] = Object.freeze({});
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
+/** Explore applies no board filters (T25-010, until I3). */
+const NO_FILTERS = Object.freeze([]);
 
 export function MetricsPage() {
   usePageTitle(t('explore.metrics.title'));
@@ -138,6 +141,11 @@ export function MetricsPage() {
   const onEscape = useCallback(() => {
     runButtonRef.current?.focus();
   }, []);
+  // The Inspector closes when Explore runs another query (T25-012); ✎ focuses the editor (T25-015).
+  const originKey = useCallback(() => q, [q]);
+  const onEditQuery = useCallback(() => {
+    editorRef.current?.focus();
+  }, []);
   const onPick = useCallback((name: string) => {
     editorRef.current?.insert(name);
     editorRef.current?.focus();
@@ -217,41 +225,51 @@ export function MetricsPage() {
   });
 
   return (
-    <div className={cx(styles['page'])}>
-      <ContextSummary />
-      <QueryCard
-        modules={modules}
-        tenant={tenant}
-        q={q}
-        source={source}
-        meta={meta}
-        diagnostics={diagnostics}
-        onDraft={onDraft}
-        onRun={onRun}
-        onEscape={onEscape}
-        onPick={onPick}
-        status={<QueryStatus view={view} onNarrow={onNarrow} />}
-        runReady={runReady}
-        editorRef={editorRef}
-        runButtonRef={runButtonRef}
-      />
-      <ResultCard
-        q={q}
-        params={params}
-        run={run}
-        auto={auto}
-        vis={vis}
-        plan={plan}
-        rows={rows}
-        sort={sort}
-        onSort={onSort}
-        isolatedKey={isolatedKey}
-        onIsolate={onIsolate}
-        onVis={onVis}
-        onRate={onRate}
-        onNarrow={onNarrow}
-        chartRef={chartRef}
-      />
-    </div>
+    <InspectorHost
+      surface="explore"
+      filters={NO_FILTERS}
+      originKey={originKey}
+      onEditQuery={onEditQuery}
+    >
+      <div className={cx(styles['page'])}>
+        <ContextSummary />
+        <QueryCard
+          modules={modules}
+          tenant={tenant}
+          q={q}
+          source={source}
+          meta={meta}
+          diagnostics={diagnostics}
+          onDraft={onDraft}
+          onRun={onRun}
+          onEscape={onEscape}
+          onPick={onPick}
+          status={<QueryStatus view={view} onNarrow={onNarrow} />}
+          runReady={runReady}
+          editorRef={editorRef}
+          runButtonRef={runButtonRef}
+        />
+        {/* Keyed by tenant (T25 §8): a tenant change on this route gets a new chart, canvas and
+            engine frame, so no mark or selection of the last tenant is ever drawn in this one. */}
+        <ResultCard
+          key={tenant}
+          q={q}
+          params={params}
+          run={run}
+          auto={auto}
+          vis={vis}
+          plan={plan}
+          rows={rows}
+          sort={sort}
+          onSort={onSort}
+          isolatedKey={isolatedKey}
+          onIsolate={onIsolate}
+          onVis={onVis}
+          onRate={onRate}
+          onNarrow={onNarrow}
+          chartRef={chartRef}
+        />
+      </div>
+    </InspectorHost>
   );
 }

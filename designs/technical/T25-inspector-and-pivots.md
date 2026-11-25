@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-25 |
+| **Version** | 1.3-rc · 2026-11-25 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md) |
 | **Source draft** | plans/164 (not tracked) |
 
 This document is the chart **Inspector**, the shared **selection**, the **Esc ladder** and the **pivot
@@ -226,6 +226,7 @@ t is `point` tMs, `logLine` Number(tsNs / 10⁶), `stateRun` atMs, `value` tMs. 
 | Type and rhythm | Padding 20, with 20 between sections and hairline rules. Headings 11 px semibold, +0.06 em, upper case, `text-muted`. Title 16 semibold with an ellipsis. Value 32 `display`, tabular, with its unit at 16 muted; state colour and glyph only for a crossed threshold. Labels mono 12 |
 | Chips | 28 px pill, `surface-2`, hairline, 16 px icon, 13 px label, ↗. Hover: border `accent` at 40 %. Unavailable: dashed and `text-muted`, with the reasons in 12 px below |
 | Motion | Open: opacity and translateX 16→0 over 200 ms `easing-out`. Close 150 ms. New target: 150 ms crossfade. Reduced motion: instant |
+| Tokens (I1) | `color.surface-float`, `color.selection`, `size.inspector` 360, `size.inspector-tab` 40, `size.inspector-inset` 12, `radius.float` 10, `motion.float-open` 200, and the `[opacity]` table (`dimmed` 0.35), emitted to CSS, TypeScript and Rust |
 
 ### 4.5 Mockup 41
 
@@ -284,11 +285,17 @@ export type InspectorAction = { type: 'inspect'; req: InspectRequest } | { type:
   | { type: 'close' } | { type: 'toggleCollapsed' } | { type: 'originChanged'; panelId: string | null };
 // model.ts
 export interface Pivot { id: 'explore' | 'logs' | 'traces' | 'profiles' | 'entity' | 'labelFilter'; label: string;
-  href: string | null; reason: string | null /* set ⇔ href null */; notCarried: string[] }
+  href: string | null; reason: string | null /* set ⇔ href null */; notCarried: string[];
+  context: string[] /* the Context lines under an enabled chip (T25-010); [] when disabled */ }
 export interface PivotContext { search: ContextSearch; filters: BoardFilter[] }
 export function inspectorModel(req: InspectRequest, env: { tenant: string; ctx: PivotContext; timeZone: string;
   capabilities: { investigations: boolean; alerting: boolean; ai: boolean } }): InspectorModel;
-// InspectorModel: heading, subheading, primary, facts, labels (by key), members: MemberSection | null, pivots, actions, query, announce
+export interface InspectorModel { heading: string; subheading: string /* HH:mm:ss.SSS or '' */;
+  primary: string; primaryKind: 'value' | 'line'; primaryState: State | null /* a crossed threshold */;
+  facts: { label: string; value: string }[]; labels: [string, string][] /* by key */;
+  extraLabels: { title: 'Metadata' | 'Parsed'; labels: [string, string][] }[];
+  members: MemberSection | null; pivots: Pivot[]; query: { lang: 'PromQL' | 'LogQL'; text: string } | null;
+  actions: { id: 'pin' | 'alert' | 'ai'; label: string; reason: string | null }[]; announce: string; copyValue: string }
 // engine/api.ts
 export type HoverItem = { kind: 'point'; key: string; tMs: number; value: number }
   | { kind: 'bucket'; index: number; tMs: number; toMs: number; count: number };   // T21 adds 'segment', 'bin'
@@ -389,3 +396,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.0-rc | 2026-11-25 | #164: created: rules T25-001 to T25-016, the `InspectRequest` union, the shared selection and its highlight, the Esc ladder, pivots with disclosed Context, the look and motion, tests, the implementation issues I1 and I3–I6; mockup 41-inspector. Code review r1: the Profiles and Entity reasons are written in full; the redraw report is the T05 gate `bench:inspector-redraw` |
 | 1.1-rc | 2026-11-25 | #154 ([T21](T21-time-and-distribution-panels.md) part 2a): §5 `InspectorTarget` gains `{type:'bin'; target}` and `HoverItem` gains `bin`; `MemberList.labels?` and `MemberSection.texts.labels?` (parallel to the texts; per-entry chips, T25-009); T25-011 adds the bin rule (one section, resolver ids `binId` and `${binId}:groups`, completeness with labels, `frameSeq` staleness); §4.3: `bin` uses the origin window. Code review r1: `expandMembers` returns the parallel `labels` for the shown and the resolved entries |
 | 1.2-rc | 2026-11-25 | #206 ([T21](T21-time-and-distribution-panels.md) part 2a-ii): §5 comment: a `bin` from a bucket source has the header `bucketRangeText` and lists families as members (T21-067) |
+| 1.3-rc | 2026-11-25 | #192 (I1): §4.4 lists the tokens I1 adds (`size.inspector-tab`, `size.inspector-inset`, `motion.float-open`, the `[opacity]` table); §5 gives `Pivot.context` and the `InspectorModel` fields; `MemberList` and `expandMembers` in code follow #154's labels; ADR-0025 records the seam's `setSelection` and `select` item |

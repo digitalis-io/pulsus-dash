@@ -723,7 +723,11 @@ describe('MetricsPage state across views', () => {
     await waitFor(() => {
       expect(bodyRows()).toHaveLength(6);
     });
-    for (const r of bodyRows()) expect(within(r).getByRole('button')).toBeInTheDocument();
+    for (const r of bodyRows()) {
+      expect(
+        within(r).getByRole('button', { name: (n) => !n.startsWith('Select ') }),
+      ).toBeInTheDocument();
+    }
     const target = G2()[1];
     if (target === undefined) throw new Error('no G2 row');
     const button = screen.getByRole('button', { name: seriesName(target.labels) });
@@ -966,5 +970,63 @@ describe('unit:explore-run-size', () => {
       }
       cleanup();
     }
+  });
+});
+
+describe('unit:explore-tenant-canvas (T25 §8)', () => {
+  it('a switch to a tenant with a cached result: a new canvas and frame, no selection drawn', async () => {
+    const api = new StubApi();
+    spyRange(api, [S1]);
+    const { router, engine } = openExplore(url('up', '', 'sandbox'), { api });
+    await ready();
+    await waitFor(() => {
+      expect(bodyRows()).toHaveLength(1);
+    });
+    // Both tenants have the result cached: demo, then back to sandbox.
+    await act(async () => {
+      await router.navigate(url('up', '', 'demo'));
+    });
+    act(() => {
+      resizeAll(1000, 240);
+    });
+    await waitFor(() => {
+      expect(bodyRows()).toHaveLength(1);
+    });
+    await act(async () => {
+      await router.navigate(url('up', '', 'sandbox'));
+    });
+    act(() => {
+      resizeAll(1000, 240);
+    });
+    await waitFor(() => {
+      expect(bodyRows()).toHaveLength(1);
+    });
+    // A selection drawn in sandbox: the table row's Select toggle.
+    fireEvent.click(screen.getByRole('button', { name: /^Select up/ }));
+    const before = engine.frames.at(-1);
+    const oldCanvas = document.querySelector('[data-chart-frame] canvas');
+    expect(before?.last('setSelection')?.[0]).not.toBeNull();
+    expect(oldCanvas).not.toBeNull();
+    // Every commit after the switch: the old canvas is never in the document.
+    const seen: string[] = [];
+    const mo = new MutationObserver(() => {
+      // Once the page shows the other tenant (its links), whatever the router state says.
+      if (document.querySelector('a[href^="/t/demo/"]') === null) return;
+      if (oldCanvas?.isConnected === true) seen.push('old canvas');
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    await act(async () => {
+      await router.navigate(url('up', '', 'demo'));
+    });
+    mo.disconnect();
+    expect(seen).toEqual([]);
+    expect(oldCanvas?.isConnected).toBe(false);
+    expect(before?.disposed).toBe(1);
+    const after = engine.frames.at(-1);
+    expect(after).not.toBe(before);
+    // The new frame is never handed a selection.
+    const selections = (after?.calls ?? []).filter((c) => c.method === 'setSelection');
+    expect(selections.length).toBeGreaterThan(0);
+    expect(selections.every((c) => c.args[0] === null)).toBe(true);
   });
 });
