@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-23 |
+| **Version** | 1.7-rc · 2026-11-24 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -330,10 +330,15 @@ offsets, so each row is a ready M3 rect.
 | `x` | `UInt64` | absolute offset in ticks |
 | `total`, `self` | `UInt64`, `UInt64` | width = `total / root_total` |
 | `name` | `Dictionary(UInt32, Utf8)` | dictionary = PulsusDB `names` verbatim |
+| `parent` | `Int32` | index of the parent row, −1 for the root |
 | *(diff only)* `r_x`, `r_total`, `r_self` | `UInt64` | from `FlameGraphDiff` |
 
 Metadata: `dash.profile.type`, `dash.unit`, `total`, `max_self`, and for diffs `left_ticks` and
 `right_ticks`. Profile time series use `metric_matrix.grid/1` with `dash.result=profile_series`.
+
+Interim format (#152, #162; owner 2026-11-24): until the Arrow frames land (#68 Part B, deferred), the
+profile routes return JSON with decimal-string counts and explicit parent indices, mapped as in
+[T23 §5](T23-graph-trace-profile-and-hierarchy-panels.md#5-interfaces).
 
 **`entities/1`** (R3 / [T12](T12-entity-catalogue.md)), with **`entity_edges/1`**.
 
@@ -525,7 +530,7 @@ BFF parses it.
 | `traceql_metrics` | `/api/traces/v1/metrics/query_range` (native trace-metrics body) | `metric_matrix.grid` / `heatmap` | R1 |
 | `span_points` | — (R2 not available) | `span_points` | R2 → `heatmap` + brushed `trace_fetch` |
 | `service_graph` | `/api/traces/v1/service_graph` | `entity_edges` | R5 → N windowed calls; edge cap per assumption A1 |
-| `profile_merge` / `profile_diff` | Connect `SelectMergeStacktraces` / `Diff` (`application/proto`) | `profile_flame(_diff)` | — |
+| `profile_merge` / `profile_diff` | Connect `SelectMergeStacktraces` / `Diff` (`application/proto`) | `profile_flame(_diff)`; interim JSON ([T23 §5](T23-graph-trace-profile-and-hierarchy-panels.md#5-interfaces)) until #68 Part B | — |
 | `profile_series` | Connect `SelectSeries` | `metric_matrix.grid` | R1 |
 | `entities` | — | `entities`, `entity_edges` | R3 → label-values fan-out ([T12](T12-entity-catalogue.md)) |
 | `health_pyramid` | R4 rollups when available; otherwise Postgres fallback tiles (D2) | `health_pyramid` | R4 (T13 (draft)) |
@@ -857,7 +862,7 @@ the nightly storyboard run on any non-self-telemetry write (`e2e:no-pulsusdb-wri
 |---|---|
 | M-UI0 | DSF v1, `labels`, `metric_matrix.grid/sparse`, `coverage`, `error`; `/query` + cancel; R1 harness and decision. DSF v1 and `/query` + cancel land with #41 and #42 |
 | M-UI1 | `log_lines` (LogQL stream panels, #49); `heatmap`; IDB `chunks` and `scenes` (show cached first); ranks and priorities; generations; time-split conversion; `events` from Postgres (annotations, alert transitions); Postgres virtual series in `metric_matrix.grid`; WS `live_metric` for LIVE charts |
-| M-UI2 | `log_patterns`, `trace_tree` + parts, `span_points` (fallback), `profile_flame(_diff)`; WS `tail` |
+| M-UI2 | `log_patterns`, `trace_tree` + parts, `span_points` (fallback), `profile_flame(_diff)` (interim JSON until #68 Part B); WS `tail` |
 | M-UI3 | `entities`, `entity_edges`, `health_pyramid` (R4 or Postgres fallback), `compare`, PulsusDB change feed in `events`; WS `changes`; IDB `pyramids` |
 | M-UI4 | WS `alerts`, `collab` |
 
@@ -917,3 +922,4 @@ support in the BFF for one release.
 | 1.4-rc | 2026-11-21 | #65 Part A: §4.3 `log_lines/1` `level` code 6 is `critical`, with the value table and the precedence stream labels, structured metadata, parsed fields, and within each `detected_level`, then `level` (else `unknown`); §5.2 `log_volume` row gives the v1 composition on `query_range` |
 | 1.5-rc | 2026-11-22 | #65 Part B: §4.3 `log_lines/1` JSON image (streams by key ascending, `ts_ns` as decimal strings, `level` by name, optional `metadata` and `parsed`; the page window `(from, to]` in ns); §5.3 `truncated` row: a `limit` hit on paged log routes gives a cursor, and a group of 5 000 or more entries at one nanosecond is a documented limit |
 | 1.6-rc | 2026-11-23 | #64 Part C ([ADR-0023](../adr/0023-chart-event-markers.md)): §0 adds the event-marker row: until the engine, `AnnotationList` (JSON) is the image of `events/1` (`ts` → `at`, `end` → `end_at`, `title` → `text`, `attrs` → `tags`) |
+| 1.7-rc | 2026-11-24 | #152: §4.3 `profile_flame/1` adds the `parent` column (`Int32`, −1 for the root) and the interim-format note (JSON with decimal-string counts and explicit parent indices until #68 Part B, mapped in [T23 §5](T23-graph-trace-profile-and-hierarchy-panels.md#5-interfaces)); §5.2 `profile_merge` / `profile_diff` and §11 M-UI2 rows name the interim JSON |
