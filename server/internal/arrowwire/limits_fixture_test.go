@@ -89,7 +89,7 @@ func budgetInput(t *testing.T, l Limits) (pad int) {
 	for used(n+1)+reserves <= l.BodyBudget && n < 100 {
 		n++
 	}
-	if n != 3 || !(used(n)+reserves <= l.BodyBudget && l.BodyBudget < used(n+1)+reserves) || n*(g+s+f)+g+reserves > l.BodyBudget {
+	if atN, beyond := used(n)+reserves <= l.BodyBudget, l.BodyBudget < used(n+1)+reserves; n != 3 || !atN || !beyond || n*(g+s+f)+g+reserves > l.BodyBudget {
 		t.Fatalf("derived n = %d: used(n) %d, used(n+1) %d, reserves %d, budget %d", n, used(n), used(n+1), reserves, l.BodyBudget)
 	}
 	if 4*(g+s+f) <= l.BodyBudget {
