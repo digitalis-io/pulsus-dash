@@ -56,7 +56,7 @@ describe('unit:hist-worker', () => {
     const r1 = settle(runHistogram('p', 1, SMALL, 'range', O, Q, signal()));
     const r2 = settle(runHistogram('p', 2, SMALL, 'range', O, Q, signal()));
     const [a, b] = await Promise.all([r1, r2]);
-    expect(a.ok === false && isAbort(a.error)).toBe(true);
+    expect(!a.ok && isAbort(a.error)).toBe(true);
     expect(kit.workers[0]?.terminated).toBe(true);
     expect(b.ok && b.value.kind).toBe('frame');
     // A late R1 reply, on either worker, changes nothing.
@@ -81,7 +81,7 @@ describe('unit:hist-worker', () => {
       const r1 = settle(runHistogram('p', 1, SMALL, 'range', O, Q, signal()));
       const r2 = await runHistogram('p', 2, input, 'range', O, Q, signal());
       const a = await r1;
-      expect(a.ok === false && isAbort(a.error)).toBe(true);
+      expect(!a.ok && isAbort(a.error)).toBe(true);
       expect(kit.workers.length).toBe(1);
       expect(kit.workers[0]?.terminated).toBe(true);
       expect(r2.kind).toBe(kind);
@@ -116,7 +116,7 @@ describe('unit:hist-worker', () => {
       ]);
       const all = kit.posts.flatMap((p) => p.m.batch);
       expect(all.length).toBe(entries);
-      if (entries === 80) all.forEach((e, i) => expect(e.cont).toBe(i > 0));
+      if (entries === 80) expect(all.map((e) => e.cont)).toEqual(all.map((_, i) => i > 0));
       expect(r).toEqual(histogram(input, 'range', O, Q));
       if (r.kind !== 'frame') throw new Error(r.kind);
       const f = r.frame;
@@ -145,7 +145,7 @@ describe('unit:hist-worker', () => {
     setHistogramEnv(kit.env);
     const input = Array.from({ length: 2000 }, (_, i) => series(`s${i}`, 1000));
     const r = await settle(runHistogram('p', 1, input, 'range', O, Q, ac.signal));
-    expect(r.ok === false && isAbort(r.error)).toBe(true);
+    expect(!r.ok && isAbort(r.error)).toBe(true);
     expect(kit.workers[0]?.terminated).toBe(true);
     await Promise.resolve();
     expect(kit.posts.length).toBe(2);
@@ -157,13 +157,13 @@ describe('unit:hist-worker', () => {
     const r1 = settle(runHistogram('p', 1, SMALL, 'range', O, Q, signal()));
     disposeHistogram('p');
     const a = await r1;
-    expect(a.ok === false && isAbort(a.error)).toBe(true);
+    expect(!a.ok && isAbort(a.error)).toBe(true);
     expect(kit.workers[0]?.terminated).toBe(true);
     for (const mode of ['errorEvent', 'errorReply'] as const) {
       kit.mode = mode;
       const before = kit.workers.length;
       const r = await settle(runHistogram('p', 2, SMALL, 'range', O, Q, signal()));
-      expect(r.ok === false && r.error instanceof Error && !isAbort(r.error)).toBe(true);
+      expect(!r.ok && r.error instanceof Error && !isAbort(r.error)).toBe(true);
       expect(kit.workers.length).toBe(before + 1);
       expect(kit.workers.at(-1)?.terminated).toBe(true);
     }
@@ -188,7 +188,10 @@ describe('unit:hist-worker', () => {
     const s = {
       now: () => (t += 0.1),
       signal: signal(),
-      yieldNow: () => ((yields += 1), Promise.resolve()),
+      yieldNow: () => {
+        yields += 1;
+        return Promise.resolve();
+      },
     };
     expect(await selectedCounts(f, keys, s)).toEqual(want);
     expect(yields).toBeGreaterThanOrEqual(2);
@@ -213,7 +216,7 @@ describe('unit:hist-worker', () => {
       }),
     );
     const r = await first;
-    expect(r.ok === false && isAbort(r.error)).toBe(true);
+    expect(!r.ok && isAbort(r.error)).toBe(true);
     expect(newer).not.toBeNull();
     expect(await (newer as unknown as Promise<Float64Array | null>)).toEqual(want);
   });

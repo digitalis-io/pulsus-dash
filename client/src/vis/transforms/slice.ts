@@ -36,9 +36,13 @@ export function abortError(): DOMException {
  * `AbortError` when the signal is aborted, before and after the yield.
  */
 export async function checkStep(s: Slicer, start: number): Promise<number> {
-  if (s.signal.aborted) throw abortError();
+  throwIfAborted(s);
   if (s.now() - start < STEP_MS) return start;
   await (s.yieldNow ? s.yieldNow() : yieldToMain());
-  if (s.signal.aborted) throw abortError();
+  throwIfAborted(s);
   return s.now();
+}
+
+function throwIfAborted(s: Slicer): void {
+  if (s.signal.aborted) throw abortError();
 }

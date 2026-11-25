@@ -574,7 +574,7 @@ export const messages = {
   'hist.notice.noneShown': 'No values shown: {parts}',
   'hist.notice.tooMany':
     '{n} samples exceed the 2 000 000-sample limit: narrow the query or the window',
-  'hist.notice.buckets': 'Histogram buckets: choose Heatmap; bucket histograms come with #206',
+  'hist.notice.buckets': 'Histogram buckets: choose Heatmap; bucket histograms come with #{issue}',
   'hist.meter.truncated': 'truncated',
   'hist.meter.limited': 'limited ({n} warnings)',
   'hist.meter.nonPositive': '{n} ≤ 0 not shown (log)',

@@ -36,7 +36,7 @@ import {
   type HistogramOptions,
   type HistogramResult,
 } from './histogram';
-import { runHistogram, setHistogramEnv } from './histogramClient';
+import { disposeHistogram, runHistogram, setHistogramEnv } from './histogramClient';
 import type { Slicer } from './slice';
 
 const NONE: Unit = { kind: 'none' };
@@ -525,6 +525,7 @@ describe('unit:dist-bins', () => {
 
   describe('H21 empty series', () => {
     afterEach(() => {
+      disposeHistogram('p');
       setHistogramEnv(null);
     });
 

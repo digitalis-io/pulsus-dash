@@ -269,6 +269,18 @@ export interface HistogramFrame {
  * non-negative counts, and sorted offsets ending at the value count.
  */
 export function histogramFrameValid(f: HistogramFrame): boolean {
-  void f;
-  return false;
+  const k = f.edges.length - 1;
+  if (k < 1 || k > 200 || !isIncreasing(f.edges)) return false;
+  const nonNegative = (a: Float64Array): boolean => a.every((c) => Number.isFinite(c) && c >= 0);
+  if (f.counts.length !== f.groups.length * k || !nonNegative(f.counts)) return false;
+  const { offsets, bins, counts } = f.contrib;
+  if (offsets.length !== f.series.length + 1 || offsets[0] !== 0) return false;
+  for (let i = 1; i < offsets.length; i++)
+    if ((offsets[i] ?? 0) < (offsets[i - 1] ?? 0)) return false;
+  const entries = offsets[offsets.length - 1];
+  if (entries !== bins.length || entries !== counts.length || !nonNegative(counts)) return false;
+  if (bins.some((b) => b >= k)) return false;
+  const sorted = f.sorted.offsets;
+  if (sorted.length !== f.sourceGroups.length + 1 || sorted[0] !== 0) return false;
+  return sorted[sorted.length - 1] === f.sorted.values.length;
 }
