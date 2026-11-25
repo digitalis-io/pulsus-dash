@@ -27,6 +27,7 @@ export const colour = {
     "ramp-7": "#8DBBEB",
     "ramp-8": "#B1D3F7",
     "ramp-9": "#D8EAFE",
+    "selection": "#5B9BFF29",
     "series-1": "#7AA2D6",
     "series-2": "#C9A36B",
     "series-3": "#8FBF8F",
@@ -37,6 +38,7 @@ export const colour = {
     "series-8": "#BFB07A",
     "surface-1": "#12151A",
     "surface-2": "#191D24",
+    "surface-float": "#12151AF0",
     "surface-hover": "#222731",
     "syn-func": "#7AA2D6",
     "syn-keyword": "#B48FC9",
@@ -75,6 +77,7 @@ export const colour = {
     "ramp-7": "#3C6995",
     "ramp-8": "#365371",
     "ramp-9": "#313F4D",
+    "selection": "#2563C929",
     "series-1": "#3F6FA8",
     "series-2": "#93703A",
     "series-3": "#4E874E",
@@ -85,6 +88,7 @@ export const colour = {
     "series-8": "#857640",
     "surface-1": "#FFFFFF",
     "surface-2": "#ECEEF2",
+    "surface-float": "#FFFFFFF0",
     "surface-hover": "#E2E5EA",
     "syn-func": "#2563C9",
     "syn-keyword": "#6B4A84",
@@ -136,6 +140,9 @@ export const size = {
   "focus-ring": 2,
   "header": 56,
   "icon": 16,
+  "inspector": 360,
+  "inspector-inset": 12,
+  "inspector-tab": 40,
   "log-level-bar": 3,
   "log-row": 20,
   "log-sentinel": 40,
@@ -149,6 +156,11 @@ export const size = {
 
 export const radius = {
   "default": 6,
+  "float": 10,
+} as const;
+
+export const opacity = {
+  "dimmed": 0.35,
 } as const;
 
 export const border = {
@@ -185,6 +197,7 @@ export const font = {
 export const motion = {
   "easing-out": "cubic-bezier(0.2, 0, 0, 1)",
   "fast": 150,
+  "float-open": 200,
   "standard": 250,
 } as const;
 
