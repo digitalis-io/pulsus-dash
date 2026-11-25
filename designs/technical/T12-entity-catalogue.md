@@ -377,7 +377,7 @@ gets `xxh3_64(id ‖ 1)`, recorded in the snapshot as an alias, and `catalogue_w
 is raised.
 
 *Canonical form (#181, [T24](T24-geo-schematic-and-widget-panels.md) §5.9, 2026-11-25).* The hash is
-XXH3-128 with the default secret and seed (`github.com/zeebo/xxh3` `Hash128`), written big-endian (the
+XXH3-128 with the default secret and seed (the xxh3 Go module pinned in `server/go.mod`, function `Hash128`), written big-endian (the
 high 64 bits, then the low 64 bits) as a lower-case UUID; that UUID is also the `entityRef` of `e=`
 ([02](../product/02-information-architecture.md) §4). Its input is the byte string
 
