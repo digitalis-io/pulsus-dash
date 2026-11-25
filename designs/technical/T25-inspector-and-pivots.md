@@ -168,7 +168,7 @@ panel has new data" replaces the buttons. A new target resets the state.
 `${binId}:groups` (an `other` bin's member groups). A result is complete iff texts.length = count
 and, when `labels` is present, labels.length = texts.length. The panel's resolver returns null when
 the `frameSeq` in the id is not its current frame; null or incomplete is stale, as above. Each
-resolved entry with labels gets its own chips (T25-009).
+resolved entry with labels gets its own chips (T25-009). `expandMembers` keeps the labels parallel to the texts, for the entries shown first (`texts.labels`) and for the resolved list (`MemberList.labels`), so expanding never drops a chip.
 
 #### T25-012 — Lifetime
 **MUST** — A snapshot, kept through refresh and window changes. It closes when the origin panel is
@@ -270,7 +270,8 @@ export interface MemberFacts { fromMs: number; toMs: number; text: string; state
 export interface MemberList { texts: string[]; members: MemberFacts[]; labels?: Labels[] /* parallel to texts; per-entry chips (T25-009) */ }
 export interface MemberSection { texts: { shown: string[]; count: number; labels?: Labels[] /* parallel to shown; per-entry chips (T25-009) */ }; runs: { shown: MemberFacts[]; count: number } | null;
   resolve: { panelId: string; runId: string } | null /* null = complete */ }
-export function expandMembers(m: MemberSection, r: MemberList | null): { texts: string[]; runs: MemberFacts[] } | 'stale';
+export function expandMembers(m: MemberSection, r: MemberList | null): { texts: string[]; runs: MemberFacts[]; labels: Labels[] | null } | 'stale';
+// labels: parallel to texts; from m.texts.labels for the shown entries and from r.labels once resolved; null when the section has none (T25-011)
 // host.tsx (InspectorContext null → no host: kinds neither inspect nor select)
 export interface EscapeProvider { pre(): (() => void) | null; post(): (() => void) | null }   // the next step, or null
 export interface InspectorHostApi { inspect(r: InspectRequest): void; select(s: Selection | null, src: SelectionSource): void;
@@ -385,4 +386,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | Version | Date | Change |
 |---|---|---|
 | 1.0-rc | 2026-11-25 | #164: created: rules T25-001 to T25-016, the `InspectRequest` union, the shared selection and its highlight, the Esc ladder, pivots with disclosed Context, the look and motion, tests, the implementation issues I1 and I3–I6; mockup 41-inspector. Code review r1: the Profiles and Entity reasons are written in full; the redraw report is the T05 gate `bench:inspector-redraw` |
-| 1.1-rc | 2026-11-25 | #154 ([T21](T21-time-and-distribution-panels.md) part 2a): §5 `InspectorTarget` gains `{type:'bin'; target}` and `HoverItem` gains `bin`; `MemberList.labels?` and `MemberSection.texts.labels?` (parallel to the texts; per-entry chips, T25-009); T25-011 adds the bin rule (one section, resolver ids `binId` and `${binId}:groups`, completeness with labels, `frameSeq` staleness); §4.3: `bin` uses the origin window |
+| 1.1-rc | 2026-11-25 | #154 ([T21](T21-time-and-distribution-panels.md) part 2a): §5 `InspectorTarget` gains `{type:'bin'; target}` and `HoverItem` gains `bin`; `MemberList.labels?` and `MemberSection.texts.labels?` (parallel to the texts; per-entry chips, T25-009); T25-011 adds the bin rule (one section, resolver ids `binId` and `${binId}:groups`, completeness with labels, `frameSeq` staleness); §4.3: `bin` uses the origin window. Code review r1: `expandMembers` returns the parallel `labels` for the shown and the resolved entries |
