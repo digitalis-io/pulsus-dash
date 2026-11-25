@@ -6,7 +6,7 @@
 | **Version** | 1.0-rc · 2026-11-24 |
 | **Milestone** | M-UI3 |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) |
-| **Source draft** | plans/150 (not tracked) |
+| **Source draft** | plans (not tracked) |
 
 ## 1. Context & problem
 
