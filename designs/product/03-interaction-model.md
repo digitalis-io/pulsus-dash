@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-25 |
+| **Version** | 1.5-rc · 2026-11-25 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -112,6 +112,14 @@ buttons MUST step through it, as does browser back/forward (IA-025 in
 
 *Acceptance:* After three committed moves, `Alt+←` three times, or mouse-back three times, returns
 through each pose in reverse; `Alt+→` replays forward.
+
+*Note (#184 step 2, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-096--view-state-and-history)):*
+on a board, a 2D map's camera history is the board URL's history: each committed move whose encoded
+view differs from the URL pushes one entry (`map=`, and `geo=` for a map with the bounds filter); a
+move below URL precision (≤ 0.28 px at zoom 14) pushes nothing, and a first draw, a refit, a sync
+follow or a history step never pushes. The shell binds `Alt+←`/`Alt+→` to browser back and forward
+(not in editable targets); the mouse buttons are the browser's. A map beyond the eighth unsynced map
+on a board keeps no history (its view is not in the URL). The acceptance holds for each map.
 
 ## 4. Input mapping
 
@@ -821,3 +829,4 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 | 1.2-rc | 2026-11-21 | #93, owner decisions 2026-11-21: §4.1 2D double-click zooms the window out; note on time commits, the local value axis, wheel over the plot only, pinch heuristic, right click on the plot; INT-025 brushes by right drag or Alt+left drag (left drag pans) |
 | 1.3-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): INT-034, INT-035 and INT-036 gain staging notes with interim acceptance and their delivering issues (M-UI4 actions; I6 baseline; I4 split and `\`); INT-016 note: a kind's steps go before and after the host's (T25-007) |
 | 1.4-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 1b): INT-001 note (a 2D map has one zoom for both axes in one unrepeated world, ADR-0027); §4.1 note on the 2D map's wheel, drag, right drag, `Alt`+drag and double-click |
+| 1.5-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 2): INT-006 note (a board map's camera history is the board URL's history, one entry per distinct encoded view; `Alt+←`/`Alt+→` step it; the ninth and later unsynced maps keep none) |
