@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.3-rc · 2026-11-24 |
+| **Version** | 1.5-rc · 2026-11-24 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -602,6 +602,7 @@ the rule in the table holds. Each has a 2D equivalent on `T` and a table view on
 | **3D columns** | Two categorical dimensions × a value (e.g. region × tier × error rate) | 100 × 100 | 3D variant of the Segments matrix; 2D stays the Segments default (VIZ-080) | M-UI5 |
 | **3D scatter** | Three numeric attributes per entity (e.g. CPU × memory × p99) | 10⁵ points | Size / colour as 4th and 5th channels; log axes (VIZ-083) | M-UI5 |
 | **Imported 3D models** | Data-centre and rack geometry for the physical-layout variant | — | glTF, geometry only (VIZ-084) | M-UI6 |
+| **3D flame** | Profile hot spots | 10⁵ frames | X share, Z depth, Y self; top = icicle (VIZ-105) | M-UI3 |
 
 Mockup: [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg).
 
@@ -611,7 +612,7 @@ Mockup: [25-fleet-line-stack-3d](../mockups/25-fleet-line-stack-3d.svg).
 Every 3D signal view MUST provide:
 - an axis cube with per-plane visibility, by default hiding the planes nearest the camera, with
   gridlines and axis bands;
-- linear and log axes;
+- linear and log axes, except that an axis whose positions are shares of a whole (the X axis of partition layouts: flame, icicle and similar) MUST stay linear, while their height axis offers linear, √ and log;
 - a perspective / orthographic toggle;
 - orbit, zoom and reset (double-click on empty space);
 - camera presets front, top and side, reachable from the orbit gizmo ([03](03-interaction-model.md)
@@ -622,7 +623,7 @@ Every 3D signal view MUST provide:
 
 *Acceptance:* Given each 3D signal view at its milestone, when the camera orbits, then the near axis
 planes hide and the far ones show; each preset is reachable with the keyboard only; double-click on
-empty space restores the initial pose; and `Shift+T` shows the data as a table.
+empty space restores the initial pose; and `Shift+T` shows the data as a table; and in the 3D flame the X axis offers no log scale while the height axis does.
 
 #### VIZ-079 — Latency surface
 **MUST** · M-UI3 · SRE, Engineer
@@ -719,6 +720,20 @@ distant lanes; `Alt`+wheel changes only lane spacing; double-click on a lane fli
 its 2D chart; "flat front" and "top" each complete in ≤ 250 ms; and with a 1 000-lane budget, the
 coverage meter reads "1 000 of 2 000 lanes, rest as bands".
 
+#### VIZ-105 — 3D flame
+**MUST** · M-UI3 · Engineer, SRE
+
+The flame graph MUST offer a true 3D form ([VIZ-086](#viz-086--true-3d-only)): boxes with X =
+share, depth = stack depth and height = self or total, in an orbitable perspective scene whose top
+view is the icicle, with the VIZ-078 features and a linked docked icicle. Scroll MUST dolly about
+the cursor. A click on a frame or suspect MUST fly to it, and one gesture MUST return to the whole
+profile. Labels MUST stay legible, tiny frames MUST merge with a count, and diff and sandwich MUST
+work in 3D. Mockup: [40-flame-3d](../mockups/40-flame-3d.svg).
+
+*Acceptance:* Given 10⁵ frames, `T` morphs to 3D in ≤ 250 ms; orbit meets
+[09](09-performance-contract.md) PRF-001 on (a) and (b); a frame click frames its subtree at 80 %
+and `Shift+F` shows the whole profile, each in ≤ 250 ms; labels are ≥ 11 px.
+
 ## 4. Traces, logs, profiles
 
 **Table 5-5 — Traces, logs and profiles vis** (all M-UI2 unless marked)
@@ -731,7 +746,7 @@ coverage meter reads "1 000 of 2 000 lanes, rest as bands".
 | **Log stream** | GPU text (MSDF glyph atlas), virtualised; severity gutter; minimap of error density; JSON tree expand; wrap / prettify; dedupe (exact, numbers, signature); context lines around a hit | 10⁶ lines in memory, unbounded with paging |
 | **Log volume** | Stacked bars by level above the stream (§1 Bars over time) | 10k bars |
 | **Log patterns list** | Pattern + sparkline + count + NEW badge; diff vs baseline | — |
-| **Flame graph / icicle** | Animated zoom; search highlight; diff colouring; sandwich view (callers + callees of one function) | 10⁵+ frames |
+| **Flame graph / icicle** | Animated zoom; search highlight; diff colouring; sandwich view (callers + callees of one function); 3D flame (VIZ-105); top suspects (VIZ-106) | 10⁵+ frames |
 | **Call tree / top table** | Synced with the flame graph | — |
 
 Mockups: [07-logs-workbench](../mockups/07-logs-workbench.svg),
@@ -775,6 +790,19 @@ synced with it.
 
 *Acceptance:* Given a 10⁵-frame profile, when the user searches `json::`, then every matching frame
 is highlighted and the top table filters to them; clicking a frame zooms with animation in ≤ 250 ms.
+
+#### VIZ-106 — Flame top suspects
+**MUST** · M-UI2 · Engineer, SRE
+
+The flame graph MUST show a suspects rail whose first row is always the hottest current
+frame (largest self; if no frame has self time, the non-root frame with the largest total, or the root when it
+is the only frame), then up to four functions ranked by self share plus growth against the previous window,
+with text badges. One action on a row MUST select its frame, bring it into view and open its
+detail. Regressed functions MUST glow in proportion to growth ([08](08-visual-language.md) VL-004).
+
+*Acceptance:* Given any non-empty profile, when it opens, then ① is the largest-self current
+frame (or, with no self time, the largest-total non-root frame, the root only when it is the sole frame) and one click on ① (or `Tab`) shows its detail; a function that grew from 9 % to 18 % is
+REGRESSED and glows.
 
 ## 5. Categorical & single-value
 
@@ -1415,6 +1443,8 @@ board.
 | VIZ-085 | Fleet line stack | MUST | M-UI3 |
 | VIZ-086 | True 3D only | MUST | M-UI3 |
 | VIZ-095 | Stat baseline delta | MUST | M-UI1 |
+| VIZ-105 | 3D flame | MUST | M-UI3 |
+| VIZ-106 | Flame top suspects | MUST | M-UI2 |
 
 ## 16. Change log
 
@@ -1426,6 +1456,7 @@ board.
 | 1.2-rc | 2026-11-21 | VIZ-006: CPU fallback for lines beyond the value encoding's clip box (same first/last/min/max, same acceptance test); reference placement stated (#68) |
 | 1.3-rc | 2026-11-24 | VIZ-086 (owner, #150); T21 |
 | 1.4-rc | 2026-11-24 | #151: VIZ-095 (T22) |
+| 1.5-rc | 2026-11-24 | #152: VIZ-105, VIZ-106; VIZ-078 partition-axis exemption (owner); Tables 5-4a, 5-5 |
 
 ## Resolved during formalisation
 

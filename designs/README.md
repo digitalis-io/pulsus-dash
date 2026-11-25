@@ -165,6 +165,7 @@ See the sections below. They are completed as documents are promoted.
 | T19 | [Deployment & operations](technical/T19-deployment.md) | Review |
 | T21 | [Time, distribution & comparison panels](technical/T21-time-and-distribution-panels.md) | Review |
 | T22 | [Value, categorical and table panels](technical/T22-value-categorical-and-table-panels.md) | Review |
+| T23 | [Graph, trace, profile & hierarchy panels](technical/T23-graph-trace-profile-and-hierarchy-panels.md) (flame graph, #152) | Review |
 | — | [PulsusDB requirements](technical/pulsusdb-requirements.md) | Sent; rev. 5 (2026-11-19) records the Go and TS stack change |
 
 **Not yet promoted:** these remain drafts in `plans/tech/`.
