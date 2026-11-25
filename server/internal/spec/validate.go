@@ -32,11 +32,28 @@ var (
 	timePattern = regexp.MustCompile(`^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$`)
 	idPattern   = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
 	queryLangs  = []string{"promql", "logql"}
-	visKinds    = []string{"auto", "line", "bars", "heatmap", "stat", "logs"}
+	visKinds    = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie"}
 	directions  = []string{"above", "below"}
 	stepStates  = []string{"watch", "degraded", "failing"}
 	legendModes = []string{"table", "hidden"}
+
+	// The option values of board spec v3 (T22 §6.1; client boards/options.ts OPTION_VALUES).
+	// labelPattern is the client's FILTER_LABEL.
+	labelPattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]{0,99}$`)
+	reducers        = []string{"last", "first", "mean", "min", "max", "sum", "count"}
+	baselineOffsets = []string{"1h", "1d", "7d", "28d"}
+	sorts           = []string{"valueDesc", "valueAsc", "label", "none"}
+	orientations    = []string{"horizontal", "vertical"}
+	statOrients     = []string{"auto", "horizontal", "vertical"}
+	pieLabels       = []string{"percent", "value", "name", "none"}
+	layouts         = []string{"single", "grid"}
+	colourModes     = []string{"value", "background", "none"}
+	textModes       = []string{"auto", "value", "valueAndName", "name"}
+	graphModes      = []string{"sparkline", "none"}
 )
+
+// maxOptionAbs bounds options.min and options.max (|v| <= 1e15, as the threshold values).
+const maxOptionAbs = 1e15
 
 // validator collects field errors in document order, at most maxFieldErrors.
 type validator struct {
@@ -179,8 +196,9 @@ func inThresholdRange(x float64) bool {
 	return x == 0 || (a >= minThresholdAbs && a <= maxThresholdAbs)
 }
 
-// vis checks a panel's thresholds and legend (plan #64 Part B §3.1), after vis.kind. Thresholds
-// are valid on every kind; every step is checked, even past 8.
+// vis checks a panel's thresholds and legend (plan #64 Part B §3.1), after vis.kind, then its
+// options (board spec v3) when the kind is valid. Thresholds are valid on every kind; every step is
+// checked, even past 8.
 func (v *validator) vis(pointer string, vis Vis) {
 	if t := vis.Thresholds; t != nil {
 		tp := pointer + "/thresholds"
@@ -203,4 +221,57 @@ func (v *validator) vis(pointer string, vis Vis) {
 	if l := vis.Legend; l != nil {
 		v.str(pointer+"/legend/mode", l.Mode, oneOf(legendModes, "board.legend.mode.invalid"))
 	}
+	if vis.Options != nil && slices.Contains(visKinds, vis.Kind) {
+		v.options(pointer+"/options", vis.Kind, *vis.Options)
+	}
+}
+
+func optionKey(key string) string { return "board.options." + key + ".invalid" }
+
+// options checks the values of a kind's options (plan #173 Part 1 §3.4), each present key in
+// OPTION_ORDER: strings through str, then the key's rule. The shape pass has allowed only the
+// kind's keys and made min and max finite. min >= max is reported at max, only when min is valid.
+func (v *validator) options(pointer, kind string, o Options) {
+	enum := func(name string, s *string, set []string) {
+		if s != nil {
+			v.str(pointer+"/"+name, *s, oneOf(set, optionKey(name)))
+		}
+	}
+	bound := func(x float64) bool { return math.Abs(x) <= maxOptionAbs }
+	enum("reducer", o.Reducer, reducers)
+	enum("baselineOffset", o.BaselineOffset, baselineOffsets)
+	if o.CategoryBy != nil {
+		v.str(pointer+"/categoryBy", *o.CategoryBy, func(s string) string {
+			if s != "" && !labelPattern.MatchString(s) {
+				return optionKey("categoryBy")
+			}
+			return ""
+		})
+	}
+	enum("sort", o.Sort, sorts)
+	if kind == "stat" {
+		enum("orientation", o.Orientation, statOrients)
+	} else {
+		enum("orientation", o.Orientation, orientations)
+	}
+	minValid := o.Min != nil && bound(*o.Min)
+	if o.Min != nil && !minValid {
+		v.add(pointer+"/min", optionKey("min"))
+	}
+	if o.Max != nil && (!bound(*o.Max) || (minValid && *o.Min >= *o.Max)) {
+		v.add(pointer+"/max", optionKey("max"))
+	}
+	enum("labels", o.Labels, pieLabels)
+	enum("layout", o.Layout, layouts)
+	enum("colourMode", o.ColourMode, colourModes)
+	if o.TextMode != nil {
+		grid := o.Layout != nil && *o.Layout == "grid"
+		v.str(pointer+"/textMode", *o.TextMode, func(s string) string {
+			if !slices.Contains(textModes, s) || (grid && s == "value") {
+				return optionKey("textMode")
+			}
+			return ""
+		})
+	}
+	enum("graphMode", o.GraphMode, graphModes)
 }

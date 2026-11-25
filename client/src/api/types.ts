@@ -126,8 +126,10 @@ export type GridPos = components['schemas']['Grid'];
 export type TimeRangeSpec = components['schemas']['TimeRange'];
 /** `'promql' | 'logql'`. */
 export type QueryLang = PanelSpec['query']['lang'];
-/** `'auto' | 'line' | 'bars' | 'heatmap' | 'stat' | 'logs'`. */
+/** `'auto' | 'line' | 'bars' | 'heatmap' | 'stat' | 'logs' | 'barchart' | 'pie'`. */
 export type PanelVisKind = PanelSpec['vis']['kind'];
+/** A panel's `vis.options` (board spec v3, T22 §6.1). */
+export type VisOptions = NonNullable<PanelSpec['vis']['options']>;
 
 /** A board of the organisation (boards are not per tenant; the tenant picks the data source). */
 export interface BoardSummary {

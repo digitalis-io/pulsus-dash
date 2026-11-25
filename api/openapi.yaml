@@ -694,9 +694,33 @@ components:
       additionalProperties: false
       required: [kind]
       properties:
-        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs] }
+        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie] }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
+        options: { $ref: '#/components/schemas/VisOptions' }
+    # Board spec v3 (#173 Part 1, T22 §6.1): the kind's options. Every key is optional; which keys a
+    # kind allows, the bounds of min and max (|v| <= 1e15, min < max), the categoryBy label pattern
+    # and the stat textMode/layout combination are server rules (board.json.unknownKey,
+    # board.options.<key>.invalid), not schema.
+    VisOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        reducer: { type: string, enum: [last, first, mean, min, max, sum, count] }
+        baselineOffset: { type: string, enum: [1h, 1d, 7d, 28d] }
+        categoryBy: { type: string }
+        sort: { type: string, enum: [valueDesc, valueAsc, label, none] }
+        orientation: { type: string, enum: [auto, horizontal, vertical] }
+        valueLabels: { type: boolean }
+        min: { type: number, format: double }
+        max: { type: number, format: double }
+        donut: { type: boolean }
+        labels: { type: string, enum: [percent, value, name, none] }
+        parts: { type: boolean }
+        layout: { type: string, enum: [single, grid] }
+        colourMode: { type: string, enum: [value, background, none] }
+        textMode: { type: string, enum: [auto, value, valueAndName, name] }
+        graphMode: { type: string, enum: [sparkline, none] }
     # Board spec v2 (#64 Part B, ADR-0022): absolute threshold steps and the legend mode. A value is
     # 0, or 1e-9 <= |value| <= 1e15; values are distinct; validated by the server (board.thresholds.*).
     Thresholds:

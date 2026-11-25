@@ -2,7 +2,7 @@
  * Chart frame data (plan #58 §3.2): series, heatmap and scalar frames, and their validation. The
  * component validates; the engine assumes valid data.
  */
-import type { VisSpec } from '../engine/api';
+import type { ThresholdState, VisSpec } from '../engine/api';
 import type { CATEGORY_PATTERNS } from '../engine/patterns';
 import type { Completeness } from './decode';
 
@@ -20,6 +20,81 @@ export interface SeriesFrame {
   /** Same length; NaN = gap. */
   readonly values: Float64Array;
 }
+
+/**
+ * A mark's state: `theme/stateEncoding`'s `State`, spelled out here so that this module needs no
+ * CSS module (the e2e suite imports it).
+ */
+export type State = 'ok' | ThresholdState | 'unknown';
+
+/** A categorical reducer (T22 §6.1 `options.reducer`). */
+export type Reducer = 'last' | 'first' | 'mean' | 'min' | 'max' | 'sum' | 'count';
+
+/**
+ * One reduced series (T22 §5.1): its source series key, labels, display name (T22-004), reduced
+ * value, threshold state, the baseline run's value for the same key, and the anomaly score (null
+ * until Epic #9).
+ */
+export interface Mark {
+  readonly key: string;
+  readonly labels: Labels;
+  readonly name: string;
+  readonly value: number;
+  readonly state: State | null;
+  readonly baseline: number | null;
+  readonly anomaly: number | null;
+}
+
+/** A member of an aggregate row (`other (n)`, I3). */
+export interface CategoryMember {
+  readonly key: string;
+  readonly labels: Labels;
+  readonly name: string;
+  readonly value: number;
+}
+
+/** A bar or wedge; `members` is non-null only on the `other (n)` aggregate (I3). */
+export interface CategoryRow extends Mark {
+  readonly members: readonly CategoryMember[] | null;
+}
+
+/**
+ * What a categorical frame drew of its rows (T22-006, VIZ-027): the pre-cap total and the drawn
+ * count, what the cap kept, values outside a fixed range, the T22-003 merge counts, and the run's
+ * and the baseline run's completeness as received. `unknown` and `staleAtMs` are the list widgets'
+ * (T24-024, T24-033); absent = none.
+ */
+export interface Coverage {
+  readonly total: number;
+  readonly drawn: number;
+  readonly keptMin: boolean;
+  readonly keptMax: boolean;
+  readonly keptWorst: number;
+  readonly omittedWorst: number;
+  readonly worstState: State | null;
+  readonly outside: number;
+  readonly duplicates: number;
+  readonly conflicts: number;
+  readonly query: Completeness;
+  readonly baseline: Completeness | null;
+  readonly unknown?:
+    | { readonly reason: 'oldServer' }
+    | { readonly reason: 'tagsStale'; readonly count: number }
+    | { readonly reason: 'paged'; readonly pages: number };
+  readonly staleAtMs?: number | null;
+  /** Geomap counts before the cap (T24 §4.11, #184); absent = none. */
+  readonly geo?: Readonly<Record<GeoCoverageCount, number>>;
+}
+
+/** The geomap's coverage counts (T22-006, T22 §5.1 `Coverage.geo`). */
+export type GeoCoverageCount =
+  | 'notPlaced'
+  | 'ambiguous'
+  | 'locationsUnavailable'
+  | 'outsideMap'
+  | 'noValue'
+  | 'infinite'
+  | 'outOfRange';
 
 export interface HeatmapFrame {
   /** Column starts, strictly increasing, length T ≥ 1. */
@@ -145,7 +220,8 @@ export function emptyFrameData(spec: VisSpec): FrameData {
   }
 }
 
-function quoted(v: string): string {
+/** A label value as `seriesName` writes it: `"…"` with `\\`, `"` and LF escaped (T22-004). */
+export function quoted(v: string): string {
   return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
 }
 

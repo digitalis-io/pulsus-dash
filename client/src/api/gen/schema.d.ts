@@ -763,9 +763,38 @@ export interface components {
         };
         Vis: {
             /** @enum {string} */
-            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs";
+            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie";
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
+            options?: components["schemas"]["VisOptions"];
+        };
+        VisOptions: {
+            /** @enum {string} */
+            reducer?: "last" | "first" | "mean" | "min" | "max" | "sum" | "count";
+            /** @enum {string} */
+            baselineOffset?: "1h" | "1d" | "7d" | "28d";
+            categoryBy?: string;
+            /** @enum {string} */
+            sort?: "valueDesc" | "valueAsc" | "label" | "none";
+            /** @enum {string} */
+            orientation?: "auto" | "horizontal" | "vertical";
+            valueLabels?: boolean;
+            /** Format: double */
+            min?: number;
+            /** Format: double */
+            max?: number;
+            donut?: boolean;
+            /** @enum {string} */
+            labels?: "percent" | "value" | "name" | "none";
+            parts?: boolean;
+            /** @enum {string} */
+            layout?: "single" | "grid";
+            /** @enum {string} */
+            colourMode?: "value" | "background" | "none";
+            /** @enum {string} */
+            textMode?: "auto" | "value" | "valueAndName" | "name";
+            /** @enum {string} */
+            graphMode?: "sparkline" | "none";
         };
         Thresholds: {
             /** @enum {string} */

@@ -14,11 +14,12 @@ every version, the actor of every audit event, and the owner of the starred and 
 
 The tables are described in [the database page](database.md#schema-migration-2).
 
-## Board spec v2
+## Board spec v3
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 2. Version 2
-(#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1, which is otherwise
-the same (see [Versions and the upcaster](#versions-and-the-upcaster)).
+A board is a JSON object, called the spec. The server stores it with `schema_version` 3. Version 2
+(#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1; version 3 (#173
+Part 1) adds the optional `vis.options` and the kinds `barchart` and `pie`. Each version is
+otherwise the same as the one before (see [Versions and the upcaster](#versions-and-the-upcaster)).
 
 ```json
 {
@@ -54,9 +55,38 @@ the same (see [Versions and the upcaster](#versions-and-the-upcaster)).
 | `panels[].title` | string | at most 200 characters |
 | `panels[].grid` | object | `x` 0–11, `w` 1–12, `x + w` ≤ 12, `y` 0–9999, `h` 1–100, all integers. The grid has 12 columns; two panels of the same grid (the top level, or one section) must not overlap |
 | `panels[].query` | object | `lang` `promql` or `logql`; `text` at most 16 384 bytes |
-| `panels[].vis` | object | `kind` `auto`, `line`, `bars`, `heatmap`, `stat` or `logs` |
+| `panels[].vis` | object | `kind` `auto`, `line`, `bars`, `heatmap`, `stat`, `logs`, `barchart` or `pie`. The web client does not draw `barchart` and `pie` yet: such a panel sends no query and says so ([the panel runtime](../client/boards.md#pending-kinds)) |
 | `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every kind; drawn on line, bars and stat |
 | `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table` |
+| `panels[].vis.options` | object, optional | the kind's options, every key optional (below). `{}` is valid on every kind; `null` is refused |
+
+#### `vis.options` (v3)
+
+Which keys a kind allows, their types and their values (T22 §6.1). Any other key is
+`board.json.unknownKey`, whatever its value. The server reads the members of `vis` in any order:
+`options` may come before `kind`.
+
+| Key | Type | Values | Kinds |
+|---|---|---|---|
+| `reducer` | string | `last`, `first`, `mean`, `min`, `max`, `sum`, `count` | auto, barchart, pie, stat |
+| `baselineOffset` | string | `1h`, `1d`, `7d`, `28d` | barchart, stat |
+| `categoryBy` | string | `""` (use the effective label), or a label name `^[A-Za-z_][A-Za-z0-9_.]{0,99}$` | barchart, pie |
+| `sort` | string | `valueDesc`, `valueAsc`, `label`, `none` | barchart, pie, stat |
+| `orientation` | string | `horizontal`, `vertical`; on stat also `auto` | barchart, stat |
+| `valueLabels` | boolean | | barchart |
+| `min`, `max` | number | \|v\| ≤ 1e15; when both are set, `min` < `max` | barchart, stat |
+| `donut` | boolean | | pie |
+| `labels` | string | `percent`, `value`, `name`, `none` | pie |
+| `parts` | boolean | | auto, pie |
+| `layout` | string | `single`, `grid` | stat |
+| `colourMode` | string | `value`, `background`, `none` | stat |
+| `textMode` | string | `auto`, `value`, `valueAndName`, `name`; not `value` with `layout` `grid` | stat |
+| `graphMode` | string | `sparkline`, `none` | stat |
+
+`line`, `bars`, `heatmap` and `logs` allow no key. Depth options (`perspective`, `projection`,
+`depth`, `tilt`, `shadow`, `3d`) are never allowed (T22-002). The keys are held in one table on
+each side (`internal/spec/shape.go`, `client/src/boards/options.ts`), and both suites compare it
+with `api/fixtures/board-spec/option-keys.json`.
 
 A board has at most 200 panels in total, counting the panels of every section (SRF-019). No string
 may contain U+0000. The request body, including the spec, is at most 2 MiB (T06-021).
@@ -92,10 +122,16 @@ The first pass checks the shape, token by token:
 |---|---|---|
 | not JSON, empty, or data after the object | `""` | `board.json.invalid` |
 | a key repeated in one object | the key | `board.json.duplicateKey` |
-| a key that is not in the table above, including a wrongly cased one (`Title`) | the key | `board.json.unknownKey` |
+| a key that is not in the table above, including a wrongly cased one (`Title`), and an option key the panel's kind does not allow | the key | `board.json.unknownKey` |
 | a required key absent (reported after the object's last key) | the key | `board.json.required` |
 | a `null` value | the key | `board.json.null` |
 | a value of the wrong type, including `1.5`, `1e2` or `2147483648` for a grid value, and a threshold `value` that is not a number or not a finite one (`"1"`, `1e400`) | the value | `board.json.type` |
+
+`vis.options` is checked after the rest of its `vis` object (its problems follow that object's
+own), against the keys of the kind: an unknown key first, its value skipped, then types and
+`null`. A `vis.options` that is `null` or not an object is reported in place. When `kind` is not a
+string, its type error is the only problem; when it is a string but not a kind, the options are
+not checked and the rules report the kind.
 
 Only a spec with a clean shape goes on to the rules:
 
@@ -113,7 +149,7 @@ Only a spec with a clean shape goes on to the rules:
 | a grid overlapping an earlier panel of the same grid | `…/grid` of the later one | `board.grid.overlap` |
 | `query.lang` not `promql` or `logql` | `…/query/lang` | `board.query.lang.invalid` |
 | `query.text` over 16 384 bytes | `…/query/text` | `board.query.text.tooLong` |
-| `vis.kind` not one of the six kinds | `…/vis/kind` | `board.vis.kind.invalid` |
+| `vis.kind` not one of the eight kinds | `…/vis/kind` | `board.vis.kind.invalid` |
 | `thresholds.direction` not `above` or `below` | `…/vis/thresholds/direction` | `board.thresholds.direction.invalid` |
 | no step, or more than 8 | `…/vis/thresholds/steps` | `board.thresholds.steps.count` |
 | a step value not 0 and smaller than 1e-9 or larger than 1e15 in size (every step is checked) | `…/vis/thresholds/steps/<k>/value` | `board.thresholds.value.range` |
@@ -121,13 +157,17 @@ Only a spec with a clean shape goes on to the rules:
 | a step state not `watch`, `degraded` or `failing` | `…/steps/<k>/state` | `board.thresholds.state.invalid` |
 | a step label over 200 characters | `…/steps/<k>/label` | `board.thresholds.label.tooLong` |
 | `legend.mode` not `table` or `hidden` | `…/vis/legend/mode` | `board.legend.mode.invalid` |
+| an option value outside its values (an enum, a `categoryBy` that is neither `""` nor a label name, a `min` or `max` over 1e15 in size, `orientation` `auto` off stat, `textMode` `value` with `layout` `grid`) | `…/vis/options/<key>` | `board.options.<key>.invalid` |
+| both bounds set and `min` ≥ `max` (only when `min` itself is valid) | `…/vis/options/max` | `board.options.max.invalid` |
 | a string containing U+0000 | that string | `board.string.nul` |
 
 `…` is `/panels/<i>`, `/sections/<j>/panels/<i>`, or `/sections/<j>` for a section. The threshold
-rules come after `vis.kind`, in this order for each step. The value range keeps a threshold far
+rules come after `vis.kind`, in this order for each step, then the legend, then the options in
+the key order of the table above. The value range keeps a threshold far
 inside the range where the value-axis ticks are safe (#97). The shared fixtures
 `api/fixtures/board-spec/` hold a minimal and a full valid board of each version (`v1-*.json`,
-`v2-full.json`, and `v2-threshold-bounds.json` with -1e-9, 0 and 1e-9), and `invalid.json` with
+`v2-full.json`, `v2-threshold-bounds.json` with -1e-9, 0 and 1e-9, and `v3-full.json` with every
+option key of each kind), the option table `option-keys.json`, and `invalid.json` with
 one case per problem and its exact `fields`. The server's tests and the client's tests both run
 them.
 
@@ -149,20 +189,21 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 2 is the current
-version; a version 1 spec is a subset of it and reads unchanged (the identity upcast). Every write
-stores version 2; there is no SQL migration (`schema_version` is an existing column). A spec stored
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 3 is the current
+version; a version 1 or 2 spec is a subset of it and reads unchanged (the identity upcast). Every
+write stores version 3; there is no SQL migration (`schema_version` is an existing column). A spec stored
 by a newer server (a rolling upgrade) answers 503 `board saved by a newer server version`, and is
 never overwritten by the older server.
 
-| Server | Reads a v1 row | Reads a v2 row | Writes |
+| Server | Reads a v1 or v2 row | Reads a v3 row | Writes |
 |---|---|---|---|
-| this release | unchanged | parsed | `schema_version` 2 |
-| the previous release, during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 1 |
+| this release | unchanged | parsed | `schema_version` 3 |
+| the previous release, during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 2 |
 
 `spec.DecodeBoardUpTo(raw, version, max)` holds the rule (`version > max` is too new);
-`DecodeBoard` calls it with `BoardSchemaVersion`. The itest `TestPreviousServerRefusesV2Row` reads
-a real v2 row with `max` 1, as the previous release did.
+`DecodeBoard` calls it with `BoardSchemaVersion`. The itest `TestPreviousServerRefusesNewerRow`
+reads a real v3 row with `max` 2, as the previous release did, and `TestSaveWritesSchemaV3` checks
+what a save stores.
 
 ## Concurrency: `ETag` and `If-Match`
 
@@ -332,5 +373,7 @@ guarantee) and ENT-022 (subsets) in
 (`recent_views.viewed_at`) in
 [T11](../../designs/technical/T11-postgres-schema.md); gates `unit:board-spec`, `itest:board-crud`
 and `itest:board-prefs` in [T05](../../designs/technical/T05-testing-and-performance.md) §7.1;
+board spec v3 (`vis.options`, T22-002, §6.1; VIZ-031, VIZ-086) in
+[T22](../../designs/technical/T22-value-categorical-and-table-panels.md);
 [ADR-0012](../../designs/adr/0012-derived-state-in-postgres.md),
 [ADR-0015](../../designs/adr/0015-go-bff.md).

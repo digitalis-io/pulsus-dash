@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,6 +7,7 @@ import type { BoardSpec, PanelSpec } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
 import { fieldMessage } from './fieldMessages';
 import { GRID_LIMITS } from './layout';
+import { OPTION_ORDER } from './options';
 import { canonicalJson, checkBoardSpec, nextId, nextPanelId, nextSectionId } from './spec';
 
 /** `api/fixtures/board-spec/` (vitest runs in `client/`). */
@@ -99,6 +101,62 @@ describe('unit:board-spec (TS)', () => {
     expect(checkBoardSpec(JSON.parse(big?.raw ?? 'null'))).toEqual([
       { pointer: '/panels/0/vis/thresholds/steps/0/value', messageKey: 'board.json.type' },
     ]);
+  });
+
+  it("v3 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v3-full.json');
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v3CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '293e4cd4027bf9803c3ce2e467f36d8c41fb0f5b102804b496700df48c22d193',
+    );
+    const names = new Set(cases.map((k) => k.name));
+    for (const n of [
+      'options-depth-keys',
+      'options-wrong-kind-type',
+      'options-before-kind',
+      'options-bad-kind-after',
+      'options-bad-kind-before',
+      'options-kind-not-string',
+      'options-types',
+      'options-not-object',
+      'options-categoryBy',
+      'options-max-range',
+      'options-min-eq-max',
+      'options-enums',
+      'options-stat-text-grid',
+      'options-in-section',
+    ])
+      expect(names.has(n), n).toBe(true);
+  });
+
+  it('a NaN or out-of-range option bound', () => {
+    const spec = fixture('v3-full.json') as BoardSpec;
+    const opts = spec.panels[0]?.vis.options;
+    if (opts === undefined) throw new Error('p-1 has no options');
+    opts.min = NaN;
+    expect(checkBoardSpec(spec)).toEqual([
+      { pointer: '/panels/0/vis/options/min', messageKey: 'board.json.type' },
+    ]);
+    opts.min = -1e15;
+    expect(checkBoardSpec(spec)).toEqual([]);
+    opts.min = -1.0000001e15;
+    expect(checkBoardSpec(spec)).toEqual([
+      { pointer: '/panels/0/vis/options/min', messageKey: 'board.options.min.invalid' },
+    ]);
+  });
+
+  it('every option key has text', () => {
+    const catalogue = new Set<string>(Object.values(messages));
+    expect(OPTION_ORDER).toHaveLength(15);
+    for (const k of OPTION_ORDER) {
+      const key = `board.options.${k}.invalid`;
+      const text = fieldMessage(key);
+      expect(text, key).not.toBe(fieldMessage('board.json.invalid'));
+      expect(catalogue.has(text), key).toBe(true);
+    }
   });
 
   it('v2-threshold-bounds fixture is valid', () => {

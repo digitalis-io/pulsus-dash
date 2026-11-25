@@ -634,7 +634,7 @@ the browser otherwise).
   2026-01-01 00:00–01:00 UTC; each test deletes its board): **`e2e:board-thresholds-legend`** (a
   line panel's legend table with mean, max and last and their threshold states; a row isolates its
   series; a 4-row panel's compact legend reached by keyboard opens the full table and Escape returns
-  focus; Legend Hidden and a threshold edit survive save and reload, stored as `schema_version` 2;
+  focus; Legend Hidden and a threshold edit survive save and reload, stored as `schema_version` 3 (board spec v3, #173);
   an unparsable value blocks the save with no `PUT`) and **`e2e:board-stat-tile`** (the state chip
   and threshold text of a stat with thresholds; canvas pixels in the sparkline band of a range stat,
   none for a scalar stat). `e2e:a11y-rooms` adds `b-1 view, legend and stat chip`, `b-1 edit,

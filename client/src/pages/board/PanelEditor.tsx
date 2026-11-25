@@ -10,7 +10,8 @@
  * the Run keys or leaving the field; the dialog owns the preview's run, which shares the board
  * panel's key (the run text and the panel's width). After Visualisation come Thresholds and Legend
  * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
- * them. They change the spec, not the query key: the preview reruns nothing. For LogQL the Query
+ * them, and keeps only the options the new kind allows (`withKind`, board spec v3). A stored kind
+ * this version does not draw (`PENDING_KINDS`) shows as a disabled option. They change the spec, not the query key: the preview reruns nothing. For LogQL the Query
  * field is the LogQL editor (plan #67 §3.5) with the same run rules; a language change keeps the
  * text, and the Auto option names what the preview's answer draws (Logs for log lines).
  */
@@ -18,6 +19,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { FieldError, PanelSpec, PanelVisKind, QueryLang } from '../../api/types';
 import { panelView } from '../../boards/panelRun';
 import { fieldMessage } from '../../boards/fieldMessages';
+import { PENDING_KINDS, withKind } from '../../boards/options';
 import { usePanelWidth } from '../../boards/panelWidths';
 import { usePanelRun } from '../../boards/usePanelRun';
 import type { Unit, VisKind } from '../../engine/api';
@@ -83,6 +85,12 @@ function without(vis: PanelSpec['vis'], key: 'thresholds' | 'legend'): PanelSpec
   return Object.fromEntries(Object.entries(vis).filter(([k]) => k !== key)) as PanelSpec['vis'];
 }
 
+/** A stored pending kind as a disabled option, so the Select shows it (#173 Part 1). */
+function pendingKind(kind: PanelVisKind): { id: PanelVisKind; label: string; disabled: true }[] {
+  const label = PENDING_KINDS.has(kind) ? PENDING_LABELS[kind] : undefined;
+  return label === undefined ? [] : [{ id: kind, label: t(label), disabled: true }];
+}
+
 const KINDS: readonly { id: PanelVisKind; label: MessageId }[] = [
   { id: 'auto', label: 'editor.vis.auto' },
   { id: 'line', label: 'editor.vis.line' },
@@ -91,6 +99,12 @@ const KINDS: readonly { id: PanelVisKind; label: MessageId }[] = [
   { id: 'stat', label: 'editor.vis.stat' },
   { id: 'logs', label: 'editor.vis.logs' },
 ];
+
+/** The labels of the kinds not drawn yet (`PENDING_KINDS`): shown, disabled, only when stored. */
+const PENDING_LABELS: Readonly<Partial<Record<PanelVisKind, MessageId>>> = {
+  barchart: 'editor.vis.barchart',
+  pie: 'editor.vis.pie',
+};
 
 /**
  * Thresholds and Legend (§3.10). Memoised, with stable props from the editor, so an edit elsewhere
@@ -304,12 +318,15 @@ export function PanelEditor({
           <Select
             label={t('editor.vis')}
             value={panel.vis.kind}
-            options={KINDS.map((k) => ({
-              id: k.id,
-              label: k.id === 'auto' ? autoLabel : t(k.label),
-            }))}
+            options={[
+              ...KINDS.map((k) => ({
+                id: k.id,
+                label: k.id === 'auto' ? autoLabel : t(k.label),
+              })),
+              ...pendingKind(panel.vis.kind),
+            ]}
             onChange={(kind) => {
-              patchVis({ ...panel.vis, kind });
+              patchVis(withKind(panel.vis, kind));
             }}
             error={errorAt('/vis/kind')}
             isDisabled={readOnly}

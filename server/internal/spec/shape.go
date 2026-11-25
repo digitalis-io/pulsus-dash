@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -29,6 +30,9 @@ const (
 	kArray
 	kObject
 	kAny // any JSON value, checked later (the spec inside a request envelope)
+	// kRawObject is a JSON object kept raw and checked when the enclosing object closes, against
+	// the shape its sibling "kind" names (vis.options, board spec v3: options may come before kind).
+	kRawObject
 )
 
 // valueType is the expected type of a value: an object of a shape, or an array of elem.
@@ -58,9 +62,31 @@ var (
 	thresholdsShape = []field{{"direction", true, tString},
 		{"steps", true, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: stepShape}}}}
 	legendShape = []field{{"mode", true, tString}}
-	visShape    = []field{{"kind", true, tString},
+	// Board spec v3 (#173 Part 1, T22 §6.1): options, checked against the kind's shape.
+	visShape = []field{{"kind", true, tString},
 		{"thresholds", false, valueType{kind: kObject, shape: thresholdsShape}},
-		{"legend", false, valueType{kind: kObject, shape: legendShape}}}
+		{"legend", false, valueType{kind: kObject, shape: legendShape}},
+		{"options", false, valueType{kind: kRawObject}}}
+
+	// optionFields are the keys of vis.options in OPTION_ORDER (client boards/options.ts), all
+	// optional; optionKinds lists the keys each kind allows. Both equal
+	// api/fixtures/board-spec/option-keys.json.
+	optionFields = []field{{"reducer", false, tString}, {"baselineOffset", false, tString},
+		{"categoryBy", false, tString}, {"sort", false, tString}, {"orientation", false, tString},
+		{"valueLabels", false, tBool}, {"min", false, tNumber}, {"max", false, tNumber},
+		{"donut", false, tBool}, {"labels", false, tString}, {"parts", false, tBool},
+		{"layout", false, tString}, {"colourMode", false, tString}, {"textMode", false, tString},
+		{"graphMode", false, tString}}
+	optionKinds = map[string][]string{
+		"auto":     {"reducer", "parts"},
+		"line":     {},
+		"bars":     {},
+		"heatmap":  {},
+		"stat":     {"reducer", "baselineOffset", "sort", "orientation", "min", "max", "layout", "colourMode", "textMode", "graphMode"},
+		"logs":     {},
+		"barchart": {"reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"},
+		"pie":      {"reducer", "categoryBy", "sort", "donut", "labels", "parts"},
+	}
 	panelShape = []field{{"id", true, tString}, {"title", true, tString},
 		{"grid", true, valueType{kind: kObject, shape: gridShape}},
 		{"query", true, valueType{kind: kObject, shape: queryShape}},
@@ -139,6 +165,19 @@ func (c *shapeChecker) token() (json.Token, error) {
 	return tok, nil
 }
 
+// optionShape is the shape of a kind's vis.options (§3.3 of plan #173 Part 1): the kind's keys,
+// optional and typed, in OPTION_ORDER. A kind without options allows no key ({} is valid).
+func optionShape(kind string) []field {
+	allowed := optionKinds[kind]
+	shape := make([]field, 0, len(allowed))
+	for _, f := range optionFields {
+		if slices.Contains(allowed, f.name) {
+			shape = append(shape, f)
+		}
+	}
+	return shape
+}
+
 // value reads one value at pointer and checks it against t.
 func (c *shapeChecker) value(pointer string, t valueType) error {
 	if t.kind == kAny {
@@ -148,6 +187,11 @@ func (c *shapeChecker) value(pointer string, t valueType) error {
 	if err != nil {
 		return err
 	}
+	return c.check(pointer, tok, t)
+}
+
+// check checks one value whose first token tok was read.
+func (c *shapeChecker) check(pointer string, tok json.Token, t valueType) error {
 	if tok == nil {
 		c.add(pointer, keyNull)
 		return nil
@@ -202,9 +246,47 @@ func isInt32(s string) bool {
 	return err == nil
 }
 
-// object reads the members of an object after its '{'.
+// rawObject reads a kRawObject value: an object is returned raw; null and other types are
+// reported in place, and nil is returned.
+func (c *shapeChecker) rawObject(pointer string) (json.RawMessage, error) {
+	var raw json.RawMessage
+	if err := c.dec.Decode(&raw); err != nil {
+		return nil, errSyntax
+	}
+	raw = bytes.TrimSpace(raw)
+	switch {
+	case bytes.Equal(raw, []byte("null")):
+		c.add(pointer, keyNull)
+	case len(raw) > 0 && raw[0] == '{':
+		return raw, nil
+	default:
+		c.add(pointer, keyType)
+	}
+	return nil, nil
+}
+
+// checkRawAt checks a raw value (one JSON value, read by rawObject) against t, with pointers under
+// pointer; its problems are appended to c's.
+func (c *shapeChecker) checkRawAt(raw json.RawMessage, pointer string, t valueType) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	sub := &shapeChecker{dec: dec, fields: c.fields}
+	err := sub.value(pointer, t)
+	c.fields = sub.fields
+	return err
+}
+
+// object reads the members of an object after its '{'. A kRawObject member (vis.options) is kept
+// raw and checked after the object's own problems, against optionShape of the sibling "kind",
+// only when that kind is a string in visKinds; any other kind is reported by the rules pass.
 func (c *shapeChecker) object(pointer string, shape []field) error {
 	seen := make(map[string]bool, len(shape))
+	var (
+		tag        string
+		tagged     bool
+		deferred   json.RawMessage
+		deferredAt string
+	)
 	for c.dec.More() {
 		tok, err := c.token()
 		if err != nil {
@@ -220,6 +302,15 @@ func (c *shapeChecker) object(pointer string, shape []field) error {
 		case !known:
 			c.add(p, keyUnknownKey)
 			err = c.skip()
+		case f.t.kind == kRawObject:
+			deferred, err = c.rawObject(p)
+			deferredAt = p
+		case key == "kind" && f.t.kind == kString:
+			var tok json.Token
+			if tok, err = c.token(); err == nil {
+				tag, tagged = tok.(string)
+				err = c.check(p, tok, f.t)
+			}
 		default:
 			err = c.value(p, f.t)
 		}
@@ -235,6 +326,9 @@ func (c *shapeChecker) object(pointer string, shape []field) error {
 		if f.required && !seen[f.name] {
 			c.add(pointer+"/"+escapePointer(f.name), keyRequired)
 		}
+	}
+	if deferred != nil && tagged && slices.Contains(visKinds, tag) {
+		return c.checkRawAt(deferred, deferredAt, valueType{kind: kObject, shape: optionShape(tag)})
 	}
 	return nil
 }

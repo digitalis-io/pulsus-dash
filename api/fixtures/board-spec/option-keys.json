@@ -1,0 +1,29 @@
+{
+  "types": {
+    "reducer": "string",
+    "baselineOffset": "string",
+    "categoryBy": "string",
+    "sort": "string",
+    "orientation": "string",
+    "valueLabels": "bool",
+    "min": "number",
+    "max": "number",
+    "donut": "bool",
+    "labels": "string",
+    "parts": "bool",
+    "layout": "string",
+    "colourMode": "string",
+    "textMode": "string",
+    "graphMode": "string"
+  },
+  "kinds": {
+    "auto": ["reducer", "parts"],
+    "line": [],
+    "bars": [],
+    "heatmap": [],
+    "stat": ["reducer", "baselineOffset", "sort", "orientation", "min", "max", "layout", "colourMode", "textMode", "graphMode"],
+    "logs": [],
+    "barchart": ["reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"],
+    "pie": ["reducer", "categoryBy", "sort", "donut", "labels", "parts"]
+  }
+}

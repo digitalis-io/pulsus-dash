@@ -1,5 +1,6 @@
 /**
- * Board spec v2 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2): the server's validator
+ * Board spec v3 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
+ * Part 1 §3.2–3.4): the server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
  *
@@ -7,9 +8,18 @@
  * a duplicate key, and an integer written as `1e2` or `6.0` (the server rejects those; the client
  * only ever sends `JSON.stringify` output).
  */
-import type { BoardSpec, FieldError, GridPos, PanelSpec } from '../api/types';
+import type {
+  BoardSpec,
+  FieldError,
+  GridPos,
+  PanelSpec,
+  PanelVisKind,
+  VisOptions,
+} from '../api/types';
+import { FILTER_LABEL } from '../state/boardParams';
 import { MAX_THRESHOLD_STEPS } from '../vis/thresholds';
 import { fits, overlaps } from './layout';
+import { MAX_OPTION_ABS, OPTION_KEYS, OPTION_TYPES, OPTION_VALUES } from './options';
 
 export const MAX_PANELS = 200;
 export const MAX_SECTIONS = 50;
@@ -26,7 +36,16 @@ export const MIN_THRESHOLD_ABS = 1e-9;
 export const MAX_THRESHOLD_ABS = 1e15;
 
 const QUERY_LANGS: readonly string[] = ['promql', 'logql'];
-const VIS_KINDS: readonly string[] = ['auto', 'line', 'bars', 'heatmap', 'stat', 'logs'];
+const VIS_KINDS: readonly string[] = [
+  'auto',
+  'line',
+  'bars',
+  'heatmap',
+  'stat',
+  'logs',
+  'barchart',
+  'pie',
+];
 const TIME_PATTERN =
   /^(now|now\/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$/;
 const ID_PATTERN = /^[a-z0-9-]{1,40}$/;
@@ -36,7 +55,8 @@ const LEGEND_MODES: readonly string[] = ['table', 'hidden'];
 /** Only Go's `unicode.IsSpace` characters (what the server's `strings.TrimSpace` trims). */
 const BLANK = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
 
-type Kind = 'string' | 'bool' | 'int' | 'number' | 'array' | 'object';
+/** `rawObject`: an object checked when the enclosing object closes (vis.options, `shape.go`). */
+type Kind = 'string' | 'bool' | 'int' | 'number' | 'array' | 'object' | 'rawObject';
 
 interface ValueType {
   kind: Kind;
@@ -66,7 +86,14 @@ const visShape = [
     obj([req('direction', tString), req('steps', { kind: 'array', elem: obj(stepShape) })]),
   ),
   opt('legend', obj([req('mode', tString)])),
+  opt('options', { kind: 'rawObject' }),
 ];
+
+/** A kind's options shape (`shape.go` `optionShape`): its keys, optional and typed. */
+function optionShape(kind: PanelVisKind): readonly Field[] {
+  const types = { string: tString, bool: tBool, number: tNumber } as const;
+  return OPTION_KEYS[kind].map((k) => opt(k, types[OPTION_TYPES[k]]));
+}
 
 const gridShape = [req('x', tInt), req('y', tInt), req('w', tInt), req('h', tInt)];
 const panelShape = [
@@ -144,22 +171,36 @@ function checkShape(c: Collector, pointer: string, value: unknown, t: ValueType)
       });
       return;
     }
+    case 'rawObject':
+      // Checked by the enclosing object (below); a non-object is reported here.
+      if (!isRecord(value)) c.add(pointer, 'board.json.type');
+      return;
     case 'object': {
       if (!isRecord(value)) {
         c.add(pointer, 'board.json.type');
         return;
       }
       const shape = t.shape ?? [];
+      let deferred: { pointer: string; value: Record<string, unknown> } | null = null;
       for (const [key, v] of Object.entries(value)) {
         const p = `${pointer}/${escapePointer(key)}`;
         const f = shape.find((x) => x.name === key);
         if (f === undefined) c.add(p, 'board.json.unknownKey');
-        else checkShape(c, p, v, f.type);
+        else {
+          checkShape(c, p, v, f.type);
+          if (f.type.kind === 'rawObject' && isRecord(v)) deferred = { pointer: p, value: v };
+        }
       }
       for (const f of shape) {
         if (f.required && !Object.hasOwn(value, f.name)) {
           c.add(`${pointer}/${escapePointer(f.name)}`, 'board.json.required');
         }
+      }
+      // vis.options: the shape of the sibling kind, only when it is a valid kind (the rules pass
+      // reports any other), after this object's own problems.
+      const tag = value['kind'];
+      if (deferred !== null && typeof tag === 'string' && VIS_KINDS.includes(tag)) {
+        checkShape(c, deferred.pointer, deferred.value, obj(optionShape(tag as PanelVisKind)));
       }
     }
   }
@@ -250,6 +291,48 @@ function checkRules(c: Collector, b: BoardSpec): void {
         oneOf(LEGEND_MODES, 'board.legend.mode.invalid'),
       );
     }
+    if (v.options !== undefined && VIS_KINDS.includes(v.kind)) {
+      options(`${pointer}/options`, v.kind, v.options);
+    }
+  };
+  // The option values (`validate.go` `options`, plan #173 Part 1 §3.4): each present key in
+  // OPTION_ORDER; min ≥ max is reported at max, only when min is valid.
+  const options = (pointer: string, kind: PanelVisKind, o: VisOptions): void => {
+    const invalid = (k: string): string => `board.options.${k}.invalid`;
+    const enumOf = (k: string, s: string | undefined, set: readonly string[]): void => {
+      if (s !== undefined) str(`${pointer}/${k}`, s, oneOf(set, invalid(k)));
+    };
+    const bound = (x: number): boolean => Math.abs(x) <= MAX_OPTION_ABS;
+    enumOf('reducer', o.reducer, OPTION_VALUES.reducer);
+    enumOf('baselineOffset', o.baselineOffset, OPTION_VALUES.baselineOffset);
+    if (o.categoryBy !== undefined) {
+      str(`${pointer}/categoryBy`, o.categoryBy, (s) =>
+        s !== '' && !FILTER_LABEL.test(s) ? invalid('categoryBy') : null,
+      );
+    }
+    enumOf('sort', o.sort, OPTION_VALUES.sort);
+    enumOf(
+      'orientation',
+      o.orientation,
+      kind === 'stat' ? OPTION_VALUES.statOrientation : OPTION_VALUES.orientation,
+    );
+    const minValid = o.min !== undefined && bound(o.min);
+    if (o.min !== undefined && !minValid) c.add(`${pointer}/min`, invalid('min'));
+    if (o.max !== undefined && (!bound(o.max) || (minValid && (o.min ?? 0) >= o.max))) {
+      c.add(`${pointer}/max`, invalid('max'));
+    }
+    enumOf('labels', o.labels, OPTION_VALUES.labels);
+    enumOf('layout', o.layout, OPTION_VALUES.layout);
+    enumOf('colourMode', o.colourMode, OPTION_VALUES.colourMode);
+    if (o.textMode !== undefined) {
+      const grid = o.layout === 'grid';
+      str(`${pointer}/textMode`, o.textMode, (s) =>
+        !(OPTION_VALUES.textMode as readonly string[]).includes(s) || (grid && s === 'value')
+          ? invalid('textMode')
+          : null,
+      );
+    }
+    enumOf('graphMode', o.graphMode, OPTION_VALUES.graphMode);
   };
 
   str('/title', b.title, (s) =>
