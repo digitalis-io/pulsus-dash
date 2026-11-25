@@ -18,13 +18,16 @@ import {
   useState,
   useSyncExternalStore,
   type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type Ref,
 } from 'react';
 import { LOG_LEVELS } from '../data/logFrame';
 import { formatLogTime } from '../i18n/format';
 import { t } from '../i18n/t';
-import type { InspectorTarget } from '../inspector/types';
+import { useSelection } from '../inspector/host';
+import type { InspectorTarget, Selection } from '../inspector/types';
 import { Button } from '../kit/Button';
 import { Checkbox } from '../kit/Checkbox';
 import { cx } from '../kit/cx';
@@ -32,7 +35,7 @@ import { SegmentedControl } from '../kit/SegmentedControl';
 import { useTimeZone } from '../state/timeZone';
 import { font, size } from '../styles/tokens';
 import { RowEstimates } from './estimates';
-import { wrapLines } from './logBuffer';
+import { wrapLines, type LogRow } from './logBuffer';
 import { LEVEL_GLYPH, LEVEL_NAME } from './levels';
 import type { LogPager, LogPagerState } from './logPager';
 import {
@@ -131,6 +134,48 @@ function measureRow(el: Element, entry: ResizeObserverEntry | undefined): number
 
 const sameSlice = (a: Slice, b: Slice): boolean => a.start === b.start && a.end === b.end;
 
+/**
+ * A row against the page selection (T25-006): `match` when its stream is among the keys (if any)
+ * and its time in [fromMs, toMs) (if an interval is given); `mute` when it does not match and the
+ * selection is relevant here (a key among the loaded streams, or an interval with no keys).
+ */
+export function logRowMatch(
+  row: Pick<LogRow, 'tsNs' | 'stream'>,
+  sel: Selection | null,
+  loaded: (key: string) => boolean,
+): { match: boolean; mute: boolean } {
+  if (sel === null || (sel.keys.length === 0 && sel.fromMs === null)) {
+    return { match: false, mute: false };
+  }
+  const ms = Number(row.tsNs / 1_000_000n);
+  const inKeys = sel.keys.length === 0 || sel.keys.includes(row.stream.key);
+  const inTime =
+    sel.fromMs === null || (ms >= sel.fromMs && ms < (sel.toMs ?? Number.POSITIVE_INFINITY));
+  const match = inKeys && inTime;
+  const relevant = sel.keys.length === 0 ? sel.fromMs !== null : sel.keys.some(loaded);
+  return { match: match && relevant, mute: !match && relevant };
+}
+
+/** A row's Inspector target (T25 §4.2). */
+function logTarget(row: LogRow): InspectorTarget {
+  return {
+    type: 'logLine',
+    streamKey: row.stream.key,
+    labels: row.stream.labels,
+    tsNs: row.tsNs,
+    level: LOG_LEVELS[row.level] ?? 'unknown',
+    line: row.line,
+    metadata: row.metadata,
+    parsed: row.parsed,
+  };
+}
+
+/** A text selection anchored in `el` (a click that ends one is not an inspect). */
+function selectingIn(el: HTMLElement): boolean {
+  const s = globalThis.getSelection();
+  return s !== null && !s.isCollapsed && s.anchorNode !== null && el.contains(s.anchorNode);
+}
+
 function initialSlice(pager: LogPager, view: ViewLimits): Slice {
   const b = pager.buffer;
   return sliceAround(b.firstOrd, b.firstOrd, b.endOrd, view, () => ROW_PX);
@@ -164,7 +209,11 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     onReslice,
     wrapEstimate = 'bound',
     ref,
+    onInspect,
   } = props;
+  const selection = useSelection();
+  /** The ordinal of the focused row: when it unmounts, focus goes to the scroller (T25 §4.2). */
+  const focusedOrd = useRef<number | null>(null);
   const state = useSyncExternalStore(pager.subscribe, pager.getState);
   // The pixel bounds are the list's: the rows get them less the room of both sentinels.
   const view = useMemo(
@@ -611,6 +660,47 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
     },
   }));
 
+  // The focused row unmounted (scrolled out, evicted): focus goes to the scroller.
+  useLayoutEffect(() => {
+    const o = focusedOrd.current;
+    if (o === null) return;
+    if (listRef.current?.querySelector(`[data-ord="${String(o)}"]`) != null) return;
+    focusedOrd.current = null;
+    const a = document.activeElement;
+    if (a === null || a === document.body) scrollerRef.current?.focus();
+  });
+
+  /** Keyboard row navigation (T25 §4.2): ↑/↓ by one mounted row; Enter or Space inspects. */
+  const onRowKey = (e: ReactKeyboardEvent<HTMLDivElement>, row: LogRow): void => {
+    if (onInspect === undefined || e.target !== e.currentTarget) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = listRef.current?.querySelector<HTMLElement>(
+        `[data-ord="${String(row.ord + step)}"][data-log-row]`,
+      );
+      e.preventDefault();
+      next?.focus();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      onInspect(logTarget(row), 'keyboard', e.currentTarget);
+    }
+  };
+
+  /** Enter on the scroller focuses the first visible row. */
+  const onScrollerKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (onInspect === undefined || e.key !== 'Enter' || e.target !== e.currentTarget) return;
+    const scroller = e.currentTarget;
+    const top = scroller.getBoundingClientRect().top;
+    const rowsNow = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-log-row]') ?? [])];
+    const first = rowsNow.find((r) => r.getBoundingClientRect().bottom > top) ?? rowsNow[0];
+    if (first === undefined) return;
+    e.preventDefault();
+    first.focus();
+  };
+
   const rowRef = useCallback(
     (el: HTMLDivElement | null) => {
       if (wrap) virtualizer.measureElement(el);
@@ -623,6 +713,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
   if (state.phase === 'series') return null;
 
   const total = state.total;
+  const loaded = (key: string): boolean => buffer.hasStream(key);
   const rows = items.map((it) => {
     const o = ordAt(it.index, slice, layout);
     if (o === 'head' || o === 'tail') {
@@ -646,6 +737,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       );
     }
     const level = LOG_LEVELS[row.level] ?? 'unknown';
+    const { match, mute } = logRowMatch(row, selection, loaded);
     return (
       <div
         key={o}
@@ -654,11 +746,29 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
         data-ord={o}
         data-log-row=""
         data-level={level}
-        className={cx(styles['row'])}
+        data-selected={match ? '' : undefined}
+        data-muted={mute ? '' : undefined}
+        className={cx(styles['row'], onInspect !== undefined && styles['inspectable'])}
         role="listitem"
         aria-posinset={o + 1}
         aria-setsize={total ?? -1}
+        {...(onInspect === undefined
+          ? {}
+          : {
+              tabIndex: -1,
+              onClick: (e: ReactMouseEvent<HTMLDivElement>) => {
+                if (selectingIn(e.currentTarget)) return;
+                onInspect(logTarget(row), 'pointer', e.currentTarget);
+              },
+              onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+                onRowKey(e, row);
+              },
+              onFocus: () => {
+                focusedOrd.current = o;
+              },
+            })}
       >
+        {match && <span className={cx(styles['srOnly'])}>{t('inspector.selected')}</span>}
         <span className={cx(styles['gutter'])}>
           <span className={cx(styles['bar'])} aria-hidden="true" />
           <span className={cx(styles['glyph'])} aria-hidden="true" data-log-glyph="">
@@ -667,7 +777,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
           <span className={cx(styles['srOnly'])}>{t(LEVEL_NAME[level])}</span>
         </span>
         <span className={cx(styles['ts'])}>{formatLogTime(Number(row.tsNs / 1_000_000n), tz)}</span>
-        <span className={cx(styles['line'])} data-log-line="">
+        <span className={cx(styles['line'], mute && styles['muted'])} data-log-line="">
           {row.line}
         </span>
       </div>
@@ -690,6 +800,8 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
           {t('logs.wrap')}
         </Checkbox>
       </div>
+      {/* Enter on the region focuses its first visible row (T25 §4.2). */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         ref={scrollerCallback}
         className={cx(styles['scroller'])}
@@ -699,6 +811,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
         // A scrollable region is a tab stop (as SeriesTable).
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
+        onKeyDown={onScrollerKey}
       >
         <div
           ref={listRef}

@@ -9,6 +9,8 @@ import type { LogsResult } from '../../data/decode';
 import { metricPlan } from '../../explore/logsRun';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { t } from '../../i18n/t';
+import type { InspectOrigin } from '../../inspector/types';
+import { useChartInspect } from '../../inspector/useChartInspect';
 import { Card } from '../../kit/Card';
 import { cx } from '../../kit/cx';
 import { CompletenessNotice } from './CompletenessNotice';
@@ -16,6 +18,8 @@ import styles from './Explore.module.css';
 import { SHIMMER_DELAY_MS } from './ResultCard';
 
 export interface LogsMetricCardProps {
+  /** Explore's query: the Inspector's origin (T25 §5). */
+  readonly q: string;
   /** `last.series` (§4.2): this tenant's last series answer; null before the first one. */
   readonly series: Extract<LogsResult, { kind: 'series' }> | null;
   /** state null or phase `pending`. */
@@ -23,9 +27,26 @@ export interface LogsMetricCardProps {
   readonly onNarrow: () => void;
 }
 
-export function LogsMetricCard({ series, fetching, onNarrow }: LogsMetricCardProps): JSX.Element {
+export function LogsMetricCard({
+  q,
+  series,
+  fetching,
+  onNarrow,
+}: LogsMetricCardProps): JSX.Element {
   const shimmer = useDelayedFlag(fetching, SHIMMER_DELAY_MS);
   const plan = useMemo(() => (series === null ? null : metricPlan(series)), [series]);
+  const unit = plan?.spec?.unit ?? null;
+  const origin = useMemo<Omit<InspectOrigin, 'window'>>(
+    () => ({
+      surface: 'explore',
+      panelId: null,
+      title: t('explore.result.title'),
+      query: q === '' ? null : { lang: 'logql', text: q },
+      unit,
+    }),
+    [q, unit],
+  );
+  const inspect = useChartInspect(origin);
   return (
     <Card title={t('explore.result.card')}>
       {series !== null && (
@@ -34,7 +55,7 @@ export function LogsMetricCard({ series, fetching, onNarrow }: LogsMetricCardPro
       <div className={cx(styles['chartHost'])} aria-busy={shimmer}>
         {shimmer && <div className={cx(styles['shimmer'])} aria-hidden="true" data-shimmer="" />}
         {plan !== null && plan.spec !== null && plan.data !== null && (
-          <ChartFrame spec={plan.spec} data={plan.data} />
+          <ChartFrame spec={plan.spec} data={plan.data} {...inspect} />
         )}
       </div>
     </Card>

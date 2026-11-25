@@ -723,7 +723,11 @@ describe('MetricsPage state across views', () => {
     await waitFor(() => {
       expect(bodyRows()).toHaveLength(6);
     });
-    for (const r of bodyRows()) expect(within(r).getByRole('button')).toBeInTheDocument();
+    for (const r of bodyRows()) {
+      expect(
+        within(r).getByRole('button', { name: (n) => !n.startsWith('Select ') }),
+      ).toBeInTheDocument();
+    }
     const target = G2()[1];
     if (target === undefined) throw new Error('no G2 row');
     const button = screen.getByRole('button', { name: seriesName(target.labels) });

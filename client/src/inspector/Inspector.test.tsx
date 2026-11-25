@@ -31,11 +31,27 @@ describe('unit:inspector-model (sheet)', () => {
     const sections = [...aside.querySelectorAll<HTMLElement>('[data-section]')].map(
       (s) => s.dataset['section'],
     );
-    expect(sections).toEqual(['header', 'value', 'details', 'labels', 'pivots', 'query', 'actions']);
+    expect(sections).toEqual([
+      'header',
+      'value',
+      'details',
+      'labels',
+      'pivots',
+      'query',
+      'actions',
+    ]);
     h.inspect(
       pRequest({
         origin: { ...P_ORIGIN, query: null },
-        target: { type: 'value', key: null, labels: {}, name: 'T', value: NaN, tMs: null, state: null },
+        target: {
+          type: 'value',
+          key: null,
+          labels: {},
+          name: 'T',
+          value: NaN,
+          tMs: null,
+          state: null,
+        },
       }),
     );
     expect(within(aside).getByText('no value')).toBeInTheDocument();

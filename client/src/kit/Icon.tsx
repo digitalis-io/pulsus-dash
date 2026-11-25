@@ -30,7 +30,16 @@ export type IconName =
   | 'move'
   | 'x'
   | 'share-2'
-  | 'square-arrow-out-up-right';
+  | 'square-arrow-out-up-right'
+  | 'copy'
+  | 'pencil'
+  | 'panel-right-close'
+  | 'panel-right-open'
+  | 'arrow-up-right'
+  | 'git-branch'
+  | 'flame'
+  | 'box'
+  | 'filter';
 
 const CLASS: Readonly<Record<IconName, string | undefined>> = {
   activity: styles['activity'],
@@ -59,6 +68,15 @@ const CLASS: Readonly<Record<IconName, string | undefined>> = {
   x: styles['x'],
   'share-2': styles['share2'],
   'square-arrow-out-up-right': styles['squareArrowOutUpRight'],
+  copy: styles['copy'],
+  pencil: styles['pencil'],
+  'panel-right-close': styles['panelRightClose'],
+  'panel-right-open': styles['panelRightOpen'],
+  'arrow-up-right': styles['arrowUpRight'],
+  'git-branch': styles['gitBranch'],
+  flame: styles['flame'],
+  box: styles['box'],
+  filter: styles['filter'],
 };
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

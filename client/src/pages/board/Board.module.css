@@ -192,6 +192,23 @@
   border-color: var(--accent);
 }
 
+/* T25-014: the Inspector's origin panel, without animation. */
+.panel[data-inspector-origin] {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+/* The panel takes focus only as the Inspector's fallback return target (T25-008). */
+.panel:focus {
+  outline: none;
+}
+
+.panel:focus-visible,
+.panel[data-inspector-origin]:focus {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
 .panelHeader {
   display: flex;
   flex: none;

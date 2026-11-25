@@ -48,6 +48,8 @@ import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
 import { boardVariables } from '../../boards/variables';
 import { t } from '../../i18n/t';
+import { InspectorHost } from '../../inspector/host';
+import type { InspectOrigin } from '../../inspector/types';
 import { cx } from '../../kit/cx';
 import { EmptyState } from '../../kit/EmptyState';
 import { ContextSummary } from '../../shell/ContextSummary';
@@ -457,6 +459,21 @@ function BoardEditor({
     dispatch({ type: 'removePanel', id });
     setFocusAdd(true);
   }, []);
+  // The Inspector (T25-001, T25-012): it closes when its panel goes or its query or vis changes.
+  const draft = s.draft;
+  const originKey = useCallback(
+    (id: string | null): string | null => {
+      const p = allPanels(draft).find((x) => x.panel.id === id)?.panel;
+      return p === undefined ? null : JSON.stringify([p.query, p.vis]);
+    },
+    [draft],
+  );
+  const onEditQuery = useCallback(
+    (o: InspectOrigin) => {
+      if (o.panelId !== null) onEdit(o.panelId);
+    },
+    [onEdit],
+  );
   const panelProps = (p: PanelSpec): PanelFrameProps => ({
     panel: p,
     tenant,
@@ -692,7 +709,16 @@ function BoardEditor({
       livePanels={livePanels}
     >
       <BoardEventsContext.Provider value={events}>
-        <BoardModeContext.Provider value={s.mode}>{page}</BoardModeContext.Provider>
+        <BoardModeContext.Provider value={s.mode}>
+          <InspectorHost
+            surface="board"
+            filters={boardParams.params.filters}
+            originKey={originKey}
+            onEditQuery={onEditQuery}
+          >
+            {page}
+          </InspectorHost>
+        </BoardModeContext.Provider>
       </BoardEventsContext.Provider>
     </BoardRunProvider>
   );

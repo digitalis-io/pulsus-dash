@@ -51,6 +51,7 @@ import type {
 import { ChartUnsupportedError } from '../engine/canvas2d/Canvas2DEngine';
 import { ChartEngineContext } from '../engine/index';
 import { t } from '../i18n/t';
+import { useSelection } from '../inspector/host';
 import type { InspectorTarget } from '../inspector/types';
 import { Button } from '../kit/Button';
 import { cx } from '../kit/cx';
@@ -62,7 +63,15 @@ import { size, space } from '../styles/tokens';
 import { useResolvedTheme } from '../theme/useResolvedTheme';
 import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
-import { crosshairText, eventText, issueText, summaryLabel, valueUnit } from './chartText';
+import {
+  crosshairText,
+  eventText,
+  issueText,
+  sortedRows,
+  summaryLabel,
+  valueUnit,
+} from './chartText';
+import { hoverItemOf, statTarget, targetOf } from './inspectTarget';
 
 export interface FrameSize {
   readonly width: number;
@@ -214,6 +223,8 @@ export function ChartFrame({
   pending,
   sizeMemo,
   events = NO_MARKERS,
+  onInspect,
+  onEmptyClick,
 }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
@@ -260,6 +271,8 @@ export function ChartFrame({
     dispatch,
     tz,
     events,
+    onInspect,
+    onEmptyClick,
   });
   useLayoutEffect(() => {
     latest.current = {
@@ -273,8 +286,12 @@ export function ChartFrame({
       dispatch,
       tz,
       events,
+      onInspect,
+      onEmptyClick,
     };
   });
+  // The page selection (T25-006): every frame draws it, the source included.
+  const selection = useSelection();
   const eventsById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
   const [summary, setSummary] = useState<FrameSummary | null>(null);
@@ -286,6 +303,8 @@ export function ChartFrame({
   const [drawn, setDrawn] = useState(false);
   const drawnRef = useRef(false);
   const kindRef = useRef(spec.kind);
+  /** The selection for a frame created later (the mount effect reads it). */
+  const selectionRef = useRef(selection);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -371,6 +390,15 @@ export function ChartFrame({
         // A time-only commit (`value === null`) leaves the pin as it is.
         if (c.value !== null) setPin(c.value === 'auto' ? null : { key: l.pinKey, range: c.value });
       }),
+      frame.on('select', (e) => {
+        // T25-005: a click on a mark inspects it; an empty click clears the selection.
+        const l = latest.current;
+        if (e.item === null) {
+          l.onEmptyClick?.();
+          return;
+        }
+        l.onInspect?.(targetOf(l.spec, l.frameData, e.item), e.source, sliderRef.current);
+      }),
       frame.on('drawn', (d) => {
         // A draw at a superseded size leaves the progress up.
         if (d.cssWidth !== size.width || d.cssHeight !== size.height) return;
@@ -384,6 +412,7 @@ export function ChartFrame({
     frame.setTimeWindow({ fromMs: l.fromMs, toMs: l.toMs });
     frame.setTheme(l.theme);
     frame.setEvents(l.events);
+    frame.setSelection(selectionRef.current);
     // A new canvas is blank.
     setDrawnTo(false, false);
     // A new fill frame takes the host's last size at once, so it draws in its first frame.
@@ -453,6 +482,10 @@ export function ChartFrame({
   useEffect(() => {
     frameRef.current?.setEvents(events);
   }, [events]);
+  useEffect(() => {
+    selectionRef.current = selection;
+    frameRef.current?.setSelection(selection);
+  }, [selection]);
 
   // The summary label follows the spec (title, unit, kind) and the zone as well as the summary: the
   // engine emits `a11y` only when the numbers change.
@@ -499,6 +532,15 @@ export function ChartFrame({
       if (hover !== null) e.stopPropagation();
       return;
     }
+    if ((e.key === 'Enter' || e.key === ' ') && onInspect !== undefined) {
+      // T25-005: the keyboard crosshair's selected row is inspected.
+      const row = hover?.source === 'keyboard' ? sortedRows(hover.rows)[selected] : undefined;
+      if (hover === null || row === undefined) return;
+      e.preventDefault();
+      const item = hoverItemOf(spec, frameData, hover, row, toMs);
+      onInspect(targetOf(spec, frameData, item), 'keyboard', e.currentTarget);
+      return;
+    }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
     const n = hover?.rows.length ?? 0;
@@ -519,6 +561,7 @@ export function ChartFrame({
       )}
       data-chart-frame=""
       data-frame-ready={summary === null ? 'false' : 'true'}
+      data-selection-keys={selection === null ? '' : selection.keys.join(',')}
       data-plot={plot === null ? undefined : [plot.x, plot.y, plot.width, plot.height].join(',')}
     >
       {!isStat && (
@@ -533,6 +576,20 @@ export function ChartFrame({
           aria-valuenow={hover?.tMs ?? summary?.toMs ?? toMs}
           aria-valuetext={crosshairText(spec, hover, tz, selected)}
           onKeyDown={onSliderKey}
+        />
+      )}
+      {isStat && onInspect !== undefined && (
+        <button
+          type="button"
+          className={cx(styles['inspect'])}
+          aria-label={t('inspector.inspect', { title: spec.title })}
+          onClick={(e) => {
+            onInspect(
+              statTarget(spec, frameData),
+              e.detail === 0 ? 'keyboard' : 'pointer',
+              e.currentTarget,
+            );
+          }}
         />
       )}
       {!isStat && (

@@ -27,6 +27,18 @@ export const INITIAL_INSPECTOR: InspectorState = Object.freeze({
 });
 
 export function inspectorReducer(s: InspectorState, a: InspectorAction): InspectorState {
-  void a;
-  return s;
+  switch (a.type) {
+    case 'inspect':
+      // A new target always opens expanded (T25-013, plan #192 §4.1).
+      return { req: a.req, seq: s.seq + 1, selection: a.req.selection, collapsed: false };
+    case 'select':
+      return s.selection === a.sel ? s : { ...s, selection: a.sel };
+    case 'close':
+      return s.req === null ? s : { ...s, req: null };
+    case 'toggleCollapsed':
+      return s.req === null ? s : { ...s, collapsed: !s.collapsed };
+    case 'originChanged':
+      // The selection stays: only the snapshot goes (T25-012).
+      return s.req === null || s.req.origin.panelId !== a.panelId ? s : { ...s, req: null };
+  }
 }

@@ -10,6 +10,7 @@ import type { ThresholdState, Unit } from '../engine/api';
 import type { SeriesRow, SortColumn, SortState } from '../explore/seriesRows';
 import { formatValue } from '../i18n/format';
 import { t } from '../i18n/t';
+import { useInspector, useSelection } from '../inspector/host';
 import { cx } from '../kit/cx';
 import { Icon } from '../kit/Icon';
 import { StateEncoding } from '../theme/stateEncoding';
@@ -56,8 +57,37 @@ function ValueCell({ text, state }: { text: string; state: ThresholdState | null
   );
 }
 
+/** T25-016: a leading 24 px toggle that selects the row's series on the page (not isolation). */
+function SelectCell({
+  name,
+  pressed,
+  onPress,
+}: {
+  name: string;
+  pressed: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <td className={cx(styles['selectCell'])}>
+      <button
+        type="button"
+        className={cx(styles['selectToggle'])}
+        aria-label={t('inspector.select', { name })}
+        aria-pressed={pressed}
+        onClick={onPress}
+      >
+        <span className={cx(styles['selectDot'])} aria-hidden="true" />
+      </button>
+    </td>
+  );
+}
+
 export function SeriesTable(p: SeriesTableProps): JSX.Element {
   const { caption } = p;
+  const host = useInspector();
+  const selection = useSelection();
+  const selectFor = host === null || p.selectPanelId === undefined ? undefined : p.selectPanelId;
+  const selected = (key: string): boolean => selection !== null && selection.keys.includes(key);
   const columns: readonly { readonly id: SortColumn; readonly numeric: boolean }[] = [
     { id: 'series', numeric: false },
     ...p.columns.map((id) => ({ id, numeric: true })),
@@ -74,6 +104,11 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
           <caption>{caption}</caption>
           <thead>
             <tr>
+              {selectFor !== undefined && (
+                <th scope="col" className={cx(styles['selectCell'])}>
+                  <span className={cx(styles['srOnly'])}>{t('inspector.selectColumn')}</span>
+                </th>
+              )}
               {columns.map((c) => {
                 const sorted = p.sort?.column === c.id ? p.sort.direction : null;
                 return (
@@ -115,7 +150,24 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
                   />
                 ) : null;
               return (
-                <tr key={r.key} data-dimmed={isolating && r.key !== p.isolatedKey ? '' : undefined}>
+                <tr
+                  key={r.key}
+                  data-dimmed={isolating && r.key !== p.isolatedKey ? '' : undefined}
+                  data-row-selected={selectFor !== undefined && selected(r.key) ? '' : undefined}
+                >
+                  {selectFor !== undefined && (
+                    <SelectCell
+                      name={r.name}
+                      pressed={selected(r.key)}
+                      onPress={() => {
+                        const src = { kind: 'tableRow', panelId: selectFor } as const;
+                        host?.select(
+                          selected(r.key) ? null : { keys: [r.key], fromMs: null, toMs: null },
+                          src,
+                        );
+                      }}
+                    />
+                  )}
                   <td className={cx(styles['seriesCell'])}>
                     {p.onIsolate === null ? (
                       <span className={cx(styles['rowText'])}>

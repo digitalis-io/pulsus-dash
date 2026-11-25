@@ -237,7 +237,11 @@ export function bodyRows(): HTMLElement[] {
 export function cell(row: number, col: number): string | null {
   const r = bodyRows()[row];
   if (r === undefined) return null;
-  return within(r).getAllByRole('cell')[col]?.textContent ?? null;
+  // The leading Select toggle (T25-016) is not a value column.
+  const cells = within(r)
+    .getAllByRole('cell')
+    .filter((c) => c.querySelector('[aria-label^="Select "]') === null);
+  return cells[col]?.textContent ?? null;
 }
 
 export function alertText(): string | null {

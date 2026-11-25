@@ -4,11 +4,22 @@
  */
 import type { InspectRequest } from './types';
 
+/** Where a kind's own Esc wins: dialogs, menus, list boxes and CodeMirror. */
+const OWNED = '[role=dialog], [role=menu], [role=listbox], .cm-editor';
+
 /** True when the ladder must not act on `e`. */
 export function ladderSkips(e: KeyboardEvent, doc: Document): boolean {
-  void e;
-  void doc;
-  return true;
+  if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return true;
+  const target = e.target instanceof Element ? e.target : null;
+  if (target?.closest(OWNED) != null) return true;
+  if (
+    target !== null &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') &&
+    !target.hasAttribute('data-escape-ladder')
+  ) {
+    return true;
+  }
+  return doc.querySelector('[aria-modal="true"]') !== null;
 }
 
 /**
@@ -21,9 +32,10 @@ export function activePanelId(
   req: InspectRequest | null,
   lastPressed: string | null,
 ): string | null {
-  void doc;
-  void aside;
-  void req;
-  void lastPressed;
-  return null;
+  const active = doc.activeElement;
+  if (aside !== null && active !== null && aside.contains(active))
+    return req?.origin.panelId ?? null;
+  const panel = active?.closest<HTMLElement>('[data-panel-id]') ?? null;
+  if (panel !== null) return panel.dataset['panelId'] ?? null;
+  return lastPressed;
 }

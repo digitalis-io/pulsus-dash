@@ -146,13 +146,7 @@ describe('unit:inspector-pivots', () => {
     expect(u.searchParams.get('refresh')).toBe('off');
     expect(u.searchParams.get('q')).toBe('{service_name="checkout"}');
     expect(pivot(m.pivots, 'explore')?.href).toBe(
-      exploreHrefFor(
-        'acme',
-        'promql',
-        'line',
-        pEnv().ctx.search,
-        'histogram_quantile(0.99, x)',
-      ),
+      exploreHrefFor('acme', 'promql', 'line', pEnv().ctx.search, 'histogram_quantile(0.99, x)'),
     );
     expect(m.pivots.map((p) => p.id)).toEqual([
       'explore',

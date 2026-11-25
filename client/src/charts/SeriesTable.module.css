@@ -201,3 +201,51 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* T25-016: the leading Select toggle, 24 px; pressed = the row's series is the page selection. */
+.selectCell {
+  width: var(--size-target-min);
+  padding-right: 0;
+}
+
+.selectToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-target-min);
+  height: var(--size-target-min);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+}
+
+.selectToggle:hover {
+  background: var(--surface-hover);
+}
+
+.selectToggle:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+.selectDot {
+  width: var(--space-3);
+  height: var(--space-3);
+  border: calc(var(--border-hairline) * 1.5) solid var(--text-muted);
+  border-radius: 50%;
+  transition:
+    background-color var(--motion-fast) var(--motion-easing-out),
+    border-color var(--motion-fast) var(--motion-easing-out);
+}
+
+.selectToggle[aria-pressed='true'] .selectDot {
+  border-color: var(--focus);
+  background: var(--focus);
+  box-shadow: 0 0 0 var(--size-focus-ring) var(--selection);
+}
+
+.table tr[data-row-selected] {
+  background: var(--selection);
+}

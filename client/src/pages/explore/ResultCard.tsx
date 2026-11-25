@@ -4,7 +4,7 @@
  * known before the first Run) with the shimmer, and the series table. An empty query shows only
  * the empty state.
  */
-import type { JSX, RefCallback } from 'react';
+import { useMemo, type JSX, type RefCallback } from 'react';
 import { ToggleButton } from 'react-aria-components';
 import { ChartFrame } from '../../charts/ChartFrame';
 import { SeriesTable } from '../../charts/SeriesTable';
@@ -18,6 +18,8 @@ import {
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import type { ExploreRun } from '../../explore/useExploreRun';
 import { t } from '../../i18n/t';
+import type { InspectOrigin } from '../../inspector/types';
+import { useChartInspect } from '../../inspector/useChartInspect';
 import { Card } from '../../kit/Card';
 import { cx } from '../../kit/cx';
 import { EmptyState } from '../../kit/EmptyState';
@@ -93,6 +95,20 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
     shown?.planned.rateApplied === true
       ? ({ kind: 'suffix', suffix: '/s' } as const)
       : ({ kind: 'none' } as const);
+  // The Inspector's origin (T25 §5): Explore's query is `q`.
+  const q = p.q;
+  const chartUnit = p.plan?.spec?.unit ?? null;
+  const origin = useMemo<Omit<InspectOrigin, 'window'>>(
+    () => ({
+      surface: 'explore',
+      panelId: null,
+      title: t('explore.result.title'),
+      query: q === '' ? null : { lang: 'promql', text: q },
+      unit: chartUnit,
+    }),
+    [q, chartUnit],
+  );
+  const inspect = useChartInspect(origin);
   return (
     <Card title={t('explore.result.card')}>
       {!empty && (
@@ -133,7 +149,7 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
             <p className={cx(pageStyles['muted'])}>{t('explore.metrics.emptyDetail')}</p>
           </EmptyState>
         ) : p.plan === null ? null : p.plan.data !== null ? (
-          <ChartFrame spec={p.plan.spec} data={p.plan.data} />
+          <ChartFrame spec={p.plan.spec} data={p.plan.data} {...inspect} />
         ) : (
           <p className={cx(pageStyles['muted'])}>{noticeText(p.plan, p.run)}</p>
         )}
@@ -151,6 +167,7 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
           caption={t('explore.table.caption')}
           columns={TABLE_COLUMNS}
           maxRows={TABLE_ROWS}
+          selectPanelId={null}
         />
       )}
     </Card>
