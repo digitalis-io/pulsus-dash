@@ -2,7 +2,7 @@
 //! §3.5, §4.1; T04-001, T04-002, T04-009, T04-010).
 #![deny(clippy::indexing_slicing)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::chunk::{Chunk, ChunkId, SeriesMeta, TimeAxis};
@@ -178,10 +178,30 @@ fn opt_str(c: Option<&Col>, r: usize) -> Result<Option<&str>, PartError> {
 #[derive(Debug)]
 struct Labels {
     schema: SchemaDesc,
-    series: BTreeMap<u32, SeriesMeta>,
+    /// One exact-size, id-ordered slice per labels batch; ids rise across the part (B1 writes
+    /// them dense from 0), so a series costs one 32-byte entry, never a map node (B3 §3.1).
+    batches: Vec<Box<[(u32, SeriesMeta)]>>,
     /// Label rows and label key and value bytes so far (B3 per-part limits).
     rows: usize,
     bytes: usize,
+}
+
+impl Labels {
+    fn get(&self, sid: u32) -> Option<&SeriesMeta> {
+        let b = self
+            .batches
+            .partition_point(|b| b.first().is_some_and(|(first, _)| *first <= sid));
+        let batch = self.batches.get(b.checked_sub(1)?)?;
+        let i = batch.binary_search_by_key(&sid, |(id, _)| *id).ok()?;
+        batch.get(i).map(|(_, m)| m)
+    }
+
+    fn last(&self) -> Option<u32> {
+        self.batches
+            .last()
+            .and_then(|b| b.last())
+            .map(|(id, _)| *id)
+    }
 }
 
 #[derive(Debug)]
@@ -191,7 +211,10 @@ struct Data {
     start_ms: i64,
     step_ms: i64,
     len: u32,
-    seen: BTreeSet<u32>,
+    /// Series sent so far and the last id: ids rise across the part's batches (B1), so a
+    /// repeated id is found without a set.
+    sent: usize,
+    last: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -260,6 +283,8 @@ pub struct BodyDecoder {
     /// Body and value budget used (§3.1 accounting; charged once, never refunded).
     used: u64,
     values: u64,
+    /// The one label set of every series without labels (shared; no allocation per series).
+    no_labels: Arc<[(String, String)]>,
 }
 
 impl BodyDecoder {
@@ -283,6 +308,7 @@ impl BodyDecoder {
             seen_parts: 0,
             used: 0,
             values: 0,
+            no_labels: Arc::from(Vec::new()),
         }
     }
 
@@ -499,7 +525,7 @@ impl BodyDecoder {
                 check_schema(&schema, Kind::Labels, false)?;
                 Ok(State::LabelsOpen(Box::new(Labels {
                     schema,
-                    series: BTreeMap::new(),
+                    batches: Vec::new(),
                     rows: 0,
                     bytes: 0,
                 })))
@@ -526,7 +552,7 @@ impl BodyDecoder {
             (State::LabelsOpen(mut l), FrameType::Batch) => {
                 let msg = one_message(f)?;
                 let cols = ipc::columns(&l.schema, &msg).map_err(ipc_err)?;
-                let (rows, bytes, cost) = labels_counts(&cols)?;
+                let (rows, groups, bytes, cost) = labels_counts(&cols)?;
                 if rows > self.limits.rows_per_batch_labels {
                     return Err(PartError::Limit("rows per batch"));
                 }
@@ -537,8 +563,10 @@ impl BodyDecoder {
                     return Err(PartError::Limit("label bytes"));
                 }
                 self.charge(cost)?;
-                let series = labels_batch(&l, &cols)?;
-                l.series.extend(series);
+                let series = labels_batch(&l, &cols, groups, &self.no_labels)?;
+                if !series.is_empty() {
+                    l.batches.push(series);
+                }
                 l.rows += rows;
                 l.bytes += bytes;
                 if !last {
@@ -562,7 +590,8 @@ impl BodyDecoder {
                     start_ms: info.start_ms,
                     step_ms: info.step_ms,
                     len: info.len,
-                    seen: BTreeSet::new(),
+                    sent: 0,
+                    last: None,
                 };
                 ev.push(Event::Grid {
                     part: id,
@@ -785,7 +814,7 @@ impl BodyDecoder {
         if rows > self.limits.rows_per_batch_grid {
             return Err(PartError::Limit("rows per batch"));
         }
-        if d.seen.len() + rows > self.limits.series_per_part {
+        if d.sent + rows > self.limits.series_per_part {
             return Err(PartError::Limit("series per part"));
         }
         self.charge(limits::batch_cost(rows))?;
@@ -798,15 +827,14 @@ impl BodyDecoder {
         let mut series = Vec::with_capacity(rows);
         for r in 0..rows {
             let sid = u32_cell(Some(ids), r)?;
-            let meta = labels
-                .series
-                .get(&sid)
-                .ok_or(PartError::MissingLabels(sid))?;
-            if !d.seen.insert(sid) {
+            let meta = labels.get(sid).ok_or(PartError::MissingLabels(sid))?;
+            if d.last.is_some_and(|last| sid <= last) {
                 return Err(PartError::DuplicateSeries(sid));
             }
+            d.last = Some(sid);
             series.push(meta.clone());
         }
+        d.sent += rows;
         let n = child.len;
         let total = u32::try_from(n).map_err(|_| PartError::Limit("chunk size"))?;
         let validity = if child.nulls > 0 {
@@ -858,17 +886,18 @@ impl BodyDecoder {
 type Group = (u32, u64, Vec<(String, String)>, bool);
 
 /// `(rows, label key and value bytes, body-budget charge)` of a labels batch, from its validated
-/// columns before anything is copied (B3 §3.1): 64 per series (run of one series id) + 48 + key
+/// columns before anything is copied (B3 §3.1): 96 per series (run of one series id) + 48 + key
 /// + value per non-null row.
-fn labels_counts(cols: &[Col]) -> Result<(usize, usize, u64), PartError> {
+fn labels_counts(cols: &[Col]) -> Result<(usize, usize, usize, u64), PartError> {
     let rows = cols.first().map_or(0, |c| c.len);
     let bad = || ipc_err(IpcError::Layout("column"));
     let (keys, vals) = (cols.get(2).ok_or_else(bad)?, cols.get(3).ok_or_else(bad)?);
-    let (mut bytes, mut cost, mut prev) = (0usize, 0u64, None);
+    let (mut bytes, mut cost, mut prev, mut groups) = (0usize, 0u64, None, 0usize);
     for r in 0..rows {
         let sid = u32_cell(cols.first(), r)?;
         if prev != Some(sid) {
             cost += limits::cost::SERIES;
+            groups += 1;
             prev = Some(sid);
         }
         let len = |c: &Col| -> Result<usize, PartError> {
@@ -884,26 +913,31 @@ fn labels_counts(cols: &[Col]) -> Result<(usize, usize, u64), PartError> {
         }
         bytes += kv;
     }
-    Ok((rows, bytes, cost))
+    Ok((rows, groups, bytes, cost))
 }
 
 /// A labels batch → `(series id, SeriesMeta)` rows, with the §4.1 shape rules: rows of a
 /// series contiguous and in one batch, one key hash, no half-null label, a null row alone,
 /// names strictly increasing by bytes.
-fn labels_batch(l: &Labels, cols: &[Col]) -> Result<Vec<(u32, SeriesMeta)>, PartError> {
+fn labels_batch(
+    l: &Labels,
+    cols: &[Col],
+    groups: usize,
+    no_labels: &Arc<[(String, String)]>,
+) -> Result<Box<[(u32, SeriesMeta)]>, PartError> {
     let rows = cols.first().map_or(0, |c| c.len);
-    let mut out: Vec<(u32, SeriesMeta)> = Vec::new();
-    let mut here = BTreeSet::new();
+    // Exactly `groups` series (counted by `labels_counts`): no growth slack is retained.
+    let mut out: Vec<(u32, SeriesMeta)> = Vec::with_capacity(groups);
     let mut cur: Option<Group> = None;
+    let last = l.last();
     let finish = |cur: Option<Group>, out: &mut Vec<(u32, SeriesMeta)>| {
         if let Some((sid, key_hash, labels, _)) = cur {
-            out.push((
-                sid,
-                SeriesMeta {
-                    key_hash,
-                    labels: Arc::from(labels),
-                },
-            ));
+            let labels = if labels.is_empty() {
+                Arc::clone(no_labels)
+            } else {
+                Arc::from(labels)
+            };
+            out.push((sid, SeriesMeta { key_hash, labels }));
         }
     };
     for r in 0..rows {
@@ -913,11 +947,16 @@ fn labels_batch(l: &Labels, cols: &[Col]) -> Result<Vec<(u32, SeriesMeta)>, Part
         let v = opt_str(cols.get(3), r)?;
         if cur.as_ref().is_none_or(|c| c.0 != sid) {
             finish(cur.take(), &mut out);
-            if l.series.contains_key(&sid) {
+            if l.get(sid).is_some() {
                 return Err(PartError::DuplicateSeries(sid));
             }
-            if !here.insert(sid) {
-                return Err(PartError::Shape("non-contiguous rows"));
+            let prev = out.last().map(|(id, _)| *id).or(last);
+            if prev.is_some_and(|p| sid <= p) {
+                return Err(if out.binary_search_by_key(&sid, |(id, _)| *id).is_ok() {
+                    PartError::Shape("non-contiguous rows")
+                } else {
+                    PartError::Shape("series order")
+                });
             }
             cur = Some((sid, key, Vec::new(), false));
         }
@@ -950,5 +989,5 @@ fn labels_batch(l: &Labels, cols: &[Col]) -> Result<Vec<(u32, SeriesMeta)>, Part
         }
     }
     finish(cur, &mut out);
-    Ok(out)
+    Ok(out.into_boxed_slice())
 }

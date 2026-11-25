@@ -20,7 +20,7 @@ pub(crate) mod testkit;
 
 pub use bytes::{SharedBytes, slabs_from};
 pub use chunk::{Chunk, ChunkBuilder, ChunkError, ChunkId, SeriesMeta, TimeAxis};
-pub use coverage::{Coverage, ErrorRow, Phase};
+pub use coverage::{Coverage, ErrorRow, Phase, STR_LIST_ELEMENT_BYTES, StrList};
 pub use decode::{BodyDecoder, Event, GridInfo, MAX_GRID_LEN, PartError, Verdict};
 pub use dsf::{DsfError, Frame, FrameHeader, FrameSplitter, FrameType, HEADER_LEN, MAX_PAYLOAD};
 pub use ipc::IpcError;

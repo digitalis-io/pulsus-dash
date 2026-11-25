@@ -48,7 +48,7 @@ pub mod cost {
     /// Per accepted schema, plus field names and metadata keys and values.
     pub const SCHEMA: u64 = 256;
     /// Per series label set.
-    pub const SERIES: u64 = 64;
+    pub const SERIES: u64 = 96;
     /// Per label of a set, plus its key and value.
     pub const LABEL: u64 = 48;
     /// Per data batch.
@@ -208,5 +208,22 @@ mod tests {
         // max_chunk = 2 × max_payload; the source buffer fits a chunk.
         assert_eq!(limits::MAX_CHUNK, 2 * MAX_PAYLOAD as usize);
         const { assert!(limits::SOURCE_BUFFER <= limits::MAX_CHUNK) };
+    }
+
+    #[test]
+    fn retained_entries_fit_their_charges() {
+        use crate::chunk::SeriesMeta;
+        use std::mem::size_of;
+        // A series of a labels part: its id-ordered entry, its label `Arc` header (none for a
+        // series without labels: one shared set), and at worst one batch-list slot with the
+        // list's doubling slack (a batch holds at least one series).
+        assert!(
+            size_of::<(u32, SeriesMeta)>() + 16 + 2 * size_of::<Box<[u8]>>()
+                <= cost::SERIES as usize
+        );
+        // A label: its `(String, String)` (the key and value bytes are charged as they are).
+        assert!(size_of::<(String, String)>() <= cost::LABEL as usize);
+        // A series of a chunk: its `SeriesMeta` clone and its offset.
+        assert!(size_of::<SeriesMeta>() + size_of::<u32>() <= cost::BATCH_SERIES as usize);
     }
 }

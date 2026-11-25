@@ -2,8 +2,87 @@
 //! (T04-012 subset, VIZ-027).
 #![deny(clippy::indexing_slicing)]
 
+use std::fmt;
+use std::sync::Arc;
+
 use crate::decode::PartError;
 use crate::ipc::{Col, IpcError};
+
+/// A `list<utf8>` cell in one packed allocation (B3 §3.1: a coverage list element costs 16 B
+/// plus its bytes; this form retains 4 B per element plus its bytes, whatever the target's
+/// `String` size): `[n: u32][end of element i: u32; n][the elements' bytes]`, little-endian.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct StrList(Box<[u8]>);
+
+/// The retained bytes per element of a `StrList`, besides the element's own bytes.
+pub const STR_LIST_ELEMENT_BYTES: usize = 4;
+
+impl StrList {
+    fn word(&self, i: usize) -> Option<usize> {
+        let b = self.0.get(4 * i..4 * i + 4)?;
+        Some(u32::from_le_bytes(b.try_into().ok()?) as usize)
+    }
+
+    /// The number of elements.
+    pub fn len(&self) -> usize {
+        self.word(0).unwrap_or(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Element `i`.
+    pub fn get(&self, i: usize) -> Option<&str> {
+        let n = self.len();
+        if i >= n {
+            return None;
+        }
+        let start = if i == 0 { 0 } else { self.word(i)? };
+        let end = self.word(i + 1)?;
+        let base = 4 + 4 * n;
+        std::str::from_utf8(self.0.get(base + start..base + end)?).ok()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        (0..self.len()).filter_map(|i| self.get(i))
+    }
+
+    /// The packed form of `n` elements whose ends (cumulative, from 0) and bytes are given; one
+    /// exact-size allocation.
+    pub(crate) fn pack(ends: impl ExactSizeIterator<Item = u32>, bytes: &[u8]) -> Self {
+        let n = ends.len();
+        if n == 0 {
+            return Self::default();
+        }
+        let mut b = Vec::with_capacity(4 + 4 * n + bytes.len());
+        b.extend_from_slice(&(n as u32).to_le_bytes());
+        for e in ends {
+            b.extend_from_slice(&e.to_le_bytes());
+        }
+        b.extend_from_slice(bytes);
+        Self(b.into_boxed_slice())
+    }
+}
+
+impl<S: AsRef<str>> FromIterator<S> for StrList {
+    fn from_iter<I: IntoIterator<Item = S>>(it: I) -> Self {
+        let items: Vec<S> = it.into_iter().collect();
+        let mut bytes = Vec::new();
+        let mut ends = Vec::with_capacity(items.len());
+        for s in &items {
+            bytes.extend_from_slice(s.as_ref().as_bytes());
+            ends.push(bytes.len() as u32);
+        }
+        Self::pack(ends.into_iter(), &bytes)
+    }
+}
+
+impl fmt::Debug for StrList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
 
 /// The coverage phase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,7 +101,7 @@ pub struct Coverage {
     pub rollup_level_s: Option<u32>,
     pub sampled_ratio: Option<f64>,
     pub truncated: bool,
-    pub truncation_reason: Option<String>,
+    pub truncation_reason: Option<Box<str>>,
     pub dropped_count: Option<u64>,
     pub series_returned: u32,
     pub rows_read: Option<u64>,
@@ -31,10 +110,10 @@ pub struct Coverage {
     pub shards_skipped: Option<u16>,
     /// ms since the epoch.
     pub retention_floor: Option<i64>,
-    pub excluded_dims: Vec<String>,
-    pub warnings: Vec<String>,
-    pub infos: Vec<String>,
-    pub upstream_query_ids: Vec<String>,
+    pub excluded_dims: StrList,
+    pub warnings: StrList,
+    pub infos: StrList,
+    pub upstream_query_ids: StrList,
     /// 0 hit, 1 miss, 2 bypass, 3 other.
     pub read_cache: Option<u8>,
     pub read_cache_through: Option<i64>,
@@ -49,10 +128,11 @@ pub struct ErrorRow {
     /// 0 bad_query … 8 internal (B1 §3.1).
     pub code: u8,
     pub http_status: u16,
-    pub message: String,
+    /// Shared: the decoder's stream-level copy and the emitted event hold one allocation.
+    pub message: Arc<str>,
     pub position: Option<u32>,
     pub retry_after_ms: Option<u32>,
-    pub suggestion: Option<String>,
+    pub suggestion: Option<Arc<str>>,
 }
 
 impl Coverage {
@@ -96,18 +176,18 @@ fn required<const N: usize>(c: Option<&Col>) -> Result<[u8; N], PartError> {
     cell::<N>(c)?.ok_or(PartError::Ipc(IpcError::Layout("nulls")))
 }
 
-fn text(c: Option<&Col>) -> Result<Option<String>, PartError> {
+fn text<T: for<'a> From<&'a str>>(c: Option<&Col>) -> Result<Option<T>, PartError> {
     let c = c.ok_or(PartError::Ipc(IpcError::Messages))?;
     if !c.valid(0) {
         return Ok(None);
     }
     c.str_at(0)
-        .map(|s| Some(s.to_owned()))
+        .map(|s| Some(T::from(s)))
         .ok_or(PartError::Ipc(IpcError::Layout("column")))
 }
 
-fn list(c: Option<&Col>) -> Result<Vec<String>, PartError> {
-    c.and_then(|c| c.list_at(0))
+fn list(c: Option<&Col>) -> Result<StrList, PartError> {
+    c.and_then(|c| c.packed_list_at(0))
         .ok_or(PartError::Ipc(IpcError::Layout("column")))
 }
 
@@ -225,7 +305,7 @@ pub(crate) fn error_row(cols: &[Col]) -> Result<ErrorRow, PartError> {
         return Err(PartError::Value("code"));
     }
     let http_status = u16::from_le_bytes(required::<2>(c.next())?);
-    let message = text(c.next())?.ok_or(PartError::Ipc(IpcError::Layout("nulls")))?;
+    let message: Arc<str> = text(c.next())?.ok_or(PartError::Ipc(IpcError::Layout("nulls")))?;
     let position = cell::<4>(c.next())?.map(u32::from_le_bytes);
     let retry_after_ms = cell::<4>(c.next())?.map(u32::from_le_bytes);
     let suggestion = text(c.next())?;
@@ -259,10 +339,10 @@ mod tests {
             shards_failed: None,
             shards_skipped: None,
             retention_floor: None,
-            excluded_dims: Vec::new(),
-            warnings: Vec::new(),
-            infos: Vec::new(),
-            upstream_query_ids: Vec::new(),
+            excluded_dims: StrList::default(),
+            warnings: StrList::default(),
+            infos: StrList::default(),
+            upstream_query_ids: StrList::default(),
             read_cache: None,
             read_cache_through: None,
             data_end: None,
@@ -280,11 +360,16 @@ mod tests {
         let cases: [(&str, Edit, bool, bool); 10] = [
             ("complete", |_| {}, true, false),
             ("truncated", |c| c.truncated = true, false, false),
-            ("warning", |c| c.warnings = vec!["w".into()], false, false),
+            (
+                "warning",
+                |c| c.warnings = ["w"].into_iter().collect(),
+                false,
+                false,
+            ),
             ("partial", |c| c.phase = Phase::Partial, false, false),
             (
                 "excluded_dims",
-                |c| c.excluded_dims = vec!["pod".into()],
+                |c| c.excluded_dims = ["pod"].into_iter().collect(),
                 false,
                 false,
             ),
@@ -354,5 +439,21 @@ mod tests {
         assert!(c.complete(10_500) && !c.retention_limited(10_500));
         c.retention_floor = Some(10_750);
         assert!(!c.complete(10_500) && c.retention_limited(10_500));
+    }
+
+    #[test]
+    fn retained_sizes_fit_the_charges() {
+        use crate::limits::cost;
+        // A coverage row's fixed part (inline, or boxed while it waits for its labels part)
+        // and its four list headers fit the per-row charge; an element fits its charge.
+        assert!(std::mem::size_of::<Coverage>() + 4 * 4 <= cost::COVERAGE as usize);
+        assert!(STR_LIST_ELEMENT_BYTES <= cost::LIST_ELEMENT as usize);
+        // An error row's two shared strings (Arc headers) fit the per-row charge.
+        assert!(std::mem::size_of::<ErrorRow>() + 2 * 16 <= cost::ERROR as usize);
+        let l: StrList = ["", "ab", "é", ""].into_iter().collect();
+        assert_eq!(l.len(), 4);
+        assert_eq!(l.iter().collect::<Vec<_>>(), ["", "ab", "é", ""]);
+        assert_eq!(l.get(4), None);
+        assert!(StrList::default().is_empty());
     }
 }

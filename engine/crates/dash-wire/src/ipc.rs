@@ -250,17 +250,24 @@ impl Col {
         }
     }
 
-    /// The strings of `List<Utf8>` row `r`.
-    pub(crate) fn list_at(&self, r: usize) -> Option<Vec<String>> {
-        match &self.data {
-            ColData::List { offsets, child } => {
-                let o = offsets.as_bytes();
-                (offset_at(o, r)?..offset_at(o, r + 1)?)
-                    .map(|k| child.str_at(k).map(str::to_owned))
-                    .collect()
-            }
-            _ => None,
-        }
+    /// The strings of `List<Utf8>` row `r`, packed in one exact-size allocation (validated
+    /// UTF-8 per element by `columns`).
+    pub(crate) fn packed_list_at(&self, r: usize) -> Option<crate::coverage::StrList> {
+        let ColData::List { offsets, child } = &self.data else {
+            return None;
+        };
+        let ColData::Utf8 { offsets: co, bytes } = &child.data else {
+            return None;
+        };
+        let o = offsets.as_bytes();
+        let (a, b) = (offset_at(o, r)?, offset_at(o, r + 1)?);
+        let co = co.as_bytes();
+        let (first, last) = (offset_at(co, a)?, offset_at(co, b)?);
+        let text = bytes.as_bytes().get(first..last)?;
+        let ends = (a + 1..=b)
+            .map(|k| offset_at(co, k).and_then(|e| u32::try_from(e.checked_sub(first)?).ok()))
+            .collect::<Option<Vec<u32>>>()?;
+        Some(crate::coverage::StrList::pack(ends.into_iter(), text))
     }
 }
 
