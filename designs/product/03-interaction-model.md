@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.2-rc · 2026-11-21 |
+| **Version** | 1.3-rc · 2026-11-25 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -316,6 +316,10 @@ entity or open the selected item ([01a](01a-audiences-and-perspectives.md) AUD-0
 *Acceptance:* From a pod Lens with a selection and the Inspector open, `Esc` clears the selection,
 then closes the Inspector, then rises to the service Lens, then to the Atlas.
 
+*Note (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-007--one-esc-ladder)):* on boards and Explore one host owns the ladder
+(T25-007); a kind's own steps go before (`pre`) and after (`post`) the host's clear selection and
+close Inspector steps.
+
 #### INT-017 — Time scrub
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer
 
@@ -609,6 +613,12 @@ underlying query (editable, ✎), pivot chips and actions (Pin to investigation,
 *Acceptance:* Clicking the p99 series at 13:41:20 opens the Inspector with all five sections as in
 the sketch.
 
+*Staging (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-015--actions-staged)):* the M-UI2 acceptance is the five sections, with
+Pin, Create alert and Ask AI disabled and their reasons shown; they work with
+[IA-007](02-information-architecture.md#ia-007--investigations),
+[ALR-010](07-alerting.md#alr-010--create-alert-from-every-inspector) and
+[AI-030](06-ai-copilot.md#ai-030--ask-ai-from-the-inspector) (M-UI4), whose acceptance covers them.
+
 #### INT-035 — Pivot chips keep Context
 **MUST** · M-UI2 · SRE, Platform, Engineer
 
@@ -619,6 +629,12 @@ callers, same metric on all pods) that keep Context under the rules of
 *Acceptance:* "Logs ±1m" from the p99 point at 13:41:20 opens logs for `checkout` from 13:40:20 to
 13:42:20 with translated filters and the same baseline.
 
+*Staging (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-010--pivot-context)):* interim (I1): time and filters are kept as
+T25-010 states, and the chip's Context line reads "Not carried yet: baseline". The baseline is
+carried, with the line gone, from I6 (the Context baseline,
+[INT-030](#int-030--comparison-baseline-ghost)); the example acceptance above applies there
+(`unit:pivot-context` rows C3 and C4).
+
 #### INT-036 — Pivot opens as a split
 **MUST** · M-UI2 · SRE, Platform, Engineer
 
@@ -628,6 +644,10 @@ toggle a split of two linked views.
 
 *Acceptance:* Clicking "Traces in this bucket" opens traces beside the chart, hover in either moves
 the shared cursor; `Shift`-click replaces the chart; `⌘`-click opens a new tab with the same Context.
+
+*Staging (#164, [T25](../technical/T25-inspector-and-pivots.md#t25-009--pivot-chips)):* interim (I1): plain click and `Shift`-click replace
+the view, Back returns, and `⌘`/`Ctrl`-click opens a new tab (`e2e:inspector-pivot-nav`); I4 (M-UI2)
+adds the default split and `\`, and the full acceptance above applies there.
 
 ## 8. Command palette
 
@@ -787,3 +807,4 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 | 1.0-rc2 | 2026-11-18 | 3D-first estate per owner brief: §3 camera table and INT-001 edited (Orbit default everywhere, Map on request); §4.1 wheel and double-click rows for 3D scenes and 3D signal views; §5 continuous infrastructure flight; §5.1 INT-042 to INT-044 added; resolutions 13–15 |
 | 1.1-rc | 2026-11-19 | Application layout (D9, roadmap Q13): the time window lives in the page header ([02](02-information-architecture.md) IA-020) and the Time Ribbon only in Space scenes (IA-028); §6 intro, INT-015 (F6 regions), INT-017, INT-025 (brush on any time chart), INT-029 and INT-031 revised in place; key table `F6` row |
 | 1.2-rc | 2026-11-21 | #93, owner decisions 2026-11-21: §4.1 2D double-click zooms the window out; note on time commits, the local value axis, wheel over the plot only, pinch heuristic, right click on the plot; INT-025 brushes by right drag or Alt+left drag (left drag pans) |
+| 1.3-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): INT-034, INT-035 and INT-036 gain staging notes with interim acceptance and their delivering issues (M-UI4 actions; I6 baseline; I4 split and `\`); INT-016 note: a kind's steps go before and after the host's (T25-007) |
