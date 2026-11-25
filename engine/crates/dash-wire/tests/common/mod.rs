@@ -840,7 +840,16 @@ pub type LabelRow<'a> = (u32, u64, Option<&'a [u8]>, Option<&'a [u8]>);
 
 /// A `labels/1` batch laid out like B1's (8-aligned buffers).
 pub fn labels_msg(rows: &[LabelRow<'_>], always_validity: bool) -> Msg {
-    let mut b = Body::new(8, 1);
+    labels_with(rows, always_validity, 1)
+}
+
+/// A `labels/1` batch whose buffers declare their length rounded up to `pad` (unused tails).
+pub fn labels_msg_padded(rows: &[LabelRow<'_>], pad: usize) -> Msg {
+    labels_with(rows, false, pad)
+}
+
+fn labels_with(rows: &[LabelRow<'_>], always_validity: bool, pad: usize) -> Msg {
+    let mut b = Body::new(8, pad);
     let ids: Vec<u8> = rows.iter().flat_map(|r| r.0.to_le_bytes()).collect();
     let keys: Vec<u8> = rows.iter().flat_map(|r| r.1.to_le_bytes()).collect();
     b.fixed(&ids, rows.len());

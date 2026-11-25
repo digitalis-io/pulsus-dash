@@ -106,7 +106,7 @@ fn body_padding_must_be_zero() {
             ),
         ),
         (
-            "after the last offset of label data",
+            "gap after the label_key data",
             1,
             poke(
                 "promql-range-counter",
@@ -116,23 +116,68 @@ fn body_padding_must_be_zero() {
                 set,
             ),
         ),
-        (
-            "after the label_value offsets",
-            1,
-            poke(
-                "promql-range-counter",
-                C_BATCH_L,
-                0,
-                (labels[8].0 + labels[8].1) as usize + 1,
-                set,
-            ),
-        ),
     ];
     for (name, part, e) in cases {
         assert_eq!(failure(&e, part), nz, "{name}: {e:?}");
         if part == 2 {
             assert_eq!(chunks(&e, 2), 0, "{name}");
         }
+    }
+}
+
+/// The counter with its first labels batch (series 0) rebuilt with every buffer's declared
+/// length padded to 8, so the `label_value` offsets (12 bytes) and data (9 bytes) buffers have
+/// unused tails inside their declared lengths; `poke` sets one byte of that batch's body.
+fn padded_labels(poke: Option<(usize, u8)>) -> Vec<Event> {
+    let rows: [LabelRow<'_>; 2] = [
+        (0, K0, Some(b"instance"), Some(b"a:9090")),
+        (0, K0, Some(b"job"), Some(b"api")),
+    ];
+    let mut m = labels_msg_padded(&rows, 8);
+    if let Some((at, v)) = poke {
+        m.body[at] = v;
+    }
+    let mut fr = counter();
+    *fr[C_BATCH_L].msg_mut(0) = m;
+    ev(&fr)
+}
+
+#[test]
+fn unused_tails_inside_label_value_buffers_must_be_zero() {
+    let m = labels_msg_padded(
+        &[
+            (0, K0, Some(b"instance"), Some(b"a:9090")),
+            (0, K0, Some(b"job"), Some(b"api")),
+        ],
+        8,
+    );
+    let b = m.tree().t(2).pairs(2);
+    // label_value: offsets buffer 8 (12 bytes used of 16), data buffer 9 (9 bytes of 16).
+    assert_eq!((b[8].1, b[9].1), (16, 16));
+    let ok = padded_labels(None);
+    assert!(
+        !ok.iter().any(|e| matches!(e, Event::Failed { .. })),
+        "the padded batch is valid: {ok:?}"
+    );
+    let base = run(&fixture("promql-range-counter"), 1);
+    assert!(support::same(&ok, &base));
+    let nz = ipc(IpcError::Layout("nonzero padding"));
+    for (name, at) in [
+        ("label_value offsets tail", b[8].0 as usize + 13),
+        ("label_value data tail", b[9].0 as usize + 12),
+    ] {
+        let e = padded_labels(Some((at, 1)));
+        assert_eq!(failure(&e, 1), nz, "{name}: {e:?}");
+        assert_eq!(
+            failure(&e, 2),
+            Some(PartError::Order("labels part failed")),
+            "{name}"
+        );
+        assert_eq!(chunks(&e, 2), 0, "{name}: no event from the frame");
+        assert!(
+            !e.iter().any(|e| matches!(e, Event::PartEnd { part: 1 })),
+            "{name}"
+        );
     }
 }
 
