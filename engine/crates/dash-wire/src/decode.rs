@@ -263,6 +263,16 @@ impl BodyDecoder {
         }
     }
 
+    /// A decoder with a limit set (stub).
+    pub fn with_limits(first_chunk_id: u64, _limits: crate::limits::Limits) -> Self {
+        Self::new(first_chunk_id)
+    }
+
+    /// `(open parts, distinct parts seen, body budget used)` (stub).
+    pub fn retained(&self) -> (usize, usize, u64) {
+        (0, 0, 0)
+    }
+
     /// Decodes one frame. At most 3 events, plus 2 per data part linked to a labels part that
     /// finishes or fails here; an END frame: one per open part plus `End`.
     pub fn frame(&mut self, f: Frame) -> Vec<Event> {
@@ -769,4 +779,93 @@ fn labels_batch(l: &Labels, f: &Frame) -> Result<Vec<(u32, SeriesMeta)>, PartErr
     }
     finish(cur, &mut out);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    //! unit:limits-json, Rust side (plan #68 B3 §3.1): every limit, cost and reserve and
+    //! `MAX_GRID_LEN` equal `wire/schemas/limits.json`.
+    use super::MAX_GRID_LEN;
+    use crate::dsf::{HEADER_LEN, MAX_PAYLOAD};
+    use crate::limits::{self, Limits, cost};
+
+    fn json() -> serde_json::Value {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../wire/schemas/limits.json"
+        );
+        let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{path}: {e}"))
+    }
+
+    #[test]
+    fn limits_match_json() {
+        let v = json();
+        let n = |k: &str| {
+            v.get(k)
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_else(|| panic!("limits.json: {k}"))
+        };
+        let c = |k: &str| {
+            v.get("cost")
+                .and_then(|c| c.get(k))
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_else(|| panic!("limits.json: cost.{k}"))
+        };
+        let pairs: [(&str, u64); 18] = [
+            ("max_payload", u64::from(MAX_PAYLOAD)),
+            ("max_chunk", limits::MAX_CHUNK as u64),
+            ("source_buffer", limits::SOURCE_BUFFER as u64),
+            ("max_grid_len", u64::from(MAX_GRID_LEN)),
+            ("open_parts", limits::OPEN_PARTS as u64),
+            ("distinct_parts", limits::DISTINCT_PARTS as u64),
+            (
+                "rows_per_batch_labels",
+                limits::ROWS_PER_BATCH_LABELS as u64,
+            ),
+            ("rows_per_batch_grid", limits::ROWS_PER_BATCH_GRID as u64),
+            ("series_per_part", limits::SERIES_PER_PART as u64),
+            ("label_rows_per_part", limits::LABEL_ROWS_PER_PART as u64),
+            ("label_bytes_per_part", limits::LABEL_BYTES_PER_PART as u64),
+            ("meta_list_elements", limits::META_LIST_ELEMENTS as u64),
+            ("meta_string_bytes", limits::META_STRING_BYTES as u64),
+            ("reason_bytes", limits::REASON_BYTES as u64),
+            ("body_budget", limits::BODY_BUDGET),
+            ("value_budget", limits::VALUE_BUDGET),
+            ("part_reserve", limits::PART_RESERVE),
+            ("stream_reserve", limits::STREAM_RESERVE),
+        ];
+        for (k, ours) in pairs {
+            assert_eq!(n(k), ours, "{k}");
+        }
+        let costs: [(&str, u64); 11] = [
+            ("part", cost::PART),
+            ("schema", cost::SCHEMA),
+            ("series", cost::SERIES),
+            ("label", cost::LABEL),
+            ("batch", cost::BATCH),
+            ("batch_series", cost::BATCH_SERIES),
+            ("coverage", cost::COVERAGE),
+            ("list_element", cost::LIST_ELEMENT),
+            ("error", cost::ERROR),
+            ("value", cost::VALUE),
+            ("validity_word", cost::VALIDITY_WORD),
+        ];
+        for (k, ours) in costs {
+            assert_eq!(c(k), ours, "cost.{k}");
+        }
+        assert_eq!(
+            v.get("cost")
+                .and_then(serde_json::Value::as_object)
+                .map(|o| o.len()),
+            Some(costs.len())
+        );
+        let d = Limits::default();
+        assert_eq!(d.open_parts, limits::OPEN_PARTS);
+        assert_eq!(d.body_budget, limits::BODY_BUDGET);
+        assert_eq!(d.value_budget, limits::VALUE_BUDGET);
+        // max_chunk = 2 × max_payload; the source buffer fits a chunk.
+        assert_eq!(limits::MAX_CHUNK, 2 * MAX_PAYLOAD as usize);
+        assert!(limits::SOURCE_BUFFER <= limits::MAX_CHUNK && HEADER_LEN == 16);
+    }
 }

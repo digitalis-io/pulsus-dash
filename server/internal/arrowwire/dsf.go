@@ -107,12 +107,16 @@ var eos = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0}
 // Writer writes one DSF response body. It keeps the body offset (for alignment), the part ids
 // used, and whether the stream-level ERROR and END were written; an io.Writer error is sticky.
 type Writer struct {
-	w       io.Writer
-	off     int64
-	err     error
-	refused bool
-	ended   bool
-	used    map[uint32]bool
+	w        io.Writer
+	off      int64
+	err      error
+	refused  bool
+	ended    bool
+	used     map[uint32]bool
+	lim      Limits
+	spent    int  // body budget used (§3.1 accounting)
+	values   int  // value budget used
+	noBudget bool // test knob: both budget checks off (budget-over.dsf)
 }
 
 // NewWriter returns a Writer on w; the body starts at offset 0.

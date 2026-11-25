@@ -65,6 +65,16 @@ impl SharedBytes {
     pub fn strong_count(&self) -> usize {
         Arc::strong_count(&self.buf)
     }
+
+    /// The size of the whole backing allocation (stub).
+    pub fn backing_len(&self) -> usize {
+        0
+    }
+}
+
+/// Copies `data` into slabs (stub).
+pub fn slabs_from(data: &[u8], body_offset: u64, _max: usize) -> impl Iterator<Item = SharedBytes> {
+    std::iter::once(SharedBytes::copy_from(data, (body_offset % 64) as usize))
 }
 
 impl PartialEq for SharedBytes {

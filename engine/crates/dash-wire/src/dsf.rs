@@ -276,6 +276,11 @@ impl FrameSplitter {
         Ok(None)
     }
 
+    /// Bytes the splitter holds (stub).
+    pub fn retained_bytes(&self) -> usize {
+        0
+    }
+
     /// End of input: `Truncated` if any byte of an unfinished frame remains.
     pub fn finish(&self) -> Result<(), DsfError> {
         if let Some(e) = &self.failed {
