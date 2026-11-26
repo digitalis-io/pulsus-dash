@@ -4,11 +4,13 @@ Every chart in the client is one `<ChartFrame>` on one `<canvas>`, drawn by a ch
 seam of [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3 (amended by
 [ADR-0019](../../designs/adr/0019-chart-frame-drawn-event-and-frame-id.md),
 [ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md),
-[ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) and
-[ADR-0023](../../designs/adr/0023-chart-event-markers.md)). Until the Rust/WASM
+[ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md),
+[ADR-0023](../../designs/adr/0023-chart-event-markers.md),
+[ADR-0025](../../designs/adr/0025-chart-frame-selection.md) and
+[ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md)). Until the Rust/WASM
 engine lands (#68), the engine is the in-house **interim Canvas 2D renderer** in
-`client/src/engine/canvas2d/` (ADR-0014 §4; no charting library, VIZ-001, T01-002). It draws four
-kinds: line, stacked bars, heatmap and stat. This page covers the seam, the frame data and its
+`client/src/engine/canvas2d/` (ADR-0014 §4; no charting library, VIZ-001, T01-002). It draws five
+kinds: line, stacked bars, heatmap, stat and the bar chart ([below](#bar-chart-adr-0028)). This page covers the seam, the frame data and its
 validation, number formatting, colours, axes, interactions (including zoom and pan), accessibility,
 limits and the chart gallery.
 
@@ -20,10 +22,11 @@ application code.
 | Type | Meaning |
 |---|---|
 | `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`) or `stat`; each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
-| `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`) or `scalar` (`ScalarFrame`), from `src/data/frames.ts` |
+| `BarchartSpec` | `barchart` (ADR-0028): `title`, `unit`, `orientation` (`horizontal` or `vertical`), `valueLabels`, `names?: 'hidden'` (set by the panel's fit), `valueRange?`, `thresholds?`, `ghost` (a dashed bar at each finite baseline) and `anomaly` (nothing drawn until Epic #9) |
+| `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`), `scalar` (`ScalarFrame`) or `categories` (`CategoryRow[]`, at most 200, in draw order, and the panel's `Coverage`; ADR-0028), from `src/data/frames.ts` |
 | `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); `null` for stat |
 | `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `setSelection(sel)` (ADR-0025: the page selection `{ keys, fromMs, toMs }` drawn in the next frame; `null` = none; an equal value redraws nothing), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below) |
+| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below), and for the bar chart `mark` (`MarkEvent` `{ source, key, index, xCss, yCss, rows }` or `null`) and `pick` (`{ keys, gesture }`; `keys` `[]` is an empty click). A bar chart's summary also carries `coverage` (copied from the data), `namesHidden` and `valuesHidden` |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -90,6 +93,11 @@ data: <reason>".
 | `bounds` | heatmap bucket bounds are not increasing (or a bound other than the last is not finite) |
 | `finite` | heatmap needs at least one finite bucket bound (e.g. `[+Inf]`) |
 | `grid` | category `<key>` does not share the bar time buckets |
+| `cap` | `<n>` bars is more than the 200 a bar chart draws |
+
+A `barchart` needs `categories`: `kind` unless it gets them, then `cap` over 200 rows, then `key`
+for the first key that is not 16 hex digits or repeats. Its empty data is no rows with
+`EMPTY_COVERAGE`.
 
 `seriesName(labels)` prints `name{k="v", …}`: `__name__` first, the other keys sorted, `{}` when
 there are no other labels.
@@ -608,6 +616,52 @@ brushes), every number as its exact `String(x)`; interior edges, edges of the te
 brush's `from`/`to` equal the frame's own edges exactly. The engine port (#209) runs the same file. Gates: `unit:dist-bins`,
 `unit:summary-facts`, `unit:selection-draw`, `unit:hist-worker`, `unit:number-format`.
 
+## Bar chart (ADR-0028)
+
+The bar chart (`kind: 'barchart'`, #173 Part 2) draws the rows of a `categories` frame in data
+order, one bar each. The panel computes the rows, the cap and the fit
+([Categorical panels](panels.md#the-bar-charts-model-and-fit-173-part-2)); the engine never caps.
+`engine/canvas2d/barchart.ts` lays the frame out with `barLayout` (the same function the fit uses)
+and draws, in the layer pass:
+
+- **Value axis:** horizontal, below the plot, ticks `valueTicks(lo, hi, plot width, 72, base)` with
+  vertical hairlines and `formatValue` labels; vertical, in the 48 px band left of the plot, ticks
+  `valueTicks(lo, hi, plot height, 14, base)`, compact labels shortened to the band. The auto
+  domain is [min(0, drawn values, thresholds), max(0, …)], nice-rounded; a `valueRange` is used as
+  it is (`valueAxis.manual` true).
+- **Bars:** the category extent divided by the row count is the band; a bar is
+  max(1, round(0.7 · band)) thick, centred, from x(0) to x(v), both clamped to the domain. Its
+  colour is the state colour when the row has a state, else `series-{1 + seriesColourIndex(row)}`
+  (T22-004). No gradient, pattern or shadow (T22-001). A non-finite value has no bar and the value
+  label `no data`.
+- **Names:** right-aligned in the name band (rotated −90° below the plot when vertical), the state
+  glyph before the name in its state colour. Hidden names leave only the glyphs, in an 18 px
+  column.
+- **Value labels:** past the bar end, outside the bar, in the rooms the layout keeps, so the
+  label of a bar clipped at the plot edge or of a negative bar shows whole.
+- **Thresholds:** a dashed line in the state colour across the value axis; its glyph above the plot
+  (horizontal) or right of it (vertical). Each glyph's box goes out in `thresholdLabels` with the
+  text `glyph label` and `clipped: true`, so `ChartFrame` puts a focusable target with the full text
+  over it.
+- **Ghost** (`spec.ghost`, a finite `baseline`): after the bar, a 1 px dashed `text-muted`
+  rectangle of the bar's thickness from 0 to the baseline.
+- **Selection** (ADR-0025): with a relevant selection, the other bars, names and values at
+  `dimmed`, and a focus ring inside each selected bar; no selection or a foreign one makes exactly
+  the calls of no selection. Intervals and event markers are ignored.
+
+Input: a bar chart has no camera and no crosshair (`keyTarget` is null and there is no slider).
+`engine/canvas2d/barInput.ts` emits `mark` when the band under the pointer changes (the band
+spans the name band and the plot across the category axis) and `null` once on leaving, and `pick`
+`{ keys: [key] or [], gesture: 'click' }` for a left press without a modifier released within
+4 px. Wheel, Safari gestures, double click, the context menu and keys are ignored; `hover`,
+`brush`, `commit` and `select` are never emitted. The brush is #173 Part 3.
+
+`ChartFrame` shows `MarkTooltip` beside the marked bar (full name, value, `■ Failing` for a state,
+`baseline <v>` with the ghost), passes `pick` to `onPick`, labels the canvas `<title>: <n> bars`
+(then the thresholds) and shows no `Showing X of N series` notice: `CategoryChart`'s meter states
+the coverage. Under `engine=wasm` the bar chart stays on Canvas 2D until the engine implements
+ADR-0028.
+
 ## Limits
 
 - At most 500 series per frame (the rest are dropped with the notice), at most one polyline point
@@ -628,7 +682,7 @@ brush's `from`/`to` equal the frame's own edges exactly. The engine port (#209) 
 `/t/:tenant/dev/gallery` (development and stub builds only: the route is in the router only when
 `import.meta.env.DEV` or `VITE_API_MODE` is not `http`, so `http` builds contain neither the route
 nor its chunk; CI checks the `http` build's manifest). There is no navigation entry. The page draws
-eleven charts from seeded synthetic data for the current window (`src/dev/synth.ts`,
+sixteen charts: eleven frames from seeded synthetic data for the current window (`src/dev/synth.ts`,
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
@@ -646,8 +700,23 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
 | `line-events` | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C) |
 
+and five bar charts (#173 Part 2, `src/dev/galleryBars.ts`), each a `barchartModel` in
+`CategoryChart`, horizontal, its canvas `--size-chart` high with the meter line below:
+
+| Id | Chart |
+|---|---|
+| `barchart` | `byVersion` (40, 7, 120, 3, 15): series colours, names and values |
+| `barchart-thresholds` | `byVersion` and a `2.28` row of −20, watch at 30 and failing at 100: state colours and glyphs, two dashed lines, the `120` and `-20` labels whole |
+| `barchart-dupes` | {2.31, eu} 50, {2.31, us} 70, {2.30, eu} 20 by `version`: `2.31 · region="us"`, `2.31 · region="eu"`, `2.30` |
+| `barchart-subset` | {2.31} 40 and {2.31, region="∅"} 60 by `version`: `2.31 · region="∅"` and `2.31 · region absent` |
+| `barchart-cap` | `many` (250 rows, only the 10 failing): the cap of ⌊206 / 14⌋ = 14 keeps the max, the min and the failing row |
+
+`?…&bench=categories` shows only `barchart-cap`, 600 px wide with a 2 800 px category extent, so
+it draws 200 bars (`bench:frame-interim-categories`).
+
 The same window always gives the same pixels; the gallery is the corpus of
-`golden:interim-gallery` and `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
+`golden:interim-gallery`, `golden:greyscale` (the five bar charts with the canvas in greyscale) and
+`bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
 The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
 baselines were re-baselined once under the `golden-update` label; stat is unchanged. The two #64 Part B
 entries, `line-extreme` (#97) and `line-events` (#64 Part C) got their baselines from CI under the same label. They are not Rust parity fixtures:
@@ -661,7 +730,9 @@ script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name
 The WASM engine implements the same `ChartEngine` interface and is returned by
 `defaultChartEngine()`; only `engine/index.ts` changes. It implements the threshold lines,
 labels and the stat sparkline (ADR-0022), and the event markers (ADR-0023, as M1 verticals and M9
-glyphs), and the selection and the `select` item (ADR-0025), before it replaces `engine/index.ts`. The canvas is already created per frame
+glyphs), the selection and the `select` item (ADR-0025), and the bar chart (ADR-0028: the
+`categories` data, `categoryExtent` and `barLayout` exactly, `mark`, `pick` and the drawing) before
+it replaces `engine/index.ts`. The canvas is already created per frame
 lifetime, so it can be transferred to the render worker, and `keyTarget` lets the adapter forward key
 presses as the Canvas 2D engine does. Frames from the BFF arrive as Arrow (`FrameData` gains that
 form in #68/#62).
@@ -674,7 +745,10 @@ form in #68/#62).
 `select`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
 (`thresholds`, `thresholdLabels`, the stat sparkline);
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md) (`setEvents`, `eventLabels`, the event
-mark);
+mark); [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) (the bar chart: `barchart`,
+`categories`, `mark`, `pick`, `coverage`, the extent and the layout);
+[T22](../../designs/technical/T22-value-categorical-and-table-panels.md) (T22-001, T22-004,
+T22-006, T22-008, §5.1);
 [ADR-0007](../../designs/adr/0007-in-house-vis-engine.md);
 [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-001 library
 clause, VIZ-010 gaps and stacking, VIZ-011 threshold lines and event markers, VIZ-022, VIZ-013, VIZ-067, VIZ-069, Table 5-1
