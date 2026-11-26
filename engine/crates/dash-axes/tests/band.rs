@@ -38,6 +38,7 @@ fn fixed_band_holds_the_plot() {
         cases[0].2,
         &Unit::None,
         Band::Measure,
+        0.0,
     );
     for (lo, hi, manual) in &cases {
         let ax = value_axis(
@@ -49,6 +50,7 @@ fn fixed_band_holds_the_plot() {
             *manual,
             &Unit::None,
             Band::Fixed(42.0),
+            0.0,
         );
         plots.push(ax.plot);
         for l in &ax.labels {
@@ -68,6 +70,7 @@ fn fixed_band_holds_the_plot() {
             *manual,
             &Unit::None,
             Band::Measure,
+            0.0,
         );
         if measured.band_w < 42.0 {
             below += 1;

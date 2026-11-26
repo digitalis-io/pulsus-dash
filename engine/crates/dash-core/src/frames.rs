@@ -22,11 +22,14 @@
 //!
 //! Part C2b (§4.3): an Overlay record sets the frame's hover and box band and dirties the frame,
 //! but not its layer: the build reuses the cached layer list unless a layer input (spec, data,
-//! theme, Resize, Camera) changed, recomputes the hover when an Overlay was applied since the last
+//! events, theme, Resize, Camera) changed, recomputes the hover when an Overlay was applied since the last
 //! build (one `hover` event, with that Overlay's seq), then appends the overlay item, so the list
 //! drawn in a tick carries the hover that tick emits (T02-024). A Select record is answered at
 //! once against the presentation on screen (the last completed one, `onscreen`), never a newer
 //! state (ADR-0025): one `select` event, none while nothing is on screen.
+//!
+//! Part C2c1 (§4.2): the event markers' times ([`Frames::set_events`]) are a layer input; the
+//! layer list carries the threshold and event lines as an `Overlay` item before the hover's.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -159,6 +162,8 @@ struct Frame {
     /// CSS px, DPR and device px of the last resize.
     size: Option<FrameSize>,
     data: Option<Arc<Chunk>>,
+    /// The event markers' times, ms (plan #68 C2c1 §3.1): a layer input.
+    events: Arc<[f64]>,
     building: Option<Building>,
     /// The summary JSON reported last.
     last_a11y: Option<String>,
@@ -196,6 +201,7 @@ impl Frame {
             theme: Theme::Dark,
             size: None,
             data: None,
+            events: Arc::from([]),
             building: None,
             last_a11y: None,
             seq: 0,
@@ -520,6 +526,14 @@ impl Frames {
         }
     }
 
+    /// The frame's event markers' times, ms (plan #68 C2c1 §3.1), in call order: a layer input.
+    pub fn set_events(&mut self, id: u32, at_ms: Vec<f64>) {
+        if let Some(f) = self.frames.get_mut(&id) {
+            f.events = Arc::from(at_ms);
+            f.layer_dirty = true;
+        }
+    }
+
     /// Starts a chunk from TS series in the local id space.
     pub fn data_begin(&mut self, id: u32) {
         let next = self.ids.next();
@@ -634,6 +648,7 @@ impl Frames {
                     .camera
                     .and_then(|c| c.band)
                     .map_or(Band::Measure, Band::Fixed),
+                events: f.events.clone(),
             };
             let built = build_frame(&v);
             self.layer_builds += 1;

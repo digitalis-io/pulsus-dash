@@ -11,6 +11,7 @@ describe('unit:engine-fixtures', () => {
       'format.json',
       'hover.json',
       'input-ring.json',
+      'layer.json',
       'layout.json',
       'palette.json',
       'pow.json',

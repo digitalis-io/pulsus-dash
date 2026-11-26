@@ -13,7 +13,8 @@
  * | `setData`, `setTheme` | `layoutChanged` | same call |
  * | `setTimeWindow` | `setTimeWindow`, `layoutChanged` when it asks | — (the camera carries the view) |
  * | `resize` | `resize`, `layoutChanged` | `resize` |
- * | `setEvents`, `setSelection` | — | same call (kept, not drawn) |
+ * | `setEvents` (C2c1) | the same array: nothing; a band flip (none ↔ some, Canvas 2D's rule): `layoutChanged` | same call |
+ * | `setSelection` | — | same call (kept, not drawn) |
  * | `dispose` | `dispose` | `dispose` |
  *
  * Hover, click select and the box band (plan #68 C2b §4.1): the controller's camera and overlay
@@ -56,6 +57,8 @@ export class ControlledFrame implements ChartFrame {
   private readonly defer: (cb: () => void) => void;
   /** The last hover emitted (Canvas 2D's `lastHover`). */
   private lastHover: HoverEvent | null = null;
+  /** The last `setEvents` (ADR-0023): [] = none, and no label band. */
+  private events: readonly EventMarker[] = [];
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -198,8 +201,15 @@ export class ControlledFrame implements ChartFrame {
     this.inner.setTheme(t);
   }
 
+  /**
+   * The event markers (plan #68 C2c1 §4.1): the label band appears or goes when the frame gains its
+   * first event or loses its last, which moves the plot: a layout change, as in Canvas 2D.
+   */
   setEvents(events: readonly EventMarker[]): void {
-    if (this.disposed) return;
+    if (this.disposed || events === this.events) return;
+    const band = this.events.length > 0 !== events.length > 0;
+    this.events = events;
+    if (band) this.controller.layoutChanged();
     this.flush();
     this.inner.setEvents(events);
   }

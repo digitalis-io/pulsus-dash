@@ -7,7 +7,7 @@
  * | Member | What |
  * |---|---|
  * | `frame(o)` | a probe frame on a canvas at (0, 0): spec, data, window and size; resolves with its number (0, 1, … in call order) at its first `a11y`. Calls before the frame exists wait in order |
- * | `call(n, m, arg)` | `setSpec`, `setData` (probe series), `setTimeWindow` or `resize` (`[w, h, dpr]`) |
+ * | `call(n, m, arg)` | `setSpec`, `setData` (probe series), `setTimeWindow`, `resize` (`[w, h, dpr]`) or `setEvents` (event markers, plan #68 C2c1) |
  * | `settle(n)` | resolves when nothing is held or unpublished, the worker applied every published record and, at a non-zero size, presented the last one (`WasmFrame.settled`) |
  * | `last(n)`, `drawn(n)` | the last `a11y` summary; the `drawn` events (the last 100) |
  * | `idle()`, `counters()`, `stats()` | the worker's idle word; head and tail (`>>> 0`); coalesced, `INPUT_OVERFLOW`, bytes published |
@@ -30,6 +30,7 @@ import type {
   BrushEvent,
   CommitEvent,
   DrawnEvent,
+  EventMarker,
   FrameData,
   FrameSummary,
   HoverEvent,
@@ -56,7 +57,7 @@ export interface ProbeFrame {
   readonly dpr?: number;
 }
 
-export type ProbeCall = 'setSpec' | 'setData' | 'setTimeWindow' | 'resize';
+export type ProbeCall = 'setSpec' | 'setData' | 'setTimeWindow' | 'resize' | 'setEvents';
 
 /** A wheel as `test/engineHarness.ts` builds it. */
 export interface ProbeWheel {
@@ -174,6 +175,9 @@ function apply(f: ControlledFrame, m: ProbeCall, arg: unknown): void {
       f.resize(w, h, dpr);
       return;
     }
+    case 'setEvents':
+      f.setEvents(arg as readonly EventMarker[]);
+      return;
   }
 }
 

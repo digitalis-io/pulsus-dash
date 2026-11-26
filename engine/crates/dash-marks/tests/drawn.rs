@@ -28,6 +28,7 @@ fn drawn_only_for_complete_frames() {
         spec,
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
+        events: std::sync::Arc::from([]),
     };
     let mut r = Renderer::new(
         &ctx,

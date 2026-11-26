@@ -3,7 +3,8 @@
  * `t`.
  *
  * Main → render: `boot`, then per frame `create` (the canvas transferred), `spec`, `data` (series
- * cloned; heatmap and scalar data `null`), `theme` (0 dark, 1 light) and `dispose`; `input` wakes
+ * cloned; heatmap and scalar data `null`), `theme` (0 dark, 1 light), `events` (the markers'
+ * times, plan #68 C2c1) and `dispose`; `input` wakes
  * an idle worker after a publish to the input ring (the camera and the size travel there,
  * `ring.ts`). Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
@@ -46,6 +47,8 @@ export type MainToRender =
   | { readonly t: 'spec'; readonly id: number; readonly json: string }
   | { readonly t: 'data'; readonly id: number; readonly series: readonly SeriesMessage[] | null }
   | { readonly t: 'theme'; readonly id: number; readonly theme: 0 | 1 }
+  /** Plan #68 C2c1: every `EventMarker.atMs` of a `setEvents`, in call order (NaN kept). */
+  | { readonly t: 'events'; readonly id: number; readonly atMs: Float64Array }
   | { readonly t: 'dispose'; readonly id: number }
   /** A record was published while the worker was idle (T03-004 revised). */
   | { readonly t: 'input' }

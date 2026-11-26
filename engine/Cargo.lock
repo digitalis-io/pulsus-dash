@@ -298,6 +298,7 @@ dependencies = [
  "png",
  "pollster",
  "pulsus-synth",
+ "serde_json",
  "wgpu",
 ]
 

@@ -22,7 +22,7 @@ fn value_axis_matches_ts() {
                 lo: fixture::num(&m["min"]),
                 hi: fixture::num(&m["max"]),
             });
-        let ax = value_axis(kind, w, h, min, max, manual, &unit, Band::Measure);
+        let ax = value_axis(kind, w, h, min, max, manual, &unit, Band::Measure, 0.0);
         let plot: Option<PlotRect> = serde_json::from_value(r["plot"].clone()).ok();
         assert_eq!(Some(ax.plot), plot, "row {i}: plot");
         let ticks = fixture::nums(&r["ticks"]);
