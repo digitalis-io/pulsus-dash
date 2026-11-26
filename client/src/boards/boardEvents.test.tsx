@@ -88,6 +88,7 @@ const note = (id: string, at: number): Annotation => ({
   end_at: null,
   kind: 'deploy',
   text: id,
+  entity: null,
   tags: [],
 });
 
@@ -127,6 +128,9 @@ describe('board events', () => {
     vi.spyOn(api, 'listAnnotations').mockResolvedValue({
       items: [note('b', T12 + 5), note('c', T12 + 1), note('a', T12 + 5)],
       truncated: true,
+      applied: {},
+      next: { at: T12 + 1, id: 'c' },
+      orgWideHidden: 0,
     });
     const on = renderHookInApp(api, () => useBoardEvents('demo', true));
     await waitFor(() => {

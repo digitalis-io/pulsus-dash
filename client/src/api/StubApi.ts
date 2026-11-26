@@ -423,7 +423,7 @@ export class StubApi implements Api {
   ): Promise<AnnotationList> {
     return settle(() => {
       this.checkTenant(tenant);
-      return { items: [], truncated: false };
+      return { items: [], truncated: false, applied: {}, next: null, orgWideHidden: 0 };
     }, signal);
   }
 

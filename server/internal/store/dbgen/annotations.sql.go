@@ -12,25 +12,44 @@ import (
 )
 
 const deleteAnnotation = `-- name: DeleteAnnotation :one
-DELETE FROM annotations WHERE org_id = $1 AND id = $2 RETURNING id, at, end_at, kind, text, tags
+DELETE FROM annotations a WHERE a.org_id = $1 AND a.id = $2
+    -- P begin
+    AND ($3::boolean OR (a.entity_key IS NOT NULL AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements($4::jsonb) c
+      WHERE c->>'k' = a.entity->>'kind'
+        AND (c->'b' IS NULL OR c->'b' @> jsonb_build_array(a.entity->>'binding_id'))
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(c->'a') kv
+                        WHERE NOT kv.value @> jsonb_build_array(a.entity->'attrs'->>kv.key)))))
+    -- P end
+RETURNING a.id, a.at, a.end_at, a.kind, a.text, a.tags, a.entity_key, a.entity
 `
 
 type DeleteAnnotationParams struct {
-	OrgID pgtype.UUID
-	ID    pgtype.UUID
+	OrgID     pgtype.UUID
+	ID        pgtype.UUID
+	ScopeFull bool
+	Scope     []byte
 }
 
 type DeleteAnnotationRow struct {
-	ID    pgtype.UUID
-	At    pgtype.Timestamptz
-	EndAt pgtype.Timestamptz
-	Kind  string
-	Text  string
-	Tags  []string
+	ID        pgtype.UUID
+	At        pgtype.Timestamptz
+	EndAt     pgtype.Timestamptz
+	Kind      string
+	Text      string
+	Tags      []string
+	EntityKey pgtype.Text
+	Entity    []byte
 }
 
+// A row outside P matches nothing: the same no-row answer as an absent id (T24 §5.9).
 func (q *Queries) DeleteAnnotation(ctx context.Context, arg DeleteAnnotationParams) (DeleteAnnotationRow, error) {
-	row := q.db.QueryRow(ctx, deleteAnnotation, arg.OrgID, arg.ID)
+	row := q.db.QueryRow(ctx, deleteAnnotation,
+		arg.OrgID,
+		arg.ID,
+		arg.ScopeFull,
+		arg.Scope,
+	)
 	var i DeleteAnnotationRow
 	err := row.Scan(
 		&i.ID,
@@ -39,14 +58,16 @@ func (q *Queries) DeleteAnnotation(ctx context.Context, arg DeleteAnnotationPara
 		&i.Kind,
 		&i.Text,
 		&i.Tags,
+		&i.EntityKey,
+		&i.Entity,
 	)
 	return i, err
 }
 
 const insertAnnotation = `-- name: InsertAnnotation :exec
 
-INSERT INTO annotations (org_id, id, at, end_at, kind, text, tags, author_kind, author_id)
-VALUES ($1, $2, $3, $8, $4, $5, $6, $7, $9)
+INSERT INTO annotations (org_id, id, at, end_at, kind, text, tags, author_kind, author_id, entity_key, entity)
+VALUES ($1, $2, $3, $8, $4, $5, $6, $7, $9, $10, $11::jsonb)
 `
 
 type InsertAnnotationParams struct {
@@ -59,10 +80,15 @@ type InsertAnnotationParams struct {
 	AuthorKind string
 	EndAt      pgtype.Timestamptz
 	AuthorID   pgtype.UUID
+	EntityKey  pgtype.Text
+	Entity     []byte
 }
 
-// Annotations (plan #64 Part C §3.2). Every query names org_id = $1 explicitly (T11-002) in
-// addition to the row-level security policy.
+// Annotations (plan #64 Part C §3.2, plan #222 §3.3). Every query names org_id explicitly
+// (T11-002) in addition to the row-level security policy. The data scope predicate P (T24 §5.9,
+// T12-018) is byte-identical in ListAnnotations and DeleteAnnotation between its markers
+// (TestScopePredicateShared): full scope, or an entity row that a compiled clause matches.
+// Organisation-wide rows (entity_key NULL) pass P only with full scope.
 func (q *Queries) InsertAnnotation(ctx context.Context, arg InsertAnnotationParams) error {
 	_, err := q.db.Exec(ctx, insertAnnotation,
 		arg.OrgID,
@@ -74,42 +100,90 @@ func (q *Queries) InsertAnnotation(ctx context.Context, arg InsertAnnotationPara
 		arg.AuthorKind,
 		arg.EndAt,
 		arg.AuthorID,
+		arg.EntityKey,
+		arg.Entity,
 	)
 	return err
 }
 
 const listAnnotations = `-- name: ListAnnotations :many
-SELECT id, at, end_at, kind, text, tags FROM annotations
-WHERE org_id = $1 AND at <= $2::timestamptz
-  AND at >= $3::timestamptz - interval '31 days'
-  AND coalesce(end_at, at) >= $3::timestamptz
-ORDER BY at DESC, id DESC LIMIT $4
+WITH base AS (
+  SELECT a.id, a.at, a.end_at, a.kind, a.text, a.tags, a.entity_key, a.entity FROM annotations a
+  WHERE a.org_id = $5
+    AND a.at <= $6::timestamptz AND a.at >= $7::timestamptz - interval '31 days'
+    AND coalesce(a.end_at, a.at) >= $7::timestamptz
+    AND (cardinality($8::text[]) = 0 OR a.kind = ANY ($8::text[]))
+    AND a.tags @> $9::text[]
+    -- P begin
+    AND ($10::boolean OR (a.entity_key IS NOT NULL AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements($11::jsonb) c
+      WHERE c->>'k' = a.entity->>'kind'
+        AND (c->'b' IS NULL OR c->'b' @> jsonb_build_array(a.entity->>'binding_id'))
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(c->'a') kv
+                        WHERE NOT kv.value @> jsonb_build_array(a.entity->'attrs'->>kv.key)))))
+    -- P end
+),
+f AS (SELECT id, at, end_at, kind, text, tags, entity_key, entity FROM base WHERE cardinality($12::text[]) = 0 OR entity_key = ANY ($12::text[])
+        OR ($13::boolean AND entity_key IS NULL)),
+st AS (SELECT count(*) FILTER (WHERE cardinality($12::text[]) > 0 AND NOT $13::boolean
+        AND entity_key IS NULL)::bigint AS org_wide_hidden FROM base)
+SELECT st.org_wide_hidden, (h.id IS NOT NULL)::boolean AS found, h.id, h.at, h.end_at,
+       coalesce(h.kind, '')::text AS kind, coalesce(h.text, '')::text AS text, coalesce(h.tags, '{}')::text[] AS tags,
+       h.entity_key, h.entity
+FROM st LEFT JOIN LATERAL (SELECT id, at, end_at, kind, text, tags, entity_key, entity FROM f
+  WHERE NOT $1::boolean OR (f.at, f.id) < ($2::timestamptz, $3::uuid)
+  ORDER BY f.at DESC, f.id DESC LIMIT $4::int) h ON true
+ORDER BY h.at DESC NULLS LAST, h.id DESC
 `
 
 type ListAnnotationsParams struct {
-	OrgID  pgtype.UUID
-	ToAt   pgtype.Timestamptz
-	FromAt pgtype.Timestamptz
-	Lim    int32
+	HasBefore bool
+	BeforeAt  pgtype.Timestamptz
+	BeforeID  pgtype.UUID
+	Lim       int32
+	OrgID     pgtype.UUID
+	ToAt      pgtype.Timestamptz
+	FromAt    pgtype.Timestamptz
+	Kinds     []string
+	Tags      []string
+	ScopeFull bool
+	Scope     []byte
+	Ents      []string
+	OrgWide   bool
 }
 
 type ListAnnotationsRow struct {
-	ID    pgtype.UUID
-	At    pgtype.Timestamptz
-	EndAt pgtype.Timestamptz
-	Kind  string
-	Text  string
-	Tags  []string
+	OrgWideHidden int64
+	Found         bool
+	ID            pgtype.UUID
+	At            pgtype.Timestamptz
+	EndAt         pgtype.Timestamptz
+	Kind          string
+	Text          string
+	Tags          []string
+	EntityKey     pgtype.Text
+	Entity        []byte
 }
 
-// Overlapping [from_at, to_at]: at <= to AND coalesce(end_at, at) >= from. A range is at most 31
-// days (the table CHECK), so the lower bound on `at` is exact and keeps the index scan bounded.
+// ONE statement (T24-032): the rows, the next cursor and org_wide_hidden are one snapshot. It
+// always returns at least one row: with no match the joined columns are NULL and found is false.
+// lim is limit + 1. Overlapping [from_at, to_at]: at <= to AND coalesce(end_at, at) >= from; a
+// range is at most 31 days (the table CHECK), so the lower bound on `at` is exact.
 func (q *Queries) ListAnnotations(ctx context.Context, arg ListAnnotationsParams) ([]ListAnnotationsRow, error) {
 	rows, err := q.db.Query(ctx, listAnnotations,
+		arg.HasBefore,
+		arg.BeforeAt,
+		arg.BeforeID,
+		arg.Lim,
 		arg.OrgID,
 		arg.ToAt,
 		arg.FromAt,
-		arg.Lim,
+		arg.Kinds,
+		arg.Tags,
+		arg.ScopeFull,
+		arg.Scope,
+		arg.Ents,
+		arg.OrgWide,
 	)
 	if err != nil {
 		return nil, err
@@ -119,12 +193,16 @@ func (q *Queries) ListAnnotations(ctx context.Context, arg ListAnnotationsParams
 	for rows.Next() {
 		var i ListAnnotationsRow
 		if err := rows.Scan(
+			&i.OrgWideHidden,
+			&i.Found,
 			&i.ID,
 			&i.At,
 			&i.EndAt,
 			&i.Kind,
 			&i.Text,
 			&i.Tags,
+			&i.EntityKey,
+			&i.Entity,
 		); err != nil {
 			return nil, err
 		}
@@ -134,4 +212,20 @@ func (q *Queries) ListAnnotations(ctx context.Context, arg ListAnnotationsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const tenantBindingIDBySlug = `-- name: TenantBindingIDBySlug :one
+SELECT id FROM tenant_bindings WHERE org_id = $1 AND slug = $2
+`
+
+type TenantBindingIDBySlugParams struct {
+	OrgID pgtype.UUID
+	Slug  string
+}
+
+func (q *Queries) TenantBindingIDBySlug(ctx context.Context, arg TenantBindingIDBySlugParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, tenantBindingIDBySlug, arg.OrgID, arg.Slug)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }

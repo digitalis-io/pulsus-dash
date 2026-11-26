@@ -77,8 +77,8 @@ func TestVersion(t *testing.T) {
 	if strings.Join(keys, ",") != "commit,go,schema,version" {
 		t.Errorf("keys = %v, want exactly commit, go, schema, version", keys)
 	}
-	if m["schema"] != float64(4) {
-		t.Errorf("schema = %v, want 4", m["schema"])
+	if m["schema"] != float64(5) {
+		t.Errorf("schema = %v, want 5", m["schema"])
 	}
 	if m["go"] != runtime.Version() {
 		t.Errorf("go = %v, want %s", m["go"], runtime.Version())
@@ -88,7 +88,7 @@ func TestVersion(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("version exit %d", r.code)
 	}
-	if !regexp.MustCompile(`^pulsus-dash \S+ \(commit \S+, go\S+, schema 4\)\n$`).MatchString(r.stdout) {
+	if !regexp.MustCompile(`^pulsus-dash \S+ \(commit \S+, go\S+, schema 5\)\n$`).MatchString(r.stdout) {
 		t.Errorf("version output %q", r.stdout)
 	}
 }

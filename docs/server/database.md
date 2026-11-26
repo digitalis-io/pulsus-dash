@@ -180,7 +180,7 @@ no backfill and no lock on an existing table (T11-012, T11-013).
 
 | Table | Key | Contents |
 |---|---|---|
-| `annotations` | `(org_id, id)`; indexed on `(org_id, at)` (`annotations_at`) | `at`, `end_at` (null for a point), `kind` (`deploy`, `config`, `flag` or `annotation`), `entity_key` (null until M-UI3), `text` (1–500 characters), `tags` (`text[]`, default `{}`, at most 16), `author_kind` (`local`, `user`, `service_account`), `author_id`, `created_at` |
+| `annotations` | `(org_id, id)`; indexed on `(org_id, at)` (`annotations_at`) | `at`, `end_at` (null for a point), `kind` (`deploy`, `config`, `flag` or `annotation`), `entity_key` (the `EntityId` of the change's entity, or null; see migration 5), `text` (1–500 characters), `tags` (`text[]`, default `{}`, at most 16), `author_kind` (`local`, `user`, `service_account`), `author_id`, `created_at` |
 
 CHECKs repeat the API's rules: the four kinds, the text length, the tag count, and
 `end_at IS NULL OR (end_at >= at AND end_at - at <= interval '31 days')`. A violation is SQLSTATE
@@ -246,22 +246,25 @@ saves also leave the tags cache row stale, and the next list by this release rep
 (`server/scripts/itest-old-binary.sh`). It builds the merge-base of `HEAD` with `OLD_BINARY_REF`
 (default `origin/main`) in a git worktree under `build/old-binary/`, removed on exit, reads the
 board spec version of both trees (`BoardSchemaVersion` in `server/internal/spec/board.go`; either
-missing fails the gate), and runs every `Test*OldBinary` test in `server/cmd/pulsus-dash` with:
+missing fails the gate) and their highest migration numbers (`server/migrations/NNNNN_*.sql`;
+either missing fails the gate), and runs every `Test*OldBinary` test in `server/cmd/pulsus-dash` with:
 
 | Variable | Value |
 |---|---|
 | `DASH_OLD_BINARY` | the previous release's binary |
 | `DASH_OLD_SPEC_VERSION` | its board spec version (a positive integer, else the tests fail) |
 | `DASH_OLD_FIXTURE` | its own fixture of that version: the first, by name, of `api/fixtures/board-spec/v<P>-*.json` in its tree |
+| `DASH_OLD_SCHEMA` | its highest migration number (a positive integer, else the tests that need it fail) |
 
 The selector is `^Test[A-Za-z0-9_]*OldBinary$` (any test name ending in `OldBinary`, digits and
 `_` included); `make itest-old-binary` first runs `server/scripts/itest-old-binary.sh --self-test`,
 which checks that selector against a fixture package with `go test -list`, and the PASS-line
 pattern against sample output, without a database. The gate passes only when the run exits 0, no
-test fails, at least one `Test*OldBinary` test passes, and `TestBoardSpecOldBinary` passes whenever the previous release's spec version is older
-than this one's. A missing or failing binary fails the tests; plain `make itest` skips them (no
+test fails, at least one `Test*OldBinary` test passes, `TestBoardSpecOldBinary` passes whenever
+the previous release's spec version is older than this one's, and `TestAnnotationsOldBinary`
+passes whenever the previous release's schema is older than 5 and this one's is 5 or later. A missing or failing binary fails the tests; plain `make itest` skips them (no
 `DASH_OLD_BINARY`). It needs `DASH_ITEST_PG_URLS`, and is a required local gate for every change to
-the board schema or spec.
+the board schema or spec and to the annotations schema.
 
 - **`TestBoardSpecOldBinary`** (`itest:board-spec-old-binary`,
   `boards_spec_old_binary_itest_test.go`) skips when the spec version is unchanged. Per Postgres
@@ -286,6 +289,47 @@ the board schema or spec.
   5 000 rows 200 at a time (`tagsStale` 4 800, 4 600, … 0) without touching org 2, that the old
   binary's create and save go stale and are repaired, and that it refuses to save over a head this
   release wrote.
+- **`TestAnnotationsOldBinary`** (`itest:annotations-old-binary`,
+  `annotations_old_binary_itest_test.go`) checks the annotation entity transition, so it needs a
+  previous release before migration 5 (`DASH_OLD_SCHEMA` < 5) and skips against a later one. The
+  test migrates a database to 4, seeds 2 000 annotations in each of two organisations, applies
+  migration 5 while a reader queries `annotations` (its longest wait must be at most 1 s, and the
+  `relfilenode` must not change), and starts the old binary beside this release. The old binary
+  creates an annotation (201), refuses one with `entity` (400 `annotation.unknown` at `/entity`),
+  and answers lists with exactly `items` and `truncated`; this release answers with `applied`
+  (`{}`) and lists the old rows with `"entity": null`; this release's create with an entity (binding
+  `default`) is listed by the old binary; and no row has only one of `entity_key` and `entity`.
+
+## Schema (migration 5)
+
+`server/migrations/00005_annotation_entity.sql` (#222) adds the canonical entity of an annotation
+(T24 §6, T11 §4.4):
+
+| Column of `annotations` | Type | Meaning |
+|---|---|---|
+| `entity` | `jsonb`, nullable | the canonical entity, or null for an organisation-wide change |
+
+and the constraint `annotations_entity_pair CHECK ((entity_key IS NULL) = (entity IS NULL)) NOT
+VALID`: `entity_key` and `entity` are set or null together. The column has no default and the
+constraint is `NOT VALID`, so the migration rewrites no row (the table keeps its `relfilenode`) and
+holds its lock (`lock_timeout` 5 s) only for a catalog change (T11-012, T11-013). New and updated
+rows are checked at once: one column without the other is SQLSTATE `23514`. The existing rows are
+all null/null; the next release validates the constraint (I7, #224). There is no grant change.
+
+The stored entity is
+
+```json
+{"id": "bb7487bd-100d-a998-e0f0-3c65f11da1a7", "binding": "prod-eu",
+ "binding_id": "00000000-0000-4000-8000-0000000000e1", "kind": "service",
+ "ident": [null, "checkout"], "attrs": {"service.name": "checkout"}}
+```
+
+`id` is the `EntityId` and equals `entity_key`; `binding` and `binding_id` are the tenant binding's
+slug and id; `ident` holds the identifying values in schema order (null for an absent optional
+position); `attrs` is the canonical map (see
+[the annotations API page](annotations-api.md#entity-identity)). The data scope predicate reads
+`kind`, `binding_id` and `attrs` only. A binary at schema 4 does not know the column: its inserts
+write null/null, which passes the constraint, and it lists entity rows without their entity.
 
 ## Row-level security
 
@@ -397,8 +441,15 @@ cover:
   with one list's `limit` changed (`itest:board-crud`, `TestBoardCRUDBoardList`);
 - annotations: the window overlap and newest-first order, the 500 cap and `truncated`, isolation
   between organisations, the `annotation.create` and `annotation.delete` audit events and their
-  chain, and the CHECKs for a 32-day range and an unknown kind
-  (`server/internal/annotations/annotations_itest_test.go`);
+  chain, and the CHECKs for a 32-day range and an unknown kind; the entity, kind, tag and
+  organisation-wide filters, the data scopes (`P_eu`, `P_shop`, S1–S6, T1–T3) on list, create and
+  delete, the SQL predicate against `ScopeCovers`, and keyset paging under inserts and deletes
+  (`itest:annotations-entity`, `itest:annotations-scope`, `itest:annotations-scope-compile`,
+  `itest:annotations-delete-scope`, `itest:annotations-keyset` in
+  `server/internal/annotations/annotations_itest_test.go`); the one-statement list and the
+  `annotations_entity_pair` check (`server/internal/store/annotations_itest_test.go`); the routes
+  over HTTP (`TestAnnotationsHTTP`) and the previous binary beside this one
+  (`itest:annotations-old-binary`) in `server/cmd/pulsus-dash/`;
 - the migrate cases, including concurrent runs and the N+1 window (`itest:migrations`);
 - the start-up refusals of `serve`;
 - `/readyz` with PulsusDB absent and with Postgres stopped (through a TCP proxy).
@@ -411,7 +462,7 @@ against them, or `make itest-local ITEST_GOAL=itest-old-binary` for the old-bina
 
 T11-001, T11-002, T11-003, T11-006, T11-008, T11-010, T11-012, T11-013, T11-015, T11-016,
 T11-017, T11-021, T11-023 and T11-026 in [T11](../../designs/technical/T11-postgres-schema.md);
-T24-029 and §6 (the board tags cache) in
+T24-029, T24-030 to T24-032, T24-038 and §6 (the board tags cache and the annotation entity) in
 [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md); T19-006
 (the `audit_partitions` check) in [T19](../../designs/technical/T19-deployment.md); T06-016 in
 [T06](../../designs/technical/T06-bff-architecture.md);
