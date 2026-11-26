@@ -3,18 +3,19 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.15-rc · 2026-11-26 |
+| **Version** | 1.17-rc · 2026-11-26 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
 
 The engine described here is the Rust/WASM chart engine behind the `ChartFrame` seam of
 [ADR-0014](../adr/0014-typescript-react-web-client.md) §3. It arrives with issues #68 (foundation,
-line) and #69 (text and axes, heatmap, bars, stat, GPU log stream); until then the in-house Canvas 2D
-renderer draws line, stacked bars, heatmap and stat (ADR-0014 §4). Design rules, primitives and
-budgets stand, with these readings:
+line) and #69 (text and axes, heatmap, bars, stat, GPU log stream). Line frames are drawn by the
+engine by default ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md), #256); the in-house
+Canvas 2D renderer (ADR-0014 §4) draws the other kinds until #69 and every fallback. Design rules,
+primitives and budgets stand, with these readings:
 
 | Topic | Reading |
 |---|---|
@@ -846,3 +847,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.13-rc | 2026-11-25 | #68 Part B: dependency row "Columnar data" is `dash-wire`'s own Arrow IPC reader; no arrow-rs |
 | 1.14-rc | 2026-11-26 | #68 Part C2a2 ([ADR-0030](../adr/0030-engine-camera-controller-on-main.md)): §4.6 Input mapping: 2D charts use the main-thread camera controller; the L4 ring controller comes with #94 |
 | 1.15-rc | 2026-11-26 | #68 Part C2b: §4.2 Picking: 2D time charts pick by inverting the time axis over the f64 originals of the presentation on screen (ADR-0025); the ID buffer is for marks without a time axis. §4.6 Tooltips: until the core → ui ring, the `hover` event is the `TooltipAnchor` |
+| 1.17-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §0 line frames are drawn by the engine by default; Canvas 2D draws the other kinds until #69 and every fallback |

@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-26 |
+| **Version** | 1.14-rc · 2026-11-26 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
-| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) (the engine is the default renderer) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -842,14 +842,16 @@ line layout without `cosmic-text`.
 
 *Part C1 of #68 (as built).* Until `dash-core-st`, the modes without the shared-memory engine
 (not cross-origin isolated, MT-R, Static, and no `Atomics.waitAsync`) draw with the interim Canvas
-2D engine, and the engine is opt-in (`?engine=wasm`). Engine frames are bound per frame by a
-routing engine that keeps each frame's state on the main thread:
+2D engine. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
+#256), not opt-in: `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D. Engine
+frames are bound per frame by a routing engine that keeps each frame's state on the main thread:
 
 | Condition | Behaviour |
 |---|---|
 | A frame's surface or status read-back fails (three read-backs in a row) | that frame alone moves to Canvas 2D on a fresh canvas (the transferred one stays, retired and hidden), its state replayed, with the notice "Recovered from an error: this chart uses the basic renderer." |
 | The render worker traps after a `drawn`, the first time on the page | one restart: new render and pool workers from the same compiled module; every engine frame moves to a fresh transferred canvas, replayed, with the notice |
 | A trap before any `drawn`, a second trap, a restart without status 1 or 2 in 10 s, or a second device loss within 60 s | the session is marked (`sessionStorage`, and in memory for the page); every engine frame moves to Canvas 2D; later frames and pages start on Canvas 2D |
+| The engine does not boot (integrity, compile, status 3/4, or 10 s) | the session is marked; frames on Canvas 2D, no notice; not for a build without the engine |
 | An engine frame's spec changes to a kind the engine does not draw (until #69) | it moves to Canvas 2D on a fresh canvas, without a notice, and stays there |
 
 Supported browsers: current and previous Chrome/Edge (T1), Firefox stable and ESR, Safari 17+.
@@ -979,4 +981,5 @@ which forces a reload.
 | 1.10-rc | 2026-11-26 | #68 Part C2a1: §4.3 `idle` at `0xC8` (the tail's line) and `input_bad` at `0x4D10`; §5.4 Resize `36 u32 frame`, the Camera record `0x23`, `0x24`–`0x26` reserved, and the engine adapter's ring as built (counters, per-frame seqs at publish and their 53-bit extension, coalescing, the `created` gate and frame ids, wake-up, `drawn` from the capture, rejected records), replacing the C1 resize note; **T03-004 revised** to the idle-word wake-up |
 | 1.11-rc | 2026-11-26 | #68 Part C2a2 ([ADR-0030](../adr/0030-engine-camera-controller-on-main.md)): the ownership audit, each to "2D charts: the camera controller on main; render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read the ring in render": §0 topology note, §4.1 `dash-core-mt` row, §4.2 diagram and thread table, §4.4 paragraph, §6 the gesture camera row, §12 "Keymap in the render worker" row |
 | 1.12-rc | 2026-11-26 | #68 Part C2b: §5.4 the Overlay (`0x24`) and Select (`0x25`) records, `0x26` reserved; Select is discrete (never coalesced, at most 8 waiting per frame, the oldest dropped and counted in `overflow_count`), T03-020's coalescing applies to state records; the adapter writes at most one Camera and one Overlay per task; main accepts a `hover` only for its latest Overlay; rejected Overlay and Select records; §4.2 render → main events add `hover` and `select`, `stage` adds `pickCount` |
+| 1.14-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §9.2 the Part C1 note: the engine is the default renderer, not opt-in; `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D; the recovery table adds the boot failure that marks the session (not for a build without the engine) |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |
