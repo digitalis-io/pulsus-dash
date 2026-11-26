@@ -1,7 +1,8 @@
 //! unit:spec-from-json (plan #68 C1 §3.4, D-PROTO): the TS `VisSpec` JSON the render worker
 //! receives. `line` parses to a `LineSpec` (unknown fields ignored); the kinds the engine does not
-//! draw yet are `Unsupported`; anything else is an error.
-use dash_scene::{LineSpec, ValueRange, VisKind, VisSpec};
+//! draw yet are `Unsupported`; anything else is an error. Plan #68 C2c1: a line spec's thresholds
+//! are parsed (their labels ignored until #69).
+use dash_scene::{LineSpec, ThresholdLine, ThresholdState, ValueRange, VisKind, VisSpec};
 use dash_units::{TimeBase, Unit};
 
 /// The gallery's `line-thresholds` spec, as `JSON.stringify` sends it.
@@ -11,11 +12,20 @@ const BARS: &str = r#"{"kind":"bars","title":"Log lines by level","unit":{"kind"
 
 #[test]
 fn specs_parse_from_the_ts_json() {
+    let mut want = LineSpec::new(Unit::Time { base: TimeBase::S });
+    want.thresholds = vec![
+        ThresholdLine {
+            value: Some(0.25),
+            state: ThresholdState::Watch,
+        },
+        ThresholdLine {
+            value: Some(0.3),
+            state: ThresholdState::Failing,
+        },
+    ];
     assert_eq!(
         VisSpec::from_json(LINE_THRESHOLDS).ok(),
-        Some(VisSpec::Line(LineSpec::new(Unit::Time {
-            base: TimeBase::S
-        })))
+        Some(VisSpec::Line(want))
     );
     assert_eq!(
         VisSpec::from_json(BARS).ok(),

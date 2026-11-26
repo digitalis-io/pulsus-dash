@@ -170,7 +170,12 @@ fn layer_parity() {
                     Some(x0),
                     "{what}: from moveTo x"
                 );
-                assert_eq!(runs.last().map(|r| r[1]), Some(x1), "{what}: to lineTo x");
+                // The last dash starts before the `lineTo` x and ends by it.
+                let end = runs.last().map_or((f64::NAN, f64::NAN), |r| (r[0], r[1]));
+                assert!(
+                    end.0 < x1 && end.0 + 9.0 >= x1 && end.1 == (end.0 + 5.0).min(x1),
+                    "{what}: to lineTo x {x1}: {end:?}"
+                );
                 for run in runs {
                     want.push(OverlayShape::Rect {
                         css: [run[0] as f32, y0 as f32, (run[1] - run[0]) as f32, 1.0],

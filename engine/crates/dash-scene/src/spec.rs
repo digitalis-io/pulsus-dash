@@ -46,6 +46,13 @@ pub struct ThresholdLine {
 /// The most threshold lines a frame draws, in spec order (TS `MAX_THRESHOLDS`, ADR-0022).
 pub const MAX_THRESHOLDS: usize = 8;
 
+/// The spec's threshold lines, the first [`MAX_THRESHOLDS`] kept (TS `thresholdsOf`).
+fn first_eight<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<ThresholdLine>, D::Error> {
+    let mut lines = <Vec<ThresholdLine> as serde::Deserialize>::deserialize(d)?;
+    lines.truncate(MAX_THRESHOLDS);
+    Ok(lines)
+}
+
 /// A line spec, parsed from the TS JSON.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +61,7 @@ pub struct LineSpec {
     #[serde(default)]
     pub value_range: Option<ValueRange>,
     /// The first [`MAX_THRESHOLDS`] lines, in spec order (TS `thresholdsOf`).
-    #[serde(skip)]
+    #[serde(default, deserialize_with = "first_eight")]
     pub thresholds: Vec<ThresholdLine>,
     /// 500 while the interim cap holds (ADR-0014 §4).
     #[serde(skip, default = "max_series_default")]

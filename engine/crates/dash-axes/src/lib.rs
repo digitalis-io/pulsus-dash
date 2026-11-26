@@ -90,8 +90,10 @@ pub fn label_width(labels: &[String]) -> f64 {
 /// The event label band of a frame (TS `eventBandOf`, ADR-0023): `EVENT_BAND` = one label line and
 /// `space.1` once the frame holds at least one event (in view or not), 0 for stat or no events.
 pub fn event_band(kind: VisKind, events: usize) -> f64 {
-    let _ = (kind, events);
-    0.0
+    if kind == VisKind::Stat || events == 0 {
+        return 0.0;
+    }
+    label_height() + tok(dash_tokens::space::S_1)
 }
 
 /// Port of `canvas2d/layout.ts` `layoutPlot`: stat fills the frame; the other kinds leave room for
@@ -103,7 +105,6 @@ pub fn layout_plot(
     value_label_w: f64,
     event_band: f64,
 ) -> PlotRect {
-    let _ = event_band;
     if kind == VisKind::Stat {
         return PlotRect {
             x: 0.0,
@@ -117,7 +118,7 @@ pub fn layout_plot(
     let tick = tok(dash_tokens::size::CHART_TICK);
     let bottom = tick + 2.0 * space1 + label_height();
     let x = value_label_w + space2 + tick;
-    let y = space2;
+    let y = space2 + event_band;
     PlotRect {
         x,
         y,
