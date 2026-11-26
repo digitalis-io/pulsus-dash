@@ -35,7 +35,6 @@ import type {
   ValueRange,
   VisSpec,
 } from '../api';
-import { sameSelection } from '../canvas2d/gesture';
 import { REC_OVERLAY, REC_RESIZE } from './layout.gen';
 import type { FrameEvent, MainToRender, SeriesMessage, StageWire } from './protocol';
 import { extendSeq } from './ring';
@@ -145,6 +144,21 @@ const stageOf = (w: StageWire | null): StageModel | null =>
 const KEEP_RESIZES = 8;
 
 type Size = readonly [number, number, number];
+
+/**
+ * Equal keys (in order) and interval; null equals only null: `canvas2d/gesture.ts`
+ * `sameSelection`'s rule (T03-001 keeps this module apart from the Canvas 2D engine).
+ */
+function sameSelection(a: FrameSelection | null, b: FrameSelection | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return (
+    a.fromMs === b.fromMs &&
+    a.toMs === b.toMs &&
+    a.keys.length === b.keys.length &&
+    a.keys.every((k, i) => k === b.keys[i])
+  );
+}
 
 export class WasmFrame implements EngineFrame {
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
