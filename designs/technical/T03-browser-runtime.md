@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-25 |
+| **Version** | 1.10-rc · 2026-11-26 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -215,8 +215,12 @@ shared with a worker, decode Arrow data or render an engine canvas (except in MT
 work per input event MUST stay ≤ 0.05 ms at p99.
 
 #### T03-004 — At most one doorbell per queue per frame
-**MUST** — A producer MUST ring a doorbell only on the empty → non-empty transition of its queue, so
-that no queue generates more than one `postMessage` per frame.
+**MUST** — A producer MUST wake a consumer only by clearing its idle word (compare-exchange 1 → 0)
+after a publish; a consumer MUST set it and re-check its queue before sleeping. *(Revised by #68
+Part C2a1: the empty → non-empty doorbell could lose a wake-up when the consumer drained between
+the producer's two reads. With both sides sequentially consistent, the producer's exchange sees the
+idle word set, or the consumer's re-check sees the record, or both; and at most one message is
+posted per idle period, so at most one per worker frame.)*
 
 ### 4.3 Shared memory layout and ownership
 
@@ -231,12 +235,12 @@ so the low-address control block stays valid.
 | `0x00000` | 64 | header: magic `PDCB` at `0x00`, layout version `u16` at `0x04`, capability bits `u32` at `0x08`, boot epoch `u32` at `0x0C`, build id `[u8;16]` at `0x10`, runtime status `u32` at `0x20` (§9.3) | render → all | written before the handshake; status `Atomics.store` |
 | `0x00040` | 64 | frame clock: `frame_no u64`, `last_present_ms f64`, `vsync_ms f32`, `visible u8` | render → all | `Atomics.store` |
 | `0x00080` | 64 | input ring **head** `u32` (own cache line) | shim → render | `Atomics.store` (release) |
-| `0x000C0` | 64 | input ring **tail** `u32`, `overflow_count u32` | render → shim | `Atomics.store` |
+| `0x000C0` | 64 | input ring **tail** `u32`, `overflow_count u32` at `0xC4`, `idle u32` at `0xC8` (1 while the render worker sleeps; 1 at boot; set by render, cleared by the waker, T03-004) | render → shim; idle both | `Atomics.store`; idle SeqCst, compare-exchange |
 | `0x00100` | 512 | captured-chord table: `generation u32`, `count u32`, 126 × `u32` chord hashes | render → shim | seqlock on `generation` |
 | `0x00300` | 64 | *reserved* (was the ui↔core ring heads; withdrawn, ADR-0014) | — | — |
 | `0x00340` | 64 | *reserved* | — | — |
 | `0x00400` | 16 KiB | copy buffer: `len u32`, `mime u8`, UTF-8 text of the current canvas selection | render → shim | seqlock |
-| `0x04400` | 4 KiB | runtime counters (RUM, [T05 §4.7](T05-testing-and-performance.md#47-real-user-performance-telemetry-dash-observing-itself)); frame statistics at 0x04400–0x04D0F (`dash-protocol::layout`) | all → shell | relaxed atomics |
+| `0x04400` | 4 KiB | runtime counters (RUM, [T05 §4.7](T05-testing-and-performance.md#47-real-user-performance-telemetry-dash-observing-itself)); frame statistics at 0x04400–0x04D0F (`dash-protocol::layout`); `input_bad u32` at `0x04D10` (records the render worker rejected) | all → shell | relaxed atomics |
 | `0x10000` | 64 KiB | input ring data | shim → render | SPSC |
 | `0x20000` | 128 KiB | *reserved* (was the ui↔core ring data; withdrawn, ADR-0014) | — | — |
 
@@ -539,18 +543,51 @@ multiplies by `dpr`.
 | `0x05` | Wheel | 40 | 16 `f32` x · 20 `f32` y · 24 `f32` dx · 28 `f32` dy · 32 `u16` mods · 34 `u8` mode (0 px, 1 line, 2 page) · pad |
 | `0x06` | PointerEnter / Leave | 24 | 16 `u32` pointer_id · 20 `u8` enter |
 | `0x10–0x11` | KeyDown / KeyUp | 24 + n | 16 `u16` mods · 18 `u8` repeat · 19 `u8` location · 20 `u8` code_len · 21 `u8` key_len · 22 pad · 24 UTF-8 `code` then `key` |
-| `0x20` | Resize | 40 | 16 `f32` css_w · 20 `f32` css_h · 24 `f32` dpr · 28 `u32` device_w · 32 `u32` device_h (from `devicePixelContentBoxSize`, else rounded) |
+| `0x20` | Resize | 40 | 16 `f32` css_w · 20 `f32` css_h · 24 `f32` dpr · 28 `u32` device_w · 32 `u32` device_h (from `devicePixelContentBoxSize`, else rounded) · 36 `u32` frame (#68 C2a1; was pad) |
 | `0x21` | Focus / Visibility | 24 | 16 `u8` 0 blur, 1 focus, 2 hidden, 3 visible |
 | `0x22` | Prefs | 24 | 16 `u32` bits: reduced-motion, dark, forced-colors, reduced-transparency, coarse-pointer |
+| `0x23` | Camera | 64 | 16 `u32` frame · 20 pad · 24 `f64` view_lo · 32 `f64` view_hi (ms) · 40 `f64` value_min · 48 `f64` value_max (NaN = auto) · 56 `f64` band (CSS px; NaN = measured) (#68 C2a1) |
+| `0x24–0x26` | *reserved* | — | — |
 | `0x30` | Gamepad snapshot | 24 + 4a + b | *reserved for M-UI6*: 16 `u8` index · 17 `u8` n_axes (a) · 18 `u8` n_buttons (b) · 20 `u32` pressed bitmask · 24 `f32`×a axes · `u8`×b analog values |
 | `0x40` | Paste | 24 + n | 16 `u32` len · 20 `u8` mime (0 text) · 24 UTF-8 (≤ 16 KiB inline; longer is truncated with flag bit3) |
 | `0x7F` | Marker | 24 | 16 `u64` tag (replay sync, [T05 §4.4](T05-testing-and-performance.md#44-deterministic-input-replay-pdrec)) |
 
-*Part C1 of #68:* until Part C2 writes the input ring, `resize` reaches the render worker as a
-`resize{id, w, h, dpr}` message, and engine frames take no input.
-
 `0x00` Wrap: one byte; continue at offset 0. Head and tail are free-running `u32` byte counters; no
 record straddles the end.
+
+**The engine adapter's ring (#68 Part C2a1, as built).** Until #94 brings the raw input records and
+the worker-side controller, the adapter (`client/src/engine/wasm/ring.ts`) writes Resize and Camera
+records only; the decoder is `dash-core::input`.
+
+- **Counters.** Occupied = `(head − tail) mod 2³²`, free = 64 KiB − occupied; the physical offset is
+  `counter & (RING_BYTES − 1)`. JS reads every word as `Atomics.load(…) >>> 0` and stores `v | 0`;
+  Rust uses `wrapping_sub` and `wrapping_add`. The counters roll over 2³² freely.
+- **Seqs.** `seq` is per frame (not per tab), from 1, skipping 0, assigned only when a record is
+  published: a waiting record and its replacements have none. Seqs of different frames are never
+  compared. The main thread keeps each frame's count `P` as a 53-bit integer and extends a `u32`
+  acknowledgement `a` to `P − ((P − a) mod 2³²)`; the worker compares with `seq_ge(a, b)` =
+  `(a − b) as i32 ≥ 0`. At the end of every tick that applied records of a frame the worker posts
+  `applied{id, seq}`, so a frame that cannot draw is still acknowledged, at most one ring
+  (1 638 Resize records) behind.
+- **Coalescing.** A record that does not fit waits in a map keyed by kind and frame; a later record
+  of the same key replaces it (deleted, then inserted at the end). Up to 32 waiting records are
+  published before a new one, which waits behind any that remain; a main rAF publishes up to 256.
+  None is dropped, so `overflow_count` stays 0.
+- **The `created` gate and frame ids.** The adapter numbers frames from 1 per render worker and
+  never reuses a number (a restart is a new worker). A frame's records are held, the latest per
+  kind, until the worker's `created{id}`, then published in call order. The worker refuses a
+  `create` at or below the highest id it has seen. Dispose drops the frame's held and waiting
+  records on the main thread and its state, awaited presentation and later records in the worker.
+- **Wake-up.** After each publish the adapter compare-exchanges `idle` 1 → 0 and posts one `input`
+  message if it was 1 (T03-004); the worker sets `idle` and re-checks head ≠ tail before it sleeps.
+- **`drawn` (ADR-0019).** Each presentation captures `{seq, rseq, css, dpr}` when its draw list is
+  submitted; its `drawn` reports exactly those, also after a deferred read-back. The adapter
+  reports `drawn` only for the latest `resize()` call (none while a Resize is held or waiting, and
+  only when `rseq` is that call's seq), with the caller's values.
+- **Rejected records.** A size below 16 or not a multiple of 8, a record past the head or the end,
+  the wrong size for its kind or an unknown kind skips the rest of the batch (tail = head) and
+  counts in `input_bad`; so does a Camera with an empty or non-finite view, value range or band. A
+  record of a disposed frame is ignored.
 
 Capture rules (`input.js`):
 - Pointer, wheel, contextmenu and dblclick listeners attach to the canvas element. Wheel is
@@ -910,4 +947,5 @@ which forces a reload.
 | 1.6-rc | 2026-11-21 | #90: `drawn` event (ADR-0019): §4.2 the engine events add `drawn` |
 | 1.7-rc | 2026-11-21 | #93: §4.4 value-axis range is chart view state |
 | 1.8-rc | 2026-11-25 | #68 Part B: §5.6 Arrow is `dash-wire`'s own Arrow IPC reader, no arrow-rs crate (owner decision, licence); §7.3 the size table and its risk sentence name the `dash-wire` reader |
+| 1.10-rc | 2026-11-26 | #68 Part C2a1: §4.3 `idle` at `0xC8` (the tail's line) and `input_bad` at `0x4D10`; §5.4 Resize `36 u32 frame`, the Camera record `0x23`, `0x24`–`0x26` reserved, and the engine adapter's ring as built (counters, per-frame seqs at publish and their 53-bit extension, coalescing, the `created` gate and frame ids, wake-up, `drawn` from the capture, rejected records), replacing the C1 resize note; **T03-004 revised** to the idle-word wake-up |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |
