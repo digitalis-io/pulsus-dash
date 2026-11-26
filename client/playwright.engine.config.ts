@@ -9,9 +9,10 @@
  * build's BFF (`make e2e-build-probe`, port 4175); every other spec stays on the fault build.
  * `e2e:engine-camera` (plan #68 C2a2) runs on `lavapipe` (gated) and `swiftshader` (report-only
  * with the WebGPU leg) against the fault build with `?probe=1`; `bench:shim-input-cost` runs with
- * `e2e:shim-fuzz` in `probe`, report-only. The default legs of `e2e:mode-matrix` (plan #256 §5) use
- * three more servers: the unflagged release BFF (`make e2e-build-release`, port 4176), `vite
- * preview` of `dist-release-stub` with its computed manifest (4177) and the dev server (5175).
+ * `e2e:shim-fuzz` in `probe`, report-only. `e2e:engine-layer` (plan #68 C2c1) runs as
+ * `e2e:engine-camera` does. The default legs of `e2e:mode-matrix` (plan #256 §5) use three more
+ * servers: the unflagged release BFF (`make e2e-build-release`, port 4176), `vite preview` of
+ * `dist-release-stub` with its computed manifest (4177) and the dev server (5175).
  */
 import { defineConfig, devices } from '@playwright/test';
 
@@ -40,8 +41,9 @@ export default defineConfig({
     'engine-shim-fuzz.spec.ts',
     'engine-camera.spec.ts',
     'engine-hover.spec.ts',
+    'engine-layer.spec.ts',
   ],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],

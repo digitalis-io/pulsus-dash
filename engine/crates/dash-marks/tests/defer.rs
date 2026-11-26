@@ -30,6 +30,7 @@ fn list(line: GalleryLine) -> DrawList {
         spec,
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
+        events: std::sync::Arc::from([]),
     };
     build(&v).0
 }

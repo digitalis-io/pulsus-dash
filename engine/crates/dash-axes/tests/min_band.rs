@@ -33,7 +33,17 @@ fn a_measured_band_is_at_least_the_minimum() {
         (Unit::Time { base: TimeBase::S }, 53.0),
         (Unit::Percent, 53.0),
     ] {
-        let a = value_axis(VisKind::Line, w, h, 0.0, 1.0, None, &unit, Band::Measure);
+        let a = value_axis(
+            VisKind::Line,
+            w,
+            h,
+            0.0,
+            1.0,
+            None,
+            &unit,
+            Band::Measure,
+            0.0,
+        );
         let texts: Vec<String> = a.labels.iter().map(|l| l.text.clone()).collect();
         assert!(label_width(&texts) < min, "{unit:?}: {texts:?}");
         assert_eq!(a.band_w, min, "{unit:?}");
@@ -42,7 +52,7 @@ fn a_measured_band_is_at_least_the_minimum() {
             (min + LEFT, w - min - LEFT - RIGHT),
             "{unit:?}"
         );
-        assert_eq!(a.plot, layout_plot(VisKind::Line, w, h, min));
+        assert_eq!(a.plot, layout_plot(VisKind::Line, w, h, min, 0.0));
     }
     // Long labels: the measured width wins.
     let a = value_axis(
@@ -54,6 +64,7 @@ fn a_measured_band_is_at_least_the_minimum() {
         None,
         &Unit::None,
         Band::Measure,
+        0.0,
     );
     let texts: Vec<String> = a.labels.iter().map(|l| l.text.clone()).collect();
     let measured = label_width(&texts);
@@ -73,6 +84,7 @@ fn a_held_band_is_used_as_it_is() {
         None,
         &Unit::Bytes,
         Band::Fixed(30.0),
+        0.0,
     );
     assert_eq!(a.band_w, 30.0);
     assert_eq!(

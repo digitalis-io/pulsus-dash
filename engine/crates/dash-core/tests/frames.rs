@@ -323,7 +323,7 @@ fn frames_apply() {
     let a = a11y_of(&mut f, 1);
     assert_eq!(
         a["plot"]["x"].as_f64(),
-        Some(layout_plot(VisKind::Line, 1118.0, 240.0, 60.0).x)
+        Some(layout_plot(VisKind::Line, 1118.0, 240.0, 60.0, 0.0).x)
     );
     // NaN band: measured again.
     assert_eq!(f.apply(&camera_rec(1, 5, view, NAN2, f64::NAN)), Some(1));
@@ -596,7 +596,7 @@ fn stage_presented() {
         (s1[0]["id"].as_u64(), s1[0]["rseq"].as_u64()),
         (Some(1), Some(1))
     );
-    let plot = layout_plot(VisKind::Line, 1118.0, 240.0, 60.0);
+    let plot = layout_plot(VisKind::Line, 1118.0, 240.0, 60.0, 0.0);
     assert_eq!(
         norm(&s1[0]["stage"]),
         stage_json(plot, domain_of(&a1), 60.0)
@@ -610,7 +610,7 @@ fn stage_presented() {
     let s3 = stages_of(&events_of(&f.complete(1, &p3, 3.0, 4.0)));
     assert_eq!(s3.len(), 1);
     assert_eq!(s3[0]["rseq"].as_u64(), Some(3));
-    let plot600 = layout_plot(VisKind::Line, 600.0, 240.0, 60.0);
+    let plot600 = layout_plot(VisKind::Line, 600.0, 240.0, 60.0, 0.0);
     assert_eq!(
         norm(&s3[0]["stage"]),
         stage_json(plot600, domain_of(&a3), 60.0)
@@ -622,7 +622,7 @@ fn stage_presented() {
     assert!(stages_of(&events_of(&f.take_applied())).is_empty());
     let s4 = stages_of(&events_of(&f.complete(1, &p4, 5.0, 6.0)));
     assert_eq!(s4.len(), 1);
-    let plot900 = layout_plot(VisKind::Line, 900.0, 240.0, 60.0);
+    let plot900 = layout_plot(VisKind::Line, 900.0, 240.0, 60.0, 0.0);
     assert_eq!(
         norm(&s4[0]["stage"]),
         stage_json(plot900, domain_of(&a4), 60.0)
@@ -652,7 +652,10 @@ fn stage_presented() {
     assert_eq!(s8.len(), 1);
     let x = a8["plot"]["x"].as_f64().unwrap_or(f64::NAN);
     let measured = s8[0]["stage"]["labelW"].as_f64().unwrap_or(f64::NAN);
-    assert_eq!(layout_plot(VisKind::Line, 1118.0, 240.0, measured).x, x);
+    assert_eq!(
+        layout_plot(VisKind::Line, 1118.0, 240.0, measured, 0.0).x,
+        x
+    );
     assert_ne!(
         measured, 60.0,
         "precondition: the measured band is not the held one"
@@ -1038,4 +1041,64 @@ fn key_index_past_new_data() {
     assert_eq!(f.apply(&overlay_rec(1, 4, 2, 0.0, 0.0, 30)), Some(1));
     let (_, h) = build_hover(&mut f, 1);
     assert!(h["ev"].is_null(), "{h}");
+}
+
+/// Plan #68 C2c1 §5 `frames_events` (§4.2, ADR-0023): `set_events` is a layer input; the band moves
+/// the stage's plot down by `EVENT_BAND` (18 px) at the next completion, and back without events;
+/// the summary's label boxes stay empty until #69; an Overlay alone after it reuses the layer.
+#[test]
+fn frames_events() {
+    let (chunk, json) = line50();
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    assert_eq!(f.apply(&resize_rec(1, 1, 1118.0, 240.0, 1.0)), Some(1));
+    assert_eq!(
+        f.apply(&camera_rec(1, 2, GALLERY_WINDOW, NAN2, f64::NAN)),
+        Some(1)
+    );
+    let (p0, _, _) = present(&mut f, 1);
+    let _ = f.complete(1, &p0, 1.0, 2.0);
+    let plot0 = plot_of(&p0);
+    let builds = f.layer_builds();
+    f.set_events(1, vec![GALLERY_WINDOW.0 + 1_800_000.0]);
+    let (p1, _, a1) = present(&mut f, 1);
+    assert_eq!(f.layer_builds(), builds + 1, "events rebuild the layer");
+    assert_eq!(a1["thresholdLabels"], serde_json::json!([]), "{a1}");
+    assert_eq!(a1["eventLabels"], serde_json::json!([]), "{a1}");
+    let s1 = stages_of(&events_of(&f.complete(1, &p1, 3.0, 4.0)));
+    assert_eq!(s1.len(), 1, "the band flip is reported");
+    assert_eq!(s1[0]["stage"]["plot"]["y"].as_f64(), Some(plot0.y + 18.0));
+    assert_eq!(
+        s1[0]["stage"]["plot"]["height"].as_f64(),
+        Some(plot0.height - 18.0)
+    );
+    // An Overlay alone: the layer (with its event line) is reused, the hover overlay after it.
+    let builds = f.layer_builds();
+    let plot1 = plot_of(&p1);
+    let x = plot1.x + 0.3 * plot1.width;
+    assert_eq!(
+        f.apply(&overlay_rec(1, 3, 1, x, plot1.y + 20.0, 0)),
+        Some(1)
+    );
+    let (list, _) = build_hover(&mut f, 1);
+    assert_eq!(
+        f.layer_builds(),
+        builds,
+        "an Overlay does not rebuild the layer"
+    );
+    let overlays = list
+        .items
+        .iter()
+        .filter(|i| matches!(i, MarkItem::Overlay { .. }))
+        .count();
+    assert_eq!(overlays, 2, "the layer Overlay, then the hover's");
+    // No events: the band goes.
+    f.set_events(1, Vec::new());
+    let (p2, _, _) = present(&mut f, 1);
+    assert_eq!(f.layer_builds(), builds + 1);
+    let s2 = stages_of(&events_of(&f.complete(1, &p2, 5.0, 6.0)));
+    assert_eq!(s2.len(), 1);
+    assert_eq!(s2[0]["stage"]["plot"]["y"].as_f64(), Some(plot0.y));
 }

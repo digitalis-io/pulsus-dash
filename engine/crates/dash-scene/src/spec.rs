@@ -25,6 +25,34 @@ fn max_series_default() -> u32 {
     500
 }
 
+/// A threshold's state (ADR-0022): its line's colour (T02-004).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThresholdState {
+    Watch,
+    Degraded,
+    Failing,
+}
+
+/// One threshold line of a spec (TS `ThresholdLine`); its `label` is drawn with the engine's text
+/// mark (#69) and ignored until then.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct ThresholdLine {
+    /// None: JSON `null`, which is what `JSON.stringify` writes for NaN and ±∞ (not drawn).
+    pub value: Option<f64>,
+    pub state: ThresholdState,
+}
+
+/// The most threshold lines a frame draws, in spec order (TS `MAX_THRESHOLDS`, ADR-0022).
+pub const MAX_THRESHOLDS: usize = 8;
+
+/// The spec's threshold lines, the first [`MAX_THRESHOLDS`] kept (TS `thresholdsOf`).
+fn first_eight<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<ThresholdLine>, D::Error> {
+    let mut lines = <Vec<ThresholdLine> as serde::Deserialize>::deserialize(d)?;
+    lines.truncate(MAX_THRESHOLDS);
+    Ok(lines)
+}
+
 /// A line spec, parsed from the TS JSON.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +60,9 @@ pub struct LineSpec {
     pub unit: Unit,
     #[serde(default)]
     pub value_range: Option<ValueRange>,
+    /// The first [`MAX_THRESHOLDS`] lines, in spec order (TS `thresholdsOf`).
+    #[serde(default, deserialize_with = "first_eight")]
+    pub thresholds: Vec<ThresholdLine>,
     /// 500 while the interim cap holds (ADR-0014 §4).
     #[serde(skip, default = "max_series_default")]
     pub max_series: u32,
@@ -42,6 +73,7 @@ impl LineSpec {
         Self {
             unit,
             value_range: None,
+            thresholds: Vec::new(),
             max_series: max_series_default(),
         }
     }

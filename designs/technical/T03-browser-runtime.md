@@ -195,7 +195,10 @@ main; render: the applied camera, hover, decoded columns; Space and 3D controlle
 the ring in render). `hover` and `select` (#68 C2b): the worker picks on the f64 originals of the
 presentation on screen and posts `hover{id, oseq, ev}` (the hover of the frame's last applied
 Overlay, from the tick that applied it) and `select{id, item}`; `stage` adds `pickCount` (the
-samples of series 0, the keyboard crosshair's range).
+samples of series 0, the keyboard crosshair's range). Main → render `events{id, atMs}` (#68
+C2c1): the frame's event markers' times (`Float64Array`, call order, NaN kept), one message per
+`setEvents` whose array is new by identity; a layer input like `spec` and `data`, not a ring
+record.
 
 | Thread | Count | Blocks? | Owns | Wakes on |
 |---|---|---|---|---|
@@ -981,5 +984,6 @@ which forces a reload.
 | 1.10-rc | 2026-11-26 | #68 Part C2a1: §4.3 `idle` at `0xC8` (the tail's line) and `input_bad` at `0x4D10`; §5.4 Resize `36 u32 frame`, the Camera record `0x23`, `0x24`–`0x26` reserved, and the engine adapter's ring as built (counters, per-frame seqs at publish and their 53-bit extension, coalescing, the `created` gate and frame ids, wake-up, `drawn` from the capture, rejected records), replacing the C1 resize note; **T03-004 revised** to the idle-word wake-up |
 | 1.11-rc | 2026-11-26 | #68 Part C2a2 ([ADR-0030](../adr/0030-engine-camera-controller-on-main.md)): the ownership audit, each to "2D charts: the camera controller on main; render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read the ring in render": §0 topology note, §4.1 `dash-core-mt` row, §4.2 diagram and thread table, §4.4 paragraph, §6 the gesture camera row, §12 "Keymap in the render worker" row |
 | 1.12-rc | 2026-11-26 | #68 Part C2b: §5.4 the Overlay (`0x24`) and Select (`0x25`) records, `0x26` reserved; Select is discrete (never coalesced, at most 8 waiting per frame, the oldest dropped and counted in `overflow_count`), T03-020's coalescing applies to state records; the adapter writes at most one Camera and one Overlay per task; main accepts a `hover` only for its latest Overlay; rejected Overlay and Select records; §4.2 render → main events add `hover` and `select`, `stage` adds `pickCount` |
+| 1.13-rc | 2026-11-26 | #68 Part C2c1: §4.2 main → render message `events{id, atMs}` (the event markers' times; a layer input, not a ring record) |
 | 1.14-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §9.2 the Part C1 note: the engine is the default renderer, not opt-in; `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D; the recovery table adds the boot failure that marks the session (not for a build without the engine) |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |

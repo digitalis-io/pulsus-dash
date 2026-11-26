@@ -187,6 +187,7 @@ fn line50_manual() -> Arc<PickSnap> {
         spec,
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
+        events: std::sync::Arc::from([]),
     };
     let b = build_frame(&v);
     assert!(b.stage.is_some(), "a stage");

@@ -842,7 +842,7 @@ after `dispose`. Every layout input clears the hover, so it also writes an Overl
 |---|---|
 | Overlay applied | stores the hover and the box band and its seq (`oseq`); the frame is dirty, its layer is not |
 | Select applied | picks at once on the presentation on screen (the last completed one): one `select` event, none while nothing is on screen (no completion yet, a zero size, no plot) |
-| build | the layer (`build_frame`: the draw list, summary, stage and the pick snapshot) is rebuilt only when a layer input changed (spec, data, theme, Resize, Camera); otherwise the cached list is reused. When an Overlay was applied since the last build, the hover is recomputed on the list's pick and one `hover` event goes out with its `oseq`. Then the overlay item is appended last, so the list drawn in a tick carries the hover that tick emits (T02-024) |
+| build | the layer (`build_frame`: the draw list, summary, stage and the pick snapshot) is rebuilt only when a layer input changed (spec, data, events, theme, Resize, Camera); otherwise the cached list is reused. When an Overlay was applied since the last build, the hover is recomputed on the list's pick and one `hover` event goes out with its `oseq`. Then the overlay item is appended last, so the list drawn in a tick carries the hover that tick emits (T02-024) |
 | submit, complete | the presentation captures the pick snapshot; when it completes it becomes what clicks pick on |
 
 The hover rules are the Canvas 2D line rules, ported bit for bit ([charts](charts.md#interaction-int-033-ia-020-subset)):
@@ -888,6 +888,56 @@ first. The probe build adds `freeze(n, seq)`, `frozen(n)` and `unfreeze(n)`
 (`engine_probe_freeze`, `engine_probe_unfreeze`): after its first completed presentation with seq
 ≥ `seq` the worker builds and presents nothing for the frame, so a screenshot shows exactly that
 presentation.
+
+### Thresholds and event markers (Part C2c1)
+
+Line frames draw their threshold lines
+([ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)) and event lines
+([ADR-0023](../../designs/adr/0023-chart-event-markers.md)) as Canvas 2D does (T02-009);
+their labels (chips, glyphs, truncation, `+N`, leaders) come with the engine's text mark in #69,
+with the axis labels.
+
+**Thresholds** come in the spec JSON (`LineSpec.thresholds`): the first 8 lines in spec order; a
+`null` value (what `JSON.stringify` writes for NaN and ±∞) is not drawn, the label is ignored until
+#69, and an unknown state is a spec error. The auto value domain is widened by every finite value
+(`with_thresholds`, TS `withThresholds`; the summary's `min` and `max` stay the data's); a pinned
+axis wins. Each finite value whose y is inside the plot (edges included) is drawn at row
+`round(y)`, 1 px high, dashed as Canvas 2D strokes from `plot.x` with `chart-dash` 5 and
+`chart-dash-gap` 4 at offset 0: dash k from `plot.x + 9k`, 5 px wide and cut at the plot's right
+edge, in its state colour (`watch`, `degraded`, `failing`, T02-004).
+
+**Events** go to the worker as one message per change, their times only:
+
+```json
+{"t":"events","id":1,"atMs":[1795091400000,NaN]}
+```
+
+`atMs` is a `Float64Array` of every `EventMarker.atMs` in call order (NaN kept by structured
+clone); `WasmFrame` posts it for each `setEvents` array that differs by identity from the last one,
+and the worker stores it (`frame_set_events`, `Frames::set_events`) as a layer input. The layout
+reserves the event label band (`EVENT_BAND` = one label line + `space.1` = 18 px above the plot,
+`event_band`) once the frame holds an event, in view or not. Each finite event in view (ends
+included), in ascending time, is a 1 px `text-muted` line at column
+`round(plot.x + (at − lo)/(hi − lo)·plot.width)` over the plot's height. A column at or past the
+plot's right edge (an event at the window's end, or one rounding to it) is drawn in the plot's last
+column on an auto axis, so every event in view keeps a line (ADR-0023); under a pinned axis it is cut
+at the edge and dropped there, as Canvas 2D clips it. Lines are drawn after the thresholds.
+
+**On the main thread** (`ControlledFrame.setEvents`): the same array does nothing; a band flip (no
+events to some, or back) moves the plot, so it is a layout change as in Canvas 2D (the hover is
+cleared, an Overlay of none is written); then the frame flushes and forwards the call. The stage
+moves at the next completion, by C2a2's rule.
+
+**In the worker**: `build_frame` appends one `Overlay` item of the threshold rects, then the
+event rects, after the guides and the line, when there are any; the layer cache keeps it, so a
+hover frame reuses it and the hover's Overlay item follows it. The renderer draws Overlay items in
+list order after every line and guide, unclipped; both marks are inside the plot by construction,
+with or without a manual axis. The summary reports `thresholdLabels: []` and `eventLabels: []`
+until #69.
+
+Canvas 2D clips event lines only under a manual axis (`clipped`), so under an auto axis an event
+at the window's end is stroked one column right of the plot; the engine draws it in the plot's
+last column instead (`layer_parity` expects that rect, and the pinned case dropped).
 
 ### Tiers and the frame loop
 
@@ -994,11 +1044,16 @@ manifest (4177) and the dev server (5175), in two Chromium projects of the engin
   the native `dash-golden render` of the same page, theme, CSS size and DPR: equal sizes
   (`round(css × dpr)`), mean ꟻLIP ≤ 0.001, no 8 × 8 tile above 0.05; a 1 % shifted window and the
   `gap` fault must fail. Since Part C2b also `line-50` dark hovered at the plot's centre and with a
-  box band over 20–40 % of the plot, against `render --hover x,y` and `--box x0,x`.
+  box band over 20–40 % of the plot, against `render --hover x,y` and `--box x0,x`. Since Part
+  C2c1 also `line-thresholds` and `line-events`, dark and light (`render --page line-thresholds`
+  draws the `layer.json` case).
 - `canvas2d parity`: sampled geometric parity with Canvas 2D: the plot rects are equal, and on 32
   points of Canvas 2D's line mask the engine draws (≥ 28 within ±1 device px), with ≤ 8 of 32
   background points touched; `noline` must fail. Anti-aliasing differs between the two renderers
-  by design, so pixel identity is checked against the native renderer only.
+  by design, so pixel identity is checked against the native renderer only. Since Part C2c1
+  `line-thresholds` and `line-events`: the plot is `layer.json`'s, both renderers have the
+  threshold rows (at each dash's centre) and event columns within ±1 device px outside Canvas 2D's
+  label boxes, and the line mask holds outside them.
 - `e2e:mode-matrix` (plan #256): M1 the engine with no flag (both projects) and M2 a board's line
   panel on the engine with its stat on Canvas 2D, on the release BFF; M3 `?engine=canvas2d`, M5–M12
   each fallback condition (no OffscreenCanvas, `mode=static`, `st`, `mtr`, not isolated, no GPU
@@ -1038,6 +1093,14 @@ manifest (4177) and the dev server (5175), in two Chromium projects of the engin
   point under it, a NaN sample nothing; H4 a right drag draws only the box band; H5 a hover of an
   Overlay older than a layout change never shows; H6 the gallery tooltip of an engine `line-50`
   equals Canvas 2D's.
+- `e2e:engine-layer` (Part C2c1; as `e2e:engine-camera`): L1 thresholds `[20 watch, 40 failing]`
+  widen the auto domain to `layer.json`'s and the watch row has ink on every dash run and none in
+  the gaps; pinned to 0..30 the 40 line is gone; L2 an event reserves the band (the fixture's
+  plot, 18 px lower), clears a shown hover and draws a `text-muted` column over ≥ 90 % of the plot's
+  rows, and no events restore the plot; L3 the event column follows five wheel zooms (±1 device
+  px) and leaves the view; L4 under a pinned axis an event at each window end is drawn at the
+  plot's left column and nothing is drawn right of the plot; L5 on an auto axis an event at the
+  window's end and one 1 s before it are drawn in the plot's last column, nothing right of it.
 - `bench:shim-input-cost` (project `probe`, report-only): 10⁴ wheels and 10⁴ pointer moves on a
   probe frame, 16 per animation frame, each dispatch timed with the frame's flush; prints p50, p99 and max per dispatch and per frame's group
   next to the catalogue limits (p99 ≤ 0.05 ms, callback ≤ 2 ms) and asserts only that every
@@ -1062,7 +1125,8 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 - The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
   `minValueBand`), so the engine's plot rect equals Canvas 2D's.
 - In the browser: line frames only; zoom, pan, axis drags, hover, click select and the box band
-  work; thresholds, event markers and the `setSelection` highlight are not drawn until C2c; WebGPU
+  work, and so do threshold lines and event lines without their labels (#69); the `setSelection`
+  highlight is not drawn until C2c2; WebGPU
   is verified only report-only in the engine image (SwiftShader); one restart per page.
 - A hover frame redraws the whole GPU frame from the cached layer list (at most one per tick, as a
   pan frame); hover answers come one tick after the Overlay is published. A click picks on the
@@ -1092,6 +1156,7 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 | T03-004 (revised), T03-006, T03-019, T03-020 | the input ring: idle-word wake-up, SPSC release/acquire, read at frame start, state records coalesced, only Selects past the per-frame cap dropped (counted) | `unit:input-ring` (`ring`, `ring_decode`, `ring_rollover`, `ring_stress`, `wake_interleavings`, `ring_fixture`), `e2e:shim-fuzz` |
 | ADR-0019 | `drawn` of the presented capture, for the latest resize | `presentation_capture`, `wasm frame`, `probe settle` |
 | T02-024, INT-033, INT-034, INT-025, T25-005 | hover and the overlay in the tick of the Overlay; click select on the presentation on screen; the Canvas 2D rules ported bit for bit | `unit:hover-parity` (`hover_parity`, `overlay_item_shapes`), `overlay_order`, `frames_overlay`, `frames_select`, `stage_pick_count`, `controlled hover`, `controlled batch`, `wasm frame hover`, `e2e:engine-hover`, `golden:engine-overlay` |
+| T02-009, ADR-0022, ADR-0023, T02-004 | threshold lines and event lines as Canvas 2D's strokes; the auto domain and the event band | `unit:layer-parity` (`layer_parity`, `build_layer_items`), `spec_thresholds`, `layout_event_band`, `frames_events`, `wasm frame events`, `controlled events`, `e2e:engine-layer`, `golden:engine-overlay`, `golden:engine-line`, `canvas2d parity` |
 | T03-022, ADR-0026 | CSP, Trusted Types, COEP | `e2e:csp-violations`, `unit:CSP` |
 | T03-024 | no test hook in a release build; the probe export only in the probe build | `ci:probe-absent` |
 | T03-025 | fallback and recovery | `routing`, `restart policy`, `e2e:engine-recovery`, `e2e:mode-matrix` |
