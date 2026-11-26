@@ -28,10 +28,14 @@ pub struct GpuContext {
     pub queue: wgpu::Queue,
     pub tier: Tier,
     pub info: wgpu::AdapterInfo,
-    /// min(max_buffer_size, max_storage_buffer_binding_size) / 16.
+    /// Instances one buffer can hold (16 bytes each): T1 min(max_buffer_size,
+    /// max_storage_buffer_binding_size) / 16, as the compute passes bind the instance buffer; T2
+    /// max_buffer_size / 16 (no storage binding).
     pub max_instances: u64,
     /// Test hook: waits left before `wait` fails (`u64::MAX` = never).
     wait_budget: std::sync::atomic::AtomicU64,
+    /// Test hook: deferred maps left before they report failure (`u64::MAX` = never).
+    map_budget: std::sync::atomic::AtomicU64,
 }
 
 fn instance() -> wgpu::Instance {
@@ -69,15 +73,51 @@ impl GpuContext {
         };
         let (device, queue) = pollster::block_on(adapter.request_device(&desc))
             .map_err(|e| GpuError::Device(e.to_string()))?;
-        let max_instances = al.max_buffer_size.min(al.max_storage_buffer_binding_size) / 16;
-        Ok(Self {
+        Ok(Self::from_device(device, queue, tier, adapter.get_info()))
+    }
+
+    /// A context on a device the caller requested (the render worker's path).
+    pub fn from_device(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        tier: Tier,
+        info: wgpu::AdapterInfo,
+    ) -> Self {
+        let l = device.limits();
+        let max_instances = match tier {
+            Tier::T1 => l.max_buffer_size.min(l.max_storage_buffer_binding_size) / 16,
+            Tier::T2 => l.max_buffer_size / 16,
+        };
+        Self {
             wait_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
+            map_budget: std::sync::atomic::AtomicU64::new(u64::MAX),
             device,
             queue,
             tier,
-            info: adapter.get_info(),
+            info,
             max_instances,
-        })
+        }
+    }
+
+    /// Whether a completed deferred map may be used: false once the `fail_maps_after` budget is
+    /// spent (test hook; always true otherwise).
+    pub fn take_map(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        match self.map_budget.load(Ordering::Relaxed) {
+            0 => false,
+            u64::MAX => true,
+            _ => {
+                self.map_budget.fetch_sub(1, Ordering::Relaxed);
+                true
+            }
+        }
+    }
+
+    /// Test hook: every deferred map after the next `n` successful ones reports failure.
+    #[cfg(feature = "test-hooks")]
+    pub fn fail_maps_after(&self, n: u64) {
+        self.map_budget
+            .store(n, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// The Vulkan adapters this process sees (name, driver, driver info), for error messages.

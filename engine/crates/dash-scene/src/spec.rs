@@ -52,3 +52,30 @@ pub enum VisSpec {
     Line(LineSpec),
     Unsupported(VisKind),
 }
+
+/// A spec the engine cannot read (plan #68 C1 §3.4).
+#[derive(Debug, PartialEq, thiserror::Error)]
+#[error("spec: {0}")]
+pub struct SpecError(pub String);
+
+impl VisSpec {
+    /// The TS `VisSpec` JSON: `line` → [`LineSpec`] (unknown fields ignored), `bars`, `heatmap`
+    /// and `stat` → `Unsupported`, anything else → [`SpecError`].
+    pub fn from_json(json: &str) -> Result<Self, SpecError> {
+        #[derive(serde::Deserialize)]
+        struct Kind {
+            kind: String,
+        }
+        let err = |e: serde_json::Error| SpecError(e.to_string());
+        let Kind { kind } = serde_json::from_str(json).map_err(err)?;
+        match kind.as_str() {
+            "line" => serde_json::from_str::<LineSpec>(json)
+                .map(VisSpec::Line)
+                .map_err(err),
+            "bars" => Ok(VisSpec::Unsupported(VisKind::Bars)),
+            "heatmap" => Ok(VisSpec::Unsupported(VisKind::Heatmap)),
+            "stat" => Ok(VisSpec::Unsupported(VisKind::Stat)),
+            other => Err(SpecError(format!("unknown kind {other:?}"))),
+        }
+    }
+}

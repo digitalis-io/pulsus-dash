@@ -26,8 +26,9 @@ wgpu = { workspace = true, optional = true }
 dash-colour.workspace = true
 dash-scene.workspace = true
 dash-units.workspace = true
+dash-gpu = { workspace = true, features = ["test-hooks"] }
 glam.workspace = true
-naga.workspace = true
+naga = { workspace = true, features = ["glsl-out"] }
 pulsus-synth.workspace = true
 
 [[test]]
@@ -52,4 +53,12 @@ required-features = ["gpu"]
 
 [[test]]
 name = "wgsl"
+required-features = ["gpu"]
+
+[[test]]
+name = "defer"
+required-features = ["gpu"]
+
+[[test]]
+name = "t2_resources"
 required-features = ["gpu"]

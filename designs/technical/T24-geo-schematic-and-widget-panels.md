@@ -1957,7 +1957,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 
 ## 8. Security, tenancy & RBAC
 
-- One renderer with no HTML string sink (T24-004, [T18-005](T18-security.md#t18-005--one-trusted-types-sink),
+- One renderer with no HTML string sink (T24-004, [T18-005](T18-security.md#t18-005--two-named-trusted-types-policies-no-default),
   T18-013); every URL is classified after interpolation (T24-005, T18-011).
 - Removals and import errors carry no content (T24-007, §5.4 step 5).
 - AI output loads no image or other auto-loading element (T24-018, T18 §4.10). Until the image proxy

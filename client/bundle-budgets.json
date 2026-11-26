@@ -24,7 +24,8 @@
     "lazyChunk": 120000,
     "editorChunk": 175000,
     "fonts": 150000,
-    "totalExceptEngine": 1000000
+    "totalExceptEngine": 1000000,
+    "engine": 1900000
   },
   "editorModules": [
     "src/editor/editor.ts",

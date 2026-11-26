@@ -8,6 +8,12 @@
 //! are never shrunk, the instance buffer grows to a power of two ≥ the frame's instances (L3).
 //! Column ranges are cached by (chunk, series, window, columns, DPR), so a theme or value-range
 //! change never rebuilds them, and a pan, zoom or resize never re-encodes values.
+//!
+//! Sync (plan #68 C1 §3.1): `Block` (native) waits for uploads, batches and the status read-back;
+//! `Defer` (the browser) never waits: queue order alone orders uploads and batches, and a T1 item
+//! whose total is not known yet is drawn within the current capacity while the status header is
+//! read back with `map_async` (`defer.rs`, [`Renderer::poll`]). On T2 no compute pipeline and no
+//! storage or indirect buffer exist.
 
 use dash_gpu::{FrameTarget, GpuContext, Tier};
 use dash_scales::decimate::{
@@ -18,24 +24,53 @@ use dash_scales::encode::Encoding;
 use dash_scales::{ColumnRanges, column_ranges};
 use dash_wire::{Chunk, ChunkId};
 
+use super::defer::{Readback, TotalKey};
 use super::pipeline::{Pipelines, pipelines};
+use super::t1::Compute;
 use crate::desc::{DrawList, DrawnEvent, MarkItem};
 
 /// The L2 staging slab: 16 MiB of encoded values.
-const STAGING_WORDS: usize = (16 << 20) / 4;
+pub(super) const STAGING_WORDS: usize = (16 << 20) / 4;
 /// The instance buffer starts at 2^20 instances (capped at `max_instances`).
 const MIN_INSTANCES: u64 = 1 << 20;
 /// u32 words of `status` before the per-series base metas: draw-indirect args, total, padding.
-const STATUS_HEADER: u64 = 8;
+pub(super) const STATUS_HEADER: u64 = 8;
 pub(super) const INSTANCE_BYTES: u64 = 16;
-const COL_BYTES: u64 = 40;
+pub(super) const COL_BYTES: u64 = 40;
 /// The guide colour slot.
 const GRID_SLOT: u32 = 8;
+
+/// How the renderer waits for the GPU (plan #68 C1 §3.1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sync {
+    /// Native: block on uploads, batches and the status read-back.
+    #[default]
+    Block,
+    /// The browser: never block; read the status back with `map_async` and report through
+    /// [`Renderer::poll`].
+    Defer,
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RendererOptions {
     /// Test hook: force batching below the device limit.
     pub max_instances: Option<u64>,
+    pub sync: Sync,
+}
+
+/// The state of a deferred status read-back (`Sync::Defer`).
+#[derive(Debug, PartialEq)]
+pub enum Pending {
+    /// Nothing outstanding.
+    Idle,
+    /// The read-back has not completed yet.
+    Waiting,
+    /// The frame drawn last was complete.
+    Complete(DrawnEvent),
+    /// The frame was under-sized or its read-back failed: draw it again.
+    Rerun,
+    /// The third read-back in a row failed.
+    Failed,
 }
 
 /// Test hook counters (A.15.1).
@@ -53,19 +88,23 @@ pub struct DebugCounters {
     pub cpu_instance_bytes_peak: u64,
     /// Value-upload slices submitted to the queue.
     pub value_slices_submitted: u64,
+    /// Compute pipelines created (0 on T2).
+    pub compute_pipelines: u32,
+    /// Buffers created with STORAGE or INDIRECT usage (0 on T2).
+    pub storage_buffers: u32,
 }
 
 /// The P1–P5 uniform.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct PassU {
-    n: u32,
-    series: u32,
-    per_series_ranges: u32,
-    guides: u32,
-    window_lo: u32,
-    window_hi: u32,
-    pad: [u32; 2],
+pub(super) struct PassU {
+    pub(super) n: u32,
+    pub(super) series: u32,
+    pub(super) per_series_ranges: u32,
+    pub(super) guides: u32,
+    pub(super) window_lo: u32,
+    pub(super) window_hi: u32,
+    pub(super) pad: [u32; 2],
 }
 
 /// The draw uniform (`line.wgsl` `View`, 256 bytes).
@@ -86,27 +125,43 @@ struct ViewU {
 
 /// A buffer that grows on demand and is never shrunk (L3).
 #[derive(Debug)]
-struct Grow {
+pub(super) struct Grow {
     label: &'static str,
     usage: wgpu::BufferUsages,
-    buf: wgpu::Buffer,
+    pub(super) buf: wgpu::Buffer,
 }
 
 impl Grow {
-    fn new(ctx: &GpuContext, label: &'static str, usage: wgpu::BufferUsages, size: u64) -> Self {
-        let buf = create(ctx, label, usage, size);
+    pub(super) fn new(
+        ctx: &GpuContext,
+        label: &'static str,
+        usage: wgpu::BufferUsages,
+        size: u64,
+        counters: &mut DebugCounters,
+    ) -> Self {
+        let buf = create(ctx, label, usage, size, counters);
         Self { label, usage, buf }
     }
 
     /// Reallocates when `size` exceeds the current size.
-    fn ensure(&mut self, ctx: &GpuContext, size: u64) {
+    pub(super) fn ensure(&mut self, ctx: &GpuContext, size: u64, counters: &mut DebugCounters) {
         if size > self.buf.size() {
-            self.buf = create(ctx, self.label, self.usage, size);
+            self.buf = create(ctx, self.label, self.usage, size, counters);
         }
     }
 }
 
-fn create(ctx: &GpuContext, label: &str, usage: wgpu::BufferUsages, size: u64) -> wgpu::Buffer {
+/// A buffer; STORAGE and INDIRECT ones are counted (T2 has none, plan #68 C1 §3.1).
+pub(super) fn create(
+    ctx: &GpuContext,
+    label: &str,
+    usage: wgpu::BufferUsages,
+    size: u64,
+    counters: &mut DebugCounters,
+) -> wgpu::Buffer {
+    if usage.intersects(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT) {
+        counters.storage_buffers += 1;
+    }
     ctx.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
         size: size.max(16).next_multiple_of(4),
@@ -118,16 +173,16 @@ fn create(ctx: &GpuContext, label: &str, usage: wgpu::BufferUsages, size: u64) -
 /// Encoded values of one (chunk, encoding): on the GPU for the T1 compute path, in CPU memory for
 /// the CPU path (T2 and far items).
 #[derive(Debug)]
-struct Resident {
+pub(super) struct Resident {
     chunk: ChunkId,
     enc: Encoding,
     len: u64,
-    gpu: Option<wgpu::Buffer>,
+    pub(super) gpu: Option<wgpu::Buffer>,
     cpu: Option<Vec<u32>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct RangesKey {
+pub(super) struct RangesKey {
     chunk: ChunkId,
     series: (u32, u32),
     window: (u64, u64),
@@ -136,16 +191,16 @@ struct RangesKey {
 }
 
 #[derive(Debug)]
-struct RangesCache {
+pub(super) struct RangesCache {
     key: RangesKey,
-    ranges: ColumnRanges,
+    pub(super) ranges: ColumnRanges,
     /// The key whose table is in the GPU ranges buffer.
-    uploaded: Option<RangesKey>,
+    pub(super) uploaded: Option<RangesKey>,
 }
 
 /// What `read_decimation` reads back.
 #[derive(Debug)]
-enum LastLine {
+pub(super) enum LastLine {
     Gpu {
         series: u32,
         n: u32,
@@ -157,15 +212,15 @@ enum LastLine {
 
 /// How a render pass draws its instances.
 #[derive(Clone, Copy, Debug)]
-enum Draw {
+pub(super) enum Draw {
     Direct(u32),
     /// `status[0..4]`, written by P3 (one batch only).
     Indirect,
 }
 
 /// Where a frame goes: its view, device size and whether the next pass clears.
-struct Frame<'a> {
-    list: &'a DrawList,
+pub(super) struct Frame<'a> {
+    pub(super) list: &'a DrawList,
     view: wgpu::TextureView,
     size: (u32, u32),
     first: bool,
@@ -176,35 +231,40 @@ struct Frame<'a> {
 #[derive(Debug)]
 pub struct Renderer {
     format: wgpu::TextureFormat,
-    opts: RendererOptions,
+    pub(super) opts: RendererOptions,
     p: Pipelines,
-    pass_buf: wgpu::Buffer,
     view_buf: wgpu::Buffer,
-    offsets: Grow,
-    ranges: Grow,
-    cols: Grow,
-    counts: Grow,
-    starts: Grow,
-    status: Grow,
-    instances: Grow,
-    resident: Vec<Resident>,
+    /// The T1 compute passes and their buffers; `None` on T2.
+    pub(super) compute: Option<Compute>,
+    pub(super) instances: Grow,
+    pub(super) resident: Vec<Resident>,
     staging: Vec<u32>,
-    ranges_cache: Option<RangesCache>,
-    counters: DebugCounters,
+    pub(super) ranges_cache: Option<RangesCache>,
+    pub(super) counters: DebugCounters,
     draws: u32,
-    last: Option<LastLine>,
+    pub(super) last: Option<LastLine>,
     /// The GPU error that ended the last render early, if any.
-    error: Option<dash_gpu::GpuError>,
+    pub(super) error: Option<dash_gpu::GpuError>,
+    /// `Defer`: the T1 total of the last line item read back, by what it depends on.
+    pub(super) known: Option<(TotalKey, u64)>,
+    /// `Defer`: the outstanding status read-back of the last render.
+    pub(super) pending: Option<Readback>,
+    /// `Defer`: set by a render that left its completeness to the read-back.
+    pub(super) awaiting: bool,
+    /// `Defer`: read-backs that failed in a row.
+    pub(super) read_failures: u32,
+    /// The decimated total of the last line item (guides excluded).
+    pub(super) total: Option<u64>,
 }
 
 /// The fields of a `MarkItem::Line`.
-struct LineRef<'a> {
-    chunk: &'a std::sync::Arc<Chunk>,
-    series: &'a std::ops::Range<u32>,
+pub(super) struct LineRef<'a> {
+    pub(super) chunk: &'a std::sync::Arc<Chunk>,
+    pub(super) series: &'a std::ops::Range<u32>,
     window: (f64, f64),
-    n: u32,
+    pub(super) n: u32,
     plot: [f32; 4],
-    encoding: Encoding,
+    pub(super) encoding: Encoding,
     axis: (f32, f32),
     colour_slots: &'a [u8],
     lanes: Option<&'a [u16]>,
@@ -244,12 +304,12 @@ impl<'a> LineRef<'a> {
         }
     }
 
-    fn series_count(&self) -> u32 {
+    pub(super) fn series_count(&self) -> u32 {
         self.series.end.saturating_sub(self.series.start)
     }
 
     /// slot | lane << 16 per series.
-    fn slot_lanes(&self) -> Vec<u32> {
+    pub(super) fn slot_lanes(&self) -> Vec<u32> {
         (0..self.series_count() as usize)
             .map(|s| {
                 let slot = u32::from(self.colour_slots.get(s).copied().unwrap_or(0)) & INST_SLOT;
@@ -281,33 +341,48 @@ fn scissor(clip: [f32; 4], dpr: f32, (w, h): (u32, u32)) -> (u32, u32, u32, u32)
 impl Renderer {
     pub fn new(ctx: &GpuContext, format: wgpu::TextureFormat, opts: RendererOptions) -> Self {
         use wgpu::BufferUsages as U;
-        let storage = U::STORAGE | U::COPY_DST | U::COPY_SRC;
         let cap = MIN_INSTANCES.min(opts.max_instances.unwrap_or(ctx.max_instances).max(1));
         let uniform = U::UNIFORM | U::COPY_DST;
+        let mut counters = DebugCounters::default();
+        let (compute, instance_usage) = match ctx.tier {
+            Tier::T1 => (
+                Some(Compute::new(ctx, &mut counters)),
+                U::STORAGE | U::COPY_DST | U::COPY_SRC | U::VERTEX,
+            ),
+            Tier::T2 => (None, U::VERTEX | U::COPY_DST),
+        };
+        let view_bytes = std::mem::size_of::<ViewU>() as u64;
+        let view_buf = create(ctx, "view", uniform, view_bytes, &mut counters);
+        let instances = Grow::new(
+            ctx,
+            "instances",
+            instance_usage,
+            cap * INSTANCE_BYTES,
+            &mut counters,
+        );
         Self {
             format,
             opts,
             p: pipelines(ctx, format),
-            pass_buf: create(ctx, "pass", uniform, std::mem::size_of::<PassU>() as u64),
-            view_buf: create(ctx, "view", uniform, std::mem::size_of::<ViewU>() as u64),
-            offsets: Grow::new(ctx, "offsets", storage, 16),
-            ranges: Grow::new(ctx, "ranges", storage, 16),
-            cols: Grow::new(ctx, "cols", storage, COL_BYTES),
-            counts: Grow::new(ctx, "counts", storage, 16),
-            starts: Grow::new(ctx, "starts", storage, 16),
-            status: Grow::new(ctx, "status", storage | U::INDIRECT, STATUS_HEADER * 4),
-            instances: Grow::new(ctx, "instances", storage | U::VERTEX, cap * INSTANCE_BYTES),
+            view_buf,
+            compute,
+            instances,
             resident: Vec::new(),
             staging: Vec::new(),
             ranges_cache: None,
-            counters: DebugCounters::default(),
+            counters,
             draws: 0,
             last: None,
             error: None,
+            known: None,
+            pending: None,
+            awaiting: false,
+            read_failures: 0,
+            total: None,
         }
     }
 
-    fn max_instances(&self, ctx: &GpuContext) -> u64 {
+    pub(super) fn max_instances(&self, ctx: &GpuContext) -> u64 {
         self.opts.max_instances.unwrap_or(ctx.max_instances).max(1)
     }
 
@@ -334,6 +409,9 @@ impl Renderer {
         self.release_unreferenced(list);
         self.draws = 0;
         self.error = None;
+        // A newer render drops the previous frame's read-back.
+        self.pending = None;
+        self.awaiting = false;
         let size = target.size_px();
         if size.0 == 0 || size.1 == 0 || !(list.css.0 > 0.0 && list.css.1 > 0.0) {
             return None;
@@ -345,11 +423,20 @@ impl Renderer {
             first: true,
         };
         let complete = self.draw(ctx, &mut f, None);
-        (complete && !list.items.is_empty()).then_some(DrawnEvent {
+        let drawn = (complete && !list.items.is_empty()).then_some(DrawnEvent {
             css_width: list.css.0,
             css_height: list.css.1,
             dpr: f64::from(list.dpr),
-        })
+        });
+        if self.awaiting {
+            // `poll` reports it once the total is read back; an incomplete frame has no check.
+            match (drawn, self.pending.as_mut()) {
+                (Some(d), Some(p)) => p.drawn = Some(d),
+                _ => self.pending = None,
+            }
+            return None;
+        }
+        drawn
     }
 
     /// Test hook: draw `list` (guides, clear, scissor and the Line item's View as `render` does),
@@ -410,7 +497,14 @@ impl Renderer {
         complete
     }
 
-    fn write_view(&self, ctx: &GpuContext, f: &Frame, plot: [f32; 4], axis: (f32, f32), w: f32) {
+    pub(super) fn write_view(
+        &self,
+        ctx: &GpuContext,
+        f: &Frame,
+        plot: [f32; 4],
+        axis: (f32, f32),
+        w: f32,
+    ) {
         let v = ViewU {
             view_proj: f.list.view_proj,
             device_px: [f.size.0 as f32, f.size.1 as f32],
@@ -464,12 +558,35 @@ impl Renderer {
     }
 
     /// One render pass drawing `draw` from the instance buffer.
-    fn draw_pass(
+    pub(super) fn draw_pass(
         &mut self,
         ctx: &GpuContext,
         enc: &mut wgpu::CommandEncoder,
         f: &mut Frame,
         draw: Draw,
+    ) {
+        self.draw_pass_on(ctx, enc, f, draw, None);
+    }
+
+    /// `draw_pass` with the T1 status buffer, for `Draw::Indirect`.
+    pub(super) fn draw_pass_with(
+        &mut self,
+        ctx: &GpuContext,
+        enc: &mut wgpu::CommandEncoder,
+        f: &mut Frame,
+        draw: Draw,
+        c: &Compute,
+    ) {
+        self.draw_pass_on(ctx, enc, f, draw, Some(&c.status.buf));
+    }
+
+    fn draw_pass_on(
+        &mut self,
+        ctx: &GpuContext,
+        enc: &mut wgpu::CommandEncoder,
+        f: &mut Frame,
+        draw: Draw,
+        status: Option<&wgpu::Buffer>,
     ) {
         let view_bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("view"),
@@ -492,7 +609,11 @@ impl Renderer {
         pass.set_vertex_buffer(0, self.instances.buf.slice(..));
         match draw {
             Draw::Direct(count) => pass.draw(0..6, 0..count),
-            Draw::Indirect => pass.draw_indirect(&self.status.buf, 0),
+            Draw::Indirect => {
+                if let Some(status) = status {
+                    pass.draw_indirect(status, 0);
+                }
+            }
         }
         drop(pass);
         self.draws += 1;
@@ -500,16 +621,22 @@ impl Renderer {
 
     /// Grows the instance buffer to the next power of two ≥ `all` (at least 2^20), capped at
     /// `max_instances`; never shrunk.
-    fn size_instances(&mut self, ctx: &GpuContext, all: u64) {
+    pub(super) fn size_instances(&mut self, ctx: &GpuContext, all: u64) {
         let cap = all
             .next_power_of_two()
             .max(MIN_INSTANCES)
             .min(self.max_instances(ctx));
-        self.instances.ensure(ctx, cap * INSTANCE_BYTES);
+        self.instances
+            .ensure(ctx, cap * INSTANCE_BYTES, &mut self.counters);
+    }
+
+    /// Instances the instance buffer holds now (≤ `max_instances`).
+    pub(super) fn capacity(&self, ctx: &GpuContext) -> u64 {
+        (self.instances.buf.size() / INSTANCE_BYTES).min(self.max_instances(ctx))
     }
 
     /// Windows [b·max, (b+1)·max) of `all` instances, in index order (§4.2).
-    fn batches(&self, ctx: &GpuContext, all: u64) -> Vec<(u64, u64)> {
+    pub(super) fn batches(&self, ctx: &GpuContext, all: u64) -> Vec<(u64, u64)> {
         let max = self.max_instances(ctx);
         (0..all.div_ceil(max).max(1))
             .map(|b| (b * max, ((b + 1) * max).min(all)))
@@ -532,7 +659,7 @@ impl Renderer {
     }
 
     /// The column ranges of `line`, cached by (chunk, series, window, columns, DPR) (A.15.1).
-    fn ranges_for(&mut self, line: &LineRef, dpr: f32) -> RangesKey {
+    pub(super) fn ranges_for(&mut self, line: &LineRef, dpr: f32) -> RangesKey {
         let key = RangesKey {
             chunk: line.chunk.id,
             series: (line.series.start, line.series.end),
@@ -577,7 +704,7 @@ impl Renderer {
     /// The GPU values buffer of (chunk, encoding), encoded through the 16 MiB slab (L2).
     /// Stops at the first failed wait: the incomplete buffer is dropped, never cached, and the
     /// error ends the frame.
-    fn resident_gpu(
+    pub(super) fn resident_gpu(
         &mut self,
         ctx: &GpuContext,
         chunk: &Chunk,
@@ -586,7 +713,8 @@ impl Renderer {
         let i = self.resident_slot(chunk, enc);
         if self.resident[i].gpu.is_none() {
             let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST;
-            let buf = create(ctx, "values", usage, 4 * chunk.values.len() as u64);
+            let bytes = 4 * chunk.values.len() as u64;
+            let buf = create(ctx, "values", usage, bytes, &mut self.counters);
             self.staging.reserve(STAGING_WORDS.min(chunk.values.len()));
             // Queued uploads stay outstanding until a submission completes.
             let mut outstanding = 0u64;
@@ -602,9 +730,13 @@ impl Renderer {
                 let peak = &mut self.counters.staging_outstanding_max;
                 *peak = (*peak).max(outstanding);
                 // L2: flush this slice and wait for it, so one slice is queued at a time
-                // (native; Part C awaits the submission instead of blocking).
+                // (Block). `Defer` never waits: `write_buffer` has copied the slice already.
                 ctx.queue.submit([]);
                 self.counters.value_slices_submitted += 1;
+                if self.opts.sync == Sync::Defer {
+                    outstanding = 0;
+                    continue;
+                }
                 if let Err(e) = ctx.wait() {
                     if self.resident[i].cpu.is_none() {
                         self.resident.remove(i);
@@ -637,10 +769,16 @@ impl Renderer {
         guides: &[LineInstance],
     ) -> bool {
         let key = self.ranges_for(line, f.list.dpr);
-        if ctx.tier == Tier::T2 || line.far {
-            self.draw_line_cpu(ctx, f, line, guides)
-        } else {
-            self.draw_line_gpu(ctx, f, line, guides, key)
+        match self.compute.take() {
+            Some(mut c) if !line.far => {
+                let ok = self.draw_line_gpu(ctx, f, line, guides, key, &mut c);
+                self.compute = Some(c);
+                ok
+            }
+            c => {
+                self.compute = c;
+                self.draw_line_cpu(ctx, f, line, guides)
+            }
         }
     }
 
@@ -723,7 +861,10 @@ impl Renderer {
             let mut enc = ctx.device.create_command_encoder(&Default::default());
             self.draw_pass(ctx, &mut enc, f, Draw::Direct(d.instances.len() as u32));
             ctx.queue.submit([enc.finish()]);
-            if !single && let Err(e) = ctx.wait() {
+            if !single
+                && self.opts.sync == Sync::Block
+                && let Err(e) = ctx.wait()
+            {
                 self.error = Some(e);
                 return false;
             }
@@ -731,184 +872,11 @@ impl Renderer {
                 if !single {
                     d.instances = Vec::new();
                 }
+                self.total = Some(d.total);
                 self.last = Some(LastLine::Cpu(d));
             }
         }
         true
-    }
-
-    /// T1: P1 → P2 → P3, read `total`, size or batch, then P4 → P5 → draw per batch.
-    fn draw_line_gpu(
-        &mut self,
-        ctx: &GpuContext,
-        f: &mut Frame,
-        line: &LineRef,
-        guides: &[LineInstance],
-        key: RangesKey,
-    ) -> bool {
-        let (series, n) = (line.series_count(), line.n);
-        let vi = match self.resident_gpu(ctx, line.chunk, line.encoding) {
-            Ok(vi) => vi,
-            Err(e) => {
-                self.error = Some(e);
-                return false;
-            }
-        };
-        // The item's series offsets, the ranges table (unless already uploaded) and the
-        // per-series slot and lane after the status header.
-        let offsets = &line.chunk.offsets[line.series.start as usize..=line.series.end as usize];
-        self.offsets.ensure(ctx, 4 * offsets.len() as u64);
-        ctx.queue
-            .write_buffer(&self.offsets.buf, 0, bytemuck::cast_slice(offsets));
-        let Some(cache) = self.ranges_cache.as_mut() else {
-            return false;
-        };
-        let words = cache.ranges.words();
-        if cache.uploaded != Some(key) {
-            self.ranges.ensure(ctx, 4 * words.len() as u64);
-            ctx.queue
-                .write_buffer(&self.ranges.buf, 0, bytemuck::cast_slice(words));
-            cache.uploaded = Some(key);
-        }
-        let per_series = matches!(cache.ranges, ColumnRanges::PerSeries { .. });
-        self.cols
-            .ensure(ctx, COL_BYTES * u64::from(series) * u64::from(n));
-        self.counts.ensure(ctx, 4 * u64::from(series));
-        self.starts.ensure(ctx, 4 * u64::from(series));
-        self.status
-            .ensure(ctx, 4 * (STATUS_HEADER + u64::from(series)));
-        let slot_lanes = line.slot_lanes();
-        ctx.queue.write_buffer(
-            &self.status.buf,
-            4 * STATUS_HEADER,
-            bytemuck::cast_slice(&slot_lanes),
-        );
-        let g = guides.len() as u32;
-        let mut pass_u = PassU {
-            n,
-            series,
-            per_series_ranges: u32::from(per_series),
-            guides: g,
-            window_lo: 0,
-            window_hi: u32::MAX,
-            pad: [0; 2],
-        };
-        ctx.queue
-            .write_buffer(&self.pass_buf, 0, bytemuck::bytes_of(&pass_u));
-        let pass_bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("pass"),
-            layout: &self.p.pass_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: self.pass_buf.as_entire_binding(),
-            }],
-        });
-        // P1–P3, then the blocking read of `total` (Part C re-runs an under-sized frame instead).
-        let Some(data_bg) = self.data_bind_group(ctx, vi) else {
-            return false;
-        };
-        let mut enc = ctx.device.create_command_encoder(&Default::default());
-        {
-            let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("P1-P3"),
-                timestamp_writes: None,
-            });
-            cp.set_bind_group(0, &pass_bg, &[]);
-            cp.set_bind_group(1, &data_bg, &[]);
-            cp.set_pipeline(&self.p.reduce);
-            cp.dispatch_workgroups(n.div_ceil(64), series, 1);
-            cp.set_pipeline(&self.p.count);
-            cp.dispatch_workgroups(series.div_ceil(64), 1, 1);
-            cp.set_pipeline(&self.p.scan);
-            cp.dispatch_workgroups(1, 1, 1);
-        }
-        ctx.queue.submit([enc.finish()]);
-        let header = match ctx.read_buffer(&self.status.buf, 0, 4 * STATUS_HEADER) {
-            Ok(h) => h,
-            Err(e) => {
-                self.error = Some(e);
-                return false;
-            }
-        };
-        let total = u64::from(bytemuck::pod_read_unaligned::<u32>(&header[16..20]));
-        let all = u64::from(g) + total;
-        // Size (one draw) or batch; a reallocated instance buffer needs a new bind group.
-        self.size_instances(ctx, all);
-        let Some(data_bg) = self.data_bind_group(ctx, vi) else {
-            return false;
-        };
-        let batches = self.batches(ctx, all);
-        let single = batches.len() == 1;
-        for (lo, hi) in batches {
-            let take = hi.saturating_sub(lo) as usize;
-            let gs: Vec<LineInstance> = guides
-                .iter()
-                .copied()
-                .skip(lo as usize)
-                .take(take)
-                .collect();
-            if !gs.is_empty() {
-                ctx.queue
-                    .write_buffer(&self.instances.buf, 0, bytemuck::cast_slice(&gs));
-            }
-            (pass_u.window_lo, pass_u.window_hi) = (lo as u32, hi as u32);
-            ctx.queue
-                .write_buffer(&self.pass_buf, 0, bytemuck::bytes_of(&pass_u));
-            let mut enc = ctx.device.create_command_encoder(&Default::default());
-            {
-                let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("P4-P5"),
-                    timestamp_writes: None,
-                });
-                cp.set_bind_group(0, &pass_bg, &[]);
-                cp.set_bind_group(1, &data_bg, &[]);
-                cp.set_pipeline(&self.p.emit);
-                cp.dispatch_workgroups(series.div_ceil(64), 1, 1);
-                cp.set_pipeline(&self.p.spill);
-                cp.dispatch_workgroups(n.div_ceil(64), series, 1);
-            }
-            let draw = if single {
-                Draw::Indirect
-            } else {
-                Draw::Direct((hi - lo) as u32)
-            };
-            self.draw_pass(ctx, &mut enc, f, draw);
-            ctx.queue.submit([enc.finish()]);
-        }
-        self.last = Some(LastLine::Gpu {
-            series,
-            n,
-            total,
-            all,
-        });
-        true
-    }
-
-    fn data_bind_group(&self, ctx: &GpuContext, values: usize) -> Option<wgpu::BindGroup> {
-        let values = self.resident.get(values)?.gpu.as_ref()?;
-        let bufs = [
-            values,
-            &self.offsets.buf,
-            &self.ranges.buf,
-            &self.cols.buf,
-            &self.counts.buf,
-            &self.starts.buf,
-            &self.instances.buf,
-            &self.status.buf,
-        ];
-        let entries: Vec<wgpu::BindGroupEntry> = bufs
-            .iter()
-            .enumerate()
-            .map(|(i, b)| wgpu::BindGroupEntry {
-                binding: i as u32,
-                resource: b.as_entire_binding(),
-            })
-            .collect();
-        Some(ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("data"),
-            layout: &self.p.data_bgl,
-            entries: &entries,
-        }))
     }
 
     /// Test hook: the decimation buffers of the last Line item, read back (tier parity).
@@ -921,14 +889,15 @@ impl Renderer {
                 total,
                 all,
             } => {
+                let c = self.compute.as_ref()?;
                 let read = |b: &wgpu::Buffer, bytes: u64| ctx.read_buffer(b, 0, bytes).ok();
                 let cells = u64::from(*series) * u64::from(*n);
                 let cols: Vec<ColOut> =
-                    bytemuck::pod_collect_to_vec(&read(&self.cols.buf, COL_BYTES * cells)?);
+                    bytemuck::pod_collect_to_vec(&read(&c.cols.buf, COL_BYTES * cells)?);
                 let counts: Vec<u32> =
-                    bytemuck::pod_collect_to_vec(&read(&self.counts.buf, 4 * u64::from(*series))?);
+                    bytemuck::pod_collect_to_vec(&read(&c.counts.buf, 4 * u64::from(*series))?);
                 let starts: Vec<u32> =
-                    bytemuck::pod_collect_to_vec(&read(&self.starts.buf, 4 * u64::from(*series))?);
+                    bytemuck::pod_collect_to_vec(&read(&c.starts.buf, 4 * u64::from(*series))?);
                 let shown = (*all).min(self.instances.buf.size() / INSTANCE_BYTES);
                 let inst = read(&self.instances.buf, INSTANCE_BYTES * shown)?;
                 let instances: Vec<LineInstance> = bytemuck::pod_collect_to_vec(&inst);
@@ -950,12 +919,19 @@ impl Renderer {
             return Some(cache.ranges.clone());
         };
         let words = cache.ranges.words().len() as u64;
-        let bytes = ctx.read_buffer(&self.ranges.buf, 0, 4 * words).ok()?;
+        let c = self.compute.as_ref()?;
+        let bytes = ctx.read_buffer(&c.ranges.buf, 0, 4 * words).ok()?;
         let table: Vec<u32> = bytemuck::pod_collect_to_vec(&bytes);
         Some(match cache.ranges {
             ColumnRanges::Grid(_) => ColumnRanges::Grid(table),
             ColumnRanges::PerSeries { n, .. } => ColumnRanges::PerSeries { n, table },
         })
+    }
+
+    /// The decimated instance total of the last line item (guides excluded), once known: read
+    /// back on T1 (`Block` at once, `Defer` after `poll`), computed on the CPU path.
+    pub fn last_total(&self) -> Option<u64> {
+        self.total
     }
 
     /// Draw calls issued by the last render (1 unless batched, §4.2).

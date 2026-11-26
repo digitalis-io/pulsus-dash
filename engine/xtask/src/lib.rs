@@ -5,7 +5,14 @@
 //! - `dash-wire`'s normal dependencies are exactly `thiserror` and `bytemuck` (plan #68 B2,
 //!   ADR-0014 §7: no arrow-rs crate);
 //! - only `dash-marks` contains `.wgsl` files;
-//! - the literals of `ci/lavapipe.Dockerfile` (and the toolchain channel) equal `tools.toml`.
+//! - the literals of `ci/lavapipe.Dockerfile` (and the toolchain channel) equal `tools.toml`;
+//! - the literals of `ci/web.Dockerfile` equal `tools.toml [web]`, and `[web] wasm_bindgen` is the
+//!   `wasm-bindgen` version in `Cargo.lock` (plan #68 C1 §2).
+//!
+//! `gen-layout` and `build-wasm` are in [`layout`] and [`wasm`].
+
+pub mod layout;
+pub mod wasm;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -39,6 +46,7 @@ pub fn spec_lint(root: &Path, meta: &Value) -> Vec<String> {
     out.extend(dash_wire_deps(meta));
     out.extend(wgsl_files(root));
     out.extend(image_literals(root));
+    out.extend(web_literals(root));
     out
 }
 
@@ -347,6 +355,70 @@ fn image_literals(root: &Path) -> Vec<String> {
         out.push(format!(
             "rust-toolchain.toml: channel {channel:?} but tools.toml tools.rust = {:?}",
             tools.get("tools.rust")
+        ));
+    }
+    out
+}
+
+/// The version of `name` in `Cargo.lock`.
+fn locked_version(lock: &str, name: &str) -> Option<String> {
+    let mut lines = lock.lines();
+    while let Some(l) = lines.next() {
+        if l.trim() == format!("name = \"{name}\"") {
+            let v = lines.next()?.trim().strip_prefix("version = \"")?;
+            return Some(v.trim_end_matches('"').to_owned());
+        }
+    }
+    None
+}
+
+/// `ci/web.Dockerfile` against `tools.toml [web]`: each pinned URL, version and checksum must
+/// appear verbatim (plan #68 C1 §2, §5.1).
+pub fn web_literals(root: &Path) -> Vec<String> {
+    let docker = std::fs::read_to_string(root.join("ci").join("web.Dockerfile"));
+    let tools = std::fs::read_to_string(root.join("tools.toml"));
+    let (Ok(docker), Ok(tools)) = (docker, tools) else {
+        return vec!["ci/web.Dockerfile or tools.toml missing".into()];
+    };
+    let t = toml_values(&tools);
+    let get = |k: &str| t.get(&format!("web.{k}")).cloned();
+    let (Some(nightly), Some(wb), Some(bin), Some(bin_sha), Some(node), Some(node_sha)) = (
+        get("nightly"),
+        get("wasm_bindgen"),
+        get("binaryen"),
+        get("binaryen_sha256"),
+        get("node"),
+        get("node_sha256"),
+    ) else {
+        return vec!["tools.toml [web] is incomplete".into()];
+    };
+    let (Some(go), Some(go_sha), Some(pw)) = (get("go"), get("go_sha256"), get("playwright"))
+    else {
+        return vec!["tools.toml [web] is incomplete".into()];
+    };
+    let want = [
+        format!("rustup toolchain install {nightly} "),
+        format!("wasm-bindgen-cli@{wb}"),
+        format!("releases/download/{bin}/binaryen-{bin}-x86_64-linux.tar.gz"),
+        format!("echo \"{bin_sha}  /opt/binaryen.tar.gz\""),
+        format!("/opt/binaryen-{bin}/bin/wasm-opt"),
+        format!("nodejs.org/dist/v{node}/node-v{node}-linux-x64.tar.xz"),
+        format!("echo \"{node_sha}  /opt/node.tar.xz\""),
+        format!("go.dev/dl/go{go}.linux-amd64.tar.gz"),
+        format!("echo \"{go_sha}  /opt/go.tar.gz\""),
+        format!("playwright@{pw} install"),
+        "ENV ENGINE_IN_IMAGE=1".to_owned(),
+    ];
+    let mut out: Vec<String> = want
+        .iter()
+        .filter(|w| !docker.contains(w.as_str()))
+        .map(|w| format!("ci/web.Dockerfile: no `{w}` (tools.toml [web])"))
+        .collect();
+    let lock = std::fs::read_to_string(root.join("Cargo.lock")).unwrap_or_default();
+    let locked = locked_version(&lock, "wasm-bindgen");
+    if locked.as_deref() != Some(wb.as_str()) {
+        out.push(format!(
+            "Cargo.lock: wasm-bindgen {locked:?} but tools.toml web.wasm_bindgen = {wb}"
         ));
     }
     out

@@ -52,8 +52,12 @@ const previewServer = {
   timeout: 120_000,
 };
 
+// The engine specs run in playwright.engine.config.ts (Chromium on lavapipe, `make engine-e2e`).
+const engineOnly = /(engine-mode-matrix|golden-engine-line|engine-recovery)\.spec\.ts/;
+
 export default defineConfig({
   testDir: 'e2e',
+  testIgnore: engineOnly,
   snapshotPathTemplate: '{testDir}/__screenshots__/{testFilePath}/{arg}{ext}',
   updateSnapshots: updateGoldens ? 'all' : 'none',
   expect: {
@@ -92,12 +96,12 @@ export default defineConfig({
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'], viewport },
-      testIgnore: chromiumOnly,
+      testIgnore: [chromiumOnly, engineOnly],
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'], viewport },
-      testIgnore: chromiumOnly,
+      testIgnore: [chromiumOnly, engineOnly],
     },
   ],
   webServer: preview ? previewServer : bffServers,

@@ -1,0 +1,21 @@
+/*
+ * The routing frame's own elements (plan #68 C1 §4.3). A retired canvas stays in the DOM for
+ * ChartFrame, which keeps its reference; this rule outranks ChartFrame's `.canvas { display:
+ * block }` without editing it (T18-004: styles from a stylesheet or CSSOM only).
+ */
+:global(canvas[data-retired]) {
+  display: none !important;
+}
+
+.notice {
+  position: absolute;
+  bottom: var(--space-2);
+  left: var(--space-2);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+}

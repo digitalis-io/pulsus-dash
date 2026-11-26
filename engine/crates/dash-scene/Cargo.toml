@@ -20,7 +20,8 @@ dash-units.workspace = true
 dash-wire.workspace = true
 glam.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 pulsus-synth.workspace = true
-serde_json.workspace = true

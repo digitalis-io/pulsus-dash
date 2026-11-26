@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-25 |
+| **Version** | 1.11-rc · 2026-11-25 |
 | **Milestone** | M-UI1 (headers, CSP, sanitiser) → M-UI4 (secrets, egress guard, action framework v1, AI guardrails) → M-UI6 (sessions with authentication (D12), sandboxed WASM modules, compliance) |
-| **Related ADRs** | [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
+| **Related ADRs** | [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001 and ADR-0002), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T18-security.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 and ADR-0015 (2026-11-19)
@@ -144,13 +144,13 @@ sessions and tokens, action capability, audit integrity.
 
 #### T18-002 — The binary owns its headers
 **MUST** — The BFF MUST set the headers below on every HTML document it serves; static assets get
-only CORP/CORS/`nosniff`. Ingress configuration MUST NOT be relied on for them
+only CORP/CORS, COEP `require-corp` (the engine's workers, T03-022, ADR-0026) and `nosniff`. Ingress configuration MUST NOT be relied on for them
 ([T19](T19-deployment.md) §4.1).
 
 ```
-Content-Security-Policy:                      # ADR-0014 §9
+Content-Security-Policy:                      # ADR-0014 §9 as amended by ADR-0026
   default-src 'none';
-  script-src 'self';                          # + 'wasm-unsafe-eval' from the engine issue (#68), not before
+  script-src 'self' 'wasm-unsafe-eval';       # the engine's WebAssembly.compile (#68, ADR-0026)
   style-src 'self';
   img-src 'self' data: blob:;                 # external images only via BFF proxy (§4.6)
   font-src 'self';
@@ -159,7 +159,7 @@ Content-Security-Policy:                      # ADR-0014 §9
   manifest-src 'self';
   base-uri 'none'; form-action 'self'; object-src 'none';
   frame-ancestors 'none';                     # <embed allowlist> in embed mode (M-UI5)
-  require-trusted-types-for 'script'; trusted-types pulsus-sanitised;
+  require-trusted-types-for 'script'; trusted-types pulsus-sanitised pulsus-engine;   # T18-005
   report-to csp
                                               # CDN mode (T19) adds [ASSET_ORIGIN] to font- and
                                               # connect-src only; script-, style- and worker-src stay 'self'
@@ -195,12 +195,19 @@ without `'unsafe-inline'` (style-src-attr). Therefore DOM code ([T08](T08-dom-co
 set dynamic styles through the `style` prop, CSSOM or CSS Module classes, never style attributes;
 `e2e:csp-violations` confirms it.
 
-#### T18-005 — One Trusted Types sink
-**MUST** — The application MUST NOT write HTML strings into the DOM: Markdown and rich text render
-as React elements (§4.6). The CSP's single Trusted Types policy `pulsus-sanitised` MUST be created in
-one TS module, `client/src/security/trusted-types.ts`, and MUST accept only a value of the branded
-type `SanitisedHtml` produced by the sanitiser, so it is an identity function behind a type check.
-The default policy MUST be absent, so any other sink throws.
+#### T18-005 — Two named Trusted Types policies, no default
+**MUST** — *(Revised 1.11-rc, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md).)* The
+application MUST NOT write HTML strings into the DOM: Markdown and rich text render as React
+elements (§4.6). The CSP names exactly two Trusted Types policies, each created in one TS module:
+- `pulsus-sanitised`, in `client/src/security/trusted-types.ts`, MUST accept only a value of the
+  branded type `SanitisedHtml` produced by the sanitiser, so it is an identity function behind a
+  type check;
+- `pulsus-engine`, in `client/src/engine/wasm/workers.ts`, MUST have only `createScriptURL`, and it
+  MUST return its argument only when that resolves to one of the chart engine's worker scripts of
+  this build (render, pool), else throw: `new Worker` is a script-URL sink.
+
+`createPolicy` anywhere else fails `ci:lint-ts`. The default policy MUST be absent, so any other
+sink throws.
 
 #### T18-003 — Cross-origin isolation and its consequences
 **MUST** — Documents MUST be served with COOP `same-origin` and COEP `require-corp` for
@@ -230,13 +237,13 @@ The default policy MUST be absent, so any other sink throws.
 #### T18-006 — Content-hashed, integrity-checked, signed assets
 **MUST** — *(Revised 1.4-rc; [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), Accepted.)*
 Every asset MUST have a content-hashed name (Vite's hashed `/assets/*` JS and CSS, workers, fonts,
-and from #68 `dash-engine.<hash>.wasm`). Its bytes MUST be verified against the signed manifest
+and from #68 the engine's `assets/dash-engine-<hash>.wasm`). Its bytes MUST be verified against the signed manifest
 **by the BFF before it is served**, and code MUST be loaded as follows:
 
 | Asset | Served from | Check |
 |---|---|---|
 | `index.html`, `asset-manifest.json`, `asset-manifest.sig`, every JS module (entry, lazy route chunks, the editor chunk and every module they import), wasm-bindgen glue, workers, CSS | **Same origin only** (the BFF, over TLS), in every asset mode | BFF start-up verification below; CSP `script-src 'self'`, `style-src 'self'` and `worker-src 'self'` (ADR-0014 §9, unchanged) stop any other origin. No per-module `integrity` in the browser |
-| `dash-engine.<hash>.wasm` | Same origin, or the CDN in CDN mode | BFF start-up verification, and in the browser `fetch(url, {integrity: "sha384-…"})` with the hash from the manifest, then `WebAssembly.instantiateStreaming` on that response only |
+| `assets/dash-engine-<hash>.wasm` | Same origin, or the CDN in CDN mode | BFF start-up verification, and in the browser `fetch(url, {integrity: "sha384-…"})` with the hash from the manifest (one retry; no manifest: unavailable outside a dev server), then `WebAssembly.compileStreaming` on that response only; the compiled `Module` goes to the engine workers (CSP `'wasm-unsafe-eval'`, ADR-0026) |
 | Fonts, map tiles | Same origin, or the CDN in CDN mode | BFF start-up verification for the embedded copies; not executable, and `font-src`/`img-src` limit their origins |
 
 **Manifest and BFF start-up (fail closed).** The verification metadata sits **outside** the set it
@@ -760,6 +767,7 @@ See §4. The data-scope design is in T10 (draft); tenant isolation in Postgres i
 | 1.8-rc | 2026-11-21 | #68: §4.11 engine leg as built: the cargo-deny licence allow list is the ADR-0014 §7 set with exact-version exceptions for `unicode-ident` (Unicode-3.0), `foldhash` and `slotmap` (Zlib), both AGPL-3.0-compatible (D3); exact crate pins and the 7-day rule apply to the Rust lockfile |
 | 1.9-rc | 2026-11-21 | #59 Part C: T18-026 server bullet adds `ci:go-licenses` (AGPL-3.0-compatible licences, D3) and the third-party notices file shipped with releases |
 | 1.10-rc | 2026-11-25 | #153: T18-014 interim external images (T24 A3) |
+| 1.11-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T18-005 two named policies (`pulsus-sanitised`, `pulsus-engine` for the engine's worker URLs), `createPolicy` linted to their modules; T18-006 the engine wasm is `assets/dash-engine-<hash>.wasm`, fetched with integrity and compiled with `compileStreaming` |
 
 **Changes versus the draft:**
 1. **Execution identity (ALR-080, SCN-021).** The draft said actions execute with the action's

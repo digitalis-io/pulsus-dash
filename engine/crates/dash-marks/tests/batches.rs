@@ -55,6 +55,7 @@ fn batched_draws_equal_one_draw() {
             wgpu::TextureFormat::Rgba8Unorm,
             RendererOptions {
                 max_instances: Some(1000),
+                ..RendererOptions::default()
             },
         );
         let (b, _) = render(&ctx, &mut batched, &list);

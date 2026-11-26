@@ -17,7 +17,7 @@ use dash_tokens::Rgba8;
 use dash_wire::Chunk;
 use pulsus_synth::{GALLERY_WINDOW, GalleryLine, gallery_line};
 
-pub use flip::flip_mean;
+pub use flip::{FlipStats, flip_mean, flip_stats};
 pub use reference::{RefFrame, RefMasks, reference_mask};
 
 /// An RGBA8 image, rows without padding.
@@ -34,7 +34,7 @@ impl Image {
         x < self.w && y < self.h && self.rgba[((y * self.w + x) * 4) as usize] > 0
     }
 
-    /// An 8-bit RGBA PNG.
+    /// An 8-bit RGBA or RGB (made opaque) PNG.
     pub fn read_png(path: &Path) -> Result<Self, String> {
         let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut reader = png::Decoder::new(std::io::BufReader::new(file))
@@ -47,14 +47,25 @@ impl Image {
         let info = reader
             .next_frame(&mut buf)
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
-            return Err(format!("{}: not 8-bit RGBA", path.display()));
+        if info.bit_depth != png::BitDepth::Eight {
+            return Err(format!("{}: not 8-bit RGB or RGBA", path.display()));
         }
         buf.truncate(info.buffer_size());
+        let rgba = match info.color_type {
+            png::ColorType::Rgba => buf,
+            // Browser screenshots (`golden:engine-line`) are RGB: opaque.
+            png::ColorType::Rgb => buf
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .flat_map(|p| [p[0], p[1], p[2], 255])
+                .collect(),
+            _ => return Err(format!("{}: not 8-bit RGB or RGBA", path.display())),
+        };
         Ok(Self {
             w: info.width,
             h: info.height,
-            rgba: buf,
+            rgba,
         })
     }
 
