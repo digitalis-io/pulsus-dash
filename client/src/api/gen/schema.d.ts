@@ -764,7 +764,7 @@ export interface components {
         };
         Vis: {
             /** @enum {string} */
-            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock";
+            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock" | "boardList";
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
             options?: components["schemas"]["VisOptions"];
@@ -776,7 +776,7 @@ export interface components {
             baselineOffset?: "1h" | "1d" | "7d" | "28d";
             categoryBy?: string;
             /** @enum {string} */
-            sort?: "valueDesc" | "valueAsc" | "label" | "none";
+            sort?: "valueDesc" | "valueAsc" | "label" | "none" | "default" | "incidents";
             /** @enum {string} */
             orientation?: "auto" | "horizontal" | "vertical";
             valueLabels?: boolean;
@@ -797,7 +797,7 @@ export interface components {
             /** @enum {string} */
             graphMode?: "sparkline" | "none";
             /** @enum {string} */
-            mode?: "markdown" | "code";
+            mode?: "markdown" | "code" | "starred" | "recent" | "search" | "tag";
             content?: string;
             /** @enum {string} */
             language?: "plaintext" | "json" | "yaml" | "sql" | "promql" | "logql" | "go" | "shell";
@@ -807,6 +807,9 @@ export interface components {
             seconds?: boolean;
             date?: boolean;
             countdown?: components["schemas"]["ClockCountdown"];
+            query?: string;
+            tag?: components["schemas"]["AnnotationTag"];
+            limit?: number;
         };
         ClockZone: {
             tz: string;

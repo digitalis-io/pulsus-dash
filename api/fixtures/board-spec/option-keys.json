@@ -22,7 +22,10 @@
     "hourCycle": "string",
     "seconds": "bool",
     "date": "bool",
-    "countdown": "object"
+    "countdown": "object",
+    "query": "string",
+    "tag": "string",
+    "limit": "number"
   },
   "members": {
     "zones": ["tz", "label"],
@@ -38,6 +41,7 @@
     "barchart": ["reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"],
     "pie": ["reducer", "categoryBy", "sort", "donut", "labels", "parts"],
     "text": ["mode", "content", "language"],
-    "clock": ["zones", "hourCycle", "seconds", "date", "countdown"]
+    "clock": ["zones", "hourCycle", "seconds", "date", "countdown"],
+    "boardList": ["sort", "mode", "query", "tag", "limit"]
   }
 }

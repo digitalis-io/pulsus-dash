@@ -184,7 +184,7 @@ test.describe('e2e:board-thresholds (fake)', () => {
       schema_version: number;
       spec: { panels: { vis: unknown }[] };
     };
-    expect(body.schema_version).toBe(5);
+    expect(body.schema_version).toBe(6);
     expect(body.spec.panels[0]?.vis).toEqual({
       kind: 'line',
       thresholds: {

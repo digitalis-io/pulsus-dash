@@ -34,6 +34,11 @@ const (
 	maxZones          = 12    // a clock's zones
 	maxZoneNameBytes  = 64    // a zone's tz
 	maxWidgetLabelLen = 64    // a zone's label and a countdown's label, runes
+
+	// The board list bounds of board spec v6 (T24 §5.5; the client's MAX_BOARD_QUERY, BOARD_LIMIT).
+	maxBoardQueryRunes = 100 // a board list's search text, runes (the gateway's maxSearchRunes)
+	minBoardLimit      = 1   // a board list's rows
+	maxBoardLimit      = 50
 )
 
 var (
@@ -42,10 +47,10 @@ var (
 	// tagPattern is the OpenAPI AnnotationTag (the gateway's tagPattern, the client's TAG_PATTERN).
 	tagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.:/-]{0,63}$`)
 	queryLangs = []string{"promql", "logql"}
-	visKinds   = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie", "text", "clock"}
-	// widgetKinds are the kinds without a query (board spec v5, T24-003); the others in visKinds
-	// are data panels.
-	widgetKinds = []string{"text", "clock"}
+	visKinds   = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie", "text", "clock", "boardList"}
+	// widgetKinds are the kinds without a query (board spec v5, T24-003; boardList by v6); the
+	// others in visKinds are data panels.
+	widgetKinds = []string{"text", "clock", "boardList"}
 	directions  = []string{"above", "below"}
 	stepStates  = []string{"watch", "degraded", "failing"}
 	legendModes = []string{"table", "hidden"}
@@ -72,6 +77,11 @@ var (
 	afterModes    = []string{"countUp", "hide"}
 	tzName        = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$`)
 	rfc3339Offset = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?(Z|[+-](\d{2}):(\d{2}))$`)
+
+	// The board list option values of board spec v6 (T24 §5.5; client OPTION_VALUES boardListMode
+	// and boardListSort). mode and sort are shared keys: each kind has its own values.
+	boardListModes = []string{"starred", "recent", "search", "tag"}
+	boardListSorts = []string{"default", "incidents"}
 )
 
 // maxOptionAbs bounds options.min and options.max (|v| <= 1e15, as the threshold values).
@@ -308,7 +318,11 @@ func (v *validator) options(pointer, kind string, o Options) {
 			return ""
 		})
 	}
-	enum("sort", o.Sort, sorts)
+	if kind == "boardList" {
+		enum("sort", o.Sort, boardListSorts)
+	} else {
+		enum("sort", o.Sort, sorts)
+	}
 	if kind == "stat" {
 		enum("orientation", o.Orientation, statOrients)
 	} else {
@@ -334,15 +348,23 @@ func (v *validator) options(pointer, kind string, o Options) {
 		})
 	}
 	enum("graphMode", o.GraphMode, graphModes)
-	v.widgetOptions(pointer, o)
+	v.widgetOptions(pointer, kind, o)
+	if kind == "boardList" {
+		v.boardListOptions(pointer, o)
+	}
 }
 
 // widgetOptions checks the text and clock options (board spec v5, T24 §5.1), each present key in
-// OPTION_ORDER after the data keys. Zone existence is not checked here (CheckZones, on writes only).
-func (v *validator) widgetOptions(pointer string, o Options) {
+// OPTION_ORDER after the data keys; mode takes the kind's values (text, or the board list's by v6).
+// Zone existence is not checked here (CheckZones, on writes only).
+func (v *validator) widgetOptions(pointer, kind string, o Options) {
 	key := func(rule string) string { return "board.options." + rule }
 	if o.Mode != nil {
-		v.str(pointer+"/mode", *o.Mode, oneOf(markupModes, key("mode.invalid")))
+		modes := markupModes
+		if kind == "boardList" {
+			modes = boardListModes
+		}
+		v.str(pointer+"/mode", *o.Mode, oneOf(modes, key("mode.invalid")))
 	}
 	if o.Content != nil {
 		v.str(pointer+"/content", *o.Content, func(s string) string {
@@ -383,6 +405,54 @@ func (v *validator) widgetOptions(pointer string, o Options) {
 		})
 		v.str(pointer+"/countdown/after", c.After, oneOf(afterModes, invalid))
 	}
+}
+
+// boardListOptions checks a board list's query, tag and limit (board spec v6, T24 §5.5), after the
+// widget keys, in OPTION_ORDER. m is the mode, starred when absent: query is valid in search mode
+// only ("" included), at most 100 runes without a C0 or C1 control (the gateway's validSearch, with
+// no minimum); tag is a tagPattern tag, present iff the mode is tag (absent: reported at /tag); and
+// limit is a whole number from 1 to 50. An invalid mode skips the mode rules: query and tag get only
+// their own checks.
+func (v *validator) boardListOptions(pointer string, o Options) {
+	m, modeValid := "starred", true
+	if o.Mode != nil {
+		m, modeValid = *o.Mode, slices.Contains(boardListModes, *o.Mode)
+	}
+	if o.Query != nil {
+		v.str(pointer+"/query", *o.Query, func(s string) string {
+			if !validBoardQuery(s) || (modeValid && m != "search") {
+				return optionKey("query")
+			}
+			return ""
+		})
+	}
+	switch {
+	case o.Tag != nil:
+		v.str(pointer+"/tag", *o.Tag, func(s string) string {
+			if !tagPattern.MatchString(s) || (modeValid && m != "tag") {
+				return optionKey("tag")
+			}
+			return ""
+		})
+	case modeValid && m == "tag":
+		v.add(pointer+"/tag", optionKey("tag"))
+	}
+	if x := o.Limit; x != nil && (*x != math.Trunc(*x) || *x < minBoardLimit || *x > maxBoardLimit) {
+		v.add(pointer+"/limit", optionKey("limit"))
+	}
+}
+
+// validBoardQuery reports whether s is at most maxBoardQueryRunes runes with no rune in U+0000–001F
+// or U+007F–009F (the gateway's validSearch, without its minimum of 1).
+func validBoardQuery(s string) bool {
+	n := 0
+	for _, r := range s {
+		if r <= 0x1f || (r >= 0x7f && r <= 0x9f) {
+			return false
+		}
+		n++
+	}
+	return n <= maxBoardQueryRunes
 }
 
 // zones checks a clock's zones: 1 to 12 (reported at the list), then each item's tz (” or a

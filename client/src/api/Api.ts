@@ -10,8 +10,7 @@ import type {
 import type {
   AnnotationList,
   Board,
-  BoardList,
-  BoardRef,
+  BoardPage,
   BoardSpec,
   DataSourceStatus,
   InstantRequest,
@@ -19,6 +18,7 @@ import type {
   LogsRequest,
   PromMatchRequest,
   RangeRequest,
+  RefPage,
   SaveResult,
   Session,
   VolumeRequest,
@@ -31,7 +31,15 @@ import type {
  */
 export interface Api {
   getSession(signal?: AbortSignal): Promise<Session>;
-  listBoards(tenant: string, signal?: AbortSignal): Promise<BoardList>;
+  /**
+   * The organisation's boards, most recently updated first, at most 1 000 (T24-021): `f.q` (sent
+   * only when non-empty) matches a title or equals a tag, `f.tag` equals a tag; both must hold.
+   */
+  listBoards(
+    tenant: string,
+    signal?: AbortSignal,
+    f?: { readonly q?: string; readonly tag?: string },
+  ): Promise<BoardPage>;
   /** Unknown board → `ApiError('notFound')`. */
   getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<Board>;
   /** An invalid spec → `ApiError('invalid')` with `fields`. */
@@ -41,11 +49,11 @@ export interface Api {
   /** `notFound`, or `BoardConflictError` when `etag` is not the head's. */
   deleteBoard(tenant: string, uid: string, etag: string): Promise<void>;
   /** Starred boards of the principal, in the server's order (title, then uid). */
-  listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]>;
+  listStarred(tenant: string, signal?: AbortSignal): Promise<RefPage>;
   /** Star: unknown or deleted board → `notFound`. Unstar: idempotent, never `notFound`. */
   setStarred(tenant: string, uid: string, starred: boolean): Promise<void>;
-  /** The principal's `RECENT_LIMIT` most recently opened boards, newest first. */
-  listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]>;
+  /** The principal's `limit` (default `RECENT_LIMIT`) most recently opened boards, newest first. */
+  listRecent(tenant: string, signal?: AbortSignal, limit?: number): Promise<RefPage>;
   /**
    * Records that the principal opened `uid` at `at` (integer ms since the Unix epoch; the greater
    * of the stored and the new time wins). Unknown or deleted → `notFound`. Abort is rethrown.

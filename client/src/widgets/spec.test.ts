@@ -23,6 +23,9 @@ describe('unit:widget-spec', () => {
       content: '',
       language: 'plaintext',
     });
+    // A board list's mode is not a text mode (board spec v6): the default.
+    expect(textOptions({ mode: 'starred' }).mode).toBe('markdown');
+    expect(textOptions({}).mode).toBe('markdown');
     expect(textOptions({ mode: 'code', language: 'go', content: 'x' })).toEqual({
       mode: 'code',
       content: 'x',
@@ -60,7 +63,7 @@ describe('unit:widget-spec', () => {
       ['p-6', true],
     ]);
     expect(panels.filter(isDataPanel).map((p) => p.id)).toEqual(['p-5']);
-    expect([...WIDGET_KINDS].sort()).toEqual(['clock', 'text']);
-    expect([...PENDING_WIDGETS].sort()).toEqual(['clock', 'text']);
+    expect([...WIDGET_KINDS].sort()).toEqual(['boardList', 'clock', 'text']);
+    expect([...PENDING_WIDGETS].sort()).toEqual(['boardList', 'clock', 'text']);
   });
 });

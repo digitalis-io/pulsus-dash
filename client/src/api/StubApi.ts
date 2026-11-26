@@ -9,7 +9,13 @@
  *   string array → `[]`. Listed by title (case-folded), then uid.
  * - `pulsus-dash.stub.recent`: a JSON array of `{"uid", "at"}`, newest first, at most 200; any
  *   element of another shape → `[]`. A view keeps the greater `at` (no clamp); on an equal `at` the
- *   later write comes first. Listed in stored order, the first `RECENT_LIMIT`.
+ *   later write comes first. Listed in stored order, the first `limit` (default `RECENT_LIMIT`).
+ *
+ * The boards list filters as the BFF (plan #216 Part 1 §4.2): `q` matches when the ASCII-lower title
+ * contains the ASCII-lower `q` or the ASCII-lower `q` equals a tag, `tag` when it equals a tag, both
+ * must hold; the item tags are `spec.tags` (or `[]`), `applied` is the filter and `tagsStale` 0. Each
+ * list's `truncated` is computed before it is cut, as the BFF's: boards over 1 000, starred over 200,
+ * recent over the limit.
  *
  * Both lists drop uids that are no longer boards, as the server's join does.
  *
@@ -78,8 +84,9 @@ import {
   BoardConflictError,
   type Board,
   type AnnotationList,
-  type BoardList,
+  type BoardPage,
   type BoardRef,
+  type RefPage,
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
@@ -137,6 +144,15 @@ export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
 export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
 export const STUB_QUERY_DELAY_KEY = 'pulsus-dash.stub.queryDelayMs';
 export const STUB_FAIL_QUERY_KEY = 'pulsus-dash.stub.failQuery';
+
+/** The most boards `listBoards` and the most starred boards `listStarred` return (as the BFF). */
+const MAX_LISTED_BOARDS = 1000;
+const MAX_LISTED_STARRED = 200;
+
+/** ASCII-only lower case (the board search's folding). */
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
 
 /** Consumes one failure from a test-hook counter; true when the call should fail. */
 function failOnce(key: string): boolean {
@@ -376,11 +392,18 @@ export class StubApi implements Api {
     }, signal);
   }
 
-  /** Most recently updated first, as the BFF lists them. */
-  listBoards(tenant: string, signal?: AbortSignal): Promise<BoardList> {
+  /** Most recently updated first, as the BFF lists them, filtered as the BFF (see above). */
+  listBoards(
+    tenant: string,
+    signal?: AbortSignal,
+    f?: { readonly q?: string; readonly tag?: string },
+  ): Promise<BoardPage> {
     return settle(() => {
       this.checkTenant(tenant);
-      const items = [...this.boards]
+      const q = f?.q !== undefined && f.q !== '' ? f.q : undefined;
+      const tag = f?.tag;
+      const folded = q === undefined ? '' : asciiLower(q);
+      const matching = [...this.boards]
         .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
         .map((b) => ({
           uid: b.uid,
@@ -388,8 +411,19 @@ export class StubApi implements Api {
           version: b.version,
           updatedAt: b.updatedAt,
           updatedBy: b.updatedBy,
-        }));
-      return { items, truncated: false };
+          tags: [...(b.spec.tags ?? [])],
+        }))
+        .filter(
+          (b) =>
+            (q === undefined || asciiLower(b.title).includes(folded) || b.tags.includes(folded)) &&
+            (tag === undefined || b.tags.includes(tag)),
+        );
+      return {
+        items: matching.slice(0, MAX_LISTED_BOARDS),
+        truncated: matching.length > MAX_LISTED_BOARDS,
+        applied: { ...(q === undefined ? {} : { q }), ...(tag === undefined ? {} : { tag }) },
+        tagsStale: 0,
+      };
     }, signal);
   }
 
@@ -447,14 +481,19 @@ export class StubApi implements Api {
     });
   }
 
-  listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+  listStarred(tenant: string, signal?: AbortSignal): Promise<RefPage> {
     return settle(() => {
       this.checkTenant(tenant);
-      return this.refs(this.starred()).sort((a, b) => {
+      const all = this.refs(this.starred()).sort((a, b) => {
         const x = a.title.toLowerCase();
         const y = b.title.toLowerCase();
         return x < y ? -1 : x > y ? 1 : a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0;
       });
+      return {
+        items: all.slice(0, MAX_LISTED_STARRED),
+        truncated: all.length > MAX_LISTED_STARRED,
+        applied: {},
+      };
     }, signal);
   }
 
@@ -474,10 +513,12 @@ export class StubApi implements Api {
     });
   }
 
-  listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+  listRecent(tenant: string, signal?: AbortSignal, limit?: number): Promise<RefPage> {
     return settle(() => {
       this.checkTenant(tenant);
-      return this.refs(this.recent().map((e) => e.uid)).slice(0, RECENT_LIMIT);
+      const n = limit ?? RECENT_LIMIT;
+      const all = this.refs(this.recent().map((e) => e.uid));
+      return { items: all.slice(0, n), truncated: all.length > n, applied: {} };
     }, signal);
   }
 

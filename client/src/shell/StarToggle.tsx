@@ -18,7 +18,7 @@ export function StarToggle({ tenant, uid }: { tenant: string; uid: string }) {
   const starred = useStarred(tenant);
   const [pending, setPending] = useState<boolean | null>(null);
   const [failed, setFailed] = useState(false);
-  const isStarred = pending ?? starred.data?.some((r) => r.uid === uid) ?? false;
+  const isStarred = pending ?? starred.data?.items.some((r) => r.uid === uid) ?? false;
   const onChange = (next: boolean): void => {
     if (pending !== null) return;
     setFailed(false);
