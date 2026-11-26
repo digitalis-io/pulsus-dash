@@ -54,7 +54,7 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 |---|---|---|---|---|---|
 | `check-lockfile.ts [dir]` | no findings | findings | unreadable input | `non-exact-version`, `lockfile-version`, `non-registry-resolved`, `missing-integrity` | `scripts/__fixtures__/lockfile/{caret,foreign,no-integrity,v2}` |
 | `check-deps.ts [dir]` | no findings | findings | unreadable input | `not-allowlisted`, `not-in-closure`, `stale-closure`, `forbidden-category`, `licence` | `scripts/__fixtures__/deps/*` |
-| `bundle-size.ts [dist] [budgets]` | within budget | over budget or an artefact missing | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>`, `editor-in-initial`, `editor-orphan` | built in a temporary directory by `bundle-size.test.ts` |
+| `bundle-size.ts [dist] [budgets]` | within budget (warnings only) | over budget, an artefact missing or a build boundary crossed | `dist/` or manifest unreadable | `over-budget:<class>`, `missing-artefact:<what>`, `editor-in-initial`, `editor-orphan`, `engine-in-initial`, `lazy-in-initial`, `geo-entry-merged`; the warning `near-budget:initialJs` | built in a temporary directory by `bundle-size.test.ts` |
 | `token-lint.ts [root]` | no findings | findings | a file does not parse | `colour-literal`, `size-literal`, `duration-literal`, `state-token`, `computed-token-name`, `suppressed-token-rule` | `scripts/__fixtures__/token-lint/bad` (and `good`, which must pass) |
 | `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`, including `engine/crates/dash-tokens/src/tokens.rs`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`, a stale `tokens.rs`) |
 | `engine-fixtures.ts [--write]` | written / up to date | a fixture is stale (`error[engine-fixtures] engine/fixtures/<file> is stale`) | — | — | `engine-fixtures.test.ts` (a fresh run equals the committed files) |
@@ -162,6 +162,33 @@ closure (named as editor code, but no editor entry reaches it). The editor entri
 editor row fails over budget is the branch `gate-proof/63-editor-chunk` (budget `editorChunk`
 lowered to 50 000), run as a draft PR whose `check` job must fail on `over-budget:editorChunk`.
 
+**The initial chunk (#263).** Rolldown splits the static closure of `index.html` by importer set:
+the dev-only routes and the lazy routes import the same modules (`Button`, `clsx`,
+`jsx-runtime`, the i18n `t`, …), so without help the closure becomes the entry plus about ten
+shared chunks, each compressed on its own. `vite.config.ts` therefore sets one
+`output.codeSplitting` group, `INITIAL_GROUP` in `client/config/chunks.ts` (tag `$initial`),
+which keeps that closure in one chunk that Rolldown folds into the `index` entry. The stub build's
+initial JS went from 202 529 B (over the budget) to 191 402 B, the http build's from 192 313 B to
+190 016 B; the initial CSS of both is 5 815 B. A lazy chunk that uses one of those modules now
+imports it from `index`, which is always loaded first; no module moves from a lazy chunk into the
+initial set. The group excludes `GEO_ENTRY` (`src/vis/geo/urls.ts`): captured, the `geo-assets`
+entry would take `index.html`'s place as the entry chunk (`missing-artefact:index.html`). Its
+config is pinned by `unit:initial-chunk-group`.
+
+Two findings guard the result in every build `bundle-size.ts` measures:
+
+- `lazy-in-initial`: a `required.lazyModules` entry (for example
+  `src/widgets/text/TextMarkdown.tsx`, `src/pages/board/BoardPage.tsx`, `src/editor/editor.ts`)
+  whose file is in the initial JS.
+- `geo-entry-merged` (with `required.geoAssets`): the `src/vis/geo/urls.ts` manifest entry is
+  missing, is not `isEntry`, its file is not `assets/geo-assets-*.js`, it has static `imports`, or
+  its file is in the initial JS.
+
+**Near the budget.** When the initial JS is less than `NEAR_BUDGET_BYTES` (3 000 B) below its
+budget, `bundle-size.ts` prints the report-only warning `near-budget:initialJs` (`<bytes> bytes
+brotli, <headroom> below the budget <budget>: a chunking or budget decision is due`). Warnings do
+not change the exit code; over the budget, only `over-budget:initialJs` is reported.
+
 `pack-assets.ts` is not a checker: it packs the build the BFF embeds
 ([Serving the client](../server/README.md#serving-the-client)).
 
@@ -203,6 +230,19 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
   To run one engine locally: `npm run e2e -- --project=chromium`.
 - **Keyboard coverage** (`e2e/keyboard.spec.ts`, part of `e2e:a11y-rooms`): see
   [the client page](../client/README.md#keyboard-coverage).
+- **`unit:initial-chunk-group`** (`config/chunks.test.ts`, #263): `INITIAL_GROUP` is tagged
+  `$initial`, excludes `src/vis/geo/urls.ts` (POSIX and Windows paths) and nothing else, and
+  `vite.config.ts` sets `codeSplitting.groups` to exactly `[INITIAL_GROUP]`
+  ([bundle budgets](#bundle-budgets)).
+- **`unit:engine-spec-split`** (`config/engineSpecs.test.ts`, #263): `engineOnlyPattern` matches
+  each `ENGINE_ONLY_SPECS` file name exactly (with or without a directory) and nothing else, every
+  `e2e/*.spec.ts` that calls `tierOf(` or `leg(` is in `ENGINE_ONLY_SPECS` or
+  `ENGINE_SHARED_SPECS`, and every listed file exists ([end-to-end tests](#end-to-end-tests)).
+- **`unit:load-baseline-keys`** (`scripts/gen-xss-e2e-cases.test.ts`, #263): the request key of
+  another origin carries that origin and a same-origin key does not; the favicon exemption and
+  the permitted images hold for the app origin only; every key of the three committed
+  `board-load-baseline.*.json` files is a same-origin path, and every `/assets/` key has
+  `-{hash}.` ([the widgets page](../client/widgets.md#the-case-list-and-the-baselines)).
 - **`bench:inp-rooms`** (`e2e/perf-inp-rooms.spec.ts`, Chromium only, PRF-033, T05 §4.3): scripted
   pointer and keyboard interactions on the board room (Appendix C-A §A.6 of plan #61 Part C), in
   five documents: `/t/demo/board/b-1` (the section toggle five times both ways, the star three
@@ -625,6 +665,18 @@ preview` with `VITE_ENGINE=canvas2d`, no database); the `bff-*` and `dev-proxy` 
 `bff-http`, `dev-proxy`, `editor-ime`, `perf-editor-keystroke`, `perf-logql-completion` and
 `perf-log-scroll` and
 `perf-promql-completion` run on Chromium only; `perf-log-page-load` skips itself outside Chromium.
+**Engine-only specs.** The specs that need an engine tier run only in the engine suite
+(`playwright.engine.config.ts`, [below](#the-engine-in-the-browser-part-c1)). Their list is
+`client/config/engineSpecs.ts`: `ENGINE_ONLY_SPECS` (`engine-mode-matrix`, `golden-engine-line`,
+`engine-recovery`, `engine-shim-fuzz`, `engine-camera`, `engine-hover`, `engine-layer`), which
+`playwright.config.ts` ignores in every project through `engineOnlyPattern`, and
+`ENGINE_SHARED_SPECS` (`csp-violations`), which runs in both suites and whose engine leg skips
+outside the engine projects. The engine config selects both lists, then its `grep`. A new spec that
+calls `tierOf` or `leg` (`e2e/engine.ts`) must be added to one of them: `unit:engine-spec-split`
+fails otherwise. `engine-pin.spec.ts` imports `e2e/engine.ts` but calls neither, so it stays in the
+main suite, where it proves the Canvas 2D pin. `npx playwright test --list --project=<engine>`
+(starts no server) shows the main suite's files.
+
 The Explore specs on the fake (`e2e/explore-metrics.spec.ts`, `e2e/explore-logs.spec.ts`) run on
 the http-mode BFF and, where they read the fake's request records, use one time window per browser,
 so parallel projects never count each other's requests (the Logs specs read their own requests in
@@ -742,7 +794,7 @@ no secrets are used.
 
 | Job | Steps (gate) |
 |---|---|
-| `check` | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`, stub build) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `size -- dist-http` (`ci:bundle-size`, http build) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
+| `check` (locally: [`make client-check`](#make-targets)) | `npm ci` (`ci:lockfile` install) → `check:lockfile` (`ci:lockfile`) → `lint` (`ci:lint-ts`) → `typecheck` (`ci:typecheck`) → `tokens -- --check` and `token-lint` (`ci:token-lint`) → `test` (unit) → `build` (with `VITE_GIT_SHA`) → `size` (`ci:bundle-size`, stub build) → an `http` build into `dist-http/` whose manifest must not contain `src/dev/` (the chart gallery is absent from `http` builds) → `size -- dist-http` (`ci:bundle-size`, http build) → `origins` (`ci:dep-audit`, build origins) → `audit` (`ci:dep-audit`, `ci:npm-audit`) |
 | `e2e-deps` | beside `check` (no `needs`), one job per engine with a 50-minute timeout: fills the browser cache once, before that engine's shards start. `npm ci`, the Playwright version, then `actions/cache/restore` with `lookup-only: true` of `$RUNNER_TEMP/pw-browsers` (the `PLAYWRIGHT_BROWSERS_PATH`) and `$RUNNER_TEMP/pw-apt` (the browser's system packages as `.deb` files) under the key `pw-<engine>-<version>-ubuntu-24.04-v1`. On a hit it stops there (under 2 minutes). On a miss it runs `playwright install-deps <engine>` (bounded, see below), copies apt's downloaded packages to `pw-apt`, runs `playwright install <engine>` and saves the cache with `actions/cache/save`. A cold install takes 1–8 minutes (an earlier figure of about 30 minutes was an `apt-get update` mirror stall, now bounded). The key changes with the Playwright version; `v1` is a manual bust (raise it to `v2` to rebuild the cache, for example after a runner image change). There is no date in the key, so the cache stays warm until GitHub evicts it (7 days unused) |
 | `e2e` | after `check` and `e2e-deps`, fifteen jobs: each engine (`chromium`, `firefox`, `webkit`) × each shard (`kbd-a`, `kbd-b`, `kbd-c`, `rest`, `rest-b`, [below](#e2e-shards)), with a PostgreSQL 16.16 service on port 55432 and a 50-minute timeout (`E2E_TIMEOUTS.jobMin`, [below](#e2e-timeouts)): `npm ci`, Go 1.27.4 and its toolchain check, the Playwright version, `actions/cache/restore` of e2e-deps' cache under the same key with `fail-on-cache-miss: true` (a shard never installs a browser cold, and never saves), `playwright install-deps <engine>` from the cached packages (copied into `/var/cache/apt/archives/`, so apt fetches only what changed since the cache was made; each attempt is bounded to 8 minutes and tried up to three times, because its `apt-get update` once stalled on a mirror for 38 minutes, while a normal attempt takes under 2), `playwright install <engine>` (already present), `e2e database` (applies `server/deploy/postgres-roles.sql` and creates `pulsus_e2e`), `make e2e-build`, `npm run e2e -- --project=<engine>` with `E2E_SHARD=<shard>`, `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` (`PW_UPDATE_GOLDENS=1` only on Chromium's `rest` shard with the `golden-update` label); `blob-report/` and `test-results/` are uploaded as `e2e-<engine>-<shard>` for 14 days, and Chromium's `rest` shard also uploads `e2e/__screenshots__/` as `e2e-screenshots`. Golden and bench specs run on Chromium only. On CI Playwright runs two workers with a 35-minute `globalTimeout` (`E2E_TIMEOUTS.globalMin`), so an overrun fails the run with its artefacts before the job's timeout. CI retries a failed test once, except the keyboard parts (`retries: 0` in their `describe`): the traversal is deterministic, so a retry would only hide a failure. **`e2e-deps` failure scope:** `needs: e2e-deps` waits for the whole matrix job, so if any engine's leg fails, all fifteen `e2e` jobs are skipped, also those of the engines whose cache filled (a matrix leg cannot be a `needs` target; isolating each engine would take three copies of the job). Every `e2e-report` still runs and fails, so nothing passes unchecked: its merge step stops at `cp: cannot stat 'shards/*/blob-report/*.zip'` (no shard uploaded), `ci:e2e-complete` exits 2 with `error[input] cannot read ran/*.json`, and the merged coverage reports `keyboard-part-missing` for every part. Recovery: "Re-run failed jobs" reruns the failed leg and the skipped jobs; `fail-fast: false` let the other legs save their caches, so they hit. A leg fails only when `install-deps` fails three bounded attempts |
 | `e2e-report` | after all fifteen `e2e` jobs, even when one failed (not when the run is cancelled), one job per engine with a 10-minute timeout: `npm ci`; download that engine's five artefacts into `client/shards/`; `playwright merge-reports` of the five blobs into one HTML report, and of each shard's blob into `ran/<shard>.json`; **`ci:e2e-complete`** (`playwright test --list --reporter=json --project=<engine>` into `listed.json`, which starts no web server, then `npm run e2e:complete -- listed.json <engine> ran/*.json`); **`e2e:a11y-rooms` (merged keyboard coverage)**, `npm run e2e:keyboard-coverage -- shards <engine>`; the merged HTML report is uploaded as `e2e-report-<engine>` for 14 days. A shard job that died before its upload shows as `e2e-test-missing` for each of its tests, and a failed keyboard part as `e2e-test-failed` and `keyboard-part-missing` |
@@ -989,6 +1041,7 @@ cgo.
 | `make build` | `client-build` (`VITE_API_MODE=$(API_MODE)`, `API_MODE ?= http`, `VITE_GIT_SHA=$(GIT_SHA)`), `assets-pack` (a new signing key in `build/keys/`, then `pack-assets.ts` into `server/internal/gateway/static/dist/`), then `go build -tags embedassets` with the public key into `$(OUT)` (`OUT ?= build/pulsus-dash`); see [Serving the client](../server/README.md#serving-the-client) | build |
 | `make e2e-build` | `make build` twice with `VITE_ENGINE=$(E2E_ENGINE)` (`E2E_ENGINE ?= canvas2d`: the main suite's host browsers have uncontrolled GPUs, so its builds pin Canvas 2D; the engine is still built in), `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e`; and the PulsusDB fake, `CGO_ENABLED=0 go build -trimpath` of `./cmd/pulsus-fake` into `build/e2e-fake/pulsus-fake` | — |
 | `make client-dev` | `make engine-wasm`, then `npm --prefix client run dev` (the dev server refuses to start without the engine) | — |
+| `make client-check` | the client `check` job of [CI](#ci), run locally after `make engine-wasm`: `npm ci` if `node_modules/` is absent, `check:lockfile`, `lint`, `typecheck`, `tokens -- --check`, `token-lint`, `npm test`, `make geo-test`, `geo-data`, `npm run build` and `npm run size` (stub build), the `http` build into `dist-http/` (no `src/dev/` in its manifest) and `npm run size -- dist-http`, `origins`, `audit`. **The required local gate for every change under `client/`, `design/tokens.toml` or `wire/`**, run before the push: CI is not a gate. `audit` needs the network, so an offline run may stop there; repeat it with network before pushing | `ci:lockfile`, `ci:lint-ts`, `ci:typecheck`, `ci:token-lint`, `unit:*`, `ci:geo-data`, `ci:bundle-size` (both builds), `ci:dep-audit`, `ci:npm-audit` |
 | `make e2e` | `npm --prefix client run e2e` | `e2e:*` |
 | `make server-build` | builds `build/pulsus-dash` without the client (`VERSION ?= 0.1.0-dev`); its `serve` refuses to start unless `--api-only` | — |
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |

@@ -381,13 +381,18 @@ The route runs in one of three modes:
 |---|---|---|
 | idle | (start) | continues, unjudged |
 | recording | `record()` … `stopRecording()` | continues and counts against its key; `stopRecording()` returns the key → count map |
-| judged | `begin(baseline, images)` | an `image` whose path is in `images` is answered once with a 1×1 PNG (`Cache-Control: no-store`), and a second one is a finding, aborted; any other request continues while its key's count is within `baseline[key]`, and past it is a finding, aborted |
+| judged | `begin(baseline, images)` | an `image` from the app origin whose path is in `images` (`isPermittedImage`) is answered once with a 1×1 PNG (`Cache-Control: no-store`), and a second one is a finding, aborted; any other request continues while its key's count is within `baseline[key]`, and past it is a finding, aborted |
 
 A key is `${method} ${resourceType} ${path}`. The path keeps its query, except a document's. A
 board uid after `board/`, `boards/` or `recent-boards/` becomes `{uid}`, and a built asset's hash
-becomes `{hash}` (`/assets/index-{hash}.js`), so a baseline names chunks, not one build. Preloads
-are ordinary requests. Not judged: `/favicon.ico`, and a browser's own report of a violation that
-is already a `csp` finding (Firefox sends it as `fetch`, WebKit as `ping`). `isBrowserCspReport`
+becomes `{hash}` (`/assets/index-{hash}.js`), so a baseline names chunks, not one build. A request
+to another origin than the app's (`http://localhost:4174`) keeps that origin before its path
+(`GET script http://localhost:4175/assets/x-{hash}.js`, #263): it never matches a committed key,
+which is always a same-origin path, and a recorded foreign request shows where it went. Preloads
+are ordinary requests. Not judged (`isExempt`): the app origin's `/favicon.ico`, and a browser's
+own report of a violation that is already a `csp` finding (Firefox sends it as `fetch`, WebKit as
+`ping`). Another origin's `/favicon.ico`, and another origin's image at a path in `images`, are
+judged against the baseline like any other request, so each is a finding. `isBrowserCspReport`
 accepts only a same-origin `POST` to exactly `/api/dash/v1/csp-report` with no query, content type
 `application/csp-report` (a `{"csp-report": {…}}` body, or one `{type: "csp-violation", body: {…}}`
 as WebKit sends it) or `application/reports+json` (a non-empty array of those). Any other request to that path is judged.
@@ -418,11 +423,29 @@ as WebKit sends it) or `application/reports+json` (a non-empty array of those). 
 it. After a corpus change, regenerate and review the diff.
 
 The baseline is recorded once per browser from a **twin** board: one Text panel at {0, 0, 12, 8}
-holding `x [x](/b)`, opened with `var-env=prod`. The link is there so the new-tab glyph's icon (a
-kit `Icon` mask image) is in the baseline, as every rendered link loads it. The recorded map must
-equal `e2e/fixtures/board-load-baseline.<project>.json`, key by key and count by count; a change
-fails until reviewed. `BASELINE_UPDATE=1` rewrites the three maps from the twin (run the corpus test
-in each browser), and the diff is reviewed in the PR.
+holding `x [x](/b)`, opened with `var-env=prod`. The link is there so the new-tab glyph's mask
+image (`square-arrow-out-up-right-{hash}.svg`, drawn by the kit `Icon`, whose code is in the
+`index` chunk) is in the baseline, as every rendered link loads it. The recorded map must equal
+`e2e/fixtures/board-load-baseline.<project>.json`, key by key and count by count; a change fails
+until reviewed.
+
+**Regenerating the baselines.** A change to the chunk layout (a bundler option, a new shared
+module, a moved import) or to the board's requests changes the maps. To regenerate them:
+
+1. `make e2e-build` (the http build the twin loads pins Canvas 2D).
+2. In each of `chromium`, `firefox` and `webkit`:
+   `BASELINE_UPDATE=1 npm run e2e -- widgets.spec.ts --project=<engine> -g "widget-text-xss \(b\)"`.
+3. Review `git diff client/e2e/fixtures/board-load-baseline.*.json`. Every added key must be a
+   same-origin `/assets/` key; the PR names each one with the module that causes it, and each
+   removed key with the reason. A `fetch`, `document` or `PUT` key that changes needs its own
+   reason. `unit:load-baseline-keys` refuses a key that is not a same-origin path, and an
+   `/assets/` key without `-{hash}.`.
+4. Run `e2e:widget-text-xss` (a)–(c) without `BASELINE_UPDATE` in all three engines: they must
+   pass.
+
+The #263 regeneration (the `$initial` chunk group,
+[bundle budgets](../development/build-and-ci.md#bundle-budgets)) removed the `clsx`,
+`jsx-runtime` and `t` script keys, whose modules are now in `index`.
 
 ### The corpus run and the canaries
 
