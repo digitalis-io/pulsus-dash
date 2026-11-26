@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-26 |
+| **Version** | 1.9-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -458,8 +458,9 @@ gets a leading `'` first (`csvCell`), unless it is a number: the whole cell matc
 `m` flag) and holds no line terminator (LF, CR, U+0085, U+2028, U+2029), so `-6.25`, `+1`, `1e5` and
 `-Infinity` stay as they are and `-1+2` and `-1` followed by LF are guarded (amended by #184 step 1b, T24-094).
 Facts: `current` = `{text: '‹N›[+] boards'` plus
-` (coverage unknown)` or ` (stale)`, `series: ‹mode label›}`, and the other members are null; with no
-snapshot the facts are null.
+` (coverage unknown)`, ` (stale)` or both (` (coverage unknown, stale)`), `series: ‹mode label›}`, and
+the other members are null; `+` when the answer is truncated, and "coverage unknown" whenever the
+coverage has `unknown`. With no snapshot the facts are null.
 
 #### T24-027 — List states, look
 **MUST** — States and texts follow §4.5. "Loading…" shows after 300 ms (`useDelayedFlag`). Rows are
@@ -1036,6 +1037,13 @@ unmount.
 - Other modes with search text or tags → "Search text and tags dropped: they apply to search only".
 - `maxItems` is clamped to 1–50 ("Item limit ‹m› clamped to ‹l›"); `keepTime: false` → "Links keep the
   time range"; other keys, sorted → "Option ‹key› not mapped".
+- Note order: (1) the mode note (more than one extra list: joined with " and "); (2) the malformed
+  notes, in the order `showStarred`, `showRecentlyViewed`, `showSearch`, `maxItems` (an integer),
+  `query` (a string), `tags` (an array of strings), `keepTime` (booleans otherwise); (3) search: each
+  invalid tag (its source text quoted), then "Tags not kept" (the other valid tags, lower-cased,
+  deduplicated, the kept tag excluded), then "Search text dropped in tag mode" (a non-empty query);
+  with no valid tag, the Cc note, then the cut note; other modes: one "Search text and tags dropped"
+  when either is non-empty; (4) the clamp; (5) `keepTime`; (6) the unmapped keys, in code-unit order.
 
 ### 4.7 Change feed states (part B2; T24-033)
 
@@ -1279,7 +1287,7 @@ gate whatever its number).
 |---|---|---|---|
 | tags version | `BoardSpec.tags` (§5.5) | #215 (I1), landed | v4 |
 | widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) Part 1, landed | v5 |
-| board-list version | `boardList` (§5.5) | #216 (I2), after #198 | v6 |
+| board-list version | `boardList` (§5.5) | #216 (I2) Part 1, landed | v6 |
 | change-feed version | `changeFeed` (§5.8) | part B2 | v7 |
 | geomap version | `geomap` (§5.15) | part E step 1b | v8 |
 | map-sync version | `sync`, `boundsFilter`, `legacyAuto` (§5.15) | part E step 2 | v9 |
@@ -1422,7 +1430,25 @@ Other keys → `board.json.unknownKey`. Errors are `board.options.‹…›`.
 | sort | `default`\|`incidents` | `default` | `sort.invalid` |
 
 `boardListOptions` fills the defaults. `isWidgetPanel` includes `boardList`, and `<WidgetBody>` (#198)
-adds it.
+adds it (until I2 Part 2, a stored board list shows the widget's "not available yet" frame).
+
+The rules, landed as v6 (#216 Part 1; Go `boardListOptions` after `widgetOptions`, TS the same). Keys
+are checked in `OPTION_ORDER` (`sort`, `mode`, then `query`, `tag`, `limit` after `countdown`); `m` is
+the mode, `starred` when absent; `board.string.nul` comes first. `sort` and `mode` are shared keys: each
+kind has its own values, and the readers of the other kinds (`textOptions`, `barchartOptions`) guard
+them (`isTextMode`, `isChartSort`) and fall back to their defaults.
+
+| Key | Valid when | Else |
+|---|---|---|
+| `sort` | in `default`, `incidents` (kind `boardList`); in the chart sorts (other kinds) | `sort.invalid` |
+| `mode` | in `starred`, `recent`, `search`, `tag` (`boardList`); `markdown`, `code` (`text`) | `mode.invalid`; then `query` and `tag` get only their own checks, not the mode ones |
+| `query` present | ≤ 100 code points, no U+0000–001F or U+007F–009F (the gateway's `q` rule with no minimum), and `m` = `search` (`''` included) | `query.invalid` |
+| `tag` present | `AnnotationTag`, and `m` = `tag` | `tag.invalid` |
+| `tag` absent | `m` ≠ `tag` | `tag.invalid` at `…/tag` |
+| `limit` present | a whole number (a JSON number; `1e1` is 10) from 1 to 50 | `limit.invalid`; a non-number is `board.json.type` |
+
+As a widget, a `boardList` panel with a `query` is `board.panel.query.forbidden`, and `thresholds` or
+`legend` is `board.json.unknownKey`. The v5 → v6 upcast is the identity.
 
 ### 5.6 BFF contract (part B1; spec first, [ADR-0015](../adr/0015-go-bff.md))
 
@@ -1451,22 +1477,39 @@ type BoardFilter struct{ Q, Tag string } // core; "" = absent
 listBoards(tenant: string, signal?: AbortSignal, f?: { q?: string; tag?: string }): Promise<BoardPage>;
 listStarred(tenant: string, signal?: AbortSignal): Promise<RefPage>;   // SidebarBoards reads .items
 listRecent(tenant: string, signal?: AbortSignal, limit?: number): Promise<RefPage>;
-export interface BoardPage { items: (BoardSummary & { tags: string[] | null })[]; truncated: boolean;
-  applied: { q?: string; tag?: string } | null; tagsStale: number }
-export interface RefPage { items: BoardRef[]; truncated: boolean; applied: {} | null }   // applied null = old server
+export type BoardListMode = 'starred' | 'recent' | 'search' | 'tag';
+export type BoardListItem = BoardSummary & { tags: readonly string[] | null };   // null: stale, or an old server
+export interface BoardPage { items: BoardListItem[]; truncated: boolean;
+  applied: { q?: string; tag?: string } | null; tagsStale: number }   // old server: applied null, tagsStale 0, tags null
+export interface RefPage { items: BoardRef[]; truncated: boolean; applied: {} | null }   // applied null = old server (truncated false)
+// HttpApi sends q only when non-empty and tag only when given; listRecent's limit defaults to RECENT_LIMIT.
+// StubApi filters as the BFF and computes truncated before it cuts (boards > 1 000, starred > 200, recent > limit).
 // widgets/lists/snapshot.ts (shared with part B2)
 export interface ListSnapshot<R> { key: readonly unknown[]; rows: readonly R[]; coverage: Coverage; fetchedAtMs: number }
 export function listCoverage(loaded: number, shown: number, truncated: boolean, staleAtMs: number | null,
   unknown?: Coverage['unknown']): Coverage;   // no `applied` → oldServer; else tagsStale > 0 → tagsStale
+export function withStale<R>(s: ListSnapshot<R>, atMs: number): ListSnapshot<R>;   // a copy, coverage.staleAtMs = atMs
+export function listSetSize(s: ListSnapshot<unknown>): number;   // −1 when truncated or unknown, else rows.length
 export function csvCell(v: string): string;   // the T24-026 guard, then RFC 4180; defined in client/src/data/csv.ts (#173), re-exported here
+// widgets/lists/focus.ts, widgets/lists/table.ts
+export function repairActive(prevKey: string | null, prevIndex: number, keys: readonly string[]):
+  { key: string | null; index: number; gone: boolean };
+export interface ListTable { columns: readonly string[]; rows: readonly { key: string; cells: readonly string[] }[] }
+export function listCsv(t: ListTable): string;   // header + rows, each cell csvCell, CRLF
 // widgets/boardList/
-export function boardListOptions(o?: Record<string, unknown>): BoardListOptions;  // { mode; query; tag: string | null; limit; sort }
+export function boardListOptions(o?: VisOptions): BoardListOptions;  // { mode; query; tag: string | null; limit; sort }
 export interface BoardRow { uid: string; title: string; display: string; tags: readonly string[] | null;
   updatedAt: string | null; current: boolean }
 export function boardSnapshot(key: readonly unknown[], r: BoardPage | RefPage,
   o: { mode; q; tag; currentUid; shown; nowMs }): { snapshot: ListSnapshot<BoardRow>; notice: 'tagNeedsServer' | null };
-// also: repairActive(prevKey, prevIndex, keys), boardListTable(s), boardListFacts(title, mode, s | null),
-// importBoardList(src) → { options; notes: string[] }
+// Starred and Recent rows: tags [] (CSV empty), updatedAt null. An old server: search filters the
+// titles (ASCII-folded) with tags null, tag mode has no rows and the notice.
+export function boardRowName(r: BoardRow): string;   // ‹display›[, this board]
+export function rankingCaption(sort: 'default' | 'incidents', c: { investigations: boolean }): string | null;
+export function boardListTable(s: ListSnapshot<BoardRow>): ListTable;   // title,uid,tags,updated_at
+export function boardListFacts(title: string, mode: BoardListMode, s: ListSnapshot<BoardRow> | null): SummaryFacts | null;
+// client/src/import/boardList.ts
+export function importBoardList(src: Readonly<Record<string, unknown>>): { options: BoardListOptions; notes: string[] };
 ```
 
 ### 5.8 Board spec: the change-feed version (part B2; OpenAPI, Go, TS)
@@ -2739,7 +2782,7 @@ Part B1 implementation issues, filed after this design merges:
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
 | I1 — BFF: board tags, `/boards` search, `applied`, `truncated` (#215) | §5.5 tags (Go and the client's validator, at the next free spec version), §5.6, §6, migration 4, the itests, `make itest-old-binary`, `docs/server/boards-api.md`, `docs/server/database.md` | — | T24-021, T24-029 |
-| I2 — Board list widget, list modules, editor tags field (#216) | §5.5 `boardList` kind and options (Go and TS), §5.7, the unit, e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
+| I2 — Board list widget, list modules, editor tags field (#216) | Part 1 (landed): §5.5 `boardList` kind and options at v6 (Go and TS), the `Api.ts` pages and filters with old-server decoding, the pure §5.7 modules and `import/boardList.ts`; a stored board list shows the "not available yet" frame. Part 2 (after #173 Part 3a's `PanelTable`): the view, sources, states, keys, editor and tags field, adding a Board list, Shift+T, the e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`, `bench:widget-lists`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
 | I3 — Incident-use ranking (needs design) | SRF-026 "used during incidents" | IA-007 | T24-023 |
 | I4 — Validate `boards_tags_max` (next release) | §6 `VALIDATE CONSTRAINT`, `itest:board-tags-validate` | I1 released | T24-029 |
 
@@ -2864,3 +2907,4 @@ None.
 | 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
 | 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later"; the widgets version is v5 only if no other spec change lands first |
 | 1.8-rc | 2026-11-26 | #198 Part 1 (A1): §5.0 the widgets version landed as v5. §5.1: the zone rule replaces "loadable by `time.LoadLocation`": the form on every parse, existence in Go on writes only against the build's zone set (the toolchain's `zoneinfo.zip` names, generated), a zone the head holds kept on a save; `language` in code mode only; a duplicate zone is the same `tz`; a widget's `thresholds` and `legend` are `board.json.unknownKey`; the `countdown.to` grammar; `v5-widgets.json`. §9: a stored zone is always readable. §10: `Mars/Base` is Go only (`client_fields`). §11: A1 is split in Parts 1–3 |
+| 1.9-rc | 2026-11-26 | #216 Part 1 (I2): §5.0 the board-list version landed as v6. §5.5: the rules table (shared `sort` and `mode` per kind, with the reader guards; `query` search-only with the gateway's Cc rule and no minimum; `tag` present iff tag mode; `limit` a whole JSON number 1–50; an invalid mode skips the mode rules). §5.7: `BoardListMode`, `BoardListItem`, the old-server decoding and the stub's filter and truncation; ref rows; `withStale`, `listSetSize`, `repairActive`, `ListTable`/`listCsv`, `boardRowName`, `rankingCaption`, `boardListTable`, `boardListFacts`, `import/boardList.ts`. T24-026: both suffixes. §4.6: the note order. §11: I2 split into Part 1 (spec, API, pure modules) and Part 2 (the view, editor and the rest) |
