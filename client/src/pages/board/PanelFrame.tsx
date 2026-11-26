@@ -8,7 +8,9 @@
  * A line or bars body has its legend below the chart (a table, or compact on short panels) with
  * local isolation and the threshold highlights; a stat body has the state chip and the threshold
  * text (plan #64 Part B §3.9, §4.4, §4.5). A LogQL stream panel's body is its `LogStream` (plan
- * #67 §3.5), which yields to the full screen dialog while that is open: one pager, one list.
+ * #67 §3.5), which yields to the full screen dialog while that is open: one pager, one list. A
+ * widget panel (board spec v5, plan #198 Part 1 §4.2) is a `WidgetFrame` instead: no run, chart or
+ * data tools.
  */
 import {
   forwardRef,
@@ -28,7 +30,7 @@ import {
 } from 'react';
 import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-components';
 import { Link, useHref, useNavigate } from 'react-router';
-import type { PanelSpec } from '../../api/types';
+import type { DataPanelSpec, PanelSpec } from '../../api/types';
 import { BoardEventsContext } from '../../boards/boardEvents';
 import { BoardRunContext } from '../../boards/boardRunContext';
 import { exploreHref } from '../../boards/exploreLink';
@@ -79,6 +81,8 @@ import { BoardModeContext } from './boardMode';
 import { LegendCompact } from './LegendCompact';
 import { PanelFullScreen } from './PanelFullScreen';
 import { PanelNotices } from './PanelNotices';
+import { WidgetFrame } from './WidgetFrame';
+import { isWidgetPanel } from '../../widgets/spec';
 
 /** The shimmer's delay (VL-015). */
 const SHIMMER_MS = 300;
@@ -408,7 +412,7 @@ export function PanelPreview({
   run,
   bodyRef,
 }: {
-  panel: PanelSpec;
+  panel: DataPanelSpec;
   run: PanelRun;
   bodyRef?: RefCallback<HTMLDivElement>;
 }) {
@@ -467,7 +471,7 @@ export function PanelPreview({
 }
 
 /** The header; the drag handle in Edit mode (the board mode, not a prop: #111). */
-function PanelHeader({ children }: { children: ReactNode }) {
+export function PanelHeader({ children }: { children: ReactNode }) {
   const mode = useContext(BoardModeContext);
   return (
     <div className={cx(styles['panelHeader'])} data-drag-handle={mode === 'edit' ? '' : undefined}>
@@ -477,7 +481,7 @@ function PanelHeader({ children }: { children: ReactNode }) {
 }
 
 /** Move or resize, in Edit mode only (the board mode, not a prop: #111). */
-function PanelLayoutTool({
+export function PanelLayoutTool({
   title,
   readOnly,
   onKeyDown,
@@ -527,236 +531,250 @@ function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
 }
 
 /**
- * Memoised (#111): a board state change that leaves a panel's props alone (entering Edit mode,
- * opening the panel editor, an edit to another panel) does not render it. The page passes stable
- * callbacks, the draft keeps the objects of the panels an edit does not touch, and the mode reaches
- * only the Edit chrome, through `BoardModeContext`.
+ * A board panel: a widget's `WidgetFrame`, else a data panel's `DataPanelFrame` (plan #198 Part 1
+ * §4.2). Memoised (#111): a board state change that leaves a panel's props alone (entering Edit
+ * mode, opening the panel editor, an edit to another panel) does not render it. The page passes
+ * stable callbacks, the draft keeps the objects of the panels an edit does not touch, and the mode
+ * reaches only the Edit chrome, through `BoardModeContext`.
  */
 export const PanelFrame = memo(
-  forwardRef<HTMLElement, PanelFrameProps>(function PanelFrame(
-    {
-      panel,
-      tenant,
-      readOnly,
-      selected,
-      runText,
-      runSeq,
-      runDegraded,
-      onEdit,
-      onKeyOp,
-      onDuplicate,
-      onRemove,
-      className,
-    },
-    ref,
-  ) {
-    const headingId = useId();
-    const { search, dispatch } = useTimeContext();
-    const navigate = useNavigate();
-    const [full, setFull] = useState(false);
-    // The root element, for the board's viewport tracker.
-    const [el, setEl] = useState<HTMLElement | null>(null);
-    const visible = useInViewport(el);
-    const [bodyRef, widthPx] = useElementWidth<HTMLDivElement>();
-    const { widths } = useContext(BoardRunContext);
-    // The last known width stays in the store across a remount (a refused drop resets the grid), so
-    // the preview keeps sharing the panel's key while the new body is measured.
-    useEffect(() => {
-      if (widthPx !== null) widths.set(panel.id, widthPx);
-    }, [widths, panel.id, widthPx]);
-    const run = usePanelRun({
-      tenant,
-      panel,
-      text: runText ?? panel.query.text,
-      enabled: visible || full,
-      widthPx,
-      // The panel behind its open editor: the preview runs (plan #67 §3.3).
-      editing: runText !== undefined,
-      ...(runSeq === undefined ? {} : { runSeq }),
-      degraded: runDegraded ?? false,
-    });
-    const title = panelTitle(panel);
-    const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
-    const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
-    const notices = noticesOf(run, view);
-    // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
-    const frameSize = useRef<FrameSize | null>(null);
-    const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
-    const g = panel.grid;
-    const explore = exploreHref(tenant, panel, search, run.expanded);
-    // The Inspector's origin (T25 §5), memoised on its fields so the chart's props stay stable.
-    const lang = panel.query.lang;
-    const expanded = run.expanded;
-    const originUnit = view.kind === 'frame' ? view.spec.unit : null;
-    const origin = useMemo<Omit<InspectOrigin, 'window'>>(
-      () => ({
-        surface: 'board',
-        panelId: panel.id,
-        title,
-        query: expanded === null ? null : { lang, text: expanded },
-        unit: originUnit,
-      }),
-      [panel.id, title, expanded, lang, originUnit],
-    );
-    const inspect = useChartInspect(origin);
-    const inspected = useInspectedPanelId() === panel.id;
-    const onNarrow = useCallback(() => {
-      dispatch({ type: 'zoom', dir: 'in' });
-    }, [dispatch]);
-
-    const rootRef = (node: HTMLElement | null): void => {
-      assignRef(ref, node);
-      if (node !== null) setEl(node);
-    };
-
-    const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
-      const op = keyOp(e);
-      if (op === null) {
-        // Other keys (Tab, the board keys) carry on to their handlers.
-        e.continuePropagation();
-        return;
-      }
-      e.preventDefault();
-      onKeyOp(panel.id, op);
-    };
-
-    return (
-      <section
-        ref={rootRef}
-        className={cx(styles['panel'], className)}
-        aria-labelledby={headingId}
-        // The Inspector's focus fallback when its return target is gone (T25-008).
-        tabIndex={-1}
-        data-panel={panel.id}
-        data-panel-id={panel.id}
-        data-inspector-origin={inspected ? '' : undefined}
-        data-grid={[g.x, g.y, g.w, g.h].join(',')}
-        data-vis={panel.vis.kind}
-        data-panel-state={stateOf(view)}
-        data-panel-vis={view.kind === 'frame' ? view.vis : undefined}
-        data-selected={selected ? '' : undefined}
-      >
-        <PanelHeader>
-          <div className={cx(styles['titles'])}>
-            <h3
-              id={headingId}
-              className={cx(styles['title'], panel.title === '' ? styles['untitled'] : undefined)}
-              title={title}
-            >
-              {title}
-            </h3>
-            {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
-            {notices !== null && (
-              <PanelNotices title={title} completeness={notices} onNarrow={onNarrow} />
-            )}
-          </div>
-          <div className={cx(styles['tools'])}>
-            {explore === null ? (
-              <IconButton
-                icon="square-arrow-out-up-right"
-                aria-label={t('panel.explore', { title })}
-                isDisabled
-              />
-            ) : (
-              <Link
-                to={explore}
-                className={cx(styles['tool'])}
-                aria-label={t('panel.explore', { title })}
-              >
-                <Icon name="square-arrow-out-up-right" />
-              </Link>
-            )}
-            <IconButton
-              icon="maximize-2"
-              aria-label={t('panel.fullScreen', { title })}
-              onPress={() => {
-                setFull(true);
-              }}
-            />
-            <RouterProvider
-              navigate={(to) => {
-                void navigate(to);
-              }}
-              useHref={useHref}
-            >
-              <MenuTrigger>
-                <IconButton
-                  icon="ellipsis"
-                  aria-label={t('panel.menu', { title })}
-                  data-panel-menu=""
-                />
-                <Popover placement="bottom end">
-                  <Menu aria-label={t('panel.menu', { title })}>
-                    <MenuItem
-                      id="edit"
-                      onAction={() => {
-                        onEdit(panel.id);
-                      }}
-                    >
-                      {t('panel.editPanel')}
-                    </MenuItem>
-                    <MenuItem
-                      id="duplicate"
-                      isDisabled={readOnly}
-                      onAction={() => {
-                        onDuplicate(panel.id);
-                      }}
-                    >
-                      {t('panel.duplicate')}
-                    </MenuItem>
-                    <MenuItem
-                      id="remove"
-                      isDisabled={readOnly}
-                      onAction={() => {
-                        onRemove(panel.id);
-                      }}
-                    >
-                      {t('panel.remove')}
-                    </MenuItem>
-                    <MenuItem
-                      id="explore"
-                      {...(explore === null ? { isDisabled: true } : { href: explore })}
-                    >
-                      {t('panel.openExplore')}
-                    </MenuItem>
-                    <MenuItem
-                      id="copy"
-                      onAction={() => {
-                        // On the gesture (T08-021); a refused clipboard leaves nothing to undo.
-                        navigator.clipboard.writeText(panel.query.text).catch(() => undefined);
-                      }}
-                    >
-                      {t('panel.copyQuery')}
-                    </MenuItem>
-                  </Menu>
-                </Popover>
-              </MenuTrigger>
-            </RouterProvider>
-            <PanelLayoutTool title={title} readOnly={readOnly} onKeyDown={onLayoutKey} />
-          </div>
-        </PanelHeader>
-        <div ref={bodyRef} className={cx(styles['body'])} aria-busy={shimmer ? true : undefined}>
-          {shimmer && <div className={cx(styles['shimmer'])} data-shimmer="" aria-hidden="true" />}
-          <PanelBody
-            title={title}
-            view={view}
-            sizeMemo={frameSize}
-            onNarrow={onNarrow}
-            streamHidden={full}
-            inspect={inspect}
-            selectPanelId={panel.id}
-          />
-        </div>
-        <PanelFullScreen
-          isOpen={full}
-          title={title}
-          view={view}
-          onNarrow={onNarrow}
-          onClose={() => {
-            setFull(false);
-          }}
-        />
-      </section>
+  forwardRef<HTMLElement, PanelFrameProps>(function PanelFrame(props, ref) {
+    const panel = props.panel;
+    return isWidgetPanel(panel) ? (
+      <WidgetFrame {...props} panel={panel} ref={ref} />
+    ) : (
+      <DataPanelFrame {...props} panel={panel} ref={ref} />
     );
   }),
 );
+
+/** A data panel: its run, header tools and chart body (today's panel, before widgets). */
+const DataPanelFrame = forwardRef<
+  HTMLElement,
+  Omit<PanelFrameProps, 'panel'> & { panel: DataPanelSpec }
+>(function DataPanelFrame(
+  {
+    panel,
+    tenant,
+    readOnly,
+    selected,
+    runText,
+    runSeq,
+    runDegraded,
+    onEdit,
+    onKeyOp,
+    onDuplicate,
+    onRemove,
+    className,
+  },
+  ref,
+) {
+  const headingId = useId();
+  const { search, dispatch } = useTimeContext();
+  const navigate = useNavigate();
+  const [full, setFull] = useState(false);
+  // The root element, for the board's viewport tracker.
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const visible = useInViewport(el);
+  const [bodyRef, widthPx] = useElementWidth<HTMLDivElement>();
+  const { widths } = useContext(BoardRunContext);
+  // The last known width stays in the store across a remount (a refused drop resets the grid), so
+  // the preview keeps sharing the panel's key while the new body is measured.
+  useEffect(() => {
+    if (widthPx !== null) widths.set(panel.id, widthPx);
+  }, [widths, panel.id, widthPx]);
+  const run = usePanelRun({
+    tenant,
+    panel,
+    text: runText ?? panel.query.text,
+    enabled: visible || full,
+    widthPx,
+    // The panel behind its open editor: the preview runs (plan #67 §3.3).
+    editing: runText !== undefined,
+    ...(runSeq === undefined ? {} : { runSeq }),
+    degraded: runDegraded ?? false,
+  });
+  const title = panelTitle(panel);
+  const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
+  const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
+  const notices = noticesOf(run, view);
+  // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
+  const frameSize = useRef<FrameSize | null>(null);
+  const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
+  const g = panel.grid;
+  const explore = exploreHref(tenant, panel, search, run.expanded);
+  // The Inspector's origin (T25 §5), memoised on its fields so the chart's props stay stable.
+  const lang = panel.query.lang;
+  const expanded = run.expanded;
+  const originUnit = view.kind === 'frame' ? view.spec.unit : null;
+  const origin = useMemo<Omit<InspectOrigin, 'window'>>(
+    () => ({
+      surface: 'board',
+      panelId: panel.id,
+      title,
+      query: expanded === null ? null : { lang, text: expanded },
+      unit: originUnit,
+    }),
+    [panel.id, title, expanded, lang, originUnit],
+  );
+  const inspect = useChartInspect(origin);
+  const inspected = useInspectedPanelId() === panel.id;
+  const onNarrow = useCallback(() => {
+    dispatch({ type: 'zoom', dir: 'in' });
+  }, [dispatch]);
+
+  const rootRef = (node: HTMLElement | null): void => {
+    assignRef(ref, node);
+    if (node !== null) setEl(node);
+  };
+
+  const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
+    const op = keyOp(e);
+    if (op === null) {
+      // Other keys (Tab, the board keys) carry on to their handlers.
+      e.continuePropagation();
+      return;
+    }
+    e.preventDefault();
+    onKeyOp(panel.id, op);
+  };
+
+  return (
+    <section
+      ref={rootRef}
+      className={cx(styles['panel'], className)}
+      aria-labelledby={headingId}
+      // The Inspector's focus fallback when its return target is gone (T25-008).
+      tabIndex={-1}
+      data-panel={panel.id}
+      data-panel-id={panel.id}
+      data-inspector-origin={inspected ? '' : undefined}
+      data-grid={[g.x, g.y, g.w, g.h].join(',')}
+      data-vis={panel.vis.kind}
+      data-panel-state={stateOf(view)}
+      data-panel-vis={view.kind === 'frame' ? view.vis : undefined}
+      data-selected={selected ? '' : undefined}
+    >
+      <PanelHeader>
+        <div className={cx(styles['titles'])}>
+          <h3
+            id={headingId}
+            className={cx(styles['title'], panel.title === '' ? styles['untitled'] : undefined)}
+            title={title}
+          >
+            {title}
+          </h3>
+          {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
+          {notices !== null && (
+            <PanelNotices title={title} completeness={notices} onNarrow={onNarrow} />
+          )}
+        </div>
+        <div className={cx(styles['tools'])}>
+          {explore === null ? (
+            <IconButton
+              icon="square-arrow-out-up-right"
+              aria-label={t('panel.explore', { title })}
+              isDisabled
+            />
+          ) : (
+            <Link
+              to={explore}
+              className={cx(styles['tool'])}
+              aria-label={t('panel.explore', { title })}
+            >
+              <Icon name="square-arrow-out-up-right" />
+            </Link>
+          )}
+          <IconButton
+            icon="maximize-2"
+            aria-label={t('panel.fullScreen', { title })}
+            onPress={() => {
+              setFull(true);
+            }}
+          />
+          <RouterProvider
+            navigate={(to) => {
+              void navigate(to);
+            }}
+            useHref={useHref}
+          >
+            <MenuTrigger>
+              <IconButton
+                icon="ellipsis"
+                aria-label={t('panel.menu', { title })}
+                data-panel-menu=""
+              />
+              <Popover placement="bottom end">
+                <Menu aria-label={t('panel.menu', { title })}>
+                  <MenuItem
+                    id="edit"
+                    onAction={() => {
+                      onEdit(panel.id);
+                    }}
+                  >
+                    {t('panel.editPanel')}
+                  </MenuItem>
+                  <MenuItem
+                    id="duplicate"
+                    isDisabled={readOnly}
+                    onAction={() => {
+                      onDuplicate(panel.id);
+                    }}
+                  >
+                    {t('panel.duplicate')}
+                  </MenuItem>
+                  <MenuItem
+                    id="remove"
+                    isDisabled={readOnly}
+                    onAction={() => {
+                      onRemove(panel.id);
+                    }}
+                  >
+                    {t('panel.remove')}
+                  </MenuItem>
+                  <MenuItem
+                    id="explore"
+                    {...(explore === null ? { isDisabled: true } : { href: explore })}
+                  >
+                    {t('panel.openExplore')}
+                  </MenuItem>
+                  <MenuItem
+                    id="copy"
+                    onAction={() => {
+                      // On the gesture (T08-021); a refused clipboard leaves nothing to undo.
+                      navigator.clipboard.writeText(panel.query.text).catch(() => undefined);
+                    }}
+                  >
+                    {t('panel.copyQuery')}
+                  </MenuItem>
+                </Menu>
+              </Popover>
+            </MenuTrigger>
+          </RouterProvider>
+          <PanelLayoutTool title={title} readOnly={readOnly} onKeyDown={onLayoutKey} />
+        </div>
+      </PanelHeader>
+      <div ref={bodyRef} className={cx(styles['body'])} aria-busy={shimmer ? true : undefined}>
+        {shimmer && <div className={cx(styles['shimmer'])} data-shimmer="" aria-hidden="true" />}
+        <PanelBody
+          title={title}
+          view={view}
+          sizeMemo={frameSize}
+          onNarrow={onNarrow}
+          streamHidden={full}
+          inspect={inspect}
+          selectPanelId={panel.id}
+        />
+      </div>
+      <PanelFullScreen
+        isOpen={full}
+        title={title}
+        view={view}
+        onNarrow={onNarrow}
+        onClose={() => {
+          setFull(false);
+        }}
+      />
+    </section>
+  );
+});

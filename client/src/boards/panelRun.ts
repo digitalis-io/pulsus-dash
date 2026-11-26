@@ -7,7 +7,7 @@
  * #64 Part B §3.8). A LogQL panel (plan #67 §3.4) is a stream view of its pager, a frame of its
  * metric answer, or the log volume by level for Bars.
  */
-import type { PanelSpec, PlannedQuery } from '../api/types';
+import type { DataPanelSpec, PlannedQuery } from '../api/types';
 import type { VolumeResult } from '../data/decode';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
@@ -238,7 +238,7 @@ function frameView(
   chosen: VisKind,
   r: ExploreResult,
   rateApplied: boolean,
-  panelVis: PanelSpec['vis'],
+  panelVis: DataPanelSpec['vis'],
   title: string,
 ): PanelView {
   const plan = cachedPlan(chosen, r, rateApplied, title);
@@ -276,7 +276,7 @@ function streamResult(s: StreamSeries): ExploreResult {
 const volumePlans = new WeakMap<VolumeResult, ReturnType<typeof volumePlan>>();
 
 /** A LogQL panel's stream path (§3.4): its pager's state decides. */
-function streamView(s: PanelStream, panelVis: PanelSpec['vis'], title: string): PanelView {
+function streamView(s: PanelStream, panelVis: DataPanelSpec['vis'], title: string): PanelView {
   const state = s.state;
   if (s.pager === null || state === null) return { kind: 'loading' };
   if (state.phase === 'streams') return { kind: 'stream', stream: { ...s, pager: s.pager } };
@@ -292,7 +292,7 @@ function streamView(s: PanelStream, panelVis: PanelSpec['vis'], title: string): 
  * legend); `title` is the panel title (`panelTitle`). A LogQL panel's rows (plan #67 §3.4) follow
  * the blocked and error rows: its stream path, then its frame path by the probe's answer kind.
  */
-export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: string): PanelView {
+export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: string): PanelView {
   const vis = panelVis.kind;
   switch (run.blocked) {
     case 'logs':

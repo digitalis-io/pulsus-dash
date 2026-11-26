@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PanelSpec, PanelVisKind } from '../api/types';
+import type { DataPanelSpec, DataVisKind } from '../api/types';
 import type { ContextSearch } from '../state/contextSearch';
 import { exploreHref } from './exploreLink';
 
@@ -12,9 +12,9 @@ const Q = 'from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&ref
 
 function p(
   text: string,
-  kind: PanelVisKind = 'auto',
+  kind: DataVisKind = 'auto',
   lang: 'promql' | 'logql' = 'promql',
-): PanelSpec {
+): DataPanelSpec {
   return {
     id: 'p-1',
     title: 'A',

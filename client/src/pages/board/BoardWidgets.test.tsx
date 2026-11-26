@@ -80,8 +80,11 @@ describe('unit:widget-frame', () => {
       }),
     );
     await ready(...ALL);
-    await t.user.click(await screen.findByRole('button', { name: 'Edit board' }));
-    await t.user.click(await screen.findByRole('button', { name: 'Save' }));
+    // A change to save: Duplicate enters Edit mode.
+    await openMenu(t, 'Notes');
+    await t.user.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+    await screen.findByRole('heading', { level: 3, name: 'Notes (copy)' });
+    await t.user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
       expect(save).toHaveBeenCalledTimes(1);
     });

@@ -131,6 +131,7 @@ export const messages = {
   'panel.close': 'Close',
   'panel.noVis': 'A metric query has no log lines. Choose Auto or a chart.',
   'panel.kindUnavailable': "This chart type isn't available in this version yet.",
+  'widget.kindUnavailable': "This widget isn't available in this version yet.",
   'panel.logs.notMetric':
     'Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines.',
   'panel.logs.label': 'Log lines: {title}',
@@ -202,6 +203,8 @@ export const messages = {
   'field.board.id.invalid': 'This id is not valid',
   'field.board.id.duplicate': 'This id is used twice',
   'field.board.panel.title.tooLong': 'Use at most 200 characters',
+  'field.board.panel.query.forbidden': 'A widget has no query.',
+  'field.board.panel.query.required': 'Add a query.',
   'field.board.section.title.tooLong': 'Use at most 200 characters',
   'field.board.grid.outOfBounds': 'The panel does not fit the 12 columns',
   'field.board.grid.overlap': 'The panel overlaps another panel',
@@ -233,6 +236,14 @@ export const messages = {
   'field.board.options.textMode.invalid':
     'Choose auto, value, value and name, or name (a grid shows names).',
   'field.board.options.graphMode.invalid': 'Choose sparkline or none.',
+  'field.board.options.mode.invalid': 'Choose Markdown or code.',
+  'field.board.options.content.tooLong': 'Use at most 65 536 bytes.',
+  'field.board.options.language.invalid': 'Choose a listed language (code mode).',
+  'field.board.options.zones.invalid': 'Use 1 to 12 known time zones, labels up to 64 characters.',
+  'field.board.options.zones.duplicate': 'This time zone is listed twice.',
+  'field.board.options.hourCycle.invalid': 'Choose auto, 12-hour or 24-hour.',
+  'field.board.options.countdown.invalid':
+    'Use a time with an offset, a 1–64 character label, and count up or hide.',
 
   'boards.title': 'Boards',
   'boards.list': 'All boards',

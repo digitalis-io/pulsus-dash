@@ -8,6 +8,7 @@
  */
 import createClient, { type Client } from 'openapi-fetch';
 import { RECENT_LIMIT } from '../boards/queries';
+import { isWidgetKind } from '../widgets/spec';
 import type { Api } from './Api';
 import type { components, paths } from './gen/schema';
 import {
@@ -44,6 +45,7 @@ import {
   type InstantRequest,
   type LogMatchRequest,
   type LogsRequest,
+  type PanelSpec,
   type PromMatchRequest,
   type RangeRequest,
   type SaveResult,
@@ -100,8 +102,34 @@ function toRef(r: WireRef): BoardRef {
   return { uid: r.uid, title: r.title };
 }
 
+type WireSpec = WireBoard['spec'];
+type WirePanel = WireSpec['panels'][number];
+
+/**
+ * A panel the server sent, as the client's union (plan #198 Part 1 §3.3): a widget kind without a
+ * query, else a data panel, which must have one. The server sends only valid specs; a data panel
+ * without a query is a bad response.
+ */
+function toPanel(p: WirePanel): PanelSpec {
+  const { query, vis, ...rest } = p;
+  const kind = vis.kind;
+  if (isWidgetKind(kind)) return { ...rest, vis: { ...vis, kind } };
+  if (query === undefined) {
+    throw new ApiError('badResponse', `panel ${p.id} has no query`);
+  }
+  return { ...rest, query, vis: { ...vis, kind } };
+}
+
+function toSpec(s: WireSpec): BoardSpec {
+  return {
+    ...s,
+    panels: s.panels.map(toPanel),
+    sections: s.sections.map((x) => ({ ...x, panels: x.panels.map(toPanel) })),
+  };
+}
+
 function toBoard(b: WireBoard): Board {
-  return { ...toSummary(b), etag: b.etag, spec: b.spec };
+  return { ...toSummary(b), etag: b.etag, spec: toSpec(b.spec) };
 }
 
 /** The envelope's message, else `HTTP <status>`. */

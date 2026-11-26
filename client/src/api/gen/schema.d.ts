@@ -748,7 +748,7 @@ export interface components {
             id: string;
             title: string;
             grid: components["schemas"]["Grid"];
-            query: components["schemas"]["Query"];
+            query?: components["schemas"]["Query"];
             vis: components["schemas"]["Vis"];
         };
         Grid: {
@@ -764,7 +764,7 @@ export interface components {
         };
         Vis: {
             /** @enum {string} */
-            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie";
+            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock";
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
             options?: components["schemas"]["VisOptions"];
@@ -796,6 +796,28 @@ export interface components {
             textMode?: "auto" | "value" | "valueAndName" | "name";
             /** @enum {string} */
             graphMode?: "sparkline" | "none";
+            /** @enum {string} */
+            mode?: "markdown" | "code";
+            content?: string;
+            /** @enum {string} */
+            language?: "plaintext" | "json" | "yaml" | "sql" | "promql" | "logql" | "go" | "shell";
+            zones?: components["schemas"]["ClockZone"][];
+            /** @enum {string} */
+            hourCycle?: "auto" | "h12" | "h23";
+            seconds?: boolean;
+            date?: boolean;
+            countdown?: components["schemas"]["ClockCountdown"];
+        };
+        ClockZone: {
+            tz: string;
+            label: string;
+        };
+        ClockCountdown: {
+            /** Format: date-time */
+            to: string;
+            label: string;
+            /** @enum {string} */
+            after: "countUp" | "hide";
         };
         Thresholds: {
             /** @enum {string} */

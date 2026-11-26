@@ -41,7 +41,7 @@ describe('board variables', () => {
   });
 
   it('widgets have no variables (unit:board-variables, plan #198 Part 1)', () => {
-    const spec = {
+    const spec: BoardSpec = {
       title: 'B',
       panels: [
         p('p-1', 'rate(x{env="$env"}[5m])', 'promql'),
@@ -53,7 +53,7 @@ describe('board variables', () => {
         },
       ],
       sections: [],
-    } as unknown as BoardSpec;
+    };
     expect(boardVariables(spec)).toEqual(['env']);
   });
 });

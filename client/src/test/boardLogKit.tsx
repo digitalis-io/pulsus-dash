@@ -8,7 +8,13 @@
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
 import { StubApi } from '../api/StubApi';
-import type { LogsRequest, PanelSpec, PanelVisKind, VolumeRequest } from '../api/types';
+import type {
+  DataPanelSpec,
+  DataVisKind,
+  LogsRequest,
+  PanelSpec,
+  VolumeRequest,
+} from '../api/types';
 import type { LogqlPlannedQuery, LogsResult, VolumeResult } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { keyHash } from '../dev/keyHash';
@@ -72,8 +78,8 @@ export function logPanel(
   id: string,
   title: string,
   text: string,
-  kind: PanelVisKind = 'auto',
-): PanelSpec {
+  kind: DataVisKind = 'auto',
+): DataPanelSpec {
   const n = Math.max(1, Number(/\d+$/.exec(id)?.[0] ?? '1'));
   const [x, y] = [6 * ((n - 1) % 2), 8 * Math.floor((n - 1) / 2)];
   return { id, title, grid: { x, y, w: 6, h: 8 }, query: { lang: 'logql', text }, vis: { kind } };
