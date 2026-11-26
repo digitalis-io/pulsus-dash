@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-26 |
+| **Version** | 1.15-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1700,7 +1700,7 @@ export function changeTarget(c: Change): Extract<InspectorTarget, { type: 'chang
 // changeFeedFacts(title, s | null) (T24-037), changeFeedOptions(o) (§5.8), importChangeFeed(src) → { options; notes: string[] } (§4.8)
 ```
 
-### 5.11 Geo resolver and loader (part E; `client/src/vis/geo/locate.ts`, `assets.ts`)
+### 5.11 Geo resolver and loader (part E; `client/src/vis/geo/`)
 
 `locate` is pure, and every field is `readonly`:
 
@@ -1719,21 +1719,51 @@ export type LocationOption = { mode: 'auto' } | { mode: 'coords'; lat: string; l
   | { mode: 'lookup'; field: string; gazetteer: 'country' | 'region' | 'iata' | 'cloud'; country?: string /* [A-Z]{2}, region only */ };
 export function locate(labels: Labels, o: LocationOption, g: Gazetteer | null): LocationResult;
 export function decodeGeohash(h: string): { lat: number; lon: number; dLat: number; dLon: number } | null;
-// assets.ts: whole-asset validation; null on any violation (T24-087)
+// decode.ts (type-only imports, so Node scripts load it), re-exported by assets.ts: whole-asset
+// validation; null on any violation (T24-087); never throws
 export function decodeBasemap(j: unknown): Basemap | null; export function decodeGazetteer(j: unknown): Gazetteer | null;
-export function loadGeoData(): Promise<{ basemap: Basemap | null; gazetteer: Gazetteer | null }>; // one promise per page
+// assets.ts
+export function geoLoader(get: (url: string, init: RequestInit) => Promise<Response>,
+  urls: { readonly basemap: string; readonly gazetteer: string }): () => Promise<GeoData>;
+export const loadGeoData: () => Promise<GeoData>; // geoLoader over fetch and urls.ts; one promise per page
+// urls.ts: the assets imported with ?url
+export const basemapUrl: string; export const gazetteerUrl: string;
+```
+
+```ts
+// types.ts: coordinates are integers in hundredths of a degree; rings and polylines are absolute
+// interleaved [x0, y0, x1, y1, …] (rings implicitly closed)
+export interface BasemapCountry { a2: string; a3: string; name: string; polygons: readonly (readonly Int32Array[])[] } // [outer, ...holes]
+export interface Basemap { countries: readonly BasemapCountry[]; coast: readonly Int32Array[]; border: readonly Int32Array[] }
+export interface CountryRow { a2: string; a3: string; name: string; x: number; y: number }
+export interface CodeRow { code: string; name: string; x: number; y: number }   // region; IATA (name = place)
+export interface CloudRow { provider: string; id: string; place: string; x: number; y: number }
+type Idx<R> = ReadonlyMap<string, readonly R[]>;                                 // values in file order
+export interface Gazetteer { country: readonly CountryRow[]; region: readonly CodeRow[]; iata: readonly CodeRow[];
+  cloud: readonly CloudRow[]; countryByA2: Idx<CountryRow>; countryByA3: Idx<CountryRow>;
+  countryByName: Idx<CountryRow> /* NFC + toLowerCase */; regionByCode: Idx<CodeRow>; iataByCode: Idx<CodeRow>;
+  cloudById: Idx<CloudRow> }
+export interface GeoData { basemap: Basemap | null; gazetteer: Gazetteer | null }
+// aliases.ts (no imports; E3b's hasGeoFields reads GEO_ALIAS_KEYS)
+export function normKey(k: string): string;  // T24-080
+export const LAT_ALIASES: readonly string[]; export const LON_ALIASES: readonly string[]; export const HINT_KEY = 'cloud_provider';
+export type AutoKind = 'coords' | 'geohash' | 'cloud' | 'region' | 'country' | 'iata' | 'regionOrCloud';
+export const GEO_AUTO_RULES: readonly { rule: 1|2|3|4|5|6|7; kind: AutoKind; aliases: readonly string[] }[]; // §4.10
+export const GEO_ALIAS_KEYS: ReadonlySet<string>;  // every alias of rules 1–7 (not the hint)
 ```
 
 `loadGeoData` makes two parallel GETs, shared by every later call on the page; a failed GET, a
 response that is not JSON or an asset that does not validate nulls that asset only. The asset file
-names are content-hashed by the build.
+names are content-hashed by the build: `urls.ts` is the `geo-assets` input of the client build
+(`vite.config.ts`), so both files are emitted and listed in the signed manifest before a route
+imports the geo modules; its entry chunk stays out of the initial JS.
 
 ### 5.12 Asset formats (part E; `basemap.json`, `gazetteer.json`, version 1)
 
 Coordinates are integers x = round(lon · 100) and y = round(lat · 100), rounded half away from zero,
 always in the order (x, y). A **delta array** is `[x0, y0, dx1, dy1, …]`: the first pair absolute,
-the rest differences, restarting for each ring and each polyline. Both files are compact UTF-8 JSON
-with sorted keys and a trailing LF.
+the rest differences, restarting for each ring and each polyline. Both files are compact UTF-8 JSON,
+keys in the order listed (`v`, `q`, then the data members), with a trailing LF.
 
 ```text
 basemap.json
@@ -1779,7 +1809,11 @@ the docs. `ne_id` is a Natural Earth populated place, which gives the latitude a
 (T24-085).
 
 **Sources.** `tools/geo/sources.json` holds the dataset, version, file, SHA-256, licence and
-retrieval date of each; it holds no download location.
+retrieval date of each; it holds no download location. Its shape is `{ "v": 1, "sources": [{ class,
+dataset, version, fileDate, file, sha256, licence, retrieved }, …] }`, sorted by `file`; the
+tracked CSV has `sha256` null and is digested at build time. `manifest.json` is `{ "v": 1,
+"assets": [{ file, sha256, bytes, sources }, …], "sources": { ‹file›: ‹sha256› } }`, and
+`build.py --notices` prints the "Data" section: `== Data ==`, then one line per source.
 
 | Class | Dataset, version (file date) | File · SHA-256 | Licence |
 |---|---|---|---|
@@ -1791,7 +1825,7 @@ retrieval date of each; it holds no download location.
 | Cloud ids | `tools/geo/cloud-regions.csv` | in the repository | AGPL-3.0 (facts, each record dated) |
 
 **Notices.** No source requires a notice. `build/THIRD_PARTY_NOTICES.txt` gains a "Data" section
-that names each dataset and its version.
+that names each dataset and its version (`make go-licenses` appends `build.py --notices`).
 
 ### 5.14 Geomap seam and host (part E step 1b; `engine/api.ts`, `charts/`, `vis/geo/plan.ts`)
 
@@ -3077,3 +3111,4 @@ None.
 | 1.12-rc | 2026-11-26 | #198 Part 3a (A1): new §5.2a (the Text view `TextBody` and its lazy `TextMarkdown` entry, the states, `widgetVisErrors`, `textVis`, the registry and its context, `addWidget` and `updateWidget`, the module rules). T24-008: a Markdown Text's references join the board's variables. T24-014: the view validates first; the preview shows "Preview unavailable". T24-015: the Text widget uses the Compact metrics until VL-013. §10: the Part 3a unit rows. §11: A1 Part 3 split into 3a (landed) and 3b |
 | 1.13-rc | 2026-11-26 | #198 Part 3b (A1): §7 `bench:text-widget-render` (the `markdown:render:<bucket>` measures in stub and dev builds, board P, the steps, the measured numbers) and the M0, M1 and M2 rungs with their triggers. §10: `e2e:widget-text` adds the Add widget flow and the named region; `e2e:widget-text-xss` runs the whole corpus in the browser (the generated case list with digests, skip reasons and image request paths; one case per fresh context against a committed per-browser load baseline; the exact CSP; a Trusted Types canary) with canaries; `e2e:widget-a11y` gains the Text rows; `golden:widget-gallery` lands the two Text pages; new `unit:xss-e2e-cases` and `unit:widget-gallery-route`. §11: Part 3b landed, A1 landed |
 | 1.14-rc | 2026-11-26 | #222 (part B2, I5): §5.9 `orgWide` only with `entity`, repeated values, upper-case ids and repeated single parameters → 400, a missing cursor partner reported on its own pointer; the 403 bodies (`scope_denied`, "data scope denied" without fields, "outside your data scope" with `/entity` `annotations.entity.scope` or `annotations.scope`); `orgWideHidden` is a count the BFF sends null when scoped. §6: `P` with `@>` and `jsonb_build_array`, byte-identical in list and delete; `org_wide_hidden` computed unconditionally. §10.2: `unit:entity-id` in `entity/entity_test.go`, the itests in `annotations/annotations_itest_test.go`, and `itest:annotations-old-binary` runs by `make itest-old-binary` (local) |
+| 1.15-rc | 2026-11-26 | #231 (part E step 1a, E1): §5.11 the `types.ts` interfaces, `GeoData`, `geoLoader`, the `aliases.ts` exports (`normKey`, `GEO_AUTO_RULES`, `GEO_ALIAS_KEYS`), the decoders in `decode.ts` re-exported by `assets.ts`, the URLs of `urls.ts` and the `geo-assets` build input. §5.12: the assets' keys are in the listed order (`v`, `q`, then the data members), not sorted, as the §10.3 RT bytes already were. §5.13: the shapes of `sources.json` and `manifest.json`, and `--notices` |
