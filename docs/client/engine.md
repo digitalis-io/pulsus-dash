@@ -966,7 +966,8 @@ Chromium projects of the engine web image:
   two probe frames with the gallery's `line-50` data take 10⁴ seeded ops (resize, time window,
   spec; batches of 1–2 000, the first before the frames are created, the rest after their first
   summary); the worker's decoded log must equal the adapter's produced log record for record, more
-  than one ring's worth must have passed, records must have been coalesced, none dropped, and the
+  than one ring's worth must have passed, records must have been coalesced, none dropped (from
+  Part C2b: only Selects past the per-frame cap, each counted), and the
   last window and `drawn` must be the last calls'. Two more cases cross 2³²
   (`ringStart` 0xFFFF_F000) and wake an idle worker with one record (settled within 1 s).
   Since Part C2a2 a fifth of the 10⁴ ops are DOM events on either canvas (wheels with
@@ -1044,7 +1045,7 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 | T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery`, `golden:engine-line`, `unit:compare-tile-max` |
 | T01-001, T03-001, T03-003 | the adapter imports only the seam; no WASM on main | ESLint, `wasm/engine.test.ts` |
 | T03-005 | control block layout v1, generated TS | `unit:control-block-layout`, `ci:engine-gen` |
-| T03-004 (revised), T03-006, T03-019, T03-020 | the input ring: idle-word wake-up, SPSC release/acquire, read at frame start, nothing dropped | `unit:input-ring` (`ring`, `ring_decode`, `ring_rollover`, `ring_stress`, `wake_interleavings`, `ring_fixture`), `e2e:shim-fuzz` |
+| T03-004 (revised), T03-006, T03-019, T03-020 | the input ring: idle-word wake-up, SPSC release/acquire, read at frame start, state records coalesced, only Selects past the per-frame cap dropped (counted) | `unit:input-ring` (`ring`, `ring_decode`, `ring_rollover`, `ring_stress`, `wake_interleavings`, `ring_fixture`), `e2e:shim-fuzz` |
 | ADR-0019 | `drawn` of the presented capture, for the latest resize | `presentation_capture`, `wasm frame`, `probe settle` |
 | T02-024, INT-033, INT-034, INT-025, T25-005 | hover and the overlay in the tick of the Overlay; click select on the presentation on screen; the Canvas 2D rules ported bit for bit | `unit:hover-parity` (`hover_parity`, `overlay_item_shapes`), `overlay_order`, `frames_overlay`, `frames_select`, `stage_pick_count`, `controlled hover`, `controlled batch`, `wasm frame hover`, `e2e:engine-hover`, `golden:engine-overlay` |
 | T03-022, ADR-0026 | CSP, Trusted Types, COEP | `e2e:csp-violations`, `unit:CSP` |
