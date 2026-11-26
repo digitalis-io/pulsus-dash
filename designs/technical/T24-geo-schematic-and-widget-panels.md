@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-26 |
+| **Version** | 1.11-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -324,8 +324,10 @@ block's inline HTML (joined as in §5.4): `iframe` if `findIframes` finds one ("
 (line n): add a link"), else `html`. Import (§5.4) turns iframes into links (VIZ-056).
 
 #### T24-007 — Removal log carries no content
-**MUST** — A `Removal` is `{kind, line}`, never text, URLs or values. The editor lists one i18n line per
-removal; `logRemovals` does one `console.debug({panelId, removals})` per distinct result.
+**MUST** — A `Removal` is `{kind, line}`, never text, URLs or values; `kind` is `html`, `iframe`,
+`linkScheme`, `image`, `unresolved` or `depth` (a block shown as its source lines, §4.2). The editor
+lists one i18n line per removal (`removalMessage`); `logRemovals` does one
+`console.debug({panelId, removals})` per distinct non-empty result.
 
 #### T24-008 — Interpolation on the tree
 **MUST** — `$name`/`${name}` (`VARIABLE_REF`) and `{{entity}}` are replaced after parsing, in `text`
@@ -381,10 +383,13 @@ the input. Report entries carry at most a host.
 labelled "‹label›, ‹time›, ‹date›, ‹day/night›, ‹offset›". The clock text is not live.
 
 #### T24-018 — Render policy
-**MUST** — `board`: a `local` image → `<img>`; an `external` one → a link (alt text or host; T18-014
-interim); anything else → alt text. An image not rendered as `<img>` logs `image`. `ai`
-([T18](T18-security.md) §4.10): no `<img>` or other auto-loading element; images → alt text and
-`image`; links show their host.
+**MUST** — `board`: a `local` image → `<img>`, except that a percent-decoded path of `/api` or `/auth`
+(or under them) counts as external, because the server routes on the decoded path; an `external`
+one → a new-tab link (alt text or host; inside a kept link, the alt text; T18-014 interim); anything
+else → alt text. An image not rendered as `<img>` logs `image`. `ai` ([T18](T18-security.md)
+§4.10): no `<img>` or other auto-loading element; images → alt text and `image`; only `local` links
+are anchors, and `external` and `mailto` links are their text plus ` (‹host›)` or ` (‹address›)`,
+with no removal, until the T18 §4.10 interstitial replaces this.
 
 #### T24-020 — List widgets
 **MUST** — A list widget (`boardList`, `changeFeed`) has no `query` (T24-003), is never
@@ -968,10 +973,10 @@ there yet). Import follows §4.19; its output passes the map-sync validator.
 
 | Node | Output |
 |---|---|
-| paragraph | `<p>` |
+| paragraph | `<p>`; in a tight list item, its inlines only |
 | heading n | `<h{min(n+3,6)}>` |
 | block_quote | `<blockquote>` |
-| list | `<ul>` / `<ol start ≤ 999 999>` |
+| list | `<ul>` / `<ol>`, with `start = min(listStart, 999 999)` only when it is not 1 |
 | item | `<li>` |
 | thematic_break | `<hr>` |
 | code_block | `<pre><code data-lang>` (info word `[a-z0-9-]{1,20}`) |
@@ -984,7 +989,27 @@ there yet). Import follows §4.19; its output passes the map-sync validator.
 | html_block, html_inline | T24-006 |
 | anything else | dropped (`html`) |
 
-No source attribute is copied. The output is pure and memoised.
+No source attribute is copied. The output is pure and memoised (LRU 32).
+
+**The walk** (#198 Part 2b). The tree is walked post-order with an explicit stack, never by
+recursion. Each frame holds its output; a finished frame gives it to its immediate parent only: an
+element wraps it, while a rejected link, an `ai` non-local link and a tight-list paragraph splice it
+in. The root's output is returned as the fragment. Inside an image's alt only text survives (links,
+emphasis and code give their text; HTML gives nothing but is still counted; a nested image records
+`image`). A run of `text` siblings is interpolated as one string. Removals are recorded on entry, so
+in document order; `html`/`iframe` once per leaf block, at its first HTML node.
+
+**Depth.** Each node costs the elements it creates: 1 for paragraph, heading, block quote, list,
+item, emphasis, strong, code, hard break and thematic break; 2 for a code block (`pre`, `code`) and a
+kept link (`a`, then its spans); 0 for a tight-list paragraph, a rejected or `ai` non-local link and
+HTML; for an image 1 (`<img>`), 2 (a new-tab link) or 0 (alt text). A leaf block's inlines are
+pre-scanned (an iterative post-order with the render's context) for the deepest cost chain below it.
+A block (not an `html_block`) at depth d with cost c and inline chain i is shown **flat** when
+d + c + i > `MAX_DEPTH` − 1: one `<span class=flat>` (`white-space: pre-wrap`) holding the block's
+**whole source lines**, verbatim with their terminators (`sourceLines`), and one `depth` removal; its
+children are not visited, interpolated or counted. Elements reach `MAX_DEPTH` − 1 and a flat span
+`MAX_DEPTH`, so the DOM depth below the root is at most 32. Inline nodes are visited at most twice
+(pre-scan, render), blocks once.
 
 ### 4.3 Clock formats (`Intl.DateTimeFormat`)
 
@@ -1344,15 +1369,19 @@ export interface IframeHit { readonly offset: number; readonly line: number; rea
 export function findIframes(html: string): readonly IframeHit[];
 // markdown.tsx
 export type RenderPolicy = 'board' | 'ai';
-export type RemovalKind = 'html' | 'iframe' | 'linkScheme' | 'image' | 'unresolved';
+export type RemovalKind = 'html' | 'iframe' | 'linkScheme' | 'image' | 'unresolved' | 'depth';
 export interface Removal { readonly kind: RemovalKind; readonly line: number } // block start line
 export function renderMarkdown(src: string, env: { vars: ReadonlyMap<string, string>; entity: string | null },
   opts: { policy: RenderPolicy; appOrigin: string; headingOffset?: number /* 3 */ }): { node: ReactNode; removals: readonly Removal[] };
 export function renderCode(src: string, language: CodeLanguage): ReactNode;
 export function logRemovals(panelId: string, removals: readonly Removal[]): void;
+export function removalMessage(r: Removal): string; // t(`markdown.removal.${kind}`, {line})
+export function sourceLines(src: string, start: number, end: number): string; // lines start..end, clamped, terminators kept
+export const MAX_DEPTH = 32; // DOM depth below the root (§4.2)
 ```
 
-Both options are required.
+Both options are required. `src`, every variable value and the entity pass `toWellFormed` before
+anything else, so interpolation, `encodeURIComponent` and classification never see a lone surrogate.
 
 **`findIframes`** returns the **union**, de-duplicated by start offset and sorted, of (a) the `iframe`
 elements in the `parse5.parse` tree (template content included) and (b) the `iframe` start-tag tokens
@@ -2011,8 +2040,9 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 
 ## 8. Security, tenancy & RBAC
 
-- One renderer with no HTML string sink (T24-004, [T18-005](T18-security.md#t18-005--two-named-trusted-types-policies-no-default),
-  T18-013); every URL is classified after interpolation (T24-005, T18-011).
+- One renderer with no HTML string sink and no Trusted Types policy of its own (T24-004,
+  [T18-005](T18-security.md#t18-005--two-named-trusted-types-policies-no-default), T18-013); every
+  URL is classified after interpolation (T24-005, T18-011).
 - Removals and import errors carry no content (T24-007, §5.4 step 5).
 - AI output loads no image or other auto-loading element (T24-018, T18 §4.10). Until the image proxy
   ships, no external image is loaded (T18-014 interim).
@@ -2083,13 +2113,16 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 | `unit:board-spec-widgets` | spec.test.ts, validate_test.go | fixtures | valid → none; text + `query` → `board.panel.query.forbidden`; line without → `.required`; clock `depth` → `unknownKey`; 13 zones, `tz:'Mars/Base'` → `zones.invalid` (`Mars/Base` in Go only, on a new spec: the client checks the form, and its row carries `client_fields` `[]`); duplicate zone → `.duplicate`; 65 537 bytes → `content.tooLong`; `to:'2026-11-26 14:00'` → `countdown.invalid`; TS = Go; the version before upcasts | T24-003, VIZ-031, 057 |
 | `unit:classify-url` | sanitise/url.test.ts | strings | rejected: `/\t/evil.test`, `/a/../..//evil.test`, `/.//evil`, `/\\evil.test`, `//evil.test`, ` /x`, `/x\u0085`, `https://u:p@x.test/`, `JaVaScRiPt:x`, `data:,x`, `boards/b1`; local: `/boards/b1?x=1#h`, `/%5Cevil.test` (unchanged); external: `HTTPS://X.TEST` → `https://x.test/`; mailto: `mailto:o@x.test` | T24-005 |
 | `unit:well-formed` | sanitise/url.test.ts | `'a\uD800'`, `'\uDC00b'`, `'😀'`, `''` | `'a�'`, `'�b'`, unchanged, `''`; in `classifyUrl`, a lone surrogate in an accepted path → `%EF%BF%BD`, in a host → rejected | T24-005, T24-008 |
-| `unit:markdown-links` | sanitise/markdown.test.tsx | inputs L (below) | a → text + `linkScheme`; t → `/%09/e.test`; b, d, e → new-tab `<a>` | T24-005 |
+| `unit:markdown-links` | sanitise/markdown.test.tsx | inputs L (below); `board`, then `ai` | a → text + `linkScheme`; t → `/%09/e.test`; b, d, e → new-tab `<a>`; `ai`: b → text `b (x.test)`, e → text `e (o@x.test)`, no removal; d an anchor | T24-005, T24-018 |
 | `unit:markdown-nodes` | same | `"<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\n**ok**"`; `# A\n###### F\n1000000. x` | DOM `<p><strong>ok</strong></p>`, removals `[{html,1},{html,3}]`; `<h4>`, `<h6>`, `<ol start="999999">` | VIZ-054, T24-009 |
 | `unit:markdown-iframe` | same | `<iframe src="https://s.test/"></iframe>`; `<div>t<iframe src="/b"></iframe></div>`; `a <script>'<iframe src="/b">'</script>` | nothing rendered; removals `[iframe]`, `[iframe]`, `[html]` | T24-006 |
-| `unit:markdown-images` | same | inputs I (below); `board`, then `ai` | board: `<img src="/l.svg">`, link "g", text "d", `<img src="/%09/e.test">`; ai: 4 texts + `image`, no `img` | T24-018, T18-014 |
+| `unit:markdown-images` | same | inputs I (below); `board`, then `ai`; images with the sources `/api/x` and `/auth/x` | board: `<img src="/l.svg">`, link "g", text "d", `<img src="/%09/e.test">`; ai: 4 texts + `image`, no `img`; `/api/` and `/auth/` → a link + `image` | T24-018, T18-014 |
 | `unit:markdown-interpolate` | same | inputs V (below) | text `Env prod prod $missing $__from {{entity}}`; code `$env`; href `?q=a%20b%26c`; y → text + `linkScheme` | T24-008 |
 | `unit:removal-redaction` | same | `[x](javascript:fetch('https://u:hunter2@e.test/?token=abc'))`; `<a href="https://e.test/?token=abc">` | `[{linkScheme,1}]`, `[{html,1}]`; editor text and `console.debug` JSON lack `hunter2`, `token`, `e.test` | T24-007 |
-| `fuzz:markdown-nodes` | sanitise/markdown.fuzz.test.ts | 10 000 inputs (seed 20261125), both policies, import | tags ⊆ §4.2; attributes ⊆ `href target rel src alt loading start data-lang`; URLs re-classify; `ai` no `img`; import inverse | VIZ-054, 056 |
+| `fuzz:markdown-nodes` | sanitise/markdown.fuzz.test.ts | 10 000 inputs (mulberry32, seed 20261125) of 1–40 tokens from the corpus payloads, Markdown syntax, `$env`, `{{entity}}`, U+0000, U+202E, U+D800; both policies, import | `checkInvariants`: tags ⊆ §4.2 + `span`; attributes ⊆ `href target rel src alt loading start data-lang class aria-hidden`, no `on*`, `style`, `srcdoc`; `href`/`src` pass the independent checker (`ai`: `local` anchors only); `ai` no `img`; `span` only as the glyph, the hidden text or a flat span; DOM depth ≤ `MAX_DEPTH`; well-formed text; import inverse | VIZ-054, 056 |
+| `unit:markdown-depth`, `unit:markdown-root`, `unit:markdown-walk`, `unit:markdown-pathological`, `unit:markdown-flat-lines`, `unit:markdown-inline-depth`, `unit:markdown-surrogates` | sanitise/markdown.test.tsx | `P(N)` = `'> '.repeat(N)` before each line; `E(k)` = k nested `em` (#198 Part 2b plan §5) | each depth pair renders elements, then one flat span of the block's whole source lines and one `depth`; the root fragment; splicing into the immediate parent, removal order; `'>'.repeat(20000)+'x'`, `'*'.repeat(50000)`, `'['.repeat(20000)`, `'- '.repeat(5000)+'x'`, `E(5000)` in < 2 s; `sourceLines` clamping, CR, CRLF; lone surrogates → U+FFFD, `%EF%BF%BD`; DOM depth ≤ 32 | T24-006, T24-008, VIZ-054 |
+| `unit:markdown-xss-corpus` | sanitise/markdown.corpus.test.tsx | the generated `__fixtures__/xss-corpus.json` (groups S, H, B, V, L, N, D, U), `createRoot`, both policies | each case's generated shape and removals; `checkInvariants`; no `fetch`, `XMLHttpRequest.open` or `sendBeacon` | VIZ-054, 056, T18-013 |
+| `unit:xss-corpus-current` | scripts/gen-xss-corpus.test.ts | `gen-xss-corpus.ts --check` | committed = regenerated; one changed expectation → exit 1 | VIZ-054 |
 | `unit:find-iframes` | sanitise/findIframes.test.ts | `<iframe data-src="a" src="b">`, `<iframe title='src="x"'>`, `<iframe src="b" SRC="c">`, `<iframe src="?a&copy=1">`, `<!-- x --!><iframe src=y>`, `<!--><iframe src=z>`, `<select>`/`<table>`/`<frameset>`/`<template>`/`<svg>`/`<select><title><select>` + `<iframe src=w>`; then `<script>`, `<textarea>`, `<title>`, `<style>`, `<xmp>`, `<plaintext>`, `<![CDATA[`, `<?x`, `</ ` before `<iframe src=x>` | `b`, `null`, `b`, `?a&copy=1`, `y`, `z`, `w` ×6; none for the rest or `<svg><![CDATA[…]]>`; no duplicates | T24-006 |
 | `unit:import-text-iframe` | sanitise/importText.test.ts | f1, f3–f12 | exact `inserted`, `notes`; removing `inserted` gives the input byte-for-byte; hrefs f1 `https://x.test/a)b?q=%5B1%5D&r=%3C2%3E`, f3 `https://x.test/?a=&copy;&b=&#169;&c=&amp;d&e=1`, f5 as listed; f4/f6–f10 as listed; f11 f1's notes and link texts, each a `link` node; f12 each link after its top-level block, the next paragraph a `paragraph` | VIZ-056, T24-016 |
 | `unit:import-size-error` | same | 65 500-byte panel "Payroll", `src` with `?token=SECRET123` | error `{kind:'textTooLargeForLinks', panelIndex, sourceId, links:1}`; JSON and message lack `SECRET123`, `Payroll` | T24-016 |
@@ -2115,8 +2148,8 @@ V  vars {env:'prod', q:'a b&c', u:'javascript:x'}; Env $env ${env} $missing $__f
    [x](https://x.test/?q=$q)   [y]($u)
 ```
 
-`ci:dep-audit` and `ci:no-iframe` still pass. Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms
-p95), `bench:clock-tick` (20 Clocks × 12 zones ≤ 2 ms per tick). No itest until A3. Every gate is in
+`ci:dep-audit` and `ci:no-iframe` still pass. Report-only: `bench:markdown-render` (50 distinct 64 KiB
+inputs, every memo lookup a miss: the uncached p95 ≤ 16 ms), `bench:clock-tick` (20 Clocks × 12 zones ≤ 2 ms per tick). No itest until A3. Every gate is in
 [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
 Fixtures `api/fixtures/import/text-iframe.json` (all pass in a prototype; ⏎ is a newline, a leading
@@ -2790,7 +2823,7 @@ A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in 
 |---|---|---|
 | 1, landed | the widgets version (§5.1) in OpenAPI, Go and TS, the zone rules, the panel union (`isWidgetPanel` guards every `query` read), a widget frame showing "not available yet", and the old-binary gate run for every spec version change | `unit:board-spec-widgets`, `unit:board-spec`, `itest:board-crud`, `itest:board-zones-grandfathered`, `itest:board-spec-old-binary` |
 | 2a, landed | [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) dependencies and the `parse5-sax-parser/feedback` alias; `classifyUrl`, `toWellFormed`, `findIframes`, the import conversion (§5.4); the `security` ESLint rules (`ci:no-iframe`, the import boundary); the module-graph check on every audited build and the sanitiser size probe (≤ 100 000 bytes brotli) | `unit:classify-url`, `unit:well-formed`, `unit:find-iframes`, `unit:import-text-iframe`, `unit:import-size-error`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`, `ci:dep-audit` |
-| 2b, after 2a | the renderer (§5.2: `renderMarkdown`, `renderCode`, removals, interpolation), the XSS corpus, an independent URL checker, `fuzz:markdown-nodes` (with the import inverse), `bench:markdown-render` | the other §10 sanitiser rows |
+| 2b, landed | the renderer (§5.2: `renderMarkdown`, `renderCode`, removals with `depth`, interpolation, the §4.2 walk and flat source lines), the generated XSS corpus and its `--check` gate, an independent URL checker and `checkInvariants`, `fuzz:markdown-nodes` (with the import inverse), `bench:markdown-render` (uncached, report-only); the renderer joins the sanitiser size probe | `unit:markdown-*`, `unit:removal-redaction`, `unit:markdown-xss-corpus`, `unit:xss-corpus-current`, `fuzz:markdown-nodes`, `unit:sanitise-bundle` |
 | 3, after 1, 2a and 2b | the Text view, its editor and removal list, adding a widget, the gallery | the §10 Text e2e and golden rows |
 
 The implementation writes
@@ -2930,3 +2963,4 @@ None.
 | 1.8-rc | 2026-11-26 | #198 Part 1 (A1): §5.0 the widgets version landed as v5. §5.1: the zone rule replaces "loadable by `time.LoadLocation`": the form on every parse, existence in Go on writes only against the build's zone set (the toolchain's `zoneinfo.zip` names, generated), a zone the head holds kept on a save; `language` in code mode only; a duplicate zone is the same `tz`; a widget's `thresholds` and `legend` are `board.json.unknownKey`; the `countdown.to` grammar; `v5-widgets.json`. §9: a stored zone is always readable. §10: `Mars/Base` is Go only (`client_fields`). §11: A1 is split in Parts 1–3 |
 | 1.9-rc | 2026-11-26 | #216 Part 1 (I2): §5.0 the board-list version landed as v6. §5.5: the rules table (shared `sort` and `mode` per kind, with the reader guards; `query` search-only with the gateway's Cc rule and no minimum; `tag` present iff tag mode; `limit` a whole JSON number 1–50; an invalid mode skips the mode rules). §5.7: `BoardListMode`, `BoardListItem`, the old-server decoding and the stub's filter and truncation; ref rows; `withStale`, `listSetSize`, `repairActive`, `ListTable`/`listCsv`, `boardRowName`, `rankingCaption`, `boardListTable`, `boardListFacts`, `import/boardList.ts`. T24-026: both suffixes. §4.6: the note order. §11: I2 split into Part 1 (spec, API, pure modules) and Part 2 (the view, editor and the rest) |
 | 1.10-rc | 2026-11-26 | #198 Part 2a (A1): §5.2 `toWellFormed` before classification, `IframeHit` with `offset` (in `findIframes.ts`), and the SAX half through `ParserFeedbackSimulator` via the `parse5-sax-parser/feedback` alias, because `SAXParser` needs `node:stream`. §5.4 step 3: line ends as commonmark splits them, `\r` inserted after a lone `\r`, the ascending `inserted` order. §10: f11 (CRLF and CR) and f12 (a list item and a block quote); `unit:well-formed`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`. §11: A1 Part 2 split into 2a (landed) and 2b |
+| 1.11-rc | 2026-11-26 | #198 Part 2b (A1): §5.2 the `depth` removal kind, `removalMessage`, `sourceLines`, `MAX_DEPTH` and `toWellFormed` on the source, the values and the entity. §4.2: the tight-list paragraph, `start` only when not 1, the tree walk (post-order, explicit stack) with the pre-scan and the cost table; an over-deep block shows its whole source lines (verbatim, terminators kept) in one span with one `depth`. T24-007: `depth`. T24-018: `/api` and `/auth` images count as external; `ai` external and mailto links are text with host or address until the T18 §4.10 interstitial. §8: no Trusted Types policy. §10: the fuzz sets gain `span`, `class`, `aria-hidden` and depth ≤ `MAX_DEPTH`; the new unit rows, the corpus rows; the uncached bench. §11: Part 2b landed |
