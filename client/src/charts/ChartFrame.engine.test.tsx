@@ -12,12 +12,13 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StubApi } from '../api/StubApi';
 import { Providers } from '../app/providers';
-import type { ChartFrame as EngineFrame, FrameData, FrameInit, VisSpec } from '../engine/api';
+import type { FrameData, FrameInit, VisSpec } from '../engine/api';
+import type { EngineFrame } from '../engine/wasm/frame';
 import { ChartEngineContext } from '../engine/index';
 import { Canvas2DEngine } from '../engine/canvas2d/Canvas2DEngine';
 import { RoutingEngine, type WasmBackend } from '../engine/route';
 import { createClock } from '../state/clock';
-import { fakeEngine, type FakeEngine } from '../test/fakeEngine';
+import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine';
 import { installResizeObserver, resizeAll } from '../test/fakeResizeObserver';
 import { recordingContext, type RecordingContext } from '../test/recordingContext';
 import { T } from '../test/renderApp';
@@ -110,7 +111,7 @@ function backend(): Backend {
     fails,
     createFrame(canvas: OffscreenCanvas, init: FrameInit, onFail): EngineFrame {
       fails.push(onFail);
-      return inner.createFrame(canvas as unknown as HTMLCanvasElement, init);
+      return inner.createFrame(canvas as unknown as HTMLCanvasElement, init) as FakeFrame;
     },
   };
 }

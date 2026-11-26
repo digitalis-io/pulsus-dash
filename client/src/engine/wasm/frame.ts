@@ -17,9 +17,12 @@
  */
 import type {
   ChartFrame,
+  EventMarker,
   FrameData,
   FrameEvents,
   FrameInit,
+  FrameSelection,
+  PlotRect,
   ThemeName,
   TimeWindow,
   ValueRange,
@@ -34,6 +37,34 @@ export interface CameraState {
   readonly view: { readonly lo: number; readonly hi: number };
   readonly value: ValueRange | null;
   readonly band: number | null;
+}
+
+/**
+ * The geometry of the frame on screen, as the camera controller reads it (mirrors
+ * `controller/stage.ts`; this directory imports only `../api`, T03-001).
+ */
+export interface StageModel {
+  readonly plot: PlotRect;
+  readonly valueDomain: ValueRange | null;
+  readonly labelW: number;
+  readonly pickCount: number;
+}
+
+/** An engine frame (plan #68 C2a2 §3.2): `ControlledFrame` drives its camera. */
+export interface EngineFrame {
+  setSpec(s: VisSpec): void;
+  setData(d: FrameData): void;
+  setTheme(t: ThemeName): void;
+  setEvents(e: readonly EventMarker[]): void;
+  setSelection(s: FrameSelection | null): void;
+  resize(cssW: number, cssH: number, dpr: number): void;
+  setCamera(c: CameraState): void;
+  /** The last completed presentation's stage; null before the first, when withdrawn, at size 0. */
+  stage(): StageModel | null;
+  /** Called on every change of `stage()`; returns the unsubscribe. */
+  onStage(cb: (s: StageModel | null) => void): () => void;
+  on<E extends 'a11y' | 'drawn'>(e: E, cb: (ev: FrameEvents[E]) => void): () => void;
+  dispose(): void;
 }
 
 /** What a frame needs of the input ring (`ring.ts`). */
@@ -74,7 +105,7 @@ const KEEP_RESIZES = 8;
 
 type Size = readonly [number, number, number];
 
-export class WasmFrame implements ChartFrame {
+export class WasmFrame implements ChartFrame, EngineFrame {
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
   private disposed = false;
   private kind: VisSpec['kind'] = 'line';
@@ -166,6 +197,14 @@ export class WasmFrame implements ChartFrame {
     });
   }
 
+  stage(): StageModel | null {
+    return null;
+  }
+
+  onStage(cb: (s: StageModel | null) => void): () => void {
+    return () => cb;
+  }
+
   /** The worker created the frame: its held records go to the ring, in call order. */
   created(ring: FrameRing): void {
     if (this.disposed || this.ring !== null) return;
@@ -230,6 +269,7 @@ export class WasmFrame implements ChartFrame {
         this.applied = Math.max(this.applied, extendSeq(this.lastSeq, ev.seq));
         return;
       case 'created':
+      case 'stage':
         return;
       case 'drawn': {
         this.drawnSeq = Math.max(this.drawnSeq, extendSeq(this.lastSeq, ev.seq));

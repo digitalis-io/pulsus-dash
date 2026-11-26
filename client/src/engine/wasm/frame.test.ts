@@ -6,8 +6,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChartFrame, FrameData, VisSpec } from '../api';
-import { WasmFrame, type CameraState, type FrameRing } from './frame';
-import type { MainToRender } from './protocol';
+import { CB, memory, RingView } from '../../test/ringView';
+import { WasmFrame, type CameraState, type FrameRing, type StageModel } from './frame';
+import type { MainToRender, StageWire } from './protocol';
+import { InputRing } from './ring';
 
 const S: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' } };
 const PINNED: VisSpec = { ...S, valueRange: { min: 0, max: 5 } };
@@ -261,5 +263,82 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     expect(a11y).toHaveBeenCalledWith(summary);
     f.handle({ t: 'failed', id: 1, reason: 'surface' });
     expect(onFail).toHaveBeenCalledWith('surface');
+  });
+});
+
+/** Fills the ring with records of a frame no test frame uses, until one waits. */
+function fill(ring: InputRing): void {
+  for (let i = 0; i < 2000 && ring.unpublished(99) === 0; i++) {
+    ring.camera(99, { view: { lo: i, hi: i + 1 }, value: null, band: null });
+  }
+  ring.drop(99);
+}
+
+describe('WasmFrame stage (plan #68 C2a2 §3.3)', () => {
+  const W1: StageWire = {
+    plot: { x: 50, y: 8, width: 742, height: 200 },
+    domain: { min: 0, max: 30 },
+    labelW: 38,
+  };
+  const S1: StageModel = {
+    plot: W1.plot,
+    valueDomain: { min: 0, max: 30 },
+    labelW: 38,
+    pickCount: 0,
+  };
+
+  it('wasm frame stage: the last completed presentation of the latest resize', () => {
+    const m = memory();
+    const view = new RingView(m);
+    const ring = new InputRing(m, CB, () => undefined);
+    const { f } = frame();
+    const seen: (StageModel | null)[] = [];
+    f.onStage((s) => seen.push(s));
+    f.created(ring);
+    const stage = (rseq: number, st: StageWire | null): void => {
+      f.handle({ t: 'stage', id: 1, rseq, stage: st });
+    };
+    f.resize(800, 240, 1);
+    expect(view.decode().map((r) => r.seq)).toEqual([1]);
+    expect(f.stage()).toBeNull();
+    stage(1, W1);
+    expect(f.stage()).toEqual(S1);
+    stage(1, null);
+    expect(f.stage()).toBeNull();
+    stage(1, W1);
+    // A drawn without a stage keeps it.
+    f.handle(drawn({ w: 800, h: 240, seq: 1, rseq: 1 }));
+    expect(f.stage()).toEqual(S1);
+    expect(seen).toEqual([S1, null, S1]);
+
+    // (A) A zero size waiting in a full ring: null at once; the valid size replaces it.
+    fill(ring);
+    f.resize(0, 240, 1);
+    expect(f.stage()).toBeNull();
+    expect(seen).toEqual([S1, null, S1, null]);
+    f.resize(800, 240, 1);
+    stage(1, W1);
+    expect(f.stage()).toBeNull();
+    view.decode();
+    ring.flush();
+    expect(view.decode().map((r) => [r.frame, r.seq])).toEqual([[1, 2]]);
+    stage(1, W1);
+    expect(f.stage()).toBeNull();
+    stage(2, W1);
+    expect(f.stage()).toEqual(S1);
+    expect(seen).toEqual([S1, null, S1, null, S1]);
+
+    // (B) A published zero size, then a valid one: only the latest resize's stage counts.
+    f.resize(0, 240, 1);
+    expect(view.decode().map((r) => r.seq)).toEqual([3]);
+    expect(f.stage()).toBeNull();
+    f.resize(800, 240, 1);
+    expect(view.decode().map((r) => r.seq)).toEqual([4]);
+    stage(3, null);
+    stage(2, W1);
+    expect(f.stage()).toBeNull();
+    stage(4, W1);
+    expect(f.stage()).toEqual(S1);
+    expect(seen).toEqual([S1, null, S1, null, S1, null, S1]);
   });
 });

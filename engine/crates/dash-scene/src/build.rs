@@ -44,6 +44,22 @@ fn rect(p: &PlotRect) -> [f32; 4] {
     [p.x as f32, p.y as f32, p.width as f32, p.height as f32]
 }
 
+/// What the main thread's camera controller reads of a presentation (plan #68 C2a2 §3.3): its
+/// plot, its value domain (None: no value axis) and the value-label band width it used, CSS px.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StageInfo {
+    pub plot: PlotRect,
+    pub domain: Option<Range64>,
+    pub band_w: f64,
+}
+
+/// [`build`] with the stage of the list: None when it has no plot (no data, no window, an
+/// unsupported kind or an empty plot).
+pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<StageInfo>) {
+    let (list, summary) = build(v);
+    (list, summary, None)
+}
+
 /// The draw list of `v` and its summary. No data, no window, an unsupported kind or an empty plot
 /// → the clear only and no summary (as the interim renderer draws no layer).
 pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {

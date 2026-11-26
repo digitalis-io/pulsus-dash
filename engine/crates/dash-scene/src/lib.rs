@@ -6,7 +6,7 @@ pub mod camera;
 mod spec;
 mod summary;
 
-pub use build::build;
+pub use build::{StageInfo, build, build_stage};
 pub use camera::{Camera, PlotCamera, YRange};
 pub use spec::{LineSpec, SpecError, ValueRange, VisSpec};
 pub use summary::{CommitEvent, FrameSummary, Gesture, TimeWindow, ValueAxisSummary, ValueCommit};

@@ -13,7 +13,15 @@
  * | `idle()`, `counters()`, `stats()` | the worker's idle word; head and tail (`>>> 0`); coalesced, `INPUT_OVERFLOW`, bytes published |
  * | `inputLog()`, `producedLog()` | the records the worker decoded (probe build only) and the ones the adapter published |
  */
-import type { DrawnEvent, FrameData, FrameSummary, TimeWindow, VisSpec } from '../engine/api';
+import type {
+  BrushEvent,
+  CommitEvent,
+  DrawnEvent,
+  FrameData,
+  FrameSummary,
+  TimeWindow,
+  VisSpec,
+} from '../engine/api';
 import type { Backend, EngineProbe, ProbeHost } from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
 import type { InputRec } from '../engine/wasm/ring';
@@ -34,6 +42,26 @@ export interface ProbeFrame {
 
 export type ProbeCall = 'setSpec' | 'setData' | 'setTimeWindow' | 'resize';
 
+/** A wheel as `test/engineHarness.ts` builds it. */
+export interface ProbeWheel {
+  readonly deltaX?: number;
+  readonly deltaY?: number;
+  readonly deltaMode?: number;
+  readonly shiftKey?: boolean;
+  readonly ctrlKey?: boolean;
+  readonly metaKey?: boolean;
+}
+
+/** A pointer or mouse event as `test/engineHarness.ts` builds it. */
+export interface ProbePointer {
+  readonly button?: number;
+  readonly buttons?: number;
+  readonly altKey?: boolean;
+  readonly ctrlKey?: boolean;
+  readonly metaKey?: boolean;
+  readonly pointerType?: string;
+}
+
 export interface DashProbe {
   frame(o: ProbeFrame): Promise<number>;
   call(n: number, m: ProbeCall, arg: unknown): void;
@@ -43,8 +71,15 @@ export interface DashProbe {
   idle(): boolean;
   inputLog(): Promise<InputRec[]>;
   producedLog(): InputRec[];
-  stats(): { coalesced: number; overflow: number; publishedBytes: number };
+  stats(): { coalesced: number; overflow: number; publishedBytes: number; enqueued: number };
+  /** The engine's id of probe frame `n` (the ring records' `frame`); 0 before it exists. */
+  id(n: number): number;
   counters(): { head: number; tail: number };
+  wheel(n: number, x: number, y: number, init: ProbeWheel): boolean;
+  pointer(n: number, type: string, x: number, y: number, o?: ProbePointer): void;
+  commits(n: number): CommitEvent[];
+  brushes(n: number): BrushEvent[];
+  fresh(o: ProbeFrame): Promise<FrameSummary>;
 }
 
 interface Entry {
@@ -170,9 +205,17 @@ export function createProbe(o: {
         coalesced: h?.ring.stats.coalesced ?? 0,
         overflow: h?.overflow() ?? 0,
         publishedBytes: h?.ring.stats.publishedBytes ?? 0,
+        enqueued: 0,
       };
     },
     counters: () => o.host()?.counters() ?? { head: 0, tail: 0 },
+    // Stubs (plan #68 C2a2, tests first).
+    id: () => 0,
+    wheel: () => false,
+    pointer: () => undefined,
+    commits: () => [],
+    brushes: () => [],
+    fresh: () => Promise.reject(new Error('not yet')),
   };
 }
 

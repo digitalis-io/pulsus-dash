@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 use dash_marks::{DrawList, MarkItem};
 use dash_scene::{
-    Band, Camera, PlotCamera, Range64, Size64, Theme, Viewport, VisKind, VisSpec, YRange, build,
+    Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
+    YRange, build,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -73,6 +74,8 @@ pub struct Presented {
     pub css: (f32, f32),
     pub dpr: f32,
     pub series: u32,
+    /// The stage of the list (plan #68 C2a2 §3.3): None = no plot.
+    pub stage: Option<StageInfo>,
 }
 
 /// A Resize as applied: CSS px, DPR and device px.
@@ -270,6 +273,7 @@ impl Frames {
             css,
             dpr,
             series: f.series,
+            stage: None,
         })
     }
 
