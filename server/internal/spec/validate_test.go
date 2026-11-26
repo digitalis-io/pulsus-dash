@@ -431,3 +431,40 @@ func TestRFC3339Offset(t *testing.T) {
 		}
 	}
 }
+
+// TestBoardListBounds: the board list's query length (runes), its Cc rule and U+0000 first, and
+// the limit bounds, written as an integer or with an exponent (T24-021, T24 §5.5).
+func TestBoardListBounds(t *testing.T) {
+	list := func(options string) []byte { return widgetBoard(`{"kind":"boardList","options":` + options + `}`) }
+	search := func(q string) []byte {
+		b, _ := json.Marshal(q)
+		return list(`{"mode":"search","query":` + string(b) + `}`)
+	}
+	cases := []struct {
+		name string
+		raw  []byte
+		want string // "" = valid
+	}{
+		{"query 100 runes", search(strings.Repeat("é", 100)), ""},
+		{"limit 1", list(`{"limit":1}`), ""},
+		{"limit 50", list(`{"limit":50}`), ""},
+		{"limit 1e1", list(`{"limit":1e1}`), ""},
+		{"query U+0085", search("a\u0085b"), opts + "/query board.options.query.invalid"},
+		{"query U+0000", search("a\u0000"), opts + "/query board.string.nul"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseNewBoard(tc.raw)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("ParseNewBoard = %v, want ok", err)
+				}
+				return
+			}
+			got := fieldsOf(t, err)
+			if len(got) != 1 || got[0].Pointer+" "+got[0].MessageKey != tc.want {
+				t.Errorf("fields = %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}

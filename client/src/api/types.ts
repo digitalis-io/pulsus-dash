@@ -130,8 +130,8 @@ export type QueryLang = PanelQuery['lang'];
 export type PanelVis = RawPanel['vis'];
 /** The data kinds `auto` … `pie`, and the widgets `text` and `clock` (board spec v5). */
 export type PanelVisKind = PanelVis['kind'];
-/** The widget kinds (T24-002): no query, chart or Inspector. #216 adds `boardList`. */
-export type WidgetKind = Extract<PanelVisKind, 'text' | 'clock'>;
+/** The widget kinds (T24-002): no query, chart or Inspector; `boardList` by board spec v6 (#216). */
+export type WidgetKind = Extract<PanelVisKind, 'text' | 'clock' | 'boardList'>;
 export type DataVisKind = Exclude<PanelVisKind, WidgetKind>;
 /** A panel's `vis.options` (board spec v3, T22 §6.1; the widget keys by v5, T24 §5.1). */
 export type VisOptions = NonNullable<PanelVis['options']>;
@@ -179,10 +179,29 @@ export interface BoardRef {
   title: string;
 }
 
-export interface BoardList {
-  items: BoardSummary[];
-  /** True when the list stops at the 1 000 most recently updated boards. */
-  truncated: boolean;
+/** A board list widget's source (T24 §5.5, T24-021). */
+export type BoardListMode = 'starred' | 'recent' | 'search' | 'tag';
+
+/** A row of `GET /boards`: the summary and the board's tags (null: stale, or an old server). */
+export type BoardListItem = BoardSummary & { readonly tags: readonly string[] | null };
+
+/**
+ * One answer of `GET /boards` (T24 §5.7). `applied` is what the server applied, null from an old
+ * server (one without board search); `tagsStale` counts the org's boards whose tags are not known.
+ */
+export interface BoardPage {
+  readonly items: readonly BoardListItem[];
+  /** True when the list stops at the 1 000 most recently updated matching boards. */
+  readonly truncated: boolean;
+  readonly applied: { readonly q?: string; readonly tag?: string } | null;
+  readonly tagsStale: number;
+}
+
+/** One answer of Starred or Recent; `applied` null = an old server (`truncated` then false). */
+export interface RefPage {
+  readonly items: readonly BoardRef[];
+  readonly truncated: boolean;
+  readonly applied: Readonly<Record<string, never>> | null;
 }
 
 /** The board head: its summary, the etag to save against and the spec. */

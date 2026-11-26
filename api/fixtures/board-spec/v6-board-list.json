@@ -1,0 +1,64 @@
+{
+  "title": "Board lists",
+  "tags": ["noc"],
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Starred",
+      "grid": { "x": 0, "y": 0, "w": 4, "h": 8 },
+      "vis": { "kind": "boardList" }
+    },
+    {
+      "id": "p-2",
+      "title": "Recent",
+      "grid": { "x": 4, "y": 0, "w": 4, "h": 8 },
+      "vis": { "kind": "boardList", "options": { "mode": "recent", "limit": 50 } }
+    },
+    {
+      "id": "p-3",
+      "title": "Checkout boards",
+      "grid": { "x": 8, "y": 0, "w": 4, "h": 8 },
+      "vis": {
+        "kind": "boardList",
+        "options": { "mode": "search", "query": "checkout", "limit": 1 }
+      }
+    },
+    {
+      "id": "p-4",
+      "title": "Payments team",
+      "grid": { "x": 0, "y": 8, "w": 6, "h": 8 },
+      "vis": {
+        "kind": "boardList",
+        "options": { "mode": "tag", "tag": "team:payments", "sort": "incidents" }
+      }
+    },
+    {
+      "id": "p-5",
+      "title": "Requests",
+      "grid": { "x": 6, "y": 8, "w": 6, "h": 8 },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": { "kind": "line" }
+    }
+  ],
+  "sections": [
+    {
+      "id": "s-1",
+      "title": "More",
+      "collapsed": false,
+      "panels": [
+        {
+          "id": "p-6",
+          "title": "Search",
+          "grid": { "x": 0, "y": 0, "w": 6, "h": 8 },
+          "vis": {
+            "kind": "boardList",
+            "options": { "mode": "search", "query": "", "sort": "default", "limit": 10 }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -502,16 +502,17 @@ func (e ThresholdsDirection) Valid() bool {
 
 // Defines values for VisKind.
 const (
-	VisKindAuto     VisKind = "auto"
-	VisKindBarchart VisKind = "barchart"
-	VisKindBars     VisKind = "bars"
-	VisKindClock    VisKind = "clock"
-	VisKindHeatmap  VisKind = "heatmap"
-	VisKindLine     VisKind = "line"
-	VisKindLogs     VisKind = "logs"
-	VisKindPie      VisKind = "pie"
-	VisKindStat     VisKind = "stat"
-	VisKindText     VisKind = "text"
+	VisKindAuto      VisKind = "auto"
+	VisKindBarchart  VisKind = "barchart"
+	VisKindBars      VisKind = "bars"
+	VisKindBoardList VisKind = "boardList"
+	VisKindClock     VisKind = "clock"
+	VisKindHeatmap   VisKind = "heatmap"
+	VisKindLine      VisKind = "line"
+	VisKindLogs      VisKind = "logs"
+	VisKindPie       VisKind = "pie"
+	VisKindStat      VisKind = "stat"
+	VisKindText      VisKind = "text"
 )
 
 // Valid indicates whether the value is a known member of the VisKind enum.
@@ -522,6 +523,8 @@ func (e VisKind) Valid() bool {
 	case VisKindBarchart:
 		return true
 	case VisKindBars:
+		return true
+	case VisKindBoardList:
 		return true
 	case VisKindClock:
 		return true
@@ -708,6 +711,10 @@ func (e VisOptionsLayout) Valid() bool {
 const (
 	Code     VisOptionsMode = "code"
 	Markdown VisOptionsMode = "markdown"
+	Recent   VisOptionsMode = "recent"
+	Search   VisOptionsMode = "search"
+	Starred  VisOptionsMode = "starred"
+	Tag      VisOptionsMode = "tag"
 )
 
 // Valid indicates whether the value is a known member of the VisOptionsMode enum.
@@ -716,6 +723,14 @@ func (e VisOptionsMode) Valid() bool {
 	case Code:
 		return true
 	case Markdown:
+		return true
+	case Recent:
+		return true
+	case Search:
+		return true
+	case Starred:
+		return true
+	case Tag:
 		return true
 	default:
 		return false
@@ -778,6 +793,8 @@ func (e VisOptionsReducer) Valid() bool {
 
 // Defines values for VisOptionsSort.
 const (
+	VisOptionsSortDefault   VisOptionsSort = "default"
+	VisOptionsSortIncidents VisOptionsSort = "incidents"
 	VisOptionsSortLabel     VisOptionsSort = "label"
 	VisOptionsSortNone      VisOptionsSort = "none"
 	VisOptionsSortValueAsc  VisOptionsSort = "valueAsc"
@@ -787,6 +804,10 @@ const (
 // Valid indicates whether the value is a known member of the VisOptionsSort enum.
 func (e VisOptionsSort) Valid() bool {
 	switch e {
+	case VisOptionsSortDefault:
+		return true
+	case VisOptionsSortIncidents:
+		return true
 	case VisOptionsSortLabel:
 		return true
 	case VisOptionsSortNone:
@@ -1425,14 +1446,17 @@ type VisOptions struct {
 	Labels         *VisOptionsLabels         `json:"labels,omitempty"`
 	Language       *VisOptionsLanguage       `json:"language,omitempty"`
 	Layout         *VisOptionsLayout         `json:"layout,omitempty"`
+	Limit          *int                      `json:"limit,omitempty"`
 	Max            *float64                  `json:"max,omitempty"`
 	Min            *float64                  `json:"min,omitempty"`
 	Mode           *VisOptionsMode           `json:"mode,omitempty"`
 	Orientation    *VisOptionsOrientation    `json:"orientation,omitempty"`
 	Parts          *bool                     `json:"parts,omitempty"`
+	Query          *string                   `json:"query,omitempty"`
 	Reducer        *VisOptionsReducer        `json:"reducer,omitempty"`
 	Seconds        *bool                     `json:"seconds,omitempty"`
 	Sort           *VisOptionsSort           `json:"sort,omitempty"`
+	Tag            *AnnotationTag            `json:"tag,omitempty"`
 	TextMode       *VisOptionsTextMode       `json:"textMode,omitempty"`
 	ValueLabels    *bool                     `json:"valueLabels,omitempty"`
 	Zones          *[]ClockZone              `json:"zones,omitempty"`

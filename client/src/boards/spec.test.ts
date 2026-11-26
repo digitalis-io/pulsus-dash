@@ -8,6 +8,7 @@ import { messages } from '../i18n/messages.en-GB';
 import { fieldMessage } from './fieldMessages';
 import { GRID_LIMITS } from './layout';
 import { OPTION_ORDER } from './options';
+import { boardListOptions } from '../widgets/boardList/options';
 import {
   canonicalJson,
   checkBoardSpec,
@@ -177,6 +178,93 @@ describe('unit:board-spec (TS)', () => {
     expect(withQuery).toEqual(['p-5']);
   });
 
+  it("v6 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v6-board-list.json') as BoardSpec;
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v6CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      'f34068a04a37a48064fc82720a092473249c985e3cfd9e0f30f8103fbb7b5e87',
+    );
+    const withQuery = [...x.panels, ...x.sections.flatMap((s) => s.panels)]
+      .filter((p) => 'query' in p)
+      .map((p) => p.id);
+    expect(withQuery).toEqual(['p-5']);
+  });
+
+  it('board-list rows match the server, and their keys have en-GB text', () => {
+    const rows = cases.filter((c) => c.name.startsWith('bl-'));
+    expect(rows).toHaveLength(14);
+    for (const c of rows) {
+      expect(checkBoardSpec(c.spec), c.name).toEqual(
+        c.fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+      for (const f of c.fields) {
+        expect(messages, f.message_key).toHaveProperty(`field.${f.message_key}`);
+      }
+    }
+    expect(
+      [
+        'board.options.mode.invalid',
+        'board.options.sort.invalid',
+        'board.options.query.invalid',
+        'board.options.tag.invalid',
+        'board.options.limit.invalid',
+      ].map(fieldMessage),
+    ).toEqual([
+      'Choose a listed mode.',
+      'Choose a listed sort order.',
+      'Use up to 100 characters without control characters, in search mode only.',
+      'Use one valid tag, in tag mode only.',
+      'Use a whole number from 1 to 50.',
+    ]);
+  });
+
+  it('board-list bounds, as the server', () => {
+    const O = '/panels/0/vis/options';
+    const list = (options: unknown) => ({
+      title: 'B',
+      panels: [
+        {
+          id: 'p-1',
+          title: 'A',
+          grid: { x: 0, y: 0, w: 6, h: 8 },
+          vis: { kind: 'boardList', options },
+        },
+      ],
+      sections: [],
+    });
+    const search = (query: string) => list({ mode: 'search', query });
+    expect(checkBoardSpec(search('é'.repeat(100)))).toEqual([]);
+    for (const limit of [1, 50, 1e1])
+      expect(checkBoardSpec(list({ limit })), String(limit)).toEqual([]);
+    expect(checkBoardSpec(search('a\u0085b'))).toEqual([
+      { pointer: `${O}/query`, messageKey: 'board.options.query.invalid' },
+    ]);
+    expect(checkBoardSpec(search('a\u0000'))).toEqual([
+      { pointer: `${O}/query`, messageKey: 'board.string.nul' },
+    ]);
+  });
+
+  it('board-list options with the defaults', () => {
+    expect(boardListOptions({})).toEqual({
+      mode: 'starred',
+      query: '',
+      tag: null,
+      limit: 10,
+      sort: 'default',
+    });
+    expect(boardListOptions()).toEqual(boardListOptions({}));
+    expect(boardListOptions({ mode: 'tag', tag: 'a', limit: 5 })).toEqual({
+      mode: 'tag',
+      query: '',
+      tag: 'a',
+      limit: 5,
+      sort: 'default',
+    });
+  });
+
   it('widget rows match the server, and their keys have en-GB text', () => {
     const byName = new Map(cases.map((c) => [c.name, c]));
     const rows = cases.filter((c) => c.name.startsWith('w-'));
@@ -313,7 +401,7 @@ describe('unit:board-spec (TS)', () => {
 
   it('every option key has text', () => {
     const catalogue = new Set<string>(Object.values(messages));
-    expect(OPTION_ORDER).toHaveLength(23);
+    expect(OPTION_ORDER).toHaveLength(26);
     // The widget keys (T24 §5.1): content has a byte bound, seconds and date no rule.
     const keyOf: Partial<Record<string, string | null>> = {
       content: 'content.tooLong',

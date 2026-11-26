@@ -64,6 +64,9 @@ export const OPTION_TYPES: Readonly<
   seconds: 'bool',
   date: 'bool',
   countdown: 'object',
+  query: 'string',
+  tag: 'string',
+  limit: 'number',
 });
 
 /**
@@ -107,6 +110,7 @@ export const OPTION_KEYS: Readonly<Record<PanelVisKind, readonly OptionKey[]>> =
   pie: ['reducer', 'categoryBy', 'sort', 'donut', 'labels', 'parts'],
   text: ['mode', 'content', 'language'],
   clock: ['zones', 'hourCycle', 'seconds', 'date', 'countdown'],
+  boardList: [],
 });
 
 /** The allowed values of the enum keys; `orientation` also allows `auto` on stat. */
@@ -167,6 +171,11 @@ export function withKind(vis: DataPanelSpec['vis'], kind: DataVisKind): DataPane
   return kept === undefined ? { ...rest, kind } : { ...rest, kind, options: kept };
 }
 
+/** Whether `v` is a chart sort (stub). */
+export function isChartSort(v: unknown): v is Sort {
+  return typeof v === 'string';
+}
+
 /**
  * A bar chart's options with the T22 §6.1 defaults: `last`, no baseline, `''` (the effective
  * label), `valueDesc`, `horizontal` and value labels on; min and max absent (auto).
@@ -176,7 +185,7 @@ export function barchartOptions(o: VisOptions | undefined): BarchartOptions {
     reducer: o?.reducer ?? 'last',
     baselineOffset: o?.baselineOffset ?? null,
     categoryBy: o?.categoryBy ?? '',
-    sort: o?.sort ?? 'valueDesc',
+    sort: isChartSort(o?.sort) ? o.sort : 'valueDesc',
     orientation: o?.orientation === 'vertical' ? 'vertical' : 'horizontal',
     valueLabels: o?.valueLabels ?? true,
     min: o?.min,

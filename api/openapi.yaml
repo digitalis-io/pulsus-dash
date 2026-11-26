@@ -702,7 +702,7 @@ components:
       additionalProperties: false
       required: [kind]
       properties:
-        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock] }
+        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock, boardList] }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
         options: { $ref: '#/components/schemas/VisOptions' }
@@ -712,7 +712,11 @@ components:
     # board.options.<key>.invalid), not schema. Board spec v5 (#198 Part 1, T24 §5.1) adds the text
     # keys (mode, content of at most 65 536 UTF-8 bytes, language in code mode only) and the clock
     # keys (zones, hourCycle, seconds, date, countdown); the zone name rules, the duplicate zones and
-    # the countdown time grammar are server rules too.
+    # the countdown time grammar are server rules too. Board spec v6 (#216, T24 §5.5) adds the board
+    # list keys (mode starred, recent, search or tag; query; tag; limit) and its sort values
+    # (default, incidents); which mode and sort values each kind allows, the query's Cc and mode
+    # rules, tag required iff mode tag, and limit a whole number are server rules
+    # (board.options.<key>.invalid).
     VisOptions:
       type: object
       additionalProperties: false
@@ -720,7 +724,7 @@ components:
         reducer: { type: string, enum: [last, first, mean, min, max, sum, count] }
         baselineOffset: { type: string, enum: [1h, 1d, 7d, 28d] }
         categoryBy: { type: string }
-        sort: { type: string, enum: [valueDesc, valueAsc, label, none] }
+        sort: { type: string, enum: [valueDesc, valueAsc, label, none, default, incidents] }
         orientation: { type: string, enum: [auto, horizontal, vertical] }
         valueLabels: { type: boolean }
         min: { type: number, format: double }
@@ -732,7 +736,7 @@ components:
         colourMode: { type: string, enum: [value, background, none] }
         textMode: { type: string, enum: [auto, value, valueAndName, name] }
         graphMode: { type: string, enum: [sparkline, none] }
-        mode: { type: string, enum: [markdown, code] }
+        mode: { type: string, enum: [markdown, code, starred, recent, search, tag] }
         content: { type: string }
         language: { type: string, enum: [plaintext, json, yaml, sql, promql, logql, go, shell] }
         zones: { type: array, minItems: 1, maxItems: 12, items: { $ref: '#/components/schemas/ClockZone' } }
@@ -740,6 +744,9 @@ components:
         seconds: { type: boolean }
         date: { type: boolean }
         countdown: { $ref: '#/components/schemas/ClockCountdown' }
+        query: { type: string, maxLength: 100 }
+        tag: { $ref: '#/components/schemas/AnnotationTag' }
+        limit: { type: integer, minimum: 1, maximum: 50 }
     # A clock zone: tz '' (the Context zone) or an IANA name the server's build knows; label '' shows
     # the city.
     ClockZone:

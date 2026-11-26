@@ -38,8 +38,9 @@ import {
   type ApiErrorDetail,
   type Board,
   type AnnotationList,
-  type BoardList,
+  type BoardPage,
   type BoardRef,
+  type RefPage,
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
@@ -374,7 +375,11 @@ export class HttpApi implements Api {
     }
   }
 
-  async listBoards(tenant: string, signal?: AbortSignal): Promise<BoardList> {
+  async listBoards(
+    tenant: string,
+    signal?: AbortSignal,
+    _f?: { readonly q?: string; readonly tag?: string },
+  ): Promise<BoardPage> {
     this.checkTenant(tenant);
     const list = required(
       await call(
@@ -382,7 +387,12 @@ export class HttpApi implements Api {
         200,
       ),
     );
-    return { items: list.items.map(toSummary), truncated: list.truncated };
+    return {
+      items: list.items.map((x) => ({ ...toSummary(x), tags: null })),
+      truncated: list.truncated,
+      applied: null,
+      tagsStale: 0,
+    };
   }
 
   async getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<Board> {
@@ -430,14 +440,14 @@ export class HttpApi implements Api {
     );
   }
 
-  async listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+  async listStarred(tenant: string, signal?: AbortSignal): Promise<RefPage> {
     this.checkTenant(tenant);
     const list = await call(
       () =>
         this.client.GET('/api/dash/v1/me/starred-boards', signal === undefined ? {} : { signal }),
       200,
     );
-    return required(list).items.map(toRef);
+    return { items: required(list).items.map(toRef), truncated: false, applied: null };
   }
 
   async setStarred(tenant: string, uid: string, starred: boolean): Promise<void> {
@@ -452,7 +462,7 @@ export class HttpApi implements Api {
     );
   }
 
-  async listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+  async listRecent(tenant: string, signal?: AbortSignal, _limit?: number): Promise<RefPage> {
     this.checkTenant(tenant);
     const list = await call(
       () =>
@@ -462,7 +472,7 @@ export class HttpApi implements Api {
         }),
       200,
     );
-    return required(list).items.map(toRef);
+    return { items: required(list).items.map(toRef), truncated: false, applied: null };
   }
 
   async recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void> {

@@ -43,10 +43,17 @@ export interface TextOptions {
   readonly language: CodeLanguage;
 }
 
+export const DEFAULT_TEXT_MODE = 'markdown';
+
+/** Whether `v` is a text mode (stub). */
+export function isTextMode(v: unknown): v is TextOptions['mode'] {
+  return typeof v === 'string';
+}
+
 /** A text widget's options with the T24 §5.1 defaults: markdown, `''`, plaintext. */
 export function textOptions(o?: VisOptions): TextOptions {
   return {
-    mode: o?.mode ?? 'markdown',
+    mode: isTextMode(o?.mode) ? o.mode : DEFAULT_TEXT_MODE,
     content: o?.content ?? '',
     language: o?.language ?? 'plaintext',
   };

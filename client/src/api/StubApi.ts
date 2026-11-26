@@ -78,8 +78,9 @@ import {
   BoardConflictError,
   type Board,
   type AnnotationList,
-  type BoardList,
+  type BoardPage,
   type BoardRef,
+  type RefPage,
   type BoardSpec,
   type DataSourceStatus,
   type InstantRequest,
@@ -377,7 +378,11 @@ export class StubApi implements Api {
   }
 
   /** Most recently updated first, as the BFF lists them. */
-  listBoards(tenant: string, signal?: AbortSignal): Promise<BoardList> {
+  listBoards(
+    tenant: string,
+    signal?: AbortSignal,
+    _f?: { readonly q?: string; readonly tag?: string },
+  ): Promise<BoardPage> {
     return settle(() => {
       this.checkTenant(tenant);
       const items = [...this.boards]
@@ -388,8 +393,9 @@ export class StubApi implements Api {
           version: b.version,
           updatedAt: b.updatedAt,
           updatedBy: b.updatedBy,
+          tags: [],
         }));
-      return { items, truncated: false };
+      return { items, truncated: false, applied: {}, tagsStale: 0 };
     }, signal);
   }
 
@@ -447,14 +453,15 @@ export class StubApi implements Api {
     });
   }
 
-  listStarred(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+  listStarred(tenant: string, signal?: AbortSignal): Promise<RefPage> {
     return settle(() => {
       this.checkTenant(tenant);
-      return this.refs(this.starred()).sort((a, b) => {
+      const items = this.refs(this.starred()).sort((a, b) => {
         const x = a.title.toLowerCase();
         const y = b.title.toLowerCase();
         return x < y ? -1 : x > y ? 1 : a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0;
       });
+      return { items, truncated: false, applied: {} };
     }, signal);
   }
 
@@ -474,10 +481,11 @@ export class StubApi implements Api {
     });
   }
 
-  listRecent(tenant: string, signal?: AbortSignal): Promise<BoardRef[]> {
+  listRecent(tenant: string, signal?: AbortSignal, _limit?: number): Promise<RefPage> {
     return settle(() => {
       this.checkTenant(tenant);
-      return this.refs(this.recent().map((e) => e.uid)).slice(0, RECENT_LIMIT);
+      const items = this.refs(this.recent().map((e) => e.uid)).slice(0, RECENT_LIMIT);
+      return { items, truncated: false, applied: {} };
     }, signal);
   }
 

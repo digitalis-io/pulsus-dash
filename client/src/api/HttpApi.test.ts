@@ -5,6 +5,10 @@ import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw'
 import logStreamsRaw from '../../../wire/fixtures/json/logql-streams-backward-1.json?raw';
 import logMetricRaw from '../../../wire/fixtures/json/logql-metric.json?raw';
 import logVolumeRaw from '../../../wire/fixtures/json/logql-volume.json?raw';
+import { coverageText } from '../vis/reduce';
+import { B, findS, NOW_MS, oldServer, S, wireOf } from '../widgets/boardList/fixtures';
+import { boardSnapshot } from '../widgets/boardList/rows';
+import { listSetSize } from '../widgets/lists/snapshot';
 import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
@@ -403,6 +407,7 @@ describe('http boards', () => {
         }),
       ),
     );
+    // An old server's answer (no tags, applied or tagsStale; plan #216 Part 1 §4.2).
     expect(await list.api.listBoards('demo')).toEqual({
       items: [
         {
@@ -411,9 +416,12 @@ describe('http boards', () => {
           version: 3,
           updatedAt: '2026-11-19T12:00:00Z',
           updatedBy: 'Local user',
+          tags: null,
         },
       ],
       truncated: true,
+      applied: null,
+      tagsStale: 0,
     });
     expect(list.requests.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
       'GET /api/dash/v1/boards',
@@ -496,9 +504,10 @@ describe('http starred and recent', () => {
     const list = await signedIn(() =>
       Promise.resolve(json(200, { items: [{ uid: 'a', title: 'A' }] })),
     );
-    expect(await list.api.listStarred('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    const old = { items: [{ uid: 'a', title: 'A' }], truncated: false, applied: null };
+    expect(await list.api.listStarred('demo')).toEqual(old);
     expect(line(list.requests[0])).toBe('GET /api/dash/v1/me/starred-boards');
-    expect(await list.api.listRecent('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    expect(await list.api.listRecent('demo')).toEqual(old);
     expect(line(list.requests[1])).toBe('GET /api/dash/v1/me/recent-boards?limit=5');
 
     const set = await signedIn(noContent);
@@ -923,5 +932,93 @@ describe('HttpApi annotations (plan #64 Part C §3.5)', () => {
         'unavailable',
       ),
     ).toBe(true);
+  });
+});
+
+describe('unit:board-list-mixed (API)', () => {
+  const at = (tenant: string, body: unknown) => {
+    const r = api(() => Promise.resolve(json(200, body)));
+    return { ...r, tenant };
+  };
+  const snap = (
+    page: Parameters<typeof boardSnapshot>[1],
+    mode: 'starred' | 'search' | 'tag',
+    q = '',
+    tag: string | null = null,
+  ) => boardSnapshot(['k'], page, { mode, q, tag, currentUid: null, shown: 10, nowMs: NOW_MS });
+
+  it('an old server: applied null, no tagsStale, tags unknown, truncated false', async () => {
+    const boards = await at('demo', oldServer(findS({ q: 'check' }))).api.listBoards('demo');
+    expect(boards.applied).toBeNull();
+    expect(boards.tagsStale).toBe(0);
+    expect(boards.items.map((b) => b.tags)).toEqual([null, null]);
+    const starred = await at('demo', { items: B.items }).api.listStarred('demo');
+    expect(starred).toEqual({ items: B.items, truncated: false, applied: null });
+    const recent = await at('demo', { items: B.items, truncated: true }).api.listRecent('demo');
+    expect(recent.truncated).toBe(true);
+    expect(recent.applied).toBeNull();
+  });
+
+  it('a new server: as sent', async () => {
+    const page = { ...findS({ q: 'check' }), tagsStale: 2 };
+    expect(await at('demo', wireOf(page)).api.listBoards('demo')).toEqual(page);
+    expect(await at('demo', wireOf(B)).api.listStarred('demo')).toEqual(B);
+    const truncated = { ...B, truncated: true };
+    expect(await at('demo', wireOf(truncated)).api.listRecent('demo', undefined, 12)).toEqual(
+      truncated,
+    );
+  });
+
+  it('old starred, search and tag snapshots', async () => {
+    const starred = await at('demo', oldServer(B)).api.listStarred('demo');
+    const s = snap(starred, 'starred').snapshot;
+    expect(coverageText(s.coverage, 'UTC')).toBe('coverage unknown · showing 10 of 12');
+    expect(listSetSize(s)).toBe(-1);
+
+    const all = await at('demo', oldServer(findS({}))).api.listBoards('demo', undefined, {
+      q: 'check',
+    });
+    const check = snap(all, 'search', 'check');
+    expect(check.snapshot.rows.map((r) => [r.title, r.tags])).toEqual([
+      ['Checkout overview', null],
+      ['CHECKOUT latency', null],
+    ]);
+    expect(coverageText(check.snapshot.coverage, 'UTC')).toBe('coverage unknown');
+    expect(snap(all, 'search', 'zzz').snapshot.rows).toEqual([]);
+    expect(snap(all, 'search', '').snapshot.rows).toHaveLength(1000);
+
+    const tagged = snap(all, 'tag', '', 'team:payments');
+    expect(tagged.snapshot.rows).toEqual([]);
+    expect(tagged.notice).toBe('tagNeedsServer');
+    expect(coverageText(tagged.snapshot.coverage, 'UTC')).toBe('coverage unknown');
+    expect(S.length).toBe(1008);
+  });
+});
+
+describe('unit:board-list-source (API)', () => {
+  const line = (r: Request | undefined) =>
+    r === undefined ? '' : `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`;
+
+  it('sends q only when non-empty, tag when given, and the recent limit', async () => {
+    const boards = api(() => Promise.resolve(json(200, wireOf(findS({})))));
+    await boards.api.listBoards('demo', undefined, { q: 'Checkout' });
+    await boards.api.listBoards('demo', undefined, { q: '' });
+    await boards.api.listBoards('demo', undefined, { tag: 'a' });
+    await boards.api.listBoards('demo', undefined, { q: 'x', tag: 'a' });
+    await boards.api.listBoards('demo');
+    expect(boards.requests.map(line)).toEqual([
+      'GET /api/dash/v1/boards?q=Checkout',
+      'GET /api/dash/v1/boards',
+      'GET /api/dash/v1/boards?tag=a',
+      'GET /api/dash/v1/boards?q=x&tag=a',
+      'GET /api/dash/v1/boards',
+    ]);
+    const recent = api(() => Promise.resolve(json(200, wireOf(B))));
+    await recent.api.listRecent('demo', undefined, 50);
+    await recent.api.listRecent('demo');
+    expect(recent.requests.map(line)).toEqual([
+      'GET /api/dash/v1/me/recent-boards?limit=50',
+      'GET /api/dash/v1/me/recent-boards?limit=5',
+    ]);
   });
 });

@@ -53,6 +53,9 @@ describe('unit:board-options', () => {
       min: undefined,
       max: undefined,
     });
+    // The board list's sorts are not a chart's (board spec v6): the default.
+    expect(barchartOptions({ sort: 'incidents' }).sort).toBe('valueDesc');
+    expect(barchartOptions({ sort: 'default' }).sort).toBe('valueDesc');
     expect(barchartOptions({ sort: 'label', min: 0, baselineOffset: '7d' })).toMatchObject({
       sort: 'label',
       min: 0,
