@@ -2,7 +2,8 @@
  * The bar chart's pick decision (plan #173 Part 3a §3.4; T22-005, T22-007, VIZ-037, T25 §4.2): one
  * pure function turns an engine `pick` into what the caller does: nothing, clear the selection,
  * select a brush, or inspect a bar with its selection and the board filter toggle. `barHint` is the
- * tooltip line saying why a click does not filter. The surfaces apply the action (#173 Part 3b).
+ * tooltip line saying why a click does not filter. The board panel and Explore apply the action
+ * (#173 Part 3b).
  */
 import { selectionOf } from '../charts/inspectTarget';
 import type { Mark } from '../data/frames';
