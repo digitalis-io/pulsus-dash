@@ -1,0 +1,17 @@
+{
+  "index.html": {
+    "file": "assets/index-a1.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "src/pages/board/BoardPage.tsx"
+    ]
+  },
+  "src/pages/board/BoardPage.tsx": {
+    "file": "assets/BoardPage-b1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ],
+    "dynamicImports": []
+  }
+}

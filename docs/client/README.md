@@ -336,7 +336,9 @@ and the Esc ladder), since a drain cannot re-open it; each loop asserts its beha
 per round (a `goto` plus a keyboard replay) and operates the first control of that state's region
 (`main`, or the open overlay) not yet operated (Enter for links, buttons, menu items and options;
 Space for checkboxes and radios; End then Escape for sliders; End for text fields; ArrowDown then
-Escape for a combobox, the metric picker), until none is left; when
+Escape for a combobox, the metric picker), until none is left. A control is reached with Tab;
+a radio that is not its group's tab stop (a segmented control's other option, #198 Part 3a) is
+reached by Tab to its group, then the arrow keys. When
 an operation opens a dialog, menu or list box, that overlay is drained next (two levels deep). An
 action that adds sidebar or table links (create, rename) is followed in the same page session by
 `shellAfter`, which operates each new link. Two names are normalised: the time range trigger is one control whatever range

@@ -26,13 +26,9 @@ export const WIDGET_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>([
 
 /**
  * The widget kinds this version does not draw yet: such a panel shows `widget.kindUnavailable`.
- * Text until #198 Part 3, clock until A2, the board list until #216 Part 2.
+ * The clock until A2, the board list until #216 Part 2; Text draws from #198 Part 3a.
  */
-export const PENDING_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>([
-  'text',
-  'clock',
-  'boardList',
-]);
+export const PENDING_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>(['clock', 'boardList']);
 
 /** Whether `kind` is a widget kind. */
 export function isWidgetKind(kind: PanelVisKind): kind is WidgetKind {

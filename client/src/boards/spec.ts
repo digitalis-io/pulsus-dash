@@ -18,6 +18,7 @@ import type {
   PanelSpec,
   PanelVisKind,
   VisOptions,
+  WidgetPanelSpec,
 } from '../api/types';
 import { isWidgetKind } from '../widgets/spec';
 import { FILTER_LABEL } from '../state/boardParams';
@@ -549,6 +550,25 @@ export function checkBoardSpec(value: unknown): FieldError[] {
   checkShape(c, '', value, tBoard);
   if (c.fields.length === 0) checkRules(c, value as BoardSpec);
   return c.fields;
+}
+
+const PROBE_PANEL = '/panels/0';
+
+/**
+ * The `checkBoardSpec` errors of a one-panel probe board holding `panel` (grid {0,0,6,6}), under
+ * `/vis`, with pointers relative to the panel (`/vis/options/content`): the same rules as a save, in
+ * the same order (plan #198 Part 3a §3.1; T24-014). A draft with any is never rendered.
+ */
+export function widgetVisErrors(panel: WidgetPanelSpec): FieldError[] {
+  const probe: BoardSpec = {
+    title: 'Probe',
+    panels: [{ ...panel, grid: { x: 0, y: 0, w: 6, h: 6 } }],
+    sections: [],
+  };
+  const vis = `${PROBE_PANEL}/vis`;
+  return checkBoardSpec(probe)
+    .filter((f) => f.pointer === vis || f.pointer.startsWith(`${vis}/`))
+    .map((f) => ({ ...f, pointer: f.pointer.slice(PROBE_PANEL.length) }));
 }
 
 /** JSON with object keys sorted (UTF-16 code unit order) and no spaces. */

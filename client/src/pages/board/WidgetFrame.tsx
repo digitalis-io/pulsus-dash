@@ -1,10 +1,11 @@
 /**
  * A widget panel's frame on a board (plan #198 Part 1 §4.2; T24-002): the panel chrome with the
- * title, the Panel menu (Duplicate, Remove) and, in Edit mode, Move or resize, around the widget's
- * body. A widget has no query, so no run, viewport tracking, `ChartFrame`, Inspector, Explore, Copy
- * query or Full screen; Part 3 adds Edit to its menu.
+ * title, the Panel menu and, in Edit mode, Move or resize, around the widget's body. A widget has no
+ * query, so no run, viewport tracking, `ChartFrame`, Inspector, Explore, Copy query or Full screen.
+ * The menu has Edit panel when the registry has a def for the kind (Part 3a §4.4), then Duplicate
+ * and Remove.
  */
-import { forwardRef, useId } from 'react';
+import { forwardRef, useContext, useId } from 'react';
 import { MenuTrigger, type ButtonProps } from 'react-aria-components';
 import type { WidgetPanelSpec } from '../../api/types';
 import { t } from '../../i18n/t';
@@ -12,8 +13,10 @@ import { cx } from '../../kit/cx';
 import { IconButton } from '../../kit/IconButton';
 import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
+import { useWidgetDef } from '../../widgets/registry';
 import { WidgetBody } from '../../widgets/WidgetBody';
 import styles from './Board.module.css';
+import { BoardModeContext } from './boardMode';
 import {
   keyOp,
   PanelHeader,
@@ -25,10 +28,12 @@ import {
 export type WidgetFrameProps = Omit<PanelFrameProps, 'panel'> & { panel: WidgetPanelSpec };
 
 export const WidgetFrame = forwardRef<HTMLElement, WidgetFrameProps>(function WidgetFrame(
-  { panel, readOnly, selected, onKeyOp, onDuplicate, onRemove, className },
+  { panel, readOnly, selected, onEdit, onKeyOp, onDuplicate, onRemove, className },
   ref,
 ) {
   const headingId = useId();
+  const def = useWidgetDef(panel.vis.kind);
+  const editing = useContext(BoardModeContext) === 'edit';
   const title = panelTitle(panel);
   const g = panel.grid;
   const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
@@ -74,6 +79,16 @@ export const WidgetFrame = forwardRef<HTMLElement, WidgetFrameProps>(function Wi
             />
             <Popover placement="bottom end">
               <Menu aria-label={t('panel.menu', { title })}>
+                {def !== undefined && (
+                  <MenuItem
+                    id="edit"
+                    onAction={() => {
+                      onEdit(panel.id);
+                    }}
+                  >
+                    {t('panel.editPanel')}
+                  </MenuItem>
+                )}
                 <MenuItem
                   id="duplicate"
                   isDisabled={readOnly}
@@ -99,7 +114,7 @@ export const WidgetFrame = forwardRef<HTMLElement, WidgetFrameProps>(function Wi
         </div>
       </PanelHeader>
       <div className={cx(styles['body'])}>
-        <WidgetBody panel={panel} />
+        <WidgetBody panel={panel} headingId={headingId} editing={editing} />
       </div>
     </section>
   );

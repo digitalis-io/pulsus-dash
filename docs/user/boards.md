@@ -326,18 +326,38 @@ A board can hold **widgets**: Text panels (notes, runbooks, a code snippet) and 
 time in several zones, with a countdown). A widget has no query, so it never loads data, has no
 chart, and offers no Open in Explore, Copy query or Full screen.
 
-In this version you cannot add a widget or change one from the web client yet, and neither kind is
-drawn: a Text or Clock panel shows **This widget isn't available in this version yet.** under its
-title. Such panels come from boards written through the [Boards API](../server/boards-api.md#widgets-text-and-clock-v5).
-You can still arrange them like any panel:
+**Text panels** show their content under the title:
 
-- **Move and resize** them in Edit mode, with the pointer or with **Move or resize** and the arrow
+- **Markdown**: headings, paragraphs, emphasis, lists, block quotes, code, links and images. A
+  heading in the text sits below the panel's own title. Every link opens in a new tab and says so
+  ("(opens in a new tab)").
+- **Code**: the text exactly as written, in a monospaced face, labelled with its language.
+- An empty Text panel says **This text panel is empty** (**Write Markdown** in Edit mode).
+- A long text scrolls inside its panel. While it does, the panel's text area is a Tab stop, so you
+  can reach it and scroll it with the keyboard.
+
+Some Markdown is never shown, for your safety: HTML (including embedded pages), links with an
+address that is not a web or mail link, and images from another site. A link is shown as its text,
+an embedded page as nothing (add a link instead), and an image from another site as a link to it.
+The panel editor lists what is not shown ([below](#editing-a-text-panel)).
+
+A Text panel whose settings the server would refuse (for example content over 65 536 bytes) shows
+**This text can't be shown:** and the reason, and draws nothing.
+
+**Clock panels** are not drawn in this version: they show **This widget isn't available in this
+version yet.** under their title. They come from boards written through the
+[Boards API](../server/boards-api.md#widgets-text-and-clock-v5). You can arrange any widget like a
+panel:
+
+- **Move and resize** it in Edit mode, with the pointer or with **Move or resize** and the arrow
   keys ([moving and resizing panels](#moving-and-resizing-panels)).
-- **Duplicate** or **Remove** them from the **Panel menu** (its only two items for a widget). A
-  copy keeps the widget's content and options.
+- **Duplicate** or **Remove** it from the **Panel menu**. A copy keeps the widget's content and
+  options. A Text panel's menu also has **Edit panel**.
 - **Save** the board as usual: the widgets are kept exactly as they were.
 
-Widgets have no variables: a `$name` in a Text panel's content is not a board variable. A Clock
+A `$name` or `${name}` in a Markdown Text panel is a board variable: it gets a chip in the
+[filter bar](#the-filter-bar), and the text shows the value you set. A reference without a value
+stays as written. Code-mode text is never filled in, and Clock panels have no variables. A Clock
 zone must be a time zone the server knows when you save a board that adds it; a zone already on the
 board stays valid. If the server refuses a widget's settings, the save lists the problem under the
 status line, as for any panel.
@@ -380,8 +400,8 @@ section (screen readers hear it as expanded or collapsed), and next to it is the
 
 The filter bar (**Board filters**) sits left of the toolbar, in both modes:
 
-- **One chip per variable.** Each `$name` or `${name}` in the board's queries is a variable (the
-  `$__…` macros, such as `$__rate_interval`, are not). Its chip reads "Variable `name`: `value`", or
+- **One chip per variable.** Each `$name` or `${name}` in the board's queries, and then in its
+  Markdown Text panels, is a variable (the `$__…` macros, such as `$__rate_interval`, are not). Its chip reads "Variable `name`: `value`", or
   "not set". Pressing it opens **Variable `name`** with a **Value** field: **Apply** sets the value
   (an empty value clears it), **Clear** removes it. The value is kept in the address as
   `var-<name>=<value>`. A chip follows the queries as you edit them; a value stays in the address
@@ -400,8 +420,8 @@ closing a dialog changes nothing.
 Neither variables nor filters are saved with the board. They are part of the address, so each
 change is a step in the browser history (Back undoes it), a reload keeps them, and **Copy link**
 carries them. Changing them never asks about unsaved changes. A variable's value goes into the
-PromQL panels that use it: changing it reruns only those panels. Filters do not change the queries
-yet.
+PromQL panels that use it: changing it reruns only those panels. A Text panel that uses it shows
+the new value; other Text panels do not change. Filters do not change the queries yet.
 
 The board's address (path and parameters) is limited to **4 096 bytes**. A value that would make it
 longer is refused: "This would make the board link too long. Remove a filter or use a shorter
@@ -443,6 +463,7 @@ toolbar becomes:
 | Control | What it does |
 |---|---|
 | **Add panel** | Adds an empty 6 × 8 panel in the first free place (top to bottom, left to right) and opens it in the panel editor |
+| **Add widget** | A menu of the widgets you can add (**Text** in this version). A Text panel is 6 × 6, starts empty in Markdown, goes in the first free place, and opens in the text editor |
 | **Add section** | Adds an empty, expanded section at the end, named "Untitled section" until you give it a title |
 | **Save current time range** | Checked when the board has a saved time range. Checking saves the current one with the board; unchecking removes it |
 | **Discard** | Throws away the unsaved changes: reloads the board and returns to View mode. While it reloads, the board cannot be edited or saved |
@@ -463,6 +484,7 @@ Each section's heading row adds:
 |---|---|
 | **Section `n` title** | The section's title, at most 200 characters |
 | **Add panel** (**Add panel to `<section>`**) | Adds a 6 × 8 panel in the section's first free place, opens it in the panel editor, and expands the section if it was collapsed |
+| **Add widget** (**Add widget to `<section>`**) | The same widget menu; the widget goes into the section, which expands if it was collapsed |
 | **Remove section** (**Remove section `<section>`**) | Removes the section and its panels |
 
 The heading button collapses or expands the section; this is saved with the board. A board can have
@@ -537,6 +559,29 @@ Closing never undoes anything: your changes stay in the board draft until you sa
 save with problems, the editor opens on the first panel with one, and each error shows under its
 field.
 
+### Editing a text panel
+
+**Edit panel** on a Text panel, or adding one, opens the **Edit text panel** window: the same
+fixed-size window as the panel editor. It has:
+
+| Field | What it does |
+|---|---|
+| **Title** | at most 200 characters; empty shows "Untitled panel" |
+| **Preview** ("Preview: `<title>`") | the panel as the board will show it, updated as you type |
+| **Format** | **Markdown** or **Code**. Switching to Code starts at Plain text; switching back to Markdown drops the language |
+| **Language** | in Code only: Plain text, JSON, YAML, SQL, PromQL, LogQL, Go or Shell |
+| **Content** | the text, at most 65 536 bytes |
+| **Not shown in the panel** | what the panel leaves out, one line each, by kind and line number only, for example "Line 1: a link with an unsupported address is shown as text." or "Line 3: HTML isn't shown." |
+
+Every change goes into the board draft at once, and the panel behind follows. A Content value the
+save would refuse shows its reason under **Content** ("Use at most 65 536 bytes."), and the preview
+shows **Preview unavailable:** with the same reason instead of drawing it. Typing a change back
+makes the board unchanged again, so **Save** is disabled once more.
+
+**Remove panel** removes the panel. **Done**, Escape or a click outside closes the window; focus
+returns to the panel's menu button (to **Add panel** if the panel was removed). If the text's
+renderer cannot load, the panel says "This text couldn't be shown. Reload the page."
+
 ### Unsaved changes
 
 With unsaved changes, leaving the board for another page (a sidebar link, the breadcrumb, Explore)
@@ -593,7 +638,8 @@ but cannot be saved." Leaving the page still asks first.
 - At most the newest 500 event markers in a time range; marker text up to 500 characters.
 - Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
   touch gestures, and other panels follow a zoom only when it ends.
-- Not yet: undo and history, moving panels between sections, reordering sections, filters changing
+- A Text panel's content is at most 65 536 bytes (UTF-8).
+- Not yet: Clock panels drawn or added, undo and history, moving panels between sections, reordering sections, filters changing
   the queries, variable definitions and value lists, several queries in one panel, log patterns,
   saving a log panel's order and wrap, repeated panels, percentage thresholds, threshold areas,
   list legends and legend placement, adding or editing notes on the board, clicking a marker to
@@ -618,4 +664,5 @@ T09-009, T09-010, T09-014, T09-015), [09 Performance contract](../../designs/pro
 (PRF-030, PRF-031), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
 server), [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (threshold lines
 and the stat sparkline). Widgets: [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md)
-(T24-002, T24-003, §5.1) and VIZ-053 (staged).
+(T24-002, T24-003, §5.1; Text: T24-004 to T24-009, T24-014, T24-015, T24-017, T24-018, §5.2a),
+VIZ-053 (the Text row) and VIZ-054.

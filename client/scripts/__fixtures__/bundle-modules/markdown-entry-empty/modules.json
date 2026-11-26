@@ -1,0 +1,12 @@
+{
+  "assets/index-a1.js": [
+    "/repo/client/index.html",
+    "/repo/client/src/main.tsx"
+  ],
+  "assets/BoardPage-b1.js": [
+    "/repo/client/src/pages/board/BoardPage.tsx"
+  ],
+  "assets/TextMarkdown-m1.js": [
+    "/repo/client/src/widgets/text/TextMarkdown.tsx"
+  ]
+}

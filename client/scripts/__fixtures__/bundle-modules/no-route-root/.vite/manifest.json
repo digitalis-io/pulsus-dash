@@ -1,0 +1,16 @@
+{
+  "index.html": {
+    "file": "assets/index-a1.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "src/widgets/text/TextMarkdown.tsx"
+    ]
+  },
+  "src/widgets/text/TextMarkdown.tsx": {
+    "file": "assets/TextMarkdown-m1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  }
+}
