@@ -30,7 +30,7 @@ func oldBinary(t *testing.T) string {
 	if p == "" {
 		t.Skip("DASH_OLD_BINARY is not set; run make itest-old-binary")
 	}
-	if st, err := os.Stat(p); err != nil || st.IsDir() {
+	if st, err := os.Stat(p); err != nil || st.IsDir() { //nolint:gosec // the test's own build of the previous release (make itest-old-binary)
 		t.Fatalf("DASH_OLD_BINARY %q is not a file: %v", p, err)
 	}
 	return p
@@ -148,6 +148,7 @@ func TestBoardTagsOldBinary(t *testing.T) {
 				t.Fatalf("reader: %v", r.err)
 			}
 			maxWait := r.max
+			t.Logf("reader's longest wait during migration 4: %v", maxWait)
 			if maxWait > time.Second {
 				t.Errorf("reader waited %v during migration 4, want ≤ 1 s", maxWait)
 			}
