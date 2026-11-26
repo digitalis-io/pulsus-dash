@@ -71,6 +71,6 @@ describe('unit:sanitise-bundle', () => {
     const cs = await chunks(`${probe}node-builtin.ts`);
     const f = forbiddenModules(graphOf(cs));
     expect(f.length).toBeGreaterThanOrEqual(1);
-    expect(f.every((x) => x.rule === 'forbidden-module')).toBe(true);
+    expect(f.map((x) => x.module).join('\n')).toMatch(/__vite-browser-external|node:stream/);
   }, 120_000);
 });

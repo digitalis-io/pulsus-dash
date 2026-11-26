@@ -305,6 +305,7 @@ ifeq ($(ENGINE_IN_IMAGE),1)
 	  VITE_API_MODE=stub npx vite build --outDir dist-release-stub --emptyOutDir && \
 	  VITE_API_MODE=http npx vite build --outDir dist-release-http --emptyOutDir && \
 	  npm run size -- dist-release-stub && npm run size -- dist-release-http && \
+	  node scripts/check-bundle-modules.ts dist-release-stub dist-release-http && \
 	  node scripts/probe-absent.ts dist-release-stub && node scripts/probe-absent.ts dist-release-http && \
 	  (cd ../engine && cargo build -p dash-golden --release --locked) && \
 	  DASH_GOLDEN_BIN=$${CARGO_TARGET_DIR:-../engine/target}/release/dash-golden \

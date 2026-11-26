@@ -23,7 +23,7 @@
     "token-lint": "node scripts/token-lint.ts",
     "size": "node scripts/bundle-size.ts",
     "check:lockfile": "node scripts/check-lockfile.ts",
-    "origins": "node scripts/check-build-origins.ts",
+    "origins": "node scripts/check-build-origins.ts && node scripts/check-bundle-modules.ts dist dist-http",
     "audit": "node scripts/check-deps.ts && npm audit --omit=dev --audit-level=high && npm audit --audit-level=critical && npm audit signatures"
   },
   "dependencies": {
