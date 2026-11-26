@@ -266,7 +266,7 @@ test.describe('panels-categorical (fake)', () => {
     const before = sent.filter((r) => r.query === 'bars_by_version').length;
     await clickBar(page, p, 0, 120);
     await expect.poll(() => filtersOf(page)).toEqual(['version=2.31']);
-    await expect(page.getByRole('button', { name: /version/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Filter version: 2.31' })).toBeVisible();
     // Interim (T22-007, #193): no panel query reads `f=`, so nothing runs again.
     await page.waitForTimeout(500);
     expect(sent.filter((r) => r.query === 'bars_by_version')).toHaveLength(before);
@@ -289,7 +289,8 @@ test.describe('panels-categorical (fake)', () => {
     await drawn(p);
     await clickBar(page, p, 0, 120);
     const aside = inspector(page);
-    await expect(aside.getByRole('heading', { level: 2 })).toHaveText('2.31');
+    // The heading is the origin's title (T25 §4.2); the bar is its value and labels.
+    await expect(aside.getByRole('heading', { level: 2 })).toHaveText('Versions');
     await expect(aside.locator('[data-inspector-value]')).toHaveText('120');
     await expect(aside.locator('[data-section="labels"]')).toContainText('version');
     await expect(aside.locator('[data-section="labels"]')).toContainText('2.31');
@@ -306,83 +307,90 @@ test.describe('panels-categorical (fake)', () => {
     );
   });
 
-  test('e2e:categorical-interactions', async ({ page, request }, info) => {
-    test.setTimeout(180_000);
-    uid = await createBoard(request, `bars keys ${info.project.name} ${crypto.randomUUID()}`, [
-      bar('p-1', 'P1', 'bars_by_version', [0, 0, 6, 10]),
-      bar('p-2', 'P2', 'bars_by_version', [6, 0, 6, 10]),
-      {
-        id: 'p-3',
-        title: 'L',
-        text: 'bars_by_version',
-        grid: [0, 10, 12, 8],
-        vis: { kind: 'line' },
-      },
-    ]);
-    const sent = rangeRequests(page);
-    await page.goto(boardUrl(uid));
-    const p1 = panel(page, 'P1');
-    const p2 = panel(page, 'P2');
-    await drawn(p1);
-    await drawn(p2);
-    const load2 = await probes(p2, VALUES);
+  // The ghost probe needs a whole device pixel of a 1 CSS px stroke at a fractional x: 2× scale.
+  test.describe('at 2× scale', () => {
+    test.use({ deviceScaleFactor: 2 });
+    test('e2e:categorical-interactions', async ({ page, request }, info) => {
+      test.setTimeout(180_000);
+      uid = await createBoard(request, `bars keys ${info.project.name} ${crypto.randomUUID()}`, [
+        bar('p-1', 'P1', 'bars_by_version', [0, 0, 6, 10]),
+        bar('p-2', 'P2', 'bars_by_version', [6, 0, 6, 10]),
+        {
+          id: 'p-3',
+          title: 'L',
+          text: 'bars_by_version',
+          grid: [0, 10, 12, 8],
+          vis: { kind: 'line' },
+        },
+      ]);
+      const sent = rangeRequests(page);
+      await page.goto(boardUrl(uid));
+      const p1 = panel(page, 'P1');
+      const p2 = panel(page, 'P2');
+      await drawn(p1);
+      await drawn(p2);
+      const load2 = await probes(p2, VALUES);
 
-    await tabTo(page, listIn(p1));
-    await expect.poll(() => activeOption(p1)).toBe('2.31: 120');
-    await expect(tooltip(p1)).toContainText('2.31');
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('ArrowRight');
-    await expect.poll(() => activeOption(p1)).toBe('2.33: 15');
-    await page.keyboard.press('Home');
-    await expect.poll(() => activeOption(p1)).toBe('2.31: 120');
-    await page.keyboard.press('End');
-    await expect.poll(() => activeOption(p1)).toBe('2.32: 3');
-    await page.keyboard.press('Home');
-    await page.keyboard.press('Shift+ArrowRight');
-    await page.keyboard.press('Shift+ArrowRight');
-    await expect
-      .poll(async () => (await frameIn(p2).getAttribute('data-selection-keys'))?.split(',').length)
-      .toBe(3);
-    const brushed = await probes(p2, VALUES);
-    expect(near(brushed[3] ?? [0, 0, 0], load2[3] ?? [0, 0, 0])).toBe(false);
-    await page.keyboard.press('Escape');
-    await expect(frameIn(p2)).toHaveAttribute('data-selection-keys', '');
-    await expect
-      .poll(async () => (await probes(p2, VALUES)).every((c, i) => near(c, load2[i] ?? c)))
-      .toBe(true);
+      await tabTo(page, listIn(p1));
+      await expect.poll(() => activeOption(p1)).toBe('2.31: 120');
+      await expect(tooltip(p1)).toContainText('2.31');
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => activeOption(p1)).toBe('2.33: 15');
+      await page.keyboard.press('Home');
+      await expect.poll(() => activeOption(p1)).toBe('2.31: 120');
+      await page.keyboard.press('End');
+      await expect.poll(() => activeOption(p1)).toBe('2.32: 3');
+      await page.keyboard.press('Home');
+      await page.keyboard.press('Shift+ArrowRight');
+      await page.keyboard.press('Shift+ArrowRight');
+      await expect
+        .poll(
+          async () => (await frameIn(p2).getAttribute('data-selection-keys'))?.split(',').length,
+        )
+        .toBe(3);
+      const brushed = await probes(p2, VALUES);
+      expect(near(brushed[3] ?? [0, 0, 0], load2[3] ?? [0, 0, 0])).toBe(false);
+      await page.keyboard.press('Escape');
+      await expect(frameIn(p2)).toHaveAttribute('data-selection-keys', '');
+      await expect
+        .poll(async () => (await probes(p2, VALUES)).every((c, i) => near(c, load2[i] ?? c)))
+        .toBe(true);
 
-    await page.keyboard.press('Home');
-    await page.keyboard.press('Enter');
-    await expect.poll(() => filtersOf(page)).toEqual(['version=2.31']);
-    await expect(inspector(page).getByRole('heading', { level: 2 })).toHaveText('2.31');
+      await page.keyboard.press('Home');
+      await page.keyboard.press('Enter');
+      await expect.poll(() => filtersOf(page)).toEqual(['version=2.31']);
+      await expect(inspector(page).locator('[data-inspector-value]')).toHaveText('120');
 
-    await hoverBar(page, p1, 0, 120);
-    await expect(tooltip(p1)).toContainText('Values are reduced over');
+      await hoverBar(page, p1, 0, 120);
+      await expect(tooltip(p1)).toContainText('Values are reduced over');
 
-    await p1.getByRole('button', { name: 'Panel menu: P1' }).click();
-    await page.getByRole('menuitem', { name: 'Show baseline ghost' }).click();
-    await expect
-      .poll(() => sent.filter((r) => r.from === FROM - DAY && r.to === TO - DAY).length)
-      .toBe(1);
-    expect(
-      (await fakeRequests(request, { transcript: 'bars-by-version-base' })).some(
-        (r) => r.start === sec(FROM - DAY),
-      ),
-    ).toBe(true);
-    await expect(frameIn(p1)).toHaveAttribute('data-frame-ready', 'true');
-    const g = await geometry(p1);
-    const muted = await token(page, 'text-muted');
-    const x60 = xOf(g, 60);
-    const band = g.plot.height / g.n;
-    let found = false;
-    for (let dy = -band * 0.3; dy <= band * 0.3 && !found; dy += 1) {
-      for (let dx = -2; dx <= 2 && !found; dx += 1) {
-        found = near(await pixel(p1, x60 + dx, bandY(g, 0) + dy), muted);
+      await p1.getByRole('button', { name: 'Panel menu: P1' }).click();
+      await page.getByRole('menuitem', { name: 'Show baseline ghost' }).click();
+      await expect
+        .poll(() => sent.filter((r) => r.from === FROM - DAY && r.to === TO - DAY).length)
+        .toBe(1);
+      expect(
+        (await fakeRequests(request, { transcript: 'bars-by-version-base' })).some(
+          (r) => r.start === sec(FROM - DAY),
+        ),
+      ).toBe(true);
+      await expect(frameIn(p1)).toHaveAttribute('data-frame-ready', 'true');
+      const g = await geometry(p1);
+      const muted = await token(page, 'text-muted');
+      const x60 = xOf(g, 60);
+      const band = g.plot.height / g.n;
+      let found = false;
+      // At 2× a 1 CSS px stroke always covers one device pixel whole: half-pixel steps reach it.
+      for (let dy = -band * 0.3; dy <= band * 0.3 && !found; dy += 0.5) {
+        for (let dx = -2; dx <= 2 && !found; dx += 0.5) {
+          found = near(await pixel(p1, x60 + dx, bandY(g, 0) + dy), muted);
+        }
       }
-    }
-    expect(found).toBe(true);
-    await hoverBar(page, p1, 0, 120);
-    await expect(tooltip(p1)).toContainText('baseline 60');
+      expect(found).toBe(true);
+      await hoverBar(page, p1, 0, 120);
+      await expect(tooltip(p1)).toContainText('baseline 60');
+    });
   });
 
   test('e2e:selection-empty', async ({ page, request }, info) => {
@@ -490,7 +498,7 @@ test.describe('panels-categorical (fake)', () => {
   test('e2e:categorical-table-view', async ({ page, request }, info) => {
     test.setTimeout(120_000);
     uid = await createBoard(request, `bars table ${info.project.name} ${crypto.randomUUID()}`, [
-      bar('p-1', 'Many', 'bars_many', [0, 0, 12, 21]),
+      bar('p-1', 'Many', 'bars_many', [0, 0, 12, 13]),
     ]);
     await page.goto(boardUrl(uid));
     const p = panel(page, 'Many');
