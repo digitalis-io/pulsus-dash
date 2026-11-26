@@ -13,7 +13,9 @@ them is in [Boards](../user/boards.md)). Charts (roadmap step 2, issue #58) are 
 `LogsMetricCard` of `src/pages/explore/`) in [Explore](explore.md#logs-page); the log buffer,
 pager and virtualised log list `src/logs/` (issue #66 Part B) in [Log stream](logs.md). Build and CI
 are in [Build, test and CI](../development/build-and-ci.md); dependencies in
-[JavaScript supply chain](supply-chain.md).
+[JavaScript supply chain](supply-chain.md). The geomap's data layer (issue #231: location
+resolution, the bundled basemap and gazetteer, their validation and loading, `src/vis/geo/`) is in
+[Geomap data](geomap.md).
 
 ## Run
 

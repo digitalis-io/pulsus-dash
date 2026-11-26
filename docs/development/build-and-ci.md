@@ -38,6 +38,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run gen:xss-e2e-cases` | Writes the browser run's case list `e2e/fixtures/xss-e2e-cases.json` (digest, skip reason and image request paths per corpus case) from `scripts/gen-xss-e2e-cases.ts` (#198 Part 3b; [the widgets page](../client/widgets.md#the-case-list-and-the-baselines)); `-- --check` compares and prints the differences by id | `unit:xss-e2e-cases` (in `npm test`); `e2e:widget-text-xss` |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` (or the build given as `-- <dir>`, e.g. `-- dist-http`) against `bundle-budgets.json` | `ci:bundle-size` |
+| `npm run geo-data` | The committed geo assets against `tools/geo/manifest.json` (SHA-256, bytes) and decoded ([geo data](#geo-data)) | `ci:geo-data` |
 | `npm run check:lockfile` | Exact versions, lockfile v3, registry and integrity of every locked package | `ci:lockfile` |
 | `npm run origins` | No URL of another origin in a resource position of the build, no unlisted URL text; then no forbidden module in the module graphs of `dist` and `dist-http` (`check-bundle-modules.ts`) | `ci:dep-audit` (build origins, module graph) |
 | `npm run audit` | Dependency policy, then `npm audit` (runtime high, all critical) and `npm audit signatures` | `ci:dep-audit`, `ci:npm-audit` |
@@ -60,6 +61,7 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 | `gen-xss-corpus.ts [--check]` | written / up to date | the corpus is stale (`error[xss-corpus] … is stale`) | — | — | `gen-xss-corpus.test.ts` (a fresh run equals the committed file; one changed expectation gives 1) |
 | `gen-xss-e2e-cases.ts [--check]` | written / up to date | the list is stale (`error[xss-e2e-cases] … is stale` and one line per differing id) | — | — | `gen-xss-e2e-cases.test.ts` (a fresh run equals the committed file; one changed expectation gives 1; c14) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
+| `check-geo-data.ts [root]` | the assets match the manifest and decode | findings | the manifest or an asset missing or unreadable | `sha256-mismatch`, `invalid-asset` | `check-geo-data.test.ts` (a changed byte; a non-decoding asset with its digest in a test manifest; no manifest) |
 | `check-bundle-modules.ts [--cache <dir>] <outDir>…` | no findings | findings | a build's `modules.json` is missing or unreadable | `forbidden-module` | `scripts/__fixtures__/bundle-modules/` |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
 | `keyboard-coverage.ts <dir> <project>` | covered | findings | a part file unreadable, not JSON, `version` ≠ 1 or of another project; arguments missing | `keyboard-part-missing`, `keyboard-part-duplicate`, `keyboard-empty`, `keyboard-uncovered`, `keyboard-unvisited`, `keyboard-skip-unbacked`, `keyboard-skip-unused` | `keyboard-coverage.test.ts`; `keyboard-coverage-reporter.test.ts` with `scripts/fixtures/kbd-reporter/` |
@@ -149,6 +151,7 @@ keep an entry alive that the app no longer imports (#135).
 | `editorChunk` | one row, `editor closure (<n> files)`: the files of the `editorModules` entries (`src/editor/editor.ts`, `src/editor/lang/promql/promql.ts`, `src/editor/lang/logql/logql.ts`, `src/editor/logqlEditor.ts`; every entry is also a required lazy module, so a missing one fails as `missing-artefact`) and every `assets/editor-*.js` file reachable from them through static manifest `imports`. The walk goes only through `editor-*` files: an import of the entry, a shared chunk or the route chunk is neither counted nor walked through, and that file keeps its own row | 175 000 |
 | `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
 | `fonts`, `totalExceptEngine` | the fonts; every file except the engine's | 150 000; 1 000 000 |
+| `geoBasemap`, `geoGazetteer` | with `required.geoAssets`: rows `geo-basemap` and `geo-gazetteer`, the one `assets/basemap-<hash>.json` and the one `assets/gazetteer-<hash>.json` (none or several fails `missing-artefact:geo basemap` / `geo gazetteer`); both also count in `totalExceptEngine`. The `geo-assets` entry chunk that names them (`src/vis/geo/urls.ts`, an extra Rolldown input of `vite.config.ts`, plan #231) is a `lazyChunk` row and empty until a route imports it, so the initial JS does not move | 40 000; 104 000 |
 | `engine` | one row, `engine (<n> files)`: every `assets/dash-engine-*.js` and `.wasm` (the wasm, its worker bundles and adapter chunks; PRF-009, ADR-0014 §8). Required: no engine wasm fails `missing-artefact:engine`; an engine file in the initial JS fails `engine-in-initial` | 1 900 000 |
 
 Every chunk holding an editor module is named `editor-<hash>.js` by `vite.config.ts`, so the
@@ -973,12 +976,15 @@ cgo.
 | `make cpu-instr-update` | rewrites the baseline; run it in CI and commit the result with the change that moves it | — |
 | `make bench-bff` | the two time budgets `TestBudgetPromqlDecode` and `TestBudgetBffOverhead`: with `REFERENCE_LAB=1` they fail over 30 ms per 10⁶ points, or over 5 ms (p50) and 20 ms (p99) of BFF overhead; without it they skip ([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)) | `bench:promql-decode`, `bench:bff-overhead` (reference lab) |
 | `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
+| `make geo-test` | `python3 -I -m unittest discover -s tools/geo -p 'test_*.py'` ([geo data](#geo-data)) | `unit:geo-build`, `unit:geo-gazetteer-build` |
+| `make geo-data` | `npm --prefix client run geo-data` | `ci:geo-data` |
+| `make geo-check GEO_SRC=<dir>` | `tools/geo/build.py <dir> --check`: rebuilds the geo assets from the pinned sources in `<dir>` and compares them byte for byte (local only; its output goes in a PR that changes an asset) | — |
 | `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
 | `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)); `itest-local` runs `$(ITEST_GOAL)` (default `itest`; `ITEST_GOAL=itest-old-binary` runs the old-binary test) against its PostgreSQL 15 and 16 | — |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
 | `make itest-local-selftest` | `dev/itest-local-selftest.sh`: a failed `up --wait` fails `itest-local`, runs no test and still cleans up (no containers) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |
-| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host itest-local-selftest` | — |
+| `make ci` | `go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host itest-local-selftest geo-test geo-data` | — |
 
 The depguard rules keep `pgx`, `goose` and `internal/store/dbgen` inside `internal/store`, and
 `chi` and `internal/gateway/api` inside `internal/gateway`. Two forbidigo rules (`ci:depguard`,
@@ -1029,7 +1035,8 @@ It then saves the licence files of those modules into `build/licenses/` and writ
 `Generated by make go-licenses from the Go modules linked into pulsus-dash.`, then each `LICENSE`,
 `LICENCE`, `COPYING` or `NOTICE` file (any case, with an optional suffix such as `.txt`), in byte
 order of its path, under a `== <module path>/<file> ==` header. It fails with `notices file is
-empty` if no file was found. CI uploads the file as the artifact `third-party-notices` (14 days);
+empty` if no file was found. Last, it appends the "Data" section of `tools/geo/build.py --notices`
+(`== Data ==` and one line per bundled geo dataset; [geo data](#geo-data)). CI uploads the file as the artifact `third-party-notices` (14 days);
 release packaging that ships it comes later.
 
 The self-test `server/scripts/check-go-licenses-fixture.sh` runs the gate's own check,
@@ -1127,6 +1134,24 @@ verified" files=<n>` on stderr; `/readyz` 200 within 30 s; `GET /` (HTML) 200 wi
 served `Content-Encoding: br`; and exit 0 on SIGTERM.
 
 <a id="ci-no-pulsusdb-host"></a>
+
+## Geo data
+
+The geomap's bundled assets ([Geomap data](../client/geomap.md)) are built by
+`tools/geo/build.py`, Python standard library only, from pinned sources that are never committed or
+downloaded ([supply chain](../client/supply-chain.md#geo-data)):
+
+```text
+python3 -I tools/geo/build.py SRC_DIR              write the 4 outputs (both assets, report.txt, manifest.json)
+python3 -I tools/geo/build.py SRC_DIR --check      rebuild in memory: exit 0 "geo-build: 4 files identical", 1 naming each differing path
+python3 -I tools/geo/build.py --fixtures [--check] client/src/vis/geo/fixtures/build/*.json from tools/geo/fixtures/basemap-cases.json
+python3 -I tools/geo/build.py --notices            print the "Data" notices section
+```
+
+A build error exits 2 with `geo-build: ‹message›` on stderr. The gates: `make geo-test`
+(`unit:geo-build`, `unit:geo-gazetteer-build`) and `make geo-data` (`ci:geo-data`) run in `make ci`;
+the client's `unit:geo-*` tests run in `npm test`; `make geo-check GEO_SRC=<dir>` needs the sources
+and runs locally. The asset rows of `ci:bundle-size` are in [bundle budgets](#bundle-budgets).
 
 ## ci:no-pulsusdb-host
 
