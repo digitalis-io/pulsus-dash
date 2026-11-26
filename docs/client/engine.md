@@ -583,8 +583,9 @@ profile so that the split-point and fuzz tests stay fast.
 
 Part C1 runs the engine in the page, opt-in: a chart frame uses it only when the engine flag is
 `wasm` (the URL's `?engine=wasm`, else the build's `VITE_ENGINE`) and the page can run it. Axis
-text, bars, heatmap and stat stay with Canvas 2D until #69; Part C2 adds input (the input ring,
-the camera controller, hover and selection); Part D streams Arrow data to a data worker.
+text, bars, heatmap and stat stay with Canvas 2D until #69; Part C2 adds input: the input ring
+(C2a1, [below](#the-input-ring-part-c2a1)), then the camera controller, hover and selection; Part D
+streams Arrow data to a data worker.
 
 ### Choosing an engine
 
@@ -637,12 +638,82 @@ dev server fetches it plainly and a release build has no engine), compiles it
 | pool × m (`wasm/pool.worker.ts`) | rayon threads on the same module and memory, started by the main thread when the render worker asks (`spawn-pool{ptr}`); m = `clamp(hwc − 3 − clamp(⌊hwc/4⌋, 1, 3), 1, 6)` |
 
 Messages are in `wasm/protocol.ts` (tag `t`): `boot`, `create` (the canvas transferred), `spec`,
-`data` (series cloned; heatmap and scalar `null`), `window`, `theme`, `resize`, `dispose` to the
-render worker; `status`, `spawn-pool`, `events` (one JSON array per animation frame: `a11y`,
-`drawn`, `failed`, `fatal`) back. Data enters the engine only through `Frames::set_chunk`; the TS
+`data` (series cloned; heatmap and scalar `null`), `theme`, `dispose` and `input` (a wake-up) to
+the render worker; `status`, `spawn-pool`, `events` (one JSON array per animation frame:
+`created`, `applied`, `a11y`, `drawn`, `failed`, `tier`, `fatal`) back. The camera and the size
+travel in the input ring, not as messages. Data enters the engine only through `Frames::set_chunk`; the TS
 series become a chunk in the local id space (`IdSpace::Local`, 2⁶³…2⁶⁴), so Part D's decoder ids
 (`IdSpace::Stream`, 0…2⁶³) never collide with them. The control block is `dash-protocol`'s layout
 v1 (T03 §4.3); `client/src/engine/wasm/layout.gen.ts` is generated from it.
+
+### The input ring (Part C2a1)
+
+The camera (the time window, the value range and the value-label band) and the size of each
+engine frame go from the main thread to the render worker through the control block's input ring
+(T03 §5.4), one producer (`wasm/ring.ts`, one `InputRing` per engine memory) and one consumer
+(`dash-core::input`), read at the start of each worker tick (T03-019).
+
+**Records.** A 16-byte header `0 u8 kind · 1 u8 flags · 2 u16 size · 4 u32 seq · 8 f64 t_ms` (the
+main thread's `performance.now()` at the call), little-endian, every size a multiple of 8:
+
+| Kind | Name | Size | Payload |
+|---|---|---|---|
+| `0x00` | Wrap | — | continue at the start of the ring (written in a gap at the end that a record would cross) |
+| `0x20` | Resize | 40 | `f32` CSS width, height and DPR, `u32` device width and height (`round(css × dpr)`), `u32` frame |
+| `0x23` | Camera | 64 | `u32` frame, pad, `f64` view lo and hi (ms), value min and max (NaN = auto), band (NaN = measured) |
+
+The offsets are `dash-protocol::input`, generated into `layout.gen.ts` (`REC_*`, `RESIZE_*`,
+`CAMERA_*`).
+
+**Counters.** `INPUT_HEAD` (0x80, main) and `INPUT_TAIL` (0xC0, render) are free-running `u32` byte
+counts: occupied = `(head − tail) mod 2³²`, the physical offset = `counter & 0xFFFF`. The producer
+writes a record, then stores the head (release); the consumer loads the head (acquire), reads
+`[tail, head)` and stores tail = head. They roll over 2³² freely.
+
+**Coalescing.** A record that does not fit waits on the main thread, keyed by kind and frame: a
+later call of the same kind for the same frame replaces it (deleted, then inserted at the end;
+`coalesced` counts these). Up to 32 waiting records are published before a new one, which waits
+behind any that remain; each animation frame publishes up to 256. Nothing is dropped, so
+`INPUT_OVERFLOW` stays 0.
+
+**Seqs.** Each frame numbers its records from 1 when they are published (never while they wait),
+skipping 0 on the wire. The main thread keeps each frame's count as a 53-bit integer and extends
+the worker's `u32` acknowledgements to it (`extendSeq`); the worker compares seqs modulo 2³²
+(`seq_ge`). At the end of every tick that applied records of a frame the worker reports
+`applied{id, seq}`, so a frame that never draws (size 0) is still acknowledged, at most one ring
+(1 638 records) behind.
+
+**Wake-up (T03-004 revised).** The render worker sleeps when it has nothing to draw: it sets
+`INPUT_IDLE` (0xC8, 1 at boot) and re-checks the ring, ticking again if records arrived. After each
+publish the producer compare-exchanges `INPUT_IDLE` 1 → 0 and, if it was 1, posts one `input`
+message: at most one message per idle period, never a lost record.
+
+**The `created` gate and frame ids.** `EngineHost` numbers frames from 1 per worker and never
+reuses a number (a restart is a new worker, numbered afresh). A frame's Camera and Resize calls are
+held, the latest of each kind, until the worker reports `created` for it; then they are published
+in the order of their calls, and later calls at once. The worker refuses a `create` whose id is not
+above the highest it has seen (`console.error`, no `created`). On dispose the main thread drops
+the frame's held and waiting records and ignores its later events; the worker drops its state and
+ignores later records for it.
+
+**Presentation capture (ADR-0019).** When the worker submits a frame's draw list it captures
+`{seq, rseq, css, dpr, series}`: the last record applied, the last Resize applied, the CSS size,
+DPR and the series drawn. `drawn` reports exactly that capture, also when the presentation
+completes later (a deferred read-back) after newer records were applied; a presentation that is
+re-run reports nothing. On the main thread `WasmFrame` reports `drawn` only for its latest
+`resize()` call: never while a Resize is held or waiting, only when the event's `rseq` is that
+call's seq, and with the caller's own width, height and DPR (the ring carries `f32`).
+
+**The idle camera.** Until Part C2a2 moves it into the camera controller, `WasmFrame` derives the
+camera from `setTimeWindow` (view = the window; value = the spec's `valueRange` when it is finite
+with min < max, else auto; band measured) and sends it again when the spec changes.
+
+**Errors.** A record that is not a multiple of 8, shorter than its header, past the head or the
+end of the ring, the wrong size for its kind or of an unknown kind ends the batch: the rest is
+skipped (tail = head), `INPUT_BAD` (0x4D10) counts it and the first is logged
+(`pulsus engine: input record at <counter>`). A Camera with a non-finite or empty view, a
+non-finite or empty value range or a negative band is counted the same way and ignored. A record
+of a disposed frame is ignored and not counted.
 
 ### Tiers and the frame loop
 
@@ -657,8 +728,9 @@ The renderer runs with `Sync::Defer`: it never waits. A T1 line item whose total
 is drawn within the current capacity and its status header is read back with `map_async`;
 `Renderer::poll` then reports `Complete` (the frame was whole), `Rerun` (under-sized: the next
 render sizes the instance buffer for the total) or, after three failed read-backs in a row,
-`Failed`. `drawn` (ADR-0019) is reported only for a complete frame at the size last applied, never
-at 0, with a `chart-draw` measure (`detail: {kind: 'line', series, frame}`).
+`Failed`. `drawn` (ADR-0019) is reported only for a complete presentation, from its capture, never
+at 0, with a `chart-draw` measure (`detail: {kind: 'line', series, frame}`); see
+[presentation capture](#the-input-ring-part-c2a1).
 
 ### Failures
 
@@ -686,6 +758,14 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
   in `client/src/engine/faults.ts`; each of its three call sites logs its sentinel
   (`__pulsus_engine_fault__:route|boot|worker`), and `ci:probe-absent` fails a release build that
   holds any of them.
+- The engine probe (`client/src/dev/engineProbe.ts`): a fault build opened with `?probe=1` (and
+  `?engine=wasm`) sets `window.__dashProbe`, which makes probe frames on canvases at (0, 0)
+  (`frame`, numbered 0, 1, … in call order), drives them (`call(n, 'setSpec' | 'setData' |
+  'setTimeWindow' | 'resize', arg)`), waits until a frame has nothing held or waiting and the
+  worker applied and, at a non-zero size, presented its last record (`settle`), and reads the
+  last summary, the `drawn` events, the idle word, the counters and the ring's statistics. In the
+  probe build (below) `inputLog()` returns the records the worker decoded and `?ringStart=<u32>`
+  starts the counters there.
 
 ### Building
 
@@ -697,6 +777,15 @@ stays on Canvas 2D and `ci:bundle-size` reports `missing-artefact:engine`). The 
 `assets/dash-engine-*` (the wasm, its workers and adapter chunks). `make engine-wasm-check`
 (`ci:engine-gen`) builds twice and requires byte-equal output, a committed `dash_core_mt.d.ts`
 equal to the generated one, and `layout.gen.ts` equal to `cargo xtask gen-layout --check`.
+
+The probe build is for `e2e:shim-fuzz` only: `make engine-wasm-probe` (`cargo xtask build-wasm
+--probe`) builds the engine with the `probe` feature (`engine_probe_input`, the decoded records as
+JSON, at most 20 000; `engine_probe_ring_start`) into the git-ignored
+`client/src/engine/wasm/gen-probe/`, and `make e2e-build-probe` builds the client with
+`VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1` (Vite then resolves `virtual:dash-engine` to
+`gen-probe/`) into `client/dist-probe` and its stub BFF into `build/e2e-probe/pulsus-dash`.
+`ci:probe-absent` requires `engine_probe_input` in that tree's wasm (`--expect-probe`) and fails
+every other tree, the fault build included, that holds it.
 
 ### Tests in the browser
 
@@ -717,6 +806,12 @@ Chromium projects of the engine web image:
   background points touched; `noline` must fail. Anti-aliasing differs between the two renderers
   by design, so pixel identity is checked against the native renderer only.
 - `e2e:mode-matrix`, `e2e:engine-recovery` and the engine leg of `e2e:csp-violations`.
+- `e2e:shim-fuzz` (project `probe`: lavapipe, the probe build's BFF on port 4175, this spec only):
+  two probe frames with the gallery's `line-50` data take 10⁴ seeded ops (resize, time window,
+  spec; batches of 1–2 000, the first before the frames are created); the worker's decoded log
+  must equal the adapter's produced log record for record, records must have been coalesced, none
+  dropped, and the last window and `drawn` must be the last calls'. Two more cases cross 2³²
+  (`ringStart` 0xFFFF_F000) and wake an idle worker with one record (settled within 1 s).
 - `make engine-gpu-smoke` prints the adapter each project sees and whether it renders.
 
 Real-GPU WebGPU runs on a hardware runner later (follow-up).
@@ -735,8 +830,12 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
   never reporting it as drawn.
 - The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
   `minValueBand`), so the engine's plot rect equals Canvas 2D's.
-- In the browser: line frames only; no input until C2; WebGPU is verified only report-only in CI's
-  image (SwiftShader); one restart per page.
+- In the browser: line frames only; the camera is the idle camera of the time window until C2a2
+  (no gestures, hover or selection yet); WebGPU is verified only report-only in CI's image
+  (SwiftShader); one restart per page.
+- The input ring: 64 KiB; a Resize is 40 bytes and a Camera 64, so at most 1 638 records are in
+  flight; waiting records keep only the latest per kind and frame. CSS sizes travel as `f32`
+  (exact for 1/64 px below 2¹⁸ px); `drawn` reports the caller's values.
 
 ## Design rules and gates
 
@@ -753,8 +852,10 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 | T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery`, `golden:engine-line`, `unit:compare-tile-max` |
 | T01-001, T03-001, T03-003 | the adapter imports only the seam; no WASM on main | ESLint, `wasm/engine.test.ts` |
 | T03-005 | control block layout v1, generated TS | `unit:control-block-layout`, `ci:engine-gen` |
+| T03-004 (revised), T03-006, T03-019, T03-020 | the input ring: idle-word wake-up, SPSC release/acquire, read at frame start, nothing dropped | `unit:input-ring` (`ring`, `ring_decode`, `ring_rollover`, `ring_stress`, `wake_interleavings`, `ring_fixture`), `e2e:shim-fuzz` |
+| ADR-0019 | `drawn` of the presented capture, for the latest resize | `presentation_capture`, `wasm frame`, `probe settle` |
 | T03-022, ADR-0026 | CSP, Trusted Types, COEP | `e2e:csp-violations`, `unit:CSP` |
-| T03-024 | no test hook in a release build | `ci:probe-absent` |
+| T03-024 | no test hook in a release build; the probe export only in the probe build | `ci:probe-absent` |
 | T03-025 | fallback and recovery | `routing`, `restart policy`, `e2e:engine-recovery`, `e2e:mode-matrix` |
 | T18-006 | integrity-checked engine wasm | `wasm/integrity.test.ts`, `e2e:mode-matrix` (integrity leg) |
 | PRF-009 | the engine row | `ci:bundle-size` |
