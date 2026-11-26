@@ -19,6 +19,9 @@ import { readJson, record, report, type Finding } from './lib/report.ts';
 
 const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
+/** Stub (#263 tests first). */
+export const NEAR_BUDGET_BYTES = 0;
+
 export interface Budgets {
   initialRouteModules: string[];
   required: {

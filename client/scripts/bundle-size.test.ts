@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkBundle } from './bundle-size.ts';
+import { checkBundle, main, NEAR_BUDGET_BYTES } from './bundle-size.ts';
 
 const budgets: unknown = JSON.parse(
   readFileSync(fileURLToPath(new URL('../bundle-budgets.json', import.meta.url)), 'utf8'),
@@ -363,5 +363,112 @@ describe('ci:bundle-size workflow (#135)', () => {
     const st = stubSize[0] ?? -1;
     expect(lines[st + 1]).toBe('        run: npm run size');
     expect(st).toBeLessThan(httpBuild);
+  });
+});
+
+/** `budgets` with the initial JS budget replaced. */
+function withInitialBudget(initialJs: number): unknown {
+  const b = JSON.parse(JSON.stringify(budgets)) as { budgets: Record<string, number> };
+  b.budgets['initialJs'] = initialJs;
+  return b;
+}
+
+describe('bundle-size near-budget warning (#263)', () => {
+  const initialBytes = (): number => {
+    const row = checkBundle(makeDist(), budgets).rows.find((r) => r.cls === 'initialJs');
+    expect(row).toBeDefined();
+    return row?.bytes ?? 0;
+  };
+  it('(l) less than 3 000 B of headroom is one report-only warning', () => {
+    expect(NEAR_BUDGET_BYTES).toBe(3000);
+    const dist = makeDist();
+    const b = withInitialBudget(initialBytes() + 1000);
+    const r = checkBundle(dist, b);
+    expect(r.findings.map((f) => [f.rule, f.severity, f.subject])).toEqual([
+      ['near-budget:initialJs', 'warning', 'initialJs'],
+    ]);
+    expect(r.findings[0]?.message).toMatch(/1000 below the budget/);
+    expect(r.exitCode).toBe(0);
+    const path = join(dist, 'budgets-near.json');
+    writeFileSync(path, JSON.stringify(b));
+    expect(main([dist, path])).toBe(0);
+  });
+  it('(m) 3 000 B of headroom: no warning', () => {
+    const r = checkBundle(makeDist(), withInitialBudget(initialBytes() + 3000));
+    expect(r.findings).toEqual([]);
+  });
+  it('(n) over the budget: over-budget only', () => {
+    const r = checkBundle(makeDist(), withInitialBudget(initialBytes() - 1));
+    expect(r.findings.map((f) => f.rule)).toEqual(['over-budget:initialJs']);
+    expect(r.exitCode).toBe(1);
+  });
+});
+
+describe('bundle-size build boundaries (#263, PRF-009, T24-087)', () => {
+  it('(o) a lazy module in the initial JS', () => {
+    const r = checkBundle(
+      makeDist({ entryImports: ['src/widgets/text/TextMarkdown.tsx'] }),
+      budgets,
+    );
+    expect(r.findings.map((f) => [f.rule, f.subject])).toEqual([
+      ['lazy-in-initial', 'src/widgets/text/TextMarkdown.tsx'],
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+  const geo = (o: Record<string, unknown>) => ({
+    'src/vis/geo/urls.ts': {
+      file: GEO_ENTRY,
+      src: 'src/vis/geo/urls.ts',
+      isEntry: true,
+      assets: [GEO_BASEMAP, GEO_GAZETTEER],
+      ...o,
+    },
+  });
+  it.each([
+    ['imports the index chunk', { manifest: geo({ imports: ['index.html'] }) }],
+    [
+      'is a shell chunk',
+      {
+        manifest: geo({ file: 'assets/shell-c3.js' }),
+        files: { 'assets/shell-c3.js': Buffer.from('x') },
+      },
+    ],
+    ['is absent', { dropKeys: ['src/vis/geo/urls.ts'] }],
+    ['is not an entry', { manifest: geo({ isEntry: false }) }],
+    ['is in the initial JS', { entryImports: ['src/vis/geo/urls.ts'] }],
+  ] as [string, Overrides][])('(p) the geo-assets entry %s', (_case, overrides) => {
+    const r = checkBundle(makeDist(overrides), budgets);
+    expect(r.findings.map((f) => f.rule)).toEqual(['geo-entry-merged']);
+    expect(r.exitCode).toBe(1);
+  });
+  it('(p) the unchanged geo-assets entry passes', () => {
+    expect(checkBundle(makeDist(), budgets).findings).toEqual([]);
+  });
+});
+
+describe('make client-check (#263)', () => {
+  it('builds both API modes and measures each', () => {
+    const lines = readFileSync(new URL('../../Makefile', import.meta.url), 'utf8').split('\n');
+    const start = lines.findIndex((l) => /^client-check:/.test(l));
+    expect(start, 'no client-check target').toBeGreaterThanOrEqual(0);
+    const body: string[] = [];
+    for (const l of lines.slice(start + 1)) {
+      if (!l.startsWith('\t')) break;
+      body.push(l);
+    }
+    const recipe = body.join('\n');
+    let at = -1;
+    for (const step of [
+      'npm run build',
+      'npm run size',
+      'vite build --outDir dist-http',
+      'npm run size -- dist-http',
+      'npm run origins',
+    ]) {
+      const i = recipe.indexOf(step, at + 1);
+      expect(i, `${step} after position ${String(at)}`).toBeGreaterThan(at);
+      at = i;
+    }
+    expect(lines.find((l) => l.startsWith('.PHONY:'))).toMatch(/\bclient-check\b/);
   });
 });

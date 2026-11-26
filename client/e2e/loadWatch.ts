@@ -190,6 +190,21 @@ export function isBrowserCspReport(
   return false;
 }
 
+/** Stub (#263 tests first): today's path-only exemption. */
+export function isExempt(
+  method: string,
+  url: URL,
+  contentType?: string,
+  body: string | null = null,
+): boolean {
+  return url.pathname === '/favicon.ico' || isBrowserCspReport(method, url, contentType, body);
+}
+
+/** Stub (#263 tests first): today's path-only permit. */
+export function isPermittedImage(type: string, url: URL, images: ReadonlySet<string>): boolean {
+  return type === 'image' && images.has(requestPath(url));
+}
+
 function ignored(req: Request, url: URL): boolean {
   return (
     url.pathname === '/favicon.ico' ||
