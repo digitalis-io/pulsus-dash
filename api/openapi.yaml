@@ -160,15 +160,22 @@ paths:
     get:
       operationId: listAnnotations
       tags: [annotations]
-      description: The organisation's annotations overlapping [from, to] (at <= to AND coalesce(end_at, at) >= from), newest first, at most `limit` (plan #64 Part C §3.4). Organisation-scoped; no tenant parameter (D12). Hand-written handler; excluded from server generation.
+      description: The organisation's annotations overlapping [from, to] (at <= to AND coalesce(end_at, at) >= from), inside the data scope and the filters, newest first (at, then id, descending), at most `limit`, with the keyset cursor of the next page (plan #64 Part C §3.4, T24 §5.9). Organisation-scoped; no tenant parameter (D12). Hand-written handler; excluded from server generation.
       x-permission: annotation.read
       parameters:
         - { name: from, in: query, required: true, description: ms since the epoch, a canonical decimal integer, schema: { $ref: '#/components/schemas/EpochMs' } }
         - { name: to, in: query, required: true, description: ms since the epoch; greater than from, schema: { $ref: '#/components/schemas/EpochMs' } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 500 } }
+        - { name: kind, in: query, required: false, style: form, explode: true, description: 'Any of these kinds (T24 §5.9)', schema: { type: array, minItems: 1, maxItems: 4, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationKind' } } }
+        - { name: tag, in: query, required: false, style: form, explode: true, description: All of these tags, schema: { type: array, minItems: 1, maxItems: 8, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } } }
+        - { name: entity, in: query, required: false, style: form, explode: true, description: Any of these entities (lower-case EntityIds), schema: { type: array, minItems: 1, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/EntityId' } } }
+        - { name: orgWide, in: query, required: false, description: 'With entity only: also list the organisation-wide changes', schema: { type: boolean } }
+        - { name: beforeAt, in: query, required: false, description: 'The keyset cursor (T24-032), with beforeId: rows with (at, id) < (beforeAt, beforeId)', schema: { $ref: '#/components/schemas/EpochMs' } }
+        - { name: beforeId, in: query, required: false, description: With beforeAt; a lower-case canonical UUID, schema: { type: string, format: uuid } }
       responses:
         '200': { description: Annotations in the window, content: { application/json: { schema: { $ref: '#/components/schemas/AnnotationList' } } } }
-        '400': { description: Invalid window or limit, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '400': { description: 'Invalid window, limit or filter', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '403': { description: Outside the data scope, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     post:
       operationId: createAnnotation
@@ -179,6 +186,7 @@ paths:
       responses:
         '201': { description: Annotation created, content: { application/json: { schema: { $ref: '#/components/schemas/Annotation' } } } }
         '400': { description: Invalid annotation, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '403': { description: Outside the data scope, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '413': { description: Request body too large, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/annotations/{id}:
@@ -192,7 +200,8 @@ paths:
       responses:
         '204': { description: Deleted }
         '400': { description: Invalid id, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
-        '404': { description: Annotation not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '403': { description: Outside the data scope, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: Annotation not found (absent or outside the data scope), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/query/promql/range:
     post:
@@ -810,7 +819,7 @@ components:
       description: An event marker (ADR-0023), the JSON image of events/1 (T04 §0). end_at is null for a point.
       type: object
       additionalProperties: false
-      required: [id, at, end_at, kind, text, tags]
+      required: [id, at, end_at, kind, text, tags, entity]
       properties:
         id: { type: string, format: uuid }
         at: { $ref: '#/components/schemas/EpochMs' }
@@ -818,6 +827,7 @@ components:
         kind: { $ref: '#/components/schemas/AnnotationKind' }
         text: { type: string, minLength: 1, maxLength: 500 }
         tags: { type: array, maxItems: 16, items: { $ref: '#/components/schemas/AnnotationTag' } }
+        entity: { oneOf: [ { $ref: '#/components/schemas/AnnotationEntity' }, { type: 'null' } ], description: The entity the change is about; null is organisation-wide }
     AnnotationCreate:
       type: object
       additionalProperties: false
@@ -828,4 +838,43 @@ components:
         kind: { $ref: '#/components/schemas/AnnotationKind' }
         text: { type: string, minLength: 1, maxLength: 500 }
         tags: { type: array, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } }
-    AnnotationList: { type: object, additionalProperties: false, required: [items, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/Annotation' } }, truncated: { type: boolean } } }
+        entity: { oneOf: [ { $ref: '#/components/schemas/AnnotationEntityCreate' }, { type: 'null' } ], description: 'The entity, canonicalised by the T12 §4.2 kind table (T12-010); absent or null is organisation-wide' }
+    EntityId: { type: string, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', description: 'The XXH3-128 of the canonical bytes of (binding, kind, identifying values) as a lower-case UUID (T12-010)' }
+    AnnotationEntityCreate:
+      type: object
+      additionalProperties: false
+      required: [binding, kind, attrs]
+      properties:
+        binding: { type: string, pattern: '^[a-z0-9-]{1,40}$', description: The slug of a tenant binding of the organisation }
+        kind: { type: string, minLength: 1, maxLength: 64, description: A kind of the T12 §4.2 kind table }
+        attrs: { type: object, additionalProperties: { type: string, minLength: 1, maxLength: 256 }, description: Identifying attributes; each key an alternative of one of the kind's positions }
+    AnnotationEntity:
+      type: object
+      additionalProperties: false
+      required: [id, binding, kind, ident]
+      properties:
+        id: { $ref: '#/components/schemas/EntityId' }
+        binding: { type: string, pattern: '^[a-z0-9-]{1,40}$' }
+        kind: { type: string }
+        ident: { type: array, items: { type: [string, 'null'] }, description: The identifying values in schema order; null for an absent optional position }
+    AnnotationCursor: { type: object, additionalProperties: false, required: [at, id], properties: { at: { $ref: '#/components/schemas/EpochMs' }, id: { type: string, format: uuid } } }
+    AnnotationListApplied:
+      type: object
+      additionalProperties: false
+      description: The filters the server applied, as parsed; {} with none. Its absence marks a server before T24 B2 I5 (T24-038).
+      properties:
+        kinds: { type: array, minItems: 1, maxItems: 4, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationKind' } }
+        tags: { type: array, minItems: 1, maxItems: 8, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } }
+        entity: { type: array, minItems: 1, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/EntityId' } }
+        orgWide: { type: boolean }
+        before: { $ref: '#/components/schemas/AnnotationCursor' }
+    AnnotationList:
+      type: object
+      additionalProperties: false
+      required: [items, truncated, applied, next, orgWideHidden]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Annotation' } }
+        truncated: { type: boolean, description: next is not null }
+        applied: { $ref: '#/components/schemas/AnnotationListApplied' }
+        next: { oneOf: [ { $ref: '#/components/schemas/AnnotationCursor' }, { type: 'null' } ], description: 'The cursor of the next page (beforeAt, beforeId), or null' }
+        orgWideHidden: { type: [integer, 'null'], format: int64, minimum: 0, description: The organisation-wide changes the entity filter excluded; null when the data scope is not full }

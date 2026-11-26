@@ -204,7 +204,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The organisation's annotations overlapping [from, to] (at <= to AND coalesce(end_at, at) >= from), newest first, at most `limit` (plan */
+        /** @description The organisation's annotations overlapping [from, to] (at <= to AND coalesce(end_at, at) >= from), inside the data scope and the filters, newest first (at, then id, descending), at most `limit`, with the keyset cursor of the next page (plan */
         get: operations["listAnnotations"];
         put?: never;
         /** @description Records a deploy, configuration change, feature flag change or note, with an annotation.create audit event (T11-017). The body is at most 16 KiB. Hand-written handler; excluded from server generation. */
@@ -922,6 +922,8 @@ export interface components {
             kind: components["schemas"]["AnnotationKind"];
             text: string;
             tags: components["schemas"]["AnnotationTag"][];
+            /** @description The entity the change is about; null is organisation-wide */
+            entity: components["schemas"]["AnnotationEntity"] | null;
         };
         AnnotationCreate: {
             at: components["schemas"]["EpochMs"];
@@ -933,10 +935,53 @@ export interface components {
             kind: components["schemas"]["AnnotationKind"];
             text: string;
             tags?: components["schemas"]["AnnotationTag"][];
+            /** @description The entity, canonicalised by the T12 §4.2 kind table (T12-010); absent or null is organisation-wide */
+            entity?: components["schemas"]["AnnotationEntityCreate"] | null;
+        };
+        /** @description The XXH3-128 of the canonical bytes of (binding, kind, identifying values) as a lower-case UUID (T12-010) */
+        EntityId: string;
+        AnnotationEntityCreate: {
+            /** @description The slug of a tenant binding of the organisation */
+            binding: string;
+            /** @description A kind of the T12 §4.2 kind table */
+            kind: string;
+            /** @description Identifying attributes; each key an alternative of one of the kind's positions */
+            attrs: {
+                [key: string]: string;
+            };
+        };
+        AnnotationEntity: {
+            id: components["schemas"]["EntityId"];
+            binding: string;
+            kind: string;
+            /** @description The identifying values in schema order; null for an absent optional position */
+            ident: (string | null)[];
+        };
+        AnnotationCursor: {
+            at: components["schemas"]["EpochMs"];
+            /** Format: uuid */
+            id: string;
+        };
+        /** @description The filters the server applied, as parsed; {} with none. Its absence marks a server before T24 B2 I5 (T24-038). */
+        AnnotationListApplied: {
+            kinds?: components["schemas"]["AnnotationKind"][];
+            tags?: components["schemas"]["AnnotationTag"][];
+            entity?: components["schemas"]["EntityId"][];
+            orgWide?: boolean;
+            before?: components["schemas"]["AnnotationCursor"];
         };
         AnnotationList: {
             items: components["schemas"]["Annotation"][];
+            /** @description next is not null */
             truncated: boolean;
+            applied: components["schemas"]["AnnotationListApplied"];
+            /** @description The cursor of the next page (beforeAt, beforeId), or null */
+            next: components["schemas"]["AnnotationCursor"] | null;
+            /**
+             * Format: int64
+             * @description The organisation-wide changes the entity filter excluded; null when the data scope is not full
+             */
+            orgWideHidden: number | null;
         };
     };
     responses: {
@@ -1640,6 +1685,18 @@ export interface operations {
                 /** @description ms since the epoch; greater than from */
                 to: components["schemas"]["EpochMs"];
                 limit?: number;
+                /** @description Any of these kinds (T24 §5.9) */
+                kind?: components["schemas"]["AnnotationKind"][];
+                /** @description All of these tags */
+                tag?: components["schemas"]["AnnotationTag"][];
+                /** @description Any of these entities (lower-case EntityIds) */
+                entity?: components["schemas"]["EntityId"][];
+                /** @description With entity only: also list the organisation-wide changes */
+                orgWide?: boolean;
+                /** @description The keyset cursor (T24-032), with beforeId: rows with (at, id) < (beforeAt, beforeId) */
+                beforeAt?: components["schemas"]["EpochMs"];
+                /** @description With beforeAt; a lower-case canonical UUID */
+                beforeId?: string;
             };
             header?: never;
             path?: never;
@@ -1656,8 +1713,17 @@ export interface operations {
                     "application/json": components["schemas"]["AnnotationList"];
                 };
             };
-            /** @description Invalid window or limit */
+            /** @description Invalid window, limit or filter */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Outside the data scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1700,6 +1766,15 @@ export interface operations {
             };
             /** @description Invalid annotation */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Outside the data scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1755,7 +1830,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Annotation not found */
+            /** @description Outside the data scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Annotation not found (absent or outside the data scope) */
             404: {
                 headers: {
                     [name: string]: unknown;

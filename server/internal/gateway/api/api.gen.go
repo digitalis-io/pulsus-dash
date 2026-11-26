@@ -848,12 +848,15 @@ func (e VisOptionsTextMode) Valid() bool {
 // Annotation An event marker (ADR-0023), the JSON image of events/1 (T04 §0). end_at is null for a point.
 type Annotation struct {
 	// At ms since the Unix epoch
-	At    EpochMs            `json:"at"`
-	EndAt *int64             `json:"end_at"`
-	Id    openapi_types.UUID `json:"id"`
-	Kind  AnnotationKind     `json:"kind"`
-	Tags  []AnnotationTag    `json:"tags"`
-	Text  string             `json:"text"`
+	At    EpochMs `json:"at"`
+	EndAt *int64  `json:"end_at"`
+
+	// Entity The entity the change is about; null is organisation-wide
+	Entity *AnnotationEntity  `json:"entity"`
+	Id     openapi_types.UUID `json:"id"`
+	Kind   AnnotationKind     `json:"kind"`
+	Tags   []AnnotationTag    `json:"tags"`
+	Text   string             `json:"text"`
 }
 
 // AnnotationCreate defines model for AnnotationCreate.
@@ -862,10 +865,44 @@ type AnnotationCreate struct {
 	At EpochMs `json:"at"`
 
 	// EndAt at most 31 days after at
-	EndAt *int64           `json:"end_at,omitempty"`
-	Kind  AnnotationKind   `json:"kind"`
-	Tags  *[]AnnotationTag `json:"tags,omitempty"`
-	Text  string           `json:"text"`
+	EndAt *int64 `json:"end_at,omitempty"`
+
+	// Entity The entity, canonicalised by the T12 §4.2 kind table (T12-010); absent or null is organisation-wide
+	Entity *AnnotationEntityCreate `json:"entity,omitempty"`
+	Kind   AnnotationKind          `json:"kind"`
+	Tags   *[]AnnotationTag        `json:"tags,omitempty"`
+	Text   string                  `json:"text"`
+}
+
+// AnnotationCursor defines model for AnnotationCursor.
+type AnnotationCursor struct {
+	// At ms since the Unix epoch
+	At EpochMs            `json:"at"`
+	Id openapi_types.UUID `json:"id"`
+}
+
+// AnnotationEntity defines model for AnnotationEntity.
+type AnnotationEntity struct {
+	Binding string `json:"binding"`
+
+	// Id The XXH3-128 of the canonical bytes of (binding, kind, identifying values) as a lower-case UUID (T12-010)
+	Id EntityId `json:"id"`
+
+	// Ident The identifying values in schema order; null for an absent optional position
+	Ident []*string `json:"ident"`
+	Kind  string    `json:"kind"`
+}
+
+// AnnotationEntityCreate defines model for AnnotationEntityCreate.
+type AnnotationEntityCreate struct {
+	// Attrs Identifying attributes; each key an alternative of one of the kind's positions
+	Attrs map[string]string `json:"attrs"`
+
+	// Binding The slug of a tenant binding of the organisation
+	Binding string `json:"binding"`
+
+	// Kind A kind of the T12 §4.2 kind table
+	Kind string `json:"kind"`
 }
 
 // AnnotationKind defines model for AnnotationKind.
@@ -873,8 +910,27 @@ type AnnotationKind string
 
 // AnnotationList defines model for AnnotationList.
 type AnnotationList struct {
-	Items     []Annotation `json:"items"`
-	Truncated bool         `json:"truncated"`
+	// Applied The filters the server applied, as parsed; {} with none. Its absence marks a server before T24 B2 I5 (T24-038).
+	Applied AnnotationListApplied `json:"applied"`
+	Items   []Annotation          `json:"items"`
+
+	// Next The cursor of the next page (beforeAt, beforeId), or null
+	Next *AnnotationCursor `json:"next"`
+
+	// OrgWideHidden The organisation-wide changes the entity filter excluded; null when the data scope is not full
+	OrgWideHidden *int64 `json:"orgWideHidden"`
+
+	// Truncated next is not null
+	Truncated bool `json:"truncated"`
+}
+
+// AnnotationListApplied The filters the server applied, as parsed; {} with none. Its absence marks a server before T24 B2 I5 (T24-038).
+type AnnotationListApplied struct {
+	Before  *AnnotationCursor `json:"before,omitempty"`
+	Entity  *[]EntityId       `json:"entity,omitempty"`
+	Kinds   *[]AnnotationKind `json:"kinds,omitempty"`
+	OrgWide *bool             `json:"orgWide,omitempty"`
+	Tags    *[]AnnotationTag  `json:"tags,omitempty"`
 }
 
 // AnnotationTag defines model for AnnotationTag.
@@ -1023,6 +1079,9 @@ type DatasourceStatus struct {
 
 // DatasourceStatusState defines model for DatasourceStatus.State.
 type DatasourceStatusState string
+
+// EntityId The XXH3-128 of the canonical bytes of (binding, kind, identifying values) as a lower-case UUID (T12-010)
+type EntityId = string
 
 // EpochMs ms since the Unix epoch
 type EpochMs = int64
