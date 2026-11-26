@@ -19,14 +19,23 @@
 //! presentation is of the frame's current Resize and its (rseq, stage) differs from the frame's
 //! last reported one: the first completion after any applied Resize always reports, a stale one
 //! never does. A dropped or never-completed submission changes nothing.
+//!
+//! Part C2b (§4.3): an Overlay record sets the frame's hover and box band and dirties the frame,
+//! but not its layer: the build reuses the cached layer list unless a layer input (spec, data,
+//! theme, Resize, Camera) changed, recomputes the hover when an Overlay was applied since the last
+//! build (one `hover` event, with that Overlay's seq), then appends the overlay item, so the list
+//! drawn in a tick carries the hover that tick emits (T02-024). A Select record is answered at
+//! once against the presentation on screen (the last completed one, `onscreen`), never a newer
+//! state (ADR-0025): one `select` event, none while nothing is on screen.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use dash_marks::{DrawList, MarkItem};
+use dash_scene::hover::{HoverAt, HoverOut, PickSnap, hover_at, key_on, overlay_item, pick_item};
 use dash_scene::{
     Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
-    YRange, build_stage,
+    YRange, build_frame,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -70,6 +79,46 @@ impl CameraIn {
     }
 }
 
+/// The overlay of an Overlay record (plan #68 C2b §3.1): the hover and the box band's ends, CSS px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayIn {
+    pub hover: HoverAt,
+    pub box_x: Option<(f64, f64)>,
+}
+
+impl OverlayIn {
+    /// None: hover > 2, box > 1, a non-finite pointer x or y (hover 1), or a non-finite box end
+    /// (box 1). Fields a mode does not use are ignored.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_record(
+        hover: u8,
+        boxed: u8,
+        x: f64,
+        y: f64,
+        key: u32,
+        box_x0: f64,
+        box_x: f64,
+    ) -> Option<Self> {
+        let hover = match hover {
+            0 => HoverAt::None,
+            1 if x.is_finite() && y.is_finite() => HoverAt::Pointer { x, y },
+            2 => HoverAt::Key(key),
+            _ => return None,
+        };
+        let box_x = match boxed {
+            0 => None,
+            1 if box_x0.is_finite() && box_x.is_finite() => Some((box_x0, box_x)),
+            _ => return None,
+        };
+        Some(Self { hover, box_x })
+    }
+}
+
+const NO_OVERLAY: OverlayIn = OverlayIn {
+    hover: HoverAt::None,
+    box_x: None,
+};
+
 /// What one submitted presentation shows, captured at submit (C2a2 adds `stage`): the frame's
 /// last applied seq, the seq of its last applied Resize, its CSS size and DPR, and the series its
 /// draw list draws.
@@ -82,6 +131,8 @@ pub struct Presented {
     pub series: u32,
     /// The stage of the list (plan #68 C2a2 §3.3): None = no plot.
     pub stage: Option<StageInfo>,
+    /// What picking reads of the list (plan #68 C2b §3.2): Some exactly when `stage` is.
+    pub pick: Option<Arc<PickSnap>>,
 }
 
 /// A Resize as applied: CSS px, DPR and device px.
@@ -120,6 +171,20 @@ struct Frame {
     series: u32,
     /// The stage of the last built draw list.
     stage: Option<StageInfo>,
+    /// What picking reads of the last built list (Some exactly when `stage` is).
+    pick: Option<Arc<PickSnap>>,
+    /// The last applied Overlay, its seq, and whether one was applied since the last build.
+    overlay: OverlayIn,
+    oseq: u32,
+    overlay_dirty: bool,
+    /// A layer input changed since the cached list was built.
+    layer_dirty: bool,
+    /// The last built list, without the overlay.
+    layer: Option<DrawList>,
+    /// The hover the overlay draws, until the next Overlay (Canvas 2D's `lastHover`).
+    last_hover: Option<HoverOut>,
+    /// What the presentation on screen picks on: set when one completes.
+    onscreen: Option<Arc<PickSnap>>,
 }
 
 impl Frame {
@@ -138,6 +203,14 @@ impl Frame {
             applied: false,
             series: 0,
             stage: None,
+            pick: None,
+            overlay: NO_OVERLAY,
+            oseq: 0,
+            overlay_dirty: false,
+            layer_dirty: true,
+            layer: None,
+            last_hover: None,
+            onscreen: None,
         }
     }
 }
@@ -153,6 +226,10 @@ pub struct Frames {
     bad: u32,
     /// Per frame, the (rseq, stage) of its last `stage` event.
     reported: BTreeMap<u32, (u32, Option<StageInfo>)>,
+    /// `select` events of the records applied since the last `take_events`, in apply order.
+    events: Vec<String>,
+    /// `build_frame` calls (the layer builds).
+    layer_builds: u64,
 }
 
 impl Default for Frames {
@@ -163,6 +240,8 @@ impl Default for Frames {
             highest: 0,
             bad: 0,
             reported: BTreeMap::new(),
+            events: Vec::new(),
+            layer_builds: 0,
         }
     }
 }
@@ -173,7 +252,7 @@ pub fn series_of(list: &DrawList) -> u32 {
         .iter()
         .map(|i| match i {
             MarkItem::Line { series, .. } => series.end.saturating_sub(series.start),
-            MarkItem::Guides { .. } => 0,
+            MarkItem::Guides { .. } | MarkItem::Overlay { .. } => 0,
         })
         .sum()
 }
@@ -227,7 +306,9 @@ impl Frames {
     /// Applies one input record: the frame it dirtied, or None. A record of an unknown frame (one
     /// disposed after the publish) is ignored. A Camera that `CameraIn::from_record` rejects is
     /// counted in [`Frames::bad`] and leaves the camera unchanged, but still dirties the frame: the
-    /// ack seq moves to the record's and the next presentation carries it.
+    /// ack seq moves to the record's and the next presentation carries it. The same holds for an
+    /// Overlay `OverlayIn::from_record` rejects and a Select with a non-finite point (plan #68 C2b
+    /// §3.1). A valid Select is answered at once from the presentation on screen.
     pub fn apply(&mut self, d: &Decoded) -> Option<u32> {
         match d.rec {
             Record::Resize {
@@ -243,6 +324,7 @@ impl Frames {
                 f.rseq = d.seq;
                 f.seq = d.seq;
                 f.applied = true;
+                f.layer_dirty = true;
                 Some(frame)
             }
             Record::Camera {
@@ -257,6 +339,7 @@ impl Frames {
                 match CameraIn::from_record(view, value, band) {
                     Some(c) => {
                         f.camera = Some(c);
+                        f.layer_dirty = true;
                         Some(frame)
                     }
                     // Rejected: counted, the camera unchanged, but the frame still presents, so
@@ -267,12 +350,58 @@ impl Frames {
                     }
                 }
             }
+            Record::Overlay {
+                frame,
+                hover,
+                boxed,
+                x,
+                y,
+                key,
+                box_x0,
+                box_x,
+            } => {
+                let f = self.frames.get_mut(&frame)?;
+                f.seq = d.seq;
+                f.applied = true;
+                match OverlayIn::from_record(hover, boxed, x, y, key, box_x0, box_x) {
+                    Some(o) => {
+                        f.overlay = o;
+                        f.oseq = d.seq;
+                        f.overlay_dirty = true;
+                    }
+                    None => self.bad = self.bad.saturating_add(1),
+                }
+                Some(frame)
+            }
+            Record::Select { frame, x, y } => {
+                let f = self.frames.get_mut(&frame)?;
+                f.seq = d.seq;
+                f.applied = true;
+                if !(x.is_finite() && y.is_finite()) {
+                    self.bad = self.bad.saturating_add(1);
+                } else if let Some(s) = f.onscreen.as_deref() {
+                    self.events
+                        .push(events::select(frame, pick_item(s, x, y).as_ref()));
+                }
+                // Dirtied either way, so the next `drawn` carries the record's seq.
+                Some(frame)
+            }
         }
     }
 
-    /// Camera records rejected by `apply` so far.
+    /// Records rejected by `apply` so far.
     pub fn bad(&self) -> u32 {
         self.bad
+    }
+
+    /// The `select` events of the records applied since the last call, in apply order.
+    pub fn take_events(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.events)
+    }
+
+    /// Test hook: `build_frame` calls so far (an Overlay alone reuses the cached layer).
+    pub fn layer_builds(&self) -> u64 {
+        self.layer_builds
     }
 
     /// The state of the list being drawn: call it when the frame's draw list is submitted.
@@ -286,19 +415,23 @@ impl Frames {
             dpr,
             series: f.series,
             stage: f.stage.clone(),
+            pick: f.pick.clone(),
         })
     }
 
     /// The presentation `p` is complete: its `stage` when it is of the frame's current Resize and
     /// differs from the last reported (rseq, stage), then its `drawn` (ADR-0019), from `p` only;
-    /// none for a frame gone since, or at size 0.
+    /// none for a frame gone since, or at size 0. It is now what is on screen: clicks pick on it
+    /// (nothing at size 0 or without a plot).
     pub fn complete(&mut self, id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> Vec<String> {
-        let Some(f) = self.frames.get(&id) else {
+        let Some(f) = self.frames.get_mut(&id) else {
             return Vec::new();
         };
         if !(p.css.0 > 0.0 && p.css.1 > 0.0) {
+            f.onscreen = None;
             return Vec::new();
         }
+        f.onscreen = p.pick.clone();
         let mut out = Vec::with_capacity(2);
         let now = (p.rseq, p.stage.clone());
         if p.rseq == f.rseq && self.reported.get(&id) != Some(&now) {
@@ -335,10 +468,12 @@ impl Frames {
         match VisSpec::from_json(json) {
             Ok(spec) => {
                 f.spec = Some(spec);
+                f.layer_dirty = true;
                 Ok(())
             }
             Err(e) => {
                 f.spec = None;
+                f.layer_dirty = true;
                 Err(CoreError::Spec(e))
             }
         }
@@ -347,12 +482,14 @@ impl Frames {
     pub fn set_camera(&mut self, id: u32, c: CameraIn) {
         if let Some(f) = self.frames.get_mut(&id) {
             f.camera = Some(c);
+            f.layer_dirty = true;
         }
     }
 
     pub fn set_theme(&mut self, id: u32, theme: Theme) {
         if let Some(f) = self.frames.get_mut(&id) {
             f.theme = theme;
+            f.layer_dirty = true;
         }
     }
 
@@ -361,6 +498,7 @@ impl Frames {
         if let Some(f) = self.frames.get_mut(&id) {
             f.size = Some((css, dpr, device));
             f.rseq = rseq;
+            f.layer_dirty = true;
         }
     }
 
@@ -378,6 +516,7 @@ impl Frames {
     pub fn set_chunk(&mut self, id: u32, chunk: Option<Arc<Chunk>>) {
         if let Some(f) = self.frames.get_mut(&id) {
             f.data = chunk;
+            f.layer_dirty = true;
         }
     }
 
@@ -417,6 +556,7 @@ impl Frames {
         });
         if let Err(e) = pushed {
             f.data = None;
+            f.layer_dirty = true;
             f.building = Some(Building::Rejected);
             return Err(e);
         }
@@ -426,6 +566,7 @@ impl Frames {
     /// Ends the chunk and makes it the frame's data (through [`Frames::set_chunk`]).
     pub fn data_end(&mut self, id: u32) -> Result<(), CoreError> {
         let f = self.frames.get_mut(&id).ok_or(CoreError::NoFrame)?;
+        f.layer_dirty = true;
         match f.building.take() {
             Some(Building::Open(b)) => {
                 f.data = Some(Arc::new(b.finish()));
@@ -445,6 +586,7 @@ impl Frames {
         if let Some(f) = self.frames.get_mut(&id) {
             f.data = None;
             f.building = None;
+            f.layer_dirty = true;
         }
     }
 
@@ -453,66 +595,96 @@ impl Frames {
         self.frames.keys().copied().collect()
     }
 
-    /// The draw list of frame `id` and its `a11y` summary JSON when it changed since the last
-    /// build; `None` for an unknown frame.
-    pub fn build(&mut self, id: u32) -> Option<(DrawList, Option<String>)> {
+    /// The draw list of frame `id`, its `a11y` summary JSON when it changed since the last build
+    /// and its `hover` event when an Overlay was applied since the last build (plan #68 C2b §4.3);
+    /// `None` for an unknown frame. The layer is rebuilt only when a layer input changed; the
+    /// overlay item, last, draws the hover this build emits.
+    #[allow(clippy::type_complexity)]
+    pub fn build(&mut self, id: u32) -> Option<(DrawList, Option<String>, Option<String>)> {
         let f = self.frames.get_mut(&id)?;
-        let ((w, h), dpr, _) = f.size.unwrap_or(((0.0, 0.0), 1.0, (0, 0)));
-        let css = Size64 {
-            w: f64::from(w),
-            h: f64::from(h),
-        };
-        let window = f
-            .camera
-            .map_or((f64::NAN, f64::NAN), |c| (c.view.lo, c.view.hi));
-        let spec = f
-            .spec
-            .clone()
-            .unwrap_or(VisSpec::Unsupported(VisKind::Line));
-        let v = Viewport {
-            id,
-            frame_id: f.frame_id.clone(),
-            css,
-            dpr,
-            theme: f.theme,
-            camera: Camera::Plot2D(PlotCamera {
-                x: Range64::from(window),
-                y: f.camera
-                    .and_then(|c| c.value)
-                    .map_or(YRange::Auto, YRange::Manual),
-            }),
-            spec: spec.clone(),
-            data: f.data.clone(),
-            band: f
+        let mut changed = None;
+        if f.layer_dirty || f.layer.is_none() {
+            let ((w, h), dpr, _) = f.size.unwrap_or(((0.0, 0.0), 1.0, (0, 0)));
+            let css = Size64 {
+                w: f64::from(w),
+                h: f64::from(h),
+            };
+            let window = f
                 .camera
-                .and_then(|c| c.band)
-                .map_or(Band::Measure, Band::Fixed),
-        };
-        let (list, summary, stage) = build_stage(&v);
-        f.series = series_of(&list);
-        f.stage = stage;
-        let summary = match (&f.spec, summary) {
-            (None, _) => None,
-            (Some(VisSpec::Unsupported(kind)), _) => f
-                .camera
-                .map(|c| unsupported_summary(*kind, (c.view.lo, c.view.hi), css)),
-            (Some(VisSpec::Line(_)), Some(s)) => serde_json::to_value(s).ok().map(|mut s| {
-                if let Some(o) = s.as_object_mut() {
-                    o.insert("thresholdLabels".into(), json!([]));
-                    o.insert("eventLabels".into(), json!([]));
+                .map_or((f64::NAN, f64::NAN), |c| (c.view.lo, c.view.hi));
+            let spec = f
+                .spec
+                .clone()
+                .unwrap_or(VisSpec::Unsupported(VisKind::Line));
+            let v = Viewport {
+                id,
+                frame_id: f.frame_id.clone(),
+                css,
+                dpr,
+                theme: f.theme,
+                camera: Camera::Plot2D(PlotCamera {
+                    x: Range64::from(window),
+                    y: f.camera
+                        .and_then(|c| c.value)
+                        .map_or(YRange::Auto, YRange::Manual),
+                }),
+                spec: spec.clone(),
+                data: f.data.clone(),
+                band: f
+                    .camera
+                    .and_then(|c| c.band)
+                    .map_or(Band::Measure, Band::Fixed),
+            };
+            let built = build_frame(&v);
+            self.layer_builds += 1;
+            f.series = series_of(&built.list);
+            f.stage = built.stage;
+            f.pick = built.pick;
+            let summary = match (&f.spec, built.summary) {
+                (None, _) => None,
+                (Some(VisSpec::Unsupported(kind)), _) => f
+                    .camera
+                    .map(|c| unsupported_summary(*kind, (c.view.lo, c.view.hi), css)),
+                (Some(VisSpec::Line(_)), Some(s)) => serde_json::to_value(s).ok().map(|mut s| {
+                    if let Some(o) = s.as_object_mut() {
+                        o.insert("thresholdLabels".into(), json!([]));
+                        o.insert("eventLabels".into(), json!([]));
+                    }
+                    s
+                }),
+                (Some(VisSpec::Line(_)), None) => None,
+            };
+            let text = summary.map(|s| s.to_string());
+            changed = match &text {
+                Some(t) if f.last_a11y.as_deref() != Some(t.as_str()) => {
+                    f.last_a11y = Some(t.clone());
+                    Some(t.clone())
                 }
-                s
-            }),
-            (Some(VisSpec::Line(_)), None) => None,
+                _ => None,
+            };
+            f.layer = Some(built.list);
+            f.layer_dirty = false;
+        }
+        // The hover of the last Overlay, on this list's pick (none without a plot); a key index
+        // from an older stage is clamped to this pick's samples (`key_on`).
+        let hover = if std::mem::take(&mut f.overlay_dirty) {
+            f.last_hover = f
+                .pick
+                .as_deref()
+                .and_then(|p| hover_at(p, key_on(p, f.overlay.hover)));
+            Some(events::hover(id, f.oseq, f.last_hover.as_ref()))
+        } else {
+            None
         };
-        let text = summary.map(|s| s.to_string());
-        let changed = match &text {
-            Some(t) if f.last_a11y.as_deref() != Some(t.as_str()) => {
-                f.last_a11y = Some(t.clone());
-                Some(t.clone())
-            }
-            _ => None,
-        };
-        Some((list, changed))
+        let mut list = f.layer.clone()?;
+        if let Some(p) = f.pick.as_deref() {
+            list.items.push(overlay_item(
+                p,
+                f.last_hover.as_ref(),
+                f.overlay.box_x,
+                f.theme,
+            ));
+        }
+        Some((list, changed, hover))
     }
 }

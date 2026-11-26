@@ -219,7 +219,10 @@ export function compareImages(
   return { code: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
 }
 
-/** `dash-golden render` of a gallery line page (the native lavapipe renderer, plan #68 C1). */
+/**
+ * `dash-golden render` of a gallery line page (the native lavapipe renderer, plan #68 C1), with
+ * the overlay of a hover and a box band (plan #68 C2b).
+ */
 export function nativeRender(o: {
   page: string;
   theme: string;
@@ -227,7 +230,14 @@ export function nativeRender(o: {
   dpr: number;
   tier: 't1' | 't2';
   out: string;
+  /** Plan #68 C2b: a pointer hover and a box band, canvas CSS px (`--hover x,y`, `--box x0,x`). */
+  hover?: readonly [number, number];
+  box?: readonly [number, number];
 }): void {
+  const overlay = [
+    ...(o.hover === undefined ? [] : ['--hover', o.hover.join(',')]),
+    ...(o.box === undefined ? [] : ['--box', o.box.join(',')]),
+  ];
   const r = spawnSync(
     goldenBin(),
     [
@@ -244,6 +254,7 @@ export function nativeRender(o: {
       o.tier,
       '--out',
       o.out,
+      ...overlay,
     ],
     { encoding: 'utf8' },
   );

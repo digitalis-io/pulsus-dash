@@ -2,7 +2,8 @@
 //! `ring_fixture`; T03-006, T03-019): the render worker reads [tail, head) in order, follows the
 //! wrap marker, rejects a bad record with the rest of the batch, and always leaves tail = head;
 //! the free-running `u32` counters roll over 2³² without losing a record; the TS `InputRing`'s
-//! bytes (`engine/fixtures/input-ring.json`) decode to what it logged.
+//! bytes (`engine/fixtures/input-ring.json`) decode to what it logged. Plan #68 C2b (§5
+//! `ring_decode`): Overlay and Select records, an Overlay across the wrap, and a short Overlay.
 mod common;
 #[path = "../../../tests-common/fixture.rs"]
 mod fixture;
@@ -76,6 +77,104 @@ fn ring_decode() {
         }
     ));
     assert_eq!((w.tail(), w.head()), (RING_BYTES + 64, RING_BYTES + 64));
+
+    // Plan #68 C2b: an Overlay at the wrap (24 bytes left), then a Select; an Overlay of 56 bytes.
+    let o = Block::default();
+    o.start_at(RING_BYTES - 24);
+    let mut p = Producer::default();
+    let ov = Rec::Overlay {
+        frame: 3,
+        hover: 1,
+        boxed: 1,
+        x: 320.25,
+        y: 108.5,
+        key: 0,
+        box_x0: 100.0,
+        box_x: 40.5,
+    };
+    assert!(p.publish(&o, &ov, 8, 2.0));
+    assert_eq!(o.get(RING_BYTES - 24) & 0xFF, u32::from(rec::WRAP));
+    let sel = Rec::Select {
+        frame: 3,
+        x: 12.5,
+        y: -3.0,
+    };
+    assert!(p.publish(&o, &sel, 9, 3.0));
+    let key = Rec::Overlay {
+        frame: 3,
+        hover: 2,
+        boxed: 0,
+        x: 0.0,
+        y: 0.0,
+        key: 60,
+        box_x0: 0.0,
+        box_x: 0.0,
+    };
+    assert!(p.publish(&o, &key, 10, 4.0));
+    let mut out = Vec::new();
+    assert_eq!(drain(&o, &mut out), Ok(()));
+    assert_eq!(
+        out,
+        vec![
+            Decoded {
+                seq: 8,
+                t_ms: 2.0,
+                rec: Record::Overlay {
+                    frame: 3,
+                    hover: 1,
+                    boxed: 1,
+                    x: 320.25,
+                    y: 108.5,
+                    key: 0,
+                    box_x0: 100.0,
+                    box_x: 40.5
+                }
+            },
+            Decoded {
+                seq: 9,
+                t_ms: 3.0,
+                rec: Record::Select {
+                    frame: 3,
+                    x: 12.5,
+                    y: -3.0
+                }
+            },
+            Decoded {
+                seq: 10,
+                t_ms: 4.0,
+                rec: Record::Overlay {
+                    frame: 3,
+                    hover: 2,
+                    boxed: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    key: 60,
+                    box_x0: 0.0,
+                    box_x: 0.0
+                }
+            },
+        ]
+    );
+    assert_eq!(o.tail(), o.head());
+    let short = Block::default();
+    let mut p = Producer::default();
+    assert!(p.publish(
+        &short,
+        &Rec::Raw {
+            kind: 0x24,
+            size: 56
+        },
+        1,
+        1.0
+    ));
+    let mut out = Vec::new();
+    assert_eq!(
+        drain(&short, &mut out),
+        Err(Bad { at: 0 }),
+        "an Overlay of 56 bytes"
+    );
+    assert!(out.is_empty());
+    assert_eq!(short.tail(), short.head());
 
     // An unknown kind and a size below the header: the rest is skipped, tail = head.
     for (word0, name) in [

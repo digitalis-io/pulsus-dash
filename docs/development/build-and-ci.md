@@ -844,7 +844,7 @@ file ownership with `ENGINE_RUN_FLAGS=--userns=keep-id`). The image keeps its bu
 | `make engine-image` | `docker build -f engine/ci/lavapipe.Dockerfile -t pulsus-engine-ci:local engine/ci` | — |
 | `make engine-test` | `cargo nextest run --workspace --exclude dash-golden --locked` | `unit:*` |
 | `make engine-lint` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo xtask spec-lint`, `cargo deny --locked check …` | `ci:engine-lint`, `ci:spec-lint`, `ci:dep-audit` |
-| `make engine-goldens` | `cargo test -p dash-golden --release --locked golden_` | `golden:gallery`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
+| `make engine-goldens` | `cargo test -p dash-golden --release --locked golden_` | `golden:gallery`, `golden:engine-overlay`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
 | `make engine-goldens-update` | the same with `GOLDEN_UPDATE=1`, writing `engine/crates/dash-golden/goldens/*.png` | — |
 
 Outside the image, `cargo test --workspace` in `engine/` runs everything on the host's lavapipe;
@@ -866,10 +866,10 @@ repository at `/w`, git's common directory mounted where a worktree's `.git` fil
 | `make engine-web-image` | builds `pulsus-engine-web:local` (after `make engine-image`) | — |
 | `make engine-wasm` | `cargo xtask build-wasm` into the git-ignored `client/src/engine/wasm/gen/`; `make build` (so `make e2e-build`) needs it | — |
 | `make engine-wasm-check` | two builds from separate target directories, byte-equal; the generated `dash_core_mt.d.ts` equal to the committed one; `cargo xtask gen-layout --check` | `ci:engine-gen` |
-| `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
+| `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`; `engine_probe_freeze` and `engine_probe_unfreeze`, plan #68 C2b) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
 | `make e2e-build-probe` | after `make engine-wasm-probe`: `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 make build API_MODE=stub CLIENT_OUT=dist-probe` (Vite resolves `virtual:dash-engine` to `gen-probe/`) into `client/dist-probe` and `build/e2e-probe/pulsus-dash`, then `probe-absent.ts --expect-faults --expect-probe client/dist-probe` | `ci:probe-absent` (probe tree) |
 | `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
-| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz` |
+| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `bench:shim-input-cost` (report-only) |
 
 **Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
 --ignore-gpu-blocklist --disable-vulkan-surface`, WebGL2 through ANGLE on lavapipe.
@@ -880,12 +880,21 @@ SwiftShader cannot render in the pinned image (`onSubmittedWorkDone` and `mapAsy
 project's failures soft; the run, `make engine-e2e` and `make engine-gpu-smoke` print
 `WebGPU leg report-only: <reason>`. Remove the file when the leg renders. Real-GPU WebGPU is a
 hardware-runner follow-up. `probe` (plan #68 C2a1): the `lavapipe` flags against the probe build's
-BFF (`tools/e2e/serve.sh probe 4175`), `e2e/engine-shim-fuzz.spec.ts` only; the other two
-projects skip that spec, and every other spec and golden runs on the fault build (release wasm).
+BFF (`tools/e2e/serve.sh probe 4175`), `e2e/engine-shim-fuzz.spec.ts` and `e2e:engine-hover` H1b
+(plan #68 C2b: it freezes a frame at one presentation, a probe-build hook); the other two projects
+skip the fuzz and H1b, and every other spec and golden runs on the fault build (release wasm).
+`e2e:engine-hover` H1–H6 run like `e2e:engine-camera`: `lavapipe` gated, `swiftshader`
+report-only.
 
 **Goldens in the browser.** `golden:engine-line` compares the browser engine's canvas
 (`&engine=wasm&mode=t2`, status 2, llvmpipe) with `dash-golden render` of the same page, theme, CSS
-size and DPR: both images `round(css × dpr)`, `compare --max 0.001 --tile-max 0.05`. `canvas2d
+size and DPR: both images `round(css × dpr)`, `compare --max 0.001 --tile-max 0.05`. Since plan
+#68 C2b it also compares `line-50` dark hovered at the plot's centre and with a box band (a right
+drag over 20–40 % of the plot) against `dash-golden render … --hover X,Y` and `--box X0,X` (canvas
+CSS px: the native render draws the engine's overlay for that pointer and band). The native
+`golden:engine-overlay` (in `make engine-goldens`) checks the same overlay on `line-50` dark and
+light at 1118 × 240 against `goldens/line-50-{dark,light}-overlay.png`, T1 vs T2 within mean ꟻLIP
+0.001. `canvas2d
 parity` is sampled geometric parity with Canvas 2D (equal plot rects, a sampled line mask); the two
 renderers anti-alias differently by design.
 
@@ -910,7 +919,7 @@ or the workflow (opened, synchronised, reopened, labelled), on pushes to `main`,
 | `lint` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo xtask spec-lint` | `ci:engine-lint`, `ci:spec-lint` |
 | `deny` | `cargo deny --locked check licenses advisories bans sources` | `ci:dep-audit` (engine leg) |
 | `test` | `cargo nextest run --workspace --exclude dash-golden --locked` | `unit:*` |
-| `goldens` | `cargo test -p dash-golden --release --locked golden_`; nightly also `-- --ignored golden_decimation_` (10⁸ points) | `golden:gallery`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
+| `goldens` | `cargo test -p dash-golden --release --locked golden_`; nightly also `-- --ignored golden_decimation_` (10⁸ points) | `golden:gallery`, `golden:engine-overlay`, `golden:decimation-raw`, `golden:decimation-ref`, `golden:extreme-range` |
 
 **Engine goldens.** With the `golden-update` label on the PR, the `goldens` job runs with
 `GOLDEN_UPDATE=1` and uploads the written PNGs as the `engine-goldens` artefact (14 days); commit

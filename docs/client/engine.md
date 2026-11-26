@@ -291,9 +291,12 @@ them with `engine/crates/dash-golden/goldens/*.png` by mean ꟻLIP ≤ 0.005
 line-600 in dark and light at 1118 × 240, line-50 dark at DPR 2, and line-50 dark with a manual
 value range (the middle 40 % of the auto domain). Each page must render byte-equal on T1 and T2 and
 twice in a row, and the adapter must be llvmpipe at the Mesa version in `engine/tools.toml`.
+`golden:engine-overlay` (Part C2b) renders line-50 dark and light with a hover at the plot's centre
+column and a box band over 20–40 % of the plot (`line-50-{dark,light}-overlay.png`); T1 and T2
+agree within mean ꟻLIP 0.001 (the overlay's coverage is analytic, not byte-equal across tiers).
 
 ```
-dash-golden render  --page line-50 --theme dark --size 1118x240 --dpr 1 --tier t1 [--value-range MIN,MAX] --out a.png
+dash-golden render  --page line-50 --theme dark --size 1118x240 --dpr 1 --tier t1 [--value-range MIN,MAX] [--hover X,Y] [--box X0,X] --out a.png
 dash-golden compare a.png b.png [--region x,y,w,h]… [--max 0.005] [--tile-max V]   # mean ꟻLIP (and the largest 8×8 tile mean); exit 1 above a limit
 ```
 
@@ -655,8 +658,9 @@ v1 (T03 §4.3); `client/src/engine/wasm/layout.gen.ts` is generated from it.
 
 ### The input ring (Part C2a1)
 
-The camera (the time window, the value range and the value-label band) and the size of each
-engine frame go from the main thread to the render worker through the control block's input ring
+The camera (the time window, the value range and the value-label band), the size, the hover and
+box band (the overlay) and the clicks of each engine frame go from the main thread to the render
+worker through the control block's input ring
 (T03 §5.4), one producer (`wasm/ring.ts`, one `InputRing` per engine memory) and one consumer
 (`dash-core::input`), read at the start of each worker tick (T03-019).
 
@@ -668,20 +672,24 @@ main thread's `performance.now()` at the call), little-endian, every size a mult
 | `0x00` | Wrap | — | continue at the start of the ring (written in a gap at the end that a record would cross) |
 | `0x20` | Resize | 40 | `f32` CSS width, height and DPR, `u32` device width and height (`round(css × dpr)`), `u32` frame |
 | `0x23` | Camera | 64 | `u32` frame, pad, `f64` view lo and hi (ms), value min and max (NaN = auto), band (NaN = measured) |
+| `0x24` | Overlay (Part C2b) | 64 | `u32` frame, `u8` hover (0 none, 1 pointer, 2 key), `u8` box (0, 1), `u16` 0, `f64` pointer x and y (CSS px), `u32` key index, `u32` 0, `f64` box x0 and x (CSS px); fields a mode does not use are 0 |
+| `0x25` | Select (Part C2b) | 40 | `u32` frame, `u32` 0, `f64` x and y (CSS px) |
 
-The offsets are `dash-protocol::input`, generated into `layout.gen.ts` (`REC_*`, `RESIZE_*`,
-`CAMERA_*`).
+`0x26` is reserved. The offsets are `dash-protocol::input`, generated into `layout.gen.ts`
+(`REC_*`, `RESIZE_*`, `CAMERA_*`, `OVERLAY_*`, `SELECT_*`).
 
 **Counters.** `INPUT_HEAD` (0x80, main) and `INPUT_TAIL` (0xC0, render) are free-running `u32` byte
 counts: occupied = `(head − tail) mod 2³²`, the physical offset = `counter & 0xFFFF`. The producer
 writes a record, then stores the head (release); the consumer loads the head (acquire), reads
 `[tail, head)` and stores tail = head. They roll over 2³² freely.
 
-**Coalescing.** A record that does not fit waits on the main thread, keyed by kind and frame: a
-later call of the same kind for the same frame replaces it (deleted, then inserted at the end;
-`coalesced` counts these). Up to 32 waiting records are published before a new one, which waits
-behind any that remain; each animation frame publishes up to 256. Nothing is dropped, so
-`INPUT_OVERFLOW` stays 0.
+**Coalescing.** A state record (Resize, Camera, Overlay) that does not fit waits on the main
+thread, keyed by kind and frame: a later call of the same kind for the same frame replaces it
+(deleted, then inserted at the end; `coalesced` counts these). A Select is discrete: its key is
+unique, so it is never replaced, and a frame keeps at most 8 waiting; a 9th drops that frame's
+oldest waiting Select, adds 1 to `INPUT_OVERFLOW` and warns once per frame (`pulsus engine: frame
+<id> dropped a click (ring full)`). Up to 32 waiting records are published before a new one, which
+waits behind any that remain; each animation frame publishes up to 256. Nothing else is dropped.
 
 **Seqs.** Each frame numbers its records from 1 when they are published (never while they wait),
 skipping 0 on the wire. The main thread keeps each frame's count as a 53-bit integer and extends
@@ -719,8 +727,10 @@ end of the ring, the wrong size for its kind or of an unknown kind ends the batc
 skipped (tail = head), `INPUT_BAD` (0x4D10) counts it and the first is logged
 (`pulsus engine: input record at <counter>`). A Camera with a non-finite or empty view, a
 non-finite or empty value range or a negative band is counted the same way and leaves the camera
-unchanged; the frame still redraws, so its `drawn` carries the record's seq. A record
-of a disposed frame is ignored and not counted.
+unchanged; the frame still redraws, so its `drawn` carries the record's seq. So is an Overlay
+with hover above 2, box above 1, a non-finite pointer x or y (hover 1) or a non-finite box end
+(box 1), and a Select with a non-finite x or y: the state stays, no `hover` or `select` follows.
+A record of a disposed frame is ignored and not counted.
 
 ### The camera controller (Part C2a2)
 
@@ -728,9 +738,11 @@ of a disposed frame is ignored and not counted.
 (`client/src/engine/controlled.ts`), which runs #93's `FrameController` (`engine/controller/`,
 [charts.md](charts.md#zoom-and-pan-the-2d-camera-93)) on the main thread, on the canvas element
 that stays in the page after its transfer ([ADR-0030](../../designs/adr/0030-engine-camera-controller-on-main.md)).
-Every camera change is one `setCamera`: one Camera record with the view, the value view (null =
-auto) and the held band (null = measured), coalesced in the ring like any other. A Ctrl or ⌘ wheel
-zooms both axes and changes the camera once per axis, so it sends two.
+The camera goes as `setCamera`: one Camera record with the view, the value view (null = auto) and
+the held band (null = measured), coalesced in the ring like any other. Since Part C2b the
+controller's camera and overlay changes are batched: a task writes at most one Camera and one
+Overlay ([below](#hover-select-and-the-overlay-part-c2b)), so a Ctrl or ⌘ wheel that zooms both
+axes writes one Camera.
 
 | `ControlledFrame` call | Controller | `WasmFrame` |
 |---|---|---|
@@ -760,7 +772,8 @@ no data, an empty plot). A retried, re-run, failed or never-completed submission
 On the main thread every `resize()` call blocks the stage until a `stage` or `drawn` of that call
 arrives (no Resize held or waiting, and the event's `rseq` the call's seq); blocked `stage` events
 are ignored. A zero size withdraws the stage at once (the worker draws nothing then). `onStage`
-fires on every change; `pickCount` is 0 until Part C2b.
+fires on every change. Since Part C2b the stage also carries `pickCount` (the samples of series 0,
+0 with no series shown): the keyboard crosshair's range.
 
 **The lag.** While a new layout is submitted, retried or awaiting its read-back, input keeps acting
 on the stage on screen; the held band keeps the plot fixed through a gesture, so the anchor stays
@@ -773,9 +786,86 @@ the committed camera (the last external `setSpec` or `setTimeWindow`, or the las
 no `commit` or `brush` follows. An engine restart mid-gesture creates a new `ControlledFrame`: the
 gesture is dropped without a commit, as on dispose.
 
-**Cost.** Per DOM event the main thread runs the controller's arithmetic and at most one Camera
-record per axis it moves: one ring write, or two for a Ctrl or ⌘ wheel that zooms both axes
-(T03-003). `bench:shim-input-cost` times each whole dispatch, both writes included.
+**Cost.** Per DOM event the main thread runs the controller's arithmetic; the ring writes are
+batched to at most one Camera and one Overlay per task (T03-003). `bench:shim-input-cost` times
+each dispatch with the frame's flush, so both writes are included.
+
+### Hover, select and the overlay (Part C2b)
+
+Hover stays in the render worker ([ADR-0030](../../designs/adr/0030-engine-camera-controller-on-main.md)
+decision 2): the main thread sends where the pointer or the key crosshair is, and the box band,
+as an Overlay record, and a click as a Select record. The worker picks on the f64 originals of the
+presentation and draws the overlay (crosshair, hover dots, box band) itself.
+
+**Batching (`ControlledFrame`).** The controller's stage calls only mark what changed and schedule
+one flush per task (`queueMicrotask`; the `defer` option in tests):
+
+| Stage call | `ControlledFrame` |
+|---|---|
+| `redraw()` | the camera is dirty |
+| `hover()`, `boxChanged()` | the overlay is dirty |
+| `clearHover()` | a shown hover becomes `hover: null` at once; the overlay is dirty |
+| `select(p)` | `flush()`, then `select(p.x, p.y)` (a Select record) |
+
+`flush()` writes the camera (when there is a view), then the overlay: the key index when the
+keyboard crosshair is on, else the pointer when it is in the plot, else none, and the box band
+while a moved right drag runs. Every forwarding call (`setSpec`, `setData`, `setTimeWindow`,
+`setTheme`, `setEvents`, `setSelection`, `resize`) runs the controller, flushes, then calls the
+engine frame, so a Camera always precedes the Resize or spec it belongs with. Nothing is written
+after `dispose`. Every layout input clears the hover, so it also writes an Overlay of none.
+
+**In the worker** (`dash-core::frames`, `dash-scene::hover`):
+
+| Step | Behaviour |
+|---|---|
+| Overlay applied | stores the hover and the box band and its seq (`oseq`); the frame is dirty, its layer is not |
+| Select applied | picks at once on the presentation on screen (the last completed one): one `select` event, none while nothing is on screen (no completion yet, a zero size, no plot) |
+| build | the layer (`build_frame`: the draw list, summary, stage and the pick snapshot) is rebuilt only when a layer input changed (spec, data, theme, Resize, Camera); otherwise the cached list is reused. When an Overlay was applied since the last build, the hover is recomputed on the list's pick and one `hover` event goes out with its `oseq`. Then the overlay item is appended last, so the list drawn in a tick carries the hover that tick emits (T02-024) |
+| submit, complete | the presentation captures the pick snapshot; when it completes it becomes what clicks pick on |
+
+The hover rules are the Canvas 2D line rules, ported bit for bit ([charts](charts.md#interaction-int-033-ia-020-subset)):
+the pointer snaps to the nearest sample of series 0 (ties to the earlier), and every shown series
+whose nearest sample is within half its own mean step gives a row (NaN omitted); the keyboard
+crosshair is a sample index of series 0 at the plot's top. The main thread takes its key range
+from the stage it has, which can be an older presentation's (new data shortened series 0 before
+its stage arrived), so the worker clamps a key index to the last sample of the pick it uses
+(`key_on`: End still means the last sample) and gives no hover when there is no sample; a hover
+never carries a non-finite time or position. A click picks the row nearest the
+pointer's y at the snapped time. The hover drawn stays until the next Overlay (Canvas 2D's
+`lastHover`).
+
+**The overlay** (`MarkItem::Overlay`, `dash-marks::overlay`): `drawOverlay`'s shapes in its order:
+the 1 px crosshair at `round(xCss)` over the plot's height (`text-muted`), a dot of radius
+2 × `chart-line` for each row whose y is inside the plot (its series colour), and the box band
+(`brush`). One instanced quad per shape in CSS px × DPR, drawn after every line and guide of the
+frame in a pass of its own, unclipped, with the line pipeline's blend; a rect covers each pixel by
+its box overlap per axis, a disc by `clamp(r·dpr + 0.5 − d, 0, 1)`. The same on T1 and T2.
+
+**Events** (render → main, with `stage` and the others):
+
+```json
+{"t":"hover","id":1,"oseq":7,"ev":{"source":"pointer","tMs":1795090680000,"xCss":274.0,"yCss":108,"rows":[{"key":"00000000000000a1","name":"{}","colourIndex":1,"value":9}]}}
+{"t":"select","id":1,"item":{"kind":"point","key":"00000000000000a1","tMs":1795090680000,"value":9}}
+```
+
+The tick posts the `select` events of the drained records first, then each frame's `hover` and
+`a11y`, the completions' `stage` and `drawn`, and `applied`.
+
+**On the main thread** (`WasmFrame`): an Overlay before `created` is held (the latest); a click
+before `created` is dropped (no stage can exist). A `hover` is accepted only for the latest
+Overlay: none while an Overlay is held or waiting in the ring, and only when its `oseq` extends to
+the last published Overlay's seq, so a hover of an Overlay older than a layout change never shows
+(`e2e:engine-hover` H5). `select` is forwarded as `{source: 'pointer', item}`, ungated: it answers
+what was on screen. `ControlledFrame` forwards a `hover` unless null follows null. `RoutingFrame`
+emits `hover: null` once when it unbinds a frame whose last hover was shown (a restart, a fallback,
+the kind swap).
+
+**Probe hooks** (`__dashProbe`): `hovers(n)`, `selects(n)`, `key(n, key)` (a `keydown` on the
+probe canvas, which is its own key target with `tabindex=0`), `flush(n)`; `settle(n)` flushes
+first. The probe build adds `freeze(n, seq)`, `frozen(n)` and `unfreeze(n)`
+(`engine_probe_freeze`, `engine_probe_unfreeze`): after its first completed presentation with seq
+≥ `seq` the worker builds and presents nothing for the frame, so a screenshot shows exactly that
+presentation.
 
 ### Tiers and the frame loop
 
@@ -846,9 +936,10 @@ stays on Canvas 2D and `ci:bundle-size` reports `missing-artefact:engine`). The 
 (`ci:engine-gen`) builds twice and requires byte-equal output, a committed `dash_core_mt.d.ts`
 equal to the generated one, and `layout.gen.ts` equal to `cargo xtask gen-layout --check`.
 
-The probe build is for `e2e:shim-fuzz` only: `make engine-wasm-probe` (`cargo xtask build-wasm
---probe`) builds the engine with the `probe` feature (`engine_probe_input`, the decoded records as
-JSON, at most 20 000; `engine_probe_ring_start`) into the git-ignored
+The probe build is for `e2e:shim-fuzz` and `e2e:engine-hover` H1b only: `make engine-wasm-probe`
+(`cargo xtask build-wasm --probe`) builds the engine with the `probe` feature
+(`engine_probe_input`, the decoded records as JSON, at most 20 000; `engine_probe_ring_start`;
+`engine_probe_freeze` and `engine_probe_unfreeze`, Part C2b) into the git-ignored
 `client/src/engine/wasm/gen-probe/`, and `make e2e-build-probe` builds the client with
 `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1` (Vite then resolves `virtual:dash-engine` to
 `gen-probe/`) into `client/dist-probe` and its stub BFF into `build/e2e-probe/pulsus-dash`.
@@ -868,7 +959,8 @@ Chromium projects of the engine web image:
 - `golden:engine-line`: the browser engine's canvas (status 2, llvmpipe, `wasm-webgl2`) against
   the native `dash-golden render` of the same page, theme, CSS size and DPR: equal sizes
   (`round(css × dpr)`), mean ꟻLIP ≤ 0.001, no 8 × 8 tile above 0.05; a 1 % shifted window and the
-  `gap` fault must fail.
+  `gap` fault must fail. Since Part C2b also `line-50` dark hovered at the plot's centre and with a
+  box band over 20–40 % of the plot, against `render --hover x,y` and `--box x0,x`.
 - `canvas2d parity`: sampled geometric parity with Canvas 2D: the plot rects are equal, and on 32
   points of Canvas 2D's line mask the engine draws (≥ 28 within ±1 device px), with ≤ 8 of 32
   background points touched; `noline` must fail. Anti-aliasing differs between the two renderers
@@ -878,13 +970,17 @@ Chromium projects of the engine web image:
   two probe frames with the gallery's `line-50` data take 10⁴ seeded ops (resize, time window,
   spec; batches of 1–2 000, the first before the frames are created, the rest after their first
   summary); the worker's decoded log must equal the adapter's produced log record for record, more
-  than one ring's worth must have passed, records must have been coalesced, none dropped, and the
+  than one ring's worth must have passed, records must have been coalesced, none dropped (from
+  Part C2b: only Selects past the per-frame cap, each counted), and the
   last window and `drawn` must be the last calls'. Two more cases cross 2³²
   (`ringStart` 0xFFFF_F000) and wake an idle worker with one record (settled within 1 s).
   Since Part C2a2 a fifth of the 10⁴ ops are DOM events on either canvas (wheels with
   deltaX/Y ±600, modes 0–2 and Shift, Ctrl or Meta; pointer down, move, up and cancel with buttons
   0–2; double clicks); every gesture is ended (`pointercancel`, then the wheel-idle commit) before
   the final ops, and each frame's last summary must show its last published Camera's view.
+  Since Part C2b the DOM events add hover moves, clicks and arrow keys, so Overlay and Select
+  records are decoded and compared too; `INPUT_BAD` must stay 0, and every Select the ring took is
+  published or counted in `INPUT_OVERFLOW` (the per-frame cap).
 - `e2e:engine-camera` (`lavapipe` gated, `swiftshader` report-only; the fault build with
   `?probe=1`): #93's camera cases on probe frames, each step settled (< 250 ms inside a gesture,
   asserted, so no wheel-idle commit comes early). E1: 100 seeded wheel steps keep the plot and the
@@ -894,8 +990,16 @@ Chromium projects of the engine web image:
   leftmost ink column of the first preview, last preview and final frames at the plot's x (± 1
   device px); E7: axis drags and double clicks (INT-008); E8: a wheel and a drag on the gallery's
   `line-50` change the URL.
+- `e2e:engine-hover` (Part C2b; as `e2e:engine-camera`): H1 a pointer hover reports the snapped
+  sample, its x and rows, changes only the crosshair column (±4 px, ≥ 90 % of the plot's rows) and
+  the dot (the series colour within 8 per channel), and leaving restores the image exactly; H1b
+  (project `probe`) freezes the frame at each Overlay's presentation and checks each carries its
+  own crosshair only; H2 the keyboard crosshair (ArrowRight, End, Escape); H3 a click selects the
+  point under it, a NaN sample nothing; H4 a right drag draws only the box band; H5 a hover of an
+  Overlay older than a layout change never shows; H6 the gallery tooltip of an engine `line-50`
+  equals Canvas 2D's.
 - `bench:shim-input-cost` (project `probe`, report-only): 10⁴ wheels and 10⁴ pointer moves on a
-  probe frame, 16 per animation frame; prints p50, p99 and max per dispatch and per frame's group
+  probe frame, 16 per animation frame, each dispatch timed with the frame's flush; prints p50, p99 and max per dispatch and per frame's group
   next to the catalogue limits (p99 ≤ 0.05 ms, callback ≤ 2 ms) and asserts only that every
   prevented wheel enqueued a record. The trusted-input leg, three runs and the limits as assertions
   wait for the reference lab (T05 §7.1).
@@ -917,13 +1021,17 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
   never reporting it as drawn.
 - The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
   `minValueBand`), so the engine's plot rect equals Canvas 2D's.
-- In the browser: line frames only; zoom, pan and axis drags work (the camera controller), but
-  hover, the click's selection and the box band are not drawn until C2b (`pickCount` 0); WebGPU is
-  verified only report-only in the engine image (SwiftShader); one restart per page.
+- In the browser: line frames only; zoom, pan, axis drags, hover, click select and the box band
+  work; thresholds, event markers and the `setSelection` highlight are not drawn until C2c; WebGPU
+  is verified only report-only in the engine image (SwiftShader); one restart per page.
+- A hover frame redraws the whole GPU frame from the cached layer list (at most one per tick, as a
+  pan frame); hover answers come one tick after the Overlay is published. A click picks on the
+  presentation on screen, which may lag the newest layout by one completed presentation.
 - The stage lags the newest layout by one completed presentation (as Canvas 2D's model lags its
   inputs); a frame with no stage takes no gestures.
-- The input ring: 64 KiB; a Resize is 40 bytes and a Camera 64, so at most 1 638 records are in
-  flight; waiting records keep only the latest per kind and frame. CSS sizes travel as `f32`
+- The input ring: 64 KiB; a Resize or Select is 40 bytes, a Camera or Overlay 64, so at most 1 638
+  records are in flight; waiting state records keep only the latest per kind and frame, and at most
+  8 Selects per frame wait (older ones are dropped and counted). CSS sizes travel as `f32`
   (exact for 1/64 px below 2¹⁸ px); `drawn` reports the caller's values.
 
 ## Design rules and gates
@@ -941,8 +1049,9 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 | T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery`, `golden:engine-line`, `unit:compare-tile-max` |
 | T01-001, T03-001, T03-003 | the adapter imports only the seam; no WASM on main | ESLint, `wasm/engine.test.ts` |
 | T03-005 | control block layout v1, generated TS | `unit:control-block-layout`, `ci:engine-gen` |
-| T03-004 (revised), T03-006, T03-019, T03-020 | the input ring: idle-word wake-up, SPSC release/acquire, read at frame start, nothing dropped | `unit:input-ring` (`ring`, `ring_decode`, `ring_rollover`, `ring_stress`, `wake_interleavings`, `ring_fixture`), `e2e:shim-fuzz` |
+| T03-004 (revised), T03-006, T03-019, T03-020 | the input ring: idle-word wake-up, SPSC release/acquire, read at frame start, state records coalesced, only Selects past the per-frame cap dropped (counted) | `unit:input-ring` (`ring`, `ring_decode`, `ring_rollover`, `ring_stress`, `wake_interleavings`, `ring_fixture`), `e2e:shim-fuzz` |
 | ADR-0019 | `drawn` of the presented capture, for the latest resize | `presentation_capture`, `wasm frame`, `probe settle` |
+| T02-024, INT-033, INT-034, INT-025, T25-005 | hover and the overlay in the tick of the Overlay; click select on the presentation on screen; the Canvas 2D rules ported bit for bit | `unit:hover-parity` (`hover_parity`, `overlay_item_shapes`), `overlay_order`, `frames_overlay`, `frames_select`, `stage_pick_count`, `controlled hover`, `controlled batch`, `wasm frame hover`, `e2e:engine-hover`, `golden:engine-overlay` |
 | T03-022, ADR-0026 | CSP, Trusted Types, COEP | `e2e:csp-violations`, `unit:CSP` |
 | T03-024 | no test hook in a release build; the probe export only in the probe build | `ci:probe-absent` |
 | T03-025 | fallback and recovery | `routing`, `restart policy`, `e2e:engine-recovery`, `e2e:mode-matrix` |

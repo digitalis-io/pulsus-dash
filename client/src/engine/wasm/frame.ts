@@ -6,7 +6,7 @@
  * `handle`. The camera comes only from `setCamera`: `ControlledFrame` runs the camera controller
  * on the main thread and sends it. Series data is cloned (the caller keeps its arrays); heatmap and
  * scalar data are not drawn by the engine yet and go as `null`. Events (markers) and the selection
- * are kept by the routing frame and not sent (C2b). Nothing is sent or emitted after `dispose`.
+ * are kept by the routing frame and not sent (C2c). Nothing is sent or emitted after `dispose`.
  *
  * | Call or event | Behaviour |
  * |---|---|
@@ -16,6 +16,10 @@
  * | Camera, Resize before `created` | held, the latest per kind; on `created` enqueued in call order |
  * | `drawn` | only for the latest `resize()` call: none while a Resize is held or unpublished, and only when the event's `rseq` is that call's seq; reported with the caller's values, never at 0, with its `chart-draw` measure |
  * | `applied`, `drawn` seqs | extended to 53 bits against the frame's last published seq: the acks `settled()` compares |
+ * | `setOverlay(o)` (C2b) | an Overlay record (the hover and the box band); before `created` held, the latest |
+ * | `select(x, y)` (C2b) | a Select record; before `created` dropped (no stage can exist yet) |
+ * | `hover` (C2b) | only for the latest Overlay: none while one is held or unpublished, and only when the event's `oseq` extends to the last published Overlay's seq |
+ * | `select` (C2b) | forwarded as `{source: 'pointer', item}`: it answers what was on screen |
  */
 import type {
   EventMarker,
@@ -28,7 +32,7 @@ import type {
   ValueRange,
   VisSpec,
 } from '../api';
-import { REC_RESIZE } from './layout.gen';
+import { REC_OVERLAY, REC_RESIZE } from './layout.gen';
 import type { FrameEvent, MainToRender, SeriesMessage, StageWire } from './protocol';
 import { extendSeq } from './ring';
 
@@ -50,6 +54,15 @@ export interface StageModel {
   readonly pickCount: number;
 }
 
+/** What an Overlay record carries (plan #68 C2b §3.4): the hover and the box band, CSS px. */
+export interface OverlayState {
+  readonly hover:
+    | { readonly kind: 'none' }
+    | { readonly kind: 'pointer'; readonly x: number; readonly y: number }
+    | { readonly kind: 'key'; readonly index: number };
+  readonly box: { readonly x0: number; readonly x: number } | null;
+}
+
 /** An engine frame (plan #68 C2a2 §3.2): `ControlledFrame` drives its camera. */
 export interface EngineFrame {
   setSpec(s: VisSpec): void;
@@ -59,11 +72,18 @@ export interface EngineFrame {
   setSelection(s: FrameSelection | null): void;
   resize(cssW: number, cssH: number, dpr: number): void;
   setCamera(c: CameraState): void;
+  /** The hover and the box band (plan #68 C2b §4.2). */
+  setOverlay(o: OverlayState): void;
+  /** A click at CSS px (x, y): answered with `select` against the presentation on screen. */
+  select(x: number, y: number): void;
   /** The last completed presentation's stage; null before the first, when withdrawn, at size 0. */
   stage(): StageModel | null;
   /** Called on every change of `stage()`; returns the unsubscribe. */
   onStage(cb: (s: StageModel | null) => void): () => void;
-  on<E extends 'a11y' | 'drawn'>(e: E, cb: (ev: FrameEvents[E]) => void): () => void;
+  on<E extends 'a11y' | 'drawn' | 'hover' | 'select'>(
+    e: E,
+    cb: (ev: FrameEvents[E]) => void,
+  ): () => void;
   dispose(): void;
 }
 
@@ -71,6 +91,8 @@ export interface EngineFrame {
 export interface FrameRing {
   camera(frame: number, c: CameraState): void;
   resize(frame: number, cssW: number, cssH: number, dpr: number): void;
+  overlay(frame: number, o: OverlayState): void;
+  select(frame: number, x: number, y: number): void;
   onPublish(frame: number, cb: (kind: number, seq: number) => void): void;
   unpublished(frame: number): number;
   drop(frame: number): void;
@@ -109,9 +131,11 @@ const sameStage = (a: StageModel | null, b: StageModel | null): boolean =>
         a.valueDomain.min === b.valueDomain.min &&
         a.valueDomain.max === b.valueDomain.max)));
 
-/** The controller's view of a reported stage (no picking until C2b). */
+/** The controller's view of a reported stage. */
 const stageOf = (w: StageWire | null): StageModel | null =>
-  w === null ? null : { plot: w.plot, valueDomain: w.domain, labelW: w.labelW, pickCount: 0 };
+  w === null
+    ? null
+    : { plot: w.plot, valueDomain: w.domain, labelW: w.labelW, pickCount: w.pickCount };
 
 /** Resize seqs kept for `drawn`. */
 const KEEP_RESIZES = 8;
@@ -128,8 +152,11 @@ export class WasmFrame implements EngineFrame {
   /** Set by every `resize()` call; cleared by a `stage` or `drawn` of that call's seq. */
   private stageBlocked = false;
   private ring: FrameRing | null = null;
-  /** Before `created`: the latest Camera and Resize, in the order of their last call. */
-  private readonly held = new Map<'camera' | 'resize', (r: FrameRing) => void>();
+  /** Before `created`: the latest Camera, Resize and Overlay, in the order of their last call. */
+  private readonly held = new Map<'camera' | 'resize' | 'overlay', (r: FrameRing) => void>();
+  /** The last published Overlay's seq (53-bit), and whether a later one is still unpublished. */
+  private lastOseq = 0;
+  private overlayUnpublished = false;
   /** The latest `resize()` call, and whether its record is still unpublished. */
   private size: Size = [0, 0, 1];
   private resizeUnpublished = false;
@@ -156,7 +183,7 @@ export class WasmFrame implements EngineFrame {
   }
 
   /** A record now if the frame is created, else held (replacing the kind's earlier one). */
-  private record(kind: 'camera' | 'resize', go: (r: FrameRing) => void): void {
+  private record(kind: 'camera' | 'resize' | 'overlay', go: (r: FrameRing) => void): void {
     if (this.disposed) return;
     if (this.ring !== null) {
       go(this.ring);
@@ -183,6 +210,20 @@ export class WasmFrame implements EngineFrame {
 
   setTheme(theme: ThemeName): void {
     this.post({ t: 'theme', id: this.id, theme: theme === 'light' ? 1 : 0 });
+  }
+
+  /** The hover and the box band (plan #68 C2b §4.2): an Overlay record, held before `created`. */
+  setOverlay(o: OverlayState): void {
+    this.record('overlay', (r) => {
+      this.overlayUnpublished = true;
+      r.overlay(this.id, o);
+    });
+  }
+
+  /** A click: a Select record; dropped before `created`, when no stage can exist yet. */
+  select(x: number, y: number): void {
+    if (this.disposed || this.ring === null) return;
+    this.ring.select(this.id, x, y);
   }
 
   /** Kept by the routing frame; drawn from C2 on. */
@@ -249,6 +290,11 @@ export class WasmFrame implements EngineFrame {
 
   private published(kind: number, seq: number): void {
     this.lastSeq = seq;
+    if (kind === REC_OVERLAY) {
+      this.lastOseq = seq;
+      this.overlayUnpublished = false;
+      return;
+    }
     if (kind !== REC_RESIZE) return;
     // A published Resize is always the latest call: an unpublished one is replaced by later calls.
     this.resizeUnpublished = false;
@@ -258,6 +304,11 @@ export class WasmFrame implements EngineFrame {
       if (this.resizes.size <= KEEP_RESIZES) break;
       this.resizes.delete(k);
     }
+  }
+
+  /** The highest presentation seq reported `drawn` (53-bit; the probe's `frozen`). */
+  drawnSeqNow(): number {
+    return this.drawnSeq;
   }
 
   /**
@@ -299,6 +350,15 @@ export class WasmFrame implements EngineFrame {
         this.applied = Math.max(this.applied, extendSeq(this.lastSeq, ev.seq));
         return;
       case 'created':
+        return;
+      case 'hover':
+        // Only the latest Overlay's hover counts (plan #68 C2b §4.2).
+        if (this.held.has('overlay') || this.overlayUnpublished) return;
+        if (extendSeq(this.lastSeq, ev.oseq) !== this.lastOseq) return;
+        this.emit('hover', ev.ev);
+        return;
+      case 'select':
+        this.emit('select', { source: 'pointer', item: ev.item });
         return;
       case 'stage':
         if (!this.current(ev.rseq)) return;

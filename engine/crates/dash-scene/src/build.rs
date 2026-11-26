@@ -1,5 +1,7 @@
 //! `build`: one viewport to its draw list and `a11y` summary (plan #68 §3.8, §4.1). A pure
-//! function of the viewport: the caller sets the camera and the band (D-GESTURE).
+//! function of the viewport: the caller sets the camera and the band (D-GESTURE). [`build_frame`]
+//! also returns the stage (plan #68 C2a2) and what picking reads (plan #68 C2b): the chunk, the
+//! series shown, the view and the value axis of the list.
 
 use dash_axes::{PlotRect, VisKind, value_axis};
 use dash_marks::desc::{DrawList, MarkItem};
@@ -51,19 +53,31 @@ pub struct StageInfo {
     pub plot: PlotRect,
     pub domain: Option<Range64>,
     pub band_w: f64,
+    /// Samples of series 0 when a series is shown, else 0: the keyboard crosshair's range.
+    pub pick_count: u32,
+}
+
+/// One build of a viewport (plan #68 C2b §3.2): the draw list, summary, stage and what picking
+/// reads; `pick` is Some exactly when `stage` is.
+#[derive(Clone, Debug)]
+pub struct Built {
+    pub list: DrawList,
+    pub summary: Option<FrameSummary>,
+    pub stage: Option<StageInfo>,
+    pub pick: Option<std::sync::Arc<crate::hover::PickSnap>>,
 }
 
 /// The draw list of `v` and its summary. No data, no window, an unsupported kind or an empty plot
 /// → the clear only and no summary (as the interim renderer draws no layer).
 pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
-    let (list, summary, _) = build_stage(v);
-    (list, summary)
+    let b = build_frame(v);
+    (b.list, b.summary)
 }
 
-/// [`build`] with the stage of the list: its plot, value domain and band (`band_w`: the held band,
-/// or the measured one); None exactly when there is no summary (no data, no window, an
-/// unsupported kind or an empty plot).
-pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<StageInfo>) {
+/// [`build`] with the stage of the list (its plot, value domain, band (`band_w`: the held band, or
+/// the measured one) and pick count) and its pick snapshot; both None exactly when there is no
+/// summary (no data, no window, an unsupported kind or an empty plot).
+pub fn build_frame(v: &Viewport) -> Built {
     let mut palette = [colour(v.theme, ColourRole::Hairline); 9];
     palette[..8].copy_from_slice(&series_palette(v.theme));
     let Camera::Plot2D(cam) = v.camera;
@@ -80,12 +94,18 @@ pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<Stag
         clip: None,
         items: Vec::new(),
     };
+    let none = |list| Built {
+        list,
+        summary: None,
+        stage: None,
+        pick: None,
+    };
     let (VisSpec::Line(spec), Some(chunk)) = (&v.spec, &v.data) else {
-        return (list, None, None);
+        return none(list);
     };
     let window = cam.x;
     if !(window.lo.is_finite() && window.hi.is_finite() && window.hi > window.lo) {
-        return (list, None, None);
+        return none(list);
     }
     let shown = chunk
         .series
@@ -108,7 +128,7 @@ pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<Stag
     );
     let plot = axis.plot;
     if !(plot.width > 0.0 && plot.height > 0.0) {
-        return (list, None, None);
+        return none(list);
     }
     let summary = FrameSummary {
         kind: VisKind::Line,
@@ -163,10 +183,27 @@ pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<Stag
     if axis.manual {
         list.clip = Some(rect(&plot));
     }
+    let pick_count = if shown > 0 {
+        chunk.offsets[1] - chunk.offsets[0]
+    } else {
+        0
+    };
     let stage = StageInfo {
         plot,
         domain: Some(axis.domain),
         band_w: axis.band_w,
+        pick_count,
     };
-    (list, Some(summary), Some(stage))
+    let pick = crate::hover::PickSnap {
+        chunk: chunk.clone(),
+        shown: shown as u32,
+        view: window,
+        axis,
+    };
+    Built {
+        list,
+        summary: Some(summary),
+        stage: Some(stage),
+        pick: Some(std::sync::Arc::new(pick)),
+    }
 }

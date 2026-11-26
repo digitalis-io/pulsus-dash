@@ -8,7 +8,8 @@
  * Part C2a1 (§4.2): the camera and the size arrive in the input ring, which `engine_tick` reads
  * first; `input` (posted by the adapter after a publish while this worker was idle) only wakes
  * the loop. The probe build (`VITE_ENGINE_PROBE=1`, `e2e:shim-fuzz` only) answers `probe-input`
- * with the decoded records and starts the ring's counters at `ringStart`.
+ * with the decoded records and starts the ring's counters at `ringStart`; `probe-freeze` and
+ * `probe-unfreeze` hold a frame after one presentation (plan #68 C2b §3.4).
  */
 import init, {
   engine_on_wake,
@@ -38,6 +39,9 @@ interface Scope {
 interface ProbeExports {
   engine_probe_input(): string;
   engine_probe_ring_start(v: number): void;
+  /** Plan #68 C2b §3.4. */
+  engine_probe_freeze?(id: number, seq: number): void;
+  engine_probe_unfreeze?(id: number): void;
 }
 
 interface Faults {
@@ -88,6 +92,10 @@ function apply(m: MainToRender): void {
     case 'probe-input':
       if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeInput();
       return;
+    case 'probe-freeze':
+    case 'probe-unfreeze':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeFreeze(m);
+      return;
     case 'create':
       if (faults?.failCreate(m.id) === true) {
         scope.postMessage({
@@ -136,6 +144,16 @@ function apply(m: MainToRender): void {
       frame_dispose(m.id);
       return;
   }
+  schedule();
+}
+
+/** The probe build: hold a frame after a presentation, or release it (plan #68 C2b §3.4). */
+async function probeFreeze(
+  m: Extract<MainToRender, { t: 'probe-freeze' } | { t: 'probe-unfreeze' }>,
+): Promise<void> {
+  const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+  if (m.t === 'probe-freeze') p.engine_probe_freeze?.(m.id, m.seq >>> 0);
+  else p.engine_probe_unfreeze?.(m.id);
   schedule();
 }
 

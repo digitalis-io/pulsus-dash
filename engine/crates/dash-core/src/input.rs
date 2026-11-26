@@ -16,7 +16,10 @@
 
 use std::sync::atomic::Ordering;
 
-use dash_protocol::input::{CAMERA_BYTES, HEADER_BYTES, RESIZE_BYTES, camera, header, rec, resize};
+use dash_protocol::input::{
+    CAMERA_BYTES, HEADER_BYTES, OVERLAY_BYTES, RESIZE_BYTES, SELECT_BYTES, camera, header, overlay,
+    rec, resize, select,
+};
 use dash_protocol::{RING_BYTES, off};
 use serde_json::json;
 
@@ -45,6 +48,20 @@ pub enum Record {
         value: (f64, f64),
         band: f64,
     },
+    /// The hover and the box band (plan #68 C2b §3.1): hover 0 none, 1 pointer (x, y CSS px), 2
+    /// key (`key` index); box 0, 1 (`box_x0`, `box_x`). Validated by `Frames::apply`.
+    Overlay {
+        frame: u32,
+        hover: u8,
+        boxed: u8,
+        x: f64,
+        y: f64,
+        key: u32,
+        box_x0: f64,
+        box_x: f64,
+    },
+    /// A click at (x, y) CSS px (plan #68 C2b §3.1).
+    Select { frame: u32, x: f64, y: f64 },
 }
 
 /// One record: its per-frame seq, the adapter's `performance.now()` at enqueue, the payload.
@@ -102,6 +119,25 @@ fn decode(w: &impl Words, phys: u32, kind: u8, size: u32) -> Option<Decoded> {
                 f64_at(w, phys + camera::VALUE_MAX),
             ),
             band: f64_at(w, phys + camera::BAND),
+        },
+        (rec::OVERLAY, OVERLAY_BYTES) => {
+            // HOVER and BOX are bytes 0 and 1 of the word at HOVER.
+            let modes = word(w, phys + overlay::HOVER);
+            Record::Overlay {
+                frame: word(w, phys + overlay::FRAME),
+                hover: (modes & 0xFF) as u8,
+                boxed: ((modes >> (8 * (overlay::BOX - overlay::HOVER))) & 0xFF) as u8,
+                x: f64_at(w, phys + overlay::X),
+                y: f64_at(w, phys + overlay::Y),
+                key: word(w, phys + overlay::KEY),
+                box_x0: f64_at(w, phys + overlay::BOX_X0),
+                box_x: f64_at(w, phys + overlay::BOX_X),
+            }
+        }
+        (rec::SELECT, SELECT_BYTES) => Record::Select {
+            frame: word(w, phys + select::FRAME),
+            x: f64_at(w, phys + select::X),
+            y: f64_at(w, phys + select::Y),
         },
         _ => return None,
     };
@@ -194,6 +230,21 @@ pub fn log_json(d: &Decoded) -> serde_json::Value {
             frame,
             json!([frame, view.0, view.1, value.0, value.1, band]),
         ),
+        Record::Overlay {
+            frame,
+            hover,
+            boxed,
+            x,
+            y,
+            key,
+            box_x0,
+            box_x,
+        } => (
+            rec::OVERLAY,
+            frame,
+            json!([frame, hover, boxed, x, y, key, box_x0, box_x]),
+        ),
+        Record::Select { frame, x, y } => (rec::SELECT, frame, json!([frame, x, y])),
     };
     json!({"seq": d.seq, "kind": kind, "frame": frame, "tMs": d.t_ms, "f": f})
 }

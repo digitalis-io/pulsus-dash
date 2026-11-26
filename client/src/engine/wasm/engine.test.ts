@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeEngine } from '../../test/fakeEngine';
-import { CB, KIND_CAMERA, KIND_RESIZE, memory, RingView } from '../../test/ringView';
+import { CB, KIND_CAMERA, KIND_OVERLAY, KIND_RESIZE, memory, RingView } from '../../test/ringView';
 import type { ChartEngine, FrameData, VisSpec } from '../api';
 import { RoutingEngine } from '../route';
 import { loadBackend, type Backend, type WorkerLike } from './engine';
@@ -175,12 +175,14 @@ async function restarted(p: Page): Promise<FakeWorker> {
   expect(after[0]?.['canvas']).toBe(transferred[1]);
   expect(transferred[1]).not.toBe(transferred[0]);
   expect(after[3]).toEqual({ t: 'theme', id: 1, theme: 0 });
-  // A new ring on the new worker's memory: the frame's camera and size wait for its `created`.
+  // A new ring on the new worker's memory: the frame's camera, overlay (plan #68 C2b) and size
+  // wait for its `created`.
   expect(w2.ring.head()).toBe(0);
   w2.created(1);
   expect(w2.ring.decode().map((r) => [r.kind, r.frame, r.seq])).toEqual([
     [KIND_CAMERA, 1, 1],
-    [KIND_RESIZE, 1, 2],
+    [KIND_OVERLAY, 1, 2],
+    [KIND_RESIZE, 1, 3],
   ]);
   expect(w2.inputs()).toBe(1);
   expect(w1.ring.decode()).toEqual([]);

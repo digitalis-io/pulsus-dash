@@ -22,16 +22,27 @@ fn shaders_validate() {
 /// T2 draws with `line.wgsl` on WebGL2: it must translate to GLSL ES 3.00 (plan #68 C1 §5).
 #[test]
 fn line_wgsl_translates_to_glsl_es_300() {
+    translates_to_glsl_es_300("src/line/line.wgsl");
+}
+
+/// The overlay is drawn on T2 too (plan #68 C2b §3.2).
+#[test]
+fn overlay_wgsl_translates_to_glsl_es_300() {
+    translates_to_glsl_es_300("src/overlay/overlay.wgsl");
+}
+
+fn translates_to_glsl_es_300(rel: &str) {
     use naga::back::glsl;
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/line/line.wgsl");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
     let src = std::fs::read_to_string(path).unwrap_or_default();
+    assert!(!src.is_empty(), "{rel} missing");
     let module = match naga::front::wgsl::parse_str(&src) {
         Ok(m) => m,
-        Err(e) => panic!("line.wgsl: {}", e.emit_to_string(&src)),
+        Err(e) => panic!("{rel}: {}", e.emit_to_string(&src)),
     };
     let info = Validator::new(ValidationFlags::all(), Capabilities::empty()).validate(&module);
     let Ok(info) = info else {
-        panic!("line.wgsl: {info:?}")
+        panic!("{rel}: {info:?}")
     };
     let options = glsl::Options {
         version: glsl::Version::new_gles(300),

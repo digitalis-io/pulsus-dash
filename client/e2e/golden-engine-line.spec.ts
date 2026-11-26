@@ -4,12 +4,14 @@
  * (WebGL2, `&engine=wasm&mode=t2`, native T2); report-only in `swiftshader` (WebGPU, native T1).
  * Before any comparison the captured canvas must be on the project's tier, status and adapter;
  * both images are `round(css × dpr)`; `compare --max 0.001 --tile-max 0.05` must pass. A window
- * shifted by 1 % and the `gap` fault must fail it. Canvas 2D parity is `canvas2d parity`
+ * shifted by 1 % and the `gap` fault must fail it. Plan #68 C2b: `line-50` dark hovered at the
+ * plot's centre and with a box band (a right drag over 20–40 % of the plot) against
+ * `dash-golden render --hover x,y` and `--box x0,x`, within the same limits. Canvas 2D parity is `canvas2d parity`
  * (engine-mode-matrix.spec.ts): anti-aliasing differs between the two renderers by design.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Browser, type TestInfo } from '@playwright/test';
-import { enc, GALLERY, open } from './helpers.ts';
+import { enc, frame, GALLERY, open, plotOf } from './helpers.ts';
 import {
   canvasShot,
   compareImages,
@@ -35,7 +37,7 @@ function url(query: string, shiftMs = 0, extra = ''): string {
 async function versusNative(
   browser: Browser,
   info: TestInfo,
-  o: { id: string; theme: string; scale: number; target: string },
+  o: { id: string; theme: string; scale: number; target: string; act?: 'hover' | 'band' },
 ): Promise<{ code: number; out: string }> {
   const tier = tierOf(info);
   const ctx = await browser.newContext({
@@ -53,11 +55,32 @@ async function versusNative(
     const html = page.locator('html');
     await expect(html).toHaveAttribute('data-dash-status', tier.status);
     await expect(html).toHaveAttribute('data-dash-adapter', tier.adapter);
+    await liveCanvas(page, o.id).scrollIntoViewIfNeeded();
     const box = await liveCanvas(page, o.id).boundingBox();
     if (box === null) throw new Error(`${o.id}: no box`);
     const css = [Math.round(box.width), Math.round(box.height)] as const;
-    const tag = `${o.id}@${o.theme}-${String(o.scale)}`;
+    const tag = `${o.id}@${o.theme}-${String(o.scale)}${o.act === undefined ? '' : `-${o.act}`}`;
+    // Plan #68 C2b: the overlay at whole page px; the native render gets the canvas-local point.
+    const overlay: { hover?: [number, number]; box?: [number, number] } = {};
+    if (o.act !== undefined) {
+      const plot = await plotOf(frame(page, o.id));
+      const px = (f: number): number => Math.round(box.x + plot.x + f * plot.width);
+      const py = Math.round(box.y + plot.y + plot.height / 2);
+      if (o.act === 'hover') {
+        await page.mouse.move(px(0.5), py);
+        await expect(frame(page, o.id).locator('[data-chart-tooltip]')).toBeVisible();
+        overlay.hover = [px(0.5) - box.x, py - box.y];
+      } else {
+        await page.mouse.move(px(0.2), py);
+        await page.mouse.down({ button: 'right' });
+        await page.mouse.move(px(0.4), py, { steps: 4 });
+        overlay.box = [px(0.2) - box.x, px(0.4) - box.x];
+      }
+      // The worker presents the overlay within a few of its frames.
+      await page.waitForTimeout(500);
+    }
     const got = await canvasShot(page, o.id, info, `${tag}-browser`);
+    if (o.act === 'band') await page.mouse.up({ button: 'right' });
     const want = info.outputPath(`${tag}-native.png`);
     nativeRender({
       page: o.id,
@@ -66,6 +89,7 @@ async function versusNative(
       dpr: o.scale,
       tier: tier.engine === 'wasm-webgl2' ? 't2' : 't1',
       out: want,
+      ...overlay,
     });
     const size = (p: string): [number, number] => {
       const i = decodePng(readFileSync(p));
@@ -90,6 +114,8 @@ test.describe('golden:engine-line', () => {
       const cases = [
         ...PAGES.flatMap((id) => ['dark', 'light'].map((theme) => ({ id, theme, scale: 1 }))),
         { id: 'line-50', theme: 'dark', scale: 2 },
+        { id: 'line-50', theme: 'dark', scale: 1, act: 'hover' as const },
+        { id: 'line-50', theme: 'dark', scale: 1, act: 'band' as const },
       ];
       for (const c of cases) {
         const r = await versusNative(browser, info, { ...c, target: url(tier.query) });

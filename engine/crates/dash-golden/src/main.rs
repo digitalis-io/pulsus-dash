@@ -2,18 +2,20 @@
 //!
 //! ```text
 //! dash-golden render  --page line-1|line-50|line-gaps|line-600|line-extreme --theme dark|light
-//!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX] --out <png>
+//!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX]
+//!                     [--hover X,Y] [--box X0,X] --out <png>
 //! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] [--tile-max V]
 //!                     → prints the mean ꟻLIP, then the largest 8×8 tile mean with --tile-max
 //! ```
 //! Exit 0 on success (compare: mean ≤ max and, with `--tile-max`, every 8×8 tile's mean ≤ V; plan
 //! #68 C1, T05-005), 1 when the comparison exceeds a limit, 2 on bad arguments or an I/O, adapter
-//! or render error.
+//! or render error. `--hover` and `--box` (plan #68 C2b) draw the engine's overlay: the hover of a
+//! pointer at canvas CSS px (X, Y) and the box band between X0 and X.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use dash_golden::{Image, flip_stats, render_page};
+use dash_golden::{Image, OverlayAt, flip_stats, render_page_overlay};
 use dash_gpu::{AdapterChoice, GpuContext, Tier};
 use dash_scene::{Size64, Theme, ValueRange};
 use pulsus_synth::GalleryLine;
@@ -58,10 +60,29 @@ fn render(args: &[String]) -> Result<(), String> {
         }
         None => None,
     };
+    let overlay = OverlayAt {
+        hover: match flag(args, "--hover") {
+            Some(v) => Some(pair(v, ',').ok_or("--hover is X,Y")?),
+            None => None,
+        },
+        box_x: match flag(args, "--box") {
+            Some(v) => Some(pair(v, ',').ok_or("--box is X0,X")?),
+            None => None,
+        },
+    };
     let out = PathBuf::from(flag(args, "--out").ok_or("--out is required")?);
     let ctx = GpuContext::headless(AdapterChoice::Lavapipe, tier)
         .map_err(|e| format!("{e}; adapters: {:?}", GpuContext::adapter_list()))?;
-    render_page(&ctx, line, theme, Size64 { w, h }, dpr, value_range).write_png(&out)
+    render_page_overlay(
+        &ctx,
+        line,
+        theme,
+        Size64 { w, h },
+        dpr,
+        value_range,
+        overlay,
+    )
+    .write_png(&out)
 }
 
 fn compare(args: &[String]) -> Result<bool, String> {
