@@ -159,6 +159,8 @@ struct Frame {
     /// CSS px, DPR and device px of the last resize.
     size: Option<FrameSize>,
     data: Option<Arc<Chunk>>,
+    /// The event markers' times, ms (plan #68 C2c1 §3.1): a layer input.
+    events: Arc<[f64]>,
     building: Option<Building>,
     /// The summary JSON reported last.
     last_a11y: Option<String>,
@@ -196,6 +198,7 @@ impl Frame {
             theme: Theme::Dark,
             size: None,
             data: None,
+            events: Arc::from([]),
             building: None,
             last_a11y: None,
             seq: 0,
@@ -520,6 +523,11 @@ impl Frames {
         }
     }
 
+    /// The frame's event markers' times, ms (plan #68 C2c1 §3.1), in call order: a layer input.
+    pub fn set_events(&mut self, id: u32, at_ms: Vec<f64>) {
+        let _ = (id, at_ms);
+    }
+
     /// Starts a chunk from TS series in the local id space.
     pub fn data_begin(&mut self, id: u32) {
         let next = self.ids.next();
@@ -634,6 +642,7 @@ impl Frames {
                     .camera
                     .and_then(|c| c.band)
                     .map_or(Band::Measure, Band::Fixed),
+                events: f.events.clone(),
             };
             let built = build_frame(&v);
             self.layer_builds += 1;

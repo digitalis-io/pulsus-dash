@@ -17,10 +17,11 @@ fn manual_axis_uses_the_range() {
             Some(r),
             &Unit::None,
             Band::Measure,
+            0.0,
         );
         assert!(ax.manual, "{r:?}");
         assert_eq!(ax.domain, r);
-        let height = layout_plot(VisKind::Line, 1118.0, 240.0, 0.0).height;
+        let height = layout_plot(VisKind::Line, 1118.0, 240.0, 0.0, 0.0).height;
         let Some(vt) = value_ticks(lo, hi, height, label_height(), 1000) else {
             panic!("value_ticks None for {r:?}");
         };
@@ -47,7 +48,10 @@ fn manual_axis_uses_the_range() {
 /// to min(0, data_min).
 #[test]
 fn manual_axis_collision_falls_back() {
-    assert_eq!(layout_plot(VisKind::Line, 1118.0, 234.0, 0.0).height, 200.0);
+    assert_eq!(
+        layout_plot(VisKind::Line, 1118.0, 234.0, 0.0, 0.0).height,
+        200.0
+    );
     let ax = value_axis(
         VisKind::Line,
         1118.0,
@@ -60,6 +64,7 @@ fn manual_axis_collision_falls_back() {
         }),
         &Unit::None,
         Band::Measure,
+        0.0,
     );
     assert!(ax.manual);
     assert_eq!(

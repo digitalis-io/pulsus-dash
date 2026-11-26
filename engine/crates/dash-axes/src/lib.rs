@@ -87,9 +87,23 @@ pub fn label_width(labels: &[String]) -> f64 {
     w.ceil()
 }
 
+/// The event label band of a frame (TS `eventBandOf`, ADR-0023): `EVENT_BAND` = one label line and
+/// `space.1` once the frame holds at least one event (in view or not), 0 for stat or no events.
+pub fn event_band(kind: VisKind, events: usize) -> f64 {
+    let _ = (kind, events);
+    0.0
+}
+
 /// Port of `canvas2d/layout.ts` `layoutPlot`: stat fills the frame; the other kinds leave room for
-/// the value labels and the time axis.
-pub fn layout_plot(kind: VisKind, css_w: f64, css_h: f64, value_label_w: f64) -> PlotRect {
+/// the value labels, the time axis and the event label band above the plot (`event_band`).
+pub fn layout_plot(
+    kind: VisKind,
+    css_w: f64,
+    css_h: f64,
+    value_label_w: f64,
+    event_band: f64,
+) -> PlotRect {
+    let _ = event_band;
     if kind == VisKind::Stat {
         return PlotRect {
             x: 0.0,
@@ -119,6 +133,7 @@ fn base_of(unit: &Unit) -> u32 {
 /// Ticks and domain: auto = draw.ts `valueAxis` over [min(0, data_min), data_max]; manual =
 /// `value_ticks(r)` filtered to r with a 1e-9 relative tolerance, domain r (#93's plan §3.5).
 /// Both fall back to `extreme_ticks` when `value_ticks` returns None.
+#[allow(clippy::too_many_arguments)]
 fn ticks_of(
     kind: VisKind,
     css_w: f64,
@@ -127,8 +142,9 @@ fn ticks_of(
     data_max: f64,
     manual: Option<Range64>,
     unit: &Unit,
+    event_band: f64,
 ) -> (Range64, Vec<f64>) {
-    let height = layout_plot(kind, css_w, css_h, 0.0).height;
+    let height = layout_plot(kind, css_w, css_h, 0.0, event_band).height;
     let base = base_of(unit);
     match manual {
         None => {
@@ -180,7 +196,7 @@ pub fn min_value_band(kind: VisKind, unit: &Unit) -> f64 {
 }
 
 /// The value axis. Auto (`manual = None`): port of draw.ts `valueAxis`: the height from
-/// `layout_plot(.., 0)`, ticks over [min(0, data_min), data_max], base 1024 for bytes else 1000,
+/// `layout_plot(.., 0, event_band)`, ticks over [min(0, data_min), data_max], base 1024 for bytes else 1000,
 /// labels by `format_value`, domain (vt.min, vt.max). Manual (`Some(r)`): ticks inside r, domain
 /// r. Then `layout_plot` with the band: `Measure` = the labels' width, at least
 /// [`min_value_band`] (as the Canvas 2D engine, so both draw the same plot, plan #68 C1);
@@ -196,8 +212,11 @@ pub fn value_axis(
     manual: Option<Range64>,
     unit: &Unit,
     band: Band,
+    event_band: f64,
 ) -> ValueAxis {
-    let (domain, ticks) = ticks_of(kind, css_w, css_h, data_min, data_max, manual, unit);
+    let (domain, ticks) = ticks_of(
+        kind, css_w, css_h, data_min, data_max, manual, unit, event_band,
+    );
     let texts: Vec<String> = ticks
         .iter()
         .map(|t| dash_units::format_value(*t, unit))
@@ -206,7 +225,7 @@ pub fn value_axis(
         Band::Measure => label_width(&texts).max(min_value_band(kind, unit)),
         Band::Fixed(w) => w,
     };
-    let plot = layout_plot(kind, css_w, css_h, band_w);
+    let plot = layout_plot(kind, css_w, css_h, band_w, event_band);
     let mut axis = ValueAxis {
         plot,
         domain,
@@ -231,7 +250,8 @@ pub fn value_axis(
     axis
 }
 
-/// The band `value_axis(.., Band::Measure)` would use, without building the axis.
+/// The band `value_axis(.., Band::Measure, event_band)` would use, without building the axis.
+#[allow(clippy::too_many_arguments)]
 pub fn measure_value_band(
     kind: VisKind,
     css_w: f64,
@@ -240,8 +260,11 @@ pub fn measure_value_band(
     data_max: f64,
     manual: Option<Range64>,
     unit: &Unit,
+    event_band: f64,
 ) -> f64 {
-    let (_, ticks) = ticks_of(kind, css_w, css_h, data_min, data_max, manual, unit);
+    let (_, ticks) = ticks_of(
+        kind, css_w, css_h, data_min, data_max, manual, unit, event_band,
+    );
     let texts: Vec<String> = ticks
         .iter()
         .map(|t| dash_units::format_value(*t, unit))

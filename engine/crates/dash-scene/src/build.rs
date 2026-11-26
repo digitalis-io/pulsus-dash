@@ -1,9 +1,10 @@
 //! `build`: one viewport to its draw list and `a11y` summary (plan #68 §3.8, §4.1). A pure
 //! function of the viewport: the caller sets the camera and the band (D-GESTURE). [`build_frame`]
 //! also returns the stage (plan #68 C2a2) and what picking reads (plan #68 C2b): the chunk, the
-//! series shown, the view and the value axis of the list.
+//! series shown, the view and the value axis of the list. Plan #68 C2c1: thresholds widen the auto
+//! domain, events reserve the label band, and both are drawn as a layer `Overlay` item.
 
-use dash_axes::{PlotRect, VisKind, value_axis};
+use dash_axes::{PlotRect, VisKind, event_band, value_axis};
 use dash_marks::desc::{DrawList, MarkItem};
 use dash_scales::Range64;
 use dash_scales::encode::{axis_map, choose_encoding, is_far};
@@ -11,6 +12,7 @@ use dash_tokens::{ColourRole, colour, series_palette};
 use dash_wire::Chunk;
 
 use crate::camera::{Camera, YRange, js_round};
+use crate::layer::{event_shapes, threshold_shapes, with_thresholds};
 use crate::spec::VisSpec;
 use crate::summary::{FrameSummary, ValueAxisSummary};
 use crate::{Size64, Viewport};
@@ -116,15 +118,19 @@ pub fn build_frame(v: &Viewport) -> Built {
         YRange::Manual(r) => Some(r),
         YRange::Auto => None,
     };
+    // The auto domain includes every finite threshold (TS `lineModel`); the summary's min and max
+    // stay the data's. The event label band is reserved once the frame holds an event (ADR-0023).
+    let (lo, hi) = with_thresholds(min, max, &spec.thresholds);
     let axis = value_axis(
         VisKind::Line,
         v.css.w,
         v.css.h,
-        min.unwrap_or(0.0),
-        max.unwrap_or(0.0),
+        lo,
+        hi,
         manual,
         &spec.unit,
         v.band,
+        event_band(VisKind::Line, v.events.len()),
     );
     let plot = axis.plot;
     if !(plot.width > 0.0 && plot.height > 0.0) {
@@ -179,6 +185,13 @@ pub fn build_frame(v: &Viewport) -> Built {
             width_css: dash_tokens::size::CHART_LINE,
             far: is_far(&enc, chunk.finite),
         });
+    }
+    // The layer marks (plan #68 C2c1 §4.2): thresholds, then events, over the series and under the
+    // hover overlay; clipped to the plot by construction.
+    let mut shapes = threshold_shapes(&axis, &spec.thresholds, v.theme);
+    shapes.extend(event_shapes(&plot, window, &v.events, v.theme));
+    if !shapes.is_empty() {
+        list.items.push(MarkItem::Overlay { shapes });
     }
     if axis.manual {
         list.clip = Some(rect(&plot));

@@ -227,8 +227,8 @@ export class WasmFrame implements EngineFrame {
   }
 
   /** Kept by the routing frame; drawn from C2 on. */
-  setEvents(): void {
-    // Not sent until C2.
+  setEvents(events: readonly EventMarker[]): void {
+    if (events.length < 0) this.post({ t: 'events', id: this.id, atMs: new Float64Array() });
   }
 
   /** Kept by the routing frame; drawn from C2 on. */

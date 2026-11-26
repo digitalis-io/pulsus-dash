@@ -28,6 +28,7 @@ fn t2_has_no_compute_resources() {
         spec,
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
+        events: std::sync::Arc::from([]),
     };
     let l = build(&v).0;
     for tier in [Tier::T2, Tier::T1] {

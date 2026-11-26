@@ -6,7 +6,8 @@
  * both images are `round(css × dpr)`; `compare --max 0.001 --tile-max 0.05` must pass. A window
  * shifted by 1 % and the `gap` fault must fail it. Plan #68 C2b: `line-50` dark hovered at the
  * plot's centre and with a box band (a right drag over 20–40 % of the plot) against
- * `dash-golden render --hover x,y` and `--box x0,x`, within the same limits. Canvas 2D parity is `canvas2d parity`
+ * `dash-golden render --hover x,y` and `--box x0,x`, within the same limits. Plan #68 C2c1:
+ * `line-thresholds` and `line-events`, dark and light. Canvas 2D parity is `canvas2d parity`
  * (engine-mode-matrix.spec.ts): anti-aliasing differs between the two renderers by design.
  */
 import { readFileSync } from 'node:fs';
@@ -23,7 +24,16 @@ import {
 } from './engine.ts';
 import { decodePng } from './png.ts';
 
-const PAGES = ['line-1', 'line-50', 'line-gaps', 'line-600', 'line-extreme'] as const;
+/** Plan #68 C2c1 adds the layer pages (thresholds, events: `dash-golden render` reads `layer.json`). */
+const PAGES = [
+  'line-1',
+  'line-50',
+  'line-gaps',
+  'line-600',
+  'line-extreme',
+  'line-thresholds',
+  'line-events',
+] as const;
 const FROM = Date.UTC(2026, 10, 19, 12);
 const TO = Date.UTC(2026, 10, 19, 13);
 const LIMITS = { max: 0.001, tileMax: 0.05 };

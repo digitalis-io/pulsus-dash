@@ -46,6 +46,8 @@ export type MainToRender =
   | { readonly t: 'spec'; readonly id: number; readonly json: string }
   | { readonly t: 'data'; readonly id: number; readonly series: readonly SeriesMessage[] | null }
   | { readonly t: 'theme'; readonly id: number; readonly theme: 0 | 1 }
+  /** Plan #68 C2c1: every `EventMarker.atMs` of a `setEvents`, in call order (NaN kept). */
+  | { readonly t: 'events'; readonly id: number; readonly atMs: Float64Array }
   | { readonly t: 'dispose'; readonly id: number }
   /** A record was published while the worker was idle (T03-004 revised). */
   | { readonly t: 'input' }

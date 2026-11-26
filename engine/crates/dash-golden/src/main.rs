@@ -1,7 +1,8 @@
 //! `dash-golden render` and `dash-golden compare` (plan #68 A.11 §3.12).
 //!
 //! ```text
-//! dash-golden render  --page line-1|line-50|line-gaps|line-600|line-extreme --theme dark|light
+//! dash-golden render  --page line-1|line-50|line-gaps|line-600|line-extreme|line-thresholds|line-events
+//!                     --theme dark|light
 //!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX]
 //!                     [--hover X,Y] [--box X0,X] --out <png>
 //! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] [--tile-max V]
@@ -10,12 +11,16 @@
 //! Exit 0 on success (compare: mean ≤ max and, with `--tile-max`, every 8×8 tile's mean ≤ V; plan
 //! #68 C1, T05-005), 1 when the comparison exceeds a limit, 2 on bad arguments or an I/O, adapter
 //! or render error. `--hover` and `--box` (plan #68 C2b) draw the engine's overlay: the hover of a
-//! pointer at canvas CSS px (X, Y) and the box band between X0 and X.
+//! pointer at canvas CSS px (X, Y) and the box band between X0 and X. `line-thresholds` and
+//! `line-events` (plan #68 C2c1) draw the `layer.json` case of that id, without `--value-range`,
+//! `--hover` or `--box`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use dash_golden::{Image, OverlayAt, flip_stats, render_page_overlay};
+use dash_golden::{
+    Image, LAYER_PAGES, OverlayAt, flip_stats, render_layer_page, render_page_overlay,
+};
 use dash_gpu::{AdapterChoice, GpuContext, Tier};
 use dash_scene::{Size64, Theme, ValueRange};
 use pulsus_synth::GalleryLine;
@@ -34,10 +39,10 @@ fn pair(s: &str, sep: char) -> Option<(f64, f64)> {
 
 fn render(args: &[String]) -> Result<(), String> {
     let page = flag(args, "--page").ok_or("--page is required")?;
-    let line = GalleryLine::RENDERABLE
-        .into_iter()
-        .find(|g| g.id() == page)
-        .ok_or(format!("unknown page {page}"))?;
+    let line = GalleryLine::RENDERABLE.into_iter().find(|g| g.id() == page);
+    if line.is_none() && !LAYER_PAGES.contains(&page) {
+        return Err(format!("unknown page {page}"));
+    }
     let theme = match flag(args, "--theme").unwrap_or("dark") {
         "dark" => Theme::Dark,
         "light" => Theme::Light,
@@ -73,6 +78,12 @@ fn render(args: &[String]) -> Result<(), String> {
     let out = PathBuf::from(flag(args, "--out").ok_or("--out is required")?);
     let ctx = GpuContext::headless(AdapterChoice::Lavapipe, tier)
         .map_err(|e| format!("{e}; adapters: {:?}", GpuContext::adapter_list()))?;
+    let Some(line) = line else {
+        if value_range.is_some() || overlay != OverlayAt::default() {
+            return Err(format!("{page}: no --value-range, --hover or --box"));
+        }
+        return render_layer_page(&ctx, page, theme, Size64 { w, h }, dpr)?.write_png(&out);
+    };
     render_page_overlay(
         &ctx,
         line,

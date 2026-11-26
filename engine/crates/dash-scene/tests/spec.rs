@@ -67,3 +67,58 @@ fn line_spec_parses_the_ts_json() {
         Some(Range64 { lo: 1.0, hi: 2.0 })
     );
 }
+
+/// Plan #68 C2c1 §5 `spec_thresholds` (ADR-0022): the first 8 threshold lines in spec order, a JSON
+/// `null` value (NaN and ±∞ in TS) as None, the label ignored; an unknown state is a spec error.
+#[test]
+fn spec_thresholds() {
+    use dash_scene::{ThresholdLine, ThresholdState};
+    let states = [
+        "watch", "degraded", "failing", "watch", "degraded", "failing", "watch", "degraded",
+        "failing", "watch",
+    ];
+    let lines: Vec<String> = states
+        .iter()
+        .enumerate()
+        .map(|(k, s)| {
+            let value = if k == 2 {
+                "null".to_owned()
+            } else {
+                format!("{}", 10 * k)
+            };
+            format!(r#"{{"value":{value},"state":"{s}","label":"line {k}"}}"#)
+        })
+        .collect();
+    let json = format!(
+        r#"{{"kind":"line","title":"T","unit":{{"kind":"none"}},"thresholds":[{}]}}"#,
+        lines.join(",")
+    );
+    let Ok(VisSpec::Line(spec)) = VisSpec::from_json(&json) else {
+        panic!("not a line spec: {json}")
+    };
+    let state = |s: &str| match s {
+        "watch" => ThresholdState::Watch,
+        "degraded" => ThresholdState::Degraded,
+        _ => ThresholdState::Failing,
+    };
+    let want: Vec<ThresholdLine> = (0..8)
+        .map(|k| ThresholdLine {
+            value: (k != 2).then_some(10.0 * k as f64),
+            state: state(states[k]),
+        })
+        .collect();
+    assert_eq!(spec.thresholds, want);
+    // No thresholds: none.
+    let Ok(VisSpec::Line(plain)) =
+        VisSpec::from_json(r#"{"kind":"line","title":"T","unit":{"kind":"none"}}"#)
+    else {
+        panic!("not a line spec")
+    };
+    assert!(plain.thresholds.is_empty());
+    // An unknown state is a spec error.
+    let bad = r#"{"kind":"line","title":"T","unit":{"kind":"none"},"thresholds":[{"value":1,"state":"ok","label":""}]}"#;
+    assert!(
+        VisSpec::from_json(bad).is_err(),
+        "an unknown state must not parse"
+    );
+}

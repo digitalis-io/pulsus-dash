@@ -5,7 +5,7 @@
  * call, with the caller's values, once no Resize is held or unpublished.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FrameData, VisSpec } from '../api';
+import type { EventMarker, FrameData, VisSpec } from '../api';
 import { CB, memory, RingView } from '../../test/ringView';
 import {
   WasmFrame,
@@ -416,5 +416,43 @@ describe('WasmFrame hover and select (plan #68 C2b §4.2)', () => {
       },
     });
     expect(f.stage()?.pickCount).toBe(61);
+  });
+});
+
+describe('WasmFrame events (plan #68 C2c1 §3.3)', () => {
+  const at = (id: string, atMs: number): EventMarker => ({
+    id,
+    atMs,
+    endMs: null,
+    kind: 'deploy',
+    title: id,
+  });
+
+  it('wasm frame events: each new array posts its times in call order, NaN kept', () => {
+    const { f, p } = frame();
+    const a = at('a', 20);
+    const b = at('b', NaN);
+    const e = [a, b];
+    f.setEvents(e);
+    const events = (): unknown[] => p.sent.map((s) => s.msg).filter((m) => m.t === 'events');
+    expect(events()).toEqual([{ t: 'events', id: 1, atMs: new Float64Array([20, NaN]) }]);
+    const sent = events()[0] as { atMs: Float64Array };
+    expect(sent.atMs).toBeInstanceOf(Float64Array);
+    expect(Number.isNaN(sent.atMs[1])).toBe(true);
+    // The same array again: nothing.
+    f.setEvents(e);
+    expect(events()).toHaveLength(1);
+    // An equal but new array, then none: each is sent.
+    f.setEvents([a, b]);
+    f.setEvents([]);
+    expect(events()).toEqual([
+      { t: 'events', id: 1, atMs: new Float64Array([20, NaN]) },
+      { t: 'events', id: 1, atMs: new Float64Array([20, NaN]) },
+      { t: 'events', id: 1, atMs: new Float64Array([]) },
+    ]);
+    // Nothing after dispose.
+    f.dispose();
+    f.setEvents([a]);
+    expect(events()).toHaveLength(3);
   });
 });

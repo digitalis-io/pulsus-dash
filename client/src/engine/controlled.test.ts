@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   BrushEvent,
   CommitEvent,
+  EventMarker,
   FrameEvents,
   SelectEvent,
   TimeWindow,
@@ -55,6 +56,7 @@ class FakeInner implements EngineFrame {
   }
   setEvents(): void {
     this.calls.push('setEvents');
+    this.order.push('setEvents');
   }
   setSelection(): void {
     this.calls.push('setSelection');
@@ -456,5 +458,55 @@ describe('ControlledFrame hover, select and batching (plan #68 C2b §4.1)', () =
     f.dispose();
     run();
     expect(inner.order.length).toBe(n);
+  });
+});
+
+describe('ControlledFrame events (plan #68 C2c1 §4.1)', () => {
+  const S61: StageModel = { ...S1, pickCount: 61 };
+  const H: NonNullable<FrameEvents['hover']> = {
+    source: 'pointer',
+    tMs: T0,
+    xCss: 320,
+    yCss: 108,
+    rows: [{ key: '00000000000000a1', name: '{}', colourIndex: 1, value: 9 }],
+  };
+  const ev = (id: string, atMs: number): EventMarker => ({
+    id,
+    atMs,
+    endMs: null,
+    kind: 'deploy',
+    title: id,
+  });
+
+  it('controlled events: a band flip is a layout change (Canvas 2D rule); same array, no call', () => {
+    const { canvas, inner, f, hovers } = setup({ stage: S61 });
+    pointer(canvas, 'pointermove', 320, 108);
+    inner.fire('hover', H);
+    expect(hovers).toEqual([H]);
+    // [] → [e]: the band appears: the hover is cleared at once, an Overlay of none is written,
+    // then the events go.
+    const e = [ev('e', T0 + 1_800_000)];
+    inner.order.length = 0;
+    f.setEvents(e);
+    expect(hovers).toEqual([H, null]);
+    expect(inner.overlays.at(-1)).toEqual({ hover: { kind: 'none' }, box: null });
+    expect(inner.order).toEqual(['setCamera', 'setOverlay', 'setEvents']);
+    // [e] → [e, f]: no band change: the events only, the hover untouched.
+    pointer(canvas, 'pointermove', 330, 108);
+    inner.fire('hover', H);
+    expect(hovers).toEqual([H, null, H]);
+    inner.order.length = 0;
+    const ef = [...e, ev('f', T0 + 2_400_000)];
+    f.setEvents(ef);
+    expect(hovers).toEqual([H, null, H]);
+    expect(inner.order).toEqual(['setEvents']);
+    // The same array: no call.
+    inner.order.length = 0;
+    f.setEvents(ef);
+    expect(inner.order).toEqual([]);
+    // [e, f] → []: the band goes, a layout change again.
+    f.setEvents([]);
+    expect(hovers).toEqual([H, null, H, null]);
+    expect(inner.order).toEqual(['setCamera', 'setOverlay', 'setEvents']);
   });
 });

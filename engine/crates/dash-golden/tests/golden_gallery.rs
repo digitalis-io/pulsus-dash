@@ -2,13 +2,15 @@
 //! the ten pages against the committed PNGs (mean ꟻLIP ≤ 0.005), T1 = T2 and repeat renders
 //! byte-equal, on the pinned lavapipe. `GOLDEN_UPDATE=1` writes the baselines instead.
 //! `golden:engine-overlay` (plan #68 C2b §5; T02-029): `line-50` dark and light with a hover at the
-//! plot's centre column and a box band, T1 and T2 within mean ꟻLIP 0.001.
+//! plot's centre column and a box band, T1 and T2 within mean ꟻLIP 0.001. Plan #68 C2c1 §5: the
+//! layer pages `line-thresholds` and `line-events` (inputs from `layer.json`), dark and light,
+//! against their committed PNGs, T1 and T2 within mean ꟻLIP 0.001.
 mod common;
 
 use common::*;
 use dash_golden::{
-    Image, OverlayAt, PAGE_CSS, flip_mean, goldens_dir, manual_range, page_viewport, pages,
-    pinned_driver, render_page, render_page_overlay,
+    Image, LAYER_PAGES, OverlayAt, PAGE_CSS, flip_mean, goldens_dir, manual_range, page_viewport,
+    pages, pinned_driver, render_layer_page, render_page, render_page_overlay,
 };
 use dash_gpu::Tier;
 use dash_scene::Theme;
@@ -95,6 +97,34 @@ fn golden_engine_overlay() {
                 }
             }
             Err(e) => failures.push(format!("{name} overlay: no baseline ({e})")),
+        }
+    }
+    for id in LAYER_PAGES {
+        for (theme, name) in [(Theme::Dark, "dark"), (Theme::Light, "light")] {
+            let render = |t| render_layer_page(t, id, theme, PAGE_CSS, 1.0);
+            let (a, b) = match (render(&t1), render(&t2)) {
+                (Ok(a), Ok(b)) => (a, b),
+                (a, b) => panic!("{id} {name}: {:?} {:?}", a.err(), b.err()),
+            };
+            let tiers = flip_mean(&a, &b, &[]);
+            if tiers.is_nan() || tiers > 0.001 {
+                failures.push(format!("{id}-{name}: T1 vs T2 mean FLIP {tiers}"));
+            }
+            let path = goldens_dir().join(format!("{id}-{name}.png"));
+            if update {
+                let w = a.write_png(&path);
+                assert!(w.is_ok(), "{id}-{name}: {w:?}");
+                continue;
+            }
+            match Image::read_png(&path) {
+                Ok(golden) => {
+                    let mean = flip_mean(&golden, &a, &[]);
+                    if mean.is_nan() || mean > 0.005 {
+                        failures.push(format!("{id}-{name}: mean FLIP {mean}"));
+                    }
+                }
+                Err(e) => failures.push(format!("{id}-{name}: no baseline ({e})")),
+            }
         }
     }
     assert!(failures.is_empty(), "{failures:#?}");
