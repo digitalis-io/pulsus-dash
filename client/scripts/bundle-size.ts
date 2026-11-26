@@ -4,6 +4,9 @@
  * artefact exists, so a build that drops a route, the CSS or a font cannot pass by being smaller.
  * The engine (PRF-009, plan #68 C1) is one row: every `assets/dash-engine-*` file (its wasm, glue,
  * adapter and workers), required, lazy (never in the initial JS) and outside `totalExceptEngine`.
+ * With `required.geoAssets` (plan #231 §3.3) the geo basemap and gazetteer are each exactly one
+ * `assets/{basemap,gazetteer}-<hash>.json` and one row (`geo-basemap`, `geo-gazetteer`) inside the
+ * total; the `geo-assets` entry chunk that names them is a lazy chunk.
  *
  * Usage: node scripts/bundle-size.ts [dist] [budgets]
  * Exit: 0 no findings, 1 findings, 2 `dist/` or its manifest unreadable.
@@ -18,7 +21,13 @@ const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 export interface Budgets {
   initialRouteModules: string[];
-  required: { files: string[]; lazyModules: string[]; fonts: string[]; initialCss: boolean };
+  required: {
+    files: string[];
+    lazyModules: string[];
+    fonts: string[];
+    initialCss: boolean;
+    geoAssets: boolean;
+  };
   budgets: Record<BudgetClass, number>;
   editorModules: string[];
 }
@@ -30,7 +39,9 @@ export type BudgetClass =
   | 'editorChunk'
   | 'fonts'
   | 'totalExceptEngine'
-  | 'engine';
+  | 'engine'
+  | 'geoBasemap'
+  | 'geoGazetteer';
 
 interface ManifestChunk {
   file: string;
@@ -99,6 +110,7 @@ export function parseBudgets(v: unknown): Budgets {
       lazyModules: strs(req['lazyModules']),
       fonts: strs(req['fonts']),
       initialCss: req['initialCss'] === true,
+      geoAssets: req['geoAssets'] === true,
     },
     budgets: {
       initialJs: num('initialJs'),
@@ -108,6 +120,8 @@ export function parseBudgets(v: unknown): Budgets {
       fonts: num('fonts'),
       totalExceptEngine: num('totalExceptEngine'),
       engine: num('engine'),
+      geoBasemap: num('geoBasemap'),
+      geoGazetteer: num('geoGazetteer'),
     },
     editorModules: strs(b['editorModules']),
   };
@@ -122,6 +136,12 @@ const EDITOR_FILE = /^assets\/editor-[^/]+\.js$/;
 
 /** Every engine file (`vite.config.ts`: chunks, workers and the wasm are `dash-engine-*`). */
 const ENGINE_FILE = /^assets\/dash-engine-[^/]+\.(js|wasm)$/;
+
+/** The geo assets (`src/vis/geo/urls.ts`, plan #231 §3.3): class, file pattern, row and name. */
+const GEO_ASSETS = [
+  ['geoBasemap', /^assets\/basemap-[A-Za-z0-9_-]+\.json$/, 'geo-basemap', 'geo basemap'],
+  ['geoGazetteer', /^assets\/gazetteer-[A-Za-z0-9_-]+\.json$/, 'geo-gazetteer', 'geo gazetteer'],
+] as const;
 
 /**
  * The editor closure (plan #63 Part C §3.6): the files of the `editorModules` entries and every
@@ -326,6 +346,19 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
       `engine (${String(engine.length)} files)`,
       engine.reduce((a, f) => a + size(f), 0),
     );
+  }
+  if (budgets.required.geoAssets) {
+    for (const [cls, re, row, what] of GEO_ASSETS) {
+      const files = allFiles.filter((f) => re.test(f));
+      const [file] = files;
+      if (files.length !== 1 || file === undefined) {
+        findings.push(
+          missing(what, `expected exactly one ${what} asset, found ${String(files.length)}`),
+        );
+      } else {
+        over(cls, row, size(file));
+      }
+    }
   }
   const seen = new Set<string>();
   for (const c of manifest.values()) {

@@ -19,7 +19,7 @@ SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
 	engine-wasm-probe e2e-build-probe \
 	engine-gpu-smoke \
-	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
+	go-licenses no-pulsusdb-host geo-test geo-data geo-check dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
 
 # Dev stack (dev/compose.yaml, docs/development/dev-stack.md). COMPOSE may be any Docker Compose v2
@@ -158,6 +158,21 @@ no-pulsusdb-host:
 	  python3 -I -m unittest discover -s tools/no-pulsusdb-host -p 'test_*.py' && \
 	  python3 -I tools/no-pulsusdb-host/check.py $(ARGS)
 
+# unit:geo-build and unit:geo-gazetteer-build (T24 §10.3): the geo build tool's tests.
+geo-test:
+	python3 -I -m unittest discover -s tools/geo -p 'test_*.py'
+
+# ci:geo-data (T24-087): the committed geo assets against tools/geo/manifest.json, decoded.
+geo-data:
+	npm --prefix client run geo-data
+
+# Rebuilds the geo assets in memory from the pinned sources in GEO_SRC (never committed or
+# downloaded; docs/client/supply-chain.md) and compares them byte for byte with the committed files.
+# Local only; a PR that changes an asset attaches its output.
+geo-check:
+	@test -n "$(GEO_SRC)" || { echo "GEO_SRC is not set: the directory of the pinned geo sources"; exit 1; }
+	python3 -I tools/geo/build.py "$(GEO_SRC)" --check
+
 dev-env:
 	@test -f $(DEV_ENV_FILE) || { echo "$(DEV_ENV_FILE) is missing: create it as described in docs/development/dev-stack.md"; exit 1; }
 
@@ -224,7 +239,7 @@ cpu-instr-update:
 	server/scripts/cpu-instr.sh --update
 
 ci: go-mod api-gen-check go-lint go-test govulncheck migrations-lint build go-licenses no-pulsusdb-host \
-	itest-local-selftest
+	itest-local-selftest geo-test geo-data
 
 # Engine (plan #68 Part A): every target runs in the pinned lavapipe image (engine/ci, T05-004), as
 # engine.yml does. DOCKER may be podman; rootless Podman keeps file ownership with

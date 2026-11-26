@@ -15,6 +15,7 @@ on:
       - 'server/**'
       - 'api/**'
       - 'tools/e2e/**'
+      - 'tools/geo/**'
       - 'wire/**'
       - 'dev/pulsus-fake.*'
       - 'Makefile'
@@ -64,6 +65,11 @@ jobs:
         run: npm run token-lint
       - name: unit
         run: npm test
+      - name: 'unit:geo-build, unit:geo-gazetteer-build'
+        working-directory: .
+        run: make geo-test
+      - name: 'ci:geo-data'
+        run: npm run geo-data
       - name: build
         run: npm run build
         env:

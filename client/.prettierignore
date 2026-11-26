@@ -19,3 +19,5 @@ src/engine/wasm/layout.gen.ts
 dist-release-stub
 dist-release-http
 dist-probe
+src/vis/geo/data
+src/vis/geo/fixtures/build

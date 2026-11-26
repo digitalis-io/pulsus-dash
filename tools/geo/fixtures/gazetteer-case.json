@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "about": "T24 §10.3 unit:geo-gazetteer-build: DBF rows as JSON (the test writes them as dBASE III files), the airports and cloud CSV text, and the exact gazetteer.json content (without its trailing LF) or the BuildError of each cloud variant",
+  "admin0": [
+    { "ISO_A2_EH": "FR", "ISO_A3_EH": "FRA", "ADM0_A3": "FRA", "NAME_EN": "France", "LABEL_X": "-1.125", "LABEL_Y": "46.5" },
+    { "ISO_A2_EH": "FR", "ISO_A3_EH": "FRA", "ADM0_A3": "CLP", "NAME_EN": "Clipperton Island", "LABEL_X": "-109.2", "LABEL_Y": "10.3" },
+    { "ISO_A2_EH": "ZZ", "ISO_A3_EH": "ZZZ", "ADM0_A3": "ZZN", "NAME_EN": "Zed North", "LABEL_X": "5", "LABEL_Y": "5" },
+    { "ISO_A2_EH": "ZZ", "ISO_A3_EH": "ZZZ", "ADM0_A3": "ZZS", "NAME_EN": "Zed South", "LABEL_X": "5", "LABEL_Y": "-5" },
+    { "ISO_A2_EH": "-99", "ISO_A3_EH": "-99", "ADM0_A3": "KOS", "NAME_EN": "Kosovo", "LABEL_X": "20.9", "LABEL_Y": "42.6" }
+  ],
+  "admin1": [
+    { "iso_3166_2": "US-CA", "name_en": "California", "name": "California", "longitude": "-120", "latitude": "37" },
+    { "iso_3166_2": "KZ-ALA", "name_en": "Almaty", "name": "Almaty", "longitude": "76.9", "latitude": "43.25" },
+    { "iso_3166_2": "KZ-ALA", "name_en": "", "name": "Almaty City", "longitude": "76.95", "latitude": "43.28" },
+    { "iso_3166_2": "XX-NN", "name_en": "", "name": "", "longitude": "1", "latitude": "1" },
+    { "iso_3166_2": "usca", "name_en": "Lower", "name": "Lower", "longitude": "2", "latitude": "2" }
+  ],
+  "airports": "id,ident,type,name,latitude_deg,longitude_deg,iso_country,municipality,scheduled_service,iata_code\n1,WSSS,large_airport,Singapore Changi Airport,1.35019,103.994,SG,Singapore,yes,SIN\n2,QQ01,medium_airport,Alpha Field,1,1,XX,,yes,QQQ\n3,QQ02,medium_airport,Beta Airport,2,2,XX,Beta,yes,QQQ\n4,QQ03,heliport,Heli Pad,3,3,XX,Heli,yes,QQH\n5,QQ04,large_airport,Quiet Field,4,4,XX,Quiet,no,QQU\n6,QQ05,large_airport,Lower Field,5,5,XX,Lower,yes,ab\n",
+  "places": [
+    { "ne_id": "1159151309", "name": "Dublin", "iso_a2": "IE", "latitude": "53.335007", "longitude": "-6.250852" },
+    { "ne_id": "1159150001", "name": "Elsewhere", "iso_a2": "XX", "latitude": "1", "longitude": "1" }
+  ],
+  "cloud": "# as of 2026-11-25\nprovider,id,place,iso_a2,ne_id,source,retrieved\naws,eu-west-1,Dublin,IE,1159151309,aws public region list,2026-11-25\n",
+  "expect": "{\"v\":1,\"q\":100,\"country\":[[\"FR\",\"FRA\",\"France\",-113,4650],[\"ZZ\",\"ZZZ\",\"Zed North\",500,500],[\"ZZ\",\"ZZZ\",\"Zed South\",500,-500]],\"region\":[[\"KZ-ALA\",\"Almaty\",7690,4325],[\"KZ-ALA\",\"Almaty City\",7695,4328],[\"US-CA\",\"California\",-12000,3700],[\"XX-NN\",\"XX-NN\",100,100]],\"iata\":[[\"QQQ\",\"Alpha Field\",100,100],[\"QQQ\",\"Beta\",200,200],[\"SIN\",\"Singapore\",10399,135]],\"cloud\":[[\"aws\",\"eu-west-1\",\"Dublin\",-625,5334]]}",
+  "cloudErrors": [
+    {
+      "cloud": "# as of 2026-11-25\nprovider,id,place,iso_a2,ne_id,source,retrieved\naws,eu-west-1,Dublin,IE,1,aws public region list,2026-11-25\n",
+      "error": "cloud-regions.csv: aws eu-west-1: ne_id 1 is not a populated place"
+    },
+    {
+      "cloud": "# as of 2026-11-25\nprovider,id,place,iso_a2,ne_id,source,retrieved\naws,eu-west-1,Dublin,GB,1159151309,aws public region list,2026-11-25\n",
+      "error": "cloud-regions.csv: aws eu-west-1: iso_a2 GB is not the place's IE"
+    }
+  ]
+}
