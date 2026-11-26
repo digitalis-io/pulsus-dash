@@ -304,6 +304,18 @@ describe('unit:selection-draw', () => {
     ).toEqual([0, 0]);
   });
 
+  it('canvas2d dim layer: released at a nonzero size too small for a plot, and stays released', () => {
+    const h = frame(LINE, LINES3);
+    drawWith(h, sel([K1]));
+    expect(h.scratchCanvas().width).toBe(400);
+    h.frame.resize(12, 10, 1);
+    h.flush();
+    expect(last(h).plot.width > 0 && last(h).plot.height > 0).toBe(false);
+    expect([h.scratchCanvas().width, h.scratchCanvas().height]).toEqual([0, 0]);
+    drawWith(h, null);
+    expect([h.scratchCanvas().width, h.scratchCanvas().height]).toEqual([0, 0]);
+  });
+
   it('canvas2d dim layer dpr2: the scratch under the DPR transform, the composite under identity', () => {
     const h = frame(LINE, LINES3, 2);
     h.scratch().clearOps();

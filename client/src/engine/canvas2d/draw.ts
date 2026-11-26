@@ -521,7 +521,11 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
     valueDomain: axis.domain,
     bandHeld: axis.held,
   });
-  if (isPlotEmpty(plot)) return model(base);
+  if (isPlotEmpty(plot)) {
+    // Nothing dims without a plot (ADR-0032): the scratch goes too.
+    releaseScratch(i.scratch);
+    return model(base);
+  }
   drawAxes(i, plot, labels, true);
   const matched = matchedKeys(
     i.selection,
