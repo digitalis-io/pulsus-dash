@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-25 |
+| **Version** | 1.7-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -106,9 +106,9 @@ which emits no `geoCommit`, so sync cannot loop. The area is applied in the clie
 series: it only removes and counts them
 ([T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response)). Row 8 is a
 synchronous label test (no gazetteer, so the choice never flips when assets arrive), placed after
-rows 5–7. Stored boards keep their choice: the board spec v8 upcaster marks every stored `auto`
+rows 5–7. Stored boards keep their choice: the map-sync spec version's upcaster (§5.0) marks every stored `auto`
 panel `legacyAuto`, which skips row 8 until the panel is edited and saved. Import is one pure
-function from the source JSON to v8 geomap options plus ordered notes; every output passes the v8
+function from the source JSON to map-sync geomap options plus ordered notes; every output passes the map-sync
 validator. Rejected: label-matcher rewrites, an in-memory camera, a board variable, wrapped bounds,
 a gazetteer-based row 8, a board-level version gate and hidden unmapped options (§12).
 
@@ -116,7 +116,7 @@ a gazetteer-based row 8, a board-level version gate and hidden unmapped options 
 
 Goals (part A): the T24 skeleton and its part map; the shared widget rules; the Text / Markdown widget
 and its renderer, URL rule and removal log; the import conversion of iframes into links; the Clock
-widget with zones, 12/24 h, a countdown and day and night cues without colour; board spec v4.
+widget with zones, 12/24 h, a countdown and day and night cues without colour; the widgets spec version (§5.0).
 
 Non-goals (part A):
 - parts B–K;
@@ -129,7 +129,7 @@ Non-goals (part A):
 Goals (part B1): the shared list-widget rules (snapshot, meter, keyboard, table, CSV, facts, states
 and look); the Board list widget with its starred, recent, search and tag modes; board tags in the
 board spec and their cache in Postgres; the `/boards` search and tag filter, `applied` and
-`truncated`; the Dashboard list import; board spec v5.
+`truncated`; the Dashboard list import; the tags and board-list spec versions (§5.0).
 
 Non-goals (part B1):
 - part B2 (the Change feed widget, the `change` target and the log panel gaps);
@@ -141,7 +141,7 @@ Non-goals (part B1):
 Goals (part B2): the Change feed widget (source, entity filter, paging, snapshot and meter, rows,
 selection and Inspector, keys, table, CSV and facts, compatibility, import); the canonical scoped
 `EntityId` on annotations; data-scope enforcement on every annotations path; the `/annotations`
-filters, keyset paging and `applied`; migration 5; board spec v6; the `change` Inspector target; the
+filters, keyset paging and `applied`; migration 5; the change-feed spec version (§5.0); the `change` Inspector target; the
 log panel gap record.
 
 Non-goals (part B2):
@@ -168,7 +168,7 @@ Goals (part E, step 1b): the `geomap` kind and its seam (ADR-0027); the host and
 their value, location and draw statuses; group identity, legend and sizes; the basemap drawing, the
 camera, clusters and picking; selection, the four Inspector target kinds and the in-request
 navigation stack (T25); the mark list and keys; the table, CSV (with the `csvCell` numeric
-exemption) and facts; every state; board spec v7.
+exemption) and facts; every state; the geomap spec version (§5.0).
 
 Non-goals (part E, step 1b):
 - part E step 2 (T24-096–099): view sync, the bounds filter, auto-vis and import;
@@ -179,7 +179,7 @@ Non-goals (part E, step 1b):
 
 Goals (part E, step 2): the board URL store; the `map=` and `geo=` codecs and the URL budget; the
 map's input view, its camera history and `Alt+←`/`Alt+→`; view sync; the map area filter, its
-writers, its effective area and its consumers; the pivot disclosure of the area; board spec v8;
+writers, its effective area and its consumers; the pivot disclosure of the area; the map-sync spec version (§5.0);
 auto-vis row 8 and `legacyAuto`; the import of the standard geomap panel.
 
 Non-goals (part E, step 2):
@@ -268,7 +268,7 @@ T24-087, step 1b T24-088 to T24-095, and step 2 T24-096 to T24-099; VIZ-129 stay
 | [VIZ-044](../product/05-visualisation-catalogue.md#viz-044--geospatial-layers) (staged: the Markers row in part E step 1b; symbol and rotation from fields in part G) | §4.1 (T24-089 to T24-091), §4.11, §5.14, §5.15 | `unit:geo-marks`; `unit:geo-radius-project`; `unit:geo-rows`; `golden:gallery` |
 | [VIZ-046](../product/05-visualisation-catalogue.md#viz-046--own-basemap-renderer-offline-basemap) (part E step 1b: the drawing) | §4.1 (T24-091) | `unit:geo-basemap-draw`; `e2e:geomap-offline` |
 | [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (part E step 1b) | §4.1 (T24-089, T24-095), §4.11, §4.12 | `unit:geo-coverage`; `unit:geo-states` |
-| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (part E step 1b) | §5.15 (board spec v7) | `unit:board-spec-geomap` |
+| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (part E step 1b) | §5.15 (the geomap spec version) | `unit:board-spec-geomap` |
 | [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis) (part E step 1b) | §4.1 (T24-094), §4.14 | `unit:geo-table-csv`; `unit:list-table-csv`; `e2e:geomap` |
 | [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel) (amended), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) (part E step 1b) | §4.1 (T24-090), §10.4 | `unit:geo-identity`; `golden:gallery` |
 | [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) (part E step 1b) | §4.1 (T24-093 to T24-095) | `unit:geo-facts`; `unit:geo-list`; `e2e:geomap-a11y` |
@@ -280,7 +280,7 @@ T24-087, step 1b T24-088 to T24-095, and step 2 T24-096 to T24-099; VIZ-129 stay
 | [INT-006](../product/03-interaction-model.md#int-006--camera-history) (maps; part E step 2) | §4.1 (T24-096), §4.18, §5.17 | `unit:geo-history`; `unit:map-params`; `unit:board-url-store`; `unit:board-url-queue`; `unit:url-budget`; `unit:url-echo`; `unit:url-time-init`; `unit:url-atomic`; `e2e:geomap-sync` |
 | [IA-026](../product/02-information-architecture.md#ia-026--context-propagation) (the map area `geo=`) | §4.1 (T24-098), §4.15, [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) | `unit:geo-writers`; `unit:geo-area-consumers`; `unit:pivot-context` |
 | [VIZ-027](../product/05-visualisation-catalogue.md#viz-027--coverage-meter-on-every-viewport) (the map area; part E step 2) | §4.1 (T24-098), §4.15, [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.area`) | `unit:geo-area`; `unit:geo-area-results` |
-| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (part E step 2) | §5.15 (board spec v8) | `unit:board-spec-geomap-v8` |
+| [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (part E step 2) | §5.15 (the map-sync spec version) | `unit:board-spec-geomap-v8` |
 | [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) (row 8; part E step 2) | §4.1 (T24-099), §5.17 | `unit:autovis-table`; `unit:autovis-legacy`; `unit:autovis-logql`; `unit:autovis-explore`; `unit:editor-preview-legacy` |
 | [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Geomap row) | §4.1 (T24-099), §4.19, §5.17 | `unit:import-geomap`; `unit:import-geomap-fuzz` |
 | [T12-018](T12-entity-catalogue.md#t12-018--no-hidden-identifier-in-any-response) (the map area; part E step 2) | §4.1 (T24-098), §8 | `unit:geo-area-scope` |
@@ -481,7 +481,7 @@ the truncation and `tagsStale` in one statement (§6). A stale row is returned w
 
 **Old server** (no `applied` in the answer): `unknown`; `truncated` is not trusted; search filters the
 titles client-side; tag mode shows "Filtering by tag needs a newer server", with no rows and no chips.
-Old binaries cannot move a v5 head (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
+Old binaries cannot move a head saved at the tags version or later (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
 save shows "This server does not accept board tags yet".
 
 #### T24-030 — Feed source
@@ -954,14 +954,14 @@ on it shows "Map area filter off: more than 8 unsynced maps on this board".
 
 #### T24-099 — Auto-vis row 8, import
 **MUST** — With vis `auto` and no `legacyAuto`, after rows 5–7, `hasGeoFields` (§5.17) → `geomap`
-with the v8 defaults; never over an explicit vis (`chooseVis`). A `legacyAuto` panel skips row 8, so
+with the map-sync defaults; never over an explicit vis (`chooseVis`). A `legacyAuto` panel skips row 8, so
 a stored board keeps today's vis; its editor preview renders the draft without `legacyAuto` (row 8,
 "Auto (Map)"), and the editor's save drops `legacyAuto`; saving another panel or the board layout
 keeps it. LogQL panels: for a panel without `legacyAuto` (and the editor's draft), a metric-series
 answer takes the ordered auto-vis decision (rows 5–8, then the rest) and its editor label is that
 decision's; a `legacyAuto` panel keeps exactly today's result (the fixed line, label Line) until
 edited and saved; a log-line answer keeps today's handling. Explore never picks row 8 (no geomap kind
-there yet). Import follows §4.19; its output passes the v8 validator.
+there yet). Import follows §4.19; its output passes the map-sync validator.
 
 ### 4.2 Markdown node table (`commonmark` → output)
 
@@ -1266,7 +1266,27 @@ their Cc characters removed and are cut to 40 code points.
 
 ## 5. Interfaces
 
-### 5.1 Board spec v4 (OpenAPI, Go, TS)
+### 5.0 Board spec version order
+
+Each change below takes the **next free** board spec version when it is coded, with an upcaster
+from the immediately preceding version (the identity unless noted; [T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)).
+This document names the versions by their change; the numbers in the last column hold only if the
+changes land in the order of the table. A fixture is named `v‹N›-‹change›.json` with its real
+number, and a gate ID keeps the label it was given (`unit:board-spec-geomap-v8` is the map-sync
+gate whatever its number).
+
+| Name | Change | Issue | Number if landed in this order |
+|---|---|---|---|
+| tags version | `BoardSpec.tags` (§5.5) | #215 (I1), landed | v4 |
+| widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) | v5 if no other spec change lands first |
+| board-list version | `boardList` (§5.5) | #216 (I2), after #198 | v6 |
+| change-feed version | `changeFeed` (§5.8) | part B2 | v7 |
+| geomap version | `geomap` (§5.15) | part E step 1b | v8 |
+| map-sync version | `sync`, `boundsFilter`, `legacyAuto` (§5.15) | part E step 2 | v9 |
+
+An older server refuses a head saved at a newer version (`ErrSchemaTooNew`).
+
+### 5.1 Board spec: the widgets version (OpenAPI, Go, TS)
 
 `query` becomes optional; `Vis.kind` adds `text` and `clock`; `Vis.options` (#173) gains the keys
 below (errors are `board.options.‹…›`):
@@ -1281,9 +1301,9 @@ below (errors are `board.options.‹…›`):
 | seconds, date | bool | `false`, `true` | clock | — |
 | countdown | absent or `{to: RFC 3339 with offset, label 1–64, after: 'countUp'\|'hide'}` | absent | clock | `countdown.invalid` |
 
-Go decides validity; the v3 → v4 upcaster is the identity
+Go decides validity; the upcaster from the immediately preceding version (the tags version, v4, unless another spec change lands first) is the identity
 ([T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); the fixtures are
-`v4-widgets.json` and `invalid.json`.
+`v‹N›-widgets.json` (`v5-widgets.json` if no other spec change lands first) and `invalid.json`.
 
 `isWidgetPanel(p)` narrows `PanelSpec` and guards every `panel.query` read; `textOptions` and
 `clockOptions` fill the defaults; `PanelFrame` branches first to `<WidgetBody>`.
@@ -1364,11 +1384,19 @@ no notes. Otherwise one parse:
    (‹n› links). Shorten or split it in the source and import again." No content is copied; the source
    file is the copy.
 
-### 5.5 Board spec v5 (part B1; OpenAPI, Go, TS)
+### 5.5 Board spec: the tags and board-list versions (part B1; OpenAPI, Go, TS)
 
-Spec v5 is the next version after part A's v4 (#198), or the next free version, with an identity
-upcaster (T11-016). `BoardSpec` gains `tags` (T24-029), and `Vis.kind` adds `boardList` with the
-options below. Go decides validity; TS = Go on the fixtures `v5-board-list.json` and `invalid.json`.
+Part B1 adds two things to the board spec, each at the next free spec version when it is coded,
+with an identity upcaster (T11-016):
+
+- **Tags**, in I1 (#215), Go and the client's validator together: `BoardSpec` gains `tags`
+  (T24-029). The tags version is the version after the current one when I1 is coded (v4: it landed
+  before #198, whose widgets version is v5 if no other spec change lands first); the client accepts and keeps `tags` (no editor yet). Fixtures:
+  `v‹N›-board-tags.json` and the tag rows of `invalid.json`, TS = Go.
+- **`Vis.kind` `boardList`** with the options below, Go and TS, in I2 (#216) after #198 (a
+  `boardList` panel has no `query`, and "query optional" is #198's version). Go decides validity;
+  TS = Go on the fixtures `v‹N›-board-list.json` and `invalid.json`.
+
 Other keys → `board.json.unknownKey`. Errors are `board.options.‹…›`.
 
 | Key | Type / bounds | Default | Error |
@@ -1427,11 +1455,11 @@ export function boardSnapshot(key: readonly unknown[], r: BoardPage | RefPage,
 // importBoardList(src) → { options; notes: string[] }
 ```
 
-### 5.8 Board spec v6 (part B2; OpenAPI, Go, TS)
+### 5.8 Board spec: the change-feed version (part B2; OpenAPI, Go, TS)
 
-Spec v6 is the next free version after v5 (§5.5), with an identity upcaster (T11-016). `Vis.kind`
+The change-feed version is the next free version when it is coded (§5.0), with an identity upcaster from the immediately preceding version (T11-016); it depends on no other B1 version. `Vis.kind`
 adds `changeFeed` with the options below. Go decides validity; TS = Go on the fixtures
-`v6-change-feed.json` and `invalid.json`. Other keys (`fieldConfig`, `thresholds`, `depth`, …) →
+`v‹N›-change-feed.json` and `invalid.json`. Other keys (`fieldConfig`, `thresholds`, `depth`, …) →
 `board.json.unknownKey`. Errors are `board.options.‹key›.…`.
 
 | Key | Type / bounds | Default | Error |
@@ -1635,7 +1663,7 @@ export type GeoPlan = // vis/geo/plan.ts
 export function planGeo(p: GeoMapFrameProps, size: FrameSize, view: GeoView | null /* T24-088 */): GeoPlan;
 ```
 
-### 5.15 Geomap rows and board spec v7 (part E step 1b; `vis/geo/frame.ts`, OpenAPI, Go, TS)
+### 5.15 Geomap rows and the geomap spec version (part E step 1b; `vis/geo/frame.ts`, OpenAPI, Go, TS)
 
 `vis/geo/frame.ts` is pure:
 
@@ -1655,13 +1683,13 @@ export function validateGeoRows(s: GeoRowSet, th: boolean): FrameDataIssue | nul
 export function geoFrame(s: GeoRowSet, b: Basemap, seq: number): GeoFrame;
 ```
 
-**Board spec v7** is the next free version after v6 (§5.8), with an identity upcaster (T11-016).
+**The geomap version** of the board spec is the next free version when it is coded (§5.0), with an identity upcaster from the immediately preceding version (T11-016); it depends on no widget or list version.
 `Vis.kind` adds `geomap` with the options below. Go decides validity; TS = Go on the fixtures
-`v7-geomap.json` and `invalid.json`. Errors are `board.options.‹key›.invalid` unless noted.
+`v‹N›-geomap.json` and `invalid.json`. Errors are `board.options.‹key›.invalid` unless noted.
 `depth`, `tilt`, `projection`, `perspective`, `shadow` and `3d` → `board.json.unknownKey`
 ([T22-002](T22-value-categorical-and-table-panels.md#t22-002--no-depth-options-on-2d-kinds)). A save
 to an older server → 400, shown as "This server does not support map panels yet"; old binaries
-cannot move a v7 head (`ErrSchemaTooNew`,
+cannot move a head saved at the geomap version or later (`ErrSchemaTooNew`,
 [T11-015](T11-postgres-schema.md#t11-015--migration-runner-and-compatibility-window)).
 
 | Key | Type / bounds | Default | Error |
@@ -1676,8 +1704,8 @@ cannot move a v7 head (`ErrSchemaTooNew`,
 | cluster, wheelZoom | bool | `true` | `board.json.type` |
 | view | null \| `GeoView` (ADR-0027 bounds) | null | `view.invalid` |
 
-**Board spec v8** (part E step 2) is the next free version after v7 (T11-016). Go decides validity;
-TS = Go on the fixture `v8-geomap.json`. The geomap options gain:
+**The map-sync version** (part E step 2) is the next free version when it is coded, and depends on the geomap version (it extends the geomap options; §5.0, T11-016). Go decides validity;
+TS = Go on the fixture `v‹N›-geomap-sync.json`. The geomap options gain:
 
 | Key | Type / bounds | Default | Error |
 |---|---|---|---|
@@ -1685,9 +1713,9 @@ TS = Go on the fixture `v8-geomap.json`. The geomap options gain:
 | boundsFilter | bool | `false` | `board.json.type` |
 
 `Vis` gains `legacyAuto?: true`, valid only with `kind: 'auto'` (else `board.vis.legacyAuto.invalid`;
-its use is T24-099). The upcaster v7 → v8 sets `legacyAuto: true` on every `auto` panel and changes
-nothing else. A v8 save to a v7 server → 400, shown as "This server does not support map sync yet"
-(`ErrSchemaTooNew`, as for v7).
+its use is T24-099). Its upcaster from the immediately preceding version (whichever that is) sets `legacyAuto: true` on every `auto` panel and changes
+nothing else. A map-sync save to an older server → 400, shown as "This server does not support map sync yet"
+(`ErrSchemaTooNew`, as for the geomap version).
 
 ### 5.16 Geomap targets, mark list and rows (part E step 1b; `vis/geo/targets.ts`, `charts/geo/`, `vis/geo/rows.ts`)
 
@@ -1775,16 +1803,16 @@ export function hasGeoFields(series: readonly SeriesFrame[]): boolean;
 
 // import/geomap.ts
 export function importGeomap(src: unknown /* the panel's `options` */, hasThresholds: boolean):
-  { options: GeomapOptions /* v8 */; notes: string[] };   // §4.19
+  { options: GeomapOptions /* map-sync version */; notes: string[] };   // §4.19
 ```
 
 ## 6. Data & storage
 
-Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 upcaster is the identity
+The widgets version of the board spec (§5.1) is stored as the board document is today; its upcaster from the immediately preceding version is the identity
 (T11-016). There is no new table, route or storage: widgets fetch nothing and make only safe GETs
 (links and `local` images).
 
-**Part B1.** Board spec v5 (§5.5) is stored the same way, with an identity upcaster. Migration 4 adds
+**Part B1.** The tags version of the board spec (§5.5) is stored the same way, with an identity upcaster. Migration 4 adds
 the `boards.tags` cache ([T11](T11-postgres-schema.md) §4.3); it is metadata-only and keeps the N+1
 window (T11-012, T11-013). The repair and the list (T24-029) run as two transactions:
 
@@ -1819,7 +1847,7 @@ ORDER BY h.created_at DESC NULLS LAST, h.uid;   -- the all-NULL sentinel exists 
 `strpos` (not `LIKE`) means `%` and `_` in `q` are plain characters. `lower(… COLLATE "C")` folds ASCII
 only, so `zürich` does not match `ZÜRICH`.
 
-**Part B2.** Board spec v6 (§5.8) is stored the same way, with an identity upcaster. Migration 5 adds
+**Part B2.** The change-feed version (§5.8) is stored the same way, with an identity upcaster. Migration 5 adds
 the annotation's canonical entity ([T11](T11-postgres-schema.md) §4.4). It is metadata-only, keeps the
 N+1 window (T11-012, T11-013) and is numbered after #215's migration 4. Every path is **one
 statement**:
@@ -1872,13 +1900,13 @@ largest polygon; the one drop is a PRK sliver (3 points, 4.5·10⁻¹² deg², a
 Tumen; PRK's 43-point polygon is kept); ZAF's Lesotho hole passes; the polar vertices are only in ATA
 and the seams only in ATA, FJI and RUS; two runs are byte-identical; both assets validate.
 
-**Part E, step 1b.** Board spec v7 (§5.15) is stored as the board document is today, with an
+**Part E, step 1b.** The geomap version (§5.15) is stored as the board document is today, with an
 identity upcaster (T11-016). There is no new table, route, migration or browser storage. The camera
 view lives in the engine frame and the host (`lastView`), so it is lost on unmount unless it was
 saved into `options.view`; the selection, the Inspector and its `nav` stack are in memory only, per
 page ([T25](T25-inspector-and-pivots.md) §6).
 
-**Part E, step 2.** Board spec v8 (§5.15) is stored as the board document is today; its upcaster
+**Part E, step 2.** The map-sync version (§5.15) is stored as the board document is today; its upcaster
 marks every stored `auto` panel `legacyAuto` (T11-016). There is no new table, route, migration or
 browser storage. A map's view and the map area live in the board URL (`map=`, `geo=`, §4.18), so a
 link, a reload and history reproduce them; they are never stored and never sent to the BFF.
@@ -1955,7 +1983,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 | Tenancy; spec versions | No fetch or storage; safe GETs; the next spec version |
 | Ticks; zones | The due-time scheduler (T24-011); Go decides zone validity; a bad zone → one row (T24-010) |
 | Tenancy (part B1) | `OrgTx` under RLS; org B in the itests |
-| Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a v5 head (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
+| Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a head saved at the tags version or later (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
 | A GET that writes | A separate short transaction, ≤ 200 rows, `SKIP LOCKED`, 2 s, on the primary; a failure leaves rows stale and never fails the list |
 | A failed refetch; a late answer | The snapshot is kept with `staleAtMs`; an answer for an old key never renders (T24-024) |
 | Scope (part B2) | RLS and `P` in one statement per path; an unset scope or `b: []` → 403 before any SQL |
@@ -1966,7 +1994,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 | A source changes (part E) | A crossing ring, polar land outside `polarFeatures` or a collapsing country fails the build (T24-086); nothing is drawn wrong |
 | An asset fails to load or validate (part E) | That asset alone is null, with one `console.debug` line; a null gazetteer → `gazetteerUnavailable`, and coordinates and geohashes still place (G0) |
 | Bundle growth (part E) | 122 KB measured against 144 KB of new rows; ≥ 280 KB of the total stays free (§7) |
-| Spec versions (part E step 1b) | v7 with an identity upcaster; an older server's 400 → "This server does not support map panels yet"; old binaries cannot move a v7 head (§5.15) |
+| Spec versions (part E step 1b) | the geomap version, with an identity upcaster; an older server's 400 → "This server does not support map panels yet"; old binaries cannot move a head at the geomap version or later (§5.15) |
 | Too many rows (part E step 1b) | The 5 000-row cap keeps min, max and the worst states (T22-006); the meter, the table and the CSV disclose and list every row |
 | Rows that cannot be drawn (part E step 1b) | Each status is independent and disclosed (T24-089, §4.11); `noneShown`, `mapDataUnavailable` and `tooSmall` still offer the table (§4.12) |
 | A stale Inspector step (part E step 1b) | `push` checks `seq` and `depth`, and the content unmounts with its request; a push before the `originChanged` effect hits the open request and the selection stays (T25 §4.8) |
@@ -1976,7 +2004,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 | Link length (part E step 2) | Map pairs are evicted first; removals always succeed; other writers behave as today; a refused map write stays local, with a notice (§4.18, T24-096) |
 | A silent vis switch (part E step 2) | Stored `auto` panels are `legacyAuto` and keep their vis; only an edited-and-saved or new panel gets row 8, previewed first (T24-099) |
 | Generic `region` labels (part E step 2) | Rule 7 of §4.10 can pick a map for non-geographic regions; the unknown codes are disclosed and the user can pick another vis (persisted, VIZ-065) |
-| Spec versions (part E step 2) | v8; a v7 server's 400 → "This server does not support map sync yet" (§5.15) |
+| Spec versions (part E step 2) | the map-sync version; an older server's 400 → "This server does not support map sync yet" (§5.15) |
 
 ## 10. Testing
 
@@ -1984,7 +2012,7 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
-| `unit:board-spec-widgets` | spec.test.ts, validate_test.go | fixtures | valid → none; text + `query` → `board.panel.query.forbidden`; line without → `.required`; clock `depth` → `unknownKey`; 13 zones, `tz:'Mars/Base'` → `zones.invalid`; duplicate zone → `.duplicate`; 65 537 bytes → `content.tooLong`; `to:'2026-11-26 14:00'` → `countdown.invalid`; TS = Go; v3 upcasts | T24-003, VIZ-031, 057 |
+| `unit:board-spec-widgets` | spec.test.ts, validate_test.go | fixtures | valid → none; text + `query` → `board.panel.query.forbidden`; line without → `.required`; clock `depth` → `unknownKey`; 13 zones, `tz:'Mars/Base'` → `zones.invalid`; duplicate zone → `.duplicate`; 65 537 bytes → `content.tooLong`; `to:'2026-11-26 14:00'` → `countdown.invalid`; TS = Go; the version before upcasts | T24-003, VIZ-031, 057 |
 | `unit:classify-url` | sanitise/url.test.ts | strings | rejected: `/\t/evil.test`, `/a/../..//evil.test`, `/.//evil`, `/\\evil.test`, `//evil.test`, ` /x`, `/x\u0085`, `https://u:p@x.test/`, `JaVaScRiPt:x`, `data:,x`, `boards/b1`; local: `/boards/b1?x=1#h`, `/%5Cevil.test` (unchanged); external: `HTTPS://X.TEST` → `https://x.test/`; mailto: `mailto:o@x.test` | T24-005 |
 | `unit:markdown-links` | sanitise/markdown.test.tsx | inputs L (below) | a → text + `linkScheme`; t → `/%09/e.test`; b, d, e → new-tab `<a>` | T24-005 |
 | `unit:markdown-nodes` | same | `"<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\n**ok**"`; `# A\n###### F\n1000000. x` | DOM `<p><strong>ok</strong></p>`, removals `[{html,1},{html,3}]`; `<h4>`, `<h6>`, `<ol start="999999">` | VIZ-054, T24-009 |
@@ -2057,12 +2085,13 @@ Written first in I1 and I2 (§11); all fail today: nothing exists yet.
 **Fixture B:** 12 starred refs in server order: Checkout (`ck-1`), Checkout (`ck-2`), Edge, Gateway,
 Inventory, NOC overview, Orders, Payments (`pay`), PSP API, Search, Shipping, Web; `truncated: false`.
 **Fixture S:** org A: "Checkout overview" `[team:payments]`, "CHECKOUT latency", "Zürich edge",
-"ZÜRICH core", "payments" `[payments]`, and 1 002 "bulk-n" (distinct `created_at`); org B:
+"ZÜRICH core", "payments" `[payments]`, "Ledger" `[finance, team:payments]`, and 1 002 "bulk-n"
+(distinct `created_at`, older than the named boards, which are in this order); org B:
 "checkout b".
 
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
-| `unit:board-spec-board-list` | boards/spec.test.ts, validate_test.go | `{}`; tag mode, no tag; starred + tag; 101-char query; `query:'a\tb'` (`\t` = U+0009 TAB); recent + query; limit 0/51/2.5; `sort:'care'`; `depth:1`; board tags ×17/`['A']`/`['a','a']` | Defaults `{starred,'',null,10,default}`; `tag.invalid` ×2, `query.invalid` ×3, `limit.invalid` ×3, `sort.invalid`, `board.json.unknownKey`, `board.tags.invalid` ×2, `.duplicate`; TS = Go; v4 upcasts; the editor shows the Cc text for `a\tb` (U+0009) and sends nothing | T24-029, T24-021, VIZ-031 |
+| `unit:board-spec-board-list` | boards/spec.test.ts, validate_test.go; the board-tag cases in I1 (#215), the rest in I2 | `{}`; tag mode, no tag; starred + tag; 101-char query; `query:'a\tb'` (`\t` = U+0009 TAB); recent + query; limit 0/51/2.5; `sort:'care'`; `depth:1`; board tags ×17/`['A']`/`['a','a']` | Defaults `{starred,'',null,10,default}`; `tag.invalid` ×2, `query.invalid` ×3, `limit.invalid` ×3, `sort.invalid`, `board.json.unknownKey`, `board.tags.invalid` ×2, `.duplicate`; TS = Go; the version before upcasts; the editor shows the Cc text for `a\tb` (U+0009) and sends nothing | T24-029, T24-021, VIZ-031 |
 | `unit:board-list-source` | widgets/boardList/source.test.tsx | Stub Api, fake timers | T24-021 calls and keys; `'  Checkout '` → `{q:'Checkout'}`; `''` → no `q`; keys at 0/100/200 ms → one key change and request at 450 ms, the previous rows shown until then | T24-021 |
 | `unit:board-list-rows` | widgets/boardList/rows.test.ts | B, current `pay` | `Checkout · ck-1`, `Checkout · ck-2`, the rest plain; `pay` "this board"; `incidents` → B order + the caption | T24-022, T24-023 |
 | `unit:list-coverage` | widgets/lists/snapshot.test.ts | `listCoverage` → `coverageText`; `unknown` via `boardSnapshot` (no `applied`; `tagsStale` 1, 3) | (12,10) `showing 10 of 12`; (12,12) `100 %`; (1000,10,trunc) `truncated · showing 10 of 1,000`; (0,0) `100 %`; (3,3,oldServer) `coverage unknown`; (3,3,tagsStale 1) `tags not yet known for 1 board`, 3 → `tags not yet known for 3 boards`; stale 12:31:05 `stale (12:31:05)`; Narrow in search only | T24-024, VIZ-027 |
@@ -2072,10 +2101,10 @@ Inventory, NOC overview, Orders, Payments (`pay`), PSP API, Search, Shipping, We
 | `unit:list-keyboard` | widgets/lists/keyboard.test.tsx | B, limit 10, focus on row 4 (Gateway) | ↓×3 from 1 → 4; End → 10; Home → 1; PageDown → 10; Show more, Enter → 11 focused. A refetch without Gateway → Inventory (row 4) focused, "Gateway is no longer listed"; focus outside the list stays; empty → the empty text; error → Retry; Esc clears the search, the next Esc reaches the T25 ladder | T24-025 |
 | `unit:list-table-csv` | widgets/lists/table.test.ts | Titles `=SUM(1)`, `+1`, `-prod`, `@x`, `\tx`, `\rx` (`\t` = U+0009 TAB, `\r` = U+000D CR), `a,b`, `say "hi"`, `ok`; B; S | `'=SUM(1)`, `+1` (a number, unchanged since #184 step 1b), `'-prod`, `'@x`, `'\tx`, `"'\rx"`, `"a,b"`, `"say ""hi"""`, `ok`; B rows: empty tags, `updated_at`; S `Checkout overview` tags `team:payments`; a `tags: null` row → `unknown`, and the row shows "tags unknown"; facts `{'12 boards','Starred'}`, S `1,000+ boards`; amended by #184 step 1b: the §10.5 guard block, each result | T24-026, VIZ-066, VIZ-068 |
 | `unit:import-board-list` | import/boardList.test.ts | I1–I9 (below) | Options (`sort:'default'`) and notes exactly as listed | T24-028, VIZ-060 |
-| `itest:board-find` | store/boards_itest_test.go | S | `q=` checkout → 2 org-A rows, updated desc; zürich → Zürich edge; ZÜRICH → ZÜRICH core; payments → payments; `%` → none; bulk → the 1 000 newest in `created_at DESC, uid` order, truncated, the 2 oldest absent; `tag=team:payments` → Checkout overview; 101 chars, `Bad Tag` → the §5.6 400s; org B sees only "checkout b" | T24-021, tenancy |
-| `itest:board-tags` | same | Org A saves `tags:['a','b']`, then none, then v1's spec again. Org B saves and lists | `[a,b]`, `[]`, `[a,b]`; B's save of A's uid → 404; B's repair touches 0 A rows; `tag=a` in B → none | T24-029, tenancy |
-| `itest:board-list-snapshot` | same; two connections, barriers; a labelled fault injection sets `tags_version` 0 on X (head `[a]`, title "X checkout") | (1) Conn 2 row-locks X; conn 1 lists `tag=a`; release; conn 2 lists; conn 1 lists. (2) Between conn 1's repair and read, conn 2 commits a schema-3 head move on Z. (3) `tag=zzz`. (4) X locked: an unfiltered list; `q=checkout`. (5) A repair error (tracer), a timeout (`pg_sleep`). (6) A cancel during the repair | (1) X absent, `tagsStale` 1; then present, 0. (2) Z counted, never `100 %`. (3) the sentinel only: `[]`, stale 1. (4) X returned with `tags: null`, `tagsStale` 1, both times. (5) 200, stale counted, the log without titles. (6) both roll back. One SELECT per list | T24-029 |
-| `itest:board-tags-old-binary` | CI job in I1 | 10 000 boards in 2 orgs at schema 3, a looping reader; migration 4; the base-commit binary beside N. The old service creates Y, saves Z; N saves X `[a]`; the old service saves X | No rewrite (`relfilenode`), the reader waits ≤ 1 s, 17 tags fail; the old binary starts (4 = 3 + 1) and passes `itest:board-crud`; `tag=a`: `tagsStale` 2 (Y, Z); the old save of X → `ErrSchemaTooNew`, nothing written; the next N list: Y, Z `{}`, `tag=a` → X, 0 | T11-012, T11-013, T11-015 |
+| `itest:board-find` | boards/list_itest_test.go; the 400s over HTTP in cmd/pulsus-dash/boards_itest_test.go | S | `q=` checkout → 2 org-A rows, updated desc; zürich → Zürich edge; ZÜRICH → ZÜRICH core; payments → payments; finance and FINANCE → Ledger (an exact tag), fin → none; `%` → none; bulk → the 1 000 newest in `created_at DESC, uid` order, truncated, the 2 oldest absent; `tag=team:payments` → Ledger, Checkout overview; `q=checkout&tag=team:payments` → Checkout overview; `q=ledger&tag=payments` → none; 101 chars, `Bad Tag` → the §5.6 400s; org B sees only "checkout b" | T24-021, tenancy |
+| `itest:board-tags` | boards/list_itest_test.go | Org A saves `tags:['a','b']`, then none, then v1's spec again. Org B saves and lists | `[a,b]`, `[]`, `[a,b]`; B's save of A's uid → 404; B's repair touches 0 A rows; `tag=a` in B → none | T24-029, tenancy |
+| `itest:board-list-snapshot` | boards/list_itest_test.go (one SELECT per list: store/boards_itest_test.go); two connections, barriers; a labelled fault injection sets `tags_version` 0 on X (head `[a]`, title "X checkout") | (1) Conn 2 row-locks X; conn 1 lists `tag=a`; release; conn 2 lists; conn 1 lists. (2) Between conn 1's repair and read, conn 2 commits a schema-3 head move on Z. (3) `tag=zzz`. (4) X locked: an unfiltered list; `q=checkout`. (5) A repair error (tracer), a timeout (`pg_sleep`). (6) A cancel during the repair | (1) X absent, `tagsStale` 1; then present, 0. (2) Z counted, never `100 %`. (3) the sentinel only: `[]`, stale 1. (4) X returned with `tags: null`, `tagsStale` 1, both times. (5) 200, stale counted, the log without titles. (6) both roll back. One SELECT per list | T24-029 |
+| `itest:board-tags-old-binary` | cmd/pulsus-dash/boards_old_binary_itest_test.go, run by `make itest-old-binary` in I1 (local, required for every change to the board schema or spec; hosted CI is not a gate) | 10 000 boards in 2 orgs at schema 3, a looping reader; migration 4; the base-commit binary beside N. The old service creates Y, saves Z; N saves X `[a]`; the old service saves X | No rewrite (`relfilenode`), the reader waits ≤ 1 s, 17 tags fail; the old binary starts (4 = 3 + 1) and passes `itest:board-crud`; `tag=a`: `tagsStale` 2 (Y, Z); the old save of X → `ErrSchemaTooNew`, nothing written; the next N list: Y, Z `{}`, `tag=a` → X, 0 | T11-012, T11-013, T11-015 |
 | `itest:board-tags-validate` (I4) | same | Schema 4 with all rows ≤ 16 tags; apply the I4 migration | `pg_constraint.convalidated` true; an UPDATE to 17 tags fails | T11-013 |
 | `itest:board-prefs` (amended) | existing | 201 starred; 200; 51 views, limit 50 | `truncated` true, false, true | T24-021 |
 | `e2e:widget-board-list` | e2e/widgets.spec.ts | Stub BFF; B; search over S | 10 rows + Show more; "check" → one request 250 ms after the last key, 2 rows, "2 boards" announced once; hrefs carry `from`/`to`; ⌘-click → a new tab | VIZ-053, T24-021–023 |
@@ -2204,7 +2233,7 @@ No scope above covers an organisation-wide row; full scope covers every row.
 | `unit:change-inspect` | inspector/model.test.ts | c4; c2; c2 + the filter `job=shop/web`; a service named `a"b\c` + LF + `d` | c4: heading `Note`, Duration `17 min`, Entity `organisation-wide`, Logs disabled ("This change has no service"); c2: Logs `{service_name="payments"}` over 12:18:02–12:20:02; with the filter `{service_name="payments",service_name="web"}` and the T25-010 conflict line; the odd name → `{service_name="a\"b\\c\nd"}` | T24-035 |
 | `unit:change-mixed` | widgets/changeFeed/mixed.test.tsx | No `applied`: C; `[]`; an `e`; a create with `entity` → 400 | `coverage unknown`, setsize −1, no Load older; `[]` → empty, `coverage unknown`; `e` → "Filtering by entity needs a newer server", no rows; the create → "This server cannot record the entity yet", 1 request | T24-038 |
 | `unit:change-table-csv` | widgets/changeFeed/table.test.ts | C | The C CSV above exactly: the T24-037 header; c7's text `"'=HYPERLINK(""a"")"`; c3 `3d1d4695-d757-d5f8-d6bf-c1b134128742`, `service checkout · prod-us`; facts `{'8 changes', 'Note: =HYPERLINK("a") at 12:30:00'}` | T24-037 |
-| `unit:board-spec-change-feed` | boards/spec.test.ts, validate_test.go | `{}`; kinds `[]`, `['deploy','deploy']`, `['release']`; 9 tags; tag `Bad`; `entityMode:'fixed'`; `orgWide:'yes'`; `fieldConfig`; `thresholds`; `depth`; the Table 5-13 rows | Defaults `{kinds: all four, tags: [], entityMode: context, orgWide: false, showTags: true}`; `kinds.invalid`, `kinds.duplicate`, `kinds.invalid`; `tags.invalid` ×2; `entityMode.invalid`; `board.json.type`; `board.json.unknownKey` ×3; TS = Go; v5 upcasts; never auto-picked | T24-037, VIZ-057, VIZ-065 |
+| `unit:board-spec-change-feed` | boards/spec.test.ts, validate_test.go | `{}`; kinds `[]`, `['deploy','deploy']`, `['release']`; 9 tags; tag `Bad`; `entityMode:'fixed'`; `orgWide:'yes'`; `fieldConfig`; `thresholds`; `depth`; the Table 5-13 rows | Defaults `{kinds: all four, tags: [], entityMode: context, orgWide: false, showTags: true}`; `kinds.invalid`, `kinds.duplicate`, `kinds.invalid`; `tags.invalid` ×2; `entityMode.invalid`; `board.json.type`; `board.json.unknownKey` ×3; TS = Go; the version before upcasts; never auto-picked | T24-037, VIZ-057, VIZ-065 |
 | `unit:import-change-feed` | import/changeFeed.test.ts | J1–J4 (below) | Options and notes exactly as listed | T24-039 |
 | `e2e:widget-change-feed` | e2e/widgets.spec.ts | Stub BFF, C in pages of 3, a line panel, `?e=bb7487bd-100d-a998-e0f0-3c65f11da1a7` | 1 row + "3 organisation-wide changes not shown"; the toggle → 4 rows; without `e`: Load older ×2 → 8 rows, the paged text, setsize −1; Enter on c4 → the Inspector `Note` and the band on the line panel; Esc ×2 clears and closes; Refresh → 1 request | VIZ-053 |
 | `e2e:widget-lists-a11y` (amended), `golden:widget-gallery` (amended) | e2e/ | + Change feeds in the loading, empty, more, capped, paged, stale and old-server states; gallery pages `widget-change-feed`, `widget-change-feed-entity`, `widget-change-feed-states`, `widget-change-feed-inspector` | axe clean in each; setsize per T24-036; CI baseline (0.1, ≤ 0.2 %) | T24-036, VIZ-069 |
@@ -2581,7 +2610,7 @@ name,key,value,value_status,state,location_status,location_detail,source,code,pr
 
 ### 10.6 Part E step 2 tests
 
-Written first in E3a (URL state, sync, the map area, board spec v8) and E3b (auto-vis row 8 and
+Written first in E3a (URL state, sync, the map area, the map-sync spec version) and E3b (auto-vis row 8 and
 import) (§11); all fail today: nothing is built yet. The codec, bounds, area and row 8 values below
 were computed by a reference implementation of T24-096, T24-098 and `hasGeoFields`.
 
@@ -2625,7 +2654,7 @@ results  heatmap {cloud_region=eu-west-1|us-east-1} × le 0.1, +Inf → eu-west-
 | `unit:geo-area-consumers` | pages/board/BoardGeoArea.test.tsx | BD, P1 at EU; a logs panel, a text widget | P1, P2 unfiltered; P3, L filtered; logs "Map area not applied to log lines yet"; the widget unchanged; the chip's remove → `geo` gone (push); Clear map area → restored, focus: the filter bar; `geoData` loading → L `loading` | VIZ-047 |
 | `unit:geo-area-scope` | same, a stub BFF | a scoped response with k01 only | L shows k01 and counts only the returned rows; no request has `geo` or `map` | T12-018 |
 | `unit:pivot-context` (amended) | inspector/pivots.test.ts | C5: `f=env=prod`, `geo` effective; C6: its scope not a writer, then a writer again | C5: Explore "Filters not applied in Explore yet: env, map area"; logs "Not carried to logs: map area"; no `geo` in the href; C6: no map-area disclosure, then C5's lines back | T25-010 |
-| `unit:board-spec-geomap-v8` | boards/spec.test.ts, validate_test.go | `{}`; `sync: 'yes'`; `boundsFilter: 1`; `legacyAuto` on `line`; a v7 doc with `auto` and `line`; a v8 save to a v7 stub | false defaults; `board.json.type`; `board.vis.legacyAuto.invalid`; the upcast marks only `auto`; 400 with the message; TS = Go | T24-096 |
+| `unit:board-spec-geomap-v8` | boards/spec.test.ts, validate_test.go | `{}`; `sync: 'yes'`; `boundsFilter: 1`; `legacyAuto` on `line`; a doc at the version before map-sync with `auto` and `line`; a map-sync save to a stub of the version before | false defaults; `board.json.type`; `board.vis.legacyAuto.invalid`; the upcast marks only `auto`; 400 with the message; TS = Go | T24-096 |
 | `e2e:geomap-sync` | e2e/geomap.spec.ts (Chromium) | a stub BFF; BD | drag P1 → P2 follows; EU → L 5 series; 3 moves, then real keys `page.keyboard.press('Alt+ArrowLeft')` ×3 and `('Alt+ArrowRight')` ×3: after each press the expected distinct URL and camera, the history index ±1 exactly, no second navigation; reload → the same views and area; axe clean | VIZ-047, INT-006 |
 | `bench:geo-area` | vis/geo/area.bench.ts | 5 000 series (4 000 `cloud_region` cycling gazetteer ids, 1 000 coordinates); EU; 20 warm-up, 200 timed | the p95 of `applyArea` (§7) | T05 §7.1 |
 
@@ -2658,12 +2687,12 @@ row8   A1 → geomap (8) · A2 → line (14) · A3 → geomap · A4 → geomap (
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
 | `unit:autovis-table` (amended) | vis/autovis.test.ts | the row8 block | each vis and rule | VIZ-065 |
-| `unit:autovis-legacy` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a v7 board: an `auto` panel over A1 | board: line (14); editor opened: preview "Auto (Map)", geomap; saved: `legacyAuto` gone, board geomap (8); a save of another panel or of the layout keeps it a line | VIZ-065, T24-099 |
-| `unit:autovis-logql` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a LogQL `auto` panel, `sum by (cloud_region) (count_over_time({job="x"}[5m]))` answering a range result of 3 series eu-west-1, eu-west-2, us-east-1 (today's stream path); the same stored at v7; a log-line answer | v8: board geomap (8), label "Auto (Map)", preview geomap; v7 (3 series): board line, label Line; editor preview geomap, "Auto (Map)"; cancel → line; save → geomap; log lines: today's stream view | T24-099 |
+| `unit:autovis-legacy` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a board stored before the map-sync version: an `auto` panel over A1 | board: line (14); editor opened: preview "Auto (Map)", geomap; saved: `legacyAuto` gone, board geomap (8); a save of another panel or of the layout keeps it a line | VIZ-065, T24-099 |
+| `unit:autovis-logql` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a LogQL `auto` panel, `sum by (cloud_region) (count_over_time({job="x"}[5m]))` answering a range result of 3 series eu-west-1, eu-west-2, us-east-1 (today's stream path); the same stored before the map-sync version; a log-line answer | at the map-sync version or later: board geomap (8), label "Auto (Map)", preview geomap; stored before map-sync (3 series): board line, label Line; editor preview geomap, "Auto (Map)"; cancel → line; save → geomap; log lines: today's stream view | T24-099 |
 | `unit:autovis-explore` | pages/explore/MetricsPage.test.tsx | A1 on Explore | line (14) | T24-099 |
 | `unit:import-geomap` | import/geomap.test.ts | M1–M14 | options and notes exactly; every output passes `validateBoardSpec` (TS) and `validate.go` | VIZ-060 |
 | `unit:import-geomap-fuzz` | same; tools/fixtures/geomap-fuzz.ts; validate_test.go | seed 184 (mulberry32); 500 documents; the §4.19 leaf paths sorted (UTF-16), each independently absent (p ½) or drawn uniformly from {null, true, false, 0, −1, 1.5, 100, 1e300, "", "x", "Value", "img/icons/marker/square.svg", [], {}, [1], {"a": 1}}; a drawn leaf creates its absent parents as objects (`layers[0]` as a one-element array); the generator writes `api/fixtures/import/geomap-fuzz.json` ([{src, options, notes}]) | TS: never throws, regenerating equals the committed file; TS and Go: every `options` valid; a hand-written TS case feeds `Infinity`, `-Infinity` and `NaN` at each numeric path (not representable in JSON), once in each mode: where the mode consumes the path, its malformed note and default; where the mode ignores it (size `min`/`max` in fixed mode, `fixed` in value mode, `view.lat`/`lon` outside `coords`, `view.zoom` outside `zero`/`coords`), no note | VIZ-060 |
-| `unit:editor-preview-legacy` | pages/board/PanelEditor.test.tsx | the v7 board's `auto` panel over A1, the editor open | the preview renders a geomap frame and the label "Auto (Map)"; the board panel behind still renders a line; cancel → no change; save → board geomap | T24-099 |
+| `unit:editor-preview-legacy` | pages/board/PanelEditor.test.tsx | the pre-map-sync board's `auto` panel over A1, the editor open | the preview renders a geomap frame and the label "Auto (Map)"; the board panel behind still renders a line; cancel → no change; save → board geomap | T24-099 |
 
 Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
@@ -2673,21 +2702,21 @@ Implementation issues, filed after this design merges:
 
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
-| A1 — Text, renderer, spec v4 | §5.1, §5.2, §5.4, editor, gallery `widget-text`, `widget-text-removals` | #173 | T24-001–009, T24-014–018 |
+| A1 — Text, renderer, the widgets spec version (§5.0) | §5.1, §5.2, §5.4, editor, gallery `widget-text`, `widget-text-removals` | #173 | T24-001–009, T24-014–018 |
 | A2 — Clock | §5.3, editor, gallery `widget-clock-1`, `widget-clock-4`, `widget-clock-countdown` | A1 | T24-010–015, T24-017 |
 | A3 — Image proxy | T18-014 route, rewrite | T18 §4.9 egress guard | T18-014 |
 
-A1 needs #173 (board spec v3) and ships v4 (or the next free version). The implementation writes
+A1 needs #173 (board spec v3) and ships the widgets version, the next free version (v5 if no other spec change lands first after #215's tags version). The implementation writes
 `docs/client/widgets.md` (behaviour, Markdown, URLs, import, Clock) and updates
 `docs/client/boards.md`, `docs/user/boards.md`, `docs/server/boards-api.md` and
-`docs/client/supply-chain.md` (widget panels, the v4 keys, the `markdown` dependencies).
+`docs/client/supply-chain.md` (widget panels, the widgets-version keys, the `markdown` dependencies).
 
 Part B1 implementation issues, filed after this design merges:
 
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
-| I1 — BFF: board tags, `/boards` search, `applied`, `truncated` | §5.6, §6, migration 4, the itests, `docs/server/boards-api.md`, `docs/server/database.md` | #198 | T24-021, T24-029 |
-| I2 — Board list widget, list modules, editor tags field | §5.5, §5.7, the unit, e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
+| I1 — BFF: board tags, `/boards` search, `applied`, `truncated` (#215) | §5.5 tags (Go and the client's validator, at the next free spec version), §5.6, §6, migration 4, the itests, `make itest-old-binary`, `docs/server/boards-api.md`, `docs/server/database.md` | — | T24-021, T24-029 |
+| I2 — Board list widget, list modules, editor tags field (#216) | §5.5 `boardList` kind and options (Go and TS), §5.7, the unit, e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
 | I3 — Incident-use ranking (needs design) | SRF-026 "used during incidents" | IA-007 | T24-023 |
 | I4 — Validate `boards_tags_max` (next release) | §6 `VALIDATE CONSTRAINT`, `itest:board-tags-validate` | I1 released | T24-029 |
 
@@ -2731,7 +2760,7 @@ interaction):
 
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
-| E2 — Geomap frame | §5.14 to §5.16 (the ADR-0027 seam in the Canvas 2D engine, `GeoMapFrame`, `planGeo`, `vis/geo/frame.ts`, `targets.ts`, `rows.ts`, `GeoMarkList`), board spec v7, the T25 `geo` targets and navigation stack, the `csvCell` exemption, the §10.4 and §10.5 tests, the gallery pages `geomap-markers`, `geomap-groups` and `geomap-states`; `docs/client/geomap.md`, `docs/client/inspector.md`, `docs/user/boards.md` | E1, #173 (T22 I1) | T24-088–095, T24-026 (amended), T25 §4.8, §4.9 |
+| E2 — Geomap frame | §5.14 to §5.16 (the ADR-0027 seam in the Canvas 2D engine, `GeoMapFrame`, `planGeo`, `vis/geo/frame.ts`, `targets.ts`, `rows.ts`, `GeoMarkList`), the geomap spec version, the T25 `geo` targets and navigation stack, the `csvCell` exemption, the §10.4 and §10.5 tests, the gallery pages `geomap-markers`, `geomap-groups` and `geomap-states`; `docs/client/geomap.md`, `docs/client/inspector.md`, `docs/user/boards.md` | E1, #173 (T22 I1) | T24-088–095, T24-026 (amended), T25 §4.8, §4.9 |
 
 E2 writes the statuses, the groups, the camera, the targets, the keys, the states and the CSV into
 `docs/client/geomap.md`, the navigation stack and the `geo` targets into `docs/client/inspector.md`,
@@ -2742,8 +2771,8 @@ Part E step 2 implementation issues, filed after this design merges:
 
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
-| E3a — Map URL state, sync and the map area | §4.15 to §4.18, §5.17 (`state/boardUrl.ts`, `state/mapParams.ts`, `vis/geo/area.ts`, `vis/geo/writers.ts`), board spec v8 (§5.15), `Coverage.area` ([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)), the T25-010 map-area disclosure, the §10.6 step 2a tests and `bench:geo-area`; `docs/client/geomap.md`, `docs/user/boards.md` | E2 (#234), E1 (#231) | T24-096–098, T24-088 (amended), T25-010 |
-| E3b — Auto-vis row 8 and geomap import | §4.19, §5.17 (`hasGeoFields`, `importGeomap`), `legacyAuto` in the panel run, the stream view and the editor, the §10.6 step 2b tests; `docs/client/boards.md`, `docs/client/import.md` (new) | E3a (board spec v8) | T24-099 |
+| E3a — Map URL state, sync and the map area | §4.15 to §4.18, §5.17 (`state/boardUrl.ts`, `state/mapParams.ts`, `vis/geo/area.ts`, `vis/geo/writers.ts`), the map-sync spec version (§5.15), `Coverage.area` ([T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal)), the T25-010 map-area disclosure, the §10.6 step 2a tests and `bench:geo-area`; `docs/client/geomap.md`, `docs/user/boards.md` | E2 (#234), E1 (#231) | T24-096–098, T24-088 (amended), T25-010 |
+| E3b — Auto-vis row 8 and geomap import | §4.19, §5.17 (`hasGeoFields`, `importGeomap`), `legacyAuto` in the panel run, the stream view and the editor, the §10.6 step 2b tests; `docs/client/boards.md`, `docs/client/import.md` (new) | E3a (the map-sync spec version) | T24-099 |
 
 E3a writes the store and its queue, the codecs, the scopes, the URL budget, history, sync, the
 roles, the area per result and the limits into `docs/client/geomap.md`, and sync, the map area,
@@ -2810,3 +2839,4 @@ None.
 | 1.4-rc | 2026-11-25 | #184 part E step 1b (geomap frame and interaction): the intro, §1, §2 (goals, non-goals; the part map marks step 1b) and §3; rules T24-088 to T24-095 (host and plan, rows, identity, camera and picking, selection and Inspector, mark list and keys, table, CSV and facts, states); T24-026 amended (the `csvCell` numeric exemption; `unit:list-table-csv` amended); §4.11 orders and coverage, §4.12 states, §4.13 Inspector targets, §4.14 columns; §5.14 the seam and host, §5.15 rows and board spec v7, §5.16 targets, mark list and rows; §6–§9; §10.4 and §10.5 tests and fixtures (code review r1: `unit:geo-inertia`); §11 issue E2; §12. [ADR-0027](../adr/0027-geomap-frame-seam.md); [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) (grouped spatial marks, JSON quoting, spatial overflow), [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.geo`) and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters) amended; [T25](T25-inspector-and-pivots.md) gains the `geo` target and the in-request navigation stack |
 | 1.5-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1): §5.7 `csvCell` is defined in `client/src/data/csv.ts`, shared by the panel tables, and re-exported by `widgets/lists/snapshot.ts` |
 | 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
+| 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later"; the widgets version is v5 only if no other spec change lands first |

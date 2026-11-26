@@ -1,6 +1,6 @@
 /**
- * Board spec v3 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
- * Part 1 §3.2–3.4): the server's validator
+ * Board spec v4 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
+ * Part 1 §3.2–3.4, v4 by plan #215 §3.7: tags, accepted and kept): the server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
  *
@@ -25,6 +25,10 @@ export const MAX_PANELS = 200;
 export const MAX_SECTIONS = 50;
 export const MAX_TITLE = 200;
 export const MAX_QUERY_BYTES = 16384;
+/** At most this many board tags (T24-029; the Go `maxBoardTags`). */
+export const MAX_BOARD_TAGS = 16;
+/** A board tag: the OpenAPI `AnnotationTag` (the Go `tagPattern`). */
+export const TAG_PATTERN = /^[a-z0-9][a-z0-9_.:/-]{0,63}$/;
 /** At most this many field errors per spec, in document order. */
 export const MAX_FIELD_ERRORS = 50;
 /**
@@ -115,6 +119,8 @@ const tBoard = obj([
   req('panels', tPanels),
   req('sections', { kind: 'array', elem: obj(sectionShape) }),
   opt('time', obj([req('from', tString), req('to', tString)])),
+  // Board spec v4 (plan #215, T24-029): tags.
+  opt('tags', { kind: 'array', elem: tString }),
 ]);
 
 /** Collects field errors in document order, at most `MAX_FIELD_ERRORS`. */
@@ -344,6 +350,16 @@ function checkRules(c: Collector, b: BoardSpec): void {
     str('/time/from', b.time.from, valid);
     str('/time/to', b.time.to, valid);
   }
+  // Tags (`validate.go` `tags`): more than 16 at /tags, then each item, unique in order.
+  const tags = b.tags ?? [];
+  if (tags.length > MAX_BOARD_TAGS) c.add('/tags', 'board.tags.invalid');
+  tags.forEach((tag, i) => {
+    str(`/tags/${String(i)}`, tag, (s) => {
+      if (!TAG_PATTERN.test(s)) return 'board.tags.invalid';
+      if (tags.slice(0, i).includes(s)) return 'board.tags.duplicate';
+      return null;
+    });
+  });
   const total = b.panels.length + b.sections.reduce((n, s) => n + s.panels.length, 0);
   if (total > MAX_PANELS) c.add('/panels', 'board.panels.tooMany');
   panels('/panels', b.panels);

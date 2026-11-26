@@ -83,7 +83,10 @@ function toSession(b: Bootstrap): Session {
   };
 }
 
-function toSummary(b: WireSummary) {
+/** The summary members a board and a list row share (a list row's `tags` is #216's). */
+function toSummary(
+  b: Pick<WireSummary, 'uid' | 'title' | 'version' | 'updated_at' | 'updated_by'>,
+) {
   return {
     uid: b.uid,
     title: b.title,

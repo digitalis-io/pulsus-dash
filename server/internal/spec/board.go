@@ -1,4 +1,5 @@
-// Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1, v3 by #173 Part 1): strict,
+// Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1, v3 by #173 Part 1, v4 by
+// #215): strict,
 // presence-aware decoding, validation with JSON-pointer field errors, the upcaster entry point
 // (T11 §4.0), canonical JSON and the RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
@@ -12,13 +13,15 @@ import (
 
 // BoardSchemaVersion is the current board spec version, stored in board_versions.schema_version:
 // 2 adds vis.thresholds and vis.legend (#64 Part B); 3 adds vis.options and the kinds barchart and
-// pie (#173). Each version is a subset of the next.
-const BoardSchemaVersion int64 = 3 // adds vis.options, barchart, pie (#173)
+// pie (#173); 4 adds tags (#215, T24-029). Each version is a subset of the next.
+const BoardSchemaVersion int64 = 4 // adds tags (#215)
 
-// Board is a board spec. Panels are the ungrouped panels drawn above the sections.
+// Board is a board spec. Panels are the ungrouped panels drawn above the sections. Tags are 0 to
+// 16 unique AnnotationTags in their order; an empty list is the same as none (no key).
 type Board struct {
 	Title    string     `json:"title"`
 	Time     *TimeRange `json:"time,omitempty"`
+	Tags     []string   `json:"tags,omitempty"`
 	Panels   []Panel    `json:"panels"`
 	Sections []Section  `json:"sections"`
 }
@@ -176,7 +179,7 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 }
 
 // DecodeBoardUpTo decodes a stored spec of schemaVersion when schemaMax is the newest version the
-// caller reads. Versions 1 to 3 decode unchanged (each is a subset of the next: the identity upcast); a
+// caller reads. Versions 1 to 4 decode unchanged (each is a subset of the next: the identity upcast); a
 // version above schemaMax returns ErrSchemaTooNew and a version below 1 ErrSchemaVersion. With
 // schemaMax 1 it decodes as the previous release did (plan #64 Part B §4.7).
 func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {

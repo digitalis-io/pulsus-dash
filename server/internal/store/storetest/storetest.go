@@ -358,6 +358,31 @@ func InTx(t testing.TB, dsn, sql string, args ...any) (commit func()) {
 	}
 }
 
+// Reader runs sql on one connection to dsn, again and again, until stop is closed, and returns the
+// longest single run (a reader's wait beside a migration). It is safe to call from any goroutine.
+func Reader(dsn, sql string, stop <-chan struct{}) (time.Duration, error) {
+	cctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	conn, err := pgx.Connect(cctx, dsn)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	var longest time.Duration
+	for {
+		select {
+		case <-stop:
+			return longest, nil
+		default:
+		}
+		start := time.Now()
+		if _, err := conn.Exec(cctx, sql); err != nil {
+			return longest, err
+		}
+		longest = max(longest, time.Since(start))
+	}
+}
+
 // ExecCode runs a statement and returns its SQLSTATE, or "" when it succeeds.
 func ExecCode(t testing.TB, dsn, sql string, args ...any) string {
 	t.Helper()

@@ -259,3 +259,19 @@ describe('duplicatePanel', () => {
     expect(title).toBe(`${'😀'.repeat(195)} (cop`);
   });
 });
+
+describe('board tags (T24-029)', () => {
+  it('clear time keeps tags', () => {
+    const spec: BoardSpec = {
+      title: 'T',
+      time: { from: 'now-6h', to: 'now' },
+      tags: ['a'],
+      panels: [],
+      sections: [],
+    };
+    let s = run(initialState(board('1', spec)), { type: 'loaded', board: board('1', spec) });
+    s = run(s, { type: 'enterEdit' }, { type: 'setTime', time: null });
+    expect(s.draft.tags).toEqual(['a']);
+    expect(s.draft).not.toHaveProperty('time');
+  });
+});

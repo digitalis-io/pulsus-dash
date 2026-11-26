@@ -96,7 +96,9 @@ var (
 	timeShape    = []field{{"from", true, tString}, {"to", true, tString}}
 	boardShape   = []field{{"title", true, tString}, {"panels", true, tPanels},
 		{"sections", true, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: sectionShape}}},
-		{"time", false, valueType{kind: kObject, shape: timeShape}}}
+		{"time", false, valueType{kind: kObject, shape: timeShape}},
+		// Board spec v4 (#215, T24-029): tags.
+		{"tags", false, valueType{kind: kArray, elem: &tString}}}
 	tBoard = valueType{kind: kObject, shape: boardShape}
 
 	// The request envelopes of POST /boards (BoardCreate) and PUT /boards/{uid} (BoardUpdate).

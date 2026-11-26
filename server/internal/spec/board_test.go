@@ -78,8 +78,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b3), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 3) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 4); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 4) = %v, want ErrSchemaTooNew", err)
+			// Version 4 adds tags (#215): the identity upcast again.
+			b4, err := DecodeBoard(raw, 4)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 4): %v", err)
+			}
+			if got, want := canon(t, b4), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 4) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 5); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 5) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)
@@ -126,8 +134,8 @@ func TestDecodeBoardUpTo(t *testing.T) {
 	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
 	}
-	if BoardSchemaVersion != 3 {
-		t.Errorf("BoardSchemaVersion = %d, want 3", BoardSchemaVersion)
+	if BoardSchemaVersion != 4 {
+		t.Errorf("BoardSchemaVersion = %d, want 4", BoardSchemaVersion)
 	}
 }
 
@@ -177,6 +185,52 @@ func TestV3FixtureRoundTrip(t *testing.T) {
 		if got, want := canon(t, up), canon(t, v2); !bytes.Equal(got, want) {
 			t.Errorf("DecodeBoard(%s, 2) = %s, want %s", name, got, want)
 		}
+	}
+}
+
+// v4CanonicalSHA256 is the SHA-256 of v4-board-tags.json's canonical form; boards/spec.test.ts
+// holds the same value, so the two canonical forms are byte-equal.
+const v4CanonicalSHA256 = "1ee8fecd5dbd9f6d70f5b8552f8a5aeb312f9499c5e969ff7d2a231d753e3a3f"
+
+// unit:board-spec v4 (#215, T24-029): tags are kept in order, an empty list canonicalises to no
+// key, and the previous release (schema 3) refuses a v4 row.
+func TestV4FixtureRoundTrip(t *testing.T) {
+	if BoardSchemaVersion != 4 {
+		t.Errorf("BoardSchemaVersion = %d, want 4", BoardSchemaVersion)
+	}
+	raw := fixture(t, "v4-board-tags.json")
+	b, err := ParseBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseBoard: %v", err)
+	}
+	c := canon(t, b)
+	if want := canon(t, raw); !bytes.Equal(c, want) {
+		t.Errorf("Canonical(board) = %s\nwant Canonical(raw) = %s", c, want)
+	}
+	if !bytes.Contains(c, []byte(`"tags":["team:payments","prod"]`)) {
+		t.Errorf("Canonical = %s, want the tags in their order", c)
+	}
+	h := ContentHash(c)
+	if got := hex.EncodeToString(h[:]); got != v4CanonicalSHA256 {
+		t.Errorf("ContentHash = %s, want %s", got, v4CanonicalSHA256)
+	}
+	empty, err := ParseBoard([]byte(`{"title":"T","panels":[],"sections":[],"tags":[]}`))
+	if err != nil {
+		t.Fatalf("ParseBoard(tags []): %v", err)
+	}
+	if got, want := string(canon(t, empty)), `{"panels":[],"sections":[],"title":"T"}`; got != want {
+		t.Errorf("Canonical(tags []) = %s, want %s", got, want)
+	}
+	v3 := fixture(t, "v3-full.json")
+	up, err := DecodeBoardUpTo(v3, 3, 4)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(v3-full, 3, 4): %v", err)
+	}
+	if got, want := canon(t, up), canon(t, v3); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(v3-full, 3, 4) = %s, want %s", got, want)
+	}
+	if _, err := DecodeBoardUpTo(raw, 4, 3); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(v4, 4, 3) = %v, want ErrSchemaTooNew", err)
 	}
 }
 

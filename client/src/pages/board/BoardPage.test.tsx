@@ -683,6 +683,44 @@ describe('navigation and time', () => {
   });
 });
 
+describe('board tags (T24-029)', () => {
+  it('tagged board: edit and save keep tags', async () => {
+    const api = new StubApi();
+    const created = await api.createBoard('demo', {
+      title: 'T',
+      tags: ['team:payments', 'prod'],
+      panels: [],
+      sections: [],
+    });
+    const save = vi.spyOn(api, 'saveBoard');
+    const { user } = open(`/t/demo/board/${created.uid}?from=now-3h&to=now&refresh=off`, { api });
+    await screen.findByRole('heading', { level: 1, name: 'T' });
+    expect(screen.queryByRole('alert')).toBeNull();
+    await editMode(user);
+    await addPanel(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Save current time range' }));
+    await user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent('Saved');
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]?.[3].tags).toEqual(['team:payments', 'prod']);
+    expect(save.mock.calls[0]?.[3].time).toEqual({ from: 'now-3h', to: 'now' });
+    // Clear the saved time (setTime null), then save again.
+    await user.click(screen.getByRole('checkbox', { name: 'Save current time range' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent('Saved');
+    });
+    expect(save.mock.calls[1]?.[3]).not.toHaveProperty('time');
+    expect(save.mock.calls[1]?.[3].tags).toEqual(['team:payments', 'prod']);
+    expect(screen.queryByText(/Problems to fix/)).toBeNull();
+  });
+});
+
 /** A stub whose second and later `getBoard` of b-1 wait for `next`, a v2 head of 3 panels. */
 class RemoteSaveApi extends StubApi {
   readonly next = deferred<undefined>();

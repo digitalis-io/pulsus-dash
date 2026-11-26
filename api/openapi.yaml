@@ -48,8 +48,12 @@ paths:
     get:
       operationId: listBoards
       tags: [boards]
+      parameters:
+        - { name: q, in: query, required: false, description: 'Title substring or exact tag, ASCII case-insensitive; 1–100 characters, no Cc', schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: tag, in: query, required: false, schema: { $ref: '#/components/schemas/AnnotationTag' } }
       responses:
         '200': { description: Boards of the organisation, content: { application/json: { schema: { $ref: '#/components/schemas/BoardList' } } } }
+        '400': { description: Invalid q or tag, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     post:
       operationId: createBoard
@@ -657,6 +661,7 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         time: { $ref: '#/components/schemas/TimeRange' }
+        tags: { type: array, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } }
         panels: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Panel' } }
         sections: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/Section' } }
     TimeRange: { type: object, additionalProperties: false, required: [from, to], properties: { from: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' }, to: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' } } }
@@ -743,20 +748,22 @@ components:
     BoardSummary:
       type: object
       additionalProperties: false
-      required: [uid, title, version, updated_at, updated_by]
-      properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' } }
+      required: [uid, title, version, updated_at, updated_by, tags]
+      properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' }, tags: { type: [array, 'null'], maxItems: 16, items: { $ref: '#/components/schemas/AnnotationTag' }, description: null = not yet known } }
     Board:
       type: object
       additionalProperties: false
       required: [uid, title, version, updated_at, updated_by, etag, schema_version, spec]
       properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' }, etag: { type: string }, schema_version: { type: integer, format: int64 }, spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } }
-    BoardList: { type: object, additionalProperties: false, required: [items, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardSummary' } }, truncated: { type: boolean } } }
+    BoardList: { type: object, additionalProperties: false, required: [items, truncated, applied, tagsStale], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardSummary' } }, truncated: { type: boolean }, applied: { $ref: '#/components/schemas/BoardListApplied' }, tagsStale: { type: integer, format: int64, minimum: 0 } } }
+    BoardListApplied: { type: object, additionalProperties: false, properties: { q: { type: string, minLength: 1, maxLength: 100 }, tag: { $ref: '#/components/schemas/AnnotationTag' } } }
     BoardCreate: { type: object, additionalProperties: false, required: [spec], properties: { spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
     BoardUpdate: { type: object, additionalProperties: false, required: [spec], properties: { spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage }, message: { type: string, maxLength: 500 } } }
     BoardSaveResult: { type: object, additionalProperties: false, required: [board, changed], properties: { board: { $ref: '#/components/schemas/Board' }, changed: { type: boolean } } }
     BoardConflict: { type: object, additionalProperties: false, required: [error, current], properties: { error: { $ref: '#/components/schemas/ErrorBody' }, current: { $ref: '#/components/schemas/Board' }, submitted: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
     BoardRef: { type: object, additionalProperties: false, required: [uid, title], properties: { uid: { type: string }, title: { type: string } } }
-    BoardRefList: { type: object, additionalProperties: false, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardRef' } } } }
+    BoardRefList: { type: object, additionalProperties: false, required: [items, applied, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardRef' } }, applied: { $ref: '#/components/schemas/BoardRefApplied' }, truncated: { type: boolean } } }
+    BoardRefApplied: { type: object, additionalProperties: false, properties: {} }
     EpochMs: { type: integer, format: int64, minimum: 0, maximum: 253402300799999, description: ms since the Unix epoch, up to 9999-12-31T23:59:59.999Z }
     AnnotationKind: { type: string, enum: [deploy, config, flag, annotation] }
     AnnotationTag: { type: string, pattern: '^[a-z0-9][a-z0-9_.:/-]{0,63}$' }

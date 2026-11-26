@@ -194,6 +194,9 @@ export const messages = {
   'field.board.title.required': 'Enter a name',
   'field.board.title.tooLong': 'Use at most 200 characters',
   'field.board.time.invalid': 'Use a time such as now-1h or an absolute time',
+  'field.board.tags.invalid':
+    'Use at most 16 tags of lower-case letters, digits and _ . : / -, each up to 64 characters',
+  'field.board.tags.duplicate': 'Use each tag once',
   'field.board.sections.tooMany': 'A board can have at most 50 sections',
   'field.board.panels.tooMany': 'A board can have at most 200 panels',
   'field.board.id.invalid': 'This id is not valid',
