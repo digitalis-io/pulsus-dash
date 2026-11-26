@@ -35,6 +35,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run engine-fixtures` | Compares `../engine/fixtures/*.json` with a fresh run of the TS sources of truth; `-- --write` rewrites them ([the engine page](../client/engine.md#parity-with-the-ts-sources)) | `unit:engine-fixtures` (also in `npm test`) |
 | `npm run gen:log-transcripts` | Writes the generated paging transcripts `e2e/transcripts/logs-paging-1.json` and `logs-paging-2.json` from `scripts/logTranscripts.ts` (#66 Part C) | `unit:log-transcripts` (compares them byte for byte, in `npm test`) |
 | `npm run gen:xss-corpus` | Writes the generated XSS corpus `src/security/sanitise/__fixtures__/xss-corpus.json` from `scripts/gen-xss-corpus.ts` (#198 Part 2b; [the widgets page](../client/widgets.md#the-xss-corpus-and-the-checker)); `-- --check` compares instead | `unit:xss-corpus-current` (in `npm test`) |
+| `npm run gen:xss-e2e-cases` | Writes the browser run's case list `e2e/fixtures/xss-e2e-cases.json` (digest, skip reason and image request paths per corpus case) from `scripts/gen-xss-e2e-cases.ts` (#198 Part 3b; [the widgets page](../client/widgets.md#the-case-list-and-the-baselines)); `-- --check` compares and prints the differences by id | `unit:xss-e2e-cases` (in `npm test`); `e2e:widget-text-xss` |
 | `npm run token-lint` | Colour, size, duration and state-token literals outside the tokens | `ci:token-lint` |
 | `npm run size` | Brotli sizes of `dist/` (or the build given as `-- <dir>`, e.g. `-- dist-http`) against `bundle-budgets.json` | `ci:bundle-size` |
 | `npm run check:lockfile` | Exact versions, lockfile v3, registry and integrity of every locked package | `ci:lockfile` |
@@ -57,6 +58,7 @@ when `GITHUB_ACTIONS` is `true`. No script prints environment values.
 | `gen-tokens.ts [--check]` | written / up to date | a generated file is stale (`stale-generated:<file>`, including `engine/crates/dash-tokens/src/tokens.rs`) | invalid tokens (the message names the key) | — | `gen-tokens.test.ts` (`canvas = "blue"`, a stale `tokens.rs`) |
 | `engine-fixtures.ts [--write]` | written / up to date | a fixture is stale (`error[engine-fixtures] engine/fixtures/<file> is stale`) | — | — | `engine-fixtures.test.ts` (a fresh run equals the committed files) |
 | `gen-xss-corpus.ts [--check]` | written / up to date | the corpus is stale (`error[xss-corpus] … is stale`) | — | — | `gen-xss-corpus.test.ts` (a fresh run equals the committed file; one changed expectation gives 1) |
+| `gen-xss-e2e-cases.ts [--check]` | written / up to date | the list is stale (`error[xss-e2e-cases] … is stale` and one line per differing id) | — | — | `gen-xss-e2e-cases.test.ts` (a fresh run equals the committed file; one changed expectation gives 1; c14) |
 | `check-build-origins.ts [dist] [policy]` | no errors (warnings allowed) | findings | a file does not parse | `third-party-resource`, `third-party-host`, `computed-url`; warning `unused-url-allowlist` | `scripts/__fixtures__/origins/bad` (and `good`) |
 | `check-bundle-modules.ts [--cache <dir>] <outDir>…` | no findings | findings | a build's `modules.json` is missing or unreadable | `forbidden-module` | `scripts/__fixtures__/bundle-modules/` |
 | `pack-assets.ts --gen-key DIR` / `--in DIST --out OUT --key KEY` | packed / key pair written | — | `pack: <reason>` | — | `pack-assets.test.ts` (a symlink, a missing `--in`) |
@@ -693,6 +695,22 @@ the browser otherwise).
   board log panel's Wrap lines, and the keyboard loop L34 operates the order options, Wrap lines
   and the `Log lines` region of `Errors` and `Edge errors` on the board, at full screen, in the
   editor's preview and on a copy, before L24's drains run.
+- **Text widget** (`widgets.spec.ts`, #198 Part 3b, all three engines, on the http-mode BFF; each
+  test deletes its boards): **`e2e:widget-text`**, **`e2e:widget-text-xss`** (a) the T24 row input,
+  (b) the whole XSS corpus, one case per fresh context on its own board against the committed load
+  baseline `e2e/fixtures/board-load-baseline.<project>.json` and the generated case list, with the
+  exact CSP header and a Trusted Types canary (about 7 minutes per engine, three cases at a time;
+  its own 15-minute test timeout), (c) the canaries c1–c12, and **`e2e:widget-a11y`** (Text). The
+  request and violation watch is `e2e/loadWatch.ts` ([the widgets page](../client/widgets.md#the-load-watch-e2eloadwatchts)).
+  `BASELINE_UPDATE=1` makes the corpus test rewrite its engine's baseline from the twin board: run
+  it in each engine and review the diff. After a corpus change run `npm run gen:xss-e2e-cases`.
+- **Widget gallery goldens** (`widget-gallery.spec.ts`, Chromium only): **`golden:widget-gallery`**,
+  the gallery's `widget-text` and `widget-text-removals` pages in dark, light and greyscale, at
+  1440 × 1400. Generate the baselines with `PW_UPDATE_GOLDENS=1` in the pinned e2e container
+  (the same Ubuntu, Node and Playwright browsers as CI) and inspect them before committing.
+- **`bench:text-widget-render`** (`perf-text-render.spec.ts`, Chromium only, the stub build): the
+  uncached Markdown render per size bucket, the long tasks and the event latency of a six-panel
+  Text board; report-only, `LONG_TASK_GATE=enforce` fails a miss ([the widgets page](../client/widgets.md#render-measures-and-the-bench)).
 - **`e2e:bff-http-shell`** (`bff-http.spec.ts`, `dev-proxy.spec.ts`): on the http build, `/` opens
   `/t/demo/boards`; About shows `Server version 0.1.0-e2e`; there is no Sign out item; the sidebar
   shows `Data source: demo · Connected`, and the fake lists at least one completed
