@@ -378,3 +378,46 @@ They are copied in, not npm dependencies:
 
 Fonts are self-hosted and hashed by the build (VL-010); icons are drawn as CSS masks, so no SVG
 markup is injected at run time.
+
+## Geo data
+
+The geomap's bundled assets `client/src/vis/geo/data/basemap.json` and `gazetteer.json`
+([Geomap data](geomap.md)) are built by `tools/geo/build.py` from these sources (T24 §5.13, T24-085,
+T24-086). `tools/geo/sources.json` records each one's class, dataset, version, file date, file,
+SHA-256, licence and retrieval date:
+
+| Class | Dataset, version (file date) | File · SHA-256 | Licence |
+|---|---|---|---|
+| Outlines | Natural Earth 110m Admin 0 Countries 5.1.1 (2022-05-09) | `ne_110m_admin_0_countries.zip` · `0f243aeac8ac6cf26f0417285b0bd33ac47f1b5bdb719fd3e0df37d03ea37110` | public domain |
+| ISO 3166-1 | Natural Earth 10m Admin 0 Countries 5.1.1 (2022-05-09) | `ne_10m_admin_0_countries.zip` · `ce1ac7036499a0edd641fbc093cd209a98f96a49d2eca8480aaacad35138a7f6` | public domain |
+| ISO 3166-2 | Natural Earth 10m Admin 1 States, Provinces 5.1.1 (2022-05-09) | `ne_10m_admin_1_states_provinces.zip` · `efc59726337323058f9446210adc96673179cd344e053666ee3d28cb58ba2b05` | public domain |
+| Cloud metros | Natural Earth 10m Populated Places simple 5.1.2 (2022-05-13) | `ne_10m_populated_places_simple.zip` · `2963ee08f7743f13f37d5243acd77a2f7a510e26a36c7e04b920f1b381f2b251` | public domain |
+| IATA | OurAirports airports, snapshot (2026-11-25) | `airports.csv` · `ceba1cef67fb7ddeeb8aebf52cfca29d678f0599fd46cd93b8974f9a6a67ea16` | public domain |
+| Cloud ids | PulsusIX cloud region list | `tools/geo/cloud-regions.csv` (tracked; its digest is taken at build time) | AGPL-3.0 (facts, each record dated) |
+
+The five external files are **never committed and never downloaded** by the build or CI, and
+`sources.json` holds no download location. `tools/geo/manifest.json` records the SHA-256 and byte
+length of each built asset and the digests of the sources it was built from; `ci:geo-data`
+(`make geo-data`) checks the committed assets against it and decodes them with the client's own
+validator.
+
+**Refreshing the data** (a new dataset version, an airports snapshot, a new cloud region):
+
+1. Put the source files in a local directory outside the repository and record each new version,
+   file date, retrieval date and SHA-256 (`sha256sum`) in `tools/geo/sources.json` (sorted by
+   `file`). For a cloud region, add its record to `tools/geo/cloud-regions.csv` with its published
+   place, `iso_a2` and Natural Earth `ne_id` (or the nearest populated place in the same country),
+   update the `# as of` line, and the id list and `asOf` of
+   `client/src/vis/geo/fixtures/cloud-inventory.json`.
+2. Run `python3 -I tools/geo/build.py <dir>`: it checks every digest before parsing anything
+   (`‹file›: missing`, `‹file›: SHA-256 mismatch`) and writes the two assets, `tools/geo/report.txt`
+   (the dropped slivers) and `tools/geo/manifest.json`.
+3. Review the report and the size rows of `npm run size` (`geo-basemap` ≤ 40 000, `geo-gazetteer`
+   ≤ 104 000 bytes brotli; over budget is reported, never trimmed silently), run `make geo-test`
+   and `make geo-data`, and commit the outputs with the source change.
+4. Attach the output of `make geo-check GEO_SRC=<dir>` (`geo-build: 4 files identical`) to the PR.
+
+**Notices.** No source requires a notice. `make go-licenses` appends the "Data" section of
+`build.py --notices` to `build/THIRD_PARTY_NOTICES.txt`: `== Data ==`, then one line per source,
+`‹dataset› ‹version› (‹file date›) · ‹file› · ‹licence›`, and for the tracked list
+`PulsusIX cloud region list · tools/geo/cloud-regions.csv · AGPL-3.0`.
