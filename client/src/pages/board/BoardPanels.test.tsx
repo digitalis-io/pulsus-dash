@@ -672,9 +672,13 @@ describe('event markers (#64 Part C)', () => {
         kind: 'deploy' as const,
         text: 'v2.31',
         tags: [],
+        entity: null,
       },
     ],
     truncated: false,
+    applied: {},
+    next: null,
+    orgWideHidden: 0,
   };
 
   it('events notices', async () => {
@@ -693,7 +697,11 @@ describe('event markers (#64 Part C)', () => {
     cleanup();
 
     const many = openBoard([panel('p-1', 'Mem', 'node_memory_free_bytes')]);
-    vi.spyOn(many.api, 'listAnnotations').mockResolvedValue({ ...marker, truncated: true });
+    vi.spyOn(many.api, 'listAnnotations').mockResolvedValue({
+      ...marker,
+      truncated: true,
+      next: { at: T12 + 900_000, id: 'a1' },
+    });
     await ready('Mem');
     show('Mem');
     await settled(many, 'Mem');

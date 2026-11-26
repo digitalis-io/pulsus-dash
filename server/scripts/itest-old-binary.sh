@@ -2,13 +2,15 @@
 # The old-binary gate (plan #215 §5, plan #198 Part 1 §3.4, T05 §7.1): builds the previous release
 # (the merge-base of HEAD with OLD_BINARY_REF, default origin/main) in a git worktree under
 # build/old-binary/, removed on every exit, and runs every Test*OldBinary test with DASH_OLD_BINARY
-# set to it, DASH_OLD_SPEC_VERSION to its board spec version and DASH_OLD_FIXTURE to its own fixture
-# of that version (the first, by name, of api/fixtures/board-spec/v<P>-*.json in its tree). The
+# set to it, DASH_OLD_SPEC_VERSION to its board spec version, DASH_OLD_FIXTURE to its own fixture
+# of that version (the first, by name, of api/fixtures/board-spec/v<P>-*.json in its tree) and
+# DASH_OLD_SCHEMA to its highest migration number (plan #222). The
 # tests never skip for a missing binary here: a missing or failing binary fails them. A test may
 # skip when the previous release does not apply to it (itest:board-tags-old-binary needs one before
 # board spec 4). This script passes only when the run exits 0, no test fails, at least one test
-# passes, and TestBoardSpecOldBinary passes whenever the previous release's spec version is older
-# than this one's. A required local gate for every change to the board schema or spec (hosted CI is
+# passes, TestBoardSpecOldBinary passes whenever the previous release's spec version is older
+# than this one's, and TestAnnotationsOldBinary passes whenever the previous release predates
+# migration 5 and this one has it. A required local gate for every change to the board schema or spec (hosted CI is
 # not a gate).
 #
 # Usage: server/scripts/itest-old-binary.sh   (make itest-old-binary; needs DASH_ITEST_PG_URLS)
@@ -87,12 +89,23 @@ if [ -z "$OLD_SPEC" ] || [ -z "$CUR_SPEC" ]; then
   echo "itest-old-binary: FAIL (no BoardSchemaVersion: previous '$OLD_SPEC', current '$CUR_SPEC')"
   exit 1
 fi
+# schema_of prints the highest migration number of a source tree (server/migrations/NNNNN_*.sql).
+schema_of() {
+  find "$1/server/migrations" -maxdepth 1 -name '[0-9]*_*.sql' -printf '%f\n' | sed -E 's/^0*([0-9]+)_.*/\1/' | LC_ALL=C sort -n | tail -n 1
+}
+OLD_SCHEMA=$(schema_of "$SRC")
+CUR_SCHEMA=$(schema_of "$ROOT")
+if [ -z "$OLD_SCHEMA" ] || [ -z "$CUR_SCHEMA" ]; then
+  echo "itest-old-binary: FAIL (no migrations: previous '$OLD_SCHEMA', current '$CUR_SCHEMA')"
+  exit 1
+fi
 OLD_FIXTURE=$(find "$SRC/api/fixtures/board-spec" -maxdepth 1 -name "v${OLD_SPEC}-*.json" | LC_ALL=C sort | head -n 1)
 echo "itest-old-binary: previous board spec $OLD_SPEC (fixture ${OLD_FIXTURE#"$SRC"/}), current $CUR_SPEC"
+echo "itest-old-binary: previous schema $OLD_SCHEMA, current $CUR_SCHEMA"
 
 LOG="$DIR/test.log"
 rc=0
-DASH_OLD_BINARY="$DIR/pulsus-dash" DASH_OLD_SPEC_VERSION="$OLD_SPEC" DASH_OLD_FIXTURE="$OLD_FIXTURE" \
+DASH_OLD_BINARY="$DIR/pulsus-dash" DASH_OLD_SPEC_VERSION="$OLD_SPEC" DASH_OLD_FIXTURE="$OLD_FIXTURE" DASH_OLD_SCHEMA="$OLD_SCHEMA" \
   CGO_ENABLED=1 go -C "$ROOT/server" test -race -tags itest -count=1 -v \
   -run "$RUN_PATTERN" ./cmd/pulsus-dash >"$LOG" 2>&1 || rc=$?
 cat "$LOG"
@@ -105,5 +118,8 @@ fail() {
 grep -qE -- "$PASS_PATTERN" "$LOG" || fail "no old-binary test passed"
 if [ "$OLD_SPEC" -lt "$CUR_SPEC" ] && ! grep -qE -- '^--- PASS: TestBoardSpecOldBinary \(' "$LOG"; then
   fail "TestBoardSpecOldBinary did not pass for board spec $OLD_SPEC < $CUR_SPEC"
+fi
+if [ "$OLD_SCHEMA" -lt 5 ] && [ "$CUR_SCHEMA" -ge 5 ] && ! grep -qE -- '^--- PASS: TestAnnotationsOldBinary \(' "$LOG"; then
+  fail "TestAnnotationsOldBinary did not pass for schema $OLD_SCHEMA < 5 <= $CUR_SCHEMA"
 fi
 echo "itest-old-binary: PASS"

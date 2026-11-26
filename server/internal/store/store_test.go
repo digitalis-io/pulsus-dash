@@ -87,8 +87,27 @@ func TestMigrationFiles(t *testing.T) {
 			t.Errorf("%s has a -- +goose Down section (T11-012)", e.Name())
 		}
 	}
-	if got := SchemaLatest(); got != 4 {
-		t.Errorf("SchemaLatest() = %d, want 4", got)
+	if got := SchemaLatest(); got != 5 {
+		t.Errorf("SchemaLatest() = %d, want 5", got)
+	}
+}
+
+// T12-018: the data scope predicate P is byte-identical in the list and the delete statement, so
+// the two paths cannot disagree on which rows a scope covers.
+func TestScopePredicateShared(t *testing.T) {
+	b, err := os.ReadFile("../../queries/annotations.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile(`(?s)-- P begin\n(.*?)\n[ \t]*-- P end`).FindAllStringSubmatch(string(b), -1)
+	if len(blocks) != 2 {
+		t.Fatalf("queries/annotations.sql has %d P blocks, want 2", len(blocks))
+	}
+	if blocks[0][1] != blocks[1][1] {
+		t.Errorf("the P blocks differ:\n%s\n---\n%s", blocks[0][1], blocks[1][1])
+	}
+	if !strings.Contains(blocks[0][1], "sqlc.arg(scope_full)") || !strings.Contains(blocks[0][1], "sqlc.arg(scope)::jsonb") {
+		t.Errorf("the P block does not read scope_full and scope:\n%s", blocks[0][1])
 	}
 }
 
