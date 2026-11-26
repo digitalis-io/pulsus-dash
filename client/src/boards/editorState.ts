@@ -8,12 +8,14 @@
 import type {
   Board,
   BoardSpec,
+  DataPanelSpec,
   FieldError,
   PanelSpec,
   SectionSpec,
   TimeRangeSpec,
 } from '../api/types';
 import type { SectionOverrides } from '../state/boardParams';
+import { isDataPanel } from '../widgets/spec';
 import { t } from '../i18n/t';
 import { applyOp, firstFree, fits, type LayoutOp, overlaps } from './layout';
 import { canonicalJson, MAX_PANELS, MAX_SECTIONS, nextPanelId, nextSectionId } from './spec';
@@ -61,7 +63,8 @@ export type BoardAction =
   | {
       type: 'updatePanel';
       id: string;
-      patch: Partial<Pick<PanelSpec, 'title' | 'query' | 'vis'>>;
+      /** A data panel's edit (plan #198 Part 1 §4.2); on a widget only `title` applies. */
+      patch: PanelPatch;
     }
   | { type: 'removePanel'; id: string }
   | { type: 'duplicatePanel'; id: string }
@@ -95,6 +98,15 @@ export function initialState(board: Board): BoardPageState {
 
 export function isDirty(s: BoardPageState): boolean {
   return canonicalJson(s.draft) !== canonicalJson(s.head.spec);
+}
+
+/** The fields the panel editor changes (a data panel's). */
+export type PanelPatch = Partial<Pick<DataPanelSpec, 'title' | 'query' | 'vis'>>;
+
+/** `p` with `patch`: a data panel takes all of it, a widget only its title (plan #198 Part 1 §4.2). */
+function patched(p: PanelSpec, patch: PanelPatch): PanelSpec {
+  if (isDataPanel(p)) return { ...p, ...patch };
+  return patch.title === undefined ? p : { ...p, title: patch.title };
 }
 
 /** Every panel of the board with its grid and index. */
@@ -283,7 +295,7 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
     case 'updatePanel': {
       const grid = gridOf(s.draft, a.id);
       if (grid === null) return s;
-      const panels = panelsOf(s.draft, grid).map((p) => (p.id === a.id ? { ...p, ...a.patch } : p));
+      const panels = panelsOf(s.draft, grid).map((p) => (p.id === a.id ? patched(p, a.patch) : p));
       return edited(s, withPanels(s.draft, grid, panels));
     }
     case 'removePanel': {

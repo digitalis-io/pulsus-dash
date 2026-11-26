@@ -14,7 +14,19 @@
     "layout": "string",
     "colourMode": "string",
     "textMode": "string",
-    "graphMode": "string"
+    "graphMode": "string",
+    "mode": "string",
+    "content": "string",
+    "language": "string",
+    "zones": "array",
+    "hourCycle": "string",
+    "seconds": "bool",
+    "date": "bool",
+    "countdown": "object"
+  },
+  "members": {
+    "zones": ["tz", "label"],
+    "countdown": ["to", "label", "after"]
   },
   "kinds": {
     "auto": ["reducer", "parts"],
@@ -24,6 +36,8 @@
     "stat": ["reducer", "baselineOffset", "sort", "orientation", "min", "max", "layout", "colourMode", "textMode", "graphMode"],
     "logs": [],
     "barchart": ["reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"],
-    "pie": ["reducer", "categoryBy", "sort", "donut", "labels", "parts"]
+    "pie": ["reducer", "categoryBy", "sort", "donut", "labels", "parts"],
+    "text": ["mode", "content", "language"],
+    "clock": ["zones", "hourCycle", "seconds", "date", "countdown"]
   }
 }

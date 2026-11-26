@@ -47,6 +47,7 @@ import type { LayoutOp } from '../../boards/layout';
 import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
 import { boardVariables } from '../../boards/variables';
+import { isDataPanel } from '../../widgets/spec';
 import { t } from '../../i18n/t';
 import { InspectorHost } from '../../inspector/host';
 import type { InspectOrigin } from '../../inspector/types';
@@ -391,7 +392,9 @@ function BoardEditor({
     seq: number;
     degraded: boolean;
   } | null>(null);
-  const dialogPanel = edit && selected !== undefined ? selected.panel : null;
+  // The editor edits data panels only: a selected widget opens none (plan #198 Part 1 §4.2).
+  const dialogPanel =
+    edit && selected !== undefined && isDataPanel(selected.panel) ? selected.panel : null;
   if (dialogPanel === null) {
     if (editRun !== null) setEditRun(null);
   } else if (editRun?.id !== dialogPanel.id) {
@@ -639,16 +642,16 @@ function BoardEditor({
             )}
           </Suspense>
         </div>
-        {edit && selected !== undefined && (
+        {dialogPanel !== null && selected !== undefined && (
           <PanelEditor
-            key={selected.panel.id}
-            panel={selected.panel}
+            key={dialogPanel.id}
+            panel={dialogPanel}
             tenant={tenant}
             pointer={panelPointer(selected.grid, selected.index)}
             fields={s.save.status === 'invalid' ? s.save.fields : []}
             readOnly={busy}
             statusText={statusText}
-            runText={editRun?.id === selected.panel.id ? editRun.text : selected.panel.query.text}
+            runText={editRun?.id === dialogPanel.id ? editRun.text : dialogPanel.query.text}
             runSeq={editRun?.id === selected.panel.id ? editRun.seq : 0}
             runDegraded={editRun?.id === selected.panel.id ? editRun.degraded : false}
             onDegraded={onDegraded}

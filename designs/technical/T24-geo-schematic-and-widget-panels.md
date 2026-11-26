@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-26 |
+| **Version** | 1.8-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1278,7 +1278,7 @@ gate whatever its number).
 | Name | Change | Issue | Number if landed in this order |
 |---|---|---|---|
 | tags version | `BoardSpec.tags` (§5.5) | #215 (I1), landed | v4 |
-| widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) | v5 if no other spec change lands first |
+| widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) Part 1, landed | v5 |
 | board-list version | `boardList` (§5.5) | #216 (I2), after #198 | v6 |
 | change-feed version | `changeFeed` (§5.8) | part B2 | v7 |
 | geomap version | `geomap` (§5.15) | part E step 1b | v8 |
@@ -1296,14 +1296,28 @@ below (errors are `board.options.‹…›`):
 | mode | `markdown`\|`code` | `markdown` | text | `mode.invalid` |
 | content | string ≤ 65 536 UTF-8 bytes | `''` | text | `content.tooLong` |
 | language | `plaintext`\|`json`\|`yaml`\|`sql`\|`promql`\|`logql`\|`go`\|`shell` | `plaintext` | text, code mode only | `language.invalid` |
-| zones | 1–12 × `{tz, label ≤ 64}`; `tz` `''` or loadable by Go `time.LoadLocation` (embedded tzdata), not `Local` | `[{tz:'',label:''}]` | clock | `zones.invalid`, `zones.duplicate` |
+| zones | 1–12 × `{tz, label ≤ 64}`; `tz` `''` or a zone name (below), not `Local`; no two items with the same `tz` (`zones.duplicate`) | `[{tz:'',label:''}]` | clock | `zones.invalid`, `zones.duplicate` |
 | hourCycle | `auto`\|`h12`\|`h23` | `auto` | clock | `hourCycle.invalid` |
 | seconds, date | bool | `false`, `true` | clock | — |
-| countdown | absent or `{to: RFC 3339 with offset, label 1–64, after: 'countUp'\|'hide'}` | absent | clock | `countdown.invalid` |
+| countdown | absent or `{to: RFC 3339 with offset, label 1–64, after: 'countUp'\|'hide'}`; `to` is `YYYY-MM-DDThh:mm:ss`, an optional fraction of 1–9 digits and `Z` or `±hh:mm`, naming a real time (month 1–12, day 1 to the month's length, hour ≤ 23, minute and second ≤ 59, offset ≤ 23:59) | absent | clock | `countdown.invalid` |
 
-Go decides validity; the upcaster from the immediately preceding version (the tags version, v4, unless another spec change lands first) is the identity
+`language` is valid only in code mode (`mode` `code`; absent is `markdown`). A widget has neither
+`thresholds` nor `legend`: each is `board.json.unknownKey`, reported by the rules pass (the shape
+pass cannot know a `kind` that comes later). A `query` on a widget is reported at `…/query`
+without checking its members; a panel of an invalid kind without a query reports only its kind.
+
+**Zones.** A `tz` is checked in two steps. Its form, on every read and write: `''`, or at most 64
+bytes matching `^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$`, other than `Local`. Its existence, in
+Go on writes only: on a create every `tz` must be a name of the build's zone set, the names in the
+`zoneinfo.zip` of the toolchain that built the server (the file `time/tzdata` embeds), generated
+into the source and checked against the toolchain by a test; on a save only a `tz` the stored head
+does not hold must exist, so a zone already stored is kept even if a later tzdata drops it. A read
+never checks existence: a stored zone is always readable. The set is fixed by the build and the
+same on every replica; host zoneinfo and `ZONEINFO` are never read. The client checks the form only.
+
+Go decides validity; the upcaster from the immediately preceding version (the tags version, v4) is the identity
 ([T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); the fixtures are
-`v‹N›-widgets.json` (`v5-widgets.json` if no other spec change lands first) and `invalid.json`.
+`v5-widgets.json` and `invalid.json`.
 
 `isWidgetPanel(p)` narrows `PanelSpec` and guards every `panel.query` read; `textOptions` and
 `clockOptions` fill the defaults; `PanelFrame` branches first to `<WidgetBody>`.
@@ -1981,7 +1995,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 |---|---|
 | URL bypass, log or report leaks, AI images | `classifyUrl` and the fuzz gate; content-free removals and errors; `ai` has no `<img>` |
 | Tenancy; spec versions | No fetch or storage; safe GETs; the next spec version |
-| Ticks; zones | The due-time scheduler (T24-011); Go decides zone validity; a bad zone → one row (T24-010) |
+| Ticks; zones | The due-time scheduler (T24-011); Go decides zone validity: the form on every parse, existence on writes only against the build's zone set, a zone the head holds kept; a stored zone is always readable; a bad zone → one row (T24-010) |
 | Tenancy (part B1) | `OrgTx` under RLS; org B in the itests |
 | Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a head saved at the tags version or later (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
 | A GET that writes | A separate short transaction, ≤ 200 rows, `SKIP LOCKED`, 2 s, on the primary; a failure leaves rows stale and never fails the list |
@@ -2012,7 +2026,7 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
-| `unit:board-spec-widgets` | spec.test.ts, validate_test.go | fixtures | valid → none; text + `query` → `board.panel.query.forbidden`; line without → `.required`; clock `depth` → `unknownKey`; 13 zones, `tz:'Mars/Base'` → `zones.invalid`; duplicate zone → `.duplicate`; 65 537 bytes → `content.tooLong`; `to:'2026-11-26 14:00'` → `countdown.invalid`; TS = Go; the version before upcasts | T24-003, VIZ-031, 057 |
+| `unit:board-spec-widgets` | spec.test.ts, validate_test.go | fixtures | valid → none; text + `query` → `board.panel.query.forbidden`; line without → `.required`; clock `depth` → `unknownKey`; 13 zones, `tz:'Mars/Base'` → `zones.invalid` (`Mars/Base` in Go only, on a new spec: the client checks the form, and its row carries `client_fields` `[]`); duplicate zone → `.duplicate`; 65 537 bytes → `content.tooLong`; `to:'2026-11-26 14:00'` → `countdown.invalid`; TS = Go; the version before upcasts | T24-003, VIZ-031, 057 |
 | `unit:classify-url` | sanitise/url.test.ts | strings | rejected: `/\t/evil.test`, `/a/../..//evil.test`, `/.//evil`, `/\\evil.test`, `//evil.test`, ` /x`, `/x\u0085`, `https://u:p@x.test/`, `JaVaScRiPt:x`, `data:,x`, `boards/b1`; local: `/boards/b1?x=1#h`, `/%5Cevil.test` (unchanged); external: `HTTPS://X.TEST` → `https://x.test/`; mailto: `mailto:o@x.test` | T24-005 |
 | `unit:markdown-links` | sanitise/markdown.test.tsx | inputs L (below) | a → text + `linkScheme`; t → `/%09/e.test`; b, d, e → new-tab `<a>` | T24-005 |
 | `unit:markdown-nodes` | same | `"<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\n**ok**"`; `# A\n###### F\n1000000. x` | DOM `<p><strong>ok</strong></p>`, removals `[{html,1},{html,3}]`; `<h4>`, `<h6>`, `<ol start="999999">` | VIZ-054, T24-009 |
@@ -2706,7 +2720,16 @@ Implementation issues, filed after this design merges:
 | A2 — Clock | §5.3, editor, gallery `widget-clock-1`, `widget-clock-4`, `widget-clock-countdown` | A1 | T24-010–015, T24-017 |
 | A3 — Image proxy | T18-014 route, rewrite | T18 §4.9 egress guard | T18-014 |
 
-A1 needs #173 (board spec v3) and ships the widgets version, the next free version (v5 if no other spec change lands first after #215's tags version). The implementation writes
+A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in three parts
+(recorded on #198):
+
+| Part | Scope | Gates |
+|---|---|---|
+| 1, landed | the widgets version (§5.1) in OpenAPI, Go and TS, the zone rules, the panel union (`isWidgetPanel` guards every `query` read), a widget frame showing "not available yet", and the old-binary gate run for every spec version change | `unit:board-spec-widgets`, `unit:board-spec`, `itest:board-crud`, `itest:board-zones-grandfathered`, `itest:board-spec-old-binary` |
+| 2 | the renderer (§5.2), the import conversion (§5.4), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) dependencies | the §10 sanitiser and import rows |
+| 3, after 1 and 2 | the Text view, its editor and removal list, adding a widget, the gallery | the §10 Text e2e and golden rows |
+
+The implementation writes
 `docs/client/widgets.md` (behaviour, Markdown, URLs, import, Clock) and updates
 `docs/client/boards.md`, `docs/user/boards.md`, `docs/server/boards-api.md` and
 `docs/client/supply-chain.md` (widget panels, the widgets-version keys, the `markdown` dependencies).
@@ -2840,3 +2863,4 @@ None.
 | 1.5-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1): §5.7 `csvCell` is defined in `client/src/data/csv.ts`, shared by the panel tables, and re-exported by `widgets/lists/snapshot.ts` |
 | 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
 | 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later"; the widgets version is v5 only if no other spec change lands first |
+| 1.8-rc | 2026-11-26 | #198 Part 1 (A1): §5.0 the widgets version landed as v5. §5.1: the zone rule replaces "loadable by `time.LoadLocation`": the form on every parse, existence in Go on writes only against the build's zone set (the toolchain's `zoneinfo.zip` names, generated), a zone the head holds kept on a save; `language` in code mode only; a duplicate zone is the same `tz`; a widget's `thresholds` and `legend` are `board.json.unknownKey`; the `countdown.to` grammar; `v5-widgets.json`. §9: a stored zone is always readable. §10: `Mars/Base` is Go only (`client_fields`). §11: A1 is split in Parts 1–3 |

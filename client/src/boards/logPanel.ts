@@ -5,7 +5,7 @@
  * The answer's kind decides what is drawn (ADR-0021 §2: nothing is planned in the browser).
  */
 import type { Api } from '../api/Api';
-import type { PanelVisKind, PlannedQuery } from '../api/types';
+import type { DataVisKind, PlannedQuery } from '../api/types';
 import type { Completeness, LogqlPlannedQuery, LogsResult, VolumeResult } from '../data/decode';
 import { logPagerKey, type LogPagerInput, type LogPagerState } from '../logs/logPager';
 import { fromRange } from '../vis/autovis';
@@ -20,7 +20,7 @@ export type LogPanelPath = 'stream' | 'logs-bars' | 'logs-frame';
  * auto, logs → stream; bars → logs-bars; line, heatmap, stat, barchart, pie → logs-frame (the
  * pending kinds send nothing, plan #173 Part 1).
  */
-export function logPanelPath(kind: PanelVisKind): LogPanelPath {
+export function logPanelPath(kind: DataVisKind): LogPanelPath {
   switch (kind) {
     case 'auto':
     case 'logs':

@@ -1,14 +1,19 @@
 package spec
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
 
+// fixtureCase is one row of invalid.json; ClientFields, when present, are what the client's suite
+// expects instead of Fields (zone existence is the server's only).
 type fixtureCase struct {
 	Name   string          `json:"name"`
 	Raw    *string         `json:"raw"`
@@ -45,7 +50,7 @@ func TestValidateCases(t *testing.T) {
 			if tc.Raw != nil {
 				raw = []byte(*tc.Raw)
 			}
-			_, err := ParseBoard(raw)
+			_, err := ParseNewBoard(raw)
 			got := fieldsOf(t, err)
 			want := make([]FieldError, 0, len(tc.Fields))
 			for _, f := range tc.Fields {
@@ -239,6 +244,190 @@ func TestNumberShape(t *testing.T) {
 		want := []FieldError{{"/panels/0/vis/thresholds/steps/0/value", keyType}}
 		if got := fieldsOf(t, err); !reflect.DeepEqual(got, want) {
 			t.Errorf("value %s: fields %v, want %v", tc.value, got, want)
+		}
+	}
+}
+
+// widgetBoard is a board of one widget panel p-1 with vis (JSON).
+func widgetBoard(vis string) []byte {
+	return []byte(`{"title":"B","panels":[{"id":"p-1","title":"A","grid":{"x":0,"y":0,"w":6,"h":8},"vis":` + vis + `}],"sections":[]}`)
+}
+
+// clockVis is a clock's vis with the zones given as JSON items.
+func clockVis(zones ...string) string {
+	return `{"kind":"clock","options":{"zones":[` + strings.Join(zones, ",") + `]}}`
+}
+
+func zoneJSON(tz, label string) string {
+	b, _ := json.Marshal(map[string]string{"tz": tz, "label": label})
+	return string(b)
+}
+
+const opts = "/panels/0/vis/options"
+
+// TestWidgetLimits: the bounds of content, zones, zone labels and countdown labels (T24-003).
+func TestWidgetLimits(t *testing.T) {
+	text := func(content string) []byte {
+		c, _ := json.Marshal(content)
+		return widgetBoard(`{"kind":"text","options":{"content":` + string(c) + `}}`)
+	}
+	zones := func(n int) []byte {
+		items := make([]string, n)
+		for i := range items {
+			items[i] = zoneJSON(fmt.Sprintf("Etc/GMT+%d", i), "")
+		}
+		items[0] = zoneJSON("UTC", "")
+		return widgetBoard(clockVis(items...))
+	}
+	countdown := func(label string) []byte {
+		l, _ := json.Marshal(label)
+		return widgetBoard(`{"kind":"clock","options":{"countdown":{"to":"2026-11-26T14:00:00Z","label":` + string(l) + `,"after":"hide"}}}`)
+	}
+	content := strings.Repeat("€", 21845) + "a"
+	if len(content) != 65536 {
+		t.Fatalf("content is %d bytes, want 65536", len(content))
+	}
+	cases := []struct {
+		name string
+		raw  []byte
+		want string // "" = valid
+	}{
+		{"content 65536 bytes", text(content), ""},
+		{"content 65537 bytes", text(content + "a"), opts + "/content board.options.content.tooLong"},
+		{"12 zones", zones(12), ""},
+		{"13 zones", zones(13), opts + "/zones board.options.zones.invalid"},
+		{"zone label 64 runes", widgetBoard(clockVis(zoneJSON("UTC", strings.Repeat("é", 64)))), ""},
+		{"zone label 65 runes", widgetBoard(clockVis(zoneJSON("UTC", strings.Repeat("é", 65)))), opts + "/zones/0/label board.options.zones.invalid"},
+		{"countdown label empty", countdown(""), opts + "/countdown/label board.options.countdown.invalid"},
+		{"countdown label 64 runes", countdown(strings.Repeat("é", 64)), ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseNewBoard(tc.raw)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("ParseNewBoard = %v, want ok", err)
+				}
+				return
+			}
+			got := fieldsOf(t, err)
+			if len(got) != 1 || got[0].Pointer+" "+got[0].MessageKey != tc.want {
+				t.Errorf("fields = %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestZoneNames: the tz format on every parse, and existence in the build's zone set on new specs.
+func TestZoneNames(t *testing.T) {
+	for _, tz := range []string{"", "UTC", "Europe/London", "America/Argentina/Buenos_Aires", "Etc/GMT+5", "EST5EDT"} {
+		if _, err := ParseNewBoard(widgetBoard(clockVis(zoneJSON(tz, "")))); err != nil {
+			t.Errorf("tz %q: %v, want ok", tz, err)
+		}
+	}
+	want := []FieldError{{opts + "/zones/0/tz", "board.options.zones.invalid"}}
+	for _, tz := range []string{"Local", "Mars/Base", "../etc/passwd", "/etc/localtime", "Europe/London ", strings.Repeat("a", 65)} {
+		_, err := ParseNewBoard(widgetBoard(clockVis(zoneJSON(tz, ""))))
+		if err == nil {
+			t.Errorf("tz %q: ok, want zones.invalid", tz)
+			continue
+		}
+		if got := fieldsOf(t, err); !reflect.DeepEqual(got, want) {
+			t.Errorf("tz %q: fields %v, want %v", tz, got, want)
+		}
+	}
+	// A stored zone is always readable: ParseBoard checks the format only.
+	if _, err := ParseBoard(widgetBoard(clockVis(zoneJSON("Mars/Base", "")))); err != nil {
+		t.Errorf("ParseBoard(Mars/Base) = %v, want ok", err)
+	}
+}
+
+// TestCheckZones: existence is asked once per distinct name, never for ”, and a name in keep is
+// not asked at all.
+func TestCheckZones(t *testing.T) {
+	calls := map[string]int{}
+	saved := zoneExists
+	t.Cleanup(func() { zoneExists = saved })
+	zoneExists = func(tz string) bool {
+		calls[tz]++
+		return tz == "Fresh/Zone"
+	}
+	panel := func(i int, tz string) string {
+		return fmt.Sprintf(`{"id":"p-%d","title":"A","grid":{"x":0,"y":%d,"w":6,"h":1},"vis":%s}`, i, i, clockVis(zoneJSON(tz, "")))
+	}
+	raw := []byte(`{"title":"B","panels":[` + strings.Join([]string{panel(0, "Fresh/Zone"), panel(1, "Fresh/Zone"), panel(2, "Gone/Zone"), panel(3, "")}, ",") + `],"sections":[]}`)
+	b, err := ParseBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseBoard: %v", err)
+	}
+	err = b.CheckZones(nil)
+	if err == nil {
+		t.Fatal("CheckZones(nil) = nil, want Gone/Zone refused")
+	}
+	if got, want := fieldsOf(t, err), []FieldError{{"/panels/2/vis/options/zones/0/tz", "board.options.zones.invalid"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("CheckZones(nil) = %v, want %v", got, want)
+	}
+	if want := map[string]int{"Fresh/Zone": 1, "Gone/Zone": 1}; !reflect.DeepEqual(calls, want) {
+		t.Errorf("zoneExists calls = %v, want %v", calls, want)
+	}
+	if err := b.CheckZones(map[string]bool{"Gone/Zone": true}); err != nil {
+		t.Errorf("CheckZones({Gone/Zone}) = %v, want nil", err)
+	}
+}
+
+// TestZonesIgnoreHost: ZONEINFO (the host's zone database) is never read.
+func TestZonesIgnoreHost(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zoneinfo.zip")
+	f, err := os.Create(path) //nolint:gosec // the test's own temporary file
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: "Host/Only", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A minimal TZif file: UTC, no transitions.
+	if _, err := w.Write(tzifUTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZONEINFO", path)
+	if _, err := ParseNewBoard(widgetBoard(clockVis(zoneJSON("Host/Only", "")))); err == nil {
+		t.Error("ParseNewBoard(Host/Only) = ok, want zones.invalid")
+	}
+	if _, err := ParseNewBoard(widgetBoard(clockVis(zoneJSON("Europe/London", "")))); err != nil {
+		t.Errorf("ParseNewBoard(Europe/London) = %v, want ok", err)
+	}
+}
+
+// tzifUTC is a version 1 TZif file with one type, UTC (RFC 8536).
+func tzifUTC() []byte {
+	b := []byte("TZif\x00")
+	b = append(b, make([]byte, 15)...)
+	// isutcnt, isstdcnt, leapcnt, timecnt, typecnt, charcnt
+	for _, n := range []byte{0, 0, 0, 0, 1, 4} {
+		b = append(b, 0, 0, 0, n)
+	}
+	b = append(b, 0, 0, 0, 0, 0, 0) // utoff 0, isdst 0, desigidx 0
+	return append(b, 'U', 'T', 'C', 0)
+}
+
+// TestRFC3339Offset: countdown.to is RFC 3339 with an offset and a real date (T24-003).
+func TestRFC3339Offset(t *testing.T) {
+	for _, s := range []string{"2026-11-26T14:00:00Z", "2026-11-26T14:00:00+09:00", "2026-11-26T14:00:00.123456789-05:30", "2024-02-29T00:00:00Z"} {
+		if !validRFC3339Offset(s) {
+			t.Errorf("validRFC3339Offset(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"2026-11-26 14:00", "2026-11-26T14:00:00", "2026-02-29T00:00:00Z", "2026-11-26T24:00:00Z", "2026-11-26T14:00:60Z", "2026-11-26T14:00:00+24:00", "2026-11-26T14:00:00z"} {
+		if validRFC3339Offset(s) {
+			t.Errorf("validRFC3339Offset(%q) = true, want false", s)
 		}
 	}
 }

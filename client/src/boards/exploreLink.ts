@@ -5,13 +5,13 @@
  * Without that response there is no link. A LogQL panel links the server's substituted text of its
  * current answer to Explore › Logs (plan #67 §2), and has no link without one.
  */
-import type { PanelSpec } from '../api/types';
+import type { DataPanelSpec } from '../api/types';
 import type { VisKind } from '../engine/api';
 import { contextSearchString, type ContextSearch } from '../state/contextSearch';
 
 export function exploreHref(
   tenant: string,
-  panel: PanelSpec,
+  panel: DataPanelSpec,
   search: ContextSearch,
   expanded: string | null,
 ): string | null {

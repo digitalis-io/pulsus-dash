@@ -11,7 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useContext, useLayoutEffect, useMemo, useRef } from 'react';
 import { useApi } from '../app/providers';
-import { isApiError, type PanelSpec } from '../api/types';
+import { isApiError, type DataPanelSpec } from '../api/types';
 import { promGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
 import { refusalOf, runKind, type Refusal } from '../explore/useExploreRun';
@@ -34,7 +34,7 @@ import { panelVars, referencedVariables } from './variableRefs';
 
 export interface PanelRunInput {
   readonly tenant: string;
-  readonly panel: PanelSpec;
+  readonly panel: DataPanelSpec;
   /** The text to run: the saved text, or the dialog's run text for the edited panel (§4.4). */
   readonly text: string;
   /** In the viewport, full screen open, or the preview. */

@@ -3,7 +3,14 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi, type StubBoard } from '../../api/StubApi';
 import { defaultSeed } from '../../api/stubData';
-import type { BoardSpec, PanelSpec, RangeRequest, SaveResult, SectionSpec } from '../../api/types';
+import type {
+  BoardSpec,
+  DataPanelSpec,
+  RangeRequest,
+  SaveResult,
+  SectionSpec,
+} from '../../api/types';
+import { isDataPanel } from '../../widgets/spec';
 import { deferred, EngineWrapper, panelTitles, stubBoard } from '../../test/boardTestKit';
 import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
 import { renderApp, type RenderAppOptions } from '../../test/renderApp';
@@ -17,7 +24,7 @@ function open(url: string, o: RenderAppOptions = {}) {
   return renderApp(url, { wrapper: EngineWrapper, ...o });
 }
 
-function p(id: string, title: string, [x, y, w, h]: readonly number[]): PanelSpec {
+function p(id: string, title: string, [x, y, w, h]: readonly number[]): DataPanelSpec {
   return {
     id,
     title,
@@ -49,7 +56,9 @@ const BY_TEXT = new Map(
       ...b.spec.sections.flatMap((x) => x.panels),
     ]),
     ...COLLAPSED.panels,
-  ].map((x) => [x.query.text, x.id]),
+  ]
+    .filter(isDataPanel)
+    .map((x) => [x.query.text, x.id]),
 );
 
 /** The ids `queryRange` was called for, in call order, without repeats (plan #64 A.5). */

@@ -6,7 +6,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PanelSpec } from '../../api/types';
+import type { DataPanelSpec } from '../../api/types';
 import type { RangeResult } from '../../data/decode';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
 import { formatValue } from '../../i18n/format';
@@ -43,7 +43,7 @@ afterEach(() => {
   uninstallIntersectionObserver();
 });
 
-type Vis = PanelSpec['vis'];
+type Vis = DataPanelSpec['vis'];
 type Steps = NonNullable<Vis['thresholds']>['steps'];
 
 /** B.4 legend matrix L: three series and thresholds above watch 1.5 / degraded 2.5. */
@@ -66,11 +66,11 @@ const MATRIX = [
   ['', '', ''],
 ];
 
-function withVis(vis: Vis, g?: readonly [number, number, number, number]): PanelSpec {
+function withVis(vis: Vis, g?: readonly [number, number, number, number]): DataPanelSpec {
   return { ...panel('p-1', 'Memory', 'node_memory_free_bytes', 'line', g), vis };
 }
 
-async function openWith(p: PanelSpec, result: RangeResult = L): Promise<Board> {
+async function openWith(p: DataPanelSpec, result: RangeResult = L): Promise<Board> {
   const t = openBoard([p]);
   t.range.mockResolvedValue(result);
   await ready(p.title);

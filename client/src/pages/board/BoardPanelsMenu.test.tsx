@@ -488,7 +488,7 @@ describe('panel editor query field', () => {
     await waitFor(() => {
       expect(save).toHaveBeenCalledTimes(1);
     });
-    expect(save.mock.calls[0]?.[3].panels[0]?.query.text).toBe('up');
+    expect(save.mock.calls[0]?.[3].panels[0]?.query?.text).toBe('up');
   });
 
   it('editor rerun and blur', async () => {
@@ -745,8 +745,8 @@ describe('query field while the board is busy (review r1 #2)', () => {
     await waitFor(() => {
       expect(save).toHaveBeenCalledTimes(2);
     });
-    expect(save.mock.calls[0]?.[3].panels[0]?.query.text).toBe('up');
-    expect(save.mock.calls[1]?.[3].panels[0]?.query.text).toBe('up');
+    expect(save.mock.calls[0]?.[3].panels[0]?.query?.text).toBe('up');
+    expect(save.mock.calls[1]?.[3].panels[0]?.query?.text).toBe('up');
   });
 
   it('with a discard held', async () => {

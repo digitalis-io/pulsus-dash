@@ -112,12 +112,14 @@ itest:
 	@test -n "$${DASH_ITEST_PG_URLS:-}" || { echo "DASH_ITEST_PG_URLS is not set"; exit 1; }
 	CGO_ENABLED=1 go -C server test -race -tags itest -count=1 ./...
 
-# itest:board-tags-old-binary: the previous release (the merge-base of HEAD with OLD_BINARY_REF)
-# beside this one on a database migrated under it (plan #215). Needs DASH_ITEST_PG_URLS; a required
-# local gate for every change to the board schema or spec. Plain make itest skips the test.
+# The old-binary gate: itest:board-spec-old-binary and itest:board-tags-old-binary, the previous
+# release (the merge-base of HEAD with OLD_BINARY_REF) beside this one on one database (plans #215,
+# #198). Needs DASH_ITEST_PG_URLS; a required local gate for every change to the board schema or
+# spec. Plain make itest skips the tests.
 OLD_BINARY_REF ?= origin/main
 itest-old-binary:
 	@test -n "$${DASH_ITEST_PG_URLS:-}" || { echo "DASH_ITEST_PG_URLS is not set"; exit 1; }
+	server/scripts/itest-old-binary.sh --self-test
 	OLD_BINARY_REF=$(OLD_BINARY_REF) server/scripts/itest-old-binary.sh
 
 # The pinned linters, verified by sha256, into build/bin.

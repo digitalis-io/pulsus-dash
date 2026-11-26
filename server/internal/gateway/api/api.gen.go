@@ -56,6 +56,24 @@ func (e AuthorKind) Valid() bool {
 	}
 }
 
+// Defines values for ClockCountdownAfter.
+const (
+	CountUp ClockCountdownAfter = "countUp"
+	Hide    ClockCountdownAfter = "hide"
+)
+
+// Valid indicates whether the value is a known member of the ClockCountdownAfter enum.
+func (e ClockCountdownAfter) Valid() bool {
+	switch e {
+	case CountUp:
+		return true
+	case Hide:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompletenessReadCache.
 const (
 	Bypass CompletenessReadCache = "bypass"
@@ -337,16 +355,16 @@ func (e PromInstantResponseResultType) Valid() bool {
 
 // Defines values for QueryLang.
 const (
-	Logql  QueryLang = "logql"
-	Promql QueryLang = "promql"
+	QueryLangLogql  QueryLang = "logql"
+	QueryLangPromql QueryLang = "promql"
 )
 
 // Valid indicates whether the value is a known member of the QueryLang enum.
 func (e QueryLang) Valid() bool {
 	switch e {
-	case Logql:
+	case QueryLangLogql:
 		return true
-	case Promql:
+	case QueryLangPromql:
 		return true
 	default:
 		return false
@@ -487,11 +505,13 @@ const (
 	VisKindAuto     VisKind = "auto"
 	VisKindBarchart VisKind = "barchart"
 	VisKindBars     VisKind = "bars"
+	VisKindClock    VisKind = "clock"
 	VisKindHeatmap  VisKind = "heatmap"
 	VisKindLine     VisKind = "line"
 	VisKindLogs     VisKind = "logs"
 	VisKindPie      VisKind = "pie"
 	VisKindStat     VisKind = "stat"
+	VisKindText     VisKind = "text"
 )
 
 // Valid indicates whether the value is a known member of the VisKind enum.
@@ -503,6 +523,8 @@ func (e VisKind) Valid() bool {
 		return true
 	case VisKindBars:
 		return true
+	case VisKindClock:
+		return true
 	case VisKindHeatmap:
 		return true
 	case VisKindLine:
@@ -512,6 +534,8 @@ func (e VisKind) Valid() bool {
 	case VisKindPie:
 		return true
 	case VisKindStat:
+		return true
+	case VisKindText:
 		return true
 	default:
 		return false
@@ -581,6 +605,27 @@ func (e VisOptionsGraphMode) Valid() bool {
 	}
 }
 
+// Defines values for VisOptionsHourCycle.
+const (
+	VisOptionsHourCycleAuto VisOptionsHourCycle = "auto"
+	VisOptionsHourCycleH12  VisOptionsHourCycle = "h12"
+	VisOptionsHourCycleH23  VisOptionsHourCycle = "h23"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsHourCycle enum.
+func (e VisOptionsHourCycle) Valid() bool {
+	switch e {
+	case VisOptionsHourCycleAuto:
+		return true
+	case VisOptionsHourCycleH12:
+		return true
+	case VisOptionsHourCycleH23:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VisOptionsLabels.
 const (
 	VisOptionsLabelsName    VisOptionsLabels = "name"
@@ -605,6 +650,42 @@ func (e VisOptionsLabels) Valid() bool {
 	}
 }
 
+// Defines values for VisOptionsLanguage.
+const (
+	VisOptionsLanguageGo        VisOptionsLanguage = "go"
+	VisOptionsLanguageJson      VisOptionsLanguage = "json"
+	VisOptionsLanguageLogql     VisOptionsLanguage = "logql"
+	VisOptionsLanguagePlaintext VisOptionsLanguage = "plaintext"
+	VisOptionsLanguagePromql    VisOptionsLanguage = "promql"
+	VisOptionsLanguageShell     VisOptionsLanguage = "shell"
+	VisOptionsLanguageSql       VisOptionsLanguage = "sql"
+	VisOptionsLanguageYaml      VisOptionsLanguage = "yaml"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsLanguage enum.
+func (e VisOptionsLanguage) Valid() bool {
+	switch e {
+	case VisOptionsLanguageGo:
+		return true
+	case VisOptionsLanguageJson:
+		return true
+	case VisOptionsLanguageLogql:
+		return true
+	case VisOptionsLanguagePlaintext:
+		return true
+	case VisOptionsLanguagePromql:
+		return true
+	case VisOptionsLanguageShell:
+		return true
+	case VisOptionsLanguageSql:
+		return true
+	case VisOptionsLanguageYaml:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VisOptionsLayout.
 const (
 	VisOptionsLayoutGrid   VisOptionsLayout = "grid"
@@ -617,6 +698,24 @@ func (e VisOptionsLayout) Valid() bool {
 	case VisOptionsLayoutGrid:
 		return true
 	case VisOptionsLayoutSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsMode.
+const (
+	Code     VisOptionsMode = "code"
+	Markdown VisOptionsMode = "markdown"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsMode enum.
+func (e VisOptionsMode) Valid() bool {
+	switch e {
+	case Code:
+		return true
+	case Markdown:
 		return true
 	default:
 		return false
@@ -865,6 +964,22 @@ type Bootstrap struct {
 	Tenants       []TenantInfo `json:"tenants"`
 }
 
+// ClockCountdown defines model for ClockCountdown.
+type ClockCountdown struct {
+	After ClockCountdownAfter `json:"after"`
+	Label string              `json:"label"`
+	To    time.Time           `json:"to"`
+}
+
+// ClockCountdownAfter defines model for ClockCountdown.After.
+type ClockCountdownAfter string
+
+// ClockZone defines model for ClockZone.
+type ClockZone struct {
+	Label string `json:"label"`
+	Tz    string `json:"tz"`
+}
+
 // Completeness defines model for Completeness.
 type Completeness struct {
 	DataAgeMs          *int64                 `json:"data_age_ms,omitempty"`
@@ -1072,7 +1187,7 @@ type OrgInfo struct {
 type Panel struct {
 	Grid  Grid   `json:"grid"`
 	Id    string `json:"id"`
-	Query Query  `json:"query"`
+	Query *Query `json:"query,omitempty"`
 	Title string `json:"title"`
 	Vis   Vis    `json:"vis"`
 }
@@ -1301,18 +1416,26 @@ type VisOptions struct {
 	BaselineOffset *VisOptionsBaselineOffset `json:"baselineOffset,omitempty"`
 	CategoryBy     *string                   `json:"categoryBy,omitempty"`
 	ColourMode     *VisOptionsColourMode     `json:"colourMode,omitempty"`
+	Content        *string                   `json:"content,omitempty"`
+	Countdown      *ClockCountdown           `json:"countdown,omitempty"`
+	Date           *bool                     `json:"date,omitempty"`
 	Donut          *bool                     `json:"donut,omitempty"`
 	GraphMode      *VisOptionsGraphMode      `json:"graphMode,omitempty"`
+	HourCycle      *VisOptionsHourCycle      `json:"hourCycle,omitempty"`
 	Labels         *VisOptionsLabels         `json:"labels,omitempty"`
+	Language       *VisOptionsLanguage       `json:"language,omitempty"`
 	Layout         *VisOptionsLayout         `json:"layout,omitempty"`
 	Max            *float64                  `json:"max,omitempty"`
 	Min            *float64                  `json:"min,omitempty"`
+	Mode           *VisOptionsMode           `json:"mode,omitempty"`
 	Orientation    *VisOptionsOrientation    `json:"orientation,omitempty"`
 	Parts          *bool                     `json:"parts,omitempty"`
 	Reducer        *VisOptionsReducer        `json:"reducer,omitempty"`
+	Seconds        *bool                     `json:"seconds,omitempty"`
 	Sort           *VisOptionsSort           `json:"sort,omitempty"`
 	TextMode       *VisOptionsTextMode       `json:"textMode,omitempty"`
 	ValueLabels    *bool                     `json:"valueLabels,omitempty"`
+	Zones          *[]ClockZone              `json:"zones,omitempty"`
 }
 
 // VisOptionsBaselineOffset defines model for VisOptions.BaselineOffset.
@@ -1324,11 +1447,20 @@ type VisOptionsColourMode string
 // VisOptionsGraphMode defines model for VisOptions.GraphMode.
 type VisOptionsGraphMode string
 
+// VisOptionsHourCycle defines model for VisOptions.HourCycle.
+type VisOptionsHourCycle string
+
 // VisOptionsLabels defines model for VisOptions.Labels.
 type VisOptionsLabels string
 
+// VisOptionsLanguage defines model for VisOptions.Language.
+type VisOptionsLanguage string
+
 // VisOptionsLayout defines model for VisOptions.Layout.
 type VisOptionsLayout string
+
+// VisOptionsMode defines model for VisOptions.Mode.
+type VisOptionsMode string
 
 // VisOptionsOrientation defines model for VisOptions.Orientation.
 type VisOptionsOrientation string

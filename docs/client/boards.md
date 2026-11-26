@@ -5,6 +5,8 @@ How a board panel runs its PromQL query (#64 Part A) or its LogQL query (#67,
 open, visible-only queries, the panel states and menu, and the query field of the panel editor;
 and the board's event markers (#64 Part C). The board page itself (modes, saving, sections, the filter bar) is in
 [Client application › Boards](README.md#boards); the user's view is [Boards](../user/boards.md).
+Widget panels (board spec v5: Text and Clock, no query) are on [the widgets page](widgets.md); a
+widget never reaches anything on this page.
 
 | Module | Role |
 |---|---|
@@ -18,7 +20,7 @@ and the board's event markers (#64 Part C). The board page itself (modes, saving
 | `src/boards/boardEvents.ts` | `useBoardEvents`, `BoardEventsContext`, `NO_EVENTS`, `toMarkers` (event markers) |
 | `src/boards/exploreLink.ts` | `exploreHref` |
 | `src/boards/useQueryLanguage.ts` | one `LANGUAGES[id]()` per language per page load; `null` loads none |
-| `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome, the completeness badge, the editor |
+| `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome (a widget's `WidgetFrame`, else `DataPanelFrame`), the completeness badge, the editor |
 | `src/pages/board/PanelQueryField.tsx`, `PanelLogqlField.tsx`, `useQueryFieldRun.ts` | the editor's Query field per language and their shared run rules |
 
 ## What a panel sends (ADR-0021)
@@ -209,6 +211,28 @@ no editor for them yet (the tags editor and the Board list widget come with #216
 server, where `tags: []` is stored as no key. The list's `tags`, `applied` and `tagsStale` members
 are not read by the client yet (#216).
 
+### Widgets and the query typing (#198 Part 1)
+
+Board spec v5 ([the boards API](../server/boards-api.md#widgets-text-and-clock-v5)) makes `query`
+optional and adds the widget kinds `text` and `clock`. `PanelSpec` is the union
+`DataPanelSpec | WidgetPanelSpec` (`api/types.ts`): a data panel has a `query`, a widget has none
+(`query?: never`). Every reader of `query` takes a `DataPanelSpec` and gets one through
+`isDataPanel` (`widgets/spec.ts`), with no `!` and no cast, so `npm run typecheck` finds any new
+reader that forgets the widgets:
+
+| Reader | Takes |
+|---|---|
+| `usePanelRun`, `panelView`, `exploreHref`, `logPanelPath`, `withKind` | a data panel (`DataPanelSpec`, `DataVisKind`) |
+| `PanelFrame` | any panel: a widget renders `WidgetFrame`, a data panel `DataPanelFrame` (today's body) |
+| `PanelEditor`, `PanelPreview` | a data panel only: `BoardPage` opens the editor, and sets the edited run, only when `edit` and the selected panel `isDataPanel` |
+| `updatePanel` (`editorState.ts`) | a `PanelPatch` of a data panel's title, query or vis; on a widget only the title applies |
+| `boardVariables` (`variables.ts`) | data panels only: a widget has no variables |
+| `HttpApi` `toBoard` | the wire spec: a widget kind becomes a `WidgetPanelSpec`; a data panel without a query is a `badResponse` |
+
+`checkBoardSpec` checks the v5 rules as the server does, in the same order and with the same
+pointers and keys ([the widgets page](widgets.md#validation)); the client does not know which zones
+exist, so `w-zone-unknown` is the one `invalid.json` row whose `client_fields` (none) differ.
+
 ## Thresholds, legends and stat tiles (#64 Part B)
 
 Board spec version 2 adds two optional members to a panel's `vis`
@@ -359,6 +383,10 @@ routed through the app's router) and Copy query. Duplicate and Remove dispatch `
 `duplicatePanel` (the copy at `firstFree` of the same grid, title "`<title>` (copy)" cut to 200
 code points, announced in the live region) or `removePanel` (focus then moves to Add panel); both
 are disabled while a save is in flight.
+
+A widget's menu has **Duplicate** and **Remove** only (T24-002): no Edit panel (Part 3 adds it for
+Text), Open in Explore, Copy query or Full screen. A duplicated widget keeps its `vis` and has no
+`query`.
 
 ## The panel editor's Query field (§3.8, §4.4)
 
@@ -557,6 +585,10 @@ failing 0.05 "SLO breach").
 - [09 Performance contract](../../designs/product/09-performance-contract.md): PRF-030, PRF-031
   (board subsets); [08 Visual language](../../designs/product/08-visual-language.md): VL-015 (the
   shimmer).
+- Widgets and the panel union (#198 Part 1):
+  [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-002, T24-003, §5.1;
+  [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-053
+  (staged), VIZ-057.
 - Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
 - Board spec v3 and the pending kinds (#173 Parts 1 and 2):

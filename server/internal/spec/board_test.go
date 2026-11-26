@@ -86,8 +86,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b4), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 4) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 5); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 5) = %v, want ErrSchemaTooNew", err)
+			// Version 5 adds widgets (#198 Part 1): query optional, text and clock; the identity again.
+			b5, err := DecodeBoard(raw, 5)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 5): %v", err)
+			}
+			if got, want := canon(t, b5), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 5) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 6); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 6) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)
@@ -134,8 +142,8 @@ func TestDecodeBoardUpTo(t *testing.T) {
 	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
 	}
-	if BoardSchemaVersion != 4 {
-		t.Errorf("BoardSchemaVersion = %d, want 4", BoardSchemaVersion)
+	if BoardSchemaVersion != 5 {
+		t.Errorf("BoardSchemaVersion = %d, want 5", BoardSchemaVersion)
 	}
 }
 
@@ -195,9 +203,6 @@ const v4CanonicalSHA256 = "1ee8fecd5dbd9f6d70f5b8552f8a5aeb312f9499c5e969ff7d2a2
 // unit:board-spec v4 (#215, T24-029): tags are kept in order, an empty list canonicalises to no
 // key, and the previous release (schema 3) refuses a v4 row.
 func TestV4FixtureRoundTrip(t *testing.T) {
-	if BoardSchemaVersion != 4 {
-		t.Errorf("BoardSchemaVersion = %d, want 4", BoardSchemaVersion)
-	}
 	raw := fixture(t, "v4-board-tags.json")
 	b, err := ParseBoard(raw)
 	if err != nil {
@@ -235,21 +240,41 @@ func TestV4FixtureRoundTrip(t *testing.T) {
 }
 
 // The option tables (shape.go) equal api/fixtures/board-spec/option-keys.json, which the client's
-// suite compares with boards/options.ts.
+// suite compares with boards/options.ts: each key's type, the members of the object keys (zones'
+// items, countdown) and the keys of each kind.
 func TestOptionKeys(t *testing.T) {
 	var want struct {
-		Types map[string]string   `json:"types"`
-		Kinds map[string][]string `json:"kinds"`
+		Types   map[string]string   `json:"types"`
+		Members map[string][]string `json:"members"`
+		Kinds   map[string][]string `json:"kinds"`
 	}
 	if err := json.Unmarshal(fixture(t, "option-keys.json"), &want); err != nil {
 		t.Fatal(err)
 	}
+	names := map[kind]string{kString: "string", kBool: "bool", kNumber: "number", kArray: "array", kObject: "object"}
 	types := map[string]string{}
+	members := map[string][]string{}
 	for _, f := range optionFields {
-		types[f.name] = map[kind]string{kString: "string", kBool: "bool", kNumber: "number"}[f.t.kind]
+		types[f.name] = names[f.t.kind]
+		shape := f.t.shape
+		if f.t.kind == kArray && f.t.elem != nil {
+			shape = f.t.elem.shape
+		}
+		if len(shape) == 0 {
+			continue
+		}
+		for _, m := range shape {
+			if !m.required || m.t.kind != kString {
+				t.Errorf("%s.%s: required %v kind %v, want a required string", f.name, m.name, m.required, m.t.kind)
+			}
+			members[f.name] = append(members[f.name], m.name)
+		}
 	}
 	if !reflect.DeepEqual(types, want.Types) {
 		t.Errorf("option types = %v, want %v", types, want.Types)
+	}
+	if !reflect.DeepEqual(members, want.Members) {
+		t.Errorf("option members = %v, want %v", members, want.Members)
 	}
 	kinds := map[string][]string{}
 	for _, k := range visKinds {
@@ -261,5 +286,70 @@ func TestOptionKeys(t *testing.T) {
 	}
 	if !reflect.DeepEqual(kinds, want.Kinds) {
 		t.Errorf("option kinds = %v, want %v", kinds, want.Kinds)
+	}
+}
+
+// v5CanonicalSHA256 is the SHA-256 of v5-widgets.json's canonical form; boards/spec.test.ts holds
+// the same value, so the two canonical forms are byte-equal.
+const v5CanonicalSHA256 = "a42813fc4b36e478ec6dac2a4b5707bd1c50377def15a749ea2d34a8b6bd134f"
+
+// unit:board-spec-widgets (#198 Part 1, T24-003, T11-016): the widgets version. Only p-5 has a
+// query; the fixture is valid, canonical and readable by this version only; v4 upcasts unchanged.
+func TestV5WidgetsFixture(t *testing.T) {
+	if BoardSchemaVersion != 5 {
+		t.Errorf("BoardSchemaVersion = %d, want 5", BoardSchemaVersion)
+	}
+	raw := fixture(t, "v5-widgets.json")
+	b, err := ParseNewBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseNewBoard: %v", err)
+	}
+	c := canon(t, b)
+	if want := canon(t, raw); !bytes.Equal(c, want) {
+		t.Errorf("Canonical(board) = %s\nwant Canonical(raw) = %s", c, want)
+	}
+	h := ContentHash(c)
+	if got := hex.EncodeToString(h[:]); got != v5CanonicalSHA256 {
+		t.Errorf("ContentHash = %s, want %s", got, v5CanonicalSHA256)
+	}
+	var withQuery []string
+	for _, p := range b.Panels {
+		if p.Query != nil {
+			withQuery = append(withQuery, p.ID)
+		}
+	}
+	for _, s := range b.Sections {
+		for _, p := range s.Panels {
+			if p.Query != nil {
+				withQuery = append(withQuery, p.ID)
+			}
+		}
+	}
+	if !reflect.DeepEqual(withQuery, []string{"p-5"}) {
+		t.Errorf("panels with a query = %v, want [p-5]", withQuery)
+	}
+	if n := bytes.Count(c, []byte(`"query"`)); n != 1 {
+		t.Errorf("canonical form holds %d query keys, want 1 (p-5)", n)
+	}
+	again, err := ParseBoard(c)
+	if err != nil {
+		t.Fatalf("ParseBoard(canonical): %v", err)
+	}
+	if !reflect.DeepEqual(again, b) {
+		t.Errorf("ParseBoard(Canonical(board)) = %+v, want %+v", again, b)
+	}
+	v4 := fixture(t, "v4-board-tags.json")
+	up, err := DecodeBoardUpTo(v4, 4, 5)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(v4-board-tags, 4, 5): %v", err)
+	}
+	if got, want := canon(t, up), canon(t, v4); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(v4-board-tags, 4, 5) = %s, want %s", got, want)
+	}
+	if _, err := DecodeBoardUpTo(raw, 5, 4); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(v5, 5, 4) = %v, want ErrSchemaTooNew", err)
+	}
+	if z := b.Zones(); !reflect.DeepEqual(z, map[string]bool{"": true, "Asia/Tokyo": true, "America/New_York": true}) {
+		t.Errorf("Zones() = %v", z)
 	}
 }

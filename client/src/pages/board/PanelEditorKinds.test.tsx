@@ -4,7 +4,7 @@
  */
 import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PanelSpec } from '../../api/types';
+import type { DataPanelSpec } from '../../api/types';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
 import { editorOn, openBoard, ready, settled, show } from '../../test/boardPanelKit';
 import { panel } from '../../test/boardTestKit';
@@ -31,7 +31,7 @@ afterEach(() => {
   uninstallIntersectionObserver();
 });
 
-async function options(vis: PanelSpec['vis']): Promise<HTMLElement[]> {
+async function options(vis: DataPanelSpec['vis']): Promise<HTMLElement[]> {
   const t = openBoard([{ ...panel('p-1', 'Requests', 'http_requests_total'), vis }]);
   t.range.mockResolvedValue(R_A);
   await ready('Requests');

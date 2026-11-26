@@ -674,10 +674,13 @@ components:
         title: { type: string, maxLength: 200 }
         collapsed: { type: boolean }
         panels: { type: array, items: { $ref: '#/components/schemas/Panel' } }
+    # Board spec v5 (#198 Part 1, T24-003): query is optional in the schema; the server requires it
+    # on a data panel (board.panel.query.required) and refuses it on a widget, text or clock
+    # (board.panel.query.forbidden).
     Panel:
       type: object
       additionalProperties: false
-      required: [id, title, grid, query, vis]
+      required: [id, title, grid, vis]
       properties:
         id: { type: string, pattern: '^[a-z0-9-]{1,40}$' }
         title: { type: string, maxLength: 200 }
@@ -699,14 +702,17 @@ components:
       additionalProperties: false
       required: [kind]
       properties:
-        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie] }
+        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock] }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
         options: { $ref: '#/components/schemas/VisOptions' }
     # Board spec v3 (#173 Part 1, T22 §6.1): the kind's options. Every key is optional; which keys a
     # kind allows, the bounds of min and max (|v| <= 1e15, min < max), the categoryBy label pattern
     # and the stat textMode/layout combination are server rules (board.json.unknownKey,
-    # board.options.<key>.invalid), not schema.
+    # board.options.<key>.invalid), not schema. Board spec v5 (#198 Part 1, T24 §5.1) adds the text
+    # keys (mode, content of at most 65 536 UTF-8 bytes, language in code mode only) and the clock
+    # keys (zones, hourCycle, seconds, date, countdown); the zone name rules, the duplicate zones and
+    # the countdown time grammar are server rules too.
     VisOptions:
       type: object
       additionalProperties: false
@@ -726,6 +732,32 @@ components:
         colourMode: { type: string, enum: [value, background, none] }
         textMode: { type: string, enum: [auto, value, valueAndName, name] }
         graphMode: { type: string, enum: [sparkline, none] }
+        mode: { type: string, enum: [markdown, code] }
+        content: { type: string }
+        language: { type: string, enum: [plaintext, json, yaml, sql, promql, logql, go, shell] }
+        zones: { type: array, minItems: 1, maxItems: 12, items: { $ref: '#/components/schemas/ClockZone' } }
+        hourCycle: { type: string, enum: [auto, h12, h23] }
+        seconds: { type: boolean }
+        date: { type: boolean }
+        countdown: { $ref: '#/components/schemas/ClockCountdown' }
+    # A clock zone: tz '' (the Context zone) or an IANA name the server's build knows; label '' shows
+    # the city.
+    ClockZone:
+      type: object
+      additionalProperties: false
+      required: [tz, label]
+      properties:
+        tz: { type: string, maxLength: 64 }
+        label: { type: string, maxLength: 64 }
+    # A clock's countdown: to is RFC 3339 with an offset; after the time, count up or hide.
+    ClockCountdown:
+      type: object
+      additionalProperties: false
+      required: [to, label, after]
+      properties:
+        to: { type: string, format: date-time }
+        label: { type: string, minLength: 1, maxLength: 64 }
+        after: { type: string, enum: [countUp, hide] }
     # Board spec v2 (#64 Part B, ADR-0022): absolute threshold steps and the legend mode. A value is
     # 0, or 1e-9 <= |value| <= 1e15; values are distinct; validated by the server (board.thresholds.*).
     Thresholds:

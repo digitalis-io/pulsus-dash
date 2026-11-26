@@ -122,10 +122,11 @@ func (s *Service) GetBoard(ctx context.Context, rc *core.RequestCtx, uid string)
 	return b, err
 }
 
-// CreateBoard validates spec and writes the board at version 1 in the organisation's root folder,
-// with a board.create audit event whose diff adds the whole spec.
+// CreateBoard validates spec, its clock zones included (spec.ParseNewBoard), and writes the board at
+// version 1 in the organisation's root folder, with a board.create audit event whose diff adds the
+// whole spec.
 func (s *Service) CreateBoard(ctx context.Context, rc *core.RequestCtx, raw []byte) (core.Board, error) {
-	b, err := spec.ParseBoard(raw)
+	b, err := spec.ParseNewBoard(raw)
 	if err != nil {
 		return core.Board{}, err
 	}
@@ -192,7 +193,9 @@ func (s *Service) CreateBoard(ctx context.Context, rc *core.RequestCtx, raw []by
 
 // SaveBoard saves spec as the next version when ifMatch equals the board's ETag (plan #61 §4.1).
 // An unchanged spec is a no-op (Changed false); a stale ifMatch is a *core.ConflictError with the
-// current head; a spec stored by a newer server is spec.ErrSchemaTooNew and nothing is written.
+// current head; a spec stored by a newer server is spec.ErrSchemaTooNew and nothing is written. A
+// clock zone the head does not hold must exist in this build (spec.Board.CheckZones, T24-003); one
+// the head holds is kept even if this build no longer knows it.
 func (s *Service) SaveBoard(ctx context.Context, rc *core.RequestCtx, uid string, ifMatch int64, raw []byte, message string) (core.SaveResult, error) {
 	b, err := spec.ParseBoard(raw)
 	if err != nil {
@@ -222,6 +225,9 @@ func (s *Service) SaveBoard(ctx context.Context, rc *core.RequestCtx, uid string
 		}
 		old, err := spec.DecodeBoardUpTo(head.Spec, head.SchemaVersion, s.schemaMax)
 		if err != nil {
+			return err
+		}
+		if err := b.CheckZones(old.Zones()); err != nil {
 			return err
 		}
 		if bytes.Equal(hash[:], head.ContentHash) {
