@@ -370,6 +370,11 @@ fixes `Date.now()` at the suite's time (so a time-stamped request keeps one key)
   finding; a page error is a `pageerror` finding;
 - a route on every request.
 
+One sequencing rule keeps the counts stable: the board's recent-view write (`PUT
+/api/dash/v1/me/recent-boards/{uid}`) is held until the first recent-boards read has completed
+(at most 5 s). The list is then always read twice, before and after the write; without the rule a
+loaded machine sometimes read it once.
+
 The route runs in one of three modes:
 
 | Mode | Set by | A request |
@@ -381,15 +386,17 @@ The route runs in one of three modes:
 A key is `${method} ${resourceType} ${path}`. The path keeps its query, except a document's. A
 board uid after `board/`, `boards/` or `recent-boards/` becomes `{uid}`, and a built asset's hash
 becomes `{hash}` (`/assets/index-{hash}.js`), so a baseline names chunks, not one build. Preloads
-are ordinary requests. Not judged: `/favicon.ico`, and `POST /api/dash/v1/csp-report`, the
-browser's own report of a violation that is already a `csp` finding (Firefox sends it as `fetch`,
-WebKit as `ping`).
+are ordinary requests. Not judged: `/favicon.ico`, and a browser's own report of a violation that
+is already a `csp` finding (Firefox sends it as `fetch`, WebKit as `ping`). `isBrowserCspReport`
+accepts only a same-origin `POST` to exactly `/api/dash/v1/csp-report` with no query, content type
+`application/csp-report` (a `{"csp-report": {…}}` body, or one `{type: "csp-violation", body: {…}}`
+as WebKit sends it) or `application/reports+json` (a non-empty array of those). Any other request to that path is judged.
 
 | Call | Does |
 |---|---|
 | `consumeTrustedTypesCanary(act)` | runs `act`, waits up to 2 s for its violation, then removes exactly one `require-trusted-types-for` `csp` finding and one Trusted Types `console` finding raised during it; returns false, removing nothing, unless there is exactly one of each |
 | `settle()` | the observation window: it ends after 1 000 ms without a request once 2 000 ms have passed, and at 10 s at the latest; then each image path never requested is an `imageMissing` finding |
-| `closeWatched(w)` | navigates to `about:blank` (the page's `pagehide` and `unload` requests pass the route while it is attached), closes the page with `runBeforeUnload`, then the context; the watch judges until the context's `close` event |
+| `closeWatched(w)` | navigates to `about:blank` (the page's `pagehide` and `unload` requests pass the route while it is attached), waits for 500 ms without a request (at most 2 s), closes the page with `runBeforeUnload`, then the context; the watch judges until the context's `close` event |
 | `add(f)`, `findings()`, `assertClean()` | a test's own `setup` finding (a failed board `POST`, a navigation that does not reach `[data-shell-ready]` and `[data-text-content]`); the list; throws with every finding |
 
 ### The case list and the baselines
@@ -420,7 +427,7 @@ in each browser), and the diff is reviewed in the PR.
 ### The corpus run and the canaries
 
 `e2e:widget-text-xss` (b) checks that the committed list is the generated one and has one entry
-per corpus case, that the twin's map is the baseline, then runs every eligible case, three at a
+per corpus case, that the twin's map is the baseline, then runs every eligible case, four at a
 time, each in its own context on its own one-panel board (deleted afterwards):
 
 ```text
@@ -448,17 +455,20 @@ The canaries (c) each give exactly their findings, and `assertClean()` throws:
 | c5 | `x`, baseline | `fetch` of the board's own API path | `request GET fetch /api/dash/v1/boards/{uid}` |
 | c6 | same | `fetch('/api/dash/v1/boards')` | that key |
 | c7 | same | a stylesheet link and a `FontFace` load | the stylesheet and font keys |
-| c8 | same (Firefox) | `sendBeacon('/__beacon')` on `pagehide`, then `closeWatched` | `request POST beacon /__beacon` |
+| c8 | same (Firefox; report-only) | `sendBeacon('/__beacon')` on `pagehide`, then `closeWatched` | `request POST beacon /__beacon` when Firefox exposes it, recorded as an annotation; no other finding |
 | c9 | same | `fetch('/__late')` 800 ms after ready | `request GET fetch /__late` |
 | c10 | same | `navigator.serviceWorker.register('/sw.js')` | `sw /sw.js` |
 | c11 | same | an external `.test` image | `csp img-src` and its `console` line |
 | c12 | same | two sink writes in one `consumeTrustedTypesCanary` | it returns false; both `csp` and both `console` findings stay |
+| c15 | same | a script `POST` of a well-formed report to `/api/dash/v1/csp-report?leak=1` | `request POST fetch /api/dash/v1/csp-report?leak=1` |
+| c16 | same | a script `POST` of `{"leak":1}` as `application/json` to the report path | `request POST fetch /api/dash/v1/csp-report` |
 
 c13 (a baseline with one count changed) and c14 (a changed source under the same id) are in
-`unit:xss-e2e-cases`.
+`unit:xss-e2e-cases`, with the report exemption's accepted and refused requests.
 
 **Limit.** Chromium and WebKit send an unload-time beacon outside the page's network stack, so no
-route sees it; c8 runs in Firefox only. A beacon sent while the page lives is seen in all three
+route sees it; c8 runs in Firefox only, and is report-only there: on a loaded machine the beacon
+escaped interception in 3 of 10 runs. A beacon sent while the page lives is seen in all three
 (as `ping` in Chromium, `beacon` in Firefox and WebKit). Proving unload-time requests in Chromium and WebKit
 (a browser-side or server-side observation of the beacon) is a follow-up.
 

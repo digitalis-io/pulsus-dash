@@ -16,9 +16,9 @@
  *   `baseline[key]`; past it, it is a finding and is aborted. `settle()` adds an `imageMissing`
  *   finding for every image path not requested by then.
  *
- * Not judged: `/favicon.ico`, and `POST /api/dash/v1/csp-report`, the browser's own report of a
+ * Not judged: `/favicon.ico`, and a browser's own CSP violation report (`isBrowserCspReport`) of a
  * violation that the init script has already recorded as a `csp` finding (Firefox and WebKit send
- * it at once, as `fetch` and `ping`).
+ * it at once, as `fetch` and `ping`). Any other request to the report path is judged.
  *
  * A key is `${method} ${resourceType} ${path}`: the path with its query, except a document's (no
  * query); a board uid after `board/`, `boards/` or `recent-boards/` becomes `{uid}`, and a built
@@ -29,7 +29,14 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Browser, BrowserContext, ConsoleMessage, Page, Route } from '@playwright/test';
+import type {
+  Browser,
+  BrowserContext,
+  ConsoleMessage,
+  Page,
+  Request,
+  Route,
+} from '@playwright/test';
 import { HTTP_BFF } from './bff.ts';
 
 export type RequestKey = string;
@@ -58,6 +65,8 @@ export interface LoadWatch {
   consumeTrustedTypesCanary(act: () => Promise<void>): Promise<boolean>;
   /** The observation window: 1 000 ms without a request, at least 2 000 ms, at most 10 s. */
   settle(): Promise<void>;
+  /** Waits until 500 ms pass without a request from its start, at most 2 s (`closeWatched`'s unload window). */
+  drain(): Promise<void>;
   /** A finding raised by the test itself (a failed setup step). */
   add(f: LoadFinding): void;
   findings(): readonly LoadFinding[];
@@ -81,6 +90,10 @@ const MAX_MS = 10_000;
 const CANARY_WAIT_MS = 2_000;
 const CANARY_EXTRA_MS = 300;
 const PAGE_CLOSE_MS = 500;
+const DRAIN_QUIET_MS = 500;
+const DRAIN_MAX_MS = 2_000;
+const RECENT_PATH = '/api/dash/v1/me/recent-boards/';
+const RECENT_WAIT_MS = 5_000;
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -138,10 +151,49 @@ export function requestKey(method: string, resourceType: string, url: URL): Requ
   return `${method} ${resourceType} ${resourceType === 'document' ? path : path + url.search}`;
 }
 
-function ignored(method: string, url: URL): boolean {
+const CSP_REPORT_PATH = '/api/dash/v1/csp-report';
+const APP_ORIGIN = new URL(HTTP_BFF).origin;
+
+const isObject = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
+
+/**
+ * True only for a browser's CSP violation report: a same-origin `POST` to exactly the report path
+ * with no query, a report content type, and a body that parses as a violation report
+ * (`application/csp-report`: `{"csp-report": {…}}` or, as WebKit sends it, one
+ * `{type: "csp-violation", body: {…}}`; `application/reports+json`: a non-empty array of those). Anything else to that path is judged as a request.
+ */
+export function isBrowserCspReport(
+  method: string,
+  url: URL,
+  contentType: string | undefined,
+  body: string | null,
+): boolean {
+  if (method !== 'POST' || url.origin !== APP_ORIGIN) return false;
+  if (url.pathname !== CSP_REPORT_PATH || url.search !== '' || body === null) return false;
+  const type = (contentType ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  let doc: unknown;
+  try {
+    doc = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  const violation = (r: unknown): boolean =>
+    isObject(r) && r['type'] === 'csp-violation' && isObject(r['body']);
+  // WebKit sends one Reporting API report under the legacy type.
+  if (type === 'application/csp-report') {
+    return isObject(doc) && (isObject(doc['csp-report']) || violation(doc));
+  }
+  if (type === 'application/reports+json') {
+    return Array.isArray(doc) && doc.length > 0 && doc.every(violation);
+  }
+  return false;
+}
+
+function ignored(req: Request, url: URL): boolean {
   return (
     url.pathname === '/favicon.ico' ||
-    (method === 'POST' && url.pathname === '/api/dash/v1/csp-report')
+    isBrowserCspReport(req.method(), url, req.headers()['content-type'], req.postData())
   );
 }
 
@@ -160,6 +212,19 @@ class Watch implements LoadWatch {
   private served = new Set<string>();
   private list: LoadFinding[] = [];
   private lastRequestAt = Date.now();
+  private recentRead: Promise<void>;
+  private markRecentRead!: () => void;
+
+  constructor() {
+    this.recentRead = new Promise<void>((r) => {
+      this.markRecentRead = r;
+    });
+  }
+
+  /** A `GET` of the recent-boards list has completed. */
+  recentListed(): void {
+    this.markRecentRead();
+  }
 
   begin(baseline: Baseline, images: readonly string[]): void {
     this.mode = 'judged';
@@ -215,6 +280,14 @@ class Watch implements LoadWatch {
     return true;
   }
 
+  async drain(): Promise<void> {
+    const t0 = Date.now();
+    // Quiet is counted from the later of the drain's start and the last request, so a request the
+    // unload sends just after the navigation still lands inside the window.
+    const quiet = () => Date.now() - Math.max(t0, this.lastRequestAt) >= DRAIN_QUIET_MS;
+    while (Date.now() - t0 < DRAIN_MAX_MS && !quiet()) await sleep(50);
+  }
+
   async settle(): Promise<void> {
     const t0 = Date.now();
     for (;;) {
@@ -236,8 +309,13 @@ class Watch implements LoadWatch {
     const method = req.method();
     const type = req.resourceType();
     this.lastRequestAt = Date.now();
+    // Sequencing: the board's recent-view write is answered after the first recent-boards read, so
+    // the list is always read twice (before and after the write) and the count is stable.
+    if (method === 'PUT' && url.pathname.startsWith(RECENT_PATH)) {
+      await Promise.race([this.recentRead, sleep(RECENT_WAIT_MS)]);
+    }
     try {
-      if (ignored(method, url) || this.mode === 'idle') {
+      if (ignored(req, url) || this.mode === 'idle') {
         await route.continue();
         return;
       }
@@ -314,6 +392,11 @@ export async function openWatched(browser: Browser, project: string): Promise<Wa
   });
   await context.addInitScript(initScript, BINDING);
   await context.route('**/*', (route) => watch.onRoute(route));
+  context.on('requestfinished', (r) => {
+    if (r.method() === 'GET' && new URL(r.url()).pathname === '/api/dash/v1/me/recent-boards') {
+      watch.recentListed();
+    }
+  });
   const page = await context.newPage();
   page.on('console', (m) => {
     watch.onConsole(m);
@@ -337,6 +420,7 @@ export async function closeWatched(w: Watched): Promise<void> {
   });
   try {
     await w.page.goto('about:blank');
+    await w.watch.drain();
   } catch {
     // Already closed.
   }

@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { compareBaseline, readBaseline } from '../e2e/loadWatch.ts';
+import { compareBaseline, isBrowserCspReport, readBaseline } from '../e2e/loadWatch.ts';
 import { compareCases, E2E_CASES_FILE, readCommittedCases } from '../e2e/xssCases.ts';
 import type { CorpusCase } from '../src/security/sanitise/xssCorpus.ts';
 import {
@@ -93,5 +93,40 @@ describe('unit:xss-e2e-cases', () => {
     );
     expect(skipOf(kase('x\u0000y'), checkParamValue)).toBe('nul');
     expect(skipOf(kase('x'), checkParamValue)).toBeNull();
+  });
+});
+
+describe('loadWatch: the CSP report exemption', () => {
+  const u = (p: string) => new URL(p, 'http://localhost:4174');
+  const reports = JSON.stringify([
+    { type: 'csp-violation', body: { effectiveDirective: 'img-src' } },
+  ]);
+  const legacy = JSON.stringify({ 'csp-report': { 'violated-directive': 'img-src' } });
+  it('exempts only a same-origin browser report to the exact path', () => {
+    const path = '/api/dash/v1/csp-report';
+    expect(isBrowserCspReport('POST', u(path), 'application/reports+json', reports)).toBe(true);
+    expect(isBrowserCspReport('POST', u(path), 'application/csp-report', legacy)).toBe(true);
+    const one = JSON.stringify({ type: 'csp-violation', body: { effectiveDirective: 'img-src' } });
+    expect(isBrowserCspReport('POST', u(path), 'application/csp-report', one)).toBe(true);
+    expect(isBrowserCspReport('POST', u(path), 'application/csp-report', '{"leak":1}')).toBe(false);
+    expect(isBrowserCspReport('POST', u(`${path}?x=1`), 'application/reports+json', reports)).toBe(
+      false,
+    );
+    expect(isBrowserCspReport('POST', u(path), 'application/json', reports)).toBe(false);
+    expect(isBrowserCspReport('POST', u(path), 'application/reports+json', '{"a":1}')).toBe(false);
+    expect(isBrowserCspReport('POST', u(path), 'application/reports+json', '[]')).toBe(false);
+    expect(isBrowserCspReport('POST', u(path), 'application/reports+json', 'x')).toBe(false);
+    expect(isBrowserCspReport('GET', u(path), 'application/reports+json', reports)).toBe(false);
+    expect(isBrowserCspReport('POST', u(`${path}/x`), 'application/reports+json', reports)).toBe(
+      false,
+    );
+    expect(
+      isBrowserCspReport(
+        'POST',
+        new URL(path, 'http://evil.test'),
+        'application/reports+json',
+        reports,
+      ),
+    ).toBe(false);
   });
 });

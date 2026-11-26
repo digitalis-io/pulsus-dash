@@ -699,8 +699,8 @@ the browser otherwise).
   test deletes its boards): **`e2e:widget-text`**, **`e2e:widget-text-xss`** (a) the T24 row input,
   (b) the whole XSS corpus, one case per fresh context on its own board against the committed load
   baseline `e2e/fixtures/board-load-baseline.<project>.json` and the generated case list, with the
-  exact CSP header and a Trusted Types canary (about 7 minutes per engine, three cases at a time;
-  its own 15-minute test timeout), (c) the canaries c1–c12, and **`e2e:widget-a11y`** (Text). The
+  exact CSP header and a Trusted Types canary (7 to 11 minutes per engine, four cases at a time;
+  its own 15-minute test timeout), (c) the canaries c1–c12 (c8 report-only, Firefox), c15 and c16, and **`e2e:widget-a11y`** (Text). The
   request and violation watch is `e2e/loadWatch.ts` ([the widgets page](../client/widgets.md#the-load-watch-e2eloadwatchts)).
   `BASELINE_UPDATE=1` makes the corpus test rewrite its engine's baseline from the twin board: run
   it in each engine and review the diff. After a corpus change run `npm run gen:xss-e2e-cases`.
