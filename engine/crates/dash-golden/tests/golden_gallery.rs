@@ -1,13 +1,18 @@
 //! golden:gallery, engine line pages (plan #68 §5, T05-004, T05-005, T02-029, T02-030, VIZ-002):
 //! the ten pages against the committed PNGs (mean ꟻLIP ≤ 0.005), T1 = T2 and repeat renders
 //! byte-equal, on the pinned lavapipe. `GOLDEN_UPDATE=1` writes the baselines instead.
+//! `golden:engine-overlay` (plan #68 C2b §5; T02-029): `line-50` dark and light with a hover at the
+//! plot's centre column and a box band, T1 and T2 within mean ꟻLIP 0.001.
 mod common;
 
 use common::*;
 use dash_golden::{
-    Image, PAGE_CSS, flip_mean, goldens_dir, manual_range, pages, pinned_driver, render_page,
+    Image, OverlayAt, PAGE_CSS, flip_mean, goldens_dir, manual_range, page_viewport, pages,
+    pinned_driver, render_page, render_page_overlay,
 };
 use dash_gpu::Tier;
+use dash_scene::Theme;
+use pulsus_synth::GalleryLine;
 
 #[test]
 fn golden_gallery() {
@@ -45,6 +50,51 @@ fn golden_gallery() {
             Err(e) => failures.push(format!(
                 "{name}: no baseline ({e}); run with the golden-update label"
             )),
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+#[test]
+fn golden_engine_overlay() {
+    let update = std::env::var("GOLDEN_UPDATE").is_ok_and(|v| v == "1");
+    let (t1, t2) = (ctx(Tier::T1), ctx(Tier::T2));
+    let mut failures = Vec::new();
+    for (theme, name) in [(Theme::Dark, "dark"), (Theme::Light, "light")] {
+        let v = page_viewport(GalleryLine::Line50, theme, PAGE_CSS, 1.0, None);
+        let Some(summary) = dash_scene::build(&v).1 else {
+            panic!("line-50: no summary")
+        };
+        let p = summary.plot;
+        let xs = |f: f64| p.x + f * p.width;
+        let o = OverlayAt {
+            hover: Some((xs(0.5), p.y + p.height / 2.0)),
+            box_x: Some((xs(0.2), xs(0.4))),
+        };
+        let a = render_page_overlay(&t1, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None, o);
+        let b = render_page_overlay(&t2, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None, o);
+        let plain = render_page(&t1, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None);
+        let tiers = flip_mean(&a, &b, &[]);
+        if tiers.is_nan() || tiers > 0.001 {
+            failures.push(format!("{name}: T1 vs T2 mean FLIP {tiers}"));
+        }
+        if a == plain {
+            failures.push(format!("{name}: no overlay drawn"));
+        }
+        let path = goldens_dir().join(format!("line-50-{name}-overlay.png"));
+        if update {
+            let w = a.write_png(&path);
+            assert!(w.is_ok(), "{name}: {w:?}");
+            continue;
+        }
+        match Image::read_png(&path) {
+            Ok(golden) => {
+                let mean = flip_mean(&golden, &a, &[]);
+                if mean.is_nan() || mean > 0.005 {
+                    failures.push(format!("{name} overlay: mean FLIP {mean}"));
+                }
+            }
+            Err(e) => failures.push(format!("{name} overlay: no baseline ({e})")),
         }
     }
     assert!(failures.is_empty(), "{failures:#?}");

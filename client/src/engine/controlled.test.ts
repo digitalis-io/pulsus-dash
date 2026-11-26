@@ -18,9 +18,9 @@ import type {
 import { timeLimits, toWindow, valueLimits, zoomAbout, type Span } from './canvas2d/camera';
 import { brushSnapUnit } from './canvas2d/columns';
 import { ControlledFrame } from './controlled';
-import type { CameraState, EngineFrame, StageModel } from './wasm/frame';
+import type { CameraState, EngineFrame, OverlayState, StageModel } from './wasm/frame';
 import { lineData, LINE, T0, W0 } from '../test/cameraKit';
-import { pointer, wheel } from '../test/engineHarness';
+import { key, pointer, wheel } from '../test/engineHarness';
 
 const S1: StageModel = {
   plot: { x: 50, y: 8, width: 900, height: 200 },
@@ -35,6 +35,10 @@ const K = Math.exp(-0.2);
 class FakeInner implements EngineFrame {
   readonly cameras: CameraState[] = [];
   readonly calls: string[] = [];
+  /** Plan #68 C2b: the overlays and clicks sent, and the order of every record-writing call. */
+  readonly overlays: OverlayState[] = [];
+  readonly clicks: [number, number][] = [];
+  readonly order: string[] = [];
   disposed = false;
   private st: StageModel | null = null;
   private readonly stageCbs = new Set<(s: StageModel | null) => void>();
@@ -58,10 +62,20 @@ class FakeInner implements EngineFrame {
   /** As `WasmFrame`: a zero size withdraws the stage at once. */
   resize(w: number, h: number): void {
     this.calls.push('resize');
+    this.order.push('resize');
     if (!(w > 0 && h > 0)) this.show(null);
   }
   setCamera(c: CameraState): void {
     this.cameras.push(c);
+    this.order.push('setCamera');
+  }
+  setOverlay(o: OverlayState): void {
+    this.overlays.push(o);
+    this.order.push('setOverlay');
+  }
+  select(x: number, y: number): void {
+    this.clicks.push([x, y]);
+    this.order.push('select');
   }
   stage(): StageModel | null {
     return this.st;
@@ -72,7 +86,10 @@ class FakeInner implements EngineFrame {
       this.stageCbs.delete(cb);
     };
   }
-  on<E extends 'a11y' | 'drawn'>(e: E, cb: (ev: FrameEvents[E]) => void): () => void {
+  on<E extends 'a11y' | 'drawn' | 'hover' | 'select'>(
+    e: E,
+    cb: (ev: FrameEvents[E]) => void,
+  ): () => void {
     let set = this.listeners.get(e);
     if (set === undefined) {
       set = new Set();
@@ -87,6 +104,10 @@ class FakeInner implements EngineFrame {
   dispose(): void {
     this.disposed = true;
   }
+  /** An event of the engine frame (plan #68 C2b: `hover`, `select`). */
+  fire<E extends 'hover' | 'select'>(e: E, ev: FrameEvents[E]): void {
+    for (const cb of [...(this.listeners.get(e) ?? [])]) (cb as (x: FrameEvents[E]) => void)(ev);
+  }
   show(s: StageModel | null): void {
     if (s === this.st) return;
     this.st = s;
@@ -99,18 +120,29 @@ interface Setup {
   w?: TimeWindow;
   size?: readonly [number, number];
   stage?: StageModel | null;
+  /** Plan #68 C2b: the canvas is its key target; the flush's scheduler (default: at once). */
+  keys?: boolean;
+  defer?: (cb: () => void) => void;
 }
 
 function setup(o: Setup = {}) {
   vi.useFakeTimers();
   const canvas = document.createElement('canvas');
   const inner = new FakeInner();
-  const f = new ControlledFrame(canvas, { timeZone: 'UTC', keyTarget: null, id: 'c1' }, inner, {
+  const keyTarget = o.keys === true ? canvas : null;
+  const f = new ControlledFrame(canvas, { timeZone: 'UTC', keyTarget, id: 'c1' }, inner, {
     wheelLatch: { lastPageWheel: () => -Infinity },
+    defer:
+      o.defer ??
+      ((cb) => {
+        cb();
+      }),
   });
   const commits: CommitEvent[] = [];
   const brushes: BrushEvent[] = [];
   const selects: SelectEvent[] = [];
+  const hovers: FrameEvents['hover'][] = [];
+  f.on('hover', (h) => hovers.push(h));
   f.on('commit', (c) => commits.push(c));
   f.on('brush', (b) => brushes.push(b));
   f.on('select', (s) => selects.push(s));
@@ -119,7 +151,7 @@ function setup(o: Setup = {}) {
   f.setTimeWindow(o.w ?? W0);
   f.resize(o.size?.[0] ?? 1000, o.size?.[1] ?? 240, 1);
   if (o.stage !== null) inner.show(o.stage ?? S1);
-  return { canvas, inner, f, commits, brushes, selects };
+  return { canvas, inner, f, commits, brushes, selects, hovers };
 }
 
 const lastCamera = (inner: FakeInner): CameraState | undefined => inner.cameras.at(-1);
@@ -346,5 +378,83 @@ describe('ControlledFrame (plan #68 C2a2)', () => {
     inner.show(S1);
     expect(wheel(canvas, 320, 108, { deltaY: -100 }).defaultPrevented).toBe(true);
     expect(inner.cameras.length).toBeGreaterThan(n);
+  });
+});
+
+describe('ControlledFrame hover, select and batching (plan #68 C2b §4.1)', () => {
+  const S61: StageModel = { ...S1, pickCount: 61 };
+  const H: NonNullable<FrameEvents['hover']> = {
+    source: 'pointer',
+    tMs: T0,
+    xCss: 320,
+    yCss: 108,
+    rows: [{ key: '00000000000000a1', name: '{}', colourIndex: 1, value: 9 }],
+  };
+
+  it('controlled hover: the pointer, the key crosshair, a click and the box band reach the engine', () => {
+    const { canvas, inner, f, hovers, selects } = setup({ stage: S61, keys: true });
+    pointer(canvas, 'pointermove', 320, 108);
+    expect(inner.overlays.at(-1)).toEqual({
+      hover: { kind: 'pointer', x: 320, y: 108 },
+      box: null,
+    });
+    key(canvas, 'ArrowRight');
+    expect(inner.overlays.at(-1)).toEqual({ hover: { kind: 'key', index: 0 }, box: null });
+    // The engine's hover is forwarded; a layout input clears it at once, then sends none.
+    inner.fire('hover', H);
+    expect(hovers).toEqual([H]);
+    const n = inner.overlays.length;
+    f.setData(lineData());
+    expect(hovers).toEqual([H, null]);
+    expect(inner.overlays.length).toBeGreaterThan(n);
+    expect(inner.overlays.at(-1)).toEqual({ hover: { kind: 'none' }, box: null });
+    // A null after a null is not re-emitted.
+    inner.fire('hover', null);
+    expect(hovers).toEqual([H, null]);
+    // A click: the batched camera first, then the select; the engine's answer goes out.
+    pointer(canvas, 'pointerdown', 320, 108, { button: 0, buttons: 1 });
+    pointer(canvas, 'pointerup', 320, 108, { button: 0 });
+    expect(inner.clicks).toEqual([[320, 108]]);
+    expect(inner.order.lastIndexOf('setCamera')).toBeLessThan(inner.order.indexOf('select'));
+    const item = { kind: 'point' as const, key: '00000000000000a1', tMs: T0, value: 9 };
+    inner.fire('select', { source: 'pointer', item });
+    expect(selects).toEqual([{ source: 'pointer', item }]);
+    // A right drag shows the box band.
+    pointer(canvas, 'pointerdown', 320, 108, { button: 2, buttons: 2 });
+    pointer(canvas, 'pointermove', 420, 108, { button: 2, buttons: 2 });
+    expect(inner.overlays.at(-1)?.box).toEqual({ x0: 320, x: 420 });
+    pointer(canvas, 'pointerup', 420, 108, { button: 2 });
+    expect(inner.overlays.at(-1)?.box).toBeNull();
+  });
+
+  it('controlled batch: one Camera and one Overlay per task, before any other call', () => {
+    const queue: (() => void)[] = [];
+    const run = (): void => {
+      for (const cb of queue.splice(0)) cb();
+    };
+    const { canvas, inner, f } = setup({ defer: (cb) => queue.push(cb) });
+    run();
+    const c0 = inner.cameras.length;
+    const o0 = inner.overlays.length;
+    // A Ctrl+wheel zooms both axes: nothing before the flush, then one Camera and one Overlay.
+    wheel(canvas, 320, 108, { deltaY: -100, ctrlKey: true });
+    expect([inner.cameras.length, inner.overlays.length]).toEqual([c0, o0]);
+    run();
+    expect([inner.cameras.length, inner.overlays.length]).toEqual([c0 + 1, o0 + 1]);
+    const cam = inner.cameras.at(-1);
+    expect(cam?.view).not.toEqual(span(W0));
+    expect(cam?.value).not.toBeNull();
+    // A forwarding call flushes first: Camera, Overlay, then the call.
+    inner.order.length = 0;
+    f.resize(900, 240, 1);
+    expect(inner.order).toEqual(['setCamera', 'setOverlay', 'resize']);
+    run();
+    expect(inner.order).toEqual(['setCamera', 'setOverlay', 'resize']);
+    // Disposed with a flush queued: nothing more.
+    pointer(canvas, 'pointermove', 330, 108);
+    const n = inner.order.length;
+    f.dispose();
+    run();
+    expect(inner.order.length).toBe(n);
   });
 });

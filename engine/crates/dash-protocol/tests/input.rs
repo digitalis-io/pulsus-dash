@@ -1,7 +1,8 @@
 //! unit:input-ring, layout leg (plan #68 C2a1 §3.1, §5 `input_layout`, `seq`; T03-005, T03 §5.4):
 //! the record kinds, sizes and payload offsets, the two new control words, the generated TS
-//! constants and the worker's modular seq comparison.
-use dash_protocol::input::{self, camera, header, rec, resize, seq_ge};
+//! constants and the worker's modular seq comparison. Plan #68 C2b (§3.1, §5 `input_layout`): the
+//! Overlay (0x24, 64 B) and Select (0x25, 40 B) records.
+use dash_protocol::input::{self, camera, header, overlay, rec, resize, select, seq_ge};
 use dash_protocol::{REGIONS, gen_ts, off};
 
 #[test]
@@ -57,7 +58,45 @@ fn input_layout() {
     );
     assert!(off::ALL.contains(&("INPUT_IDLE", 0xC8)));
     assert!(off::ALL.contains(&("INPUT_BAD", 0x4D10)));
+    // Plan #68 C2b §3.1: Overlay and Select; 0x26 stays reserved.
+    assert_eq!((rec::OVERLAY, rec::SELECT), (0x24, 0x25));
+    assert_eq!((input::OVERLAY_BYTES, input::SELECT_BYTES), (64, 40));
+    assert_eq!(input::OVERLAY_BYTES % 8, 0);
+    assert_eq!(input::SELECT_BYTES % 8, 0);
+    assert_eq!(
+        [
+            overlay::FRAME,
+            overlay::HOVER,
+            overlay::BOX,
+            overlay::X,
+            overlay::Y,
+            overlay::KEY,
+            overlay::BOX_X0,
+            overlay::BOX_X
+        ],
+        [16, 20, 21, 24, 32, 40, 48, 56]
+    );
+    assert_eq!([select::FRAME, select::X, select::Y], [16, 24, 32]);
     let ts = gen_ts();
+    for line in [
+        "export const REC_OVERLAY = 36;\n",
+        "export const REC_SELECT = 37;\n",
+        "export const REC_OVERLAY_BYTES = 64;\n",
+        "export const REC_SELECT_BYTES = 40;\n",
+        "export const OVERLAY_FRAME = 16;\n",
+        "export const OVERLAY_HOVER = 20;\n",
+        "export const OVERLAY_BOX = 21;\n",
+        "export const OVERLAY_X = 24;\n",
+        "export const OVERLAY_Y = 32;\n",
+        "export const OVERLAY_KEY = 40;\n",
+        "export const OVERLAY_BOX_X0 = 48;\n",
+        "export const OVERLAY_BOX_X = 56;\n",
+        "export const SELECT_FRAME = 16;\n",
+        "export const SELECT_X = 24;\n",
+        "export const SELECT_Y = 32;\n",
+    ] {
+        assert!(ts.contains(line), "{line:?} not in\n{ts}");
+    }
     for line in [
         "export const OFF_INPUT_IDLE = 200;\n",
         "export const OFF_INPUT_BAD = 19728;\n",

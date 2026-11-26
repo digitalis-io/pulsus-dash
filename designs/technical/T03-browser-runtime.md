@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-26 |
+| **Version** | 1.12-rc · 2026-11-26 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -171,8 +171,9 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
  │   undo, keymap, URL (owner)   │            │          (applied camera, hover), scene, LOD,  │
  │ engine adapter (engine/wasm/) │  spawn     │          frame loop on worker rAF              │
  │   boot, ChartFrame calls ─────┼──────────► │◄─── setSpec / setData / setTheme / dispose     │
- │   2D camera ctl → input ring ─┼─ SAB ────► │          input ring consumer (camera, size)    │
- │   engine events ◄─────────────┼────────────│──── a11y, drawn, stage                         │
+ │   2D camera ctl → input ring ─┼─ SAB ────► │          input ring consumer (camera, size,    │
+ │                               │            │          overlay, select)                      │
+ │   engine events ◄─────────────┼────────────│──── a11y, drawn, stage, hover, select          │
  └───────────────────────────────┘            ├───────────────────────────────────────────────┤
                                               │ data-0   coordinator: stream subscriptions,    │
             BFF (HTTP/2, WS)  ◄────────────── │          IndexedDB cache, request ids, cancel  │
@@ -191,7 +192,10 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
 camera controller on the main thread, `stage`, and `commit` and `brush` from main:
 [ADR-0030](../adr/0030-engine-camera-controller-on-main.md) (2D charts: the camera controller on
 main; render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read
-the ring in render).
+the ring in render). `hover` and `select` (#68 C2b): the worker picks on the f64 originals of the
+presentation on screen and posts `hover{id, oseq, ev}` (the hover of the frame's last applied
+Overlay, from the tick that applied it) and `select{id, item}`; `stage` adds `pickCount` (the
+samples of series 0, the keyboard crosshair's range).
 
 | Thread | Count | Blocks? | Owns | Wakes on |
 |---|---|---|---|---|
@@ -555,7 +559,9 @@ multiplies by `dpr`.
 | `0x21` | Focus / Visibility | 24 | 16 `u8` 0 blur, 1 focus, 2 hidden, 3 visible |
 | `0x22` | Prefs | 24 | 16 `u32` bits: reduced-motion, dark, forced-colors, reduced-transparency, coarse-pointer |
 | `0x23` | Camera | 64 | 16 `u32` frame · 20 pad · 24 `f64` view_lo · 32 `f64` view_hi (ms) · 40 `f64` value_min · 48 `f64` value_max (NaN = auto) · 56 `f64` band (CSS px; NaN = measured) (#68 C2a1) |
-| `0x24–0x26` | *reserved* | — | — |
+| `0x24` | Overlay | 64 | 16 `u32` frame · 20 `u8` hover (0 none, 1 pointer, 2 key) · 21 `u8` box (0, 1) · 22 `u16` 0 · 24 `f64` x · 32 `f64` y (CSS px, pointer) · 40 `u32` key index · 44 `u32` 0 · 48 `f64` box_x0 · 56 `f64` box_x; unused fields 0 (#68 C2b) |
+| `0x25` | Select | 40 | 16 `u32` frame · 20 `u32` 0 · 24 `f64` x · 32 `f64` y (CSS px) (#68 C2b) |
+| `0x26` | *reserved* | — | — |
 | `0x30` | Gamepad snapshot | 24 + 4a + b | *reserved for M-UI6*: 16 `u8` index · 17 `u8` n_axes (a) · 18 `u8` n_buttons (b) · 20 `u32` pressed bitmask · 24 `f32`×a axes · `u8`×b analog values |
 | `0x40` | Paste | 24 + n | 16 `u32` len · 20 `u8` mime (0 text) · 24 UTF-8 (≤ 16 KiB inline; longer is truncated with flag bit3) |
 | `0x7F` | Marker | 24 | 16 `u64` tag (replay sync, [T05 §4.4](T05-testing-and-performance.md#44-deterministic-input-replay-pdrec)) |
@@ -564,8 +570,9 @@ multiplies by `dpr`.
 record straddles the end.
 
 **The engine adapter's ring (#68 Part C2a1, as built).** Until #94 brings the raw input records and
-the worker-side controller, the adapter (`client/src/engine/wasm/ring.ts`) writes Resize and Camera
-records only; the decoder is `dash-core::input`.
+the worker-side controller, the adapter (`client/src/engine/wasm/ring.ts`) writes Resize, Camera,
+Overlay and Select records only (Overlay and Select from #68 C2b); the decoder is
+`dash-core::input`.
 
 - **Counters.** Occupied = `(head − tail) mod 2³²`, free = 64 KiB − occupied; the physical offset is
   `counter & (RING_BYTES − 1)`. JS reads every word as `Atomics.load(…) >>> 0` and stores `v | 0`;
@@ -577,10 +584,20 @@ records only; the decoder is `dash-core::input`.
   `(a − b) as i32 ≥ 0`. At the end of every tick that applied records of a frame the worker posts
   `applied{id, seq}`, so a frame that cannot draw is still acknowledged, at most one ring
   (1 638 Resize records) behind.
-- **Coalescing.** A record that does not fit waits in a map keyed by kind and frame; a later record
-  of the same key replaces it (deleted, then inserted at the end). Up to 32 waiting records are
-  published before a new one, which waits behind any that remain; a main rAF publishes up to 256.
-  None is dropped, so `overflow_count` stays 0.
+- **Coalescing.** A state record (Resize, Camera, Overlay) that does not fit waits in a map keyed
+  by kind and frame; a later record of the same key replaces it (deleted, then inserted at the
+  end). T03-020's coalescing applies to these state records. A Select is discrete: it is never
+  coalesced (its key is unique), and at most 8 Selects of a frame wait; a 9th drops that frame's
+  oldest waiting Select, adds 1 to `overflow_count` and warns once per frame. Up to 32 waiting
+  records are published before a new one, which waits behind any that remain; a main rAF
+  publishes up to 256. Nothing else is dropped.
+- **One Camera and one Overlay per task (#68 C2b).** The adapter (`ControlledFrame`) batches the
+  controller's camera and overlay changes and writes at most one Camera and one Overlay per task,
+  in that order, before any other call of the frame (a click flushes them, then writes its
+  Select).
+- **The `hover` gate (#68 C2b).** The main thread accepts a `hover` only for its latest Overlay:
+  none while an Overlay is held or waiting, and only when the event's `oseq` extends to the seq of
+  the last published Overlay. A `select` needs no gate: it answers what was on screen.
 - **The `created` gate and frame ids.** The adapter numbers frames from 1 per render worker and
   never reuses a number (a restart is a new worker). A frame's records are held, the latest per
   kind, until the worker's `created{id}`, then published in call order. The worker refuses a
@@ -595,8 +612,10 @@ records only; the decoder is `dash-core::input`.
 - **Rejected records.** A size below 16 or not a multiple of 8, a record past the head or the end,
   the wrong size for its kind or an unknown kind skips the rest of the batch (tail = head) and
   counts in `input_bad`; so does a Camera with an empty or non-finite view, value range or band,
-  which leaves the camera unchanged but still redraws the frame, so a `drawn` carries its seq. A
-  record of a disposed frame is ignored.
+  which leaves the camera unchanged but still redraws the frame, so a `drawn` carries its seq. The
+  same holds for an Overlay with hover > 2, box > 1, a non-finite pointer x or y, or a non-finite
+  box end, and a Select with a non-finite x or y (#68 C2b). A record of a disposed frame is
+  ignored.
 
 Capture rules (`input.js`):
 - Pointer, wheel, contextmenu and dblclick listeners attach to the canvas element. Wheel is
@@ -959,4 +978,5 @@ which forces a reload.
 | 1.8-rc | 2026-11-25 | #68 Part B: §5.6 Arrow is `dash-wire`'s own Arrow IPC reader, no arrow-rs crate (owner decision, licence); §7.3 the size table and its risk sentence name the `dash-wire` reader |
 | 1.10-rc | 2026-11-26 | #68 Part C2a1: §4.3 `idle` at `0xC8` (the tail's line) and `input_bad` at `0x4D10`; §5.4 Resize `36 u32 frame`, the Camera record `0x23`, `0x24`–`0x26` reserved, and the engine adapter's ring as built (counters, per-frame seqs at publish and their 53-bit extension, coalescing, the `created` gate and frame ids, wake-up, `drawn` from the capture, rejected records), replacing the C1 resize note; **T03-004 revised** to the idle-word wake-up |
 | 1.11-rc | 2026-11-26 | #68 Part C2a2 ([ADR-0030](../adr/0030-engine-camera-controller-on-main.md)): the ownership audit, each to "2D charts: the camera controller on main; render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read the ring in render": §0 topology note, §4.1 `dash-core-mt` row, §4.2 diagram and thread table, §4.4 paragraph, §6 the gesture camera row, §12 "Keymap in the render worker" row |
+| 1.12-rc | 2026-11-26 | #68 Part C2b: §5.4 the Overlay (`0x24`) and Select (`0x25`) records, `0x26` reserved; Select is discrete (never coalesced, at most 8 waiting per frame, the oldest dropped and counted in `overflow_count`), T03-020's coalescing applies to state records; the adapter writes at most one Camera and one Overlay per task; main accepts a `hover` only for its latest Overlay; rejected Overlay and Select records; §4.2 render → main events add `hover` and `select`, `stage` adds `pickCount` |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |

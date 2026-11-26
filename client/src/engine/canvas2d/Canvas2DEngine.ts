@@ -47,7 +47,7 @@ import {
   type LayerModel,
 } from './draw';
 import { windowWheelLatch, type WheelLatch } from './input';
-import { bucketIndex, hoverRows, nearestIndex } from './pick';
+import { hoverAt } from './pick';
 import { themeColours } from './palette';
 import { sameSelection, type Listener } from './gesture';
 import { pickItem } from './select';
@@ -486,21 +486,8 @@ class Canvas2DFrame implements ChartFrame {
   private currentHover(): HoverEvent | null {
     const m = this.model;
     const v = this.ctl.view;
-    if (m === null || m.pick === null || v === null) return null;
-    const { plot } = m.summary;
-    const xOf = (t: number): number => plot.x + ((t - v.lo) / (v.hi - v.lo)) * plot.width;
-    const keyIndex = this.ctl.keyIndex;
-    if (keyIndex !== null) {
-      const { tMs, rows } = hoverRows(m.pick, keyIndex, 'keyboard', plot.y);
-      return { source: 'keyboard', tMs, xCss: xOf(tMs), yCss: plot.y, rows };
-    }
-    const p = this.ctl.pointer;
-    if (p === null) return null;
-    const t = v.lo + ((p.x - plot.x) / plot.width) * (v.hi - v.lo);
-    const i = m.pick.kind === 'line' ? nearestIndex(m.pick.ref, t) : bucketIndex(m.pick.ref, t);
-    if (i < 0) return null;
-    const { tMs, rows } = hoverRows(m.pick, i, 'pointer', p.y);
-    return { source: 'pointer', tMs, xCss: xOf(tMs), yCss: p.y, rows };
+    if (m === null || v === null) return null;
+    return hoverAt(m, v, this.ctl.keyIndex, this.ctl.pointer);
   }
 
   /** The bar chart's pick model, or null when this frame is not a drawn bar chart. */

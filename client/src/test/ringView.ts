@@ -14,6 +14,9 @@ const IDLE = 0xc8;
 const DATA = 0x10000;
 export const KIND_RESIZE = 0x20;
 export const KIND_CAMERA = 0x23;
+/** Plan #68 C2b §3.1. */
+export const KIND_OVERLAY = 0x24;
+export const KIND_SELECT = 0x25;
 
 export interface Decoded {
   readonly kind: number;
@@ -23,7 +26,10 @@ export interface Decoded {
   /** Physical offset in the ring. */
   readonly at: number;
   readonly tMs: number;
-  /** Resize: css w, h, dpr, device w, h. Camera: view lo, hi, value min, max, band. */
+  /**
+   * Resize: css w, h, dpr, device w, h. Camera: view lo, hi, value min, max, band. Overlay: x, y,
+   * (key word), box x0, box x. Select: x, y, then whatever follows.
+   */
   readonly f: readonly number[];
 }
 

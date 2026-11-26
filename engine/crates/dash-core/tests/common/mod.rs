@@ -87,6 +87,27 @@ pub enum Rec {
         value: (f64, f64),
         band: f64,
     },
+    /// Plan #68 C2b §3.1, written at the T03 §5.4 offsets (not the generated constants).
+    Overlay {
+        frame: u32,
+        hover: u8,
+        boxed: u8,
+        x: f64,
+        y: f64,
+        key: u32,
+        box_x0: f64,
+        box_x: f64,
+    },
+    Select {
+        frame: u32,
+        x: f64,
+        y: f64,
+    },
+    /// Any kind with the given size and zeroed payload (a malformed record).
+    Raw {
+        kind: u8,
+        size: u32,
+    },
 }
 
 impl Rec {
@@ -103,6 +124,9 @@ impl Rec {
         match self {
             Rec::Resize { .. } => RESIZE_BYTES,
             Rec::Camera { .. } => CAMERA_BYTES,
+            Rec::Overlay { .. } => 64,
+            Rec::Select { .. } => 40,
+            Rec::Raw { size, .. } => *size,
         }
     }
 }
@@ -142,6 +166,9 @@ impl Producer {
         let kind = match r {
             Rec::Resize { .. } => rec::RESIZE,
             Rec::Camera { .. } => rec::CAMERA,
+            Rec::Overlay { .. } => 0x24,
+            Rec::Select { .. } => 0x25,
+            Rec::Raw { kind, .. } => *kind,
         };
         b.put(phys, u32::from(kind) | (size << 16));
         b.put(phys + 4, seq);
@@ -173,6 +200,36 @@ impl Producer {
                 put64(b, phys + 40, value.0);
                 put64(b, phys + 48, value.1);
                 put64(b, phys + 56, band);
+            }
+            Rec::Overlay {
+                frame,
+                hover,
+                boxed,
+                x,
+                y,
+                key,
+                box_x0,
+                box_x,
+            } => {
+                b.put(phys + 16, frame);
+                b.put(phys + 20, u32::from(hover) | (u32::from(boxed) << 8));
+                put64(b, phys + 24, x);
+                put64(b, phys + 32, y);
+                b.put(phys + 40, key);
+                b.put(phys + 44, 0);
+                put64(b, phys + 48, box_x0);
+                put64(b, phys + 56, box_x);
+            }
+            Rec::Select { frame, x, y } => {
+                b.put(phys + 16, frame);
+                b.put(phys + 20, 0);
+                put64(b, phys + 24, x);
+                put64(b, phys + 32, y);
+            }
+            Rec::Raw { size, .. } => {
+                for k in (16..size).step_by(4) {
+                    b.put(phys + k, 0);
+                }
             }
         }
         b.store(

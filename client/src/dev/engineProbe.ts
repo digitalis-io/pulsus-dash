@@ -17,6 +17,11 @@
  * | `fresh(o)` | a new frame's first summary; the frame is then disposed and its canvas removed |
  * | `holdTimers(on)` | holds the probe frames' controller timers (none fires; each restarts its full delay on release), so a screenshot does not end a gesture |
  * | `id(n)`, `stats().enqueued` | the frame's engine id (its records' `frame`); Camera records enqueued by probe frames |
+ * | `hovers(n)`, `selects(n)` | the frame's `hover` and `select` events (plan #68 C2b §3.4) |
+ * | `key(n, key)` | a `keydown` on the frame's canvas, its own key target (`tabindex=0`); returns `defaultPrevented` |
+ * | `flush(n)` | `ControlledFrame.flush()`: the batched Camera and Overlay go out now |
+ * | `freeze(n, seq)`, `frozen(n)`, `unfreeze(n)` | the probe build: after its first completed presentation with seq ≥ `seq` the worker presents nothing for the frame; `frozen` resolves with that presentation's `drawn` and seq |
+ * | `stats().bad`, `stats().selects` | `INPUT_BAD`; Select records the ring took |
  *
  * Probe frames are `ControlledFrame`s: the camera controller runs on them as on the page's engine
  * frames (ADR-0030), so the calls' `setTimeWindow` goes through it.
@@ -27,6 +32,8 @@ import type {
   DrawnEvent,
   FrameData,
   FrameSummary,
+  HoverEvent,
+  SelectEvent,
   TimeWindow,
   VisSpec,
 } from '../engine/api';
@@ -80,7 +87,14 @@ export interface DashProbe {
   idle(): boolean;
   inputLog(): Promise<InputRec[]>;
   producedLog(): InputRec[];
-  stats(): { coalesced: number; overflow: number; publishedBytes: number; enqueued: number };
+  stats(): {
+    coalesced: number;
+    overflow: number;
+    publishedBytes: number;
+    enqueued: number;
+    bad: number;
+    selects: number;
+  };
   /** The engine's id of probe frame `n` (the ring records' `frame`); 0 before it exists. */
   id(n: number): number;
   counters(): { head: number; tail: number };
@@ -94,6 +108,19 @@ export interface DashProbe {
    * on release each restarts its full delay. A screenshot inside a gesture does not end it.
    */
   holdTimers(on: boolean): void;
+  /** The frame's `hover` events (plan #68 C2b §3.4). */
+  hovers(n: number): (HoverEvent | null)[];
+  /** The frame's `select` events. */
+  selects(n: number): SelectEvent[];
+  /** A `keydown` of `key` on the frame's canvas (its key target); whether it was prevented. */
+  key(n: number, key: string): boolean;
+  /** The batched Camera and Overlay of the frame go out now (`ControlledFrame.flush`). */
+  flush(n: number): void;
+  /** The probe build: hold the frame after its first completed presentation with seq ≥ `seq`. */
+  freeze(n: number, seq: number): void;
+  /** That presentation's `drawn` and seq. */
+  frozen(n: number): Promise<DrawnEvent & { seq: number }>;
+  unfreeze(n: number): void;
 }
 
 interface Entry {
@@ -106,9 +133,16 @@ interface Entry {
   readonly drawn: DrawnEvent[];
   readonly commits: CommitEvent[];
   readonly brushes: BrushEvent[];
+  readonly hovers: (HoverEvent | null)[];
+  readonly selects: SelectEvent[];
+  /** `drawn` events with their presentation seq (`frozen`). */
+  readonly seqs: (DrawnEvent & { seq: number })[];
+  /** The seq `freeze` waits for. */
+  freezeAt: number | null;
 }
 
 const SETTLE_POLL_MS = 5;
+const FROZEN_TIMEOUT_MS = 10_000;
 const SETTLE_TIMEOUT_MS = 60_000;
 const KEEP_DRAWN = 100;
 
@@ -196,8 +230,10 @@ export function createProbe(o: {
     const [w, h] = f.size;
     const canvas = document.createElement('canvas');
     canvas.style.cssText = `position:fixed;left:0;top:0;width:${String(w)}px;height:${String(h)}px;z-index:2147483647`;
+    // Its own key target (plan #68 C2b §3.4): `key(n, …)` drives the keyboard crosshair.
+    canvas.tabIndex = 0;
     document.body.append(canvas);
-    const init = { timeZone: 'UTC', keyTarget: null, id };
+    const init = { timeZone: 'UTC', keyTarget: canvas, id };
     const inner = b.createFrame(canvas.transferControlToOffscreen(), init, (reason) => {
       console.warn(`${id} failed: ${reason}`);
     });
@@ -219,7 +255,11 @@ export function createProbe(o: {
     frame.on('drawn', (d) => {
       e.drawn.push(d);
       if (e.drawn.length > KEEP_DRAWN) e.drawn.shift();
+      e.seqs.push({ ...d, seq: inner.drawnSeqNow() });
+      if (e.seqs.length > KEEP_DRAWN) e.seqs.shift();
     });
+    frame.on('hover', (x) => e.hovers.push(x));
+    frame.on('select', (x) => e.selects.push(x));
     frame.on('commit', (c) => e.commits.push(c));
     frame.on('brush', (x) => e.brushes.push(x));
     frame.setSpec(f.spec);
@@ -236,6 +276,10 @@ export function createProbe(o: {
     drawn: [],
     commits: [],
     brushes: [],
+    hovers: [],
+    selects: [],
+    seqs: [],
+    freezeAt: null,
   });
   /** A point at canvas-relative CSS px `(x, y)`, as client px. */
   const client = (c: HTMLCanvasElement, x: number, y: number) => {
@@ -278,6 +322,8 @@ export function createProbe(o: {
     },
     settle(n) {
       const e = entry(n);
+      // The batched Camera and Overlay of this task go out first (plan #68 C2b §4.1).
+      e.frame?.flush();
       const t0 = performance.now();
       return new Promise<void>((resolve, reject) => {
         const poll = (): void => {
@@ -306,6 +352,8 @@ export function createProbe(o: {
         overflow: h?.overflow() ?? 0,
         publishedBytes: h?.ring.stats.publishedBytes ?? 0,
         enqueued,
+        bad: h?.bad() ?? 0,
+        selects: h?.ring.stats.selects ?? 0,
       };
     },
     counters: () => o.host()?.counters() ?? { head: 0, tail: 0 },
@@ -363,6 +411,50 @@ export function createProbe(o: {
     },
     commits: (n) => [...entry(n).commits],
     brushes: (n) => [...entry(n).brushes],
+    hovers: (n) => [...entry(n).hovers],
+    selects: (n) => [...entry(n).selects],
+    key(n, key) {
+      const c = entry(n).canvas;
+      if (c === null) return false;
+      const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      c.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    },
+    flush(n) {
+      entry(n).frame?.flush();
+    },
+    freeze(n, seq) {
+      const e = entry(n);
+      e.freezeAt = seq;
+      const id = e.inner?.id;
+      if (id !== undefined) o.host()?.freeze(id, seq);
+    },
+    frozen(n) {
+      const e = entry(n);
+      const t0 = performance.now();
+      return new Promise((resolve, reject) => {
+        const poll = (): void => {
+          const at = e.freezeAt;
+          const d = at === null ? undefined : e.seqs.find((x) => x.seq >= at);
+          if (d !== undefined) {
+            resolve(d);
+            return;
+          }
+          if (performance.now() - t0 > FROZEN_TIMEOUT_MS) {
+            reject(new Error(`probe frame ${String(n)}: no presentation of seq ${String(at)}`));
+            return;
+          }
+          setTimeout(poll, SETTLE_POLL_MS);
+        };
+        poll();
+      });
+    },
+    unfreeze(n) {
+      const e = entry(n);
+      e.freezeAt = null;
+      const id = e.inner?.id;
+      if (id !== undefined) o.host()?.unfreeze(id);
+    },
   };
 }
 

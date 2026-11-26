@@ -12,6 +12,7 @@ import {
   type CameraState,
   type EngineFrame,
   type FrameRing,
+  type OverlayState,
   type StageModel,
 } from './frame';
 import type { MainToRender, StageWire } from './protocol';
@@ -34,6 +35,9 @@ const HEAT: FrameData = {
 };
 const RESIZE = 0x20;
 const CAMERA = 0x23;
+const OVERLAY = 0x24;
+const SELECT = 0x25;
+const CODES = { camera: CAMERA, resize: RESIZE, overlay: OVERLAY, select: SELECT } as const;
 
 function port() {
   const sent: { msg: MainToRender; transfer: Transferable[] }[] = [];
@@ -45,8 +49,8 @@ function port() {
   };
 }
 
-type Arg = CameraState | readonly [number, number, number];
-type Kind = 'camera' | 'resize';
+type Arg = CameraState | OverlayState | readonly number[];
+type Kind = 'camera' | 'resize' | 'overlay' | 'select';
 
 /** A ring that publishes at once unless `full`; unpublished records coalesce per kind. */
 class FakeRing implements FrameRing {
@@ -62,6 +66,12 @@ class FakeRing implements FrameRing {
   }
   resize(frame: number, w: number, h: number, dpr: number): void {
     this.put('resize', frame, [w, h, dpr]);
+  }
+  overlay(frame: number, o: OverlayState): void {
+    this.put('overlay', frame, o);
+  }
+  select(frame: number, x: number, y: number): void {
+    this.put('select', frame, [x, y]);
   }
   onPublish(frame: number, cb: (kind: number, seq: number) => void): void {
     this.cbs.set(frame, cb);
@@ -80,8 +90,10 @@ class FakeRing implements FrameRing {
       this.publish(p.kind, p.frame, p.arg);
     }
   }
+  private n = 0;
   private put(kind: Kind, frame: number, arg: Arg): void {
-    const k = `${kind}:${String(frame)}`;
+    // Select is discrete: never coalesced (plan #68 C2b §3.1).
+    const k = `${kind}:${String(frame)}${kind === 'select' ? `:${String(this.n++)}` : ''}`;
     if (this.full) {
       this.pending.delete(k);
       this.pending.set(k, { kind, frame, arg });
@@ -93,7 +105,7 @@ class FakeRing implements FrameRing {
     const seq = (this.seqs.get(frame) ?? 0) + 1;
     this.seqs.set(frame, seq);
     this.published.push({ kind, frame, seq, arg });
-    this.cbs.get(frame)?.(kind === 'camera' ? CAMERA : RESIZE, seq);
+    this.cbs.get(frame)?.(CODES[kind], seq);
   }
 }
 
@@ -265,6 +277,7 @@ describe('WasmFrame stage (plan #68 C2a2 §3.3)', () => {
     plot: { x: 50, y: 8, width: 742, height: 200 },
     domain: { min: 0, max: 30 },
     labelW: 38,
+    pickCount: 0,
   };
   const S1: StageModel = {
     plot: W1.plot,
@@ -326,5 +339,82 @@ describe('WasmFrame stage (plan #68 C2a2 §3.3)', () => {
     stage(4, W1);
     expect(f.stage()).toEqual(S1);
     expect(seen).toEqual([S1, null, S1, null, S1, null, S1]);
+  });
+});
+
+describe('WasmFrame hover and select (plan #68 C2b §4.2)', () => {
+  const ROW = { key: '00000000000000a1', name: '{}', colourIndex: 1, value: 9 };
+  const H = { source: 'pointer' as const, tMs: 1080, xCss: 300, yCss: 100, rows: [ROW] };
+  const P = { hover: { kind: 'pointer' as const, x: 300, y: 100 }, box: null };
+
+  it('wasm frame hover: only the latest Overlay’s hover; select answered; pickCount read', () => {
+    const m = memory();
+    const view = new RingView(m);
+    const ring = new InputRing(m, CB, () => undefined);
+    const { f } = frame();
+    const hovers: unknown[] = [];
+    const selects: unknown[] = [];
+    f.on('hover', (h) => hovers.push(h));
+    f.on('select', (s) => selects.push(s));
+    // Before `created`: a select is dropped, the latest Overlay held.
+    f.select(1, 2);
+    f.setOverlay({ hover: { kind: 'key', index: 0 }, box: null });
+    f.setOverlay(P);
+    f.created(ring);
+    const held = view.decode();
+    expect(held.map((r) => [r.kind, r.seq])).toEqual([[OVERLAY, 1]]);
+    expect(held[0]?.f.slice(0, 2)).toEqual([300, 100]);
+    const hover = (oseq: number, ev: typeof H | null): void => {
+      f.handle({ t: 'hover', id: 1, oseq, ev });
+    };
+    hover(1, H);
+    expect(hovers).toEqual([H]);
+    // A newer Overlay published as s: s − 1's hover is stale.
+    f.setOverlay({ hover: { kind: 'pointer', x: 310, y: 100 }, box: null });
+    expect(view.decode().map((r) => r.seq)).toEqual([2]);
+    hover(1, H);
+    expect(hovers).toEqual([H]);
+    hover(2, null);
+    expect(hovers).toEqual([H, null]);
+    // An Overlay waiting in a full ring: no hover counts, not even its predecessor's.
+    fill(ring);
+    f.setOverlay(P);
+    hover(2, H);
+    expect(hovers).toEqual([H, null]);
+    view.decode();
+    ring.flush();
+    expect(view.decode().map((r) => [r.kind, r.seq])).toEqual([[OVERLAY, 3]]);
+    hover(3, H);
+    expect(hovers).toEqual([H, null, H]);
+    // Any later record moves the frame's seq, not its Overlay: the Overlay's hover still counts.
+    f.setCamera({ view: { lo: 0, hi: 1 }, value: null, band: null });
+    hover(3, null);
+    expect(hovers).toEqual([H, null, H, null]);
+    // A select goes to the ring; its answer is forwarded, whatever was published since.
+    f.select(12.5, 40);
+    const sel = view.decode().filter((r) => r.kind === SELECT);
+    expect(sel.map((r) => [r.frame, r.f[0], r.f[1]])).toEqual([[1, 12.5, 40]]);
+    const item = { kind: 'point' as const, key: ROW.key, tMs: 1080, value: 9 };
+    f.handle({ t: 'select', id: 1, item });
+    f.handle({ t: 'select', id: 1, item: null });
+    expect(selects).toEqual([
+      { source: 'pointer', item },
+      { source: 'pointer', item: null },
+    ]);
+    // The stage's pickCount comes from the wire.
+    f.resize(800, 240, 1);
+    const rseq = view.decode().at(-1)?.seq ?? 0;
+    f.handle({
+      t: 'stage',
+      id: 1,
+      rseq,
+      stage: {
+        plot: { x: 50, y: 8, width: 742, height: 200 },
+        domain: null,
+        labelW: 38,
+        pickCount: 61,
+      },
+    });
+    expect(f.stage()?.pickCount).toBe(61);
   });
 });

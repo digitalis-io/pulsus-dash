@@ -4,7 +4,9 @@
  * `lineColumns`, `seriesColourIndex`, `synthLines` and `frameSummary`. The Rust ports must
  * reproduce them (`unit:*-parity`). `input-ring.json` is the input ring the adapter's `InputRing`
  * writes (plan #68 C2a1 §5 `ring_fixture`): its bytes and its log, which the render worker's
- * decoder must read back. `--write` writes the files; without it the committed files are
+ * decoder must read back. `hover.json` is the hover and click picking of `canvas2d/pick.ts`
+ * `hoverAt`, `select.ts` `pickItem` and `data/frames.ts` `seriesName` on line layer models (plan
+ * #68 C2b §5 `hover_parity`). `--write` writes the files; without it the committed files are
  * compared and the exit code is 1 when one is stale (`unit:engine-fixtures` runs the same check).
  *
  * The client modules are loaded at run time (their imports are extensionless, which Node resolves
@@ -60,6 +62,14 @@ interface Plot {
 interface Window {
   fromMs: number;
   toMs: number;
+}
+interface Span {
+  lo: number;
+  hi: number;
+}
+interface Point {
+  x: number;
+  y: number;
 }
 interface Series {
   key: string;
@@ -124,7 +134,11 @@ interface Sources {
   ) => { min: number; max: number; ticks: readonly number[] };
   layoutPlot: (kind: string, w: number, h: number, labelW: number) => Plot;
   LABEL_HEIGHT: number;
-  drawLayer: (i: Record<string, unknown>) => { summary: Summary };
+  drawLayer: (i: Record<string, unknown>) => { summary: Summary } & Record<string, unknown>;
+  hoverAt: (m: unknown, v: Span, keyIndex: number | null, p: Point | null) => unknown;
+  pickItem: (m: unknown, v: Span, p: Point) => unknown;
+  seriesName: (labels: Record<string, string>) => string;
+  mulberry32: (seed: number) => () => number;
   minValueBand: (ctx: Record<string, unknown>, unit: Unit) => number;
   MAX_SERIES: number;
   lineStats: (s: readonly Series[]) => { min: number | null; max: number | null };
@@ -203,6 +217,10 @@ async function load(): Promise<Sources> {
       'dev/gallery.ts',
       'styles/tokens.ts',
       'engine/wasm/ring.ts',
+      'engine/canvas2d/pick.ts',
+      'engine/canvas2d/select.ts',
+      'data/frames.ts',
+      'test/random.ts',
     ].map(mod),
   );
   return Object.assign({}, ...parts) as Sources;
@@ -441,6 +459,8 @@ function fakeCtx(s: Sources, labels: string[]): Record<string, unknown> {
     drawImage: nop,
     save: nop,
     restore: nop,
+    rect: nop,
+    clip: nop,
     measureText: (t: string) => ({ width: width(t) }),
     fillText: (text: string) => {
       if (ctx.textAlign === 'right') labels.push(text);
@@ -720,6 +740,149 @@ function inputRingRows(s: Sources): unknown[] {
   return [{ start, head, data: hex, records: ring.produced }];
 }
 
+/** A line layer model of `series` at 1118×240 (auto axis, or `valueRange`), as the page draws it. */
+function lineModel(
+  s: Sources,
+  series: readonly Series[],
+  unit: Unit,
+  valueRange: { min: number; max: number } | null,
+) {
+  const ctx = fakeCtx(s, []);
+  return s.drawLayer({
+    ctx,
+    spec: { kind: 'line', title: '', unit },
+    data: { kind: 'series', series },
+    window: GALLERY_WINDOW,
+    cssW: 1118,
+    cssH: 240,
+    timeZone: 'UTC',
+    colours: s.themeColours('dark'),
+    valueRange,
+    band: null,
+    minBand: s.minValueBand(ctx, unit),
+  });
+}
+
+const plain = (x: Series) => ({
+  key: x.key,
+  labels: x.labels,
+  t: [...x.timestamps],
+  v: [...x.values],
+});
+
+/** Every `k`th sample of `x`. */
+function thin(x: Series, k: number): Series {
+  const keep = (a: Float64Array): Float64Array => a.filter((_, i) => i % k === 0);
+  return { ...x, timestamps: keep(x.timestamps), values: keep(x.values) };
+}
+
+/** A series of `n` samples `step` ms apart from the window start, values from `f(i)`. */
+function seriesOf(
+  key: string,
+  labels: Record<string, string>,
+  n: number,
+  step: number,
+  f: (i: number) => number,
+): Series {
+  const t = Array.from({ length: n }, (_, i) => GALLERY_WINDOW.fromMs + i * step);
+  return {
+    key,
+    labels,
+    timestamps: new Float64Array(t),
+    values: new Float64Array(t.map((_, i) => f(i))),
+  };
+}
+
+/**
+ * `hover.json` (plan #68 C2b §5 `hover_parity`): per line case its model's plot, domain, view and
+ * series (line-50's 50 series at every 6th sample, to keep the file small), then `hoverAt` at key indices 0, n − 1 and n, at no hover, and at 200 seeded pointers
+ * (mulberry32 33, shared round-robin by the cases, ±10 px around the plot's width), and `pickItem`
+ * at the same pointers; then `seriesName` of labels with quotes, backslashes, newlines, no
+ * `__name__` and keys that sort differently by UTF-16 code unit than by code point.
+ */
+function hoverRows(s: Sources, entries: readonly Entry[]): unknown[] {
+  const gallery = (id: string): Series[] =>
+    (entries.find((e) => e.id === id)?.data.series ?? []).slice();
+  const none: Unit = { kind: 'none' };
+  const r = stream(s, 11);
+  const two = [
+    seriesOf(
+      '00000000000000a1',
+      { __name__: 'rps', job: 'api "v2"' },
+      241,
+      15_000,
+      (i) => Math.round(100 * Math.sin(i / 9) * 1e3) / 1e3,
+    ),
+    seriesOf(
+      '00000000000000b2',
+      { job: 'db\\main', level: 'warn' },
+      61,
+      60_000,
+      () => Math.round(r() * 2e4) / 100,
+    ),
+  ];
+  const nan = [
+    seriesOf('00000000000000a1', {}, 61, 60_000, (i) => (i % 7 === 4 || i === 18 ? NaN : i / 2)),
+    seriesOf('00000000000000c3', { pod: 'x\ny' }, 61, 60_000, (i) => (i % 5 === 0 ? NaN : 30 - i)),
+  ];
+  const line = [seriesOf('00000000000000a1', {}, 61, 60_000, (i) => (30 * i) / 60)];
+  const cases: [string, Series[], { min: number; max: number } | null][] = [
+    ['line-50', gallery('line-50').map((x) => thin(x, 6)), null],
+    ['line-gaps', gallery('line-gaps'), null],
+    ['line-1', gallery('line-1'), null],
+    ['two-steps', two, null],
+    ['nan', nan, null],
+    ['manual', line, { min: 5, max: 20 }],
+  ];
+  const view: Span = { lo: GALLERY_WINDOW.fromMs, hi: GALLERY_WINDOW.toMs };
+  const models = cases.map(([, series, vr]) => {
+    const m = lineModel(s, series, none, vr);
+    const pick = m['pick'] as { ref: Float64Array; series: readonly Series[] };
+    return { m, pick, plot: m.summary.plot };
+  });
+  const rnd = s.mulberry32(33);
+  const pointers: Point[][] = cases.map(() => []);
+  for (let i = 0; i < 200; i++) {
+    const k = i % cases.length;
+    const plot = models[k]?.plot ?? { x: 0, y: 0, width: 0, height: 0 };
+    pointers[k]?.push({
+      x: plot.x - 10 + rnd() * (plot.width + 20),
+      y: plot.y + rnd() * plot.height,
+    });
+  }
+  const rows: unknown[] = cases.map(([id, series], k) => {
+    const model = models[k];
+    if (model === undefined) throw new Error(`no model for ${id}`);
+    const { m, pick, plot } = model;
+    const n = pick.ref.length;
+    const ps = pointers[k] ?? [];
+    return {
+      case: id,
+      shown: pick.series.length,
+      plot,
+      domain: m['valueDomain'],
+      view,
+      series: series.map(plain),
+      hovers: [
+        ...[0, n - 1, n].map((key) => ({ key, p: null, out: s.hoverAt(m, view, key, null) })),
+        { key: null, p: null, out: s.hoverAt(m, view, null, null) },
+        ...ps.map((p) => ({ key: null, p, out: s.hoverAt(m, view, null, p) })),
+      ],
+      picks: ps.map((p) => ({ p, out: s.pickItem(m, view, p) })),
+    };
+  });
+  const labels: Record<string, string>[] = [
+    {},
+    { __name__: 'up' },
+    { __name__: 'http_requests_total', job: 'api', code: '200' },
+    { a: 'say "hi"', b: 'back\\slash', c: 'line\nbreak' },
+    { é: '1', '\u{1F600}': '2', '\uFF51': '3', z: '4' },
+    { level: 'error', pod: 'p1', __name__: '' },
+  ];
+  rows.push({ case: 'names', names: labels.map((l) => ({ labels: l, name: s.seriesName(l) })) });
+  return rows;
+}
+
 /** Every fixture file name → its JSON text. */
 export async function fixtures(): Promise<Record<string, string>> {
   const s = await load();
@@ -735,6 +898,7 @@ export async function fixtures(): Promise<Record<string, string>> {
     'synth.json': json(synthRows(s, entries)),
     'summary.json': json(summaryRows(s, entries)),
     'input-ring.json': json(inputRingRows(s)),
+    'hover.json': json(hoverRows(s, entries)),
   };
 }
 

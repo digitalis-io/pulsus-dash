@@ -11,6 +11,11 @@
 //! When nothing is left to do, `engine_wants_frame` marks the worker idle and re-checks the ring.
 //! The `probe` feature (the probe build only, T03-024) logs the decoded records for
 //! `e2e:shim-fuzz`.
+//!
+//! Part C2b (§4.3): the `select` events of the drained records go out first, then each dirty
+//! frame's build output (`hover`, `a11y`), the completions (`stage`, `drawn`) and `applied`. The
+//! probe build can hold a frame after one presentation (`engine_probe_freeze`), so `e2e:engine-hover`
+//! H1b screenshots exactly that presentation.
 
 mod control;
 mod gpu;
@@ -90,6 +95,9 @@ struct Engine {
     bad_logged: bool,
     #[cfg(feature = "probe")]
     probe: Vec<serde_json::Value>,
+    /// The probe build: frames held after a presentation of at least this seq (`true`: reached).
+    #[cfg(feature = "probe")]
+    freeze: BTreeMap<u32, (u32, bool)>,
     /// Events produced outside a tick (a surface that could not be made).
     queued: Vec<String>,
     frame_no: u64,
@@ -161,6 +169,8 @@ pub async fn engine_start(force_t2: bool, caps_bits: u32, epoch: u32) -> BootSta
                     bad_logged: false,
                     #[cfg(feature = "probe")]
                     probe: Vec::new(),
+                    #[cfg(feature = "probe")]
+                    freeze: BTreeMap::new(),
                     queued: Vec::new(),
                     frame_no: 0,
                     losses: LossPolicy::default(),
@@ -320,6 +330,28 @@ pub fn engine_probe_ring_start(v: u32) {
     });
 }
 
+/// The probe build (plan #68 C2b §3.4): after its first completed presentation with seq ≥ `seq`,
+/// the worker builds and presents nothing for frame `id` (records are still applied and acked)
+/// until `engine_probe_unfreeze`.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_freeze(id: u32, seq: u32) {
+    with(|e| {
+        e.freeze.insert(id, (seq, false));
+    });
+}
+
+/// The probe build: releases frame `id`; it is drawn again at the next tick.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_unfreeze(id: u32) {
+    with(|e| {
+        if e.freeze.remove(&id).is_some() && e.gpus.contains_key(&id) {
+            e.dirty.insert(id);
+        }
+    });
+}
+
 /// The device px of a Resize, at least 1 and at most the device's texture limit.
 fn device_px(px: u32, max: u32) -> u32 {
     px.clamp(1, max.max(1))
@@ -395,6 +427,7 @@ impl Engine {
             return events::batch(&out);
         }
         self.read_input();
+        out.extend(self.frames.take_events());
         self.draw_frames(now_ms, t0, &mut out);
         out.extend(self.frames.take_applied());
         events::batch(&out)
@@ -422,7 +455,7 @@ impl Engine {
                 self.bad_logged = true;
                 let what = match drained {
                     Err(e) => e.to_string(),
-                    Ok(()) => "a camera record out of range".to_owned(),
+                    Ok(()) => "a record out of range".to_owned(),
                 };
                 web_sys::console::error_1(&format!("pulsus engine: {what}").into());
             }
@@ -469,9 +502,18 @@ impl Engine {
             if self.failed.contains(&id) || !self.gpus.contains_key(&id) {
                 continue;
             }
-            let Some((list, a11y)) = self.frames.build(id) else {
+            #[cfg(feature = "probe")]
+            if self.freeze.get(&id).is_some_and(|z| z.1) {
+                // Held: drawn again once unfrozen.
+                self.dirty.insert(id);
+                continue;
+            }
+            let Some((list, a11y, hover)) = self.frames.build(id) else {
                 continue;
             };
+            if let Some(h) = hover {
+                out.push(h);
+            }
             if let Some(j) = a11y {
                 out.push(events::a11y(id, &j));
             }
@@ -499,6 +541,12 @@ impl Engine {
         out.append(&mut self.queued);
         let end_ms = now_ms + (now() - t0).max(0.0);
         for (id, p) in done {
+            #[cfg(feature = "probe")]
+            if let Some(z) = self.freeze.get_mut(&id)
+                && dash_protocol::input::seq_ge(p.seq, z.0)
+            {
+                z.1 = true;
+            }
             // What the presentation shows, never 0 (ADR-0019, D-DRAWN).
             out.extend(self.frames.complete(id, &p, now_ms, end_ms));
         }

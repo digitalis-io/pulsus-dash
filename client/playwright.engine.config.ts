@@ -37,8 +37,9 @@ export default defineConfig({
     'csp-violations.spec.ts',
     'engine-shim-fuzz.spec.ts',
     'engine-camera.spec.ts',
+    'engine-hover.spec.ts',
   ],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],
@@ -73,10 +74,11 @@ export default defineConfig({
         launchOptions: { args: [...SWIFTSHADER_ARGS] },
       },
     },
-    // The probe build (plan #68 C2a1 §3.5): `e2e:shim-fuzz` only, on the gated tier.
+    // The probe build (plan #68 C2a1 §3.5): `e2e:shim-fuzz` and `e2e:engine-hover` H1b, on the
+    // gated tier.
     {
       name: 'probe',
-      testMatch: 'engine-shim-fuzz.spec.ts',
+      testMatch: ['engine-shim-fuzz.spec.ts', 'engine-hover.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         viewport,

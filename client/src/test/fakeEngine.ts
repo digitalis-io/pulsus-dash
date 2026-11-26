@@ -60,6 +60,8 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
         setSelection: record('setSelection'),
         resize: record('resize'),
         setCamera: record('setCamera'),
+        setOverlay: record('setOverlay'),
+        select: record('select'),
         stage: () => null,
         onStage: () => () => undefined,
         on(e, cb) {

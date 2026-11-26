@@ -2,8 +2,9 @@
 import { seriesName } from '../../data/frames';
 import { formatValue } from '../../i18n/format';
 import { t } from '../../i18n/t';
-import type { HoverRow } from '../api';
-import type { PickModel } from './draw';
+import type { HoverEvent, HoverRow } from '../api';
+import type { Span } from './camera';
+import type { LayerModel, PickModel } from './draw';
 import { seriesColourIndex } from './palette';
 
 /** The index of the timestamp nearest `tMs` (binary search; ties → lower index); −1 if empty. */
@@ -109,4 +110,32 @@ export function hoverRows(
       break;
   }
   return { tMs, rows };
+}
+
+/** Stub (plan #68 C2b): the hover of a layer model at a key index or pointer. */
+/**
+ * The hover of a drawn layer (plan #68 C2b: moved from `Canvas2DFrame`, unchanged; the source of
+ * `engine/fixtures/hover.json`, which the engine's `dash-scene::hover` port must reproduce): the
+ * keyboard crosshair at reference index `keyIndex` (y = the plot's top), else the pointer's
+ * nearest sample (line) or bucket (bars, heatmap); null without a pick model or a hover.
+ */
+export function hoverAt(
+  m: LayerModel,
+  v: Span,
+  keyIndex: number | null,
+  p: { readonly x: number; readonly y: number } | null,
+): HoverEvent | null {
+  if (m.pick === null) return null;
+  const { plot } = m.summary;
+  const xOf = (t: number): number => plot.x + ((t - v.lo) / (v.hi - v.lo)) * plot.width;
+  if (keyIndex !== null) {
+    const { tMs, rows } = hoverRows(m.pick, keyIndex, 'keyboard', plot.y);
+    return { source: 'keyboard', tMs, xCss: xOf(tMs), yCss: plot.y, rows };
+  }
+  if (p === null) return null;
+  const t = v.lo + ((p.x - plot.x) / plot.width) * (v.hi - v.lo);
+  const i = m.pick.kind === 'line' ? nearestIndex(m.pick.ref, t) : bucketIndex(m.pick.ref, t);
+  if (i < 0) return null;
+  const { tMs, rows } = hoverRows(m.pick, i, 'pointer', p.y);
+  return { source: 'pointer', tMs, xCss: xOf(tMs), yCss: p.y, rows };
 }

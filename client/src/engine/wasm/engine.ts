@@ -28,6 +28,7 @@ import { WasmFrame, type Port } from './frame';
 import { fetchEngineWasm } from './integrity';
 import {
   CB_BYTES,
+  OFF_INPUT_BAD,
   OFF_INPUT_HEAD,
   OFF_INPUT_IDLE,
   OFF_INPUT_OVERFLOW,
@@ -67,6 +68,11 @@ export interface ProbeHost {
   overflow(): number;
   idle(): boolean;
   inputLog(): Promise<InputRec[]>;
+  /** `INPUT_BAD`: records the worker rejected. */
+  bad(): number;
+  /** The probe build (plan #68 C2b §3.4): the worker holds frame `id` after seq `seq`, or not. */
+  freeze(id: number, seq: number): void;
+  unfreeze(id: number): void;
 }
 
 export interface Backend {
@@ -198,6 +204,13 @@ class EngineHost implements Backend {
       counters: () => ({ head: word(OFF_INPUT_HEAD), tail: word(OFF_INPUT_TAIL) }),
       overflow: () => word(OFF_INPUT_OVERFLOW),
       idle: () => word(OFF_INPUT_IDLE) === 1,
+      bad: () => word(OFF_INPUT_BAD),
+      freeze: (id, seq) => {
+        worker.postMessage({ t: 'probe-freeze', id, seq } satisfies MainToRender);
+      },
+      unfreeze: (id) => {
+        worker.postMessage({ t: 'probe-unfreeze', id } satisfies MainToRender);
+      },
       inputLog: () =>
         new Promise<InputRec[]>((resolve) => {
           this.probeWaits.push((json) => {

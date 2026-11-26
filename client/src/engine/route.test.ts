@@ -88,20 +88,27 @@ describe('RoutingEngine (D-ROUTE)', () => {
     const inner = b.inner.frames[0];
     if (inner === undefined) throw new Error('not bound');
     // The controller sends the window as the engine camera (plan #68 C2a2 §3.2): on the window,
-    // and again on every later layout input.
+    // and again on every later layout input; each layout input also clears the hover with an
+    // Overlay, flushed before the call (plan #68 C2b §4.1).
     const camera = {
       method: 'setCamera',
       args: [{ view: { lo: 1, hi: 2 }, value: null, band: null }],
     };
+    const none = { method: 'setOverlay', args: [{ hover: { kind: 'none' }, box: null }] };
     expect(inner.calls).toEqual([
+      none,
       { method: 'setSpec', args: [LINE_B] },
+      none,
       { method: 'setData', args: [D] },
       camera,
+      none,
       camera,
+      none,
       { method: 'setTheme', args: ['light'] },
       { method: 'setEvents', args: [[]] },
       { method: 'setSelection', args: [null] },
       camera,
+      none,
       { method: 'resize', args: [300, 150, 1] },
     ]);
     expect(transfers).toBe(1);
@@ -250,5 +257,41 @@ describe('RoutingEngine (D-ROUTE)', () => {
     inner.emit('pick', pick);
     expect(marks).toEqual([mark, null]);
     expect(picks).toEqual([pick]);
+  });
+
+  it('routing: unbinding a frame with a shown hover clears it once (plan #68 C2b §4.4)', async () => {
+    const b = backend();
+    const c2d = fakeEngine();
+    const e = new RoutingEngine(() => Promise.resolve(b), c2d);
+    const host = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    host.append(canvas);
+    const f = e.createFrame(canvas, INIT);
+    const hovers: FrameEvents['hover'][] = [];
+    f.on('hover', (h) => hovers.push(h));
+    f.setSpec(LINE_A);
+    f.setData(D);
+    f.resize(300, 150, 1);
+    await flush();
+    const inner = b.inner.frames[0];
+    if (inner === undefined) throw new Error('not bound');
+    const h: FrameEvents['hover'] = {
+      source: 'pointer',
+      tMs: 1,
+      xCss: 10,
+      yCss: 20,
+      rows: [{ key: '00000000000000a1', name: '{}', colourIndex: 1, value: 3 }],
+    };
+    inner.emit('hover', h);
+    expect(hovers).toEqual([h]);
+    // The kind swap: the engine frame goes, its hover with it.
+    f.setSpec(BARS);
+    expect(hovers).toEqual([h, null]);
+    f.setSpec(LINE_B);
+    await flush();
+    expect(hovers).toEqual([h, null]);
+    // No hover shown: nothing on unbind.
+    f.dispose();
+    expect(hovers).toEqual([h, null]);
   });
 });

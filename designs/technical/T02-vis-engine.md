@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-26 |
+| **Version** | 1.15-rc · 2026-11-26 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -209,7 +209,11 @@ Every pixel of every vis comes from one of these pipelines.
 Cross-cutting mark features, implemented once in L0/L1:
 - **Picking.** Every mark writes an instance ID to an offscreen ID buffer. Hover and click read one
   pixel, so hit-testing is O(1) at any count. On the WebGL2 tier the ID buffer uses R32UI where it is
-  supported, and RGBA8 packing otherwise. Axis bands own an ID range (§4.3).
+  supported, and RGBA8 packing otherwise. Axis bands own an ID range (§4.3). *(#68 C2b.)* 2D time
+  charts pick by inverting the time axis over the f64 originals of the presentation on screen, as
+  the interim renderer does ([ADR-0025](../adr/0025-chart-frame-selection.md)): a time crosshair
+  snaps to a sample and does not hit-test a pixel. The ID buffer is for marks without a time
+  axis.
 - **Clipping and scissoring** per viewport and per stacked lane.
 - **Transitions.** Tweening between two instance buffers for the 250 ms morphs and the 150 ms data
   crossfade, done on the GPU by interpolating attributes.
@@ -522,7 +526,11 @@ selection, and every viewport highlights the selected keys.
 
 **Tooltips.** On a hover record, the controller picks the instance, reads the f64 originals from the
 arena, formats value, labels and Δ vs the Context baseline, and emits a `TooltipAnchor` on the
-core → ui ring in the same frame. The shell renders it on its next animation frame.
+core → ui ring in the same frame. The shell renders it on its next animation frame. *(#68 C2b.)*
+Until the core → ui ring, the render worker's `hover` event (time, crosshair x and the rows: key,
+name, colour and value, [T03 §4.2](T03-browser-runtime.md#42-worker-topology)) is the
+`TooltipAnchor`; the application formats it and Δ waits for baselines
+([ADR-0012](../adr/0012-derived-state-in-postgres.md)).
 
 **Time Ribbon.** In Space scenes only (IA-028), a reserved GPU viewport at the bottom of the canvas: an M3 anomaly-density strip and
 M9 event glyphs across a zoomable long range, with the active window as a brush. Dragging an edge
@@ -837,3 +845,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.12-rc | 2026-11-24 | #150 ([T21](T21-time-and-distribution-panels.md)): §0 adds the "Interim kinds" row (the T21 2D kinds join the interim renderer as their issues land; 3D forms are engine-only, T21-001) |
 | 1.13-rc | 2026-11-25 | #68 Part B: dependency row "Columnar data" is `dash-wire`'s own Arrow IPC reader; no arrow-rs |
 | 1.14-rc | 2026-11-26 | #68 Part C2a2 ([ADR-0030](../adr/0030-engine-camera-controller-on-main.md)): §4.6 Input mapping: 2D charts use the main-thread camera controller; the L4 ring controller comes with #94 |
+| 1.15-rc | 2026-11-26 | #68 Part C2b: §4.2 Picking: 2D time charts pick by inverting the time axis over the f64 originals of the presentation on screen (ADR-0025); the ID buffer is for marks without a time axis. §4.6 Tooltips: until the core → ui ring, the `hover` event is the `TooltipAnchor` |

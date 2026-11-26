@@ -14,6 +14,9 @@
 //! whose total is not known yet is drawn within the current capacity while the status header is
 //! read back with `map_async` (`defer.rs`, [`Renderer::poll`]). On T2 no compute pipeline and no
 //! storage or indirect buffer exist.
+//!
+//! The overlay (plan #68 C2b): a `MarkItem::Overlay` is drawn after every line and guide of the
+//! list, in its own pass (`crate::overlay`), never scissored.
 
 use dash_gpu::{FrameTarget, GpuContext, Tier};
 use dash_scales::decimate::{
@@ -28,6 +31,7 @@ use super::defer::{Readback, TotalKey};
 use super::pipeline::{Pipelines, pipelines};
 use super::t1::Compute;
 use crate::desc::{DrawList, DrawnEvent, MarkItem};
+use crate::overlay::Overlay;
 
 /// The L2 staging slab: 16 MiB of encoded values.
 pub(super) const STAGING_WORDS: usize = (16 << 20) / 4;
@@ -255,6 +259,8 @@ pub struct Renderer {
     pub(super) read_failures: u32,
     /// The decimated total of the last line item (guides excluded).
     pub(super) total: Option<u64>,
+    /// The overlay pipeline (plan #68 C2b).
+    overlay: Overlay,
 }
 
 /// The fields of a `MarkItem::Line`.
@@ -300,7 +306,7 @@ impl<'a> LineRef<'a> {
                 width_css: *width_css,
                 far: *far,
             }),
-            MarkItem::Guides { .. } => None,
+            MarkItem::Guides { .. } | MarkItem::Overlay { .. } => None,
         }
     }
 
@@ -364,6 +370,7 @@ impl Renderer {
             format,
             opts,
             p: pipelines(ctx, format),
+            overlay: Overlay::new(ctx, format),
             view_buf,
             compute,
             instances,
@@ -393,7 +400,7 @@ impl Renderer {
                 MarkItem::Line {
                     chunk, encoding, ..
                 } => chunk.id == r.chunk && *encoding == r.enc,
-                MarkItem::Guides { .. } => false,
+                MarkItem::Guides { .. } | MarkItem::Overlay { .. } => false,
             })
         });
     }
@@ -489,6 +496,16 @@ impl Renderer {
             self.write_view(ctx, f, guides_plot, (0.0, 0.0), 0.0);
             complete &= self.draw_list(ctx, f, &guides);
         }
+        // The overlay last, over everything, unclipped (plan #68 C2b §3.2).
+        for item in &f.list.items {
+            if let MarkItem::Overlay { shapes } = item
+                && !shapes.is_empty()
+            {
+                let load = Self::load_op(f);
+                self.overlay
+                    .draw(ctx, &f.view, f.size, f.list.dpr, load, shapes);
+            }
+        }
         if f.first {
             let mut enc = ctx.device.create_command_encoder(&Default::default());
             drop(Self::begin_pass(&mut enc, f));
@@ -521,7 +538,8 @@ impl Renderer {
             .write_buffer(&self.view_buf, 0, bytemuck::bytes_of(&v));
     }
 
-    fn begin_pass<'e>(enc: &'e mut wgpu::CommandEncoder, f: &mut Frame) -> wgpu::RenderPass<'e> {
+    /// The next pass's load: the clear for the frame's first pass, then `Load`.
+    fn load_op(f: &mut Frame) -> wgpu::LoadOp<wgpu::Color> {
         let c = f.list.clear.to_f32().map(f64::from);
         let load = if f.first {
             wgpu::LoadOp::Clear(wgpu::Color {
@@ -534,6 +552,11 @@ impl Renderer {
             wgpu::LoadOp::Load
         };
         f.first = false;
+        load
+    }
+
+    fn begin_pass<'e>(enc: &'e mut wgpu::CommandEncoder, f: &mut Frame) -> wgpu::RenderPass<'e> {
+        let load = Self::load_op(f);
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("line"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
