@@ -137,6 +137,16 @@ fn ring_rollover() {
     assert_eq!(g.tail(), 0x40);
 }
 
+/// Numbers as f64 (JSON writes a whole f64 as an integer).
+fn norm(v: &Value) -> Value {
+    match v {
+        Value::Number(n) => serde_json::json!(n.as_f64()),
+        Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
+        Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), norm(v))).collect()),
+        other => other.clone(),
+    }
+}
+
 fn hex(s: &str) -> Vec<u8> {
     (0..s.len() / 2)
         .filter_map(|i| s.get(2 * i..2 * i + 2))
@@ -167,7 +177,8 @@ fn ring_fixture() {
     assert_eq!(drain(&b, &mut out), Ok(()));
     let want = img["records"].as_array().cloned().unwrap_or_default();
     assert_eq!(want.len(), 40);
-    let got: Vec<Value> = out.iter().map(log_json).collect();
+    let got: Vec<Value> = out.iter().map(|d| norm(&log_json(d))).collect();
+    let want: Vec<Value> = want.iter().map(norm).collect();
     assert_eq!(got, want);
     assert_eq!(b.tail(), head);
     // The image has the gap: its first two records leave 24 bytes before the end.

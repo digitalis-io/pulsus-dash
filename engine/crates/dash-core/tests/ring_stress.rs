@@ -28,7 +28,7 @@ fn rng(seed: u32) -> impl FnMut() -> f64 {
 }
 
 fn record(i: u32) -> Rec {
-    if i % 3 == 0 {
+    if i.is_multiple_of(3) {
         Rec::Resize {
             frame: i % 7 + 1,
             css: (i as f32, 1.0),
