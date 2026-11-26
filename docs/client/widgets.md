@@ -11,8 +11,8 @@ user's view is [Boards](../user/boards.md#widgets).
 **Coming later.** This version reads, shows, moves, duplicates, removes and saves widgets, but
 draws no kind: each shows "This widget isn't available in this version yet." #198 Part 2a adds
 the sanitiser's URL classifier, iframe finder and import conversion
-([below](#sanitiser-modules-part-2a)), which no page uses yet; the Markdown renderer comes with
-Part 2b; the Text view, its editor, adding a widget and the gallery with #198 Part 3; the Clock view with A2; the Board list view, editor and
+([below](#sanitiser-modules-part-2a)) and Part 2b the Markdown renderer
+([below](#markdown-renderer-part-2b)), which no page uses yet; the Text view, its editor, adding a widget and the gallery with #198 Part 3; the Clock view with A2; the Board list view, editor and
 states with #216 Part 2. Until then only boards written through the API have widgets.
 
 | Module | Role |
@@ -288,6 +288,186 @@ builds React elements from the parsed tree and has no HTML string sink (T24-004)
 exception in the tree is a reasoned disable in `src/test/labelInName.test.ts`, which parses static
 markup in jsdom.
 
+## Markdown renderer (Part 2b)
+
+`src/security/sanitise/markdown.tsx` is the one Markdown renderer (T24-004). Text widgets (Part 3),
+table cells, feeds, tooltips and AI output use it. No page imports it yet.
+
+```ts
+renderMarkdown(src, { vars, entity }, { policy, appOrigin, headingOffset? }): { node, removals }
+renderCode(src, language)           // <pre><code data-lang={language}>{src}</code></pre>, verbatim
+logRemovals(panelId, removals)      // one console.debug({panelId, removals}) per distinct non-empty result
+removalMessage(removal)             // the editor's line for one removal
+sourceLines(src, start, end)        // the source lines start..end, terminators kept
+MAX_DEPTH = 32
+```
+
+It parses `src` with `commonmark`'s `Parser` and walks the tree into React elements. It has no HTML
+string, no Trusted Types policy, and makes no network or DOM call. React escapes every text and
+attribute. `renderMarkdown` is pure and never throws. It is memoised in an LRU of 32 entries, keyed
+on the source, the entity, the policy, the origin, the heading offset and the sorted variables.
+
+### Nodes
+
+| Node | Output |
+|---|---|
+| paragraph | `<p>`; in a tight list item, its inlines only |
+| heading n | `<h{min(n + headingOffset, 6)}>`; `headingOffset` defaults to 3, so `#` is `<h4>` |
+| block quote, list item, thematic break | `<blockquote>`, `<li>`, `<hr>` |
+| list | `<ul>`; `<ol>`, with `start = min(start, 999999)` only when it is not 1 |
+| code block | `<pre><code>`, with `data-lang` = the info string's first word if it matches `^[a-z0-9-]{1,20}$`; the literal is not interpolated |
+| inline code | `<code>`, not interpolated |
+| text | the interpolated text |
+| soft break, hard break | a space, `<br>` |
+| emphasis, strong | `<em>`, `<strong>` |
+| link | below |
+| image | below |
+| HTML block, inline HTML | nothing, plus a removal |
+| anything else | nothing, plus `html` |
+
+No title or source-position attribute is copied.
+
+### Links, images and policies
+
+Every destination is interpolated first, then classified with `classifyUrl`
+([above](#url-classes-urlts-t24-005-t18-011)).
+
+| Destination | `board` | `ai` |
+|---|---|---|
+| link, `local` | `<a href target="_blank" rel="noopener noreferrer nofollow">`, the link text, the `square-arrow-out-up-right` glyph and a hidden "(opens in a new tab)" | the same |
+| link, `external` | the same | the link text and ` (‹host›)`, no anchor, no removal |
+| link, `mailto` | the same | the link text and ` (‹address›)` (the href after `mailto:`, up to `?`) |
+| link, `rejected` | the link text, plus `linkScheme` | the same |
+| image, `local` | `<img src alt loading="lazy">` | the alt text, plus `image` |
+| image, `local` whose decoded path is `/api` or `/auth`, or under them | a new-tab link labelled with the alt text (or the host), plus `image` | the alt text, plus `image` |
+| image, `external` | the same new-tab link, plus `image`; inside a kept link the alt text instead | the alt text, plus `image` |
+| image, anything else | the alt text, plus `image` | the same |
+
+The `ai` policy never creates an `<img>` or any other element that loads on its own (T24-018). No
+external image is loaded until the image proxy ships (T18-014 interim). A `/api` or `/auth` image
+counts as external because the server routes on the decoded path. The path is percent-decoded at
+the byte level (each `%XX` becomes its byte) for up to three rounds, then compared with `/api`,
+`/auth`, `/api/…` and `/auth/…` (ASCII letters in any case). A path that still changes after three
+rounds, or whose bytes are not valid UTF-8, counts as a server route too, so `/%61%70%69%2F%FF`,
+`/%41PI/%C0`, `/%2561pi/x` and `/auth%2F%FE` are links, while `/apix/y`, `/ap%69.svg` and
+`/l%C3%A9.svg` stay images. An image's alt is the text of its
+children: links, emphasis and code inside it give their text, and a nested image gives its alt and
+records `image`.
+
+### Interpolation (T24-008)
+
+The source, every variable value and the entity first pass `toWellFormed`, so a lone surrogate
+becomes U+FFFD.
+
+| Where | Reference | Resolved | Unresolved |
+|---|---|---|---|
+| text | `$name` or `${name}` | the value, as text | kept literally, plus `unresolved` |
+| text | `$__name` (a macro) | kept literally, no removal | — |
+| text | `{{entity}}` | the entity | kept literally, plus `unresolved` |
+| destination | `$name`, `${name}` (commonmark has already encoded the braces as `%7B`, `%7D`), `{{entity}}` | `encodeURIComponent(value)`, then classified | kept literally, plus `unresolved` |
+
+A run of text siblings is interpolated as one string. A substituted value is never scanned again.
+Code is never interpolated. `{{entity}}` will be `useContextEntity()`; it is `null` for now.
+
+### Removals (T24-007)
+
+A removal is `{kind, line}`: `line` is the start line of the nearest block. It never holds text, a
+URL or a value. Removals come in document order.
+
+| Kind | When | `removalMessage` (en-GB) |
+|---|---|---|
+| `html` | an HTML block, or a leaf block's inline HTML (one for all of it), with no iframe | "Line ‹n›: HTML isn't shown." |
+| `iframe` | the same, when `findIframes` finds an iframe in the block's HTML, or in the leaf's inline HTML joined | "Embedded page not shown (line ‹n›): add a link." |
+| `linkScheme` | a rejected link | "Line ‹n›: a link with an unsupported address is shown as text." |
+| `image` | an image not shown as `<img>` | "Line ‹n›: an image isn't loaded." |
+| `unresolved` | each unresolved reference | "Line ‹n›: a variable has no value." |
+| `depth` | a block shown as source lines | "Line ‹n›: deeply nested content is shown as plain text." |
+
+`logRemovals` remembers a 64-bit digest of each panel's last result (16 characters, whatever the
+list's length) for at most 512 panels, the oldest evicted first. It logs only when a panel's result
+changes and is not empty. A panel that was evicted logs its unchanged result once more.
+
+### The walk and the depth limit
+
+The walk is post-order with an explicit stack, so deep input cannot overflow the call stack. Each
+frame holds its output list. A finished frame's output goes to its immediate parent: an element
+wraps it, while a rejected link, an `ai` non-local link or a tight-list paragraph splices it in.
+The root's output is returned as a fragment.
+
+Each node has a **cost**, the number of elements it creates:
+
+| Node | Cost |
+|---|---|
+| paragraph, heading, block quote, list, item, emphasis, strong, inline code, hard break, thematic break | 1 |
+| code block | 2 |
+| tight-list paragraph, rejected or `ai` non-local link, HTML | 0 |
+| kept link | 2 |
+| image | `<img>`: 1; a new-tab link: 2; alt text: 0 |
+
+A leaf block's inlines are pre-scanned, with an iterative post-order of the same stack kind, for the
+deepest chain of costs below it. A block at depth `d` with cost `c` and an inline chain `i` is
+**flat** when `d + c + i > MAX_DEPTH − 1`. A flat block is shown as
+`<span class="flat">` holding `sourceLines(src, start, end)`: the block's whole source lines,
+verbatim, terminators included, in one `white-space: pre-wrap` text node. It records one `depth`
+removal, and nothing inside it is visited, interpolated or counted. So elements reach depth 31 at
+most and a flat span depth 32: the DOM depth below the root is at most `MAX_DEPTH`. An HTML block
+renders nothing, so it is never flat itself.
+
+`sourceLines` clamps `start` and `end` to the lines of `src` (an `end` before `start` becomes
+`start`) and returns `''` for an empty source. Inline nodes are visited at most twice (pre-scan and
+render) and blocks once.
+
+`findIframes` parses only HTML that contains the letters `iframe` in some case: no iframe start tag
+is possible without them, so the result is the same.
+
+### The XSS corpus and the checker
+
+The corpus is generated from the parser, not written by hand:
+
+- `src/security/sanitise/xssCorpus.ts` lists the payload groups and templates. S is schemes, H raw
+  HTML, B breakouts, V variable and entity values, L image loading, N nested images and links, D
+  depth and U Unicode. Each payload × template is one case, with only reserved `.test` hosts.
+- `npm run gen:xss-corpus` (`scripts/gen-xss-corpus.ts`) parses every case with the pinned
+  commonmark. It writes `src/security/sanitise/__fixtures__/xss-corpus.json`, with each case's parse
+  record and its expected shape and removals under both policies.
+- The generator derives each expectation from the tree on its own: node types, destinations,
+  context (in an alt, in a kept link, flat by the costs above) and `findIframes` hits. It checks
+  URLs with the independent checker, never with `classifyUrl` or the renderer.
+- `gen-xss-corpus.ts --check` exits 1 when the committed file is stale; `unit:xss-corpus-current`
+  runs the same check.
+
+To add a payload: add it to its group in `xssCorpus.ts` and run `npm run gen:xss-corpus`. Read the
+new entries in the JSON (the expected `dom` and `removals`), then commit both files.
+
+`src/security/sanitise/urlCheck.ts` is the independent checker. It is used only by tests and
+imports neither `url.ts` nor `URL`.
+
+- **R**: strip ASCII whitespace and C0/C1 controls, turn `\` into `/`, and resolve the `.` and `..`
+  segments of a `/`-leading path (`%2e` forms included).
+- **D**: R, percent-decoded until stable (at most three rounds), lower-cased.
+
+`checkHref` returns `bad` for any scheme in D other than `http`, `https` or `mailto`, and `local`
+for an R that starts with one `/`. It returns `external` for `http(s)://` with a non-empty authority
+without `@`, and `mailto` for `mailto:`. `checkImgSrc` requires `local`, and then decodes R's path
+at the byte level on its own (its own UTF-8 encoder and validator, up to three rounds): a path
+outside `/api` and `/auth` that settles within three rounds and is valid UTF-8.
+
+`src/security/sanitise/testInvariants.ts` holds `checkInvariants(tree, policy)`, which lists the
+violations of a rendered tree:
+
+- Tags must be in `p`, `h4`–`h6` (`h1`–`h6` with heading offset 0), `blockquote`, `ul`, `ol`, `li`,
+  `hr`, `pre`, `code`, `br`, `em`, `strong`, `a`, `img` and `span`.
+- Attributes are allowed per element: `a` `href`, `target`, `rel`; `img` `src`, `alt`, `loading`;
+  `ol` `start`; `code` `data-lang`; `span` `class`, `aria-hidden`; no other element has any. So
+  there is no `on*`, `style` or `srcdoc` anywhere, and no `href` on an `img` or `src` on an `a`.
+- Every `a` has `target=_blank`, the three `rel` values and a `checkHref` other than `bad`; under
+  `ai`, only `local`.
+- `img` appears only under `board` and passes `checkImgSrc`.
+- `span` appears only as the glyph, the hidden text, or a flat span holding one text node.
+- The depth is at most 32, and every text is well-formed UTF-16.
+
+`shapeOf(tree)` gives the corpus's shape form.
+
 ## Tests
 
 | Gate | File |
@@ -309,6 +489,11 @@ markup in jsdom.
 | `unit:import-text-iframe` | `src/security/sanitise/importText.test.ts` with `api/fixtures/import/text-iframe.json`: f1, f3–f10 (T24 §10), f11 (f1 with CRLF and CR line ends), f12 (a list item and a block quote, each followed by a paragraph); exact `inserted` and notes, the inverse, the re-parsed link destinations |
 | `unit:import-size-error` | same: a 65 500-byte panel over the limit; the error and messages hold no content |
 | `unit:security-lint` | `scripts/security-plugin.test.ts`: each rule case, the allowed cases, and the full config applying both rules |
+| `unit:markdown-links`, `-nodes`, `-depth`, `-root`, `-walk`, `-pathological`, `-flat-lines`, `-inline-depth`, `-iframe`, `-images`, `-interpolate`, `-surrogates`, `unit:removal-redaction` | `src/security/sanitise/markdown.test.tsx`: the T24 §10 inputs and one exact DOM per node row; the depth pairs at the limit and one past it; flat spans holding the whole source lines (CR, CRLF, tabs, astral and lone surrogates); the walk's splicing and removal order; deep, long and unbalanced input in under 2 s with depth ≤ 32; images under both policies; interpolation and surrogates; removals, messages and the log without content |
+| `unit:markdown-xss-corpus` | `src/security/sanitise/markdown.corpus.test.tsx`: every corpus case under both policies, rendered with `createRoot` in jsdom: its shape and removals equal the generated ones, it passes `checkInvariants`, and `fetch`, `XMLHttpRequest.prototype.open` and `sendBeacon` are never called; fixtures that `checkInvariants` must fail (`ai` external and mailto anchors among them) |
+| `unit:xss-corpus-current` | `scripts/gen-xss-corpus.test.ts`: the committed corpus equals a fresh generation; one changed expectation gives exit 1; the CLI's `--check` exits 0 |
+| `fuzz:markdown-nodes` | `src/security/sanitise/markdown.fuzz.test.ts`: 10 000 seeded inputs (mulberry32, seed 20261125) of 1–40 tokens, through `renderToStaticMarkup` and `parse5.parseFragment`, under both policies, then the import inverse, the imported result's invariants and its UTF-8 size against an independent calculation from the T24 §5.4 steps (a `sizeLimit` only above 65 536 bytes; f6 checked on both sides of the limit) |
+| `bench:markdown-render` (report-only) | `src/security/sanitise/markdown.bench.test.ts`: 50 distinct 64 KiB inputs, every lookup a memo miss; prints the uncached p95 against the 16 ms budget. Under vitest it measures React's development build, which creates elements several times slower than production |
 
 ## Designs
 
@@ -317,12 +502,17 @@ markup in jsdom.
   T24-028 (list widgets, the board list's sources, rows, ranking, snapshot and meter, keys, table,
   CSV, facts and import), T24-029 (old servers), §4.6 and §5.5 to §5.7 (the board-list version and
   modules), §11 (the parts); Part 2a: T24-005 (URL classification), T24-006 (`findIframes`),
-  T24-016 and §5.4 (import), §5.2.
-- [T18](../../designs/technical/T18-security.md): T18-011 (URL scheme allowlist).
-- [T08](../../designs/technical/T08-dom-component-kit.md): T08-009 (`ci:no-iframe`).
+  T24-016 and §5.4 (import), §5.2; Part 2b: T24-004 (one renderer), T24-005 (links), T24-006
+  (iframes), T24-007 (removals), T24-008 (interpolation), T24-009 (headings), T24-018 (policies),
+  §4.2 (the node table and the walk), §7 (the bench), §10 (the tests).
+- [T05](../../designs/technical/T05-testing-and-performance.md) §7.1: the gate catalogue rows.
+- [T18](../../designs/technical/T18-security.md): T18-011 (URL scheme allowlist); Part 2b: T18-005
+  (no HTML sink), T18-013, T18-014 (interim: no external image).
+- [T08](../../designs/technical/T08-dom-component-kit.md): T08-009 (`ci:no-iframe`), T08-011 (HTML
+  is dropped).
 - [ADR-0024](../../designs/adr/0024-markdown-runtime-dependencies.md) (the Markdown dependencies).
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-053
-  (staged), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066, VIZ-056 (import, unit level).
+  (staged), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066, VIZ-056 (import, unit level), VIZ-054 (the renderer, unit level).
 - [T11](../../designs/technical/T11-postgres-schema.md): T11-015, T11-016 (the v4 → v5 and v5 → v6
   identity upcasts).
 - [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),
