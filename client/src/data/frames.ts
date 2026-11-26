@@ -238,7 +238,14 @@ export function validateFrameData(spec: VisSpec, data: FrameData): FrameDataIssu
 
 /** ADR-0028: at most `MAX_CATEGORIES` rows, then the first key that is malformed or repeated. */
 function categoriesIssue(rows: readonly CategoryRow[]): FrameDataIssue | null {
-  void rows;
+  if (rows.length > MAX_CATEGORIES) {
+    return { code: 'cap', count: rows.length, max: MAX_CATEGORIES };
+  }
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (!KEY_PATTERN.test(r.key) || seen.has(r.key)) return { code: 'key', key: r.key };
+    seen.add(r.key);
+  }
   return null;
 }
 

@@ -13,6 +13,9 @@
  *
  * Event markers (ADR-0023, `setEvents`) are drawn with the layer, through the drawn view, so they
  * follow the preview; their labels' boxes go out in the `a11y` summary (`eventLabels`).
+ *
+ * A bar chart (ADR-0028) has no camera: its pointer events go to `BarInput` (`mark`, `pick`), and
+ * its wheel, gestures, double click, context menu and keys are ignored.
  */
 import type {
   ChartEngine,
@@ -30,6 +33,8 @@ import type {
   ValueRange,
   VisSpec,
 } from '../api';
+import { BarInput } from './barInput';
+import type { BarPick } from './barchart';
 import { fx, fy, panBy, timeLimits, toWindow, valueLimits, zoomAbout, type Span } from './camera';
 import { brushSnapUnit } from './columns';
 import type { Ctx2D } from './ctx';
@@ -201,6 +206,8 @@ class Canvas2DFrame implements ChartFrame {
   private lastHover: HoverEvent | null = null;
   private listening = false;
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
+  /** The bar chart's `mark` and `pick` (ADR-0028). */
+  private readonly bar = new BarInput(this.emit.bind(this));
   private readonly canvasHandlers: readonly Handler[];
   private readonly keyHandlers: readonly Handler[];
 
@@ -353,6 +360,7 @@ class Canvas2DFrame implements ChartFrame {
     if (this.gesture?.kind === 'wheel') this.r.clearTimer(this.gesture.timer);
     this.gesture = null;
     this.clearRightPress();
+    this.bar.dispose();
     this.setListening(false);
     this.listeners.clear();
     for (const c of [this.canvas, this.layer]) {
@@ -373,6 +381,7 @@ class Canvas2DFrame implements ChartFrame {
     this.layerDirty = true;
     this.pointer = null;
     this.keyIndex = null;
+    this.bar.clearMark();
     if (this.lastHover !== null) {
       this.lastHover = null;
       this.emit('hover', null);
@@ -466,7 +475,8 @@ class Canvas2DFrame implements ChartFrame {
     const ctx = this.layerCtx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const colours = themeColours(this.theme);
-    const v = this.view;
+    // A bar chart has no time axis: it draws without a window (ADR-0028).
+    const v = this.view ?? (this.spec?.kind === 'barchart' ? { lo: 0, hi: 0 } : null);
     if (this.spec === null || this.data === null || v === null) {
       ctx.fillStyle = colours.background;
       ctx.fillRect(0, 0, this.cssW, this.cssH);
@@ -639,7 +649,18 @@ class Canvas2DFrame implements ChartFrame {
     if (window !== null || value !== null) this.emit('commit', { window, value, gesture });
   }
 
+  /** The bar chart's pick model, or null when this frame is not a drawn bar chart. */
+  private barPick(): BarPick | null {
+    const pick = this.model?.pick;
+    return this.spec?.kind === 'barchart' && pick?.kind === 'barchart' ? pick : null;
+  }
+
+  private isBar(): boolean {
+    return this.spec?.kind === 'barchart';
+  }
+
   private onWheel(e: WheelEvent): void {
+    if (this.isBar()) return;
     const g = this.gesture;
     if (g?.kind === 'press') {
       // A wheel during a press is consumed and ignored.
@@ -671,7 +692,7 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onGestureStart(e: Event): void {
-    if (this.gesture?.kind === 'press') return;
+    if (this.isBar() || this.gesture?.kind === 'press') return;
     const p = this.local(e as unknown as MouseEvent);
     if (this.zoneAt(p) !== 'plot') return;
     e.preventDefault();
@@ -716,6 +737,10 @@ class Canvas2DFrame implements ChartFrame {
 
   private onPointerMove(e: PointerEvent): void {
     const p = this.local(e);
+    if (this.isBar()) {
+      this.bar.move(this.barPick(), e.pointerId, p);
+      return;
+    }
     const g = this.gesture;
     if (g?.kind === 'press') {
       if (e.pointerId === g.pointerId) this.pressMove(g, p);
@@ -766,6 +791,10 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onPointerLeave(): void {
+    if (this.isBar()) {
+      this.bar.clearMark();
+      return;
+    }
     this.pointer = null;
     this.setZone(null);
     if (this.gesture === null && this.bandHold !== null) {
@@ -777,6 +806,10 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onPointerDown(e: PointerEvent): void {
+    if (this.isBar()) {
+      this.bar.down(e, this.local(e));
+      return;
+    }
     this.clearRightPress();
     const s = this.stage();
     if (s === null) return;
@@ -822,6 +855,10 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onPointerUp(e: PointerEvent): void {
+    if (this.isBar()) {
+      this.bar.up(this.barPick(), e.pointerId, this.local(e));
+      return;
+    }
     if (this.rightPress) this.armRightClear();
     const g = this.gesture;
     if (g?.kind !== 'press' || e.pointerId !== g.pointerId) return;
@@ -861,6 +898,7 @@ class Canvas2DFrame implements ChartFrame {
 
   /** Escape, `pointercancel`, `lostpointercapture`: the press ends; view, value and band restored. */
   private cancelPress(): boolean {
+    this.bar.cancel();
     const g = this.gesture;
     if (g?.kind !== 'press') return false;
     this.gesture = null;
@@ -899,6 +937,7 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onDoubleClick(e: MouseEvent): void {
+    if (this.isBar()) return;
     const w = this.window;
     const zone = this.zoneAt(this.local(e));
     if (w === null) return;
@@ -917,7 +956,7 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (this.isBar() || e.ctrlKey || e.metaKey || e.altKey) return;
     const n = this.model?.pick?.ref.length ?? 0;
     const i = this.keyIndex;
     let next: number | null | undefined;

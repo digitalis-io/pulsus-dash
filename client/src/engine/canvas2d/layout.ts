@@ -29,10 +29,16 @@ export const GLYPH_COL = LABEL_HEIGHT + space['1'];
  * exactly as every engine lays it out: horizontal, the plot height; vertical, the plot width.
  */
 export function categoryExtent(spec: BarchartSpec, cssW: number, cssH: number): number {
-  void spec;
-  void cssW;
-  void cssH;
-  return 0;
+  // The drawn threshold lines (≤ 8, ADR-0022) take a glyph row (H) or column (V).
+  const t = (spec.thresholds?.length ?? 0) > 0;
+  const e =
+    spec.orientation === 'horizontal'
+      ? cssH - space['2'] - (t ? EVENT_BAND : 0) - BOTTOM
+      : cssW -
+        (BAR_VALUE_BAND + space['2'] + size['chart-tick']) -
+        space['2'] -
+        (t ? GLYPH_COL : 0);
+  return Math.max(0, e);
 }
 
 /**
