@@ -717,3 +717,20 @@ impl Frames {
         Some((list, changed, hover))
     }
 }
+
+/// The probe build (plan #68 C2d1 §3.2): F1c built in the worker, so `bench:frame-line-1e8` can
+/// hold 10⁸ points without a structured clone.
+#[cfg(feature = "probe")]
+impl Frames {
+    /// F1c: `pulsus_synth::reference::f1a(series, points)`'s grid (key_hash = s) as the frame's
+    /// data, through [`Frames::set_chunk`]; false (the frame unchanged) if an allocation fails.
+    pub fn synth_f1c(&mut self, id: u32, series: u32, points: u32) -> bool {
+        let _ = (id, series, points);
+        false
+    }
+
+    /// The frame's data (`probe_synth` checks the previous chunk was dropped).
+    pub fn chunk(&self, id: u32) -> Option<Arc<Chunk>> {
+        self.frames.get(&id)?.data.clone()
+    }
+}

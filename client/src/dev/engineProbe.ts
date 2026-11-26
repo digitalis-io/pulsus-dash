@@ -24,6 +24,7 @@
  * | `freeze(n, seq)`, `frozen(n)`, `unfreeze(n)` | the probe build: after its first completed presentation with seq ≥ `seq` the worker presents nothing for the frame; `frozen` resolves with that presentation's `drawn` and seq |
  * | `renew()` | the probe build: every frame's renderer and surface made again, the frames redrawn (plan #68 C2c2 S11, the same-tier restore after a device loss) |
  * | `stats().bad`, `stats().selects` | `INPUT_BAD`; Select records the ring took |
+ * | `synth(n, o)` | the probe build (plan #68 C2d1 §3.2): F1c of `o.series` × `o.points` built in the worker as the frame's data (`Frames::set_chunk`); resolves on the worker's acknowledgement `{ok, bytes}`, or `ok: false` after 120 s, a `fatal` or a worker restart |
  *
  * A frame's canvas is at (0, `o.top ?? 0`) CSS px.
  *
@@ -46,7 +47,7 @@ import type {
 } from '../engine/api';
 import { Canvas2DEngine } from '../engine/canvas2d/Canvas2DEngine';
 import { ControlledFrame } from '../engine/controlled';
-import type { Backend, EngineProbe, ProbeHost } from '../engine/wasm/engine';
+import type { Backend, EngineProbe, ProbeHost, SynthAck } from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
 import type { InputRec } from '../engine/wasm/ring';
 
@@ -136,6 +137,11 @@ export interface DashProbe {
   unfreeze(n: number): void;
   /** The probe build (plan #68 C2c2 S11): every frame's renderer made again, as after a loss. */
   renew(): void;
+  /**
+   * The probe build (plan #68 C2d1 §3.2): F1c (`series` × `points` on a grid, key hash = series
+   * index) as the frame's data; `ok: false` on a failed allocation, a timeout, a fatal or a restart.
+   */
+  synth(n: number, o: { readonly series: number; readonly points: number }): Promise<SynthAck>;
 }
 
 interface Entry {
@@ -162,6 +168,7 @@ const SETTLE_POLL_MS = 5;
 const FROZEN_TIMEOUT_MS = 10_000;
 const SETTLE_TIMEOUT_MS = 60_000;
 const KEEP_DRAWN = 100;
+const SYNTH_TIMEOUT_MS = 120_000;
 
 function data(series: readonly ProbeSeries[]): FrameData {
   return {
@@ -519,6 +526,21 @@ export function createProbe(o: {
     },
     renew() {
       o.host()?.renew();
+    },
+    synth(n, s) {
+      const id = entry(n).inner?.id;
+      const h = o.host();
+      const failed: SynthAck = { ok: false, bytes: 0 };
+      if (id === undefined || h === null) return Promise.resolve(failed);
+      return new Promise<SynthAck>((resolve) => {
+        const t = setTimeout(() => {
+          resolve(failed);
+        }, SYNTH_TIMEOUT_MS);
+        void h.synth(id, s.series, s.points).then((a) => {
+          clearTimeout(t);
+          resolve(a);
+        });
+      });
     },
     unfreeze(n) {
       const e = entry(n);

@@ -75,6 +75,17 @@ export interface ProbeHost {
   unfreeze(id: number): void;
   /** The probe build (plan #68 C2c2 S11): every renderer made again. */
   renew(): void;
+  /**
+   * The probe build (plan #68 C2d1 §3.2): F1c of `series` × `points` as frame `id`'s data; resolves
+   * on the worker's acknowledgement, or `ok: false` when the engine restarts or fails first.
+   */
+  synth(id: number, series: number, points: number): Promise<SynthAck>;
+}
+
+/** `probe-synth`'s acknowledgement: `bytes` of values held. */
+export interface SynthAck {
+  readonly ok: boolean;
+  readonly bytes: number;
 }
 
 export interface Backend {
@@ -130,6 +141,8 @@ class EngineHost implements Backend {
   private ring: InputRing | null = null;
   /** The probe build: `inputLog()` calls waiting for the worker's reply. */
   private readonly probeWaits: ((json: string) => void)[] = [];
+  /** The probe build: `synth()` calls waiting for their acknowledgement, in order. */
+  private readonly synthWaits: { id: number; resolve: (a: SynthAck) => void }[] = [];
   private readonly port: Port = {
     postMessage: (msg, transfer = []) => {
       if (this.state === 'ready' && this.render !== null)
@@ -160,6 +173,12 @@ class EngineHost implements Backend {
       ...(this.o.probe?.ringStart === undefined ? {} : { ringStart: this.o.probe.ringStart }),
       onProbeInput: (json) => {
         this.probeWaits.shift()?.(json);
+      },
+      onProbeSynth: (m) => {
+        const i = this.synthWaits.findIndex((w) => w.id === m.id);
+        if (i < 0) return;
+        const [w] = this.synthWaits.splice(i, 1);
+        w?.resolve({ ok: m.ok, bytes: m.bytes });
       },
     });
   }
@@ -219,6 +238,11 @@ class EngineHost implements Backend {
       unfreeze: (id) => {
         worker.postMessage({ t: 'probe-unfreeze', id } satisfies MainToRender);
       },
+      synth: (id, series, points) =>
+        new Promise<SynthAck>((resolve) => {
+          this.synthWaits.push({ id, resolve });
+          worker.postMessage({ t: 'probe-synth', id, series, points } satisfies MainToRender);
+        }),
       inputLog: () =>
         new Promise<InputRec[]>((resolve) => {
           this.probeWaits.push((json) => {
@@ -284,9 +308,15 @@ class EngineHost implements Backend {
     void this.restart();
   }
 
+  /** The probe build: a restart or a failure ends every pending `synth()` with `ok: false`. */
+  private failSynths(): void {
+    for (const w of this.synthWaits.splice(0)) w.resolve({ ok: false, bytes: 0 });
+  }
+
   private async restart(): Promise<void> {
     this.restarted = true;
     this.state = 'restarting';
+    this.failSynths();
     this.render?.terminate();
     this.ring?.close();
     this.ring = null;
@@ -313,6 +343,7 @@ class EngineHost implements Backend {
   private fatal(): void {
     if (this.state === 'dead') return;
     this.state = 'dead';
+    this.failSynths();
     this.queue.length = 0;
     this.render?.terminate();
     this.ring?.close();

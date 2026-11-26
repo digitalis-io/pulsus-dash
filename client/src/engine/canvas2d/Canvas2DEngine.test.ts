@@ -550,6 +550,35 @@ describe('unit:drawn and frame id (#90, ADR-0019)', () => {
     }
   });
 
+  it('present mark: one chart-present mark per drawn, with the frame id; none without (plan #68 C2d1 §1)', () => {
+    const mark = vi.spyOn(performance, 'mark');
+    try {
+      const presents = () => mark.mock.calls.filter((c) => c[0] === 'chart-present');
+      const h = harness(Canvas2DEngine, { id: 'f9' });
+      show(h, LINE_NONE, data, w, [800, 240, 1]);
+      expect(h.drawn).toHaveLength(1);
+      expect(presents().map((c) => c[1])).toEqual([{ detail: { frame: 'f9' } }]);
+      const plot = plotOf(h);
+      pointer(h.canvas, 'pointermove', plot.x + plot.width / 2, plot.y + 10);
+      h.flush();
+      expect(h.drawn).toHaveLength(2);
+      expect(presents()).toHaveLength(2);
+      // A zero size and a disposed frame draw nothing: no drawn, no mark.
+      h.frame.resize(0, 0, 1);
+      h.flush();
+      h.frame.dispose();
+      h.frame.setData(data);
+      h.flush();
+      expect(h.drawn).toHaveLength(2);
+      expect(presents()).toHaveLength(2);
+      const plain = harness(Canvas2DEngine);
+      show(plain, LINE_NONE, data, w);
+      expect(presents().at(-1)?.[1]).toEqual({ detail: { frame: null } });
+    } finally {
+      mark.mockRestore();
+    }
+  });
+
   it('unit:a kind change clears the canvas', () => {
     const h = harness(Canvas2DEngine, { id: 'f9' });
     show(h, LINE_NONE, data, w);

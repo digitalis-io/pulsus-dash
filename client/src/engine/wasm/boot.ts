@@ -39,6 +39,8 @@ export interface RenderOptions {
   readonly ringStart?: number;
   /** The probe build: the worker's `probe-input` reply. */
   readonly onProbeInput?: (json: string) => void;
+  /** The probe build (plan #68 C2d1 §3.2): the worker's `probe-synth` acknowledgement. */
+  readonly onProbeSynth?: (m: Extract<RenderToMain, { t: 'probe-synth' }>) => void;
 }
 
 export interface RenderHandle {
@@ -120,6 +122,9 @@ export function startRender(o: RenderOptions): RenderHandle {
         return;
       case 'probe-input':
         o.onProbeInput?.(m.json);
+        return;
+      case 'probe-synth':
+        o.onProbeSynth?.(m);
         return;
     }
   });

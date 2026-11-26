@@ -103,4 +103,42 @@ describe('ci:probe-absent (T03-024)', () => {
       }),
     ).toEqual([]);
   });
+  it('engine_probe_synth is a probe export too: a release tree fails, the probe build needs it (plan #68 C2d1)', () => {
+    const SYNTH = 'engine_probe_' + 'synth';
+    const INPUT = 'engine_probe_' + 'input';
+    const release = checkProbeAbsent(
+      dist({
+        ...CLEAN,
+        'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(SYNTH)]),
+      }),
+    );
+    expect(release.map((f) => [f.rule, f.file, f.subject])).toEqual([
+      ['probe-in-release', 'assets/dash-engine-b.wasm', SYNTH],
+    ]);
+    const sites = {
+      'assets/r.js': `x("${SENTINEL}:route")`,
+      'assets/b.js': `x("${SENTINEL}:boot")`,
+      'assets/w/x.js': `x("${SENTINEL}:worker")`,
+    };
+    // The probe build without the synth export misses it.
+    const noSynth = checkProbeAbsent(
+      dist({
+        ...CLEAN,
+        ...sites,
+        'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT)]),
+      }),
+      { expectFaults: true, expectProbe: true },
+    );
+    expect(noSynth.map((f) => [f.rule, f.subject])).toEqual([['probe-missing', SYNTH]]);
+    expect(
+      checkProbeAbsent(
+        dist({
+          ...CLEAN,
+          ...sites,
+          'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT + SYNTH)]),
+        }),
+        { expectFaults: true, expectProbe: true },
+      ),
+    ).toEqual([]);
+  });
 });

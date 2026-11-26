@@ -388,6 +388,16 @@ pub fn engine_probe_renew() {
     });
 }
 
+/// The probe build (plan #68 C2d1 §3.2): F1c (`series` × `points` on a grid) built in the worker
+/// as frame `id`'s data (`Frames::synth_f1c`); the bytes of values it holds, 0 when it failed (an
+/// allocation, an unknown frame), and then the frame is unchanged.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_synth(id: u32, series: u32, points: u32) -> u32 {
+    let _ = (id, series, points);
+    0
+}
+
 /// The device px of a Resize, at least 1 and at most the device's texture limit.
 fn device_px(px: u32, max: u32) -> u32 {
     px.clamp(1, max.max(1))
