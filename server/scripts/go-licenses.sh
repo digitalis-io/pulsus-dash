@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ci:go-licenses (T18-026, D3): every module linked into pulsus-dash must carry a licence on the
 # AGPL-3.0-compatible allowlist below; GPL-2.0-only, source-available licences and any unrecognised
-# licence fail. Writes build/THIRD_PARTY_NOTICES.txt from the saved licence and notice files.
+# licence fail. Writes build/THIRD_PARTY_NOTICES.txt from the saved licence and notice files, then
+# appends the "Data" section of the bundled geo datasets (tools/geo/build.py --notices).
 #
 # Usage:
 #   go-licenses.sh
@@ -77,4 +78,7 @@ if ! grep -q '^== ' "$NOTICES"; then
   echo "notices file is empty"
   exit 1
 fi
+
+# 6. The "Data" section: the bundled geo datasets (T24 §5.13).
+python3 -I "$ROOT/tools/geo/build.py" --notices >>"$NOTICES"
 echo "go-licenses: every module allowed; wrote build/THIRD_PARTY_NOTICES.txt"

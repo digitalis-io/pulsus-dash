@@ -78,6 +78,10 @@ export default defineConfig({
     manifest: true,
     modulePreload: { polyfill: false },
     rolldownOptions: {
+      // `geo-assets` (plan #231 §3.2): `src/vis/geo/urls.ts` imports the geo assets with `?url`, so
+      // the build content-hashes and emits them, and the signed manifest lists them, before any
+      // route imports the geo modules (T24-087).
+      input: { index: `${root}index.html`, 'geo-assets': `${root}src/vis/geo/urls.ts` },
       output: {
         chunkFileNames: (c) =>
           c.moduleIds.some((id) => EDITOR_MODULE.test(id))
