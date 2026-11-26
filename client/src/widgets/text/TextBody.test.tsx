@@ -19,26 +19,12 @@ import { installResizeObserver, resizeOf } from '../../test/fakeResizeObserver';
 const ctl = vi.hoisted(() => ({
   /** Loads of `./TextMarkdown` (its factory runs once per fresh registry). */
   loads: 0,
-  mode: 'ok' as 'ok' | 'pending' | 'reject',
+  mode: 'ok',
   /** Renders of `TextContent`. */
   contentRenders: 0,
   /** Calls of `renderMarkdown` and `renderCode`. */
   renders: 0,
 }));
-
-vi.mock('./TextMarkdown', async (importOriginal) => {
-  ctl.loads++;
-  if (ctl.mode === 'pending') await new Promise(() => undefined);
-  if (ctl.mode === 'reject') throw new Error('chunk failed');
-  const m = await importOriginal<typeof import('./TextMarkdown')>();
-  return {
-    ...m,
-    TextContent: (p: Parameters<typeof m.TextContent>[0]) => {
-      ctl.contentRenders++;
-      return m.TextContent(p);
-    },
-  };
-});
 
 vi.mock('../../security/sanitise/markdown', async (importOriginal) => {
   const m = await importOriginal<typeof import('../../security/sanitise/markdown')>();
@@ -55,9 +41,26 @@ vi.mock('../../security/sanitise/markdown', async (importOriginal) => {
   };
 });
 
+/** The lazy entry, counted; pending or rejecting as `ctl.mode` says. */
+async function textMarkdownMock(importOriginal: <T>() => Promise<T>) {
+  ctl.loads++;
+  if (ctl.mode === 'pending') await new Promise(() => undefined);
+  if (ctl.mode === 'reject') throw new Error('chunk failed');
+  const m = await importOriginal<typeof import('./TextMarkdown')>();
+  return {
+    ...m,
+    TextContent: (p: Parameters<typeof m.TextContent>[0]) => {
+      ctl.contentRenders++;
+      return m.TextContent(p);
+    },
+  };
+}
+
 /** `TextBody`, `TextEditorBody`, the run context and the renderer, from one fresh registry. */
 async function fresh(mode: 'ok' | 'pending' | 'reject' = 'ok') {
   vi.resetModules();
+  // Registered again for each registry, so the mode applies to this load.
+  vi.doMock('./TextMarkdown', textMarkdownMock);
   ctl.mode = mode;
   ctl.loads = 0;
   ctl.contentRenders = 0;
@@ -142,11 +145,16 @@ function code(content: string, language = 'promql'): WidgetPanelSpec {
 /** The T24 §10 removal-redaction input: a `javascript:` link holding a password and a token. */
 const SECRET = "[x](javascript:fetch('https://u:hunter2@e.test/?token=abc'))";
 
-/** Lets the lazy entry, the deferred values and their transition settle. */
+/**
+ * Lets the lazy entry, the deferred values and their transition settle: the first load of the
+ * Markdown packages can take a while on a busy runner (at most 5 s).
+ */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 500; i++) {
+    const loading = document.querySelector('[data-text-state="loading"]') !== null;
+    if (i >= 5 && (!loading || ctl.mode === 'pending')) return;
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, i < 5 ? 0 : 10));
     });
   }
 }
@@ -214,7 +222,7 @@ describe('unit:text-widget', () => {
       panelId: 'p-1',
       removals: [{ kind: 'linkScheme', line: 1 }],
     });
-    const shown = region('Runbook').textContent ?? '';
+    const shown = region('Runbook').textContent;
     for (const s of ['hunter2', 'token']) expect(shown).not.toContain(s);
   });
 
@@ -274,7 +282,7 @@ describe('unit:text-overflow', () => {
       configurable: true,
       get(this: HTMLElement) {
         if (!this.hasAttribute('data-text-body')) return 0;
-        const n = this.querySelector('[data-text-measure]')?.textContent?.length ?? 0;
+        const n = this.querySelector('[data-text-measure]')?.textContent.length ?? 0;
         return Math.max(box.h, n);
       },
     });
@@ -334,7 +342,7 @@ describe('unit:text-invalid', () => {
       typeof r.spec === 'object' &&
       Array.isArray(r.spec.panels) &&
       r.spec.panels.length === 1 &&
-      r.spec.panels[0]?.vis?.kind === 'text' &&
+      (r.spec.panels[0] as { vis?: { kind?: string } } | undefined)?.vis?.kind === 'text' &&
       r.fields.every((f) => f.pointer.startsWith('/panels/0/vis')),
   );
 

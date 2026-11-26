@@ -1,0 +1,94 @@
+/*
+ * The Text widget (plan #198 Part 3a §4.2; T24-009, T24-015, T24-017): the Compact metrics until
+ * VL-013 (Inter at the medium size, a 20 px line, 16 px padding; code in the mono face). The region
+ * scrolls its own content and takes a tab stop only while that overflows. No motion.
+ */
+.region {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-md);
+  line-height: var(--space-5);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.region:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(0px - var(--size-focus-ring));
+}
+
+.region pre,
+.region code {
+  font-family: var(--font-mono);
+}
+
+.region pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.region h4,
+.region h5,
+.region h6,
+.region p,
+.region ul,
+.region ol,
+.region blockquote {
+  margin: 0 0 var(--space-2);
+}
+
+.region h4,
+.region h5,
+.region h6 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.message {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* The editor's list of what the panel does not show (T24-007). */
+.removals {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.removalsTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.removalsList {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* The editor's preview (§4.3): a panel body's box, at the panel preview's height. */
+.preview {
+  display: grid;
+  flex: none;
+  height: calc(var(--size-board-panel-header) + var(--size-chart));
+  overflow: hidden;
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4);
+  align-content: start;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}

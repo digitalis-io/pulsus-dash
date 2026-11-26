@@ -1,7 +1,7 @@
 /**
  * The board toolbar (plan #61 Part B §4.4), under the page header and right-aligned. View: the
- * time since the last refresh, Share and Edit board. Edit: Add panel, Add section (Part C), Save
- * current time range, Discard, Save and Done.
+ * time since the last refresh, Share and Edit board. Edit: Add panel, Add widget (plan #198 Part 3a
+ * §4.4), Add section (Part C), Save current time range, Discard, Save and Done.
  */
 import { useEffect, useState } from 'react';
 import { formatHourMinute } from '../../i18n/format';
@@ -11,6 +11,8 @@ import { Checkbox } from '../../kit/Checkbox';
 import { cx } from '../../kit/cx';
 import { Icon } from '../../kit/Icon';
 import { useClock, useTimeContext } from '../../state/useTimeContext';
+import type { WidgetDef } from '../../widgets/registry';
+import { AddWidgetMenu } from './AddWidgetMenu';
 import styles from './Board.module.css';
 import { BoardShare } from './BoardShare';
 
@@ -55,6 +57,8 @@ export type BoardToolbarProps =
       dirty: boolean;
       savesTime: boolean;
       onAdd: () => void;
+      /** A widget kind from Add widget. */
+      onAddWidget: (def: WidgetDef) => void;
       onAddSection: () => void;
       onSaveTime: (on: boolean) => void;
       onDiscard: () => void;
@@ -81,6 +85,7 @@ export function BoardToolbar(props: BoardToolbarProps) {
         <Icon name="plus" />
         {t('board.addPanel')}
       </Button>
+      <AddWidgetMenu label={t('board.addWidget')} busy={busy} onAdd={props.onAddWidget} />
       <Button onPress={props.onAddSection} isDisabled={busy}>
         <Icon name="plus" />
         {t('board.addSection')}

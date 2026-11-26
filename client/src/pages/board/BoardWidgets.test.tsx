@@ -221,7 +221,8 @@ async function done(t: Board, d: HTMLElement): Promise<void> {
   });
 }
 
-const saveButton = (): HTMLElement => screen.getByRole('button', { name: 'Save' });
+/** The toolbar's Save: behind an open editor too (the board is `aria-hidden` then). */
+const saveButton = (): HTMLElement => screen.getByRole('button', { name: 'Save', hidden: true });
 
 describe('unit:widget-spec-roundtrip', () => {
   it('a content edit changes only that key; typing it back, Discard and Save keep the rest', async () => {

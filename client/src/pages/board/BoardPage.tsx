@@ -4,7 +4,8 @@
  * head's etag and the conflict dialog, and the guard against leaving with unsaved changes. The page
  * holds the loaded head and the draft in one reducer (`editorState.ts`); variables, filters and
  * View-mode section overrides live in the URL (`useBoardParams`). The board's event markers are
- * read once per window for every panel (`useBoardEvents`, plan #64 Part C §3.8).
+ * read once per window for every panel (`useBoardEvents`, plan #64 Part C §3.8). A widget with a
+ * registry def is added from Add widget and edited in the widget editor (plan #198 Part 3a §4.4).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,6 +13,7 @@ import {
   startTransition,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useReducer,
@@ -47,7 +49,8 @@ import type { LayoutOp } from '../../boards/layout';
 import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
 import { boardVariables } from '../../boards/variables';
-import { isDataPanel } from '../../widgets/spec';
+import { WidgetRegistryContext, type WidgetDef } from '../../widgets/registry';
+import { isDataPanel, isWidgetPanel } from '../../widgets/spec';
 import { t } from '../../i18n/t';
 import { InspectorHost } from '../../inspector/host';
 import type { InspectOrigin } from '../../inspector/types';
@@ -71,6 +74,7 @@ import { BoardSection } from './BoardSection';
 import { BoardToolbar } from './BoardToolbar';
 import { focusAfterEditor, PanelEditor } from './PanelEditor';
 import { PanelFrame, type PanelFrameProps } from './PanelFrame';
+import { WidgetEditor } from './WidgetEditor';
 
 // The grid chunk (react-grid-layout, ADR-0014 §8): one grid serves View and Edit mode, so the
 // panels stay mounted across the modes (#111). It is a lazy chunk of its own, requested when the
@@ -395,6 +399,30 @@ function BoardEditor({
   // The editor edits data panels only: a selected widget opens none (plan #198 Part 1 §4.2).
   const dialogPanel =
     edit && selected !== undefined && isDataPanel(selected.panel) ? selected.panel : null;
+  // A selected widget whose kind the registry has opens the widget editor (plan #198 Part 3a §4.4).
+  const registry = useContext(WidgetRegistryContext);
+  const selectedWidget =
+    edit && selected !== undefined && isWidgetPanel(selected.panel) ? selected.panel : null;
+  const widgetDef =
+    selectedWidget === null
+      ? undefined
+      : registry.defs.find((d) => d.kind === selectedWidget.vis.kind);
+  const dialogWidget = widgetDef === undefined ? null : selectedWidget;
+  // The head's vis of the panel in the widget editor: `textVis` keeps its representation.
+  const headPanel =
+    dialogWidget === null
+      ? undefined
+      : allPanels(s.head.spec).find((x) => x.panel.id === dialogWidget.id)?.panel;
+  const originalVis =
+    headPanel !== undefined && isWidgetPanel(headPanel) ? headPanel.vis : undefined;
+  const addWidget = (def: WidgetDef, grid?: GridRef): void => {
+    dispatch({
+      type: 'addWidget',
+      vis: def.newVis(),
+      size: def.size,
+      ...(grid === undefined ? {} : { grid }),
+    });
+  };
   if (dialogPanel === null) {
     if (editRun !== null) setEditRun(null);
   } else if (editRun?.id !== dialogPanel.id) {
@@ -533,6 +561,9 @@ function BoardEditor({
             onAdd={() => {
               dispatch({ type: 'addPanel' });
             }}
+            onAddWidget={(def) => {
+              addWidget(def);
+            }}
             onAddSection={() => {
               dispatch({ type: 'addSection' });
             }}
@@ -630,6 +661,9 @@ function BoardEditor({
                       onAddPanel={() => {
                         dispatch({ type: 'addPanel', grid: j });
                       }}
+                      onAddWidget={(def) => {
+                        addWidget(def, j);
+                      }}
                       onRemove={() => {
                         dispatch({ type: 'removeSection', id: sec.id });
                       }}
@@ -661,6 +695,27 @@ function BoardEditor({
             }}
             onRemove={() => {
               dispatch({ type: 'removePanel', id: selected.panel.id });
+            }}
+            onClose={() => {
+              dispatch({ type: 'select', id: null });
+            }}
+          />
+        )}
+        {dialogWidget !== null && widgetDef !== undefined && selected !== undefined && (
+          <WidgetEditor
+            key={dialogWidget.id}
+            panel={dialogWidget}
+            def={widgetDef}
+            pointer={panelPointer(selected.grid, selected.index)}
+            fields={s.save.status === 'invalid' ? s.save.fields : []}
+            readOnly={busy}
+            statusText={statusText}
+            original={originalVis}
+            onChange={(patch) => {
+              dispatch({ type: 'updateWidget', id: dialogWidget.id, patch });
+            }}
+            onRemove={() => {
+              dispatch({ type: 'removePanel', id: dialogWidget.id });
             }}
             onClose={() => {
               dispatch({ type: 'select', id: null });
