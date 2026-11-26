@@ -11,6 +11,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import type { DataRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LANGUAGES } from '../../editor/lang/index';
 import { EngineWrapper } from '../../test/boardTestKit';
 import { installResizeObserver } from '../../test/fakeResizeObserver';
 import { renderApp } from '../../test/renderApp';
@@ -143,13 +144,20 @@ let router: DataRouter | null = null;
 
 /**
  * Lets the panels' own follow-up renders (the grid's width, their data, their viewport state)
- * settle, so a busy runner does not count them (plan #198 Part 3a §4.5). The diagnostic found such
- * late renders with no page prop changed: on a loaded runner a panel rendered an earlier
- * navigation's location (React Router applies it in a transition) only after the 50 ms quiet
- * window, inside the measured step. So: until no panel has rendered for 200 ms, every panel has
- * rendered since the last navigation, the router is idle and no query is fetching; at most 5 s.
+ * settle, so a busy runner does not count them (plan #198 Part 3a §4.5). The diagnostic found the
+ * extra renders inside a measured step with no page prop changed and no navigation, clock tick or
+ * query change: the PromQL language import, which every panel holds as state
+ * (`useQueryLanguage`), resolved seconds late on a loaded runner. So: once the language has
+ * loaded, until no panel has rendered for 200 ms, every panel has rendered since the last
+ * navigation (a router update reaches them in a transition), the router is idle and no query is
+ * fetching; at most 5 s.
  */
 async function settle(): Promise<void> {
+  // The panels' query language arrives once, as state in every panel (`useQueryLanguage`): on a
+  // loaded runner its import can resolve seconds later, inside a measured step.
+  await act(async () => {
+    await LANGUAGES.promql();
+  });
   const start = performance.now();
   while (performance.now() - start < 5_000) {
     await act(async () => {
