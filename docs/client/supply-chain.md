@@ -273,26 +273,60 @@ build never holds it; the check proves it on every audited build rather than ass
   `__vite-browser-external` stand-in for a Node built-in, or `parse5-sax-parser`'s
   `dist/index.js` or `dist/dev-null-stream.js`. Exit 0 none, 1 findings, 2 a graph is missing (that
   build was not made).
+- Then (#198 Part 3a, ADR-0014 §8) it reads each build's `<outDir>/.vite/manifest.json` (missing:
+  exit 2) and applies the Markdown rules (`markdownInRoute`). `MARKDOWN_MODULES` are the ids under
+  `node_modules/` of `commonmark`, `parse5`, `parse5-sax-parser`, `entities` and `mdurl`, plus
+  `src/security/sanitise/markdown.tsx`, `findIframes.ts` and `src/widgets/text/TextMarkdown.tsx`.
+  The roots are `index.html` and `src/pages/board/BoardPage.tsx`; their static closure follows
+  manifest `imports` only, never `dynamicImports`. Every rule fails closed (exit 1):
+
+  | Rule | When |
+  |---|---|
+  | `markdown-in-route` | a chunk in a root's static closure holds a `MARKDOWN_MODULES` id (the finding names the chunk and the module) |
+  | `missing-route-root` | a root is absent from the manifest |
+  | `bad-manifest-import` | an `imports` key in a closure is absent from the manifest |
+  | `unmapped-chunk` | a closure chunk's file has no `modules.json` entry |
+  | `missing-markdown-entry` | `src/widgets/text/TextMarkdown.tsx` is absent, is not `isDynamicEntry`, or its chunk lacks `sanitise/markdown.tsx` |
 - `npm run origins` runs it on `dist` and `dist-http` after the origins check; `make engine-e2e`
   runs it on `dist-release-stub` and `dist-release-http` after their size checks.
 
-**Bundle.** No page imports the sanitiser yet, so `dist/` and `buildUrlAllowlist` are unchanged.
-`unit:sanitise-bundle` builds a probe (`scripts/__fixtures__/sanitise-probe/`) that lazily imports
-`classifyUrl`, `findIframes`, `convertImportedText` and, since #198 Part 2b, `renderMarkdown`, with
-this project's alias and React external: the lazy chunk holds the three packages, the renderer and
-no forbidden module, and must be at most **100 000** bytes brotli 11. Measured with vite 8.3.8 on
-2026-11-26: 97 077 with the renderer, which also brings in the i18n catalogue (it uses `t`; in the
-app the catalogue is already in the main bundle); 85 037 without it; a dependencies-only probe was
-83 975, and today's `BoardPage` chunk is 22 302 against the 120 000 lazy-chunk budget. A second
-probe that extends `node:stream`'s `Transform`, as `SAXParser` does, must give a `forbidden-module`
-finding, which proves Vite's browser-external id is caught. Part 3 loads the Markdown code as its
-own dynamic chunk, outside `BoardPage`.
-When a page first imports parse5, its namespace and DOCTYPE identifier strings join
-`buildUrlAllowlist`.
+**Bundle.** Since #198 Part 3a the Text widget loads the Markdown code through its one dynamic
+entry, `src/widgets/text/TextMarkdown.tsx`, which `bundle-budgets.json` lists in
+`required.lazyModules`. Measured with vite 8.3.8 on 2026-11-26 (brotli 11):
+
+| Build | `BoardPage` chunk | `TextMarkdown` chunk |
+|---|---|---|
+| stub (`dist`) | 24 263 | 87 282 |
+| http (`dist-http`) | 24 088 | 87 281 |
+
+Both are under the 120 000-byte lazy-chunk budget, and the `BoardPage` chunk holds no Markdown
+module (`markdown-in-route`). `unit:sanitise-bundle` still builds its probe
+(`scripts/__fixtures__/sanitise-probe/`): a lazy import of `classifyUrl`, `findIframes`,
+`convertImportedText` and `renderMarkdown` with this project's alias and React external, at most
+**100 000** bytes (97 077 with the renderer, which also brings in the i18n catalogue; in the app
+the catalogue is already in the main bundle). A second probe that extends `node:stream`'s
+`Transform`, as `SAXParser` does, must give a `forbidden-module` finding, which proves Vite's
+browser-external id is caught.
+
+**Allowlisted strings.** The Markdown chunk carries strings that the origins check reads as URL
+tokens; none is a resource position. `buildUrlAllowlist` lists exactly those that
+`check-build-origins` reports in `dist` and `dist-http`:
+
+- from parse5 (reason "parse5 namespace/DOCTYPE string (Markdown chunk)"): the XHTML and XMLNS
+  namespace URIs (`http://www.w3.org/1999/xhtml`, `http://www.w3.org/2000/xmlns/`), the quirks-mode
+  system id (`…/ibmxhtml1-transitional.dtd`), and the 20 `//…` tokens that the minified DOCTYPE
+  public-id prefixes of `parse5/dist/common/doctype.js` give (for example `//,-//ietf//dtd`). The
+  SVG, XLink, MathML and XML namespaces were already listed for react-dom;
+- from commonmark (reason "commonmark XML renderer namespace string (Markdown chunk)"):
+  `http://commonmark.org/xml/1.0`. `XmlRenderer` is never called, but the package has no
+  `sideEffects` flag, so its module stays in the chunk.
+
+An update of either package can change the tokens: the origins check then fails, and the entries
+change with the update.
 
 | Gate | File |
 |---|---|
-| `unit:bundle-modules` | `config/moduleGraph.test.ts`: a probe whose worker extends `node:stream` gives a graph with the worker chunk and a finding in it (`scripts/__fixtures__/worker-probe/`); `scripts/check-bundle-modules.test.ts` with `scripts/__fixtures__/bundle-modules/` (a worker chunk with a browser-external id, a clean graph, `minimist`, `node:stream`, a NUL-prefixed `node:` id, the browser-external id with and without NUL, `SAXParser`'s entry; a missing graph) |
+| `unit:bundle-modules` | `config/moduleGraph.test.ts`: a probe whose worker extends `node:stream` gives a graph with the worker chunk and a finding in it (`scripts/__fixtures__/worker-probe/`); `scripts/check-bundle-modules.test.ts` with `scripts/__fixtures__/bundle-modules/` (a worker chunk with a browser-external id, a clean graph, `minimist`, `node:stream`, a NUL-prefixed `node:` id, the browser-external id with and without NUL, `SAXParser`'s entry; a missing graph). Part 3a: each fixture has a `.vite/manifest.json`; `markdown-lazy` (Markdown reached only through `dynamicImports`) passes, and `markdown-in-route`, `no-route-root`, `bad-import`, `unmapped-chunk`, `no-markdown-entry`, `markdown-entry-static` and `markdown-entry-empty` each give exactly their rule; a build without a manifest exits 2 |
 | `unit:sanitise-bundle` | `scripts/sanitise-bundle.test.ts` (prints the measured size) |
 
 ## Advisories and signatures

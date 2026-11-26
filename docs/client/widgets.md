@@ -8,19 +8,25 @@ union, the option defaults, the widget frame and the validation. The spec itself
 and error, is on [the boards API page](../server/boards-api.md#widgets-text-and-clock-v5); the
 user's view is [Boards](../user/boards.md#widgets).
 
-**Coming later.** This version reads, shows, moves, duplicates, removes and saves widgets, but
-draws no kind: each shows "This widget isn't available in this version yet." #198 Part 2a adds
-the sanitiser's URL classifier, iframe finder and import conversion
-([below](#sanitiser-modules-part-2a)) and Part 2b the Markdown renderer
-([below](#markdown-renderer-part-2b)), which no page uses yet; the Text view, its editor, adding a widget and the gallery with #198 Part 3; the Clock view with A2; the Board list view, editor and
-states with #216 Part 2. Until then only boards written through the API have widgets.
+**Coming later.** This version draws the **Text** widget, adds it from "Add widget" and edits it
+in the widget editor (#198 Part 3a, [below](#text-widget-part-3a)); the other kinds still show
+"This widget isn't available in this version yet." #198 Part 2a added the sanitiser's URL
+classifier, iframe finder and import conversion ([below](#sanitiser-modules-part-2a)) and Part 2b
+the Markdown renderer ([below](#markdown-renderer-part-2b)), which the Text widget now uses. The
+gallery, the browser tests and the render bench follow with #198 Part 3b; the Clock view with A2;
+the Board list view, editor and states with #216 Part 2.
 
 | Module | Role |
 |---|---|
 | `src/api/types.ts` | `PanelSpec = DataPanelSpec \| WidgetPanelSpec`, `WidgetKind`, `DataVisKind`, `CodeLanguage`, `ClockZone`, `ClockCountdown` |
 | `src/widgets/spec.ts` | `WIDGET_KINDS`, `PENDING_WIDGETS`, `isWidgetKind`, `isWidgetPanel`, `isDataPanel`, `textOptions`, `clockOptions` |
-| `src/widgets/WidgetBody.tsx` | the widget's body |
+| `src/widgets/WidgetBody.tsx` | the widget's body: a Text's `TextBody`, else "not available" for a pending kind |
 | `src/pages/board/WidgetFrame.tsx` | the widget's panel chrome on a board |
+| `src/widgets/registry.tsx` | `WidgetDef`, `WidgetRegistry`, `WIDGETS`, `TEXT_DEF`, `WidgetRegistryContext`, `useWidgetDef` (Part 3a) |
+| `src/widgets/text/TextBody.tsx` | `TextBody`, `textVars`, `loadTextMarkdown`: the Text view in the board route's chunk (Part 3a) |
+| `src/widgets/text/TextMarkdown.tsx` | `TextContent`, `TextRemovals`: the one dynamic entry that imports the renderer (Part 3a) |
+| `src/widgets/text/ChunkBoundary.tsx`, `TextEditorBody.tsx`, `textVis.ts`, `Text.module.css` | the entry's error boundary, the editor body, the vis writer and the styles (Part 3a) |
+| `src/pages/board/WidgetEditor.tsx`, `AddWidgetMenu.tsx` | the widget editor dialog and the "Add widget" menu (Part 3a) |
 | `src/boards/spec.ts`, `src/boards/options.ts` | the v5 and v6 rules of `checkBoardSpec`; the option tables |
 | `src/widgets/lists/` | the list widgets' snapshot, focus repair, table and CSV (shared with the change feed) |
 | `src/widgets/boardList/` | the board list's options, rows, facts and test fixtures |
@@ -72,18 +78,21 @@ panel as it was before widgets). Both keep `PanelFrame`'s props, its `memo` and 
 
 ```text
 <section class=panel data-panel data-panel-id data-grid data-vis data-panel-state="widget" data-widget="" tabIndex=-1>
-  PanelHeader: <h3> title · Panel menu [Duplicate, Remove] · Move or resize (Edit mode)
-  <WidgetBody>: a PENDING_WIDGETS kind → EmptyState "This widget isn't available in this version yet."
+  PanelHeader: <h3> title · Panel menu [Edit panel (kinds with a def), Duplicate, Remove] · Move or resize (Edit mode)
+  <WidgetBody>: text → TextBody (named by the <h3>); a PENDING_WIDGETS kind → EmptyState "This widget isn't available in this version yet."
 ```
 
 A widget has no run, viewport tracking, `ChartFrame`, Inspector, Open in Explore, Copy query or
 Full screen (T24-002). In Edit mode its header is the drag handle and Move or resize works as for
 any panel; Duplicate and Remove are the panel menu's ([the panel menu](boards.md#the-panel-menu)).
-A selected widget opens no panel editor: `BoardPage` opens it only for a data panel, so a save that
-the server refuses at a widget's pointer selects the widget (`data-selected`) without a dialog.
+A selected widget never opens the panel editor: `BoardPage` opens that only for a data panel. A
+selected widget whose kind has a registry def opens the widget editor
+([below](#the-widget-editor)); one without (Clock, Board list) opens none, so a save that the
+server refuses at its pointer selects it (`data-selected`) without a dialog.
 
-`PENDING_WIDGETS` (`text` until #198 Part 3, `clock` until A2, `boardList` until #216 Part 2) lists the kinds drawn as "not
-available yet"; a kind leaves it when its view ships. The en-GB text is `widget.kindUnavailable`.
+`PENDING_WIDGETS` (`clock` until A2, `boardList` until #216 Part 2) lists the kinds drawn as "not
+available yet"; a kind leaves it when its view ships (Text left it with Part 3a). The en-GB text is
+`widget.kindUnavailable`.
 
 ## Validation
 
@@ -176,6 +185,138 @@ used"), the dropped or cut tags and search text, the clamp, "Links keep the time
 
 **Mixed versions.** A tab of the previous release meets a v6 board as a bad response; a v5 server
 refuses a board list on a write (`board.vis.kind.invalid`). No client writes one before Part 2.
+
+## Text widget (Part 3a)
+
+A Text panel's body is `TextBody` (`src/widgets/text/TextBody.tsx`), in the board route's chunk.
+It validates the panel first and loads the Markdown code only when there is content to render.
+
+### The region and its states
+
+`TextBody` always draws one named region, whatever its state:
+
+```text
+<div role="region" {aria-labelledby=<the frame's h3> | aria-label="Preview: ‹title or Text›"}
+     tabIndex={overflows ? 0 : undefined} data-text-body data-text-state=empty|invalid|loading|error|content>
+  <div data-text-measure>  … the state's content …  </div>
+</div>
+```
+
+On a board the region is named by the frame's heading (`RegionName` `{labelledBy}`); in the
+editor's preview by `widget.text.previewLabel`, "Preview: Runbook", or "Preview: Text" for an
+untitled panel (`{label}`). The state is decided in this order on every render:
+
+| # | `data-text-state` | When | Shows |
+|---|---|---|---|
+| 1 | `invalid` | `widgetVisErrors(panel)` is not empty | Board: "This text can't be shown: ‹reason›". Preview: "Preview unavailable: ‹reason›" in a `role="status"` paragraph that the region's `aria-describedby` points at. The reason is the first error's `fieldMessage`. Nothing is rendered and the chunk is not loaded (T24-014) |
+| 2 | `empty` | `content.trim() === ''` | `EmptyState` "This text panel is empty", or "Write Markdown" in Edit mode and in the preview. No chunk load |
+| 3 | `loading` | the lazy entry is pending | "Loading", `aria-busy` |
+| 4 | `error` | the entry failed to load (`ChunkBoundary`) | "This text couldn't be shown. Reload the page." There is no retry: React keeps the rejected lazy component |
+| 5 | `content` | otherwise | `TextContent`: the Markdown (or the code) |
+
+`widgetVisErrors(panel)` (`src/boards/spec.ts`) runs `checkBoardSpec` on a one-panel probe board
+holding the panel at grid {0, 0, 6, 6} and keeps the errors under `/vis`, with pointers relative
+to the panel (`/vis/options/content`). These are the same rules a save runs, in the same order, so
+a draft the save would refuse (a 65 537-byte content, a language in Markdown mode, a mode the
+board list uses) is never rendered.
+
+The `loading`, `error` and `content` states are reported by a small `Phase` component inside the
+Suspense fallback, the boundary's fallback and the content, from a layout effect, so the region's
+attribute is right before paint.
+
+### Overflow and the tab stop (T24-009, T24-017)
+
+The region scrolls its own content. It is a tab stop (`tabIndex=0`) exactly while
+`region.scrollHeight > region.clientHeight`: any vertical overflow, a single pixel included.
+`measure()` computes this and sets state only on a change. It runs from one `ResizeObserver`
+watching both the region and `[data-text-measure]`, and from a layout effect after every commit
+whose state, deferred options or deferred variables changed. A content change therefore updates the
+tab stop even when the region's own size does not change.
+
+### The lazy entry and the module rules
+
+`loadTextMarkdown()` imports `src/widgets/text/TextMarkdown.tsx`, the only module that imports the
+renderer (`security/sanitise/markdown.tsx`). Behind it sit commonmark, parse5, `parse5-sax-parser`,
+`entities` and `mdurl`. `TextBody` imports no sanitiser module except types. The editor's removal
+list (`TextRemovals`) is loaded through the same entry.
+
+| Export | Does |
+|---|---|
+| `TextContent({panelId, options, vars})` | Markdown: `renderMarkdown(content, {vars, entity: null}, {policy: 'board', appOrigin: location.origin})`, then `logRemovals(panelId, removals)` in an effect. Code: `renderCode(content, language)` |
+| `TextRemovals({options, vars})` | The same call (a memo hit), as the `removalMessage` lines under "Not shown in the panel"; `null` in code mode or without removals |
+
+`ci:dep-audit` fails the build if any Markdown module reaches the board route's static closure
+([the module rules](supply-chain.md#markdown)). `ci:bundle-size` requires the entry as a dynamic
+entry and keeps its chunk under the 120 KB lazy-chunk budget.
+
+### Variables (T24-008) and M0
+
+A Markdown-mode Text's `$name` and `${name}` references join the board's variables after the data
+panels' ones (`boardVariables`, [the panel runtime](boards.md#text-widgets-and-the-widget-registry-198-part-3a)),
+so the filter bar offers them. Code mode references none, and neither do the other widgets.
+
+`textVars(all, options)` passes the renderer only the set variables that the content references,
+in name order (`panelVars`). Equal entries give the same map (a 64-entry memo), so a change to an
+unrelated variable neither changes the renderer's memo key nor renders `TextContent` (it is
+`memo`ised). An unset reference renders as written and records an `unresolved` removal.
+
+M0: the options and the variables reach `TextContent` through `useDeferredValue`. An input in the
+editor commits first and the Markdown renders in a transition, while the previous output stays.
+The render's cost is measured, with M1 and M2, in Part 3b.
+
+### Look (T24-015)
+
+Inter at `--font-size-md`, a `--space-5` line height and `--space-4` padding; code in `--font-mono`.
+These are the Compact metrics until VL-013. Headings start at `<h4>` under the frame's `<h3>`
+(T24-009). There is no motion.
+
+### The widget editor
+
+Edit panel on a widget whose kind has a def opens `WidgetEditor` (`src/pages/board/WidgetEditor.tsx`):
+the panel editor's window (kit `ModalDialog`, size `editor`) titled by the def (`widget.text.editTitle`,
+"Edit text panel"). It holds Title, the def's editor body, then Remove panel, the mirrored save
+status and Done. Every change goes to the draft at once (`updateWidget`). When the dialog closes,
+focus goes to the panel's menu (`focusAfterEditor`); after Remove panel it goes to Add panel.
+
+The Text body (`TextEditorBody`):
+
+| Field | Behaviour |
+|---|---|
+| Preview | `TextBody` with the draft, `context: 'preview'`, `editing: true` |
+| Format | `SegmentedControl` Markdown / Code. Markdown drops `language`; Code starts at Plain text |
+| Language | `Select` of the eight languages, in code mode only. Its error is the live `widgetVisErrors` one at `/vis/options/language`, else the last save's |
+| Content | kit `TextArea`, mono, 12 rows. Its error is the live one at `/vis/options/content` (for example "Use at most 65 536 bytes."), else the last save's; the same text is the preview's reason |
+| Not shown in the panel | the lazy `TextRemovals`, only while the preview can render content. Each line names a kind and a line, never content (T24-007) |
+
+Each change writes the vis through `textVis(options, original)` (`src/widgets/text/textVis.ts`),
+where `original` is the head's vis of the panel. It keeps the head's stored representation: a key
+that `original.options` lacks and whose value is its default (mode `markdown`, content `''`,
+language `plaintext`) is left out, and `options` is left out when the head had none. Typing an edit
+back therefore leaves the draft clean, so Save is disabled again (the app has no Undo, SRF-020).
+
+### The registry and its context
+
+`src/widgets/registry.tsx` lists the kinds the board can add and edit:
+
+```ts
+interface WidgetDef {
+  kind: WidgetKind; label: MessageId; editTitle: MessageId;
+  size: { w: number; h: number }; newVis(): WidgetPanelSpec['vis'];
+  Editor: ComponentType<WidgetEditorBodyProps>; // {panel, title, pointer, fields, readOnly, original, onVis}
+}
+const WIDGETS: WidgetRegistry = { defs: [TEXT_DEF] }; // order = menu order
+```
+
+`TEXT_DEF` adds a 6 × 6 panel with `{kind: 'text', options: {mode: 'markdown', content: ''}}`.
+The board reads the registry from `WidgetRegistryContext` (default `WIDGETS`):
+- "Add widget" lists `defs` by label and dispatches `addWidget(def.newVis(), def.size)`;
+- a widget's panel menu has Edit panel iff `useWidgetDef(kind)` finds a def;
+- `BoardPage` opens `WidgetEditor` with the def's `Editor` for a selected widget that has one.
+
+To add a kind (the Board list in #216 Part 2): write its editor body against
+`WidgetEditorBodyProps`, add a def with its label, title, size and `newVis`, and append it to
+`WIDGETS.defs`. No reducer or page change is needed. A test can provide another registry through
+the context, as `unit:widget-registry-generic` does with a test-only kind.
 
 ## Sanitiser modules (Part 2a)
 
@@ -473,10 +614,16 @@ violations of a rendered tree:
 | Gate | File |
 |---|---|
 | `unit:widget-spec` | `src/widgets/spec.test.ts`: the defaults and `isWidgetPanel` per fixture panel |
-| `unit:widget-frame` | `src/pages/board/BoardWidgets.test.tsx`: `v5-widgets.json` on a board; five widget sections with their title and the unavailable text, no Explore, Full screen or chart; the menu; one query (the data panel); a selected widget opens no editor; a duplicated widget saves without a query |
+| `unit:widget-frame` | `src/pages/board/BoardWidgets.test.tsx`: `v5-widgets.json` on a board; five widget sections with their title, no Explore, Full screen or chart; p-1 to p-3 are Text regions (p-3 empty), the clocks show the unavailable text; the menus (Text: Edit panel, Duplicate, Remove; Clock: Duplicate, Remove); one query (the data panel); the section's Add widget adds into `s-1` and the board saves valid; a selected Text opens the widget editor, not the panel editor; a duplicated widget saves without a query |
 | `unit:board-spec-widgets`, `unit:board-spec` (v5 rows) | `src/boards/spec.test.ts`: the v5 fixture and its canonical SHA-256 (the Go suite holds the same), the `w-*` rows of `invalid.json`, the widget limits, `isRfc3339Offset` |
 | `unit:board-options` | `src/boards/options.test.ts`: the tables equal `option-keys.json` |
-| `unit:board-variables` | `src/boards/variables.test.ts`: a text widget's `$region` is not a variable |
+| `unit:board-variables` | `src/boards/variables.test.ts`: a Markdown text's `$region ${env}` joins after the data panels' `env`; code mode and a clock add none |
+| `unit:text-widget`, `unit:text-region`, `unit:text-overflow`, `unit:text-invalid`, `unit:text-widget-vars` | `src/widgets/text/TextBody.test.tsx`, each test in a fresh module registry with the entry mocked (counted, pending or rejecting): headings, new-tab links and variables; code verbatim; empty and blank with no chunk load; removals logged once; the load-failed state; every state's region name on the board and in the preview; the tab stop at 50 → 200 → 50 characters, at exactly 101 and 100, on a variable's growth and on a resize; a 65 537-byte or Markdown-language draft never rendered or loaded; `widgetVisErrors` against the `invalid.json` text rows; an unrelated variable renders nothing |
+| `unit:text-vis-roundtrip` | `src/widgets/text/textVis.test.ts`; `BoardWidgets.test.tsx`: p-3 (no options) typed and deleted is clean; a later save keeps p-3 canonical |
+| `unit:widget-add` | `src/boards/editorState.test.ts`: `addWidget` (top, a collapsed section, a data vis, 200 panels, a full grid) and `updateWidget` (same kind, other kind, no vis, a data panel), both ignored while saving |
+| `unit:widget-editor` | `src/pages/board/WidgetEditor.test.tsx`: Content, Code, Markdown again (no `language`), Done to the panel menu and the saved vis; the removal list; a 65 537-byte paste refused under Content and in the preview with no render; Remove panel to Add panel |
+| `unit:widget-spec-roundtrip` | `BoardWidgets.test.tsx`: an edit typed back is clean; Discard gives the head; Save sends the fixture with only that change, every other panel byte-equal in canonical JSON; a refetch shows it |
+| `unit:widget-registry-generic` | `BoardWidgets.test.tsx`: a context with `TEXT_DEF` and a test-only clock def: the menu, its 4 × 3 `newVis`, its editor's title and checkbox, the saved vis, and Edit panel on the stored clock |
 | `unit:board-spec-board-list` | `src/boards/spec.test.ts`: `v6-board-list.json` and its SHA-256, the 14 `bl-` rows with their texts, the bounds, `boardListOptions`; `BoardWidgets.test.tsx`: a stored v6 board, five lists not available, one query |
 | `unit:board-list-rows` | `src/widgets/boardList/rows.test.ts` (fixtures B and S in `fixtures.ts`) |
 | `unit:list-coverage` | `src/widgets/lists/snapshot.test.ts` |
@@ -504,7 +651,10 @@ violations of a rendered tree:
   modules), §11 (the parts); Part 2a: T24-005 (URL classification), T24-006 (`findIframes`),
   T24-016 and §5.4 (import), §5.2; Part 2b: T24-004 (one renderer), T24-005 (links), T24-006
   (iframes), T24-007 (removals), T24-008 (interpolation), T24-009 (headings), T24-018 (policies),
-  §4.2 (the node table and the walk), §7 (the bench), §10 (the tests).
+  §4.2 (the node table and the walk), §7 (the bench), §10 (the tests); Part 3a: T24-001, T24-002,
+  T24-004, T24-007, T24-008 (text variables), T24-009 (the region), T24-014 (validate first, the
+  preview), T24-015 (the Compact metrics), T24-017 (the tab stop), §5.2a (the view, the registry
+  and the actions).
 - [T05](../../designs/technical/T05-testing-and-performance.md) §7.1: the gate catalogue rows.
 - [T18](../../designs/technical/T18-security.md): T18-011 (URL scheme allowlist); Part 2b: T18-005
   (no HTML sink), T18-013, T18-014 (interim: no external image).
@@ -512,7 +662,8 @@ violations of a rendered tree:
   is dropped).
 - [ADR-0024](../../designs/adr/0024-markdown-runtime-dependencies.md) (the Markdown dependencies).
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-053
-  (staged), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066, VIZ-056 (import, unit level), VIZ-054 (the renderer, unit level).
+  (the Text row, unit level), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066, VIZ-056 (import, unit
+  level), VIZ-054 (the renderer, unit level), VIZ-086.
 - [T11](../../designs/technical/T11-postgres-schema.md): T11-015, T11-016 (the v4 → v5 and v5 → v6
   identity upcasts).
 - [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),
