@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::chunk::{Chunk, ChunkId, SeriesMeta, TimeAxis};
+use crate::chunk::{Chunk, ChunkError, IdAlloc, IdSpace, SeriesMeta, TimeAxis};
 use crate::coverage::{self, Coverage, ErrorRow, Phase};
 use crate::dsf::{DsfError, Frame, FrameHeader, FrameType};
 use crate::ipc::{self, Col, ColData, IpcError, Msg, SchemaDesc};
@@ -54,6 +54,9 @@ pub enum PartError {
     Limit(&'static str),
     #[error("stream: {0}")]
     Stream(DsfError),
+    /// No chunk id left in the stream space (plan #68 C1 §3.4).
+    #[error("{0}")]
+    Chunk(ChunkError),
 }
 
 /// The body-level result: `Complete` only if END arrived and nothing failed.
@@ -271,7 +274,8 @@ struct Part {
 #[derive(Debug)]
 pub struct BodyDecoder {
     parts: BTreeMap<u32, Part>,
-    next: Option<u64>,
+    /// Chunk ids in the stream space (plan #68 C1 §3.4); `Err` when the first id is outside it.
+    ids: Result<IdAlloc, ChunkError>,
     ended: bool,
     stream_failed: bool,
     finished: bool,
@@ -289,7 +293,9 @@ pub struct BodyDecoder {
 }
 
 impl BodyDecoder {
-    /// A decoder with the default limits (`wire/schemas/limits.json`).
+    /// A decoder with the default limits (`wire/schemas/limits.json`). Its chunk ids start at
+    /// `first_chunk_id` and stay in the stream space `0..2⁶³`: a first id outside it, or the
+    /// chunk after id 2⁶³ − 1, fails its part with `PartError::Chunk(ChunkError::Ids)`.
     pub fn new(first_chunk_id: u64) -> Self {
         Self::with_limits(first_chunk_id, Limits::default())
     }
@@ -298,7 +304,7 @@ impl BodyDecoder {
     pub fn with_limits(first_chunk_id: u64, limits: Limits) -> Self {
         Self {
             parts: BTreeMap::new(),
-            next: Some(first_chunk_id),
+            ids: IdAlloc::starting_at(IdSpace::Stream, first_chunk_id),
             ended: false,
             stream_failed: false,
             finished: false,
@@ -788,7 +794,10 @@ impl BodyDecoder {
 
     /// A grid batch → one chunk: values and validity copied once into exact-size buffers.
     fn data_batch(&mut self, d: &mut Data, f: &Frame) -> Result<Chunk, PartError> {
-        let id = self.next.ok_or(PartError::Limit("chunk ids"))?;
+        let ids = self.ids.as_mut().map_err(|e| PartError::Chunk(*e))?;
+        // Taken only once the batch is accepted (below), so a rejected batch uses no id.
+        let mut peek = ids.clone();
+        let id = peek.next().ok_or(PartError::Chunk(ChunkError::Ids))?;
         if self
             .parts
             .get(&d.labels_part)
@@ -868,9 +877,11 @@ impl BodyDecoder {
         if offsets.last().copied() != Some(total) {
             return Err(ipc_err(IpcError::Layout("fsl child")));
         }
-        self.next = id.checked_add(1);
+        if let Ok(ids) = self.ids.as_mut() {
+            *ids = peek;
+        }
         Ok(Chunk {
-            id: ChunkId(id),
+            id,
             time: TimeAxis::Grid {
                 start_ms: d.start_ms,
                 step_ms: d.step_ms,

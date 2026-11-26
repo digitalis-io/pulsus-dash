@@ -86,6 +86,11 @@ export default tseslint.config(
       'node_modules',
       'scripts/__fixtures__',
       'src/api/gen',
+      'src/engine/wasm/gen',
+      'src/engine/wasm/dash_core_mt.d.ts',
+      'src/engine/wasm/layout.gen.ts',
+      'dist-release-stub',
+      'dist-release-http',
       'src/styles/tokens.ts',
       'test-results',
       'playwright-report',
@@ -157,6 +162,43 @@ export default tseslint.config(
     },
   },
   ...languageIsolation,
+  // T03-001 (plan #68 C1 §2): the engine adapter imports only the seam, its own modules and the
+  // generated glue.
+  {
+    files: ['src/engine/wasm/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [URL_SEARCH_IMPORTS],
+          patterns: [
+            {
+              regex: '^(?!\\.\\./api$|\\./[^/]+$|virtual:dash-engine$)',
+              message:
+                'src/engine/wasm/ imports only ../api, its own modules and virtual:dash-engine (T03-001).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // ADR-0026: the `pulsus-engine` Trusted Types policy is created in src/engine/wasm/workers.ts only.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/engine/wasm/workers.ts', '**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...bannedSyntax,
+        {
+          selector: "CallExpression[callee.property.name='createPolicy']",
+          message:
+            'Trusted Types policies are created in src/engine/wasm/workers.ts only (ADR-0026).',
+        },
+      ],
+    },
+  },
   stubPlanBoundary,
   {
     files: ['e2e/keyboard.spec.ts', 'e2e/keyboardScript.ts', 'e2e/keyboardBoards.ts'],

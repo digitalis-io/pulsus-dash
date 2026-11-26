@@ -170,11 +170,22 @@ fn ticks_of(
     }
 }
 
+/// The narrowest value band of `kind` in `unit` (draw.ts `minValueBand`, T02-011): the width of
+/// the widest compact label, so a whole compact label always fits; 0 for stat (no value axis).
+pub fn min_value_band(kind: VisKind, unit: &Unit) -> f64 {
+    if kind == VisKind::Stat {
+        return 0.0;
+    }
+    label_width(&dash_units::compact_samples(unit))
+}
+
 /// The value axis. Auto (`manual = None`): port of draw.ts `valueAxis`: the height from
 /// `layout_plot(.., 0)`, ticks over [min(0, data_min), data_max], base 1024 for bytes else 1000,
 /// labels by `format_value`, domain (vt.min, vt.max). Manual (`Some(r)`): ticks inside r, domain
-/// r. Then `layout_plot` with the band: `Measure` = the labels' width; `Fixed(w)` never changes
-/// with the labels, and a label wider than `w` has `fits = false` (#69 draws it on a chip).
+/// r. Then `layout_plot` with the band: `Measure` = the labels' width, at least
+/// [`min_value_band`] (as the Canvas 2D engine, so both draw the same plot, plan #68 C1);
+/// `Fixed(w)` never changes with the labels, and a label wider than `w` has `fits = false` (#69
+/// draws it on a chip).
 #[allow(clippy::too_many_arguments)]
 pub fn value_axis(
     kind: VisKind,
@@ -192,7 +203,7 @@ pub fn value_axis(
         .map(|t| dash_units::format_value(*t, unit))
         .collect();
     let band_w = match band {
-        Band::Measure => label_width(&texts),
+        Band::Measure => label_width(&texts).max(min_value_band(kind, unit)),
         Band::Fixed(w) => w,
     };
     let plot = layout_plot(kind, css_w, css_h, band_w);
@@ -235,5 +246,5 @@ pub fn measure_value_band(
         .iter()
         .map(|t| dash_units::format_value(*t, unit))
         .collect();
-    label_width(&texts)
+    label_width(&texts).max(min_value_band(kind, unit))
 }

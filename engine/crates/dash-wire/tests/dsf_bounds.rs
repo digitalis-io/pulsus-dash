@@ -473,7 +473,7 @@ fn e_prime_arithmetic_boundaries() {
         "ordered unsigned difference: {e:?}"
     );
     // Chunk ids.
-    let e = run(&fixture("promql-range-counter"), u64::MAX);
+    let e = run(&fixture("promql-range-counter"), (1 << 63) - 1);
     let ids: Vec<u64> = e
         .iter()
         .filter_map(|e| match e {
@@ -481,8 +481,11 @@ fn e_prime_arithmetic_boundaries() {
             _ => None,
         })
         .collect();
-    assert_eq!(ids, [u64::MAX]);
-    assert_eq!(failure(&e, 2), Some(PartError::Limit("chunk ids")));
+    assert_eq!(ids, [(1 << 63) - 1]);
+    assert_eq!(
+        failure(&e, 2),
+        Some(PartError::Chunk(dash_wire::ChunkError::Ids))
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

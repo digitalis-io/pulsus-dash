@@ -11,12 +11,12 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static/statictest"
 )
 
-// The document headers of plan #59 B.4, verbatim (ADR-0014 §9, T18-002).
+// The document headers of plan #59 B.4, verbatim (ADR-0014 §9 as amended by ADR-0026, T18-002).
 var wantDocumentHeaders = [][2]string{
-	{"Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; " +
+	{"Content-Security-Policy", "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; " +
 		"font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; " +
 		"form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; " +
-		"trusted-types pulsus-sanitised; report-to csp"},
+		"trusted-types pulsus-sanitised pulsus-engine; report-to csp"},
 	{"Reporting-Endpoints", `csp="/api/dash/v1/csp-report"`},
 	{"Cross-Origin-Opener-Policy", "same-origin"},
 	{"Cross-Origin-Embedder-Policy", "require-corp"},
@@ -117,6 +117,7 @@ func TestAssetEncoding(t *testing.T) {
 				"Cache-Control":                "public, max-age=31536000, immutable",
 				"Vary":                         "Accept-Encoding",
 				"Cross-Origin-Resource-Policy": "same-origin",
+				"Cross-Origin-Embedder-Policy": "require-corp",
 				"X-Content-Type-Options":       "nosniff",
 				"Content-Type":                 "text/javascript; charset=utf-8",
 			} {

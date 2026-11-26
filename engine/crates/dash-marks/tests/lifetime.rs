@@ -218,6 +218,7 @@ fn cpu_batches_hold_one_batch() {
         wgpu::TextureFormat::Rgba8Unorm,
         RendererOptions {
             max_instances: Some(max),
+            ..RendererOptions::default()
         },
     );
     let _ = render(&ctx, &mut r, &build(&v).0);

@@ -10,3 +10,8 @@ src/icons
 scripts/__fixtures__
 src/api/gen
 e2e/transcripts
+src/engine/wasm/gen
+src/engine/wasm/dash_core_mt.d.ts
+src/engine/wasm/layout.gen.ts
+dist-release-stub
+dist-release-http

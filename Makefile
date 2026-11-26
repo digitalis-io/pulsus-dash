@@ -16,7 +16,8 @@ SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
 .PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
-	engine-goldens engine-goldens-update \
+	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
+	engine-gpu-smoke \
 	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
 
@@ -39,8 +40,8 @@ ITEST_PG15_PORT ?= 57433
 # The goal itest-local runs against its stack: itest, or itest-old-binary.
 ITEST_GOAL ?= itest
 
-# The client build the BFF embeds (VITE_API_MODE=$(API_MODE)).
-client-build:
+# The client build the BFF embeds (VITE_API_MODE=$(API_MODE)), with the engine (plan #68 C1).
+client-build: engine-wasm
 	VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client run build
 
 # Packs client/dist into the embedded tree with a signed manifest, under a key generated afresh
@@ -240,3 +241,79 @@ engine-goldens:
 # Writes engine/crates/dash-golden/goldens/*.png; CI's `golden-update` label is the reviewed path.
 engine-goldens-update:
 	GOLDEN_UPDATE=1 $(MAKE) engine-goldens
+
+# The engine in the browser (plan #68 C1 §5.1): the web image adds the pinned nightly, wasm-bindgen,
+# binaryen, Node, Go and Playwright's Chromium to the lavapipe image. Inside it ENGINE_IN_IMAGE=1,
+# so these targets run directly; outside, each runs itself in the image (host network, the
+# repository at /w, git's common directory mounted where a worktree's .git file points).
+ENGINE_WEB_IMAGE ?= pulsus-engine-web:local
+GIT_COMMON := $(abspath $(shell git rev-parse --git-common-dir 2>/dev/null))
+ENGINE_WEB_RUN = $(DOCKER) run --rm $(ENGINE_RUN_FLAGS) --network host -v $(CURDIR):/w \
+	$(if $(filter $(CURDIR)/%,$(GIT_COMMON)),,-v $(GIT_COMMON):$(GIT_COMMON):ro) \
+	-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+	-e CARGO_TARGET_DIR=/w/engine/target/image -e E2E_PG_APP_URL -e E2E_PG_OWNER_URL \
+	-w /w $(ENGINE_WEB_IMAGE)
+ENGINE_E2E_PROJECT ?= pulsus-engine-e2e
+ENGINE_E2E_PG_PORT ?= 57532
+
+engine-web-image:
+	$(DOCKER) build -f engine/ci/web.Dockerfile --build-arg BASE=$(ENGINE_IMAGE) -t $(ENGINE_WEB_IMAGE) engine/ci
+
+# client/src/engine/wasm/gen/ (git-ignored): `cargo xtask build-wasm`. `make build` needs it.
+engine-wasm:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd engine && cargo xtask build-wasm
+else
+	$(ENGINE_WEB_RUN) make engine-wasm
+endif
+
+# ci:engine-gen: two builds from separate target directories are byte-equal, and their .d.ts and
+# the generated layout equal the committed files.
+ENGINE_GEN_FILES := dash_core_mt.js dash_core_mt.d.ts dash_core_mt_bg.wasm dash_core_mt_bg.wasm.d.ts
+engine-wasm-check:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd engine && \
+	  CARGO_TARGET_DIR=$${CARGO_TARGET_DIR:-target}/gen-a cargo xtask build-wasm --out target/engine-gen/a && \
+	  CARGO_TARGET_DIR=$${CARGO_TARGET_DIR:-target}/gen-b cargo xtask build-wasm --out target/engine-gen/b && \
+	  for f in $(ENGINE_GEN_FILES); do \
+	    cmp target/engine-gen/a/$$f target/engine-gen/b/$$f || { echo "ci:engine-gen: $$f differs between builds"; exit 1; }; done && \
+	  { cmp target/engine-gen/a/dash_core_mt.d.ts ../client/src/engine/wasm/dash_core_mt.d.ts || \
+	    { echo "ci:engine-gen: client/src/engine/wasm/dash_core_mt.d.ts is stale"; exit 1; }; } && \
+	  cargo xtask gen-layout --check && echo "ci:engine-gen: ok"
+else
+	$(ENGINE_WEB_RUN) make engine-wasm-check
+endif
+
+# Prints the adapter each engine e2e project sees and whether it renders (record it in the PR).
+engine-gpu-smoke:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd client && node scripts/engine-gpu-smoke.ts
+else
+	$(ENGINE_WEB_RUN) make engine-gpu-smoke
+endif
+
+# The engine e2e suite (playwright.engine.config.ts): a PostgreSQL 16 for the e2e BFFs (the
+# compose service, in its own project, taken down with its volume on exit; E2E_PG_APP_URL and
+# E2E_PG_OWNER_URL set by the caller skip it), then in the image: the fault build served by the
+# e2e BFFs (its tree must hold every fault site), the clean stub and http builds (engine row, no
+# test hook), and the specs with dash-golden. The WebGPU leg's report-only reason heads the run.
+engine-e2e:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd client && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && \
+	  VITE_ENGINE_FAULTS=1 $(MAKE) -C .. e2e-build && \
+	  node scripts/probe-absent.ts --expect-faults dist && \
+	  VITE_API_MODE=stub npx vite build --outDir dist-release-stub --emptyOutDir && \
+	  VITE_API_MODE=http npx vite build --outDir dist-release-http --emptyOutDir && \
+	  npm run size -- dist-release-stub && npm run size -- dist-release-http && \
+	  node scripts/probe-absent.ts dist-release-stub && node scripts/probe-absent.ts dist-release-http && \
+	  (cd ../engine && cargo build -p dash-golden --release --locked) && \
+	  DASH_GOLDEN_BIN=$${CARGO_TARGET_DIR:-../engine/target}/release/dash-golden \
+	    npx playwright test -c playwright.engine.config.ts
+else
+	@if [ -n "$${E2E_PG_APP_URL:-}" ]; then $(ENGINE_WEB_RUN) make engine-e2e; else \
+	  trap '$(COMPOSE) -f dev/compose.yaml -p $(ENGINE_E2E_PROJECT) down -v' EXIT; \
+	  DEV_PG16_PORT=$(ENGINE_E2E_PG_PORT) $(COMPOSE) -f dev/compose.yaml -p $(ENGINE_E2E_PROJECT) up -d --wait pg16 && \
+	  E2E_PG_APP_URL='postgres://pulsus_app@localhost:$(ENGINE_E2E_PG_PORT)/pulsus_dash?sslmode=disable' \
+	  E2E_PG_OWNER_URL='postgres://pulsus_owner@localhost:$(ENGINE_E2E_PG_PORT)/pulsus_dash?sslmode=disable' \
+	  $(ENGINE_WEB_RUN) make engine-e2e; fi
+endif

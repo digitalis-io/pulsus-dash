@@ -15,7 +15,7 @@
 | [0011](0011-terraform-provider-in-go.md) | Terraform provider written in Go | Proposed |
 | [0012](0012-derived-state-in-postgres.md) | Dash-derived state (alert history, baselines, anomaly scores, change events, fallback pyramids) lives in PostgreSQL | **Accepted** (2026-11-18) |
 | [0013](0013-metrics-data-scopes.md) | Data scopes on metrics without promoted resource attributes | Proposed — **open decision** |
-| [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19; amended by 0016, 0017, 0019, 0020, 0022, 0023, 0024, 0025, 0027, 0028) |
+| [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19; amended by 0016, 0017, 0019, 0020, 0022, 0023, 0024, 0025, 0026, 0027, 0028) |
 | [0015](0015-go-bff.md) | The BFF is written in Go | **Accepted** (2026-11-19; amended by 0021, query validation) |
 | [0016](0016-asset-integrity-verified-by-bff.md) | Asset integrity is verified by the BFF, not per module in the browser (amends 0014's lazy-chunk SRI) | **Accepted** (2026-11-19) |
 | [0017](0017-react-router.md) | React Router (data mode) replaces TanStack Router | **Accepted** (2026-11-19) |
@@ -27,6 +27,7 @@
 | [0023](0023-chart-event-markers.md) | The chart engine seam carries event markers (`setEvents`, `eventLabels`), drawn as lines over the series with labels in a band above the plot; amends 0014 §3 | **Accepted** (2026-11-23) |
 | [0024](0024-markdown-runtime-dependencies.md) | Markdown runtime dependencies: `commonmark`, `parse5` and `parse5-sax-parser` join the runtime allowlist, the parse5 tree and tokenizer used together as a union; amends 0014 §7 | **Accepted** (2026-11-25) |
 | [0025](0025-chart-frame-selection.md) | The chart engine seam carries the selection (`setSelection`, the `select` item) and draws it in the layer pass; amends 0014 §3 | **Accepted** (2026-11-25) |
+| [0026](0026-engine-csp-and-worker-policy.md) | The chart engine's CSP: `'wasm-unsafe-eval'` and the `pulsus-engine` Trusted Types policy for its worker URLs; assets carry COEP; amends 0014 §9 | **Accepted** (2026-11-25) |
 | [0027](0027-geomap-frame-seam.md) | The chart engine seam carries the geomap (`geomap` kind, `geoCommit`, `geoBrush`, `geoMarks`, `setFocusMark`, `cameraKey`) in one Web Mercator world that never repeats across ±180°; amends 0014 §3 | **Accepted** (2026-11-25) |
 | [0028](0028-chart-seam-bar-chart.md) | The chart engine seam carries the bar chart (`barchart`, `categories`, `mark`, `pick`, `coverage`) with one category extent and layout for every engine; amends 0014 §3 | **Accepted** (2026-11-26) |
 

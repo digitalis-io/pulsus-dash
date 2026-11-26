@@ -1,0 +1,4 @@
+{
+  "webgpu": "report",
+  "reason": "Dawn's SwiftShader adapter in the engine web image's Chromium does not render: a cleared WebGPU canvas stays blank and mapAsync and onSubmittedWorkDone reject with 'A valid external Instance reference no longer exists' (make engine-gpu-smoke)"
+}
