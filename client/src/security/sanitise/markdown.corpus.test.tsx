@@ -124,6 +124,12 @@ describe('checkInvariants', () => {
       [root(el('p', { style: 'x' })), 'board'],
       [root(el('div', {})), 'board'],
       [root(el('h1', {})), 'board'],
+      [root(el('img', { src: '/l.svg', alt: '', href: '/b' })), 'board'],
+      [root(el('a', { href: '/b', ...A, src: '/l.svg' })), 'board'],
+      [root(el('ul', { start: '2' })), 'board'],
+      [root(el('p', { class: 'x' })), 'board'],
+      [root(el('pre', { 'data-lang': 'js' })), 'board'],
+      [root(el('img', { src: '/l.svg', alt: '', 'aria-hidden': 'true' })), 'board'],
       [root(text('a\uD800')), 'board'],
       [root(Array.from({ length: 33 }).reduce<TNode>((n) => el('em', {}, n), text('x'))), 'board'],
     ];

@@ -41,18 +41,15 @@ const BASE_TAGS = [
   'img',
   'span',
 ];
-const ATTRS = new Set([
-  'href',
-  'target',
-  'rel',
-  'src',
-  'alt',
-  'loading',
-  'start',
-  'data-lang',
-  'class',
-  'aria-hidden',
-]);
+/** The attributes each element may carry (plan §5.2's set, per element); any other is a violation. */
+const ATTRS: Readonly<Record<string, ReadonlySet<string>>> = {
+  a: new Set(['href', 'target', 'rel']),
+  img: new Set(['src', 'alt', 'loading']),
+  ol: new Set(['start']),
+  code: new Set(['data-lang']),
+  span: new Set(['class', 'aria-hidden']),
+};
+const NONE: ReadonlySet<string> = new Set();
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /** A container (the render root) as a `TNode` tree of its children. */
@@ -133,7 +130,9 @@ export function checkInvariants(
     if (depth > MAX_DOM_DEPTH) out.push(`depth ${String(depth)} > ${String(MAX_DOM_DEPTH)}`);
     if (!tags.has(n.tag)) out.push(`tag <${n.tag}>`);
     for (const [name, value] of n.attrs) {
-      if (!ATTRS.has(name) || /^on/i.test(name)) out.push(`attribute ${name} on <${n.tag}>`);
+      if (!(ATTRS[n.tag] ?? NONE).has(name) || /^on/i.test(name)) {
+        out.push(`attribute ${name} on <${n.tag}>`);
+      }
       if (LONE_SURROGATE.test(value)) out.push(`attribute ${name} not well-formed`);
     }
     if (n.tag === 'a') {
