@@ -7,7 +7,8 @@
  * decoder must read back. `hover.json` is the hover and click picking of `canvas2d/pick.ts`
  * `hoverAt`, `select.ts` `pickItem` and `data/frames.ts` `seriesName` on line layer models (plan
  * #68 C2b §5 `hover_parity`). `layer.json` is the line layer's threshold and event strokes
- * (`engine-fixtures-layer.ts`, plan #68 C2c1 §5 `layer_parity`). `--write` writes the files; without it the committed files are
+ * (`engine-fixtures-layer.ts`, plan #68 C2c1 §5 `layer_parity`); `selection.json` the selection's
+ * matching, band and crossing order (plan #68 C2c2 §5 `selection_parity`). `--write` writes the files; without it the committed files are
  * compared and the exit code is 1 when one is stale (`unit:engine-fixtures` runs the same check).
  *
  * The client modules are loaded at run time (their imports are extensionless, which Node resolves
@@ -19,7 +20,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { layerRows } from './engine-fixtures-layer.ts';
+import { layerRows, selectionRows } from './engine-fixtures-layer.ts';
 
 export const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const FIXTURE_DIR = join(CLIENT_ROOT, '..', 'engine', 'fixtures');
@@ -231,6 +232,7 @@ async function load(): Promise<Sources> {
       'engine/wasm/ring.ts',
       'engine/canvas2d/pick.ts',
       'engine/canvas2d/select.ts',
+      'engine/canvas2d/selection.ts',
       'data/frames.ts',
       'test/random.ts',
     ].map(mod),
@@ -912,6 +914,7 @@ export async function fixtures(): Promise<Record<string, string>> {
     'input-ring.json': json(inputRingRows(s)),
     'hover.json': json(hoverRows(s, entries)),
     'layer.json': json(layerRows(s, entries, GALLERY_WINDOW, seriesOf)),
+    'selection.json': json(selectionRows(s, GALLERY_WINDOW, seriesOf)),
   };
 }
 

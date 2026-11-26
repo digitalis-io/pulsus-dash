@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { size } from '../../styles/tokens';
 import type { FrameData, FrameSelection, VisSpec } from '../api';
-import { harness, seriesData, seriesFrame, type Harness } from '../../test/engineHarness';
+import { harness, pointer, seriesData, seriesFrame, type Harness } from '../../test/engineHarness';
 import { last, xOf } from '../../test/cameraKit';
 import type { RecordedOp } from '../../test/recordingContext';
 import { Canvas2DEngine } from './Canvas2DEngine';
@@ -11,6 +11,7 @@ import { seriesColourIndex, themeColours } from './palette';
 
 const K1 = '00000000000000a1';
 const K2 = '00000000000000a2';
+const K3 = '00000000000000a3';
 const W = { fromMs: 0, toMs: 60_000 };
 const NONE = { kind: 'none' } as const;
 const C = themeColours('dark');
@@ -96,20 +97,46 @@ const sel = (keys: string[], fromMs: number | null = null, toMs: number | null =
   toMs,
 });
 
+const LINES3 = seriesData(
+  seriesFrame(
+    K1,
+    ts,
+    ts.map(() => 30),
+  ),
+  seriesFrame(
+    K2,
+    ts,
+    ts.map(() => 10),
+  ),
+  seriesFrame(
+    K3,
+    ts,
+    ts.map((_, i) => i / 3),
+  ),
+);
+const ID = [1, 0, 0, 1, 0, 0];
+const series = (o: RecordedOp, c: string): boolean =>
+  ['stroke', 'fillRect', 'arc', 'fill'].includes(o.op) &&
+  (o.op === 'stroke' ? o.strokeStyle === c : o.fillStyle === c);
+
 describe('unit:selection-draw', () => {
   it('line: k2 dimmed, then the focus underlay 4 px wider, then k1', () => {
     const h = frame(LINE, LINES);
+    h.scratch().clearOps();
     const ops = drawWith(h, sel([K1]));
     const strokes = ops.map((o, i) => ({ o, i })).filter((x) => x.o.op === 'stroke');
-    const k2 = strokes.find((x) => x.o.strokeStyle === colourOf(K2));
+    // ADR-0032: k2 at alpha 1 on the scratch layer, composited once at `dimmed` before k1.
+    const k2 = h.scratch().ops.find((o) => o.op === 'stroke' && o.strokeStyle === colourOf(K2));
+    const composite = ops.findIndex((o) => o.op === 'drawImage' && o.globalAlpha === 0.35);
     const under = strokes.find(
       (x) => x.o.strokeStyle === C.focus && x.o.lineWidth === size['chart-line'] + 4,
     );
     const k1 = strokes.find((x) => x.o.strokeStyle === colourOf(K1));
-    expect(k2?.o.globalAlpha).toBe(0.35);
+    expect(k2?.globalAlpha).toBe(1);
     expect(under?.o.globalAlpha).toBe(1);
     expect(k1?.o.globalAlpha).toBe(1);
-    expect(k2?.i).toBeLessThan(under?.i ?? -1);
+    expect(composite).toBeGreaterThanOrEqual(0);
+    expect(composite).toBeLessThan(under?.i ?? -1);
     expect(under?.i).toBeLessThan(k1?.i ?? -1);
   });
 
@@ -203,5 +230,179 @@ describe('unit:selection-draw', () => {
     expect(C.selection).toBe('#5B9BFF29');
     expect(themeColours('light').selection).toBe('#2563C929');
     expect(C.dimmed).toBe(0.35);
+  });
+
+  it('canvas2d dim layer: the unmatched series on the scratch at alpha 1, one composite, then k1', () => {
+    const h = frame(LINE, LINES3);
+    h.scratch().clearOps();
+    const ops = drawWith(h, sel([K1]));
+    const sc = h.scratch().ops;
+    // Step 1: identity and a device-px clear, before any save.
+    expect(sc[0]).toMatchObject({ op: 'setTransform', args: ID });
+    expect(sc[1]).toMatchObject({ op: 'clearRect', args: [0, 0, 400, 200] });
+    // Step 2: one save/restore around the DPR transform and the strokes, at alpha 1.
+    expect(sc[2]?.op).toBe('save');
+    expect(sc.at(-1)?.op).toBe('restore');
+    const strokes = sc.filter((o) => o.op === 'stroke');
+    expect(strokes.map((o) => o.strokeStyle)).toEqual([colourOf(K2), colourOf(K3)]);
+    expect(strokes.every((o) => o.globalAlpha === 1)).toBe(true);
+    // Step 3: one composite at `dimmed`, under identity inside save/restore, before k1's underlay.
+    const images = ops.map((o, i) => ({ o, i })).filter((x) => x.o.op === 'drawImage');
+    expect(images).toHaveLength(1);
+    const c = images[0];
+    expect(c?.o.args).toEqual([h.scratchCanvas(), 0, 0]);
+    expect(c?.o.globalAlpha).toBe(0.35);
+    expect(c?.o.transform).toEqual(ID);
+    expect(ops[(c?.i ?? 0) - 1]?.op).toBe('setTransform');
+    expect(ops[(c?.i ?? 0) - 2]?.op).toBe('save');
+    expect(ops[(c?.i ?? 0) + 1]?.op).toBe('restore');
+    const under = ops.findIndex((o) => o.op === 'stroke' && o.strokeStyle === C.focus);
+    expect(c?.i).toBeLessThan(under);
+    // No per-stroke dimming left on the layer.
+    expect(ops.some((o) => o.op === 'stroke' && o.globalAlpha !== 1)).toBe(false);
+    expect(h.scratchCanvas().width).toBe(400);
+    expect(h.scratchCanvas().height).toBe(200);
+    // Released to 0×0 with no match.
+    drawWith(h, null);
+    expect([h.scratchCanvas().width, h.scratchCanvas().height]).toEqual([0, 0]);
+  });
+
+  it('canvas2d dim layer: released on a non-line spec, empty data, a zero size and dispose', () => {
+    const released = (h: Harness, act: () => void): number[] => {
+      drawWith(h, sel([K1]));
+      expect(h.scratchCanvas().width).toBe(400);
+      act();
+      h.flush();
+      return [h.scratchCanvas().width, h.scratchCanvas().height];
+    };
+    const h = frame(LINE, LINES3);
+    expect(
+      released(h, () => {
+        h.frame.setSpec(BARS);
+      }),
+    ).toEqual([0, 0]);
+    h.frame.setSpec(LINE);
+    h.frame.setSelection(null);
+    expect(
+      released(h, () => {
+        h.frame.setData(seriesData());
+      }),
+    ).toEqual([0, 0]);
+    h.frame.setData(LINES3);
+    h.frame.setSelection(null);
+    expect(
+      released(h, () => {
+        h.frame.resize(0, 240, 1);
+      }),
+    ).toEqual([0, 0]);
+    h.frame.resize(400, 200, 1);
+    h.frame.setSelection(null);
+    expect(
+      released(h, () => {
+        h.frame.dispose();
+      }),
+    ).toEqual([0, 0]);
+  });
+
+  it('canvas2d dim layer: released at a nonzero size too small for a plot, and stays released', () => {
+    const h = frame(LINE, LINES3);
+    drawWith(h, sel([K1]));
+    expect(h.scratchCanvas().width).toBe(400);
+    h.frame.resize(12, 10, 1);
+    h.flush();
+    expect(last(h).plot.width > 0 && last(h).plot.height > 0).toBe(false);
+    expect([h.scratchCanvas().width, h.scratchCanvas().height]).toEqual([0, 0]);
+    drawWith(h, null);
+    expect([h.scratchCanvas().width, h.scratchCanvas().height]).toEqual([0, 0]);
+  });
+
+  it('canvas2d dim layer dpr2: the scratch under the DPR transform, the composite under identity', () => {
+    const h = frame(LINE, LINES3, 2);
+    h.scratch().clearOps();
+    const ops = drawWith(h, sel([K1]));
+    const sc = h.scratch().ops;
+    expect(sc[1]).toMatchObject({ op: 'clearRect', args: [0, 0, 800, 400] });
+    const strokes = sc.filter((o) => o.op === 'stroke');
+    expect(strokes.length).toBe(2);
+    expect(strokes.every((o) => o.transform.join() === '2,0,0,2,0,0')).toBe(true);
+    const c = ops.find((o) => o.op === 'drawImage');
+    expect(c?.transform).toEqual(ID);
+    const k1 = ops.filter(
+      (o) => o.op === 'stroke' && (o.strokeStyle === C.focus || o.strokeStyle === colourOf(K1)),
+    );
+    expect(k1).toHaveLength(2);
+    expect(k1.every((o) => o.transform.join() === '2,0,0,2,0,0' && o.globalAlpha === 1)).toBe(true);
+    // The hover overlay on the visible canvas: the DPR transform, alpha 1.
+    const s = last(h);
+    h.visible().clearOps();
+    pointer(h.canvas, 'pointermove', s.plot.x + s.plot.width / 2, s.plot.y + 20);
+    h.flush();
+    const over = h.visible().ops.filter((o) => o.op === 'fillRect' || o.op === 'fill');
+    expect(over.length).toBeGreaterThan(0);
+    expect(over.every((o) => o.transform.join() === '2,0,0,2,0,0' && o.globalAlpha === 1)).toBe(
+      true,
+    );
+  });
+
+  it('canvas2d dim layer marks: every drawLineSeries op of an unmatched series moves to the scratch', () => {
+    // K2: a dense column (several samples in one px), an isolated sample between gaps (a dot).
+    const t = [0, 100, 200, 300, 400, 10_000, 30_000, 31_000, 40_000, 60_000];
+    const v = [1, 9, 2, 8, 3, 5, NaN, 7, NaN, 6];
+    const data = seriesData(
+      seriesFrame(
+        K1,
+        ts,
+        ts.map(() => 30),
+      ),
+      seriesFrame(K2, t, v),
+    );
+    const plainOps = plain(LINE, data).filter((o) => series(o, colourOf(K2)));
+    expect(plainOps.some((o) => o.op === 'fillRect')).toBe(true);
+    expect(plainOps.some((o) => o.op === 'arc')).toBe(true);
+    const h = frame(LINE, data);
+    h.scratch().clearOps();
+    const ops = drawWith(h, sel([K1]));
+    const moved = h.scratch().ops.filter((o) => series(o, colourOf(K2)));
+    const strip = (x: readonly RecordedOp[]) => x.map((o) => ({ op: o.op, args: o.args }));
+    expect(strip(moved)).toEqual(strip(plainOps));
+    expect(moved.every((o) => o.globalAlpha === 1)).toBe(true);
+    expect(ops.some((o) => series(o, colourOf(K2)))).toBe(false);
+    expect(ops.filter((o) => o.op === 'drawImage' && o.globalAlpha === 0.35)).toHaveLength(1);
+  });
+
+  it('canvas2d dim layer clip: one balanced save/restore per draw; a clip only under a pin', () => {
+    const h = frame(LINE, LINES3);
+    const check = (manual: boolean): RecordedOp[] => {
+      const sc = h.scratch().ops;
+      const saves = sc.filter((o) => o.op === 'save').length;
+      expect(saves).toBe(sc.filter((o) => o.op === 'restore').length);
+      expect(saves).toBe(manual ? 2 : 1);
+      const clear = sc.findIndex((o) => o.op === 'clearRect');
+      expect(clear).toBeGreaterThanOrEqual(0);
+      expect(clear).toBeLessThan(sc.findIndex((o) => o.op === 'save'));
+      expect(sc[clear]?.transform).toEqual(ID);
+      expect(sc.some((o) => o.op === 'clip')).toBe(manual);
+      return [...sc];
+    };
+    h.scratch().clearOps();
+    drawWith(h, sel([K1]));
+    check(false);
+    h.scratch().clearOps();
+    h.frame.setSpec({ ...LINE, valueRange: { min: 0, max: 10 } });
+    h.flush();
+    check(true);
+    h.scratch().clearOps();
+    h.frame.setSpec(LINE);
+    h.frame.resize(300, 150, 1);
+    h.flush();
+    const third = check(false);
+    const f = harness(Canvas2DEngine);
+    f.frame.setSpec(LINE);
+    f.frame.setData(LINES3);
+    f.frame.setTimeWindow(W);
+    f.frame.resize(300, 150, 1);
+    f.frame.setSelection(sel([K1]));
+    f.flush();
+    expect(calls(third)).toEqual(calls(f.scratch().ops));
   });
 });

@@ -4,7 +4,8 @@
 //! dash-golden render  --page line-1|line-50|line-gaps|line-600|line-extreme|line-thresholds|line-events
 //!                     --theme dark|light
 //!                     --size 1118x240 --dpr 1|2 --tier t1|t2 [--value-range MIN,MAX]
-//!                     [--hover X,Y] [--box X0,X] --out <png>
+//!                     [--hover X,Y] [--box X0,X] [--select-keys K,…] [--select-interval A,B]
+//!                     --out <png>
 //! dash-golden compare <a.png> <b.png> [--region x,y,w,h]… [--max 0.005] [--tile-max V]
 //!                     → prints the mean ꟻLIP, then the largest 8×8 tile mean with --tile-max
 //! ```
@@ -13,7 +14,9 @@
 //! or render error. `--hover` and `--box` (plan #68 C2b) draw the engine's overlay: the hover of a
 //! pointer at canvas CSS px (X, Y) and the box band between X0 and X. `line-thresholds` and
 //! `line-events` (plan #68 C2c1) draw the `layer.json` case of that id, without `--value-range`,
-//! `--hover` or `--box`.
+//! `--hover`, `--box` or a selection. `--select-keys` (16-hex series keys, comma-separated) and
+//! `--select-interval` (ms, `A,B`) are the page selection (plan #68 C2c2): the matched series
+//! highlighted, the others dimmed, and the interval band.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,7 +25,7 @@ use dash_golden::{
     Image, LAYER_PAGES, OverlayAt, flip_stats, render_layer_page, render_page_overlay,
 };
 use dash_gpu::{AdapterChoice, GpuContext, Tier};
-use dash_scene::{Size64, Theme, ValueRange};
+use dash_scene::{SelectionIn, Size64, Theme, ValueRange};
 use pulsus_synth::GalleryLine;
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -75,12 +78,30 @@ fn render(args: &[String]) -> Result<(), String> {
             None => None,
         },
     };
+    let interval = match flag(args, "--select-interval") {
+        Some(v) => Some(pair(v, ',').ok_or("--select-interval is A,B")?),
+        None => None,
+    };
+    let keys: Vec<&str> = flag(args, "--select-keys")
+        .map(|k| k.split(',').map(str::trim).collect())
+        .unwrap_or_default();
+    let selection = SelectionIn::new(
+        keys.iter().copied(),
+        interval.map(|i| i.0),
+        interval.map(|i| i.1),
+    );
     let out = PathBuf::from(flag(args, "--out").ok_or("--out is required")?);
     let ctx = GpuContext::headless(AdapterChoice::Lavapipe, tier)
         .map_err(|e| format!("{e}; adapters: {:?}", GpuContext::adapter_list()))?;
     let Some(line) = line else {
-        if value_range.is_some() || overlay != OverlayAt::default() {
-            return Err(format!("{page}: no --value-range, --hover or --box"));
+        if value_range.is_some()
+            || overlay != OverlayAt::default()
+            || !keys.is_empty()
+            || interval.is_some()
+        {
+            return Err(format!(
+                "{page}: no --value-range, --hover, --box or selection"
+            ));
         }
         return render_layer_page(&ctx, page, theme, Size64 { w, h }, dpr)?.write_png(&out);
     };
@@ -92,6 +113,7 @@ fn render(args: &[String]) -> Result<(), String> {
         dpr,
         value_range,
         overlay,
+        &selection,
     )
     .write_png(&out)
 }

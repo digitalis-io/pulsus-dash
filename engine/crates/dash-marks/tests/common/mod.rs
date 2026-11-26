@@ -80,6 +80,7 @@ pub fn line_list(
             axis: (m.ku as f32, m.ou as f32),
             colour_slots: (0..s).map(|k| (k % 8) as u8).collect(),
             lanes: None,
+            emphasis: None,
             width_css: 1.5,
             chunk,
         });

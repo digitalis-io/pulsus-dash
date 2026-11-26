@@ -939,6 +939,73 @@ Canvas 2D clips event lines only under a manual axis (`clipped`), so under an au
 at the window's end is stroked one column right of the plot; the engine draws it in the plot's
 last column instead (`layer_parity` expects that rect, and the pinned case dropped).
 
+### The selection highlight (Part C2c2)
+
+Line frames draw the page selection
+([ADR-0025](../../designs/adr/0025-chart-frame-selection.md), T25-006, T02-025) on the next frame,
+with the unmatched series dimmed together as one layer
+([ADR-0032](../../designs/adr/0032-selection-dims-as-one-layer.md)).
+
+**The message.** `WasmFrame.setSelection(sel)` posts the selection to the worker, unless it equals
+the last one posted (`sameSelection`: the same keys in order and the same interval); the first call
+always posts. `null` goes as no keys and no interval:
+
+```json
+{"t":"selection","id":1,"keys":["00000000000000a1"],"fromMs":1795090200000,"toMs":1795090800000}
+```
+
+The worker stores it (`frame_set_selection`, `Frames::set_selection`) as a layer input, so the
+layer is rebuilt once and a hover frame reuses it. A key becomes a `u64` only when it is exactly 16
+lower-case hex digits (`SelectionIn::new`); any other string, `00000000000000A1` included,
+matches nothing, as TS compares strings exactly. `ControlledFrame.setSelection` only flushes and
+forwards the call: no layout change, no hover change. A restart replays the kept selection with the
+frame's other inputs.
+
+**Relevance and the build.** `matched` (TS `matchedKeys`) flags each shown series whose key is in
+the selection. No flag set means nothing is dimmed: the Line item has no `emphasis` and is drawn
+exactly as without a selection. Otherwise the item carries `Emphasis { matched, dimmed:
+opacity.dimmed, focus, underlay_extra_css: 4 }`. The interval draws a band whatever the keys:
+`selection_band` (TS `drawSelectionBand`) is one `selection`-coloured rect from `x(fromMs)`, at
+least 1 device px wide, cut to the plot, or nothing when it lies wholly outside. It is the first
+shape of the layer `Overlay` item, before the thresholds and events (Canvas 2D's order: series,
+band, thresholds, events).
+
+**The passes** (`dash-marks/src/line/passes.rs`). The series are decimated once. A matched
+series' instances carry its rank r (1…m, in shown order) as their lane, and every other series
+lane 0. Each pass writes the view uniform (`lane_only`, `guides`, `use_colour`, `colour`, the
+width) and is its own submission:
+
+| Pass | Draws | Onto |
+|---|---|---|
+| A1 | the guides (`lane_only` none) | the frame, which it clears |
+| A2 | lane 0, the unmatched series at their colours and full alpha | the dim layer, cleared to transparent |
+| A3 | the dim layer, one full-target triangle (`dim.wgsl`) at `dimmed` | the frame |
+| B_r | lane r, `focus`, the line width + 4 CSS px | the frame |
+| C_r | lane r at its colour | the frame |
+
+The order is Canvas 2D's: every unmatched series dimmed, then each matched series' underlay and
+line in shown order (ADR-0025 decision 4), so a later series' underlay covers an earlier one's line
+where they cross. In the vertex shader an instance of another lane is a degenerate quad (all six
+corners at one clip point outside the view). With one instance batch the passes reuse the
+decimated instances: on T1 the same indirect args (P4–P5 run once, with A1), on the CPU path the
+same buffer. With more batches the passes are outer and the batches inner, so the decimation
+repeats per pass. T1's status read-back is the decimation's, once, and `drawn` and `Rerun` are
+unchanged. Without an emphasis there is one pass, `lane_only` every lane: the draw of C2c1, bit for
+bit.
+
+**The dim layer.** One `Rgba8Unorm` texture per renderer (one renderer per frame) at the target's
+device size, created on the first draw with an emphasis, made again on a resize, released on the
+first list without one and with the renderer (device loss, restart). A2 draws into it with a
+premultiplied blend (colour `SrcAlpha, OneMinusSrcAlpha`, alpha `One, OneMinusSrcAlpha`); A3
+composites it with `One, OneMinusSrcAlpha`, so a pixel of coverage a and colour c ends as
+`dst·(1 − a·d) + c·a·d`. Overlapping capsules and crossing series build up inside the layer as at
+full alpha, and are dimmed once (ADR-0032); a per-instance alpha would build up to an effective
+0.6–0.8 on dense lines.
+
+**Cost.** While m series are matched: 3 + 2m submissions and one target-sized texture per frame.
+Nothing extra while no series is matched. Measured, report-only, in the implementation report of
+#68 Part C2c2.
+
 ### Tiers and the frame loop
 
 `engine_start` asks for a WebGPU adapter and device (T1, status 1; the decimation passes run as
@@ -1102,6 +1169,19 @@ manifest (4177) and the dev server (5175), in two Chromium projects of the engin
   px) and leaves the view; L4 under a pinned axis an event at each window end is drawn at the
   plot's left column and nothing is drawn right of the plot; L5 on an auto axis an event at the
   window's end and one 1 s before it are drawn in the plot's last column, nothing right of it.
+- `e2e:engine-selection` (Part C2c2; as `e2e:engine-camera`, S11 in `probe`) on `S3` (a1 rising,
+  a2 falling, a3 flat; 800×240): S1 a2 selected: a1 dimmed mid-segment and at a joint, a2 at its
+  colour, `focus` beside it, the summary unchanged; S1b line-50's series on a pinned axis: 400
+  seeded ink pixels obey the one-layer rule `bg + (L − bg)·0.35` (L the unmatched series alone,
+  ±6), mean alpha 0.35 ± 0.02; S1c a dot and a dense span of an unmatched series are dimmed too,
+  engine and Canvas 2D; S10 crossings of dimmed series obey the rule in both renderers (±10), DPR
+  1 and 2, and at DPR 2 the matched series and the crosshair sit at the same device positions; S2
+  a foreign key changes nothing; S3 the band; S4 the band follows wheel zooms; S5 a hover keeps
+  its rows and full-colour dots; S6 clearing restores the image exactly; S9 a2's underlay over
+  a1's line at their crossing; S7 against `dash-golden render --select-keys --select-interval`;
+  S11 the probe's `renew()` drops every renderer (as the same-tier restore after a device loss
+  does) and S1 holds again. The engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs
+  here too, against the http-mode BFF (port 4174).
 - `bench:shim-input-cost` (project `probe`, report-only): 10⁴ wheels and 10⁴ pointer moves on a
   probe frame, 16 per animation frame, each dispatch timed with the frame's flush; prints p50, p99 and max per dispatch and per frame's group
   next to the catalogue limits (p99 ≤ 0.05 ms, callback ≤ 2 ms) and asserts only that every
@@ -1113,7 +1193,8 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 
 ## Limits
 
-- 500 series per line while the interim cap holds; at most 65 535 lanes.
+- 500 series per line while the interim cap holds; at most 65 535 lanes, so every matched series
+  of a selection has its own lane (m ≤ 500).
 - Columns are CSS px (≤ 65 535); a viewport past `max_instances` is batched, never truncated.
 - A chunk holds at most 2³¹ samples (`ChunkError::TooLarge`); timestamps must be finite and
   strictly increasing per series (`ChunkError::Order`).
@@ -1126,8 +1207,8 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 - The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
   `minValueBand`), so the engine's plot rect equals Canvas 2D's.
 - In the browser: line frames only; zoom, pan, axis drags, hover, click select and the box band
-  work, and so do threshold lines and event lines without their labels (#69); the `setSelection`
-  highlight is not drawn until C2c2; WebGPU
+  work, and so do threshold lines and event lines without their labels (#69), and the
+  `setSelection` highlight (bars, heatmap and stat highlights come with #69's marks); WebGPU
   is verified only report-only in the engine image (SwiftShader); one restart per page.
 - A hover frame redraws the whole GPU frame from the cached layer list (at most one per tick, as a
   pan frame); hover answers come one tick after the Overlay is published. A click picks on the

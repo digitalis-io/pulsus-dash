@@ -152,7 +152,7 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     f.setCamera({ view: { lo: 0, hi: 10 }, value: null, band: null });
     f.setTheme('dark');
     // Through the seam's signatures: the events go as their times (plan #68 C2c1); the selection
-    // is kept by the routing frame, not sent (C2c2).
+    // as its keys and interval (C2c2), the first call always.
     const seam: EngineFrame = f;
     seam.setEvents([]);
     seam.setSelection(null);
@@ -189,6 +189,7 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
       },
       { t: 'theme', id: 1, theme: 0 },
       { t: 'events', id: 1, atMs: new Float64Array([]) },
+      { t: 'selection', id: 1, keys: [], fromMs: null, toMs: null },
       { t: 'data', id: 1, series: null },
       { t: 'dispose', id: 1 },
     ]);
@@ -456,5 +457,29 @@ describe('WasmFrame events (plan #68 C2c1 §3.3)', () => {
     f.dispose();
     f.setEvents([a]);
     expect(events()).toHaveLength(3);
+  });
+});
+
+describe('WasmFrame selection (plan #68 C2c2 §3.1)', () => {
+  it('wasm frame selection: posts keys and interval; an equal copy and a repeated null post nothing', () => {
+    const { f, p } = frame();
+    const sel = (): unknown[] => p.sent.map((s) => s.msg).filter((m) => m.t === 'selection');
+    const k = '00000000000000a1';
+    f.setSelection({ keys: [k], fromMs: 1, toMs: 2 });
+    expect(sel()).toEqual([{ t: 'selection', id: 1, keys: [k], fromMs: 1, toMs: 2 }]);
+    // An equal copy: nothing.
+    f.setSelection({ keys: [k], fromMs: 1, toMs: 2 });
+    expect(sel()).toHaveLength(1);
+    f.setSelection(null);
+    expect(sel()).toEqual([
+      { t: 'selection', id: 1, keys: [k], fromMs: 1, toMs: 2 },
+      { t: 'selection', id: 1, keys: [], fromMs: null, toMs: null },
+    ]);
+    f.setSelection(null);
+    expect(sel()).toHaveLength(2);
+    // Nothing after dispose.
+    f.dispose();
+    f.setSelection({ keys: [k], fromMs: null, toMs: null });
+    expect(sel()).toHaveLength(2);
   });
 });

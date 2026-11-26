@@ -29,6 +29,8 @@ dash-units.workspace = true
 dash-gpu = { workspace = true, features = ["test-hooks"] }
 glam.workspace = true
 naga = { workspace = true, features = ["glsl-out"] }
+nv-flip.workspace = true
+serde_json.workspace = true
 pulsus-synth.workspace = true
 
 [[test]]
@@ -61,4 +63,8 @@ required-features = ["gpu"]
 
 [[test]]
 name = "t2_resources"
+required-features = ["gpu"]
+
+[[test]]
+name = "selection_passes"
 required-features = ["gpu"]
